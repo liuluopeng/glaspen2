@@ -1,0 +1,397 @@
+use std::sync::Mutex;
+
+use cairo::ImageSurface;
+use gtk::prelude::*;
+use gtk::{gdk, glib};
+
+const MIN_WIDTH: f64 = 1.0;
+const MAX_WIDTH: f64 = 8.0;
+const CURSOR_RADIUS: f64 = 8.0;
+
+struct DrawState {
+    surface: ImageSurface,
+    last_pos: Option<(f64, f64)>,
+    cursor_pos: Option<(f64, f64)>,
+    pen_down: bool,
+}
+
+// We protect all access via Mutex. Cairo surface and GTK widget are main-thread
+// only in principle, but we enforce single-access via the Mutex.
+struct SendDrawState(DrawState);
+unsafe impl Send for SendDrawState {}
+unsafe impl Sync for SendDrawState {}
+
+struct SendArea(gtk::DrawingArea);
+unsafe impl Send for SendArea {}
+unsafe impl Sync for SendArea {}
+
+static STATE: Mutex<Option<SendDrawState>> = Mutex::new(None);
+static AREA: Mutex<Option<SendArea>> = Mutex::new(None);
+
+fn with_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut DrawState) -> R,
+{
+    let mut lock = STATE.lock().unwrap();
+    f(&mut lock.as_mut().unwrap().0)
+}
+
+fn main() {
+    {
+        let mut lock = STATE.lock().unwrap();
+        *lock = Some(SendDrawState(DrawState {
+            surface: ImageSurface::create(cairo::Format::ARgb32, 1920, 1080)
+                .expect("Failed to create surface"),
+            last_pos: None,
+            cursor_pos: None,
+            pen_down: false,
+        }));
+        let cr = cairo::Context::new(&lock.as_ref().unwrap().0.surface).unwrap();
+        cr.set_operator(cairo::Operator::Clear);
+        cr.paint().unwrap();
+        cr.set_operator(cairo::Operator::Over);
+    }
+
+    let app = gtk::Application::new(Some("com.glaspen2"), Default::default());
+    app.connect_activate(build_ui);
+    app.run();
+}
+
+fn build_ui(app: &gtk::Application) {
+    let window = gtk::ApplicationWindow::new(app);
+    window.set_title(Some("glaspen2"));
+    window.set_decorated(false);
+    window.set_default_size(1920, 1080);
+
+    let provider = gtk::CssProvider::new();
+    provider.load_from_data(
+        "window, window.background {
+            background-color: transparent;
+            background: transparent;
+            box-shadow: none;
+        }",
+    );
+    gtk::style_context_add_provider_for_display(
+        &gdk::Display::default().expect("No display"),
+        &provider,
+        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
+
+    let area = gtk::DrawingArea::new();
+
+    area.set_draw_func(move |_area, cr, _w, _h| {
+        with_state(|st| {
+            cr.set_source_surface(&st.surface, 0.0, 0.0).unwrap();
+            cr.paint().unwrap();
+
+            if let Some((cx, cy)) = st.cursor_pos {
+                if !st.pen_down {
+                    cr.set_source_rgba(1.0, 0.0, 0.0, 0.8);
+                    cr.set_line_width(2.0);
+                    cr.arc(cx, cy, CURSOR_RADIUS, 0.0, std::f64::consts::TAU);
+                    cr.stroke().unwrap();
+
+                    cr.set_source_rgba(1.0, 0.0, 0.0, 1.0);
+                    cr.arc(cx, cy, 1.5, 0.0, std::f64::consts::TAU);
+                    cr.fill().unwrap();
+                }
+            }
+        });
+    });
+
+    // Escape key to quit
+    let key_controller = gtk::EventControllerKey::new();
+    let window_key = window.clone();
+    key_controller.connect_key_pressed(move |_controller, keyval, _keycode, _state| {
+        if keyval == gdk::Key::Escape {
+            window_key.close();
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
+    window.add_controller(key_controller);
+
+    window.set_child(Some(&area));
+    window.present();
+
+    // Store area in global for CGEventTap callback
+    {
+        let mut lock = AREA.lock().unwrap();
+        *lock = Some(SendArea(area.clone()));
+    }
+
+    // macOS: click-through + CGEventTap for pen input
+    #[cfg(target_os = "macos")]
+    macos_setup(&window);
+}
+
+#[cfg(target_os = "macos")]
+fn macos_setup(window: &gtk::ApplicationWindow) {
+    use std::ffi::c_void;
+    use std::thread;
+
+    extern "C" {
+        fn gdk_macos_surface_get_native_window(surface: *mut c_void) -> *mut c_void;
+        fn objc_msgSend();
+    }
+
+    use objc::runtime::{BOOL, Object, Sel, YES};
+
+    if let Some(surface) = window.surface() {
+        unsafe {
+            let ns_window = gdk_macos_surface_get_native_window(surface.as_ptr() as *mut c_void);
+            if !ns_window.is_null() {
+                let obj = ns_window as *mut Object;
+                let responds_fn: unsafe extern "C" fn(*mut Object, Sel, Sel) -> BOOL =
+                    std::mem::transmute(objc_msgSend as *const ());
+                let sel_responds = Sel::register("respondsToSelector:");
+                let sel_set = Sel::register("setIgnoresMouseEvents:");
+                if responds_fn(obj, sel_responds, sel_set) == YES {
+                    let set_fn: unsafe extern "C" fn(*mut Object, Sel, BOOL) =
+                        std::mem::transmute(objc_msgSend as *const ());
+                    set_fn(obj, sel_set, YES);
+                    eprintln!("setIgnoresMouseEvents: YES");
+                }
+
+                // Get window frame for coordinate conversion
+                let sel_frame = Sel::register("frame");
+                let frame_fn: unsafe extern "C" fn(*mut Object, Sel) -> NSRect =
+                    std::mem::transmute(objc_msgSend as *const ());
+                let frame = frame_fn(obj, sel_frame);
+                eprintln!("Window frame: origin=({}, {}) size={}x{}",
+                    frame.origin.x, frame.origin.y, frame.size.width, frame.size.height);
+
+                // Store frame and start CGEventTap
+                {
+                    let mut wf = WINDOW_FRAME.lock().unwrap();
+                    *wf = Some(frame);
+                }
+
+                thread::spawn(|| {
+                    run_pen_event_tap();
+                });
+            }
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct NSRect {
+    origin: NSPoint,
+    size: NSSize,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct NSPoint {
+    x: f64,
+    y: f64,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct NSSize {
+    width: f64,
+    height: f64,
+}
+
+unsafe impl Send for NSRect {}
+
+static WINDOW_FRAME: Mutex<Option<NSRect>> = Mutex::new(None);
+
+#[cfg(target_os = "macos")]
+fn run_pen_event_tap() {
+    use std::ffi::c_void;
+    use std::ptr;
+
+    type CGEventRef = *mut c_void;
+    type CGEventTapProxy = *mut c_void;
+    type CGEventMask = u64;
+    type CFMachPortRef = *mut c_void;
+    type CFRunLoopRef = *mut c_void;
+    type CFRunLoopSourceRef = *mut c_void;
+    type CFAllocatorRef = *const c_void;
+
+    const KCG_EVENT_TAP_OPTION_DEFAULT: u32 = 0;
+    const KCG_EVENT_TAP_LOCATION_ANNOTATED_SESSION: u32 = 2;
+
+    // Mouse event types
+    const KCG_EVENT_MOUSE_MOVED: u64 = 5;
+    const KCG_EVENT_L_MOUSE_DOWN: u64 = 1;
+    const KCG_EVENT_L_MOUSE_UP: u64 = 2;
+    const KCG_EVENT_L_MOUSE_DRAGGED: u64 = 6;
+    const KCG_EVENT_R_MOUSE_DOWN: u64 = 3;
+    const KCG_EVENT_R_MOUSE_UP: u64 = 4;
+    const KCG_EVENT_R_MOUSE_DRAGGED: u64 = 7;
+    const KCG_EVENT_OTHER_MOUSE_DOWN: u64 = 25;
+    const KCG_EVENT_OTHER_MOUSE_UP: u64 = 26;
+    const KCG_EVENT_OTHER_MOUSE_DRAGGED: u64 = 27;
+    // Tablet event types
+    const KCG_EVENT_TABLET_POINTER: u64 = 23;
+    const KCG_EVENT_TABLET_PROXIMITY: u64 = 24;
+
+    // CGEvent fields
+    const KCG_EVENT_FIELD_PRESSURE: i64 = 14;        // general pressure field
+    const KCG_EVENT_FIELD_TABLET_PRESSURE: i64 = 8;  // tablet-specific pressure
+
+    const MIN_PRESSURE: f64 = 0.02;
+
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGEventTapCreate(
+            tap: u32,
+            place: u32,
+            options: u32,
+            events_of_interest: CGEventMask,
+            callback: extern "C" fn(CGEventTapProxy, u32, CGEventRef, *mut c_void) -> CGEventRef,
+            refcon: *mut c_void,
+        ) -> CFMachPortRef;
+        fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
+        fn CGEventGetDoubleValueField(event: CGEventRef, field: i64) -> f64;
+        fn CGEventGetLocation(event: CGEventRef) -> NSPoint;
+    }
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFMachPortCreateRunLoopSource(
+            alloc: CFAllocatorRef,
+            port: CFMachPortRef,
+            order: i64,
+        ) -> CFRunLoopSourceRef;
+        fn CFRunLoopGetCurrent() -> CFRunLoopRef;
+        fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: *const c_void);
+        fn CFRunLoopRunInMode(mode: *const c_void, seconds: f64, return_after_source_handled: bool) -> i32;
+        fn CFStringCreateWithCString(
+            alloc: CFAllocatorRef,
+            cstr: *const i8,
+            encoding: u32,
+        ) -> *const c_void;
+    }
+
+    static LOG_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+    extern "C" fn pen_callback(
+        _proxy: CGEventTapProxy,
+        event_type: u32,
+        event: CGEventRef,
+        _user: *mut c_void,
+    ) -> CGEventRef {
+        // Log ALL events (not just first 50) — focus on non-move events
+        let p_general = unsafe { CGEventGetDoubleValueField(event, KCG_EVENT_FIELD_PRESSURE) };
+        let p_tablet = unsafe { CGEventGetDoubleValueField(event, KCG_EVENT_FIELD_TABLET_PRESSURE) };
+        let screen = unsafe { CGEventGetLocation(event) };
+        // Only log non-move events and move events with pressure
+        if event_type != KCG_EVENT_MOUSE_MOVED as u32 || p_general > 0.0 || p_tablet > 0.0 {
+            eprintln!("[CGEventTap] type={} p={} tp={} pos=({:.0},{:.0})",
+                event_type, p_general, p_tablet, screen.x, screen.y);
+        }
+
+        // Skip proximity events
+        if event_type == KCG_EVENT_TABLET_PROXIMITY as u32 {
+            return event;
+        }
+
+        // Check pressure from both fields
+        let p_general = unsafe { CGEventGetDoubleValueField(event, KCG_EVENT_FIELD_PRESSURE) };
+        let p_tablet = unsafe { CGEventGetDoubleValueField(event, KCG_EVENT_FIELD_TABLET_PRESSURE) };
+        let pressure = if p_tablet > 0.0 { p_tablet } else { p_general };
+
+        // Only draw for events with pen pressure
+        if pressure <= MIN_PRESSURE {
+            return event;
+        }
+
+        let screen = unsafe { CGEventGetLocation(event) };
+
+        let frame = {
+            let lock = WINDOW_FRAME.lock().unwrap();
+            match *lock {
+                Some(f) => f,
+                None => return event,
+            }
+        };
+
+        // Convert screen coords (origin bottom-left) to window-local coords
+        // Note: CGEvent coordinates are in screen pixels, NSWindow frame is in points
+        let x = screen.x - frame.origin.x;
+        let y = frame.size.height - (screen.y - frame.origin.y); // flip Y
+
+        if x < 0.0 || y < 0.0 || x > frame.size.width || y > frame.size.height {
+            return event;
+        }
+
+        let width = MIN_WIDTH + pressure * (MAX_WIDTH - MIN_WIDTH);
+
+        with_state(|st| {
+            st.cursor_pos = Some((x, y));
+            st.pen_down = true;
+
+            let cr = cairo::Context::new(&st.surface).unwrap();
+            cr.set_source_rgba(1.0, 0.0, 0.0, 1.0);
+            cr.set_line_width(width);
+            cr.set_line_cap(cairo::LineCap::Round);
+            cr.set_line_join(cairo::LineJoin::Round);
+
+            if let Some((lx, ly)) = st.last_pos {
+                cr.move_to(lx, ly);
+                cr.line_to(x, y);
+                cr.stroke().unwrap();
+            } else {
+                cr.arc(x, y, width * 0.5, 0.0, std::f64::consts::TAU);
+                cr.fill().unwrap();
+            }
+            st.last_pos = Some((x, y));
+        });
+
+        // Trigger GTK redraw on main thread
+        glib::idle_add(|| {
+            let lock = AREA.lock().unwrap();
+            if let Some(ref a) = *lock {
+                a.0.queue_draw();
+            }
+            glib::ControlFlow::Break
+        });
+
+        event
+    }
+
+    // Capture ALL pointer events (mouse + tablet)
+    let event_mask: u64 = (1 << KCG_EVENT_MOUSE_MOVED)
+        | (1 << KCG_EVENT_L_MOUSE_DOWN) | (1 << KCG_EVENT_L_MOUSE_UP) | (1 << KCG_EVENT_L_MOUSE_DRAGGED)
+        | (1 << KCG_EVENT_R_MOUSE_DOWN) | (1 << KCG_EVENT_R_MOUSE_UP) | (1 << KCG_EVENT_R_MOUSE_DRAGGED)
+        | (1 << KCG_EVENT_OTHER_MOUSE_DOWN) | (1 << KCG_EVENT_OTHER_MOUSE_UP) | (1 << KCG_EVENT_OTHER_MOUSE_DRAGGED)
+        | (1 << KCG_EVENT_TABLET_POINTER) | (1 << KCG_EVENT_TABLET_PROXIMITY);
+
+    unsafe {
+        let tap = CGEventTapCreate(
+            KCG_EVENT_TAP_LOCATION_ANNOTATED_SESSION,
+            0,
+            KCG_EVENT_TAP_OPTION_DEFAULT,
+            event_mask,
+            pen_callback,
+            ptr::null_mut(),
+        );
+
+        if tap.is_null() {
+            eprintln!("CGEventTapCreate failed — need Accessibility permission in System Settings");
+            return;
+        }
+
+        CGEventTapEnable(tap, true);
+
+        let source = CFMachPortCreateRunLoopSource(ptr::null(), tap, 0);
+        let rl = CFRunLoopGetCurrent();
+
+        let mode_cstr = b"kCFRunLoopDefaultMode\0".as_ptr() as *const i8;
+        let cf_mode = CFStringCreateWithCString(ptr::null(), mode_cstr, 0x08000100);
+        CFRunLoopAddSource(rl, source, cf_mode);
+
+        eprintln!("CGEventTap running, waiting for pen events...");
+
+        loop {
+            CFRunLoopRunInMode(cf_mode, 1e9, true);
+        }
+    }
+}

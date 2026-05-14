@@ -1,0 +1,164 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="110 135 280 235">
+  <defs>
+    <linearGradient id="screenGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a1a32"/>
+      <stop offset="100%" stop-color="#25254c"/>
+    </linearGradient>
+    <!-- Glass is distinctly visible -->
+    <linearGradient id="glassFront" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.38"/>
+    </linearGradient>
+    <linearGradient id="glassTopEdge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.10"/>
+    </linearGradient>
+    <!-- Stronger shadow to show glass floating above screen -->
+    <filter id="glassShadow" x="-15%" y="-15%" width="140%" height="140%">
+      <feDropShadow dx="3" dy="4" stdDeviation="7" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+    <filter id="neonPink" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
+    </filter>
+    <filter id="neonCyan" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
+    </filter>
+    <filter id="neonYellow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3"/>
+    </filter>
+    <filter id="neonGreen" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.5"/>
+    </filter>
+  </defs>
+
+  <!-- ============================================
+       TOP-DOWN from RIGHT (俯视 + 右侧)
+       Perspective leans LEFT (dx=-12 toward near)
+       Near = bottom, Far = top
+       Screen: far(156,170)(366,170) → near(144,350)(354,350)
+       Glass:  far(142,155)(352,155) → near(130,335)(340,335)
+       Glass offset 15px from screen, clearly separated
+    -->
+
+  <!-- === MONITOR: thin top edge (3px at near side) === -->
+  <polygon points="144,350 354,350 351,347 141,347" fill="#555"/>
+
+  <!-- === MONITOR: SCREEN (behind glass) === -->
+  <polygon points="156,170 366,170 354,350 144,350" fill="url(#screenGrad)"/>
+
+  <!-- === DESKTOP (transformed to screen perspective) === -->
+  <!-- Screen is 210×180. skewX=-3.814° maps (0,0)-(210,180) onto the screen parallelogram -->
+  <g transform="translate(156, 170) skewX(-3.814)">
+    <!-- Desktop wallpaper gradient -->
+    <rect x="0" y="0" width="210" height="180" fill="#1e3060"/>
+    <rect x="0" y="0" width="210" height="180" fill="url(#screenGrad)"/>
+
+    <!-- macOS menu bar -->
+    <rect x="0" y="0" width="210" height="13" fill="#ffffff" fill-opacity="0.06"/>
+    <!-- Menu bar items -->
+    <rect x="6" y="4" width="8" height="5" rx="2.5" fill="#ffffff" fill-opacity="0.12"/>
+    <rect x="18" y="4" width="10" height="5" rx="2.5" fill="#ffffff" fill-opacity="0.10"/>
+    <rect x="32" y="4" width="8" height="5" rx="2.5" fill="#ffffff" fill-opacity="0.10"/>
+    <!-- Menu bar right icons -->
+    <rect x="178" y="4" width="6" height="5" rx="2" fill="#ffffff" fill-opacity="0.12"/>
+    <rect x="188" y="4" width="6" height="5" rx="2" fill="#ffffff" fill-opacity="0.12"/>
+    <rect x="198" y="4" width="6" height="5" rx="2" fill="#ffffff" fill-opacity="0.12"/>
+
+    <!-- App window 1 (Finder-like) -->
+    <rect x="20" y="30" width="90" height="70" rx="5" fill="#2d2d3a" stroke="#ffffff" stroke-opacity="0.08" stroke-width="0.5"/>
+    <!-- Window title bar -->
+    <rect x="20" y="30" width="90" height="12" rx="5" fill="#3a3a48"/>
+    <rect x="20" y="37" width="90" height="5" fill="#3a3a48"/>
+    <!-- Window dots -->
+    <circle cx="27" cy="36" r="2.5" fill="#ff5f57" fill-opacity="0.5"/>
+    <circle cx="34" cy="36" r="2.5" fill="#ffbd2e" fill-opacity="0.45"/>
+    <circle cx="41" cy="36" r="2.5" fill="#28ca41" fill-opacity="0.45"/>
+    <!-- Sidebar -->
+    <rect x="23" y="45" width="25" height="52" fill="#ffffff" fill-opacity="0.03"/>
+    <rect x="27" y="50" width="17" height="3" rx="1.5" fill="#ffffff" fill-opacity="0.06"/>
+    <rect x="27" y="56" width="14" height="2.5" rx="1" fill="#ffffff" fill-opacity="0.05"/>
+    <rect x="27" y="61" width="16" height="2.5" rx="1" fill="#ffffff" fill-opacity="0.05"/>
+    <!-- Content area -->
+    <rect x="52" y="48" width="16" height="12" rx="2" fill="#ffffff" fill-opacity="0.04"/>
+    <rect x="52" y="64" width="16" height="12" rx="2" fill="#ffffff" fill-opacity="0.04"/>
+    <rect x="72" y="48" width="16" height="12" rx="2" fill="#ffffff" fill-opacity="0.03"/>
+    <rect x="72" y="64" width="16" height="12" rx="2" fill="#ffffff" fill-opacity="0.03"/>
+
+    <!-- App window 2 (overlapping) -->
+    <rect x="100" y="55" width="80" height="60" rx="5" fill="#252535" stroke="#ffffff" stroke-opacity="0.06" stroke-width="0.5"/>
+    <rect x="100" y="55" width="80" height="10" rx="5" fill="#323242"/>
+    <rect x="100" y="60" width="80" height="5" fill="#323242"/>
+    <circle cx="107" cy="60" r="2" fill="#ff5f57" fill-opacity="0.45"/>
+    <circle cx="113" cy="60" r="2" fill="#ffbd2e" fill-opacity="0.4"/>
+    <circle cx="119" cy="60" r="2" fill="#28ca41" fill-opacity="0.4"/>
+    <!-- Text lines -->
+    <rect x="106" y="72" width="40" height="3" rx="1.5" fill="#ffffff" fill-opacity="0.08"/>
+    <rect x="106" y="80" width="60" height="2.5" rx="1" fill="#ffffff" fill-opacity="0.05"/>
+    <rect x="106" y="87" width="50" height="2.5" rx="1" fill="#ffffff" fill-opacity="0.05"/>
+    <rect x="106" y="94" width="35" height="2.5" rx="1" fill="#ffffff" fill-opacity="0.04"/>
+
+    <!-- macOS Dock -->
+    <rect x="20" y="155" width="170" height="22" rx="8" fill="#ffffff" fill-opacity="0.08"/>
+    <!-- Dock icons -->
+    <rect x="35" y="160" width="8" height="12" rx="2" fill="#ffffff" fill-opacity="0.15"/>
+    <rect x="48" y="160" width="8" height="12" rx="2" fill="#ffffff" fill-opacity="0.15"/>
+    <rect x="61" y="160" width="8" height="12" rx="2" fill="#ffffff" fill-opacity="0.15"/>
+    <rect x="74" y="160" width="8" height="12" rx="2" fill="#ffffff" fill-opacity="0.15"/>
+    <rect x="87" y="160" width="8" height="12" rx="2" fill="#ffffff" fill-opacity="0.15"/>
+    <rect x="100" y="160" width="8" height="12" rx="2" fill="#ffffff" fill-opacity="0.15"/>
+    <rect x="113" y="160" width="8" height="12" rx="2" fill="#ffffff" fill-opacity="0.15"/>
+    <rect x="126" y="160" width="8" height="12" rx="2" fill="#ffffff" fill-opacity="0.15"/>
+  </g>
+
+  <!-- === GLASS PANEL (in front, same size, offset 14px) === -->
+  <g filter="url(#glassShadow)">
+    <!-- Glass front face (zero thickness, flat panel) -->
+    <polygon points="142,155 352,155 340,335 130,335"
+             fill="url(#glassFront)" stroke="#ffffff" stroke-opacity="0.55" stroke-width="2.5"/>
+  </g>
+
+  <!-- Glass edge bright lines -->
+  <line x1="142" y1="155" x2="352" y2="155" stroke="#ffffff" stroke-opacity="0.70" stroke-width="1"/>
+  <line x1="142" y1="155" x2="130" y2="335" stroke="#ffffff" stroke-opacity="0.35" stroke-width="1"/>
+
+  <!-- === FLUORESCENT NEON SCRIBBLES ON GLASS === -->
+  <!-- Glass bounds: left 142→130, right 352→340, y 155→335 -->
+  <!-- Safe zone (8px margin): x≈145-340, y≈165-325 -->
+
+  <!-- Pink scribble -->
+  <g filter="url(#neonPink)">
+    <path d="M172,275 Q200,248 225,275 Q250,302 275,268 Q296,242 315,268 Q330,290 342,258"
+          stroke="#ff2d95" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.72"/>
+  </g>
+  <path d="M172,275 Q200,248 225,275 Q250,302 275,268 Q296,242 315,268 Q330,290 342,258"
+        stroke="#ff80cc" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+
+  <!-- Cyan scribble -->
+  <g filter="url(#neonCyan)">
+    <path d="M163,235 Q188,210 212,235 Q236,260 260,225 Q280,198 300,225 Q318,248 338,218 Q348,202 340,185"
+          stroke="#00e5ff" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.72"/>
+  </g>
+  <path d="M163,235 Q188,210 212,235 Q236,260 260,225 Q280,198 300,225 Q318,248 338,218 Q348,202 340,185"
+        stroke="#80f0ff" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+
+  <!-- Yellow scribble -->
+  <g filter="url(#neonYellow)">
+    <path d="M182,200 Q208,175 228,200 Q248,225 270,190 Q288,165 305,195 Q320,225 338,188"
+          stroke="#ffe600" stroke-width="2.2" fill="none" stroke-linecap="round" opacity="0.65"/>
+  </g>
+  <path d="M182,200 Q208,175 228,200 Q248,225 270,190 Q288,165 305,195 Q320,225 338,188"
+        stroke="#fff9a0" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+
+  <!-- Green sparkles -->
+  <circle cx="330" cy="215" r="2.8" fill="#00ff88" filter="url(#neonGreen)" opacity="0.85"/>
+  <circle cx="330" cy="215" r="1.4" fill="#a0ffcc"/>
+  <circle cx="315" cy="275" r="2.3" fill="#00ff88" filter="url(#neonGreen)" opacity="0.6"/>
+  <circle cx="315" cy="275" r="1.1" fill="#a0ffcc"/>
+  <circle cx="162" cy="300" r="2" fill="#00ff88" filter="url(#neonGreen)" opacity="0.55"/>
+  <circle cx="162" cy="300" r="1" fill="#a0ffcc"/>
+
+  <!-- Pink sparkle -->
+  <circle cx="280" cy="230" r="2.3" fill="#ff2d95" filter="url(#neonPink)" opacity="0.65"/>
+  <circle cx="280" cy="230" r="1.2" fill="#ffaacc"/>
+</svg>
