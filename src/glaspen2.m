@@ -6,13 +6,19 @@
 
 // Hot key ID
 enum {
-    kHotKeyClearScreen = 1
+    kHotKeyClearScreen = 1,
+    kHotKeyToggle = 2
 };
+
+// App enabled state
+static BOOL g_enabled = YES;
 
 // Forward declarations
 static void flush_to_layer(void);
 static void clear_screen(void);
 static void draw_rainbow_indicator(void);
+static void toggle_enabled(void);
+static void update_status_icon_state(void);
 
 // Hot key handler function
 static OSStatus hotKeyHandler(EventHandlerCallRef next, EventRef event, void *userData) {
@@ -20,6 +26,8 @@ static OSStatus hotKeyHandler(EventHandlerCallRef next, EventRef event, void *us
     GetEventParameter(event, kEventParamDirectObject, typeEventHotKeyID, NULL, sizeof(hotKey), NULL, &hotKey);
     if (hotKey.id == kHotKeyClearScreen) {
         clear_screen();
+    } else if (hotKey.id == kHotKeyToggle) {
+        toggle_enabled();
     }
     return noErr;
 }
@@ -298,8 +306,11 @@ static void update_menu_texts(void) {
     [[g_menu itemAtIndex:base+2] setTitle:L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)")];
     [[g_menu itemAtIndex:base+3] setTitle:L(@"清屏", @"Clear screen")];
     [[g_menu itemAtIndex:base+4] setTitle:L(@"彩虹指示器", @"Rainbow indicator")];
-    [[g_menu itemAtIndex:base+6] setTitle:L(@"English", @"中文")];
-    [[g_menu itemAtIndex:base+7] setTitle:L(@"退出", @"Quit")];
+    // Update toggle item title based on state
+    NSMenuItem *toggleItem = [g_menu itemWithTag:888];
+    if (toggleItem) [toggleItem setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
+    [[g_menu itemAtIndex:base+7] setTitle:L(@"English", @"中文")];
+    [[g_menu itemAtIndex:base+8] setTitle:L(@"退出", @"Quit")];
 }
 
 static NSImage* colorSwatchImage(NSColor *color, CGFloat size) {
@@ -340,6 +351,25 @@ static void update_status_icon_text(void) {
     [g_statusItem.button setTitle:@"G"];
 }
 
+static void update_status_icon_state(void) {
+    if (g_enabled) {
+        update_status_icon_color();
+    } else {
+        // Disabled: show gray outline circle
+        CGFloat size = 18;
+        NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(size, size)];
+        [image lockFocus];
+        [[NSColor clearColor] setFill];
+        NSRectFill(NSMakeRect(0, 0, size, size));
+        NSBezierPath *circle = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(2, 2, size - 4, size - 4)];
+        [[NSColor colorWithWhite:0.5 alpha:0.6] setStroke];
+        [circle setLineWidth:2.0];
+        [circle stroke];
+        [image unlockFocus];
+        [g_statusItem.button setImage:image];
+    }
+}
+
 static void update_menu_checkmarks(void) {
     // Update checkmarks on color items
     for (int i = 0; i < g_color_preset_count; i++) {
@@ -351,6 +381,20 @@ static void update_menu_checkmarks(void) {
     for (int i = 0; i < g_width_preset_count; i++) {
         NSMenuItem *item = [g_menu itemAtIndex:widthOffset + i];
         [item setState:(i == g_selected_width_index) ? NSControlStateValueOn : NSControlStateValueOff];
+    }
+}
+
+static void toggle_enabled(void) {
+    g_enabled = !g_enabled;
+    update_status_icon_state();
+    show_notification(g_enabled
+        ? L(@"涂鸦已开启", @"Drawing enabled")
+        : L(@"涂鸦已关闭", @"Drawing disabled"));
+    // Update menu item
+    NSMenuItem *item = [g_menu itemWithTag:888];
+    if (item) {
+        [item setState:g_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+        [item setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
     }
 }
 
@@ -366,6 +410,10 @@ static void update_menu_checkmarks(void) {
 
 - (void)clearScreen {
     clear_screen();
+}
+
+- (void)toggleDraw {
+    toggle_enabled();
 }
 
 - (void)saveXoj {
@@ -426,7 +474,7 @@ static void update_menu_checkmarks(void) {
 }
 
 - (void)menuDidClose:(NSMenu *)menu {
-    update_status_icon_text();
+    update_status_icon_state();
     // Re-enable CGEventTap after menu closes
     if (g_event_tap) {
         CGEventTapEnable(g_event_tap, true);
@@ -582,6 +630,9 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         return event;
     }
 
+    // If app is disabled, pass all events through
+    if (!g_enabled) return event;
+
     // Convert to NSEvent to check pen properties
     NSEvent *nsevent = [NSEvent eventWithCGEvent:event];
     if (!nsevent) return event;
@@ -713,6 +764,10 @@ void glaspen2_run(void) {
         rainbowItem.tag = 999;
         rainbowItem.state = NSControlStateValueOff;
         [g_menu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem *toggleItem = [g_menu addItemWithTitle:L(@"开启涂鸦", @"Enable Drawing") action:@selector(toggleDraw) keyEquivalent:@""];
+        toggleItem.target = g_menuHandler;
+        toggleItem.tag = 888;
+        toggleItem.state = NSControlStateValueOn;
         NSMenuItem *langItem = [g_menu addItemWithTitle:L(@"English", @"中文") action:@selector(toggleLanguage) keyEquivalent:@""];
         langItem.target = g_menuHandler;
         NSMenuItem *quitItem = [g_menu addItemWithTitle:L(@"退出", @"Quit") action:@selector(quitApp) keyEquivalent:@""];
@@ -728,6 +783,7 @@ void glaspen2_run(void) {
         }
 
         [g_statusItem setMenu:g_menu];
+        update_status_icon_state();
 
         NSScreen *screen = [NSScreen mainScreen];
         NSRect screenFrame = [screen frame];
@@ -779,11 +835,13 @@ void glaspen2_run(void) {
         signal(SIGINT, save_and_exit);   // Ctrl+C
         signal(SIGTERM, save_and_exit);  // kill command
 
-        // Register global hot key: Cmd+Ctrl+C to clear screen
-        EventHotKeyID hotKeyID = { .signature = 'glsp', .id = kHotKeyClearScreen };
+        // Register global hot keys
+        EventHotKeyID hotKeyClear = { .signature = 'glsp', .id = kHotKeyClearScreen };
+        EventHotKeyID hotKeyToggle = { .signature = 'glsp', .id = kHotKeyToggle };
         EventTypeSpec eventType = { .eventClass = kEventClassKeyboard, .eventKind = kEventHotKeyPressed };
         InstallApplicationEventHandler(NewEventHandlerUPP(hotKeyHandler), 1, &eventType, NULL, NULL);
-        RegisterEventHotKey(kVK_ANSI_C, cmdKey | controlKey, hotKeyID, GetApplicationEventTarget(), 0, &hotKeyID);
+        RegisterEventHotKey(kVK_ANSI_C, cmdKey | controlKey, hotKeyClear, GetApplicationEventTarget(), 0, &hotKeyClear);
+        RegisterEventHotKey(kVK_ANSI_V, cmdKey | controlKey, hotKeyToggle, GetApplicationEventTarget(), 0, &hotKeyToggle);
 
         // CGEventTap: intercept events at system level before dispatch
         CGEventMask tapMask = CGEventMaskBit(kCGEventMouseMoved) |

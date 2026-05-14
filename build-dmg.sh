@@ -6,6 +6,7 @@ DMG_NAME="${APP_NAME}.dmg"
 VOLUME_NAME="Glaspen2"
 BUILD_DIR="target/release"
 APP_DIR="/tmp/${APP_NAME}-dmg"
+VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/version *= *"\(.*\)"/\1/')
 
 echo "Building release..."
 cargo build --release
@@ -19,7 +20,7 @@ cp "${BUILD_DIR}/${APP_NAME}" "${APP_DIR}/${APP_NAME}.app/Contents/MacOS/"
 cp "glaspen2.icns" "${APP_DIR}/${APP_NAME}.app/Contents/Resources/"
 
 # Create Info.plist
-cat > "${APP_DIR}/${APP_NAME}.app/Contents/Info.plist" << 'EOF'
+cat > "${APP_DIR}/${APP_NAME}.app/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -31,9 +32,9 @@ cat > "${APP_DIR}/${APP_NAME}.app/Contents/Info.plist" << 'EOF'
     <key>CFBundleName</key>
     <string>Glaspen2</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>${VERSION}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>${VERSION}</string>
     <key>CFBundleIconFile</key>
     <string>glaspen2</string>
     <key>CFBundlePackageType</key>
