@@ -4,12 +4,17 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 
 use super::overlay;
-use super::render;
 
 static HOOK_HANDLE: Mutex<isize> = Mutex::new(0);
 static HOOK_HWND: Mutex<isize> = Mutex::new(0);
-static mut PEN_DRAWING: bool = false;
+
+static mut LAST_PEN_X: f64 = 0.0;
+static mut LAST_PEN_Y: f64 = 0.0;
+static mut HAS_LAST_PEN: bool = false;
+static mut PEN_ACTIVE: bool = false;
 static mut STROKE_COLOR: (f64, f64, f64) = (1.0, 0.0, 0.0);
+
+pub fn is_pen_active() -> bool { unsafe { PEN_ACTIVE } }
 
 pub fn install_hook(hwnd: HWND) {
     let hmodule = unsafe { GetModuleHandleW(None).unwrap() };
@@ -17,7 +22,8 @@ pub fn install_hook(hwnd: HWND) {
     let hook = unsafe { SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook_proc), instance, 0).unwrap() };
     let mut h = HOOK_HANDLE.lock().unwrap();
     *h = hook.0 as isize;
-    set_hook_hwnd(hwnd);
+    let mut h2 = HOOK_HWND.lock().unwrap();
+    *h2 = hwnd.0 as isize;
 }
 
 pub fn uninstall_hook() {
@@ -25,27 +31,7 @@ pub fn uninstall_hook() {
     if *h != 0 {
         unsafe { let hook = HHOOK(*h as *mut _); UnhookWindowsHookEx(hook).ok(); }
     }
-    unsafe { if PEN_DRAWING { ShowCursor(TRUE); PEN_DRAWING = false; } }
 }
-
-fn set_hook_hwnd(hwnd: HWND) {
-    let mut h = HOOK_HWND.lock().unwrap();
-    *h = hwnd.0 as isize;
-}
-
-fn get_hook_hwnd() -> Option<HWND> {
-    let h = HOOK_HWND.lock().unwrap();
-    if *h == 0 { None } else { Some(HWND(*h as *mut _)) }
-}
-
-fn is_pen_event(extra_info: usize) -> bool {
-    if extra_info == 0 { return false; }
-    let val = extra_info as u32;
-    if val > 0x100 { return true; }
-    false
-}
-
-fn estimate_pressure(_extra_info: usize) -> f64 { 0.5 }
 
 fn sample_screen_inverse(x: f64, y: f64) -> (f64, f64, f64) {
     unsafe {
@@ -62,102 +48,81 @@ fn sample_screen_inverse(x: f64, y: f64) -> (f64, f64, f64) {
     }
 }
 
-/// Draw smoothed modeler points directly into the surface pixel buffer.
-fn draw_modeler_buffer(surface: &crate::cairo::ImageSurface, r: f64, g: f64, b: f64) {
-    let count = crate::glaspen2_modeler_point_count() as usize;
-    if count < 1 { return; }
+fn pressure_to_width(pressure: f64, width_scale: f64) -> f64 {
+    if pressure > 0.01 { (0.3 + pressure * pressure * 7.7) * width_scale }
+    else { 1.0 * width_scale }
+}
 
+/// Handle WM_POINTER pen events from the overlay window.
+pub fn handle_pointer_pen(hwnd: HWND, msg: u32, x: f64, y: f64, pressure: f64) {
+    let is_down = msg == 0x0246;
+    let is_move = msg == 0x0245;
+    let is_up = msg == 0x0247;
+
+    let data = match overlay::get_overlay_data(hwnd) { Some(d) => d, None => return };
+    let state = data.state.lock().unwrap();
+    if !state.enabled { return; }
+    let width_scale = state.width_scale;
+
+    if is_down && !unsafe { PEN_ACTIVE } {
+        unsafe { PEN_ACTIVE = true; HAS_LAST_PEN = false; }
+        let pen_color = if state.inverse_enabled { sample_screen_inverse(x, y) }
+                        else { (state.pen_r, state.pen_g, state.pen_b) };
+        unsafe { STROKE_COLOR = pen_color; }
+        drop(state);
+
+        let w = pressure_to_width(pressure, width_scale);
+        draw_pen_point(&data.surface, x, y, w, pen_color);
+        overlay::update_overlay(hwnd);
+        unsafe { ShowCursor(FALSE); }
+        return;
+    }
+
+    if is_move && unsafe { PEN_ACTIVE } {
+        let pen_color = unsafe { STROKE_COLOR };
+        drop(state);
+        let w = pressure_to_width(pressure, width_scale);
+        draw_pen_point(&data.surface, x, y, w, pen_color);
+        overlay::update_overlay(hwnd);
+        return;
+    }
+
+    if is_up && unsafe { PEN_ACTIVE } {
+        unsafe { PEN_ACTIVE = false; HAS_LAST_PEN = false; }
+        drop(state);
+        unsafe { ShowCursor(TRUE); }
+    }
+}
+
+fn draw_pen_point(surface: &crate::cairo::ImageSurface, x: f64, y: f64, w: f64, color: (f64, f64, f64)) {
     let sw = surface.width() as usize;
     let sh = surface.height() as usize;
     let stride = surface.stride() as usize;
     let px_vec = surface.pixels_mut();
     let px = px_vec.as_mut_slice();
+    let cr = (color.0 * 255.0) as u32;
+    let cg = (color.1 * 255.0) as u32;
+    let cb = (color.2 * 255.0) as u32;
+    let radius = w * 0.5;
 
-    let cr = (r * 255.0) as u32;
-    let cg = (g * 255.0) as u32;
-    let cb = (b * 255.0) as u32;
-
-    let mut prev_x = 0.0f64;
-    let mut prev_y = 0.0f64;
-
-    for i in 0..count {
-        let mut pt_x = 0.0f64;
-        let mut pt_y = 0.0f64;
-        let mut pw = 0.0f64;
-        crate::glaspen2_modeler_get_point(i as i32, &mut pt_x, &mut pt_y, &mut pw);
-        let radius = pw * 0.5;
-        if i == 0 {
-            draw_filled_circle(px, sw, sh, stride, pt_x, pt_y, radius, cr, cg, cb, 255);
+    unsafe {
+        if HAS_LAST_PEN {
+            draw_thick_line(px, sw, sh, stride, LAST_PEN_X, LAST_PEN_Y, x, y, radius, cr, cg, cb, 255);
         } else {
-            draw_thick_line(px, sw, sh, stride, prev_x, prev_y, pt_x, pt_y, radius, cr, cg, cb, 255);
+            draw_filled_circle(px, sw, sh, stride, x, y, radius, cr, cg, cb, 255);
         }
-        prev_x = pt_x;
-        prev_y = pt_y;
+        LAST_PEN_X = x;
+        LAST_PEN_Y = y;
+        HAS_LAST_PEN = true;
     }
-
-    crate::glaspen2_modeler_commit_to_strokes(r, g, b, std::ptr::null(), 0);
-    crate::glaspen2_modeler_clear_buffer();
 }
 
+/// WH_MOUSE_LL hook — don't swallow anything, let the overlay handle everything
 unsafe extern "system" fn mouse_hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if code < 0 { return CallNextHookEx(None, code, wparam, lparam); }
-
-    let hwnd = match get_hook_hwnd() { Some(h) => h, None => return CallNextHookEx(None, code, wparam, lparam) };
-    let data = match overlay::get_overlay_data(hwnd) { Some(d) => d, None => return CallNextHookEx(None, code, wparam, lparam) };
-
-    let hook_struct = &*(lparam.0 as *const MSLLHOOKSTRUCT);
-    let extra_info = hook_struct.dwExtraInfo;
-    let is_pen = is_pen_event(extra_info);
-    let msg = wparam.0 as u32;
-    let x = hook_struct.pt.x as f64;
-    let y = hook_struct.pt.y as f64;
-    let timestamp = hook_struct.time as f64 / 1000.0;
-
-    if !is_pen {
-        return CallNextHookEx(None, code, wparam, lparam);
-    }
-
-    let mut state = data.state.lock().unwrap();
-    if !state.enabled { return CallNextHookEx(None, code, wparam, lparam); }
-
-    let width_scale = state.width_scale;
-    let pressure = estimate_pressure(extra_info);
-
-    if msg == WM_LBUTTONDOWN && !PEN_DRAWING {
-        ShowCursor(FALSE);
-        PEN_DRAWING = true;
-        let pen_color = if state.inverse_enabled { sample_screen_inverse(x, y) }
-                        else { (state.pen_r, state.pen_g, state.pen_b) };
-        STROKE_COLOR = pen_color;
-        drop(state);
-        crate::glaspen2_modeler_begin(pen_color.0, pen_color.1, pen_color.2, x, y, pressure, timestamp, width_scale);
-        return LRESULT(1);
-    }
-
-    if msg == WM_MOUSEMOVE && PEN_DRAWING {
-        let pen_color = STROKE_COLOR;
-        drop(state);
-        crate::glaspen2_modeler_move(x, y, pressure, timestamp, width_scale);
-        draw_modeler_buffer(&data.surface, pen_color.0, pen_color.1, pen_color.2);
-        overlay::update_overlay(hwnd);
-        return LRESULT(1);
-    }
-
-    if msg == WM_LBUTTONUP && PEN_DRAWING {
-        ShowCursor(TRUE);
-        PEN_DRAWING = false;
-        let pen_color = STROKE_COLOR;
-        drop(state);
-        crate::glaspen2_modeler_end(x, y, pressure, timestamp, width_scale);
-        draw_modeler_buffer(&data.surface, pen_color.0, pen_color.1, pen_color.2);
-        overlay::update_overlay(hwnd);
-        return LRESULT(1);
-    }
-
     CallNextHookEx(None, code, wparam, lparam)
 }
 
-// --- Fast direct pixel drawing functions ---
+// --- Fast direct pixel drawing ---
 
 fn draw_filled_circle(pixels: &mut [u8], sw: usize, sh: usize, stride: usize,
                        cx: f64, cy: f64, radius: f64, r: u32, g: u32, b: u32, a: u32) {

@@ -6,9 +6,12 @@ use std::sync::Mutex;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
+use windows::Win32::Graphics::Dwm::DwmExtendFrameIntoClientArea;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
+use windows::Win32::UI::Input::Pointer::*;
 
 use crate::cairo::{Format, ImageSurface};
 
@@ -65,8 +68,7 @@ pub fn run(screen_w: i32, screen_h: i32) {
     };
     unsafe { RegisterClassExW(&wc) };
 
-    // WS_EX_LAYERED overlay: transparent to input, uses UpdateLayeredWindow for rendering
-    let ex_style = WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW;
+    let ex_style = WS_EX_TOPMOST | WS_EX_TOOLWINDOW;
     let style = WS_POPUP;
 
     let window_name = wide_string("glaspen2");
@@ -77,12 +79,15 @@ pub fn run(screen_w: i32, screen_h: i32) {
             PCWSTR(window_name.as_ptr()),
             style,
             0, 0, screen_w, screen_h,
-            None,
-            None,
-            instance,
-            None,
+            None, None, hmodule, None,
         ).unwrap()
     };
+
+    // DWM transparency
+    unsafe {
+        let margins = MARGINS { cxLeftWidth: -1, cxRightWidth: -1, cyTopHeight: -1, cyBottomHeight: -1 };
+        let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+    }
 
     { let mut h = OVERLAY_HWND.lock().unwrap(); *h = hwnd.0 as isize; }
 
@@ -112,8 +117,6 @@ pub fn run(screen_w: i32, screen_h: i32) {
     let state_ptr = Box::into_raw(state_box);
     unsafe { SetWindowLongPtrW(hwnd, GWLP_USERDATA, state_ptr as isize) };
 
-    input::install_hook(hwnd);
-
     unsafe {
         let mods = HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0);
         RegisterHotKey(hwnd, 1, mods, 'C' as u32).ok();
@@ -132,7 +135,6 @@ pub fn run(screen_w: i32, screen_h: i32) {
         unsafe { TranslateMessage(&msg); DispatchMessageW(&msg); }
     }
 
-    input::uninstall_hook();
     unsafe {
         DeleteObject(hbitmap);
         DeleteDC(hdc_mem);
@@ -152,8 +154,66 @@ pub struct OverlayData {
     screen_h: i32,
 }
 
+fn get_pointer_pressure(pointer_id: u32) -> f64 {
+    let mut pen_info = POINTER_PEN_INFO::default();
+    unsafe {
+        if GetPointerPenInfo(pointer_id, &mut pen_info).is_ok() {
+            return (pen_info.pressure as f64 / 1024.0).clamp(0.0, 1.0);
+        }
+    }
+    0.5
+}
+
+/// Forward a message to the window below in Z-order
+unsafe fn forward_to_below(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) {
+    if let Ok(below) = GetWindow(hwnd, GW_HWNDPREV) {
+        if !below.0.is_null() {
+            let _ = PostMessageW(below, msg, wparam, lparam);
+        }
+    }
+}
+
 unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
+        WM_PAINT => {
+            let data = get_overlay_data(hwnd);
+            if let Some(data) = data {
+                let mut ps = PAINTSTRUCT::default();
+                let hdc = BeginPaint(hwnd, &mut ps);
+                let blend_fn = BLENDFUNCTION { BlendOp: AC_SRC_OVER as u8, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: AC_SRC_ALPHA as u8 };
+                let _ = AlphaBlend(hdc, 0, 0, data.screen_w, data.screen_h, data.hdc_mem, 0, 0, data.screen_w, data.screen_h, blend_fn);
+                EndPaint(hwnd, &ps);
+            }
+            LRESULT(0)
+        }
+        WM_ERASEBKGND => LRESULT(1),
+        // WM_POINTER: pen input
+        0x0246 => { // WM_POINTERDOWN
+            let x = (lparam.0 as i32 & 0xFFFF) as f64;
+            let y = ((lparam.0 as i32 >> 16) & 0xFFFF) as f64;
+            let pid = (wparam.0 & 0xFFFF) as u32;
+            let p = get_pointer_pressure(pid);
+            eprintln!("[pen] DOWN {:.0},{:.0} p={:.3}", x, y, p);
+            input::handle_pointer_pen(hwnd, 0x0246, x, y, p);
+            LRESULT(0)
+        }
+        0x0245 => { // WM_POINTERUPDATE
+            let x = (lparam.0 as i32 & 0xFFFF) as f64;
+            let y = ((lparam.0 as i32 >> 16) & 0xFFFF) as f64;
+            let pid = (wparam.0 & 0xFFFF) as u32;
+            let p = get_pointer_pressure(pid);
+            input::handle_pointer_pen(hwnd, 0x0245, x, y, p);
+            LRESULT(0)
+        }
+        0x0247 => { // WM_POINTERUP
+            let x = (lparam.0 as i32 & 0xFFFF) as f64;
+            let y = ((lparam.0 as i32 >> 16) & 0xFFFF) as f64;
+            let pid = (wparam.0 & 0xFFFF) as u32;
+            let p = get_pointer_pressure(pid);
+            eprintln!("[pen] UP {:.0},{:.0} p={:.3}", x, y, p);
+            input::handle_pointer_pen(hwnd, 0x0247, x, y, p);
+            LRESULT(0)
+        }
         WM_HOTKEY => {
             let data = get_overlay_data(hwnd);
             if let Some(data) = data {
@@ -207,10 +267,14 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
             LRESULT(0)
         }
         WM_DESTROY => {
-            unsafe { PostQuitMessage(0) };
+            PostQuitMessage(0);
             LRESULT(0)
         }
-        _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+        // Forward everything else to window below
+        _ => {
+            forward_to_below(hwnd, msg, wparam, lparam);
+            DefWindowProcW(hwnd, msg, wparam, lparam)
+        }
     }
 }
 
@@ -378,6 +442,7 @@ fn save_with_background(_state: &DrawState, data: &OverlayData) {
     }
 }
 
+/// Update overlay: copy surface to DIB, then invalidate to trigger WM_PAINT
 pub fn update_overlay(hwnd: HWND) {
     let data = match get_overlay_data(hwnd) { Some(d) => d, None => return };
     render::copy_surface_to_bgra(&data.surface, unsafe {
@@ -410,11 +475,7 @@ pub fn update_overlay(hwnd: HWND) {
             }
         }
     }
-    let blend = BLENDFUNCTION { BlendOp: AC_SRC_OVER as u8, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: AC_SRC_ALPHA as u8 };
-    let point = POINT { x: 0, y: 0 };
-    let size = SIZE { cx: data.screen_w, cy: data.screen_h };
-    let point_src = POINT { x: 0, y: 0 };
-    unsafe { UpdateLayeredWindow(hwnd, None, Some(&point as *const POINT), Some(&size as *const SIZE), data.hdc_mem, Some(&point_src as *const POINT), COLORREF(0), Some(&blend as *const BLENDFUNCTION), ULW_ALPHA).ok(); }
+    unsafe { let _ = InvalidateRect(hwnd, None, FALSE); }
 }
 
 fn create_dib(w: i32, h: i32) -> (HDC, HBITMAP, *mut u8, usize) {

@@ -5,6 +5,12 @@ pub mod render;
 
 /// Entry point for the Windows version of glaspen2.
 pub fn win_main() {
+    // Set DPI awareness BEFORE getting screen dimensions
+    unsafe {
+        use windows::Win32::UI::HiDpi::{SetProcessDpiAwareness, PROCESS_DPI_AWARENESS};
+        let _ = SetProcessDpiAwareness(PROCESS_DPI_AWARENESS(2));
+    }
+
     // Get screen dimensions
     let screen_w;
     let screen_h;
