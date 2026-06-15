@@ -4,12 +4,11 @@ use std::os::raw::{c_int, c_double, c_uchar, c_char};
 use std::ffi::CStr;
 use std::sync::Mutex;
 
-// Cairo: real crate when available, stub for cross-compilation type checking
-#[cfg(all(feature = "cairo_real", not(target_os = "windows")))]
+#[cfg(target_os = "macos")]
 extern crate cairo;
-#[cfg(any(not(feature = "cairo_real"), target_os = "windows"))]
-#[path = "cairo_stub.rs"]
-pub mod cairo;
+
+#[cfg(target_os = "windows")]
+extern crate cairo as cairo_real_crate;
 
 #[cfg(target_os = "macos")]
 mod macos;

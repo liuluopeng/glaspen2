@@ -10,6 +10,7 @@ cairo_real = []
 [build-dependencies]
 cc = "1"
 pkg-config = "0.3"
+vcpkg = "0.2"
 
 [dependencies]
 image = "0.25"
@@ -17,25 +18,12 @@ flate2 = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 ink-stroke-modeler-rs = "0.1"
 
-[target.'cfg(not(windows))'.dependencies]
-cairo-rs = "0.20"
-
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
 
-[target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = [
-    "Win32_Foundation",
-    "Win32_Graphics_Gdi",
-    "Win32_Graphics_Dwm",
-    "Win32_UI_WindowsAndMessaging",
-    "Win32_UI_HiDpi",
-    "Win32_UI_Controls",
-    "Win32_UI_Input",
-    "Win32_UI_Input_KeyboardAndMouse",
-    "Win32_UI_Input_Pointer",
-    "Win32_System_LibraryLoader",
-    "Win32_System_Threading",
-    "Win32_UI_Shell",
-] }
-tray-icon = "0.20"
+[target.'cfg(target_os = "macos")'.dependencies.cairo-rs]
+version = "0.20"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+gtk = { package = "gtk4", version = "0.9" }
+cairo-rs = "0.20"
