@@ -119,6 +119,15 @@ pub fn win_main() {
 
         window.set_decorated(false);
 
+        // Make window background transparent via CSS
+        let css_provider = gtk::CssProvider::new();
+        css_provider.load_from_data("window { background-color: transparent; }");
+        gtk::StyleContext::add_provider_for_display(
+            &gdk::Display::default().expect("no display"),
+            &css_provider,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+
         // Drawing area
         let drawing_area = DrawingArea::new();
         drawing_area.set_size_request(screen_w as i32, screen_h as i32);
@@ -250,6 +259,24 @@ pub fn win_main() {
 
         window.show();
         window.present();
+
+        // After window is realized, find HWND by title and set transparency
+        {
+            let title = "glaspen2";
+            let title_wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+            unsafe {
+                use windows::Win32::Foundation::HWND;
+                use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, GetWindowLongW, SetWindowLongW, GWL_EXSTYLE, WS_EX_TRANSPARENT};
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                let hwnd = FindWindowW(None, windows::core::PCWSTR(title_wide.as_ptr()));
+                if let Ok(hwnd) = hwnd {
+                    let style = GetWindowLongW(hwnd, GWL_EXSTYLE);
+                    SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_TRANSPARENT.0 as i32);
+                }
+            }
+        }
+
+        // Main loop for GTK4
     });
 
     app.run_with_args(&[] as &[&str]);
