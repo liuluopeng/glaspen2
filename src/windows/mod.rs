@@ -1,5 +1,5 @@
 use gtk::prelude::*;
-use gtk::{Application, ApplicationWindow, DrawingArea, gdk};
+use gtk::{Application, ApplicationWindow, DrawingArea, gdk, glib};
 use gdk::prelude::*;
 use cairo;
 use std::sync::{Arc, Mutex};
@@ -118,11 +118,12 @@ pub fn win_main() {
             .build();
 
         window.set_decorated(false);
-        // TODO: make window input-transparent (pass-through for mouse/keyboard)
 
         // Drawing area
         let drawing_area = DrawingArea::new();
         drawing_area.set_size_request(screen_w as i32, screen_h as i32);
+        // Make drawing area input-transparent (mouse/keyboard pass through)
+        drawing_area.set_focus_on_click(false);
 
         let state_clone = state.clone();
         drawing_area.set_draw_func(move |_area, cr, _w, _h| {
@@ -154,6 +155,39 @@ pub fn win_main() {
         });
 
         window.set_child(Some(&drawing_area));
+
+        // Keyboard hotkeys (Ctrl+Alt+C = clear, Ctrl+Alt+V = toggle)
+        {
+            let state_c = state.clone();
+            let da = drawing_area.clone();
+            let ctrl = gtk::EventControllerKey::new();
+            ctrl.connect_key_pressed(move |_ctrl, key, _code, mods| {
+                if mods.contains(gdk::ModifierType::CONTROL_MASK) && mods.contains(gdk::ModifierType::ALT_MASK) {
+                    match key {
+                        gdk::Key::C => {
+                            let mut s = state_c.lock().unwrap();
+                            crate::glaspen2_clear_strokes(s.screen_w, s.screen_h);
+                            let surface = s.surface.get_mut();
+                            let cr = cairo::Context::new(surface).unwrap();
+                            cr.set_operator(cairo::Operator::Clear);
+                            let _ = cr.paint();
+                            cr.set_operator(cairo::Operator::Over);
+                            da.queue_draw();
+                            glib::Propagation::Stop
+                        }
+                        gdk::Key::V => {
+                            let mut s = state_c.lock().unwrap();
+                            s.enabled = !s.enabled;
+                            glib::Propagation::Stop
+                        }
+                        _ => glib::Propagation::Proceed,
+                    }
+                } else {
+                    glib::Propagation::Proceed
+                }
+            });
+            window.add_controller(ctrl);
+        }
 
         // Motion events
         {
