@@ -1,23 +1,49 @@
 use std::path::PathBuf;
 use std::slice;
-use std::os::raw::{c_int, c_double, c_uchar};
+use std::os::raw::{c_int, c_double, c_uchar, c_char};
+use std::ffi::CStr;
 use std::sync::Mutex;
+
+// Cairo: real crate when available, stub for cross-compilation type checking
+#[cfg(feature = "cairo_real")]
+extern crate cairo;
+#[cfg(not(feature = "cairo_real"))]
+#[path = "cairo_stub.rs"]
+pub mod cairo;
+
+#[cfg(target_os = "macos")]
+mod macos;
+
+#[cfg(target_os = "windows")]
+mod windows;
+
+pub mod db;
+mod modeler;
 
 // --- Stroke recording for Xournal export ---
 
-struct Stroke {
-    r: f64,
-    g: f64,
-    b: f64,
-    points: Vec<(f64, f64, f64)>, // (x, y, width)
+pub struct Stroke {
+    pub r: f64,
+    pub g: f64,
+    pub b: f64,
+    pub points: Vec<(f64, f64, f64)>, // (x, y, width)
+    pub point_colors: Option<Vec<(f64, f64, f64)>>, // per-point color for inverse mode (memory only)
 }
 
-static STROKES: Mutex<Vec<Stroke>> = Mutex::new(Vec::new());
+impl Stroke {
+    pub fn avg_width(&self) -> f64 {
+        if self.points.is_empty() { return 1.0; }
+        self.points.iter().map(|p| p.2).sum::<f64>() / self.points.len() as f64
+    }
+}
+
+pub static STROKES: Mutex<Vec<Stroke>> = Mutex::new(Vec::new());
 
 #[no_mangle]
-pub extern "C" fn glaspen2_begin_stroke(r: c_double, g: c_double, b: c_double) {
+pub extern "C" fn glaspen2_begin_stroke(r: c_double, g: c_double, b: c_double, width_scale: c_double) {
     let mut strokes = STROKES.lock().unwrap();
-    strokes.push(Stroke { r, g, b, points: Vec::new() });
+    strokes.push(Stroke { r, g, b, points: Vec::new(), point_colors: None });
+    db::begin_stroke(r, g, b, width_scale);
 }
 
 #[no_mangle]
@@ -26,18 +52,227 @@ pub extern "C" fn glaspen2_add_point(x: c_double, y: c_double, width: c_double) 
     if let Some(stroke) = strokes.last_mut() {
         stroke.points.push((x, y, width));
     }
+    db::add_point(x, y, width);
 }
 
 #[no_mangle]
 pub extern "C" fn glaspen2_end_stroke() {
-    // Stroke boundary — nothing to do, strokes are separated by begin/end
+    db::end_stroke();
 }
 
 #[no_mangle]
-pub extern "C" fn glaspen2_clear_strokes() {
+pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) {
+    db::end_stroke(); // flush pending before checking
+    let current = db::current_screen();
+    if db::screen_has_strokes(current) {
+        db::new_screen(screen_w, screen_h);
+    }
     let mut strokes = STROKES.lock().unwrap();
     strokes.clear();
 }
+
+/// Initialize the database and create the first screen record. Call once at app start.
+#[no_mangle]
+pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
+    db::init();
+    db::new_screen(screen_w, screen_h);
+}
+
+// --- Modeler FFI ---
+
+#[no_mangle]
+pub extern "C" fn glaspen2_modeler_begin(r: c_double, g: c_double, b: c_double, x: c_double, y: c_double, pressure: c_double, timestamp: c_double, width_scale: c_double) {
+    modeler::begin_stroke(x, y, pressure, timestamp, width_scale);
+    // Start DB stroke with correct color
+    db::begin_stroke(r, g, b, width_scale);
+    db::add_point(x, y, pressure_to_width(pressure, width_scale));
+    // Start STROKES entry
+    let mut strokes = STROKES.lock().unwrap();
+    strokes.push(Stroke { r, g, b, points: Vec::new(), point_colors: None });
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_modeler_move(x: c_double, y: c_double, pressure: c_double, timestamp: c_double, width_scale: c_double) {
+    modeler::pen_move(x, y, pressure, timestamp, width_scale);
+    db::add_point(x, y, pressure_to_width(pressure, width_scale));
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_modeler_end(x: c_double, y: c_double, pressure: c_double, timestamp: c_double, width_scale: c_double) {
+    modeler::end_stroke(x, y, pressure, timestamp, width_scale);
+    db::add_point(x, y, pressure_to_width(pressure, width_scale));
+    db::end_stroke();
+}
+
+/// Commit the modeler buffer into STROKES. Call after drawing the buffer.
+/// If inv_colors is non-null and inv_count > 0, uses per-point inverse colors.
+/// inv_colors is a flat array: [r0,g0,b0, r1,g1,b1, ...] — one per modeler output point.
+/// DB stores the original (r,g,b) color; point_colors is memory-only for rendering.
+#[no_mangle]
+pub extern "C" fn glaspen2_modeler_commit_to_strokes(
+    r: c_double, g: c_double, b: c_double,
+    inv_colors: *const c_double, inv_count: c_int,
+) {
+    let smoothed = modeler::take_buffer();
+    let n_smoothed = smoothed.len();
+    let mut strokes = STROKES.lock().unwrap();
+    if let Some(last) = strokes.last_mut() {
+        last.r = r;
+        last.g = g;
+        last.b = b;
+
+        // Per-point inverse colors (1:1 with modeler output)
+        let point_colors = if !inv_colors.is_null() && inv_count > 0 {
+            let inv = unsafe { std::slice::from_raw_parts(inv_colors, (inv_count * 3) as usize) };
+            let n = n_smoothed.min(inv_count as usize);
+            let mut colors = Vec::with_capacity(n);
+            for i in 0..n {
+                let ci = i * 3;
+                colors.push((inv[ci], inv[ci + 1], inv[ci + 2]));
+            }
+            Some(colors)
+        } else {
+            None
+        };
+
+        for (sx, sy, sw) in smoothed {
+            last.points.push((sx, sy, sw));
+        }
+        last.point_colors = point_colors;
+    }
+}
+
+/// Get the number of smoothed points available after the last modeler call.
+#[no_mangle]
+pub extern "C" fn glaspen2_modeler_point_count() -> c_int {
+    modeler::buffer_len() as c_int
+}
+
+/// Get a smoothed point by index (for macOS ObjC to read back).
+#[no_mangle]
+pub extern "C" fn glaspen2_modeler_get_point(idx: c_int, x: *mut c_double, y: *mut c_double, w: *mut c_double) {
+    if let Some((px, py, pw)) = modeler::get_buffer_point(idx as usize) {
+        unsafe { *x = px; *y = py; *w = pw; }
+    }
+}
+
+/// Clear the modeler buffer (call after platform has read and drawn all points).
+#[no_mangle]
+pub extern "C" fn glaspen2_modeler_clear_buffer() {
+    modeler::clear_buffer();
+}
+
+fn pressure_to_width(pressure: f64, width_scale: f64) -> f64 {
+    if pressure > 0.01 {
+        (0.3 + pressure * pressure * 7.7) * width_scale
+    } else {
+        1.0 * width_scale
+    }
+}
+
+// --- Page navigation ---
+
+/// Load strokes from DB into STROKES for a given screen. Returns stroke count.
+#[no_mangle]
+pub extern "C" fn glaspen2_load_strokes_for_screen(screen_id: i64) -> c_int {
+    let data = db::strokes_for_screen(screen_id);
+    let count = data.len() as c_int;
+    let mut strokes = STROKES.lock().unwrap();
+    strokes.clear();
+    for s in data {
+        strokes.push(Stroke { r: s.r, g: s.g, b: s.b, points: s.points, point_colors: None });
+    }
+    // Update current screen in DB
+    db::set_current_screen(screen_id);
+    count
+}
+
+/// Smooth all loaded strokes in STROKES through the modeler. Call after loading.
+#[no_mangle]
+pub extern "C" fn glaspen2_smooth_loaded_strokes() {
+    let mut strokes = STROKES.lock().unwrap();
+    for stroke in strokes.iter_mut() {
+        let smoothed = modeler::smooth_points(&stroke.points);
+        if !smoothed.is_empty() {
+            stroke.points = smoothed;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_prev_screen_id() -> i64 {
+    db::prev_screen(db::current_screen()).unwrap_or(0)
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_next_screen_id() -> i64 {
+    db::next_screen(db::current_screen()).unwrap_or(0)
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_get_current_screen_id() -> i64 {
+    db::current_screen()
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_stroke_count() -> c_int {
+    STROKES.lock().unwrap().len() as c_int
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_get_stroke_point_count(idx: c_int) -> c_int {
+    let strokes = STROKES.lock().unwrap();
+    strokes.get(idx as usize).map_or(0, |s| s.points.len() as c_int)
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_get_stroke_color(idx: c_int, r: *mut c_double, g: *mut c_double, b: *mut c_double) {
+    let strokes = STROKES.lock().unwrap();
+    if let Some(s) = strokes.get(idx as usize) {
+        unsafe { *r = s.r; *g = s.g; *b = s.b; }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_get_stroke_avg_width(idx: c_int) -> c_double {
+    let strokes = STROKES.lock().unwrap();
+    strokes.get(idx as usize).map_or(1.0, |s| s.avg_width())
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_get_stroke_point(idx: c_int, pidx: c_int, x: *mut c_double, y: *mut c_double) {
+    let strokes = STROKES.lock().unwrap();
+    if let Some(s) = strokes.get(idx as usize) {
+        if let Some(&(px, py, _)) = s.points.get(pidx as usize) {
+            unsafe { *x = px; *y = py; }
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_get_stroke_point_width(idx: c_int, pidx: c_int) -> c_double {
+    let strokes = STROKES.lock().unwrap();
+    strokes.get(idx as usize)
+        .and_then(|s| s.points.get(pidx as usize))
+        .map_or(1.0, |p| p.2)
+}
+
+/// Get per-point color for inverse mode. Returns 1 if available, 0 otherwise.
+#[no_mangle]
+pub extern "C" fn glaspen2_get_stroke_point_color(idx: c_int, pidx: c_int, r: *mut c_double, g: *mut c_double, b: *mut c_double) -> c_int {
+    let strokes = STROKES.lock().unwrap();
+    if let Some(s) = strokes.get(idx as usize) {
+        if let Some(ref colors) = s.point_colors {
+            if let Some(&(cr, cg, cb)) = colors.get(pidx as usize) {
+                unsafe { *r = cr; *g = cg; *b = cb; }
+                return 1;
+            }
+        }
+    }
+    0
+}
+
+
 
 #[no_mangle]
 pub extern "C" fn glaspen2_save_xoj() {
@@ -98,14 +333,26 @@ pub extern "C" fn glaspen2_save_xoj() {
     // Write to file
     let path = xoj_timestamped_path();
     match std::fs::write(&path, &compressed) {
-        Ok(_) => println!("[glaspen2-rust] Saved Xournal to {}", path.display()),
-        Err(e) => eprintln!("[glaspen2-rust] Xournal save failed: {}", e),
+        Ok(_) => println!("[glaspen2] Saved Xournal to {}", path.display()),
+        Err(e) => eprintln!("[glaspen2] Xournal save failed: {}", e),
+    }
+}
+
+fn desktop_path() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        PathBuf::from(std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string()))
+            .join("Desktop")
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+            .join("Desktop")
     }
 }
 
 fn xoj_timestamped_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let desktop = PathBuf::from(home).join("Desktop");
+    let desktop = desktop_path();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
@@ -120,20 +367,115 @@ fn xoj_timestamped_path() -> PathBuf {
     desktop.join(filename)
 }
 
-fn main() {
-    #[cfg(target_os = "macos")]
-    macos_run();
+#[no_mangle]
+pub extern "C" fn glaspen2_save_settings(r: c_double, g: c_double, b: c_double, width_scale: c_double) {
+    db::save_settings(r, g, b, width_scale);
+}
 
-    #[cfg(not(target_os = "macos"))]
-    println!("Only macOS supported");
+#[no_mangle]
+pub extern "C" fn glaspen2_load_settings_parts(r: *mut c_double, g: *mut c_double, b: *mut c_double, w: *mut c_double) -> c_int {
+    match db::load_settings() {
+        Some((rr, gg, bb, ww)) => {
+            unsafe { *r = rr; *g = gg; *b = bb; *w = ww; }
+            1
+        }
+        None => 0,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_save_bool_setting(key: *const c_char, val: c_int) {
+    let k = unsafe { CStr::from_ptr(key) }.to_str().unwrap_or("");
+    db::save_setting(k, if val != 0 { "1" } else { "0" });
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_load_bool_setting(key: *const c_char) -> c_int {
+    let k = unsafe { CStr::from_ptr(key) }.to_str().unwrap_or("");
+    db::load_setting(k).and_then(|v| v.parse::<i32>().ok()).unwrap_or(0)
+}
+
+// --- Launch at login (macOS LaunchAgent) ---
+
+#[cfg(target_os = "macos")]
+fn launch_agent_plist() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    std::path::PathBuf::from(home)
+        .join("Library")
+        .join("LaunchAgents")
+        .join("com.glaspen2.plist")
 }
 
 #[cfg(target_os = "macos")]
-fn macos_run() {
-    extern "C" {
-        fn glaspen2_run();
+fn launch_agent_program() -> String {
+    std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "/Applications/glaspen2.app/Contents/MacOS/glaspen2".to_string())
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_set_launch_at_login(enable: c_int) -> c_int {
+    #[cfg(target_os = "macos")]
+    {
+        let plist_path = launch_agent_plist();
+        if enable != 0 {
+            let parent = plist_path.parent().unwrap();
+            std::fs::create_dir_all(parent).ok();
+            let program = launch_agent_program();
+            let plist = format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+                 <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \
+                 \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
+                 <plist version=\"1.0\">\n\
+                 <dict>\n\
+                 \t<key>Label</key>\n\
+                 \t<string>com.glaspen2</string>\n\
+                 \t<key>Program</key>\n\
+                 \t<string>{}</string>\n\
+                 \t<key>RunAtLoad</key>\n\
+                 \t<true/>\n\
+                 </dict>\n\
+                 </plist>\n",
+                xml_escape(&program)
+            );
+            match std::fs::write(&plist_path, &plist) {
+                Ok(_) => 1,
+                Err(e) => { eprintln!("[glaspen2] launch agent write failed: {}", e); 0 }
+            }
+        } else {
+            match std::fs::remove_file(&plist_path) {
+                Ok(_) => 1,
+                Err(e) => { eprintln!("[glaspen2] launch agent remove failed: {}", e); 0 }
+            }
+        }
     }
-    unsafe { glaspen2_run(); }
+    #[cfg(not(target_os = "macos"))]
+    { 0 }
+}
+
+#[no_mangle]
+pub extern "C" fn glaspen2_is_launch_at_login() -> c_int {
+    #[cfg(target_os = "macos")]
+    { if launch_agent_plist().exists() { 1 } else { 0 } }
+    #[cfg(not(target_os = "macos"))]
+    { 0 }
+}
+
+#[cfg(target_os = "macos")]
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+     .replace('<', "&lt;")
+     .replace('>', "&gt;")
+     .replace('"', "&quot;")
+     .replace('\'', "&apos;")
+}
+
+fn main() {
+    #[cfg(target_os = "macos")]
+    macos::macos_run();
+
+    #[cfg(target_os = "windows")]
+    windows::win_main();
 }
 
 /// Save drawing only (transparent background)
@@ -166,8 +508,8 @@ pub extern "C" fn glaspen2_save_drawing(
 
     let path = timestamped_path();
     match img.save(&path) {
-        Ok(_) => println!("[glaspen2-rust] Saved (drawing only) to {}", path.display()),
-        Err(e) => eprintln!("[glaspen2-rust] Save failed: {}", e),
+        Ok(_) => println!("[glaspen2] Saved (drawing only) to {}", path.display()),
+        Err(e) => eprintln!("[glaspen2] Save failed: {}", e),
     }
 }
 
@@ -235,14 +577,13 @@ pub extern "C" fn glaspen2_save_with_background(
 
     let path = timestamped_path();
     match img.save(&path) {
-        Ok(_) => println!("[glaspen2-rust] Saved (with background) to {}", path.display()),
-        Err(e) => eprintln!("[glaspen2-rust] Save failed: {}", e),
+        Ok(_) => println!("[glaspen2] Saved (with background) to {}", path.display()),
+        Err(e) => eprintln!("[glaspen2] Save failed: {}", e),
     }
 }
 
 fn timestamped_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let desktop = PathBuf::from(home).join("Desktop");
+    let desktop = desktop_path();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();

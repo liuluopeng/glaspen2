@@ -2,35 +2,35 @@
 #import <QuartzCore/QuartzCore.h>
 #import <Carbon/Carbon.h>
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
+#import <CoreMedia/CoreMedia.h>
+#import <CoreVideo/CoreVideo.h>
+#import <IOSurface/IOSurface.h>
 #include <signal.h>
-
-// Hot key ID
-enum {
-    kHotKeyClearScreen = 1,
-    kHotKeyToggle = 2
-};
+#include <string.h>
 
 // App enabled state
 static BOOL g_enabled = YES;
+
+// Screen dimensions (set once at startup)
+static int g_screen_w = 1920;
+static int g_screen_h = 1080;
 
 // Forward declarations
 static void flush_to_layer(void);
 static void clear_screen(void);
 static void draw_rainbow_indicator(void);
+static void start_inverse_timer(void);
+static void stop_inverse_timer(void);
+static void rebuild_surface_from_strokes(void);
+static void update_inverse_colors(void);
+static void sample_bg_inverse(double px, double py, double *out_r, double *out_g, double *out_b);
+
+// Per-stroke inverse colors (ObjC side, continuously updated by timer)
+#define MAX_INVERSE_STROKES 1024
+static double *g_inverse_colors[MAX_INVERSE_STROKES] = {0};
+static int g_inverse_color_counts[MAX_INVERSE_STROKES] = {0};
 static void toggle_enabled(void);
 static void update_status_icon_state(void);
-
-// Hot key handler function
-static OSStatus hotKeyHandler(EventHandlerCallRef next, EventRef event, void *userData) {
-    EventHotKeyID hotKey;
-    GetEventParameter(event, kEventParamDirectObject, typeEventHotKeyID, NULL, sizeof(hotKey), NULL, &hotKey);
-    if (hotKey.id == kHotKeyClearScreen) {
-        clear_screen();
-    } else if (hotKey.id == kHotKeyToggle) {
-        toggle_enabled();
-    }
-    return noErr;
-}
 
 // --- Cairo (linked via cargo) ---
 #include <cairo/cairo.h>
@@ -40,17 +40,55 @@ extern void glaspen2_save_drawing(const unsigned char *data, int width, int heig
 extern void glaspen2_save_with_background(
     const unsigned char *drawing_data, int drawing_width, int drawing_height, int drawing_stride,
     const unsigned char *bg_data, int bg_width, int bg_height, int bg_stride);
-extern void glaspen2_begin_stroke(double r, double g, double b);
+extern void glaspen2_begin_stroke(double r, double g, double b, double width_scale);
 extern void glaspen2_add_point(double x, double y, double width);
 extern void glaspen2_end_stroke(void);
 extern void glaspen2_save_xoj(void);
-extern void glaspen2_clear_strokes(void);
+extern void glaspen2_clear_strokes(int screen_w, int screen_h);
+extern void glaspen2_init_db(int screen_w, int screen_h);
+extern void glaspen2_save_settings(double r, double g, double b, double width_scale);
+extern int  glaspen2_load_settings_parts(double *r, double *g, double *b, double *w);
+extern void glaspen2_save_bool_setting(const char *key, int val);
+extern int  glaspen2_load_bool_setting(const char *key);
+
+// Modeler FFI
+extern void glaspen2_modeler_begin(double r, double g, double b, double x, double y, double pressure, double timestamp, double width_scale);
+extern void glaspen2_modeler_move(double x, double y, double pressure, double timestamp, double width_scale);
+extern void glaspen2_modeler_end(double x, double y, double pressure, double timestamp, double width_scale);
+extern int glaspen2_modeler_point_count(void);
+extern void glaspen2_modeler_get_point(int idx, double *x, double *y, double *w);
+extern void glaspen2_modeler_clear_buffer(void);
+extern void glaspen2_modeler_commit_to_strokes(double r, double g, double b, const double *inv_colors, int inv_count);
+extern int glaspen2_get_stroke_point_color(int idx, int pidx, double *r, double *g, double *b);
+
+// Page navigation FFI
+extern long glaspen2_prev_screen_id(void);
+extern long glaspen2_next_screen_id(void);
+extern long glaspen2_get_current_screen_id(void);
+extern int glaspen2_load_strokes_for_screen(long screen_id);
+extern void glaspen2_smooth_loaded_strokes(void);
+extern int  glaspen2_set_launch_at_login(int enable);
+extern int  glaspen2_is_launch_at_login(void);
+extern int glaspen2_stroke_count(void);
+extern int glaspen2_get_stroke_point_count(int idx);
+extern void glaspen2_get_stroke_color(int idx, double *r, double *g, double *b);
+extern double glaspen2_get_stroke_avg_width(int idx);
+extern void glaspen2_get_stroke_point(int idx, int pidx, double *x, double *y);
+extern double glaspen2_get_stroke_point_width(int idx, int pidx);
+
+// Forward declarations
+static void rebuild_surface_from_strokes(void);
+static NSWindow *g_window = nil;
 
 // --- Drawing state ---
 static cairo_surface_t *g_surface = NULL;
 static double g_last_x = -1, g_last_y = -1;
 static BOOL g_has_last = NO;
 static NSView *g_draw_view = nil;
+
+// Raw drawing state (for responsive real-time feedback during stroke)
+static double g_raw_last_x = 0, g_raw_last_y = 0;
+static BOOL g_raw_has_last = NO;
 
 // Cursor state
 static double g_cursor_x = -100, g_cursor_y = -100;
@@ -69,6 +107,17 @@ static int g_selected_width_index = 2; // default: 1.0x
 
 // Rainbow indicator toggle (default off)
 static BOOL g_show_rainbow = NO;
+
+// Outline enhancement toggle (default off)
+static BOOL g_outline_enabled = NO;
+
+// Inverse color mode toggle (experimental, default off)
+static BOOL g_inverse_enabled = NO;
+
+// Current stroke color (may differ from pen color in inverse mode)
+static double g_stroke_r = 1.0, g_stroke_g = 0.0, g_stroke_b = 0.0;
+
+// Counter for periodic screen re-capture during stroke
 
 // Color presets
 typedef struct { const char *name; double r, g, b; } ColorPreset;
@@ -232,10 +281,93 @@ static void clear_screen(void) {
     cairo_paint(cr);
     cairo_destroy(cr);
     g_has_last = NO;
-    glaspen2_clear_strokes();
+    // Clear inverse color data
+    for (int i = 0; i < MAX_INVERSE_STROKES; i++) {
+        if (g_inverse_colors[i]) { free(g_inverse_colors[i]); g_inverse_colors[i] = NULL; }
+        g_inverse_color_counts[i] = 0;
+    }
+    glaspen2_clear_strokes(g_screen_w, g_screen_h);
     if (g_show_rainbow) draw_rainbow_indicator();
     flush_to_layer();
     show_notification(L(@"清屏成功", @"Screen cleared"));
+}
+
+/// Draw smoothed points from the modeler buffer onto the canvas, then commit to STROKES.
+static void draw_modeler_buffer(void) {
+    if (!g_surface) return;
+    int count = glaspen2_modeler_point_count();
+    NSLog(@"[glaspen2] draw_modeler_buffer: %d points", count);
+    if (count < 1) return;
+
+    double px, py, pw;
+    double prev_x, prev_y, prev_w;
+
+    // First point: draw as a dot
+    glaspen2_modeler_get_point(0, &prev_x, &prev_y, &prev_w);
+    cairo_t *cr = cairo_create(g_surface);
+    cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
+    cairo_arc(cr, prev_x, prev_y, prev_w * 0.5, 0, 2 * M_PI);
+    cairo_fill(cr);
+    cairo_destroy(cr);
+
+    // Subsequent points: draw line segments
+    for (int i = 1; i < count; i++) {
+        glaspen2_modeler_get_point(i, &px, &py, &pw);
+        cairo_t *cr = cairo_create(g_surface);
+        cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
+        cairo_set_line_width(cr, pw);
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+        cairo_move_to(cr, prev_x, prev_y);
+        cairo_line_to(cr, px, py);
+        cairo_stroke(cr);
+        cairo_destroy(cr);
+        prev_x = px; prev_y = py; prev_w = pw;
+    }
+
+    // Commit buffer to STROKES (takes and clears buffer)
+    glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b, NULL, 0);
+    flush_to_layer();
+}
+
+static void replay_strokes_from_memory(void) {
+    if (!g_surface) return;
+
+    // Clear canvas
+    cairo_t *cr = cairo_create(g_surface);
+    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+
+    int count = glaspen2_stroke_count();
+    for (int si = 0; si < count; si++) {
+        double r, g, b;
+        glaspen2_get_stroke_color(si, &r, &g, &b);
+        int pc = glaspen2_get_stroke_point_count(si);
+        if (pc < 2) continue;
+
+        // Draw each segment with its own per-point width
+        double x0, y0, x1, y1, w;
+        for (int pi = 1; pi < pc; pi++) {
+            glaspen2_get_stroke_point(si, pi - 1, &x0, &y0);
+            glaspen2_get_stroke_point(si, pi, &x1, &y1);
+            w = glaspen2_get_stroke_point_width(si, pi);
+
+            cairo_t *cr = cairo_create(g_surface);
+            cairo_set_source_rgba(cr, r, g, b, 1.0);
+            cairo_set_line_width(cr, w);
+            cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+            cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+            cairo_move_to(cr, x0, y0);
+            cairo_line_to(cr, x1, y1);
+            cairo_stroke(cr);
+            cairo_destroy(cr);
+        }
+    }
+
+    g_has_last = NO;
+    if (g_show_rainbow) draw_rainbow_indicator();
+    flush_to_layer();
 }
 
 static void save_and_exit(int sig) {
@@ -306,11 +438,14 @@ static void update_menu_texts(void) {
     [[g_menu itemAtIndex:base+2] setTitle:L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)")];
     [[g_menu itemAtIndex:base+3] setTitle:L(@"清屏", @"Clear screen")];
     [[g_menu itemAtIndex:base+4] setTitle:L(@"彩虹指示器", @"Rainbow indicator")];
+    [[g_menu itemAtIndex:base+5] setTitle:L(@"开机自启", @"Launch at login")];
+    [[g_menu itemAtIndex:base+6] setTitle:L(@"描边增强", @"Outline")];
+    [[g_menu itemAtIndex:base+7] setTitle:L(@"反色模式", @"Inverse color")];
     // Update toggle item title based on state
     NSMenuItem *toggleItem = [g_menu itemWithTag:888];
     if (toggleItem) [toggleItem setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
-    [[g_menu itemAtIndex:base+7] setTitle:L(@"English", @"中文")];
-    [[g_menu itemAtIndex:base+8] setTitle:L(@"退出", @"Quit")];
+    [[g_menu itemAtIndex:base+10] setTitle:L(@"English", @"中文")];
+    [[g_menu itemAtIndex:base+11] setTitle:L(@"退出", @"Quit")];
 }
 
 static NSImage* colorSwatchImage(NSColor *color, CGFloat size) {
@@ -437,6 +572,35 @@ static void toggle_enabled(void) {
     }
 }
 
+- (void)toggleLaunch {
+    int cur = glaspen2_is_launch_at_login();
+    int ok = glaspen2_set_launch_at_login(!cur);
+    if (ok) {
+        NSMenuItem *item = [g_menu itemWithTag:777];
+        [item setState:(!cur) ? NSControlStateValueOn : NSControlStateValueOff];
+    }
+}
+
+- (void)toggleOutline {
+    g_outline_enabled = !g_outline_enabled;
+    NSMenuItem *item = [g_menu itemWithTag:666];
+    [item setState:g_outline_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+    glaspen2_save_bool_setting("outline_enabled", g_outline_enabled ? 1 : 0);
+    rebuild_surface_from_strokes();
+}
+
+- (void)toggleInverse {
+    g_inverse_enabled = !g_inverse_enabled;
+    NSMenuItem *item = [g_menu itemWithTag:555];
+    [item setState:g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+    glaspen2_save_bool_setting("inverse_enabled", g_inverse_enabled ? 1 : 0);
+    if (g_inverse_enabled) {
+        start_inverse_timer();
+    } else {
+        stop_inverse_timer();
+    }
+}
+
 - (void)selectColor:(NSMenuItem *)sender {
     int idx = (int)[sender tag];
     if (idx >= 0 && idx < g_color_preset_count) {
@@ -444,6 +608,7 @@ static void toggle_enabled(void) {
         g_pen_g = g_color_presets[idx].g;
         g_pen_b = g_color_presets[idx].b;
         g_selectedColorIndex = idx;
+        glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
         update_menu_checkmarks();
     }
 }
@@ -453,6 +618,7 @@ static void toggle_enabled(void) {
     if (idx >= 0 && idx < g_width_preset_count) {
         g_width_scale = g_width_presets[idx];
         g_selected_width_index = idx;
+        glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
         update_menu_checkmarks();
     }
 }
@@ -527,6 +693,276 @@ static void pen_draw(double x, double y, double width) {
     g_last_y = y;
     g_has_last = YES;
     glaspen2_add_point(x, y, width);
+    flush_to_layer();
+}
+
+// --- Outline & inverse color helpers ---
+
+static void contrast_color(double r, double g, double b,
+                           double *out_r, double *out_g, double *out_b) {
+    double lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (lum > 0.5) { *out_r = 0; *out_g = 0; *out_b = 0; }
+    else           { *out_r = 1; *out_g = 1; *out_b = 1; }
+}
+
+// --- Screen capture via SCScreenshotManager ---
+static CGImageRef g_captured_image = nil;
+static NSObject *g_capture_lock = nil;
+static dispatch_source_t g_inverse_timer = nil;
+static BOOL g_capture_pending = NO;
+
+static void capture_screen_async(void) {
+    if (g_capture_pending) return;
+    g_capture_pending = YES;
+    [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent *content, NSError *error) {
+        if (!content || error) { g_capture_pending = NO; return; }
+        SCDisplay *display = [[content displays] firstObject];
+        if (!display) { g_capture_pending = NO; return; }
+        SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:display excludingWindows:@[]];
+        SCStreamConfiguration *config = [[SCStreamConfiguration alloc] init];
+        [config setWidth:display.width];
+        [config setHeight:display.height];
+        [config setCapturesAudio:NO];
+        [SCScreenshotManager captureImageWithFilter:filter configuration:config completionHandler:^(CGImageRef img, NSError *err) {
+            if (img) {
+                CGImageRef copy = CGImageCreateCopy(img);
+                @synchronized(g_capture_lock) {
+                    if (g_captured_image) CGImageRelease(g_captured_image);
+                    g_captured_image = copy;
+                }
+            }
+            g_capture_pending = NO;
+        }];
+    }];
+}
+
+static void init_display_stream(void) {
+    NSLog(@"[glaspen2] init_display_stream: starting...");
+    g_capture_lock = [[NSObject alloc] init];
+    BOOL preflight = CGPreflightScreenCaptureAccess();
+    NSLog(@"[glaspen2] Screen capture preflight: %d", preflight);
+    if (!preflight) CGRequestScreenCaptureAccess();
+    capture_screen_async();
+}
+
+/// Sample inverse color from captured image — single pixel, no crop overhead.
+static void sample_bg_inverse(double px, double py,
+                              double *out_r, double *out_g, double *out_b) {
+    CGImageRef img = nil;
+    @synchronized(g_capture_lock) {
+        img = g_captured_image;
+        if (img) CFRetain(img);
+    }
+    if (!img) { *out_r = 1; *out_g = 1; *out_b = 1; return; }
+
+    int fullW = (int)CGImageGetWidth(img);
+    int fullH = (int)CGImageGetHeight(img);
+    if (fullW < 1 || fullH < 1) { CFRelease(img); *out_r = 1; *out_g = 1; *out_b = 1; return; }
+
+    // Single pixel crop — fast
+    int sx = (int)px;
+    int sy = fullH - 1 - (int)py; // flip Y (CGImage top-left origin)
+    if (sx < 0) sx = 0; if (sy < 0) sy = 0;
+    if (sx >= fullW) sx = fullW - 1;
+    if (sy >= fullH) sy = fullH - 1;
+
+    CGImageRef cropped = CGImageCreateWithImageInRect(img, CGRectMake(sx, sy, 1, 1));
+    CFRelease(img);
+    if (!cropped) { *out_r = 1; *out_g = 1; *out_b = 1; return; }
+
+    uint8_t buf[4] = {0};
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(buf, 1, 1, 8, 4, cs,
+        kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGContextDrawImage(ctx, CGRectMake(0, 0, 1, 1), cropped);
+    CGContextRelease(ctx);
+    CGImageRelease(cropped);
+    CGColorSpaceRelease(cs);
+
+    *out_r = 1.0 - (double)buf[0] / 255.0;
+    *out_g = 1.0 - (double)buf[1] / 255.0;
+    *out_b = 1.0 - (double)buf[2] / 255.0;
+}
+
+/// Re-sample inverse colors for all strokes and rebuild surface.
+static void update_inverse_colors(void) {
+    @synchronized(g_capture_lock) {
+        if (!g_captured_image) return;
+    }
+    capture_screen_async(); // refresh for next tick
+
+    int n_strokes = glaspen2_stroke_count();
+    for (int s = 0; s < n_strokes && s < MAX_INVERSE_STROKES; s++) {
+        int n_pts = glaspen2_get_stroke_point_count(s);
+        if (n_pts < 1 || !g_inverse_colors[s]) continue;
+        int pts = n_pts < g_inverse_color_counts[s] ? n_pts : g_inverse_color_counts[s];
+        for (int i = 0; i < pts; i++) {
+            double x, y;
+            glaspen2_get_stroke_point(s, i, &x, &y);
+            sample_bg_inverse(x, y, &g_inverse_colors[s][i*3], &g_inverse_colors[s][i*3+1], &g_inverse_colors[s][i*3+2]);
+        }
+    }
+    rebuild_surface_from_strokes();
+}
+
+/// Start periodic inverse color update timer (100ms interval).
+static void start_inverse_timer(void) {
+    if (g_inverse_timer) return;
+    g_inverse_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    dispatch_source_set_timer(g_inverse_timer, DISPATCH_TIME_NOW, 33 * NSEC_PER_MSEC, 5 * NSEC_PER_MSEC);
+    dispatch_source_set_event_handler(g_inverse_timer, ^{
+        update_inverse_colors();
+    });
+    dispatch_resume(g_inverse_timer);
+}
+
+static void stop_inverse_timer(void) {
+    if (g_inverse_timer) {
+        dispatch_source_cancel(g_inverse_timer);
+        g_inverse_timer = nil;
+    }
+}
+
+// Raw drawing — surface only, no STROKES/DB side effects
+static void raw_draw_dot(double x, double y, double width) {
+    if (!g_surface) return;
+    cairo_t *cr = cairo_create(g_surface);
+    // Outline pass
+    if (g_outline_enabled) {
+        double or, og, ob;
+        contrast_color(g_stroke_r, g_stroke_g, g_stroke_b, &or, &og, &ob);
+        double extra = fmax(width * 0.4, 2.0);
+        cairo_set_source_rgba(cr, or, og, ob, 1.0);
+        cairo_arc(cr, x, y, (width + extra) * 0.5, 0, 2 * M_PI);
+        cairo_fill(cr);
+    }
+    // Main dot
+    cairo_set_source_rgba(cr, g_stroke_r, g_stroke_g, g_stroke_b, 1.0);
+    cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
+    cairo_fill(cr);
+    cairo_destroy(cr);
+    flush_to_layer();
+}
+
+static void raw_draw_segment(double x, double y, double width) {
+    if (!g_surface) return;
+    cairo_t *cr = cairo_create(g_surface);
+    double extra = g_outline_enabled ? fmax(width * 0.4, 2.0) : 0;
+    // Outline pass
+    if (g_outline_enabled) {
+        double or, og, ob;
+        contrast_color(g_stroke_r, g_stroke_g, g_stroke_b, &or, &og, &ob);
+        cairo_set_source_rgba(cr, or, og, ob, 1.0);
+        cairo_set_line_width(cr, width + extra);
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+        if (g_raw_has_last) {
+            cairo_move_to(cr, g_raw_last_x, g_raw_last_y);
+            cairo_line_to(cr, x, y);
+            cairo_stroke(cr);
+        } else {
+            cairo_arc(cr, x, y, (width + extra) * 0.5, 0, 2 * M_PI);
+            cairo_fill(cr);
+        }
+    }
+    // Main stroke
+    cairo_set_source_rgba(cr, g_stroke_r, g_stroke_g, g_stroke_b, 1.0);
+    cairo_set_line_width(cr, width);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+    if (g_raw_has_last) {
+        cairo_move_to(cr, g_raw_last_x, g_raw_last_y);
+        cairo_line_to(cr, x, y);
+        cairo_stroke(cr);
+    } else {
+        cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
+        cairo_fill(cr);
+    }
+    cairo_destroy(cr);
+    g_raw_last_x = x;
+    g_raw_last_y = y;
+    g_raw_has_last = YES;
+    flush_to_layer();
+}
+
+static void rebuild_surface_from_strokes(void) {
+    if (!g_surface) return;
+    // Clear surface
+    cairo_t *cr = cairo_create(g_surface);
+    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+
+    // Redraw rainbow if enabled
+    if (g_show_rainbow) draw_rainbow_indicator();
+
+    int n_strokes = glaspen2_stroke_count();
+    for (int s = 0; s < n_strokes; s++) {
+        int n_pts = glaspen2_get_stroke_point_count(s);
+        if (n_pts < 1) continue;
+        double r, gg, b;
+        glaspen2_get_stroke_color(s, &r, &gg, &b);
+
+        // Collect points and per-point colors (ObjC-side for continuous updates)
+        double px[2048], py[2048], pw[2048];
+        double pcr[2048], pcg[2048], pcb[2048];
+        BOOL has_point_colors = NO;
+        int pts = n_pts < 2048 ? n_pts : 2048;
+        for (int i = 0; i < pts; i++) {
+            glaspen2_get_stroke_point(s, i, &px[i], &py[i]);
+            pw[i] = glaspen2_get_stroke_point_width(s, i);
+            // Use ObjC-side inverse colors (continuously updated by timer)
+            if (s < MAX_INVERSE_STROKES && g_inverse_colors[s] && i < g_inverse_color_counts[s]) {
+                pcr[i] = g_inverse_colors[s][i*3];
+                pcg[i] = g_inverse_colors[s][i*3+1];
+                pcb[i] = g_inverse_colors[s][i*3+2];
+                has_point_colors = YES;
+            } else {
+                pcr[i] = r; pcg[i] = gg; pcb[i] = b;
+            }
+        }
+
+        // Outline pass (if enabled)
+        if (g_outline_enabled) {
+            cr = cairo_create(g_surface);
+            for (int i = 0; i < pts; i++) {
+                double or, og, ob;
+                contrast_color(pcr[i], pcg[i], pcb[i], &or, &og, &ob);
+                double extra = fmax(pw[i] * 0.4, 2.0);
+                cairo_set_source_rgba(cr, or, og, ob, 1.0);
+                if (i == 0) {
+                    cairo_arc(cr, px[i], py[i], (pw[i] + extra) * 0.5, 0, 2 * M_PI);
+                    cairo_fill(cr);
+                } else {
+                    cairo_set_line_width(cr, pw[i] + extra);
+                    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+                    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+                    cairo_move_to(cr, px[i-1], py[i-1]);
+                    cairo_line_to(cr, px[i], py[i]);
+                    cairo_stroke(cr);
+                }
+            }
+            cairo_destroy(cr);
+        }
+
+        // Main stroke pass
+        cr = cairo_create(g_surface);
+        for (int i = 0; i < pts; i++) {
+            cairo_set_source_rgba(cr, pcr[i], pcg[i], pcb[i], 1.0);
+            if (i == 0) {
+                cairo_arc(cr, px[i], py[i], pw[i] * 0.5, 0, 2 * M_PI);
+                cairo_fill(cr);
+            } else {
+                cairo_set_line_width(cr, pw[i]);
+                cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+                cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+                cairo_move_to(cr, px[i-1], py[i-1]);
+                cairo_line_to(cr, px[i], py[i]);
+                cairo_stroke(cr);
+            }
+        }
+        cairo_destroy(cr);
+    }
     flush_to_layer();
 }
 
@@ -630,7 +1066,44 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         return event;
     }
 
-    // If app is disabled, pass all events through
+    // Handle keyboard events separately — always intercept hotkeys
+    if (type == kCGEventKeyDown) {
+        NSEvent *keyEvent = [NSEvent eventWithCGEvent:event];
+        if (keyEvent) {
+            NSUInteger mods = [keyEvent modifierFlags];
+            BOOL hasCmdCtrl = (mods & NSEventModifierFlagCommand) && (mods & NSEventModifierFlagControl);
+            if (hasCmdCtrl) {
+                unsigned short kc = [keyEvent keyCode];
+                if (kc == kVK_ANSI_C) { clear_screen(); return NULL; }
+                else if (kc == kVK_ANSI_V) { toggle_enabled(); return NULL; }
+                else if (kc == 0x26) { // J
+                    long target = glaspen2_prev_screen_id();
+                    if (target > 0) {
+                        glaspen2_load_strokes_for_screen(target);
+                        glaspen2_smooth_loaded_strokes();
+                        replay_strokes_from_memory();
+                    } else {
+                        show_notification(L(@"没有上一页", @"No previous page"));
+                    }
+                    return NULL;
+                } else if (kc == 0x28) { // K
+                    long target = glaspen2_next_screen_id();
+                    if (target > 0) {
+                        glaspen2_load_strokes_for_screen(target);
+                        glaspen2_smooth_loaded_strokes();
+                        replay_strokes_from_memory();
+                    } else {
+                        show_notification(L(@"没有下一页", @"No next page"));
+                    }
+                    return NULL;
+                }
+            }
+        }
+        // Not a hotkey — pass through to system
+        return event;
+    }
+
+    // All non-keyboard events: if app is disabled, pass through
     if (!g_enabled) return event;
 
     // Convert to NSEvent to check pen properties
@@ -686,24 +1159,100 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         }
     }
 
-    // Draw on pen contact/drag events
-    if (isPen && (etype == NSEventTypeLeftMouseDown || etype == NSEventTypeLeftMouseDragged ||
-                  etype == NSEventTypeRightMouseDown || etype == NSEventTypeRightMouseDragged ||
-                  etype == NSEventTypeOtherMouseDown || etype == NSEventTypeOtherMouseDragged)) {
-        if (!g_has_last) {
-            glaspen2_begin_stroke(g_pen_r, g_pen_g, g_pen_b);
+    // Draw on pen contact/drag events — routed through stroke modeler
+    NSPoint loc = [nsevent locationInWindow];
+    CGFloat view_h = [g_draw_view bounds].size.height;
+    double px = loc.x;
+    double py = view_h - loc.y;
+    double ts = [nsevent timestamp]; // NSTimeInterval (seconds since boot)
+
+    // Track if a stroke is active (modeler has been initialized)
+    static BOOL g_stroke_active = NO;
+
+    // Width from pressure (same formula as Rust modeler::pressure_to_width)
+    double raw_w = (pressure > 0.01) ? (0.3 + pressure * pressure * 7.7) * g_width_scale
+                                     : 1.0 * g_width_scale;
+
+    if (isPen && (etype == NSEventTypeLeftMouseDown || etype == NSEventTypeRightMouseDown ||
+                  etype == NSEventTypeOtherMouseDown)) {
+        // Pen down: determine stroke color, start modeler, draw raw dot immediately (no lag)
+        NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f", px, py, pressure, ts);
+        // modeler_begin always uses original pen color (for DB/STROKES)
+        glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
+        g_stroke_active = YES;
+        // For raw drawing, use inverse color if enabled
+        if (g_inverse_enabled) {
+            sample_bg_inverse(px, py, &g_stroke_r, &g_stroke_g, &g_stroke_b);
+        } else {
+            g_stroke_r = g_pen_r; g_stroke_g = g_pen_g; g_stroke_b = g_pen_b;
         }
-        double w = (pressure > 0.01) ? (0.3 + pressure * pressure * 7.7) : 1.0;
-        w *= g_width_scale;
-        NSPoint loc = [nsevent locationInWindow];
-        CGFloat h = [g_draw_view bounds].size.height;
-        pen_draw(loc.x, h - loc.y, w);
+        raw_draw_dot(px, py, raw_w);
+        g_raw_last_x = px;
+        g_raw_last_y = py;
+        g_raw_has_last = YES;
+        return NULL;
+    }
+    if (isPen && (etype == NSEventTypeLeftMouseDragged || etype == NSEventTypeRightMouseDragged ||
+                  etype == NSEventTypeOtherMouseDragged)) {
+        // If no DOWN event was seen (pen detection lag), auto-initialize
+        if (!g_stroke_active) {
+            glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
+            g_stroke_active = YES;
+            if (g_inverse_enabled) {
+                sample_bg_inverse(px, py, &g_stroke_r, &g_stroke_g, &g_stroke_b);
+            } else {
+                g_stroke_r = g_pen_r; g_stroke_g = g_pen_g; g_stroke_b = g_pen_b;
+            }
+            raw_draw_dot(px, py, raw_w);
+            g_raw_last_x = px;
+            g_raw_last_y = py;
+            g_raw_has_last = YES;
+            return NULL; // begin already recorded this point, don't feed duplicate to modeler
+        }
+        // Per-point inverse color for real-time raw drawing feedback
+        if (g_inverse_enabled) {
+            static int move_count = 0;
+            sample_bg_inverse(px, py, &g_stroke_r, &g_stroke_g, &g_stroke_b);
+        }
+        // Feed modeler, draw raw segment for responsive real-time feedback
+        glaspen2_modeler_move(px, py, pressure, ts, g_width_scale);
+        raw_draw_segment(px, py, raw_w);
         return NULL;
     }
     if (isPen && (etype == NSEventTypeLeftMouseUp || etype == NSEventTypeRightMouseUp ||
                   etype == NSEventTypeOtherMouseUp)) {
-        g_has_last = NO;
-        glaspen2_end_stroke();
+        // Pen up: finalize modeler, commit smoothed points, rebuild surface
+        if (g_stroke_active) {
+            glaspen2_modeler_end(px, py, pressure, ts, g_width_scale);
+
+            if (g_inverse_enabled) {
+                // Sample inverse color at each modeler output position
+                int mcnt = glaspen2_modeler_point_count();
+                double inv_buf[2048 * 3];
+                int inv_n = mcnt < 2048 ? mcnt : 2048;
+                for (int i = 0; i < inv_n; i++) {
+                    double mx, my, mw;
+                    glaspen2_modeler_get_point(i, &mx, &my, &mw);
+                    sample_bg_inverse(mx, my, &inv_buf[i*3], &inv_buf[i*3+1], &inv_buf[i*3+2]);
+                }
+                glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b, inv_buf, inv_n);
+                // Store in ObjC-side array for continuous timer updates
+                int stroke_idx = glaspen2_stroke_count() - 1;
+                if (stroke_idx >= 0 && stroke_idx < MAX_INVERSE_STROKES) {
+                    if (g_inverse_colors[stroke_idx]) free(g_inverse_colors[stroke_idx]);
+                    g_inverse_colors[stroke_idx] = (double *)malloc(inv_n * 3 * sizeof(double));
+                    memcpy(g_inverse_colors[stroke_idx], inv_buf, inv_n * 3 * sizeof(double));
+                    g_inverse_color_counts[stroke_idx] = inv_n;
+                }
+            } else {
+                glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b, NULL, 0);
+            }
+
+            // Rebuild surface from smoothed STROKES data
+            rebuild_surface_from_strokes();
+            g_stroke_active = NO;
+            g_raw_has_last = NO;
+        }
         return NULL;
     }
 
@@ -711,8 +1260,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
 }
 
 // --- App ---
-
-static NSWindow *g_window = nil;
 
 void glaspen2_run(void) {
     @autoreleasepool {
@@ -763,6 +1310,18 @@ void glaspen2_run(void) {
         rainbowItem.target = g_menuHandler;
         rainbowItem.tag = 999;
         rainbowItem.state = NSControlStateValueOff;
+        NSMenuItem *launchItem = [g_menu addItemWithTitle:L(@"开机自启", @"Launch at login") action:@selector(toggleLaunch) keyEquivalent:@""];
+        launchItem.target = g_menuHandler;
+        launchItem.tag = 777;
+        launchItem.state = glaspen2_is_launch_at_login() ? NSControlStateValueOn : NSControlStateValueOff;
+        NSMenuItem *outlineItem = [g_menu addItemWithTitle:L(@"描边增强", @"Outline") action:@selector(toggleOutline) keyEquivalent:@""];
+        outlineItem.target = g_menuHandler;
+        outlineItem.tag = 666;
+        outlineItem.state = NSControlStateValueOff;
+        NSMenuItem *inverseItem = [g_menu addItemWithTitle:L(@"反色模式", @"Inverse color") action:@selector(toggleInverse) keyEquivalent:@""];
+        inverseItem.target = g_menuHandler;
+        inverseItem.tag = 555;
+        inverseItem.state = NSControlStateValueOff;
         [g_menu addItem:[NSMenuItem separatorItem]];
         NSMenuItem *toggleItem = [g_menu addItemWithTitle:L(@"开启涂鸦", @"Enable Drawing") action:@selector(toggleDraw) keyEquivalent:@""];
         toggleItem.target = g_menuHandler;
@@ -783,10 +1342,51 @@ void glaspen2_run(void) {
         }
 
         [g_statusItem setMenu:g_menu];
-        update_status_icon_state();
 
         NSScreen *screen = [NSScreen mainScreen];
         NSRect screenFrame = [screen frame];
+
+        // Store screen dimensions for DB
+        g_screen_w = (int)screenFrame.size.width;
+        g_screen_h = (int)screenFrame.size.height;
+        glaspen2_init_db(g_screen_w, g_screen_h);
+        init_display_stream();
+
+        // Restore saved pen color and width
+        double sr, sg, sb, sw;
+        if (glaspen2_load_settings_parts(&sr, &sg, &sb, &sw)) {
+            g_pen_r = sr; g_pen_g = sg; g_pen_b = sb; g_width_scale = sw;
+            // Find closest matching color preset
+            int bestColor = 0;
+            double bestDist = 1e9;
+            for (int i = 0; i < g_color_preset_count; i++) {
+                double dr = g_color_presets[i].r - sr;
+                double dg = g_color_presets[i].g - sg;
+                double db = g_color_presets[i].b - sb;
+                double dist = dr*dr + dg*dg + db*db;
+                if (dist < bestDist) { bestDist = dist; bestColor = i; }
+            }
+            g_selectedColorIndex = bestColor;
+            // Find closest matching width preset
+            int bestWidth = 2;
+            bestDist = 1e9;
+            for (int i = 0; i < g_width_preset_count; i++) {
+                double d = g_width_presets[i] - sw;
+                if (d*d < bestDist) { bestDist = d*d; bestWidth = i; }
+            }
+            g_selected_width_index = bestWidth;
+        }
+        update_status_icon_state();
+        update_menu_checkmarks();
+
+        // Restore outline and inverse settings
+        g_outline_enabled = glaspen2_load_bool_setting("outline_enabled") != 0;
+        g_inverse_enabled = glaspen2_load_bool_setting("inverse_enabled") != 0;
+        [[g_menu itemWithTag:666] setState:g_outline_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+        [[g_menu itemWithTag:555] setState:g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+        if (g_inverse_enabled) {
+            start_inverse_timer();
+        }
 
         g_window = [[NSWindow alloc]
             initWithContentRect:screenFrame
@@ -835,14 +1435,6 @@ void glaspen2_run(void) {
         signal(SIGINT, save_and_exit);   // Ctrl+C
         signal(SIGTERM, save_and_exit);  // kill command
 
-        // Register global hot keys
-        EventHotKeyID hotKeyClear = { .signature = 'glsp', .id = kHotKeyClearScreen };
-        EventHotKeyID hotKeyToggle = { .signature = 'glsp', .id = kHotKeyToggle };
-        EventTypeSpec eventType = { .eventClass = kEventClassKeyboard, .eventKind = kEventHotKeyPressed };
-        InstallApplicationEventHandler(NewEventHandlerUPP(hotKeyHandler), 1, &eventType, NULL, NULL);
-        RegisterEventHotKey(kVK_ANSI_C, cmdKey | controlKey, hotKeyClear, GetApplicationEventTarget(), 0, &hotKeyClear);
-        RegisterEventHotKey(kVK_ANSI_V, cmdKey | controlKey, hotKeyToggle, GetApplicationEventTarget(), 0, &hotKeyToggle);
-
         // CGEventTap: intercept events at system level before dispatch
         CGEventMask tapMask = CGEventMaskBit(kCGEventMouseMoved) |
                               CGEventMaskBit(kCGEventLeftMouseDown) |
@@ -855,7 +1447,8 @@ void glaspen2_run(void) {
                               CGEventMaskBit(kCGEventOtherMouseDragged) |
                               CGEventMaskBit(kCGEventOtherMouseUp) |
                               CGEventMaskBit(kCGEventTabletProximity) |
-                              CGEventMaskBit(kCGEventTabletPointer);
+                              CGEventMaskBit(kCGEventTabletPointer) |
+                              CGEventMaskBit(kCGEventKeyDown);
 
         g_event_tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
                                        kCGEventTapOptionDefault, tapMask,
