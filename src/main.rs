@@ -5,9 +5,9 @@ use std::ffi::CStr;
 use std::sync::Mutex;
 
 // Cairo: real crate when available, stub for cross-compilation type checking
-#[cfg(feature = "cairo_real")]
+#[cfg(all(feature = "cairo_real", not(target_os = "windows")))]
 extern crate cairo;
-#[cfg(not(feature = "cairo_real"))]
+#[cfg(any(not(feature = "cairo_real"), target_os = "windows"))]
 #[path = "cairo_stub.rs"]
 pub mod cairo;
 
