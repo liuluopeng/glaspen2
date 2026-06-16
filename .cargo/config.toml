@@ -1,0 +1,5 @@
+[env]
+PKG_CONFIG_PATH = "C:/msys64/mingw64/lib/pkgconfig"
+
+# Run with: PATH=C:\msys64\mingw64\bin;%PATH% cargo run
+# GTK4 DLLs are in C:\msys64\mingw64\bin

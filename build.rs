@@ -44,8 +44,6 @@ fn main() {
     }
 
     if is_windows {
-        if cfg!(feature = "cairo_real") {
-            println!("cargo:rustc-link-lib=cairo");
-        }
+        // On Windows we use cairo_stub — don't link the real Cairo library.
     }
 }
