@@ -61,12 +61,17 @@ unsafe extern "system" fn low_level_mouse_proc(
         let suppress = if pen_active {
             true
         } else {
+            // Grace period after pen-up: residual mouse messages still suppressed
             let up_time = PEN_UP_TIME.load(Ordering::SeqCst);
             up_time > 0 && GetTickCount64().saturating_sub(up_time) < PEN_UP_GRACE_MS
         };
         if suppress {
+            // Only suppress CLICK events, NOT WM_MOUSEMOVE.
+            // GDK-Win32 needs WM_MOUSEMOVE for its internal event loop;
+            // pen moves come via WM_POINTER which is not intercepted here.
+            // Mouse moves are harmless (no clicks in other apps).
             match w_param.0 as u32 {
-                WM_LBUTTONDOWN | WM_LBUTTONUP | WM_MOUSEMOVE
+                WM_LBUTTONDOWN | WM_LBUTTONUP
                 | WM_RBUTTONDOWN | WM_RBUTTONUP
                 | WM_MBUTTONDOWN | WM_MBUTTONUP => return LRESULT(1),
                 _ => {}
@@ -99,6 +104,22 @@ fn restore_system_cursor() {
     unsafe {
         // SPI_SETCURSORS restores all system cursors to their defaults
         SystemParametersInfoW(SPI_SETCURSORS, 0, None, SPIF_SENDCHANGE).ok();
+    }
+}
+
+// ── Cancel the initial pen-generated click that passed through the hook ──
+
+fn cancel_click_under_pen(x: f64, y: f64) {
+    unsafe {
+        let pt = POINT { x: x as i32, y: y as i32 };
+        // Find the window below the GTK overlay at the pen position.
+        // WindowFromPoint skips WS_EX_TRANSPARENT windows, so it should
+        // return the underlying application window.
+        let hwnd = WindowFromPoint(pt);
+        if !hwnd.is_invalid() && !hwnd.0.is_null() {
+            let lparam = (y as i32 as u16 as u32) << 16 | (x as i32 as u16 as u32);
+            PostMessageW(hwnd, WM_LBUTTONUP, WPARAM(0), LPARAM(lparam as isize)).ok();
+        }
     }
 }
 
@@ -237,7 +258,8 @@ fn build_pen_window(app: &gtk4::Application, ctx: Rc<OverlayCtx>) {
 
     window.present();
 
-    // Make the GTK window TOPMOST so it stays above all apps
+    // Make the GTK window TOPMOST + no taskbar icon + no focus stealing
+    // (like macOS: no Dock icon, ignoresMouseEvents, never takes focus)
     make_gtk_topmost(&window);
 
     // Try to make mouse events pass through GDK's input region
@@ -254,9 +276,22 @@ fn make_gtk_topmost(window: &gtk4::Window) {
         .encode_utf16().chain(std::iter::once(0)).collect();
     unsafe {
         if let Ok(hwnd) = FindWindowW(None, windows::core::PCWSTR(title.as_ptr())) {
+            // Remove from taskbar + prevent activation — like macOS's
+            // NSApplicationActivationPolicyAccessory + setIgnoresMouseEvents
+            let mut ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+            ex_style |= WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0;
+            ex_style &= !WS_EX_APPWINDOW.0;
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as isize);
+
             SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE).ok();
-            eprintln!("[gtk] set HWND {:?} to TOPMOST", hwnd);
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED).ok();
+            eprintln!("[gtk] set HWND {:?} to TOPMOST+TOOLWINDOW+NOACTIVATE", hwnd);
+
+            // Return focus to whichever window had it before
+            let fg = GetForegroundWindow();
+            if !fg.is_invalid() && fg != hwnd {
+                SetForegroundWindow(fg).ok();
+            }
         }
     }
 }
@@ -272,6 +307,10 @@ fn handle_pen_event(event: &gdk::Event, ctx: &OverlayCtx) {
             // Activate pen suppression: swallow mouse events & hide cursor
             PEN_ACTIVE.store(true, Ordering::SeqCst);
             hide_system_cursor();
+
+            // The first WM_LBUTTONDOWN passed through the hook (PEN_ACTIVE was false),
+            // so the underlying app received a click. Cancel it by sending WM_LBUTTONUP.
+            cancel_click_under_pen(x, y);
 
             let mut st = ctx.stroke.borrow_mut();
             st.active = true; st.has_last = false;
