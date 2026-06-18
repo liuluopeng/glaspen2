@@ -5,6 +5,7 @@
 use std::cell::RefCell;
 use std::ptr;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use gtk4::prelude::*;
 use gtk4::{gdk, glib};
@@ -13,9 +14,17 @@ use gtk4::cairo::{self, ImageSurface, Format};
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Dwm::DwmExtendFrameIntoClientArea;
 use windows::Win32::Graphics::Gdi::*;
+use windows::Win32::System::Console::SetConsoleCtrlHandler;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::SystemInformation::GetTickCount64;
 use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::WindowsAndMessaging::*;
+
+// ── Pen suppression state (driven by GTK pen events, read by WH_MOUSE_LL hook) ──
+static PEN_ACTIVE: AtomicBool = AtomicBool::new(false);
+static PEN_UP_TIME: AtomicU64 = AtomicU64::new(0);
+static mut HHOOK_HANDLE: HHOOK = HHOOK(ptr::null_mut());
+static mut BLANK_CURSOR: HCURSOR = HCURSOR(ptr::null_mut());
 
 struct StrokeState {
     pub pen_r: f64, pub pen_g: f64, pub pen_b: f64, pub width_scale: f64,
@@ -35,6 +44,70 @@ struct OverlayCtx {
     pub dib_stride: usize,
     pub screen_w: i32,
     pub screen_h: i32,
+}
+
+// ── WH_MOUSE_LL hook: suppress pen-generated mouse events ──
+
+/// Grace period (ms) after pen-up: residual mouse messages from the pen are still suppressed.
+const PEN_UP_GRACE_MS: u64 = 50;
+
+unsafe extern "system" fn low_level_mouse_proc(
+    n_code: i32,
+    w_param: WPARAM,
+    l_param: LPARAM,
+) -> LRESULT {
+    if n_code >= 0 {
+        let pen_active = PEN_ACTIVE.load(Ordering::SeqCst);
+        let suppress = if pen_active {
+            true
+        } else {
+            let up_time = PEN_UP_TIME.load(Ordering::SeqCst);
+            up_time > 0 && GetTickCount64().saturating_sub(up_time) < PEN_UP_GRACE_MS
+        };
+        if suppress {
+            match w_param.0 as u32 {
+                WM_LBUTTONDOWN | WM_LBUTTONUP | WM_MOUSEMOVE
+                | WM_RBUTTONDOWN | WM_RBUTTONUP
+                | WM_MBUTTONDOWN | WM_MBUTTONUP => return LRESULT(1),
+                _ => {}
+            }
+        }
+    }
+    CallNextHookEx(None, n_code, w_param, l_param)
+}
+
+// ── System cursor hide / restore ──
+
+fn hide_system_cursor() {
+    unsafe {
+        let blank = BLANK_CURSOR;
+        if blank.is_invalid() { return; }
+        // Replace common cursor shapes so the cursor is invisible while drawing
+        SetSystemCursor(blank, OCR_NORMAL).ok();
+        SetSystemCursor(blank, OCR_IBEAM).ok();
+        SetSystemCursor(blank, OCR_CROSS).ok();
+        SetSystemCursor(blank, OCR_UP).ok();
+        SetSystemCursor(blank, OCR_SIZEALL).ok();
+        SetSystemCursor(blank, OCR_SIZENWSE).ok();
+        SetSystemCursor(blank, OCR_SIZENESW).ok();
+        SetSystemCursor(blank, OCR_SIZEWE).ok();
+        SetSystemCursor(blank, OCR_SIZENS).ok();
+    }
+}
+
+fn restore_system_cursor() {
+    unsafe {
+        // SPI_SETCURSORS restores all system cursors to their defaults
+        SystemParametersInfoW(SPI_SETCURSORS, 0, None, SPIF_SENDCHANGE).ok();
+    }
+}
+
+// ── Console Ctrl handler for crash safety ──
+
+unsafe extern "system" fn console_ctrl_handler(_ctrl_type: u32) -> BOOL {
+    restore_system_cursor();
+    // Don't handle the signal — let the default handler proceed
+    FALSE
 }
 
 pub fn run_gtk() {
@@ -86,8 +159,42 @@ pub fn run_gtk() {
         let c = ctx.clone();
         app.connect_activate(move |app| build_pen_window(app, c.clone()));
 
+        // ── Install WH_MOUSE_LL hook to suppress pen-generated mouse events ──
+        HHOOK_HANDLE = SetWindowsHookExW(
+            WH_MOUSE_LL,
+            Some(low_level_mouse_proc),
+            HINSTANCE(hmodule.0),
+            0,
+        ).expect("WH_MOUSE_LL hook installation failed");
+        eprintln!("[gtk] WH_MOUSE_LL hook installed");
+
+        // ── Create blank cursor for system-wide hiding during pen drawing ──
+        let and_plane: [u8; 4] = [0xFF; 4]; // AND mask: all 1s = transparent
+        let xor_plane: [u8; 4] = [0x00; 4]; // XOR mask: all 0s = no inversion
+        BLANK_CURSOR = CreateCursor(
+            HINSTANCE(hmodule.0),
+            0, 0, 1, 1,
+            and_plane.as_ptr() as *const std::ffi::c_void,
+            xor_plane.as_ptr() as *const std::ffi::c_void,
+        ).expect("CreateCursor failed");
+        eprintln!("[gtk] blank cursor created");
+
+        // ── Crash safety: restore cursor on panic or Ctrl+C ──
+        let default_panic = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            restore_system_cursor();
+            (default_panic)(info);
+        }));
+        SetConsoleCtrlHandler(Some(console_ctrl_handler), true).ok();
+
         app.run();
 
+        // ── Cleanup ──
+        UnhookWindowsHookEx(HHOOK_HANDLE).ok();
+        restore_system_cursor();
+        if !BLANK_CURSOR.is_invalid() {
+            DestroyCursor(BLANK_CURSOR).ok();
+        }
         DeleteObject(hbitmap).ok();
         DeleteDC(hdc_mem).ok();
         DestroyWindow(ol_hwnd).ok();
@@ -161,6 +268,11 @@ fn handle_pen_event(event: &gdk::Event, ctx: &OverlayCtx) {
         gdk::EventType::ButtonPress => {
             let (x, y, p) = extract_pen(event);
             eprintln!("[gtk] STYLUS DOWN x={:.0} y={:.0} p={:.3}", x, y, p);
+
+            // Activate pen suppression: swallow mouse events & hide cursor
+            PEN_ACTIVE.store(true, Ordering::SeqCst);
+            hide_system_cursor();
+
             let mut st = ctx.stroke.borrow_mut();
             st.active = true; st.has_last = false;
             st.stroke_color = (st.pen_r, st.pen_g, st.pen_b);
@@ -188,6 +300,11 @@ fn handle_pen_event(event: &gdk::Event, ctx: &OverlayCtx) {
         }
         gdk::EventType::ButtonRelease => {
             ctx.stroke.borrow_mut().active = false;
+
+            // Deactivate pen suppression: allow mouse events & restore cursor
+            PEN_ACTIVE.store(false, Ordering::SeqCst);
+            PEN_UP_TIME.store(unsafe { GetTickCount64() }, Ordering::SeqCst);
+            restore_system_cursor();
         }
         _ => {}
     }
