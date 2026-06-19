@@ -2,5 +2,11 @@
 Cargo.lock
 .DS_Store
 *.dmg
+*.zip
+/dist
 /.claude
 zinnia/
+
+# C# build artifacts
+glaspen2_csharp/*.exe
+installer/*.exe

@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 use std::path::PathBuf;
 use std::slice;
 use std::os::raw::{c_int, c_double, c_uchar, c_char};
