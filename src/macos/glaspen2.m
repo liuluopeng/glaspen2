@@ -1108,7 +1108,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                         int h = cairo_image_surface_get_height(g_surface);
                         int stride = cairo_image_surface_get_stride(g_surface);
                         if (glaspen2_save_gif_cropped(data, w, h, stride)) {
-                            // Find newest glaspen2 GIF on desktop, copy file URL to clipboard
                             NSString *desktop = [NSSearchPathForDirectoriesInDomains(NSDesktopDirectory, NSUserDomainMask, YES) firstObject];
                             NSFileManager *fm = [NSFileManager defaultManager];
                             NSArray *files = [fm contentsOfDirectoryAtPath:desktop error:nil];
