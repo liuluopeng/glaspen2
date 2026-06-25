@@ -13,6 +13,7 @@
 平台:
 
 - Mac OS
+- Windows (不支持压感 使用时需关闭数位板驱动中的microsoft ink功能)
 
 使用:
 
