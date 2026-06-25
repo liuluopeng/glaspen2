@@ -16,6 +16,8 @@ image = "0.25"
 flate2 = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 ink-stroke-modeler-rs = "0.1"
+gif = "0.13"
+color_quant = "1.1"
 
 [target.'cfg(not(windows))'.dependencies]
 cairo-rs = "0.20"
