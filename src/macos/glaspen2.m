@@ -60,6 +60,9 @@ extern void glaspen2_modeler_get_point(int idx, double *x, double *y, double *w)
 extern void glaspen2_modeler_clear_buffer(void);
 extern void glaspen2_modeler_commit_to_strokes(double r, double g, double b, const double *inv_colors, int inv_count);
 extern int glaspen2_get_stroke_point_color(int idx, int pidx, double *r, double *g, double *b);
+extern int glaspen2_stroke_bbox(double *x_min, double *y_min, double *x_max, double *y_max);
+extern void glaspen2_save_svg(void);
+extern int glaspen2_save_gif_cropped(const unsigned char *surface_data, int w, int h, int stride);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -1094,6 +1097,42 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                         replay_strokes_from_memory();
                     } else {
                         show_notification(L(@"没有下一页", @"No next page"));
+                    }
+                    return NULL;
+                } else if (kc == kVK_ANSI_G) {
+                    glaspen2_save_svg();
+                    if (g_surface) {
+                        cairo_surface_flush(g_surface);
+                        const unsigned char *data = cairo_image_surface_get_data(g_surface);
+                        int w = cairo_image_surface_get_width(g_surface);
+                        int h = cairo_image_surface_get_height(g_surface);
+                        int stride = cairo_image_surface_get_stride(g_surface);
+                        if (glaspen2_save_gif_cropped(data, w, h, stride)) {
+                            // Find newest glaspen2 GIF on desktop, copy file URL to clipboard
+                            NSString *desktop = [NSSearchPathForDirectoriesInDomains(NSDesktopDirectory, NSUserDomainMask, YES) firstObject];
+                            NSFileManager *fm = [NSFileManager defaultManager];
+                            NSArray *files = [fm contentsOfDirectoryAtPath:desktop error:nil];
+                            NSString *newestGif = nil;
+                            NSDate *newestDate = nil;
+                            for (NSString *f in files) {
+                                if ([f hasPrefix:@"glaspen2_"] && [f hasSuffix:@".gif"]) {
+                                    NSString *full = [desktop stringByAppendingPathComponent:f];
+                                    NSDictionary *attr = [fm attributesOfItemAtPath:full error:nil];
+                                    NSDate *d = attr[NSFileModificationDate];
+                                    if (!newestDate || [d compare:newestDate] == NSOrderedDescending) {
+                                        newestDate = d; newestGif = full;
+                                    }
+                                }
+                            }
+                            if (newestGif) {
+                                NSPasteboard *pb = [NSPasteboard generalPasteboard];
+                                [pb clearContents];
+                                [pb writeObjects:@[[NSURL fileURLWithPath:newestGif]]];
+                            }
+                            show_notification(L(@"已导出 SVG + GIF", @"SVG + GIF saved"));
+                        } else {
+                            show_notification(L(@"导出失败", @"Export failed"));
+                        }
                     }
                     return NULL;
                 }

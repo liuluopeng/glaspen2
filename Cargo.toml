@@ -13,6 +13,8 @@ pkg-config = "0.3"
 
 [dependencies]
 image = "0.25"
+gif = "0.13"
+color_quant = "1.1"
 flate2 = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 ink-stroke-modeler-rs = "0.1"

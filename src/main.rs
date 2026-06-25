@@ -597,3 +597,206 @@ fn timestamped_path() -> PathBuf {
     let filename = format!("glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.png", y, d, h, m, s);
     desktop.join(filename)
 }
+
+/// Compute bounding box of all strokes. Returns 1 if there are strokes, 0 otherwise.
+#[no_mangle]
+pub extern "C" fn glaspen2_stroke_bbox(
+    x_min: *mut c_double, y_min: *mut c_double,
+    x_max: *mut c_double, y_max: *mut c_double,
+) -> c_int {
+    let strokes = STROKES.lock().unwrap();
+    if strokes.is_empty() { return 0; }
+    let mut bx_min = f64::MAX;
+    let mut by_min = f64::MAX;
+    let mut bx_max = f64::MIN;
+    let mut by_max = f64::MIN;
+    for s in strokes.iter() {
+        for &(x, y, _) in &s.points {
+            if x < bx_min { bx_min = x; }
+            if y < by_min { by_min = y; }
+            if x > bx_max { bx_max = x; }
+            if y > by_max { by_max = y; }
+        }
+    }
+    let padding = 10.0;
+    unsafe {
+        *x_min = bx_min - padding;
+        *y_min = by_min - padding;
+        *x_max = bx_max + padding;
+        *y_max = by_max + padding;
+    }
+    1
+}
+
+/// Save strokes as SVG to desktop (cropped to bbox).
+#[no_mangle]
+pub extern "C" fn glaspen2_save_svg() {
+    let strokes = STROKES.lock().unwrap();
+    if strokes.is_empty() { return; }
+
+    // Compute bbox
+    let mut bx_min = f64::MAX; let mut by_min = f64::MAX;
+    let mut bx_max = f64::MIN; let mut by_max = f64::MIN;
+    for s in strokes.iter() {
+        for &(x, y, _) in &s.points {
+            if x < bx_min { bx_min = x; }
+            if y < by_min { by_min = y; }
+            if x > bx_max { bx_max = x; }
+            if y > by_max { by_max = y; }
+        }
+    }
+    let pad = 10.0;
+    bx_min -= pad; by_min -= pad;
+    bx_max += pad; by_max += pad;
+    let bw = bx_max - bx_min;
+    let bh = by_max - by_min;
+
+    // Build SVG
+    let mut svg = String::new();
+    svg.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {:.1} {:.1}\" width=\"{:.1}\" height=\"{:.1}\">\n",
+        bw, bh, bw, bh));
+
+    for s in strokes.iter() {
+        if s.points.is_empty() { continue; }
+        let color_hex = format!("#{:02x}{:02x}{:02x}",
+            (s.r * 255.0) as u8, (s.g * 255.0) as u8, (s.b * 255.0) as u8);
+
+        let mut d = String::new();
+        let (x0, y0, _) = s.points[0];
+        d.push_str(&format!("M {:.1} {:.1}", x0 - bx_min, y0 - by_min));
+        for i in 1..s.points.len() {
+            let (x, y, _) = s.points[i];
+            d.push_str(&format!(" L {:.1} {:.1}", x - bx_min, y - by_min));
+        }
+        let avg_w = s.avg_width();
+        svg.push_str(&format!(
+            "  <path d=\"{}\" stroke=\"{}\" stroke-width=\"{:.1}\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n",
+            d, color_hex, avg_w));
+    }
+    svg.push_str("</svg>\n");
+
+    let path = desktop_path().join(timestamped_name("svg"));
+    if let Err(e) = std::fs::write(&path, &svg) {
+        eprintln!("[glaspen2] SVG save failed: {}", e);
+    } else {
+        println!("[glaspen2] Saved SVG to {}", path.display());
+    }
+}
+
+/// Save cropped drawing as GIF to desktop. Returns 1 on success, 0 on failure.
+#[no_mangle]
+pub extern "C" fn glaspen2_save_gif_cropped(
+    surface_data: *const c_uchar, surface_w: c_int, surface_h: c_int, surface_stride: c_int,
+) -> c_int {
+    let w = surface_w as u32;
+    let h = surface_h as u32;
+    let stride = surface_stride as usize;
+    let raw = unsafe { slice::from_raw_parts(surface_data, stride * h as usize) };
+
+    // Compute stroke bbox
+    let strokes = STROKES.lock().unwrap();
+    if strokes.is_empty() { return 0; }
+    let mut bx_min = u32::MAX; let mut by_min = u32::MAX;
+    let mut bx_max = 0u32; let mut by_max = 0u32;
+    for s in strokes.iter() {
+        for &(x, y, _) in &s.points {
+            let ix = x as u32; let iy = y as u32;
+            if ix < bx_min { bx_min = ix; }
+            if iy < by_min { by_min = iy; }
+            if ix > bx_max { bx_max = ix; }
+            if iy > by_max { by_max = iy; }
+        }
+    }
+    let pad = 5u32;
+    bx_min = bx_min.saturating_sub(pad);
+    by_min = by_min.saturating_sub(pad);
+    bx_max = (bx_max + pad).min(w - 1);
+    by_max = (by_max + pad).min(h - 1);
+    let crop_w = bx_max - bx_min + 1;
+    let crop_h = by_max - by_min + 1;
+
+    // Copy cropped region: transparent pixels → (0,0,0,0)
+    let mut flat: Vec<u8> = Vec::with_capacity((crop_w * crop_h * 4) as usize);
+    for cy in 0..crop_h {
+        let sy = (by_min + cy) as usize;
+        for cx in 0..crop_w {
+            let sx = (bx_min + cx) as usize;
+            let off = sy * stride + sx * 4;
+            if off + 3 < raw.len() {
+                let b = raw[off];
+                let g = raw[off + 1];
+                let r = raw[off + 2];
+                let a = raw[off + 3];
+                if a == 0 {
+                    flat.extend_from_slice(&[0, 0, 0, 0]);
+                } else {
+                    flat.extend_from_slice(&[r, g, b, a]);
+                }
+            }
+        }
+    }
+
+    // Quantize and find which palette index transparent pixels use most
+    let quantizer = color_quant::NeuQuant::new(10, 256, &flat);
+    let indices: Vec<u8> = flat.chunks(4).map(|p| {
+        quantizer.index_of(&[p[0], p[1], p[2], p[3]]) as u8
+    }).collect();
+    // Count which palette indices are used by transparent pixels
+    let mut idx_counts = [0u32; 256];
+    for (i, &idx) in indices.iter().enumerate() {
+        if flat[i * 4 + 3] == 0 {
+            idx_counts[idx as usize] += 1;
+        }
+    }
+    let mut transparent_idx: u8 = 0;
+    let mut max_count = 0u32;
+    for i in 0..256 {
+        if idx_counts[i] > max_count { max_count = idx_counts[i]; transparent_idx = i as u8; }
+    }
+
+    let palette = quantizer.color_map_rgba();
+    let gif_palette: Vec<u8> = (0..256).flat_map(|i| {
+        [palette[i * 4], palette[i * 4 + 1], palette[i * 4 + 2]]
+    }).collect();
+
+    let mut gif_data = Vec::new();
+    {
+        let mut enc = gif::Encoder::new(&mut gif_data, crop_w as u16, crop_h as u16, &gif_palette).unwrap();
+        let frame = gif::Frame {
+            width: crop_w as u16,
+            height: crop_h as u16,
+            buffer: std::borrow::Cow::Owned(indices),
+            transparent: Some(transparent_idx),
+            ..gif::Frame::default()
+        };
+        if let Err(e) = enc.write_frame(&frame) {
+            eprintln!("[glaspen2] GIF encode failed: {}", e);
+            return 0;
+        }
+    }
+
+    // Save to desktop
+    let path = desktop_path().join(timestamped_name("gif"));
+    if let Err(e) = std::fs::write(&path, &gif_data) {
+        eprintln!("[glaspen2] GIF write failed: {}", e);
+        0
+    } else {
+        println!("[glaspen2] Saved GIF to {}", path.display());
+        1
+    }
+}
+
+fn timestamped_name(ext: &str) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+    let s = secs % 60;
+    let m = (secs / 60) % 60;
+    let h = (secs / 3600 + 8) % 24;
+    let days = secs / 86400;
+    let y = 1970 + days / 365;
+    let d = days % 365;
+    format!("glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.{}", y, d, h, m, s, ext)
+}
