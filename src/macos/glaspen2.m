@@ -1075,12 +1075,17 @@ static void perf_log_begin(void) {
     if (!g_perf_file) {
         NSString *dir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) firstObject];
         NSString *logDir = [dir stringByAppendingPathComponent:@"Logs/glaspen2"];
-        [[NSFileManager defaultManager] createDirectoryAtPath:logDir withIntermediateDirectories:YES attributes:nil error:nil];
+        NSError *err = nil;
+        [[NSFileManager defaultManager] createDirectoryAtPath:logDir withIntermediateDirectories:YES attributes:nil error:&err];
+        if (err) NSLog(@"[glaspen2] perf log dir error: %@", err);
         NSString *path = [logDir stringByAppendingPathComponent:@"perf.log"];
         g_perf_file = fopen([path UTF8String], "w");
         if (g_perf_file) {
+            NSLog(@"[glaspen2] performance log: %@", path);
             fprintf(g_perf_file, "ts_ms\ttype\tdur_us\tnotes\n");
             fflush(g_perf_file);
+        } else {
+            NSLog(@"[glaspen2] perf log open failed: %@", path);
         }
     }
 }
