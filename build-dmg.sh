@@ -44,7 +44,7 @@ cat > "${APP_DIR}/${APP_NAME}.app/Contents/Info.plist" << EOF
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>LSUIElement</key>
-    <true/>
+    <false/>
 </dict>
 </plist>
 EOF

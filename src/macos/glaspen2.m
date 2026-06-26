@@ -1304,6 +1304,12 @@ void glaspen2_run(void) {
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 
+        // Request accessibility permission (needed for CGEventTap)
+        NSDictionary *opts = @{(__bridge id)kAXTrustedCheckOptionPrompt: @YES};
+        if (!AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)opts)) {
+            NSLog(@"[glaspen2] Accessibility permission not granted");
+        }
+
         // Create status bar menu
         g_statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
         [g_statusItem.button setTitle:@"G"];
