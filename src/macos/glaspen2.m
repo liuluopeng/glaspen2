@@ -7,6 +7,7 @@
 #import <IOSurface/IOSurface.h>
 #include <signal.h>
 #include <string.h>
+#include <mach/mach_time.h>
 
 // App enabled state
 static BOOL g_enabled = YES;
@@ -24,6 +25,7 @@ static void stop_inverse_timer(void);
 static void rebuild_surface_from_strokes(void);
 static void update_inverse_colors(void);
 static void sample_bg_inverse(double px, double py, double *out_r, double *out_g, double *out_b);
+static void perf_log_summary(void);
 
 // Per-stroke inverse colors (ObjC side, continuously updated by timer)
 #define MAX_INVERSE_STROKES 1024
@@ -632,6 +634,7 @@ static void toggle_enabled(void) {
 }
 
 - (void)quitApp {
+    perf_log_summary();
     CGDisplayShowCursor(kCGDirectMainDisplay);
     [NSApp terminate:nil];
 }
@@ -1061,11 +1064,57 @@ static void rebuild_surface_from_strokes(void) {
 @end
 
 // --- CGEventTap callback ---
+
+// Performance logging (set g_perf_log=YES to enable)
+static BOOL g_perf_log = YES;
+static FILE *g_perf_file = NULL;
+static uint64_t g_perf_total_calls = 0;
+static uint64_t g_perf_slow_calls = 0;
+
+static void perf_log_begin(void) {
+    if (!g_perf_file) {
+        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) firstObject];
+        NSString *logDir = [dir stringByAppendingPathComponent:@"Logs/glaspen2"];
+        [[NSFileManager defaultManager] createDirectoryAtPath:logDir withIntermediateDirectories:YES attributes:nil error:nil];
+        NSString *path = [logDir stringByAppendingPathComponent:@"perf.log"];
+        g_perf_file = fopen([path UTF8String], "w");
+        if (g_perf_file) {
+            fprintf(g_perf_file, "ts_ms\ttype\tdur_us\tnotes\n");
+            fflush(g_perf_file);
+        }
+    }
+}
+
+static mach_timebase_info_data_t g_tb;
+static BOOL g_tb_inited = NO;
+
+static uint64_t elapsed_us(uint64_t start) {
+    if (!g_tb_inited) { mach_timebase_info(&g_tb); g_tb_inited = YES; }
+    return (mach_absolute_time() - start) * g_tb.numer / g_tb.denom / 1000;
+}
+
+static void perf_log_event(const char *evtype, uint64_t dur_us) {
+    if (!g_perf_file) return;
+    g_perf_total_calls++;
+    if (dur_us > 16000) g_perf_slow_calls++; // >16ms = frame drop
+    if (!g_tb_inited) { mach_timebase_info(&g_tb); g_tb_inited = YES; }
+    double ts_ms = (double)mach_absolute_time() * g_tb.numer / g_tb.denom / 1e6;
+    fprintf(g_perf_file, "%.3f\t%s\t%llu\t%s\n", ts_ms, evtype, dur_us,
+            dur_us > 16000 ? "SLOW" : "");
+    if (g_perf_total_calls % 100 == 0) fflush(g_perf_file);
+}
+
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                       CGEventRef event, void *refcon) {
+    if (!g_perf_file) perf_log_begin();
+
+    uint64_t t0 = mach_absolute_time();
+
     // Re-enable tap if it gets disabled by timeout/user
     if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
+        NSLog(@"[glaspen2] TAP DISABLED (timeout=%d, userinput=%d)", type == kCGEventTapDisabledByTimeout, type == kCGEventTapDisabledByUserInput);
         CGEventTapEnable(g_event_tap, true);
+        perf_log_event("tap_disabled", elapsed_us(t0));
         return event;
     }
 
@@ -1294,7 +1343,18 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         return NULL;
     }
 
+    perf_log_event("tick", elapsed_us(t0));
     return event;
+}
+
+// Call this at app exit to dump stats
+static void perf_log_summary(void) {
+    if (!g_perf_file) return;
+    fprintf(g_perf_file, "\n# SUMMARY: total=%llu slow=%llu (%.1f%%)\n",
+            g_perf_total_calls, g_perf_slow_calls,
+            g_perf_total_calls > 0 ? 100.0 * g_perf_slow_calls / g_perf_total_calls : 0);
+    fclose(g_perf_file);
+    g_perf_file = NULL;
 }
 
 // --- App ---
