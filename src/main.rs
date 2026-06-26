@@ -718,26 +718,40 @@ pub extern "C" fn glaspen2_save_gif_cropped(
             }
         }
     }
-    let quantizer = color_quant::NeuQuant::new(10, 256, &flat);
-    let indices: Vec<u8> = flat.chunks(4).map(|p| {
+    // Downscale to 50% for smaller GIF
+    let gif_w = crop_w / 2;
+    let gif_h = crop_h / 2;
+    let mut gif_pixels: Vec<u8> = Vec::with_capacity((gif_w * gif_h * 4) as usize);
+    for gy in 0..gif_h {
+        for gx in 0..gif_w {
+            let sx = gx * 2; let sy = gy * 2;
+            let off = (sy * crop_w + sx) as usize * 4;
+            if off + 3 < flat.len() {
+                gif_pixels.extend_from_slice(&flat[off..off+4]);
+            }
+        }
+    }
+
+    let mut quantizer = color_quant::NeuQuant::new(30, 128, &gif_pixels);
+    let indices: Vec<u8> = gif_pixels.chunks(4).map(|p| {
         quantizer.index_of(&[p[0], p[1], p[2], p[3]]) as u8
     }).collect();
-    let mut idx_counts = [0u32; 256];
+    let mut idx_counts = [0u32; 128];
     for (i, &idx) in indices.iter().enumerate() {
-        if flat[i * 4 + 3] == 0 { idx_counts[idx as usize] += 1; }
+        if gif_pixels[i * 4 + 3] == 0 { idx_counts[idx as usize] += 1; }
     }
     let mut transparent_idx: u8 = 0;
     let mut max_count = 0u32;
-    for i in 0..256 { if idx_counts[i] > max_count { max_count = idx_counts[i]; transparent_idx = i as u8; } }
+    for i in 0..128 { if idx_counts[i] > max_count { max_count = idx_counts[i]; transparent_idx = i as u8; } }
     let palette = quantizer.color_map_rgba();
-    let gif_palette: Vec<u8> = (0..256).flat_map(|i| {
+    let gif_palette: Vec<u8> = (0..128).flat_map(|i| {
         [palette[i * 4], palette[i * 4 + 1], palette[i * 4 + 2]]
     }).collect();
     let mut gif_data = Vec::new();
     {
-        let mut enc = gif::Encoder::new(&mut gif_data, crop_w as u16, crop_h as u16, &gif_palette).unwrap();
+        let mut enc = gif::Encoder::new(&mut gif_data, gif_w as u16, gif_h as u16, &gif_palette).unwrap();
         let frame = gif::Frame {
-            width: crop_w as u16, height: crop_h as u16,
+            width: gif_w as u16, height: gif_h as u16,
             buffer: std::borrow::Cow::Owned(indices),
             transparent: Some(transparent_idx),
             ..gif::Frame::default()
