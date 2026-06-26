@@ -1000,6 +1000,13 @@ static void sample_bg_inverse(double px, double py,
 
 /// Re-sample inverse colors for all strokes and rebuild surface.
 static void update_inverse_colors(void) {
+    // Skip if no inverse color data exists
+    BOOL has_any = NO;
+    for (int s = 0; s < MAX_INVERSE_STROKES; s++) {
+        if (g_inverse_colors[s]) { has_any = YES; break; }
+    }
+    if (!has_any) return;
+
     @synchronized(g_capture_lock) {
         if (!g_captured_image) return;
     }
@@ -1274,7 +1281,7 @@ static void rebuild_surface_from_strokes(void) {
 // --- CGEventTap callback ---
 
 // Performance logging (set g_perf_log=YES to enable)
-static BOOL g_perf_log = YES;
+static BOOL g_perf_log = NO;
 static FILE *g_perf_file = NULL;
 static uint64_t g_perf_total_calls = 0;
 static uint64_t g_perf_slow_calls = 0;
