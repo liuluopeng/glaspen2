@@ -26,6 +26,7 @@ static void rebuild_surface_from_strokes(void);
 static void update_inverse_colors(void);
 static void sample_bg_inverse(double px, double py, double *out_r, double *out_g, double *out_b);
 static void perf_log_summary(void);
+static void show_settings_panel(void);
 
 // Per-stroke inverse colors (ObjC side, continuously updated by timer)
 #define MAX_INVERSE_STROKES 1024
@@ -449,8 +450,8 @@ static void update_menu_texts(void) {
     // Update toggle item title based on state
     NSMenuItem *toggleItem = [g_menu itemWithTag:888];
     if (toggleItem) [toggleItem setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
-    [[g_menu itemAtIndex:base+10] setTitle:L(@"English", @"中文")];
-    [[g_menu itemAtIndex:base+11] setTitle:L(@"退出", @"Quit")];
+    [[g_menu itemAtIndex:base+12] setTitle:L(@"English", @"中文")];
+    [[g_menu itemAtIndex:base+13] setTitle:L(@"退出", @"Quit")];
 }
 
 static NSImage* colorSwatchImage(NSColor *color, CGFloat size) {
@@ -565,6 +566,9 @@ static void toggle_enabled(void) {
     g_lang = 1 - g_lang;
     update_menu_texts();
 }
+- (void)showSettingsPanel {
+    show_settings_panel();
+}
 
 - (void)toggleRainbow {
     g_show_rainbow = !g_show_rainbow;
@@ -655,13 +659,217 @@ static void toggle_enabled(void) {
 
 @end
 
+// --- Settings Panel ---
+static NSPanel *g_settings_panel = nil;
+static NSButton *g_color_buttons[10];
+static NSButton *g_width_buttons[5];
+static NSButton *g_outline_toggle = nil;
+static NSButton *g_inverse_toggle = nil;
+static NSButton *g_rainbow_toggle = nil;
+static NSButton *g_launch_toggle = nil;
+
+static void show_settings_panel(void);
+static void sync_settings_panel(void);
+
+@interface SettingsPanelController : NSObject
+@end
+
+@implementation SettingsPanelController
+- (void)selectColor:(NSButton *)sender {
+    int idx = (int)[sender tag];
+    if (idx >= 0 && idx < g_color_preset_count) {
+        g_pen_r = g_color_presets[idx].r;
+        g_pen_g = g_color_presets[idx].g;
+        g_pen_b = g_color_presets[idx].b;
+        g_selectedColorIndex = idx;
+        glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
+        update_menu_checkmarks();
+        update_status_icon_color();
+        sync_settings_panel();
+    }
+}
+- (void)selectWidth:(NSButton *)sender {
+    int idx = (int)[sender tag];
+    if (idx >= 0 && idx < g_width_preset_count) {
+        g_width_scale = g_width_presets[idx];
+        g_selected_width_index = idx;
+        glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
+        update_menu_checkmarks();
+        sync_settings_panel();
+    }
+}
+- (void)toggleOutline:(NSButton *)sender {
+    g_outline_enabled = !g_outline_enabled;
+    glaspen2_save_bool_setting("outline_enabled", g_outline_enabled ? 1 : 0);
+    sync_settings_panel();
+    rebuild_surface_from_strokes();
+    // Also sync menu
+    NSMenuItem *item = [g_menu itemWithTag:666];
+    [item setState:g_outline_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+}
+- (void)toggleInverse:(NSButton *)sender {
+    g_inverse_enabled = !g_inverse_enabled;
+    glaspen2_save_bool_setting("inverse_enabled", g_inverse_enabled ? 1 : 0);
+    sync_settings_panel();
+    if (g_inverse_enabled) {
+        start_inverse_timer();
+    } else {
+        stop_inverse_timer();
+    }
+    NSMenuItem *item = [g_menu itemWithTag:555];
+    [item setState:g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+}
+- (void)toggleRainbow:(NSButton *)sender {
+    g_show_rainbow = !g_show_rainbow;
+    sync_settings_panel();
+    if (g_show_rainbow) draw_rainbow_indicator();
+    else clear_screen();
+    NSMenuItem *item = [g_menu itemWithTag:999];
+    [item setState:g_show_rainbow ? NSControlStateValueOn : NSControlStateValueOff];
+}
+- (void)toggleLaunch:(NSButton *)sender {
+    int cur = glaspen2_is_launch_at_login();
+    glaspen2_set_launch_at_login(!cur);
+    sync_settings_panel();
+    NSMenuItem *item = [g_menu itemWithTag:777];
+    [item setState:(!cur) ? NSControlStateValueOn : NSControlStateValueOff];
+}
+@end
+
+static void sync_settings_panel(void) {
+    if (!g_settings_panel) return;
+    // Update color button highlights
+    for (int i = 0; i < 10; i++) {
+        g_color_buttons[i].state = (i == g_selectedColorIndex)
+            ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+    // Update width button highlights
+    for (int i = 0; i < 5; i++) {
+        g_width_buttons[i].state = (i == g_selected_width_index)
+            ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+    g_outline_toggle.state = g_outline_enabled ? NSControlStateValueOn : NSControlStateValueOff;
+    g_inverse_toggle.state = g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff;
+    g_rainbow_toggle.state = g_show_rainbow ? NSControlStateValueOn : NSControlStateValueOff;
+    g_launch_toggle.state = glaspen2_is_launch_at_login() ? NSControlStateValueOn : NSControlStateValueOff;
+}
+
+static NSTextField *make_label(NSString *text, NSView *parent) {
+    NSTextField *label = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    [label setStringValue:text];
+    [label setEditable:NO];
+    [label setBordered:NO];
+    [label setDrawsBackground:NO];
+    [label setFont:[NSFont boldSystemFontOfSize:12]];
+    [label sizeToFit];
+    [parent addSubview:label];
+    return label;
+}
+
+static void show_settings_panel(void) {
+    if (g_settings_panel) {
+        [g_settings_panel makeKeyAndOrderFront:nil];
+        sync_settings_panel();
+        return;
+    }
+
+    SettingsPanelController *ctl = [[SettingsPanelController alloc] init];
+    NSRect panelFrame = NSMakeRect(0, 0, 340, 280);
+    NSPanel *panel = [[NSPanel alloc] initWithContentRect:panelFrame
+        styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskUtilityWindow
+        backing:NSBackingStoreBuffered defer:NO];
+    [panel setTitle:L(@"Glaspen2 设置", @"Glaspen2 Settings")];
+    [panel setFloatingPanel:YES];
+    [panel setHidesOnDeactivate:NO];
+    [panel setReleasedWhenClosed:NO];
+    [panel setBecomesKeyOnlyIfNeeded:YES];
+
+    NSView *content = [panel contentView];
+    int y = 255;
+    int pad = 10;
+
+    // --- Color row ---
+    make_label(L(@"颜色 / Color", @"Color"), content).frame = NSMakeRect(pad, y+10, 100, 16);
+    y -= 22;
+    for (int i = 0; i < 10; i++) {
+        int col = i % 5;
+        int row = i / 5;
+        NSButton *btn = [[NSButton alloc] initWithFrame:NSMakeRect(pad + col * 64, y - row * 28, 58, 24)];
+        [btn setTitle:(g_lang == 0)
+            ? @[@"红",@"橙",@"黄",@"绿",@"青",@"蓝",@"紫",@"粉",@"白",@"黑"][i]
+            : @[@"Red",@"Orange",@"Yellow",@"Green",@"Cyan",@"Blue",@"Purple",@"Pink",@"White",@"Black"][i]];
+        [btn setBezelStyle:NSBezelStyleSmallSquare];
+        [btn setTag:i];
+        [btn setTarget:ctl];
+        [btn setAction:@selector(selectColor:)];
+        btn.state = (i == g_selectedColorIndex) ? NSControlStateValueOn : NSControlStateValueOff;
+        [content addSubview:btn];
+        g_color_buttons[i] = btn;
+    }
+    y -= 57;
+
+    // --- Width row ---
+    NSString *zhW[] = {@"极细", @"细", @"中", @"粗", @"极粗"};
+    NSString *enW[] = {@"Fine", @"Thin", @"Medium", @"Thick", @"Bold"};
+    make_label(L(@"线宽 / Width", @"Width"), content).frame = NSMakeRect(pad, y+10, 100, 16);
+    y -= 22;
+    for (int i = 0; i < 5; i++) {
+        NSButton *btn = [[NSButton alloc] initWithFrame:NSMakeRect(pad + i * 64, y, 58, 24)];
+        [btn setTitle:(g_lang == 0) ? zhW[i] : enW[i]];
+        [btn setBezelStyle:NSBezelStyleSmallSquare];
+        [btn setTag:i];
+        [btn setTarget:ctl];
+        [btn setAction:@selector(selectWidth:)];
+        btn.state = (i == g_selected_width_index) ? NSControlStateValueOn : NSControlStateValueOff;
+        [content addSubview:btn];
+        g_width_buttons[i] = btn;
+    }
+    y -= 32;
+
+    // --- Toggles ---
+    int ty = y;
+    NSButton *cb1 = [[NSButton alloc] initWithFrame:NSMakeRect(pad, ty, 300, 22)];
+    [cb1 setButtonType:NSButtonTypeSwitch];
+    [cb1 setTitle:L(@"描边增强", @"Outline")];
+    [cb1 setState:g_outline_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+    [cb1 setTarget:ctl]; [cb1 setAction:@selector(toggleOutline:)];
+    [content addSubview:cb1]; g_outline_toggle = cb1;
+    ty -= 26;
+
+    NSButton *cb2 = [[NSButton alloc] initWithFrame:NSMakeRect(pad, ty, 300, 22)];
+    [cb2 setButtonType:NSButtonTypeSwitch];
+    [cb2 setTitle:L(@"反色模式", @"Inverse Color")];
+    [cb2 setState:g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+    [cb2 setTarget:ctl]; [cb2 setAction:@selector(toggleInverse:)];
+    [content addSubview:cb2]; g_inverse_toggle = cb2;
+    ty -= 26;
+
+    NSButton *cb3 = [[NSButton alloc] initWithFrame:NSMakeRect(pad, ty, 300, 22)];
+    [cb3 setButtonType:NSButtonTypeSwitch];
+    [cb3 setTitle:L(@"彩虹指示", @"Rainbow")];
+    [cb3 setState:g_show_rainbow ? NSControlStateValueOn : NSControlStateValueOff];
+    [cb3 setTarget:ctl]; [cb3 setAction:@selector(toggleRainbow:)];
+    [content addSubview:cb3]; g_rainbow_toggle = cb3;
+    ty -= 26;
+
+    NSButton *cb4 = [[NSButton alloc] initWithFrame:NSMakeRect(pad, ty, 300, 22)];
+    [cb4 setButtonType:NSButtonTypeSwitch];
+    [cb4 setTitle:L(@"开机自启", @"Launch at Login")];
+    [cb4 setState:glaspen2_is_launch_at_login() ? NSControlStateValueOn : NSControlStateValueOff];
+    [cb4 setTarget:ctl]; [cb4 setAction:@selector(toggleLaunch:)];
+    [content addSubview:cb4]; g_launch_toggle = cb4;
+
+    g_settings_panel = panel;
+    [panel center];
+    [panel makeKeyAndOrderFront:nil];
+}
+
 static void ensure_surface(NSView *view) {
     NSRect bounds = [view bounds];
     int w = (int)bounds.size.width;
     int h = (int)bounds.size.height;
     if (g_surface && cairo_image_surface_get_width(g_surface) == w &&
         cairo_image_surface_get_height(g_surface) == h) return;
-
     if (g_surface) cairo_surface_destroy(g_surface);
     g_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
     cairo_t *cr = cairo_create(g_surface);
@@ -1188,6 +1396,9 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                         }
                     }
                     return NULL;
+                } else if (kc == kVK_ANSI_Comma) {
+                    show_settings_panel();
+                    return NULL;
                 }
             }
         }
@@ -1436,6 +1647,9 @@ void glaspen2_run(void) {
         toggleItem.target = g_menuHandler;
         toggleItem.tag = 888;
         toggleItem.state = NSControlStateValueOn;
+        NSMenuItem *settingsItem = [g_menu addItemWithTitle:L(@"设置...", @"Settings...") action:@selector(showSettingsPanel) keyEquivalent:@""];
+        settingsItem.target = g_menuHandler;
+        [g_menu addItem:[NSMenuItem separatorItem]];
         NSMenuItem *langItem = [g_menu addItemWithTitle:L(@"English", @"中文") action:@selector(toggleLanguage) keyEquivalent:@""];
         langItem.target = g_menuHandler;
         NSMenuItem *quitItem = [g_menu addItemWithTitle:L(@"退出", @"Quit") action:@selector(quitApp) keyEquivalent:@""];
