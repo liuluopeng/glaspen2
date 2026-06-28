@@ -635,6 +635,7 @@ static void toggle_enabled(void) {
 
 // --- Settings Panel ---
 static NSPanel *g_settings_panel = nil;
+static id g_settings_controller = nil; // keep alive for button targets
 static NSButton *g_color_buttons[10];
 static NSButton *g_width_buttons[5];
 static NSButton *g_outline_toggle = nil;
@@ -780,6 +781,7 @@ static void show_settings_panel(void) {
     }
 
     SettingsPanelController *ctl = [[SettingsPanelController alloc] init];
+    g_settings_controller = ctl; // keep alive
     NSRect panelFrame = NSMakeRect(0, 0, 340, 330);
     NSPanel *panel = [[NSPanel alloc] initWithContentRect:panelFrame
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskUtilityWindow
