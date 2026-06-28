@@ -34,7 +34,9 @@ static void gl_settings_set_outline(BOOL on);
 static void gl_settings_set_inverse(BOOL on);
 static void gl_settings_set_rainbow(BOOL on);
 static void gl_settings_set_launch(BOOL on);
-static void gl_settings_set_glass(double alpha);
+static void gl_settings_set_glass_enabled(BOOL on);
+static void gl_settings_set_glass_opacity(double alpha);
+static void gl_glass_apply(void);
 static void gl_settings_set_enabled(BOOL on);
 
 // Per-stroke inverse colors (ObjC side, continuously updated by timer)
@@ -131,8 +133,8 @@ static BOOL g_outline_enabled = NO;
 static BOOL g_inverse_enabled = NO;
 
 // Glass overlay opacity (0.0 = off, 0.0-0.3 range)
-static double g_glass_alpha = 0.0; // current opacity
-static double g_glass_last = 0.20; // last non-zero opacity for toggle
+static BOOL g_glass_enabled = NO;  // frosted glass ON/OFF
+static double g_glass_opacity = 0.20; // opacity level (used only when enabled)
 
 // Current stroke color (may differ from pen color in inverse mode)
 static double g_stroke_r = 1.0, g_stroke_g = 0.0, g_stroke_b = 0.0;
@@ -600,7 +602,7 @@ static void toggle_enabled(void) {
     gl_settings_set_inverse(!g_inverse_enabled);
 }
 - (void)toggleGlass {
-    gl_settings_set_glass((g_glass_alpha > 0.001) ? 0.0 : g_glass_last);
+    gl_settings_set_glass_enabled(!g_glass_enabled);
 }
 
 - (void)selectColor:(NSMenuItem *)sender {
@@ -665,7 +667,8 @@ static void sync_settings_panel(void);
 - (void)glassButtonClicked:(NSButton *)sender {
     double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
     int gi = (int)[sender tag];
-    if (gi >= 0 && gi < 5) gl_settings_set_glass(opts[gi]);
+    if (gi >= 0 && gi < 5) gl_settings_set_glass_opacity(opts[gi]);
+    if (!g_glass_enabled && opts[gi] > 0.001) gl_settings_set_glass_enabled(YES);
 }
 @end
 
@@ -725,20 +728,32 @@ static void gl_settings_set_launch(BOOL on) {
     sync_settings_panel();
 }
 
-static void gl_settings_set_glass(double alpha) {
-    g_glass_alpha = alpha;
-    if (alpha > 0.001) g_glass_last = alpha;
-    glaspen2_save_bool_setting("glass_alpha", (int)(alpha * 1000));
+static void gl_glass_apply(void) {
+    // Combine enabled + opacity into visual effect
+    double visual = g_glass_enabled ? g_glass_opacity : 0.0;
+    if (g_glass_view) {
+        g_glass_view.alphaValue = visual * 2.0; // map to visible range
+        g_glass_view.hidden = !g_glass_enabled;
+    }
+    // Sync UI
+    NSMenuItem *gi = [g_menu itemWithTag:444];
+    [gi setState:g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff];
     double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
     for (int i = 0; i < 5; i++) {
-        g_glass_buttons[i].state = (fabs(alpha - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
+        g_glass_buttons[i].state = (fabs(g_glass_opacity - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
     }
-    NSMenuItem *gi = [g_menu itemWithTag:444];
-    [gi setState:(alpha > 0.001) ? NSControlStateValueOn : NSControlStateValueOff];
-    if (g_glass_view) {
-        g_glass_view.alphaValue = alpha * 2.0;
-        g_glass_view.hidden = (alpha < 0.001);
-    }
+}
+
+static void gl_settings_set_glass_enabled(BOOL on) {
+    g_glass_enabled = on;
+    glaspen2_save_bool_setting("glass_enabled", on ? 1 : 0);
+    gl_glass_apply();
+}
+
+static void gl_settings_set_glass_opacity(double alpha) {
+    g_glass_opacity = alpha;
+    glaspen2_save_bool_setting("glass_alpha", (int)(alpha * 1000));
+    gl_glass_apply();
 }
 
 static void gl_settings_set_enabled(BOOL on) {
@@ -767,7 +782,7 @@ static void sync_settings_panel(void) {
     g_launch_toggle.state = glaspen2_is_launch_at_login() ? NSControlStateValueOn : NSControlStateValueOff;
     double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
     for (int i = 0; i < 5; i++) {
-        g_glass_buttons[i].state = (fabs(g_glass_alpha - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
+        g_glass_buttons[i].state = (fabs(g_glass_opacity - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
     }
 }
 
@@ -893,7 +908,7 @@ static void show_settings_panel(void) {
         [gb setTag:gi];
         [gb setTarget:ctl];
         [gb setAction:@selector(glassButtonClicked:)];
-        gb.state = (fabs(g_glass_alpha - glassOpts[gi]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
+        gb.state = (fabs(g_glass_opacity - glassOpts[gi]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
         [content addSubview:gb];
         g_glass_buttons[gi] = gb;
     }
@@ -1444,7 +1459,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                     }
                     return NULL;
                 } else if (kc == kVK_ANSI_B) {
-                    gl_settings_set_glass((g_glass_alpha > 0.001) ? 0.0 : g_glass_last);
+                    gl_settings_set_glass_enabled(!g_glass_enabled);
                     return NULL;
                 } else if (kc == kVK_ANSI_Comma) {
                     show_settings_panel();
@@ -1695,7 +1710,7 @@ void glaspen2_run(void) {
         NSMenuItem *glassItem = [g_menu addItemWithTitle:L(@"磨砂玻璃", @"Frosted Glass") action:@selector(toggleGlass) keyEquivalent:@""];
         glassItem.target = g_menuHandler;
         glassItem.tag = 444;
-        glassItem.state = (g_glass_alpha > 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
+        glassItem.state = g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff;
         [g_menu addItem:[NSMenuItem separatorItem]];
         NSMenuItem *toggleItem = [g_menu addItemWithTitle:L(@"开启涂鸦", @"Enable Drawing") action:@selector(toggleDraw) keyEquivalent:@""];
         toggleItem.target = g_menuHandler;
@@ -1765,12 +1780,13 @@ void glaspen2_run(void) {
         if (g_inverse_enabled) {
             start_inverse_timer();
         }
-        // Restore glass opacity (stored as millipercent)
+        // Restore glass settings (opacity stored as millipercent, enabled as bool)
         int glass_milli = glaspen2_load_bool_setting("glass_alpha");
-        if (glass_milli > 0) g_glass_alpha = glass_milli / 1000.0;
-        [[g_menu itemWithTag:444] setState:(g_glass_alpha > 0.001) ? NSControlStateValueOn : NSControlStateValueOff];
+        if (glass_milli > 0) g_glass_opacity = glass_milli / 1000.0;
+        g_glass_enabled = glaspen2_load_bool_setting("glass_enabled") != 0;
+        gl_glass_apply();
 
-        // Apply glass on startup after surface is ready
+        // Apply glass visual on startup
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
             if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
             rebuild_surface_from_strokes();
@@ -1811,8 +1827,9 @@ void glaspen2_run(void) {
         [g_glass_view setBlendingMode:NSVisualEffectBlendingModeBehindWindow];
         [g_glass_view setMaterial:NSVisualEffectMaterialLight];
         [g_glass_view setState:NSVisualEffectStateActive];
-        g_glass_view.alphaValue = g_glass_alpha * 2.0; // map 0-0.5 to 0-1.0
-        if (g_glass_alpha < 0.001) g_glass_view.hidden = YES;
+        double vis = g_glass_enabled ? g_glass_opacity * 2.0 : 0.0;
+        g_glass_view.alphaValue = vis;
+        g_glass_view.hidden = !g_glass_enabled;
         [contentView addSubview:g_glass_view];
 
         // Drawing view on top

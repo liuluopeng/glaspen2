@@ -279,6 +279,7 @@ fn apply_defaults() {
             ("outline_enabled", "0"),
             ("inverse_enabled", "0"),
             ("glass_alpha", "0"),
+            ("glass_enabled", "0"),
         ];
         for &(key, val) in &defaults {
             conn.execute(
