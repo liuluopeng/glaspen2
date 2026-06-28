@@ -649,6 +649,7 @@ static NSButton *g_outline_toggle = nil;
 static NSButton *g_inverse_toggle = nil;
 static NSButton *g_rainbow_toggle = nil;
 static NSButton *g_launch_toggle = nil;
+static NSButton *g_glass_toggle = nil;
 static NSButton *g_glass_buttons[5];
 
 static void show_settings_panel(void);
@@ -664,6 +665,7 @@ static void sync_settings_panel(void);
 - (void)toggleInverse:(NSButton *)sender { gl_settings_set_inverse(!g_inverse_enabled); }
 - (void)toggleRainbow:(NSButton *)sender { gl_settings_set_rainbow(!g_show_rainbow); }
 - (void)toggleLaunch:(NSButton *)sender { gl_settings_set_launch(!glaspen2_is_launch_at_login()); }
+- (void)toggleFrostedGlass:(NSButton *)sender { gl_settings_set_glass_enabled(!g_glass_enabled); }
 - (void)glassButtonClicked:(NSButton *)sender {
     double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
     int gi = (int)[sender tag];
@@ -735,9 +737,9 @@ static void gl_glass_apply(void) {
         g_glass_view.alphaValue = visual * 2.0; // map to visible range
         g_glass_view.hidden = !g_glass_enabled;
     }
-    // Sync UI
     NSMenuItem *gi = [g_menu itemWithTag:444];
     [gi setState:g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+    if (g_glass_toggle) g_glass_toggle.state = g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff;
     double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
     for (int i = 0; i < 5; i++) {
         g_glass_buttons[i].state = (fabs(g_glass_opacity - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
@@ -807,7 +809,7 @@ static void show_settings_panel(void) {
 
     SettingsPanelController *ctl = [[SettingsPanelController alloc] init];
     g_settings_controller = ctl; // keep alive
-    NSRect panelFrame = NSMakeRect(0, 0, 340, 330);
+    NSRect panelFrame = NSMakeRect(0, 0, 340, 360);
     NSPanel *panel = [[NSPanel alloc] initWithContentRect:panelFrame
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskUtilityWindow
         backing:NSBackingStoreBuffered defer:NO];
@@ -893,14 +895,23 @@ static void show_settings_panel(void) {
     [content addSubview:cb4]; g_launch_toggle = cb4;
     ty -= 30;
 
-    // Glass opacity slider
-    make_label(L(@"玻璃不透明度", @"Glass opacity"), content).frame = NSMakeRect(pad, ty+14, 200, 16);
+    // Frosted glass toggle
+    NSButton *cb5 = [[NSButton alloc] initWithFrame:NSMakeRect(pad, ty, 300, 22)];
+    [cb5 setButtonType:NSButtonTypeSwitch];
+    [cb5 setTitle:L(@"磨砂玻璃", @"Frosted Glass")];
+    [cb5 setState:g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+    [cb5 setTarget:ctl]; [cb5 setAction:@selector(toggleFrostedGlass:)];
+    [content addSubview:cb5]; g_glass_toggle = cb5;
+    ty -= 30;
+
+    // Opacity level buttons (independent of frosted glass toggle)
+    make_label(L(@"不透明度", @"Opacity"), content).frame = NSMakeRect(pad, ty+14, 200, 16);
     ty -= 18;
     double glassOpts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
     for (int gi = 0; gi < 5; gi++) {
         NSButton *gb = [[NSButton alloc] initWithFrame:NSMakeRect(pad + gi * 64, ty, 58, 24)];
         if (gi == 0) {
-            [gb setTitle:L(@"关", @"Off")];
+            [gb setTitle:L(@"0%", @"0%")];
         } else {
             [gb setTitle:[NSString stringWithFormat:@"%d%%", (int)(glassOpts[gi] * 100)]];
         }
