@@ -27,6 +27,7 @@ static void update_inverse_colors(void);
 static void sample_bg_inverse(double px, double py, double *out_r, double *out_g, double *out_b);
 static void perf_log_summary(void);
 static void show_settings_panel(void);
+static void sync_settings_panel(void);
 
 // Per-stroke inverse colors (ObjC side, continuously updated by timer)
 #define MAX_INVERSE_STROKES 1024
@@ -574,6 +575,7 @@ static void toggle_enabled(void) {
     g_show_rainbow = !g_show_rainbow;
     NSMenuItem *item = [g_menu itemWithTag:999];
     [item setState:g_show_rainbow ? NSControlStateValueOn : NSControlStateValueOff];
+    sync_settings_panel();
     if (g_show_rainbow) {
         draw_rainbow_indicator();
     } else {
@@ -587,6 +589,7 @@ static void toggle_enabled(void) {
     if (ok) {
         NSMenuItem *item = [g_menu itemWithTag:777];
         [item setState:(!cur) ? NSControlStateValueOn : NSControlStateValueOff];
+        sync_settings_panel();
     }
 }
 
@@ -595,6 +598,7 @@ static void toggle_enabled(void) {
     NSMenuItem *item = [g_menu itemWithTag:666];
     [item setState:g_outline_enabled ? NSControlStateValueOn : NSControlStateValueOff];
     glaspen2_save_bool_setting("outline_enabled", g_outline_enabled ? 1 : 0);
+    sync_settings_panel();
     rebuild_surface_from_strokes();
 }
 
@@ -603,6 +607,7 @@ static void toggle_enabled(void) {
     NSMenuItem *item = [g_menu itemWithTag:555];
     [item setState:g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff];
     glaspen2_save_bool_setting("inverse_enabled", g_inverse_enabled ? 1 : 0);
+    sync_settings_panel();
     if (g_inverse_enabled) {
         start_inverse_timer();
     } else {
@@ -619,6 +624,7 @@ static void toggle_enabled(void) {
         g_selectedColorIndex = idx;
         glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
         update_menu_checkmarks();
+        sync_settings_panel();
     }
 }
 
@@ -629,6 +635,8 @@ static void toggle_enabled(void) {
         g_selected_width_index = idx;
         glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
         update_menu_checkmarks();
+        sync_settings_panel();
+        sync_settings_panel();
     }
 }
 
@@ -684,6 +692,7 @@ static void sync_settings_panel(void);
         g_selectedColorIndex = idx;
         glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
         update_menu_checkmarks();
+        sync_settings_panel();
         update_status_icon_color();
         sync_settings_panel();
     }
@@ -695,6 +704,8 @@ static void sync_settings_panel(void);
         g_selected_width_index = idx;
         glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
         update_menu_checkmarks();
+        sync_settings_panel();
+        sync_settings_panel();
         sync_settings_panel();
     }
 }
@@ -710,6 +721,7 @@ static void sync_settings_panel(void);
 - (void)toggleInverse:(NSButton *)sender {
     g_inverse_enabled = !g_inverse_enabled;
     glaspen2_save_bool_setting("inverse_enabled", g_inverse_enabled ? 1 : 0);
+    sync_settings_panel();
     sync_settings_panel();
     if (g_inverse_enabled) {
         start_inverse_timer();
