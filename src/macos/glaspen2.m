@@ -131,7 +131,8 @@ static BOOL g_outline_enabled = NO;
 static BOOL g_inverse_enabled = NO;
 
 // Glass overlay opacity (0.0 = off, 0.0-0.3 range)
-static double g_glass_alpha = 0.0; // default off
+static double g_glass_alpha = 0.0; // current opacity
+static double g_glass_last = 0.20; // last non-zero opacity for toggle
 
 // Current stroke color (may differ from pen color in inverse mode)
 static double g_stroke_r = 1.0, g_stroke_g = 0.0, g_stroke_b = 0.0;
@@ -599,9 +600,7 @@ static void toggle_enabled(void) {
     gl_settings_set_inverse(!g_inverse_enabled);
 }
 - (void)toggleGlass {
-    gl_settings_set_glass((g_glass_alpha > 0.001) ? 0.0 : 0.20);
-    NSMenuItem *item = [g_menu itemWithTag:444];
-    [item setState:(g_glass_alpha > 0.001) ? NSControlStateValueOn : NSControlStateValueOff];
+    gl_settings_set_glass((g_glass_alpha > 0.001) ? 0.0 : g_glass_last);
 }
 
 - (void)selectColor:(NSMenuItem *)sender {
@@ -728,12 +727,14 @@ static void gl_settings_set_launch(BOOL on) {
 
 static void gl_settings_set_glass(double alpha) {
     g_glass_alpha = alpha;
+    if (alpha > 0.001) g_glass_last = alpha;
     glaspen2_save_bool_setting("glass_alpha", (int)(alpha * 1000));
     double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
     for (int i = 0; i < 5; i++) {
         g_glass_buttons[i].state = (fabs(alpha - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
     }
-    // NSVisualEffectView: blend amount controlled by alphaValue (0=transparent, 1=full frosted)
+    NSMenuItem *gi = [g_menu itemWithTag:444];
+    [gi setState:(alpha > 0.001) ? NSControlStateValueOn : NSControlStateValueOff];
     if (g_glass_view) {
         g_glass_view.alphaValue = alpha * 2.0;
         g_glass_view.hidden = (alpha < 0.001);
@@ -1443,9 +1444,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                     }
                     return NULL;
                 } else if (kc == kVK_ANSI_B) {
-                    gl_settings_set_glass((g_glass_alpha > 0.001) ? 0.0 : 0.20);
-                    NSMenuItem *gi = [g_menu itemWithTag:444];
-                    [gi setState:(g_glass_alpha > 0.001) ? NSControlStateValueOn : NSControlStateValueOff];
+                    gl_settings_set_glass((g_glass_alpha > 0.001) ? 0.0 : g_glass_last);
                     return NULL;
                 } else if (kc == kVK_ANSI_Comma) {
                     show_settings_panel();
