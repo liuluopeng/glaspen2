@@ -658,7 +658,7 @@ static void sync_settings_panel(void);
 - (void)toggleRainbow:(NSButton *)sender { gl_settings_set_rainbow(!g_show_rainbow); }
 - (void)toggleLaunch:(NSButton *)sender { gl_settings_set_launch(!glaspen2_is_launch_at_login()); }
 - (void)glassButtonClicked:(NSButton *)sender {
-    double opts[] = {0.0, 0.30, 0.50, 0.80, 1.0};
+    double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
     int gi = (int)[sender tag];
     if (gi >= 0 && gi < 5) gl_settings_set_glass(opts[gi]);
 }
@@ -724,7 +724,7 @@ static void gl_settings_set_glass(double alpha) {
     g_glass_alpha = alpha;
     glaspen2_save_bool_setting("glass_alpha", (int)(alpha * 1000));
     // Update button highlights
-    double opts[] = {0.0, 0.30, 0.50, 0.80, 1.0};
+    double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
     for (int i = 0; i < 5; i++) {
         g_glass_buttons[i].state = (fabs(alpha - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
     }
@@ -755,7 +755,7 @@ static void sync_settings_panel(void) {
     g_inverse_toggle.state = g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff;
     g_rainbow_toggle.state = g_show_rainbow ? NSControlStateValueOn : NSControlStateValueOff;
     g_launch_toggle.state = glaspen2_is_launch_at_login() ? NSControlStateValueOn : NSControlStateValueOff;
-    double opts[] = {0.0, 0.30, 0.50, 0.80, 1.0};
+    double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
     for (int i = 0; i < 5; i++) {
         g_glass_buttons[i].state = (fabs(g_glass_alpha - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
     }
@@ -871,7 +871,7 @@ static void show_settings_panel(void) {
     // Glass opacity slider
     make_label(L(@"玻璃不透明度", @"Glass opacity"), content).frame = NSMakeRect(pad, ty+14, 200, 16);
     ty -= 18;
-    double glassOpts[] = {0.0, 0.30, 0.50, 0.80, 1.0};
+    double glassOpts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
     for (int gi = 0; gi < 5; gi++) {
         NSButton *gb = [[NSButton alloc] initWithFrame:NSMakeRect(pad + gi * 64, ty, 58, 24)];
         if (gi == 0) {
