@@ -130,7 +130,7 @@ static BOOL g_outline_enabled = NO;
 static BOOL g_inverse_enabled = NO;
 
 // Glass overlay opacity (0.0 = off, 0.0-0.3 range)
-static double g_glass_alpha = 0.0;
+static double g_glass_alpha = 0.15; // default 15%, test visibility
 
 // Current stroke color (may differ from pen color in inverse mode)
 static double g_stroke_r = 1.0, g_stroke_g = 0.0, g_stroke_b = 0.0;
@@ -718,8 +718,8 @@ static void gl_settings_set_launch(BOOL on) {
 }
 
 static void gl_settings_set_glass(double alpha) {
-    NSLog(@"[glaspen2] gl_settings_set_glass: %.4f", alpha);
     g_glass_alpha = alpha;
+    // Save as millipercent integer string via generic bool_setting
     glaspen2_save_bool_setting("glass_alpha", (int)(alpha * 1000));
     if (g_glass_slider) g_glass_slider.floatValue = alpha;
     rebuild_surface_from_strokes();
@@ -867,8 +867,9 @@ static void show_settings_panel(void) {
     ty -= 18;
 
     NSSlider *glassSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(pad, ty, 310, 20)];
-    [glassSlider setMinValue:0.0]; [glassSlider setMaxValue:0.3];
+    [glassSlider setMinValue:0.0]; [glassSlider setMaxValue:0.5];
     [glassSlider setFloatValue:g_glass_alpha];
+    [glassSlider setContinuous:YES];
     [glassSlider setTarget:ctl];
     [glassSlider setAction:@selector(glassSliderChanged:)];
     [content addSubview:glassSlider];
@@ -898,6 +899,7 @@ static void ensure_surface(NSView *view) {
 static void flush_to_layer(void) {
     if (!g_surface || !g_draw_view) return;
     [g_draw_view setNeedsDisplay:YES];
+    [g_draw_view displayIfNeeded];
 }
 
 static void pen_draw(double x, double y, double width) {
@@ -1131,8 +1133,6 @@ static void rebuild_surface_from_strokes(void) {
 
     // Glass overlay: semi-transparent white fill
     if (g_glass_alpha > 0.001) {
-        static BOOL glass_logged = NO;
-        if (!glass_logged) { NSLog(@"[glaspen2] glass fill: alpha=%.3f screen=%dx%d", g_glass_alpha, g_screen_w, g_screen_h); glass_logged = YES; }
         cr = cairo_create(g_surface);
         cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
         cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, g_glass_alpha);
@@ -1341,7 +1341,7 @@ static uint64_t elapsed_us(uint64_t start) {
 }
 
 static void perf_log_event(const char *evtype, uint64_t dur_us) {
-    if (!g_perf_file) return;
+    if (!g_perf_log || !g_perf_file) return;
     g_perf_total_calls++;
     if (dur_us > 16000) g_perf_slow_calls++; // >16ms = frame drop
     if (!g_tb_inited) { mach_timebase_info(&g_tb); g_tb_inited = YES; }
@@ -1752,6 +1752,12 @@ void glaspen2_run(void) {
         // Restore glass opacity (stored as millipercent)
         int glass_milli = glaspen2_load_bool_setting("glass_alpha");
         if (glass_milli > 0) g_glass_alpha = glass_milli / 1000.0;
+
+        // Apply glass on startup after surface is ready
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
+            rebuild_surface_from_strokes();
+        });
 
         g_window = [[NSWindow alloc]
             initWithContentRect:screenFrame
