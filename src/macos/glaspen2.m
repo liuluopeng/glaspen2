@@ -130,7 +130,7 @@ static BOOL g_outline_enabled = NO;
 static BOOL g_inverse_enabled = NO;
 
 // Glass overlay opacity (0.0 = off, 0.0-0.3 range)
-static double g_glass_alpha = 0.15; // default 15%, test visibility
+static double g_glass_alpha = 0.0; // default off
 
 // Current stroke color (may differ from pen color in inverse mode)
 static double g_stroke_r = 1.0, g_stroke_g = 0.0, g_stroke_b = 0.0;
@@ -657,7 +657,7 @@ static void sync_settings_panel(void);
 - (void)toggleRainbow:(NSButton *)sender { gl_settings_set_rainbow(!g_show_rainbow); }
 - (void)toggleLaunch:(NSButton *)sender { gl_settings_set_launch(!glaspen2_is_launch_at_login()); }
 - (void)glassButtonClicked:(NSButton *)sender {
-    double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
+    double opts[] = {0.0, 0.30, 0.50, 0.80, 1.0};
     int gi = (int)[sender tag];
     if (gi >= 0 && gi < 5) gl_settings_set_glass(opts[gi]);
 }
@@ -723,7 +723,7 @@ static void gl_settings_set_glass(double alpha) {
     g_glass_alpha = alpha;
     glaspen2_save_bool_setting("glass_alpha", (int)(alpha * 1000));
     // Update button highlights
-    double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
+    double opts[] = {0.0, 0.30, 0.50, 0.80, 1.0};
     for (int i = 0; i < 5; i++) {
         g_glass_buttons[i].state = (fabs(alpha - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
     }
@@ -754,7 +754,7 @@ static void sync_settings_panel(void) {
     g_inverse_toggle.state = g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff;
     g_rainbow_toggle.state = g_show_rainbow ? NSControlStateValueOn : NSControlStateValueOff;
     g_launch_toggle.state = glaspen2_is_launch_at_login() ? NSControlStateValueOn : NSControlStateValueOff;
-    double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
+    double opts[] = {0.0, 0.30, 0.50, 0.80, 1.0};
     for (int i = 0; i < 5; i++) {
         g_glass_buttons[i].state = (fabs(g_glass_alpha - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
     }
@@ -869,7 +869,7 @@ static void show_settings_panel(void) {
     // Glass opacity slider
     make_label(L(@"玻璃不透明度", @"Glass opacity"), content).frame = NSMakeRect(pad, ty+14, 200, 16);
     ty -= 18;
-    double glassOpts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
+    double glassOpts[] = {0.0, 0.30, 0.50, 0.80, 1.0};
     for (int gi = 0; gi < 5; gi++) {
         NSButton *gb = [[NSButton alloc] initWithFrame:NSMakeRect(pad + gi * 64, ty, 58, 24)];
         if (gi == 0) {
