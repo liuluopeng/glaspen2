@@ -121,6 +121,9 @@ static BOOL g_outline_enabled = NO;
 // Inverse color mode toggle (experimental, default off)
 static BOOL g_inverse_enabled = NO;
 
+// Glass overlay opacity (0.0 = off, 0.0-0.3 range)
+static double g_glass_alpha = 0.0;
+
 // Current stroke color (may differ from pen color in inverse mode)
 static double g_stroke_r = 1.0, g_stroke_g = 0.0, g_stroke_b = 0.0;
 
@@ -675,6 +678,7 @@ static NSButton *g_outline_toggle = nil;
 static NSButton *g_inverse_toggle = nil;
 static NSButton *g_rainbow_toggle = nil;
 static NSButton *g_launch_toggle = nil;
+static NSSlider *g_glass_slider = nil;
 
 static void show_settings_panel(void);
 static void sync_settings_panel(void);
@@ -746,6 +750,11 @@ static void sync_settings_panel(void);
     NSMenuItem *item = [g_menu itemWithTag:777];
     [item setState:(!cur) ? NSControlStateValueOn : NSControlStateValueOff];
 }
+- (void)glassSliderChanged:(NSSlider *)sender {
+    g_glass_alpha = [sender floatValue];
+    glaspen2_save_bool_setting("glass_alpha", (int)(g_glass_alpha * 1000)); // store as millipercent
+    rebuild_surface_from_strokes();
+}
 @end
 
 static void sync_settings_panel(void) {
@@ -764,6 +773,7 @@ static void sync_settings_panel(void) {
     g_inverse_toggle.state = g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff;
     g_rainbow_toggle.state = g_show_rainbow ? NSControlStateValueOn : NSControlStateValueOff;
     g_launch_toggle.state = glaspen2_is_launch_at_login() ? NSControlStateValueOn : NSControlStateValueOff;
+    if (g_glass_slider) g_glass_slider.floatValue = g_glass_alpha;
 }
 
 static NSTextField *make_label(NSString *text, NSView *parent) {
@@ -786,7 +796,7 @@ static void show_settings_panel(void) {
     }
 
     SettingsPanelController *ctl = [[SettingsPanelController alloc] init];
-    NSRect panelFrame = NSMakeRect(0, 0, 340, 280);
+    NSRect panelFrame = NSMakeRect(0, 0, 340, 330);
     NSPanel *panel = [[NSPanel alloc] initWithContentRect:panelFrame
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskUtilityWindow
         backing:NSBackingStoreBuffered defer:NO];
@@ -870,6 +880,23 @@ static void show_settings_panel(void) {
     [cb4 setState:glaspen2_is_launch_at_login() ? NSControlStateValueOn : NSControlStateValueOff];
     [cb4 setTarget:ctl]; [cb4 setAction:@selector(toggleLaunch:)];
     [content addSubview:cb4]; g_launch_toggle = cb4;
+    ty -= 30;
+
+    // Glass opacity slider
+    NSTextField *glassLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(pad, ty+14, 200, 16)];
+    [glassLabel setStringValue:L(@"玻璃不透明度", @"Glass opacity")];
+    [glassLabel setEditable:NO]; [glassLabel setBordered:NO]; [glassLabel setDrawsBackground:NO];
+    [glassLabel setFont:[NSFont systemFontOfSize:11]];
+    [content addSubview:glassLabel];
+    ty -= 18;
+
+    NSSlider *glassSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(pad, ty, 310, 20)];
+    [glassSlider setMinValue:0.0]; [glassSlider setMaxValue:0.3];
+    [glassSlider setFloatValue:g_glass_alpha];
+    [glassSlider setTarget:ctl];
+    [glassSlider setAction:@selector(glassSliderChanged:)];
+    [content addSubview:glassSlider];
+    g_glass_slider = glassSlider;
 
     g_settings_panel = panel;
     [panel center];
@@ -1125,6 +1152,16 @@ static void rebuild_surface_from_strokes(void) {
     cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     cairo_paint(cr);
     cairo_destroy(cr);
+
+    // Glass overlay: semi-transparent white fill
+    if (g_glass_alpha > 0.001) {
+        cr = cairo_create(g_surface);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, g_glass_alpha);
+        cairo_rectangle(cr, 0, 0, g_screen_w, g_screen_h);
+        cairo_fill(cr);
+        cairo_destroy(cr);
+    }
 
     // Redraw rainbow if enabled
     if (g_show_rainbow) draw_rainbow_indicator();
@@ -1414,6 +1451,13 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                             show_notification(L(@"导出失败", @"Export failed"));
                         }
                     }
+                    return NULL;
+                } else if (kc == kVK_ANSI_B) {
+                    g_glass_alpha = (g_glass_alpha > 0.001) ? 0.0 : 0.08;
+                    glaspen2_save_bool_setting("glass_alpha", (int)(g_glass_alpha * 1000));
+                    if (g_glass_slider) g_glass_slider.floatValue = g_glass_alpha;
+                    rebuild_surface_from_strokes();
+                    show_notification(g_glass_alpha > 0.001 ? L(@"玻璃: 开", @"Glass: ON") : L(@"玻璃: 关", @"Glass: OFF"));
                     return NULL;
                 } else if (kc == kVK_ANSI_Comma) {
                     show_settings_panel();
@@ -1730,6 +1774,9 @@ void glaspen2_run(void) {
         if (g_inverse_enabled) {
             start_inverse_timer();
         }
+        // Restore glass opacity (stored as millipercent)
+        int glass_milli = glaspen2_load_bool_setting("glass_alpha");
+        if (glass_milli > 0) g_glass_alpha = glass_milli / 1000.0;
 
         g_window = [[NSWindow alloc]
             initWithContentRect:screenFrame
