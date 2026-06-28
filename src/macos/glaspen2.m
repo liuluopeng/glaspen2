@@ -598,6 +598,11 @@ static void toggle_enabled(void) {
 - (void)toggleInverse {
     gl_settings_set_inverse(!g_inverse_enabled);
 }
+- (void)toggleGlass {
+    gl_settings_set_glass((g_glass_alpha > 0.001) ? 0.0 : 0.20);
+    NSMenuItem *item = [g_menu itemWithTag:444];
+    [item setState:(g_glass_alpha > 0.001) ? NSControlStateValueOn : NSControlStateValueOff];
+}
 
 - (void)selectColor:(NSMenuItem *)sender {
     gl_settings_set_color((int)[sender tag]);
@@ -1438,8 +1443,9 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                     }
                     return NULL;
                 } else if (kc == kVK_ANSI_B) {
-                    gl_settings_set_glass((g_glass_alpha > 0.001) ? 0.0 : 0.08);
-                    show_notification(g_glass_alpha > 0.001 ? L(@"玻璃: 开", @"Glass: ON") : L(@"玻璃: 关", @"Glass: OFF"));
+                    gl_settings_set_glass((g_glass_alpha > 0.001) ? 0.0 : 0.20);
+                    NSMenuItem *gi = [g_menu itemWithTag:444];
+                    [gi setState:(g_glass_alpha > 0.001) ? NSControlStateValueOn : NSControlStateValueOff];
                     return NULL;
                 } else if (kc == kVK_ANSI_Comma) {
                     show_settings_panel();
@@ -1687,6 +1693,10 @@ void glaspen2_run(void) {
         inverseItem.target = g_menuHandler;
         inverseItem.tag = 555;
         inverseItem.state = NSControlStateValueOff;
+        NSMenuItem *glassItem = [g_menu addItemWithTitle:L(@"磨砂玻璃", @"Frosted Glass") action:@selector(toggleGlass) keyEquivalent:@""];
+        glassItem.target = g_menuHandler;
+        glassItem.tag = 444;
+        glassItem.state = (g_glass_alpha > 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
         [g_menu addItem:[NSMenuItem separatorItem]];
         NSMenuItem *toggleItem = [g_menu addItemWithTitle:L(@"开启涂鸦", @"Enable Drawing") action:@selector(toggleDraw) keyEquivalent:@""];
         toggleItem.target = g_menuHandler;
@@ -1759,6 +1769,7 @@ void glaspen2_run(void) {
         // Restore glass opacity (stored as millipercent)
         int glass_milli = glaspen2_load_bool_setting("glass_alpha");
         if (glass_milli > 0) g_glass_alpha = glass_milli / 1000.0;
+        [[g_menu itemWithTag:444] setState:(g_glass_alpha > 0.001) ? NSControlStateValueOn : NSControlStateValueOff];
 
         // Apply glass on startup after surface is ready
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
