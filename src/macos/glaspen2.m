@@ -641,7 +641,7 @@ static NSButton *g_outline_toggle = nil;
 static NSButton *g_inverse_toggle = nil;
 static NSButton *g_rainbow_toggle = nil;
 static NSButton *g_launch_toggle = nil;
-static NSSlider *g_glass_slider = nil;
+static NSButton *g_glass_buttons[5];
 
 static void show_settings_panel(void);
 static void sync_settings_panel(void);
@@ -656,8 +656,10 @@ static void sync_settings_panel(void);
 - (void)toggleInverse:(NSButton *)sender { gl_settings_set_inverse(!g_inverse_enabled); }
 - (void)toggleRainbow:(NSButton *)sender { gl_settings_set_rainbow(!g_show_rainbow); }
 - (void)toggleLaunch:(NSButton *)sender { gl_settings_set_launch(!glaspen2_is_launch_at_login()); }
-- (void)glassSliderChanged:(NSSlider *)sender {
-    gl_settings_set_glass([sender floatValue]);
+- (void)glassButtonClicked:(NSButton *)sender {
+    double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
+    int gi = (int)[sender tag];
+    if (gi >= 0 && gi < 5) gl_settings_set_glass(opts[gi]);
 }
 @end
 
@@ -719,9 +721,12 @@ static void gl_settings_set_launch(BOOL on) {
 
 static void gl_settings_set_glass(double alpha) {
     g_glass_alpha = alpha;
-    // Save as millipercent integer string via generic bool_setting
     glaspen2_save_bool_setting("glass_alpha", (int)(alpha * 1000));
-    if (g_glass_slider) g_glass_slider.floatValue = alpha;
+    // Update button highlights
+    double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
+    for (int i = 0; i < 5; i++) {
+        g_glass_buttons[i].state = (fabs(alpha - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
+    }
     rebuild_surface_from_strokes();
 }
 
@@ -749,7 +754,10 @@ static void sync_settings_panel(void) {
     g_inverse_toggle.state = g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff;
     g_rainbow_toggle.state = g_show_rainbow ? NSControlStateValueOn : NSControlStateValueOff;
     g_launch_toggle.state = glaspen2_is_launch_at_login() ? NSControlStateValueOn : NSControlStateValueOff;
-    if (g_glass_slider) g_glass_slider.floatValue = g_glass_alpha;
+    double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
+    for (int i = 0; i < 5; i++) {
+        g_glass_buttons[i].state = (fabs(g_glass_alpha - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
+    }
 }
 
 static NSTextField *make_label(NSString *text, NSView *parent) {
@@ -859,21 +867,24 @@ static void show_settings_panel(void) {
     ty -= 30;
 
     // Glass opacity slider
-    NSTextField *glassLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(pad, ty+14, 200, 16)];
-    [glassLabel setStringValue:L(@"玻璃不透明度", @"Glass opacity")];
-    [glassLabel setEditable:NO]; [glassLabel setBordered:NO]; [glassLabel setDrawsBackground:NO];
-    [glassLabel setFont:[NSFont systemFontOfSize:11]];
-    [content addSubview:glassLabel];
+    make_label(L(@"玻璃不透明度", @"Glass opacity"), content).frame = NSMakeRect(pad, ty+14, 200, 16);
     ty -= 18;
-
-    NSSlider *glassSlider = [[NSSlider alloc] initWithFrame:NSMakeRect(pad, ty, 310, 20)];
-    [glassSlider setMinValue:0.0]; [glassSlider setMaxValue:0.5];
-    [glassSlider setFloatValue:g_glass_alpha];
-    [glassSlider setContinuous:YES];
-    [glassSlider setTarget:ctl];
-    [glassSlider setAction:@selector(glassSliderChanged:)];
-    [content addSubview:glassSlider];
-    g_glass_slider = glassSlider;
+    double glassOpts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
+    for (int gi = 0; gi < 5; gi++) {
+        NSButton *gb = [[NSButton alloc] initWithFrame:NSMakeRect(pad + gi * 64, ty, 58, 24)];
+        if (gi == 0) {
+            [gb setTitle:L(@"关", @"Off")];
+        } else {
+            [gb setTitle:[NSString stringWithFormat:@"%d%%", (int)(glassOpts[gi] * 100)]];
+        }
+        [gb setBezelStyle:NSBezelStyleSmallSquare];
+        [gb setTag:gi];
+        [gb setTarget:ctl];
+        [gb setAction:@selector(glassButtonClicked:)];
+        gb.state = (fabs(g_glass_alpha - glassOpts[gi]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
+        [content addSubview:gb];
+        g_glass_buttons[gi] = gb;
+    }
 
     g_settings_panel = panel;
     [panel center];
