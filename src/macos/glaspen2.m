@@ -718,6 +718,7 @@ static void gl_settings_set_launch(BOOL on) {
 }
 
 static void gl_settings_set_glass(double alpha) {
+    NSLog(@"[glaspen2] gl_settings_set_glass: %.4f", alpha);
     g_glass_alpha = alpha;
     glaspen2_save_bool_setting("glass_alpha", (int)(alpha * 1000));
     if (g_glass_slider) g_glass_slider.floatValue = alpha;
@@ -1130,6 +1131,8 @@ static void rebuild_surface_from_strokes(void) {
 
     // Glass overlay: semi-transparent white fill
     if (g_glass_alpha > 0.001) {
+        static BOOL glass_logged = NO;
+        if (!glass_logged) { NSLog(@"[glaspen2] glass fill: alpha=%.3f screen=%dx%d", g_glass_alpha, g_screen_w, g_screen_h); glass_logged = YES; }
         cr = cairo_create(g_surface);
         cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
         cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, g_glass_alpha);
