@@ -94,6 +94,7 @@ extern double glaspen2_get_stroke_point_width(int idx, int pidx);
 // Forward declarations
 static void rebuild_surface_from_strokes(void);
 static NSWindow *g_window = nil;
+static NSVisualEffectView *g_glass_view = nil;
 
 // --- Drawing state ---
 static cairo_surface_t *g_surface = NULL;
@@ -723,12 +724,15 @@ static void gl_settings_set_launch(BOOL on) {
 static void gl_settings_set_glass(double alpha) {
     g_glass_alpha = alpha;
     glaspen2_save_bool_setting("glass_alpha", (int)(alpha * 1000));
-    // Update button highlights
     double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
     for (int i = 0; i < 5; i++) {
         g_glass_buttons[i].state = (fabs(alpha - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
     }
-    rebuild_surface_from_strokes();
+    // NSVisualEffectView: blend amount controlled by alphaValue (0=transparent, 1=full frosted)
+    if (g_glass_view) {
+        g_glass_view.alphaValue = alpha * 2.0;
+        g_glass_view.hidden = (alpha < 0.001);
+    }
 }
 
 static void gl_settings_set_enabled(BOOL on) {
@@ -1143,16 +1147,6 @@ static void rebuild_surface_from_strokes(void) {
     cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     cairo_paint(cr);
     cairo_destroy(cr);
-
-    // Glass overlay: semi-transparent white fill
-    if (g_glass_alpha > 0.001) {
-        cr = cairo_create(g_surface);
-        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
-        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, g_glass_alpha);
-        cairo_rectangle(cr, 0, 0, g_screen_w, g_screen_h);
-        cairo_fill(cr);
-        cairo_destroy(cr);
-    }
 
     // Redraw rainbow if enabled
     if (g_show_rainbow) draw_rainbow_indicator();
@@ -1798,6 +1792,20 @@ void glaspen2_run(void) {
         g_arrow_cursor = [NSCursor arrowCursor];
         [g_window setIgnoresMouseEvents:YES];
 
+        // Container view
+        NSView *contentView = [[NSView alloc] initWithFrame:screenFrame];
+        [contentView setWantsLayer:YES];
+
+        // Frosted glass layer (behind drawing)
+        g_glass_view = [[NSVisualEffectView alloc] initWithFrame:screenFrame];
+        [g_glass_view setBlendingMode:NSVisualEffectBlendingModeBehindWindow];
+        [g_glass_view setMaterial:NSVisualEffectMaterialLight];
+        [g_glass_view setState:NSVisualEffectStateActive];
+        g_glass_view.alphaValue = g_glass_alpha * 2.0; // map 0-0.5 to 0-1.0
+        if (g_glass_alpha < 0.001) g_glass_view.hidden = YES;
+        [contentView addSubview:g_glass_view];
+
+        // Drawing view on top
         GlaspenDrawView *drawView = [[GlaspenDrawView alloc] initWithFrame:screenFrame];
         [drawView setWantsLayer:YES];
         CALayer *layer = [drawView layer];
@@ -1805,7 +1813,9 @@ void glaspen2_run(void) {
             [layer setOpaque:NO];
             [layer setBackgroundColor:[[NSColor clearColor] CGColor]];
         }
-        [g_window setContentView:drawView];
+        [contentView addSubview:drawView];
+
+        [g_window setContentView:contentView];
         [g_window orderFront:nil];
 
         g_draw_view = drawView;
