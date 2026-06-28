@@ -28,6 +28,14 @@ static void sample_bg_inverse(double px, double py, double *out_r, double *out_g
 static void perf_log_summary(void);
 static void show_settings_panel(void);
 static void sync_settings_panel(void);
+static void gl_settings_set_color(int idx);
+static void gl_settings_set_width(int idx);
+static void gl_settings_set_outline(BOOL on);
+static void gl_settings_set_inverse(BOOL on);
+static void gl_settings_set_rainbow(BOOL on);
+static void gl_settings_set_launch(BOOL on);
+static void gl_settings_set_glass(double alpha);
+static void gl_settings_set_enabled(BOOL on);
 
 // Per-stroke inverse colors (ObjC side, continuously updated by timer)
 #define MAX_INVERSE_STROKES 1024
@@ -575,72 +583,27 @@ static void toggle_enabled(void) {
 }
 
 - (void)toggleRainbow {
-    g_show_rainbow = !g_show_rainbow;
-    NSMenuItem *item = [g_menu itemWithTag:999];
-    [item setState:g_show_rainbow ? NSControlStateValueOn : NSControlStateValueOff];
-    sync_settings_panel();
-    if (g_show_rainbow) {
-        draw_rainbow_indicator();
-    } else {
-        clear_screen();
-    }
+    gl_settings_set_rainbow(!g_show_rainbow);
 }
 
 - (void)toggleLaunch {
-    int cur = glaspen2_is_launch_at_login();
-    int ok = glaspen2_set_launch_at_login(!cur);
-    if (ok) {
-        NSMenuItem *item = [g_menu itemWithTag:777];
-        [item setState:(!cur) ? NSControlStateValueOn : NSControlStateValueOff];
-        sync_settings_panel();
-    }
+    gl_settings_set_launch(!glaspen2_is_launch_at_login());
 }
 
 - (void)toggleOutline {
-    g_outline_enabled = !g_outline_enabled;
-    NSMenuItem *item = [g_menu itemWithTag:666];
-    [item setState:g_outline_enabled ? NSControlStateValueOn : NSControlStateValueOff];
-    glaspen2_save_bool_setting("outline_enabled", g_outline_enabled ? 1 : 0);
-    sync_settings_panel();
-    rebuild_surface_from_strokes();
+    gl_settings_set_outline(!g_outline_enabled);
 }
 
 - (void)toggleInverse {
-    g_inverse_enabled = !g_inverse_enabled;
-    NSMenuItem *item = [g_menu itemWithTag:555];
-    [item setState:g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff];
-    glaspen2_save_bool_setting("inverse_enabled", g_inverse_enabled ? 1 : 0);
-    sync_settings_panel();
-    if (g_inverse_enabled) {
-        start_inverse_timer();
-    } else {
-        stop_inverse_timer();
-    }
+    gl_settings_set_inverse(!g_inverse_enabled);
 }
 
 - (void)selectColor:(NSMenuItem *)sender {
-    int idx = (int)[sender tag];
-    if (idx >= 0 && idx < g_color_preset_count) {
-        g_pen_r = g_color_presets[idx].r;
-        g_pen_g = g_color_presets[idx].g;
-        g_pen_b = g_color_presets[idx].b;
-        g_selectedColorIndex = idx;
-        glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
-        update_menu_checkmarks();
-        sync_settings_panel();
-    }
+    gl_settings_set_color((int)[sender tag]);
 }
 
 - (void)selectWidth:(NSMenuItem *)sender {
-    int idx = (int)[sender tag];
-    if (idx >= 0 && idx < g_width_preset_count) {
-        g_width_scale = g_width_presets[idx];
-        g_selected_width_index = idx;
-        glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
-        update_menu_checkmarks();
-        sync_settings_panel();
-        sync_settings_panel();
-    }
+    gl_settings_set_width((int)[sender tag]);
 }
 
 // NSApplicationDelegate
@@ -687,75 +650,87 @@ static void sync_settings_panel(void);
 @end
 
 @implementation SettingsPanelController
-- (void)selectColor:(NSButton *)sender {
-    int idx = (int)[sender tag];
-    if (idx >= 0 && idx < g_color_preset_count) {
-        g_pen_r = g_color_presets[idx].r;
-        g_pen_g = g_color_presets[idx].g;
-        g_pen_b = g_color_presets[idx].b;
-        g_selectedColorIndex = idx;
-        glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
-        update_menu_checkmarks();
-        sync_settings_panel();
-        update_status_icon_color();
-        sync_settings_panel();
-    }
-}
-- (void)selectWidth:(NSButton *)sender {
-    int idx = (int)[sender tag];
-    if (idx >= 0 && idx < g_width_preset_count) {
-        g_width_scale = g_width_presets[idx];
-        g_selected_width_index = idx;
-        glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
-        update_menu_checkmarks();
-        sync_settings_panel();
-        sync_settings_panel();
-        sync_settings_panel();
-    }
-}
-- (void)toggleOutline:(NSButton *)sender {
-    g_outline_enabled = !g_outline_enabled;
-    glaspen2_save_bool_setting("outline_enabled", g_outline_enabled ? 1 : 0);
-    sync_settings_panel();
-    rebuild_surface_from_strokes();
-    // Also sync menu
-    NSMenuItem *item = [g_menu itemWithTag:666];
-    [item setState:g_outline_enabled ? NSControlStateValueOn : NSControlStateValueOff];
-}
-- (void)toggleInverse:(NSButton *)sender {
-    g_inverse_enabled = !g_inverse_enabled;
-    glaspen2_save_bool_setting("inverse_enabled", g_inverse_enabled ? 1 : 0);
-    sync_settings_panel();
-    sync_settings_panel();
-    if (g_inverse_enabled) {
-        start_inverse_timer();
-    } else {
-        stop_inverse_timer();
-    }
-    NSMenuItem *item = [g_menu itemWithTag:555];
-    [item setState:g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff];
-}
-- (void)toggleRainbow:(NSButton *)sender {
-    g_show_rainbow = !g_show_rainbow;
-    sync_settings_panel();
-    if (g_show_rainbow) draw_rainbow_indicator();
-    else clear_screen();
-    NSMenuItem *item = [g_menu itemWithTag:999];
-    [item setState:g_show_rainbow ? NSControlStateValueOn : NSControlStateValueOff];
-}
-- (void)toggleLaunch:(NSButton *)sender {
-    int cur = glaspen2_is_launch_at_login();
-    glaspen2_set_launch_at_login(!cur);
-    sync_settings_panel();
-    NSMenuItem *item = [g_menu itemWithTag:777];
-    [item setState:(!cur) ? NSControlStateValueOn : NSControlStateValueOff];
-}
+- (void)selectColor:(NSButton *)sender { gl_settings_set_color((int)[sender tag]); }
+- (void)selectWidth:(NSButton *)sender { gl_settings_set_width((int)[sender tag]); }
+- (void)toggleOutline:(NSButton *)sender { gl_settings_set_outline(!g_outline_enabled); }
+- (void)toggleInverse:(NSButton *)sender { gl_settings_set_inverse(!g_inverse_enabled); }
+- (void)toggleRainbow:(NSButton *)sender { gl_settings_set_rainbow(!g_show_rainbow); }
+- (void)toggleLaunch:(NSButton *)sender { gl_settings_set_launch(!glaspen2_is_launch_at_login()); }
 - (void)glassSliderChanged:(NSSlider *)sender {
-    g_glass_alpha = [sender floatValue];
-    glaspen2_save_bool_setting("glass_alpha", (int)(g_glass_alpha * 1000)); // store as millipercent
-    rebuild_surface_from_strokes();
+    gl_settings_set_glass([sender floatValue]);
 }
 @end
+
+// --- Unified settings functions (single source of truth) ---
+
+static void gl_settings_set_color(int idx) {
+    if (idx < 0 || idx >= g_color_preset_count) return;
+    g_pen_r = g_color_presets[idx].r;
+    g_pen_g = g_color_presets[idx].g;
+    g_pen_b = g_color_presets[idx].b;
+    g_selectedColorIndex = idx;
+    glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
+    update_menu_checkmarks();
+    update_status_icon_color();
+    sync_settings_panel();
+}
+
+static void gl_settings_set_width(int idx) {
+    if (idx < 0 || idx >= g_width_preset_count) return;
+    g_width_scale = g_width_presets[idx];
+    g_selected_width_index = idx;
+    glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
+    update_menu_checkmarks();
+    sync_settings_panel();
+}
+
+static void gl_settings_set_outline(BOOL on) {
+    g_outline_enabled = on;
+    glaspen2_save_bool_setting("outline_enabled", on ? 1 : 0);
+    NSMenuItem *item = [g_menu itemWithTag:666];
+    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    sync_settings_panel();
+    rebuild_surface_from_strokes();
+}
+
+static void gl_settings_set_inverse(BOOL on) {
+    g_inverse_enabled = on;
+    glaspen2_save_bool_setting("inverse_enabled", on ? 1 : 0);
+    NSMenuItem *item = [g_menu itemWithTag:555];
+    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    sync_settings_panel();
+    if (on) start_inverse_timer(); else stop_inverse_timer();
+}
+
+static void gl_settings_set_rainbow(BOOL on) {
+    g_show_rainbow = on;
+    NSMenuItem *item = [g_menu itemWithTag:999];
+    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    sync_settings_panel();
+    if (on) draw_rainbow_indicator(); else clear_screen();
+}
+
+static void gl_settings_set_launch(BOOL on) {
+    glaspen2_set_launch_at_login(on ? 1 : 0);
+    NSMenuItem *item = [g_menu itemWithTag:777];
+    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    sync_settings_panel();
+}
+
+static void gl_settings_set_glass(double alpha) {
+    g_glass_alpha = alpha;
+    glaspen2_save_bool_setting("glass_alpha", (int)(alpha * 1000));
+    if (g_glass_slider) g_glass_slider.floatValue = alpha;
+    rebuild_surface_from_strokes();
+}
+
+static void gl_settings_set_enabled(BOOL on) {
+    g_enabled = on;
+    NSMenuItem *item = [g_menu itemWithTag:888];
+    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    [item setTitle:on ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
+    update_status_icon_state();
+}
 
 static void sync_settings_panel(void) {
     if (!g_settings_panel) return;
@@ -1453,10 +1428,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                     }
                     return NULL;
                 } else if (kc == kVK_ANSI_B) {
-                    g_glass_alpha = (g_glass_alpha > 0.001) ? 0.0 : 0.08;
-                    glaspen2_save_bool_setting("glass_alpha", (int)(g_glass_alpha * 1000));
-                    if (g_glass_slider) g_glass_slider.floatValue = g_glass_alpha;
-                    rebuild_surface_from_strokes();
+                    gl_settings_set_glass((g_glass_alpha > 0.001) ? 0.0 : 0.08);
                     show_notification(g_glass_alpha > 0.001 ? L(@"玻璃: 开", @"Glass: ON") : L(@"玻璃: 关", @"Glass: OFF"));
                     return NULL;
                 } else if (kc == kVK_ANSI_Comma) {
