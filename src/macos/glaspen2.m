@@ -1681,6 +1681,7 @@ void glaspen2_run(void) {
         g_screen_h = (int)screenFrame.size.height;
         glaspen2_init_db(g_screen_w, g_screen_h);
         init_display_stream();
+        show_settings_panel();
 
         // Restore saved pen color and width
         double sr, sg, sb, sw;
