@@ -779,7 +779,7 @@ static void show_settings_panel(void) {
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskUtilityWindow
         backing:NSBackingStoreBuffered defer:NO];
     [panel setTitle:L(@"Glaspen2 设置", @"Glaspen2 Settings")];
-    [panel setFloatingPanel:YES];
+    [panel setFloatingPanel:NO];
     [panel setHidesOnDeactivate:NO];
     [panel setReleasedWhenClosed:NO];
     [panel setBecomesKeyOnlyIfNeeded:YES];
@@ -1585,7 +1585,7 @@ static void perf_log_summary(void) {
 void glaspen2_run(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
-        [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
         // Request accessibility permission (needed for CGEventTap)
         NSDictionary *opts = @{(__bridge id)kAXTrustedCheckOptionPrompt: @YES};
