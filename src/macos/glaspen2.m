@@ -650,7 +650,7 @@ static NSButton *g_inverse_toggle = nil;
 static NSButton *g_rainbow_toggle = nil;
 static NSButton *g_launch_toggle = nil;
 static NSButton *g_glass_toggle = nil;
-static NSButton *g_glass_buttons[5];
+static NSButton *g_glass_buttons[1];
 
 static void show_settings_panel(void);
 static void sync_settings_panel(void);
@@ -667,10 +667,8 @@ static void sync_settings_panel(void);
 - (void)toggleLaunch:(NSButton *)sender { gl_settings_set_launch(!glaspen2_is_launch_at_login()); }
 - (void)toggleFrostedGlass:(NSButton *)sender { gl_settings_set_glass_enabled(!g_glass_enabled); }
 - (void)glassButtonClicked:(NSButton *)sender {
-    double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
-    int gi = (int)[sender tag];
-    if (gi >= 0 && gi < 5) gl_settings_set_glass_opacity(opts[gi]);
-    if (!g_glass_enabled && opts[gi] > 0.001) gl_settings_set_glass_enabled(YES);
+    gl_settings_set_glass_opacity(0.50);
+    if (!g_glass_enabled) gl_settings_set_glass_enabled(YES);
 }
 @end
 
@@ -740,10 +738,7 @@ static void gl_glass_apply(void) {
     NSMenuItem *gi = [g_menu itemWithTag:444];
     [gi setState:g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff];
     if (g_glass_toggle) g_glass_toggle.state = g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff;
-    double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
-    for (int i = 0; i < 5; i++) {
-        g_glass_buttons[i].state = (fabs(g_glass_opacity - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
-    }
+    g_glass_buttons[0].state = (fabs(g_glass_opacity - 0.50) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
 }
 
 static void gl_settings_set_glass_enabled(BOOL on) {
@@ -782,10 +777,7 @@ static void sync_settings_panel(void) {
     g_inverse_toggle.state = g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff;
     g_rainbow_toggle.state = g_show_rainbow ? NSControlStateValueOn : NSControlStateValueOff;
     g_launch_toggle.state = glaspen2_is_launch_at_login() ? NSControlStateValueOn : NSControlStateValueOff;
-    double opts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
-    for (int i = 0; i < 5; i++) {
-        g_glass_buttons[i].state = (fabs(g_glass_opacity - opts[i]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
-    }
+    g_glass_buttons[0].state = (fabs(g_glass_opacity - 0.50) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
 }
 
 static NSTextField *make_label(NSString *text, NSView *parent) {
@@ -800,6 +792,14 @@ static NSTextField *make_label(NSString *text, NSView *parent) {
     return label;
 }
 
+static NSStackView *make_button_row(void) {
+    NSStackView *row = [NSStackView stackViewWithViews:@[]];
+    [row setOrientation:NSUserInterfaceLayoutOrientationHorizontal];
+    [row setSpacing:8.0];
+    [row setAlignment:NSLayoutAttributeCenterY];
+    return row;
+}
+
 static void show_settings_panel(void) {
     if (g_settings_panel) {
         [g_settings_panel makeKeyAndOrderFront:nil];
@@ -811,8 +811,9 @@ static void show_settings_panel(void) {
     g_settings_controller = ctl; // keep alive
     NSRect panelFrame = NSMakeRect(0, 0, 340, 360);
     NSPanel *panel = [[NSPanel alloc] initWithContentRect:panelFrame
-        styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskUtilityWindow
+        styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskResizable
         backing:NSBackingStoreBuffered defer:NO];
+    [panel setMinSize:NSMakeSize(340, 360)];
     [panel setTitle:L(@"Glaspen2 设置", @"Glaspen2 Settings")];
     [panel setFloatingPanel:NO];
     [panel setHidesOnDeactivate:NO];
@@ -820,109 +821,120 @@ static void show_settings_panel(void) {
     [panel setBecomesKeyOnlyIfNeeded:YES];
 
     NSView *content = [panel contentView];
-    int y = 255;
-    int pad = 10;
+    CGFloat pad = 10.0;
 
-    // --- Color row ---
-    make_label(L(@"颜色 / Color", @"Color"), content).frame = NSMakeRect(pad, y+10, 100, 16);
-    y -= 22;
-    for (int i = 0; i < 10; i++) {
-        int col = i % 5;
-        int row = i / 5;
-        NSButton *btn = [[NSButton alloc] initWithFrame:NSMakeRect(pad + col * 64, y - row * 28, 58, 24)];
-        [btn setTitle:(g_lang == 0)
-            ? @[@"红",@"橙",@"黄",@"绿",@"青",@"蓝",@"紫",@"粉",@"白",@"黑"][i]
-            : @[@"Red",@"Orange",@"Yellow",@"Green",@"Cyan",@"Blue",@"Purple",@"Pink",@"White",@"Black"][i]];
-        [btn setBezelStyle:NSBezelStyleSmallSquare];
-        [btn setTag:i];
-        [btn setTarget:ctl];
-        [btn setAction:@selector(selectColor:)];
-        btn.state = (i == g_selectedColorIndex) ? NSControlStateValueOn : NSControlStateValueOff;
-        [content addSubview:btn];
-        g_color_buttons[i] = btn;
+    // Main vertical stack
+    NSStackView *vstack = [NSStackView stackViewWithViews:@[]];
+    [vstack setOrientation:NSUserInterfaceLayoutOrientationVertical];
+    [vstack setSpacing:8.0];
+    [vstack setAlignment:NSLayoutAttributeLeading];
+    [vstack setEdgeInsets:NSEdgeInsetsMake(pad, pad, pad, pad)];
+    [vstack setTranslatesAutoresizingMaskIntoConstraints:NO];
+
+    // --- Color section ---
+    [vstack addArrangedSubview:make_label(L(@"颜色 / Color", @"Color"), content)];
+    NSString *zhC[] = {@"红",@"橙",@"黄",@"绿",@"青",@"蓝",@"紫",@"粉",@"白",@"黑"};
+    NSString *enC[] = {@"Red",@"Orange",@"Yellow",@"Green",@"Cyan",@"Blue",@"Purple",@"Pink",@"White",@"Black"};
+    for (int row = 0; row < 2; row++) {
+        NSStackView *colorRow = make_button_row();
+        for (int col = 0; col < 5; col++) {
+            int i = row * 5 + col;
+            NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
+            [btn setTitle:(g_lang == 0) ? zhC[i] : enC[i]];
+            [btn setBezelStyle:NSBezelStyleSmallSquare];
+            [btn setTag:i];
+            [btn setTarget:ctl];
+            [btn setAction:@selector(selectColor:)];
+            btn.state = (i == g_selectedColorIndex) ? NSControlStateValueOn : NSControlStateValueOff;
+            [colorRow addArrangedSubview:btn];
+            g_color_buttons[i] = btn;
+        }
+        [vstack addArrangedSubview:colorRow];
     }
-    y -= 57;
 
-    // --- Width row ---
+    // --- Width section ---
+    [vstack addArrangedSubview:make_label(L(@"线宽 / Width", @"Width"), content)];
     NSString *zhW[] = {@"极细", @"细", @"中", @"粗", @"极粗"};
     NSString *enW[] = {@"Fine", @"Thin", @"Medium", @"Thick", @"Bold"};
-    make_label(L(@"线宽 / Width", @"Width"), content).frame = NSMakeRect(pad, y+10, 100, 16);
-    y -= 22;
+    NSStackView *widthRow = make_button_row();
     for (int i = 0; i < 5; i++) {
-        NSButton *btn = [[NSButton alloc] initWithFrame:NSMakeRect(pad + i * 64, y, 58, 24)];
+        NSButton *btn = [[NSButton alloc] initWithFrame:NSZeroRect];
         [btn setTitle:(g_lang == 0) ? zhW[i] : enW[i]];
         [btn setBezelStyle:NSBezelStyleSmallSquare];
         [btn setTag:i];
         [btn setTarget:ctl];
         [btn setAction:@selector(selectWidth:)];
         btn.state = (i == g_selected_width_index) ? NSControlStateValueOn : NSControlStateValueOff;
-        [content addSubview:btn];
+        [widthRow addArrangedSubview:btn];
         g_width_buttons[i] = btn;
     }
-    y -= 32;
+    [vstack addArrangedSubview:widthRow];
 
-    // --- Toggles ---
-    int ty = y;
-    NSButton *cb1 = [[NSButton alloc] initWithFrame:NSMakeRect(pad, ty, 300, 22)];
+    // --- Toggles (vertical sub-stack) ---
+    NSStackView *toggles = [NSStackView stackViewWithViews:@[]];
+    [toggles setOrientation:NSUserInterfaceLayoutOrientationVertical];
+    [toggles setSpacing:4.0];
+    [toggles setAlignment:NSLayoutAttributeLeading];
+
+    NSButton *cb1 = [[NSButton alloc] initWithFrame:NSZeroRect];
     [cb1 setButtonType:NSButtonTypeSwitch];
     [cb1 setTitle:L(@"描边增强", @"Outline")];
     [cb1 setState:g_outline_enabled ? NSControlStateValueOn : NSControlStateValueOff];
     [cb1 setTarget:ctl]; [cb1 setAction:@selector(toggleOutline:)];
-    [content addSubview:cb1]; g_outline_toggle = cb1;
-    ty -= 26;
+    [toggles addArrangedSubview:cb1]; g_outline_toggle = cb1;
 
-    NSButton *cb2 = [[NSButton alloc] initWithFrame:NSMakeRect(pad, ty, 300, 22)];
+    NSButton *cb2 = [[NSButton alloc] initWithFrame:NSZeroRect];
     [cb2 setButtonType:NSButtonTypeSwitch];
     [cb2 setTitle:L(@"反色模式", @"Inverse Color")];
     [cb2 setState:g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff];
     [cb2 setTarget:ctl]; [cb2 setAction:@selector(toggleInverse:)];
-    [content addSubview:cb2]; g_inverse_toggle = cb2;
-    ty -= 26;
+    [toggles addArrangedSubview:cb2]; g_inverse_toggle = cb2;
 
-    NSButton *cb3 = [[NSButton alloc] initWithFrame:NSMakeRect(pad, ty, 300, 22)];
+    NSButton *cb3 = [[NSButton alloc] initWithFrame:NSZeroRect];
     [cb3 setButtonType:NSButtonTypeSwitch];
     [cb3 setTitle:L(@"彩虹指示", @"Rainbow")];
     [cb3 setState:g_show_rainbow ? NSControlStateValueOn : NSControlStateValueOff];
     [cb3 setTarget:ctl]; [cb3 setAction:@selector(toggleRainbow:)];
-    [content addSubview:cb3]; g_rainbow_toggle = cb3;
-    ty -= 26;
+    [toggles addArrangedSubview:cb3]; g_rainbow_toggle = cb3;
 
-    NSButton *cb4 = [[NSButton alloc] initWithFrame:NSMakeRect(pad, ty, 300, 22)];
+    NSButton *cb4 = [[NSButton alloc] initWithFrame:NSZeroRect];
     [cb4 setButtonType:NSButtonTypeSwitch];
     [cb4 setTitle:L(@"开机自启", @"Launch at Login")];
     [cb4 setState:glaspen2_is_launch_at_login() ? NSControlStateValueOn : NSControlStateValueOff];
     [cb4 setTarget:ctl]; [cb4 setAction:@selector(toggleLaunch:)];
-    [content addSubview:cb4]; g_launch_toggle = cb4;
-    ty -= 30;
+    [toggles addArrangedSubview:cb4]; g_launch_toggle = cb4;
 
-    // Frosted glass toggle
-    NSButton *cb5 = [[NSButton alloc] initWithFrame:NSMakeRect(pad, ty, 300, 22)];
+    NSButton *cb5 = [[NSButton alloc] initWithFrame:NSZeroRect];
     [cb5 setButtonType:NSButtonTypeSwitch];
     [cb5 setTitle:L(@"磨砂玻璃", @"Frosted Glass")];
     [cb5 setState:g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff];
     [cb5 setTarget:ctl]; [cb5 setAction:@selector(toggleFrostedGlass:)];
-    [content addSubview:cb5]; g_glass_toggle = cb5;
-    ty -= 30;
+    [toggles addArrangedSubview:cb5]; g_glass_toggle = cb5;
 
-    // Opacity level buttons (independent of frosted glass toggle)
-    make_label(L(@"不透明度", @"Opacity"), content).frame = NSMakeRect(pad, ty+14, 200, 16);
-    ty -= 18;
-    double glassOpts[] = {0.0, 0.10, 0.20, 0.30, 0.50};
-    for (int gi = 0; gi < 5; gi++) {
-        NSButton *gb = [[NSButton alloc] initWithFrame:NSMakeRect(pad + gi * 64, ty, 58, 24)];
-        if (gi == 0) {
-            [gb setTitle:L(@"0%", @"0%")];
-        } else {
-            [gb setTitle:[NSString stringWithFormat:@"%d%%", (int)(glassOpts[gi] * 100)]];
-        }
-        [gb setBezelStyle:NSBezelStyleSmallSquare];
-        [gb setTag:gi];
-        [gb setTarget:ctl];
-        [gb setAction:@selector(glassButtonClicked:)];
-        gb.state = (fabs(g_glass_opacity - glassOpts[gi]) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
-        [content addSubview:gb];
-        g_glass_buttons[gi] = gb;
-    }
+    [vstack addArrangedSubview:toggles];
+
+    // --- Opacity section ---
+    NSStackView *opacityRow = make_button_row();
+    [opacityRow addArrangedSubview:make_label(L(@"不透明度", @"Opacity"), content)];
+    NSButton *gb = [[NSButton alloc] initWithFrame:NSZeroRect];
+    [gb setTitle:@"50%"];
+    [gb setBezelStyle:NSBezelStyleSmallSquare];
+    [gb setTag:0];
+    [gb setTarget:ctl];
+    [gb setAction:@selector(glassButtonClicked:)];
+    gb.state = (fabs(g_glass_opacity - 0.50) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
+    [opacityRow addArrangedSubview:gb];
+    g_glass_buttons[0] = gb;
+    [vstack addArrangedSubview:opacityRow];
+
+    // Pin main stack to panel content edges
+    [content addSubview:vstack];
+    [NSLayoutConstraint activateConstraints:@[
+        [[vstack leadingAnchor] constraintEqualToAnchor:[content leadingAnchor]],
+        [[vstack trailingAnchor] constraintEqualToAnchor:[content trailingAnchor]],
+        [[vstack topAnchor] constraintEqualToAnchor:[content topAnchor]],
+        [[vstack bottomAnchor] constraintEqualToAnchor:[content bottomAnchor]],
+    ]];
 
     g_settings_panel = panel;
     [panel center];
