@@ -46,6 +46,26 @@ namespace GlasPen2
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
+            // ── Initialize Rust core (DB + modeler) via FFI ──
+            try
+            {
+                var bounds = SystemInformation.VirtualScreen;
+                GlaspenNative.glaspen2_init_db(bounds.Width, bounds.Height);
+                Console.WriteLine("[Main] Rust DB initialized via FFI");
+
+                // Load saved settings
+                double sr, sg, sb, sw;
+                if (GlaspenNative.glaspen2_load_settings_parts(out sr, out sg, out sb, out sw) != 0)
+                {
+                    Console.WriteLine("[Main] Loaded settings: r={0:F2} g={1:F2} b={2:F2} w={3:F2}", sr, sg, sb, sw);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[Main] WARNING: Failed to load glaspen2.dll: {0}", ex.Message);
+                Console.WriteLine("[Main] Rust FFI features (DB, modeler, export) will be unavailable.");
+            }
+
             // ── System tray icon ──
             _trayIcon = new NotifyIcon
             {
@@ -62,6 +82,7 @@ namespace GlasPen2
             // ── Create the transparent overlay ──
             _overlay = new OverlayForm();
             _overlay.DrawingEnabled = _drawingEnabled;
+            _overlay.ProbeRustModeler();
             _overlay.Show();
 
             // ── Install the mouse hook (suppresses pen mouse events + detects touch) ──
@@ -123,7 +144,12 @@ namespace GlasPen2
             {
                 var colorItem = new ToolStripMenuItem(colorNames[i]);
                 var color = PresetColors[i];
-                colorItem.Click += (s, e) => _overlay.PenColor = color;
+                colorItem.Click += (s, e) =>
+                {
+                    _overlay.PenColor = color;
+                    // Save to Rust DB
+                    try { GlaspenNative.glaspen2_save_settings(color.R / 255.0, color.G / 255.0, color.B / 255.0, _overlay.WidthScale); } catch { }
+                };
                 colorMenu.DropDownItems.Add(colorItem);
             }
             menu.Items.Add(colorMenu);
@@ -136,7 +162,13 @@ namespace GlasPen2
             {
                 var widthItem = new ToolStripMenuItem(widthNames[i]);
                 var w = widths[i];
-                widthItem.Click += (s, e) => _overlay.PenWidth = w;
+                widthItem.Click += (s, e) =>
+                {
+                    _overlay.PenWidth = w;
+                    _overlay.WidthScale = w;
+                    // Save to Rust DB
+                    try { GlaspenNative.glaspen2_save_settings(_overlay.PenColor.R / 255.0, _overlay.PenColor.G / 255.0, _overlay.PenColor.B / 255.0, w); } catch { }
+                };
                 widthMenu.DropDownItems.Add(widthItem);
             }
             menu.Items.Add(widthMenu);
@@ -179,6 +211,27 @@ namespace GlasPen2
                 if (_overlay != null) { _overlay.InvertX = inv; _overlay.InvertY = inv; }
             };
             menu.Items.Add(invertItem);
+
+            menu.Items.Add(new ToolStripSeparator());
+
+            // Export sub-menu (uses Rust FFI)
+            var exportMenu = new ToolStripMenuItem("💾 导出");
+            var svgItem = new ToolStripMenuItem("📄 导出 SVG");
+            svgItem.Click += (s, e) =>
+            {
+                try { GlaspenNative.glaspen2_save_svg(); _trayIcon.ShowBalloonTip(1000, "GlasPen2", "SVG 已保存到桌面", ToolTipIcon.Info); }
+                catch (Exception ex) { Console.WriteLine("[Export] SVG failed: " + ex.Message); }
+            };
+            exportMenu.DropDownItems.Add(svgItem);
+
+            var xojItem = new ToolStripMenuItem("📝 导出 Xournal");
+            xojItem.Click += (s, e) =>
+            {
+                try { GlaspenNative.glaspen2_save_xoj(); _trayIcon.ShowBalloonTip(1000, "GlasPen2", "Xournal 已保存到桌面", ToolTipIcon.Info); }
+                catch (Exception ex) { Console.WriteLine("[Export] Xournal failed: " + ex.Message); }
+            };
+            exportMenu.DropDownItems.Add(xojItem);
+            menu.Items.Add(exportMenu);
 
             menu.Items.Add(new ToolStripSeparator());
 
