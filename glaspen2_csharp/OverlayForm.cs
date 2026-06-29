@@ -336,9 +336,7 @@ namespace GlasPen2
             {
                 IntPtr extra = NativeMethods.GetMessageExtraInfo();
                 ulong val = (ulong)extra.ToInt64();
-                // Pen signature: lower bits match PEN_SIGNATURE pattern.
-                // Bit 0 = tip (0) or barrel (1), bit 1 = source: 0=pen, 1=touch
-                return (val & NativeMethods.PEN_SIGNATURE) == NativeMethods.PEN_SIGNATURE;
+                return (val & NativeMethods.PEN_SIGNATURE_MASK) == NativeMethods.PEN_SIGNATURE;
             }
             catch { return false; }
         }
