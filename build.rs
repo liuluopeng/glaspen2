@@ -78,17 +78,83 @@ fn main() {
     }
 
     if is_windows {
-        // Locate the C# GlasPen2 overlay exe.
-        // Priority: 1) glaspen2_csharp/glaspen2_app.exe
-        //           2) fall back to Rust hook_overlay
-        let csharp_exe = std::path::Path::new("glaspen2_csharp").join("glaspen2_app.exe");
+        let csharp_dir = std::path::Path::new("glaspen2_csharp");
+        let csharp_exe = csharp_dir.join("glaspen2_app.exe");
+
+        // Auto-compile C# overlay if exe is missing or any .cs file changed
+        let cs_files: Vec<_> = std::fs::read_dir(csharp_dir)
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map_or(false, |ext| ext == "cs"))
+            .collect();
+
+        for f in &cs_files {
+            println!("cargo:rerun-if-changed={}", f.path().display());
+        }
+
+        let needs_compile = !csharp_exe.exists()
+            || cs_files.iter().any(|f| {
+                let cs_meta = f.metadata().ok();
+                let exe_meta = std::fs::metadata(&csharp_exe).ok();
+                match (cs_meta, exe_meta) {
+                    (Some(cs), Some(exe)) => cs.modified().ok() > exe.modified().ok(),
+                    _ => true,
+                }
+            });
+
+        if needs_compile && !cs_files.is_empty() {
+            // Find csc.exe — prefer .NET Framework 64-bit
+            let csc_candidates = [
+                r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
+                r"C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe",
+            ];
+            let csc = csc_candidates.iter().find(|p| std::path::Path::new(p).exists());
+
+            if let Some(csc_path) = csc {
+                let mut cmd = std::process::Command::new(csc_path);
+                cmd.args(&[
+                    "/target:winexe",
+                    "/out:glaspen2_app.exe",
+                    "/platform:x64",
+                ]);
+                for f in &cs_files {
+                    // Use filename only since current_dir is already glaspen2_csharp
+                    cmd.arg(f.file_name());
+                }
+                cmd.current_dir(csharp_dir);
+
+                match cmd.output() {
+                    Ok(output) => {
+                        if output.status.success() {
+                            println!("cargo:warning=Compiled C# overlay ({} files)", cs_files.len());
+                        } else {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            let stdout = String::from_utf8_lossy(&output.stdout);
+                            println!("cargo:warning=C# compilation FAILED:");
+                            for line in stderr.lines().chain(stdout.lines()) {
+                                if !line.trim().is_empty() {
+                                    println!("cargo:warning=  {}", line);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("cargo:warning=Failed to run csc.exe: {}", e);
+                    }
+                }
+            } else {
+                println!("cargo:warning=csc.exe not found — C# overlay not compiled");
+            }
+        }
+
+        // Set env var so Rust can find the C# exe at runtime
         if csharp_exe.exists() {
             let abs = std::fs::canonicalize(&csharp_exe).unwrap_or_else(|_| csharp_exe.to_owned());
             println!("cargo:rustc-env=GLASPEN2_CSHARP_EXE={}", abs.display());
-            println!("cargo:warning=Found C# overlay at {}", abs.display());
+            println!("cargo:warning=C# overlay: {}", abs.display());
         } else {
-            println!("cargo:warning=glaspen2_app.exe not found in glaspen2_csharp/");
-            println!("cargo:warning=  Run: cd glaspen2_csharp && csc.exe /target:winexe ... *.cs");
+            println!("cargo:warning=glaspen2_app.exe not found — Rust fallback will be used");
         }
     }
 }
