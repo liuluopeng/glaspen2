@@ -10,3 +10,5 @@ zinnia/
 # C# build artifacts
 glaspen2_csharp/*.exe
 installer/*.exe
+glaspen2_csharp/glaspen2.dll
+glaspen2_csharp/glaspen2_app.exe

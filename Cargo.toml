@@ -3,6 +3,10 @@ name = "glaspen2"
 version = "0.1.2"
 edition = "2021"
 
+[lib]
+name = "glaspen2"
+crate-type = ["cdylib", "rlib"]
+
 [features]
 default = ["cairo_real"]
 cairo_real = []
