@@ -273,6 +273,18 @@ namespace GlasPen2
         public const int WM_POINTERDOWN   = 0x0246;
         public const int WM_POINTERUPDATE = 0x0245;
         public const int WM_POINTERUP     = 0x0247;
+
+        // Windows INK / Tablet system gesture control
+        public const int WM_TABLET_QUERYSYSTEMGESTURESTATUS = 0x02CC;
+        // Return this to disable all Windows INK visual feedback on our window
+        public const int TABLET_DISABLE_FLICKS = 0x00010000;
+        public const int TABLET_DISABLE_PRESSANDHOLD = 0x00000001;
+        public const int TABLET_DISABLE_PENTAPFEEDBACK = 0x00000008;
+        public const int TABLET_DISABLE_PENBARRELFEEDBACK = 0x00000002;
+        public const int TABLET_DISABLE_TOUCHUIFORCEOFF = 0x00000100;
+        public const int TABLET_DISABLE_TOUCHUIFORCEON = 0x00000200;
+        public const int TABLET_DISABLE_TOUCHSWITCH = 0x00008000;
+        public const int TABLET_DISABLE_ALL = 0x0001830B;
         public const int WM_NCPOINTERHITTEST = 0x0249;
 
         [DllImport("user32.dll", SetLastError = true)]

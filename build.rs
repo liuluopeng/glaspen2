@@ -93,15 +93,12 @@ fn main() {
             .filter(|e| e.path().extension().map_or(false, |ext| ext == "cs"))
             .collect();
 
-        for f in &cs_files {
-            println!("cargo:rerun-if-changed={}", f.path().display());
-        }
-
-        // Skip if exe was just created (< 2s) — Cargo runs build.rs twice
-        // (cdylib + binary) and the second invocation would hit file-in-use.
         // Atomic lock: create a .lock file. First build.rs wins, second skips.
         // The lock persists — delete it (along with the exe) to force recompilation.
         let lock_file = target_debug.join(".csharp_compile.lock");
+        // Tell Cargo to re-run if the exe or lock file is missing
+        println!("cargo:rerun-if-changed={}", csharp_exe.display());
+        println!("cargo:rerun-if-changed={}", lock_file.display());
         let has_lock = lock_file.exists()
             || std::fs::OpenOptions::new()
                 .write(true)

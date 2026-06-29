@@ -259,7 +259,15 @@ namespace GlasPen2
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == NativeMethods.WM_INPUT)
+            if (m.Msg == NativeMethods.WM_TABLET_QUERYSYSTEMGESTURESTATUS)
+            {
+                // Tell Windows to disable ALL INK visual feedback on our overlay.
+                // This prevents: system pen cursor, ink ripples, press-and-hold,
+                // and flick gestures from appearing on the transparent overlay.
+                m.Result = (IntPtr)NativeMethods.TABLET_DISABLE_ALL;
+                return;
+            }
+            else if (m.Msg == NativeMethods.WM_INPUT)
             {
                 ProcessRawInput(m.LParam);
             }
@@ -308,7 +316,14 @@ namespace GlasPen2
                 Console.WriteLine("[Pointer] PEN UP pressure={0}", pressure);
                 StopDrawing();
             }
-            // WM_POINTERUPDATE: pressure is updated above, OnPenMove will use it
+            else if (msg == NativeMethods.WM_POINTERUPDATE && _isDrawing)
+            {
+                // Feed pen movement from WM_POINTER (works with Windows INK enabled).
+                // OnPenMove expects screen coords and handles modeler + rendering.
+                OnPenMove(_lastPoint.X, _lastPoint.Y, scrX, scrY);
+                _lastPenPos = new Point(scrX, scrY);
+                _lastPoint = _lastPenPos;
+            }
         }
 
         private int _pointerCount;
