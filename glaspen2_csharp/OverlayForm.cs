@@ -541,6 +541,19 @@ namespace GlasPen2
                 pen.EndCap = LineCap.Round;
                 _canvasGraphics.DrawEllipse(pen, x, y, w, w);
             }
+
+            // Initialize modeler for this stroke (same as OnPenDown)
+            if (_rustModelerAvailable && _smoothEnabled)
+            {
+                GlaspenNative.glaspen2_modeler_clear_buffer();
+                double pressure = (_lastPointerPressure > 0) ? _lastPointerPressure / 1024.0 : 0.5;
+                double ts = GlaspenNative.glaspen2_now_secs();
+                GlaspenNative.glaspen2_modeler_begin(
+                    _penR, _penG, _penB,
+                    _lastPoint.X, _lastPoint.Y, pressure, ts, _widthScale);
+                GlaspenNative.glaspen2_modeler_clear_buffer();
+            }
+
             Console.WriteLine("[Draw] DOWN at ({0},{1})", _lastPoint.X, _lastPoint.Y);
             this.Invalidate();
         }
@@ -559,32 +572,36 @@ namespace GlasPen2
 
             float w = _currentWidth > 0 ? _currentWidth : _penWidth;
 
+            // Always draw a dot at pen-down position (both modeler and fallback paths)
+            int x = ClampX(useX - this.Left);
+            int y = ClampY(useY - this.Top);
+            using (var pen = new Pen(_penColor, w))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                _canvasGraphics.DrawEllipse(pen, x, y, w, w);
+            }
+
             if (_rustModelerAvailable && _smoothEnabled)
             {
-                // Use Rust ink-stroke-modeler for professional-grade smoothing
+                // Clear any residual modeler state, then begin new stroke.
+                // Do NOT call DrawModelerBuffer here — the modeler may return
+                // stale points from the previous stroke. Drawing starts on OnPenMove.
+                GlaspenNative.glaspen2_modeler_clear_buffer();
                 double pressure = (_lastPointerPressure > 0) ? _lastPointerPressure / 1024.0 : 0.5;
                 double ts = GlaspenNative.glaspen2_now_secs();
                 GlaspenNative.glaspen2_modeler_begin(
                     _penR, _penG, _penB,
                     useX, useY, pressure, ts, _widthScale);
-                DrawModelerBuffer(w);
+                GlaspenNative.glaspen2_modeler_clear_buffer();
             }
             else
             {
-                // C# fallback: simple dot
+                // C# fallback: reset smoothing state
                 _smoothHistory.Clear();
                 _lastSmoothPoint = new PointF(useX, useY);
                 if (_smoothEnabled)
                     _smoothHistory.Add(_lastSmoothPoint);
-
-                int x = ClampX(useX - this.Left);
-                int y = ClampY(useY - this.Top);
-                using (var pen = new Pen(_penColor, w))
-                {
-                    pen.StartCap = LineCap.Round;
-                    pen.EndCap = LineCap.Round;
-                    _canvasGraphics.DrawEllipse(pen, x, y, w, w);
-                }
             }
             Console.WriteLine("[Draw] DOWN at ({0},{1}) modeler={2}", useX, useY, _rustModelerAvailable);
             this.Invalidate();
@@ -736,6 +753,20 @@ namespace GlasPen2
             _isDrawing = false;
             StopCursorLock();
 
+            float w = _currentWidth > 0 ? _currentWidth : _penWidth;
+
+            // Finalize modeler if active (same as OnPenUp)
+            if (_rustModelerAvailable && _smoothEnabled)
+            {
+                double pressure = (_lastPointerPressure > 0) ? _lastPointerPressure / 1024.0 : 0.5;
+                double ts = GlaspenNative.glaspen2_now_secs();
+                GlaspenNative.glaspen2_modeler_end(
+                    _lastPenPos.X, _lastPenPos.Y, pressure, ts, _widthScale);
+                DrawModelerBuffer(w);
+                GlaspenNative.glaspen2_modeler_commit_to_strokes(_penR, _penG, _penB, IntPtr.Zero, 0);
+                GlaspenNative.glaspen2_modeler_clear_buffer();
+            }
+
             Console.WriteLine("[Draw] UP at ({0},{1})", _lastPenPos.X, _lastPenPos.Y);
 
             if (_smoothBuffer.Count > 0)
@@ -744,7 +775,7 @@ namespace GlasPen2
                 {
                     Points = new List<Point>(_smoothBuffer),
                     Color = _penColor,
-                    Width = _currentWidth > 0 ? _currentWidth : _penWidth
+                    Width = w
                 });
             }
             _smoothBuffer.Clear();
@@ -767,6 +798,7 @@ namespace GlasPen2
                 DrawModelerBuffer(w);
                 // Commit smoothed points into Rust STROKES (for DB persistence + export)
                 GlaspenNative.glaspen2_modeler_commit_to_strokes(_penR, _penG, _penB, IntPtr.Zero, 0);
+                // Thoroughly clear modeler buffer to prevent stale points leaking to next stroke
                 GlaspenNative.glaspen2_modeler_clear_buffer();
             }
 
