@@ -44,11 +44,24 @@ pub fn draw_dot(surface: &ImageSurface, x: f64, y: f64, width: f64, r: f64, g: f
     cr.fill().unwrap();
 }
 
-/// Clear the entire Cairo surface.
+/// Clear the entire Cairo surface to Fuchsia (transparent via color key).
 pub fn clear_screen(surface: &ImageSurface) {
-    let cr = Context::new(surface).unwrap();
-    cr.set_operator(Operator::Clear);
-    cr.paint().unwrap();
+    // Fill with Fuchsia — this is our transparent color (LWA_COLORKEY)
+    let stride = surface.stride() as usize;
+    let w = surface.width() as usize;
+    let h = surface.height() as usize;
+    let pixels = surface.pixels_mut();
+    for y in 0..h {
+        for x in 0..w {
+            let off = y * stride + x * 4;
+            if off + 3 < pixels.len() {
+                pixels[off] = 255;     // B (Fuchsia = 255,0,255)
+                pixels[off + 1] = 0;   // G
+                pixels[off + 2] = 255; // R
+                pixels[off + 3] = 255; // A (opaque, color-key makes it transparent)
+            }
+        }
+    }
 }
 
 /// Draw the rainbow indicator bar at top-left corner.

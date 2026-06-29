@@ -78,8 +78,17 @@ fn main() {
     }
 
     if is_windows {
-        if cfg!(feature = "cairo_real") {
-            println!("cargo:rustc-link-lib=cairo");
+        // Locate the C# GlasPen2 overlay exe.
+        // Priority: 1) glaspen2_csharp/glaspen2_app.exe
+        //           2) fall back to Rust hook_overlay
+        let csharp_exe = std::path::Path::new("glaspen2_csharp").join("glaspen2_app.exe");
+        if csharp_exe.exists() {
+            let abs = std::fs::canonicalize(&csharp_exe).unwrap_or_else(|_| csharp_exe.to_owned());
+            println!("cargo:rustc-env=GLASPEN2_CSHARP_EXE={}", abs.display());
+            println!("cargo:warning=Found C# overlay at {}", abs.display());
+        } else {
+            println!("cargo:warning=glaspen2_app.exe not found in glaspen2_csharp/");
+            println!("cargo:warning=  Run: cd glaspen2_csharp && csc.exe /target:winexe ... *.cs");
         }
     }
 }

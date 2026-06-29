@@ -1,7 +1,7 @@
 use tray_icon::menu::{Menu, MenuItem, Submenu, PredefinedMenuItem, MenuEvent};
 use tray_icon::{TrayIconBuilder, Icon};
 
-use super::overlay;
+use super::hook_overlay;
 
 // Menu item ID constants
 const COLOR_ID_PREFIX: &str = "color_";
@@ -25,7 +25,7 @@ static mut LANG_ITEM_PTR: usize = 0;
 pub fn run(hwnd: isize) {
     // Store hwnd for sending commands to overlay
     {
-        let mut h = overlay::OVERLAY_HWND.lock().unwrap();
+        let mut h = hook_overlay::OVERLAY_HWND.lock().unwrap();
         if *h == 0 {
             *h = hwnd;
         }
@@ -33,10 +33,10 @@ pub fn run(hwnd: isize) {
 
     // Build color submenu
     let color_menu = Submenu::new("颜色", true);
-    for i in 0..overlay::COLOR_PRESETS.len() {
+    for i in 0..hook_overlay::COLOR_PRESETS.len() {
         let item = MenuItem::with_id(
             format!("{}{}", COLOR_ID_PREFIX, i),
-            overlay::COLOR_NAMES_ZH[i],
+            hook_overlay::COLOR_NAMES_ZH[i],
             true,
             None,
         );
@@ -45,10 +45,10 @@ pub fn run(hwnd: isize) {
 
     // Build width submenu
     let width_menu = Submenu::new("线宽", true);
-    for i in 0..overlay::WIDTH_PRESETS.len() {
+    for i in 0..hook_overlay::WIDTH_PRESETS.len() {
         let item = MenuItem::with_id(
             format!("{}{}", WIDTH_ID_PREFIX, i),
-            overlay::WIDTH_NAMES_ZH[i],
+            hook_overlay::WIDTH_NAMES_ZH[i],
             true,
             None,
         );
@@ -157,48 +157,48 @@ fn create_icon(r: f64, g: f64, b: f64, filled: bool) -> Icon {
 
 fn handle_menu_id(id: &str) -> bool {
     if id == ID_QUIT {
-        send_command(overlay::CMD_QUIT, 0);
+        send_command(hook_overlay::CMD_QUIT, 0);
         return true;
     }
 
     if let Some(idx) = id.strip_prefix(COLOR_ID_PREFIX) {
         if let Ok(i) = idx.parse::<usize>() {
-            send_command(overlay::CMD_SELECT_COLOR + i, 0);
+            send_command(hook_overlay::CMD_SELECT_COLOR + i, 0);
         }
         return false;
     }
 
     if let Some(idx) = id.strip_prefix(WIDTH_ID_PREFIX) {
         if let Ok(i) = idx.parse::<usize>() {
-            send_command(overlay::CMD_SELECT_WIDTH + i, 0);
+            send_command(hook_overlay::CMD_SELECT_WIDTH + i, 0);
         }
         return false;
     }
 
     match id {
-        x if x == ID_SAVE_BG => send_command(overlay::CMD_SAVE_WITH_BG, 0),
-        x if x == ID_SAVE_DRAWING => send_command(overlay::CMD_SAVE_DRAWING, 0),
-        x if x == ID_SAVE_XOJ => send_command(overlay::CMD_SAVE_XOJ, 0),
-        x if x == ID_CLEAR => send_command(overlay::CMD_CLEAR_SCREEN, 0),
-        x if x == ID_RAINBOW => send_command(overlay::CMD_TOGGLE_RAINBOW, 0),
-        x if x == ID_OUTLINE => send_command(overlay::CMD_TOGGLE_OUTLINE, 0),
-        x if x == ID_INVERSE => send_command(overlay::CMD_TOGGLE_INVERSE, 0),
-        x if x == ID_TOGGLE => send_command(overlay::CMD_TOGGLE_ENABLED, 0),
-        x if x == ID_LANG => send_command(overlay::CMD_TOGGLE_LANG, 0),
+        x if x == ID_SAVE_BG => send_command(hook_overlay::CMD_SAVE_WITH_BG, 0),
+        x if x == ID_SAVE_DRAWING => send_command(hook_overlay::CMD_SAVE_DRAWING, 0),
+        x if x == ID_SAVE_XOJ => send_command(hook_overlay::CMD_SAVE_XOJ, 0),
+        x if x == ID_CLEAR => send_command(hook_overlay::CMD_CLEAR_SCREEN, 0),
+        x if x == ID_RAINBOW => send_command(hook_overlay::CMD_TOGGLE_RAINBOW, 0),
+        x if x == ID_OUTLINE => send_command(hook_overlay::CMD_TOGGLE_OUTLINE, 0),
+        x if x == ID_INVERSE => send_command(hook_overlay::CMD_TOGGLE_INVERSE, 0),
+        x if x == ID_TOGGLE => send_command(hook_overlay::CMD_TOGGLE_ENABLED, 0),
+        x if x == ID_LANG => send_command(hook_overlay::CMD_TOGGLE_LANG, 0),
         _ => {}
     }
     false
 }
 
 fn send_command(cmd: usize, param: usize) {
-    let hwnd = *overlay::OVERLAY_HWND.lock().unwrap();
+    let hwnd = *hook_overlay::OVERLAY_HWND.lock().unwrap();
     if hwnd != 0 {
         unsafe {
             use windows::Win32::Foundation::*;
             use windows::Win32::UI::WindowsAndMessaging::*;
             PostMessageW(
                 HWND(hwnd as *mut _),
-                overlay::WM_TRAY_COMMAND,
+                hook_overlay::WM_TRAY_COMMAND,
                 WPARAM(cmd),
                 LPARAM(param as isize),
             ).ok();
@@ -208,7 +208,7 @@ fn send_command(cmd: usize, param: usize) {
 
 // --- Public update functions ---
 
-pub fn update_tray_icon(_state: &overlay::DrawState) {
+pub fn update_tray_icon(_state: &hook_overlay::DrawState) {
     // tray-icon doesn't support updating icon after creation in all versions
     // This would require recreating the tray icon
 }
@@ -231,7 +231,7 @@ pub fn update_rainbow_checkmark(_show: bool) {}
 pub fn update_outline_checkmark(_show: bool) {}
 pub fn update_inverse_checkmark(_show: bool) {}
 
-pub fn update_menu_texts(_state: &overlay::DrawState) {
+pub fn update_menu_texts(_state: &hook_overlay::DrawState) {
     // Full menu text update would require storing all item pointers
     // For now, only the toggle and lang items are updatable
 }
