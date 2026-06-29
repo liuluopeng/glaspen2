@@ -13,6 +13,42 @@ namespace GlasPen2
         private static NotifyIcon _trayIcon;
         private static SettingsPipeServer _pipeServer;
         private static bool _drawingEnabled = true;
+        private static System.IO.Pipes.NamedPipeServerStream _logPipe;
+        private static System.IO.StreamWriter _logWriter;
+
+        private static void InitLogPipe()
+        {
+            try
+            {
+                _logPipe = new System.IO.Pipes.NamedPipeServerStream(
+                    "glaspen2_log",
+                    System.IO.Pipes.PipeDirection.Out,
+                    1,
+                    System.IO.Pipes.PipeTransmissionMode.Byte,
+                    System.IO.Pipes.PipeOptions.Asynchronous);
+                // Wait for Rust to connect (with timeout so we don't block forever)
+                _logPipe.WaitForConnectionAsync().ContinueWith(t => { });
+            }
+            catch { }
+        }
+
+        public static void Log(string msg)
+        {
+            try
+            {
+                if (_logPipe == null || !_logPipe.IsConnected) return;
+                if (_logWriter == null)
+                    _logWriter = new System.IO.StreamWriter(_logPipe) { AutoFlush = true };
+                _logWriter.WriteLine("[{0:HH:mm:ss.fff}] {1}", DateTime.Now, msg);
+            }
+            catch { }
+        }
+
+        public static void Log(string fmt, params object[] args)
+        {
+            try { Log(string.Format(fmt, args)); }
+            catch { }
+        }
 
         public static void OnPointerDown(int x, int y, uint pressure)
         {
@@ -45,6 +81,13 @@ namespace GlasPen2
         [STAThread]
         public static void Main()
         {
+            // Make process DPI-aware so coordinates are physical pixels
+            NativeMethods.SetProcessDPIAware();
+
+            // Log via named pipe — Rust connects and prints to its stderr
+            InitLogPipe();
+            Log("[Main] Starting GlasPen2...");
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
@@ -53,13 +96,13 @@ namespace GlasPen2
             {
                 var bounds = SystemInformation.VirtualScreen;
                 GlaspenNative.glaspen2_init_db(bounds.Width, bounds.Height);
-                Console.WriteLine("[Main] Rust DB initialized via FFI");
+                Log("[Main] Rust DB initialized via FFI");
 
                 // Load saved settings and convert to indices
                 double sr, sg, sb, sw;
                 if (GlaspenNative.glaspen2_load_settings_parts(out sr, out sg, out sb, out sw) != 0)
                 {
-                    Console.WriteLine("[Main] Loaded settings: r={0:F2} g={1:F2} b={2:F2} w={3:F2}", sr, sg, sb, sw);
+                    Log("[Main] Loaded settings: r={0:F2} g={1:F2} b={2:F2} w={3:F2}", sr, sg, sb, sw);
                     // Find nearest color index
                     int bestColor = 0;
                     double bestDist = double.MaxValue;
@@ -82,13 +125,13 @@ namespace GlasPen2
                         if (dist < bestDist) { bestDist = dist; bestWidth = i; }
                     }
                     _widthIndex = bestWidth;
-                    Console.WriteLine("[Main] Mapped to color={0} width={1}", _colorIndex, _widthIndex);
+                    Log("[Main] Mapped to color={0} width={1}", _colorIndex, _widthIndex);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine("[Main] WARNING: Failed to load glaspen2.dll: {0}", ex.Message);
-                Console.WriteLine("[Main] Rust FFI features (DB, modeler, export) will be unavailable.");
+                Log("[Main] WARNING: Failed to load glaspen2.dll: {0}", ex.Message);
+                Log("[Main] Rust FFI features (DB, modeler, export) will be unavailable.");
             }
 
             // ── System tray icon ──
@@ -260,7 +303,7 @@ namespace GlasPen2
             svgItem.Click += (s, e) =>
             {
                 try { GlaspenNative.glaspen2_save_svg(); _trayIcon.ShowBalloonTip(1000, "GlasPen2", "SVG 已保存到桌面", ToolTipIcon.Info); }
-                catch (Exception ex) { Console.WriteLine("[Export] SVG failed: " + ex.Message); }
+                catch (Exception ex) { Log("[Export] SVG failed: " + ex.Message); }
             };
             exportMenu.DropDownItems.Add(svgItem);
 
@@ -268,7 +311,7 @@ namespace GlasPen2
             xojItem.Click += (s, e) =>
             {
                 try { GlaspenNative.glaspen2_save_xoj(); _trayIcon.ShowBalloonTip(1000, "GlasPen2", "Xournal 已保存到桌面", ToolTipIcon.Info); }
-                catch (Exception ex) { Console.WriteLine("[Export] Xournal failed: " + ex.Message); }
+                catch (Exception ex) { Log("[Export] Xournal failed: " + ex.Message); }
             };
             exportMenu.DropDownItems.Add(xojItem);
             menu.Items.Add(exportMenu);
@@ -365,7 +408,7 @@ namespace GlasPen2
 
         private static void OnApplicationExit(object sender, EventArgs e)
         {
-            Console.WriteLine("[Exit] Cleaning up...");
+            Log("[Exit] Cleaning up...");
             if (_pipeServer != null) { _pipeServer.Stop(); _pipeServer = null; }
             if (_interceptor != null) { _interceptor.Uninstall(); _interceptor = null; }
             if (_trayIcon != null)

@@ -1,4 +1,7 @@
-#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+// NOTE: windows_subsystem = "windows" is intentionally NOT set.
+// We need console output for debugging. When launched from cargo run,
+// stderr appears in the terminal. When launched as a packaged app,
+// a console window appears briefly — acceptable for now.
 
 fn main() {
     #[cfg(target_os = "macos")]
