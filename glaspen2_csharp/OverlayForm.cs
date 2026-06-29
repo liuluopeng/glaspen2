@@ -259,7 +259,15 @@ namespace GlasPen2
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == NativeMethods.WM_INPUT)
+            if (m.Msg == NativeMethods.WM_TABLET_QUERYSYSTEMGESTURESTATUS)
+            {
+                // Tell Windows to disable ALL INK visual feedback on our overlay.
+                // This prevents: system pen cursor, ink ripples, press-and-hold,
+                // and flick gestures from appearing on the transparent overlay.
+                m.Result = (IntPtr)NativeMethods.TABLET_DISABLE_ALL;
+                return;
+            }
+            else if (m.Msg == NativeMethods.WM_INPUT)
             {
                 ProcessRawInput(m.LParam);
             }
@@ -296,7 +304,7 @@ namespace GlasPen2
                     _pointerCount, msg, scrX, scrY, pressure);
 
             _pointerCount++;
-            _lastPointerPressure = pressure;
+            _lastPointerPressure = pressure; // update on EVERY event (down/update/up)
 
             if (msg == NativeMethods.WM_POINTERDOWN)
             {
@@ -307,6 +315,14 @@ namespace GlasPen2
             {
                 Console.WriteLine("[Pointer] PEN UP pressure={0}", pressure);
                 StopDrawing();
+            }
+            else if (msg == NativeMethods.WM_POINTERUPDATE && _isDrawing)
+            {
+                // Feed pen movement from WM_POINTER (works with Windows INK enabled).
+                // OnPenMove expects screen coords and handles modeler + rendering.
+                OnPenMove(_lastPoint.X, _lastPoint.Y, scrX, scrY);
+                _lastPenPos = new Point(scrX, scrY);
+                _lastPoint = _lastPenPos;
             }
         }
 
@@ -396,6 +412,7 @@ namespace GlasPen2
             _hidTipDown = tipDown;
             HidTipDown = tipDown; // share with hook
             _hidLastReportUtc = DateTime.UtcNow;
+            _lastPointerPressure = pressure; // feed pressure to modeler
 
             bool logIt = _isDrawing || _rawHidCount <= 10 || (_rawHidCount % 100 == 0);
             if (logIt)
@@ -672,8 +689,8 @@ namespace GlasPen2
 
             if (_rustModelerAvailable && _smoothEnabled)
             {
-                // Use Rust modeler
-                double pressure = (_lastPointerPressure > 0) ? _lastPointerPressure / 1024.0 : 0.5;
+                // Use Rust modeler with real-time pressure
+                double pressure = QueryCurrentPressure();
                 double ts = GlaspenNative.glaspen2_now_secs();
                 GlaspenNative.glaspen2_modeler_move(toSX, toSY, pressure, ts, _widthScale);
 
@@ -734,6 +751,33 @@ namespace GlasPen2
 
             _lastPoint = new Point(toSX, toSY);
             this.Invalidate();
+        }
+
+        /// <summary>Query real-time pen pressure from the system (0.0-1.0).
+        /// Falls back to _lastPointerPressure if query fails.</summary>
+        private double QueryCurrentPressure()
+        {
+            // Try WM_POINTER API first (works when pen is over the overlay)
+            try
+            {
+                uint pointerId = 1; // primary pointer
+                uint pointerType;
+                if (NativeMethods.GetPointerType(pointerId, out pointerType)
+                    && pointerType == NativeMethods.PT_PEN)
+                {
+                    var penInfo = new NativeMethods.POINTER_PEN_INFO();
+                    if (NativeMethods.GetPointerPenInfo(pointerId, ref penInfo)
+                        && penInfo.pressure > 0)
+                    {
+                        _lastPointerPressure = penInfo.pressure; // cache for fallback
+                        return penInfo.pressure / 1024.0;
+                    }
+                }
+            }
+            catch { }
+
+            // Fallback: use cached value from last WM_POINTER or HID event
+            return (_lastPointerPressure > 0) ? _lastPointerPressure / 1024.0 : 0.5;
         }
 
         /// <summary>Set pen pressure (0-1024). Adjusts stroke width: 0.5x to 2x base width.</summary>

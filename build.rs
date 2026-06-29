@@ -86,7 +86,6 @@ fn main() {
         let target_debug = std::path::Path::new(&manifest_dir).join("target").join(&profile);
         let csharp_exe = target_debug.join("glaspen2_app.exe");
 
-        // Auto-compile C# overlay if exe is missing or any .cs file changed
         let cs_files: Vec<_> = std::fs::read_dir(csharp_dir)
             .into_iter()
             .flatten()
@@ -94,21 +93,21 @@ fn main() {
             .filter(|e| e.path().extension().map_or(false, |ext| ext == "cs"))
             .collect();
 
-        for f in &cs_files {
-            println!("cargo:rerun-if-changed={}", f.path().display());
-        }
+        // Atomic lock: create a .lock file. First build.rs wins, second skips.
+        // The lock persists — delete it (along with the exe) to force recompilation.
+        let lock_file = target_debug.join(".csharp_compile.lock");
+        // Tell Cargo to re-run if the exe or lock file is missing
+        println!("cargo:rerun-if-changed={}", csharp_exe.display());
+        println!("cargo:rerun-if-changed={}", lock_file.display());
+        let has_lock = lock_file.exists()
+            || std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock_file)
+                .is_ok();
+        let needs_compile = !csharp_exe.exists() && has_lock;
 
-        let needs_compile = !csharp_exe.exists()
-            || cs_files.iter().any(|f| {
-                let cs_meta = f.metadata().ok();
-                let exe_meta = std::fs::metadata(&csharp_exe).ok();
-                match (cs_meta, exe_meta) {
-                    (Some(cs), Some(exe)) => cs.modified().ok() > exe.modified().ok(),
-                    _ => true,
-                }
-            });
-
-        if needs_compile && !cs_files.is_empty() {
+        if needs_compile && !cs_files.is_empty() && !csharp_exe.exists() {
             // Find csc.exe — prefer .NET Framework 64-bit
             let csc_candidates = [
                 r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
@@ -120,7 +119,8 @@ fn main() {
                 // Compile to a temp file first, then move into place.
                 // This avoids CS0016 "file in use" when the exe is locked
                 // (e.g. by Windows Defender or a previous run).
-                let tmp_exe = target_debug.join("glaspen2_app_tmp.exe");
+                // Use unique temp name to avoid collision between cdylib/binary build.rs
+                let tmp_exe = target_debug.join(format!("glaspen2_app_{}.exe", std::process::id()));
                 let out_arg = format!("/out:{}", tmp_exe.display());
                 let mut cmd = std::process::Command::new(csc_path);
                 cmd.args(&[
@@ -140,14 +140,17 @@ fn main() {
                 match cmd.output() {
                     Ok(output) => {
                         if output.status.success() {
-                            // Move temp exe into final location
-                            let _ = std::fs::remove_file(&csharp_exe);
-                            if std::fs::rename(&tmp_exe, &csharp_exe).is_err() {
-                                // rename may fail across volumes; fall back to copy
-                                let _ = std::fs::copy(&tmp_exe, &csharp_exe);
-                                let _ = std::fs::remove_file(&tmp_exe);
+                            // Only move if exe doesn't already exist (another build.rs
+                            // may have created it between our check and now).
+                            let moved = if !csharp_exe.exists() {
+                                std::fs::rename(&tmp_exe, &csharp_exe).is_ok()
+                            } else {
+                                false
+                            };
+                            let _ = std::fs::remove_file(&tmp_exe);
+                            if moved {
+                                println!("cargo:warning=Compiled C# overlay → {}", csharp_exe.display());
                             }
-                            println!("cargo:warning=Compiled C# overlay → {}", csharp_exe.display());
                         } else {
                             let _ = std::fs::remove_file(&tmp_exe);
                             let stderr = String::from_utf8_lossy(&output.stderr);
