@@ -99,6 +99,7 @@ else
 
     # Fix self-references and cross-references in all bundled dylibs
     echo "=== Fixing dylib references ==="
+
     for dylib in "${FW_DIR}"/*.dylib; do
         [ ! -f "$dylib" ] && continue
         # Fix self-reference (id)
@@ -113,6 +114,18 @@ else
         done <<< $(otool -L "$dylib" 2>/dev/null | tail -n +2 | awk '{print $1}' | grep -E "^/opt/homebrew|^/usr/local")
     done
 fi
+
+# --- Re-sign everything (install_name_tool invalidates signatures) ---
+echo "=== Code signing ==="
+# Sign all dylibs first
+for f in "${FW_DIR}"/*.dylib; do
+    [ -f "$f" ] && codesign --force --sign - "$f" 2>/dev/null
+done
+# Sign frameworks
+codesign --force --sign - "${FW_DIR}/FlutterMacOS.framework" 2>/dev/null
+codesign --force --sign - "${FW_DIR}/App.framework" 2>/dev/null
+# Sign main binary last
+codesign --force --sign - "${BIN}"
 
 # --- Info.plist ---
 cat > "${APP_BUNDLE}/Contents/Info.plist" << EOF
