@@ -8,6 +8,9 @@ BUILD_DIR="target/release"
 APP_DIR="/tmp/${APP_NAME}-dmg"
 VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/version *= *"\(.*\)"/\1/')
 
+echo "Building Flutter frameworks..."
+cd flutter_settings && fvm flutter build macos-framework --release && cd ..
+
 echo "Building release..."
 cargo build --release
 
@@ -15,9 +18,25 @@ echo "Creating app structure..."
 rm -rf "${APP_DIR}"
 mkdir -p "${APP_DIR}/${APP_NAME}.app/Contents/MacOS"
 mkdir -p "${APP_DIR}/${APP_NAME}.app/Contents/Resources"
+mkdir -p "${APP_DIR}/${APP_NAME}.app/Contents/Frameworks"
 
 cp "${BUILD_DIR}/${APP_NAME}" "${APP_DIR}/${APP_NAME}.app/Contents/MacOS/"
 cp "glaspen2.icns" "${APP_DIR}/${APP_NAME}.app/Contents/Resources/"
+
+# Copy Flutter frameworks into app bundle
+FLUTTER_FW="flutter_settings/build/macos/framework/Release"
+cp -R "${FLUTTER_FW}/FlutterMacOS.xcframework/macos-arm64_x86_64/FlutterMacOS.framework" \
+    "${APP_DIR}/${APP_NAME}.app/Contents/Frameworks/"
+cp -R "${FLUTTER_FW}/App.xcframework/macos-arm64_x86_64/App.framework" \
+    "${APP_DIR}/${APP_NAME}.app/Contents/Frameworks/"
+
+# Fix rpath: change absolute build paths to @executable_path/../Frameworks
+install_name_tool -delete_rpath "${PWD}/${FLUTTER_FW}/FlutterMacOS.xcframework/macos-arm64_x86_64" \
+    "${APP_DIR}/${APP_NAME}.app/Contents/MacOS/${APP_NAME}" 2>/dev/null || true
+install_name_tool -delete_rpath "${PWD}/${FLUTTER_FW}/App.xcframework/macos-arm64_x86_64" \
+    "${APP_DIR}/${APP_NAME}.app/Contents/MacOS/${APP_NAME}" 2>/dev/null || true
+install_name_tool -add_rpath "@executable_path/../Frameworks" \
+    "${APP_DIR}/${APP_NAME}.app/Contents/MacOS/${APP_NAME}"
 
 # Create Info.plist
 cat > "${APP_DIR}/${APP_NAME}.app/Contents/Info.plist" << EOF
