@@ -85,7 +85,15 @@ fn find_csharp_exe() -> Option<std::path::PathBuf> {
 }
 
 fn find_flutter_exe() -> Option<std::path::PathBuf> {
-    // 1) Next to the Rust binary (for distribution)
+    // 1) Compile-time env var (set by build.rs after auto-building Flutter)
+    if let Some(path) = option_env!("GLASPEN2_FLUTTER_EXE") {
+        let p = std::path::Path::new(path);
+        if p.exists() {
+            return Some(p.to_owned());
+        }
+    }
+
+    // 2) Next to the Rust binary (for distribution)
     if let Ok(exe_path) = std::env::current_exe() {
         let sibling = exe_path.parent().unwrap_or(std::path::Path::new("."))
             .join("glaspen2_settings.exe");
@@ -94,7 +102,7 @@ fn find_flutter_exe() -> Option<std::path::PathBuf> {
         }
     }
 
-    // 2) Flutter build output (for development)
+    // 3) Flutter build output (for development)
     let flutter_debug = std::path::Path::new("flutter_settings")
         .join("build").join("windows").join("x64")
         .join("runner").join("Debug").join("glaspen2_settings.exe");

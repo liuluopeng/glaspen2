@@ -55,11 +55,34 @@ namespace GlasPen2
                 GlaspenNative.glaspen2_init_db(bounds.Width, bounds.Height);
                 Console.WriteLine("[Main] Rust DB initialized via FFI");
 
-                // Load saved settings
+                // Load saved settings and convert to indices
                 double sr, sg, sb, sw;
                 if (GlaspenNative.glaspen2_load_settings_parts(out sr, out sg, out sb, out sw) != 0)
                 {
                     Console.WriteLine("[Main] Loaded settings: r={0:F2} g={1:F2} b={2:F2} w={3:F2}", sr, sg, sb, sw);
+                    // Find nearest color index
+                    int bestColor = 0;
+                    double bestDist = double.MaxValue;
+                    for (int i = 0; i < PresetColors.Length; i++)
+                    {
+                        double dr = sr - PresetColors[i].R / 255.0;
+                        double dg = sg - PresetColors[i].G / 255.0;
+                        double db = sb - PresetColors[i].B / 255.0;
+                        double dist = dr * dr + dg * dg + db * db;
+                        if (dist < bestDist) { bestDist = dist; bestColor = i; }
+                    }
+                    _colorIndex = bestColor;
+                    // Find nearest width index
+                    int bestWidth = 2;
+                    bestDist = double.MaxValue;
+                    for (int i = 0; i < _widthValues.Length; i++)
+                    {
+                        double dw = sw - _widthValues[i];
+                        double dist = dw * dw;
+                        if (dist < bestDist) { bestDist = dist; bestWidth = i; }
+                    }
+                    _widthIndex = bestWidth;
+                    Console.WriteLine("[Main] Mapped to color={0} width={1}", _colorIndex, _widthIndex);
                 }
             }
             catch (Exception ex)
@@ -85,6 +108,13 @@ namespace GlasPen2
             _overlay = new OverlayForm();
             _overlay.DrawingEnabled = _drawingEnabled;
             _overlay.ProbeRustModeler();
+            // Apply loaded settings
+            _overlay.PenColor = PresetColors[_colorIndex];
+            _overlay.PenWidth = _widthValues[_widthIndex];
+            _overlay.WidthScale = _widthValues[_widthIndex];
+            _overlay.SmoothEnabled = _smoothEnabled;
+            _overlay.InvertX = _invertEnabled;
+            _overlay.InvertY = _invertEnabled;
             _overlay.Show();
 
             // ── Install the mouse hook (suppresses pen mouse events + detects touch) ──
@@ -156,12 +186,11 @@ namespace GlasPen2
             for (int i = 0; i < PresetColors.Length; i++)
             {
                 var colorItem = new ToolStripMenuItem(colorNames[i]);
-                var color = PresetColors[i];
+                int idx = i;
                 colorItem.Click += (s, e) =>
                 {
-                    _overlay.PenColor = color;
-                    // Save to Rust DB
-                    try { GlaspenNative.glaspen2_save_settings(color.R / 255.0, color.G / 255.0, color.B / 255.0, _overlay.WidthScale); } catch { }
+                    ApplySetting("color", idx);
+                    if (_pipeServer != null) _pipeServer.NotifySettingsChanged(GetCurrentSettings());
                 };
                 colorMenu.DropDownItems.Add(colorItem);
             }
@@ -169,18 +198,15 @@ namespace GlasPen2
 
             // Pen width sub-menu
             var widthMenu = new ToolStripMenuItem("📏 笔粗细");
-            float[] widths = { 0.3f, 0.5f, 0.8f, 1.2f, 2f, 3.5f, 5f, 8f };
             string[] widthNames = { "极细 (0.3)", "很细 (0.5)", "细 (0.8)", "中 (1.2)", "粗 (2.0)", "很粗 (3.5)", "超粗 (5.0)", "极粗 (8.0)" };
-            for (int i = 0; i < widths.Length; i++)
+            for (int i = 0; i < _widthValues.Length; i++)
             {
                 var widthItem = new ToolStripMenuItem(widthNames[i]);
-                var w = widths[i];
+                int idx = i;
                 widthItem.Click += (s, e) =>
                 {
-                    _overlay.PenWidth = w;
-                    _overlay.WidthScale = w;
-                    // Save to Rust DB
-                    try { GlaspenNative.glaspen2_save_settings(_overlay.PenColor.R / 255.0, _overlay.PenColor.G / 255.0, _overlay.PenColor.B / 255.0, w); } catch { }
+                    ApplySetting("width", idx);
+                    if (_pipeServer != null) _pipeServer.NotifySettingsChanged(GetCurrentSettings());
                 };
                 widthMenu.DropDownItems.Add(widthItem);
             }
@@ -203,25 +229,26 @@ namespace GlasPen2
             // Stroke smoothing toggle (like macOS ink-stroke-modeler)
             var smoothItem = new ToolStripMenuItem("✨ 笔迹美化 (去抖)")
             {
-                Checked = true,
+                Checked = _smoothEnabled,
                 CheckOnClick = true
             };
             smoothItem.Click += (s, e) =>
             {
-                if (_overlay != null) _overlay.SmoothEnabled = smoothItem.Checked;
+                ApplySetting("smooth", smoothItem.Checked);
+                if (_pipeServer != null) _pipeServer.NotifySettingsChanged(GetCurrentSettings());
             };
             menu.Items.Add(smoothItem);
 
             // 180° rotation toggle
             var invertItem = new ToolStripMenuItem("🔄 坐标翻转 (180°)")
             {
-                Checked = false,
+                Checked = _invertEnabled,
                 CheckOnClick = true
             };
             invertItem.Click += (s, e) =>
             {
-                bool inv = invertItem.Checked;
-                if (_overlay != null) { _overlay.InvertX = inv; _overlay.InvertY = inv; }
+                ApplySetting("invert", invertItem.Checked);
+                if (_pipeServer != null) _pipeServer.NotifySettingsChanged(GetCurrentSettings());
             };
             menu.Items.Add(invertItem);
 
@@ -287,16 +314,16 @@ namespace GlasPen2
             {
                 { "color", _colorIndex },
                 { "width", _widthIndex },
-                { "outline", false },
-                { "inverse", false },
-                { "rainbow", false },
-                { "launchAtLogin", false },
-                { "frostedGlass", false },
+                { "smooth", _smoothEnabled },
+                { "invert", _invertEnabled },
             };
         }
 
         private static int _colorIndex = 0;
         private static int _widthIndex = 2;
+        private static bool _smoothEnabled = true;
+        private static bool _invertEnabled = false;
+        private static readonly float[] _widthValues = { 0.3f, 0.5f, 0.8f, 1.2f, 2f, 3.5f, 5f, 8f };
 
         private static void ApplySetting(string key, object value)
         {
@@ -311,17 +338,29 @@ namespace GlasPen2
                     }
                     break;
                 case "width":
-                    float[] widths = { 0.3f, 0.5f, 0.8f, 1.2f, 2f, 3.5f, 5f, 8f };
                     int wi = Convert.ToInt32(value);
-                    if (wi >= 0 && wi < widths.Length)
+                    if (wi >= 0 && wi < _widthValues.Length)
                     {
                         _widthIndex = wi;
-                        if (_overlay != null) { _overlay.PenWidth = widths[wi]; _overlay.WidthScale = widths[wi]; }
+                        if (_overlay != null) { _overlay.PenWidth = _widthValues[wi]; _overlay.WidthScale = _widthValues[wi]; }
                     }
                     break;
-                // outline, inverse, rainbow, launchAtLogin, frostedGlass
-                // are not yet implemented in the Windows C# overlay
+                case "smooth":
+                    _smoothEnabled = Convert.ToBoolean(value);
+                    if (_overlay != null) _overlay.SmoothEnabled = _smoothEnabled;
+                    break;
+                case "invert":
+                    _invertEnabled = Convert.ToBoolean(value);
+                    if (_overlay != null) { _overlay.InvertX = _invertEnabled; _overlay.InvertY = _invertEnabled; }
+                    break;
             }
+            // Save to Rust DB
+            try
+            {
+                var c = PresetColors[_colorIndex];
+                GlaspenNative.glaspen2_save_settings(c.R / 255.0, c.G / 255.0, c.B / 255.0, _widthValues[_widthIndex]);
+            }
+            catch { }
         }
 
         private static void OnApplicationExit(object sender, EventArgs e)

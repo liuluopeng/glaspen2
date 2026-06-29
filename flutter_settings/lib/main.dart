@@ -1,10 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+// GetLastError from kernel32
+final _getLastError = DynamicLibrary.open('kernel32.dll')
+    .lookupFunction<Uint32 Function(), int Function()>('GetLastError');
 
 void main() => runApp(const GlaspenSettingsApp());
 
@@ -52,127 +58,191 @@ class _MethodChannelBridge extends _SettingsBridge {
   void dispose() {}
 }
 
+// FFI types
+typedef _CreateFileWNative = IntPtr Function(
+    Pointer<Utf16>, Uint32, Uint32, Pointer<Void>, Uint32, Uint32, IntPtr);
+typedef _CreateFileWDart = int Function(
+    Pointer<Utf16>, int, int, Pointer<Void>, int, int, int);
+typedef _ReadWriteNative = Uint8 Function(
+    IntPtr, Pointer<Uint8>, Uint32, Pointer<Uint32>, Pointer<Uint8>);
+typedef _ReadWriteDart = int Function(
+    int, Pointer<Uint8>, int, Pointer<Uint32>, Pointer<Uint8>);
+typedef _CloseHandleNative = Uint8 Function(IntPtr);
+typedef _CloseHandleDart = int Function(int);
+typedef _PeekNamedPipeNative = Uint8 Function(
+    IntPtr, Pointer<Uint8>, Uint32, Pointer<Uint32>, Pointer<Uint32>, Pointer<Uint32>);
+typedef _PeekNamedPipeDart = int Function(
+    int, Pointer<Uint8>, int, Pointer<Uint32>, Pointer<Uint32>, Pointer<Uint32>);
+
 /// Windows: uses Named Pipe for IPC with the main overlay process.
+/// Opens pipe with GENERIC_READ|GENERIC_WRITE via CreateFileW.
+/// Uses ReadFile/WriteFile directly for I/O.
 class _NamedPipeBridge extends _SettingsBridge {
-  RandomAccessFile? _pipe;
-  StreamSubscription<List<int>>? _sub;
+  int _handle = -1; // Windows HANDLE
   final _buffer = <int>[];
   void Function(Map<dynamic, dynamic>)? _onChanged;
+  Completer<Map<dynamic, dynamic>>? _settingsCompleter;
   bool _connected = false;
   Timer? _reconnectTimer;
+  Timer? _readTimer;
+
+  late final DynamicLibrary _kernel32;
+  late final _ReadWriteDart _readFile;
+  late final _ReadWriteDart _writeFile;
+  late final _CloseHandleDart _closeHandle;
+  late final _PeekNamedPipeDart _peekNamedPipe;
 
   _NamedPipeBridge() {
+    _kernel32 = DynamicLibrary.open('kernel32.dll');
+    _readFile = _kernel32
+        .lookupFunction<_ReadWriteNative, _ReadWriteDart>('ReadFile');
+    _writeFile = _kernel32
+        .lookupFunction<_ReadWriteNative, _ReadWriteDart>('WriteFile');
+    _closeHandle = _kernel32
+        .lookupFunction<_CloseHandleNative, _CloseHandleDart>('CloseHandle');
+    _peekNamedPipe = _kernel32
+        .lookupFunction<_PeekNamedPipeNative, _PeekNamedPipeDart>('PeekNamedPipe');
     _connect();
   }
 
   void _connect() {
     try {
-      final file = File(_pipeName);
-      // Open for read+write
-      _pipe = file.openSync(mode: FileMode.write);
-      _connected = true;
-      debugPrint('[Settings] Connected to pipe $_pipeName');
+      final createFileW = _kernel32
+          .lookupFunction<_CreateFileWNative, _CreateFileWDart>('CreateFileW');
 
-      // Listen for push notifications from the host
-      // Use a separate read stream
-      _startListening();
+      final pathPtr = _pipeName.toNativeUtf16();
+      // GENERIC_READ | GENERIC_WRITE
+      const access = 0x80000000 | 0x40000000;
+      // OPEN_EXISTING
+      const disposition = 3;
+      // FILE_FLAG_OVERLAPPED for async reads
+      const flags = 0x40000000;
+
+      final h = createFileW(pathPtr, access, 0, nullptr, disposition, flags, 0);
+      calloc.free(pathPtr);
+
+      if (h == -1) {
+        debugPrint('[Settings] CreateFileW failed — retrying in 2s');
+        _reconnectTimer = Timer(const Duration(seconds: 2), _connect);
+        return;
+      }
+
+      _handle = h;
+      _connected = true;
+      debugPrint('[Settings] Connected to pipe $_pipeName (handle=$_handle)');
+      _startReading();
     } catch (e) {
       debugPrint('[Settings] Pipe connect failed: $e — retrying in 2s');
       _reconnectTimer = Timer(const Duration(seconds: 2), _connect);
     }
   }
 
-  void _startListening() {
-    // Named pipes on Windows: we need to read asynchronously
-    // Open a separate handle for reading
-    try {
-      final readFile = File(_pipeName).openSync(mode: FileMode.read);
-      readFile.listen(
-        (data) {
-          _buffer.addAll(data);
-          _processBuffer();
-        },
-        onDone: () {
-          debugPrint('[Settings] Pipe read closed');
-          _connected = false;
-          _reconnectTimer = Timer(const Duration(seconds: 2), _connect);
-        },
-        onError: (e) {
-          debugPrint('[Settings] Pipe read error: $e');
-          _connected = false;
-        },
-      );
-    } catch (e) {
-      debugPrint('[Settings] Pipe read open failed: $e');
-    }
+  void _startReading() {
+    // Poll for data every 16ms (~60fps)
+    _readTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (!_connected) return;
+      _tryRead();
+    });
   }
 
-  void _processBuffer() {
-    // Messages are newline-delimited JSON
-    while (true) {
-      final newlineIdx = _buffer.indexOf(10); // \n
-      if (newlineIdx < 0) break;
-      final line = utf8.decode(_buffer.sublist(0, newlineIdx));
-      _buffer.removeRange(0, newlineIdx + 1);
-      try {
-        final msg = jsonDecode(line) as Map<String, dynamic>;
-        if (msg['type'] == 'onSettingsChanged' && _onChanged != null) {
-          _onChanged!(msg['data'] as Map<dynamic, dynamic>);
+  void _tryRead() {
+    if (!_connected || _handle == -1) return;
+
+    // Use PeekNamedPipe to check available bytes (non-blocking)
+    final totalAvail = calloc<Uint32>();
+    final ok = _peekNamedPipe(_handle, nullptr, 0, nullptr, totalAvail, nullptr);
+    final avail = totalAvail.value;
+    calloc.free(totalAvail);
+
+    if (ok == 0) {
+      // Pipe broken
+      _connected = false;
+      _reconnectTimer = Timer(const Duration(seconds: 2), _connect);
+      return;
+    }
+
+    if (avail == 0) return; // No data yet
+
+    // Read available data
+    final toRead = avail > 1024 ? 1024 : avail;
+    final buf = calloc<Uint8>(toRead);
+    final bytesRead = calloc<Uint32>();
+    final success = _readFile(_handle, buf, toRead, bytesRead, nullptr);
+    final count = bytesRead.value;
+    calloc.free(bytesRead);
+
+    if (success != 0 && count > 0) {
+      for (int i = 0; i < count; i++) {
+        final byte = buf[i];
+        if (byte == 10) {
+          if (_buffer.isNotEmpty) {
+            final line = utf8.decode(_buffer);
+            _buffer.clear();
+            _handleMessage(line);
+          }
+        } else {
+          _buffer.add(byte);
         }
-      } catch (e) {
-        debugPrint('[Settings] Parse error: $e');
       }
     }
+
+    calloc.free(buf);
   }
 
-  Future<Map<String, dynamic>> _sendRequest(Map<String, dynamic> req) async {
-    if (!_connected || _pipe == null) {
-      throw Exception('Not connected');
+  void _handleMessage(String line) {
+    try {
+      final msg = jsonDecode(line) as Map<String, dynamic>;
+      final type = msg['type'] as String?;
+      if (type == 'onSettingsChanged' && _onChanged != null) {
+        _onChanged!(msg['data'] as Map<dynamic, dynamic>);
+      } else if (type == 'getSettings_response' && _settingsCompleter != null) {
+        _settingsCompleter!.complete(msg['data'] as Map<dynamic, dynamic>);
+        _settingsCompleter = null;
+      }
+    } catch (e) {
+      debugPrint('[Settings] Parse error: $e');
     }
-    final data = utf8.encode(jsonEncode(req) + '\n');
-    _pipe!.writeFromSync(data);
-    // For request/response, we'd need a bidirectional pipe.
-    // For simplicity, use synchronous approach with getSettings via shared memory/file.
-    // Actually, named pipes support bidirectional communication.
-    // But RandomAccessFile doesn't support async reads well on Windows.
-    // Let's use a simpler approach: write request, read response.
-    throw UnimplementedError('Use getSettings/setSetting directly');
+  }
+
+  bool _writeData(String data) {
+    if (!_connected || _handle == -1) return false;
+    final bytes = utf8.encode(data);
+    final buf = calloc<Uint8>(bytes.length);
+    for (int i = 0; i < bytes.length; i++) {
+      buf[i] = bytes[i];
+    }
+    final written = calloc<Uint32>();
+    final success = _writeFile(_handle, buf, bytes.length, written, nullptr);
+    calloc.free(buf);
+    calloc.free(written);
+    return success != 0;
   }
 
   @override
   Future<Map<dynamic, dynamic>> getSettings() async {
-    if (!_connected || _pipe == null) {
-      return {};
-    }
+    if (!_connected) return {};
     try {
-      final req = jsonEncode({'type': 'getSettings'}) + '\n';
-      _pipe!.writeFromSync(utf8.encode(req));
-      // Read response (blocking)
-      // This is tricky with RandomAccessFile...
-      // For now, use a workaround: read until newline
-      final responseBytes = <int>[];
-      while (true) {
-        final byte = _pipe!.readByteSync();
-        if (byte < 0 || byte == 10) break;
-        responseBytes.add(byte);
-      }
-      final response = jsonDecode(utf8.decode(responseBytes));
-      if (response is Map && response['type'] == 'getSettings_response') {
-        return response['data'] as Map<dynamic, dynamic>;
-      }
-      return {};
+      _settingsCompleter = Completer<Map<dynamic, dynamic>>();
+      _writeData(jsonEncode({'type': 'getSettings'}) + '\n');
+      return await _settingsCompleter!.future.timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          _settingsCompleter = null;
+          return <dynamic, dynamic>{};
+        },
+      );
     } catch (e) {
       debugPrint('[Settings] getSettings error: $e');
+      _settingsCompleter = null;
       return {};
     }
   }
 
   @override
   Future<void> setSetting(String key, dynamic value) async {
-    if (!_connected || _pipe == null) return;
+    if (!_connected) return;
     try {
-      final req = jsonEncode({'type': 'setSetting', 'key': key, 'value': value}) + '\n';
-      _pipe!.writeFromSync(utf8.encode(req));
+      _writeData(jsonEncode({'type': 'setSetting', 'key': key, 'value': value}) + '\n');
     } catch (e) {
       debugPrint('[Settings] setSetting error: $e');
     }
@@ -186,8 +256,12 @@ class _NamedPipeBridge extends _SettingsBridge {
   @override
   void dispose() {
     _reconnectTimer?.cancel();
-    _sub?.cancel();
-    _pipe?.close();
+    _readTimer?.cancel();
+    _connected = false;
+    if (_handle != -1) {
+      _closeHandle(_handle);
+      _handle = -1;
+    }
   }
 }
 
@@ -231,22 +305,17 @@ class _SettingsPageState extends State<SettingsPage> {
   late _SettingsBridge _bridge;
   int _selectedColor = 0;
   int _selectedWidth = 2;
-  bool _outline = false;
-  bool _inverse = false;
-  bool _rainbow = false;
-  bool _launchAtLogin = false;
-  bool _frostedGlass = false;
+  bool _smooth = true;
+  bool _invert = false;
   bool _connected = false;
 
-  static const _colorNames = [
-    'Red', 'Orange', 'Yellow', 'Green', 'Cyan',
-    'Blue', 'Purple', 'Pink', 'White', 'Black',
-  ];
+  // Match C# tray menu's PresetColors and widths
+  static const _colorNames = ['红色', '蓝色', '绿色', '橙色', '紫色', '黑色', '白色'];
   static const _colorValues = [
-    0xFFFF0000, 0xFFFF8C00, 0xFFFFD700, 0xFF00AA00, 0xFF00CCCC,
-    0xFF0000FF, 0xFF8B00FF, 0xFFFF69B4, 0xFFFFFFFF, 0xFF000000,
+    0xFFDC1E1E, 0xFF1E78DC, 0xFF1EB43C, 0xFFF0A014,
+    0xFFA050DC, 0xFF141414, 0xFFFFFFFF,
   ];
-  static const _widthNames = ['Fine', 'Thin', 'Medium', 'Thick', 'Bold'];
+  static const _widthNames = ['极细', '很细', '细', '中', '粗', '很粗', '超粗', '极粗'];
 
   @override
   void initState() {
@@ -261,11 +330,8 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() {
         _selectedColor = s['color'] ?? _selectedColor;
         _selectedWidth = s['width'] ?? _selectedWidth;
-        _outline = s['outline'] ?? _outline;
-        _inverse = s['inverse'] ?? _inverse;
-        _rainbow = s['rainbow'] ?? _rainbow;
-        _launchAtLogin = s['launchAtLogin'] ?? _launchAtLogin;
-        _frostedGlass = s['frostedGlass'] ?? _frostedGlass;
+        _smooth = s['smooth'] ?? _smooth;
+        _invert = s['invert'] ?? _invert;
       });
     }
   }
@@ -277,11 +343,8 @@ class _SettingsPageState extends State<SettingsPage> {
         setState(() {
           _selectedColor = settings['color'] ?? 0;
           _selectedWidth = settings['width'] ?? 2;
-          _outline = settings['outline'] ?? false;
-          _inverse = settings['inverse'] ?? false;
-          _rainbow = settings['rainbow'] ?? false;
-          _launchAtLogin = settings['launchAtLogin'] ?? false;
-          _frostedGlass = settings['frostedGlass'] ?? false;
+          _smooth = settings['smooth'] ?? true;
+          _invert = settings['invert'] ?? false;
           _connected = true;
         });
       }
@@ -346,9 +409,9 @@ class _SettingsPageState extends State<SettingsPage> {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: List.generate(10, (i) {
+      children: List.generate(_colorNames.length, (i) {
         final selected = i == _selectedColor;
-        final isWhite = i == 8;
+        final isWhite = i == _colorNames.length - 1;
         return SizedBox(
           width: 60,
           height: 30,
@@ -383,10 +446,10 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildWidthRow() {
     return Wrap(
       spacing: 8,
-      children: List.generate(5, (i) {
+      children: List.generate(_widthNames.length, (i) {
         final selected = i == _selectedWidth;
         return SizedBox(
-          width: 60,
+          width: 55,
           height: 30,
           child: OutlinedButton(
             onPressed: () {
@@ -414,53 +477,23 @@ class _SettingsPageState extends State<SettingsPage> {
     return Column(
       children: [
         SwitchListTile(
-          title: const Text('Outline', style: TextStyle(fontSize: 13)),
-          value: _outline,
+          title: const Text('笔迹美化 (去抖)', style: TextStyle(fontSize: 13)),
+          value: _smooth,
           dense: true,
           contentPadding: EdgeInsets.zero,
           onChanged: (v) {
-            setState(() => _outline = v);
-            _setSetting('outline', v);
+            setState(() => _smooth = v);
+            _setSetting('smooth', v);
           },
         ),
         SwitchListTile(
-          title: const Text('Inverse Color', style: TextStyle(fontSize: 13)),
-          value: _inverse,
+          title: const Text('坐标翻转 (180°)', style: TextStyle(fontSize: 13)),
+          value: _invert,
           dense: true,
           contentPadding: EdgeInsets.zero,
           onChanged: (v) {
-            setState(() => _inverse = v);
-            _setSetting('inverse', v);
-          },
-        ),
-        SwitchListTile(
-          title: const Text('Rainbow', style: TextStyle(fontSize: 13)),
-          value: _rainbow,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            setState(() => _rainbow = v);
-            _setSetting('rainbow', v);
-          },
-        ),
-        SwitchListTile(
-          title: const Text('Launch at Login', style: TextStyle(fontSize: 13)),
-          value: _launchAtLogin,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            setState(() => _launchAtLogin = v);
-            _setSetting('launchAtLogin', v);
-          },
-        ),
-        SwitchListTile(
-          title: const Text('Frosted Glass', style: TextStyle(fontSize: 13)),
-          value: _frostedGlass,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            setState(() => _frostedGlass = v);
-            _setSetting('frostedGlass', v);
+            setState(() => _invert = v);
+            _setSetting('invert', v);
           },
         ),
       ],

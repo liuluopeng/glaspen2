@@ -86,6 +86,80 @@ fn main() {
         let target_debug = std::path::Path::new(&manifest_dir).join("target").join(&profile);
         let csharp_exe = target_debug.join("glaspen2_app.exe");
 
+        // Auto-build Flutter Windows app (like macOS does)
+        let flutter_dir = std::path::Path::new(&manifest_dir).join("flutter_settings");
+        let flutter_exe = flutter_dir.join("build").join("windows").join("x64")
+            .join("runner").join("Release").join("glaspen2_settings.exe");
+        let flutter_debug_exe = flutter_dir.join("build").join("windows").join("x64")
+            .join("runner").join("Debug").join("glaspen2_settings.exe");
+
+        // Determine flutter command (prefer fvm)
+        let flutter_cmd = if std::process::Command::new("fvm")
+            .args(&["flutter", "--version"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            "fvm"
+        } else {
+            "flutter"
+        };
+
+        // Check if Flutter exe already exists and is newer than lib/main.dart
+        let main_dart = flutter_dir.join("lib").join("main.dart");
+        let needs_flutter_build = if flutter_exe.exists() {
+            // Check if main.dart is newer than the exe
+            let exe_time = std::fs::metadata(&flutter_exe)
+                .and_then(|m| m.modified())
+                .ok();
+            let dart_time = std::fs::metadata(&main_dart)
+                .and_then(|m| m.modified())
+                .ok();
+            match (exe_time, dart_time) {
+                (Some(e), Some(d)) => d > e,
+                _ => true,
+            }
+        } else if flutter_debug_exe.exists() {
+            false // Debug build exists, good enough
+        } else {
+            true // No exe at all
+        };
+
+        if needs_flutter_build {
+            println!("cargo:warning=Building Flutter Windows app...");
+            let flutter_args = if flutter_cmd == "fvm" {
+                vec!["flutter", "build", "windows"]
+            } else {
+                vec!["build", "windows"]
+            };
+            let status = std::process::Command::new(flutter_cmd)
+                .args(&flutter_args)
+                .current_dir(&flutter_dir)
+                .status();
+            match status {
+                Ok(s) if s.success() => {
+                    println!("cargo:warning=Flutter build succeeded");
+                }
+                Ok(s) => {
+                    println!("cargo:warning=Flutter build failed (exit code {:?})", s.code());
+                }
+                Err(e) => {
+                    println!("cargo:warning=Failed to run flutter build: {}", e);
+                }
+            }
+        }
+
+        // Tell Rust where to find the Flutter settings exe
+        if flutter_exe.exists() {
+            println!("cargo:rustc-env=GLASPEN2_FLUTTER_EXE={}", flutter_exe.display());
+            println!("cargo:warning=Flutter settings: {}", flutter_exe.display());
+        } else if flutter_debug_exe.exists() {
+            println!("cargo:rustc-env=GLASPEN2_FLUTTER_EXE={}", flutter_debug_exe.display());
+            println!("cargo:warning=Flutter settings (debug): {}", flutter_debug_exe.display());
+        }
+
         let cs_files: Vec<_> = std::fs::read_dir(csharp_dir)
             .into_iter()
             .flatten()
