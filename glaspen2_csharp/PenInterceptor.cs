@@ -83,17 +83,19 @@ namespace GlasPen2
             int x = hookStruct.pt.X;
             int y = hookStruct.pt.Y;
 
-            // ── Primary detection: GetMessageExtraInfo ──
-            // Windows INK sets PEN_SIGNATURE in the extra info when it injects
-            // pen-as-mouse events. This is the most reliable detection method.
-            bool isFromPen = false;
-            try
+            // ── Primary detection: dwExtraInfo from hook struct ──
+            // Windows INK sets PEN_SIGNATURE in dwExtraInfo when it injects
+            // pen-as-mouse events. Use the hook struct field, NOT GetMessageExtraInfo()
+            // (which only works for messages in a thread queue, not hook callbacks).
+            ulong extraVal = (ulong)hookStruct.dwExtraInfo.ToInt64();
+            bool isFromPen = (extraVal & NativeMethods.PEN_SIGNATURE_MASK) == NativeMethods.PEN_SIGNATURE;
+
+            // Debug: log first few events to verify detection
+            if (_passCount + _suppressCount < 20)
             {
-                IntPtr extra = NativeMethods.GetMessageExtraInfo();
-                ulong val = (ulong)extra.ToInt64();
-                isFromPen = (val & NativeMethods.PEN_SIGNATURE_MASK) == NativeMethods.PEN_SIGNATURE;
+                Console.WriteLine("[Hook] msg=0x{0:X4} pos=({1},{2}) extraInfo=0x{3:X16} isPen={4}",
+                    msg, x, y, extraVal, isFromPen);
             }
-            catch { }
 
             // ── Fallback: timing-based detection ──
             // For systems where GetMessageExtraInfo doesn't work.
