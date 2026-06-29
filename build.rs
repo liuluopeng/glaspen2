@@ -79,7 +79,12 @@ fn main() {
 
     if is_windows {
         let csharp_dir = std::path::Path::new("glaspen2_csharp");
-        let csharp_exe = csharp_dir.join("glaspen2_app.exe");
+
+        // Output C# exe to Cargo target dir (same dir as glaspen2.dll)
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
+        let target_debug = std::path::Path::new(&manifest_dir).join("target").join(&profile);
+        let csharp_exe = target_debug.join("glaspen2_app.exe");
 
         // Auto-compile C# overlay if exe is missing or any .cs file changed
         let cs_files: Vec<_> = std::fs::read_dir(csharp_dir)
@@ -112,22 +117,27 @@ fn main() {
             let csc = csc_candidates.iter().find(|p| std::path::Path::new(p).exists());
 
             if let Some(csc_path) = csc {
+                let out_path = csharp_exe.display().to_string();
                 let mut cmd = std::process::Command::new(csc_path);
                 cmd.args(&[
                     "/target:winexe",
-                    "/out:glaspen2_app.exe",
+                    &format!("/out:{}", out_path),
                     "/platform:x64",
                 ]);
                 for f in &cs_files {
-                    // Use filename only since current_dir is already glaspen2_csharp
-                    cmd.arg(f.file_name());
+                    // Use absolute paths since output dir differs from source dir
+                    let abs = std::fs::canonicalize(f.path())
+                        .unwrap_or_else(|_| f.path())
+                        .display()
+                        .to_string()
+                        .replace("\\\\?\\", ""); // strip \\?\ prefix for csc.exe
+                    cmd.arg(abs);
                 }
-                cmd.current_dir(csharp_dir);
 
                 match cmd.output() {
                     Ok(output) => {
                         if output.status.success() {
-                            println!("cargo:warning=Compiled C# overlay ({} files)", cs_files.len());
+                            println!("cargo:warning=Compiled C# overlay → {}", csharp_exe.display());
                         } else {
                             let stderr = String::from_utf8_lossy(&output.stderr);
                             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -148,11 +158,10 @@ fn main() {
             }
         }
 
-        // Set env var so Rust can find the C# exe at runtime
+        // Tell Rust where to find the C# exe at runtime
         if csharp_exe.exists() {
-            let abs = std::fs::canonicalize(&csharp_exe).unwrap_or_else(|_| csharp_exe.to_owned());
-            println!("cargo:rustc-env=GLASPEN2_CSHARP_EXE={}", abs.display());
-            println!("cargo:warning=C# overlay: {}", abs.display());
+            println!("cargo:rustc-env=GLASPEN2_CSHARP_EXE={}", csharp_exe.display());
+            println!("cargo:warning=C# overlay: {}", csharp_exe.display());
         } else {
             println!("cargo:warning=glaspen2_app.exe not found — Rust fallback will be used");
         }
