@@ -117,28 +117,39 @@ fn main() {
             let csc = csc_candidates.iter().find(|p| std::path::Path::new(p).exists());
 
             if let Some(csc_path) = csc {
-                let out_path = csharp_exe.display().to_string();
+                // Compile to a temp file first, then move into place.
+                // This avoids CS0016 "file in use" when the exe is locked
+                // (e.g. by Windows Defender or a previous run).
+                let tmp_exe = target_debug.join("glaspen2_app_tmp.exe");
+                let out_arg = format!("/out:{}", tmp_exe.display());
                 let mut cmd = std::process::Command::new(csc_path);
                 cmd.args(&[
                     "/target:winexe",
-                    &format!("/out:{}", out_path),
+                    &out_arg,
                     "/platform:x64",
                 ]);
                 for f in &cs_files {
-                    // Use absolute paths since output dir differs from source dir
                     let abs = std::fs::canonicalize(f.path())
                         .unwrap_or_else(|_| f.path())
                         .display()
                         .to_string()
-                        .replace("\\\\?\\", ""); // strip \\?\ prefix for csc.exe
+                        .replace("\\\\?\\", "");
                     cmd.arg(abs);
                 }
 
                 match cmd.output() {
                     Ok(output) => {
                         if output.status.success() {
+                            // Move temp exe into final location
+                            let _ = std::fs::remove_file(&csharp_exe);
+                            if std::fs::rename(&tmp_exe, &csharp_exe).is_err() {
+                                // rename may fail across volumes; fall back to copy
+                                let _ = std::fs::copy(&tmp_exe, &csharp_exe);
+                                let _ = std::fs::remove_file(&tmp_exe);
+                            }
                             println!("cargo:warning=Compiled C# overlay → {}", csharp_exe.display());
                         } else {
+                            let _ = std::fs::remove_file(&tmp_exe);
                             let stderr = String::from_utf8_lossy(&output.stderr);
                             let stdout = String::from_utf8_lossy(&output.stdout);
                             println!("cargo:warning=C# compilation FAILED:");

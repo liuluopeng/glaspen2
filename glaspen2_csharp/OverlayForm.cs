@@ -755,16 +755,15 @@ namespace GlasPen2
 
             float w = _currentWidth > 0 ? _currentWidth : _penWidth;
 
-            // Finalize modeler if active (same as OnPenUp)
+            // Finalize modeler if active (same as OnPenUp — no drawing)
             if (_rustModelerAvailable && _smoothEnabled)
             {
                 double pressure = (_lastPointerPressure > 0) ? _lastPointerPressure / 1024.0 : 0.5;
                 double ts = GlaspenNative.glaspen2_now_secs();
                 GlaspenNative.glaspen2_modeler_end(
                     _lastPenPos.X, _lastPenPos.Y, pressure, ts, _widthScale);
-                DrawModelerBuffer(w);
-                GlaspenNative.glaspen2_modeler_commit_to_strokes(_penR, _penG, _penB, IntPtr.Zero, 0);
                 GlaspenNative.glaspen2_modeler_clear_buffer();
+                GlaspenNative.glaspen2_modeler_commit_to_strokes(_penR, _penG, _penB, IntPtr.Zero, 0);
             }
 
             Console.WriteLine("[Draw] UP at ({0},{1})", _lastPenPos.X, _lastPenPos.Y);
@@ -791,15 +790,15 @@ namespace GlasPen2
 
             if (_rustModelerAvailable && _smoothEnabled)
             {
-                // Finalize Rust modeler stroke
+                // Finalize modeler — do NOT draw its output (Up event returns
+                // convergence points that would create a spurious line).
+                // The last OnPenMove already drew the final visible segment.
                 double pressure = (_lastPointerPressure > 0) ? _lastPointerPressure / 1024.0 : 0.5;
                 double ts = GlaspenNative.glaspen2_now_secs();
                 GlaspenNative.glaspen2_modeler_end(screenX, screenY, pressure, ts, _widthScale);
-                DrawModelerBuffer(w);
+                GlaspenNative.glaspen2_modeler_clear_buffer();
                 // Commit smoothed points into Rust STROKES (for DB persistence + export)
                 GlaspenNative.glaspen2_modeler_commit_to_strokes(_penR, _penG, _penB, IntPtr.Zero, 0);
-                // Thoroughly clear modeler buffer to prevent stale points leaking to next stroke
-                GlaspenNative.glaspen2_modeler_clear_buffer();
             }
 
             if (_smoothBuffer.Count > 0)
