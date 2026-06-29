@@ -14,6 +14,7 @@ namespace GlasPen2
         public const int WM_MOUSEMOVE    = 0x0200;
         public const int WM_LBUTTONDOWN  = 0x0201;
         public const int WM_LBUTTONUP    = 0x0202;
+        public const int WM_LBUTTONDBLCLK = 0x0203;
         public const int WM_RBUTTONDOWN  = 0x0204;
         public const int WM_RBUTTONUP    = 0x0205;
         public const int WM_MBUTTONDOWN  = 0x0207;
@@ -150,6 +151,24 @@ namespace GlasPen2
         #region User32 Functions
 
         public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetMessageExtraInfo();
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr CreateCursor(
+            IntPtr hInst, int xHotSpot, int yHotSpot,
+            int nWidth, int nHeight, byte[] pvANDPlane, byte[] pvXORPlane);
+
+        [DllImport("user32.dll")]
+        public static extern bool DestroyCursor(IntPtr hCursor);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr SetCursor(IntPtr hCursor);
+
+        public const int WM_SETCURSOR  = 0x0020;
+        public const int WM_NCHITTEST   = 0x0084;
+        public const int HTCLIENT       = 1;
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern IntPtr SetWindowsHookEx(
