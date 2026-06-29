@@ -5,8 +5,10 @@
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
 #import <IOSurface/IOSurface.h>
+#import <FlutterMacOS/FlutterMacOS.h>
 #include <signal.h>
 #include <string.h>
+#include <mach/mach_time.h>
 
 // App enabled state
 static BOOL g_enabled = YES;
@@ -24,6 +26,19 @@ static void stop_inverse_timer(void);
 static void rebuild_surface_from_strokes(void);
 static void update_inverse_colors(void);
 static void sample_bg_inverse(double px, double py, double *out_r, double *out_g, double *out_b);
+static void perf_log_summary(void);
+static void show_settings_panel(void);
+static void sync_settings_panel(void);
+static void gl_settings_set_color(int idx);
+static void gl_settings_set_width(int idx);
+static void gl_settings_set_outline(BOOL on);
+static void gl_settings_set_inverse(BOOL on);
+static void gl_settings_set_rainbow(BOOL on);
+static void gl_settings_set_launch(BOOL on);
+static void gl_settings_set_glass_enabled(BOOL on);
+static void gl_settings_set_glass_opacity(double alpha);
+static void gl_glass_apply(void);
+static void gl_settings_set_enabled(BOOL on);
 
 // Per-stroke inverse colors (ObjC side, continuously updated by timer)
 #define MAX_INVERSE_STROKES 1024
@@ -82,6 +97,7 @@ extern double glaspen2_get_stroke_point_width(int idx, int pidx);
 // Forward declarations
 static void rebuild_surface_from_strokes(void);
 static NSWindow *g_window = nil;
+static NSVisualEffectView *g_glass_view = nil;
 
 // --- Drawing state ---
 static cairo_surface_t *g_surface = NULL;
@@ -116,6 +132,10 @@ static BOOL g_outline_enabled = NO;
 
 // Inverse color mode toggle (experimental, default off)
 static BOOL g_inverse_enabled = NO;
+
+// Glass overlay opacity (0.0 = off, 0.0-0.3 range)
+static BOOL g_glass_enabled = NO;  // frosted glass ON/OFF
+static double g_glass_opacity = 0.20; // opacity level (used only when enabled)
 
 // Current stroke color (may differ from pen color in inverse mode)
 static double g_stroke_r = 1.0, g_stroke_g = 0.0, g_stroke_b = 0.0;
@@ -447,8 +467,8 @@ static void update_menu_texts(void) {
     // Update toggle item title based on state
     NSMenuItem *toggleItem = [g_menu itemWithTag:888];
     if (toggleItem) [toggleItem setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
-    [[g_menu itemAtIndex:base+10] setTitle:L(@"English", @"中文")];
-    [[g_menu itemAtIndex:base+11] setTitle:L(@"退出", @"Quit")];
+    [[g_menu itemAtIndex:base+12] setTitle:L(@"English", @"中文")];
+    [[g_menu itemAtIndex:base+13] setTitle:L(@"退出", @"Quit")];
 }
 
 static NSImage* colorSwatchImage(NSColor *color, CGFloat size) {
@@ -563,67 +583,35 @@ static void toggle_enabled(void) {
     g_lang = 1 - g_lang;
     update_menu_texts();
 }
+- (void)showSettingsPanel {
+    show_settings_panel();
+}
 
 - (void)toggleRainbow {
-    g_show_rainbow = !g_show_rainbow;
-    NSMenuItem *item = [g_menu itemWithTag:999];
-    [item setState:g_show_rainbow ? NSControlStateValueOn : NSControlStateValueOff];
-    if (g_show_rainbow) {
-        draw_rainbow_indicator();
-    } else {
-        clear_screen();
-    }
+    gl_settings_set_rainbow(!g_show_rainbow);
 }
 
 - (void)toggleLaunch {
-    int cur = glaspen2_is_launch_at_login();
-    int ok = glaspen2_set_launch_at_login(!cur);
-    if (ok) {
-        NSMenuItem *item = [g_menu itemWithTag:777];
-        [item setState:(!cur) ? NSControlStateValueOn : NSControlStateValueOff];
-    }
+    gl_settings_set_launch(!glaspen2_is_launch_at_login());
 }
 
 - (void)toggleOutline {
-    g_outline_enabled = !g_outline_enabled;
-    NSMenuItem *item = [g_menu itemWithTag:666];
-    [item setState:g_outline_enabled ? NSControlStateValueOn : NSControlStateValueOff];
-    glaspen2_save_bool_setting("outline_enabled", g_outline_enabled ? 1 : 0);
-    rebuild_surface_from_strokes();
+    gl_settings_set_outline(!g_outline_enabled);
 }
 
 - (void)toggleInverse {
-    g_inverse_enabled = !g_inverse_enabled;
-    NSMenuItem *item = [g_menu itemWithTag:555];
-    [item setState:g_inverse_enabled ? NSControlStateValueOn : NSControlStateValueOff];
-    glaspen2_save_bool_setting("inverse_enabled", g_inverse_enabled ? 1 : 0);
-    if (g_inverse_enabled) {
-        start_inverse_timer();
-    } else {
-        stop_inverse_timer();
-    }
+    gl_settings_set_inverse(!g_inverse_enabled);
+}
+- (void)toggleGlass {
+    gl_settings_set_glass_enabled(!g_glass_enabled);
 }
 
 - (void)selectColor:(NSMenuItem *)sender {
-    int idx = (int)[sender tag];
-    if (idx >= 0 && idx < g_color_preset_count) {
-        g_pen_r = g_color_presets[idx].r;
-        g_pen_g = g_color_presets[idx].g;
-        g_pen_b = g_color_presets[idx].b;
-        g_selectedColorIndex = idx;
-        glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
-        update_menu_checkmarks();
-    }
+    gl_settings_set_color((int)[sender tag]);
 }
 
 - (void)selectWidth:(NSMenuItem *)sender {
-    int idx = (int)[sender tag];
-    if (idx >= 0 && idx < g_width_preset_count) {
-        g_width_scale = g_width_presets[idx];
-        g_selected_width_index = idx;
-        glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
-        update_menu_checkmarks();
-    }
+    gl_settings_set_width((int)[sender tag]);
 }
 
 // NSApplicationDelegate
@@ -632,6 +620,7 @@ static void toggle_enabled(void) {
 }
 
 - (void)quitApp {
+    perf_log_summary();
     CGDisplayShowCursor(kCGDirectMainDisplay);
     [NSApp terminate:nil];
 }
@@ -652,13 +641,224 @@ static void toggle_enabled(void) {
 
 @end
 
+// --- Settings Panel (Flutter-based) ---
+static FlutterEngine *g_flutter_engine = nil;
+static FlutterViewController *g_flutter_vc = nil;
+static NSWindow *g_settings_window = nil;
+static FlutterMethodChannel *g_settings_channel = nil;
+
+static void show_settings_panel(void);
+static void sync_settings_panel(void);
+
+// --- Legacy settings panel stubs (no longer used, kept for sync_settings_panel) ---
+static NSButton *g_color_buttons[10];
+static NSButton *g_width_buttons[5];
+static NSButton *g_outline_toggle = nil;
+static NSButton *g_inverse_toggle = nil;
+static NSButton *g_rainbow_toggle = nil;
+static NSButton *g_launch_toggle = nil;
+static NSButton *g_glass_toggle = nil;
+static NSButton *g_glass_buttons[1];
+
+@interface SettingsMethodChannelHandler : NSObject <FlutterPlugin>
+@end
+
+@implementation SettingsMethodChannelHandler
+- (void)handleMethodCall:(FlutterMethodCall *)call result:(FlutterResult)result {
+    if ([call.method isEqualToString:@"getSettings"]) {
+        result(@{
+            @"color": @(g_selectedColorIndex),
+            @"width": @(g_selected_width_index),
+            @"outline": @(g_outline_enabled),
+            @"inverse": @(g_inverse_enabled),
+            @"rainbow": @(g_show_rainbow),
+            @"launchAtLogin": @(glaspen2_is_launch_at_login()),
+            @"frostedGlass": @(g_glass_enabled),
+        });
+    } else if ([call.method isEqualToString:@"setSetting"]) {
+        NSDictionary *args = call.arguments;
+        NSString *key = args[@"key"];
+        id value = args[@"value"];
+        if ([key isEqualToString:@"color"]) {
+            gl_settings_set_color([value intValue]);
+        } else if ([key isEqualToString:@"width"]) {
+            gl_settings_set_width([value intValue]);
+        } else if ([key isEqualToString:@"outline"]) {
+            gl_settings_set_outline([value boolValue]);
+        } else if ([key isEqualToString:@"inverse"]) {
+            gl_settings_set_inverse([value boolValue]);
+        } else if ([key isEqualToString:@"rainbow"]) {
+            gl_settings_set_rainbow([value boolValue]);
+        } else if ([key isEqualToString:@"launchAtLogin"]) {
+            gl_settings_set_launch([value boolValue]);
+        } else if ([key isEqualToString:@"frostedGlass"]) {
+            gl_settings_set_glass_enabled([value boolValue]);
+        } else if ([key isEqualToString:@"opacity"]) {
+            gl_settings_set_glass_opacity([value doubleValue]);
+            if (!g_glass_enabled) gl_settings_set_glass_enabled(YES);
+        }
+        result(nil);
+    } else {
+        result(FlutterMethodNotImplemented);
+    }
+}
+@end
+
+// --- Unified settings functions (single source of truth) ---
+
+static void gl_settings_set_color(int idx) {
+    if (idx < 0 || idx >= g_color_preset_count) return;
+    g_pen_r = g_color_presets[idx].r;
+    g_pen_g = g_color_presets[idx].g;
+    g_pen_b = g_color_presets[idx].b;
+    g_selectedColorIndex = idx;
+    glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
+    update_menu_checkmarks();
+    update_status_icon_color();
+    sync_settings_panel();
+}
+
+static void gl_settings_set_width(int idx) {
+    if (idx < 0 || idx >= g_width_preset_count) return;
+    g_width_scale = g_width_presets[idx];
+    g_selected_width_index = idx;
+    glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
+    update_menu_checkmarks();
+    sync_settings_panel();
+}
+
+static void gl_settings_set_outline(BOOL on) {
+    g_outline_enabled = on;
+    glaspen2_save_bool_setting("outline_enabled", on ? 1 : 0);
+    NSMenuItem *item = [g_menu itemWithTag:666];
+    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    sync_settings_panel();
+    rebuild_surface_from_strokes();
+}
+
+static void gl_settings_set_inverse(BOOL on) {
+    g_inverse_enabled = on;
+    glaspen2_save_bool_setting("inverse_enabled", on ? 1 : 0);
+    NSMenuItem *item = [g_menu itemWithTag:555];
+    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    sync_settings_panel();
+    if (on) start_inverse_timer(); else stop_inverse_timer();
+}
+
+static void gl_settings_set_rainbow(BOOL on) {
+    g_show_rainbow = on;
+    NSMenuItem *item = [g_menu itemWithTag:999];
+    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    sync_settings_panel();
+    if (on) draw_rainbow_indicator(); else clear_screen();
+}
+
+static void gl_settings_set_launch(BOOL on) {
+    glaspen2_set_launch_at_login(on ? 1 : 0);
+    NSMenuItem *item = [g_menu itemWithTag:777];
+    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    sync_settings_panel();
+}
+
+static void gl_glass_apply(void) {
+    // Combine enabled + opacity into visual effect
+    double visual = g_glass_enabled ? g_glass_opacity : 0.0;
+    if (g_glass_view) {
+        g_glass_view.alphaValue = visual * 2.0; // map to visible range
+        g_glass_view.hidden = !g_glass_enabled;
+    }
+    NSMenuItem *gi = [g_menu itemWithTag:444];
+    [gi setState:g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+    if (g_glass_toggle) g_glass_toggle.state = g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff;
+    g_glass_buttons[0].state = (fabs(g_glass_opacity - 0.50) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
+}
+
+static void gl_settings_set_glass_enabled(BOOL on) {
+    g_glass_enabled = on;
+    glaspen2_save_bool_setting("glass_enabled", on ? 1 : 0);
+    gl_glass_apply();
+}
+
+static void gl_settings_set_glass_opacity(double alpha) {
+    g_glass_opacity = alpha;
+    glaspen2_save_bool_setting("glass_alpha", (int)(alpha * 1000));
+    gl_glass_apply();
+}
+
+static void gl_settings_set_enabled(BOOL on) {
+    g_enabled = on;
+    NSMenuItem *item = [g_menu itemWithTag:888];
+    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    [item setTitle:on ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
+    update_status_icon_state();
+}
+
+static void sync_settings_panel(void) {
+    if (!g_settings_channel) return;
+    // Notify Flutter of updated settings via MethodChannel
+    [g_settings_channel invokeMethod:@"onSettingsChanged" arguments:@{
+        @"color": @(g_selectedColorIndex),
+        @"width": @(g_selected_width_index),
+        @"outline": @(g_outline_enabled),
+        @"inverse": @(g_inverse_enabled),
+        @"rainbow": @(g_show_rainbow),
+        @"launchAtLogin": @(glaspen2_is_launch_at_login()),
+        @"frostedGlass": @(g_glass_enabled),
+    }];
+}
+
+static void show_settings_panel(void) {
+    // If window already exists, just bring it forward
+    if (g_settings_window) {
+        [g_settings_window makeKeyAndOrderFront:nil];
+        return;
+    }
+
+    // Create Flutter engine (singleton)
+    if (!g_flutter_engine) {
+        g_flutter_engine = [[FlutterEngine alloc] initWithName:@"glaspen_settings"
+                                                      project:nil];
+        [g_flutter_engine runWithEntrypoint:nil];
+    }
+
+    // Set up MethodChannel for settings communication
+    g_settings_channel = [FlutterMethodChannel
+        methodChannelWithName:@"com.glaspen/settings"
+              binaryMessenger:g_flutter_engine.binaryMessenger];
+
+    SettingsMethodChannelHandler *handler = [[SettingsMethodChannelHandler alloc] init];
+    [g_settings_channel setMethodCallHandler:^(FlutterMethodCall *call, FlutterResult result) {
+        [handler handleMethodCall:call result:result];
+    }];
+
+    // Create FlutterViewController
+    g_flutter_vc = [[FlutterViewController alloc] initWithEngine:g_flutter_engine
+                                                         nibName:nil
+                                                          bundle:nil];
+
+    // Create window
+    NSRect frame = NSMakeRect(0, 0, 380, 420);
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
+        styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
+        backing:NSBackingStoreBuffered defer:NO];
+    [window setTitle:L(@"Glaspen2 设置", @"Glaspen2 Settings")];
+    [window setMinSize:NSMakeSize(340, 360)];
+    [window setReleasedWhenClosed:NO];
+    [window.contentView addSubview:g_flutter_vc.view];
+    g_flutter_vc.view.frame = window.contentView.bounds;
+    g_flutter_vc.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+
+    [window center];
+    [window makeKeyAndOrderFront:nil];
+    g_settings_window = window;
+}
+
 static void ensure_surface(NSView *view) {
     NSRect bounds = [view bounds];
     int w = (int)bounds.size.width;
     int h = (int)bounds.size.height;
     if (g_surface && cairo_image_surface_get_width(g_surface) == w &&
         cairo_image_surface_get_height(g_surface) == h) return;
-
     if (g_surface) cairo_surface_destroy(g_surface);
     g_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
     cairo_t *cr = cairo_create(g_surface);
@@ -672,6 +872,7 @@ static void ensure_surface(NSView *view) {
 static void flush_to_layer(void) {
     if (!g_surface || !g_draw_view) return;
     [g_draw_view setNeedsDisplay:YES];
+    [g_draw_view displayIfNeeded];
 }
 
 static void pen_draw(double x, double y, double width) {
@@ -789,6 +990,13 @@ static void sample_bg_inverse(double px, double py,
 
 /// Re-sample inverse colors for all strokes and rebuild surface.
 static void update_inverse_colors(void) {
+    // Skip if no inverse color data exists
+    BOOL has_any = NO;
+    for (int s = 0; s < MAX_INVERSE_STROKES; s++) {
+        if (g_inverse_colors[s]) { has_any = YES; break; }
+    }
+    if (!has_any) return;
+
     @synchronized(g_capture_lock) {
         if (!g_captured_image) return;
     }
@@ -1061,11 +1269,62 @@ static void rebuild_surface_from_strokes(void) {
 @end
 
 // --- CGEventTap callback ---
+
+// Performance logging (set g_perf_log=YES to enable)
+static BOOL g_perf_log = NO;
+static FILE *g_perf_file = NULL;
+static uint64_t g_perf_total_calls = 0;
+static uint64_t g_perf_slow_calls = 0;
+
+static void perf_log_begin(void) {
+    if (!g_perf_file) {
+        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) firstObject];
+        NSString *logDir = [dir stringByAppendingPathComponent:@"Logs/glaspen2"];
+        NSError *err = nil;
+        [[NSFileManager defaultManager] createDirectoryAtPath:logDir withIntermediateDirectories:YES attributes:nil error:&err];
+        if (err) NSLog(@"[glaspen2] perf log dir error: %@", err);
+        NSString *path = [logDir stringByAppendingPathComponent:@"perf.log"];
+        g_perf_file = fopen([path UTF8String], "w");
+        if (g_perf_file) {
+            NSLog(@"[glaspen2] performance log: %@", path);
+            fprintf(g_perf_file, "ts_ms\ttype\tdur_us\tnotes\n");
+            fflush(g_perf_file);
+        } else {
+            NSLog(@"[glaspen2] perf log open failed: %@", path);
+        }
+    }
+}
+
+static mach_timebase_info_data_t g_tb;
+static BOOL g_tb_inited = NO;
+
+static uint64_t elapsed_us(uint64_t start) {
+    if (!g_tb_inited) { mach_timebase_info(&g_tb); g_tb_inited = YES; }
+    return (mach_absolute_time() - start) * g_tb.numer / g_tb.denom / 1000;
+}
+
+static void perf_log_event(const char *evtype, uint64_t dur_us) {
+    if (!g_perf_log || !g_perf_file) return;
+    g_perf_total_calls++;
+    if (dur_us > 16000) g_perf_slow_calls++; // >16ms = frame drop
+    if (!g_tb_inited) { mach_timebase_info(&g_tb); g_tb_inited = YES; }
+    double ts_ms = (double)mach_absolute_time() * g_tb.numer / g_tb.denom / 1e6;
+    fprintf(g_perf_file, "%.3f\t%s\t%llu\t%s\n", ts_ms, evtype, dur_us,
+            dur_us > 16000 ? "SLOW" : "");
+    if (g_perf_total_calls % 100 == 0) fflush(g_perf_file);
+}
+
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                       CGEventRef event, void *refcon) {
+    if (!g_perf_file) perf_log_begin();
+
+    uint64_t t0 = mach_absolute_time();
+
     // Re-enable tap if it gets disabled by timeout/user
     if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
+        NSLog(@"[glaspen2] TAP DISABLED (timeout=%d, userinput=%d)", type == kCGEventTapDisabledByTimeout, type == kCGEventTapDisabledByUserInput);
         CGEventTapEnable(g_event_tap, true);
+        perf_log_event("tap_disabled", elapsed_us(t0));
         return event;
     }
 
@@ -1133,6 +1392,12 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                             show_notification(L(@"导出失败", @"Export failed"));
                         }
                     }
+                    return NULL;
+                } else if (kc == kVK_ANSI_B) {
+                    gl_settings_set_glass_enabled(!g_glass_enabled);
+                    return NULL;
+                } else if (kc == kVK_ANSI_Comma) {
+                    show_settings_panel();
                     return NULL;
                 }
             }
@@ -1294,7 +1559,18 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         return NULL;
     }
 
+    perf_log_event("tick", elapsed_us(t0));
     return event;
+}
+
+// Call this at app exit to dump stats
+static void perf_log_summary(void) {
+    if (!g_perf_file) return;
+    fprintf(g_perf_file, "\n# SUMMARY: total=%llu slow=%llu (%.1f%%)\n",
+            g_perf_total_calls, g_perf_slow_calls,
+            g_perf_total_calls > 0 ? 100.0 * g_perf_slow_calls / g_perf_total_calls : 0);
+    fclose(g_perf_file);
+    g_perf_file = NULL;
 }
 
 // --- App ---
@@ -1302,7 +1578,13 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
 void glaspen2_run(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
-        [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+
+        // Request accessibility permission (needed for CGEventTap)
+        NSDictionary *opts = @{(__bridge id)kAXTrustedCheckOptionPrompt: @YES};
+        if (!AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)opts)) {
+            NSLog(@"[glaspen2] Accessibility permission not granted");
+        }
 
         // Create status bar menu
         g_statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
@@ -1360,11 +1642,18 @@ void glaspen2_run(void) {
         inverseItem.target = g_menuHandler;
         inverseItem.tag = 555;
         inverseItem.state = NSControlStateValueOff;
+        NSMenuItem *glassItem = [g_menu addItemWithTitle:L(@"磨砂玻璃", @"Frosted Glass") action:@selector(toggleGlass) keyEquivalent:@""];
+        glassItem.target = g_menuHandler;
+        glassItem.tag = 444;
+        glassItem.state = g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff;
         [g_menu addItem:[NSMenuItem separatorItem]];
         NSMenuItem *toggleItem = [g_menu addItemWithTitle:L(@"开启涂鸦", @"Enable Drawing") action:@selector(toggleDraw) keyEquivalent:@""];
         toggleItem.target = g_menuHandler;
         toggleItem.tag = 888;
         toggleItem.state = NSControlStateValueOn;
+        NSMenuItem *settingsItem = [g_menu addItemWithTitle:L(@"设置...", @"Settings...") action:@selector(showSettingsPanel) keyEquivalent:@""];
+        settingsItem.target = g_menuHandler;
+        [g_menu addItem:[NSMenuItem separatorItem]];
         NSMenuItem *langItem = [g_menu addItemWithTitle:L(@"English", @"中文") action:@selector(toggleLanguage) keyEquivalent:@""];
         langItem.target = g_menuHandler;
         NSMenuItem *quitItem = [g_menu addItemWithTitle:L(@"退出", @"Quit") action:@selector(quitApp) keyEquivalent:@""];
@@ -1389,6 +1678,7 @@ void glaspen2_run(void) {
         g_screen_h = (int)screenFrame.size.height;
         glaspen2_init_db(g_screen_w, g_screen_h);
         init_display_stream();
+        show_settings_panel();
 
         // Restore saved pen color and width
         double sr, sg, sb, sw;
@@ -1425,6 +1715,17 @@ void glaspen2_run(void) {
         if (g_inverse_enabled) {
             start_inverse_timer();
         }
+        // Restore glass settings (opacity stored as millipercent, enabled as bool)
+        int glass_milli = glaspen2_load_bool_setting("glass_alpha");
+        if (glass_milli > 0) g_glass_opacity = glass_milli / 1000.0;
+        g_glass_enabled = glaspen2_load_bool_setting("glass_enabled") != 0;
+        gl_glass_apply();
+
+        // Apply glass visual on startup
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
+            rebuild_surface_from_strokes();
+        });
 
         g_window = [[NSWindow alloc]
             initWithContentRect:screenFrame
@@ -1452,6 +1753,21 @@ void glaspen2_run(void) {
         g_arrow_cursor = [NSCursor arrowCursor];
         [g_window setIgnoresMouseEvents:YES];
 
+        // Container view
+        NSView *contentView = [[NSView alloc] initWithFrame:screenFrame];
+        [contentView setWantsLayer:YES];
+
+        // Frosted glass layer (behind drawing)
+        g_glass_view = [[NSVisualEffectView alloc] initWithFrame:screenFrame];
+        [g_glass_view setBlendingMode:NSVisualEffectBlendingModeBehindWindow];
+        [g_glass_view setMaterial:NSVisualEffectMaterialLight];
+        [g_glass_view setState:NSVisualEffectStateActive];
+        double vis = g_glass_enabled ? g_glass_opacity * 2.0 : 0.0;
+        g_glass_view.alphaValue = vis;
+        g_glass_view.hidden = !g_glass_enabled;
+        [contentView addSubview:g_glass_view];
+
+        // Drawing view on top
         GlaspenDrawView *drawView = [[GlaspenDrawView alloc] initWithFrame:screenFrame];
         [drawView setWantsLayer:YES];
         CALayer *layer = [drawView layer];
@@ -1459,7 +1775,9 @@ void glaspen2_run(void) {
             [layer setOpaque:NO];
             [layer setBackgroundColor:[[NSColor clearColor] CGColor]];
         }
-        [g_window setContentView:drawView];
+        [contentView addSubview:drawView];
+
+        [g_window setContentView:contentView];
         [g_window orderFront:nil];
 
         g_draw_view = drawView;

@@ -11,10 +11,18 @@ fn main() {
         let out_dir = std::env::var("OUT_DIR").unwrap();
         let obj_path = format!("{}/glaspen2.o", out_dir);
 
+        // Flutter framework paths
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let flutter_fw_dir = format!(
+            "{}/flutter_settings/build/macos/framework/Release",
+            manifest_dir
+        );
+
         let status = std::process::Command::new("clang")
             .args(&["-c", "src/macos/glaspen2.m", "-o", &obj_path])
             .args(&["-fobjc-arc", "-O0"])
             .arg("-I/opt/homebrew/Cellar/cairo/1.18.4/include")
+            .arg(format!("-F{}/FlutterMacOS.xcframework/macos-arm64_x86_64", flutter_fw_dir))
             .status()
             .expect("Failed to run clang");
 
@@ -33,6 +41,31 @@ fn main() {
 
         assert!(status.success(), "ar failed to create archive");
 
+        // Link Flutter frameworks
+        // -F needs the directory CONTAINING the .framework, not the .framework itself
+        let flutter_search = format!(
+            "{}/FlutterMacOS.xcframework/macos-arm64_x86_64",
+            flutter_fw_dir
+        );
+        let app_search = format!(
+            "{}/App.xcframework/macos-arm64_x86_64",
+            flutter_fw_dir
+        );
+        println!("cargo:rustc-link-search=framework={}", flutter_search);
+        println!("cargo:rustc-link-search=framework={}", app_search);
+        println!("cargo:rustc-link-lib=framework=FlutterMacOS");
+        println!("cargo:rustc-link-lib=framework=App");
+
+        // Set rpath so the binary can find Flutter frameworks at runtime
+        println!(
+            "cargo:rustc-link-arg=-Wl,-rpath,{}/FlutterMacOS.xcframework/macos-arm64_x86_64",
+            flutter_fw_dir
+        );
+        println!(
+            "cargo:rustc-link-arg=-Wl,-rpath,{}/App.xcframework/macos-arm64_x86_64",
+            flutter_fw_dir
+        );
+
         println!("cargo:rustc-link-lib=cairo");
         println!("cargo:rustc-link-lib=framework=Cocoa");
         println!("cargo:rustc-link-lib=framework=QuartzCore");
@@ -41,6 +74,7 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=CoreVideo");
         println!("cargo:rustc-link-lib=framework=IOSurface");
         println!("cargo:rustc-link-lib=framework=Carbon");
+        println!("cargo:rustc-link-lib=framework=ApplicationServices");
     }
 
     if is_windows {
