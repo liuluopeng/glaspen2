@@ -1,10 +1,206 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 void main() => runApp(const GlaspenSettingsApp());
 
-// Method channel to communicate with Rust/ObjC host
+// ── Platform-specific communication ──
+
 const _channel = MethodChannel('com.glaspen/settings');
+const _pipeName = r'\\.\pipe\glaspen2_settings';
+
+/// Abstract interface for settings communication.
+abstract class _SettingsBridge {
+  Future<Map<dynamic, dynamic>> getSettings();
+  Future<void> setSetting(String key, dynamic value);
+  void onSettingsChanged(void Function(Map<dynamic, dynamic> s) callback);
+  void dispose();
+}
+
+/// macOS: uses Flutter MethodChannel (embedded in ObjC host).
+class _MethodChannelBridge extends _SettingsBridge {
+  final void Function(Map<dynamic, dynamic>)? _onChanged;
+
+  _MethodChannelBridge(this._onChanged) {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'onSettingsChanged' && _onChanged != null) {
+        _onChanged!(call.arguments as Map<dynamic, dynamic>);
+      }
+    });
+  }
+
+  @override
+  Future<Map<dynamic, dynamic>> getSettings() async {
+    return await _channel.invokeMethod('getSettings');
+  }
+
+  @override
+  Future<void> setSetting(String key, dynamic value) async {
+    await _channel.invokeMethod('setSetting', {'key': key, 'value': value});
+  }
+
+  @override
+  void onSettingsChanged(void Function(Map<dynamic, dynamic> s) callback) {
+    // Handled in constructor via setMethodCallHandler
+  }
+
+  @override
+  void dispose() {}
+}
+
+/// Windows: uses Named Pipe for IPC with the main overlay process.
+class _NamedPipeBridge extends _SettingsBridge {
+  RandomAccessFile? _pipe;
+  StreamSubscription<List<int>>? _sub;
+  final _buffer = <int>[];
+  void Function(Map<dynamic, dynamic>)? _onChanged;
+  bool _connected = false;
+  Timer? _reconnectTimer;
+
+  _NamedPipeBridge() {
+    _connect();
+  }
+
+  void _connect() {
+    try {
+      final file = File(_pipeName);
+      // Open for read+write
+      _pipe = file.openSync(mode: FileMode.write);
+      _connected = true;
+      debugPrint('[Settings] Connected to pipe $_pipeName');
+
+      // Listen for push notifications from the host
+      // Use a separate read stream
+      _startListening();
+    } catch (e) {
+      debugPrint('[Settings] Pipe connect failed: $e — retrying in 2s');
+      _reconnectTimer = Timer(const Duration(seconds: 2), _connect);
+    }
+  }
+
+  void _startListening() {
+    // Named pipes on Windows: we need to read asynchronously
+    // Open a separate handle for reading
+    try {
+      final readFile = File(_pipeName).openSync(mode: FileMode.read);
+      readFile.listen(
+        (data) {
+          _buffer.addAll(data);
+          _processBuffer();
+        },
+        onDone: () {
+          debugPrint('[Settings] Pipe read closed');
+          _connected = false;
+          _reconnectTimer = Timer(const Duration(seconds: 2), _connect);
+        },
+        onError: (e) {
+          debugPrint('[Settings] Pipe read error: $e');
+          _connected = false;
+        },
+      );
+    } catch (e) {
+      debugPrint('[Settings] Pipe read open failed: $e');
+    }
+  }
+
+  void _processBuffer() {
+    // Messages are newline-delimited JSON
+    while (true) {
+      final newlineIdx = _buffer.indexOf(10); // \n
+      if (newlineIdx < 0) break;
+      final line = utf8.decode(_buffer.sublist(0, newlineIdx));
+      _buffer.removeRange(0, newlineIdx + 1);
+      try {
+        final msg = jsonDecode(line) as Map<String, dynamic>;
+        if (msg['type'] == 'onSettingsChanged' && _onChanged != null) {
+          _onChanged!(msg['data'] as Map<dynamic, dynamic>);
+        }
+      } catch (e) {
+        debugPrint('[Settings] Parse error: $e');
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> _sendRequest(Map<String, dynamic> req) async {
+    if (!_connected || _pipe == null) {
+      throw Exception('Not connected');
+    }
+    final data = utf8.encode(jsonEncode(req) + '\n');
+    _pipe!.writeFromSync(data);
+    // For request/response, we'd need a bidirectional pipe.
+    // For simplicity, use synchronous approach with getSettings via shared memory/file.
+    // Actually, named pipes support bidirectional communication.
+    // But RandomAccessFile doesn't support async reads well on Windows.
+    // Let's use a simpler approach: write request, read response.
+    throw UnimplementedError('Use getSettings/setSetting directly');
+  }
+
+  @override
+  Future<Map<dynamic, dynamic>> getSettings() async {
+    if (!_connected || _pipe == null) {
+      return {};
+    }
+    try {
+      final req = jsonEncode({'type': 'getSettings'}) + '\n';
+      _pipe!.writeFromSync(utf8.encode(req));
+      // Read response (blocking)
+      // This is tricky with RandomAccessFile...
+      // For now, use a workaround: read until newline
+      final responseBytes = <int>[];
+      while (true) {
+        final byte = _pipe!.readByteSync();
+        if (byte < 0 || byte == 10) break;
+        responseBytes.add(byte);
+      }
+      final response = jsonDecode(utf8.decode(responseBytes));
+      if (response is Map && response['type'] == 'getSettings_response') {
+        return response['data'] as Map<dynamic, dynamic>;
+      }
+      return {};
+    } catch (e) {
+      debugPrint('[Settings] getSettings error: $e');
+      return {};
+    }
+  }
+
+  @override
+  Future<void> setSetting(String key, dynamic value) async {
+    if (!_connected || _pipe == null) return;
+    try {
+      final req = jsonEncode({'type': 'setSetting', 'key': key, 'value': value}) + '\n';
+      _pipe!.writeFromSync(utf8.encode(req));
+    } catch (e) {
+      debugPrint('[Settings] setSetting error: $e');
+    }
+  }
+
+  @override
+  void onSettingsChanged(void Function(Map<dynamic, dynamic> s) callback) {
+    _onChanged = callback;
+  }
+
+  @override
+  void dispose() {
+    _reconnectTimer?.cancel();
+    _sub?.cancel();
+    _pipe?.close();
+  }
+}
+
+/// Create the appropriate bridge for the current platform.
+_SettingsBridge createBridge() {
+  if (Platform.isWindows) {
+    return _NamedPipeBridge();
+  }
+  // macOS: use MethodChannel (default)
+  return _MethodChannelBridge(null);
+}
+
+// ── App ──
 
 class GlaspenSettingsApp extends StatelessWidget {
   const GlaspenSettingsApp({super.key});
@@ -32,6 +228,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  late _SettingsBridge _bridge;
   int _selectedColor = 0;
   int _selectedWidth = 2;
   bool _outline = false;
@@ -39,6 +236,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _rainbow = false;
   bool _launchAtLogin = false;
   bool _frostedGlass = false;
+  bool _connected = false;
 
   static const _colorNames = [
     'Red', 'Orange', 'Yellow', 'Green', 'Cyan',
@@ -53,31 +251,29 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
+    _bridge = createBridge();
+    _bridge.onSettingsChanged(_onSettingsChanged);
     _loadSettings();
-    // Listen for settings changes from ObjC host
-    _channel.setMethodCallHandler((call) async {
-      if (call.method == 'onSettingsChanged') {
-        final Map<dynamic, dynamic> s = call.arguments;
-        if (mounted) {
-          setState(() {
-            _selectedColor = s['color'] ?? _selectedColor;
-            _selectedWidth = s['width'] ?? _selectedWidth;
-            _outline = s['outline'] ?? _outline;
-            _inverse = s['inverse'] ?? _inverse;
-            _rainbow = s['rainbow'] ?? _rainbow;
-            _launchAtLogin = s['launchAtLogin'] ?? _launchAtLogin;
-            _frostedGlass = s['frostedGlass'] ?? _frostedGlass;
-          });
-        }
-      }
-    });
+  }
+
+  void _onSettingsChanged(Map<dynamic, dynamic> s) {
+    if (mounted) {
+      setState(() {
+        _selectedColor = s['color'] ?? _selectedColor;
+        _selectedWidth = s['width'] ?? _selectedWidth;
+        _outline = s['outline'] ?? _outline;
+        _inverse = s['inverse'] ?? _inverse;
+        _rainbow = s['rainbow'] ?? _rainbow;
+        _launchAtLogin = s['launchAtLogin'] ?? _launchAtLogin;
+        _frostedGlass = s['frostedGlass'] ?? _frostedGlass;
+      });
+    }
   }
 
   Future<void> _loadSettings() async {
     try {
-      final Map<dynamic, dynamic> settings =
-          await _channel.invokeMethod('getSettings');
-      if (mounted) {
+      final settings = await _bridge.getSettings();
+      if (mounted && settings.isNotEmpty) {
         setState(() {
           _selectedColor = settings['color'] ?? 0;
           _selectedWidth = settings['width'] ?? 2;
@@ -86,20 +282,38 @@ class _SettingsPageState extends State<SettingsPage> {
           _rainbow = settings['rainbow'] ?? false;
           _launchAtLogin = settings['launchAtLogin'] ?? false;
           _frostedGlass = settings['frostedGlass'] ?? false;
+          _connected = true;
         });
       }
     } catch (_) {
-      // Fallback: use defaults if channel not available
+      // Fallback: use defaults if bridge not available
     }
   }
 
   void _setSetting(String key, dynamic value) {
-    _channel.invokeMethod('setSetting', {'key': key, 'value': value});
+    _bridge.setSetting(key, value);
+  }
+
+  @override
+  void dispose() {
+    _bridge.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Glaspen2 Settings'),
+        centerTitle: true,
+        actions: [
+          if (!_connected)
+            const Padding(
+              padding: EdgeInsets.only(right: 12),
+              child: Icon(Icons.cloud_off, color: Colors.red, size: 20),
+            ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -110,8 +324,6 @@ class _SettingsPageState extends State<SettingsPage> {
             _buildSection('Width', _buildWidthRow()),
             const SizedBox(height: 16),
             _buildSection('Options', _buildToggles()),
-            const SizedBox(height: 16),
-            _buildSection('Opacity', _buildOpacity()),
           ],
         ),
       ),
@@ -250,25 +462,6 @@ class _SettingsPageState extends State<SettingsPage> {
             setState(() => _frostedGlass = v);
             _setSetting('frostedGlass', v);
           },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildOpacity() {
-    return Row(
-      children: [
-        const Text('50%', style: TextStyle(fontSize: 13)),
-        const SizedBox(width: 12),
-        OutlinedButton(
-          onPressed: () => _setSetting('opacity', 0.5),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size(58, 30),
-            padding: EdgeInsets.zero,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-          ),
-          child: const Text('50%', style: TextStyle(fontSize: 11)),
         ),
       ],
     );

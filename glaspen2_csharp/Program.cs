@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -10,6 +11,7 @@ namespace GlasPen2
         private static InputWindow _inputWin;
         private static PenInterceptor _interceptor;
         private static NotifyIcon _trayIcon;
+        private static SettingsPipeServer _pipeServer;
         private static bool _drawingEnabled = true;
 
         public static void OnPointerDown(int x, int y, uint pressure)
@@ -108,6 +110,17 @@ namespace GlasPen2
             {
                 if (_overlay != null) _overlay.RefreshScreenBounds();
             };
+
+            // ── Start Flutter settings pipe server ──
+            _pipeServer = new SettingsPipeServer();
+            _pipeServer.GetSettings = () => GetCurrentSettings();
+            _pipeServer.OnSettingChanged = (key, value) =>
+            {
+                ApplySetting(key, value);
+                // Push updated settings to Flutter
+                _pipeServer.NotifySettingsChanged(GetCurrentSettings());
+            };
+            _pipeServer.Start();
 
             // ── Run the message loop ──
             Application.ApplicationExit += OnApplicationExit;
@@ -266,9 +279,55 @@ namespace GlasPen2
             return Icon.FromHandle(bmp.GetHicon());
         }
 
+        // ── Settings bridge for Flutter pipe server ──
+
+        private static Dictionary<string, object> GetCurrentSettings()
+        {
+            return new Dictionary<string, object>
+            {
+                { "color", _colorIndex },
+                { "width", _widthIndex },
+                { "outline", false },
+                { "inverse", false },
+                { "rainbow", false },
+                { "launchAtLogin", false },
+                { "frostedGlass", false },
+            };
+        }
+
+        private static int _colorIndex = 0;
+        private static int _widthIndex = 2;
+
+        private static void ApplySetting(string key, object value)
+        {
+            switch (key)
+            {
+                case "color":
+                    int ci = Convert.ToInt32(value);
+                    if (ci >= 0 && ci < PresetColors.Length)
+                    {
+                        _colorIndex = ci;
+                        if (_overlay != null) _overlay.PenColor = PresetColors[ci];
+                    }
+                    break;
+                case "width":
+                    float[] widths = { 0.3f, 0.5f, 0.8f, 1.2f, 2f, 3.5f, 5f, 8f };
+                    int wi = Convert.ToInt32(value);
+                    if (wi >= 0 && wi < widths.Length)
+                    {
+                        _widthIndex = wi;
+                        if (_overlay != null) { _overlay.PenWidth = widths[wi]; _overlay.WidthScale = widths[wi]; }
+                    }
+                    break;
+                // outline, inverse, rainbow, launchAtLogin, frostedGlass
+                // are not yet implemented in the Windows C# overlay
+            }
+        }
+
         private static void OnApplicationExit(object sender, EventArgs e)
         {
             Console.WriteLine("[Exit] Cleaning up...");
+            if (_pipeServer != null) { _pipeServer.Stop(); _pipeServer = null; }
             if (_interceptor != null) { _interceptor.Uninstall(); _interceptor = null; }
             if (_trayIcon != null)
             {
