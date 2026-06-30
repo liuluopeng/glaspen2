@@ -144,6 +144,108 @@ if (!isFromPen && extraVal == 0) {
 2. HID 坐标在多显示器下的映射是否正确
 3. 没有 hook 后，快捷键（Cmd+C 等）是否还能正常工作
 
+## HID 数据格式定义
+
+### Raw Input 注册
+
+```csharp
+// OverlayForm.cs — RegisterRawInput()
+RAWINPUTDEVICE[] devices = {
+    { usUsagePage=0x0001, usUsage=0x0002, dwFlags=RIDEV_INPUTSINK },  // Mouse
+    { usUsagePage=0x000D, usUsage=0x0002, dwFlags=RIDEV_INPUTSINK },  // Pen (Digitizer)
+    { usUsagePage=0x000D, usUsage=0x0001, dwFlags=RIDEV_INPUTSINK },  // Stylus (Digitizer)
+};
+```
+
+| Usage Page | Usage | 含义 |
+|---|---|---|
+| `0x0001` | `0x0002` | Generic Desktop → Mouse |
+| `0x000D` | `0x0001` | Digitizer → Stylus |
+| `0x000D` | `0x0002` | Digitizer → Pen |
+| `0x000D` | `0x0004` | Digitizer → Touch Screen（未注册） |
+
+### HID 报告结构（标准数位板）
+
+当前代码解析格式（`ProcessHidInput`）：
+
+```
+字节偏移    大小    字段          说明
+──────────────────────────────────────────────
+ 0          1      reportId      HID 报告 ID（通常 0x01）
+ 1          1      switches      开关状态位
+                                  bit 0: tipDown（笔尖触碰）
+                                  bit 1: barrelButton（侧按钮）
+                                  bit 2: eraser（橡皮擦）
+                                  bit 3: invert（笔倒置）
+                                  bit 4: inRange（在感应范围内）
+ 2-3        2      X             X 坐标，Little-Endian 16-bit
+                                  逻辑范围: 0-65535
+                                  映射: screenX = virtualScreen.left + (x * screenWidth / 65536)
+ 4-5        2      Y             Y 坐标，Little-Endian 16-bit
+                                  逻辑范围: 0-65535
+                                  映射: screenY = virtualScreen.top + (y * screenHeight / 65536)
+ 6-7        2      pressure      压感，Little-Endian 16-bit
+                                  范围: 0-1024（Wacom 标准）
+                                  转换: float_p = pressure / 1024.0
+```
+
+### switches 字段位定义
+
+```
+bit 4    bit 3    bit 2    bit 1    bit 0
+inRange  invert   eraser   barrel   tipDown
+```
+
+| 位 | 名称 | 含义 |
+|---|---|---|
+| bit 0 | tipDown | 笔尖接触数位板 = 1，抬起 = 0 |
+| bit 1 | barrelButton | 笔身侧按钮按下 = 1 |
+| bit 2 | eraser | 当前使用橡皮擦端 = 1 |
+| bit 3 | invert | 笔倒置（非所有设备支持） |
+| bit 4 | inRange | 笔在数位板感应范围内 = 1 |
+
+### 解析代码
+
+```csharp
+// 当前实现（OverlayForm.cs:494-558）
+int baseOff = offset + 8; // 跳过 RAWINPUTHEADER (dwSizeHid=4 + dwCount=4)
+byte reportId = Marshal.ReadByte(buffer, baseOff);
+byte switches = Marshal.ReadByte(buffer, baseOff + 1);
+uint x        = Marshal.ReadByte(buffer, baseOff + 2) | (Marshal.ReadByte(buffer, baseOff + 3) << 8);
+uint y        = Marshal.ReadByte(buffer, baseOff + 4) | (Marshal.ReadByte(buffer, baseOff + 5) << 8);
+uint pressure = Marshal.ReadByte(buffer, baseOff + 6) | (Marshal.ReadByte(buffer, baseOff + 7) << 8);
+
+bool tipDown     = (switches & 0x01) != 0;
+bool barrelBtn   = (switches & 0x02) != 0;
+bool isEraser    = (switches & 0x04) != 0;
+bool inRange     = (switches & 0x10) != 0;
+```
+
+### 完整 HID 报告可能包含的额外字段
+
+标准数位板 HID 报告可能超过 8 字节，常见扩展：
+
+```
+ 8-9        2      tiltX         X 轴倾斜（有符号 16-bit，-9000 到 +9000，单位 0.01 度）
+10-11       2      tiltY         Y 轴倾斜（同上）
+12-13       2      twist         笔旋转（0-35999，单位 0.01 度）
+14-15       2      barrelPressure 侧按钮压力（部分设备）
+```
+
+当前代码只解析前 8 字节（reportId + switches + x + y + pressure）。如果需要倾斜或旋转，需要扩展解析逻辑并检查 `dataLen`。
+
+### WM_POINTER 中的压力格式
+
+WM_POINTER 路径的压力来自 `GetPointerPenInfo()`：
+
+```csharp
+POINTER_PEN_INFO penInfo;
+GetPointerPenInfo(pointerId, ref penInfo);
+uint pressure = penInfo.pressure; // 0-1024，与 HID 一致
+```
+
+范围相同（0-1024），两条路径的压力值可以直接比较。
+
 ## 参考
 
 - [WM_POINTER 文档](https://learn.microsoft.com/en-us/windows/win32/inputmsg/wm-pointerdown)
