@@ -1578,7 +1578,7 @@ static void perf_log_summary(void) {
 void glaspen2_run(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
-        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 
         // Request accessibility permission (needed for CGEventTap)
         NSDictionary *opts = @{(__bridge id)kAXTrustedCheckOptionPrompt: @YES};
@@ -1678,7 +1678,6 @@ void glaspen2_run(void) {
         g_screen_h = (int)screenFrame.size.height;
         glaspen2_init_db(g_screen_w, g_screen_h);
         init_display_stream();
-        show_settings_panel();
 
         // Restore saved pen color and width
         double sr, sg, sb, sw;
@@ -1739,8 +1738,7 @@ void glaspen2_run(void) {
         [g_window setTitle:@"glaspen2"];
         [g_window setAcceptsMouseMovedEvents:YES];
         [g_window setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces |
-                                       NSWindowCollectionBehaviorStationary |
-                                       NSWindowCollectionBehaviorFullScreenAuxiliary];
+                                       NSWindowCollectionBehaviorStationary];
 
         // Make click-through
 
@@ -1754,7 +1752,7 @@ void glaspen2_run(void) {
         g_arrow_cursor = [NSCursor arrowCursor];
         [g_window setIgnoresMouseEvents:YES];
 
-        // Container view
+        // Container view for glass + drawing layers
         NSView *contentView = [[NSView alloc] initWithFrame:screenFrame];
         [contentView setWantsLayer:YES];
 
