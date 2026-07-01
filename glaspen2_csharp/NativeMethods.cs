@@ -322,6 +322,12 @@ namespace GlasPen2
             uint pointerId,
             out uint pointerType);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetPointerInfo(
+            uint pointerId,
+            ref POINTER_INFO pointerInfo);
+
         public const uint PT_PEN = 3;
 
         [StructLayout(LayoutKind.Sequential)]
@@ -418,6 +424,19 @@ namespace GlasPen2
         [DllImport("hid.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool HidD_GetPreparsedData(IntPtr HidDeviceObject, out IntPtr PreparsedData);
+
+        [DllImport("hid.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool HidD_GetAttributes(IntPtr HidDeviceObject, ref HIDD_ATTRIBUTES Attributes);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct HIDD_ATTRIBUTES
+        {
+            public int Size;
+            public ushort VendorID;
+            public ushort ProductID;
+            public ushort VersionNumber;
+        }
 
         [DllImport("hid.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -563,6 +582,62 @@ namespace GlasPen2
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool CloseHandle(IntPtr hObject);
+
+        // ── DeviceIoControl for direct HID report reading ──
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool DeviceIoControl(
+            IntPtr hDevice,
+            uint dwIoControlCode,
+            IntPtr lpInBuffer,
+            uint nInBufferSize,
+            IntPtr lpOutBuffer,
+            uint nOutBufferSize,
+            ref uint lpBytesReturned,
+            IntPtr lpOverlapped);
+
+        // ── NtCreateFile (low-level, bypasses some CreateFile restrictions) ──
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct UNICODE_STRING
+        {
+            public ushort Length;
+            public ushort MaximumLength;
+            public IntPtr Buffer;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct OBJECT_ATTRIBUTES
+        {
+            public int Length;
+            public IntPtr RootDirectory;
+            public IntPtr ObjectName;
+            public uint Attributes;
+            public IntPtr SecurityDescriptor;
+            public IntPtr SecurityQualityOfService;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct IO_STATUS_BLOCK
+        {
+            public uint Status;
+            public IntPtr Information;
+        }
+
+        [DllImport("ntdll.dll")]
+        public static extern int NtCreateFile(
+            out IntPtr FileHandle,
+            uint DesiredAccess,
+            ref OBJECT_ATTRIBUTES ObjectAttributes,
+            ref IO_STATUS_BLOCK IoStatusBlock,
+            IntPtr AllocationSize,
+            uint FileAttributes,
+            uint ShareAccess,
+            uint CreateDisposition,
+            uint CreateOptions,
+            IntPtr EaBuffer,
+            uint EaLength);
 
         // ── DPI awareness ──
         [DllImport("user32.dll", SetLastError = true)]
