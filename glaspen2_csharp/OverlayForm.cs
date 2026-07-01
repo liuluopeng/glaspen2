@@ -28,37 +28,17 @@ namespace GlasPen2
         private readonly List<Point> _smoothBuffer = new List<Point>();
         private const int SmoothDistance = 2;
 
-        // Stroke smoothing via Rust ink-stroke-modeler (FFI)
+        // Stroke beautification (like macOS ink-stroke-modeler)
         private bool _smoothEnabled = true;
-        private bool _rustModelerAvailable = false;
-
-        // C# fallback smoothing fields (used when Rust modeler unavailable)
         private readonly List<PointF> _smoothHistory = new List<PointF>();
-        private const int SmoothWindow = 5;
-        private PointF _lastSmoothPoint;
-
-        // Pen color as normalized doubles for Rust modeler FFI
-        private double _penR = 1.0, _penG = 0.0, _penB = 0.0;
-        private double _widthScale = 1.0;
+        private const int SmoothWindow = 5;  // moving average window size
+        private PointF _lastSmoothPoint;      // previous smoothed endpoint for continuity
 
         /// <summary>Enable/disable stroke smoothing (jitter/wobble reduction).</summary>
         public bool SmoothEnabled
         {
             get { return _smoothEnabled; }
             set { _smoothEnabled = value; if (!value) _smoothHistory.Clear(); }
-        }
-
-        /// <summary>Set pen color as normalized RGB (0.0-1.0) for Rust modeler.</summary>
-        public void SetPenColorNorm(double r, double g, double b)
-        {
-            _penR = r; _penG = g; _penB = b;
-        }
-
-        /// <summary>Set width scale for Rust modeler.</summary>
-        public double WidthScale
-        {
-            get { return _widthScale; }
-            set { _widthScale = Math.Max(0.1, Math.Min(10.0, value)); }
         }
 
         // Shared state for PenInterceptor suppression
@@ -90,19 +70,6 @@ namespace GlasPen2
         private bool _showPenCursor;
         private Point _penCursorPos;
 
-        // Transparent cursor to hide system pen cursor
-        private IntPtr _transparentCursor = IntPtr.Zero;
-        private IntPtr _originalCursor = IntPtr.Zero;
-
-        private void CreateTransparentCursor()
-        {
-            // 1x1 fully transparent cursor
-            byte[] andPlane = new byte[] { 0xFF }; // all bits AND mask (transparent)
-            byte[] xorPlane = new byte[] { 0x00 }; // all bits XOR mask
-            _transparentCursor = NativeMethods.CreateCursor(
-                IntPtr.Zero, 0, 0, 1, 1, andPlane, xorPlane);
-        }
-
         // Tip state from HID
         private bool _hidTipDown;
         private DateTime _hidLastReportUtc = DateTime.MinValue;
@@ -114,46 +81,17 @@ namespace GlasPen2
 
         private int _rawMouseCount, _rawHidCount, _penAbsCount;
         private int _drawCount, _paintCount;
-        private int _moveLogCount;
-        private int _pointerLogCount;
-
-        private static void Log(string msg) { Program.Log(msg); }
-        private static void Log(string fmt, params object[] args) { Program.Log(fmt, args); }
 
         public Color PenColor
         {
             get { return _penColor; }
-            set
-            {
-                _penColor = value;
-                // Sync normalized color for Rust modeler
-                _penR = value.R / 255.0;
-                _penG = value.G / 255.0;
-                _penB = value.B / 255.0;
-            }
+            set { _penColor = value; }
         }
 
         public float PenWidth
         {
             get { return _penWidth; }
             set { _penWidth = Math.Max(0.5f, Math.Min(20f, value)); }
-        }
-
-        /// <summary>Check if Rust modeler DLL is available.</summary>
-        public void ProbeRustModeler()
-        {
-            try
-            {
-                // Try a harmless FFI call to see if the DLL loads
-                GlaspenNative.glaspen2_now_secs();
-                _rustModelerAvailable = true;
-                Log("[Overlay] Rust modeler DLL loaded — using ink-stroke-modeler");
-            }
-            catch
-            {
-                _rustModelerAvailable = false;
-                Log("[Overlay] Rust modeler DLL not found — using C# fallback smoothing");
-            }
         }
 
         public OverlayForm()
@@ -182,21 +120,19 @@ namespace GlasPen2
             _canvasGraphics.SmoothingMode = SmoothingMode.AntiAlias;
             _canvasGraphics.Clear(Color.Transparent);
 
-            CreateTransparentCursor();
-
-            Log("[Overlay] Canvas: {0}x{1}, using TransparencyKey=Fuchsia, BackColor=Fuchsia",
+            Console.WriteLine("[Overlay] Canvas: {0}x{1}, using TransparencyKey=Fuchsia, BackColor=Fuchsia",
                 bounds.Width, bounds.Height);
         }
 
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            Log("[Overlay] HWND=0x{0:X}, Pos=({1},{2}), Size={3}x{4}",
+            Console.WriteLine("[Overlay] HWND=0x{0:X}, Pos=({1},{2}), Size={3}x{4}",
                 this.Handle.ToInt64(), this.Left, this.Top, this.Width, this.Height);
 
             // NOT calling EnableMouseInPointer — it converts pen to WM_POINTER
             // which bypasses our mouse hook and ClipCursor lock.
-            Log("[Overlay] Ready.");
+            Console.WriteLine("[Overlay] Ready.");
 
             // Force window to topmost visible
             NativeMethods.SetWindowPos(
@@ -214,6 +150,9 @@ namespace GlasPen2
             // Ctrl+Alt+Z — undo last stroke
             NativeMethods.RegisterHotKey(this.Handle, 2,
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.Z);
+            // Ctrl+Alt+Q — exit application
+            NativeMethods.RegisterHotKey(this.Handle, 3,
+                NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.Q);
 
             // Safety auto-lift timer (only when HID not providing tip data)
             _liftTimer = new Timer { Interval = 200 };
@@ -222,7 +161,7 @@ namespace GlasPen2
                 if (_isDrawing && !HidTipDown
                     && (DateTime.UtcNow - LastPenEventUtc).TotalMilliseconds > 2000)
                 {
-                    Log("[Draw] SAFETY LIFT (no input for 2s)");
+                    Console.WriteLine("[Draw] SAFETY LIFT (no input for 2s)");
                     StopCursorLock();
                     StopDrawing();
                 }
@@ -273,78 +212,12 @@ namespace GlasPen2
             uint cbSize = (uint)Marshal.SizeOf(typeof(NativeMethods.RAWINPUTDEVICE));
             bool ok = NativeMethods.RegisterRawInputDevices(devices, (uint)idx, cbSize);
             int err = Marshal.GetLastWin32Error();
-            Log("[Overlay] RegisterRawInputDevices ({0} entries): {1} (err={2})",
+            Console.WriteLine("[Overlay] RegisterRawInputDevices ({0} entries): {1} (err={2})",
                 idx, ok ? "OK" : "FAILED", err);
         }
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == NativeMethods.WM_TABLET_QUERYSYSTEMGESTURESTATUS)
-            {
-                // Disable ALL Windows INK visual feedback on our overlay.
-                m.Result = (IntPtr)NativeMethods.TABLET_DISABLE_ALL;
-                return;
-            }
-            else if (m.Msg == NativeMethods.WM_SETCURSOR)
-            {
-                // Replace system cursor with transparent one to hide the
-                // Windows INK pen cursor (we draw our own crosshair).
-                int hitTest = (int)(m.LParam.ToInt64() & 0xFFFF);
-                if (hitTest == NativeMethods.HTCLIENT && _transparentCursor != IntPtr.Zero)
-                {
-                    NativeMethods.SetCursor(_transparentCursor);
-                    m.Result = (IntPtr)1;
-                    return;
-                }
-            }
-
-            // Without WS_EX_TRANSPARENT, pen events reach our overlay directly.
-            // No need to suppress pen-originated mouse events — we handle them.
-
-            if (m.Msg == NativeMethods.WM_LBUTTONDOWN)
-            {
-                bool isPen = IsPenSourceMessage();
-                int cx = (int)(m.LParam.ToInt64() & 0xFFFF);
-                int cy = (int)((m.LParam.ToInt64() >> 16) & 0xFFFF);
-                var pt = new NativeMethods.POINT(cx, cy);
-                NativeMethods.ClientToScreen(this.Handle, ref pt);
-                Log("[WndProc] WM_LBUTTONDOWN client=({0},{1}) screen=({2},{3}) isPen={4} pressure={5}",
-                    cx, cy, pt.X, pt.Y, isPen, _lastPointerPressure);
-                if (DrawingEnabled && isPen)
-                {
-                    OnPenDown(pt.X, pt.Y);
-                    return;
-                }
-            }
-            else if (m.Msg == NativeMethods.WM_LBUTTONUP)
-            {
-                bool isPen = IsPenSourceMessage();
-                Log("[WndProc] WM_LBUTTONUP isPen={0} drawing={1}", isPen, _isDrawing);
-                if (_isDrawing && isPen)
-                {
-                    OnPenUp(_lastPenPos.X, _lastPenPos.Y);
-                    return;
-                }
-            }
-            else if (m.Msg == NativeMethods.WM_MOUSEMOVE)
-            {
-                bool isPen = IsPenSourceMessage();
-                if (isPen)
-                {
-                    int cx = (int)(m.LParam.ToInt64() & 0xFFFF);
-                    int cy = (int)((m.LParam.ToInt64() >> 16) & 0xFFFF);
-                    var pt = new NativeMethods.POINT(cx, cy);
-                    NativeMethods.ClientToScreen(this.Handle, ref pt);
-                    if (_moveLogCount < 50 || _moveLogCount % 100 == 0)
-                        Log("[WndProc] WM_MOUSEMOVE(pen) screen=({0},{1}) pressure={2} drawing={3}",
-                            pt.X, pt.Y, _lastPointerPressure, _isDrawing);
-                    _moveLogCount++;
-                    _lastPenPos = new Point(pt.X, pt.Y);
-                    if (_isDrawing) OnPenMoveRaw(pt.X, pt.Y);
-                    return;
-                }
-            }
-
             if (m.Msg == NativeMethods.WM_INPUT)
             {
                 ProcessRawInput(m.LParam);
@@ -353,15 +226,6 @@ namespace GlasPen2
                      m.Msg == NativeMethods.WM_POINTERUPDATE ||
                      m.Msg == NativeMethods.WM_POINTERUP)
             {
-                if (_pointerLogCount < 20)
-                {
-                    uint pid = (uint)m.WParam.ToInt64();
-                    uint ptype;
-                    NativeMethods.GetPointerType(pid, out ptype);
-                    Log("[WndProc] WM_POINTER 0x{0:X4} pointerId={1} type={2}",
-                        m.Msg, pid, ptype);
-                }
-                _pointerLogCount++;
                 ProcessPointerMsg((uint)m.WParam.ToInt64(), m.Msg);
             }
             else if (m.Msg == NativeMethods.WM_HOTKEY)
@@ -369,21 +233,9 @@ namespace GlasPen2
                 int id = (int)m.WParam;
                 if (id == 1) ClearAll();       // Ctrl+Alt+C
                 else if (id == 2) UndoLast();  // Ctrl+Alt+Z
+                else if (id == 3) Application.Exit();  // Ctrl+Alt+Q
             }
             base.WndProc(ref m);
-        }
-
-        /// <summary>Check if the current message was generated by a pen (not a real mouse).
-        /// Uses GetMessageExtraInfo — pen driver sets PEN_SIGNATURE bits.</summary>
-        private static bool IsPenSourceMessage()
-        {
-            try
-            {
-                IntPtr extra = NativeMethods.GetMessageExtraInfo();
-                ulong val = (ulong)extra.ToInt64();
-                return (val & NativeMethods.PEN_SIGNATURE_MASK) == NativeMethods.PEN_SIGNATURE;
-            }
-            catch { return false; }
         }
 
         private void ProcessPointerMsg(uint pointerId, int msg)
@@ -399,29 +251,22 @@ namespace GlasPen2
             int scrX = penInfo.pointerInfo.ptPixelLocation.X;
             int scrY = penInfo.pointerInfo.ptPixelLocation.Y;
 
-            _lastPointerPressure = pressure; // update on EVERY event
+            if (_pointerCount <= 5)
+                Console.WriteLine("[Pointer #{0}] msg=0x{1:X4} pos=({2},{3}) pressure={4}",
+                    _pointerCount, msg, scrX, scrY, pressure);
+
+            _pointerCount++;
+            _lastPointerPressure = pressure;
 
             if (msg == NativeMethods.WM_POINTERDOWN)
             {
-                if (!_isDrawing && DrawingEnabled)
-                {
-                    Log("[Pointer] PEN DOWN pressure={0} pos=({1},{2})", pressure, scrX, scrY);
-                    OnPenDown(scrX, scrY);
-                }
+                Console.WriteLine("[Pointer] PEN DOWN pressure={0}", pressure);
+                StartDrawing();
             }
             else if (msg == NativeMethods.WM_POINTERUP)
             {
-                if (_isDrawing)
-                {
-                    Log("[Pointer] PEN UP pressure={0}", pressure);
-                    OnPenUp(scrX, scrY);
-                }
-            }
-            else if (msg == NativeMethods.WM_POINTERUPDATE && _isDrawing)
-            {
-                OnPenMove(_lastPoint.X, _lastPoint.Y, scrX, scrY);
-                _lastPenPos = new Point(scrX, scrY);
-                _lastPoint = _lastPenPos;
+                Console.WriteLine("[Pointer] PEN UP pressure={0}", pressure);
+                StopDrawing();
             }
         }
 
@@ -453,7 +298,7 @@ namespace GlasPen2
             }
 
             if (_paintCount <= 3)
-                Log("[Paint #{0}] Form painted", _paintCount);
+                Console.WriteLine("[Paint #{0}] Form painted", _paintCount);
         }
 
         private void ProcessRawInput(IntPtr hRawInput)
@@ -495,12 +340,7 @@ namespace GlasPen2
         {
             _rawHidCount++;
             // Standard digitizer HID: [rptId:1][switches:1][X:2 LE][Y:2 LE][press:2 LE]...
-            if (dataLen < 8)
-            {
-                if (_rawHidCount <= 10)
-                    Log("[HID #{0}] dataLen={1} (too short, skipped)", _rawHidCount, dataLen);
-                return;
-            }
+            if (dataLen < 8) return;
 
             int baseOff = offset + 8; // skip dwSizeHid(4)+dwCount(4)
             byte reportId = Marshal.ReadByte(buffer, baseOff);
@@ -516,7 +356,6 @@ namespace GlasPen2
             _hidTipDown = tipDown;
             HidTipDown = tipDown; // share with hook
             _hidLastReportUtc = DateTime.UtcNow;
-            _lastPointerPressure = pressure; // feed pressure to modeler
 
             bool logIt = _isDrawing || _rawHidCount <= 10 || (_rawHidCount % 100 == 0);
             if (logIt)
@@ -525,7 +364,7 @@ namespace GlasPen2
                     _rawHidCount, x, y, switches, pressure, tipDown);
                 if (tipDown && _isDrawing)
                     Console.Write(" drawing");
-                Log();
+                Console.WriteLine();
             }
 
             // HID logical coords → screen via 0-65535 (Windows pointer standard)
@@ -547,13 +386,13 @@ namespace GlasPen2
                 SetPressure(pressure);
                 if (!_isDrawing && DrawingEnabled)
                 {
-                    Log("[HID] TIP TOUCH → OnPenDown");
+                    Console.WriteLine("[HID] TIP TOUCH → OnPenDown");
                     OnPenDown(_lastPenPos.X, _lastPenPos.Y);
                 }
             }
             else if (!tipDown && _isDrawing)
             {
-                Log("[HID] TIP LIFT → OnPenUp");
+                Console.WriteLine("[HID] TIP LIFT → OnPenUp");
                 OnPenUp(_lastPenPos.X, _lastPenPos.Y);
             }
         }
@@ -567,12 +406,12 @@ namespace GlasPen2
                 NativeMethods.GetCursorPos(out pt);
                 var r = new NativeMethods.RECT(pt.X, pt.Y, pt.X + 1, pt.Y + 1);
                 if (!NativeMethods.ClipCursor(ref r))
-                    Log("[Lock] ClipCursor FAILED! err={0}", Marshal.GetLastWin32Error());
+                    Console.WriteLine("[Lock] ClipCursor FAILED! err={0}", Marshal.GetLastWin32Error());
             }
             else
             {
                 if (!NativeMethods.ClipCursor(IntPtr.Zero))
-                    Log("[Lock] ClipCursor release FAILED! err={0}", Marshal.GetLastWin32Error());
+                    Console.WriteLine("[Lock] ClipCursor release FAILED! err={0}", Marshal.GetLastWin32Error());
             }
         }
 
@@ -602,7 +441,7 @@ namespace GlasPen2
             bool isAbsolute = (mouse.usFlags & NativeMethods.MOUSE_MOVE_ABSOLUTE) != 0;
 
             if (_rawMouseCount <= 10)
-                Log("[Raw #{0}] flags=0x{1:X4} abs={2} lX={3} lY={4} ulRawBtns=0x{5:X8}",
+                Console.WriteLine("[Raw #{0}] flags=0x{1:X4} abs={2} lX={3} lY={4} ulRawBtns=0x{5:X8}",
                     _rawMouseCount, mouse.usFlags, isAbsolute, mouse.lLastX, mouse.lLastY, mouse.ulRawButtons);
 
             if (!isAbsolute) return;
@@ -630,7 +469,7 @@ namespace GlasPen2
             }
 
             if (_penAbsCount % 50 == 0 || _penAbsCount <= 5)
-                Log("[Pen #{0}] scr=({1},{2}) drawing={3}",
+                Console.WriteLine("[Pen #{0}] scr=({1},{2}) drawing={3}",
                     _penAbsCount, screenX, screenY, _isDrawing);
 
             // Draw from raw input (correct screen coords). Hook handles cursor suppression.
@@ -662,20 +501,7 @@ namespace GlasPen2
                 pen.EndCap = LineCap.Round;
                 _canvasGraphics.DrawEllipse(pen, x, y, w, w);
             }
-
-            // Initialize modeler for this stroke (same as OnPenDown)
-            if (_rustModelerAvailable && _smoothEnabled)
-            {
-                GlaspenNative.glaspen2_modeler_clear_buffer();
-                double pressure = (_lastPointerPressure > 0) ? _lastPointerPressure / 1024.0 : 0.5;
-                double ts = GlaspenNative.glaspen2_now_secs();
-                GlaspenNative.glaspen2_modeler_begin(
-                    _penR, _penG, _penB,
-                    _lastPoint.X, _lastPoint.Y, pressure, ts, _widthScale);
-                GlaspenNative.glaspen2_modeler_clear_buffer();
-            }
-
-            Log("[Draw] DOWN at ({0},{1})", _lastPoint.X, _lastPoint.Y);
+            Console.WriteLine("[Draw] DOWN at ({0},{1})", _lastPoint.X, _lastPoint.Y);
             this.Invalidate();
         }
 
@@ -690,41 +516,22 @@ namespace GlasPen2
             _lastPenPos = _lastPoint;
             _smoothBuffer.Clear();
             _smoothBuffer.Add(_lastPoint);
+            _smoothHistory.Clear();
+            _lastSmoothPoint = new PointF(useX, useY);
+            if (_smoothEnabled)
+                _smoothHistory.Add(_lastSmoothPoint);
 
-            float w = _currentWidth > 0 ? _currentWidth : _penWidth;
-
-            // Always draw a dot at pen-down position (both modeler and fallback paths)
             int x = ClampX(useX - this.Left);
             int y = ClampY(useY - this.Top);
+            float w = _currentWidth > 0 ? _currentWidth : _penWidth;
+
             using (var pen = new Pen(_penColor, w))
             {
                 pen.StartCap = LineCap.Round;
                 pen.EndCap = LineCap.Round;
                 _canvasGraphics.DrawEllipse(pen, x, y, w, w);
             }
-
-            if (_rustModelerAvailable && _smoothEnabled)
-            {
-                // Clear any residual modeler state, then begin new stroke.
-                // Do NOT call DrawModelerBuffer here — the modeler may return
-                // stale points from the previous stroke. Drawing starts on OnPenMove.
-                GlaspenNative.glaspen2_modeler_clear_buffer();
-                double pressure = (_lastPointerPressure > 0) ? _lastPointerPressure / 1024.0 : 0.5;
-                double ts = GlaspenNative.glaspen2_now_secs();
-                GlaspenNative.glaspen2_modeler_begin(
-                    _penR, _penG, _penB,
-                    useX, useY, pressure, ts, _widthScale);
-                GlaspenNative.glaspen2_modeler_clear_buffer();
-            }
-            else
-            {
-                // C# fallback: reset smoothing state
-                _smoothHistory.Clear();
-                _lastSmoothPoint = new PointF(useX, useY);
-                if (_smoothEnabled)
-                    _smoothHistory.Add(_lastSmoothPoint);
-            }
-            Log("[Draw] DOWN at ({0},{1}) modeler={2}", useX, useY, _rustModelerAvailable);
+            Console.WriteLine("[Draw] DOWN at ({0},{1})", useX, useY);
             this.Invalidate();
         }
 
@@ -737,50 +544,6 @@ namespace GlasPen2
             OnPenMove(_lastPoint.X, _lastPoint.Y, screenX, screenY);
         }
 
-        /// <summary>Read smoothed points from the Rust modeler buffer and draw them.</summary>
-        private void DrawModelerBuffer(float baseWidth)
-        {
-            int count = GlaspenNative.glaspen2_modeler_point_count();
-            if (count < 1) return;
-
-            double prevX = 0, prevY = 0, prevW = 0;
-            bool hasPrev = false;
-
-            for (int i = 0; i < count; i++)
-            {
-                double px, py, pw;
-                GlaspenNative.glaspen2_modeler_get_point(i, out px, out py, out pw);
-
-                int sx = ClampX((int)px - this.Left);
-                int sy = ClampY((int)py - this.Top);
-                float drawW = (float)pw > 0 ? (float)pw : baseWidth;
-
-                if (hasPrev)
-                {
-                    int fx = ClampX((int)prevX - this.Left);
-                    int fy = ClampY((int)prevY - this.Top);
-                    using (var pen = new Pen(_penColor, drawW))
-                    {
-                        pen.StartCap = LineCap.Round;
-                        pen.EndCap = LineCap.Round;
-                        pen.LineJoin = LineJoin.Round;
-                        _canvasGraphics.DrawLine(pen, fx, fy, sx, sy);
-                    }
-                }
-                else
-                {
-                    using (var pen = new Pen(_penColor, drawW))
-                    {
-                        pen.StartCap = LineCap.Round;
-                        _canvasGraphics.DrawEllipse(pen, sx, sy, drawW, drawW);
-                    }
-                }
-
-                prevX = px; prevY = py; prevW = pw;
-                hasPrev = true;
-            }
-        }
-
         public void OnPenMove(int fromSX, int fromSY, int toSX, int toSY)
         {
             if (!_isDrawing) return;
@@ -791,103 +554,62 @@ namespace GlasPen2
 
             _smoothBuffer.Add(new Point(toSX, toSY));
 
-            if (_rustModelerAvailable && _smoothEnabled)
+            float useFromX, useFromY, useToX, useToY;
+            if (_smoothEnabled)
             {
-                // Use Rust modeler with real-time pressure
-                double pressure = QueryCurrentPressure();
-                double ts = GlaspenNative.glaspen2_now_secs();
-                GlaspenNative.glaspen2_modeler_move(toSX, toSY, pressure, ts, _widthScale);
+                // Smooth the incoming raw point
+                var rawTo = new PointF(toSX, toSY);
+                _smoothHistory.Add(rawTo);
+                if (_smoothHistory.Count > SmoothWindow)
+                    _smoothHistory.RemoveAt(0);
 
-                float lineW = _currentWidth > 0 ? _currentWidth : _penWidth;
-                DrawModelerBuffer(lineW);
+                // Weighted moving average
+                float totalW = 0, sumX = 0, sumY = 0;
+                for (int i = 0; i < _smoothHistory.Count; i++)
+                {
+                    float w = (float)(i + 1) / _smoothHistory.Count;
+                    sumX += _smoothHistory[i].X * w;
+                    sumY += _smoothHistory[i].Y * w;
+                    totalW += w;
+                }
+                var smoothedTo = new PointF(sumX / totalW, sumY / totalW);
+
+                // Use last smoothed point as FROM for perfect continuity (no gaps!)
+                useFromX = _lastSmoothPoint.X;
+                useFromY = _lastSmoothPoint.Y;
+                useToX = smoothedTo.X;
+                useToY = smoothedTo.Y;
+                _lastSmoothPoint = smoothedTo;
             }
             else
             {
-                // C# fallback: weighted moving average
-                float useFromX, useFromY, useToX, useToY;
-                if (_smoothEnabled)
-                {
-                    var rawTo = new PointF(toSX, toSY);
-                    _smoothHistory.Add(rawTo);
-                    if (_smoothHistory.Count > SmoothWindow)
-                        _smoothHistory.RemoveAt(0);
+                useFromX = fromSX;
+                useFromY = fromSY;
+                useToX = toSX;
+                useToY = toSY;
+            }
 
-                    float totalW = 0, sumX = 0, sumY = 0;
-                    for (int i = 0; i < _smoothHistory.Count; i++)
-                    {
-                        float w = (float)(i + 1) / _smoothHistory.Count;
-                        sumX += _smoothHistory[i].X * w;
-                        sumY += _smoothHistory[i].Y * w;
-                        totalW += w;
-                    }
-                    var smoothedTo = new PointF(sumX / totalW, sumY / totalW);
+            int fx = ClampX((int)useFromX - this.Left);
+            int fy = ClampY((int)useFromY - this.Top);
+            int tx = ClampX((int)useToX - this.Left);
+            int ty = ClampY((int)useToY - this.Top);
 
-                    useFromX = _lastSmoothPoint.X;
-                    useFromY = _lastSmoothPoint.Y;
-                    useToX = smoothedTo.X;
-                    useToY = smoothedTo.Y;
-                    _lastSmoothPoint = smoothedTo;
-                }
-                else
-                {
-                    useFromX = fromSX;
-                    useFromY = fromSY;
-                    useToX = toSX;
-                    useToY = toSY;
-                }
+            // Skip if smoothed coords haven't moved enough
+            if (_smoothEnabled && (fx - tx) * (fx - tx) + (fy - ty) * (fy - ty) < 1) return;
 
-                int fx = ClampX((int)useFromX - this.Left);
-                int fy = ClampY((int)useFromY - this.Top);
-                int tx = ClampX((int)useToX - this.Left);
-                int ty = ClampY((int)useToY - this.Top);
-
-                if (_smoothEnabled && (fx - tx) * (fx - tx) + (fy - ty) * (fy - ty) < 1) return;
-
-                float lineW = _currentWidth > 0 ? _currentWidth : _penWidth;
-                using (var pen = new Pen(_penColor, lineW))
-                {
-                    pen.StartCap = LineCap.Round;
-                    pen.EndCap = LineCap.Round;
-                    pen.LineJoin = LineJoin.Round;
-                    _canvasGraphics.DrawLine(pen, fx, fy, tx, ty);
-                }
+            float lineW = _currentWidth > 0 ? _currentWidth : _penWidth;
+            using (var pen = new Pen(_penColor, lineW))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                pen.LineJoin = LineJoin.Round;
+                _canvasGraphics.DrawLine(pen, fx, fy, tx, ty);
             }
 
             _lastPoint = new Point(toSX, toSY);
-            // Only invalidate the dirty region, not the entire form
-            int minX = Math.Min(ClampX(fromSX - this.Left), ClampX(toSX - this.Left));
-            int minY = Math.Min(ClampY(fromSY - this.Top), ClampY(toSY - this.Top));
-            int maxX = Math.Max(ClampX(fromSX - this.Left), ClampX(toSX - this.Left));
-            int maxY = Math.Max(ClampY(fromSY - this.Top), ClampY(toSY - this.Top));
-            int pad = (int)(_penWidth * 3) + 4;
-            this.Invalidate(new Rectangle(minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2));
-        }
-
-        /// <summary>Query real-time pen pressure from the system (0.0-1.0).
-        /// Falls back to _lastPointerPressure if query fails.</summary>
-        private double QueryCurrentPressure()
-        {
-            // Try WM_POINTER API first (works when pen is over the overlay)
-            try
-            {
-                uint pointerId = 1; // primary pointer
-                uint pointerType;
-                if (NativeMethods.GetPointerType(pointerId, out pointerType)
-                    && pointerType == NativeMethods.PT_PEN)
-                {
-                    var penInfo = new NativeMethods.POINTER_PEN_INFO();
-                    if (NativeMethods.GetPointerPenInfo(pointerId, ref penInfo)
-                        && penInfo.pressure > 0)
-                    {
-                        _lastPointerPressure = penInfo.pressure; // cache for fallback
-                        return penInfo.pressure / 1024.0;
-                    }
-                }
-            }
-            catch { }
-
-            // Fallback: use cached value from last WM_POINTER or HID event
-            return (_lastPointerPressure > 0) ? _lastPointerPressure / 1024.0 : 0.5;
+            this.Invalidate(new Rectangle(
+                Math.Min(fx, tx) - 5, Math.Min(fy, ty) - 5,
+                Math.Abs(tx - fx) + 10, Math.Abs(ty - fy) + 10));
         }
 
         /// <summary>Set pen pressure (0-1024). Adjusts stroke width: 0.5x to 2x base width.</summary>
@@ -907,20 +629,7 @@ namespace GlasPen2
             _isDrawing = false;
             StopCursorLock();
 
-            float w = _currentWidth > 0 ? _currentWidth : _penWidth;
-
-            // Finalize modeler if active (same as OnPenUp — no drawing)
-            if (_rustModelerAvailable && _smoothEnabled)
-            {
-                double pressure = (_lastPointerPressure > 0) ? _lastPointerPressure / 1024.0 : 0.5;
-                double ts = GlaspenNative.glaspen2_now_secs();
-                GlaspenNative.glaspen2_modeler_end(
-                    _lastPenPos.X, _lastPenPos.Y, pressure, ts, _widthScale);
-                GlaspenNative.glaspen2_modeler_clear_buffer();
-                GlaspenNative.glaspen2_modeler_commit_to_strokes(_penR, _penG, _penB, IntPtr.Zero, 0);
-            }
-
-            Log("[Draw] UP at ({0},{1})", _lastPenPos.X, _lastPenPos.Y);
+            Console.WriteLine("[Draw] UP at ({0},{1})", _lastPenPos.X, _lastPenPos.Y);
 
             if (_smoothBuffer.Count > 0)
             {
@@ -928,7 +637,7 @@ namespace GlasPen2
                 {
                     Points = new List<Point>(_smoothBuffer),
                     Color = _penColor,
-                    Width = w
+                    Width = _currentWidth > 0 ? _currentWidth : _penWidth
                 });
             }
             _smoothBuffer.Clear();
@@ -939,34 +648,18 @@ namespace GlasPen2
         {
             if (!_isDrawing) return;
             _isDrawing = false;
-
-            float w = _currentWidth > 0 ? _currentWidth : _penWidth;
-
-            if (_rustModelerAvailable && _smoothEnabled)
-            {
-                // Finalize modeler — do NOT draw its output (Up event returns
-                // convergence points that would create a spurious line).
-                // The last OnPenMove already drew the final visible segment.
-                double pressure = (_lastPointerPressure > 0) ? _lastPointerPressure / 1024.0 : 0.5;
-                double ts = GlaspenNative.glaspen2_now_secs();
-                GlaspenNative.glaspen2_modeler_end(screenX, screenY, pressure, ts, _widthScale);
-                GlaspenNative.glaspen2_modeler_clear_buffer();
-                // Commit smoothed points into Rust STROKES (for DB persistence + export)
-                GlaspenNative.glaspen2_modeler_commit_to_strokes(_penR, _penG, _penB, IntPtr.Zero, 0);
-            }
-
             if (_smoothBuffer.Count > 0)
             {
                 _completedStrokes.Add(new StrokeRecord
                 {
                     Points = new List<Point>(_smoothBuffer),
                     Color = _penColor,
-                    Width = w
+                    Width = _currentWidth > 0 ? _currentWidth : _penWidth
                 });
             }
             _smoothBuffer.Clear();
             _smoothHistory.Clear();
-            Log("[Draw] UP at ({0},{1}) modeler={2}", screenX, screenY, _rustModelerAvailable);
+            Console.WriteLine("[Draw] UP at ({0},{1})", screenX, screenY);
             this.Invalidate();
         }
 
@@ -981,15 +674,8 @@ namespace GlasPen2
             _smoothBuffer.Clear();
             _isDrawing = false;
             _canvasGraphics.Clear(Color.Transparent);
-
-            // Also clear Rust-side strokes and start a new DB screen
-            if (_rustModelerAvailable)
-            {
-                GlaspenNative.glaspen2_clear_strokes(this.Width, this.Height);
-            }
-
             this.Invalidate();
-            Log("[Overlay] Canvas cleared.");
+            Console.WriteLine("[Overlay] Canvas cleared.");
         }
 
         public void UndoLast()
@@ -1060,16 +746,12 @@ namespace GlasPen2
                 {
                     NativeMethods.UnregisterHotKey(this.Handle, 1);
                     NativeMethods.UnregisterHotKey(this.Handle, 2);
+                    NativeMethods.UnregisterHotKey(this.Handle, 3);
                 }
                 if (_liftTimer != null) { _liftTimer.Stop(); _liftTimer.Dispose(); }
                 if (_lockTimer != null) { _lockTimer.Stop(); _lockTimer.Dispose(); }
                 if (_canvasGraphics != null) _canvasGraphics.Dispose();
                 if (_canvas != null) _canvas.Dispose();
-                if (_transparentCursor != IntPtr.Zero)
-                {
-                    NativeMethods.DestroyCursor(_transparentCursor);
-                    _transparentCursor = IntPtr.Zero;
-                }
             }
             base.Dispose(disposing);
         }
@@ -1088,11 +770,8 @@ namespace GlasPen2
             get
             {
                 var cp = base.CreateParams;
-                // NO WS_EX_TRANSPARENT — overlay captures pen input directly.
-                // This is the key change for Microsoft INK compatibility:
-                // pen events go to our overlay (not to INK stack).
-                // Keyboard/mouse pass through because of WS_EX_NOACTIVATE.
-                cp.ExStyle |= NativeMethods.WS_EX_NOACTIVATE
+                cp.ExStyle |= NativeMethods.WS_EX_TRANSPARENT
+                           | NativeMethods.WS_EX_NOACTIVATE
                            | NativeMethods.WS_EX_TOOLWINDOW
                            | NativeMethods.WS_EX_TOPMOST;
                 // NOTE: NO WS_EX_LAYERED — using TransparencyKey instead
