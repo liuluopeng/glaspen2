@@ -807,9 +807,24 @@ static void sync_settings_panel(void) {
     }];
 }
 
+@interface SettingsWindowDelegate : NSObject <NSWindowDelegate>
+@end
+
+@implementation SettingsWindowDelegate
+- (void)windowWillClose:(NSNotification *)notification {
+    // Switch back to Accessory when settings window closes
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    [NSApp deactivate];
+}
+@end
+
+static SettingsWindowDelegate *g_settings_delegate = nil;
+
 static void show_settings_panel(void) {
     // If window already exists, just bring it forward
     if (g_settings_window) {
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+        [NSApp activateIgnoringOtherApps:YES];
         [g_settings_window makeKeyAndOrderFront:nil];
         return;
     }
@@ -844,10 +859,18 @@ static void show_settings_panel(void) {
     [window setTitle:L(@"Glaspen2 设置", @"Glaspen2 Settings")];
     [window setMinSize:NSMakeSize(340, 360)];
     [window setReleasedWhenClosed:NO];
+
+    // Set delegate to switch back to Accessory when window closes
+    g_settings_delegate = [[SettingsWindowDelegate alloc] init];
+    [window setDelegate:g_settings_delegate];
+
     [window.contentView addSubview:g_flutter_vc.view];
     g_flutter_vc.view.frame = window.contentView.bounds;
     g_flutter_vc.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
 
+    // Switch to Regular mode so the window can get focus
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+    [NSApp activateIgnoringOtherApps:YES];
     [window center];
     [window makeKeyAndOrderFront:nil];
     g_settings_window = window;
