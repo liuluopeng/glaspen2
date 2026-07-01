@@ -1739,7 +1739,8 @@ void glaspen2_run(void) {
         [g_window setTitle:@"glaspen2"];
         [g_window setAcceptsMouseMovedEvents:YES];
         [g_window setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces |
-                                       NSWindowCollectionBehaviorStationary];
+                                       NSWindowCollectionBehaviorStationary |
+                                       NSWindowCollectionBehaviorFullScreenAuxiliary];
 
         // Make click-through
 
