@@ -8,96 +8,58 @@ using System.Windows.Forms;
 
 namespace GlasPen2
 {
-    /// <summary>
-    /// Full-screen transparent overlay using WinForms TransparencyKey
-    /// instead of UpdateLayeredWindow (which isn't rendering on this system).
-    /// All Fuchsia pixels are transparent; ink is drawn in other colors.
-    /// </summary>
     public class OverlayForm : Form
     {
         private Bitmap _canvas;
-        private Graphics _canvasGraphics;
+        private Graphics _g;
 
+        // HID pen state
+        private int _hidCount;
+        private bool _tipDown;
+        private bool _inRange;
+        private uint _pressure;
+        private int _screenX, _screenY;
+
+        // HID coordinate range from device descriptor
+        private int _hidMinX, _hidMaxX;
+        private int _hidMinY, _hidMaxY;
+        private bool _rangeFound;
+
+        // Drawing state
         private bool _isDrawing;
         private Point _lastPoint;
-        private readonly List<StrokeRecord> _completedStrokes = new List<StrokeRecord>();
-
         private Color _penColor = Color.Red;
-        private float _penWidth = 0.3f;
+        private float _penWidth = 2.5f;
+        private float _currentWidth;
 
-        private readonly List<Point> _smoothBuffer = new List<Point>();
-        private const int SmoothDistance = 2;
+        // Smooth curve: collect recent points for spline interpolation
+        private readonly List<Point> _recentPoints = new List<Point>();
+        private const int MAX_RECENT = 8; // rolling window for curve smoothing
 
-        // Stroke beautification (like macOS ink-stroke-modeler)
-        private bool _smoothEnabled = true;
-        private readonly List<PointF> _smoothHistory = new List<PointF>();
-        private const int SmoothWindow = 5;  // moving average window size
-        private PointF _lastSmoothPoint;      // previous smoothed endpoint for continuity
+        // Cursor
+        private IntPtr _transparentCursor = IntPtr.Zero;
+        private bool _showCursor;
 
-        /// <summary>Enable/disable stroke smoothing (jitter/wobble reduction).</summary>
-        public bool SmoothEnabled
+        private static void Log(string msg) { Program.Log(msg); }
+        private static void Log(string fmt, params object[] args) { Program.Log(fmt, args); }
+
+        protected override CreateParams CreateParams
         {
-            get { return _smoothEnabled; }
-            set { _smoothEnabled = value; if (!value) _smoothHistory.Clear(); }
-        }
-
-        // Shared state for PenInterceptor suppression
-        public static DateTime LastPenEventUtc = DateTime.MinValue;
-        public static bool HidTipDown = false;
-        public static int PointerX = -1, PointerY = -1;
-
-        /// <summary>Apply WM_POINTER position (correct screen coords).</summary>
-        private void ApplyPointerPos()
-        {
-            if (PointerX < 0) return;
-            int sx = PointerX, sy = PointerY;
-            PointerX = -1; // consume
-            _lastPenPos = new Point(sx, sy);
-            _penCursorPos = _lastPenPos;
-            _showPenCursor = true;
-            if (_isDrawing)
+            get
             {
-                OnPenMove(_lastPoint.X, _lastPoint.Y, sx, sy);
+                var cp = base.CreateParams;
+                cp.ExStyle |= NativeMethods.WS_EX_TRANSPARENT
+                           | NativeMethods.WS_EX_NOACTIVATE
+                           | NativeMethods.WS_EX_TOOLWINDOW
+                           | NativeMethods.WS_EX_TOPMOST;
+                return cp;
             }
         }
 
-        public bool DrawingEnabled { get; set; }
-
-        // Last known pen position from raw input
-        private Point _lastPenPos;
-
-        // Pen cursor visibility
-        private bool _showPenCursor;
-        private Point _penCursorPos;
-
-        // Tip state from HID
-        private bool _hidTipDown;
-        private DateTime _hidLastReportUtc = DateTime.MinValue;
-        private Timer _liftTimer;
-
-        // Coordinate inversion for 180° rotated tablets
-        public bool InvertX = false;
-        public bool InvertY = false;
-
-        private int _rawMouseCount, _rawHidCount, _penAbsCount;
-        private int _drawCount, _paintCount;
-
-        public Color PenColor
-        {
-            get { return _penColor; }
-            set { _penColor = value; }
-        }
-
-        public float PenWidth
-        {
-            get { return _penWidth; }
-            set { _penWidth = Math.Max(0.5f, Math.Min(20f, value)); }
-        }
+        protected override bool ShowWithoutActivation { get { return true; } }
 
         public OverlayForm()
         {
-            DrawingEnabled = true;
-
             var bounds = SystemInformation.VirtualScreen;
             this.StartPosition = FormStartPosition.Manual;
             this.Location = bounds.Location;
@@ -106,206 +68,262 @@ namespace GlasPen2
             this.ShowInTaskbar = false;
             this.TopMost = true;
             this.ShowIcon = false;
-
-            // Use TransparencyKey instead of WS_EX_LAYERED
             this.BackColor = Color.Fuchsia;
             this.TransparencyKey = Color.Fuchsia;
-
-            // Double-buffering for smooth rendering
             this.DoubleBuffered = true;
 
-            // Create off-screen bitmap for ink
             _canvas = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
-            _canvasGraphics = Graphics.FromImage(_canvas);
-            _canvasGraphics.SmoothingMode = SmoothingMode.AntiAlias;
-            _canvasGraphics.Clear(Color.Transparent);
+            _g = Graphics.FromImage(_canvas);
+            _g.SmoothingMode = SmoothingMode.AntiAlias;
+            _g.CompositingQuality = CompositingQuality.HighQuality;
+            _g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            _g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            _g.Clear(Color.Transparent);
 
-            Console.WriteLine("[Overlay] Canvas: {0}x{1}, using TransparencyKey=Fuchsia, BackColor=Fuchsia",
-                bounds.Width, bounds.Height);
+            byte[] andPlane = { 0xFF };
+            byte[] xorPlane = { 0x00 };
+            _transparentCursor = NativeMethods.CreateCursor(IntPtr.Zero, 0, 0, 1, 1, andPlane, xorPlane);
+            while (NativeMethods.ShowCursor(false) >= 0) { }
+
+            Log("[Overlay] Canvas: {0}x{1}, Location=({2},{3}), penWidth={4}",
+                bounds.Width, bounds.Height, bounds.Left, bounds.Top, _penWidth);
         }
 
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            Console.WriteLine("[Overlay] HWND=0x{0:X}, Pos=({1},{2}), Size={3}x{4}",
-                this.Handle.ToInt64(), this.Left, this.Top, this.Width, this.Height);
 
-            // NOT calling EnableMouseInPointer — it converts pen to WM_POINTER
-            // which bypasses our mouse hook and ClipCursor lock.
-            Console.WriteLine("[Overlay] Ready.");
+            // Probe HID digitizer devices for coordinate range (after pipe is connected)
+            ProbeDigitizerDevices();
 
-            // Force window to topmost visible
-            NativeMethods.SetWindowPos(
-                this.Handle, NativeMethods.HWND_TOPMOST,
+            RegisterRawInput();
+            NativeMethods.SetWindowPos(this.Handle, NativeMethods.HWND_TOPMOST,
                 this.Left, this.Top, this.Width, this.Height,
                 NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
-
-            // Register for raw input
-            RegisterRawInput();
-
-            // Register global hotkeys
-            // Ctrl+Alt+C — clear screen
             NativeMethods.RegisterHotKey(this.Handle, 1,
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.C);
-            // Ctrl+Alt+Z — undo last stroke
             NativeMethods.RegisterHotKey(this.Handle, 2,
-                NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.Z);
-            // Ctrl+Alt+Q — exit application
-            NativeMethods.RegisterHotKey(this.Handle, 3,
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.Q);
+            Log("[Overlay] Ready. Handle=0x{0:X}", this.Handle.ToInt64());
+        }
 
-            // Safety auto-lift timer (only when HID not providing tip data)
-            _liftTimer = new Timer { Interval = 200 };
-            _liftTimer.Tick += (s, args) =>
+        // Enumerate HID digitizer devices and read their coordinate ranges
+        private void ProbeDigitizerDevices()
+        {
+            Log("[Probe] Starting device enumeration...");
+            // Try to enumerate devices via SetupAPI
+            try
             {
-                if (_isDrawing && !HidTipDown
-                    && (DateTime.UtcNow - LastPenEventUtc).TotalMilliseconds > 2000)
+                Guid hidGuid;
+                NativeMethods.HidD_GetHidGuid(out hidGuid);
+                Log("[Probe] HID GUID: {0}", hidGuid);
+
+                IntPtr devInfoSet = NativeMethods.SetupDiGetClassDevs(
+                    ref hidGuid, null, IntPtr.Zero,
+                    NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE);
+
+                if (devInfoSet == IntPtr.Zero || devInfoSet == new IntPtr(-1))
                 {
-                    Console.WriteLine("[Draw] SAFETY LIFT (no input for 2s)");
-                    StopCursorLock();
-                    StopDrawing();
+                    Log("[Probe] SetupDiGetClassDevs failed");
+                    return;
                 }
-            };
-            _liftTimer.Start();
+
+                try
+                {
+                    var ifaceData = new NativeMethods.SP_DEVICE_INTERFACE_DATA();
+                    ifaceData.cbSize = Marshal.SizeOf(typeof(NativeMethods.SP_DEVICE_INTERFACE_DATA));
+
+                    for (uint i = 0; NativeMethods.SetupDiEnumDeviceInterfaces(
+                        devInfoSet, IntPtr.Zero, ref hidGuid, i, ref ifaceData); i++)
+                    {
+                        // Get required size for detail data
+                        uint detailSize = 0;
+                        NativeMethods.SetupDiGetDeviceInterfaceDetail(
+                            devInfoSet, ref ifaceData, IntPtr.Zero, 0, ref detailSize, IntPtr.Zero);
+                        if (detailSize == 0) continue;
+
+                        IntPtr detailBuf = Marshal.AllocHGlobal((int)detailSize);
+                        try
+                        {
+                            // First 4 bytes (or 8 on x64) are cbSize
+                            if (IntPtr.Size == 8)
+                                Marshal.WriteInt32(detailBuf, 8);
+                            else
+                                Marshal.WriteInt32(detailBuf, 4 + Marshal.SizeOf(typeof(char)));
+
+                            if (!NativeMethods.SetupDiGetDeviceInterfaceDetail(
+                                devInfoSet, ref ifaceData, detailBuf, detailSize, ref detailSize, IntPtr.Zero))
+                                continue;
+
+                            string devicePath = Marshal.PtrToStringUni(detailBuf + IntPtr.Size) ?? "";
+                            if (string.IsNullOrEmpty(devicePath)) continue;
+
+                            // Only process digitizer devices (UsagePage 0x000D)
+                            if (!devicePath.Contains("vid_") && !devicePath.Contains("VID_"))
+                                continue;
+
+                            TryReadDeviceRange(devicePath);
+                            if (_rangeFound) break;
+                        }
+                        finally
+                        {
+                            Marshal.FreeHGlobal(detailBuf);
+                        }
+                    }
+                }
+                finally
+                {
+                    NativeMethods.SetupDiDestroyDeviceInfoList(devInfoSet);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("[Probe] EXCEPTION: {0} ({1})", ex.Message, ex.GetType().Name);
+            }
+
+            Log("[Probe] Done. rangeFound={0}", _rangeFound);
+
+            if (!_rangeFound)
+            {
+                Log("[Probe] Could not find digitizer range — using fallback 0-32767");
+                _hidMinX = 0; _hidMaxX = 32767;
+                _hidMinY = 0; _hidMaxY = 32767;
+                _rangeFound = true;
+            }
+        }
+
+        private void TryReadDeviceRange(string devicePath)
+        {
+            IntPtr devHandle = NativeMethods.CreateFile(
+                devicePath,
+                0, // no access — just need preparsed data
+                NativeMethods.FILE_SHARE_READ | NativeMethods.FILE_SHARE_WRITE,
+                IntPtr.Zero,
+                NativeMethods.OPEN_EXISTING,
+                0, IntPtr.Zero);
+
+            if (devHandle == IntPtr.Zero || devHandle == new IntPtr(-1))
+                return;
+
+            try
+            {
+                IntPtr preparsed;
+                if (!NativeMethods.HidD_GetPreparsedData(devHandle, out preparsed))
+                    return;
+
+                try
+                {
+                    var caps = new NativeMethods.HIDP_CAPS();
+                    uint status = NativeMethods.HidP_GetCaps(preparsed, ref caps);
+                    if (status != 0) return;
+
+                    // Only process digitizer devices (UsagePage 0x000D)
+                    if (caps.UsagePage != 0x000D)
+                        return;
+
+                    Log("[Probe] Found digitizer: UsagePage=0x{0:X4} Usage=0x{1:X4} Path={2}",
+                        caps.UsagePage, caps.Usage, devicePath.Substring(0, Math.Min(80, devicePath.Length)));
+
+                    ushort numCaps = caps.NumberInputValueCaps;
+                    if (numCaps > 0 && numCaps < 20)
+                    {
+                        int capsSize = Marshal.SizeOf(typeof(NativeMethods.HIDP_VALUE_CAPS));
+                        IntPtr valueCaps = Marshal.AllocHGlobal(numCaps * capsSize);
+                        try
+                        {
+                            status = NativeMethods.HidP_GetValueCaps(0, valueCaps, ref numCaps, preparsed);
+                            if (status == 0)
+                            {
+                                for (int j = 0; j < numCaps; j++)
+                                {
+                                    var vc = (NativeMethods.HIDP_VALUE_CAPS)Marshal.PtrToStructure(
+                                        valueCaps + j * capsSize, typeof(NativeMethods.HIDP_VALUE_CAPS));
+
+                                    if (vc.UsagePage == 0x0001 && vc.LogicalMax > vc.LogicalMin)
+                                    {
+                                        if (vc.UsageMin == 0x30) // X
+                                        {
+                                            _hidMinX = (int)vc.LogicalMin;
+                                            _hidMaxX = (int)vc.LogicalMax;
+                                            Log("[Probe]   X: {0} - {1}", _hidMinX, _hidMaxX);
+                                        }
+                                        else if (vc.UsageMin == 0x31) // Y
+                                        {
+                                            _hidMinY = (int)vc.LogicalMin;
+                                            _hidMaxY = (int)vc.LogicalMax;
+                                            Log("[Probe]   Y: {0} - {1}", _hidMinY, _hidMaxY);
+                                        }
+                                    }
+                                }
+                                _rangeFound = (_hidMaxX > _hidMinX && _hidMaxY > _hidMinY);
+                            }
+                        }
+                        finally
+                        {
+                            Marshal.FreeHGlobal(valueCaps);
+                        }
+                    }
+                }
+                finally
+                {
+                    NativeMethods.HidD_FreePreparsedData(preparsed);
+                }
+            }
+            finally
+            {
+                NativeMethods.CloseHandle(devHandle);
+            }
         }
 
         private void RegisterRawInput()
         {
-            // Try multiple registration strategies for HID digitizer
-            // Strategy 1: RIDEV_INPUTSINK (standard background)
-            // Strategy 2: RIDEV_EXINPUTSINK (extended background, Vista+)
-            // Strategy 3: No INPUTSINK at all (foreground only, but might work)
-
-            var devices = new NativeMethods.RAWINPUTDEVICE[6];
-            int idx = 0;
-            IntPtr hwnd = this.Handle;
-
-            // Mouse
-            devices[idx].usUsagePage = 0x0001; devices[idx].usUsage = 0x0002;
-            devices[idx].dwFlags = NativeMethods.RIDEV_INPUTSINK; devices[idx].hwndTarget = hwnd;
-            idx++;
-
-            // Digitizer — try different flag combinations
-            const uint EXSINK = 0x00001000; // RIDEV_EXINPUTSINK
-            uint[] flags = { NativeMethods.RIDEV_INPUTSINK, EXSINK, (uint)0, NativeMethods.RIDEV_INPUTSINK | EXSINK };
-
-            foreach (uint flag in flags)
-            {
-                devices[idx].usUsagePage = 0x000D;
-                devices[idx].usUsage = 0x0002; // Pen
-                devices[idx].dwFlags = flag;
-                devices[idx].hwndTarget = hwnd;
-                idx++;
-                if (idx >= devices.Length) break;
-            }
-
-            // Also try digitizer stylus with INPUTSINK
-            if (idx < devices.Length)
-            {
-                devices[idx].usUsagePage = 0x000D;
-                devices[idx].usUsage = 0x0001; // Stylus
-                devices[idx].dwFlags = NativeMethods.RIDEV_INPUTSINK;
-                devices[idx].hwndTarget = hwnd;
-                idx++;
-            }
+            var devices = new NativeMethods.RAWINPUTDEVICE[3];
+            devices[0].usUsagePage = 0x0001; devices[0].usUsage = 0x0002;
+            devices[0].dwFlags = NativeMethods.RIDEV_INPUTSINK; devices[0].hwndTarget = this.Handle;
+            devices[1].usUsagePage = 0x000D; devices[1].usUsage = 0x0002;
+            devices[1].dwFlags = NativeMethods.RIDEV_INPUTSINK; devices[1].hwndTarget = this.Handle;
+            devices[2].usUsagePage = 0x000D; devices[2].usUsage = 0x0001;
+            devices[2].dwFlags = NativeMethods.RIDEV_INPUTSINK; devices[2].hwndTarget = this.Handle;
 
             uint cbSize = (uint)Marshal.SizeOf(typeof(NativeMethods.RAWINPUTDEVICE));
-            bool ok = NativeMethods.RegisterRawInputDevices(devices, (uint)idx, cbSize);
-            int err = Marshal.GetLastWin32Error();
-            Console.WriteLine("[Overlay] RegisterRawInputDevices ({0} entries): {1} (err={2})",
-                idx, ok ? "OK" : "FAILED", err);
+            bool ok = NativeMethods.RegisterRawInputDevices(devices, 3, cbSize);
+            Log("[Overlay] RegisterRawInput: {0} (err={1})", ok ? "OK" : "FAIL", Marshal.GetLastWin32Error());
         }
 
         protected override void WndProc(ref Message m)
         {
+            if (m.Msg == NativeMethods.WM_TABLET_QUERYSYSTEMGESTURESTATUS)
+            {
+                m.Result = (IntPtr)NativeMethods.TABLET_DISABLE_ALL;
+                return;
+            }
+            if (m.Msg == NativeMethods.WM_SETCURSOR)
+            {
+                int ht = (int)(m.LParam.ToInt64() & 0xFFFF);
+                if (ht == NativeMethods.HTCLIENT && _transparentCursor != IntPtr.Zero)
+                {
+                    NativeMethods.SetCursor(_transparentCursor);
+                    m.Result = (IntPtr)1;
+                    return;
+                }
+            }
             if (m.Msg == NativeMethods.WM_INPUT)
             {
                 ProcessRawInput(m.LParam);
             }
-            else if (m.Msg == NativeMethods.WM_POINTERDOWN ||
-                     m.Msg == NativeMethods.WM_POINTERUPDATE ||
-                     m.Msg == NativeMethods.WM_POINTERUP)
-            {
-                ProcessPointerMsg((uint)m.WParam.ToInt64(), m.Msg);
-            }
             else if (m.Msg == NativeMethods.WM_HOTKEY)
             {
                 int id = (int)m.WParam;
-                if (id == 1) ClearAll();       // Ctrl+Alt+C
-                else if (id == 2) UndoLast();  // Ctrl+Alt+Z
-                else if (id == 3) Application.Exit();  // Ctrl+Alt+Q
+                if (id == 1) ClearAll();
+                else if (id == 2) Application.Exit();
             }
             base.WndProc(ref m);
-        }
-
-        private void ProcessPointerMsg(uint pointerId, int msg)
-        {
-            uint pointerType;
-            if (!NativeMethods.GetPointerType(pointerId, out pointerType)) return;
-            if (pointerType != NativeMethods.PT_PEN) return; // only pen
-
-            var penInfo = new NativeMethods.POINTER_PEN_INFO();
-            if (!NativeMethods.GetPointerPenInfo(pointerId, ref penInfo)) return;
-
-            uint pressure = penInfo.pressure; // 0-1024
-            int scrX = penInfo.pointerInfo.ptPixelLocation.X;
-            int scrY = penInfo.pointerInfo.ptPixelLocation.Y;
-
-            if (_pointerCount <= 5)
-                Console.WriteLine("[Pointer #{0}] msg=0x{1:X4} pos=({2},{3}) pressure={4}",
-                    _pointerCount, msg, scrX, scrY, pressure);
-
-            _pointerCount++;
-            _lastPointerPressure = pressure;
-
-            if (msg == NativeMethods.WM_POINTERDOWN)
-            {
-                Console.WriteLine("[Pointer] PEN DOWN pressure={0}", pressure);
-                StartDrawing();
-            }
-            else if (msg == NativeMethods.WM_POINTERUP)
-            {
-                Console.WriteLine("[Pointer] PEN UP pressure={0}", pressure);
-                StopDrawing();
-            }
-        }
-
-        private int _pointerCount;
-        private uint _lastPointerPressure;
-
-        // Paint the ink bitmap + pen cursor onto the form
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-            _paintCount++;
-            if (_canvas != null)
-            {
-                e.Graphics.DrawImage(_canvas, 0, 0);
-            }
-
-            // Draw pen cursor (crosshair at last known pen position)
-            if (_showPenCursor && _penCursorPos.X > 0)
-            {
-                int cx = ClampX(_penCursorPos.X - this.Left);
-                int cy = ClampY(_penCursorPos.Y - this.Top);
-                int r = 10;
-                using (var cp = new Pen(Color.FromArgb(200, 255, 80, 30), 2f))
-                {
-                    e.Graphics.DrawLine(cp, cx - r, cy, cx + r, cy);
-                    e.Graphics.DrawLine(cp, cx, cy - r, cx, cy + r);
-                    e.Graphics.DrawEllipse(cp, cx - r, cy - r, r * 2, r * 2);
-                }
-            }
-
-            if (_paintCount <= 3)
-                Console.WriteLine("[Paint #{0}] Form painted", _paintCount);
         }
 
         private void ProcessRawInput(IntPtr hRawInput)
         {
             uint dwSize = 0;
             uint headerSize = (uint)Marshal.SizeOf(typeof(NativeMethods.RAWINPUTHEADER));
-
             NativeMethods.GetRawInputData(hRawInput, NativeMethods.RID_INPUT,
                 IntPtr.Zero, ref dwSize, headerSize);
             if (dwSize == 0) return;
@@ -325,10 +343,6 @@ namespace GlasPen2
                 {
                     ProcessHidInput(buffer, headerBytes, (int)(dwSize - headerBytes));
                 }
-                else if (header.dwType == NativeMethods.RIM_TYPEMOUSE)
-                {
-                    ProcessMouseInput(buffer, headerBytes);
-                }
             }
             finally
             {
@@ -338,445 +352,150 @@ namespace GlasPen2
 
         private void ProcessHidInput(IntPtr buffer, int offset, int dataLen)
         {
-            _rawHidCount++;
-            // Standard digitizer HID: [rptId:1][switches:1][X:2 LE][Y:2 LE][press:2 LE]...
+            _hidCount++;
             if (dataLen < 8) return;
 
-            int baseOff = offset + 8; // skip dwSizeHid(4)+dwCount(4)
-            byte reportId = Marshal.ReadByte(buffer, baseOff);
-            byte switches = Marshal.ReadByte(buffer, baseOff + 1);
-            uint x = (uint)Marshal.ReadByte(buffer, baseOff + 2)
-                  | ((uint)Marshal.ReadByte(buffer, baseOff + 3) << 8);
-            uint y = (uint)Marshal.ReadByte(buffer, baseOff + 4)
-                  | ((uint)Marshal.ReadByte(buffer, baseOff + 5) << 8);
-            uint pressure = (uint)Marshal.ReadByte(buffer, baseOff + 6)
-                         | ((uint)Marshal.ReadByte(buffer, baseOff + 7) << 8);
+            int b = offset + 8;
+            byte switches = Marshal.ReadByte(buffer, b + 1);
+            uint rawX = (uint)Marshal.ReadByte(buffer, b + 2) | ((uint)Marshal.ReadByte(buffer, b + 3) << 8);
+            uint rawY = (uint)Marshal.ReadByte(buffer, b + 4) | ((uint)Marshal.ReadByte(buffer, b + 5) << 8);
+            uint press = (uint)Marshal.ReadByte(buffer, b + 6) | ((uint)Marshal.ReadByte(buffer, b + 7) << 8);
 
-            bool tipDown = (switches & 0x01) != 0;
-            _hidTipDown = tipDown;
-            HidTipDown = tipDown; // share with hook
-            _hidLastReportUtc = DateTime.UtcNow;
+            bool tipDown = (switches & 0x05) != 0;
+            bool inRange = (switches & 0x10) != 0;
 
-            bool logIt = _isDrawing || _rawHidCount <= 10 || (_rawHidCount % 100 == 0);
-            if (logIt)
+            // Map to screen coords
+            var sb = SystemInformation.VirtualScreen;
+            long rangeX = _hidMaxX - _hidMinX;
+            long rangeY = _hidMaxY - _hidMinY;
+            int sx = (rangeX > 0) ? sb.Left + (int)((long)(rawX - _hidMinX) * sb.Width / rangeX) : sb.Left;
+            int sy = (rangeY > 0) ? sb.Top + (int)((long)(rawY - _hidMinY) * sb.Height / rangeY) : sb.Top;
+            sx = Math.Max(sb.Left, Math.Min(sx, sb.Left + sb.Width - 1));
+            sy = Math.Max(sb.Top, Math.Min(sy, sb.Top + sb.Height - 1));
+
+            bool tipChanged = tipDown != _tipDown;
+            bool rangeChanged = inRange != _inRange;
+
+            _tipDown = tipDown;
+            _inRange = inRange;
+            _pressure = press;
+            _screenX = sx;
+            _screenY = sy;
+
+            if (_hidCount <= 50 || tipChanged || rangeChanged || _hidCount % 100 == 0)
+                Log("[HID #{0}] raw=({1},{2}) screen=({3},{4}) pressure={5} tip={6} range={7}",
+                    _hidCount, rawX, rawY, sx, sy, press,
+                    tipDown ? "DOWN" : "UP",
+                    inRange ? "YES" : "NO");
+
+            _showCursor = inRange && !tipDown; // show crosshair on hover, hide when drawing or out of range
+
+            if (tipDown && press > 0)
             {
-                Console.Write("[HID #{0}] x={1} y={2} sw=0x{3:X2} press={4} tip={5}",
-                    _rawHidCount, x, y, switches, pressure, tipDown);
-                if (tipDown && _isDrawing)
-                    Console.Write(" drawing");
-                Console.WriteLine();
-            }
+                _currentWidth = _penWidth * (0.3f + (press / 16000f) * 1.7f);
+                int cx = ClampX(sx - this.Left);
+                int cy = ClampY(sy - this.Top);
+                var pt = new Point(cx, cy);
 
-            // HID logical coords → screen via 0-65535 (Windows pointer standard)
-            if (x > 0 && y > 0 && x < 100000 && y < 100000)
-            {
-                var sb = SystemInformation.VirtualScreen;
-                int sx = sb.Left + (int)((long)x * sb.Width / 65536);
-                int sy = sb.Top  + (int)((long)y * sb.Height / 65536);
-                _lastPenPos = new Point(sx, sy);
-                _penCursorPos = _lastPenPos;
-                _showPenCursor = true;
-                LastPenEventUtc = DateTime.UtcNow;
-            }
-
-            // HID controls drawing when hook can't detect WM_LBUTTONDOWN (Ink ON).
-            // Hook coordinates from WM_MOUSEMOVE are tracked in _lastPenPos.
-            if (tipDown && pressure > 0)
-            {
-                SetPressure(pressure);
-                if (!_isDrawing && DrawingEnabled)
+                if (!_isDrawing)
                 {
-                    Console.WriteLine("[HID] TIP TOUCH → OnPenDown");
-                    OnPenDown(_lastPenPos.X, _lastPenPos.Y);
-                }
-            }
-            else if (!tipDown && _isDrawing)
-            {
-                Console.WriteLine("[HID] TIP LIFT → OnPenUp");
-                OnPenUp(_lastPenPos.X, _lastPenPos.Y);
-            }
-        }
-
-        private void LockCursor(bool locked)
-        {
-            if (locked)
-            {
-                // Lock cursor to current position to prevent drift
-                NativeMethods.POINT pt;
-                NativeMethods.GetCursorPos(out pt);
-                var r = new NativeMethods.RECT(pt.X, pt.Y, pt.X + 1, pt.Y + 1);
-                if (!NativeMethods.ClipCursor(ref r))
-                    Console.WriteLine("[Lock] ClipCursor FAILED! err={0}", Marshal.GetLastWin32Error());
-            }
-            else
-            {
-                if (!NativeMethods.ClipCursor(IntPtr.Zero))
-                    Console.WriteLine("[Lock] ClipCursor release FAILED! err={0}", Marshal.GetLastWin32Error());
-            }
-        }
-
-        private Timer _lockTimer;
-        private void StartCursorLock()
-        {
-            LockCursor(true);
-            if (_lockTimer == null)
-            {
-                _lockTimer = new Timer { Interval = 30 };
-                _lockTimer.Tick += (s, args) => { if (HidTipDown) LockCursor(true); };
-            }
-            _lockTimer.Start();
-        }
-        private void StopCursorLock()
-        {
-            if (_lockTimer != null) _lockTimer.Stop();
-            LockCursor(false);
-        }
-
-        private void ProcessMouseInput(IntPtr buffer, int offset)
-        {
-            _rawMouseCount++;
-            var mouse = (NativeMethods.RAWMOUSE)Marshal.PtrToStructure(
-                buffer + offset, typeof(NativeMethods.RAWMOUSE));
-
-            bool isAbsolute = (mouse.usFlags & NativeMethods.MOUSE_MOVE_ABSOLUTE) != 0;
-
-            if (_rawMouseCount <= 10)
-                Console.WriteLine("[Raw #{0}] flags=0x{1:X4} abs={2} lX={3} lY={4} ulRawBtns=0x{5:X8}",
-                    _rawMouseCount, mouse.usFlags, isAbsolute, mouse.lLastX, mouse.lLastY, mouse.ulRawButtons);
-
-            if (!isAbsolute) return;
-            _penAbsCount++;
-            if (!DrawingEnabled) return;
-
-            LastPenEventUtc = DateTime.UtcNow;
-
-            var bounds = SystemInformation.VirtualScreen;
-            int screenX = (int)((long)mouse.lLastX * bounds.Width / 65536) + bounds.Left;
-            int screenY = (int)((long)mouse.lLastY * bounds.Height / 65536) + bounds.Top;
-
-            // Ignore near-zero — tablet reports this when pen goes out of range
-            if (screenX <= 2 && screenY <= 2) return;
-
-            // Always update last known pen position and cursor
-            _lastPenPos = new Point(screenX, screenY);
-            int dx = screenX - _penCursorPos.X;
-            int dy = screenY - _penCursorPos.Y;
-            if (dx * dx + dy * dy >= 4) // move > 2px → refresh cursor
-            {
-                _penCursorPos = _lastPenPos;
-                _showPenCursor = true;
-                this.Invalidate();
-            }
-
-            if (_penAbsCount % 50 == 0 || _penAbsCount <= 5)
-                Console.WriteLine("[Pen #{0}] scr=({1},{2}) drawing={3}",
-                    _penAbsCount, screenX, screenY, _isDrawing);
-
-            // Draw from raw input (correct screen coords). Hook handles cursor suppression.
-            if (_isDrawing)
-            {
-                OnPenMove(_lastPoint.X, _lastPoint.Y, screenX, screenY);
-            }
-        }
-
-        #region Pen drawing
-
-        /// <summary>Start drawing at the last known raw-input pen position.</summary>
-        public void StartDrawing()
-        {
-            if (_isDrawing) return;
-            ApplyPointerPos(); // use WM_POINTER position if available
-            _isDrawing = true;
-            _lastPoint = _lastPenPos;
-            _smoothBuffer.Clear();
-            _smoothBuffer.Add(_lastPoint);
-
-            int x = ClampX(_lastPoint.X - this.Left);
-            int y = ClampY(_lastPoint.Y - this.Top);
-
-            float w = _currentWidth > 0 ? _currentWidth : _penWidth;
-            using (var pen = new Pen(_penColor, w))
-            {
-                pen.StartCap = LineCap.Round;
-                pen.EndCap = LineCap.Round;
-                _canvasGraphics.DrawEllipse(pen, x, y, w, w);
-            }
-            Console.WriteLine("[Draw] DOWN at ({0},{1})", _lastPoint.X, _lastPoint.Y);
-            this.Invalidate();
-        }
-
-        public void OnPenDown(int screenX, int screenY)
-        {
-            if (_isDrawing) return;
-            // Use raw input position if available (correct screen coords)
-            int useX = (_lastPenPos.X > 0 || _lastPenPos.Y > 0) ? _lastPenPos.X : screenX;
-            int useY = (_lastPenPos.X > 0 || _lastPenPos.Y > 0) ? _lastPenPos.Y : screenY;
-            _isDrawing = true;
-            _lastPoint = new Point(useX, useY);
-            _lastPenPos = _lastPoint;
-            _smoothBuffer.Clear();
-            _smoothBuffer.Add(_lastPoint);
-            _smoothHistory.Clear();
-            _lastSmoothPoint = new PointF(useX, useY);
-            if (_smoothEnabled)
-                _smoothHistory.Add(_lastSmoothPoint);
-
-            int x = ClampX(useX - this.Left);
-            int y = ClampY(useY - this.Top);
-            float w = _currentWidth > 0 ? _currentWidth : _penWidth;
-
-            using (var pen = new Pen(_penColor, w))
-            {
-                pen.StartCap = LineCap.Round;
-                pen.EndCap = LineCap.Round;
-                _canvasGraphics.DrawEllipse(pen, x, y, w, w);
-            }
-            Console.WriteLine("[Draw] DOWN at ({0},{1})", useX, useY);
-            this.Invalidate();
-        }
-
-        /// <summary>Draw from hook WM_MOUSEMOVE (screen coordinates).</summary>
-        public void OnPenMoveRaw(int screenX, int screenY)
-        {
-            if (!_isDrawing) return;
-            // Ignore near-zero — tablet sends these when pen goes out of range
-            if (screenX <= 2 && screenY <= 2) return;
-            OnPenMove(_lastPoint.X, _lastPoint.Y, screenX, screenY);
-        }
-
-        public void OnPenMove(int fromSX, int fromSY, int toSX, int toSY)
-        {
-            if (!_isDrawing) return;
-
-            int dx = toSX - _lastPoint.X;
-            int dy = toSY - _lastPoint.Y;
-            if (dx * dx + dy * dy < SmoothDistance * SmoothDistance) return;
-
-            _smoothBuffer.Add(new Point(toSX, toSY));
-
-            float useFromX, useFromY, useToX, useToY;
-            if (_smoothEnabled)
-            {
-                // Smooth the incoming raw point
-                var rawTo = new PointF(toSX, toSY);
-                _smoothHistory.Add(rawTo);
-                if (_smoothHistory.Count > SmoothWindow)
-                    _smoothHistory.RemoveAt(0);
-
-                // Weighted moving average
-                float totalW = 0, sumX = 0, sumY = 0;
-                for (int i = 0; i < _smoothHistory.Count; i++)
-                {
-                    float w = (float)(i + 1) / _smoothHistory.Count;
-                    sumX += _smoothHistory[i].X * w;
-                    sumY += _smoothHistory[i].Y * w;
-                    totalW += w;
-                }
-                var smoothedTo = new PointF(sumX / totalW, sumY / totalW);
-
-                // Use last smoothed point as FROM for perfect continuity (no gaps!)
-                useFromX = _lastSmoothPoint.X;
-                useFromY = _lastSmoothPoint.Y;
-                useToX = smoothedTo.X;
-                useToY = smoothedTo.Y;
-                _lastSmoothPoint = smoothedTo;
-            }
-            else
-            {
-                useFromX = fromSX;
-                useFromY = fromSY;
-                useToX = toSX;
-                useToY = toSY;
-            }
-
-            int fx = ClampX((int)useFromX - this.Left);
-            int fy = ClampY((int)useFromY - this.Top);
-            int tx = ClampX((int)useToX - this.Left);
-            int ty = ClampY((int)useToY - this.Top);
-
-            // Skip if smoothed coords haven't moved enough
-            if (_smoothEnabled && (fx - tx) * (fx - tx) + (fy - ty) * (fy - ty) < 1) return;
-
-            float lineW = _currentWidth > 0 ? _currentWidth : _penWidth;
-            using (var pen = new Pen(_penColor, lineW))
-            {
-                pen.StartCap = LineCap.Round;
-                pen.EndCap = LineCap.Round;
-                pen.LineJoin = LineJoin.Round;
-                _canvasGraphics.DrawLine(pen, fx, fy, tx, ty);
-            }
-
-            _lastPoint = new Point(toSX, toSY);
-            this.Invalidate(new Rectangle(
-                Math.Min(fx, tx) - 5, Math.Min(fy, ty) - 5,
-                Math.Abs(tx - fx) + 10, Math.Abs(ty - fy) + 10));
-        }
-
-        /// <summary>Set pen pressure (0-1024). Adjusts stroke width: 0.5x to 2x base width.</summary>
-        public void SetPressure(uint pressure)
-        {
-            // Map 0-1024 to 0.3x-2x of base pen width
-            float factor = 0.3f + (pressure / 1024f) * 1.7f;
-            _currentWidth = _penWidth * factor;
-        }
-
-        private float _currentWidth = 0f; // 0 = use _penWidth (no pressure data yet)
-
-        /// <summary>Stop drawing at the last known raw-input pen position.</summary>
-        public void StopDrawing()
-        {
-            if (!_isDrawing) return;
-            _isDrawing = false;
-            StopCursorLock();
-
-            Console.WriteLine("[Draw] UP at ({0},{1})", _lastPenPos.X, _lastPenPos.Y);
-
-            if (_smoothBuffer.Count > 0)
-            {
-                _completedStrokes.Add(new StrokeRecord
-                {
-                    Points = new List<Point>(_smoothBuffer),
-                    Color = _penColor,
-                    Width = _currentWidth > 0 ? _currentWidth : _penWidth
-                });
-            }
-            _smoothBuffer.Clear();
-            this.Invalidate();
-        }
-
-        public void OnPenUp(int screenX, int screenY)
-        {
-            if (!_isDrawing) return;
-            _isDrawing = false;
-            if (_smoothBuffer.Count > 0)
-            {
-                _completedStrokes.Add(new StrokeRecord
-                {
-                    Points = new List<Point>(_smoothBuffer),
-                    Color = _penColor,
-                    Width = _currentWidth > 0 ? _currentWidth : _penWidth
-                });
-            }
-            _smoothBuffer.Clear();
-            _smoothHistory.Clear();
-            Console.WriteLine("[Draw] UP at ({0},{1})", screenX, screenY);
-            this.Invalidate();
-        }
-
-        #endregion
-
-        private int ClampX(int x) { return x < 0 ? 0 : (x >= _canvas.Width ? _canvas.Width - 1 : x); }
-        private int ClampY(int y) { return y < 0 ? 0 : (y >= _canvas.Height ? _canvas.Height - 1 : y); }
-
-        public void ClearAll()
-        {
-            _completedStrokes.Clear();
-            _smoothBuffer.Clear();
-            _isDrawing = false;
-            _canvasGraphics.Clear(Color.Transparent);
-            this.Invalidate();
-            Console.WriteLine("[Overlay] Canvas cleared.");
-        }
-
-        public void UndoLast()
-        {
-            if (_completedStrokes.Count == 0 && !_isDrawing) return;
-            _canvasGraphics.Clear(Color.Transparent);
-            if (_completedStrokes.Count > 0) _completedStrokes.RemoveAt(_completedStrokes.Count - 1);
-            ReplayStrokes(_completedStrokes);
-            this.Invalidate();
-        }
-
-        private void ReplayStrokes(List<StrokeRecord> strokes)
-        {
-            foreach (var stroke in strokes)
-            {
-                if (stroke.Points.Count == 1)
-                {
-                    var p = stroke.Points[0];
-                    int x = ClampX(p.X - this.Left);
-                    int y = ClampY(p.Y - this.Top);
-                    using (var pen = new Pen(stroke.Color, stroke.Width))
+                    _isDrawing = true;
+                    _recentPoints.Clear();
+                    _recentPoints.Add(pt);
+                    using (var pen = new Pen(_penColor, _currentWidth))
                     {
                         pen.StartCap = LineCap.Round;
                         pen.EndCap = LineCap.Round;
-                        _canvasGraphics.DrawEllipse(pen, x, y, stroke.Width, stroke.Width);
+                        _g.DrawEllipse(pen, cx - _currentWidth / 2, cy - _currentWidth / 2, _currentWidth, _currentWidth);
                     }
+                    this.Invalidate(new Rectangle(cx - (int)_currentWidth - 2, cy - (int)_currentWidth - 2,
+                        (int)_currentWidth * 2 + 4, (int)_currentWidth * 2 + 4));
                 }
-                else if (stroke.Points.Count > 1)
+                else
                 {
-                    var pts = new Point[stroke.Points.Count];
-                    for (int i = 0; i < pts.Length; i++)
-                        pts[i] = new Point(
-                            ClampX(stroke.Points[i].X - this.Left),
-                            ClampY(stroke.Points[i].Y - this.Top));
-                    using (var pen = new Pen(stroke.Color, stroke.Width))
+                    _recentPoints.Add(pt);
+                    if (_recentPoints.Count > MAX_RECENT)
+                        _recentPoints.RemoveAt(0);
+
+                    // Draw smooth curve through recent points
+                    using (var pen = new Pen(_penColor, _currentWidth))
                     {
                         pen.StartCap = LineCap.Round;
                         pen.EndCap = LineCap.Round;
                         pen.LineJoin = LineJoin.Round;
-                        _canvasGraphics.DrawLines(pen, pts);
+
+                        if (_recentPoints.Count >= 3)
+                        {
+                            // Cardinal spline — smooth curve through all points
+                            _g.DrawCurve(pen, _recentPoints.ToArray(), 0.5f);
+                        }
+                        else if (_recentPoints.Count == 2)
+                        {
+                            _g.DrawLine(pen, _recentPoints[0], _recentPoints[1]);
+                        }
                     }
+
+                    // Invalidate the bounding rect of recent points
+                    int minX = cx - (int)_currentWidth - 4;
+                    int minY = cy - (int)_currentWidth - 4;
+                    int maxX = cx + (int)_currentWidth + 4;
+                    int maxY = cy + (int)_currentWidth + 4;
+                    this.Invalidate(new Rectangle(minX, minY, maxX - minX, maxY - minY));
+                }
+                _lastPoint = pt;
+            }
+            else if (!tipDown && _isDrawing)
+            {
+                _recentPoints.Clear();
+                _isDrawing = false;
+                this.Invalidate();
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            if (_canvas != null) e.Graphics.DrawImage(_canvas, 0, 0);
+
+            if (_showCursor && _screenX > 0)
+            {
+                int cx = ClampX(_screenX - this.Left);
+                int cy = ClampY(_screenY - this.Top);
+                int r = 10;
+                using (var pen = new Pen(Color.FromArgb(200, 255, 80, 30), 2f))
+                {
+                    e.Graphics.DrawLine(pen, cx - r, cy, cx + r, cy);
+                    e.Graphics.DrawLine(pen, cx, cy - r, cx, cy + r);
+                    e.Graphics.DrawEllipse(pen, cx - r, cy - r, r * 2, r * 2);
                 }
             }
         }
 
-        public void RefreshScreenBounds()
+        public void ClearAll()
         {
-            var bounds = SystemInformation.VirtualScreen;
-            this.Location = bounds.Location;
-            this.Size = bounds.Size;
-            var old = new List<StrokeRecord>(_completedStrokes);
-            if (_canvasGraphics != null) _canvasGraphics.Dispose();
-            if (_canvas != null) _canvas.Dispose();
-            _canvas = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
-            _canvasGraphics = Graphics.FromImage(_canvas);
-            _canvasGraphics.SmoothingMode = SmoothingMode.AntiAlias;
-            _canvasGraphics.Clear(Color.Transparent);
-            ReplayStrokes(old);
+            _isDrawing = false;
+            _g.Clear(Color.Transparent);
             this.Invalidate();
+            Log("[Overlay] Cleared");
         }
+
+        private int ClampX(int x) { return Math.Max(0, Math.Min(x, _canvas.Width - 1)); }
+        private int ClampY(int y) { return Math.Max(0, Math.Min(y, _canvas.Height - 1)); }
 
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
-                // Unregister hotkeys
                 if (this.IsHandleCreated)
                 {
                     NativeMethods.UnregisterHotKey(this.Handle, 1);
                     NativeMethods.UnregisterHotKey(this.Handle, 2);
-                    NativeMethods.UnregisterHotKey(this.Handle, 3);
                 }
-                if (_liftTimer != null) { _liftTimer.Stop(); _liftTimer.Dispose(); }
-                if (_lockTimer != null) { _lockTimer.Stop(); _lockTimer.Dispose(); }
-                if (_canvasGraphics != null) _canvasGraphics.Dispose();
+                if (_g != null) _g.Dispose();
                 if (_canvas != null) _canvas.Dispose();
+                if (_transparentCursor != IntPtr.Zero)
+                    NativeMethods.DestroyCursor(_transparentCursor);
             }
             base.Dispose(disposing);
-        }
-
-        private class StrokeRecord
-        {
-            public List<Point> Points { get; set; }
-            public Color Color { get; set; }
-            public float Width { get; set; }
-        }
-
-        protected override bool ShowWithoutActivation { get { return true; } }
-
-        protected override CreateParams CreateParams
-        {
-            get
-            {
-                var cp = base.CreateParams;
-                cp.ExStyle |= NativeMethods.WS_EX_TRANSPARENT
-                           | NativeMethods.WS_EX_NOACTIVATE
-                           | NativeMethods.WS_EX_TOOLWINDOW
-                           | NativeMethods.WS_EX_TOPMOST;
-                // NOTE: NO WS_EX_LAYERED — using TransparencyKey instead
-                return cp;
-            }
         }
     }
 }
