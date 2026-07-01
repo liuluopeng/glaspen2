@@ -167,19 +167,27 @@ fn main() {
             .filter(|e| e.path().extension().map_or(false, |ext| ext == "cs"))
             .collect();
 
-        // Atomic lock: create a .lock file. First build.rs wins, second skips.
-        // The lock persists — delete it (along with the exe) to force recompilation.
-        let lock_file = target_debug.join(".csharp_compile.lock");
-        // Tell Cargo to re-run if the exe or lock file is missing
+        // Tell Cargo to re-run when any .cs file changes
+        for f in &cs_files {
+            println!("cargo:rerun-if-changed={}", f.path().display());
+        }
         println!("cargo:rerun-if-changed={}", csharp_exe.display());
-        println!("cargo:rerun-if-changed={}", lock_file.display());
-        let has_lock = lock_file.exists()
-            || std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&lock_file)
-                .is_ok();
-        let needs_compile = !csharp_exe.exists() && has_lock;
+
+        // Auto-delete exe when .cs files are newer (force recompile)
+        let exe_time = std::fs::metadata(&csharp_exe).and_then(|m| m.modified()).ok();
+        let cs_newer = cs_files.iter().any(|f| {
+            let cs_time = std::fs::metadata(f.path()).and_then(|m| m.modified()).ok();
+            match (exe_time, cs_time) {
+                (Some(e), Some(c)) => c > e,
+                _ => false,
+            }
+        });
+        if cs_newer && csharp_exe.exists() {
+            println!("cargo:warning=C# source changed, recompiling...");
+            let _ = std::fs::remove_file(&csharp_exe);
+        }
+
+        let needs_compile = !csharp_exe.exists();
 
         if needs_compile && !cs_files.is_empty() && !csharp_exe.exists() {
             // Find csc.exe — prefer .NET Framework 64-bit
@@ -198,7 +206,7 @@ fn main() {
                 let out_arg = format!("/out:{}", tmp_exe.display());
                 let mut cmd = std::process::Command::new(csc_path);
                 cmd.args(&[
-                    "/target:winexe",
+                    "/target:exe",
                     &out_arg,
                     "/platform:x64",
                 ]);

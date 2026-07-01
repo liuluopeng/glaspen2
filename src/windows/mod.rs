@@ -39,44 +39,51 @@ pub fn win_main() {
     // Connect to C# log pipe in background thread
     if let Some(ref path) = csharp_exe {
         eprintln!("[glaspen2] Launching C# overlay: {}", path.display());
-        // Connect to C# log pipe (named pipe: glaspen2_log)
-        std::thread::spawn(|| {
-            use std::io::{BufRead, Write};
-            // Try connecting to the log pipe (C# creates it on startup)
-            for _ in 0..50 {
-                match std::fs::OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .open(r"\\.\pipe\glaspen2_log")
-                {
-                    Ok(pipe) => {
-                        eprintln!("[glaspen2] Connected to C# log pipe");
-                        let mut reader = std::io::BufReader::new(pipe);
-                        let mut line = String::new();
-                        loop {
-                            line.clear();
-                            match reader.read_line(&mut line) {
-                                Ok(0) | Err(_) => break,
-                                Ok(_) => {
-                                    let trimmed = line.trim();
-                                    if !trimmed.is_empty() {
-                                        eprintln!("{}", trimmed);
-                                    }
+        match std::process::Command::new(path)
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(mut child) => {
+                // Forward C# stderr
+                if let Some(stderr) = child.stderr.take() {
+                    std::thread::spawn(move || {
+                        use std::io::BufRead;
+                        let reader = std::io::BufReader::new(stderr);
+                        for line in reader.lines() {
+                            if let Ok(l) = line { eprintln!("[C#] {}", l); }
+                        }
+                    });
+                }
+                // Connect to C# log pipe
+                std::thread::spawn(|| {
+                    use std::io::BufRead;
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    for attempt in 0..50 {
+                        match std::fs::OpenOptions::new()
+                            .read(true)
+                            .open(r"\\.\pipe\glaspen2_log")
+                        {
+                            Ok(pipe) => {
+                                eprintln!("[glaspen2] Connected to C# log pipe (attempt {})", attempt);
+                                let reader = std::io::BufReader::new(pipe);
+                                for line in reader.lines() {
+                                    if let Ok(l) = line { eprintln!("{}", l); }
                                 }
+                                eprintln!("[glaspen2] C# log pipe disconnected");
+                                return;
+                            }
+                            Err(_) => {
+                                std::thread::sleep(std::time::Duration::from_millis(200));
                             }
                         }
-                        eprintln!("[glaspen2] C# log pipe disconnected");
-                        return;
                     }
-                    Err(_) => {
-                        std::thread::sleep(std::time::Duration::from_millis(200));
-                    }
+                    eprintln!("[glaspen2] Could not connect to C# log pipe");
+                });
+                match child.wait() {
+                    Ok(status) => eprintln!("[glaspen2] C# overlay exited: {:?}", status),
+                    Err(e) => eprintln!("[glaspen2] C# overlay wait error: {}", e),
                 }
             }
-            eprintln!("[glaspen2] Could not connect to C# log pipe");
-        });
-        match std::process::Command::new(path).spawn()
-        {
             Ok(mut child) => {
                 match child.wait() {
                     Ok(status) => eprintln!("[glaspen2] C# overlay exited: {:?}", status),
