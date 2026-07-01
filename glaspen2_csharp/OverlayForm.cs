@@ -40,6 +40,13 @@ namespace GlasPen2
         private IntPtr _transparentCursor = IntPtr.Zero;
         private bool _showCursor;
 
+        // Block passthrough mode (Ctrl+Alt+B toggle)
+        private bool _blockMode = true;  // default ON: pen draws on overlay only
+        private const int HOTKEY_BLOCK = 3;
+
+        // Window below for forwarding mouse/keyboard
+        private IntPtr _hwndBelow;
+
         private static void Log(string msg) { Program.Log(msg); }
         private static void Log(string fmt, params object[] args) { Program.Log(fmt, args); }
 
@@ -48,8 +55,8 @@ namespace GlasPen2
             get
             {
                 var cp = base.CreateParams;
-                cp.ExStyle |= NativeMethods.WS_EX_TRANSPARENT
-                           | NativeMethods.WS_EX_NOACTIVATE
+                // No WS_EX_TRANSPARENT — we handle input forwarding ourselves
+                cp.ExStyle |= NativeMethods.WS_EX_NOACTIVATE
                            | NativeMethods.WS_EX_TOOLWINDOW
                            | NativeMethods.WS_EX_TOPMOST;
                 return cp;
@@ -104,6 +111,8 @@ namespace GlasPen2
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.C);
             NativeMethods.RegisterHotKey(this.Handle, 2,
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.Q);
+            NativeMethods.RegisterHotKey(this.Handle, HOTKEY_BLOCK,
+                NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.B);
             Log("[Overlay] Ready. Handle=0x{0:X}", this.Handle.ToInt64());
         }
 
@@ -275,6 +284,23 @@ namespace GlasPen2
             }
         }
 
+        private IntPtr GetWindowBelow()
+        {
+            // Find the window below our overlay at the current cursor position
+            var pt = System.Windows.Forms.Cursor.Position;
+            IntPtr hitWnd = NativeMethods.WindowFromPoint(pt.X, pt.Y);
+            if (hitWnd == this.Handle)
+            {
+                // Temporarily make ourselves transparent to find the real target
+                int exStyle = NativeMethods.GetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE);
+                NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE,
+                    exStyle | NativeMethods.WS_EX_TRANSPARENT);
+                hitWnd = NativeMethods.WindowFromPoint(pt.X, pt.Y);
+                NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, exStyle);
+            }
+            return hitWnd;
+        }
+
         private void RegisterRawInput()
         {
             var devices = new NativeMethods.RAWINPUTDEVICE[3];
@@ -310,14 +336,66 @@ namespace GlasPen2
             if (m.Msg == NativeMethods.WM_INPUT)
             {
                 ProcessRawInput(m.LParam);
+                return;
             }
-            else if (m.Msg == NativeMethods.WM_HOTKEY)
+            if (m.Msg == NativeMethods.WM_HOTKEY)
             {
                 int id = (int)m.WParam;
                 if (id == 1) ClearAll();
                 else if (id == 2) Application.Exit();
+                else if (id == HOTKEY_BLOCK)
+                {
+                    _blockMode = !_blockMode;
+                    Log("[Overlay] Block mode: {0}", _blockMode ? "ON (pen only)" : "OFF (passthrough)");
+                }
+                return;
             }
+
+            // Forward mouse/keyboard events to the window below
+            // But NOT when block mode is ON and the event is from the pen
+            if (IsMouseOrKeyboard(m.Msg))
+            {
+                // Check if this is pen input (don't forward pen events in block mode)
+                IntPtr extra = NativeMethods.GetMessageExtraInfo();
+                bool isPen = ((ulong)extra & NativeMethods.PEN_SIGNATURE_MASK) == NativeMethods.PEN_SIGNATURE;
+
+                if (_blockMode && isPen)
+                {
+                    // Pen event in block mode — consume it, don't forward
+                    return;
+                }
+
+                // Forward to window below
+                IntPtr target = GetWindowBelow();
+                if (target != IntPtr.Zero && target != this.Handle)
+                {
+                    NativeMethods.PostMessage(target, (uint)m.Msg, m.WParam, m.LParam);
+                }
+                return;
+            }
+
             base.WndProc(ref m);
+        }
+
+        private static bool IsMouseOrKeyboard(int msg)
+        {
+            // Mouse messages: 0x0200 - 0x020E
+            if (msg >= 0x0200 && msg <= 0x020E) return true;
+            // Mouse wheel: 0x020A
+            if (msg == 0x020A || msg == 0x020B) return true;
+            // Keyboard messages: 0x0100 - 0x0109
+            if (msg >= 0x0100 && msg <= 0x0109) return true;
+            // WM_CHAR: 0x0102
+            if (msg == 0x0102) return true;
+            // WM_SETCURSOR: 0x0020
+            if (msg == 0x0020) return true;
+            // WM_NCHITTEST: 0x0084
+            if (msg == 0x0084) return true;
+            // WM_MOUSEACTIVATE: 0x0021
+            if (msg == 0x0021) return true;
+            // WM_POINTER messages: 0x0245-0x0249 (don't forward these)
+            if (msg >= 0x0245 && msg <= 0x0249) return false;
+            return false;
         }
 
         private void ProcessRawInput(IntPtr hRawInput)
@@ -489,6 +567,7 @@ namespace GlasPen2
                 {
                     NativeMethods.UnregisterHotKey(this.Handle, 1);
                     NativeMethods.UnregisterHotKey(this.Handle, 2);
+                    NativeMethods.UnregisterHotKey(this.Handle, HOTKEY_BLOCK);
                 }
                 if (_g != null) _g.Dispose();
                 if (_canvas != null) _canvas.Dispose();
