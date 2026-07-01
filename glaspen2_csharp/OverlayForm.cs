@@ -75,6 +75,9 @@ namespace GlasPen2
         private DateTime _hidLastReportUtc = DateTime.MinValue;
         private Timer _liftTimer;
 
+        // Direct HID pen reader for pressure (works when INK is OFF)
+        private HidPenReader _hidReader;
+
         // Coordinate inversion for 180° rotated tablets
         public bool InvertX = false;
         public bool InvertY = false;
@@ -130,9 +133,10 @@ namespace GlasPen2
             Console.WriteLine("[Overlay] HWND=0x{0:X}, Pos=({1},{2}), Size={3}x{4}",
                 this.Handle.ToInt64(), this.Left, this.Top, this.Width, this.Height);
 
-            // NOT calling EnableMouseInPointer — it converts pen to WM_POINTER
-            // which bypasses our mouse hook and ClipCursor lock.
             Console.WriteLine("[Overlay] Ready.");
+
+            // Start HID pen reader in background (don't block UI)
+            System.Threading.ThreadPool.QueueUserWorkItem(_ => StartHidPenReader());
 
             // Force window to topmost visible
             NativeMethods.SetWindowPos(
@@ -216,6 +220,43 @@ namespace GlasPen2
                 idx, ok ? "OK" : "FAILED", err);
         }
 
+        private void StartHidPenReader()
+        {
+            try
+            {
+                _hidReader = new HidPenReader();
+                _hidReader.PenReport += (x, y, pressure, tipDown) =>
+                {
+                    // Update pressure for drawing
+                    SetPressure(pressure);
+
+                    // Track HID state
+                    _hidTipDown = tipDown;
+                    HidTipDown = tipDown;
+                    _hidLastReportUtc = DateTime.UtcNow;
+                    LastPenEventUtc = DateTime.UtcNow;
+
+                    // Map HID coords to screen
+                    var sb = SystemInformation.VirtualScreen;
+                    int sx = sb.Left + (int)((long)x * sb.Width / (_hidReader.MaxX > 0 ? _hidReader.MaxX : 65536));
+                    int sy = sb.Top  + (int)((long)y * sb.Height / (_hidReader.MaxY > 0 ? _hidReader.MaxY : 65536));
+
+                    _lastPenPos = new Point(sx, sy);
+                    _penCursorPos = _lastPenPos;
+                    _showPenCursor = true;
+                };
+
+                if (_hidReader.Open())
+                    Program.Log("[Overlay] HID pen reader started successfully");
+                else
+                    Program.Log("[Overlay] HID pen reader: no digitizer found (expected if INK is on)");
+            }
+            catch (Exception ex)
+            {
+                Program.Log("[Overlay] HID pen reader failed: {0}", ex.Message);
+            }
+        }
+
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == NativeMethods.WM_INPUT)
@@ -258,16 +299,12 @@ namespace GlasPen2
             _pointerCount++;
             _lastPointerPressure = pressure;
 
+            _lastPointerPressure = pressure;
+
             if (msg == NativeMethods.WM_POINTERDOWN)
-            {
-                Console.WriteLine("[Pointer] PEN DOWN pressure={0}", pressure);
-                StartDrawing();
-            }
+                Console.WriteLine("[Pointer] PEN DOWN pressure={0} pos=({1},{2})", pressure, scrX, scrY);
             else if (msg == NativeMethods.WM_POINTERUP)
-            {
                 Console.WriteLine("[Pointer] PEN UP pressure={0}", pressure);
-                StopDrawing();
-            }
         }
 
         private int _pointerCount;
