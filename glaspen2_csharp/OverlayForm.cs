@@ -476,7 +476,8 @@ namespace GlasPen2
                 }
                 else
                 {
-                    // Pen left range — start delay timer before unblocking
+                    // Pen left range — clear crosshair and start delay timer before unblocking
+                    _fakeStrokeForm.ClearCrosshair();
                     _unblockTimer.Start();
                     Log("[AutoBlock] PENDING — pen out of range, will unblock in {0}ms", UNBLOCK_DELAY_MS);
                 }
@@ -495,6 +496,7 @@ namespace GlasPen2
 
                 if (!_isDrawing)
                 {
+                    _fakeStrokeForm.ClearCrosshair(); // remove crosshair before drawing
                     _isDrawing = true;
                     _recentPoints.Clear();
                     _recentPoints.Add(pt);

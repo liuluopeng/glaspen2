@@ -19,6 +19,8 @@ namespace GlasPen2
         private readonly List<Point> _recentPoints = new List<Point>();
         private const int MAX_RECENT = 8;
         private Point _lastDirectPoint;
+        private Point _lastCrosshair = new Point(-1, -1);
+        private const int CROSSHAIR_RADIUS = 10;
 
         public FakeStrokeForm(Rectangle bounds)
         {
@@ -59,9 +61,20 @@ namespace GlasPen2
 
         /// <summary>
         /// Draw just one line segment directly to window DC — fast, no full-bitmap copy.
+        /// Also draws to canvas bitmap so crosshair clearing works.
         /// </summary>
         private void DirectDrawLine(Point from, Point to, float width)
         {
+            // Draw to persistent canvas (for crosshair clearing)
+            using (var pen = new Pen(_penColor, width))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                pen.LineJoin = LineJoin.Round;
+                _g.DrawLine(pen, from, to);
+            }
+
+            // Draw directly to window
             if (!this.IsHandleCreated) return;
             IntPtr hdc = NativeMethods.GetDC(this.Handle);
             if (hdc == IntPtr.Zero) return;
@@ -87,6 +100,15 @@ namespace GlasPen2
 
         private void DirectDrawEllipse(Point center, float width)
         {
+            // Draw to persistent canvas
+            using (var pen = new Pen(_penColor, width))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                _g.DrawEllipse(pen, center.X - width / 2, center.Y - width / 2, width, width);
+            }
+
+            // Draw directly to window
             if (!this.IsHandleCreated) return;
             IntPtr hdc = NativeMethods.GetDC(this.Handle);
             if (hdc == IntPtr.Zero) return;
@@ -160,9 +182,35 @@ namespace GlasPen2
             _isDrawing = false;
         }
 
+        public void ClearCrosshair()
+        {
+            if (_lastCrosshair.X >= 0 && this.IsHandleCreated)
+            {
+                IntPtr hdc = NativeMethods.GetDC(this.Handle);
+                if (hdc != IntPtr.Zero)
+                {
+                    try
+                    {
+                        int r = CROSSHAIR_RADIUS;
+                        using (var g = Graphics.FromHdc(hdc))
+                        {
+                            var rect = new Rectangle(_lastCrosshair.X - r - 2, _lastCrosshair.Y - r - 2, r * 2 + 4, r * 2 + 4);
+                            g.DrawImage(_canvas, rect, rect, GraphicsUnit.Pixel);
+                        }
+                    }
+                    finally
+                    {
+                        NativeMethods.ReleaseDC(this.Handle, hdc);
+                    }
+                }
+                _lastCrosshair = new Point(-1, -1);
+            }
+        }
+
         public void ClearAll()
         {
             _isDrawing = false;
+            _lastCrosshair = new Point(-1, -1);
             _g.Clear(Color.Transparent);
             // Full repaint needed for clear
             if (this.IsHandleCreated)
@@ -171,6 +219,8 @@ namespace GlasPen2
 
         /// <summary>
         /// Draw a green crosshair directly to window DC.
+        /// Clears old crosshair by drawing Fuchsia rect (TransparencyKey = invisible),
+        /// then restores canvas content in that area, then draws new crosshair.
         /// </summary>
         public void DrawCrosshair(int x, int y)
         {
@@ -181,13 +231,32 @@ namespace GlasPen2
             {
                 using (var g = Graphics.FromHdc(hdc))
                 {
-                    int r = 10;
+                    int r = CROSSHAIR_RADIUS;
+                    int pad = 2;
+
+                    // Clear old crosshair: fill with Fuchsia (TransparencyKey), then restore canvas
+                    if (_lastCrosshair.X >= 0)
+                    {
+                        int ox = _lastCrosshair.X - r - pad;
+                        int oy = _lastCrosshair.Y - r - pad;
+                        int ow = r * 2 + pad * 2;
+                        int oh = r * 2 + pad * 2;
+                        var oldRect = new Rectangle(ox, oy, ow, oh);
+                        // Fill with Fuchsia to erase any direct-drawn content
+                        g.FillRectangle(Brushes.Fuchsia, oldRect);
+                        // Restore canvas strokes in that area
+                        g.DrawImage(_canvas, oldRect, oldRect, GraphicsUnit.Pixel);
+                    }
+
+                    // Draw new crosshair
                     using (var pen = new Pen(Color.FromArgb(200, 0, 255, 0), 2f))
                     {
                         g.DrawLine(pen, x - r, y, x + r, y);
                         g.DrawLine(pen, x, y - r, x, y + r);
                         g.DrawEllipse(pen, x - r, y - r, r * 2, r * 2);
                     }
+
+                    _lastCrosshair = new Point(x, y);
                 }
             }
             finally
