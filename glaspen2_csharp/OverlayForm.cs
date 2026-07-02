@@ -13,6 +13,13 @@ namespace GlasPen2
         private Bitmap _canvas;
         private Graphics _g;
 
+        // Fake stroke canvas (green, offset from real stroke)
+        private Bitmap _fakeCanvas;
+        private Graphics _fakeG;
+        private const int FAKE_OFFSET_X = 200; // offset right
+        private const int FAKE_OFFSET_Y = 200; // offset down
+        private Color _fakePenColor = Color.Lime;
+
         // HID pen state
         private int _hidCount;
         private bool _tipDown;
@@ -90,6 +97,15 @@ namespace GlasPen2
             _g.InterpolationMode = InterpolationMode.HighQualityBicubic;
             _g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             _g.Clear(Color.Transparent);
+
+            // Fake stroke canvas
+            _fakeCanvas = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
+            _fakeG = Graphics.FromImage(_fakeCanvas);
+            _fakeG.SmoothingMode = SmoothingMode.AntiAlias;
+            _fakeG.CompositingQuality = CompositingQuality.HighQuality;
+            _fakeG.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            _fakeG.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            _fakeG.Clear(Color.Transparent);
 
             byte[] andPlane = { 0xFF };
             byte[] xorPlane = { 0x00 };
@@ -480,6 +496,10 @@ namespace GlasPen2
                 int cy = ClampY(sy - this.Top);
                 var pt = new Point(cx, cy);
 
+                // Fake stroke offset position
+                int fx = cx + FAKE_OFFSET_X;
+                int fy = cy + FAKE_OFFSET_Y;
+
                 if (!_isDrawing)
                 {
                     _isDrawing = true;
@@ -490,6 +510,13 @@ namespace GlasPen2
                         pen.StartCap = LineCap.Round;
                         pen.EndCap = LineCap.Round;
                         _g.DrawEllipse(pen, cx - _currentWidth / 2, cy - _currentWidth / 2, _currentWidth, _currentWidth);
+                    }
+                    // Fake stroke
+                    using (var pen = new Pen(_fakePenColor, _currentWidth))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        _fakeG.DrawEllipse(pen, fx - _currentWidth / 2, fy - _currentWidth / 2, _currentWidth, _currentWidth);
                     }
                 }
                 else
@@ -507,12 +534,32 @@ namespace GlasPen2
 
                         if (_recentPoints.Count >= 3)
                         {
-                            // Cardinal spline — smooth curve through all points
                             _g.DrawCurve(pen, _recentPoints.ToArray(), 0.5f);
                         }
                         else if (_recentPoints.Count == 2)
                         {
                             _g.DrawLine(pen, _recentPoints[0], _recentPoints[1]);
+                        }
+                    }
+                    // Fake stroke (offset)
+                    using (var pen = new Pen(_fakePenColor, _currentWidth))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        pen.LineJoin = LineJoin.Round;
+
+                        // Create offset points for fake stroke
+                        var fakePoints = new List<Point>();
+                        foreach (var p in _recentPoints)
+                            fakePoints.Add(new Point(p.X + FAKE_OFFSET_X, p.Y + FAKE_OFFSET_Y));
+
+                        if (fakePoints.Count >= 3)
+                        {
+                            _fakeG.DrawCurve(pen, fakePoints.ToArray(), 0.5f);
+                        }
+                        else if (fakePoints.Count == 2)
+                        {
+                            _fakeG.DrawLine(pen, fakePoints[0], fakePoints[1]);
                         }
                     }
                 }
@@ -534,6 +581,7 @@ namespace GlasPen2
         protected override void OnPaint(PaintEventArgs e)
         {
             if (_canvas != null) e.Graphics.DrawImage(_canvas, 0, 0);
+            if (_fakeCanvas != null) e.Graphics.DrawImage(_fakeCanvas, 0, 0);
 
             if (_showCursor && _screenX > 0)
             {
@@ -573,6 +621,7 @@ namespace GlasPen2
         {
             _isDrawing = false;
             _g.Clear(Color.Transparent);
+            _fakeG.Clear(Color.Transparent);
             this.Invalidate();
             Log("[Overlay] Cleared");
         }
@@ -594,6 +643,8 @@ namespace GlasPen2
                 if (_pressureForm != null) { _pressureForm.Close(); _pressureForm.Dispose(); }
                 if (_g != null) _g.Dispose();
                 if (_canvas != null) _canvas.Dispose();
+                if (_fakeG != null) _fakeG.Dispose();
+                if (_fakeCanvas != null) _fakeCanvas.Dispose();
                 if (_transparentCursor != IntPtr.Zero)
                     NativeMethods.DestroyCursor(_transparentCursor);
             }
