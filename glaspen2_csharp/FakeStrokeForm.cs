@@ -137,42 +137,51 @@ namespace GlasPen2
                 IntPtr hdc = GetWindowDC();
                 try
                 {
-                    using (var winG = (hdc != IntPtr.Zero) ? Graphics.FromHdc(hdc) : null)
+                    Graphics winG = (hdc != IntPtr.Zero) ? Graphics.FromHdc(hdc) : null;
+                    try
                     {
                         if (winG != null) winG.SmoothingMode = SmoothingMode.None;
 
-                        while (_unprocessedIndex + 3 < _pointBuffer.Count)
+                        // Reuse pen objects
+                        using (var canvasPen = new Pen(_penColor, _currentWidth))
+                        using (var winPen = (winG != null) ? new Pen(_penColor, _currentWidth) : null)
                         {
-                            PointF p0 = _pointBuffer[_unprocessedIndex];
-                            PointF p1 = _pointBuffer[_unprocessedIndex + 1];
-                            PointF p2 = _pointBuffer[_unprocessedIndex + 2];
-                            PointF p3 = _pointBuffer[_unprocessedIndex + 3];
-
-                            PointF cp1, cp2;
-                            CatmullRomToBezier(p0, p1, p2, p3, out cp1, out cp2);
-
-                            // Canvas
-                            using (var pen = new Pen(_penColor, _currentWidth))
+                            canvasPen.StartCap = LineCap.Round;
+                            canvasPen.EndCap = LineCap.Round;
+                            canvasPen.LineJoin = LineJoin.Round;
+                            if (winPen != null)
                             {
-                                pen.StartCap = LineCap.Round;
-                                pen.EndCap = LineCap.Round;
-                                pen.LineJoin = LineJoin.Round;
-                                _g.DrawBezier(pen, p1, cp1, cp2, p2);
+                                winPen.StartCap = LineCap.Round;
+                                winPen.EndCap = LineCap.Round;
+                                winPen.LineJoin = LineJoin.Round;
                             }
-                            // Window
-                            if (winG != null)
+
+                            while (_unprocessedIndex + 3 < _pointBuffer.Count)
                             {
-                                using (var pen = new Pen(_penColor, _currentWidth))
+                                PointF p0 = _pointBuffer[_unprocessedIndex];
+                                PointF p1 = _pointBuffer[_unprocessedIndex + 1];
+                                PointF p2 = _pointBuffer[_unprocessedIndex + 2];
+                                PointF p3 = _pointBuffer[_unprocessedIndex + 3];
+
+                                PointF cp1, cp2;
+                                CatmullRomToBezier(p0, p1, p2, p3, out cp1, out cp2);
+
+                                try { _g.DrawBezier(canvasPen, p1, cp1, cp2, p2); }
+                                catch { _g.DrawLine(canvasPen, p1, p2); } // fallback
+
+                                if (winG != null && winPen != null)
                                 {
-                                    pen.StartCap = LineCap.Round;
-                                    pen.EndCap = LineCap.Round;
-                                    pen.LineJoin = LineJoin.Round;
-                                    winG.DrawBezier(pen, p1, cp1, cp2, p2);
+                                    try { winG.DrawBezier(winPen, p1, cp1, cp2, p2); }
+                                    catch { winG.DrawLine(winPen, p1, p2); } // fallback
                                 }
-                            }
 
-                            _unprocessedIndex++;
+                                _unprocessedIndex++;
+                            }
                         }
+                    }
+                    finally
+                    {
+                        if (winG != null) winG.Dispose();
                     }
                 }
                 finally
