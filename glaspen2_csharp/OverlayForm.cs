@@ -382,73 +382,31 @@ namespace GlasPen2
             _screenX = sx;
             _screenY = sy;
 
-            if (_hidCount <= 50 || tipChanged || rangeChanged || _hidCount % 100 == 0)
-                Log("[HID #{0}] raw=({1},{2}) screen=({3},{4}) pressure={5} tip={6} range={7}",
+            // Log all events (more verbose for this branch)
+            if (_hidCount <= 100 || tipChanged || rangeChanged || _hidCount % 50 == 0)
+                Log("[HID #{0}] raw=({1},{2}) screen=({3},{4}) pressure={5} tip={6} range={7} switches=0x{8:X2}",
                     _hidCount, rawX, rawY, sx, sy, press,
                     tipDown ? "DOWN" : "UP",
-                    inRange ? "YES" : "NO");
+                    inRange ? "YES" : "NO",
+                    switches);
 
-            _showCursor = inRange && !tipDown; // show crosshair on hover, hide when drawing or out of range
+            // Log tip/range transitions
+            if (tipChanged)
+                Log("[EVENT] Tip {0} at ({1},{2}) pressure={3}", tipDown ? "DOWN" : "UP", sx, sy, press);
+            if (rangeChanged)
+                Log("[EVENT] Range {0} at ({1},{2})", inRange ? "ENTER" : "LEAVE", sx, sy);
 
+            _showCursor = inRange && !tipDown;
+
+            // No drawing — just log events
             if (tipDown && press > 0)
             {
-                _currentWidth = _penWidth * (0.3f + (press / 16000f) * 1.7f);
-                int cx = ClampX(sx - this.Left);
-                int cy = ClampY(sy - this.Top);
-                var pt = new Point(cx, cy);
-
                 if (!_isDrawing)
-                {
                     _isDrawing = true;
-                    _recentPoints.Clear();
-                    _recentPoints.Add(pt);
-                    using (var pen = new Pen(_penColor, _currentWidth))
-                    {
-                        pen.StartCap = LineCap.Round;
-                        pen.EndCap = LineCap.Round;
-                        _g.DrawEllipse(pen, cx - _currentWidth / 2, cy - _currentWidth / 2, _currentWidth, _currentWidth);
-                    }
-                    this.Invalidate(new Rectangle(cx - (int)_currentWidth - 2, cy - (int)_currentWidth - 2,
-                        (int)_currentWidth * 2 + 4, (int)_currentWidth * 2 + 4));
-                }
-                else
-                {
-                    _recentPoints.Add(pt);
-                    if (_recentPoints.Count > MAX_RECENT)
-                        _recentPoints.RemoveAt(0);
-
-                    // Draw smooth curve through recent points
-                    using (var pen = new Pen(_penColor, _currentWidth))
-                    {
-                        pen.StartCap = LineCap.Round;
-                        pen.EndCap = LineCap.Round;
-                        pen.LineJoin = LineJoin.Round;
-
-                        if (_recentPoints.Count >= 3)
-                        {
-                            // Cardinal spline — smooth curve through all points
-                            _g.DrawCurve(pen, _recentPoints.ToArray(), 0.5f);
-                        }
-                        else if (_recentPoints.Count == 2)
-                        {
-                            _g.DrawLine(pen, _recentPoints[0], _recentPoints[1]);
-                        }
-                    }
-
-                    // Invalidate the bounding rect of recent points
-                    int minX = cx - (int)_currentWidth - 4;
-                    int minY = cy - (int)_currentWidth - 4;
-                    int maxX = cx + (int)_currentWidth + 4;
-                    int maxY = cy + (int)_currentWidth + 4;
-                    this.Invalidate(new Rectangle(minX, minY, maxX - minX, maxY - minY));
-                }
-                _lastPoint = pt;
             }
             else if (!tipDown && _isDrawing)
             {
-                _recentPoints.Clear();
                 _isDrawing = false;
-                this.Invalidate();
             }
         }
 
