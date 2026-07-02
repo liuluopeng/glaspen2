@@ -186,23 +186,14 @@ namespace GlasPen2
         {
             if (_lastCrosshair.X >= 0 && this.IsHandleCreated)
             {
-                IntPtr hdc = NativeMethods.GetDC(this.Handle);
-                if (hdc != IntPtr.Zero)
-                {
-                    try
-                    {
-                        int r = CROSSHAIR_RADIUS;
-                        using (var g = Graphics.FromHdc(hdc))
-                        {
-                            var rect = new Rectangle(_lastCrosshair.X - r - 2, _lastCrosshair.Y - r - 2, r * 2 + 4, r * 2 + 4);
-                            g.DrawImage(_canvas, rect, rect, GraphicsUnit.Pixel);
-                        }
-                    }
-                    finally
-                    {
-                        NativeMethods.ReleaseDC(this.Handle, hdc);
-                    }
-                }
+                int r = CROSSHAIR_RADIUS;
+                int pad = 2;
+                var rect = new NativeMethods.RECT(
+                    _lastCrosshair.X - r - pad, _lastCrosshair.Y - r - pad,
+                    _lastCrosshair.X + r + pad + 1, _lastCrosshair.Y + r + pad + 1);
+                // Invalidate + synchronous repaint restores canvas content in that region
+                NativeMethods.InvalidateRect(this.Handle, ref rect, false);
+                NativeMethods.UpdateWindow(this.Handle);
                 _lastCrosshair = new Point(-1, -1);
             }
         }
@@ -219,50 +210,47 @@ namespace GlasPen2
 
         /// <summary>
         /// Draw a green crosshair directly to window DC.
-        /// Clears old crosshair by drawing Fuchsia rect (TransparencyKey = invisible),
-        /// then restores canvas content in that area, then draws new crosshair.
+        /// Clears old crosshair via InvalidateRect+UpdateWindow (synchronous WM_PAINT restores canvas),
+        /// then draws new crosshair directly.
         /// </summary>
         public void DrawCrosshair(int x, int y)
         {
             if (!this.IsHandleCreated) return;
+
+            int r = CROSSHAIR_RADIUS;
+            int pad = 2;
+
+            // Clear old crosshair via synchronous WM_PAINT (restores canvas content)
+            if (_lastCrosshair.X >= 0)
+            {
+                var oldRect = new NativeMethods.RECT(
+                    _lastCrosshair.X - r - pad, _lastCrosshair.Y - r - pad,
+                    _lastCrosshair.X + r + pad + 1, _lastCrosshair.Y + r + pad + 1);
+                NativeMethods.InvalidateRect(this.Handle, ref oldRect, false);
+                NativeMethods.UpdateWindow(this.Handle);
+            }
+
+            // Draw new crosshair directly to window DC
             IntPtr hdc = NativeMethods.GetDC(this.Handle);
             if (hdc == IntPtr.Zero) return;
             try
             {
                 using (var g = Graphics.FromHdc(hdc))
                 {
-                    int r = CROSSHAIR_RADIUS;
-                    int pad = 2;
-
-                    // Clear old crosshair: fill with Fuchsia (TransparencyKey), then restore canvas
-                    if (_lastCrosshair.X >= 0)
-                    {
-                        int ox = _lastCrosshair.X - r - pad;
-                        int oy = _lastCrosshair.Y - r - pad;
-                        int ow = r * 2 + pad * 2;
-                        int oh = r * 2 + pad * 2;
-                        var oldRect = new Rectangle(ox, oy, ow, oh);
-                        // Fill with Fuchsia to erase any direct-drawn content
-                        g.FillRectangle(Brushes.Fuchsia, oldRect);
-                        // Restore canvas strokes in that area
-                        g.DrawImage(_canvas, oldRect, oldRect, GraphicsUnit.Pixel);
-                    }
-
-                    // Draw new crosshair
                     using (var pen = new Pen(Color.FromArgb(200, 0, 255, 0), 2f))
                     {
                         g.DrawLine(pen, x - r, y, x + r, y);
                         g.DrawLine(pen, x, y - r, x, y + r);
                         g.DrawEllipse(pen, x - r, y - r, r * 2, r * 2);
                     }
-
-                    _lastCrosshair = new Point(x, y);
                 }
             }
             finally
             {
                 NativeMethods.ReleaseDC(this.Handle, hdc);
             }
+
+            _lastCrosshair = new Point(x, y);
         }
 
         protected override void OnPaint(PaintEventArgs e)

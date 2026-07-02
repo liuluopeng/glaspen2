@@ -394,6 +394,14 @@ namespace GlasPen2
             IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
 
         [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool InvalidateRect(IntPtr hWnd, ref RECT lpRect, bool bErase);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool UpdateWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
         public static extern IntPtr WindowFromPoint(int x, int y);
 
         [DllImport("user32.dll")]
