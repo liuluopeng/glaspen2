@@ -21,7 +21,7 @@ namespace GlasPen2
 
         // Catmull-Rom spline smoothing buffer
         private readonly List<PointF> _pointBuffer = new List<PointF>();
-        private int _unprocessedIndex; // first unprocessed buffer index
+        private int _unprocessedIndex;
 
         public FakeStrokeForm(Rectangle bounds)
         {
@@ -38,10 +38,10 @@ namespace GlasPen2
 
             _canvas = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
             _g = Graphics.FromImage(_canvas);
-            _g.SmoothingMode = SmoothingMode.AntiAlias;
-            _g.CompositingQuality = CompositingQuality.HighQuality;
-            _g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            _g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            _g.SmoothingMode = SmoothingMode.None;
+            _g.CompositingQuality = CompositingQuality.Default;
+            _g.InterpolationMode = InterpolationMode.NearestNeighbor;
+            _g.PixelOffsetMode = PixelOffsetMode.None;
             _g.Clear(Color.Transparent);
         }
 
@@ -65,87 +65,27 @@ namespace GlasPen2
             _penColor = color;
         }
 
+        private IntPtr GetWindowDC()
+        {
+            return NativeMethods.GetDC(this.Handle);
+        }
+
+        private void ReleaseWindowDC(IntPtr hdc)
+        {
+            NativeMethods.ReleaseDC(this.Handle, hdc);
+        }
+
         /// <summary>
-        /// Convert 4 Catmull-Rom points to cubic Bezier control points.
-        /// Returns (cp1, cp2) for the segment from p1 to p2.
+        /// Catmull-Rom to cubic Bezier conversion (ref rnote).
+        /// Given 4 points, returns control points for the segment p1→p2.
         /// </summary>
         private static void CatmullRomToBezier(PointF p0, PointF p1, PointF p2, PointF p3,
             out PointF cp1, out PointF cp2)
         {
-            // Tension = 1.0 (standard Catmull-Rom)
-            cp1 = new PointF(
-                p1.X + (p2.X - p0.X) / 6f,
-                p1.Y + (p2.Y - p0.Y) / 6f);
-            cp2 = new PointF(
-                p2.X - (p3.X - p1.X) / 6f,
-                p2.Y - (p3.Y - p1.Y) / 6f);
+            cp1 = new PointF(p1.X + (p2.X - p0.X) / 6f, p1.Y + (p2.Y - p0.Y) / 6f);
+            cp2 = new PointF(p2.X - (p3.X - p1.X) / 6f, p2.Y - (p3.Y - p1.Y) / 6f);
         }
 
-        /// <summary>
-        /// Draw a cubic Bezier to both canvas and window DC.
-        /// </summary>
-        private void DrawBezier(PointF start, PointF cp1, PointF cp2, PointF end, float width)
-        {
-            // Canvas
-            using (var pen = new Pen(_penColor, width))
-            {
-                pen.StartCap = LineCap.Round;
-                pen.EndCap = LineCap.Round;
-                pen.LineJoin = LineJoin.Round;
-                _g.DrawBezier(pen, start, cp1, cp2, end);
-            }
-
-            // Window DC
-            IntPtr hdc = GetWindowDC();
-            if (hdc != IntPtr.Zero)
-            {
-                using (var g = Graphics.FromHdc(hdc))
-                {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    using (var pen = new Pen(_penColor, width))
-                    {
-                        pen.StartCap = LineCap.Round;
-                        pen.EndCap = LineCap.Round;
-                        pen.LineJoin = LineJoin.Round;
-                        g.DrawBezier(pen, start, cp1, cp2, end);
-                    }
-                }
-                ReleaseWindowDC(hdc);
-            }
-        }
-
-        /// <summary>
-        /// Draw a straight line segment to both canvas and window DC.
-        /// </summary>
-        private void DrawSegment(PointF from, PointF to, float width)
-        {
-            using (var pen = new Pen(_penColor, width))
-            {
-                pen.StartCap = LineCap.Round;
-                pen.EndCap = LineCap.Round;
-                _g.DrawLine(pen, from, to);
-            }
-
-            IntPtr hdc = GetWindowDC();
-            if (hdc != IntPtr.Zero)
-            {
-                using (var g = Graphics.FromHdc(hdc))
-                {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
-                    using (var pen = new Pen(_penColor, width))
-                    {
-                        pen.StartCap = LineCap.Round;
-                        pen.EndCap = LineCap.Round;
-                        g.DrawLine(pen, from, to);
-                    }
-                }
-                ReleaseWindowDC(hdc);
-            }
-        }
-
-        /// <summary>
-        /// Draw an ellipse (starting dot) to both canvas and window DC.
-        /// </summary>
         private void DrawDot(PointF center, float width)
         {
             float r = width / 2f;
@@ -155,13 +95,12 @@ namespace GlasPen2
                 pen.EndCap = LineCap.Round;
                 _g.DrawEllipse(pen, center.X - r, center.Y - r, width, width);
             }
-
             IntPtr hdc = GetWindowDC();
             if (hdc != IntPtr.Zero)
             {
                 using (var g = Graphics.FromHdc(hdc))
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.SmoothingMode = SmoothingMode.None;
                     using (var pen = new Pen(_penColor, width))
                     {
                         pen.StartCap = LineCap.Round;
@@ -173,16 +112,6 @@ namespace GlasPen2
             }
         }
 
-        private IntPtr GetWindowDC()
-        {
-            return NativeMethods.GetDC(this.Handle);
-        }
-
-        private void ReleaseWindowDC(IntPtr hdc)
-        {
-            NativeMethods.ReleaseDC(this.Handle, hdc);
-        }
-
         public void BeginStroke(int x, int y, float width)
         {
             _currentWidth = width;
@@ -192,7 +121,6 @@ namespace GlasPen2
             var pt = new PointF(x, y);
             _pointBuffer.Add(pt);
             _lastDirectPoint = new Point(x, y);
-
             DrawDot(pt, _currentWidth);
         }
 
@@ -203,19 +131,54 @@ namespace GlasPen2
             var pt = new PointF(x, y);
             _pointBuffer.Add(pt);
 
-            // Process buffered points using Catmull-Rom spline
-            while (_unprocessedIndex + 3 < _pointBuffer.Count)
+            // Process all available Catmull-Rom segments, drawing to ONE window DC
+            if (_unprocessedIndex + 3 < _pointBuffer.Count)
             {
-                PointF p0 = _pointBuffer[_unprocessedIndex];
-                PointF p1 = _pointBuffer[_unprocessedIndex + 1];
-                PointF p2 = _pointBuffer[_unprocessedIndex + 2];
-                PointF p3 = _pointBuffer[_unprocessedIndex + 3];
+                IntPtr hdc = GetWindowDC();
+                try
+                {
+                    using (var winG = (hdc != IntPtr.Zero) ? Graphics.FromHdc(hdc) : null)
+                    {
+                        if (winG != null) winG.SmoothingMode = SmoothingMode.None;
 
-                PointF cp1, cp2;
-                CatmullRomToBezier(p0, p1, p2, p3, out cp1, out cp2);
+                        while (_unprocessedIndex + 3 < _pointBuffer.Count)
+                        {
+                            PointF p0 = _pointBuffer[_unprocessedIndex];
+                            PointF p1 = _pointBuffer[_unprocessedIndex + 1];
+                            PointF p2 = _pointBuffer[_unprocessedIndex + 2];
+                            PointF p3 = _pointBuffer[_unprocessedIndex + 3];
 
-                DrawBezier(p1, cp1, cp2, p2, _currentWidth);
-                _unprocessedIndex++;
+                            PointF cp1, cp2;
+                            CatmullRomToBezier(p0, p1, p2, p3, out cp1, out cp2);
+
+                            // Canvas
+                            using (var pen = new Pen(_penColor, _currentWidth))
+                            {
+                                pen.StartCap = LineCap.Round;
+                                pen.EndCap = LineCap.Round;
+                                pen.LineJoin = LineJoin.Round;
+                                _g.DrawBezier(pen, p1, cp1, cp2, p2);
+                            }
+                            // Window
+                            if (winG != null)
+                            {
+                                using (var pen = new Pen(_penColor, _currentWidth))
+                                {
+                                    pen.StartCap = LineCap.Round;
+                                    pen.EndCap = LineCap.Round;
+                                    pen.LineJoin = LineJoin.Round;
+                                    winG.DrawBezier(pen, p1, cp1, cp2, p2);
+                                }
+                            }
+
+                            _unprocessedIndex++;
+                        }
+                    }
+                }
+                finally
+                {
+                    if (hdc != IntPtr.Zero) ReleaseWindowDC(hdc);
+                }
             }
 
             _lastDirectPoint = new Point(x, y);
@@ -224,12 +187,43 @@ namespace GlasPen2
         public void EndStroke()
         {
             // Draw remaining segments as straight lines
-            while (_unprocessedIndex + 1 < _pointBuffer.Count)
+            if (_unprocessedIndex + 1 < _pointBuffer.Count)
             {
-                PointF from = _pointBuffer[_unprocessedIndex];
-                PointF to = _pointBuffer[_unprocessedIndex + 1];
-                DrawSegment(from, to, _currentWidth);
-                _unprocessedIndex++;
+                IntPtr hdc = GetWindowDC();
+                try
+                {
+                    using (var winG = (hdc != IntPtr.Zero) ? Graphics.FromHdc(hdc) : null)
+                    {
+                        if (winG != null) winG.SmoothingMode = SmoothingMode.None;
+
+                        while (_unprocessedIndex + 1 < _pointBuffer.Count)
+                        {
+                            PointF from = _pointBuffer[_unprocessedIndex];
+                            PointF to = _pointBuffer[_unprocessedIndex + 1];
+
+                            using (var pen = new Pen(_penColor, _currentWidth))
+                            {
+                                pen.StartCap = LineCap.Round;
+                                pen.EndCap = LineCap.Round;
+                                _g.DrawLine(pen, from, to);
+                            }
+                            if (winG != null)
+                            {
+                                using (var pen = new Pen(_penColor, _currentWidth))
+                                {
+                                    pen.StartCap = LineCap.Round;
+                                    pen.EndCap = LineCap.Round;
+                                    winG.DrawLine(pen, from, to);
+                                }
+                            }
+                            _unprocessedIndex++;
+                        }
+                    }
+                }
+                finally
+                {
+                    if (hdc != IntPtr.Zero) ReleaseWindowDC(hdc);
+                }
             }
 
             _pointBuffer.Clear();
@@ -294,7 +288,7 @@ namespace GlasPen2
             {
                 using (var g = Graphics.FromHdc(hdc))
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.SmoothingMode = SmoothingMode.None;
 
                     if (_lastCrosshair.X >= 0)
                     {
