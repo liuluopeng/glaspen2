@@ -12,7 +12,7 @@ namespace GlasPen2
     {
         private Bitmap _canvas;
         private Graphics _g;
-        private Color _penColor = Color.Lime;
+        private Color _penColor = Color.FromArgb(0xDC, 0x1E, 0x1E); // default: red (matches Flutter UI index 0)
         private float _currentWidth;
         private bool _isDrawing;
         private Point _lastDirectPoint;
@@ -48,6 +48,20 @@ namespace GlasPen2
             _g.InterpolationMode = InterpolationMode.NearestNeighbor;
             _g.PixelOffsetMode = PixelOffsetMode.None;
             _g.Clear(Color.Transparent);
+
+            // Pre-warm GDI resources to avoid first-stroke latency
+            if (this.IsHandleCreated)
+            {
+                IntPtr hdc = NativeMethods.GetDC(this.Handle);
+                if (hdc != IntPtr.Zero)
+                {
+                    using (var g = Graphics.FromHdc(hdc))
+                    {
+                        g.Clear(Color.Fuchsia);
+                    }
+                    NativeMethods.ReleaseDC(this.Handle, hdc);
+                }
+            }
 
             // Notification timer: clears notification after 1 second
             _notificationTimer = new System.Windows.Forms.Timer { Interval = 1000 };
