@@ -35,11 +35,11 @@ namespace GlasPen2
 
             _canvas = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
             _g = Graphics.FromImage(_canvas);
-            _g.SmoothingMode = SmoothingMode.AntiAlias;
-            _g.CompositingQuality = CompositingQuality.HighQuality;
-            _g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            _g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            _g.Clear(Color.Transparent);
+            _g.SmoothingMode = SmoothingMode.None;
+            _g.CompositingQuality = CompositingQuality.Default;
+            _g.InterpolationMode = InterpolationMode.NearestNeighbor;
+            _g.PixelOffsetMode = PixelOffsetMode.None;
+            _g.Clear(Color.Fuchsia);
         }
 
         protected override CreateParams CreateParams
@@ -80,7 +80,7 @@ namespace GlasPen2
             {
                 using (var g = Graphics.FromHdc(hdc))
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.SmoothingMode = SmoothingMode.None;
                     using (var pen = new Pen(_penColor, width))
                     {
                         pen.StartCap = LineCap.Round;
@@ -114,7 +114,7 @@ namespace GlasPen2
             {
                 using (var g = Graphics.FromHdc(hdc))
                 {
-                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.SmoothingMode = SmoothingMode.None;
                     using (var pen = new Pen(_penColor, width))
                     {
                         pen.StartCap = LineCap.Round;
@@ -191,7 +191,7 @@ namespace GlasPen2
         {
             _isDrawing = false;
             _lastCrosshair = new Point(-1, -1);
-            _g.Clear(Color.Transparent);
+            _g.Clear(Color.Fuchsia);
             // Full repaint needed for clear
             if (this.IsHandleCreated)
                 this.Invalidate();
@@ -226,6 +226,7 @@ namespace GlasPen2
             {
                 using (var g = Graphics.FromHdc(hdc))
                 {
+                    g.SmoothingMode = SmoothingMode.None;
                     using (var pen = new Pen(Color.FromArgb(200, 0, 255, 0), 2f))
                     {
                         g.DrawLine(pen, x - r, y, x + r, y);
