@@ -18,6 +18,7 @@ namespace GlasPen2
         private bool _isDrawing;
         private readonly List<Point> _recentPoints = new List<Point>();
         private const int MAX_RECENT = 8;
+        private Point _lastDirectPoint;
 
         public FakeStrokeForm(Rectangle bounds)
         {
@@ -46,31 +47,86 @@ namespace GlasPen2
             get
             {
                 var cp = base.CreateParams;
-                // WS_EX_TRANSPARENT — let input pass through to overlay below
-                // WS_EX_LAYERED — per-pixel alpha
                 cp.ExStyle |= NativeMethods.WS_EX_TRANSPARENT
                            | NativeMethods.WS_EX_NOACTIVATE
-                           | NativeMethods.WS_EX_TOOLWINDOW;
-                // NOT TopMost — sits BELOW the overlay
+                           | NativeMethods.WS_EX_TOOLWINDOW
+                           | NativeMethods.WS_EX_TOPMOST;
                 return cp;
             }
         }
 
         protected override bool ShowWithoutActivation { get { return true; } }
 
+        /// <summary>
+        /// Draw just one line segment directly to window DC — fast, no full-bitmap copy.
+        /// </summary>
+        private void DirectDrawLine(Point from, Point to, float width)
+        {
+            if (!this.IsHandleCreated) return;
+            IntPtr hdc = NativeMethods.GetDC(this.Handle);
+            if (hdc == IntPtr.Zero) return;
+            try
+            {
+                using (var g = Graphics.FromHdc(hdc))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    using (var pen = new Pen(_penColor, width))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        pen.LineJoin = LineJoin.Round;
+                        g.DrawLine(pen, from, to);
+                    }
+                }
+            }
+            finally
+            {
+                NativeMethods.ReleaseDC(this.Handle, hdc);
+            }
+        }
+
+        private void DirectDrawEllipse(Point center, float width)
+        {
+            if (!this.IsHandleCreated) return;
+            IntPtr hdc = NativeMethods.GetDC(this.Handle);
+            if (hdc == IntPtr.Zero) return;
+            try
+            {
+                using (var g = Graphics.FromHdc(hdc))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    using (var pen = new Pen(_penColor, width))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        g.DrawEllipse(pen, center.X - width / 2, center.Y - width / 2, width, width);
+                    }
+                }
+            }
+            finally
+            {
+                NativeMethods.ReleaseDC(this.Handle, hdc);
+            }
+        }
+
         public void BeginStroke(int x, int y, float width)
         {
             _currentWidth = width;
             _isDrawing = true;
             _recentPoints.Clear();
-            _recentPoints.Add(new Point(x, y));
+            var pt = new Point(x, y);
+            _recentPoints.Add(pt);
+            _lastDirectPoint = pt;
+
+            // Draw to persistent canvas
             using (var pen = new Pen(_penColor, _currentWidth))
             {
                 pen.StartCap = LineCap.Round;
                 pen.EndCap = LineCap.Round;
                 _g.DrawEllipse(pen, x - _currentWidth / 2, y - _currentWidth / 2, _currentWidth, _currentWidth);
             }
-            this.Refresh();
+            // Draw directly to screen
+            DirectDrawEllipse(pt, _currentWidth);
         }
 
         public void AddPoint(int x, int y)
@@ -81,6 +137,7 @@ namespace GlasPen2
             if (_recentPoints.Count > MAX_RECENT)
                 _recentPoints.RemoveAt(0);
 
+            // Draw to persistent canvas
             using (var pen = new Pen(_penColor, _currentWidth))
             {
                 pen.StartCap = LineCap.Round;
@@ -92,21 +149,24 @@ namespace GlasPen2
                 else if (_recentPoints.Count == 2)
                     _g.DrawLine(pen, _recentPoints[0], _recentPoints[1]);
             }
-            this.Refresh();
+            // Draw just the new segment directly to screen
+            DirectDrawLine(_lastDirectPoint, pt, _currentWidth);
+            _lastDirectPoint = pt;
         }
 
         public void EndStroke()
         {
             _recentPoints.Clear();
             _isDrawing = false;
-            this.Refresh();
         }
 
         public void ClearAll()
         {
             _isDrawing = false;
             _g.Clear(Color.Transparent);
-            this.Refresh();
+            // Full repaint needed for clear
+            if (this.IsHandleCreated)
+                this.Invalidate();
         }
 
         protected override void OnPaint(PaintEventArgs e)

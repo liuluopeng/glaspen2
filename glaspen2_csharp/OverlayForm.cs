@@ -96,12 +96,9 @@ namespace GlasPen2
             _g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             _g.Clear(Color.Transparent);
 
-            // Create fake stroke form (sits below overlay, no opacity)
+            // Create fake stroke form (sits above overlay, WS_EX_TRANSPARENT lets input pass through)
             _fakeStrokeForm = new FakeStrokeForm(bounds);
             _fakeStrokeForm.Show();
-            // Move it below overlay in Z-order
-            NativeMethods.SetWindowPos(_fakeStrokeForm.Handle, this.Handle,
-                0, 0, 0, 0, NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
 
             byte[] andPlane = { 0xFF };
             byte[] xorPlane = { 0x00 };
