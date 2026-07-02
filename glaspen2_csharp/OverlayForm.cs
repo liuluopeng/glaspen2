@@ -15,8 +15,8 @@ namespace GlasPen2
 
         // Fake stroke form (visible green strokes below overlay)
         private FakeStrokeForm _fakeStrokeForm;
-        private const int FAKE_OFFSET_X = 200; // offset right
-        private const int FAKE_OFFSET_Y = 200; // offset down
+        private const int FAKE_OFFSET_X = 30; // offset right
+        private const int FAKE_OFFSET_Y = 30; // offset down
 
         // HID pen state
         private int _hidCount;
@@ -85,7 +85,7 @@ namespace GlasPen2
             this.TopMost = true;
             this.ShowIcon = false;
             this.BackColor = Color.Black;
-            this.Opacity = 0.8; // visible enough to see pen traces, still semi-transparent
+            this.Opacity = 0.1; // nearly transparent overlay
             this.DoubleBuffered = true;
 
             _canvas = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
