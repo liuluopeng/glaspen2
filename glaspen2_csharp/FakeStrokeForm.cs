@@ -57,6 +57,11 @@ namespace GlasPen2
 
         protected override bool ShowWithoutActivation { get { return true; } }
 
+        public void SetColor(Color color)
+        {
+            _penColor = color;
+        }
+
         private IntPtr GetWindowDC()
         {
             return NativeMethods.GetDC(this.Handle);

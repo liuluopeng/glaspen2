@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
 using System.Windows.Forms;
@@ -9,6 +10,7 @@ namespace GlasPen2
     {
         private static NamedPipeServerStream _pipe;
         private static StreamWriter _writer;
+        private static SettingsPipeServer _settingsServer;
 
         public static void Log(string msg)
         {
@@ -52,6 +54,16 @@ namespace GlasPen2
             // Overlay
             var overlay = new OverlayForm();
             overlay.Show();
+
+            // Settings pipe server (Flutter UI communication)
+            _settingsServer = new SettingsPipeServer();
+            _settingsServer.GetSettings = () => overlay.GetSettings();
+            _settingsServer.OnSettingChanged = (key, value) =>
+            {
+                overlay.UpdateSetting(key, value);
+                _settingsServer.NotifySettingsChanged(overlay.GetSettings());
+            };
+            _settingsServer.Start();
 
             Log("[Main] Overlay shown. DPI-aware, waiting for pen input...");
             Application.Run();

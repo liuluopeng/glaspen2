@@ -15,8 +15,8 @@ namespace GlasPen2
 
         // Fake stroke form (visible green strokes below overlay)
         private FakeStrokeForm _fakeStrokeForm;
-        private const int FAKE_OFFSET_X = 30; // offset right
-        private const int FAKE_OFFSET_Y = 30; // offset down
+        private const int FAKE_OFFSET_X = 0;
+        private const int FAKE_OFFSET_Y = 0;
 
         // HID pen state
         private int _hidCount;
@@ -36,6 +36,20 @@ namespace GlasPen2
         private Color _penColor = Color.Red;
         private float _penWidth = 2.5f;
         private float _currentWidth;
+
+        // Settings: preset colors and widths (matching Flutter UI)
+        private static readonly Color[] PresetColors = {
+            Color.FromArgb(0xDC, 0x1E, 0x1E), // 红色
+            Color.FromArgb(0x1E, 0x78, 0xDC), // 蓝色
+            Color.FromArgb(0x1E, 0xB4, 0x3C), // 绿色
+            Color.FromArgb(0xF0, 0xA0, 0x14), // 橙色
+            Color.FromArgb(0xA0, 0x50, 0xDC), // 紫色
+            Color.FromArgb(0x14, 0x14, 0x14), // 黑色
+            Color.FromArgb(0xFF, 0xFF, 0xFF), // 白色
+        };
+        private static readonly float[] PresetWidths = { 1.0f, 1.5f, 2.0f, 2.5f, 3.5f, 5.0f, 7.0f, 10.0f };
+        private int _colorIndex = 0;
+        private int _widthIndex = 3; // default: 中
 
         // Smooth curve: collect recent points for spline interpolation
         private readonly List<Point> _recentPoints = new List<Point>();
@@ -603,6 +617,46 @@ namespace GlasPen2
 
         private int ClampX(int x) { return Math.Max(0, Math.Min(x, _canvas.Width - 1)); }
         private int ClampY(int y) { return Math.Max(0, Math.Min(y, _canvas.Height - 1)); }
+
+        /// <summary>
+        /// Called by SettingsPipeServer when a setting changes from Flutter UI.
+        /// </summary>
+        public void UpdateSetting(string key, object value)
+        {
+            try
+            {
+                int intVal = Convert.ToInt32(value);
+                if (key == "color" && intVal >= 0 && intVal < PresetColors.Length)
+                {
+                    _colorIndex = intVal;
+                    _penColor = PresetColors[_colorIndex];
+                    _fakeStrokeForm.SetColor(_penColor);
+                    Log("[Settings] Color={0} ({1})", _colorIndex, _penColor);
+                }
+                else if (key == "width" && intVal >= 0 && intVal < PresetWidths.Length)
+                {
+                    _widthIndex = intVal;
+                    _penWidth = PresetWidths[_widthIndex];
+                    Log("[Settings] Width={0} ({1})", _widthIndex, _penWidth);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("[Settings] Error: {0}", ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Returns current settings for the Flutter UI.
+        /// </summary>
+        public Dictionary<string, object> GetSettings()
+        {
+            return new Dictionary<string, object>
+            {
+                { "color", _colorIndex },
+                { "width", _widthIndex },
+            };
+        }
 
         protected override void Dispose(bool disposing)
         {
