@@ -201,6 +201,7 @@ fn main() {
                     "/target:winexe",
                     &out_arg,
                     "/platform:x64",
+                    "/unsafe",
                 ]);
                 for f in &cs_files {
                     let abs = std::fs::canonicalize(f.path())

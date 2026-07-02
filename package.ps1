@@ -30,7 +30,7 @@ if (-not $csc) { throw "csc.exe not found. .NET Framework 4.x is required." }
 Write-Host "[1/4] Building C# overlay (glaspen2_app.exe)..." -ForegroundColor Yellow
 Push-Location glaspen2_csharp
 try {
-    & $csc /target:winexe /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:Microsoft.CSharp.dll /out:glaspen2_app.exe NativeMethods.cs FakeStrokeForm.cs GlaspenNative.cs HidReader.cs InputWindow.cs OverlayForm.cs PressureForm.cs Program.cs SettingsPipeServer.cs SimpleJson.cs Wintab.cs
+    & $csc /target:winexe /unsafe /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:Microsoft.CSharp.dll /out:glaspen2_app.exe NativeMethods.cs FakeStrokeForm.cs GlaspenNative.cs HidReader.cs InputWindow.cs OverlayForm.cs PressureForm.cs Program.cs SettingsPipeServer.cs SimpleJson.cs Wintab.cs
     if ($LASTEXITCODE -ne 0) { throw "C# overlay build failed" }
     Write-Host "  OK" -ForegroundColor Green
 } finally { Pop-Location }

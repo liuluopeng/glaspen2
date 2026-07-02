@@ -623,6 +623,7 @@ namespace GlasPen2
 
         /// <summary>
         /// Export the fake stroke canvas as GIF, save to desktop, copy path to clipboard.
+        /// Auto-crops to the bounding box of non-transparent pixels.
         /// </summary>
         private void ExportGif()
         {
@@ -631,32 +632,80 @@ namespace GlasPen2
                 var canvas = _fakeStrokeForm.GetCanvas();
                 if (canvas == null) { _fakeStrokeForm.ShowNotification("无画布"); return; }
 
-                var rect = new System.Drawing.Rectangle(0, 0, canvas.Width, canvas.Height);
-                var data = canvas.LockBits(rect, System.Drawing.Imaging.ImageLockMode.ReadOnly,
+                // Find bounding box of non-transparent pixels
+                int minX = canvas.Width, minY = canvas.Height, maxX = 0, maxY = 0;
+                bool found = false;
+                var canvasRect = new System.Drawing.Rectangle(0, 0, canvas.Width, canvas.Height);
+                var canvasData = canvas.LockBits(canvasRect,
+                    System.Drawing.Imaging.ImageLockMode.ReadOnly,
                     System.Drawing.Imaging.PixelFormat.Format32bppArgb);
 
-                var pathBuf = new char[260];
-                var pathPtr = Marshal.UnsafeAddrOfPinnedArrayElement(pathBuf, 0);
-
-                int ok = NativeMethods.glaspen2_save_gif_from_pixels(
-                    data.Scan0, canvas.Width, canvas.Height, data.Stride,
-                    pathPtr, 260);
-
-                canvas.UnlockBits(data);
-
-                if (ok == 1)
+                unsafe
                 {
-                    string path = new string(pathBuf).TrimEnd('\0');
-                    if (!string.IsNullOrEmpty(path))
+                    for (int y = 0; y < canvas.Height; y++)
                     {
-                        CopyGifToClipboard(path, canvas);
+                        byte* row = (byte*)canvasData.Scan0 + y * canvasData.Stride;
+                        for (int x = 0; x < canvas.Width; x++)
+                        {
+                            byte a = row[x * 4 + 3]; // alpha
+                            if (a > 0)
+                            {
+                                if (x < minX) minX = x;
+                                if (y < minY) minY = y;
+                                if (x > maxX) maxX = x;
+                                if (y > maxY) maxY = y;
+                                found = true;
+                            }
+                        }
                     }
-                    _fakeStrokeForm.ShowNotification("已导出 GIF");
-                    Log("[Export] GIF saved: {0}", path);
                 }
-                else
+                canvas.UnlockBits(canvasData);
+
+                if (!found) { _fakeStrokeForm.ShowNotification("无内容"); return; }
+
+                // Add padding
+                int pad = 10;
+                minX = Math.Max(0, minX - pad);
+                minY = Math.Max(0, minY - pad);
+                maxX = Math.Min(canvas.Width - 1, maxX + pad);
+                maxY = Math.Min(canvas.Height - 1, maxY + pad);
+
+                int cropW = maxX - minX + 1;
+                int cropH = maxY - minY + 1;
+
+                // Crop the canvas
+                using (var cropped = canvas.Clone(
+                    new System.Drawing.Rectangle(minX, minY, cropW, cropH),
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb))
                 {
-                    _fakeStrokeForm.ShowNotification("导出失败");
+                    var cropRect = new System.Drawing.Rectangle(0, 0, cropW, cropH);
+                    var cropData = cropped.LockBits(cropRect,
+                        System.Drawing.Imaging.ImageLockMode.ReadOnly,
+                        System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+                    var pathBuf = new char[260];
+                    var pathPtr = Marshal.UnsafeAddrOfPinnedArrayElement(pathBuf, 0);
+
+                    int ok = NativeMethods.glaspen2_save_gif_from_pixels(
+                        cropData.Scan0, cropW, cropH, cropData.Stride,
+                        pathPtr, 260);
+
+                    cropped.UnlockBits(cropData);
+
+                    if (ok == 1)
+                    {
+                        string path = new string(pathBuf).TrimEnd('\0');
+                        if (!string.IsNullOrEmpty(path))
+                        {
+                            CopyGifToClipboard(path, cropped);
+                        }
+                        _fakeStrokeForm.ShowNotification("已导出 GIF");
+                        Log("[Export] GIF saved: {0} (cropped {1}x{2})", path, cropW, cropH);
+                    }
+                    else
+                    {
+                        _fakeStrokeForm.ShowNotification("导出失败");
+                    }
                 }
             }
             catch (Exception ex)
