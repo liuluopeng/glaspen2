@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Windows.Forms;
@@ -28,6 +29,34 @@ namespace GlasPen2
         {
             try { Log(string.Format(fmt, args)); }
             catch { }
+        }
+
+        private static void TryLaunchSettings()
+        {
+            // Look for glaspen2_settings.exe in several locations
+            var exeDir = Path.GetDirectoryName(typeof(Program).Assembly.Location) ?? ".";
+            string[] candidates = {
+                Path.Combine(exeDir, "glaspen2_settings.exe"),
+                // Dev build: flutter_settings/build/windows/x64/runner/Release/
+                Path.Combine(exeDir, "..", "..", "..", "flutter_settings", "build", "windows", "x64", "runner", "Release", "glaspen2_settings.exe"),
+                Path.Combine(exeDir, "..", "..", "..", "flutter_settings", "build", "windows", "x64", "runner", "Debug", "glaspen2_settings.exe"),
+            };
+
+            foreach (var path in candidates)
+            {
+                try
+                {
+                    var full = Path.GetFullPath(path);
+                    if (File.Exists(full))
+                    {
+                        Process.Start(full);
+                        Log("[Main] Launched settings UI: {0}", full);
+                        return;
+                    }
+                }
+                catch { }
+            }
+            Log("[Main] Settings UI not found (searched {0} locations)", candidates.Length);
         }
 
         [STAThread]
@@ -64,6 +93,9 @@ namespace GlasPen2
                 _settingsServer.NotifySettingsChanged(overlay.GetSettings());
             };
             _settingsServer.Start();
+
+            // Launch Flutter settings UI
+            TryLaunchSettings();
 
             Log("[Main] Overlay shown. DPI-aware, waiting for pen input...");
             Application.Run();
