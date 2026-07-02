@@ -79,6 +79,11 @@ namespace GlasPen2
         }
 
         /// <summary>
+        /// Returns the backing canvas bitmap for export.
+        /// </summary>
+        public Bitmap GetCanvas() { return _canvas; }
+
+        /// <summary>
         /// Show a centered notification on screen for ~1 second.
         /// </summary>
         public void ShowNotification(string text)

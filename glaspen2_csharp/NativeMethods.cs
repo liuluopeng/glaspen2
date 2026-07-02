@@ -637,6 +637,43 @@ namespace GlasPen2
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool SetProcessDPIAware();
 
+        // ── Rust FFI: GIF export ──
+        [DllImport("glaspen2.dll", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int glaspen2_save_gif_from_pixels(
+            IntPtr pixels, int w, int h, int stride,
+            IntPtr outPath, int outPathLen);
+
+        // ── Clipboard ──
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool OpenClipboard(IntPtr hWndNewOwner);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool CloseClipboard();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool EmptyClipboard();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
+
+        public const uint CF_HDROP = 15;
+        public const uint CF_UNICODETEXT = 13;
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr GlobalAlloc(uint uFlags, UIntPtr dwBytes);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr GlobalLock(IntPtr hMem);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GlobalUnlock(IntPtr hMem);
+
+        public const uint GMEM_MOVEABLE = 0x0002;
+
         #endregion
     }
 }

@@ -140,6 +140,8 @@ namespace GlasPen2
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.Q);
             NativeMethods.RegisterHotKey(this.Handle, 3,
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.B);
+            NativeMethods.RegisterHotKey(this.Handle, 4,
+                NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.G);
 
             // Create pressure display
             _pressureForm = new PressureForm();
@@ -373,6 +375,7 @@ namespace GlasPen2
                 if (id == 1) { ClearAll(); _fakeStrokeForm.ShowNotification("清屏"); }
                 else if (id == 2) Application.Exit();
                 else if (id == 3) { ToggleBlockMode(); _fakeStrokeForm.ShowNotification(_isBlocking ? "拦截模式" : "穿透模式"); }
+                else if (id == 4) ExportGif();
             }
             base.WndProc(ref m);
         }
@@ -619,6 +622,56 @@ namespace GlasPen2
         private int ClampY(int y) { return Math.Max(0, Math.Min(y, _canvas.Height - 1)); }
 
         /// <summary>
+        /// Export the fake stroke canvas as GIF, save to desktop, copy path to clipboard.
+        /// </summary>
+        private void ExportGif()
+        {
+            try
+            {
+                var canvas = _fakeStrokeForm.GetCanvas();
+                if (canvas == null) { _fakeStrokeForm.ShowNotification("无画布"); return; }
+
+                var rect = new System.Drawing.Rectangle(0, 0, canvas.Width, canvas.Height);
+                var data = canvas.LockBits(rect, System.Drawing.Imaging.ImageLockMode.ReadOnly,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+                var pathBuf = new char[260];
+                var pathPtr = Marshal.UnsafeAddrOfPinnedArrayElement(pathBuf, 0);
+
+                int ok = NativeMethods.glaspen2_save_gif_from_pixels(
+                    data.Scan0, canvas.Width, canvas.Height, data.Stride,
+                    pathPtr, 260);
+
+                canvas.UnlockBits(data);
+
+                if (ok == 1)
+                {
+                    string path = new string(pathBuf).TrimEnd('\0');
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        // Copy file path to clipboard as text
+                        try
+                        {
+                            System.Windows.Forms.Clipboard.SetText(path);
+                        }
+                        catch { }
+                    }
+                    _fakeStrokeForm.ShowNotification("已导出 GIF");
+                    Log("[Export] GIF saved: {0}", path);
+                }
+                else
+                {
+                    _fakeStrokeForm.ShowNotification("导出失败");
+                }
+            }
+            catch (Exception ex)
+            {
+                _fakeStrokeForm.ShowNotification("导出错误");
+                Log("[Export] Error: {0}", ex.Message);
+            }
+        }
+
+        /// <summary>
         /// Called by SettingsPipeServer when a setting changes from Flutter UI.
         /// </summary>
         public void UpdateSetting(string key, object value)
@@ -667,6 +720,7 @@ namespace GlasPen2
                     NativeMethods.UnregisterHotKey(this.Handle, 1);
                     NativeMethods.UnregisterHotKey(this.Handle, 2);
                     NativeMethods.UnregisterHotKey(this.Handle, 3);
+                    NativeMethods.UnregisterHotKey(this.Handle, 4);
                 }
                 if (_unblockTimer != null) { _unblockTimer.Stop(); _unblockTimer.Dispose(); }
                 if (_pressureForm != null) { _pressureForm.Close(); _pressureForm.Dispose(); }
