@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -18,6 +19,10 @@ namespace GlasPen2
         private Point _lastCrosshair = new Point(-1, -1);
         private const int CROSSHAIR_RADIUS = 10;
 
+        // Catmull-Rom spline smoothing buffer
+        private readonly List<PointF> _pointBuffer = new List<PointF>();
+        private int _unprocessedIndex; // first unprocessed buffer index
+
         public FakeStrokeForm(Rectangle bounds)
         {
             this.StartPosition = FormStartPosition.Manual;
@@ -31,14 +36,12 @@ namespace GlasPen2
             this.TransparencyKey = Color.Fuchsia;
             this.DoubleBuffered = false;
 
-            // Canvas: transparent background, used as backing store for crosshair clearing.
-            // Transparent pixels won't overwrite Fuchsia when drawn via DrawImage.
             _canvas = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
             _g = Graphics.FromImage(_canvas);
-            _g.SmoothingMode = SmoothingMode.None;
-            _g.CompositingQuality = CompositingQuality.Default;
-            _g.InterpolationMode = InterpolationMode.NearestNeighbor;
-            _g.PixelOffsetMode = PixelOffsetMode.None;
+            _g.SmoothingMode = SmoothingMode.AntiAlias;
+            _g.CompositingQuality = CompositingQuality.HighQuality;
+            _g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            _g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             _g.Clear(Color.Transparent);
         }
 
@@ -62,6 +65,114 @@ namespace GlasPen2
             _penColor = color;
         }
 
+        /// <summary>
+        /// Convert 4 Catmull-Rom points to cubic Bezier control points.
+        /// Returns (cp1, cp2) for the segment from p1 to p2.
+        /// </summary>
+        private static void CatmullRomToBezier(PointF p0, PointF p1, PointF p2, PointF p3,
+            out PointF cp1, out PointF cp2)
+        {
+            // Tension = 1.0 (standard Catmull-Rom)
+            cp1 = new PointF(
+                p1.X + (p2.X - p0.X) / 6f,
+                p1.Y + (p2.Y - p0.Y) / 6f);
+            cp2 = new PointF(
+                p2.X - (p3.X - p1.X) / 6f,
+                p2.Y - (p3.Y - p1.Y) / 6f);
+        }
+
+        /// <summary>
+        /// Draw a cubic Bezier to both canvas and window DC.
+        /// </summary>
+        private void DrawBezier(PointF start, PointF cp1, PointF cp2, PointF end, float width)
+        {
+            // Canvas
+            using (var pen = new Pen(_penColor, width))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                pen.LineJoin = LineJoin.Round;
+                _g.DrawBezier(pen, start, cp1, cp2, end);
+            }
+
+            // Window DC
+            IntPtr hdc = GetWindowDC();
+            if (hdc != IntPtr.Zero)
+            {
+                using (var g = Graphics.FromHdc(hdc))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    using (var pen = new Pen(_penColor, width))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        pen.LineJoin = LineJoin.Round;
+                        g.DrawBezier(pen, start, cp1, cp2, end);
+                    }
+                }
+                ReleaseWindowDC(hdc);
+            }
+        }
+
+        /// <summary>
+        /// Draw a straight line segment to both canvas and window DC.
+        /// </summary>
+        private void DrawSegment(PointF from, PointF to, float width)
+        {
+            using (var pen = new Pen(_penColor, width))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                _g.DrawLine(pen, from, to);
+            }
+
+            IntPtr hdc = GetWindowDC();
+            if (hdc != IntPtr.Zero)
+            {
+                using (var g = Graphics.FromHdc(hdc))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    using (var pen = new Pen(_penColor, width))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        g.DrawLine(pen, from, to);
+                    }
+                }
+                ReleaseWindowDC(hdc);
+            }
+        }
+
+        /// <summary>
+        /// Draw an ellipse (starting dot) to both canvas and window DC.
+        /// </summary>
+        private void DrawDot(PointF center, float width)
+        {
+            float r = width / 2f;
+            using (var pen = new Pen(_penColor, width))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                _g.DrawEllipse(pen, center.X - r, center.Y - r, width, width);
+            }
+
+            IntPtr hdc = GetWindowDC();
+            if (hdc != IntPtr.Zero)
+            {
+                using (var g = Graphics.FromHdc(hdc))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    using (var pen = new Pen(_penColor, width))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        g.DrawEllipse(pen, center.X - r, center.Y - r, width, width);
+                    }
+                }
+                ReleaseWindowDC(hdc);
+            }
+        }
+
         private IntPtr GetWindowDC()
         {
             return NativeMethods.GetDC(this.Handle);
@@ -76,77 +187,56 @@ namespace GlasPen2
         {
             _currentWidth = width;
             _isDrawing = true;
-            var pt = new Point(x, y);
-            _lastDirectPoint = pt;
+            _pointBuffer.Clear();
+            _unprocessedIndex = 0;
+            var pt = new PointF(x, y);
+            _pointBuffer.Add(pt);
+            _lastDirectPoint = new Point(x, y);
 
-            // Draw to canvas (backing store)
-            using (var pen = new Pen(_penColor, _currentWidth))
-            {
-                pen.StartCap = LineCap.Round;
-                pen.EndCap = LineCap.Round;
-                _g.DrawEllipse(pen, x - _currentWidth / 2, y - _currentWidth / 2, _currentWidth, _currentWidth);
-            }
-            // Draw to window DC directly (real-time)
-            IntPtr hdc = GetWindowDC();
-            if (hdc != IntPtr.Zero)
-            {
-                using (var g = Graphics.FromHdc(hdc))
-                {
-                    g.SmoothingMode = SmoothingMode.None;
-                    using (var pen = new Pen(_penColor, _currentWidth))
-                    {
-                        pen.StartCap = LineCap.Round;
-                        pen.EndCap = LineCap.Round;
-                        g.DrawEllipse(pen, x - _currentWidth / 2, y - _currentWidth / 2, _currentWidth, _currentWidth);
-                    }
-                }
-                ReleaseWindowDC(hdc);
-            }
+            DrawDot(pt, _currentWidth);
         }
 
         public void AddPoint(int x, int y, float width)
         {
             if (!_isDrawing) return;
             _currentWidth = width;
-            var pt = new Point(x, y);
+            var pt = new PointF(x, y);
+            _pointBuffer.Add(pt);
 
-            // Draw to canvas
-            using (var pen = new Pen(_penColor, _currentWidth))
+            // Process buffered points using Catmull-Rom spline
+            while (_unprocessedIndex + 3 < _pointBuffer.Count)
             {
-                pen.StartCap = LineCap.Round;
-                pen.EndCap = LineCap.Round;
-                pen.LineJoin = LineJoin.Round;
-                _g.DrawLine(pen, _lastDirectPoint, pt);
+                PointF p0 = _pointBuffer[_unprocessedIndex];
+                PointF p1 = _pointBuffer[_unprocessedIndex + 1];
+                PointF p2 = _pointBuffer[_unprocessedIndex + 2];
+                PointF p3 = _pointBuffer[_unprocessedIndex + 3];
+
+                PointF cp1, cp2;
+                CatmullRomToBezier(p0, p1, p2, p3, out cp1, out cp2);
+
+                DrawBezier(p1, cp1, cp2, p2, _currentWidth);
+                _unprocessedIndex++;
             }
-            // Draw to window DC
-            IntPtr hdc = GetWindowDC();
-            if (hdc != IntPtr.Zero)
-            {
-                using (var g = Graphics.FromHdc(hdc))
-                {
-                    g.SmoothingMode = SmoothingMode.None;
-                    using (var pen = new Pen(_penColor, _currentWidth))
-                    {
-                        pen.StartCap = LineCap.Round;
-                        pen.EndCap = LineCap.Round;
-                        pen.LineJoin = LineJoin.Round;
-                        g.DrawLine(pen, _lastDirectPoint, pt);
-                    }
-                }
-                ReleaseWindowDC(hdc);
-            }
-            _lastDirectPoint = pt;
+
+            _lastDirectPoint = new Point(x, y);
         }
 
         public void EndStroke()
         {
+            // Draw remaining segments as straight lines
+            while (_unprocessedIndex + 1 < _pointBuffer.Count)
+            {
+                PointF from = _pointBuffer[_unprocessedIndex];
+                PointF to = _pointBuffer[_unprocessedIndex + 1];
+                DrawSegment(from, to, _currentWidth);
+                _unprocessedIndex++;
+            }
+
+            _pointBuffer.Clear();
+            _unprocessedIndex = 0;
             _isDrawing = false;
         }
 
-        /// <summary>
-        /// Clear crosshair: fill region with Fuchsia (erases direct-drawn content),
-        /// then restore strokes from canvas. Transparent canvas pixels don't overwrite Fuchsia.
-        /// </summary>
         public void ClearCrosshair()
         {
             if (_lastCrosshair.X >= 0 && this.IsHandleCreated)
@@ -162,9 +252,7 @@ namespace GlasPen2
                 {
                     using (var g = Graphics.FromHdc(hdc))
                     {
-                        // Erase direct-drawn crosshair with Fuchsia
                         g.FillRectangle(Brushes.Fuchsia, rect);
-                        // Restore strokes from canvas (transparent pixels = no change)
                         g.DrawImage(_canvas, rect, rect, GraphicsUnit.Pixel);
                     }
                     ReleaseWindowDC(hdc);
@@ -177,6 +265,8 @@ namespace GlasPen2
         {
             _isDrawing = false;
             _lastCrosshair = new Point(-1, -1);
+            _pointBuffer.Clear();
+            _unprocessedIndex = 0;
             _g.Clear(Color.Transparent);
             if (this.IsHandleCreated)
             {
@@ -192,9 +282,6 @@ namespace GlasPen2
             }
         }
 
-        /// <summary>
-        /// Draw crosshair directly to window DC. Canvas not involved.
-        /// </summary>
         public void DrawCrosshair(int x, int y)
         {
             if (!this.IsHandleCreated) return;
@@ -207,9 +294,8 @@ namespace GlasPen2
             {
                 using (var g = Graphics.FromHdc(hdc))
                 {
-                    g.SmoothingMode = SmoothingMode.None;
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
 
-                    // Clear old crosshair: Fuchsia + restore canvas strokes
                     if (_lastCrosshair.X >= 0)
                     {
                         var oldRect = new Rectangle(
@@ -219,7 +305,6 @@ namespace GlasPen2
                         g.DrawImage(_canvas, oldRect, oldRect, GraphicsUnit.Pixel);
                     }
 
-                    // Draw new crosshair
                     using (var pen = new Pen(Color.FromArgb(200, 0, 255, 0), 2f))
                     {
                         g.DrawLine(pen, x - r, y, x + r, y);
@@ -236,12 +321,7 @@ namespace GlasPen2
             _lastCrosshair = new Point(x, y);
         }
 
-        /// <summary>
-        /// No canvas drawn to window — avoids black border from DrawImage compositing.
-        /// </summary>
-        protected override void OnPaint(PaintEventArgs e)
-        {
-        }
+        protected override void OnPaint(PaintEventArgs e) { }
 
         protected override void Dispose(bool disposing)
         {
