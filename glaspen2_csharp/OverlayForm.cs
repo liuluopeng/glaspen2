@@ -40,6 +40,9 @@ namespace GlasPen2
         private IntPtr _transparentCursor = IntPtr.Zero;
         private bool _showCursor;
 
+        // Block mode: toggle WS_EX_TRANSPARENT to block/allow pen+mouse passthrough
+        private bool _isBlocking = false; // start in transparent (pass-through) mode
+
         private static void Log(string msg) { Program.Log(msg); }
         private static void Log(string fmt, params object[] args) { Program.Log(fmt, args); }
 
@@ -48,8 +51,8 @@ namespace GlasPen2
             get
             {
                 var cp = base.CreateParams;
-                cp.ExStyle |= NativeMethods.WS_EX_TRANSPARENT
-                           | NativeMethods.WS_EX_NOACTIVATE
+                // Start in BLOCKING mode (no WS_EX_TRANSPARENT) — pen draws on overlay
+                cp.ExStyle |= NativeMethods.WS_EX_NOACTIVATE
                            | NativeMethods.WS_EX_TOOLWINDOW
                            | NativeMethods.WS_EX_TOPMOST;
                 return cp;
@@ -68,8 +71,8 @@ namespace GlasPen2
             this.ShowInTaskbar = false;
             this.TopMost = true;
             this.ShowIcon = false;
-            this.BackColor = Color.Fuchsia;
-            this.TransparencyKey = Color.Fuchsia;
+            this.BackColor = Color.Black;
+            this.Opacity = 0.01; // nearly invisible but blocks input
             this.DoubleBuffered = true;
 
             _canvas = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
@@ -104,7 +107,9 @@ namespace GlasPen2
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.C);
             NativeMethods.RegisterHotKey(this.Handle, 2,
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.Q);
-            Log("[Overlay] Ready. Handle=0x{0:X}", this.Handle.ToInt64());
+            NativeMethods.RegisterHotKey(this.Handle, 3,
+                NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.B);
+            Log("[Overlay] Ready. Handle=0x{0:X}, Mode=BLOCKING (no WS_EX_TRANSPARENT)", this.Handle.ToInt64());
         }
 
         // Enumerate HID digitizer devices and read their coordinate ranges
@@ -316,6 +321,7 @@ namespace GlasPen2
                 int id = (int)m.WParam;
                 if (id == 1) ClearAll();
                 else if (id == 2) Application.Exit();
+                else if (id == 3) ToggleBlockMode();
             }
             base.WndProc(ref m);
         }
@@ -408,8 +414,6 @@ namespace GlasPen2
                         pen.EndCap = LineCap.Round;
                         _g.DrawEllipse(pen, cx - _currentWidth / 2, cy - _currentWidth / 2, _currentWidth, _currentWidth);
                     }
-                    this.Invalidate(new Rectangle(cx - (int)_currentWidth - 2, cy - (int)_currentWidth - 2,
-                        (int)_currentWidth * 2 + 4, (int)_currentWidth * 2 + 4));
                 }
                 else
                 {
@@ -434,20 +438,18 @@ namespace GlasPen2
                             _g.DrawLine(pen, _recentPoints[0], _recentPoints[1]);
                         }
                     }
-
-                    // Invalidate the bounding rect of recent points
-                    int minX = cx - (int)_currentWidth - 4;
-                    int minY = cy - (int)_currentWidth - 4;
-                    int maxX = cx + (int)_currentWidth + 4;
-                    int maxY = cy + (int)_currentWidth + 4;
-                    this.Invalidate(new Rectangle(minX, minY, maxX - minX, maxY - minY));
                 }
                 _lastPoint = pt;
+                this.Invalidate();
             }
             else if (!tipDown && _isDrawing)
             {
                 _recentPoints.Clear();
                 _isDrawing = false;
+                this.Invalidate();
+            }
+            else if (_showCursor)
+            {
                 this.Invalidate();
             }
         }
@@ -470,6 +472,26 @@ namespace GlasPen2
             }
         }
 
+        public void ToggleBlockMode()
+        {
+            _isBlocking = !_isBlocking;
+            int style = NativeMethods.GetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE);
+            if (_isBlocking)
+            {
+                // Remove WS_EX_TRANSPARENT — block pen+mouse from reaching lower apps
+                style &= ~NativeMethods.WS_EX_TRANSPARENT;
+                NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
+                Log("[Overlay] Mode=BLOCKING (pen+mouse intercepted, overlay visible)");
+            }
+            else
+            {
+                // Add WS_EX_TRANSPARENT — pen+mouse pass through to lower apps
+                style |= NativeMethods.WS_EX_TRANSPARENT;
+                NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
+                Log("[Overlay] Mode=TRANSPARENT (pen+mouse pass through)");
+            }
+        }
+
         public void ClearAll()
         {
             _isDrawing = false;
@@ -489,6 +511,7 @@ namespace GlasPen2
                 {
                     NativeMethods.UnregisterHotKey(this.Handle, 1);
                     NativeMethods.UnregisterHotKey(this.Handle, 2);
+                    NativeMethods.UnregisterHotKey(this.Handle, 3);
                 }
                 if (_g != null) _g.Dispose();
                 if (_canvas != null) _canvas.Dispose();
