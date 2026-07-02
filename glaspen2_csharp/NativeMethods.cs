@@ -220,6 +220,20 @@ namespace GlasPen2
         [DllImport("user32.dll")]
         public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
 
+        [DllImport("gdi32.dll")]
+        public static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+
+        [DllImport("gdi32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool DeleteDC(IntPtr hdc);
+
+        [DllImport("gdi32.dll")]
+        public static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
+
+        [DllImport("gdi32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool DeleteObject(IntPtr hObject);
+
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool UpdateLayeredWindow(
