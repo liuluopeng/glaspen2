@@ -46,6 +46,10 @@ namespace GlasPen2
         // Pressure display
         private PressureForm _pressureForm;
 
+        // Auto-block delay: wait after pen lift before unblocking
+        private System.Windows.Forms.Timer _unblockTimer;
+        private const int UNBLOCK_DELAY_MS = 200; // 200ms delay after pen lift
+
         private static void Log(string msg) { Program.Log(msg); }
         private static void Log(string fmt, params object[] args) { Program.Log(fmt, args); }
 
@@ -54,8 +58,9 @@ namespace GlasPen2
             get
             {
                 var cp = base.CreateParams;
-                // Start in BLOCKING mode (no WS_EX_TRANSPARENT) — pen draws on overlay
-                cp.ExStyle |= NativeMethods.WS_EX_NOACTIVATE
+                // Start in TRANSPARENT mode (mouse available) — auto-block on pen down
+                cp.ExStyle |= NativeMethods.WS_EX_TRANSPARENT
+                           | NativeMethods.WS_EX_NOACTIVATE
                            | NativeMethods.WS_EX_TOOLWINDOW
                            | NativeMethods.WS_EX_TOPMOST;
                 return cp;
@@ -117,7 +122,22 @@ namespace GlasPen2
             _pressureForm = new PressureForm();
             _pressureForm.Show();
 
-            Log("[Overlay] Ready. Handle=0x{0:X}, Mode=BLOCKING (no WS_EX_TRANSPARENT)", this.Handle.ToInt64());
+            // Create unblock timer for delayed unblocking
+            _unblockTimer = new System.Windows.Forms.Timer { Interval = UNBLOCK_DELAY_MS };
+            _unblockTimer.Tick += (s, ev) =>
+            {
+                _unblockTimer.Stop();
+                if (_isBlocking)
+                {
+                    int style = NativeMethods.GetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE);
+                    style |= NativeMethods.WS_EX_TRANSPARENT;
+                    NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
+                    _isBlocking = false;
+                    Log("[AutoBlock] OFF — delay expired, mouse available");
+                }
+            };
+
+            Log("[Overlay] Ready. Handle=0x{0:X}, Mode=AUTO-BLOCK (block on pen down, {1}ms delay on pen up)", this.Handle.ToInt64(), UNBLOCK_DELAY_MS);
         }
 
         // Enumerate HID digitizer devices and read their coordinate ranges
@@ -429,6 +449,30 @@ namespace GlasPen2
 
             _showCursor = inRange && !tipDown; // show crosshair on hover, hide when drawing or out of range
 
+            // Auto-block: enable blocking on hover, delay unblock when pen leaves range
+            if (rangeChanged || tipChanged)
+            {
+                int style = NativeMethods.GetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE);
+                if (inRange)
+                {
+                    // Pen hovering or touching — cancel any pending unblock and enable blocking
+                    _unblockTimer.Stop();
+                    if (!_isBlocking)
+                    {
+                        style &= ~NativeMethods.WS_EX_TRANSPARENT;
+                        NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
+                        _isBlocking = true;
+                        Log("[AutoBlock] ON — pen in range, blocking lower apps");
+                    }
+                }
+                else
+                {
+                    // Pen left range — start delay timer before unblocking
+                    _unblockTimer.Start();
+                    Log("[AutoBlock] PENDING — pen out of range, will unblock in {0}ms", UNBLOCK_DELAY_MS);
+                }
+            }
+
             if (tipDown && press > 0)
             {
                 _currentWidth = _penWidth * (0.3f + (press / 16000f) * 1.7f);
@@ -546,6 +590,7 @@ namespace GlasPen2
                     NativeMethods.UnregisterHotKey(this.Handle, 2);
                     NativeMethods.UnregisterHotKey(this.Handle, 3);
                 }
+                if (_unblockTimer != null) { _unblockTimer.Stop(); _unblockTimer.Dispose(); }
                 if (_pressureForm != null) { _pressureForm.Close(); _pressureForm.Dispose(); }
                 if (_g != null) _g.Dispose();
                 if (_canvas != null) _canvas.Dispose();
