@@ -16,8 +16,6 @@ namespace GlasPen2
         private float _penWidth = 2.5f;
         private float _currentWidth;
         private bool _isDrawing;
-        private readonly List<Point> _recentPoints = new List<Point>();
-        private const int MAX_RECENT = 8;
         private Point _lastDirectPoint;
         private Point _lastCrosshair = new Point(-1, -1);
         private const int CROSSHAIR_RADIUS = 10;
@@ -135,9 +133,7 @@ namespace GlasPen2
         {
             _currentWidth = width;
             _isDrawing = true;
-            _recentPoints.Clear();
             var pt = new Point(x, y);
-            _recentPoints.Add(pt);
             _lastDirectPoint = pt;
 
             // Draw to persistent canvas
@@ -151,25 +147,19 @@ namespace GlasPen2
             DirectDrawEllipse(pt, _currentWidth);
         }
 
-        public void AddPoint(int x, int y)
+        public void AddPoint(int x, int y, float width)
         {
             if (!_isDrawing) return;
+            _currentWidth = width;
             var pt = new Point(x, y);
-            _recentPoints.Add(pt);
-            if (_recentPoints.Count > MAX_RECENT)
-                _recentPoints.RemoveAt(0);
 
-            // Draw to persistent canvas
+            // Draw new segment to persistent canvas (single segment for correct width per segment)
             using (var pen = new Pen(_penColor, _currentWidth))
             {
                 pen.StartCap = LineCap.Round;
                 pen.EndCap = LineCap.Round;
                 pen.LineJoin = LineJoin.Round;
-
-                if (_recentPoints.Count >= 3)
-                    _g.DrawCurve(pen, _recentPoints.ToArray(), 0.5f);
-                else if (_recentPoints.Count == 2)
-                    _g.DrawLine(pen, _recentPoints[0], _recentPoints[1]);
+                _g.DrawLine(pen, _lastDirectPoint, pt);
             }
             // Draw just the new segment directly to screen
             DirectDrawLine(_lastDirectPoint, pt, _currentWidth);
@@ -178,7 +168,6 @@ namespace GlasPen2
 
         public void EndStroke()
         {
-            _recentPoints.Clear();
             _isDrawing = false;
         }
 

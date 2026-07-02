@@ -532,7 +532,7 @@ namespace GlasPen2
                         }
                     }
                     // Fake stroke (offset)
-                    _fakeStrokeForm.AddPoint(fx, fy);
+                    _fakeStrokeForm.AddPoint(fx, fy, _currentWidth);
                 }
                 _lastPoint = pt;
                 this.Invalidate();
