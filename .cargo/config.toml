@@ -3,3 +3,7 @@ PKG_CONFIG_PATH = "C:/msys64/mingw64/lib/pkgconfig"
 
 # Run with: PATH=C:\msys64\mingw64\bin;%PATH% cargo run
 # GTK4 DLLs are in C:\msys64\mingw64\bin
+
+# Static link CRT so VCRUNTIME140.dll is not required on target machines
+[target.'cfg(windows)']
+rustflags = ["-C", "target-feature=+crt-static"]
