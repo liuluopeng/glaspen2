@@ -43,6 +43,9 @@ namespace GlasPen2
         // Block mode: toggle WS_EX_TRANSPARENT to block/allow pen+mouse passthrough
         private bool _isBlocking = false; // start in transparent (pass-through) mode
 
+        // Pressure display
+        private PressureForm _pressureForm;
+
         private static void Log(string msg) { Program.Log(msg); }
         private static void Log(string fmt, params object[] args) { Program.Log(fmt, args); }
 
@@ -72,7 +75,7 @@ namespace GlasPen2
             this.TopMost = true;
             this.ShowIcon = false;
             this.BackColor = Color.Black;
-            this.Opacity = 0.01; // nearly invisible but blocks input
+            this.Opacity = 0.8; // visible enough to see pen traces, still semi-transparent
             this.DoubleBuffered = true;
 
             _canvas = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
@@ -109,6 +112,11 @@ namespace GlasPen2
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.Q);
             NativeMethods.RegisterHotKey(this.Handle, 3,
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.B);
+
+            // Create pressure display
+            _pressureForm = new PressureForm();
+            _pressureForm.Show();
+
             Log("[Overlay] Ready. Handle=0x{0:X}, Mode=BLOCKING (no WS_EX_TRANSPARENT)", this.Handle.ToInt64());
         }
 
@@ -388,6 +396,16 @@ namespace GlasPen2
             _screenX = sx;
             _screenY = sy;
 
+            // Update pressure display
+            if (_pressureForm != null)
+            {
+                _pressureForm.CurrentPressure = press;
+                _pressureForm.TipDown = tipDown;
+                _pressureForm.InRange = inRange;
+                _pressureForm.ScreenX = sx;
+                _pressureForm.ScreenY = sy;
+            }
+
             if (_hidCount <= 50 || tipChanged || rangeChanged || _hidCount % 100 == 0)
                 Log("[HID #{0}] raw=({1},{2}) screen=({3},{4}) pressure={5} tip={6} range={7}",
                     _hidCount, rawX, rawY, sx, sy, press,
@@ -513,6 +531,7 @@ namespace GlasPen2
                     NativeMethods.UnregisterHotKey(this.Handle, 2);
                     NativeMethods.UnregisterHotKey(this.Handle, 3);
                 }
+                if (_pressureForm != null) { _pressureForm.Close(); _pressureForm.Dispose(); }
                 if (_g != null) _g.Dispose();
                 if (_canvas != null) _canvas.Dispose();
                 if (_transparentCursor != IntPtr.Zero)
