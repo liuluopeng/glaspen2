@@ -649,12 +649,7 @@ namespace GlasPen2
                     string path = new string(pathBuf).TrimEnd('\0');
                     if (!string.IsNullOrEmpty(path))
                     {
-                        // Copy file path to clipboard as text
-                        try
-                        {
-                            System.Windows.Forms.Clipboard.SetText(path);
-                        }
-                        catch { }
+                        CopyGifToClipboard(path, canvas);
                     }
                     _fakeStrokeForm.ShowNotification("已导出 GIF");
                     Log("[Export] GIF saved: {0}", path);
@@ -668,6 +663,137 @@ namespace GlasPen2
             {
                 _fakeStrokeForm.ShowNotification("导出错误");
                 Log("[Export] Error: {0}", ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Copy GIF file to clipboard as CF_HDROP (file reference) + CF_DIB (bitmap preview).
+        /// </summary>
+        private void CopyGifToClipboard(string filePath, Bitmap canvas)
+        {
+            try
+            {
+                NativeMethods.OpenClipboard(this.Handle);
+                NativeMethods.EmptyClipboard();
+
+                // CF_HDROP: copy file reference (preserves GIF animation when pasting)
+                CopyFileToClipboard(filePath);
+
+                // CF_DIB: also put a bitmap snapshot (for apps that expect image data)
+                CopyBitmapToClipboard(canvas);
+
+                NativeMethods.CloseClipboard();
+            }
+            catch (Exception ex)
+            {
+                try { NativeMethods.CloseClipboard(); } catch { }
+                Log("[Clipboard] Error: {0}", ex.Message);
+            }
+        }
+
+        private void CopyFileToClipboard(string filePath)
+        {
+            // DROPFILES struct: { pFiles(4), pt(8), fNC(4), fWide(4) } = 20 bytes
+            // Followed by double-null-terminated UTF-16 file path
+            byte[] pathBytes = System.Text.Encoding.Unicode.GetBytes(filePath);
+            int totalSize = 20 + pathBytes.Length + 2; // +2 for double null terminator
+
+            IntPtr hMem = NativeMethods.GlobalAlloc(NativeMethods.GMEM_MOVEABLE, (UIntPtr)totalSize);
+            if (hMem == IntPtr.Zero) return;
+
+            IntPtr ptr = NativeMethods.GlobalLock(hMem);
+            if (ptr == IntPtr.Zero) { NativeMethods.GlobalUnlock(hMem); return; }
+
+            // DROPFILES.pFiles = 20 (offset to file list)
+            System.Runtime.InteropServices.Marshal.WriteInt32(ptr, 0, 20);
+            // DROPFILES.pt = (0,0)
+            System.Runtime.InteropServices.Marshal.WriteInt32(ptr, 4, 0);
+            System.Runtime.InteropServices.Marshal.WriteInt32(ptr, 8, 0);
+            // DROPFILES.fNC = 0 (client coords)
+            System.Runtime.InteropServices.Marshal.WriteInt32(ptr, 12, 0);
+            // DROPFILES.fWide = TRUE (Unicode)
+            System.Runtime.InteropServices.Marshal.WriteInt32(ptr, 16, 1);
+
+            // File path (UTF-16, null terminated)
+            System.Runtime.InteropServices.Marshal.Copy(pathBytes, 0, ptr + 20, pathBytes.Length);
+            // Double null terminator
+            System.Runtime.InteropServices.Marshal.WriteInt16(ptr, 20 + pathBytes.Length, 0);
+
+            NativeMethods.GlobalUnlock(hMem);
+            NativeMethods.SetClipboardData(NativeMethods.CF_HDROP, hMem);
+        }
+
+        private void CopyBitmapToClipboard(Bitmap canvas)
+        {
+            // Create a cropped copy (non-premultiplied for clipboard)
+            // Find bounding box of non-transparent pixels
+            int minX = canvas.Width, minY = canvas.Height, maxX = 0, maxY = 0;
+            bool found = false;
+            for (int y = 0; y < canvas.Height; y++)
+            {
+                for (int x = 0; x < canvas.Width; x++)
+                {
+                    var px = canvas.GetPixel(x, y);
+                    if (px.A > 0)
+                    {
+                        if (x < minX) minX = x;
+                        if (y < minY) minY = y;
+                        if (x > maxX) maxX = x;
+                        if (y > maxY) maxY = y;
+                        found = true;
+                    }
+                }
+            }
+            if (!found) return;
+
+            int w = maxX - minX + 1;
+            int h = maxY - minY + 1;
+            using (var cropped = canvas.Clone(new System.Drawing.Rectangle(minX, minY, w, h),
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+            {
+                // Convert to CF_DIB
+                var rect = new System.Drawing.Rectangle(0, 0, w, h);
+                var bmpData = cropped.LockBits(rect,
+                    System.Drawing.Imaging.ImageLockMode.ReadOnly,
+                    System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+                int headerSize = 40; // BITMAPINFOHEADER
+                int imageSize = bmpData.Stride * h;
+                int totalSize = headerSize + imageSize;
+
+                IntPtr hMem = NativeMethods.GlobalAlloc(NativeMethods.GMEM_MOVEABLE, (UIntPtr)totalSize);
+                if (hMem != IntPtr.Zero)
+                {
+                    IntPtr ptr = NativeMethods.GlobalLock(hMem);
+                    if (ptr != IntPtr.Zero)
+                    {
+                        // BITMAPINFOHEADER
+                        System.Runtime.InteropServices.Marshal.WriteInt32(ptr, 0, headerSize);
+                        System.Runtime.InteropServices.Marshal.WriteInt32(ptr, 4, w);
+                        System.Runtime.InteropServices.Marshal.WriteInt32(ptr, 8, h);
+                        System.Runtime.InteropServices.Marshal.WriteInt16(ptr, 12, 1); // planes
+                        System.Runtime.InteropServices.Marshal.WriteInt16(ptr, 14, 32); // bpp
+                        System.Runtime.InteropServices.Marshal.WriteInt32(ptr, 16, 0); // BI_RGB
+                        System.Runtime.InteropServices.Marshal.WriteInt32(ptr, 20, imageSize);
+
+                        // Pixel data (BGRA, bottom-up)
+                        for (int y = 0; y < h; y++)
+                        {
+                            IntPtr src = bmpData.Scan0 + (h - 1 - y) * bmpData.Stride;
+                            IntPtr dst = ptr + headerSize + y * bmpData.Stride;
+                            NativeMethods.CopyMemory(dst, src, (uint)bmpData.Stride);
+                        }
+
+                        NativeMethods.GlobalUnlock(hMem);
+                        NativeMethods.SetClipboardData(8 /* CF_DIB */, hMem); // CF_DIB = 8
+                    }
+                    else
+                    {
+                        NativeMethods.GlobalUnlock(hMem);
+                    }
+                }
+
+                cropped.UnlockBits(bmpData);
             }
         }
 

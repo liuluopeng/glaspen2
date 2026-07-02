@@ -674,6 +674,9 @@ namespace GlasPen2
 
         public const uint GMEM_MOVEABLE = 0x0002;
 
+        [DllImport("kernel32.dll", EntryPoint = "RtlMoveMemory")]
+        public static extern void CopyMemory(IntPtr dest, IntPtr src, uint count);
+
         #endregion
     }
 }
