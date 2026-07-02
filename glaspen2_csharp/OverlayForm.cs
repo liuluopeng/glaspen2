@@ -544,6 +544,10 @@ namespace GlasPen2
             }
             else if (_showCursor)
             {
+                // Draw green crosshair on fake stroke form (with offset)
+                int fx = ClampX(_screenX - this.Left) + FAKE_OFFSET_X;
+                int fy = ClampY(_screenY - this.Top) + FAKE_OFFSET_Y;
+                _fakeStrokeForm.DrawCrosshair(fx, fy);
                 this.Invalidate();
             }
         }

@@ -169,6 +169,33 @@ namespace GlasPen2
                 this.Invalidate();
         }
 
+        /// <summary>
+        /// Draw a green crosshair directly to window DC.
+        /// </summary>
+        public void DrawCrosshair(int x, int y)
+        {
+            if (!this.IsHandleCreated) return;
+            IntPtr hdc = NativeMethods.GetDC(this.Handle);
+            if (hdc == IntPtr.Zero) return;
+            try
+            {
+                using (var g = Graphics.FromHdc(hdc))
+                {
+                    int r = 10;
+                    using (var pen = new Pen(Color.FromArgb(200, 0, 255, 0), 2f))
+                    {
+                        g.DrawLine(pen, x - r, y, x + r, y);
+                        g.DrawLine(pen, x, y - r, x, y + r);
+                        g.DrawEllipse(pen, x - r, y - r, r * 2, r * 2);
+                    }
+                }
+            }
+            finally
+            {
+                NativeMethods.ReleaseDC(this.Handle, hdc);
+            }
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             if (_canvas != null) e.Graphics.DrawImage(_canvas, 0, 0);
