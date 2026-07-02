@@ -23,6 +23,11 @@ namespace GlasPen2
         private readonly List<PointF> _pointBuffer = new List<PointF>();
         private int _unprocessedIndex;
 
+        // On-screen notification (hotkey feedback)
+        private string _notification;
+        private System.Windows.Forms.Timer _notificationTimer;
+        private Rectangle _notificationRect;
+
         public FakeStrokeForm(Rectangle bounds)
         {
             this.StartPosition = FormStartPosition.Manual;
@@ -43,6 +48,14 @@ namespace GlasPen2
             _g.InterpolationMode = InterpolationMode.NearestNeighbor;
             _g.PixelOffsetMode = PixelOffsetMode.None;
             _g.Clear(Color.Transparent);
+
+            // Notification timer: clears notification after 1 second
+            _notificationTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+            _notificationTimer.Tick += (s, e) =>
+            {
+                _notificationTimer.Stop();
+                ClearNotification();
+            };
         }
 
         protected override CreateParams CreateParams
@@ -63,6 +76,83 @@ namespace GlasPen2
         public void SetColor(Color color)
         {
             _penColor = color;
+        }
+
+        /// <summary>
+        /// Show a centered notification on screen for ~1 second.
+        /// </summary>
+        public void ShowNotification(string text)
+        {
+            _notification = text;
+            _notificationTimer.Stop();
+
+            // Draw notification to window DC
+            DrawNotification();
+
+            // Auto-clear after 1 second
+            _notificationTimer.Start();
+        }
+
+        private void DrawNotification()
+        {
+            if (string.IsNullOrEmpty(_notification) || !this.IsHandleCreated) return;
+
+            IntPtr hdc = GetWindowDC();
+            if (hdc == IntPtr.Zero) return;
+            try
+            {
+                using (var g = Graphics.FromHdc(hdc))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+
+                    using (var font = new Font("Consolas", 36f, FontStyle.Bold))
+                    {
+                        var textSize = g.MeasureString(_notification, font);
+                        float x = (this.Width - textSize.Width) / 2f;
+                        float y = (this.Height - textSize.Height) / 2f;
+
+                        // Save rect for clearing
+                        _notificationRect = new Rectangle(
+                            (int)x - 4, (int)y - 4,
+                            (int)textSize.Width + 8, (int)textSize.Height + 8);
+
+                        // Shadow
+                        using (var brush = new SolidBrush(Color.FromArgb(200, 0, 0, 0)))
+                        {
+                            g.DrawString(_notification, font, brush, x + 2, y + 2);
+                        }
+                        // Text
+                        using (var brush = new SolidBrush(Color.FromArgb(240, 255, 255, 255)))
+                        {
+                            g.DrawString(_notification, font, brush, x, y);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                ReleaseWindowDC(hdc);
+            }
+        }
+
+        private void ClearNotification()
+        {
+            if (_notificationRect.IsEmpty || !this.IsHandleCreated) return;
+            _notification = null;
+
+            // Clear notification area: Fuchsia + restore canvas
+            IntPtr hdc = GetWindowDC();
+            if (hdc != IntPtr.Zero)
+            {
+                using (var g = Graphics.FromHdc(hdc))
+                {
+                    g.FillRectangle(Brushes.Fuchsia, _notificationRect);
+                    g.DrawImage(_canvas, _notificationRect, _notificationRect, GraphicsUnit.Pixel);
+                }
+                ReleaseWindowDC(hdc);
+            }
+            _notificationRect = Rectangle.Empty;
         }
 
         private IntPtr GetWindowDC()

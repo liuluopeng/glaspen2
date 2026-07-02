@@ -370,9 +370,9 @@ namespace GlasPen2
             else if (m.Msg == NativeMethods.WM_HOTKEY)
             {
                 int id = (int)m.WParam;
-                if (id == 1) ClearAll();
+                if (id == 1) { ClearAll(); _fakeStrokeForm.ShowNotification("清屏"); }
                 else if (id == 2) Application.Exit();
-                else if (id == 3) ToggleBlockMode();
+                else if (id == 3) { ToggleBlockMode(); _fakeStrokeForm.ShowNotification(_isBlocking ? "拦截模式" : "穿透模式"); }
             }
             base.WndProc(ref m);
         }
