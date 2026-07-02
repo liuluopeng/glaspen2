@@ -37,15 +37,15 @@ namespace GlasPen2
             };
             this.Controls.Add(_label);
 
-            _timer = new Timer { Interval = 50 }; // 20 FPS
+            _timer = new Timer { Interval = 16 }; // ~60 FPS
             _timer.Tick += (s, e) => UpdateDisplay();
             _timer.Start();
         }
 
-        private void UpdateDisplay()
+        public void UpdateDisplay()
         {
-            string state = InRange ? (TipDown ? "DOWN" : "HOVER") : "AWAY";
-            _label.Text = string.Format("P={0}  {1}  ({2},{3})", CurrentPressure, state, ScreenX, ScreenY);
+            string state = InRange ? (TipDown ? (CurrentPressure > 0 ? "DRAWING" : "TOUCH") : "HOVER") : "AWAY";
+            _label.Text = string.Format("P={0,5}  {1}  ({2},{3})", CurrentPressure, state, ScreenX, ScreenY);
         }
 
         protected override void OnPaint(PaintEventArgs e)

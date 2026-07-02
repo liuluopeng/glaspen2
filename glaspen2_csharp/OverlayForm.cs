@@ -404,13 +404,28 @@ namespace GlasPen2
                 _pressureForm.InRange = inRange;
                 _pressureForm.ScreenX = sx;
                 _pressureForm.ScreenY = sy;
+                _pressureForm.UpdateDisplay();
+                if (_hidCount <= 10 || tipChanged)
+                    Log("[Pressure] Updated: P={0} tip={1} ({2},{3})", press, tipDown, sx, sy);
             }
 
             if (_hidCount <= 50 || tipChanged || rangeChanged || _hidCount % 100 == 0)
-                Log("[HID #{0}] raw=({1},{2}) screen=({3},{4}) pressure={5} tip={6} range={7}",
+            {
+                // Log raw bytes for debugging
+                byte b0 = Marshal.ReadByte(buffer, b);
+                byte b1 = Marshal.ReadByte(buffer, b + 1);
+                byte b2 = Marshal.ReadByte(buffer, b + 2);
+                byte b3 = Marshal.ReadByte(buffer, b + 3);
+                byte b4 = Marshal.ReadByte(buffer, b + 4);
+                byte b5 = Marshal.ReadByte(buffer, b + 5);
+                byte b6 = Marshal.ReadByte(buffer, b + 6);
+                byte b7 = Marshal.ReadByte(buffer, b + 7);
+                Log("[HID #{0}] raw=({1},{2}) screen=({3},{4}) pressure={5} tip={6} range={7} bytes=[{8},{9},{10},{11},{12},{13},{14},{15}]",
                     _hidCount, rawX, rawY, sx, sy, press,
                     tipDown ? "DOWN" : "UP",
-                    inRange ? "YES" : "NO");
+                    inRange ? "YES" : "NO",
+                    b0, b1, b2, b3, b4, b5, b6, b7);
+            }
 
             _showCursor = inRange && !tipDown; // show crosshair on hover, hide when drawing or out of range
 
