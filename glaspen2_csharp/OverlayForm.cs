@@ -626,7 +626,10 @@ namespace GlasPen2
             }
             else
             {
-                // Restore auto-block behavior (will block on next pen hover)
+                // Remove WS_EX_TRANSPARENT — restore input blocking
+                style &= ~NativeMethods.WS_EX_TRANSPARENT;
+                NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
+                _isBlocking = true;
                 Log("[Overlay] Drawing ENABLED");
             }
         }
