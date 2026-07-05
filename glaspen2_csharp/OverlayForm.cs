@@ -23,7 +23,7 @@ namespace GlasPen2
         private bool _tipDown;
         private bool _inRange;
         private uint _pressure;
-        private int _screenX, _screenY;
+        private float _screenX, _screenY;
 
         // HID coordinate range from device descriptor
         private int _hidMinX, _hidMaxX;
@@ -442,12 +442,12 @@ namespace GlasPen2
             bool tipDown = (switches & 0x05) != 0;
             bool inRange = (switches & 0x10) != 0;
 
-            // Map to screen coords
+            // Map to screen coords (float for sub-pixel precision)
             var sb = SystemInformation.VirtualScreen;
             long rangeX = _hidMaxX - _hidMinX;
             long rangeY = _hidMaxY - _hidMinY;
-            int sx = (rangeX > 0) ? sb.Left + (int)((long)(rawX - _hidMinX) * sb.Width / rangeX) : sb.Left;
-            int sy = (rangeY > 0) ? sb.Top + (int)((long)(rawY - _hidMinY) * sb.Height / rangeY) : sb.Top;
+            float sx = (rangeX > 0) ? sb.Left + (float)(rawX - _hidMinX) * sb.Width / rangeX : sb.Left;
+            float sy = (rangeY > 0) ? sb.Top + (float)(rawY - _hidMinY) * sb.Height / rangeY : sb.Top;
             sx = Math.Max(sb.Left, Math.Min(sx, sb.Left + sb.Width - 1));
             sy = Math.Max(sb.Top, Math.Min(sy, sb.Top + sb.Height - 1));
 
@@ -521,13 +521,13 @@ namespace GlasPen2
             if (tipDown && press > 0)
             {
                 _currentWidth = _penWidth * (0.3f + (press / 16000f) * 1.7f);
-                int cx = ClampX(sx - this.Left);
-                int cy = ClampY(sy - this.Top);
-                var pt = new Point(cx, cy);
+                float cx = ClampF(sx - this.Left);
+                float cy = ClampF(sy - this.Top);
+                var pt = new Point((int)cx, (int)cy);
 
                 // Fake stroke offset position
-                int fx = cx + FAKE_OFFSET_X;
-                int fy = cy + FAKE_OFFSET_Y;
+                float fx = cx + FAKE_OFFSET_X;
+                float fy = cy + FAKE_OFFSET_Y;
 
                 if (!_isDrawing)
                 {
@@ -582,8 +582,8 @@ namespace GlasPen2
             else if (_showCursor)
             {
                 // Draw green crosshair on fake stroke form (with offset)
-                int fx = ClampX(_screenX - this.Left) + FAKE_OFFSET_X;
-                int fy = ClampY(_screenY - this.Top) + FAKE_OFFSET_Y;
+                float fx = ClampF(_screenX - this.Left) + FAKE_OFFSET_X;
+                float fy = ClampF(_screenY - this.Top) + FAKE_OFFSET_Y;
                 _fakeStrokeForm.DrawCrosshair(fx, fy);
                 this.Invalidate();
             }
@@ -676,6 +676,7 @@ namespace GlasPen2
 
         private int ClampX(int x) { return Math.Max(0, Math.Min(x, _canvas.Width - 1)); }
         private int ClampY(int y) { return Math.Max(0, Math.Min(y, _canvas.Height - 1)); }
+        private float ClampF(float v) { return Math.Max(0, Math.Min(v, _canvas.Width - 1)); }
 
         /// <summary>
         /// Export the fake stroke canvas as GIF, save to desktop, copy path to clipboard.

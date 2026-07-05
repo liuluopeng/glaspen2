@@ -221,7 +221,7 @@ namespace GlasPen2
             }
         }
 
-        public void BeginStroke(int x, int y, float width)
+        public void BeginStroke(float x, float y, float width)
         {
             _currentWidth = width;
             _isDrawing = true;
@@ -239,7 +239,7 @@ namespace GlasPen2
             GlaspenNative.glaspen2_add_point(x, y, _currentWidth);
         }
 
-        public void AddPoint(int x, int y, float width)
+        public void AddPoint(float x, float y, float width)
         {
             if (!_isDrawing) return;
             _currentWidth = width;
@@ -507,7 +507,7 @@ namespace GlasPen2
                 : string.Format("第 {0} 页为空", screenId));
         }
 
-        public void DrawCrosshair(int x, int y)
+        public void DrawCrosshair(float x, float y)
         {
             if (!this.IsHandleCreated) return;
             int r = CROSSHAIR_RADIUS;
