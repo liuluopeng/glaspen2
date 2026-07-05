@@ -49,8 +49,7 @@ namespace GlasPen2
             // Create persistent DIB section for blitting
             CreateDib(bounds.Width, bounds.Height);
 
-            // Initial blit: fully transparent window
-            BlitCairoToWindow();
+            // Initial blit happens in OnHandleCreated (handle not ready yet)
 
             // Notification timer: clears notification after 1 second
             _notificationTimer = new System.Windows.Forms.Timer { Interval = 1000 };
@@ -80,8 +79,9 @@ namespace GlasPen2
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            // Blit the (transparent) Cairo surface now that the handle exists
-            BlitCairoToWindow();
+            // Initial present: transparent Cairo surface → window
+            CopyCairoToDib();
+            PresentDib(true);
         }
 
         // ── DIB setup ──
@@ -123,10 +123,10 @@ namespace GlasPen2
         // ── Blit pipeline: 1) CopyCairoToDib  2) [draw overlays]  3) PresentDib ──
 
         private int _lastPresentTick;
-        private const int PRESENT_THROTTLE_MS = 16; // ~60 FPS max
+        private const int PRESENT_THROTTLE_MS = 10; // ~100 FPS max, responsive
 
         /// <summary>
-        /// Copy entire Cairo surface pixels to DIB (no present).
+        /// Copy entire Cairo surface pixels to DIB using a single CopyMemory call (when strides match).
         /// </summary>
         private void CopyCairoToDib()
         {
@@ -138,17 +138,53 @@ namespace GlasPen2
             if (surfW <= 0 || surfH <= 0 || _dibBits == IntPtr.Zero) return;
 
             int rowBytes = surfW * 4;
-            for (int y = 0; y < surfH; y++)
+            // When strides match, use a single fast copy
+            if (stride == _dibStride)
             {
-                IntPtr srcRow = IntPtr.Add(srcPixels, y * stride);
-                IntPtr dstRow = IntPtr.Add(_dibBits, y * _dibStride);
+                NativeMethods.CopyMemory(_dibBits, srcPixels, (uint)(rowBytes * surfH));
+            }
+            else
+            {
+                for (int y = 0; y < surfH; y++)
+                {
+                    IntPtr srcRow = IntPtr.Add(srcPixels, y * stride);
+                    IntPtr dstRow = IntPtr.Add(_dibBits, y * _dibStride);
+                    NativeMethods.CopyMemory(dstRow, srcRow, (uint)rowBytes);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Copy a sub-rect of Cairo surface to DIB. Used for partial updates during drawing.
+        /// </summary>
+        private void CopyCairoRectToDib(int bx, int by, int bw, int bh)
+        {
+            if (_renderer == IntPtr.Zero) return;
+            IntPtr srcPixels = GlaspenNative.glaspen2_cairo_surface_data(_renderer);
+            if (srcPixels == IntPtr.Zero) return;
+            int surfW, surfH, stride;
+            GlaspenNative.glaspen2_cairo_surface_size(_renderer, out surfW, out surfH, out stride);
+            if (surfW <= 0 || surfH <= 0 || _dibBits == IntPtr.Zero) return;
+
+            // Clamp
+            if (bx < 0) { bw += bx; bx = 0; }
+            if (by < 0) { bh += by; by = 0; }
+            if (bx + bw > surfW) bw = surfW - bx;
+            if (by + bh > surfH) bh = surfH - by;
+            if (bw <= 0 || bh <= 0) return;
+
+            int rowBytes = bw * 4;
+            for (int y = 0; y < bh; y++)
+            {
+                IntPtr srcRow = IntPtr.Add(srcPixels, (by + y) * stride + bx * 4);
+                IntPtr dstRow = IntPtr.Add(_dibBits, (by + y) * _dibStride + bx * 4);
                 NativeMethods.CopyMemory(dstRow, srcRow, (uint)rowBytes);
             }
         }
 
         /// <summary>
-        /// Present the DIB to the window via UpdateLayeredWindow.
-        /// Throttled to ~60 FPS unless force=true.
+        /// Present the DIB to the window via full-screen UpdateLayeredWindow.
+        /// Throttled unless force=true.
         /// </summary>
         private void PresentDib(bool force)
         {
@@ -169,18 +205,30 @@ namespace GlasPen2
                 _dibHdc, ref ptSrc, 0, ref blend, NativeMethods.ULW_ALPHA);
         }
 
+        // Convenience: throttled full blit
+        private void BlitCairoToWindow() { CopyCairoToDib(); PresentDib(false); }
+
         /// <summary>
-        /// Full pipeline: copy Cairo → DIB, then present.
-        /// Throttled unless force=true.
+        /// Compute bounding box for a line segment with width margin.
         /// </summary>
-        private void BlitCairoToWindow(bool force)
+        private static void LineRect(float x0, float y0, float x1, float y1, float w,
+            out int bx, out int by, out int bw, out int bh)
         {
-            CopyCairoToDib();
-            PresentDib(force);
+            float pad = w / 2f + 2f;
+            float minX = Math.Min(x0, x1) - pad, minY = Math.Min(y0, y1) - pad;
+            float maxX = Math.Max(x0, x1) + pad, maxY = Math.Max(y0, y1) + pad;
+            bx = (int)Math.Floor(minX); by = (int)Math.Floor(minY);
+            bw = (int)Math.Ceiling(maxX) - bx + 1;
+            bh = (int)Math.Ceiling(maxY) - by + 1;
         }
 
-        // Convenience: throttled
-        private void BlitCairoToWindow() { BlitCairoToWindow(false); }
+        private static void DotRect(float x, float y, float w,
+            out int bx, out int by, out int bw, out int bh)
+        {
+            float pad = w / 2f + 2f;
+            bx = (int)(x - pad); by = (int)(y - pad);
+            bw = (int)(pad * 2) + 1; bh = (int)(pad * 2) + 1;
+        }
 
         // ── Crosshair / Notification (drawn to DIB via GDI+) ──
 
@@ -259,10 +307,10 @@ namespace GlasPen2
             _notification = text;
             _notificationTimer.Stop();
             _notificationTimer.Start();
-            // Copy Cairo → DIB first, then draw notification on top, then blit
+            // Copy Cairo → DIB first, then draw notification on top, then present
             CopyCairoToDib();
             DrawNotificationToDib();
-            BlitCairoToWindow(true);
+            PresentDib(true); // NOT BlitCairoToWindow — would overwrite notification
         }
 
         private void ClearNotification()
@@ -271,7 +319,7 @@ namespace GlasPen2
             _notificationRect = Rectangle.Empty;
             // Re-blit: copy Cairo → DIB (without notification) and present
             CopyCairoToDib();
-            BlitCairoToWindow(true);
+            PresentDib(true);
         }
 
         // ── Stroke drawing via Cairo FFI ──
@@ -292,7 +340,10 @@ namespace GlasPen2
             GlaspenNative.glaspen2_begin_stroke(r, g, b, width);
             GlaspenNative.glaspen2_add_point(x, y, width);
 
-            BlitCairoToWindow(true); // force immediate on pen-down
+            int bx, by, bw, bh;
+            DotRect(x, y, width, out bx, out by, out bw, out bh);
+            CopyCairoRectToDib(bx, by, bw, bh);
+            PresentDib(true); // force immediate on pen-down
         }
 
         public void AddPoint(float x, float y, float width)
@@ -305,18 +356,24 @@ namespace GlasPen2
             double b = _penColor.B / 255.0;
 
             GlaspenNative.glaspen2_cairo_draw_line(_renderer, _lastX, _lastY, x, y, width, r, g, b);
+            float lx = _lastX, ly = _lastY;
             _lastX = x; _lastY = y;
 
             GlaspenNative.glaspen2_add_point(x, y, width);
 
-            BlitCairoToWindow(); // throttled (~60 FPS)
+            // Copy only the dirty rect from Cairo surface to DIB
+            int bx, by, bw, bh;
+            LineRect(lx, ly, x, y, width, out bx, out by, out bw, out bh);
+            CopyCairoRectToDib(bx, by, bw, bh);
+            PresentDib(false); // throttled
         }
 
         public void EndStroke()
         {
             _isDrawing = false;
             GlaspenNative.glaspen2_end_stroke();
-            BlitCairoToWindow(true); // force final blit on pen-up
+            CopyCairoToDib();  // full copy for final state
+            PresentDib(true);  // force immediate on pen-up
         }
 
         public void ClearCrosshair()
@@ -324,9 +381,8 @@ namespace GlasPen2
             if (_lastCrosshair.X >= 0)
             {
                 _lastCrosshair = new Point(-1, -1);
-                // Copy Cairo → DIB (no crosshair overlay), then present
                 CopyCairoToDib();
-                BlitCairoToWindow(true);
+                PresentDib(true);
             }
         }
 
@@ -341,7 +397,8 @@ namespace GlasPen2
                 GlaspenNative.glaspen2_cairo_clear(_renderer);
             }
 
-            BlitCairoToWindow(true);
+            CopyCairoToDib();
+            PresentDib(true);
         }
 
         public void LoadAndReplayFromNative(long screenId)
@@ -354,7 +411,7 @@ namespace GlasPen2
                 GlaspenNative.glaspen2_cairo_replay_strokes(_renderer);
 
             CopyCairoToDib();
-            BlitCairoToWindow(true);
+            PresentDib(true);
 
             ShowNotification(count > 0
                 ? string.Format("第 {0} 页 ({1} 笔)", screenId, count)
@@ -364,11 +421,10 @@ namespace GlasPen2
         public void DrawCrosshair(float x, float y)
         {
             _lastCrosshair = new Point((int)x, (int)y);
-            // Copy Cairo → DIB first, then draw crosshair on top
+            // Copy Cairo → DIB first, then draw crosshair on top, then present
             CopyCairoToDib();
             DrawCrosshairToDib();
-            // Blit crosshair region only (use the full blit for simplicity)
-            BlitCairoToWindow(true);
+            PresentDib(true); // NOT BlitCairoToWindow — would overwrite crosshair
         }
 
         protected override void OnPaint(PaintEventArgs e) { }
