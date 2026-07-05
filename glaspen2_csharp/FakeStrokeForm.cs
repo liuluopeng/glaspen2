@@ -380,8 +380,10 @@ namespace GlasPen2
         {
             if (_lastCrosshair.X >= 0)
             {
+                // Only restore the old crosshair region from Cairo surface, not full screen
+                int pad = CROSSHAIR_RADIUS + 4;
+                CopyCairoRectToDib(_lastCrosshair.X - pad, _lastCrosshair.Y - pad, pad * 2, pad * 2);
                 _lastCrosshair = new Point(-1, -1);
-                CopyCairoToDib();
                 PresentDib(true);
             }
         }
@@ -421,10 +423,11 @@ namespace GlasPen2
         public void DrawCrosshair(float x, float y)
         {
             _lastCrosshair = new Point((int)x, (int)y);
-            // Copy Cairo → DIB first, then draw crosshair on top, then present
-            CopyCairoToDib();
+            // Only copy the tiny crosshair region from Cairo → DIB, not full screen
+            int pad = CROSSHAIR_RADIUS + 4;
+            CopyCairoRectToDib(_lastCrosshair.X - pad, _lastCrosshair.Y - pad, pad * 2, pad * 2);
             DrawCrosshairToDib();
-            PresentDib(true); // NOT BlitCairoToWindow — would overwrite crosshair
+            PresentDib(true); // force immediate so cursor feels responsive
         }
 
         protected override void OnPaint(PaintEventArgs e) { }
