@@ -63,6 +63,31 @@ Copy-Item "glaspen2_csharp\glaspen2_app.exe" $payload
 Copy-Item "LICENSE" $payload
 Copy-Item "README.md" $payload
 
+# Flutter settings UI
+$flutterRelease = "flutter_settings\build\windows\x64\runner\Release"
+if (Test-Path "$flutterRelease\glaspen2_settings.exe") {
+    Copy-Item "$flutterRelease\glaspen2_settings.exe" $payload
+    Copy-Item "$flutterRelease\flutter_windows.dll" $payload
+    if (Test-Path "$flutterRelease\data") {
+        Copy-Item "$flutterRelease\data" -Destination "$payload\data" -Recurse
+    }
+    Write-Host "  Flutter settings included" -ForegroundColor Green
+} else {
+    Write-Host "  WARNING: Flutter settings not found at $flutterRelease" -ForegroundColor Yellow
+}
+
+# VC++ runtime DLLs — required by Rust binary on fresh machines
+$vcDlls = @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")
+foreach ($dll in $vcDlls) {
+    $src = "C:\Windows\System32\$dll"
+    if (Test-Path $src) {
+        Copy-Item $src $payload
+        Write-Host "  Bundled $dll" -ForegroundColor Green
+    } else {
+        Write-Host "  WARNING: $dll not found in System32" -ForegroundColor Yellow
+    }
+}
+
 # Create ZIP of payload
 $zipPath = "dist\payload.zip"
 Remove-Item $zipPath -ErrorAction SilentlyContinue
