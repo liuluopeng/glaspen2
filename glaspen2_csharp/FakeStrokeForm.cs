@@ -69,12 +69,20 @@ namespace GlasPen2
                 cp.ExStyle |= NativeMethods.WS_EX_TRANSPARENT
                            | NativeMethods.WS_EX_NOACTIVATE
                            | NativeMethods.WS_EX_TOOLWINDOW
-                           | NativeMethods.WS_EX_TOPMOST;
+                           | NativeMethods.WS_EX_TOPMOST
+                           | NativeMethods.WS_EX_LAYERED; // required for UpdateLayeredWindow
                 return cp;
             }
         }
 
         protected override bool ShowWithoutActivation { get { return true; } }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            // Blit the (transparent) Cairo surface now that the handle exists
+            BlitCairoToWindow();
+        }
 
         // ── DIB setup ──
 
