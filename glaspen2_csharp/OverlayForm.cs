@@ -52,7 +52,7 @@ namespace GlasPen2
         private int _widthIndex = 3; // default: 中
 
         // Smooth curve: collect recent points for spline interpolation
-        private readonly List<Point> _recentPoints = new List<Point>();
+        private readonly List<PointF> _recentPoints = new List<PointF>();
         private const int MAX_RECENT = 8; // rolling window for curve smoothing
 
         // Cursor
@@ -523,7 +523,7 @@ namespace GlasPen2
                 _currentWidth = _penWidth * (0.3f + (press / 16000f) * 1.7f);
                 float cx = ClampF(sx - this.Left);
                 float cy = ClampF(sy - this.Top);
-                var pt = new Point((int)cx, (int)cy);
+                var pt = new PointF(cx, cy);
 
                 // Fake stroke offset position
                 float fx = cx + FAKE_OFFSET_X;
