@@ -10,6 +10,9 @@ param([switch]$Debug)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
+# Kill running instances to avoid file locks
+Get-Process -Name "glaspen2","glaspen2_app" -ErrorAction SilentlyContinue | Stop-Process -Force
+
 $profile = if ($Debug) { "" } else { "--release" }
 $targetDir = if ($Debug) { "target\debug" } else { "target\release" }
 
