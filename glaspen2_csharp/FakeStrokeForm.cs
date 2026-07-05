@@ -420,14 +420,16 @@ namespace GlasPen2
                     int ptCount = GlaspenNative.glaspen2_get_stroke_point_count(i);
                     if (ptCount < 1) continue;
 
-                    GlaspenNative.glaspen2_get_stroke_color(i, out double r, out double g, out double b);
+                    double r, g, b;
+                    GlaspenNative.glaspen2_get_stroke_color(i, out r, out g, out b);
                     double avgW = GlaspenNative.glaspen2_get_stroke_avg_width(i);
                     var color = Color.FromArgb((int)(r * 255), (int)(g * 255), (int)(b * 255));
                     float width = (float)avgW;
 
                     if (ptCount == 1)
                     {
-                        GlaspenNative.glaspen2_get_stroke_point(i, 0, out double px, out double py);
+                        double px, py;
+                        GlaspenNative.glaspen2_get_stroke_point(i, 0, out px, out py);
                         float rad = width / 2f;
                         using (var pen = new Pen(color, width))
                         {
@@ -451,7 +453,8 @@ namespace GlasPen2
                         var pts = new PointF[ptCount];
                         for (int j = 0; j < ptCount; j++)
                         {
-                            GlaspenNative.glaspen2_get_stroke_point(i, j, out double px, out double py);
+                            double px, py;
+                            GlaspenNative.glaspen2_get_stroke_point(i, j, out px, out py);
                             pts[j] = new PointF((float)px, (float)py);
                         }
 
