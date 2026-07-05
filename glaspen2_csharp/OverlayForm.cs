@@ -100,7 +100,7 @@ namespace GlasPen2
             this.TopMost = true;
             this.ShowIcon = false;
             this.BackColor = Color.Black;
-            this.Opacity = 0.01; // nearly invisible overlay (alpha=3, must stay non-zero to remain interactive)
+            this.Opacity = 0.1; // nearly invisible overlay (alpha=3, must stay non-zero to remain interactive)
             this.DoubleBuffered = true;
 
             _canvas = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
