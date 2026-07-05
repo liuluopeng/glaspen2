@@ -3,6 +3,7 @@
 pub mod tray;
 pub mod render;
 pub mod hook_overlay;
+pub mod cairo_dl;
 
 /// Entry point for the Windows version of glaspen2.
 ///

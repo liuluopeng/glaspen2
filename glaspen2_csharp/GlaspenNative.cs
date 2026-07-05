@@ -124,5 +124,42 @@ namespace GlasPen2
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern double glaspen2_now_secs();
+
+        // ── Cairo renderer FFI ──
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr glaspen2_cairo_renderer_create(int w, int h);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void glaspen2_cairo_renderer_destroy(IntPtr renderer);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void glaspen2_cairo_draw_line(IntPtr renderer,
+            double x0, double y0, double x1, double y1,
+            double width, double r, double g, double b);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void glaspen2_cairo_draw_dot(IntPtr renderer,
+            double x, double y, double width, double r, double g, double b);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void glaspen2_cairo_clear(IntPtr renderer);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr glaspen2_cairo_surface_data(IntPtr renderer);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr glaspen2_cairo_surface_data_mut(IntPtr renderer);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void glaspen2_cairo_surface_size(IntPtr renderer,
+            out int w, out int h, out int stride);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void glaspen2_cairo_draw_modeler_buffer(IntPtr renderer,
+            double r, double g, double b);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void glaspen2_cairo_replay_strokes(IntPtr renderer);
     }
 }

@@ -93,6 +93,31 @@ foreach ($dll in $vcDlls) {
     }
 }
 
+# Cairo DLLs — required for anti-aliased stroke rendering
+$msysBin = "C:\msys64\mingw64\bin"
+if (Test-Path $msysBin) {
+    $cairoDlls = @(
+        "libcairo-2.dll", "libpixman-1-0.dll", "libpng16-16.dll",
+        "zlib1.dll", "libfontconfig-1.dll", "libfreetype-6.dll",
+        "libexpat-1.dll", "libglib-2.0-0.dll", "libharfbuzz-0.dll",
+        "libiconv-2.dll", "libintl-8.dll", "libpcre2-8-0.dll",
+        "libbz2-1.dll", "libbrotlicommon.dll", "libbrotlidec.dll",
+        "libffi-8.dll", "libgraphite2.dll"
+    )
+    foreach ($dll in $cairoDlls) {
+        $src = Join-Path $msysBin $dll
+        if (Test-Path $src) {
+            Copy-Item $src $payload
+            Write-Host "  Bundled $dll" -ForegroundColor Green
+        } else {
+            Write-Host "  WARNING: $dll not found in $msysBin" -ForegroundColor Yellow
+        }
+    }
+    Write-Host "  Cairo DLLs included" -ForegroundColor Green
+} else {
+    Write-Host "  WARNING: MSYS2 MinGW not found at $msysBin — Cairo DLLs not included" -ForegroundColor Yellow
+}
+
 # Create ZIP of payload
 $zipPath = "dist\payload.zip"
 Remove-Item $zipPath -ErrorAction SilentlyContinue
