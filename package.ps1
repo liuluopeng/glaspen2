@@ -2,15 +2,16 @@
 # Produces a single self-extracting .exe installer.
 #
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File package.ps1 -Release
+#   powershell -ExecutionPolicy Bypass -File package.ps1
+#   powershell -ExecutionPolicy Bypass -File package.ps1 -Debug
 
-param([switch]$Release)
+param([switch]$Debug)
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-$profile = if ($Release) { "--release" } else { "" }
-$targetDir = if ($Release) { "target\release" } else { "target\debug" }
+$profile = if ($Debug) { "" } else { "--release" }
+$targetDir = if ($Debug) { "target\debug" } else { "target\release" }
 
 $cargoToml = Get-Content Cargo.toml -Raw
 $version = if ($cargoToml -match 'version\s*=\s*"([^"]+)"') { $Matches[1] } else { "0.1.0" }
