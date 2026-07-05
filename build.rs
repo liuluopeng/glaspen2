@@ -265,6 +265,8 @@ fn main() {
                 "libiconv-2.dll", "libintl-8.dll", "libpcre2-8-0.dll",
                 "libbz2-1.dll", "libbrotlicommon.dll", "libbrotlidec.dll",
                 "libffi-8.dll", "libgraphite2.dll",
+                "libgcc_s_seh-1.dll", "libwinpthread-1.dll", "libstdc++-6.dll",
+                "libdatrie-1.dll", "libfribidi-0.dll",
             ];
             for dll in &cairo_dlls {
                 let src = msys_bin.join(dll);
