@@ -386,7 +386,7 @@ namespace GlasPen2
                 int id = (int)m.WParam;
                 if (id == 1) { ClearAll(); _fakeStrokeForm.ShowNotification("清屏"); }
                 else if (id == 2) Application.Exit();
-                else if (id == 3) { ToggleBlockMode(); _fakeStrokeForm.ShowNotification(_isBlocking ? "拦截模式" : "穿透模式"); }
+                else if (id == 3) { ToggleHighlight(); _fakeStrokeForm.ShowNotification(this.Opacity > 0.5 ? "高亮笔迹" : "关闭高亮"); }
                 else if (id == 4) ExportGif();
                 else if (id == 5) PrevPage();
                 else if (id == 6) NextPage();
@@ -607,23 +607,17 @@ namespace GlasPen2
             }
         }
 
-        public void ToggleBlockMode()
+        public void ToggleHighlight()
         {
-            _isBlocking = !_isBlocking;
-            int style = NativeMethods.GetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE);
-            if (_isBlocking)
+            if (this.Opacity < 0.5)
             {
-                // Remove WS_EX_TRANSPARENT — block pen+mouse from reaching lower apps
-                style &= ~NativeMethods.WS_EX_TRANSPARENT;
-                NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
-                Log("[Overlay] Mode=BLOCKING (pen+mouse intercepted, overlay visible)");
+                this.Opacity = 0.81;
+                Log("[Overlay] Highlight ON");
             }
             else
             {
-                // Add WS_EX_TRANSPARENT — pen+mouse pass through to lower apps
-                style |= NativeMethods.WS_EX_TRANSPARENT;
-                NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
-                Log("[Overlay] Mode=TRANSPARENT (pen+mouse pass through)");
+                this.Opacity = 0.01;
+                Log("[Overlay] Highlight OFF");
             }
         }
 
