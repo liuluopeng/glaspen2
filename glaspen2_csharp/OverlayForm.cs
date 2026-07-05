@@ -142,6 +142,12 @@ namespace GlasPen2
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.B);
             NativeMethods.RegisterHotKey(this.Handle, 4,
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.G);
+            // Ctrl+Alt+J — previous page
+            NativeMethods.RegisterHotKey(this.Handle, 5,
+                NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.J);
+            // Ctrl+Alt+K — next page
+            NativeMethods.RegisterHotKey(this.Handle, 6,
+                NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.K);
 
             // Create pressure display
             _pressureForm = new PressureForm();
@@ -376,6 +382,8 @@ namespace GlasPen2
                 else if (id == 2) Application.Exit();
                 else if (id == 3) { ToggleBlockMode(); _fakeStrokeForm.ShowNotification(_isBlocking ? "拦截模式" : "穿透模式"); }
                 else if (id == 4) ExportGif();
+                else if (id == 5) PrevPage();
+                else if (id == 6) NextPage();
             }
             base.WndProc(ref m);
         }
@@ -616,6 +624,26 @@ namespace GlasPen2
             _fakeStrokeForm.ClearAll();
             this.Invalidate();
             Log("[Overlay] Cleared");
+        }
+
+        // ── Page navigation (Ctrl+Alt+J / Ctrl+Alt+K) ──
+
+        public void PrevPage()
+        {
+            long target = GlaspenNative.glaspen2_prev_screen_id();
+            if (target > 0)
+                _fakeStrokeForm.LoadAndReplayFromNative(target);
+            else
+                _fakeStrokeForm.ShowNotification("没有上一页");
+        }
+
+        public void NextPage()
+        {
+            long target = GlaspenNative.glaspen2_next_screen_id();
+            if (target > 0)
+                _fakeStrokeForm.LoadAndReplayFromNative(target);
+            else
+                _fakeStrokeForm.ShowNotification("没有下一页");
         }
 
         private int ClampX(int x) { return Math.Max(0, Math.Min(x, _canvas.Width - 1)); }
@@ -896,6 +924,8 @@ namespace GlasPen2
                     NativeMethods.UnregisterHotKey(this.Handle, 2);
                     NativeMethods.UnregisterHotKey(this.Handle, 3);
                     NativeMethods.UnregisterHotKey(this.Handle, 4);
+                    NativeMethods.UnregisterHotKey(this.Handle, 5);
+                    NativeMethods.UnregisterHotKey(this.Handle, 6);
                 }
                 if (_unblockTimer != null) { _unblockTimer.Stop(); _unblockTimer.Dispose(); }
                 if (_pressureForm != null) { _pressureForm.Close(); _pressureForm.Dispose(); }

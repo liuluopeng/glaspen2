@@ -394,6 +394,99 @@ namespace GlasPen2
             }
         }
 
+        /// <summary>
+        /// Load strokes from Rust DB for a given screen and replay them.
+        /// Called by page navigation hotkeys (Ctrl+Alt+J / Ctrl+Alt+K).
+        /// </summary>
+        public void LoadAndReplayFromNative(long screenId)
+        {
+            GlaspenNative.glaspen2_load_strokes_for_screen(screenId);
+            GlaspenNative.glaspen2_smooth_loaded_strokes();
+
+            int count = GlaspenNative.glaspen2_stroke_count();
+
+            // Clear canvas
+            _g.Clear(Color.Transparent);
+
+            // Draw all strokes from Rust FFI
+            IntPtr hdc = GetWindowDC();
+            Graphics winG = (hdc != IntPtr.Zero) ? Graphics.FromHdc(hdc) : null;
+            try
+            {
+                if (winG != null) winG.SmoothingMode = SmoothingMode.None;
+
+                for (int i = 0; i < count; i++)
+                {
+                    int ptCount = GlaspenNative.glaspen2_get_stroke_point_count(i);
+                    if (ptCount < 1) continue;
+
+                    GlaspenNative.glaspen2_get_stroke_color(i, out double r, out double g, out double b);
+                    double avgW = GlaspenNative.glaspen2_get_stroke_avg_width(i);
+                    var color = Color.FromArgb((int)(r * 255), (int)(g * 255), (int)(b * 255));
+                    float width = (float)avgW;
+
+                    if (ptCount == 1)
+                    {
+                        GlaspenNative.glaspen2_get_stroke_point(i, 0, out double px, out double py);
+                        float rad = width / 2f;
+                        using (var pen = new Pen(color, width))
+                        {
+                            pen.StartCap = LineCap.Round;
+                            pen.EndCap = LineCap.Round;
+                            _g.DrawEllipse(pen, (float)px - rad, (float)py - rad, width, width);
+                        }
+                        if (winG != null)
+                        {
+                            using (var pen = new Pen(color, width))
+                            {
+                                pen.StartCap = LineCap.Round;
+                                pen.EndCap = LineCap.Round;
+                                winG.DrawEllipse(pen, (float)px - rad, (float)py - rad, width, width);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Collect points
+                        var pts = new PointF[ptCount];
+                        for (int j = 0; j < ptCount; j++)
+                        {
+                            GlaspenNative.glaspen2_get_stroke_point(i, j, out double px, out double py);
+                            pts[j] = new PointF((float)px, (float)py);
+                        }
+
+                        // Draw as connected line segments (simplified — no Catmull-Rom for replay)
+                        using (var pen = new Pen(color, width))
+                        {
+                            pen.StartCap = LineCap.Round;
+                            pen.EndCap = LineCap.Round;
+                            pen.LineJoin = LineJoin.Round;
+                            _g.DrawLines(pen, pts);
+                        }
+                        if (winG != null)
+                        {
+                            using (var pen = new Pen(color, width))
+                            {
+                                pen.StartCap = LineCap.Round;
+                                pen.EndCap = LineCap.Round;
+                                pen.LineJoin = LineJoin.Round;
+                                winG.DrawLines(pen, pts);
+                            }
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                if (winG != null) winG.Dispose();
+                if (hdc != IntPtr.Zero) ReleaseWindowDC(hdc);
+            }
+
+            ShowNotification(count > 0
+                ? string.Format("第 {0} 页 ({1} 笔)", screenId, count)
+                : string.Format("第 {0} 页为空", screenId));
+        }
+
         public void DrawCrosshair(int x, int y)
         {
             if (!this.IsHandleCreated) return;
