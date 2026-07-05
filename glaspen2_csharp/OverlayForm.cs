@@ -51,9 +51,7 @@ namespace GlasPen2
         private int _colorIndex = 0;
         private int _widthIndex = 3; // default: 中
 
-        // Smooth curve: collect recent points for spline interpolation
-        private readonly List<PointF> _recentPoints = new List<PointF>();
-        private const int MAX_RECENT = 8; // rolling window for curve smoothing
+        // Smooth curve: now handled by ink-stroke-modeler (Rust FFI)
 
         // Cursor
         private IntPtr _transparentCursor = IntPtr.Zero;
@@ -523,58 +521,46 @@ namespace GlasPen2
                 _currentWidth = _penWidth * (0.3f + (press / 16000f) * 1.7f);
                 float cx = ClampF(sx - this.Left);
                 float cy = ClampF(sy - this.Top);
-                var pt = new PointF(cx, cy);
 
                 // Fake stroke offset position
                 float fx = cx + FAKE_OFFSET_X;
                 float fy = cy + FAKE_OFFSET_Y;
 
+                double ts = GlaspenNative.glaspen2_now_secs();
+
                 if (!_isDrawing)
                 {
-                    _fakeStrokeForm.ClearCrosshair(); // remove crosshair before drawing
+                    _fakeStrokeForm.ClearCrosshair();
                     _isDrawing = true;
-                    _recentPoints.Clear();
-                    _recentPoints.Add(pt);
-                    using (var pen = new Pen(_penColor, _currentWidth))
-                    {
-                        pen.StartCap = LineCap.Round;
-                        pen.EndCap = LineCap.Round;
-                        _g.DrawEllipse(pen, cx - _currentWidth / 2, cy - _currentWidth / 2, _currentWidth, _currentWidth);
-                    }
-                    // Fake stroke
+
+                    // Feed to ink-stroke-modeler
+                    GlaspenNative.glaspen2_modeler_begin(
+                        _penColor.R / 255.0, _penColor.G / 255.0, _penColor.B / 255.0,
+                        cx, cy, press, ts, _currentWidth);
+
+                    // Draw modeler output
+                    DrawModelerOutput();
                     _fakeStrokeForm.BeginStroke(fx, fy, _currentWidth);
                 }
                 else
                 {
-                    _recentPoints.Add(pt);
-                    if (_recentPoints.Count > MAX_RECENT)
-                        _recentPoints.RemoveAt(0);
+                    // Feed to ink-stroke-modeler
+                    GlaspenNative.glaspen2_modeler_move(cx, cy, press, ts, _currentWidth);
 
-                    // Draw smooth curve through recent points
-                    using (var pen = new Pen(_penColor, _currentWidth))
-                    {
-                        pen.StartCap = LineCap.Round;
-                        pen.EndCap = LineCap.Round;
-                        pen.LineJoin = LineJoin.Round;
-
-                        if (_recentPoints.Count >= 3)
-                        {
-                            _g.DrawCurve(pen, _recentPoints.ToArray(), 0.5f);
-                        }
-                        else if (_recentPoints.Count == 2)
-                        {
-                            _g.DrawLine(pen, _recentPoints[0], _recentPoints[1]);
-                        }
-                    }
-                    // Fake stroke (offset)
+                    // Draw modeler output
+                    DrawModelerOutput();
                     _fakeStrokeForm.AddPoint(fx, fy, _currentWidth);
                 }
-                _lastPoint = pt;
                 this.Invalidate();
             }
             else if (!tipDown && _isDrawing)
             {
-                _recentPoints.Clear();
+                double ts = GlaspenNative.glaspen2_now_secs();
+                GlaspenNative.glaspen2_modeler_end(_screenX - this.Left, _screenY - this.Top, _pressure, ts, _currentWidth);
+                DrawModelerOutput();
+                GlaspenNative.glaspen2_modeler_commit_to_strokes(
+                    _penColor.R / 255.0, _penColor.G / 255.0, _penColor.B / 255.0,
+                    IntPtr.Zero, 0);
                 _isDrawing = false;
                 _fakeStrokeForm.EndStroke();
                 this.Invalidate();
@@ -677,6 +663,44 @@ namespace GlasPen2
         private int ClampX(int x) { return Math.Max(0, Math.Min(x, _canvas.Width - 1)); }
         private int ClampY(int y) { return Math.Max(0, Math.Min(y, _canvas.Height - 1)); }
         private float ClampF(float v) { return Math.Max(0, Math.Min(v, _canvas.Width - 1)); }
+
+        /// <summary>
+        /// Draw smoothed points from ink-stroke-modeler onto the canvas.
+        /// Modeler outputs sub-pixel coordinates with variable width — no further smoothing needed.
+        /// </summary>
+        private void DrawModelerOutput()
+        {
+            int count = GlaspenNative.glaspen2_modeler_point_count();
+            if (count < 1) return;
+
+            double prevX, prevY, prevW;
+            GlaspenNative.glaspen2_modeler_get_point(0, out prevX, out prevY, out prevW);
+
+            // First point: draw dot
+            float w0 = (float)prevW;
+            using (var pen = new Pen(_penColor, w0))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                _g.DrawEllipse(pen, (float)prevX - w0 / 2, (float)prevY - w0 / 2, w0, w0);
+            }
+
+            // Subsequent points: draw line segments with variable width
+            for (int i = 1; i < count; i++)
+            {
+                double px, py, pw;
+                GlaspenNative.glaspen2_modeler_get_point(i, out px, out py, out pw);
+                float lw = (float)pw;
+                using (var pen = new Pen(_penColor, lw))
+                {
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    pen.LineJoin = LineJoin.Round;
+                    _g.DrawLine(pen, (float)prevX, (float)prevY, (float)px, (float)py);
+                }
+                prevX = px; prevY = py; prevW = pw;
+            }
+        }
 
         /// <summary>
         /// Export the fake stroke canvas as GIF, save to desktop, copy path to clipboard.
