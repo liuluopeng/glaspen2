@@ -26,6 +26,7 @@ namespace GlasPen2
 
         // Crosshair (drawn to DIB via GDI+)
         private Point _lastCrosshair = new Point(-1, -1);
+        private Point _prevCrosshair = new Point(-1, -1);
         private const int CROSSHAIR_RADIUS = 10;
 
         // On-screen notification
@@ -380,11 +381,11 @@ namespace GlasPen2
         {
             if (_lastCrosshair.X >= 0)
             {
-                // Only restore the old crosshair region from Cairo surface, not full screen
                 int pad = CROSSHAIR_RADIUS + 4;
                 CopyCairoRectToDib(_lastCrosshair.X - pad, _lastCrosshair.Y - pad, pad * 2, pad * 2);
                 _lastCrosshair = new Point(-1, -1);
-                PresentDib(true);
+                _prevCrosshair = new Point(-1, -1);
+                PresentDib(true); // force: pen left range, ensure clean state
             }
         }
 
@@ -392,6 +393,7 @@ namespace GlasPen2
         {
             _isDrawing = false;
             _lastCrosshair = new Point(-1, -1);
+            _prevCrosshair = new Point(-1, -1);
 
             if (_renderer != IntPtr.Zero)
             {
@@ -422,12 +424,19 @@ namespace GlasPen2
 
         public void DrawCrosshair(float x, float y)
         {
-            _lastCrosshair = new Point((int)x, (int)y);
-            // Only copy the tiny crosshair region from Cairo → DIB, not full screen
             int pad = CROSSHAIR_RADIUS + 4;
+
+            // Clear previous crosshair position (restore Cairo pixels beneath it)
+            if (_prevCrosshair.X >= 0)
+                CopyCairoRectToDib(_prevCrosshair.X - pad, _prevCrosshair.Y - pad, pad * 2, pad * 2);
+
+            _prevCrosshair = _lastCrosshair;
+            _lastCrosshair = new Point((int)x, (int)y);
+
+            // Copy Cairo pixels for new crosshair position
             CopyCairoRectToDib(_lastCrosshair.X - pad, _lastCrosshair.Y - pad, pad * 2, pad * 2);
             DrawCrosshairToDib();
-            PresentDib(true); // force immediate so cursor feels responsive
+            PresentDib(false); // throttled — 100 FPS is plenty for cursor
         }
 
         protected override void OnPaint(PaintEventArgs e) { }
