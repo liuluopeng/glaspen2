@@ -62,6 +62,9 @@ namespace GlasPen2
         // Block mode: toggle WS_EX_TRANSPARENT to block/allow pen+mouse passthrough
         private bool _isBlocking = false; // start in transparent (pass-through) mode
 
+        // Drawing enabled: Ctrl+Alt+V toggles. When disabled, pen input passes through entirely.
+        private bool _drawingEnabled = true;
+
         // Pressure display
         private PressureForm _pressureForm;
 
@@ -148,6 +151,9 @@ namespace GlasPen2
             // Ctrl+Alt+K — next page
             NativeMethods.RegisterHotKey(this.Handle, 6,
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.K);
+            // Ctrl+Alt+V — toggle drawing enabled (disable pen overlay, restore pen to default)
+            NativeMethods.RegisterHotKey(this.Handle, 7,
+                NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.V);
 
             // Create pressure display
             _pressureForm = new PressureForm();
@@ -384,12 +390,16 @@ namespace GlasPen2
                 else if (id == 4) ExportGif();
                 else if (id == 5) PrevPage();
                 else if (id == 6) NextPage();
+                else if (id == 7) { ToggleDrawingEnabled(); _fakeStrokeForm.ShowNotification(_drawingEnabled ? "涂鸦已开启" : "涂鸦已关闭"); }
             }
             base.WndProc(ref m);
         }
 
         private void ProcessRawInput(IntPtr hRawInput)
         {
+            // Skip all pen processing when drawing is disabled (Ctrl+Alt+V)
+            if (!_drawingEnabled) return;
+
             uint dwSize = 0;
             uint headerSize = (uint)Marshal.SizeOf(typeof(NativeMethods.RAWINPUTHEADER));
             NativeMethods.GetRawInputData(hRawInput, NativeMethods.RID_INPUT,
@@ -614,6 +624,30 @@ namespace GlasPen2
                 style |= NativeMethods.WS_EX_TRANSPARENT;
                 NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
                 Log("[Overlay] Mode=TRANSPARENT (pen+mouse pass through)");
+            }
+        }
+
+        /// <summary>
+        /// Ctrl+Alt+V: Toggle drawing enabled. When disabled, pen input passes through
+        /// to other apps entirely (like a normal pen). Restores pen to default behavior.
+        /// </summary>
+        public void ToggleDrawingEnabled()
+        {
+            _drawingEnabled = !_drawingEnabled;
+            int style = NativeMethods.GetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE);
+            if (!_drawingEnabled)
+            {
+                // Force transparent — all input passes through, pen behaves normally
+                style |= NativeMethods.WS_EX_TRANSPARENT;
+                NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
+                _isBlocking = false;
+                _fakeStrokeForm.ClearCrosshair();
+                Log("[Overlay] Drawing DISABLED — pen restored to default");
+            }
+            else
+            {
+                // Restore auto-block behavior (will block on next pen hover)
+                Log("[Overlay] Drawing ENABLED");
             }
         }
 
@@ -926,6 +960,7 @@ namespace GlasPen2
                     NativeMethods.UnregisterHotKey(this.Handle, 4);
                     NativeMethods.UnregisterHotKey(this.Handle, 5);
                     NativeMethods.UnregisterHotKey(this.Handle, 6);
+                    NativeMethods.UnregisterHotKey(this.Handle, 7);
                 }
                 if (_unblockTimer != null) { _unblockTimer.Stop(); _unblockTimer.Dispose(); }
                 if (_pressureForm != null) { _pressureForm.Close(); _pressureForm.Dispose(); }
