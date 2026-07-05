@@ -77,6 +77,10 @@ namespace GlasPen2
 
             Log("[Main] Starting GlasPen2...");
 
+            // Initialize Rust database (creates first screen record)
+            var screen = SystemInformation.VirtualScreen;
+            GlaspenNative.glaspen2_init_db(screen.Width, screen.Height);
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 

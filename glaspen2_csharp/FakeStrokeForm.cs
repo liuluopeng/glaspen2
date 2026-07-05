@@ -231,6 +231,12 @@ namespace GlasPen2
             _pointBuffer.Add(pt);
             _lastDirectPoint = new Point(x, y);
             DrawDot(pt, _currentWidth);
+
+            // Save to Rust DB
+            GlaspenNative.glaspen2_begin_stroke(
+                _penColor.R / 255.0, _penColor.G / 255.0, _penColor.B / 255.0,
+                _currentWidth);
+            GlaspenNative.glaspen2_add_point(x, y, _currentWidth);
         }
 
         public void AddPoint(int x, int y, float width)
@@ -239,6 +245,9 @@ namespace GlasPen2
             _currentWidth = width;
             var pt = new PointF(x, y);
             _pointBuffer.Add(pt);
+
+            // Save to Rust DB
+            GlaspenNative.glaspen2_add_point(x, y, width);
 
             // Process all available Catmull-Rom segments, drawing to ONE window DC
             if (_unprocessedIndex + 3 < _pointBuffer.Count)
@@ -347,6 +356,9 @@ namespace GlasPen2
             _pointBuffer.Clear();
             _unprocessedIndex = 0;
             _isDrawing = false;
+
+            // Save stroke to Rust DB
+            GlaspenNative.glaspen2_end_stroke();
         }
 
         public void ClearCrosshair()
@@ -379,6 +391,10 @@ namespace GlasPen2
             _lastCrosshair = new Point(-1, -1);
             _pointBuffer.Clear();
             _unprocessedIndex = 0;
+
+            // Tell Rust to save current screen and start a new one
+            GlaspenNative.glaspen2_clear_strokes(_canvas.Width, _canvas.Height);
+
             _g.Clear(Color.Transparent);
             if (this.IsHandleCreated)
             {
