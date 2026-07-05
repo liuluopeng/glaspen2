@@ -1,4 +1,6 @@
-玻璃数位笔:
+[English](./README_EN.md)
+
+# 玻璃数位笔
 
 <p align="center"><img src="./icon.svg" width="120"></p>
 
