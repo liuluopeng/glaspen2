@@ -421,12 +421,13 @@ namespace GlasPen2
 
             int count = GlaspenNative.glaspen2_stroke_count();
 
-            // Clear canvas
+            // Clear canvas bitmap
             _g.Clear(Color.Transparent);
 
-            // Draw all strokes from Rust FFI
+            // Clear window DC (actual screen)
             IntPtr hdc = GetWindowDC();
             Graphics winG = (hdc != IntPtr.Zero) ? Graphics.FromHdc(hdc) : null;
+            if (winG != null) winG.Clear(Color.Fuchsia);
             try
             {
                 if (winG != null) winG.SmoothingMode = SmoothingMode.None;
