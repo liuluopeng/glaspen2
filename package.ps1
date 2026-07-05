@@ -60,6 +60,7 @@ Remove-Item -Recurse -Force $payload -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $payload | Out-Null
 
 Copy-Item "$targetDir\glaspen2.exe" $payload
+Copy-Item "$targetDir\glaspen2.dll" $payload
 Copy-Item "glaspen2_csharp\glaspen2_app.exe" $payload
 Copy-Item "LICENSE" $payload
 Copy-Item "README.md" $payload
