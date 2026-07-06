@@ -15,6 +15,7 @@ glaspen2_csharp/glaspen2_app.exe
 .csharp_compile.lock
 
 /release_history
+note.md
 
 # Flutter
 flutter_settings/pubspec.lock
