@@ -2,9 +2,16 @@
 
 use std::path::PathBuf;
 use std::slice;
+use std::sync::{Mutex, OnceLock};
 use std::os::raw::{c_int, c_double, c_uchar, c_char};
 use std::ffi::{CStr, CString};
-use std::sync::Mutex;
+
+/// Tokio runtime for bridging sync FFI → async SQLite.
+/// The runtime is lazily created on first use and lives for the app's lifetime.
+pub fn runtime() -> &'static tokio::runtime::Runtime {
+    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RT.get_or_init(|| tokio::runtime::Runtime::new().expect("Failed to create tokio runtime"))
+}
 
 // Cairo: real crate when available, stub for cross-compilation / Windows
 #[cfg(all(feature = "cairo_real", not(target_os = "windows")))]
@@ -49,7 +56,7 @@ pub extern "C" fn glaspen2_begin_stroke(r: c_double, g: c_double, b: c_double, w
     let mut strokes = STROKES.lock().unwrap();
     strokes.push(Stroke { r, g, b, points: Vec::new(), point_colors: None });
     *RAW_STROKE_START.lock().unwrap() = None;
-    db::begin_stroke(r, g, b, width_scale);
+    runtime().block_on(db::begin_stroke(r, g, b, width_scale));
 }
 
 #[no_mangle]
@@ -58,20 +65,20 @@ pub extern "C" fn glaspen2_add_point(x: c_double, y: c_double, width: c_double) 
     if let Some(stroke) = strokes.last_mut() {
         stroke.points.push((x, y, width, 0.0));
     }
-    db::add_point(x, y, width, 0.0);
+    db::add_point(x, y, width, 0.0); // sync — pure memory push
 }
 
 #[no_mangle]
 pub extern "C" fn glaspen2_end_stroke() {
-    db::end_stroke();
+    runtime().block_on(db::end_stroke());
 }
 
 #[no_mangle]
 pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) {
-    db::end_stroke(); // flush pending before checking
+    runtime().block_on(db::end_stroke()); // flush pending before checking
     let current = db::current_screen();
-    if db::screen_has_strokes(current) {
-        db::new_screen(screen_w, screen_h);
+    if runtime().block_on(db::screen_has_strokes(current)) {
+        runtime().block_on(db::new_screen(screen_w, screen_h));
     }
     let mut strokes = STROKES.lock().unwrap();
     strokes.clear();
@@ -86,15 +93,15 @@ pub extern "C" fn glaspen2_undo_last_stroke() -> c_int {
         return -1;
     }
     strokes.pop();
-    db::delete_last_stroke();
+    runtime().block_on(db::delete_last_stroke());
     strokes.len() as c_int
 }
 
 /// Initialize the database and create the first screen record. Call once at app start.
 #[no_mangle]
 pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
-    db::init();
-    db::new_screen(screen_w, screen_h);
+    runtime().block_on(db::init());
+    runtime().block_on(db::new_screen(screen_w, screen_h));
 }
 
 // --- Modeler FFI ---
@@ -104,8 +111,8 @@ pub extern "C" fn glaspen2_modeler_begin(r: c_double, g: c_double, b: c_double, 
     modeler::begin_stroke(x, y, pressure, timestamp, width_scale);
     *RAW_STROKE_START.lock().unwrap() = Some(timestamp);
     // Start DB stroke with correct color
-    db::begin_stroke(r, g, b, width_scale);
-    db::add_point(x, y, pressure_to_width(pressure, width_scale), 0.0);
+    runtime().block_on(db::begin_stroke(r, g, b, width_scale));
+    db::add_point(x, y, pressure_to_width(pressure, width_scale), 0.0); // sync
     // Start STROKES entry
     let mut strokes = STROKES.lock().unwrap();
     strokes.push(Stroke { r, g, b, points: Vec::new(), point_colors: None });
@@ -122,8 +129,8 @@ pub extern "C" fn glaspen2_modeler_move(x: c_double, y: c_double, pressure: c_do
 pub extern "C" fn glaspen2_modeler_end(x: c_double, y: c_double, pressure: c_double, timestamp: c_double, width_scale: c_double) {
     modeler::end_stroke(x, y, pressure, timestamp, width_scale);
     let start = RAW_STROKE_START.lock().unwrap().unwrap_or(timestamp);
-    db::add_point(x, y, pressure_to_width(pressure, width_scale), timestamp - start);
-    db::end_stroke();
+    db::add_point(x, y, pressure_to_width(pressure, width_scale), timestamp - start); // sync
+    runtime().block_on(db::end_stroke());
 }
 
 /// Commit the modeler buffer into STROKES. Call after drawing the buffer.
@@ -197,7 +204,7 @@ fn pressure_to_width(pressure: f64, width_scale: f64) -> f64 {
 /// Load strokes from DB into STROKES for a given screen. Returns stroke count.
 #[no_mangle]
 pub extern "C" fn glaspen2_load_strokes_for_screen(screen_id: i64) -> c_int {
-    let data = db::strokes_for_screen(screen_id);
+    let data = runtime().block_on(db::strokes_for_screen(screen_id));
     let count = data.len() as c_int;
     let mut strokes = STROKES.lock().unwrap();
     strokes.clear();
@@ -224,12 +231,12 @@ pub extern "C" fn glaspen2_smooth_loaded_strokes() {
 
 #[no_mangle]
 pub extern "C" fn glaspen2_prev_screen_id() -> i64 {
-    db::prev_screen(db::current_screen()).unwrap_or(0)
+    runtime().block_on(db::prev_screen(db::current_screen())).unwrap_or(0)
 }
 
 #[no_mangle]
 pub extern "C" fn glaspen2_next_screen_id() -> i64 {
-    db::next_screen(db::current_screen()).unwrap_or(0)
+    runtime().block_on(db::next_screen(db::current_screen())).unwrap_or(0)
 }
 
 #[no_mangle]
@@ -392,12 +399,12 @@ fn xoj_timestamped_path() -> PathBuf {
 
 #[no_mangle]
 pub extern "C" fn glaspen2_save_settings(r: c_double, g: c_double, b: c_double, width_scale: c_double) {
-    db::save_settings(r, g, b, width_scale);
+    runtime().block_on(db::save_settings(r, g, b, width_scale));
 }
 
 #[no_mangle]
 pub extern "C" fn glaspen2_load_settings_parts(r: *mut c_double, g: *mut c_double, b: *mut c_double, w: *mut c_double) -> c_int {
-    match db::load_settings() {
+    match runtime().block_on(db::load_settings()) {
         Some((rr, gg, bb, ww)) => {
             unsafe { *r = rr; *g = gg; *b = bb; *w = ww; }
             1
@@ -409,13 +416,13 @@ pub extern "C" fn glaspen2_load_settings_parts(r: *mut c_double, g: *mut c_doubl
 #[no_mangle]
 pub extern "C" fn glaspen2_save_bool_setting(key: *const c_char, val: c_int) {
     let k = unsafe { CStr::from_ptr(key) }.to_str().unwrap_or("");
-    db::save_setting(k, if val != 0 { "1" } else { "0" });
+    runtime().block_on(db::save_setting(k, if val != 0 { "1" } else { "0" }));
 }
 
 #[no_mangle]
 pub extern "C" fn glaspen2_load_bool_setting(key: *const c_char) -> c_int {
     let k = unsafe { CStr::from_ptr(key) }.to_str().unwrap_or("");
-    db::load_setting(k).and_then(|v| v.parse::<i32>().ok()).unwrap_or(0)
+    runtime().block_on(db::load_setting(k)).and_then(|v| v.parse::<i32>().ok()).unwrap_or(0)
 }
 
 // --- Launch at login (macOS LaunchAgent) ---
