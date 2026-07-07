@@ -255,8 +255,6 @@ async fn apply_defaults(pool: &SqlitePool) {
         ("pen_g", "0.0"),
         ("pen_b", "0.0"),
         ("width_scale", "1.0"),
-        ("outline_enabled", "0"),
-        ("inverse_enabled", "0"),
         ("glass_alpha", "0"),
         ("glass_enabled", "0"),
     ];

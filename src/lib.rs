@@ -37,7 +37,6 @@ pub struct Stroke {
     pub g: f64,
     pub b: f64,
     pub points: Vec<(f64, f64, f64, f64)>, // (x, y, width, relative_time)
-    pub point_colors: Option<Vec<(f64, f64, f64)>>, // per-point color for inverse mode (memory only)
 }
 
 impl Stroke {
@@ -55,7 +54,7 @@ static RAW_STROKE_START: Mutex<Option<f64>> = Mutex::new(None);
 #[no_mangle]
 pub extern "C" fn glaspen2_begin_stroke(r: c_double, g: c_double, b: c_double, width_scale: c_double) {
     let mut strokes = STROKES.lock().unwrap();
-    strokes.push(Stroke { r, g, b, points: Vec::new(), point_colors: None });
+    strokes.push(Stroke { r, g, b, points: Vec::new() });
     *RAW_STROKE_START.lock().unwrap() = None;
     runtime().block_on(db::begin_stroke(r, g, b, width_scale));
 }
@@ -116,7 +115,7 @@ pub extern "C" fn glaspen2_modeler_begin(r: c_double, g: c_double, b: c_double, 
     state::buffer_point(x, y, pressure_to_width(pressure, width_scale), 0.0); // sync
     // Start STROKES entry
     let mut strokes = STROKES.lock().unwrap();
-    strokes.push(Stroke { r, g, b, points: Vec::new(), point_colors: None });
+    strokes.push(Stroke { r, g, b, points: Vec::new() });
 }
 
 #[no_mangle]
@@ -135,40 +134,20 @@ pub extern "C" fn glaspen2_modeler_end(x: c_double, y: c_double, pressure: c_dou
 }
 
 /// Commit the modeler buffer into STROKES. Call after drawing the buffer.
-/// If inv_colors is non-null and inv_count > 0, uses per-point inverse colors.
-/// inv_colors is a flat array: [r0,g0,b0, r1,g1,b1, ...] — one per modeler output point.
-/// DB stores the original (r,g,b) color; point_colors is memory-only for rendering.
 #[no_mangle]
 pub extern "C" fn glaspen2_modeler_commit_to_strokes(
     r: c_double, g: c_double, b: c_double,
-    inv_colors: *const c_double, inv_count: c_int,
 ) {
     let smoothed = modeler::take_buffer();
-    let n_smoothed = smoothed.len();
     let mut strokes = STROKES.lock().unwrap();
     if let Some(last) = strokes.last_mut() {
         last.r = r;
         last.g = g;
         last.b = b;
 
-        // Per-point inverse colors (1:1 with modeler output)
-        let point_colors = if !inv_colors.is_null() && inv_count > 0 {
-            let inv = unsafe { std::slice::from_raw_parts(inv_colors, (inv_count * 3) as usize) };
-            let n = n_smoothed.min(inv_count as usize);
-            let mut colors = Vec::with_capacity(n);
-            for i in 0..n {
-                let ci = i * 3;
-                colors.push((inv[ci], inv[ci + 1], inv[ci + 2]));
-            }
-            Some(colors)
-        } else {
-            None
-        };
-
         for (sx, sy, sw, st) in smoothed {
             last.points.push((sx, sy, sw, st));
         }
-        last.point_colors = point_colors;
     }
 }
 
@@ -210,7 +189,7 @@ pub extern "C" fn glaspen2_load_strokes_for_screen(screen_id: i64) -> c_int {
     let mut strokes = STROKES.lock().unwrap();
     strokes.clear();
     for s in data {
-        strokes.push(Stroke { r: s.r, g: s.g, b: s.b, points: s.points, point_colors: None });
+        strokes.push(Stroke { r: s.r, g: s.g, b: s.b, points: s.points });
     }
     // Update current screen in DB
     state::set_current_screen_id(screen_id);
@@ -288,20 +267,6 @@ pub extern "C" fn glaspen2_get_stroke_point_width(idx: c_int, pidx: c_int) -> c_
         .map_or(1.0, |p| p.2)
 }
 
-/// Get per-point color for inverse mode. Returns 1 if available, 0 otherwise.
-#[no_mangle]
-pub extern "C" fn glaspen2_get_stroke_point_color(idx: c_int, pidx: c_int, r: *mut c_double, g: *mut c_double, b: *mut c_double) -> c_int {
-    let strokes = STROKES.lock().unwrap();
-    if let Some(s) = strokes.get(idx as usize) {
-        if let Some(ref colors) = s.point_colors {
-            if let Some(&(cr, cg, cb)) = colors.get(pidx as usize) {
-                unsafe { *r = cr; *g = cg; *b = cb; }
-                return 1;
-            }
-        }
-    }
-    0
-}
 
 
 
