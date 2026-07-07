@@ -662,17 +662,23 @@ fn build_cropped_svg() -> Option<String> {
         if s.points.is_empty() { continue; }
         let color_hex = format!("#{:02x}{:02x}{:02x}",
             (s.r * 255.0) as u8, (s.g * 255.0) as u8, (s.b * 255.0) as u8);
-        let mut d = String::new();
-        let (x0, y0, _) = s.points[0];
-        d.push_str(&format!("M {:.1} {:.1}", x0 - bx_min, y0 - by_min));
-        for i in 1..s.points.len() {
-            let (x, y, _) = s.points[i];
-            d.push_str(&format!(" L {:.1} {:.1}", x - bx_min, y - by_min));
+        for i in 0..s.points.len() {
+            let (x, y, w) = s.points[i];
+            let cx = x - bx_min;
+            let cy = y - by_min;
+            if i == 0 {
+                // First point: filled circle dot
+                svg.push_str(&format!(
+                    "  <circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"{:.1}\" fill=\"{}\"/>\n",
+                    cx, cy, w * 0.5, color_hex));
+            } else {
+                let (prev_x, prev_y, _) = s.points[i - 1];
+                // Segment with destination-point width and round caps
+                svg.push_str(&format!(
+                    "  <line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"{:.1}\" stroke-linecap=\"round\"/>\n",
+                    prev_x - bx_min, prev_y - by_min, cx, cy, color_hex, w));
+            }
         }
-        let avg_w = s.avg_width();
-        svg.push_str(&format!(
-            "  <path d=\"{}\" stroke=\"{}\" stroke-width=\"{:.1}\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n",
-            d, color_hex, avg_w));
     }
     svg.push_str("</svg>\n");
     Some(svg)

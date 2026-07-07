@@ -1497,9 +1497,12 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                     char *svg = glaspen2_get_cropped_svg();
                     if (svg) {
                         NSString *svgStr = [NSString stringWithUTF8String:svg];
+                        NSData *svgData = [svgStr dataUsingEncoding:NSUTF8StringEncoding];
+                        NSString *base64 = [svgData base64EncodedStringWithOptions:0];
+                        NSString *htmlTag = [NSString stringWithFormat:@"<img src=\"data:image/svg+xml;base64,%@\" />", base64];
                         NSPasteboard *pb = [NSPasteboard generalPasteboard];
                         [pb clearContents];
-                        [pb setString:svgStr forType:NSPasteboardTypeString];
+                        [pb setString:htmlTag forType:NSPasteboardTypeString];
                         glaspen2_free_c_string(svg);
                         show_notification(L(@"SVG 已复制到剪贴板", @"SVG copied to clipboard"));
                     } else {

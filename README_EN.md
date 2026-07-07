@@ -31,16 +31,16 @@ Ideal for remote meetings, teaching, screen annotation, and quick notes.
 
 ## Keyboard Shortcuts
 
-| Function | macOS | Windows |
-|----------|-------|---------|
-| Clear screen | `⌘ + ⌃ + C` | `Ctrl + Alt + C` |
-| Toggle drawing | `⌘ + ⌃ + V` | `Ctrl + Alt + V` |
-| Previous page | `⌘ + ⌃ + J` | `Ctrl + Alt + J` |
-| Next page | `⌘ + ⌃ + K` | `Ctrl + Alt + K` |
+| Function                               | macOS       | Windows          |
+| -------------------------------------- | ----------- | ---------------- |
+| Clear screen                           | `⌘ + ⌃ + C` | `Ctrl + Alt + C` |
+| Toggle drawing                         | `⌘ + ⌃ + V` | `Ctrl + Alt + V` |
+| Previous page                          | `⌘ + ⌃ + J` | `Ctrl + Alt + J` |
+| Next page                              | `⌘ + ⌃ + K` | `Ctrl + Alt + K` |
 | Export SVG + GIF (copies to clipboard) | `⌘ + ⌃ + G` | `Ctrl + Alt + G` |
-| Frosted glass toggle | `⌘ + ⌃ + B` | `Ctrl + Alt + B` |
-| Open settings | `⌘ + ⌃ + ,` | |
-| Quit | | `Ctrl + Alt + Q` |
+| Frosted glass toggle                   | `⌘ + ⌃ + B` | `Ctrl + Alt + B` |
+| Open settings                          | `⌘ + ⌃ + ,` |                  |
+| Quit                                   |             | `Ctrl + Alt + Q` |
 
 ## Installation
 
