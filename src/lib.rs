@@ -28,6 +28,7 @@ pub mod windows;
 
 pub mod db;
 pub mod modeler;
+pub mod state;
 
 // --- Stroke recording for Xournal export ---
 
@@ -65,7 +66,7 @@ pub extern "C" fn glaspen2_add_point(x: c_double, y: c_double, width: c_double) 
     if let Some(stroke) = strokes.last_mut() {
         stroke.points.push((x, y, width, 0.0));
     }
-    db::add_point(x, y, width, 0.0); // sync — pure memory push
+    state::buffer_point(x, y, width, 0.0); // sync
 }
 
 #[no_mangle]
@@ -76,7 +77,7 @@ pub extern "C" fn glaspen2_end_stroke() {
 #[no_mangle]
 pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) {
     runtime().block_on(db::end_stroke()); // flush pending before checking
-    let current = db::current_screen();
+    let current = state::current_screen_id();
     if runtime().block_on(db::screen_has_strokes(current)) {
         runtime().block_on(db::new_screen(screen_w, screen_h));
     }
@@ -112,7 +113,7 @@ pub extern "C" fn glaspen2_modeler_begin(r: c_double, g: c_double, b: c_double, 
     *RAW_STROKE_START.lock().unwrap() = Some(timestamp);
     // Start DB stroke with correct color
     runtime().block_on(db::begin_stroke(r, g, b, width_scale));
-    db::add_point(x, y, pressure_to_width(pressure, width_scale), 0.0); // sync
+    state::buffer_point(x, y, pressure_to_width(pressure, width_scale), 0.0); // sync
     // Start STROKES entry
     let mut strokes = STROKES.lock().unwrap();
     strokes.push(Stroke { r, g, b, points: Vec::new(), point_colors: None });
@@ -122,14 +123,14 @@ pub extern "C" fn glaspen2_modeler_begin(r: c_double, g: c_double, b: c_double, 
 pub extern "C" fn glaspen2_modeler_move(x: c_double, y: c_double, pressure: c_double, timestamp: c_double, width_scale: c_double) {
     modeler::pen_move(x, y, pressure, timestamp, width_scale);
     let start = RAW_STROKE_START.lock().unwrap().unwrap_or(timestamp);
-    db::add_point(x, y, pressure_to_width(pressure, width_scale), timestamp - start);
+    state::buffer_point(x, y, pressure_to_width(pressure, width_scale), timestamp - start);
 }
 
 #[no_mangle]
 pub extern "C" fn glaspen2_modeler_end(x: c_double, y: c_double, pressure: c_double, timestamp: c_double, width_scale: c_double) {
     modeler::end_stroke(x, y, pressure, timestamp, width_scale);
     let start = RAW_STROKE_START.lock().unwrap().unwrap_or(timestamp);
-    db::add_point(x, y, pressure_to_width(pressure, width_scale), timestamp - start); // sync
+    state::buffer_point(x, y, pressure_to_width(pressure, width_scale), timestamp - start); // sync
     runtime().block_on(db::end_stroke());
 }
 
@@ -212,7 +213,7 @@ pub extern "C" fn glaspen2_load_strokes_for_screen(screen_id: i64) -> c_int {
         strokes.push(Stroke { r: s.r, g: s.g, b: s.b, points: s.points, point_colors: None });
     }
     // Update current screen in DB
-    db::set_current_screen(screen_id);
+    state::set_current_screen_id(screen_id);
     count
 }
 
@@ -231,17 +232,17 @@ pub extern "C" fn glaspen2_smooth_loaded_strokes() {
 
 #[no_mangle]
 pub extern "C" fn glaspen2_prev_screen_id() -> i64 {
-    runtime().block_on(db::prev_screen(db::current_screen())).unwrap_or(0)
+    runtime().block_on(db::prev_screen(state::current_screen_id())).unwrap_or(0)
 }
 
 #[no_mangle]
 pub extern "C" fn glaspen2_next_screen_id() -> i64 {
-    runtime().block_on(db::next_screen(db::current_screen())).unwrap_or(0)
+    runtime().block_on(db::next_screen(state::current_screen_id())).unwrap_or(0)
 }
 
 #[no_mangle]
 pub extern "C" fn glaspen2_get_current_screen_id() -> i64 {
-    db::current_screen()
+    state::current_screen_id()
 }
 
 #[no_mangle]

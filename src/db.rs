@@ -1,11 +1,8 @@
-use std::sync::Mutex;
 use std::sync::OnceLock;
 use sqlx::SqlitePool;
+use crate::state;
 
 static DB: OnceLock<SqlitePool> = OnceLock::new();
-static CURRENT_SCREEN_ID: Mutex<i64> = Mutex::new(0);
-static PENDING_STROKE_ID: Mutex<Option<i64>> = Mutex::new(None);
-static PENDING_POINTS: Mutex<Vec<(f64, f64, f64, f64)>> = Mutex::new(Vec::new()); // (x, y, width, relative_time)
 
 fn db_path() -> std::path::PathBuf {
     let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -123,7 +120,7 @@ pub async fn new_screen(screen_w: i32, screen_h: i32) {
         "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (?1, ?2, ?3) RETURNING id"
     ).bind(now).bind(screen_w).bind(screen_h)
         .fetch_one(pool).await.unwrap_or(0);
-    *CURRENT_SCREEN_ID.lock().unwrap() = sid;
+    state::set_current_screen_id(sid);
 }
 
 /// Begin a stroke: insert a row, store id for point buffering.
@@ -132,23 +129,20 @@ pub async fn begin_stroke(r: f64, g: f64, b: f64, width_scale: f64) {
     flush_pending().await;
 
     let pool = DB.get().expect("DB not initialized");
-    let screen_id = *CURRENT_SCREEN_ID.lock().unwrap();
+    let screen_id = state::current_screen_id();
     let now = now_f64();
     let stroke_id = sqlx::query_scalar::<_, i64>(
         "INSERT INTO strokes (screen_id, color_r, color_g, color_b, width_scale, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id"
     ).bind(screen_id).bind(r).bind(g).bind(b).bind(width_scale).bind(now)
         .fetch_optional(pool).await;
     if let Ok(Some(stroke_id)) = stroke_id {
-        *PENDING_STROKE_ID.lock().unwrap() = Some(stroke_id);
-        PENDING_POINTS.lock().unwrap().clear();
+        state::begin_pending(stroke_id);
     }
 }
 
-/// Buffer a point. Will be flushed to DB on end_stroke.
+/// Buffer a point in memory. Will be flushed to DB on end_stroke.
 /// This is NOT async — pure memory operation (Mutex<Vec> push).
-pub fn add_point(x: f64, y: f64, width: f64, t: f64) {
-    PENDING_POINTS.lock().unwrap().push((x, y, width, t));
-}
+//  (buffer_point lives in state.rs — do not re-export)
 
 /// Flush buffered points to DB.
 pub async fn end_stroke() {
@@ -157,19 +151,12 @@ pub async fn end_stroke() {
 
 /// Flush pending points for the current stroke to the database.
 async fn flush_pending() {
-    let stroke_id = {
-        let mut pending = PENDING_STROKE_ID.lock().unwrap();
-        match pending.take() {
-            Some(id) => id,
-            None => return,
-        }
+    let stroke_id = match state::take_pending_stroke_id() {
+        Some(id) => id,
+        None => return,
     };
 
-    let points: Vec<(f64, f64, f64, f64)> = {
-        let mut p = PENDING_POINTS.lock().unwrap();
-        std::mem::take(&mut *p)
-    };
-
+    let points = state::take_pending();
     if points.is_empty() {
         return;
     }
@@ -188,14 +175,6 @@ async fn flush_pending() {
     tx.commit().await.ok();
 }
 
-pub fn current_screen() -> i64 {
-    *CURRENT_SCREEN_ID.lock().unwrap()
-}
-
-pub fn set_current_screen(id: i64) {
-    *CURRENT_SCREEN_ID.lock().unwrap() = id;
-}
-
 /// Check if a screen has any strokes.
 pub async fn screen_has_strokes(screen_id: i64) -> bool {
     let pool = match DB.get() { Some(p) => p, None => return false };
@@ -208,7 +187,7 @@ pub async fn screen_has_strokes(screen_id: i64) -> bool {
 /// Returns true if a stroke was found and deleted.
 pub async fn delete_last_stroke() -> bool {
     let pool = match DB.get() { Some(p) => p, None => return false };
-    let screen_id = *CURRENT_SCREEN_ID.lock().unwrap();
+    let screen_id = state::current_screen_id();
 
     let stroke_id = match sqlx::query_scalar::<_, i64>(
         "SELECT id FROM strokes WHERE screen_id = ?1 ORDER BY id DESC LIMIT 1"
