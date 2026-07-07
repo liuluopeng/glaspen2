@@ -13,9 +13,12 @@
 // App enabled state
 static BOOL g_enabled = YES;
 
-// Screen dimensions (set once at startup)
+// Screen dimensions in logical points (set once at startup)
 static int g_screen_w = 1920;
 static int g_screen_h = 1080;
+
+// Backing scale factor for Retina rendering (1.0 = non-Retina, 2.0 = Retina)
+static CGFloat g_scale = 1.0;
 
 // Forward declarations
 static void flush_to_layer(void);
@@ -101,6 +104,16 @@ static NSVisualEffectView *g_glass_view = nil;
 
 // --- Drawing state ---
 static cairo_surface_t *g_surface = NULL;
+
+// Create a cairo context with the backing scale factor applied.
+// All drawing coordinates remain in logical points; Cairo renders
+// at physical pixel resolution.
+static inline cairo_t *cairo_create_scaled(void) {
+    cairo_t *cr = cairo_create(g_surface);
+    cairo_scale(cr, g_scale, g_scale);
+    return cr;
+}
+
 static double g_last_x = -1, g_last_y = -1;
 static BOOL g_has_last = NO;
 static NSView *g_draw_view = nil;
@@ -299,7 +312,7 @@ static void save_with_background(void) {
 
 static void clear_screen(void) {
     if (!g_surface) return;
-    cairo_t *cr = cairo_create(g_surface);
+    cairo_t *cr = cairo_create_scaled();
     cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     cairo_paint(cr);
     cairo_destroy(cr);
@@ -327,7 +340,7 @@ static void draw_modeler_buffer(void) {
 
     // First point: draw as a dot
     glaspen2_modeler_get_point(0, &prev_x, &prev_y, &prev_w);
-    cairo_t *cr = cairo_create(g_surface);
+    cairo_t *cr = cairo_create_scaled();
     cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
     cairo_arc(cr, prev_x, prev_y, prev_w * 0.5, 0, 2 * M_PI);
     cairo_fill(cr);
@@ -336,7 +349,7 @@ static void draw_modeler_buffer(void) {
     // Subsequent points: draw line segments
     for (int i = 1; i < count; i++) {
         glaspen2_modeler_get_point(i, &px, &py, &pw);
-        cairo_t *cr = cairo_create(g_surface);
+        cairo_t *cr = cairo_create_scaled();
         cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
         cairo_set_line_width(cr, pw);
         cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
@@ -357,7 +370,7 @@ static void replay_strokes_from_memory(void) {
     if (!g_surface) return;
 
     // Clear canvas
-    cairo_t *cr = cairo_create(g_surface);
+    cairo_t *cr = cairo_create_scaled();
     cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     cairo_paint(cr);
     cairo_destroy(cr);
@@ -376,7 +389,7 @@ static void replay_strokes_from_memory(void) {
             glaspen2_get_stroke_point(si, pi, &x1, &y1);
             w = glaspen2_get_stroke_point_width(si, pi);
 
-            cairo_t *cr = cairo_create(g_surface);
+            cairo_t *cr = cairo_create_scaled();
             cairo_set_source_rgba(cr, r, g, b, 1.0);
             cairo_set_line_width(cr, w);
             cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
@@ -401,7 +414,7 @@ static void save_and_exit(int sig) {
 
 static void draw_rainbow_indicator(void) {
     if (!g_surface) return;
-    cairo_t *cr = cairo_create(g_surface);
+    cairo_t *cr = cairo_create_scaled();
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
     // HSV rainbow with full saturation
@@ -878,13 +891,16 @@ static void show_settings_panel(void) {
 
 static void ensure_surface(NSView *view) {
     NSRect bounds = [view bounds];
-    int w = (int)bounds.size.width;
-    int h = (int)bounds.size.height;
+    CGFloat scale = [[view window] backingScaleFactor];
+    if (scale < 1.0) scale = 1.0;
+    int w = (int)(bounds.size.width * scale);
+    int h = (int)(bounds.size.height * scale);
     if (g_surface && cairo_image_surface_get_width(g_surface) == w &&
-        cairo_image_surface_get_height(g_surface) == h) return;
+        cairo_image_surface_get_height(g_surface) == h && g_scale == scale) return;
     if (g_surface) cairo_surface_destroy(g_surface);
     g_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
-    cairo_t *cr = cairo_create(g_surface);
+    g_scale = scale;
+    cairo_t *cr = cairo_create_scaled();
     cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     cairo_paint(cr);
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
@@ -927,7 +943,7 @@ static void on_display_changed(void) {
 
 static void pen_draw(double x, double y, double width) {
     if (!g_surface) return;
-    cairo_t *cr = cairo_create(g_surface);
+    cairo_t *cr = cairo_create_scaled();
     cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
     cairo_set_line_width(cr, width);
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
@@ -1087,7 +1103,7 @@ static void stop_inverse_timer(void) {
 // Raw drawing — surface only, no STROKES/DB side effects
 static void raw_draw_dot(double x, double y, double width) {
     if (!g_surface) return;
-    cairo_t *cr = cairo_create(g_surface);
+    cairo_t *cr = cairo_create_scaled();
     // Outline pass
     if (g_outline_enabled) {
         double or, og, ob;
@@ -1107,7 +1123,7 @@ static void raw_draw_dot(double x, double y, double width) {
 
 static void raw_draw_segment(double x, double y, double width) {
     if (!g_surface) return;
-    cairo_t *cr = cairo_create(g_surface);
+    cairo_t *cr = cairo_create_scaled();
     double extra = g_outline_enabled ? fmax(width * 0.4, 2.0) : 0;
     // Outline pass
     if (g_outline_enabled) {
@@ -1149,7 +1165,7 @@ static void raw_draw_segment(double x, double y, double width) {
 static void rebuild_surface_from_strokes(void) {
     if (!g_surface) return;
     // Clear surface
-    cairo_t *cr = cairo_create(g_surface);
+    cairo_t *cr = cairo_create_scaled();
     cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     cairo_paint(cr);
     cairo_destroy(cr);
@@ -1185,7 +1201,7 @@ static void rebuild_surface_from_strokes(void) {
 
         // Outline pass (if enabled)
         if (g_outline_enabled) {
-            cr = cairo_create(g_surface);
+            cr = cairo_create_scaled();
             for (int i = 0; i < pts; i++) {
                 double or, og, ob;
                 contrast_color(pcr[i], pcg[i], pcb[i], &or, &og, &ob);
@@ -1207,7 +1223,7 @@ static void rebuild_surface_from_strokes(void) {
         }
 
         // Main stroke pass
-        cr = cairo_create(g_surface);
+        cr = cairo_create_scaled();
         for (int i = 0; i < pts; i++) {
             cairo_set_source_rgba(cr, pcr[i], pcg[i], pcb[i], 1.0);
             if (i == 0) {
@@ -1254,7 +1270,10 @@ static void rebuild_surface_from_strokes(void) {
 
     if (image) {
         CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
-        CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), image);
+        // Draw at view bounds (points) — CGContextDrawImage scales the
+        // high-resolution surface down to fit, giving sharp Retina output.
+        NSRect bounds = [self bounds];
+        CGContextDrawImage(ctx, CGRectMake(0, 0, bounds.size.width, bounds.size.height), image);
         CGImageRelease(image);
 
         // Draw notification text
