@@ -802,51 +802,66 @@ pub extern "C" fn glaspen2_save_gif_cropped(
 
 /// Save an animated GIF showing stroke drawing order at real speed.
 /// Uses the timing data stored in each point (relative_time).
+/// Frames are rendered in parallel across available CPU cores.
+#[derive(Clone)]
+struct GifStroke {
+    r: f64, g: f64, b: f64,
+    points: Vec<(f64, f64, f64, f64)>, // (x, y, width, relative_time)
+}
+
+/// Save an animated GIF showing stroke drawing order at real speed.
+/// Uses the timing data stored in each point (relative_time).
+/// Frames are rendered in parallel across available CPU cores.
 #[no_mangle]
 pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
-    let strokes = STROKES.lock().unwrap();
-    if strokes.is_empty() { return 0; }
+    // ── Phase 1: lock, extract, drop ──
+    let (gif_strokes, bw, bh, gif_w, gif_h, bx_min, by_min) = {
+        let strokes = STROKES.lock().unwrap();
+        if strokes.is_empty() { return 0; }
 
-    // Bounding box
-    let mut bx_min = f64::MAX; let mut by_min = f64::MAX;
-    let mut bx_max = f64::MIN; let mut by_max = f64::MIN;
-    for s in strokes.iter() {
-        for &(x, y, _, _) in &s.points {
-            if x < bx_min { bx_min = x; }
-            if y < by_min { by_min = y; }
-            if x > bx_max { bx_max = x; }
-            if y > by_max { by_max = y; }
+        // Bounding box
+        let mut bx_min = f64::MAX; let mut by_min = f64::MAX;
+        let mut bx_max = f64::MIN; let mut by_max = f64::MIN;
+        for s in strokes.iter() {
+            for &(x, y, _, _) in &s.points {
+                if x < bx_min { bx_min = x; }
+                if y < by_min { by_min = y; }
+                if x > bx_max { bx_max = x; }
+                if y > by_max { by_max = y; }
+            }
         }
-    }
-    let pad = 10.0;
-    bx_min -= pad; by_min -= pad;
-    bx_max += pad; by_max += pad;
-    let bw = (bx_max - bx_min).ceil() as i32;
-    let bh = (by_max - by_min).ceil() as i32;
-    if bw < 4 || bh < 4 { return 0; }
+        let pad = 10.0;
+        bx_min -= pad; by_min -= pad;
+        bx_max += pad; by_max += pad;
+        let bw = (bx_max - bx_min).ceil() as i32;
+        let bh = (by_max - by_min).ceil() as i32;
+        if bw < 4 || bh < 4 { return 0; }
+        let gif_w = (bw as u32 / 2).max(1) as u16;
+        let gif_h = (bh as u32 / 2).max(1) as u16;
 
-    let gif_w = (bw as u32 / 2).max(1) as u16;
-    let gif_h = (bh as u32 / 2).max(1) as u16;
+        // Clone stroke data so lock can be dropped
+        let gif_strokes: Vec<GifStroke> = strokes.iter().map(|s| GifStroke {
+            r: s.r, g: s.g, b: s.b,
+            points: s.points.clone(),
+        }).collect();
+        // lock drops here
+        (gif_strokes, bw, bh, gif_w, gif_h, bx_min, by_min)
+    };
 
-    // Each stroke's active drawing range (min_t … max_t) — gaps are discarded
+    // ── Phase 2: compressed timeline (no lock needed) ──
     struct Seg { si: usize, dur: f64 }
-    let segments: Vec<Seg> = strokes.iter().enumerate().filter_map(|(si, s)| {
+    let segments: Vec<Seg> = gif_strokes.iter().enumerate().filter_map(|(si, s)| {
         if s.points.len() < 2 { return None; }
         let dur = s.points[s.points.len() - 1].3 - s.points[0].3;
         if dur <= 0.0 { None } else { Some(Seg { si, dur }) }
     }).collect();
     if segments.is_empty() { return 0; }
 
-    // Compressed timeline: sum of per-stroke active durations, no inter-stroke gaps.
-    // Accelerate to 2× real speed so handwriting looks natural.
-    // Ensure each stroke gets at least 0.05 s in the compressed timeline so
-    // very quick taps/dots don't appear in a single frame ("instant write").
     const SPEED: f64 = 2.0;
     const MIN_SEG: f64 = 0.05;
     let total_active: f64 = segments.iter().map(|seg| (seg.dur / SPEED).max(MIN_SEG)).sum();
     if total_active < 0.01 { return 0; }
 
-    // Per-segment offset in the compressed timeline
     let seg_offset: Vec<(usize, f64, f64)> = {
         let mut v = Vec::new();
         let mut cur = 0.0;
@@ -858,123 +873,69 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
         v
     };
 
-    // 24 drawing frames + 5 hold frames (final image visible ~1 s)
     const N_DRAW: usize = 60;
     const N_HOLD: usize = 5;
     let n_frames = N_DRAW + N_HOLD;
     let draw_delay = ((total_active.min(5.0).max(0.5) / N_DRAW as f64) * 100.0).max(2.0) as u16;
 
-    // Render drawing frames + hold frames
-    let mut frame_pixels: Vec<(Vec<u8>, u16)> = Vec::with_capacity(n_frames);
+    // ── Phase 3: parallel frame rendering (rayon global thread pool) ──
+    use rayon::prelude::*;
 
-    for fi in 0..n_frames {
-        let is_hold = fi >= N_DRAW;
-        let cutoff = (fi.min(N_DRAW - 1) as f64 / N_DRAW as f64) * total_active;
-        let delay = if is_hold { 100u16 } else { draw_delay };
+    // gif_strokes and seg_offset are &[GifStroke] / &[(usize,f64,f64)] — Sync, shared via rayon
+    let n_threads = rayon::current_num_threads();
+    eprintln!("[glaspen2] animated GIF: rayon threads={}, n_frames={}", n_threads, n_frames);
 
-        let mut surface = match cairo::ImageSurface::create(cairo::Format::ARgb32, bw, bh) {
-            Ok(s) => s,
-            Err(_) => return 0,
-        };
-        let stride = surface.stride() as usize;
-        let rw = surface.width() as u32;
-        let rh = surface.height() as u32;
+    let mut frame_results: Vec<(usize, Vec<u8>, u16)> = (0..n_frames)
+        .into_par_iter()
+        .map(|fi| {
+            let is_hold = fi >= N_DRAW;
+            let cutoff = (fi.min(N_DRAW - 1) as f64 / N_DRAW as f64) * total_active;
+            let delay = if is_hold { 100u16 } else { draw_delay };
 
-        // Clear
-        if let Ok(cr) = cairo::Context::new(&surface) {
-            cr.set_operator(cairo::Operator::Clear);
-            let _ = cr.paint();
-        }
+            let (flat, _ok) = render_gif_frame(
+                &gif_strokes, &seg_offset,
+                bw, bh, bx_min, by_min,
+                gif_w, gif_h, fi, is_hold, cutoff, delay,
+            );
+            (fi, flat, delay)
+        })
+        .collect();
 
-        // Render
-        {
-            let cr = cairo::Context::new(&surface).ok();
-            let cr = match cr { Some(c) => c, None => return 0 };
-            for &(si, seg_start, seg_end) in &seg_offset {
-                let s = &strokes[si];
+    frame_results.sort_by_key(|&(fi, _, _)| fi);
+    let frame_pixels: Vec<(Vec<u8>, u16)> = frame_results.into_iter()
+        .map(|(_, px, d)| (px, d))
+        .collect();
 
-                // Determine points to draw
-                let pts: Vec<(f64, f64, f64)> = if is_hold || cutoff >= seg_end {
-                    // Fully drawn
-                    s.points.iter()
-                        .map(|&(x, y, w, _)| (x - bx_min, y - by_min, w))
-                        .collect()
-                } else if cutoff > seg_start {
-                    // Partially drawn — map global cutoff → local progress
-                    let local_frac = (cutoff - seg_start) / (seg_end - seg_start);
-                    let local_cut = s.points[0].3 + local_frac * (s.points[s.points.len() - 1].3 - s.points[0].3);
-                    s.points.iter()
-                        .take_while(|&&(_, _, _, t)| t <= local_cut)
-                        .map(|&(x, y, w, _)| (x - bx_min, y - by_min, w))
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-                if pts.is_empty() { continue; }
-                cr.set_source_rgba(s.r, s.g, s.b, 1.0);
-                for i in 0..pts.len() {
-                    let (cx, cy, w) = pts[i];
-                    if i == 0 {
-                        cr.arc(cx, cy, w * 0.5, 0.0, 2.0 * std::f64::consts::PI);
-                        let _ = cr.fill();
-                    } else {
-                        let (px, py, _) = pts[i - 1];
-                        cr.move_to(px, py);
-                        cr.line_to(cx, cy);
-                        cr.set_line_width(w);
-                        cr.set_line_cap(cairo::LineCap::Round);
-                        cr.set_line_join(cairo::LineJoin::Round);
-                        let _ = cr.stroke();
-                    }
-                }
-            }
-        }
-
-        // Read pixels
-        let pix = &*surface.data().unwrap_or_else(|_| panic!("Surface data"));
-        let mut flat = Vec::with_capacity((gif_w as u32 * gif_h as u32 * 4) as usize);
-        for gy in 0..gif_h as u32 {
-            for gx in 0..gif_w as u32 {
-                let sx = (gx * 2).min(rw.saturating_sub(1));
-                let sy = (gy * 2).min(rh.saturating_sub(1));
-                let off = sy as usize * stride + sx as usize * 4;
-                if off + 3 < pix.len() {
-                    flat.push(pix[off + 2]); // R
-                    flat.push(pix[off + 1]); // G
-                    flat.push(pix[off]);     // B
-                    flat.push(pix[off + 3]); // A
-                }
-            }
-        }
-        frame_pixels.push((flat, delay));
-    }
-    drop(strokes);
-
-    // Global palette (64 colors — good balance for pen strokes)
+    // ── Phase 4: palette ──
     let all_pixels: Vec<u8> = frame_pixels.iter()
         .flat_map(|(px, _)| px.iter()).copied().collect();
     if all_pixels.is_empty() { return 0; }
-    let mut quantizer = color_quant::NeuQuant::new(30, 64, &all_pixels);
+    let quantizer = color_quant::NeuQuant::new(30, 64, &all_pixels);
     let palette = quantizer.color_map_rgba();
     let gif_palette: Vec<u8> = (0..64).flat_map(|i| {
         [palette[i * 4], palette[i * 4 + 1], palette[i * 4 + 2]]
     }).collect();
 
-    let mut transparent_idx: u8 = 0;
-    let mut idx_counts = [0u32; 64];
-    for (px, _) in &frame_pixels {
-        for ch in px.chunks(4) {
-            if ch.len() == 4 && ch[3] == 0 {
-                let idx = quantizer.index_of(&[ch[0], ch[1], ch[2], 0]) as u8;
-                idx_counts[idx as usize] += 1;
+    // Transparent index
+    let transparent_idx = {
+        let mut idx_counts = [0u32; 64];
+        for (px, _) in &frame_pixels {
+            for ch in px.chunks(4) {
+                if ch.len() == 4 && ch[3] == 0 {
+                    let idx = quantizer.index_of(&[ch[0], ch[1], ch[2], 0]) as u8;
+                    idx_counts[idx as usize] += 1;
+                }
             }
         }
-    }
-    let mut max_count = 0u32;
-    for i in 0..64 {
-        if idx_counts[i] > max_count { max_count = idx_counts[i]; transparent_idx = i as u8; }
-    }
+        let mut best = 0u8;
+        let mut max_count = 0u32;
+        for i in 0..64 {
+            if idx_counts[i] > max_count { max_count = idx_counts[i]; best = i as u8; }
+        }
+        best
+    };
 
+    // ── Phase 5: encode GIF ──
     let mut gif_data = Vec::new();
     {
         let mut enc = match gif::Encoder::new(&mut gif_data, gif_w, gif_h, &gif_palette) {
@@ -1005,7 +966,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     let path = desktop_path().join(timestamped_name("gif"));
     match std::fs::write(&path, &gif_data) {
         Ok(_) => {
-            println!("[glaspen2] Saved animated GIF to {}", path.display());
+            println!("[glaspen2] Saved animated GIF to {} ({} frames, {} threads)", path.display(), n_frames, n_threads);
             1
         }
         Err(e) => {
@@ -1013,6 +974,94 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
             0
         }
     }
+}
+
+/// Render a single frame of the animated GIF.
+/// Returns (flat RGBA pixels, success). Called from multiple threads.
+#[inline]
+fn render_gif_frame(
+    strokes: &[GifStroke],
+    seg_offset: &[(usize, f64, f64)],
+    bw: i32, bh: i32,
+    bx_min: f64, by_min: f64,
+    gif_w: u16, gif_h: u16,
+    _fi: usize, is_hold: bool, cutoff: f64, _delay: u16,
+) -> (Vec<u8>, bool) {
+    let mut surface = match cairo::ImageSurface::create(cairo::Format::ARgb32, bw, bh) {
+        Ok(s) => s,
+        Err(_) => return (Vec::new(), false),
+    };
+    let stride = surface.stride() as usize;
+    let rw = surface.width() as u32;
+    let rh = surface.height() as u32;
+
+    // Clear
+    if let Ok(cr) = cairo::Context::new(&surface) {
+        cr.set_operator(cairo::Operator::Clear);
+        let _ = cr.paint();
+    }
+
+    // Render strokes
+    {
+        let cr = match cairo::Context::new(&surface) {
+            Ok(c) => c,
+            Err(_) => return (Vec::new(), false),
+        };
+        for &(si, seg_start, seg_end) in seg_offset {
+            let s = &strokes[si];
+
+            let pts: Vec<(f64, f64, f64)> = if is_hold || cutoff >= seg_end {
+                s.points.iter()
+                    .map(|&(x, y, w, _)| (x - bx_min, y - by_min, w))
+                    .collect()
+            } else if cutoff > seg_start {
+                let local_frac = (cutoff - seg_start) / (seg_end - seg_start);
+                let local_cut = s.points[0].3 + local_frac * (s.points[s.points.len() - 1].3 - s.points[0].3);
+                s.points.iter()
+                    .take_while(|&&(_, _, _, t)| t <= local_cut)
+                    .map(|&(x, y, w, _)| (x - bx_min, y - by_min, w))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            if pts.is_empty() { continue; }
+
+            cr.set_source_rgba(s.r, s.g, s.b, 1.0);
+            for i in 0..pts.len() {
+                let (cx, cy, w) = pts[i];
+                if i == 0 {
+                    cr.arc(cx, cy, w * 0.5, 0.0, 2.0 * std::f64::consts::PI);
+                    let _ = cr.fill();
+                } else {
+                    let (px, py, _) = pts[i - 1];
+                    cr.move_to(px, py);
+                    cr.line_to(cx, cy);
+                    cr.set_line_width(w);
+                    cr.set_line_cap(cairo::LineCap::Round);
+                    cr.set_line_join(cairo::LineJoin::Round);
+                    let _ = cr.stroke();
+                }
+            }
+        }
+    }
+
+    // Read pixels
+    let pix = &*surface.data().unwrap_or_else(|_| panic!("Surface data"));
+    let mut flat = Vec::with_capacity((gif_w as u32 * gif_h as u32 * 4) as usize);
+    for gy in 0..gif_h as u32 {
+        for gx in 0..gif_w as u32 {
+            let sx = (gx * 2).min(rw.saturating_sub(1));
+            let sy = (gy * 2).min(rh.saturating_sub(1));
+            let off = sy as usize * stride + sx as usize * 4;
+            if off + 3 < pix.len() {
+                flat.push(pix[off + 2]); // R
+                flat.push(pix[off + 1]); // G
+                flat.push(pix[off]);     // B
+                flat.push(pix[off + 3]); // A
+            }
+        }
+    }
+    (flat, true)
 }
 
 fn timestamped_name(ext: &str) -> String {
