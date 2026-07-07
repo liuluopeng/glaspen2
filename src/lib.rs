@@ -836,14 +836,16 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
 
     let mut bx_min = f64::MAX; let mut by_min = f64::MAX;
     let mut bx_max = f64::MIN; let mut by_max = f64::MIN;
-    let mut total_t = 0.0f64;
+    let mut global_min_t = f64::MAX;
+    let mut global_max_t = f64::MIN;
     for s in strokes.iter() {
         for &(x, y, _, t) in &s.points {
             if x < bx_min { bx_min = x; }
             if y < by_min { by_min = y; }
             if x > bx_max { bx_max = x; }
             if y > by_max { by_max = y; }
-            if t > total_t { total_t = t; }
+            if t < global_min_t { global_min_t = t; }
+            if t > global_max_t { global_max_t = t; }
         }
     }
     let pad = 10.0;
@@ -851,7 +853,30 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     bx_max += pad; by_max += pad;
     let bw = (bx_max - bx_min).ceil() as i32;
     let bh = (by_max - by_min).ceil() as i32;
-    if total_t <= 0.0 || bw < 4 || bh < 4 { return 0; }
+    if global_max_t <= 0.0 || bw < 4 || bh < 4 { return 0; }
+
+    // Determine timeline mode:
+    // - Absolute timestamps (NSTimeInterval ~100k+ seconds) → real inter-stroke gaps
+    // - Per-stroke relative (< 100s) → offset strokes sequentially
+    let is_absolute = strokes.len() < 2 || global_max_t >= 100.0;
+
+    let total_t;
+    if is_absolute {
+        total_t = global_max_t - global_min_t;
+    } else {
+        // Offset each stroke sequentially with 0.2s gap
+        let mut offset = 0.0;
+        let gap = 0.2;
+        for s in strokes.iter() {
+            if s.points.len() < 2 { continue; }
+            let s_min = s.points[0].3;
+            let s_max = s.points[s.points.len() - 1].3;
+            let s_dur = s_max - s_min;
+            offset += s_dur + gap;
+        }
+        total_t = offset;
+    }
+    if total_t < 0.01 { return 0; }
 
     let gif_w = (bw as u32 / 2).max(1) as u16;
     let gif_h = (bh as u32 / 2).max(1) as u16;
@@ -859,6 +884,25 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     let n_frames = 20usize;
     let display_dur = total_t.min(5.0).max(2.0);
     let frame_delay = ((display_dur / n_frames as f64) * 100.0) as u16;
+
+    // Pre-compute per-stroke global timeline offset
+    let stroke_offset: Vec<f64> = if is_absolute {
+        // Absolute: just subtract global_min_t
+        strokes.iter().map(|_| -global_min_t).collect()
+    } else {
+        // Sequential: offset each stroke after the previous ends
+        let mut offsets = Vec::with_capacity(strokes.len());
+        let gap = 0.2;
+        let mut running = 0.0;
+        for s in strokes.iter() {
+            offsets.push(running);
+            if s.points.len() >= 2 {
+                let s_dur = s.points[s.points.len() - 1].3 - s.points[0].3;
+                running += s_dur + gap;
+            }
+        }
+        offsets
+    };
 
     // Render each frame — create a fresh surface each time to avoid
     // borrowing issues with the cairo-rs Context.
@@ -883,10 +927,11 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
         {
             let cr = cairo::Context::new(&surface).ok();
             let cr = match cr { Some(c) => c, None => return 0 };
-            for s in strokes.iter() {
+            for (si, s) in strokes.iter().enumerate() {
+                let offset = stroke_offset[si];
                 let pts: Vec<(f64, f64, f64)> = s.points.iter()
-                    .take_while(|&&(_, _, _, t)| t <= cutoff)
-                    .map(|&(x, y, w, _)| (x - bx_min, y - by_min, w))
+                    .take_while(|&&(_, _, _, t)| t + offset <= cutoff)
+                    .map(|&(x, y, w, _t)| (x - bx_min, y - by_min, w))
                     .collect();
                 if pts.is_empty() { continue; }
                 cr.set_source_rgba(s.r, s.g, s.b, 1.0);

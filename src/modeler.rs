@@ -50,7 +50,9 @@ pub fn begin_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: 
             eprintln!("[modeler] Down: got {} results", results.len());
             for r in results {
                 let w = pressure_to_width(r.pressure, width_scale);
-                state.buffer.push((r.pos.0, r.pos.1, w, r.time));
+                // Store approximate absolute wall-clock time so timestamps
+                // are comparable across strokes.
+                state.buffer.push((r.pos.0, r.pos.1, w, state.start_time + r.time));
             }
         }
         Err(e) => eprintln!("[modeler] Down error: {:?}", e),
@@ -73,7 +75,7 @@ pub fn pen_move(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f64)
             Ok(results) => {
                 for r in results {
                     let w = pressure_to_width(r.pressure, width_scale);
-                    state.buffer.push((r.pos.0, r.pos.1, w, r.time));
+                    state.buffer.push((r.pos.0, r.pos.1, w, state.start_time + r.time));
                 }
             }
             Err(e) => eprintln!("[modeler] Move error: {:?}", e),
@@ -100,7 +102,7 @@ pub fn end_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f6
                 eprintln!("[modeler] Up: got {} results", results.len());
                 for r in results {
                     let w = pressure_to_width(r.pressure, width_scale);
-                    state.buffer.push((r.pos.0, r.pos.1, w, r.time));
+                    state.buffer.push((r.pos.0, r.pos.1, w, state.start_time + r.time));
                 }
             }
             Err(e) => eprintln!("[modeler] Up error: {:?}", e),
