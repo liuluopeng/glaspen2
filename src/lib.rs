@@ -866,16 +866,22 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
 
     // Compressed timeline: sum of per-stroke active durations, no inter-stroke gaps.
     // Accelerate to 2× real speed so handwriting looks natural.
-    let raw_active: f64 = segments.iter().map(|seg| seg.dur).sum();
-    if raw_active < 0.01 { return 0; }
+    // Ensure each stroke gets at least 0.05 s in the compressed timeline so
+    // very quick taps/dots don't appear in a single frame ("instant write").
     const SPEED: f64 = 2.0;
-    let total_active = raw_active / SPEED;
+    const MIN_SEG: f64 = 0.05;
+    let total_active: f64 = segments.iter().map(|seg| (seg.dur / SPEED).max(MIN_SEG)).sum();
+    if total_active < 0.01 { return 0; }
 
     // Per-segment offset in the compressed timeline
     let seg_offset: Vec<(usize, f64, f64)> = {
         let mut v = Vec::new();
         let mut cur = 0.0;
-        for seg in &segments { v.push((seg.si, cur, cur + seg.dur)); cur += seg.dur; }
+        for seg in &segments {
+            let adj = (seg.dur / SPEED).max(MIN_SEG);
+            v.push((seg.si, cur, cur + adj));
+            cur += adj;
+        }
         v
     };
 
