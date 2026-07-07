@@ -881,7 +881,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     let gif_w = (bw as u32 / 2).max(1) as u16;
     let gif_h = (bh as u32 / 2).max(1) as u16;
 
-    let n_frames = 20usize;
+    let n_frames = 24usize;
     let display_dur = total_t.min(5.0).max(2.0);
     let frame_delay = ((display_dur / n_frames as f64) * 100.0) as u16;
 
@@ -973,17 +973,17 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     }
     drop(strokes);
 
-    // Global palette
+    // Global palette (64 colors — good balance for pen strokes)
     let all_pixels: Vec<u8> = frame_pixels.iter().flatten().copied().collect();
     if all_pixels.is_empty() { return 0; }
-    let mut quantizer = color_quant::NeuQuant::new(30, 128, &all_pixels);
+    let mut quantizer = color_quant::NeuQuant::new(30, 64, &all_pixels);
     let palette = quantizer.color_map_rgba();
-    let gif_palette: Vec<u8> = (0..128).flat_map(|i| {
+    let gif_palette: Vec<u8> = (0..64).flat_map(|i| {
         [palette[i * 4], palette[i * 4 + 1], palette[i * 4 + 2]]
     }).collect();
 
     let mut transparent_idx: u8 = 0;
-    let mut idx_counts = [0u32; 128];
+    let mut idx_counts = [0u32; 64];
     for frame in &frame_pixels {
         for ch in frame.chunks(4) {
             if ch.len() == 4 && ch[3] == 0 {
@@ -993,7 +993,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
         }
     }
     let mut max_count = 0u32;
-    for i in 0..128 {
+    for i in 0..64 {
         if idx_counts[i] > max_count { max_count = idx_counts[i]; transparent_idx = i as u8; }
     }
 
