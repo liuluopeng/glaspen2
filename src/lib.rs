@@ -73,6 +73,19 @@ pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) {
     strokes.clear();
 }
 
+/// Undo the last stroke: remove from both STROKES (memory) and DB.
+/// Returns the number of remaining strokes, or -1 if there was nothing to undo.
+#[no_mangle]
+pub extern "C" fn glaspen2_undo_last_stroke() -> c_int {
+    let mut strokes = STROKES.lock().unwrap();
+    if strokes.is_empty() {
+        return -1;
+    }
+    strokes.pop();
+    db::delete_last_stroke();
+    strokes.len() as c_int
+}
+
 /// Initialize the database and create the first screen record. Call once at app start.
 #[no_mangle]
 pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {

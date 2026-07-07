@@ -96,6 +96,7 @@ extern void glaspen2_get_stroke_color(int idx, double *r, double *g, double *b);
 extern double glaspen2_get_stroke_avg_width(int idx);
 extern void glaspen2_get_stroke_point(int idx, int pidx, double *x, double *y);
 extern double glaspen2_get_stroke_point_width(int idx, int pidx);
+extern int glaspen2_undo_last_stroke(void);
 
 // Forward declarations
 static void rebuild_surface_from_strokes(void);
@@ -121,6 +122,9 @@ static NSView *g_draw_view = nil;
 // Raw drawing state (for responsive real-time feedback during stroke)
 static double g_raw_last_x = 0, g_raw_last_y = 0;
 static BOOL g_raw_has_last = NO;
+
+// Track if a stroke is active (modeler has been initialized)
+static BOOL g_stroke_active = NO;
 
 // Cursor state
 static double g_cursor_x = -100, g_cursor_y = -100;
@@ -1465,6 +1469,28 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                         }
                     }
                     return NULL;
+                } else if (kc == kVK_ANSI_Z) {
+                    if (g_stroke_active) {
+                        show_notification(L(@"正在书写中", @"Stroke in progress"));
+                    } else {
+                        int remaining = glaspen2_undo_last_stroke();
+                        if (remaining < 0) {
+                            show_notification(L(@"没有可撤销的笔画", @"Nothing to undo"));
+                        } else {
+                            // Clean up inverse color data for the removed stroke
+                            int last_idx = glaspen2_stroke_count(); // count after undo
+                            if (last_idx >= 0 && last_idx < MAX_INVERSE_STROKES) {
+                                if (g_inverse_colors[last_idx]) {
+                                    free(g_inverse_colors[last_idx]);
+                                    g_inverse_colors[last_idx] = NULL;
+                                }
+                                g_inverse_color_counts[last_idx] = 0;
+                            }
+                            rebuild_surface_from_strokes();
+                            show_notification(L(@"撤销成功", @"Undo"));
+                        }
+                    }
+                    return NULL;
                 } else if (kc == kVK_ANSI_B) {
                     gl_settings_set_glass_enabled(!g_glass_enabled);
                     return NULL;
@@ -1542,7 +1568,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     double ts = [nsevent timestamp]; // NSTimeInterval (seconds since boot)
 
     // Track if a stroke is active (modeler has been initialized)
-    static BOOL g_stroke_active = NO;
 
     // Width from pressure (same formula as Rust modeler::pressure_to_width)
     double raw_w = (pressure > 0.01) ? (0.3 + pressure * pressure * 7.7) * g_width_scale

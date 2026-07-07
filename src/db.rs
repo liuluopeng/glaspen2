@@ -196,6 +196,31 @@ pub fn screen_has_strokes(screen_id: i64) -> bool {
     }
 }
 
+/// Delete the last stroke on the current screen from the database.
+/// Returns true if a stroke was found and deleted.
+pub fn delete_last_stroke() -> bool {
+    let db = DB.lock().unwrap();
+    let conn = match db.as_ref() {
+        Some(c) => c,
+        None => return false,
+    };
+    let screen_id = *CURRENT_SCREEN_ID.lock().unwrap();
+
+    // Find the last stroke id for this screen
+    let stroke_id = match conn.query_row(
+        "SELECT id FROM strokes WHERE screen_id = ?1 ORDER BY id DESC LIMIT 1",
+        params![screen_id],
+        |row| row.get::<_, i64>(0),
+    ) {
+        Ok(id) => id,
+        Err(_) => return false,
+    };
+
+    conn.execute("DELETE FROM points WHERE stroke_id = ?1", params![stroke_id]).ok();
+    conn.execute("DELETE FROM strokes WHERE id = ?1", params![stroke_id]).ok();
+    true
+}
+
 /// Get the previous screen id (lower id with strokes), or None.
 pub fn prev_screen(current: i64) -> Option<i64> {
     let db = DB.lock().unwrap();
