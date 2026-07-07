@@ -898,6 +898,33 @@ static void flush_to_layer(void) {
     [g_draw_view displayIfNeeded];
 }
 
+// Handle display configuration changes (resolution, arrangement, etc.)
+static void on_display_changed(void) {
+    NSScreen *screen = [NSScreen mainScreen];
+    NSRect newFrame = [screen frame];
+    int new_w = (int)newFrame.size.width;
+    int new_h = (int)newFrame.size.height;
+    if (new_w == g_screen_w && new_h == g_screen_h) return;
+
+    NSLog(@"[glaspen2] display changed: %dx%d -> %dx%d", g_screen_w, g_screen_h, new_w, new_h);
+    g_screen_w = new_w;
+    g_screen_h = new_h;
+    glaspen2_init_db(g_screen_w, g_screen_h);
+
+    if (g_window) {
+        [g_window setFrame:newFrame display:YES];
+        NSView *cv = [g_window contentView];
+        if (cv) [cv setFrame:NSMakeRect(0, 0, new_w, new_h)];
+    }
+    if (g_glass_view) [g_glass_view setFrame:newFrame];
+    if (g_draw_view) {
+        [g_draw_view setFrame:newFrame];
+        ensure_surface(g_draw_view);
+        rebuild_surface_from_strokes();
+        [g_draw_view setNeedsDisplay:YES];
+    }
+}
+
 static void pen_draw(double x, double y, double width) {
     if (!g_surface) return;
     cairo_t *cr = cairo_create(g_surface);
@@ -1243,8 +1270,11 @@ static void rebuild_surface_from_strokes(void) {
                 NSShadowAttributeName: shadow
             };
             NSSize textSize = [g_notification sizeWithAttributes:attrs];
-            CGFloat x = (w - textSize.width) / 2;
-            CGFloat y = (h - textSize.height) / 2;
+            // Use view bounds for centering, not surface dimensions — surface may
+            // be stale after display resolution changes.
+            NSRect bounds = [self bounds];
+            CGFloat x = (bounds.size.width - textSize.width) / 2;
+            CGFloat y = (bounds.size.height - textSize.height) / 2;
             [g_notification drawAtPoint:NSMakePoint(x, y) withAttributes:attrs];
         }
 
@@ -1812,6 +1842,13 @@ void glaspen2_run(void) {
         // Register signal handlers for graceful exit
         signal(SIGINT, save_and_exit);   // Ctrl+C
         signal(SIGTERM, save_and_exit);  // kill command
+
+        // Listen for display changes (resolution, arrangement, etc.)
+        [[NSNotificationCenter defaultCenter]
+            addObserverForName:NSApplicationDidChangeScreenParametersNotification
+            object:nil
+            queue:[NSOperationQueue mainQueue]
+            usingBlock:^(NSNotification *note) { on_display_changed(); }];
 
         // CGEventTap: intercept events at system level before dispatch
         CGEventMask tapMask = CGEventMaskBit(kCGEventMouseMoved) |

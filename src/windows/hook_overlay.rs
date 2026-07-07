@@ -445,6 +445,13 @@ unsafe extern "system" fn overlay_wnd_proc(
             handle_command(&mut state, data, wparam.0, lparam.0 as usize);
             LRESULT(0)
         }
+        WM_DISPLAYCHANGE => {
+            let data = match get_overlay_data() { Some(d) => d, None => return LRESULT(0) };
+            let new_w = (lparam.0 as u32 & 0xFFFF) as i32;
+            let new_h = ((lparam.0 as u32 >> 16) & 0xFFFF) as i32;
+            recreate_surface_for_display(data, new_w, new_h);
+            LRESULT(0)
+        }
         WM_DESTROY => { PostQuitMessage(0); LRESULT(0) }
         _ => DefWindowProcW(hwnd, msg, wparam, lparam)
     }
@@ -828,6 +835,49 @@ fn create_dib(w: i32, h: i32) -> (HDC, HBITMAP, *mut u8, usize) {
         let hbmp = CreateDIBSection(hdc_m, &bmi, DIB_RGB_COLORS, &mut bits, None, 0).unwrap();
         SelectObject(hdc_m, HGDIOBJ(hbmp.0 as _));
         (hdc_m, hbmp, bits as *mut u8, stride)
+    }
+}
+
+/// Recreate the drawing surface and DIB when display resolution changes.
+fn recreate_surface_for_display(data: &mut OverlayData, new_w: i32, new_h: i32) {
+    if new_w == data.screen_w && new_h == data.screen_h { return; }
+    eprintln!("[overlay] display changed: {}x{} -> {}x{}", data.screen_w, data.screen_h, new_w, new_h);
+
+    // Clean up old GDI resources
+    unsafe {
+        let _ = DeleteObject(data.hbitmap);
+        let _ = DeleteDC(data.hdc_mem);
+    }
+
+    // Re-init DB for new screen size
+    crate::glaspen2_init_db(new_w, new_h);
+
+    // Create new surface and DIB
+    let new_surface = ImageSurface::create(Format::ARGB32, new_w, new_h).unwrap();
+    fill_surface_fuchsia(&new_surface);
+    let (new_hdc, new_hbmp, new_bits, new_stride) = create_dib(new_w, new_h);
+    unsafe {
+        let dib = std::slice::from_raw_parts_mut(new_bits, new_stride * new_h as usize);
+        fill_dib_fuchsia(dib, new_w as usize, new_h as usize, new_stride);
+    }
+
+    data.surface = new_surface;
+    data.hdc_mem = new_hdc;
+    data.hbitmap = new_hbmp;
+    data.dib_bits = new_bits;
+    data.dib_stride = new_stride;
+    data.screen_w = new_w;
+    data.screen_h = new_h;
+
+    // Resize the overlay window
+    unsafe {
+        let _ = SetWindowPos(
+            data.overlay_hwnd,
+            HWND(0), // HWND_TOP
+            0, 0, new_w, new_h,
+            SWP_NOZORDER | SWP_NOMOVE,
+        );
+        let _ = InvalidateRect(data.overlay_hwnd, None, false);
     }
 }
 
