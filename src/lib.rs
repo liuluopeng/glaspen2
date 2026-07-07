@@ -672,38 +672,45 @@ pub extern "C" fn glaspen2_save_svg() {
 }
 
 /// Save cropped drawing as GIF to desktop. Returns 1 on success, 0 on failure.
+/// `surface_scale` is the backing scale factor (1.0 = non-Retina, 2.0 = Retina).
 #[no_mangle]
 pub extern "C" fn glaspen2_save_gif_cropped(
     surface_data: *const c_uchar, surface_w: c_int, surface_h: c_int, surface_stride: c_int,
+    surface_scale: c_double,
 ) -> c_int {
     let w = surface_w as u32; let h = surface_h as u32;
+    let scale = surface_scale.max(0.5).min(4.0);
     let stride = surface_stride as usize;
     let raw = unsafe { slice::from_raw_parts(surface_data, stride * h as usize) };
     let strokes = STROKES.lock().unwrap();
     if strokes.is_empty() { return 0; }
-    let mut bx_min = u32::MAX; let mut by_min = u32::MAX;
-    let mut bx_max = 0u32; let mut by_max = 0u32;
+    let mut bx_min = f64::MAX; let mut by_min = f64::MAX;
+    let mut bx_max = f64::MIN; let mut by_max = f64::MIN;
     for s in strokes.iter() {
         for &(x, y, _) in &s.points {
-            let ix = x as u32; let iy = y as u32;
-            if ix < bx_min { bx_min = ix; }
-            if iy < by_min { by_min = iy; }
-            if ix > bx_max { bx_max = ix; }
-            if iy > by_max { by_max = iy; }
+            if x < bx_min { bx_min = x; }
+            if y < by_min { by_min = y; }
+            if x > bx_max { bx_max = x; }
+            if y > by_max { by_max = y; }
         }
     }
-    let pad = 5u32;
-    bx_min = bx_min.saturating_sub(pad);
-    by_min = by_min.saturating_sub(pad);
-    bx_max = (bx_max + pad).min(w - 1);
-    by_max = (by_max + pad).min(h - 1);
-    let crop_w = bx_max - bx_min + 1;
-    let crop_h = by_max - by_min + 1;
+    // Scale to physical surface coordinates
+    bx_min = (bx_min * scale).floor();
+    by_min = (by_min * scale).floor();
+    bx_max = (bx_max * scale).ceil();
+    by_max = (by_max * scale).ceil();
+    let pad = (5.0 * scale).ceil() as u32;
+    let bx_min_u = (bx_min as u32).saturating_sub(pad);
+    let by_min_u = (by_min as u32).saturating_sub(pad);
+    let bx_max_u = ((bx_max as u32) + pad).min(w.saturating_sub(1));
+    let by_max_u = ((by_max as u32) + pad).min(h.saturating_sub(1));
+    let crop_w = if bx_max_u > bx_min_u { bx_max_u - bx_min_u + 1 } else { 1 };
+    let crop_h = if by_max_u > by_min_u { by_max_u - by_min_u + 1 } else { 1 };
     let mut flat: Vec<u8> = Vec::with_capacity((crop_w * crop_h * 4) as usize);
     for cy in 0..crop_h {
-        let sy = (by_min + cy) as usize;
+        let sy = (by_min_u + cy) as usize;
         for cx in 0..crop_w {
-            let sx = (bx_min + cx) as usize;
+            let sx = (bx_min_u + cx) as usize;
             let off = sy * stride + sx * 4;
             if off + 3 < raw.len() {
                 let b = raw[off]; let g = raw[off + 1]; let r = raw[off + 2]; let a = raw[off + 3];
@@ -712,9 +719,9 @@ pub extern "C" fn glaspen2_save_gif_cropped(
             }
         }
     }
-    // Downscale to 50% for smaller GIF
-    let gif_w = crop_w / 2;
-    let gif_h = crop_h / 2;
+    // Downscale to 50% for smaller GIF (clamp to minimum 1 pixel)
+    let gif_w = (crop_w / 2).max(1);
+    let gif_h = (crop_h / 2).max(1);
     let mut gif_pixels: Vec<u8> = Vec::with_capacity((gif_w * gif_h * 4) as usize);
     for gy in 0..gif_h {
         for gx in 0..gif_w {

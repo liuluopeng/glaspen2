@@ -80,7 +80,7 @@ extern void glaspen2_modeler_commit_to_strokes(double r, double g, double b, con
 extern int glaspen2_get_stroke_point_color(int idx, int pidx, double *r, double *g, double *b);
 extern int glaspen2_stroke_bbox(double *x_min, double *y_min, double *x_max, double *y_max);
 extern void glaspen2_save_svg(void);
-extern int glaspen2_save_gif_cropped(const unsigned char *surface_data, int w, int h, int stride);
+extern int glaspen2_save_gif_cropped(const unsigned char *surface_data, int w, int h, int stride, double surface_scale);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -148,7 +148,7 @@ static BOOL g_inverse_enabled = NO;
 
 // Glass overlay opacity (0.0 = off, 0.0-0.3 range)
 static BOOL g_glass_enabled = NO;  // frosted glass ON/OFF
-static double g_glass_opacity = 0.20; // opacity level (used only when enabled)
+static double g_glass_opacity = 0.45; // opacity level (used only when enabled)
 
 // Current stroke color (may differ from pen color in inverse mode)
 static double g_stroke_r = 1.0, g_stroke_g = 0.0, g_stroke_b = 0.0;
@@ -1438,7 +1438,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                         int w = cairo_image_surface_get_width(g_surface);
                         int h = cairo_image_surface_get_height(g_surface);
                         int stride = cairo_image_surface_get_stride(g_surface);
-                        if (glaspen2_save_gif_cropped(data, w, h, stride)) {
+                        if (glaspen2_save_gif_cropped(data, w, h, stride, (double)g_scale)) {
                             NSString *desktop = [NSSearchPathForDirectoriesInDomains(NSDesktopDirectory, NSUserDomainMask, YES) firstObject];
                             NSFileManager *fm = [NSFileManager defaultManager];
                             NSArray *files = [fm contentsOfDirectoryAtPath:desktop error:nil];
