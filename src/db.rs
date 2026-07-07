@@ -119,10 +119,9 @@ fn now_f64() -> f64 {
 pub async fn new_screen(screen_w: i32, screen_h: i32) {
     let pool = DB.get().expect("DB not initialized");
     let now = now_f64();
-    sqlx::query("INSERT INTO screens (created_at, screen_w, screen_h) VALUES (?1, ?2, ?3)")
-        .bind(now).bind(screen_w).bind(screen_h)
-        .execute(pool).await.ok();
-    let sid = sqlx::query_scalar::<_, i64>("SELECT last_insert_rowid()")
+    let sid = sqlx::query_scalar::<_, i64>(
+        "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (?1, ?2, ?3) RETURNING id"
+    ).bind(now).bind(screen_w).bind(screen_h)
         .fetch_one(pool).await.unwrap_or(0);
     *CURRENT_SCREEN_ID.lock().unwrap() = sid;
 }
@@ -135,13 +134,11 @@ pub async fn begin_stroke(r: f64, g: f64, b: f64, width_scale: f64) {
     let pool = DB.get().expect("DB not initialized");
     let screen_id = *CURRENT_SCREEN_ID.lock().unwrap();
     let now = now_f64();
-    let res = sqlx::query(
-        "INSERT INTO strokes (screen_id, color_r, color_g, color_b, width_scale, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+    let stroke_id = sqlx::query_scalar::<_, i64>(
+        "INSERT INTO strokes (screen_id, color_r, color_g, color_b, width_scale, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id"
     ).bind(screen_id).bind(r).bind(g).bind(b).bind(width_scale).bind(now)
-        .execute(pool).await;
-    if let Ok(_) = res {
-        let stroke_id = sqlx::query_scalar::<_, i64>("SELECT last_insert_rowid()")
-            .fetch_one(pool).await.unwrap_or(0);
+        .fetch_optional(pool).await;
+    if let Ok(Some(stroke_id)) = stroke_id {
         *PENDING_STROKE_ID.lock().unwrap() = Some(stroke_id);
         PENDING_POINTS.lock().unwrap().clear();
     }
@@ -178,16 +175,17 @@ async fn flush_pending() {
     }
 
     let pool = DB.get().expect("DB not initialized");
-    let mut tx = pool.begin().await.ok();
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(_) => return,
+    };
     for (i, &(x, y, w, t)) in points.iter().enumerate() {
         sqlx::query(
             "INSERT INTO points (stroke_id, seq, x, y, width, t) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
         ).bind(stroke_id).bind(i as i64).bind(x).bind(y).bind(w).bind(t)
-            .execute(&*pool).await.ok();
+            .execute(&mut *tx).await.ok();
     }
-    if let Some(tx) = tx {
-        tx.commit().await.ok();
-    }
+    tx.commit().await.ok();
 }
 
 pub fn current_screen() -> i64 {
