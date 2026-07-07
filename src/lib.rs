@@ -864,9 +864,12 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     }).collect();
     if segments.is_empty() { return 0; }
 
-    // Compressed timeline: sum of per-stroke active durations, no inter-stroke gaps
-    let total_active: f64 = segments.iter().map(|seg| seg.dur).sum();
-    if total_active < 0.01 { return 0; }
+    // Compressed timeline: sum of per-stroke active durations, no inter-stroke gaps.
+    // Accelerate to 2× real speed so handwriting looks natural.
+    let raw_active: f64 = segments.iter().map(|seg| seg.dur).sum();
+    if raw_active < 0.01 { return 0; }
+    const SPEED: f64 = 2.0;
+    let total_active = raw_active / SPEED;
 
     // Per-segment offset in the compressed timeline
     let seg_offset: Vec<(usize, f64, f64)> = {
@@ -880,7 +883,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     const N_DRAW: usize = 24;
     const N_HOLD: usize = 5;
     let n_frames = N_DRAW + N_HOLD;
-    let draw_delay = ((total_active.min(5.0).max(2.0) / N_DRAW as f64) * 100.0) as u16;
+    let draw_delay = ((total_active.min(5.0).max(0.5) / N_DRAW as f64) * 100.0).max(2.0) as u16;
 
     // Render drawing frames + hold frames
     let mut frame_pixels: Vec<(Vec<u8>, u16)> = Vec::with_capacity(n_frames);
