@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::slice;
 use std::os::raw::{c_int, c_double, c_uchar, c_char};
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::sync::Mutex;
 
 // Cairo: real crate when available, stub for cross-compilation / Windows
@@ -635,11 +635,10 @@ pub extern "C" fn glaspen2_stroke_bbox(
     1
 }
 
-/// Save strokes as SVG to desktop (cropped to bbox).
-#[no_mangle]
-pub extern "C" fn glaspen2_save_svg() {
+/// Build cropped SVG string from current STROKES. Returns None if no strokes.
+fn build_cropped_svg() -> Option<String> {
     let strokes = STROKES.lock().unwrap();
-    if strokes.is_empty() { return; }
+    if strokes.is_empty() { return None; }
     let mut bx_min = f64::MAX; let mut by_min = f64::MAX;
     let mut bx_max = f64::MIN; let mut by_max = f64::MIN;
     for s in strokes.iter() {
@@ -676,11 +675,40 @@ pub extern "C" fn glaspen2_save_svg() {
             d, color_hex, avg_w));
     }
     svg.push_str("</svg>\n");
-    let path = desktop_path().join(timestamped_name("svg"));
-    if let Err(e) = std::fs::write(&path, &svg) {
-        eprintln!("[glaspen2] SVG save failed: {}", e);
-    } else {
-        println!("[glaspen2] Saved SVG to {}", path.display());
+    Some(svg)
+}
+
+/// Save strokes as SVG to desktop (cropped to bbox).
+#[no_mangle]
+pub extern "C" fn glaspen2_save_svg() {
+    if let Some(svg) = build_cropped_svg() {
+        let path = desktop_path().join(timestamped_name("svg"));
+        if let Err(e) = std::fs::write(&path, &svg) {
+            eprintln!("[glaspen2] SVG save failed: {}", e);
+        } else {
+            println!("[glaspen2] Saved SVG to {}", path.display());
+        }
+    }
+}
+
+/// Generate cropped SVG as a C string. Caller must free with glaspen2_free_c_string.
+/// Returns NULL if no strokes.
+#[no_mangle]
+pub extern "C" fn glaspen2_get_cropped_svg() -> *mut c_char {
+    match build_cropped_svg() {
+        Some(svg) => match CString::new(svg) {
+            Ok(cs) => cs.into_raw(),
+            Err(_) => std::ptr::null_mut(),
+        },
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// Free a string returned by glaspen2_get_cropped_svg.
+#[no_mangle]
+pub extern "C" fn glaspen2_free_c_string(ptr: *mut c_char) {
+    if !ptr.is_null() {
+        unsafe { drop(CString::from_raw(ptr)); }
     }
 }
 

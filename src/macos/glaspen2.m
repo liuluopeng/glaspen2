@@ -80,6 +80,8 @@ extern void glaspen2_modeler_commit_to_strokes(double r, double g, double b, con
 extern int glaspen2_get_stroke_point_color(int idx, int pidx, double *r, double *g, double *b);
 extern int glaspen2_stroke_bbox(double *x_min, double *y_min, double *x_max, double *y_max);
 extern void glaspen2_save_svg(void);
+extern char* glaspen2_get_cropped_svg(void);
+extern void glaspen2_free_c_string(char *ptr);
 extern int glaspen2_save_gif_cropped(const unsigned char *surface_data, int w, int h, int stride, double surface_scale);
 
 // Page navigation FFI
@@ -1489,6 +1491,19 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                             rebuild_surface_from_strokes();
                             show_notification(L(@"撤销成功", @"Undo"));
                         }
+                    }
+                    return NULL;
+                } else if (kc == kVK_ANSI_S) {
+                    char *svg = glaspen2_get_cropped_svg();
+                    if (svg) {
+                        NSString *svgStr = [NSString stringWithUTF8String:svg];
+                        NSPasteboard *pb = [NSPasteboard generalPasteboard];
+                        [pb clearContents];
+                        [pb setString:svgStr forType:NSPasteboardTypeString];
+                        glaspen2_free_c_string(svg);
+                        show_notification(L(@"SVG 已复制到剪贴板", @"SVG copied to clipboard"));
+                    } else {
+                        show_notification(L(@"没有笔迹可复制", @"No strokes to copy"));
                     }
                     return NULL;
                 } else if (kc == kVK_ANSI_B) {
