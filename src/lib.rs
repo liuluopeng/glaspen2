@@ -886,7 +886,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     };
 
     // 24 drawing frames + 5 hold frames (final image visible ~1 s)
-    const N_DRAW: usize = 24;
+    const N_DRAW: usize = 60;
     const N_HOLD: usize = 5;
     let n_frames = N_DRAW + N_HOLD;
     let draw_delay = ((total_active.min(5.0).max(0.5) / N_DRAW as f64) * 100.0).max(2.0) as u16;
