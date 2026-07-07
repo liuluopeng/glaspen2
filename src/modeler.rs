@@ -6,7 +6,7 @@ use ink_stroke_modeler_rs::{
 struct StrokeModelerState {
     modeler: StrokeModeler,
     start_time: f64,
-    buffer: Vec<(f64, f64, f64)>, // (x, y, pressure→width)
+    buffer: Vec<(f64, f64, f64, f64)>, // (x, y, width, relative_time)
 }
 
 static STATE: Mutex<Option<StrokeModelerState>> = Mutex::new(None);
@@ -50,7 +50,7 @@ pub fn begin_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: 
             eprintln!("[modeler] Down: got {} results", results.len());
             for r in results {
                 let w = pressure_to_width(r.pressure, width_scale);
-                state.buffer.push((r.pos.0, r.pos.1, w));
+                state.buffer.push((r.pos.0, r.pos.1, w, r.time));
             }
         }
         Err(e) => eprintln!("[modeler] Down error: {:?}", e),
@@ -73,7 +73,7 @@ pub fn pen_move(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f64)
             Ok(results) => {
                 for r in results {
                     let w = pressure_to_width(r.pressure, width_scale);
-                    state.buffer.push((r.pos.0, r.pos.1, w));
+                    state.buffer.push((r.pos.0, r.pos.1, w, r.time));
                 }
             }
             Err(e) => eprintln!("[modeler] Move error: {:?}", e),
@@ -100,7 +100,7 @@ pub fn end_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f6
                 eprintln!("[modeler] Up: got {} results", results.len());
                 for r in results {
                     let w = pressure_to_width(r.pressure, width_scale);
-                    state.buffer.push((r.pos.0, r.pos.1, w));
+                    state.buffer.push((r.pos.0, r.pos.1, w, r.time));
                 }
             }
             Err(e) => eprintln!("[modeler] Up error: {:?}", e),
@@ -109,7 +109,7 @@ pub fn end_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f6
 }
 
 /// Take the buffered smoothed points. Clears the buffer.
-pub fn take_buffer() -> Vec<(f64, f64, f64)> {
+pub fn take_buffer() -> Vec<(f64, f64, f64, f64)> {
     let mut state_lock = STATE.lock().unwrap();
     if let Some(ref mut state) = *state_lock {
         std::mem::take(&mut state.buffer)
@@ -125,7 +125,7 @@ pub fn buffer_len() -> usize {
 }
 
 /// Get a single point from the buffer by index.
-pub fn get_buffer_point(idx: usize) -> Option<(f64, f64, f64)> {
+pub fn get_buffer_point(idx: usize) -> Option<(f64, f64, f64, f64)> {
     let state_lock = STATE.lock().unwrap();
     state_lock.as_ref().and_then(|s| s.buffer.get(idx).copied())
 }
@@ -139,15 +139,16 @@ pub fn clear_buffer() {
 }
 
 /// Smooth a set of raw points through a fresh modeler instance.
-/// Returns smoothed (x, y, width) points. Each smoothed point inherits
-/// the width of the nearest raw input point.
-pub fn smooth_points(points: &[(f64, f64, f64)]) -> Vec<(f64, f64, f64)> {
-    if points.len() < 2 { return points.to_vec(); }
+/// Returns smoothed (x, y, width, estimated_t) points. Each smoothed point
+/// inherits the width of the nearest raw input point, and time is estimated
+/// at 120 Hz sampling rate.
+pub fn smooth_points(points: &[(f64, f64, f64)]) -> Vec<(f64, f64, f64, f64)> {
+    if points.len() < 2 { return points.iter().map(|&(x, y, w)| (x, y, w, 0.0)).collect(); }
 
     let params = modeler_params();
     let mut modeler = match StrokeModeler::new(params) {
         Ok(m) => m,
-        Err(_) => return points.to_vec(),
+        Err(_) => return points.iter().map(|&(x, y, w)| (x, y, w, 0.0)).collect(),
     };
 
     // Down with first point
@@ -159,10 +160,10 @@ pub fn smooth_points(points: &[(f64, f64, f64)]) -> Vec<(f64, f64, f64)> {
         pressure: 0.5,
     };
     if modeler.update(down).is_err() {
-        return points.to_vec();
+        return points.iter().map(|&(x, y, w)| (x, y, w, 0.0)).collect();
     }
 
-    let mut result = vec![(x0, y0, w0)];
+    let mut result = vec![(x0, y0, w0, 0.0)];
     let mut input_idx = vec![0usize];
 
     // Move for each subsequent point
@@ -176,7 +177,7 @@ pub fn smooth_points(points: &[(f64, f64, f64)]) -> Vec<(f64, f64, f64)> {
         };
         if let Ok(results) = modeler.update(mv) {
             for r in results {
-                result.push((r.pos.0, r.pos.1, 0.0));
+                result.push((r.pos.0, r.pos.1, 0.0, r.time));
                 input_idx.push(i);
             }
         }
@@ -193,7 +194,7 @@ pub fn smooth_points(points: &[(f64, f64, f64)]) -> Vec<(f64, f64, f64)> {
     };
     if let Ok(results) = modeler.update(up) {
         for r in results {
-            result.push((r.pos.0, r.pos.1, 0.0));
+            result.push((r.pos.0, r.pos.1, 0.0, r.time));
             input_idx.push(points.len() - 1);
         }
     }

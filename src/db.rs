@@ -4,7 +4,7 @@ use rusqlite::{Connection, params};
 static DB: Mutex<Option<Connection>> = Mutex::new(None);
 static CURRENT_SCREEN_ID: Mutex<i64> = Mutex::new(0);
 static PENDING_STROKE_ID: Mutex<Option<i64>> = Mutex::new(None);
-static PENDING_POINTS: Mutex<Vec<(f64, f64, f64)>> = Mutex::new(Vec::new());
+static PENDING_POINTS: Mutex<Vec<(f64, f64, f64, f64)>> = Mutex::new(Vec::new()); // (x, y, width, relative_time)
 
 fn db_path() -> std::path::PathBuf {
     let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -71,6 +71,7 @@ pub fn init() {
             x REAL NOT NULL,
             y REAL NOT NULL,
             width REAL NOT NULL,
+            t REAL NOT NULL DEFAULT 0.0,
             PRIMARY KEY (stroke_id, seq)
         );
         CREATE INDEX IF NOT EXISTS idx_strokes_screen ON strokes(screen_id);
@@ -79,6 +80,9 @@ pub fn init() {
             value TEXT NOT NULL
         );
     ").expect("Failed to create tables");
+
+    // Migration: add t column to existing points table
+    conn.execute_batch("ALTER TABLE points ADD COLUMN t REAL NOT NULL DEFAULT 0.0;").ok();
 
     // Apply defaults for missing settings
     apply_defaults();
@@ -131,8 +135,8 @@ pub fn begin_stroke(r: f64, g: f64, b: f64, width_scale: f64) {
 }
 
 /// Buffer a point. Will be flushed to DB on end_stroke.
-pub fn add_point(x: f64, y: f64, width: f64) {
-    PENDING_POINTS.lock().unwrap().push((x, y, width));
+pub fn add_point(x: f64, y: f64, width: f64, t: f64) {
+    PENDING_POINTS.lock().unwrap().push((x, y, width, t));
 }
 
 /// Flush buffered points to DB.
@@ -150,7 +154,7 @@ fn flush_pending() {
         }
     };
 
-    let points: Vec<(f64, f64, f64)> = {
+    let points: Vec<(f64, f64, f64, f64)> = {
         let mut p = PENDING_POINTS.lock().unwrap();
         std::mem::take(&mut *p)
     };
@@ -162,10 +166,10 @@ fn flush_pending() {
     let db = DB.lock().unwrap();
     if let Some(ref conn) = *db {
         let tx = conn.unchecked_transaction().ok();
-        for (i, &(x, y, w)) in points.iter().enumerate() {
+        for (i, &(x, y, w, t)) in points.iter().enumerate() {
             conn.execute(
-                "INSERT INTO points (stroke_id, seq, x, y, width) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![stroke_id, i as i64, x, y, w],
+                "INSERT INTO points (stroke_id, seq, x, y, width, t) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![stroke_id, i as i64, x, y, w, t],
             ).ok();
         }
         if let Some(tx) = tx {
@@ -248,7 +252,7 @@ pub struct StrokeData {
     pub g: f64,
     pub b: f64,
     pub width_scale: f64,
-    pub points: Vec<(f64, f64, f64)>,
+    pub points: Vec<(f64, f64, f64, f64)>, // (x, y, width, relative_time)
 }
 
 /// Load all strokes for a screen into the STROKES vec.
@@ -275,9 +279,9 @@ pub fn strokes_for_screen(screen_id: i64) -> Vec<StrokeData> {
         for row in rows.flatten() {
             let (stroke_id, r, g, b, width_scale) = row;
             let mut points = Vec::new();
-            if let Ok(mut ps) = conn.prepare("SELECT x, y, width FROM points WHERE stroke_id = ?1 ORDER BY seq") {
+            if let Ok(mut ps) = conn.prepare("SELECT x, y, width, t FROM points WHERE stroke_id = ?1 ORDER BY seq") {
                 if let Ok(pr) = ps.query_map(params![stroke_id], |prow| {
-                    Ok((prow.get::<_, f64>(0)?, prow.get::<_, f64>(1)?, prow.get::<_, f64>(2)?))
+                    Ok((prow.get::<_, f64>(0)?, prow.get::<_, f64>(1)?, prow.get::<_, f64>(2)?, prow.get::<_, f64>(3)?))
                 }) {
                     for p in pr.flatten() {
                         points.push(p);

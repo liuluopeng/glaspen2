@@ -83,6 +83,7 @@ extern void glaspen2_save_svg(void);
 extern char* glaspen2_get_cropped_svg(void);
 extern void glaspen2_free_c_string(char *ptr);
 extern int glaspen2_save_gif_cropped(const unsigned char *surface_data, int w, int h, int stride, double surface_scale);
+extern int glaspen2_save_animated_gif(void);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -1507,6 +1508,13 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                         show_notification(L(@"SVG 已复制到剪贴板", @"SVG copied to clipboard"));
                     } else {
                         show_notification(L(@"没有笔迹可复制", @"No strokes to copy"));
+                    }
+                    return NULL;
+                } else if (kc == kVK_ANSI_A) {
+                    if (glaspen2_save_animated_gif()) {
+                        show_notification(L(@"动画 GIF 已保存", @"Animated GIF saved"));
+                    } else {
+                        show_notification(L(@"没有笔迹或导出失败", @"No strokes or export failed"));
                     }
                     return NULL;
                 } else if (kc == kVK_ANSI_B) {
