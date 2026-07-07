@@ -834,18 +834,15 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     let strokes = STROKES.lock().unwrap();
     if strokes.is_empty() { return 0; }
 
+    // Bounding box
     let mut bx_min = f64::MAX; let mut by_min = f64::MAX;
     let mut bx_max = f64::MIN; let mut by_max = f64::MIN;
-    let mut global_min_t = f64::MAX;
-    let mut global_max_t = f64::MIN;
     for s in strokes.iter() {
-        for &(x, y, _, t) in &s.points {
+        for &(x, y, _, _) in &s.points {
             if x < bx_min { bx_min = x; }
             if y < by_min { by_min = y; }
             if x > bx_max { bx_max = x; }
             if y > by_max { by_max = y; }
-            if t < global_min_t { global_min_t = t; }
-            if t > global_max_t { global_max_t = t; }
         }
     }
     let pad = 10.0;
@@ -853,62 +850,46 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     bx_max += pad; by_max += pad;
     let bw = (bx_max - bx_min).ceil() as i32;
     let bh = (by_max - by_min).ceil() as i32;
-    if global_max_t <= 0.0 || bw < 4 || bh < 4 { return 0; }
-
-    // Determine timeline mode:
-    // - Absolute timestamps (NSTimeInterval ~100k+ seconds) → real inter-stroke gaps
-    // - Per-stroke relative (< 100s) → offset strokes sequentially
-    let is_absolute = strokes.len() < 2 || global_max_t >= 100.0;
-
-    let total_t;
-    if is_absolute {
-        total_t = global_max_t - global_min_t;
-    } else {
-        // Offset each stroke sequentially with 0.2s gap
-        let mut offset = 0.0;
-        let gap = 0.2;
-        for s in strokes.iter() {
-            if s.points.len() < 2 { continue; }
-            let s_min = s.points[0].3;
-            let s_max = s.points[s.points.len() - 1].3;
-            let s_dur = s_max - s_min;
-            offset += s_dur + gap;
-        }
-        total_t = offset;
-    }
-    if total_t < 0.01 { return 0; }
+    if bw < 4 || bh < 4 { return 0; }
 
     let gif_w = (bw as u32 / 2).max(1) as u16;
     let gif_h = (bh as u32 / 2).max(1) as u16;
 
-    let n_frames = 24usize;
-    let display_dur = total_t.min(5.0).max(2.0);
-    let frame_delay = ((display_dur / n_frames as f64) * 100.0) as u16;
+    // Each stroke's active drawing range (min_t … max_t) — gaps are discarded
+    struct Seg { si: usize, dur: f64 }
+    let segments: Vec<Seg> = strokes.iter().enumerate().filter_map(|(si, s)| {
+        if s.points.len() < 2 { return None; }
+        let dur = s.points[s.points.len() - 1].3 - s.points[0].3;
+        if dur <= 0.0 { None } else { Some(Seg { si, dur }) }
+    }).collect();
+    if segments.is_empty() { return 0; }
 
-    // Pre-compute per-stroke global timeline offset
-    let stroke_offset: Vec<f64> = if is_absolute {
-        // Absolute: just subtract global_min_t
-        strokes.iter().map(|_| -global_min_t).collect()
-    } else {
-        // Sequential: offset each stroke after the previous ends
-        let mut offsets = Vec::with_capacity(strokes.len());
-        let gap = 0.2;
-        let mut running = 0.0;
-        for s in strokes.iter() {
-            offsets.push(running);
-            if s.points.len() >= 2 {
-                let s_dur = s.points[s.points.len() - 1].3 - s.points[0].3;
-                running += s_dur + gap;
-            }
-        }
-        offsets
+    // Compressed timeline: sum of per-stroke active durations, no inter-stroke gaps
+    let total_active: f64 = segments.iter().map(|seg| seg.dur).sum();
+    if total_active < 0.01 { return 0; }
+
+    // Per-segment offset in the compressed timeline
+    let seg_offset: Vec<(usize, f64, f64)> = {
+        let mut v = Vec::new();
+        let mut cur = 0.0;
+        for seg in &segments { v.push((seg.si, cur, cur + seg.dur)); cur += seg.dur; }
+        v
     };
 
-    // Render each frame — create a fresh surface each time to avoid
-    // borrowing issues with the cairo-rs Context.
-    let mut frame_pixels: Vec<Vec<u8>> = Vec::with_capacity(n_frames);
+    // 24 drawing frames + 5 hold frames (final image visible ~1 s)
+    const N_DRAW: usize = 24;
+    const N_HOLD: usize = 5;
+    let n_frames = N_DRAW + N_HOLD;
+    let draw_delay = ((total_active.min(5.0).max(2.0) / N_DRAW as f64) * 100.0) as u16;
+
+    // Render drawing frames + hold frames
+    let mut frame_pixels: Vec<(Vec<u8>, u16)> = Vec::with_capacity(n_frames);
+
     for fi in 0..n_frames {
-        let cutoff = (fi as f64 / n_frames as f64) * total_t;
+        let is_hold = fi >= N_DRAW;
+        let cutoff = (fi.min(N_DRAW - 1) as f64 / N_DRAW as f64) * total_active;
+        let delay = if is_hold { 100u16 } else { draw_delay };
+
         let mut surface = match cairo::ImageSurface::create(cairo::Format::ARgb32, bw, bh) {
             Ok(s) => s,
             Err(_) => return 0,
@@ -923,16 +904,30 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
             let _ = cr.paint();
         }
 
-        // Render strokes up to cutoff — using a block to drop Context before data()
+        // Render
         {
             let cr = cairo::Context::new(&surface).ok();
             let cr = match cr { Some(c) => c, None => return 0 };
-            for (si, s) in strokes.iter().enumerate() {
-                let offset = stroke_offset[si];
-                let pts: Vec<(f64, f64, f64)> = s.points.iter()
-                    .take_while(|&&(_, _, _, t)| t + offset <= cutoff)
-                    .map(|&(x, y, w, _t)| (x - bx_min, y - by_min, w))
-                    .collect();
+            for &(si, seg_start, seg_end) in &seg_offset {
+                let s = &strokes[si];
+
+                // Determine points to draw
+                let pts: Vec<(f64, f64, f64)> = if is_hold || cutoff >= seg_end {
+                    // Fully drawn
+                    s.points.iter()
+                        .map(|&(x, y, w, _)| (x - bx_min, y - by_min, w))
+                        .collect()
+                } else if cutoff > seg_start {
+                    // Partially drawn — map global cutoff → local progress
+                    let local_frac = (cutoff - seg_start) / (seg_end - seg_start);
+                    let local_cut = s.points[0].3 + local_frac * (s.points[s.points.len() - 1].3 - s.points[0].3);
+                    s.points.iter()
+                        .take_while(|&&(_, _, _, t)| t <= local_cut)
+                        .map(|&(x, y, w, _)| (x - bx_min, y - by_min, w))
+                        .collect()
+                } else {
+                    Vec::new()
+                };
                 if pts.is_empty() { continue; }
                 cr.set_source_rgba(s.r, s.g, s.b, 1.0);
                 for i in 0..pts.len() {
@@ -953,7 +948,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
             }
         }
 
-        // Read pixels (Context dropped above, now safe to call data())
+        // Read pixels
         let pix = &*surface.data().unwrap_or_else(|_| panic!("Surface data"));
         let mut flat = Vec::with_capacity((gif_w as u32 * gif_h as u32 * 4) as usize);
         for gy in 0..gif_h as u32 {
@@ -969,12 +964,13 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
                 }
             }
         }
-        frame_pixels.push(flat);
+        frame_pixels.push((flat, delay));
     }
     drop(strokes);
 
     // Global palette (64 colors — good balance for pen strokes)
-    let all_pixels: Vec<u8> = frame_pixels.iter().flatten().copied().collect();
+    let all_pixels: Vec<u8> = frame_pixels.iter()
+        .flat_map(|(px, _)| px.iter()).copied().collect();
     if all_pixels.is_empty() { return 0; }
     let mut quantizer = color_quant::NeuQuant::new(30, 64, &all_pixels);
     let palette = quantizer.color_map_rgba();
@@ -984,8 +980,8 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
 
     let mut transparent_idx: u8 = 0;
     let mut idx_counts = [0u32; 64];
-    for frame in &frame_pixels {
-        for ch in frame.chunks(4) {
+    for (px, _) in &frame_pixels {
+        for ch in px.chunks(4) {
             if ch.len() == 4 && ch[3] == 0 {
                 let idx = quantizer.index_of(&[ch[0], ch[1], ch[2], 0]) as u8;
                 idx_counts[idx as usize] += 1;
@@ -1005,7 +1001,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
         };
         enc.set_repeat(gif::Repeat::Infinite).ok();
 
-        for pixels in &frame_pixels {
+        for (pixels, delay) in &frame_pixels {
             let indices: Vec<u8> = pixels.chunks(4).map(|p| {
                 quantizer.index_of(&[p[0], p[1], p[2], 0]) as u8
             }).collect();
@@ -1014,7 +1010,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
                 width: gif_w,
                 height: gif_h,
                 buffer: std::borrow::Cow::Owned(indices),
-                delay: frame_delay,
+                delay: *delay,
                 transparent: Some(transparent_idx),
                 ..gif::Frame::default()
             };
