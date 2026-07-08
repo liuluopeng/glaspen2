@@ -30,6 +30,17 @@ namespace GlasPen2
         private int _hidMinY, _hidMaxY;
         private bool _rangeFound;
 
+        // Dynamic HID range calibration (for when driver changes coordinate space)
+        private int _obsMaxX, _obsMaxY;
+        private int _obsCount;
+        private bool _rangeCalibrated;
+
+        // Mouse absolute input path (fallback when HID digitizer driver fails)
+        private bool _mouseTipDown;
+        private bool _mouseInRange;
+        private int _lastMouseMoveTick;
+        private System.Windows.Forms.Timer _mouseTimeoutTimer;
+
         // Drawing state
         private bool _isDrawing;
         private Point _lastPoint;
@@ -170,6 +181,23 @@ namespace GlasPen2
             _unblockTimer.Tick += (s, ev) =>
             {
                 _unblockTimer.Stop();
+                // Check mouse absolute timeout (no proximity events in mouse mode)
+                if (_mouseInRange)
+                {
+                    int elapsed = Environment.TickCount - _lastMouseMoveTick;
+                    if (elapsed > 500)
+                    {
+                        _mouseInRange = false;
+                        _fakeStrokeForm.ClearCrosshair();
+                        Log("[MouseAbs] Timeout — pen out of range");
+                        if (!_isBlocking)
+                        {
+                            int style = NativeMethods.GetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE);
+                            style |= NativeMethods.WS_EX_TRANSPARENT;
+                            NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
+                        }
+                    }
+                }
                 if (_isBlocking)
                 {
                     int style = NativeMethods.GetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE);
@@ -179,6 +207,29 @@ namespace GlasPen2
                     Log("[AutoBlock] OFF — delay expired, mouse available");
                 }
             };
+
+            // Mouse timeout timer: periodic check for pen leave in mouse mode
+            _mouseTimeoutTimer = new System.Windows.Forms.Timer { Interval = 300 };
+            _mouseTimeoutTimer.Tick += (s, ev) =>
+            {
+                if (!_mouseInRange) return;
+                int elapsed = Environment.TickCount - _lastMouseMoveTick;
+                if (elapsed > 600)
+                {
+                    _mouseInRange = false;
+                    _fakeStrokeForm.ClearCrosshair();
+                    Log("[MouseAbs] Timeout — pen out of range");
+                    if (_isBlocking)
+                    {
+                        int style = NativeMethods.GetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE);
+                        style |= NativeMethods.WS_EX_TRANSPARENT;
+                        NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
+                        _isBlocking = false;
+                        Log("[MouseAbs] AutoBlock OFF — timeout");
+                    }
+                }
+            };
+            _mouseTimeoutTimer.Start();
 
             Log("[Overlay] Ready. Handle=0x{0:X}, Mode=AUTO-BLOCK (block on pen down, {1}ms delay on pen up)", this.Handle.ToInt64(), UNBLOCK_DELAY_MS);
         }
@@ -428,6 +479,10 @@ namespace GlasPen2
                 {
                     ProcessHidInput(buffer, headerBytes, (int)(dwSize - headerBytes));
                 }
+                else if (header.dwType == NativeMethods.RIM_TYPEMOUSE)
+                {
+                    ProcessRawMouseInput(buffer, headerBytes);
+                }
             }
             finally
             {
@@ -445,6 +500,21 @@ namespace GlasPen2
             uint rawX = (uint)Marshal.ReadByte(buffer, b + 2) | ((uint)Marshal.ReadByte(buffer, b + 3) << 8);
             uint rawY = (uint)Marshal.ReadByte(buffer, b + 4) | ((uint)Marshal.ReadByte(buffer, b + 5) << 8);
             uint press = (uint)Marshal.ReadByte(buffer, b + 6) | ((uint)Marshal.ReadByte(buffer, b + 7) << 8);
+
+            // Dynamic range calibration: track observed max raw values
+            // Handles driver fallback where HID logical range may change
+            if ((int)rawX > _obsMaxX) _obsMaxX = (int)rawX;
+            if ((int)rawY > _obsMaxY) _obsMaxY = (int)rawY;
+            _obsCount++;
+            if (_obsCount > 50 && !_rangeCalibrated && _obsMaxX > _hidMaxX * 1.2)
+            {
+                // Observed range exceeds probed range — recalibrate
+                Log("[Calibrate] HID range drift: probed=[{0}-{1},{2}-{3}] observed=({4},{5})",
+                    _hidMinX, _hidMaxX, _hidMinY, _hidMaxY, _obsMaxX, _obsMaxY);
+                _hidMaxX = _obsMaxX;
+                _hidMaxY = _obsMaxY;
+                _rangeCalibrated = true;
+            }
 
             bool tipDown = (switches & 0x05) != 0;
             bool inRange = (switches & 0x10) != 0;
@@ -595,6 +665,130 @@ namespace GlasPen2
                 // Draw green crosshair on fake stroke form (with offset)
                 int fx = ClampX(_screenX - this.Left) + FAKE_OFFSET_X;
                 int fy = ClampY(_screenY - this.Top) + FAKE_OFFSET_Y;
+                _fakeStrokeForm.DrawCrosshair(fx, fy);
+                this.Invalidate();
+            }
+        }
+
+        /// <summary>
+        /// Process mouse absolute input as pen fallback.
+        /// When the vendor HID digitizer driver fails, Windows may route pen data
+        /// through the mouse path with MOUSE_MOVE_ABSOLUTE. Coordinates are in
+        /// 0-65535 range normalized to the virtual screen.
+        /// </summary>
+        private void ProcessRawMouseInput(IntPtr buffer, int offset)
+        {
+            var mouse = (NativeMethods.RAWMOUSE)Marshal.PtrToStructure(
+                buffer + offset, typeof(NativeMethods.RAWMOUSE));
+
+            bool isAbsolute = (mouse.usFlags & NativeMethods.MOUSE_MOVE_ABSOLUTE) != 0;
+            if (!isAbsolute) return; // relative mouse — not pen
+
+            var sb = SystemInformation.VirtualScreen;
+
+            // Map 0-65535 normalized coords directly to virtual screen
+            int sx = sb.Left + (int)((long)mouse.lLastX * sb.Width / 65535);
+            int sy = sb.Top + (int)((long)mouse.lLastY * sb.Height / 65535);
+            sx = Math.Max(sb.Left, Math.Min(sx, sb.Left + sb.Width - 1));
+            sy = Math.Max(sb.Top, Math.Min(sy, sb.Top + sb.Height - 1));
+
+            // Track in-range via movement timeout (mouse path has no proximity)
+            int now = Environment.TickCount;
+            _lastMouseMoveTick = now;
+            bool wasInRange = _mouseInRange;
+            _mouseInRange = true;
+
+            // Detect tip down/up from left button
+            bool leftDown = (mouse.usButtonFlags & NativeMethods.RI_MOUSE_LEFT_BUTTON_DOWN) != 0;
+            bool leftUp = (mouse.usButtonFlags & NativeMethods.RI_MOUSE_LEFT_BUTTON_UP) != 0;
+            if (leftDown) _mouseTipDown = true;
+            else if (leftUp) _mouseTipDown = false;
+
+            bool tipChanged = (leftDown || leftUp) != (leftDown && leftUp);
+            bool rangeChanged = _mouseInRange != wasInRange;
+
+            _screenX = sx;
+            _screenY = sy;
+            _showCursor = _mouseInRange && !_mouseTipDown;
+            _pressure = _mouseTipDown ? 8000u : 0u; // default pressure when mouse path
+
+            // Auto-block: same logic as HID path
+            if (rangeChanged || tipChanged)
+            {
+                int style = NativeMethods.GetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE);
+                if (_mouseInRange)
+                {
+                    _unblockTimer.Stop();
+                    if (!_isBlocking)
+                    {
+                        style &= ~NativeMethods.WS_EX_TRANSPARENT;
+                        NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
+                        _isBlocking = true;
+                        Log("[MouseAbs] ON — blocking lower apps");
+                    }
+                }
+            }
+
+            if (_mouseTipDown && _pressure > 0)
+            {
+                _currentWidth = _penWidth * (0.3f + (8000f / 16000f) * 1.7f); // mid pressure
+                int cx = ClampX(sx - this.Left);
+                int cy = ClampY(sy - this.Top);
+                var pt = new Point(cx, cy);
+
+                int fx = cx + FAKE_OFFSET_X;
+                int fy = cy + FAKE_OFFSET_Y;
+
+                if (!_isDrawing)
+                {
+                    if (_preStrokeSnapshot != null) _preStrokeSnapshot.Dispose();
+                    _preStrokeSnapshot = (Bitmap)_canvas.Clone();
+
+                    _fakeStrokeForm.ClearCrosshair();
+                    _isDrawing = true;
+                    _recentPoints.Clear();
+                    _recentPoints.Add(pt);
+                    using (var pen = new Pen(_penColor, _currentWidth))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        _g.DrawEllipse(pen, cx - _currentWidth / 2, cy - _currentWidth / 2, _currentWidth, _currentWidth);
+                    }
+                    _fakeStrokeForm.BeginStroke(fx, fy, _currentWidth);
+                }
+                else
+                {
+                    _recentPoints.Add(pt);
+                    if (_recentPoints.Count > MAX_RECENT)
+                        _recentPoints.RemoveAt(0);
+
+                    using (var pen = new Pen(_penColor, _currentWidth))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        pen.LineJoin = LineJoin.Round;
+
+                        if (_recentPoints.Count >= 3)
+                            _g.DrawCurve(pen, _recentPoints.ToArray(), 0.5f);
+                        else if (_recentPoints.Count == 2)
+                            _g.DrawLine(pen, _recentPoints[0], _recentPoints[1]);
+                    }
+                    _fakeStrokeForm.AddPoint(fx, fy, _currentWidth);
+                }
+                _lastPoint = pt;
+                this.Invalidate();
+            }
+            else if (!_mouseTipDown && _isDrawing)
+            {
+                _recentPoints.Clear();
+                _isDrawing = false;
+                _fakeStrokeForm.EndStroke();
+                this.Invalidate();
+            }
+            else if (_showCursor)
+            {
+                int fx = ClampX(sx - this.Left) + FAKE_OFFSET_X;
+                int fy = ClampY(sy - this.Top) + FAKE_OFFSET_Y;
                 _fakeStrokeForm.DrawCrosshair(fx, fy);
                 this.Invalidate();
             }
@@ -1076,6 +1270,7 @@ namespace GlasPen2
                     NativeMethods.UnregisterHotKey(this.Handle, 8);
                 }
                 if (_unblockTimer != null) { _unblockTimer.Stop(); _unblockTimer.Dispose(); }
+                if (_mouseTimeoutTimer != null) { _mouseTimeoutTimer.Stop(); _mouseTimeoutTimer.Dispose(); }
                 if (_preStrokeSnapshot != null) { _preStrokeSnapshot.Dispose(); }
                 if (_pressureForm != null) { _pressureForm.Close(); _pressureForm.Dispose(); }
                 if (_g != null) _g.Dispose();
