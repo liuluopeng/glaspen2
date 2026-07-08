@@ -149,6 +149,36 @@ pub async fn end_stroke() {
     flush_pending().await;
 }
 
+/// End stroke without blocking: take pending data from memory synchronously
+/// (~1μs Mutex ops), then spawn the DB write to tokio.  The caller returns
+/// immediately so the event-tap thread is never blocked waiting on SQLite.
+///
+/// This is safe because the `take_*` calls atomically remove the pending
+/// stroke-id and points before the write is spawned — the next stroke's
+/// `begin_stroke` will see a fresh empty buffer.
+pub fn end_stroke_spawned() {
+    let stroke_id = match state::take_pending_stroke_id() {
+        Some(id) => id,
+        None => return,
+    };
+    let points = state::take_pending();
+    if points.is_empty() { return; }
+    let _ = crate::runtime().spawn(db_write_points(stroke_id, points));
+}
+
+/// DB INSERTs for a batch of points (shared by block_on and spawn paths).
+async fn db_write_points(stroke_id: i64, points: Vec<(f64, f64, f64, f64)>) {
+    let pool = DB.get().expect("DB not initialized");
+    let mut tx = match pool.begin().await { Ok(t) => t, Err(_) => return };
+    for (i, &(x, y, w, t)) in points.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO points (stroke_id, seq, x, y, width, t) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+        ).bind(stroke_id).bind(i as i64).bind(x).bind(y).bind(w).bind(t)
+            .execute(&mut *tx).await.ok();
+    }
+    tx.commit().await.ok();
+}
+
 /// Flush pending points for the current stroke to the database.
 async fn flush_pending() {
     let stroke_id = match state::take_pending_stroke_id() {
@@ -161,18 +191,7 @@ async fn flush_pending() {
         return;
     }
 
-    let pool = DB.get().expect("DB not initialized");
-    let mut tx = match pool.begin().await {
-        Ok(t) => t,
-        Err(_) => return,
-    };
-    for (i, &(x, y, w, t)) in points.iter().enumerate() {
-        sqlx::query(
-            "INSERT INTO points (stroke_id, seq, x, y, width, t) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
-        ).bind(stroke_id).bind(i as i64).bind(x).bind(y).bind(w).bind(t)
-            .execute(&mut *tx).await.ok();
-    }
-    tx.commit().await.ok();
+    db_write_points(stroke_id, points).await;
 }
 
 /// Check if a screen has any strokes.

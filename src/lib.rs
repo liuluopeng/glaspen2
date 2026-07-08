@@ -70,12 +70,12 @@ pub extern "C" fn glaspen2_add_point(x: c_double, y: c_double, width: c_double) 
 
 #[no_mangle]
 pub extern "C" fn glaspen2_end_stroke() {
-    runtime().block_on(db::end_stroke());
+    db::end_stroke_spawned();
 }
 
 #[no_mangle]
 pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) {
-    runtime().block_on(db::end_stroke()); // flush pending before checking
+    runtime().block_on(db::end_stroke()); // flush before checking — must block
     let current = state::current_screen_id();
     if runtime().block_on(db::screen_has_strokes(current)) {
         runtime().block_on(db::new_screen(screen_w, screen_h));
@@ -130,7 +130,7 @@ pub extern "C" fn glaspen2_modeler_end(x: c_double, y: c_double, pressure: c_dou
     modeler::end_stroke(x, y, pressure, timestamp, width_scale);
     let start = RAW_STROKE_START.lock().unwrap().unwrap_or(timestamp);
     state::buffer_point(x, y, pressure_to_width(pressure, width_scale), timestamp - start); // sync
-    runtime().block_on(db::end_stroke());
+    db::end_stroke_spawned();
 }
 
 /// Commit the modeler buffer into STROKES. Call after drawing the buffer.
