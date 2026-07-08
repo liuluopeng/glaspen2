@@ -174,6 +174,25 @@ fn flush_pending() {
     }
 }
 
+/// Delete the last stroke from the current screen (for undo).
+pub fn delete_last_stroke() {
+    flush_pending();
+    let db = DB.lock().unwrap();
+    if let Some(ref conn) = *db {
+        let screen_id = *CURRENT_SCREEN_ID.lock().unwrap();
+        // Find the last stroke id for this screen
+        let last_id: Option<i64> = conn.query_row(
+            "SELECT id FROM strokes WHERE screen_id = ?1 ORDER BY id DESC LIMIT 1",
+            params![screen_id],
+            |row| row.get(0),
+        ).ok();
+        if let Some(sid) = last_id {
+            conn.execute("DELETE FROM points WHERE stroke_id = ?1", params![sid]).ok();
+            conn.execute("DELETE FROM strokes WHERE id = ?1", params![sid]).ok();
+        }
+    }
+}
+
 pub fn current_screen() -> i64 {
     *CURRENT_SCREEN_ID.lock().unwrap()
 }

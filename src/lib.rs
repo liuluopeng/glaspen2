@@ -73,6 +73,12 @@ pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) {
     strokes.clear();
 }
 
+#[no_mangle]
+pub extern "C" fn glaspen2_delete_last_stroke() {
+    db::delete_last_stroke();
+    STROKES.lock().unwrap().pop();
+}
+
 /// Initialize the database and create the first screen record. Call once at app start.
 #[no_mangle]
 pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
@@ -1002,6 +1008,13 @@ mod cairo_renderer {
             (self.width, self.height, stride)
         }
 
+        pub fn mark_dirty(&self) {
+            match &self.surface {
+                CairoBackend::Real(ref s) => s.mark_dirty(),
+                CairoBackend::Stub(_) => {} // stub doesn't cache
+            }
+        }
+
         /// Draw all smoothed points from the modeler buffer onto the surface.
         /// Uses per-point width from the modeler. Called after pen-up.
         pub fn draw_modeler_buffer(&mut self, r: f64, g: f64, b: f64) {
@@ -1115,6 +1128,23 @@ pub extern "C" fn glaspen2_cairo_surface_data(renderer: *mut CairoRenderer) -> *
 pub extern "C" fn glaspen2_cairo_surface_data_mut(renderer: *mut CairoRenderer) -> *mut c_uchar {
     if renderer.is_null() { return std::ptr::null_mut(); }
     unsafe { (*renderer).surface_data_mut() }
+}
+
+/// Undo last stroke: clear surface, pop from STROKES, replay remaining.
+/// Returns the number of remaining strokes.
+#[no_mangle]
+#[cfg(target_os = "windows")]
+pub extern "C" fn glaspen2_cairo_undo(renderer: *mut CairoRenderer) -> c_int {
+    if renderer.is_null() { return -1; }
+    {
+        let mut strokes = STROKES.lock().unwrap();
+        strokes.pop();
+    }
+    db::delete_last_stroke();
+    unsafe { (*renderer).replay_strokes(); }
+    let count = STROKES.lock().unwrap().len() as c_int;
+    eprintln!("[cairo_undo] remaining strokes: {}", count);
+    count
 }
 
 /// Get surface dimensions and stride.

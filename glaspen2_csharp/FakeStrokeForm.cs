@@ -405,6 +405,47 @@ namespace GlasPen2
             PresentDib(true);
         }
 
+        /// <summary>
+        /// Undo last stroke: Rust clears surface, pops stroke, replays remaining.
+        /// </summary>
+        public void UndoLastStroke()
+        {
+            if (_renderer == IntPtr.Zero) return;
+
+            int remaining = GlaspenNative.glaspen2_stroke_count();
+
+            // Clear Cairo surface
+            GlaspenNative.glaspen2_cairo_clear(_renderer);
+
+            // Redraw all remaining strokes
+            for (int si = 0; si < remaining; si++)
+            {
+                int pc = GlaspenNative.glaspen2_get_stroke_point_count(si);
+                if (pc < 1) continue;
+
+                double r, g, b;
+                GlaspenNative.glaspen2_get_stroke_color(si, out r, out g, out b);
+
+                double px0, py0;
+                GlaspenNative.glaspen2_get_stroke_point(si, 0, out px0, out py0);
+                double w0 = GlaspenNative.glaspen2_get_stroke_point_width(si, 0);
+                GlaspenNative.glaspen2_cairo_draw_dot(_renderer, px0, py0, w0, r, g, b);
+
+                for (int pi = 1; pi < pc; pi++)
+                {
+                    double px1, py1;
+                    GlaspenNative.glaspen2_get_stroke_point(si, pi - 1, out px1, out py1);
+                    double px2, py2;
+                    GlaspenNative.glaspen2_get_stroke_point(si, pi, out px2, out py2);
+                    double pw = GlaspenNative.glaspen2_get_stroke_point_width(si, pi);
+                    GlaspenNative.glaspen2_cairo_draw_line(_renderer, px1, py1, px2, py2, pw, r, g, b);
+                }
+            }
+
+            CopyCairoToDib();
+            PresentDib(true);
+        }
+
         public void LoadAndReplayFromNative(long screenId)
         {
             int count = GlaspenNative.glaspen2_load_strokes_for_screen(screenId);

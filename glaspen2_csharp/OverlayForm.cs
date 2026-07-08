@@ -59,6 +59,9 @@ namespace GlasPen2
         private IntPtr _transparentCursor = IntPtr.Zero;
         private bool _showCursor;
 
+        // Undo: bitmap snapshot saved before each stroke begins
+        private Bitmap _preStrokeSnapshot;
+
         // Block mode: toggle WS_EX_TRANSPARENT to block/allow pen+mouse passthrough
         private bool _isBlocking = false; // start in transparent (pass-through) mode
 
@@ -154,6 +157,9 @@ namespace GlasPen2
             // Ctrl+Alt+V — toggle drawing enabled (disable pen overlay, restore pen to default)
             NativeMethods.RegisterHotKey(this.Handle, 7,
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.V);
+            // Ctrl+Alt+Z — undo last stroke
+            NativeMethods.RegisterHotKey(this.Handle, 8,
+                NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.Z);
 
             // Create pressure display
             _pressureForm = new PressureForm();
@@ -391,6 +397,7 @@ namespace GlasPen2
                 else if (id == 5) PrevPage();
                 else if (id == 6) NextPage();
                 else if (id == 7) { ToggleDrawingEnabled(); _fakeStrokeForm.ShowNotification(_drawingEnabled ? "涂鸦已开启" : "涂鸦已关闭"); }
+                else if (id == 8) { Undo(); }
             }
             base.WndProc(ref m);
         }
@@ -531,6 +538,10 @@ namespace GlasPen2
 
                 if (!_isDrawing)
                 {
+                    // Save snapshot for undo
+                    if (_preStrokeSnapshot != null) _preStrokeSnapshot.Dispose();
+                    _preStrokeSnapshot = (Bitmap)_canvas.Clone();
+
                     _fakeStrokeForm.ClearCrosshair(); // remove crosshair before drawing
                     _isDrawing = true;
                     _recentPoints.Clear();
@@ -650,8 +661,53 @@ namespace GlasPen2
             _isDrawing = false;
             _g.Clear(Color.Transparent);
             _fakeStrokeForm.ClearAll();
+            if (_preStrokeSnapshot != null) _preStrokeSnapshot.Dispose();
+            _preStrokeSnapshot = null;
             this.Invalidate();
             Log("[Overlay] Cleared");
+        }
+
+        public void Undo()
+        {
+            // Clear crosshair before undo
+            _fakeStrokeForm.ClearCrosshair();
+
+            // Delete last stroke from DB + STROKES
+            GlaspenNative.glaspen2_delete_last_stroke();
+            int remaining = GlaspenNative.glaspen2_stroke_count();
+
+            // Clear overlay bitmap
+            _g.Clear(Color.Transparent);
+
+            // Redraw all remaining strokes on overlay bitmap
+            for (int si = 0; si < remaining; si++)
+            {
+                int pc = GlaspenNative.glaspen2_get_stroke_point_count(si);
+                if (pc < 2) continue;
+                double r, g, b;
+                GlaspenNative.glaspen2_get_stroke_color(si, out r, out g, out b);
+                Color color = Color.FromArgb((int)(r * 255), (int)(g * 255), (int)(b * 255));
+                using (var pen = new Pen(color, 2.5f))
+                {
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    pen.LineJoin = LineJoin.Round;
+                    double px0, py0;
+                    GlaspenNative.glaspen2_get_stroke_point(si, 0, out px0, out py0);
+                    for (int pi = 1; pi < pc; pi++)
+                    {
+                        double px1, py1;
+                        GlaspenNative.glaspen2_get_stroke_point(si, pi, out px1, out py1);
+                        _g.DrawLine(pen, (float)px0, (float)py0, (float)px1, (float)py1);
+                        px0 = px1; py0 = py1;
+                    }
+                }
+            }
+            this.Invalidate();
+
+            // Undo on the visible Cairo layer (clear + redraw remaining)
+            _fakeStrokeForm.UndoLastStroke();
+            Log("[Overlay] Undo, remaining={0}", remaining);
         }
 
         // ── Page navigation (Ctrl+Alt+J / Ctrl+Alt+K) ──
@@ -909,6 +965,11 @@ namespace GlasPen2
         {
             try
             {
+                if (key == "undo")
+                {
+                    Undo();
+                    return;
+                }
                 int intVal = Convert.ToInt32(value);
                 if (key == "color" && intVal >= 0 && intVal < PresetColors.Length)
                 {
@@ -955,8 +1016,10 @@ namespace GlasPen2
                     NativeMethods.UnregisterHotKey(this.Handle, 5);
                     NativeMethods.UnregisterHotKey(this.Handle, 6);
                     NativeMethods.UnregisterHotKey(this.Handle, 7);
+                    NativeMethods.UnregisterHotKey(this.Handle, 8);
                 }
                 if (_unblockTimer != null) { _unblockTimer.Stop(); _unblockTimer.Dispose(); }
+                if (_preStrokeSnapshot != null) { _preStrokeSnapshot.Dispose(); }
                 if (_pressureForm != null) { _pressureForm.Close(); _pressureForm.Dispose(); }
                 if (_g != null) _g.Dispose();
                 if (_canvas != null) _canvas.Dispose();

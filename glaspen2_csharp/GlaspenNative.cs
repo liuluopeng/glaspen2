@@ -66,6 +66,9 @@ namespace GlasPen2
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern void glaspen2_clear_strokes(int screenW, int screenH);
 
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void glaspen2_delete_last_stroke();
+
         // ── Stroke data access ──
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -161,5 +164,8 @@ namespace GlasPen2
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern void glaspen2_cairo_replay_strokes(IntPtr renderer);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int glaspen2_cairo_undo(IntPtr renderer);
     }
 }
