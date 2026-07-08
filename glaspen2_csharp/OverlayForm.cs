@@ -35,7 +35,9 @@ namespace GlasPen2
         private int _obsCount;
         private bool _rangeCalibrated;
 
-        // Mouse absolute input path (fallback when HID digitizer driver fails)
+        // WM_POINTER: set when pen data arrives via Windows Pointer API, suppresses WM_INPUT processing
+        private bool _usingWmPointer;
+        private int _lastPointerTick;
         private bool _mouseTipDown;
         private bool _mouseInRange;
         private int _lastMouseMoveTick;
@@ -439,6 +441,17 @@ namespace GlasPen2
             {
                 ProcessRawInput(m.LParam);
             }
+            else if (m.Msg == NativeMethods.WM_POINTERDOWN
+                  || m.Msg == NativeMethods.WM_POINTERUPDATE
+                  || m.Msg == NativeMethods.WM_POINTERUP)
+            {
+                ProcessPointerInput(m.WParam, m.LParam, m.Msg);
+            }
+            else if (m.Msg == NativeMethods.WM_POINTERENTER
+                  || m.Msg == NativeMethods.WM_POINTERLEAVE)
+            {
+                ProcessPointerProximity(m.WParam, m.Msg);
+            }
             else if (m.Msg == NativeMethods.WM_HOTKEY)
             {
                 int id = (int)m.WParam;
@@ -495,6 +508,8 @@ namespace GlasPen2
         {
             _hidCount++;
             _lastHidTick = Environment.TickCount; // mark HID alive → suppress mouse path
+            // WM_POINTER is active — suppress HID coordinate processing
+            if (_usingWmPointer && Environment.TickCount - _lastPointerTick < 2000) return;
             if (dataLen < 8) return;
 
             int b = offset + 8;
@@ -796,6 +811,141 @@ namespace GlasPen2
                 int fy = ClampY(sy - this.Top) + FAKE_OFFSET_Y;
                 _fakeStrokeForm.DrawCrosshair(fx, fy);
                 this.Invalidate();
+            }
+        }
+
+        /// <summary>
+        /// Process WM_POINTER pen input. Coordinates arrive in screen pixels — no
+        /// HID descriptor mapping needed. Works correctly regardless of which
+        /// driver (vendor or inbox) is active.
+        /// </summary>
+        private void ProcessPointerInput(IntPtr wParam, IntPtr lParam, int msg)
+        {
+            if (!_drawingEnabled) return;
+
+            uint pointerId = (uint)(wParam.ToInt64() & 0xFFFF);
+
+            // Only process pen input (PT_PEN = 3)
+            uint pointerType;
+            if (!NativeMethods.GetPointerType(pointerId, out pointerType)) return;
+            if (pointerType != NativeMethods.PT_PEN) return;
+
+            var penInfo = new NativeMethods.POINTER_PEN_INFO();
+            if (!NativeMethods.GetPointerPenInfo(pointerId, ref penInfo)) return;
+
+            _usingWmPointer = true;
+            _lastPointerTick = Environment.TickCount;
+
+            // Coordinates are already in screen pixels — no mapping needed
+            int sx = penInfo.pointerInfo.ptPixelLocation.X;
+            int sy = penInfo.pointerInfo.ptPixelLocation.Y;
+
+            bool tipDown = msg == NativeMethods.WM_POINTERDOWN || msg == NativeMethods.WM_POINTERUPDATE;
+            bool tipUp = msg == NativeMethods.WM_POINTERUP;
+            uint pressure = penInfo.pressure; // 0-1024
+
+            _screenX = sx;
+            _screenY = sy;
+            _pressure = pressure;
+            _tipDown = tipDown;
+            _showCursor = !tipDown && msg == NativeMethods.WM_POINTERUPDATE;
+
+            if (tipDown && pressure > 0)
+            {
+                _currentWidth = _penWidth * (0.3f + (pressure / 1024f) * 1.7f);
+                int cx = ClampX(sx - this.Left);
+                int cy = ClampY(sy - this.Top);
+                var pt = new Point(cx, cy);
+
+                int fx = cx + FAKE_OFFSET_X;
+                int fy = cy + FAKE_OFFSET_Y;
+
+                if (!_isDrawing)
+                {
+                    if (_preStrokeSnapshot != null) _preStrokeSnapshot.Dispose();
+                    _preStrokeSnapshot = (Bitmap)_canvas.Clone();
+
+                    _fakeStrokeForm.ClearCrosshair();
+                    _isDrawing = true;
+                    _recentPoints.Clear();
+                    _recentPoints.Add(pt);
+                    using (var pen = new Pen(_penColor, _currentWidth))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        _g.DrawEllipse(pen, cx - _currentWidth / 2, cy - _currentWidth / 2, _currentWidth, _currentWidth);
+                    }
+                    _fakeStrokeForm.BeginStroke(fx, fy, _currentWidth);
+                }
+                else
+                {
+                    _recentPoints.Add(pt);
+                    if (_recentPoints.Count > MAX_RECENT)
+                        _recentPoints.RemoveAt(0);
+
+                    using (var pen = new Pen(_penColor, _currentWidth))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        pen.LineJoin = LineJoin.Round;
+
+                        if (_recentPoints.Count >= 3)
+                            _g.DrawCurve(pen, _recentPoints.ToArray(), 0.5f);
+                        else if (_recentPoints.Count == 2)
+                            _g.DrawLine(pen, _recentPoints[0], _recentPoints[1]);
+                    }
+                    _fakeStrokeForm.AddPoint(fx, fy, _currentWidth);
+                }
+                _lastPoint = pt;
+                this.Invalidate();
+            }
+            else if (tipUp && _isDrawing)
+            {
+                _recentPoints.Clear();
+                _isDrawing = false;
+                _fakeStrokeForm.EndStroke();
+                this.Invalidate();
+            }
+            else if (_showCursor)
+            {
+                int fx = ClampX(sx - this.Left) + FAKE_OFFSET_X;
+                int fy = ClampY(sy - this.Top) + FAKE_OFFSET_Y;
+                _fakeStrokeForm.DrawCrosshair(fx, fy);
+                this.Invalidate();
+            }
+        }
+
+        /// <summary>
+        /// WM_POINTERENTER/LEAVE: pen proximity for auto-block.
+        /// WM_POINTER provides clean proximity events that replace the
+        /// fragile HID inRange bit parsing.
+        /// </summary>
+        private void ProcessPointerProximity(IntPtr wParam, int msg)
+        {
+            uint pointerId = (uint)(wParam.ToInt64() & 0xFFFF);
+            uint pointerType;
+            if (!NativeMethods.GetPointerType(pointerId, out pointerType)) return;
+            if (pointerType != NativeMethods.PT_PEN) return;
+
+            _usingWmPointer = true;
+
+            if (msg == NativeMethods.WM_POINTERENTER)
+            {
+                _unblockTimer.Stop();
+                if (!_isBlocking)
+                {
+                    int style = NativeMethods.GetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE);
+                    style &= ~NativeMethods.WS_EX_TRANSPARENT;
+                    NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
+                    _isBlocking = true;
+                    Log("[WM_POINTER] ENTER — blocking lower apps");
+                }
+            }
+            else if (msg == NativeMethods.WM_POINTERLEAVE)
+            {
+                _fakeStrokeForm.ClearCrosshair();
+                _unblockTimer.Start();
+                Log("[WM_POINTER] LEAVE — will unblock in {0}ms", UNBLOCK_DELAY_MS);
             }
         }
 

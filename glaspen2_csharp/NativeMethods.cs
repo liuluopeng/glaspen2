@@ -311,6 +311,8 @@ namespace GlasPen2
         public const int WM_POINTERDOWN   = 0x0246;
         public const int WM_POINTERUPDATE = 0x0245;
         public const int WM_POINTERUP     = 0x0247;
+        public const int WM_POINTERENTER  = 0x0249;
+        public const int WM_POINTERLEAVE  = 0x024A;
 
         // Windows INK / Tablet system gesture control
         public const int WM_TABLET_QUERYSYSTEMGESTURESTATUS = 0x02CC;
@@ -346,7 +348,7 @@ namespace GlasPen2
         [StructLayout(LayoutKind.Sequential)]
         public struct POINTER_INFO
         {
-            public uint pointerType; // PT_POINTER, PT_TOUCH, PT_PEN, etc.
+            public uint pointerType;
             public uint pointerId;
             public uint frameId;
             public uint pointerFlags;
@@ -355,13 +357,11 @@ namespace GlasPen2
             public POINT ptPixelLocation;
             public POINT ptHimetricLocation;
             public POINT ptPixelLocationRaw;
-            public POINT ptHimetricLocationRaw;
             public uint dwTime;
             public uint historyCount;
             public int inputData;
             public uint dwKeyStates;
-            public ulong PerformanceCount;
-            public uint ButtonChangeType;
+            public uint buttonChangeType;
         }
 
         [StructLayout(LayoutKind.Sequential)]
