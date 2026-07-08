@@ -508,8 +508,6 @@ namespace GlasPen2
         {
             _hidCount++;
             _lastHidTick = Environment.TickCount; // mark HID alive → suppress mouse path
-            // WM_POINTER is active — suppress HID coordinate processing
-            if (_usingWmPointer && Environment.TickCount - _lastPointerTick < 2000) return;
             if (dataLen < 8) return;
 
             int b = offset + 8;
@@ -586,31 +584,37 @@ namespace GlasPen2
             }
 
             _showCursor = inRange && !tipDown; // show crosshair on hover, hide when drawing or out of range
+            if (tipDown) _showCursor = false; // also hide crosshair when tip is down
 
-            // Auto-block: enable blocking on hover, delay unblock when pen leaves range
+            // Auto-block: enable blocking on hover OR tip-down, delay unblock when pen leaves
+            // NOTE: inbox HID driver may not set the inRange bit (range=NO), so we also
+            // trigger blocking on tipDown to ensure WM_POINTER can reach us.
+            bool penPresent = inRange || tipDown;
+            bool penAbsent = !inRange && !tipDown;
             if (rangeChanged || tipChanged)
             {
                 int style = NativeMethods.GetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE);
-                if (inRange)
+                if (penPresent)
                 {
-                    // Pen hovering or touching — cancel any pending unblock and enable blocking
                     _unblockTimer.Stop();
                     if (!_isBlocking)
                     {
                         style &= ~NativeMethods.WS_EX_TRANSPARENT;
                         NativeMethods.SetWindowLong(this.Handle, NativeMethods.GWL_EXSTYLE, style);
                         _isBlocking = true;
-                        Log("[AutoBlock] ON — pen in range, blocking lower apps");
+                        Log("[AutoBlock] ON — pen present (inRange={0} tipDown={1})", inRange, tipDown);
                     }
                 }
-                else
+                else if (penAbsent)
                 {
-                    // Pen left range — clear crosshair and start delay timer before unblocking
                     _fakeStrokeForm.ClearCrosshair();
                     _unblockTimer.Start();
-                    Log("[AutoBlock] PENDING — pen out of range, will unblock in {0}ms", UNBLOCK_DELAY_MS);
+                    Log("[AutoBlock] PENDING — pen absent, will unblock in {0}ms", UNBLOCK_DELAY_MS);
                 }
             }
+
+            // Skip drawing when WM_POINTER is active (it has correct screen-pixel coords)
+            if (_usingWmPointer && Environment.TickCount - _lastPointerTick < 2000) return;
 
             if (tipDown && press > 0)
             {
