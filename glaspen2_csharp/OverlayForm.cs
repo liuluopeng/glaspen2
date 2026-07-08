@@ -39,6 +39,7 @@ namespace GlasPen2
         private bool _mouseTipDown;
         private bool _mouseInRange;
         private int _lastMouseMoveTick;
+        private int _lastHidTick; // timestamp of last HID event, for mutual exclusion
         private System.Windows.Forms.Timer _mouseTimeoutTimer;
 
         // Drawing state
@@ -493,6 +494,7 @@ namespace GlasPen2
         private void ProcessHidInput(IntPtr buffer, int offset, int dataLen)
         {
             _hidCount++;
+            _lastHidTick = Environment.TickCount; // mark HID alive → suppress mouse path
             if (dataLen < 8) return;
 
             int b = offset + 8;
@@ -678,6 +680,9 @@ namespace GlasPen2
         /// </summary>
         private void ProcessRawMouseInput(IntPtr buffer, int offset)
         {
+            // Mutual exclusion: if HID events are arriving, let HID handle pen input
+            if (Environment.TickCount - _lastHidTick < 1000) return;
+
             var mouse = (NativeMethods.RAWMOUSE)Marshal.PtrToStructure(
                 buffer + offset, typeof(NativeMethods.RAWMOUSE));
 
