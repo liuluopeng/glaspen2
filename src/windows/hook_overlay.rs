@@ -1057,6 +1057,9 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                     LPARAM(0),
                 )
             };
+        } else if key == "export_animated_gif" {
+            let result = crate::glaspen2_save_animated_gif();
+            eprintln!("[pipe] animated GIF export: {}", if result != 0 { "OK" } else { "FAILED" });
         } else if key == "color" {
             if let Some(val) = json_get_i64(line, "value") {
                 let idx = val as usize;

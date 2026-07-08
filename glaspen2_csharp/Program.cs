@@ -93,8 +93,17 @@ namespace GlasPen2
             _settingsServer.GetSettings = () => overlay.GetSettings();
             _settingsServer.OnSettingChanged = (key, value) =>
             {
-                overlay.UpdateSetting(key, value);
-                _settingsServer.NotifySettingsChanged(overlay.GetSettings());
+                if (overlay.InvokeRequired)
+                    overlay.BeginInvoke(new Action(() =>
+                    {
+                        overlay.UpdateSetting(key, value);
+                        _settingsServer.NotifySettingsChanged(overlay.GetSettings());
+                    }));
+                else
+                {
+                    overlay.UpdateSetting(key, value);
+                    _settingsServer.NotifySettingsChanged(overlay.GetSettings());
+                }
             };
             _settingsServer.Start();
 

@@ -828,6 +828,58 @@ namespace GlasPen2
         }
 
         /// <summary>
+        /// Export animated GIF showing stroke drawing process. Ctrl+Alt+A.
+        /// Saves to desktop, copies to clipboard.
+        /// </summary>
+        private void ExportAnimatedGif()
+        {
+            try
+            {
+                int ok = GlaspenNative.glaspen2_save_animated_gif();
+                if (ok == 1)
+                {
+                    // Find newest gif on desktop and copy to clipboard
+                    string desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                    string newestGif = null;
+                    DateTime newestDate = DateTime.MinValue;
+                    foreach (string f in System.IO.Directory.GetFiles(desktop, "glaspen2_*.gif"))
+                    {
+                        DateTime d = System.IO.File.GetLastWriteTime(f);
+                        if (d > newestDate) { newestDate = d; newestGif = f; }
+                    }
+                    if (newestGif != null && newestGif != "")
+                    {
+                        using (var bmp = _fakeStrokeForm.GetCanvas())
+                        {
+                            if (bmp != null)
+                                CopyGifToClipboard(newestGif, bmp);
+                        }
+                    }
+                    _fakeStrokeForm.ShowNotification("已导出 SVG + GIF (动画)");
+                    // Force clear notification after 2 seconds
+                    System.Windows.Forms.Timer clearTimer = new System.Windows.Forms.Timer { Interval = 2000 };
+                    clearTimer.Tick += (s, ev) =>
+                    {
+                        clearTimer.Stop();
+                        clearTimer.Dispose();
+                        try { _fakeStrokeForm.ClearNotification(); } catch { }
+                    };
+                    clearTimer.Start();
+                    Log("[Export] Animated GIF saved: {0}", newestGif);
+                }
+                else
+                {
+                    _fakeStrokeForm.ShowNotification("导出失败");
+                }
+            }
+            catch (Exception ex)
+            {
+                _fakeStrokeForm.ShowNotification("导出错误");
+                Log("[Export] Error: {0}", ex.Message);
+            }
+        }
+
+        /// <summary>
         /// Copy GIF file to clipboard as CF_HDROP (file reference) + CF_DIB (bitmap preview).
         /// </summary>
         private void CopyGifToClipboard(string filePath, Bitmap canvas)
@@ -968,6 +1020,11 @@ namespace GlasPen2
                 if (key == "undo")
                 {
                     Undo();
+                    return;
+                }
+                if (key == "export_animated_gif")
+                {
+                    ExportAnimatedGif();
                     return;
                 }
                 int intVal = Convert.ToInt32(value);

@@ -166,6 +166,9 @@ namespace GlasPen2
         public static extern void glaspen2_cairo_replay_strokes(IntPtr renderer);
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int glaspen2_save_animated_gif();
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int glaspen2_cairo_undo(IntPtr renderer);
     }
 }

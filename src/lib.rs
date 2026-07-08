@@ -28,7 +28,7 @@ pub struct Stroke {
     pub r: f64,
     pub g: f64,
     pub b: f64,
-    pub points: Vec<(f64, f64, f64)>, // (x, y, width)
+    pub points: Vec<(f64, f64, f64, f64)>, // (x, y, width, relative_time)
     pub point_colors: Option<Vec<(f64, f64, f64)>>, // per-point color for inverse mode (memory only)
 }
 
@@ -41,20 +41,27 @@ impl Stroke {
 
 pub static STROKES: Mutex<Vec<Stroke>> = Mutex::new(Vec::new());
 
+/// Tracks the current stroke's start timestamp for relative time in the raw (DB) draw path.
+static RAW_STROKE_START: Mutex<Option<f64>> = Mutex::new(None);
+
 #[no_mangle]
 pub extern "C" fn glaspen2_begin_stroke(r: c_double, g: c_double, b: c_double, width_scale: c_double) {
     let mut strokes = STROKES.lock().unwrap();
     strokes.push(Stroke { r, g, b, points: Vec::new(), point_colors: None });
+    *RAW_STROKE_START.lock().unwrap() = Some(glaspen2_now_secs());
     db::begin_stroke(r, g, b, width_scale);
 }
 
 #[no_mangle]
 pub extern "C" fn glaspen2_add_point(x: c_double, y: c_double, width: c_double) {
+    let t = RAW_STROKE_START.lock().unwrap()
+        .map(|start| glaspen2_now_secs() - start)
+        .unwrap_or(0.0);
     let mut strokes = STROKES.lock().unwrap();
     if let Some(stroke) = strokes.last_mut() {
-        stroke.points.push((x, y, width));
+        stroke.points.push((x, y, width, t));
     }
-    db::add_point(x, y, width);
+    db::add_point(x, y, width, t);
 }
 
 #[no_mangle]
@@ -91,9 +98,10 @@ pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
 #[no_mangle]
 pub extern "C" fn glaspen2_modeler_begin(r: c_double, g: c_double, b: c_double, x: c_double, y: c_double, pressure: c_double, timestamp: c_double, width_scale: c_double) {
     modeler::begin_stroke(x, y, pressure, timestamp, width_scale);
+    *RAW_STROKE_START.lock().unwrap() = Some(timestamp);
     // Start DB stroke with correct color
     db::begin_stroke(r, g, b, width_scale);
-    db::add_point(x, y, pressure_to_width(pressure, width_scale));
+    db::add_point(x, y, pressure_to_width(pressure, width_scale), 0.0);
     // Start STROKES entry
     let mut strokes = STROKES.lock().unwrap();
     strokes.push(Stroke { r, g, b, points: Vec::new(), point_colors: None });
@@ -102,13 +110,15 @@ pub extern "C" fn glaspen2_modeler_begin(r: c_double, g: c_double, b: c_double, 
 #[no_mangle]
 pub extern "C" fn glaspen2_modeler_move(x: c_double, y: c_double, pressure: c_double, timestamp: c_double, width_scale: c_double) {
     modeler::pen_move(x, y, pressure, timestamp, width_scale);
-    db::add_point(x, y, pressure_to_width(pressure, width_scale));
+    let start = RAW_STROKE_START.lock().unwrap().unwrap_or(timestamp);
+    db::add_point(x, y, pressure_to_width(pressure, width_scale), timestamp - start);
 }
 
 #[no_mangle]
 pub extern "C" fn glaspen2_modeler_end(x: c_double, y: c_double, pressure: c_double, timestamp: c_double, width_scale: c_double) {
     modeler::end_stroke(x, y, pressure, timestamp, width_scale);
-    db::add_point(x, y, pressure_to_width(pressure, width_scale));
+    let start = RAW_STROKE_START.lock().unwrap().unwrap_or(timestamp);
+    db::add_point(x, y, pressure_to_width(pressure, width_scale), timestamp - start);
     db::end_stroke();
 }
 
@@ -143,8 +153,8 @@ pub extern "C" fn glaspen2_modeler_commit_to_strokes(
             None
         };
 
-        for (sx, sy, sw) in smoothed {
-            last.points.push((sx, sy, sw));
+        for (sx, sy, sw, st) in smoothed {
+            last.points.push((sx, sy, sw, st));
         }
         last.point_colors = point_colors;
     }
@@ -159,7 +169,7 @@ pub extern "C" fn glaspen2_modeler_point_count() -> c_int {
 /// Get a smoothed point by index (for macOS ObjC to read back).
 #[no_mangle]
 pub extern "C" fn glaspen2_modeler_get_point(idx: c_int, x: *mut c_double, y: *mut c_double, w: *mut c_double) {
-    if let Some((px, py, pw)) = modeler::get_buffer_point(idx as usize) {
+    if let Some((px, py, pw, _pt)) = modeler::get_buffer_point(idx as usize) {
         unsafe { *x = px; *y = py; *w = pw; }
     }
 }
@@ -200,7 +210,8 @@ pub extern "C" fn glaspen2_load_strokes_for_screen(screen_id: i64) -> c_int {
 pub extern "C" fn glaspen2_smooth_loaded_strokes() {
     let mut strokes = STROKES.lock().unwrap();
     for stroke in strokes.iter_mut() {
-        let smoothed = modeler::smooth_points(&stroke.points);
+        let raw: Vec<_> = stroke.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect();
+        let smoothed = modeler::smooth_points(&raw);
         if !smoothed.is_empty() {
             stroke.points = smoothed;
         }
@@ -251,7 +262,7 @@ pub extern "C" fn glaspen2_get_stroke_avg_width(idx: c_int) -> c_double {
 pub extern "C" fn glaspen2_get_stroke_point(idx: c_int, pidx: c_int, x: *mut c_double, y: *mut c_double) {
     let strokes = STROKES.lock().unwrap();
     if let Some(s) = strokes.get(idx as usize) {
-        if let Some(&(px, py, _)) = s.points.get(pidx as usize) {
+        if let Some(&(px, py, _, _)) = s.points.get(pidx as usize) {
             unsafe { *x = px; *y = py; }
         }
     }
@@ -263,6 +274,15 @@ pub extern "C" fn glaspen2_get_stroke_point_width(idx: c_int, pidx: c_int) -> c_
     strokes.get(idx as usize)
         .and_then(|s| s.points.get(pidx as usize))
         .map_or(1.0, |p| p.2)
+}
+
+/// Get per-point relative time.
+#[no_mangle]
+pub extern "C" fn glaspen2_get_stroke_point_time(idx: c_int, pidx: c_int) -> c_double {
+    let strokes = STROKES.lock().unwrap();
+    strokes.get(idx as usize)
+        .and_then(|s| s.points.get(pidx as usize))
+        .map_or(0.0, |p| p.3)
 }
 
 /// Get per-point color for inverse mode. Returns 1 if available, 0 otherwise.
@@ -293,7 +313,7 @@ pub extern "C" fn glaspen2_save_xoj() {
     // Get screen dimensions from the first point bounds, or use defaults
     let (mut max_x, mut max_y) = (1920.0f64, 1080.0f64);
     for stroke in strokes.iter() {
-        for &(x, y, _) in &stroke.points {
+        for &(x, y, _, _) in &stroke.points {
             if x > max_x { max_x = x; }
             if y > max_y { max_y = y; }
         }
@@ -315,12 +335,12 @@ pub extern "C" fn glaspen2_save_xoj() {
             (stroke.b * 255.0) as u8);
 
         let widths: String = stroke.points.iter()
-            .map(|&(_, _, w)| format!("{:.2}", w))
+            .map(|&(_, _, w, _)| format!("{:.2}", w))
             .collect::<Vec<_>>()
             .join(" ");
 
         let coords: String = stroke.points.iter()
-            .map(|&(x, y, _)| format!("{:.2} {:.2}", x, y))
+            .map(|&(x, y, _, _)| format!("{:.2} {:.2}", x, y))
             .collect::<Vec<_>>()
             .join(" ");
 
@@ -611,7 +631,7 @@ pub extern "C" fn glaspen2_stroke_bbox(
     let mut bx_max = f64::MIN;
     let mut by_max = f64::MIN;
     for s in strokes.iter() {
-        for &(x, y, _) in &s.points {
+        for &(x, y, _, _) in &s.points {
             if x < bx_min { bx_min = x; }
             if y < by_min { by_min = y; }
             if x > bx_max { bx_max = x; }
@@ -636,7 +656,7 @@ pub extern "C" fn glaspen2_save_svg() {
     let mut bx_min = f64::MAX; let mut by_min = f64::MAX;
     let mut bx_max = f64::MIN; let mut by_max = f64::MIN;
     for s in strokes.iter() {
-        for &(x, y, _) in &s.points {
+        for &(x, y, _, _) in &s.points {
             if x < bx_min { bx_min = x; }
             if y < by_min { by_min = y; }
             if x > bx_max { bx_max = x; }
@@ -657,10 +677,10 @@ pub extern "C" fn glaspen2_save_svg() {
         let color_hex = format!("#{:02x}{:02x}{:02x}",
             (s.r * 255.0) as u8, (s.g * 255.0) as u8, (s.b * 255.0) as u8);
         let mut d = String::new();
-        let (x0, y0, _) = s.points[0];
+        let (x0, y0, _, _) = s.points[0];
         d.push_str(&format!("M {:.1} {:.1}", x0 - bx_min, y0 - by_min));
         for i in 1..s.points.len() {
-            let (x, y, _) = s.points[i];
+            let (x, y, _, _) = s.points[i];
             d.push_str(&format!(" L {:.1} {:.1}", x - bx_min, y - by_min));
         }
         let avg_w = s.avg_width();
@@ -690,7 +710,7 @@ pub extern "C" fn glaspen2_save_gif_cropped(
     let mut bx_min = u32::MAX; let mut by_min = u32::MAX;
     let mut bx_max = 0u32; let mut by_max = 0u32;
     for s in strokes.iter() {
-        for &(x, y, _) in &s.points {
+        for &(x, y, _, _) in &s.points {
             let ix = x as u32; let iy = y as u32;
             if ix < bx_min { bx_min = ix; }
             if iy < by_min { by_min = iy; }
@@ -1021,12 +1041,12 @@ mod cairo_renderer {
             let count = modeler::buffer_len();
             if count < 1 { return; }
 
-            if let Some((x0, y0, w0)) = modeler::get_buffer_point(0) {
+            if let Some((x0, y0, w0, _t0)) = modeler::get_buffer_point(0) {
                 self.draw_dot(x0, y0, w0, r, g, b);
                 let mut prev_x = x0;
                 let mut prev_y = y0;
                 for i in 1..count {
-                    if let Some((px, py, pw)) = modeler::get_buffer_point(i) {
+                    if let Some((px, py, pw, _pt)) = modeler::get_buffer_point(i) {
                         self.draw_line(prev_x, prev_y, px, py, pw, r, g, b);
                         prev_x = px;
                         prev_y = py;
@@ -1042,11 +1062,11 @@ mod cairo_renderer {
             let strokes = STROKES.lock().unwrap();
             for stroke in strokes.iter() {
                 if stroke.points.is_empty() { continue; }
-                let (x0, y0, w0) = stroke.points[0];
+                let (x0, y0, w0, _t0) = stroke.points[0];
                 self.draw_dot(x0, y0, w0, stroke.r, stroke.g, stroke.b);
                 for w in stroke.points.windows(2) {
-                    let (x1, y1, w1) = w[0];
-                    let (x2, y2, w2) = w[1];
+                    let (x1, y1, w1, _t1) = w[0];
+                    let (x2, y2, w2, _t2) = w[1];
                     self.draw_line(x1, y1, x2, y2, w2, stroke.r, stroke.g, stroke.b);
                 }
             }
@@ -1182,5 +1202,223 @@ pub extern "C" fn glaspen2_cairo_draw_modeler_buffer(
 pub extern "C" fn glaspen2_cairo_replay_strokes(renderer: *mut CairoRenderer) {
     if !renderer.is_null() {
         unsafe { (*renderer).replay_strokes(); }
+    }
+}
+
+// ── Animated GIF Export ──
+
+/// Save an animated GIF showing stroke drawing order progressively.
+/// Renders frames bounding-box cropped, with per-stroke relative timing
+/// offset by 0.2s gaps between strokes so they appear one after another.
+/// Returns 1 on success, 0 on failure.
+#[no_mangle]
+pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
+    let strokes = STROKES.lock().unwrap();
+    if strokes.is_empty() { return 0; }
+
+    let mut bx_min = f64::MAX; let mut by_min = f64::MAX;
+    let mut bx_max = f64::MIN; let mut by_max = f64::MIN;
+    let mut global_min_t = f64::MAX;
+    let mut global_max_t = f64::MIN;
+    for s in strokes.iter() {
+        for &(x, y, _, t) in &s.points {
+            if x < bx_min { bx_min = x; }
+            if y < by_min { by_min = y; }
+            if x > bx_max { bx_max = x; }
+            if y > by_max { by_max = y; }
+            if t < global_min_t { global_min_t = t; }
+            if t > global_max_t { global_max_t = t; }
+        }
+    }
+    let pad = 10.0;
+    bx_min -= pad; by_min -= pad;
+    bx_max += pad; by_max += pad;
+    let bw = (bx_max - bx_min).ceil() as i32;
+    let bh = (by_max - by_min).ceil() as i32;
+    if global_max_t <= 0.0 || bw < 4 || bh < 4 { drop(strokes); return 0; }
+
+    // Determine timeline mode
+    // Absolute (NSTimeInterval ~100k+) → real inter-stroke gaps
+    // Per-stroke relative (< 100s) → offset strokes sequentially
+    let is_absolute = strokes.len() < 2 || global_max_t >= 100.0;
+
+    let total_t;
+    if is_absolute {
+        total_t = global_max_t - global_min_t;
+    } else {
+        // Offset each stroke sequentially with 0.2s gap
+        let mut offset = 0.0;
+        let gap = 0.2;
+        for s in strokes.iter() {
+            if s.points.len() < 2 { continue; }
+            let s_min = s.points[0].3;
+            let s_max = s.points[s.points.len() - 1].3;
+            let s_dur = s_max - s_min;
+            offset += s_dur + gap;
+        }
+        total_t = offset;
+    }
+    if total_t < 0.01 { drop(strokes); return 0; }
+
+    let gif_w = (bw as u32 / 2).max(1) as u16;
+    let gif_h = (bh as u32 / 2).max(1) as u16;
+
+    let n_frames = 24usize;
+    let display_dur = total_t.min(5.0).max(2.0);
+    let frame_delay = ((display_dur / n_frames as f64) * 100.0) as u16;
+
+    // Pre-compute per-stroke global timeline offset
+    let stroke_offset: Vec<f64> = if is_absolute {
+        strokes.iter().map(|_| -global_min_t).collect()
+    } else {
+        let mut offsets = Vec::with_capacity(strokes.len());
+        let gap = 0.2;
+        let mut running = 0.0;
+        for s in strokes.iter() {
+            offsets.push(running);
+            if s.points.len() >= 2 {
+                let s_dur = s.points[s.points.len() - 1].3 - s.points[0].3;
+                running += s_dur + gap;
+            }
+        }
+        offsets
+    };
+
+    use cairo::{Context, Format, ImageSurface, Operator, LineCap, LineJoin};
+    use std::f64::consts::PI;
+
+    let mut frame_pixels: Vec<Vec<u8>> = Vec::with_capacity(n_frames);
+    for fi in 0..n_frames {
+        let cutoff = (fi as f64 / n_frames as f64) * total_t;
+        let surface = match ImageSurface::create(Format::ARGB32, bw, bh) {
+            Ok(s) => s,
+            Err(_) => { drop(strokes); return 0; }
+        };
+        let stride = surface.stride() as usize;
+        let rw = surface.width() as u32;
+        let rh = surface.height() as u32;
+
+        // Clear
+        if let Ok(cr) = Context::new(&surface) {
+            cr.set_operator(Operator::Clear);
+            cr.paint().ok();
+        }
+
+        // Render strokes up to cutoff (using global timeline offset per stroke)
+        {
+            let cr = match Context::new(&surface) {
+                Ok(c) => c,
+                Err(_) => { drop(strokes); return 0; }
+            };
+            for (si, s) in strokes.iter().enumerate() {
+                let offset = stroke_offset[si];
+                let pts: Vec<(f64, f64, f64)> = s.points.iter()
+                    .take_while(|&&(_, _, _, t)| t + offset <= cutoff)
+                    .map(|&(x, y, w, _t)| (x - bx_min, y - by_min, w))
+                    .collect();
+                if pts.is_empty() { continue; }
+                cr.set_source_rgba(s.r, s.g, s.b, 1.0);
+                for i in 0..pts.len() {
+                    let (cx, cy, w) = pts[i];
+                    if i == 0 {
+                        cr.arc(cx, cy, w * 0.5, 0.0, 2.0 * PI);
+                        cr.fill().ok();
+                    } else {
+                        let (px, py, _) = pts[i - 1];
+                        cr.move_to(px, py);
+                        cr.line_to(cx, cy);
+                        cr.set_line_width(w);
+                        cr.set_line_cap(LineCap::Round);
+                        cr.set_line_join(LineJoin::Round);
+                        cr.stroke().ok();
+                    }
+                }
+            }
+        }
+
+        // Read pixels
+        let pix = match surface.data() {
+            Ok(d) => d,
+            Err(_) => { drop(strokes); return 0; }
+        };
+        let mut flat = Vec::with_capacity((gif_w as u32 * gif_h as u32 * 4) as usize);
+        for gy in 0..gif_h as u32 {
+            for gx in 0..gif_w as u32 {
+                let sx = (gx * 2).min(rw.saturating_sub(1));
+                let sy = (gy * 2).min(rh.saturating_sub(1));
+                let off = sy as usize * stride + sx as usize * 4;
+                if off + 3 < pix.len() {
+                    flat.push(pix[off + 2]); // R (BGRA→RGBA)
+                    flat.push(pix[off + 1]); // G
+                    flat.push(pix[off]);     // B
+                    flat.push(pix[off + 3]); // A
+                }
+            }
+        }
+        frame_pixels.push(flat);
+    }
+    drop(strokes);
+
+    // Global palette
+    let all_pixels: Vec<u8> = frame_pixels.iter().flatten().copied().collect();
+    if all_pixels.is_empty() { return 0; }
+    let mut quantizer = color_quant::NeuQuant::new(30, 128, &all_pixels);
+    let palette = quantizer.color_map_rgba();
+    let gif_palette: Vec<u8> = (0..128).flat_map(|i| {
+        [palette[i * 4], palette[i * 4 + 1], palette[i * 4 + 2]]
+    }).collect();
+
+    let mut transparent_idx: u8 = 0;
+    let mut idx_counts = [0u32; 128];
+    for frame in &frame_pixels {
+        for ch in frame.chunks(4) {
+            if ch.len() == 4 && ch[3] == 0 {
+                let idx = quantizer.index_of(&[ch[0], ch[1], ch[2], 0]) as u8;
+                idx_counts[idx as usize] += 1;
+            }
+        }
+    }
+    let mut max_count = 0u32;
+    for i in 0..128 {
+        if idx_counts[i] > max_count { max_count = idx_counts[i]; transparent_idx = i as u8; }
+    }
+
+    let mut gif_data = Vec::new();
+    {
+        let mut enc = match gif::Encoder::new(&mut gif_data, gif_w, gif_h, &gif_palette) {
+            Ok(e) => e,
+            Err(_) => return 0,
+        };
+        enc.set_repeat(gif::Repeat::Infinite).ok();
+
+        for pixels in &frame_pixels {
+            let indices: Vec<u8> = pixels.chunks(4).map(|p| {
+                quantizer.index_of(&[p[0], p[1], p[2], 0]) as u8
+            }).collect();
+
+            let frame = gif::Frame {
+                width: gif_w,
+                height: gif_h,
+                buffer: std::borrow::Cow::Owned(indices),
+                delay: frame_delay,
+                transparent: Some(transparent_idx),
+                ..gif::Frame::default()
+            };
+            if enc.write_frame(&frame).is_err() {
+                return 0;
+            }
+        }
+    }
+
+    let path = desktop_path().join(timestamped_name("gif"));
+    match std::fs::write(&path, &gif_data) {
+        Ok(_) => {
+            println!("[glaspen2] Saved animated GIF to {}", path.display());
+            1
+        }
+        Err(e) => {
+            eprintln!("[glaspen2] Animated GIF write failed: {}", e);
+            0
+        }
     }
 }

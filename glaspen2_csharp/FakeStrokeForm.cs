@@ -314,7 +314,7 @@ namespace GlasPen2
             PresentDib(true); // NOT BlitCairoToWindow — would overwrite notification
         }
 
-        private void ClearNotification()
+        public void ClearNotification()
         {
             _notification = null;
             _notificationRect = Rectangle.Empty;

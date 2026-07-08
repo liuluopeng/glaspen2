@@ -490,6 +490,16 @@ class _SettingsPageState extends State<SettingsPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
         ),
+        ElevatedButton.icon(
+          onPressed: () {
+            _setSetting('export_animated_gif', true);
+          },
+          icon: const Icon(Icons.gif, size: 16),
+          label: const Text('导出动画 GIF', style: TextStyle(fontSize: 13)),
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+        ),
       ],
     );
   }
