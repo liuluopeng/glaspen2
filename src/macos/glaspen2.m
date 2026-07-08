@@ -117,6 +117,25 @@ static BOOL g_raw_has_last = NO;
 // Track if a stroke is active (modeler has been initialized)
 static BOOL g_stroke_active = NO;
 
+// Active cairo context (reused across pen events during a stroke).
+// Created on pen-down, destroyed on pen-up. Avoids per-event malloc/free
+// of cairo_t and avoids the CTM scale setup cost.
+static cairo_t *g_active_cr = NULL;
+
+// Dirty-rect tracking (logical points, view coordinate space — origin bottom-left).
+// Pen events union their affected area into g_dirty_rect and invalidate it
+// with setNeedsDisplayInRect; drawRect then only copies that sub-region
+// from the cairo surface to the screen, instead of the full screen each vsync.
+static BOOL g_dirty_has = NO;       // any dirty region pending?
+static NSRect g_dirty_rect;          // union rect in view points
+static inline void dirty_reset(void) { g_dirty_has = NO; }
+static inline void dirty_include_point(double x, double y, double r) {
+    // Inflate by r (stroke half-width + anti-alias padding) and union.
+    NSRect add = NSMakeRect(x - r, y - r, 2 * r, 2 * r);
+    if (!g_dirty_has) { g_dirty_rect = add; g_dirty_has = YES; }
+    else g_dirty_rect = NSUnionRect(g_dirty_rect, add);
+}
+
 // Cursor state
 static double g_cursor_x = -100, g_cursor_y = -100;
 static BOOL g_cursor_visible = NO;
@@ -317,28 +336,27 @@ static void draw_modeler_buffer(void) {
     double px, py, pw;
     double prev_x, prev_y, prev_w;
 
+    cairo_t *cr = g_active_cr ? g_active_cr : cairo_create_scaled();
+    BOOL own_cr = (g_active_cr == NULL);
+
     // First point: draw as a dot
     glaspen2_modeler_get_point(0, &prev_x, &prev_y, &prev_w);
-    cairo_t *cr = cairo_create_scaled();
     cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
     cairo_arc(cr, prev_x, prev_y, prev_w * 0.5, 0, 2 * M_PI);
     cairo_fill(cr);
-    cairo_destroy(cr);
 
     // Subsequent points: draw line segments
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
     for (int i = 1; i < count; i++) {
         glaspen2_modeler_get_point(i, &px, &py, &pw);
-        cairo_t *cr = cairo_create_scaled();
-        cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
         cairo_set_line_width(cr, pw);
-        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
         cairo_move_to(cr, prev_x, prev_y);
         cairo_line_to(cr, px, py);
         cairo_stroke(cr);
-        cairo_destroy(cr);
         prev_x = px; prev_y = py; prev_w = pw;
     }
+    if (own_cr) cairo_destroy(cr);
 
     // Commit buffer to STROKES (takes and clears buffer)
     glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
@@ -355,12 +373,16 @@ static void replay_strokes_from_memory(void) {
     cairo_destroy(cr);
 
     int count = glaspen2_stroke_count();
+    cr = cairo_create_scaled();
     for (int si = 0; si < count; si++) {
         double r, g, b;
         glaspen2_get_stroke_color(si, &r, &g, &b);
         int pc = glaspen2_get_stroke_point_count(si);
         if (pc < 2) continue;
 
+        cairo_set_source_rgba(cr, r, g, b, 1.0);
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
         // Draw each segment with its own per-point width
         double x0, y0, x1, y1, w;
         for (int pi = 1; pi < pc; pi++) {
@@ -368,17 +390,13 @@ static void replay_strokes_from_memory(void) {
             glaspen2_get_stroke_point(si, pi, &x1, &y1);
             w = glaspen2_get_stroke_point_width(si, pi);
 
-            cairo_t *cr = cairo_create_scaled();
-            cairo_set_source_rgba(cr, r, g, b, 1.0);
             cairo_set_line_width(cr, w);
-            cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-            cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
             cairo_move_to(cr, x0, y0);
             cairo_line_to(cr, x1, y1);
             cairo_stroke(cr);
-            cairo_destroy(cr);
         }
     }
+    cairo_destroy(cr);
 
     g_has_last = NO;
     if (g_show_rainbow) draw_rainbow_indicator();
@@ -888,12 +906,52 @@ static void ensure_surface(NSView *view) {
 
 static void flush_to_layer(void) {
     if (!g_surface || !g_draw_view) return;
+    dirty_reset();
     [g_draw_view setNeedsDisplay:YES];
     // Note: deliberately NOT calling displayIfNeeded here.  The display
     // will happen on the next vsync via the runloop, batching all pending
     // pen events into a single frame.  This cuts CPU from ~20 % to ~8-10 %
     // without perceptible latency because the vsync cadence (60/120 Hz) is
     // far slower than raw pen events (200+ Hz).
+}
+
+/// Update the active cairo context's source and stroke/fill helpers using
+/// the shared g_active_cr (must have been created via stroke_begin).
+/// Flushes only the dirty region covered by the latest drawing op.
+
+/// Flush only the currently-marked dirty rect to the screen.
+/// Called by per-event raw_draw_dot/raw_draw_segment during a stroke.
+static void flush_dirty_to_layer(void) {
+    if (!g_surface || !g_draw_view) return;
+    if (!g_dirty_has) { [g_draw_view setNeedsDisplay:YES]; return; }
+    // Clip dirty rect to view bounds; if empty, fall back to full refresh.
+    NSRect bounds = [g_draw_view bounds];
+    NSRect dr = NSIntersectionRect(g_dirty_rect, bounds);
+    if (NSIsEmptyRect(dr)) {
+        dirty_reset();
+        [g_draw_view setNeedsDisplay:YES];
+        return;
+    }
+    // Reset dirty tracker; AppKit will deliver drawRect with this rect.
+    dirty_reset();
+    [g_draw_view setNeedsDisplayInRect:dr];
+}
+
+/// Set up the shared cairo context for the duration of a stroke.
+/// Idempotent: safe to call if g_active_cr is already set.
+static void stroke_begin(void) {
+    if (g_active_cr) return;
+    if (!g_surface) return;
+    g_active_cr = cairo_create(g_surface);
+    cairo_scale(g_active_cr, g_scale, g_scale);
+}
+
+/// Tear down the shared cairo context at end of stroke.
+static void stroke_end(void) {
+    if (g_active_cr) {
+        cairo_destroy(g_active_cr);
+        g_active_cr = NULL;
+    }
 }
 
 // Handle display configuration changes (resolution, arrangement, etc.)
@@ -949,20 +1007,24 @@ static void pen_draw(double x, double y, double width) {
 }
 
 
-// Raw drawing — surface only, no STROKES/DB side effects
+// Raw drawing — surface only, no STROKES/DB side effects.
+// Uses g_active_cr (set up by stroke_begin) for the duration of the stroke.
+// Marks the affected pixel area as dirty so only that region is repainted.
 static void raw_draw_dot(double x, double y, double width) {
     if (!g_surface) return;
-    cairo_t *cr = cairo_create_scaled();
+    cairo_t *cr = g_active_cr ? g_active_cr : cairo_create_scaled();
     cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
     cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
     cairo_fill(cr);
-    cairo_destroy(cr);
-    flush_to_layer();
+    if (!g_active_cr) cairo_destroy(cr);
+    double pad = width * 0.5 + 1.5; // AA padding
+    dirty_include_point(x, y, pad);
+    flush_dirty_to_layer();
 }
 
 static void raw_draw_segment(double x, double y, double width) {
     if (!g_surface) return;
-    cairo_t *cr = cairo_create_scaled();
+    cairo_t *cr = g_active_cr ? g_active_cr : cairo_create_scaled();
     cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
     cairo_set_line_width(cr, width);
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
@@ -975,11 +1037,18 @@ static void raw_draw_segment(double x, double y, double width) {
         cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
         cairo_fill(cr);
     }
-    cairo_destroy(cr);
+    if (!g_active_cr) cairo_destroy(cr);
+
+    double pad = width * 0.5 + 1.5; // AA padding
+    if (g_raw_has_last) {
+        dirty_include_point(g_raw_last_x, g_raw_last_y, pad);
+    }
+    dirty_include_point(x, y, pad);
+
     g_raw_last_x = x;
     g_raw_last_y = y;
     g_raw_has_last = YES;
-    flush_to_layer();
+    flush_dirty_to_layer();
 }
 
 static void rebuild_surface_from_strokes(void) {
@@ -988,12 +1057,14 @@ static void rebuild_surface_from_strokes(void) {
     cairo_t *cr = cairo_create_scaled();
     cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     cairo_paint(cr);
-    cairo_destroy(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
     // Redraw rainbow if enabled
     if (g_show_rainbow) draw_rainbow_indicator();
 
     int n_strokes = glaspen2_stroke_count();
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
     for (int s = 0; s < n_strokes; s++) {
         int n_pts = glaspen2_get_stroke_point_count(s);
         if (n_pts < 2) continue;
@@ -1007,7 +1078,6 @@ static void rebuild_surface_from_strokes(void) {
             pw[i] = glaspen2_get_stroke_point_width(s, i);
         }
 
-        cr = cairo_create_scaled();
         cairo_set_source_rgba(cr, r, gg, b, 1.0);
         for (int i = 0; i < pts; i++) {
             if (i == 0) {
@@ -1015,15 +1085,16 @@ static void rebuild_surface_from_strokes(void) {
                 cairo_fill(cr);
             } else {
                 cairo_set_line_width(cr, pw[i]);
-                cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-                cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
                 cairo_move_to(cr, px[i-1], py[i-1]);
                 cairo_line_to(cr, px[i], py[i]);
                 cairo_stroke(cr);
             }
         }
-        cairo_destroy(cr);
     }
+    cairo_destroy(cr);
+
+    // Full-screen refresh — undo/page-nav/resize need it
+    dirty_reset();
     flush_to_layer();
 }
 
@@ -1044,6 +1115,14 @@ static void rebuild_surface_from_strokes(void) {
     int h = cairo_image_surface_get_height(g_surface);
     int stride = cairo_image_surface_get_stride(g_surface);
 
+    // Clip to the dirty rect we were asked to repaint (rect parameter).
+    // For layer-backed views AppKit may still pass the full bounds; that's fine —
+    // the code below handles either case correctly.
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGContextSaveGState(ctx);
+    NSRect clipRect = [self isFlipped] ? rect : rect;
+    CGContextClipToRect(ctx, NSRectToCGRect(clipRect));
+
     CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
     CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, data, stride * h, NULL);
     CGImageRef image = CGImageCreate(w, h, 8, 32, stride, cs,
@@ -1053,11 +1132,33 @@ static void rebuild_surface_from_strokes(void) {
     CGColorSpaceRelease(cs);
 
     if (image) {
-        CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
-        // Draw at view bounds (points) — CGContextDrawImage scales the
-        // high-resolution surface down to fit, giving sharp Retina output.
-        NSRect bounds = [self bounds];
-        CGContextDrawImage(ctx, CGRectMake(0, 0, bounds.size.width, bounds.size.height), image);
+        // If only a small dirty rect was requested, extract just that sub-image
+        // from the surface (in physical pixel coords) to avoid scaling the
+        // whole 3840×2160 surface each frame.
+        BOOL small_dirty = !NSEqualRects(rect, [self bounds]) &&
+                           (rect.size.width < [self bounds].size.width ||
+                            rect.size.height < [self bounds].size.height);
+
+        if (small_dirty) {
+            // Map view points → physical pixels. Surface is top-left origin;
+            // view rect is bottom-left origin (non-flipped), so flip Y too.
+            CGFloat sx = rect.origin.x * g_scale;
+            CGFloat sy = ([self bounds].size.height - (rect.origin.y + rect.size.height)) * g_scale;
+            CGFloat sw = rect.size.width * g_scale;
+            CGFloat sh = rect.size.height * g_scale;
+            CGRect phys = CGRectMake(sx, sy, sw, sh);
+            CGImageRef sub = CGImageCreateWithImageInRect(image, phys);
+            if (sub) {
+                CGContextDrawImage(ctx, NSRectToCGRect(rect), sub);
+                CGImageRelease(sub);
+            } else {
+                NSRect bounds = [self bounds];
+                CGContextDrawImage(ctx, CGRectMake(0, 0, bounds.size.width, bounds.size.height), image);
+            }
+        } else {
+            NSRect bounds = [self bounds];
+            CGContextDrawImage(ctx, CGRectMake(0, 0, bounds.size.width, bounds.size.height), image);
+        }
         CGImageRelease(image);
 
         // Draw notification text
@@ -1087,8 +1188,6 @@ static void rebuild_surface_from_strokes(void) {
             CGFloat cy = g_cursor_y;
             CGFloat radius = 8.0;
 
-            CGContextSaveGState(ctx);
-
             // Outer circle
             CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:1.0 alpha:0.8] CGColor]);
             CGContextSetLineWidth(ctx, 1.5);
@@ -1116,10 +1215,9 @@ static void rebuild_surface_from_strokes(void) {
             CGContextMoveToPoint(ctx, cx + gap, cy);
             CGContextAddLineToPoint(ctx, cx + radius + 2, cy);
             CGContextStrokePath(ctx);
-
-            CGContextRestoreGState(ctx);
         }
     }
+    CGContextRestoreGState(ctx);
 }
 
 @end
@@ -1366,6 +1464,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f", px, py, pressure, ts);
         glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
         g_stroke_active = YES;
+        stroke_begin(); // reuse one cairo context for the whole stroke
         raw_draw_dot(px, py, raw_w);
         g_raw_last_x = px;
         g_raw_last_y = py;
@@ -1378,6 +1477,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         if (!g_stroke_active) {
             glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
             g_stroke_active = YES;
+            stroke_begin();
             raw_draw_dot(px, py, raw_w);
             g_raw_last_x = px;
             g_raw_last_y = py;
@@ -1398,6 +1498,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
 
             // P0: no rebuild — raw drawing remains on the surface.
             // Undo still calls rebuild_surface_from_strokes() to clear erased strokes.
+            stroke_end(); // release shared cairo context
             g_stroke_active = NO;
             g_raw_has_last = NO;
         }
