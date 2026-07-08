@@ -387,6 +387,8 @@ class _SettingsPageState extends State<SettingsPage> {
             _buildSection('Width', _buildWidthRow()),
             const SizedBox(height: 16),
             _buildSection('Options', _buildToggles()),
+            const SizedBox(height: 16),
+            _buildSection('Export', _buildExportButtons()),
           ],
         ),
       ),
@@ -498,5 +500,64 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     );
+  }
+
+  Widget _buildExportButtons() {
+    // Animated GIF export is only supported on macOS (ObjC handler).
+    if (!Platform.isMacOS) {
+      return const Text('（动画 GIF 导出仅在 macOS 可用）',
+          style: TextStyle(fontSize: 12, color: Colors.grey));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '将当前笔迹按笔顺生成为动画 GIF，自动复制到剪贴板并保存到桌面。',
+          style: TextStyle(fontSize: 11, color: Colors.grey),
+        ),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          icon: _gifExporting
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.animation, size: 18),
+          label: Text(_gifExporting ? '生成中…' : '导出动画 GIF'),
+          onPressed: _gifExporting ? null : _exportAnimatedGif,
+        ),
+      ],
+    );
+  }
+
+  bool _gifExporting = false;
+
+  Future<void> _exportAnimatedGif() async {
+    setState(() => _gifExporting = true);
+    try {
+      final ok = await _channel.invokeMethod<bool>('exportAnimatedGif') == true;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ok
+                ? '动画 GIF 已保存并复制到剪贴板'
+                : '没有笔迹或导出失败'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导出失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _gifExporting = false);
+    }
   }
 }

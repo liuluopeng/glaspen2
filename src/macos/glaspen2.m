@@ -674,6 +674,41 @@ static NSButton *g_glass_buttons[1];
             if (!g_glass_enabled) gl_settings_set_glass_enabled(YES);
         }
         result(nil);
+    } else if ([call.method isEqualToString:@"exportAnimatedGif"]) {
+        // Run on background queue so UI stays responsive during Cairo rendering.
+        // Copy newest GIF to clipboard afterwards (same as Cmd+Ctrl+A hotkey did).
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            int ok = glaspen2_save_animated_gif();
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (ok) {
+                    NSString *desktop = [NSSearchPathForDirectoriesInDomains(NSDesktopDirectory, NSUserDomainMask, YES) firstObject];
+                    NSFileManager *fm = [NSFileManager defaultManager];
+                    NSArray *files = [fm contentsOfDirectoryAtPath:desktop error:nil];
+                    NSString *newestGif = nil;
+                    NSDate *newestDate = nil;
+                    for (NSString *f in files) {
+                        if ([f hasPrefix:@"glaspen2_"] && [f hasSuffix:@".gif"]) {
+                            NSString *full = [desktop stringByAppendingPathComponent:f];
+                            NSDictionary *attr = [fm attributesOfItemAtPath:full error:nil];
+                            NSDate *d = attr[NSFileModificationDate];
+                            if (!newestDate || [d compare:newestDate] == NSOrderedDescending) {
+                                newestDate = d; newestGif = full;
+                            }
+                        }
+                    }
+                    if (newestGif) {
+                        NSPasteboard *pb = [NSPasteboard generalPasteboard];
+                        [pb clearContents];
+                        [pb writeObjects:@[[NSURL fileURLWithPath:newestGif]]];
+                    }
+                    show_notification(L(@"动画 GIF 已保存并复制到剪贴板", @"Animated GIF saved & copied"));
+                    result(@(YES));
+                } else {
+                    show_notification(L(@"没有笔迹或导出失败", @"No strokes or export failed"));
+                    result(@(NO));
+                }
+            });
+        });
     } else {
         result(FlutterMethodNotImplemented);
     }
@@ -1241,34 +1276,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                         show_notification(L(@"SVG 已复制到剪贴板", @"SVG copied to clipboard"));
                     } else {
                         show_notification(L(@"没有笔迹可复制", @"No strokes to copy"));
-                    }
-                    return NULL;
-                } else if (kc == kVK_ANSI_A) {
-                    if (glaspen2_save_animated_gif()) {
-                        // Copy newest animated GIF to clipboard (same pattern as G key)
-                        NSString *desktop = [NSSearchPathForDirectoriesInDomains(NSDesktopDirectory, NSUserDomainMask, YES) firstObject];
-                        NSFileManager *fm = [NSFileManager defaultManager];
-                        NSArray *files = [fm contentsOfDirectoryAtPath:desktop error:nil];
-                        NSString *newestGif = nil;
-                        NSDate *newestDate = nil;
-                        for (NSString *f in files) {
-                            if ([f hasPrefix:@"glaspen2_"] && [f hasSuffix:@".gif"]) {
-                                NSString *full = [desktop stringByAppendingPathComponent:f];
-                                NSDictionary *attr = [fm attributesOfItemAtPath:full error:nil];
-                                NSDate *d = attr[NSFileModificationDate];
-                                if (!newestDate || [d compare:newestDate] == NSOrderedDescending) {
-                                    newestDate = d; newestGif = full;
-                                }
-                            }
-                        }
-                        if (newestGif) {
-                            NSPasteboard *pb = [NSPasteboard generalPasteboard];
-                            [pb clearContents];
-                            [pb writeObjects:@[[NSURL fileURLWithPath:newestGif]]];
-                        }
-                        show_notification(L(@"动画 GIF 已保存并复制到剪贴板", @"Animated GIF saved & copied"));
-                    } else {
-                        show_notification(L(@"没有笔迹或导出失败", @"No strokes or export failed"));
                     }
                     return NULL;
                 } else if (kc == kVK_ANSI_B) {
