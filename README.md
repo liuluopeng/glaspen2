@@ -22,7 +22,7 @@
 - 发送手写消息
   微信抖音把小GIF图片当做表情包显示, 利用这一特性, 可以在屏幕上涂鸦,然后在微信中粘贴即可发送手写体消息 (3行以内 大约50字).
 
-<p align="center"><img src="./chat.jpg" width="480"></p>
+<p align="center"><img src="./chat.jpg" width="320"><img src="./converted.gif" width="320"></p>
 
 - 导出 有背景截图/ 无背景截图/ xournal格式
 
@@ -37,11 +37,12 @@
 | 功能                                  | macOS       | Windows          |
 | ------------------------------------- | ----------- | ---------------- |
 | 清屏                                  | `⌘ + ⌃ + C` | `Ctrl + Alt + C` |
-| 开启/关闭涂鸦                         | `⌘ + ⌃ + V` |              `Ctrl + Alt + V`     |
-| 上一页                                | `⌘ + ⌃ + J` |           `Ctrl + Alt + J`        |
-| 下一页                                | `⌘ + ⌃ + K` |           `Ctrl + Alt + K`        |
+| 撤销上一笔                            | `⌘ + ⌃ + Z` | `Ctrl + Alt + Z` |
+| 开启/关闭涂鸦                         | `⌘ + ⌃ + V` | `Ctrl + Alt + V` |
+| 上一页                                | `⌘ + ⌃ + J` | `Ctrl + Alt + J` |
+| 下一页                                | `⌘ + ⌃ + K` | `Ctrl + Alt + K` |
 | 导出 SVG + GIF 并复制图片到系统剪切板 | `⌘ + ⌃ + G` | `Ctrl + Alt + G` |
-| 模糊背景 磨砂玻璃开关                 | `⌘ + ⌃ + B` |          `Ctrl + Alt + B`         |
+| 模糊背景 磨砂玻璃开关                 | `⌘ + ⌃ + B` | `Ctrl + Alt + B` |
 | 打开设置                              | `⌘ + ⌃ + ,` |                  |
 | 退出玻璃笔记                          |             | `Ctrl + Alt + Q` |
 
