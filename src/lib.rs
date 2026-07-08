@@ -1264,7 +1264,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     let gif_h = (bh as u32 / 2).max(1) as u16;
 
     let n_frames = 24usize;
-    let display_dur = total_t.min(5.0).max(2.0);
+    let display_dur = (total_t / 2.0).min(5.0).max(1.0);
     let frame_delay = ((display_dur / n_frames as f64) * 100.0) as u16;
 
     // Pre-compute per-stroke global timeline offset
