@@ -23,6 +23,9 @@ pub mod cairo;
 #[cfg(target_os = "macos")]
 pub mod macos;
 
+#[cfg(windows)]
+pub mod cairo_renderer;
+
 #[cfg(target_os = "windows")]
 pub mod windows;
 
