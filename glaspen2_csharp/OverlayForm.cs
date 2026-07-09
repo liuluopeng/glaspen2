@@ -82,6 +82,7 @@ namespace GlasPen2
 
         // Pressure display
         private PressureForm _pressureForm;
+        private bool _showPressureMonitor = false; // default off; toggled by Flutter
 
         // Auto-block delay: wait after pen lift before unblocking
         private System.Windows.Forms.Timer _unblockTimer;
@@ -173,9 +174,10 @@ namespace GlasPen2
             NativeMethods.RegisterHotKey(this.Handle, 8,
                 NativeMethods.MOD_CONTROL | NativeMethods.MOD_ALT, (uint)Keys.Z);
 
-            // Create pressure display
+            // Pressure display (hidden by default, toggled via Flutter settings)
             _pressureForm = new PressureForm();
-            _pressureForm.Show();
+            if (_showPressureMonitor)
+                _pressureForm.Show();
 
             // Create unblock timer for delayed unblocking
             _unblockTimer = new System.Windows.Forms.Timer { Interval = UNBLOCK_DELAY_MS };
@@ -1226,6 +1228,15 @@ namespace GlasPen2
                     ExportAnimatedGif();
                     return;
                 }
+                if (key == "pressureMonitor")
+                {
+                    _showPressureMonitor = Convert.ToBoolean(value);
+                    if (_showPressureMonitor && _pressureForm != null && !_pressureForm.Visible)
+                        _pressureForm.Show();
+                    else if (!_showPressureMonitor && _pressureForm != null && _pressureForm.Visible)
+                        _pressureForm.Hide();
+                    return;
+                }
                 int intVal = Convert.ToInt32(value);
                 if (key == "color" && intVal >= 0 && intVal < PresetColors.Length)
                 {
@@ -1256,6 +1267,7 @@ namespace GlasPen2
             {
                 { "color", _colorIndex },
                 { "width", _widthIndex },
+                { "pressureMonitor", _showPressureMonitor },
             };
         }
 
