@@ -329,41 +329,12 @@ static void clear_screen(void) {
 
 static void replay_strokes_from_memory(void) {
     if (!g_surface) return;
+    // Same as rebuild: clear + redraw all strokes via Rust
+    glaspen2_draw_rebuild((void *)g_surface, g_scale);
 
-    // Clear canvas
-    cairo_t *cr = cairo_create_scaled();
-    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-    cairo_paint(cr);
-    cairo_destroy(cr);
-
-    int count = glaspen2_stroke_count();
-    cr = cairo_create_scaled();
-    for (int si = 0; si < count; si++) {
-        double r, g, b;
-        glaspen2_get_stroke_color(si, &r, &g, &b);
-        int pc = glaspen2_get_stroke_point_count(si);
-        if (pc < 2) continue;
-
-        cairo_set_source_rgba(cr, r, g, b, 1.0);
-        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-        // Draw each segment with its own per-point width
-        double x0, y0, x1, y1, w;
-        for (int pi = 1; pi < pc; pi++) {
-            glaspen2_get_stroke_point(si, pi - 1, &x0, &y0);
-            glaspen2_get_stroke_point(si, pi, &x1, &y1);
-            w = glaspen2_get_stroke_point_width(si, pi);
-
-            cairo_set_line_width(cr, w);
-            cairo_move_to(cr, x0, y0);
-            cairo_line_to(cr, x1, y1);
-            cairo_stroke(cr);
-        }
-    }
-    cairo_destroy(cr);
-
-    g_has_last = NO;
+    cairo_surface_flush(g_surface);
     if (g_show_rainbow) draw_rainbow_indicator();
+    g_has_last = NO;
     flush_to_layer();
 }
 
