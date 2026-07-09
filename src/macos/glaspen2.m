@@ -861,12 +861,12 @@ static void show_settings_panel(void) {
                                                           bundle:nil];
 
     // Create window
-    NSRect frame = NSMakeRect(0, 0, 380, 420);
+    NSRect frame = NSMakeRect(0, 0, 400, 500);
     NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
         backing:NSBackingStoreBuffered defer:NO];
     [window setTitle:L(@"Glaspen2 设置", @"Glaspen2 Settings")];
-    [window setMinSize:NSMakeSize(340, 360)];
+    [window setMinSize:NSMakeSize(360, 460)];
     [window setReleasedWhenClosed:NO];
 
     // Set delegate to switch back to Accessory when window closes
