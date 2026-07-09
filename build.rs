@@ -4,7 +4,44 @@ fn main() {
     let is_macos = target.contains("apple");
 
     if is_macos {
+        // Watch sources for incremental rebuild
         println!("cargo:rerun-if-changed=src/macos/glaspen2.m");
+        println!("cargo:rerun-if-changed=flutter_settings/lib/main.dart");
+        println!("cargo:rerun-if-changed=flutter_settings/pubspec.yaml");
+        for entry in std::fs::read_dir("flutter_settings/assets").unwrap() {
+            if let Ok(e) = entry {
+                println!("cargo:rerun-if-changed={}", e.path().display());
+            }
+        }
+
+        // Auto-rebuild Flutter macOS framework if Dart sources or assets changed.
+        // fvm flutter build macos-framework is fast (incremental), so this adds
+        // minimal overhead when nothing changed.
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let flutter_dir = format!("{}/flutter_settings", manifest_dir);
+        let flutter_framework = format!(
+            "{}/build/macos/framework/Release/App.xcframework/macos-arm64_x86_64/App.framework/App",
+            flutter_dir
+        );
+
+        // Rebuild if the framework doesn't exist yet
+        let needs_build = !std::path::Path::new(&flutter_framework).exists();
+        if !needs_build {
+            // Compare mtimes of main.dart vs framework binary
+            if let (Ok(dart_meta), Ok(fw_meta)) = (
+                std::fs::metadata(format!("{}/lib/main.dart", flutter_dir)),
+                std::fs::metadata(&flutter_framework),
+            ) {
+                if let (Ok(dart_mtime), Ok(fw_mtime)) = (dart_meta.modified(), fw_meta.modified()) {
+                    if dart_mtime > fw_mtime {
+                        std::process::Command::new("fvm")
+                            .args(["flutter", "build", "macos-framework"])
+                            .current_dir(&flutter_dir)
+                            .status().ok();
+                    }
+                }
+            }
+        }
 
         // cc crate adds -O2/-O3 from OPT_LEVEL in release mode, which breaks NSEvent tablet data.
         // Compile ObjC directly with clang -O0 to guarantee no optimization.
