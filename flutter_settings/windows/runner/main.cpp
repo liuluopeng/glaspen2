@@ -26,7 +26,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(100, 100);
-  Win32Window::Size size(380, 500);
+  Win32Window::Size size(520, 650);
   if (!window.Create(L"Glaspen2 Settings", origin, size)) {
     return EXIT_FAILURE;
   }

@@ -406,7 +406,7 @@ class _SettingsPageState extends State<SettingsPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
         const SizedBox(height: 8),
         child,
       ],
@@ -440,7 +440,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Text(
               _colorNames[i],
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 13,
                 color: isWhite ? Colors.black87 : Color(_colorValues[i]),
                 fontWeight: selected ? FontWeight.bold : FontWeight.normal,
               ),
@@ -474,7 +474,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   borderRadius: BorderRadius.circular(4)),
             ),
             child: Text(_widthNames[i],
-                style: const TextStyle(fontSize: 11)),
+                style: const TextStyle(fontSize: 13)),
           ),
         );
       }),
@@ -491,7 +491,7 @@ class _SettingsPageState extends State<SettingsPage> {
             _setSetting('undo', true);
           },
           icon: const Icon(Icons.undo, size: 16),
-          label: const Text('撤销上一笔', style: TextStyle(fontSize: 13)),
+          label: const Text('撤销上一笔', style: TextStyle(fontSize: 15)),
           style: ElevatedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
@@ -501,7 +501,7 @@ class _SettingsPageState extends State<SettingsPage> {
             _setSetting('export_animated_gif', true);
           },
           icon: const Icon(Icons.gif, size: 16),
-          label: const Text('导出动画 GIF', style: TextStyle(fontSize: 13)),
+          label: const Text('导出动画 GIF', style: TextStyle(fontSize: 15)),
           style: ElevatedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
@@ -514,7 +514,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return Column(
       children: [
         SwitchListTile(
-          title: const Text('笔迹美化 (去抖)', style: TextStyle(fontSize: 13)),
+          title: const Text('笔迹美化 (去抖)', style: TextStyle(fontSize: 15)),
           value: _smooth,
           dense: true,
           contentPadding: EdgeInsets.zero,
@@ -524,7 +524,7 @@ class _SettingsPageState extends State<SettingsPage> {
           },
         ),
         SwitchListTile(
-          title: const Text('坐标翻转 (180°)', style: TextStyle(fontSize: 13)),
+          title: const Text('坐标翻转 (180°)', style: TextStyle(fontSize: 15)),
           value: _invert,
           dense: true,
           contentPadding: EdgeInsets.zero,
@@ -534,7 +534,7 @@ class _SettingsPageState extends State<SettingsPage> {
           },
         ),
         SwitchListTile(
-          title: const Text('压力监控', style: TextStyle(fontSize: 13)),
+          title: const Text('压力监控', style: TextStyle(fontSize: 15)),
           value: _pressureMonitor,
           dense: true,
           contentPadding: EdgeInsets.zero,
@@ -551,14 +551,14 @@ class _SettingsPageState extends State<SettingsPage> {
     // Animated GIF export is only supported on macOS (ObjC handler).
     if (!Platform.isMacOS) {
       return const Text('（动画 GIF 导出仅在 macOS 可用）',
-          style: TextStyle(fontSize: 12, color: Colors.grey));
+          style: TextStyle(fontSize: 14, color: Colors.grey));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
           '将当前笔迹按笔顺生成为动画 GIF，自动复制到剪贴板并保存到桌面。',
-          style: TextStyle(fontSize: 11, color: Colors.grey),
+          style: TextStyle(fontSize: 13, color: Colors.grey),
         ),
         const SizedBox(height: 8),
         FilledButton.icon(
