@@ -727,6 +727,18 @@ static NSButton *g_glass_buttons[1];
                 }
             });
         });
+    } else if ([call.method isEqualToString:@"setWindowSize"]) {
+        NSDictionary *args = call.arguments;
+        CGFloat width = [args[@"width"] doubleValue];
+        CGFloat height = [args[@"height"] doubleValue];
+        if (g_settings_window && width >= 300 && height >= 300) {
+            NSRect frame = [g_settings_window frame];
+            frame.size.width = width;
+            frame.size.height = height;
+            [g_settings_window setFrame:frame display:YES animate:YES];
+            [g_settings_window setMinSize:NSMakeSize(300, 300)];
+        }
+        result(nil);
     } else {
         result(FlutterMethodNotImplemented);
     }
@@ -860,13 +872,13 @@ static void show_settings_panel(void) {
                                                          nibName:nil
                                                           bundle:nil];
 
-    // Create window
-    NSRect frame = NSMakeRect(0, 0, 400, 500);
+    // Create window — Flutter sets the actual size via method channel
+    NSRect frame = NSMakeRect(0, 0, 300, 300);
     NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
         backing:NSBackingStoreBuffered defer:NO];
     [window setTitle:L(@"Glaspen2 设置", @"Glaspen2 Settings")];
-    [window setMinSize:NSMakeSize(360, 460)];
+    [window setMinSize:NSMakeSize(300, 300)];
     [window setReleasedWhenClosed:NO];
 
     // Set delegate to switch back to Accessory when window closes

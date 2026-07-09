@@ -325,6 +325,17 @@ class _SettingsPageState extends State<SettingsPage> {
     _bridge = createBridge();
     _bridge.onSettingsChanged(_onSettingsChanged);
     _loadSettings();
+
+    // Ask the host to resize this window to fit content.
+    // Must run after the first frame so Flutter has measured layout.
+    if (Platform.isMacOS) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _channel.invokeMethod('setWindowSize', {
+          'width': 460,
+          'height': 580,
+        });
+      });
+    }
   }
 
   void _onSettingsChanged(Map<dynamic, dynamic> s) {
