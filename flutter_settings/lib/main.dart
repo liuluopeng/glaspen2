@@ -307,6 +307,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _selectedWidth = 2;
   bool _smooth = true;
   bool _invert = false;
+  bool _pressureMonitor = false;
   bool _connected = false;
 
   // Match C# tray menu's PresetColors and widths
@@ -332,6 +333,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _selectedWidth = s['width'] ?? _selectedWidth;
         _smooth = s['smooth'] ?? _smooth;
         _invert = s['invert'] ?? _invert;
+        _pressureMonitor = s['pressureMonitor'] ?? _pressureMonitor;
       });
     }
   }
@@ -345,6 +347,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _selectedWidth = settings['width'] ?? 2;
           _smooth = settings['smooth'] ?? true;
           _invert = settings['invert'] ?? false;
+          _pressureMonitor = settings['pressureMonitor'] ?? false;
           _connected = true;
         });
       }
@@ -527,6 +530,16 @@ class _SettingsPageState extends State<SettingsPage> {
           onChanged: (v) {
             setState(() => _invert = v);
             _setSetting('invert', v);
+          },
+        ),
+        SwitchListTile(
+          title: const Text('压力监控', style: TextStyle(fontSize: 13)),
+          value: _pressureMonitor,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (v) {
+            setState(() => _pressureMonitor = v);
+            _setSetting('pressureMonitor', v);
           },
         ),
       ],
