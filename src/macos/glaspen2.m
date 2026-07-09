@@ -72,6 +72,7 @@ extern char* glaspen2_get_cropped_svg(void);
 extern void glaspen2_free_c_string(char *ptr);
 extern int glaspen2_save_gif_cropped(const unsigned char *surface_data, int w, int h, int stride, double surface_scale);
 extern int glaspen2_save_animated_gif(void);
+extern void glaspen2_draw_rebuild(void *surface_ptr, double scale);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -1065,45 +1066,12 @@ static void raw_draw_segment(double x, double y, double width) {
 
 static void rebuild_surface_from_strokes(void) {
     if (!g_surface) return;
-    // Clear surface
-    cairo_t *cr = cairo_create_scaled();
-    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-    cairo_paint(cr);
-    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+    // Delegate the actual Cairo rendering to Rust (avoids per-point FFI overhead)
+    glaspen2_draw_rebuild((void *)g_surface, g_scale);
 
-    // Redraw rainbow if enabled
+    // Rainbow is drawn by ObjC (g_show_rainbow is a host-side boolean)
+    cairo_surface_flush(g_surface);
     if (g_show_rainbow) draw_rainbow_indicator();
-
-    int n_strokes = glaspen2_stroke_count();
-    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-    for (int s = 0; s < n_strokes; s++) {
-        int n_pts = glaspen2_get_stroke_point_count(s);
-        if (n_pts < 2) continue;
-        double r, gg, b;
-        glaspen2_get_stroke_color(s, &r, &gg, &b);
-
-        double px[2048], py[2048], pw[2048];
-        int pts = n_pts < 2048 ? n_pts : 2048;
-        for (int i = 0; i < pts; i++) {
-            glaspen2_get_stroke_point(s, i, &px[i], &py[i]);
-            pw[i] = glaspen2_get_stroke_point_width(s, i);
-        }
-
-        cairo_set_source_rgba(cr, r, gg, b, 1.0);
-        for (int i = 0; i < pts; i++) {
-            if (i == 0) {
-                cairo_arc(cr, px[i], py[i], pw[i] * 0.5, 0, 2 * M_PI);
-                cairo_fill(cr);
-            } else {
-                cairo_set_line_width(cr, pw[i]);
-                cairo_move_to(cr, px[i-1], py[i-1]);
-                cairo_line_to(cr, px[i], py[i]);
-                cairo_stroke(cr);
-            }
-        }
-    }
-    cairo_destroy(cr);
 
     // Full-screen refresh — undo/page-nav/resize need it
     dirty_reset();

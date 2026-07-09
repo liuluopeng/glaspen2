@@ -30,6 +30,7 @@ pub mod cairo_renderer;
 pub mod windows;
 
 pub mod db;
+pub mod draw;
 pub mod modeler;
 pub mod state;
 
