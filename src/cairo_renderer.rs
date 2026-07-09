@@ -6,8 +6,8 @@ mod cairo_renderer {
 
     /// Uses real Cairo (via cairo_dl) if DLL loaded, falls back to stub.
     enum CairoBackend {
-        Real(super::windows::cairo_dl::CairoRealSurface),
-        Stub(super::cairo::ImageSurface),
+        Real(crate::windows::cairo_dl::CairoRealSurface),
+        Stub(crate::cairo::ImageSurface),
     }
 
     pub struct CairoRenderer {
@@ -18,12 +18,12 @@ mod cairo_renderer {
 
     impl CairoRenderer {
         pub fn new(width: i32, height: i32) -> Option<Self> {
-            let _ = super::windows::cairo_dl::cairo_init();
-            let surface = if super::windows::cairo_dl::is_cairo_loaded() {
-                let s = super::windows::cairo_dl::CairoRealSurface::create(width, height)?;
+            let _ = crate::windows::cairo_dl::cairo_init();
+            let surface = if crate::windows::cairo_dl::is_cairo_loaded() {
+                let s = crate::windows::cairo_dl::CairoRealSurface::create(width, height)?;
                 CairoBackend::Real(s)
             } else {
-                let s = super::cairo::ImageSurface::create(super::cairo::Format::ARGB32, width, height).ok()?;
+                let s = crate::cairo::ImageSurface::create(crate::cairo::Format::ARGB32, width, height).ok()?;
                 CairoBackend::Stub(s)
             };
             // Initialize to fully transparent
@@ -35,14 +35,14 @@ mod cairo_renderer {
         pub fn clear(&mut self) {
             match &self.surface {
                 CairoBackend::Real(ref s) => {
-                    if let Some(cr) = super::windows::cairo_dl::CairoRealContext::new(s) {
+                    if let Some(cr) = crate::windows::cairo_dl::CairoRealContext::new(s) {
                         cr.set_operator_clear();
                         cr.paint();
                         cr.set_operator_over();
                     }
                 }
                 CairoBackend::Stub(ref s) => {
-                    use super::cairo::{Context, Operator};
+                    use crate::cairo::{Context, Operator};
                     if let Ok(cr) = Context::new(s) {
                         cr.set_operator(Operator::Clear);
                         cr.paint().ok();
@@ -54,7 +54,7 @@ mod cairo_renderer {
         pub fn draw_line(&mut self, x0: f64, y0: f64, x1: f64, y1: f64, width: f64, r: f64, g: f64, b: f64) {
             match &self.surface {
                 CairoBackend::Real(ref s) => {
-                    if let Some(cr) = super::windows::cairo_dl::CairoRealContext::new(s) {
+                    if let Some(cr) = crate::windows::cairo_dl::CairoRealContext::new(s) {
                         cr.set_source_rgba(r, g, b, 1.0);
                         cr.set_line_width(width);
                         cr.set_line_cap_round();
@@ -65,7 +65,7 @@ mod cairo_renderer {
                     }
                 }
                 CairoBackend::Stub(ref s) => {
-                    use super::cairo::{Context, LineCap, LineJoin};
+                    use crate::cairo::{Context, LineCap, LineJoin};
                     if let Ok(cr) = Context::new(s) {
                         cr.set_source_rgba(r, g, b, 1.0);
                         cr.set_line_width(width);
@@ -82,14 +82,14 @@ mod cairo_renderer {
         pub fn draw_dot(&mut self, x: f64, y: f64, width: f64, r: f64, g: f64, b: f64) {
             match &self.surface {
                 CairoBackend::Real(ref s) => {
-                    if let Some(cr) = super::windows::cairo_dl::CairoRealContext::new(s) {
+                    if let Some(cr) = crate::windows::cairo_dl::CairoRealContext::new(s) {
                         cr.set_source_rgba(r, g, b, 1.0);
                         cr.arc(x, y, width * 0.5, 0.0, 2.0 * PI);
                         cr.fill();
                     }
                 }
                 CairoBackend::Stub(ref s) => {
-                    use super::cairo::Context;
+                    use crate::cairo::Context;
                     if let Ok(cr) = Context::new(s) {
                         cr.set_source_rgba(r, g, b, 1.0);
                         cr.arc(x, y, width * 0.5, 0.0, 2.0 * PI);
@@ -106,7 +106,6 @@ mod cairo_renderer {
                     s.data_ptr()
                 }
                 CairoBackend::Stub(ref s) => {
-                    // stub: cast &[u8] to pointer
                     s.data().map(|d| d.as_ptr()).unwrap_or(std::ptr::null())
                 }
             }
@@ -135,12 +134,10 @@ mod cairo_renderer {
         pub fn mark_dirty(&self) {
             match &self.surface {
                 CairoBackend::Real(ref s) => s.mark_dirty(),
-                CairoBackend::Stub(_) => {} // stub doesn't cache
+                CairoBackend::Stub(_) => {}
             }
         }
 
-        /// Draw all smoothed points from the modeler buffer onto the surface.
-        /// Uses per-point width from the modeler. Called after pen-up.
         pub fn draw_modeler_buffer(&mut self, r: f64, g: f64, b: f64) {
             let count = modeler::buffer_len();
             if count < 1 { return; }
@@ -159,8 +156,6 @@ mod cairo_renderer {
             }
         }
 
-        /// Replay all strokes from the STROKES vector onto the surface.
-        /// Used after page navigation (load + smooth).
         pub fn replay_strokes(&mut self) {
             self.clear();
             let strokes = STROKES.lock().unwrap();
@@ -178,13 +173,14 @@ mod cairo_renderer {
     }
 }
 
+use std::os::raw::{c_int, c_double, c_uchar};
+use crate::STROKES;
+
 #[cfg(target_os = "windows")]
 pub use cairo_renderer::CairoRenderer;
 
 // ── Cairo Renderer FFI ──
 
-/// Create a new Cairo renderer. Returns pointer or null on failure.
-/// Caller must later call glaspen2_cairo_renderer_destroy to free.
 #[no_mangle]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_renderer_create(w: c_int, h: c_int) -> *mut CairoRenderer {
@@ -194,7 +190,6 @@ pub extern "C" fn glaspen2_cairo_renderer_create(w: c_int, h: c_int) -> *mut Cai
     }
 }
 
-/// Destroy a Cairo renderer previously created with glaspen2_cairo_renderer_create.
 #[no_mangle]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_renderer_destroy(renderer: *mut CairoRenderer) {
@@ -203,7 +198,6 @@ pub extern "C" fn glaspen2_cairo_renderer_destroy(renderer: *mut CairoRenderer) 
     }
 }
 
-/// Draw a line segment from (x0,y0) to (x1,y1). Width and color are per-point.
 #[no_mangle]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_draw_line(
@@ -216,7 +210,6 @@ pub extern "C" fn glaspen2_cairo_draw_line(
     }
 }
 
-/// Draw a filled dot at (x,y) with given width and color.
 #[no_mangle]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_draw_dot(
@@ -229,7 +222,6 @@ pub extern "C" fn glaspen2_cairo_draw_dot(
     }
 }
 
-/// Clear the renderer surface to fully transparent.
 #[no_mangle]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_clear(renderer: *mut CairoRenderer) {
@@ -238,7 +230,6 @@ pub extern "C" fn glaspen2_cairo_clear(renderer: *mut CairoRenderer) {
     }
 }
 
-/// Get pointer to the BGRA pixel data. Returns null if renderer is null.
 #[no_mangle]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_surface_data(renderer: *mut CairoRenderer) -> *const c_uchar {
@@ -246,7 +237,6 @@ pub extern "C" fn glaspen2_cairo_surface_data(renderer: *mut CairoRenderer) -> *
     unsafe { (*renderer).surface_data() }
 }
 
-/// Get mutable pointer to the BGRA pixel data. Returns null if renderer is null.
 #[no_mangle]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_surface_data_mut(renderer: *mut CairoRenderer) -> *mut c_uchar {
@@ -254,8 +244,6 @@ pub extern "C" fn glaspen2_cairo_surface_data_mut(renderer: *mut CairoRenderer) 
     unsafe { (*renderer).surface_data_mut() }
 }
 
-/// Undo last stroke: clear surface, pop from STROKES, replay remaining.
-/// Returns the number of remaining strokes.
 #[no_mangle]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_undo(renderer: *mut CairoRenderer) -> c_int {
@@ -264,14 +252,13 @@ pub extern "C" fn glaspen2_cairo_undo(renderer: *mut CairoRenderer) -> c_int {
         let mut strokes = STROKES.lock().unwrap();
         strokes.pop();
     }
-    db::delete_last_stroke();
+    crate::db::delete_last_stroke();
     unsafe { (*renderer).replay_strokes(); }
     let count = STROKES.lock().unwrap().len() as c_int;
     eprintln!("[cairo_undo] remaining strokes: {}", count);
     count
 }
 
-/// Get surface dimensions and stride.
 #[no_mangle]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_surface_size(
@@ -286,8 +273,6 @@ pub extern "C" fn glaspen2_cairo_surface_size(
     unsafe { *w = width; *h = height; *stride = s; }
 }
 
-/// After calling modeler_end, call this to draw all smoothed points from the modeler buffer.
-/// Then call modeler_commit_to_strokes to persist.
 #[no_mangle]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_draw_modeler_buffer(
@@ -299,8 +284,6 @@ pub extern "C" fn glaspen2_cairo_draw_modeler_buffer(
     }
 }
 
-/// Replay all strokes from the STROKES vector onto the renderer surface.
-/// Call after glaspen2_load_strokes_for_screen + glaspen2_smooth_loaded_strokes.
 #[no_mangle]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_replay_strokes(renderer: *mut CairoRenderer) {
@@ -308,7 +291,3 @@ pub extern "C" fn glaspen2_cairo_replay_strokes(renderer: *mut CairoRenderer) {
         unsafe { (*renderer).replay_strokes(); }
     }
 }
-
-// ── Animated GIF Export ──
-
-/// Save an animated GIF showing stroke drawing order progressively.

@@ -313,9 +313,9 @@ pub fn run() {
     let mut pen_r = 1.0; let mut pen_g = 0.0; let mut pen_b = 0.0; let mut width_scale = 0.3;
     crate::glaspen2_load_settings_parts(&mut pen_r, &mut pen_g, &mut pen_b, &mut width_scale);
 
-    let outline_enabled = crate::db::load_setting("outline_enabled")
+    let outline_enabled = crate::runtime().block_on(crate::db::load_setting("outline_enabled"))
         .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
-    let inverse_enabled = crate::db::load_setting("inverse_enabled")
+    let inverse_enabled = crate::runtime().block_on(crate::db::load_setting("inverse_enabled"))
         .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
 
     let state = DrawState {
@@ -934,7 +934,7 @@ fn recreate_surface_for_display(data: &mut OverlayData, new_w: i32, new_h: i32) 
     unsafe {
         let _ = SetWindowPos(
             data.overlay_hwnd,
-            HWND(0), // HWND_TOP
+            HWND(0 as *mut _), // HWND_TOP
             0, 0, new_w, new_h,
             SWP_NOZORDER | SWP_NOMOVE,
         );
@@ -1083,12 +1083,12 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
 
     if msg_type == "getSettings" {
         // Respond with current settings from DB
-        let (r, g, b, w) = crate::db::load_settings().unwrap_or((1.0, 0.0, 0.0, 1.0));
+        let (r, g, b, w) = crate::runtime().block_on(crate::db::load_settings()).unwrap_or((1.0, 0.0, 0.0, 1.0));
         let color = closest_color_index(r, g, b);
         let width = closest_width_index(w);
-        let outline = crate::db::load_setting("outline_enabled")
+        let outline = crate::runtime().block_on(crate::db::load_setting("outline_enabled"))
             .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
-        let inverse = crate::db::load_setting("inverse_enabled")
+        let inverse = crate::runtime().block_on(crate::db::load_setting("inverse_enabled"))
             .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
         let resp = format!(
             "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"inverse\":{},\"rainbow\":false,\"launchAtLogin\":false,\"frostedGlass\":false}}}}\n",

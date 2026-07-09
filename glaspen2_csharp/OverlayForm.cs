@@ -418,43 +418,6 @@ namespace GlasPen2
             Log("[Overlay] RegisterRawInput: {0} (err={1})", ok ? "OK" : "FAIL", Marshal.GetLastWin32Error());
         }
 
-        private void StartHidPenReader()
-        {
-            try
-            {
-                _hidReader = new HidPenReader();
-                _hidReader.PenReport += (x, y, pressure, tipDown) =>
-                {
-                    // Update pressure for drawing
-                    SetPressure(pressure);
-
-                    // Track HID state
-                    _hidTipDown = tipDown;
-                    HidTipDown = tipDown;
-                    _hidLastReportUtc = DateTime.UtcNow;
-                    LastPenEventUtc = DateTime.UtcNow;
-
-                    // Map HID coords to screen
-                    var sb = SystemInformation.VirtualScreen;
-                    int sx = sb.Left + (int)((long)x * sb.Width / (_hidReader.MaxX > 0 ? _hidReader.MaxX : 65536));
-                    int sy = sb.Top  + (int)((long)y * sb.Height / (_hidReader.MaxY > 0 ? _hidReader.MaxY : 65536));
-
-                    _lastPenPos = new Point(sx, sy);
-                    _penCursorPos = _lastPenPos;
-                    _showPenCursor = true;
-                };
-
-                if (_hidReader.Open())
-                    Program.Log("[Overlay] HID pen reader started successfully");
-                else
-                    Program.Log("[Overlay] HID pen reader: no digitizer found (expected if INK is on)");
-            }
-            catch (Exception ex)
-            {
-                Program.Log("[Overlay] HID pen reader failed: {0}", ex.Message);
-            }
-        }
-
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == NativeMethods.WM_TABLET_QUERYSYSTEMGESTURESTATUS)
