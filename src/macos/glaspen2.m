@@ -327,43 +327,6 @@ static void clear_screen(void) {
     show_notification(L(@"清屏成功", @"Screen cleared"));
 }
 
-/// Draw smoothed points from the modeler buffer onto the canvas, then commit to STROKES.
-static void draw_modeler_buffer(void) {
-    if (!g_surface) return;
-    int count = glaspen2_modeler_point_count();
-    NSLog(@"[glaspen2] draw_modeler_buffer: %d points", count);
-    if (count < 1) return;
-
-    double px, py, pw;
-    double prev_x, prev_y, prev_w;
-
-    cairo_t *cr = g_active_cr ? g_active_cr : cairo_create_scaled();
-    BOOL own_cr = (g_active_cr == NULL);
-
-    // First point: draw as a dot
-    glaspen2_modeler_get_point(0, &prev_x, &prev_y, &prev_w);
-    cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
-    cairo_arc(cr, prev_x, prev_y, prev_w * 0.5, 0, 2 * M_PI);
-    cairo_fill(cr);
-
-    // Subsequent points: draw line segments
-    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-    for (int i = 1; i < count; i++) {
-        glaspen2_modeler_get_point(i, &px, &py, &pw);
-        cairo_set_line_width(cr, pw);
-        cairo_move_to(cr, prev_x, prev_y);
-        cairo_line_to(cr, px, py);
-        cairo_stroke(cr);
-        prev_x = px; prev_y = py; prev_w = pw;
-    }
-    if (own_cr) cairo_destroy(cr);
-
-    // Commit buffer to STROKES (takes and clears buffer)
-    glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
-    flush_to_layer();
-}
-
 static void replay_strokes_from_memory(void) {
     if (!g_surface) return;
 
