@@ -386,6 +386,8 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 16),
             _buildSection('Width', _buildWidthRow()),
             const SizedBox(height: 16),
+            _buildSection('Actions', _buildActionButtons()),
+            const SizedBox(height: 16),
             _buildSection('Options', _buildToggles()),
             const SizedBox(height: 16),
             _buildSection('Export', _buildExportButtons()),
@@ -472,6 +474,35 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         );
       }),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        ElevatedButton.icon(
+          onPressed: () {
+            _setSetting('undo', true);
+          },
+          icon: const Icon(Icons.undo, size: 16),
+          label: const Text('撤销上一笔', style: TextStyle(fontSize: 13)),
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+        ),
+        ElevatedButton.icon(
+          onPressed: () {
+            _setSetting('export_animated_gif', true);
+          },
+          icon: const Icon(Icons.gif, size: 16),
+          label: const Text('导出动画 GIF', style: TextStyle(fontSize: 13)),
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+        ),
+      ],
     );
   }
 

@@ -93,6 +93,43 @@ extern "system" {
     ) -> u32;
 }
 
+// ── Named Pipe FFI (for Flutter settings UI) ──
+
+const PIPE_ACCESS_DUPLEX: u32 = 0x00000003;
+const PIPE_TYPE_BYTE: u32 = 0x00000000;
+const PIPE_READMODE_BYTE: u32 = 0x00000000;
+const PIPE_WAIT: u32 = 0x00000000;
+const PIPE_UNLIMITED_INSTANCES: u32 = 255;
+const BUFFER_SIZE: u32 = 4096;
+
+extern "system" {
+    fn CreateNamedPipeW(
+        lp_name: PCWSTR,
+        dw_open_mode: u32,
+        dw_pipe_mode: u32,
+        n_max_instances: u32,
+        n_out_buffer_size: u32,
+        n_in_buffer_size: u32,
+        n_default_time_out: u32,
+        lp_security_attributes: *const std::ffi::c_void,
+    ) -> isize;
+
+    fn ConnectNamedPipe(h_named_pipe: isize, lp_overlapped: *mut std::ffi::c_void) -> i32;
+
+    fn DisconnectNamedPipe(h_named_pipe: isize) -> i32;
+
+    fn CreateEventW(
+        lp_event_attributes: *mut std::ffi::c_void,
+        b_manual_reset: i32,
+        b_initial_state: i32,
+        lp_name: PCWSTR,
+    ) -> isize;
+
+    fn WaitForSingleObject(h_handle: isize, dw_milliseconds: u32) -> u32;
+
+    fn SetEvent(h_event: isize) -> i32;
+}
+
 // ── Custom messages ──
 pub const WM_TRAY_COMMAND: u32 = WM_USER + 1;
 
@@ -108,6 +145,7 @@ pub const CMD_TOGGLE_ENABLED: usize = 600;
 pub const CMD_TOGGLE_LANG: usize = 700;
 pub const CMD_TOGGLE_OUTLINE: usize = 650;
 pub const CMD_TOGGLE_INVERSE: usize = 651;
+pub const CMD_UNDO: usize = 800;
 pub const CMD_QUIT: usize = 999;
 
 // ── Color & width presets ──
@@ -166,6 +204,11 @@ static RAW_HID_COUNT: AtomicU32 = AtomicU32::new(0);
 static PEN_ABS_COUNT: AtomicU32 = AtomicU32::new(0);
 
 const SUPPRESS_WINDOW_MS: i32 = 80;
+
+// Undo: surface snapshot stack
+const MAX_UNDO: usize = 30;
+static UNDO_STACK: Mutex<Vec<Vec<u8>>> = Mutex::new(Vec::new());
+static UNDO_STROKE_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 // We use an Instant-based tick counter to avoid needing GetTickCount.
 // Store the Instant in a static, compare elapsed ms.
@@ -313,6 +356,9 @@ pub fn run() {
         let mods = HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0);
         RegisterHotKey(overlay_hwnd, 1, mods, 'C' as u32).ok();
         RegisterHotKey(overlay_hwnd, 2, mods, 'V' as u32).ok();
+        // Ctrl+Alt+Z: undo last stroke
+        let undo_mods = HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0);
+        RegisterHotKey(overlay_hwnd, 3, undo_mods, 'Z' as u32).ok();
     }
 
     // ── Show window ──
@@ -325,6 +371,14 @@ pub fn run() {
         let tray_hwnd = overlay_hwnd.0 as isize;
         std::thread::spawn(move || {
             super::tray::run(tray_hwnd);
+        });
+    }
+
+    // ── Spawn settings pipe server (for Flutter UI) ──
+    {
+        let pipe_hwnd = overlay_hwnd.0 as isize;
+        std::thread::spawn(move || {
+            run_settings_pipe_server(pipe_hwnd);
         });
     }
 
@@ -435,6 +489,7 @@ unsafe extern "system" fn overlay_wnd_proc(
             match wparam.0 as i32 {
                 1 => clear_screen_internal(&mut state, data),
                 2 => toggle_enabled_internal(&mut state),
+                3 => undo_last_stroke(data),
                 _ => {}
             }
             LRESULT(0)
@@ -522,6 +577,8 @@ fn process_hid_input(data: &[u8]) {
 
             if !PEN_ACTIVE.load(Ordering::SeqCst) {
                 PEN_ACTIVE.store(true, Ordering::SeqCst);
+                UNDO_STROKE_ACTIVE.store(true, Ordering::SeqCst);
+                save_surface_snapshot(data_ref);
                 unsafe { HAS_LAST_DRAW = false; }
                 let (ws, r, g, b);
                 {
@@ -553,6 +610,7 @@ fn process_hid_input(data: &[u8]) {
             }
         } else if !tip_down && PEN_ACTIVE.load(Ordering::SeqCst) {
             PEN_ACTIVE.store(false, Ordering::SeqCst);
+            UNDO_STROKE_ACTIVE.store(false, Ordering::SeqCst);
             unsafe { HAS_LAST_DRAW = false; }
         }
     }
@@ -597,6 +655,8 @@ fn process_mouse_input(mouse: &RawMouse) {
         if !enabled { return; }
 
         PEN_ACTIVE.store(true, Ordering::SeqCst);
+        UNDO_STROKE_ACTIVE.store(true, Ordering::SeqCst);
+        save_surface_snapshot(data_ref);
         unsafe { HAS_LAST_DRAW = false; }
         let (ws, r, g, b);
         {
@@ -609,6 +669,7 @@ fn process_mouse_input(mouse: &RawMouse) {
         copy_and_invalidate_rect(data_ref, (sx - w) as i32, (sy - w) as i32, (sx + w + 1.0) as i32, (sy + w + 1.0) as i32);
     } else if left_up && drawing {
         PEN_ACTIVE.store(false, Ordering::SeqCst);
+        UNDO_STROKE_ACTIVE.store(false, Ordering::SeqCst);
         unsafe { HAS_LAST_DRAW = false; }
     } else if drawing {
         let (ws, r, g, b);
@@ -889,6 +950,247 @@ fn pressure_to_width(p: f64, scale: f64) -> f64 {
     if p > 0.01 { (0.3 + p * p * 7.7) * scale } else { 1.0 * scale }
 }
 
+// ── Undo ──
+
+fn save_surface_snapshot(data: &OverlayData) {
+    let snapshot = match data.surface.data() {
+        Ok(d) => d.to_vec(),
+        Err(_) => return,
+    };
+    let mut stack = UNDO_STACK.lock().unwrap();
+    if stack.len() >= MAX_UNDO {
+        stack.remove(0);
+    }
+    stack.push(snapshot);
+}
+
+fn undo_last_stroke(data: &OverlayData) {
+    let snapshot = {
+        let mut stack = UNDO_STACK.lock().unwrap();
+        stack.pop()
+    };
+    if let Some(ref snap) = snapshot {
+        let pixels = data.surface.pixels_mut();
+        pixels.copy_from_slice(snap);
+        crate::db::delete_last_stroke();
+        crate::STROKES.lock().unwrap().pop();
+        refresh_overlay();
+    } else {
+        eprintln!("[undo] nothing to undo");
+    }
+}
+
+// ── Settings Pipe Server (for Flutter UI) ──
+
+fn pipe_wide_name() -> Vec<u16> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    OsStr::new(r"\\.\pipe\glaspen2_settings")
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
+}
+
+fn run_settings_pipe_server(hwnd: isize) {
+    let name = pipe_wide_name();
+
+    loop {
+        let pipe = unsafe {
+            CreateNamedPipeW(
+                PCWSTR(name.as_ptr()),
+                PIPE_ACCESS_DUPLEX,
+                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+                PIPE_UNLIMITED_INSTANCES,
+                BUFFER_SIZE,
+                BUFFER_SIZE,
+                0,
+                std::ptr::null(),
+            )
+        };
+        if pipe == -1 || pipe == 0 {
+            eprintln!("[pipe] CreateNamedPipeW failed");
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            continue;
+        }
+
+        // Block until a client connects
+        let ok = unsafe { ConnectNamedPipe(pipe, std::ptr::null_mut()) };
+        if ok == 0 {
+            let err = std::io::Error::last_os_error();
+            // ERROR_PIPE_CONNECTED (535) means client connected before ConnectNamedPipe
+            if err.raw_os_error() != Some(535) {
+                eprintln!("[pipe] ConnectNamedPipe error: {}", err);
+                unsafe { close_pipe(pipe); }
+                continue;
+            }
+        }
+        eprintln!("[pipe] Flutter settings client connected");
+
+        handle_pipe_client(pipe, hwnd);
+
+        eprintln!("[pipe] Flutter settings client disconnected");
+    }
+}
+
+fn close_pipe(pipe: isize) {
+    unsafe {
+        DisconnectNamedPipe(pipe);
+        let _ = windows::Win32::Foundation::CloseHandle(HANDLE(pipe as *mut _));
+    }
+}
+
+fn handle_pipe_client(pipe: isize, hwnd: isize) {
+    use std::io::{Read, Write};
+    use std::os::windows::io::{FromRawHandle, IntoRawHandle};
+
+    // Wrap pipe HANDLE in a single File for both read and write
+    let mut stream = unsafe {
+        std::fs::File::from_raw_handle(pipe as *mut std::ffi::c_void)
+    };
+
+    let mut buf = [0u8; 4096];
+    let mut line_buf = Vec::new();
+
+    loop {
+        let n = match stream.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(_) => break,
+        };
+
+        for &byte in &buf[..n] {
+            if byte == b'\n' {
+                if !line_buf.is_empty() {
+                    let line = String::from_utf8_lossy(&line_buf).to_string();
+                    process_pipe_message(&line, hwnd, &mut stream);
+                    line_buf.clear();
+                }
+            } else {
+                line_buf.push(byte);
+            }
+        }
+    }
+
+    // Prevent File from closing the handle; we close it ourselves
+    let _ = stream.into_raw_handle();
+    close_pipe(pipe);
+}
+
+fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
+    use std::io::Write;
+
+    let msg_type = json_get_str(line, "type");
+
+    if msg_type == "getSettings" {
+        // Respond with current settings from DB
+        let (r, g, b, w) = crate::db::load_settings().unwrap_or((1.0, 0.0, 0.0, 1.0));
+        let color = closest_color_index(r, g, b);
+        let width = closest_width_index(w);
+        let outline = crate::db::load_setting("outline_enabled")
+            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+        let inverse = crate::db::load_setting("inverse_enabled")
+            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+        let resp = format!(
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"inverse\":{},\"rainbow\":false,\"launchAtLogin\":false,\"frostedGlass\":false}}}}\n",
+            color, width, outline, inverse
+        );
+        let _ = writer.write_all(resp.as_bytes());
+        let _ = writer.flush();
+    } else if msg_type == "setSetting" {
+        let key = json_get_str(line, "key");
+        if key == "undo" {
+            let _ = unsafe {
+                PostMessageW(
+                    HWND(hwnd as *mut _),
+                    WM_TRAY_COMMAND,
+                    WPARAM(CMD_UNDO),
+                    LPARAM(0),
+                )
+            };
+        } else if key == "export_animated_gif" {
+            let result = crate::glaspen2_save_animated_gif();
+            eprintln!("[pipe] animated GIF export: {}", if result != 0 { "OK" } else { "FAILED" });
+        } else if key == "color" {
+            if let Some(val) = json_get_i64(line, "value") {
+                let idx = val as usize;
+                let cmd = CMD_SELECT_COLOR + idx;
+                let _ = unsafe {
+                    PostMessageW(HWND(hwnd as *mut _), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(0))
+                };
+            }
+        } else if key == "width" {
+            if let Some(val) = json_get_i64(line, "value") {
+                let idx = val as usize;
+                let cmd = CMD_SELECT_WIDTH + idx;
+                let _ = unsafe {
+                    PostMessageW(HWND(hwnd as *mut _), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(0))
+                };
+            }
+        } else if key == "outline" {
+            if let Some(val) = json_get_i64(line, "value") {
+                let cmd = CMD_TOGGLE_OUTLINE;
+                let _ = unsafe {
+                    PostMessageW(HWND(hwnd as *mut _), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(val as isize))
+                };
+            }
+        } else if key == "inverse" {
+            if let Some(val) = json_get_i64(line, "value") {
+                let cmd = CMD_TOGGLE_INVERSE;
+                let _ = unsafe {
+                    PostMessageW(HWND(hwnd as *mut _), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(val as isize))
+                };
+            }
+        }
+    }
+}
+
+// ── Minimal JSON helpers ──
+
+fn json_get_str<'a>(json: &'a str, key: &str) -> &'a str {
+    // Find "key":"value" pattern
+    let pattern = format!("\"{}\":\"", key);
+    if let Some(start) = json.find(&pattern) {
+        let val_start = start + pattern.len();
+        if let Some(end) = json[val_start..].find('"') {
+            return &json[val_start..val_start + end];
+        }
+    }
+    ""
+}
+
+fn json_get_i64(json: &str, key: &str) -> Option<i64> {
+    let pattern = format!("\"{}\":", key);
+    if let Some(start) = json.find(&pattern) {
+        let val_start = start + pattern.len();
+        let rest = &json[val_start..].trim_start();
+        let end = rest.find(|c: char| !c.is_ascii_digit() && c != '-').unwrap_or(rest.len());
+        if end > 0 {
+            return rest[..end].parse::<i64>().ok();
+        }
+    }
+    None
+}
+
+fn closest_color_index(r: f64, g: f64, b: f64) -> usize {
+    let mut best = 0;
+    let mut best_dist = f64::MAX;
+    for (i, &(cr, cg, cb)) in COLOR_PRESETS.iter().enumerate() {
+        let d = (r - cr).powi(2) + (g - cg).powi(2) + (b - cb).powi(2);
+        if d < best_dist { best_dist = d; best = i; }
+    }
+    best
+}
+
+fn closest_width_index(w: f64) -> usize {
+    let mut best = 0;
+    let mut best_dist = f64::MAX;
+    for (i, &ww) in WIDTH_PRESETS.iter().enumerate() {
+        let d = (w - ww).powi(2);
+        if d < best_dist { best_dist = d; best = i; }
+    }
+    best
+}
+
 // ── Command handlers ──
 
 fn handle_command(state: &mut DrawState, data: &OverlayData, cmd: usize, _param: usize) {
@@ -915,6 +1217,7 @@ fn handle_command(state: &mut DrawState, data: &OverlayData, cmd: usize, _param:
             x if x == CMD_SAVE_DRAWING => save_drawing(data),
             x if x == CMD_SAVE_XOJ => crate::glaspen2_save_xoj(),
             x if x == CMD_CLEAR_SCREEN => clear_screen_internal(state, data),
+            x if x == CMD_UNDO => undo_last_stroke(data),
             x if x == CMD_TOGGLE_RAINBOW => {
                 state.show_rainbow = !state.show_rainbow;
                 super::tray::update_rainbow_checkmark(state.show_rainbow);
@@ -942,6 +1245,7 @@ fn clear_screen_internal(state: &mut DrawState, data: &OverlayData) {
     // Clear surface to Fuchsia
     fill_surface_fuchsia(&data.surface);
     crate::glaspen2_clear_strokes(data.screen_w, data.screen_h);
+    UNDO_STACK.lock().unwrap().clear();
     if state.show_rainbow { render::draw_rainbow_indicator(&data.surface); }
     refresh_overlay();
 }

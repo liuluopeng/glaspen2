@@ -2,15 +2,19 @@
 # Produces a single self-extracting .exe installer.
 #
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File package.ps1 -Release
+#   powershell -ExecutionPolicy Bypass -File package.ps1
+#   powershell -ExecutionPolicy Bypass -File package.ps1 -Debug
 
-param([switch]$Release)
+param([switch]$Debug)
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-$profile = if ($Release) { "--release" } else { "" }
-$targetDir = if ($Release) { "target\release" } else { "target\debug" }
+# Kill running instances to avoid file locks
+Get-Process -Name "glaspen2","glaspen2_app" -ErrorAction SilentlyContinue | Stop-Process -Force
+
+$profile = if ($Debug) { "" } else { "--release" }
+$targetDir = if ($Debug) { "target\debug" } else { "target\release" }
 
 $cargoToml = Get-Content Cargo.toml -Raw
 $version = if ($cargoToml -match 'version\s*=\s*"([^"]+)"') { $Matches[1] } else { "0.1.0" }
@@ -30,7 +34,7 @@ if (-not $csc) { throw "csc.exe not found. .NET Framework 4.x is required." }
 Write-Host "[1/4] Building C# overlay (glaspen2_app.exe)..." -ForegroundColor Yellow
 Push-Location glaspen2_csharp
 try {
-    & $csc /target:winexe /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:Microsoft.CSharp.dll /out:glaspen2_app.exe NativeMethods.cs PenInterceptor.cs OverlayForm.cs InputWindow.cs Program.cs
+    & $csc /target:winexe /unsafe /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:Microsoft.CSharp.dll /out:glaspen2_app.exe NativeMethods.cs FakeStrokeForm.cs GlaspenNative.cs HidReader.cs InputWindow.cs OverlayForm.cs PressureForm.cs Program.cs SettingsPipeServer.cs SimpleJson.cs Wintab.cs
     if ($LASTEXITCODE -ne 0) { throw "C# overlay build failed" }
     Write-Host "  OK" -ForegroundColor Green
 } finally { Pop-Location }
@@ -59,9 +63,62 @@ Remove-Item -Recurse -Force $payload -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $payload | Out-Null
 
 Copy-Item "$targetDir\glaspen2.exe" $payload
+Copy-Item "$targetDir\glaspen2.dll" $payload
 Copy-Item "glaspen2_csharp\glaspen2_app.exe" $payload
 Copy-Item "LICENSE" $payload
 Copy-Item "README.md" $payload
+
+# Flutter settings UI
+$flutterRelease = "flutter_settings\build\windows\x64\runner\Release"
+if (Test-Path "$flutterRelease\glaspen2_settings.exe") {
+    Copy-Item "$flutterRelease\glaspen2_settings.exe" $payload
+    Copy-Item "$flutterRelease\flutter_windows.dll" $payload
+    if (Test-Path "$flutterRelease\data") {
+        Copy-Item "$flutterRelease\data" -Destination "$payload\data" -Recurse
+    }
+    Write-Host "  Flutter settings included" -ForegroundColor Green
+} else {
+    Write-Host "  WARNING: Flutter settings not found at $flutterRelease" -ForegroundColor Yellow
+}
+
+# VC++ runtime DLLs — required by Rust binary on fresh machines
+$vcDlls = @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")
+foreach ($dll in $vcDlls) {
+    $src = "C:\Windows\System32\$dll"
+    if (Test-Path $src) {
+        Copy-Item $src $payload
+        Write-Host "  Bundled $dll" -ForegroundColor Green
+    } else {
+        Write-Host "  WARNING: $dll not found in System32" -ForegroundColor Yellow
+    }
+}
+
+# Cairo DLLs — required for anti-aliased stroke rendering
+$msysBin = "C:\msys64\mingw64\bin"
+if (Test-Path $msysBin) {
+    $cairoDlls = @(
+        "libcairo-2.dll", "libpixman-1-0.dll", "libpng16-16.dll",
+        "zlib1.dll", "libfontconfig-1.dll", "libfreetype-6.dll",
+        "libexpat-1.dll", "libglib-2.0-0.dll", "libharfbuzz-0.dll",
+        "libiconv-2.dll", "libintl-8.dll", "libpcre2-8-0.dll",
+        "libbz2-1.dll", "libbrotlicommon.dll", "libbrotlidec.dll",
+        "libffi-8.dll", "libgraphite2.dll",
+        "libgcc_s_seh-1.dll", "libwinpthread-1.dll", "libstdc++-6.dll",
+        "libdatrie-1.dll", "libfribidi-0.dll"
+    )
+    foreach ($dll in $cairoDlls) {
+        $src = Join-Path $msysBin $dll
+        if (Test-Path $src) {
+            Copy-Item $src $payload
+            Write-Host "  Bundled $dll" -ForegroundColor Green
+        } else {
+            Write-Host "  WARNING: $dll not found in $msysBin" -ForegroundColor Yellow
+        }
+    }
+    Write-Host "  Cairo DLLs included" -ForegroundColor Green
+} else {
+    Write-Host "  WARNING: MSYS2 MinGW not found at $msysBin — Cairo DLLs not included" -ForegroundColor Yellow
+}
 
 # Create ZIP of payload
 $zipPath = "dist\payload.zip"

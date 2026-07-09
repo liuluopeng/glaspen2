@@ -43,6 +43,11 @@ namespace GlasPen2
         public const int RIDEV_INPUTSINK = 0x00000100;
         public const int RID_INPUT = 0x10000003;
         public const int RIM_TYPEMOUSE = 0;
+        public const int RIDI_PREPARSEDDATA = 0x20000005;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern uint GetRawInputDeviceInfo(
+            IntPtr hDevice, uint uiCommand, IntPtr pData, ref uint pcbSize);
 
         // Hotkey modifiers
         public const uint MOD_ALT = 0x0001;
@@ -214,6 +219,20 @@ namespace GlasPen2
 
         [DllImport("user32.dll")]
         public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+        [DllImport("gdi32.dll")]
+        public static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+
+        [DllImport("gdi32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool DeleteDC(IntPtr hdc);
+
+        [DllImport("gdi32.dll")]
+        public static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
+
+        [DllImport("gdi32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool DeleteObject(IntPtr hObject);
 
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -395,6 +414,14 @@ namespace GlasPen2
             IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
 
         [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool InvalidateRect(IntPtr hWnd, ref RECT lpRect, bool bErase);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool UpdateWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
         public static extern IntPtr WindowFromPoint(int x, int y);
 
         [DllImport("user32.dll")]
@@ -480,6 +507,47 @@ namespace GlasPen2
             public ushort NumberFeatureButtonCaps;
             public ushort NumberFeatureValueCaps;
             public ushort NumberFeatureDataIndices;
+        }
+
+        [DllImport("hid.dll")]
+        public static extern uint HidP_GetValueCaps(
+            uint ReportType, IntPtr ValueCaps, ref ushort ValueCapsLength, IntPtr PreparsedData);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct HIDP_VALUE_CAPS
+        {
+            public ushort UsagePage;
+            public byte ReportID;
+            public byte IsAlias;
+            public ushort BitField;
+            public ushort LinkCollection;
+            public ushort LinkUsage;
+            public ushort LinkUsagePage;
+            public byte IsRange;
+            public byte IsStringRange;
+            public byte IsDesignatorRange;
+            public byte IsAbsolute;
+            public byte HasNull;
+            public byte Reserved;
+            public ushort BitSize;
+            public ushort ReportCount;
+            public ushort Reserved2;
+            public ushort Reserved3;
+            public ushort Reserved4;
+            public ushort Reserved5;
+            public ushort Reserved6;
+            public uint LogicalMin;
+            public uint LogicalMax;
+            public uint PhysicalMin;
+            public uint PhysicalMax;
+            public ushort UsageMin;
+            public ushort UsageMax;
+            public ushort StringMin;
+            public ushort StringMax;
+            public ushort DesignatorMin;
+            public ushort DesignatorMax;
+            public ushort DataIndexMin;
+            public ushort DataIndexMax;
         }
 
         // ── SetupAPI for device enumeration ──
@@ -643,6 +711,46 @@ namespace GlasPen2
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool SetProcessDPIAware();
+
+        // ── Rust FFI: GIF export ──
+        [DllImport("glaspen2.dll", CallingConvention = CallingConvention.Cdecl)]
+        public static extern int glaspen2_save_gif_from_pixels(
+            IntPtr pixels, int w, int h, int stride,
+            IntPtr outPath, int outPathLen);
+
+        // ── Clipboard ──
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool OpenClipboard(IntPtr hWndNewOwner);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool CloseClipboard();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool EmptyClipboard();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
+
+        public const uint CF_HDROP = 15;
+        public const uint CF_UNICODETEXT = 13;
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr GlobalAlloc(uint uFlags, UIntPtr dwBytes);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr GlobalLock(IntPtr hMem);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GlobalUnlock(IntPtr hMem);
+
+        public const uint GMEM_MOVEABLE = 0x0002;
+
+        [DllImport("kernel32.dll", EntryPoint = "RtlMoveMemory")]
+        public static extern void CopyMemory(IntPtr dest, IntPtr src, uint count);
 
         #endregion
     }

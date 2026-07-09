@@ -9,6 +9,7 @@ const WIDTH_ID_PREFIX: &str = "width_";
 const ID_SAVE_BG: &str = "save_bg";
 const ID_SAVE_DRAWING: &str = "save_drawing";
 const ID_SAVE_XOJ: &str = "save_xoj";
+const ID_UNDO: &str = "undo";
 const ID_CLEAR: &str = "clear";
 const ID_RAINBOW: &str = "rainbow";
 const ID_OUTLINE: &str = "outline";
@@ -63,6 +64,7 @@ pub fn run(hwnd: isize) {
     menu.append(&MenuItem::with_id(ID_SAVE_BG, "保存(含背景)", true, None)).ok();
     menu.append(&MenuItem::with_id(ID_SAVE_DRAWING, "保存(涂鸦)", true, None)).ok();
     menu.append(&MenuItem::with_id(ID_SAVE_XOJ, "保存笔记 (Xournal)", true, None)).ok();
+    menu.append(&MenuItem::with_id(ID_UNDO, "撤销上一笔", true, None)).ok();
     menu.append(&MenuItem::with_id(ID_CLEAR, "清屏", true, None)).ok();
     menu.append(&MenuItem::with_id(ID_RAINBOW, "彩虹指示器", true, None)).ok();
     menu.append(&MenuItem::with_id(ID_OUTLINE, "描边增强", true, None)).ok();
@@ -179,6 +181,7 @@ fn handle_menu_id(id: &str) -> bool {
         x if x == ID_SAVE_BG => send_command(hook_overlay::CMD_SAVE_WITH_BG, 0),
         x if x == ID_SAVE_DRAWING => send_command(hook_overlay::CMD_SAVE_DRAWING, 0),
         x if x == ID_SAVE_XOJ => send_command(hook_overlay::CMD_SAVE_XOJ, 0),
+        x if x == ID_UNDO => send_command(hook_overlay::CMD_UNDO, 0),
         x if x == ID_CLEAR => send_command(hook_overlay::CMD_CLEAR_SCREEN, 0),
         x if x == ID_RAINBOW => send_command(hook_overlay::CMD_TOGGLE_RAINBOW, 0),
         x if x == ID_OUTLINE => send_command(hook_overlay::CMD_TOGGLE_OUTLINE, 0),

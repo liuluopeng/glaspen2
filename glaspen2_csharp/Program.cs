@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Windows.Forms;
@@ -7,13 +9,9 @@ namespace GlasPen2
 {
     internal static class Program
     {
-        private static OverlayForm _overlay;
-        private static InputWindow _inputWin;
-        private static PenInterceptor _interceptor;
-        private static bool _drawingEnabled = true;
-
         private static NamedPipeServerStream _pipe;
         private static StreamWriter _writer;
+        private static SettingsPipeServer _settingsServer;
 
         public static void Log(string msg)
         {
@@ -33,21 +31,32 @@ namespace GlasPen2
             catch { }
         }
 
-        public static void OnPointerDown(int x, int y, uint pressure)
+        private static void TryLaunchSettings()
         {
-            if (_drawingEnabled && _overlay != null)
+            // Look for glaspen2_settings.exe in several locations
+            var exeDir = Path.GetDirectoryName(typeof(Program).Assembly.Location) ?? ".";
+            string[] candidates = {
+                Path.Combine(exeDir, "glaspen2_settings.exe"),
+                // Dev build: flutter_settings/build/windows/x64/runner/Release/
+                Path.Combine(exeDir, "..", "..", "..", "flutter_settings", "build", "windows", "x64", "runner", "Release", "glaspen2_settings.exe"),
+                Path.Combine(exeDir, "..", "..", "..", "flutter_settings", "build", "windows", "x64", "runner", "Debug", "glaspen2_settings.exe"),
+            };
+
+            foreach (var path in candidates)
             {
-                _overlay.SetPressure(pressure);
-                _overlay.StartDrawing();
+                try
+                {
+                    var full = Path.GetFullPath(path);
+                    if (File.Exists(full))
+                    {
+                        Process.Start(full);
+                        Log("[Main] Launched settings UI: {0}", full);
+                        return;
+                    }
+                }
+                catch { }
             }
-        }
-        public static void OnPointerUp()
-        {
-            if (_overlay != null) _overlay.StopDrawing();
-        }
-        public static void OnPointerPressure(uint p)
-        {
-            if (_overlay != null) _overlay.SetPressure(p);
+            Log("[Main] Settings UI not found (searched {0} locations)", candidates.Length);
         }
 
         [STAThread]
@@ -55,7 +64,7 @@ namespace GlasPen2
         {
             NativeMethods.SetProcessDPIAware();
 
-            // Log pipe — Rust connects and prints to its stderr
+            // Log pipe
             try
             {
                 _pipe = new NamedPipeServerStream("glaspen2_log",
@@ -66,57 +75,44 @@ namespace GlasPen2
             }
             catch { }
 
+            Log("[Main] Starting GlasPen2...");
+
+            // Initialize Rust database (creates first screen record)
+            var screen = SystemInformation.VirtualScreen;
+            GlaspenNative.glaspen2_init_db(screen.Width, screen.Height);
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            Log("[Main] Starting GlasPen2...");
+            // Overlay
+            var overlay = new OverlayForm();
+            overlay.Show();
 
-            // ── Input window (behind overlay) ──
-            _inputWin = new InputWindow();
-            _inputWin.Show();
-
-            // ── Create the transparent overlay ──
-            _overlay = new OverlayForm();
-            _overlay.DrawingEnabled = _drawingEnabled;
-            _overlay.Show();
-
-            // ── Install the mouse hook (suppresses pen mouse events) ──
-            _interceptor = new PenInterceptor();
-            _interceptor.PenDown += (x, y) =>
+            // Settings pipe server (Flutter UI communication)
+            _settingsServer = new SettingsPipeServer();
+            _settingsServer.GetSettings = () => overlay.GetSettings();
+            _settingsServer.OnSettingChanged = (key, value) =>
             {
-                if (_drawingEnabled && _overlay != null)
-                    _overlay.OnPenDown(x, y);
+                if (overlay.InvokeRequired)
+                    overlay.BeginInvoke(new Action(() =>
+                    {
+                        overlay.UpdateSetting(key, value);
+                        _settingsServer.NotifySettingsChanged(overlay.GetSettings());
+                    }));
+                else
+                {
+                    overlay.UpdateSetting(key, value);
+                    _settingsServer.NotifySettingsChanged(overlay.GetSettings());
+                }
             };
-            _interceptor.PenMove += (x, y) =>
-            {
-                // Hook move — raw input handles drawing
-            };
-            _interceptor.PenUp += (x, y) =>
-            {
-                if (_overlay != null)
-                    _overlay.OnPenUp(x, y);
-            };
-            _interceptor.Install();
+            _settingsServer.Start();
 
-            Log("[Main] Overlay shown. DPI-aware, pen hook active.");
+            // Launch Flutter settings UI
+            TryLaunchSettings();
 
-            // ── Watch for display changes ──
-            Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (s, e) =>
-            {
-                if (_overlay != null) _overlay.RefreshScreenBounds();
-            };
-
-            // ── Run the message loop ──
-            Application.ApplicationExit += OnApplicationExit;
+            Log("[Main] Overlay shown. DPI-aware, waiting for pen input...");
             Application.Run();
         }
 
-        private static void OnApplicationExit(object sender, EventArgs e)
-        {
-            Log("[Exit] Cleaning up...");
-            if (_interceptor != null) { _interceptor.Uninstall(); _interceptor = null; }
-            if (_overlay != null) { _overlay.Close(); _overlay.Dispose(); _overlay = null; }
-            if (_inputWin != null) { _inputWin.Close(); _inputWin.Dispose(); _inputWin = null; }
-        }
     }
 }

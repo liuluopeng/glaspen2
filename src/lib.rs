@@ -1081,3 +1081,22 @@ pub extern "C" fn glaspen2_now_secs() -> c_double {
         .unwrap_or_default()
         .as_secs_f64()
 }
+
+// ── Windows-only FFI (also re-exported by macos) ──
+
+/// Get the time component of a single stroke point. Used by Windows Flutter overlay.
+#[no_mangle]
+pub extern "C" fn glaspen2_get_stroke_point_time(idx: c_int, pidx: c_int) -> c_double {
+    let strokes = STROKES.lock().unwrap();
+    strokes.get(idx as usize)
+        .and_then(|s| s.points.get(pidx as usize))
+        .map_or(0.0, |p| p.3)
+}
+
+/// Void undo — Windows tray menu calls this (returns nothing).
+/// The macOS equivalent glaspen2_undo_last_stroke returns remaining count.
+#[no_mangle]
+pub extern "C" fn glaspen2_delete_last_stroke() {
+    runtime().block_on(db::delete_last_stroke());
+    STROKES.lock().unwrap().pop();
+}

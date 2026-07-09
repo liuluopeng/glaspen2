@@ -201,6 +201,7 @@ fn main() {
                     "/target:winexe",
                     &out_arg,
                     "/platform:x64",
+                    "/unsafe",
                 ]);
                 for f in &cs_files {
                     let abs = std::fs::canonicalize(f.path())
@@ -252,6 +253,41 @@ fn main() {
             println!("cargo:warning=C# overlay: {}", csharp_exe.display());
         } else {
             println!("cargo:warning=glaspen2_app.exe not found — Rust fallback will be used");
+        }
+
+        // ── Copy Cairo DLLs from MSYS2 to target dir ──
+        let msys_bin = std::path::Path::new("C:/msys64/mingw64/bin");
+        if msys_bin.exists() {
+            let cairo_dlls = [
+                "libcairo-2.dll", "libpixman-1-0.dll", "libpng16-16.dll",
+                "zlib1.dll", "libfontconfig-1.dll", "libfreetype-6.dll",
+                "libexpat-1.dll", "libglib-2.0-0.dll", "libharfbuzz-0.dll",
+                "libiconv-2.dll", "libintl-8.dll", "libpcre2-8-0.dll",
+                "libbz2-1.dll", "libbrotlicommon.dll", "libbrotlidec.dll",
+                "libffi-8.dll", "libgraphite2.dll",
+                "libgcc_s_seh-1.dll", "libwinpthread-1.dll", "libstdc++-6.dll",
+                "libdatrie-1.dll", "libfribidi-0.dll",
+            ];
+            for dll in &cairo_dlls {
+                let src = msys_bin.join(dll);
+                let dst = target_debug.join(dll);
+                if src.exists() {
+                    if dst.exists() {
+                        // Only copy if source is newer
+                        let src_time = std::fs::metadata(&src).and_then(|m| m.modified()).ok();
+                        let dst_time = std::fs::metadata(&dst).and_then(|m| m.modified()).ok();
+                        if src_time > dst_time {
+                            if let Err(e) = std::fs::copy(&src, &dst) {
+                                println!("cargo:warning=Failed to copy {}: {}", dll, e);
+                            }
+                        }
+                    } else {
+                        if let Err(e) = std::fs::copy(&src, &dst) {
+                            println!("cargo:warning=Failed to copy {}: {}", dll, e);
+                        }
+                    }
+                }
+            }
         }
     }
 }
