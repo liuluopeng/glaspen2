@@ -990,7 +990,7 @@ fn render_gif_frame(
     gif_w: u16, gif_h: u16,
     _fi: usize, is_hold: bool, cutoff: f64, _delay: u16,
 ) -> (Vec<u8>, bool) {
-    let mut surface = match cairo::ImageSurface::create(cairo::Format::ARGB32, bw, bh) {
+    let mut surface = match cairo::ImageSurface::create(cairo::Format::ARgb32, bw, bh) {
         Ok(s) => s,
         Err(_) => return (Vec::new(), false),
     };
