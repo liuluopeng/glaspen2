@@ -1104,3 +1104,46 @@ pub extern "C" fn glaspen2_delete_last_stroke() {
     runtime().block_on(db::delete_last_stroke());
     STROKES.lock().unwrap().pop();
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+
+    #[test]
+    fn test_build_cropped_svg_empty() {
+        STROKES.lock().unwrap().clear();
+        assert!(build_cropped_svg().is_none());
+    }
+
+    #[test]
+    fn test_build_cropped_svg_one_stroke() {
+        STROKES.lock().unwrap().clear();
+        STROKES.lock().unwrap().push(Stroke {
+            r: 1.0, g: 0.0, b: 0.0,
+            points: vec![(0.0, 0.0, 2.0, 0.0), (10.0, 10.0, 3.0, 1.0)],
+        });
+        let svg = build_cropped_svg().unwrap();
+        assert!(svg.starts_with("<svg"), "SVG should start with <svg tag");
+        assert!(svg.contains("stroke-width"), "should have stroke-width attr");
+        assert!(svg.contains("</svg>\n"), "should close svg tag");
+        STROKES.lock().unwrap().clear();
+    }
+
+    #[test]
+    fn test_stroke_avg_width() {
+        let s = Stroke { r: 0.0, g: 0.0, b: 0.0, points: vec![(0.0,0.0,2.0,0.0), (10.0,10.0,4.0,1.0)] };
+        let avg = s.avg_width();
+        assert!((avg - 3.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_empty_stroke_avg_width() {
+        let s = Stroke { r: 0.0, g: 0.0, b: 0.0, points: vec![] };
+        assert!((s.avg_width() - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_pressure_to_width_zero_pressure() {
+        assert!((pressure_to_width(0.0, 1.0) - 1.0).abs() < 1e-6);
+    }
+}

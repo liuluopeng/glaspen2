@@ -216,3 +216,52 @@ fn pressure_to_width(pressure: f64, width_scale: f64) -> f64 {
         1.0 * width_scale
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pressure_to_width_values() {
+        assert!((pressure_to_width(0.0, 1.0) - 1.0).abs() < 0.01);
+        assert!((pressure_to_width(0.009, 1.0) - 1.0).abs() < 0.01);
+        // at threshold 0.01, pressure formula kicks in
+        let w0 = pressure_to_width(0.1, 1.0);
+        let w1 = pressure_to_width(0.5, 1.0);
+        assert!(w1 > w0, "higher pressure should give larger width");
+        assert!(w0 > 0.3, "formula result should be reasonable");
+    }
+
+    #[test]
+    fn test_smooth_points_few_points() {
+        // 1 point — should return it unchanged
+        let one = vec![(5.0, 5.0, 2.0)];
+        let r = smooth_points(&one);
+        assert_eq!(r.len(), 1);
+        assert!((r[0].0 - 5.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_smooth_points_produces_valid_output() {
+        // A short diagonal stroke
+        let raw = vec![
+            (0.0, 0.0, 2.0),
+            (10.0, 0.0, 3.0),
+            (20.0, 0.0, 2.0),
+        ];
+        let result = smooth_points(&raw);
+        assert!(result.len() >= 3, "should produce at least same number of points");
+        // All points should have positive width
+        for &(_, _, w, _) in &result {
+            assert!(w > 0.0, "each point must have width");
+        }
+    }
+
+    #[test]
+    fn test_modeler_begin_end_buffer_cleared() {
+        let _ = STATE.lock().unwrap().take();
+        begin_stroke(0.0, 0.0, 0.5, 0.0, 1.0);
+        let buf = take_buffer();
+        assert!(!buf.is_empty(), "begin_stroke should produce modeler output");
+    }
+}
