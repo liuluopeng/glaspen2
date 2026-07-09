@@ -288,6 +288,7 @@ class GlaspenSettingsApp extends StatelessWidget {
         useMaterial3: true,
         brightness: Brightness.light,
         colorSchemeSeed: Colors.blueGrey,
+        fontFamily: 'LXGWWenKaiMono',
       ),
       home: const SettingsPage(),
     );
