@@ -33,7 +33,7 @@ fn main() {
                 std::fs::metadata(&flutter_framework),
             ) {
                 if let (Ok(dart_mtime), Ok(fw_mtime)) = (dart_meta.modified(), fw_meta.modified()) {
-                    if dart_mtime > fw_mtime {
+                    if dart_mtime >= fw_mtime {
                         std::process::Command::new("fvm")
                             .args(["flutter", "build", "macos-framework"])
                             .current_dir(&flutter_dir)
