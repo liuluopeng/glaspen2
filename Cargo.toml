@@ -24,6 +24,9 @@ rayon = "1"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 ink-stroke-modeler-rs = "0.1"
+ort = "2.0.0-rc.12"
+serde_json = "1.0.150"
+ndarray = "0.17.2"
 
 [target.'cfg(not(windows))'.dependencies]
 cairo-rs = "0.20"

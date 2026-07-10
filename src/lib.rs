@@ -34,6 +34,7 @@ pub mod db;
 pub mod draw;
 pub mod export;
 pub mod modeler;
+pub mod ocr;
 pub mod state;
 
 // ---------------------------------------------------------------------------

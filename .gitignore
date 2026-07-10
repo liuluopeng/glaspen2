@@ -23,3 +23,5 @@ flutter_settings/pubspec.lock
 flame.txt
 # SQLite database (generated at runtime)
 *.db
+.gitignore
+models/*.onnx

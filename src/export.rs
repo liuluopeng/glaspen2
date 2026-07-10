@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::slice;
 
 use crate::{
-    db, desktop_path, modeler, pressure_to_width, runtime, state, timestamped_name,
+    db, desktop_path, modeler, ocr, pressure_to_width, runtime, state, timestamped_name,
     timestamped_path, RAW_STROKE_START, Stroke, STROKES,
 };
 
@@ -1367,4 +1367,30 @@ pub extern "C" fn glaspen2_get_stroke_point_time(
 pub extern "C" fn glaspen2_delete_last_stroke() {
     runtime().block_on(db::delete_last_stroke());
     STROKES.lock().unwrap().pop();
+}
+
+// ---------------------------------------------------------------------------
+// OCR
+// ---------------------------------------------------------------------------
+
+/// Run OCR on an RGBA pixel buffer. Returns a C string that the caller must
+/// free with glaspen2_free_c_string.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_ocr_recognize(
+    pixels: *const c_uchar,
+    width: c_int,
+    height: c_int,
+) -> *mut c_char {
+    if pixels.is_null() || width <= 0 || height <= 0 {
+        return std::ptr::null_mut();
+    }
+    let w = width as u32;
+    let h = height as u32;
+    let len = (w * h * 4) as usize;
+    let pixel_slice = unsafe { std::slice::from_raw_parts(pixels, len) };
+    let text = ocr::recognize(pixel_slice, w, h);
+    match CString::new(text) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
 }
