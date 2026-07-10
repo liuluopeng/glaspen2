@@ -373,12 +373,6 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   @override
-  void dispose() {
-    _bridge.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -406,6 +400,8 @@ class _SettingsPageState extends State<SettingsPage> {
             _buildSection('Options', _buildToggles()),
             const SizedBox(height: 16),
             _buildSection('Export', _buildExportButtons()),
+            const SizedBox(height: 16),
+            if (Platform.isMacOS) _buildSection('OCR 文字识别', _buildOcrRow()),
           ],
         ),
       ),
@@ -588,6 +584,77 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     );
+  }
+
+  Widget _buildOcrRow() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: TextField(
+            controller: _ocrController,
+            readOnly: true,
+            maxLines: 3,
+            minLines: 1,
+            decoration: const InputDecoration(
+              hintText: '识别结果将显示在这里',
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            style: const TextStyle(fontSize: 15),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: _ocrLoading ? null : _recognizeText,
+          icon: _ocrLoading
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.text_snippet, size: 16),
+          label: Text(_ocrLoading ? '识别中…' : '识别笔迹'),
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+        ),
+      ],
+    );
+  }
+
+  bool _ocrLoading = false;
+  final _ocrController = TextEditingController();
+
+  Future<void> _recognizeText() async {
+    setState(() => _ocrLoading = true);
+    try {
+      final text = await _channel.invokeMethod<String>('recognizeText') ?? '';
+      if (mounted) {
+        _ocrController.text = text;
+        if (text.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('未识别到文字'), duration: Duration(seconds: 2)),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('识别失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _ocrLoading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ocrController.dispose();
+    _bridge.dispose();
+    super.dispose();
   }
 
   bool _gifExporting = false;

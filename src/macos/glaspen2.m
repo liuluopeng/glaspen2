@@ -73,6 +73,7 @@ extern void glaspen2_free_c_string(char *ptr);
 extern int glaspen2_save_gif_cropped(const unsigned char *surface_data, int w, int h, int stride, double surface_scale);
 extern int glaspen2_save_animated_gif(void);
 extern void glaspen2_draw_rebuild(void *surface_ptr, double scale);
+extern char* glaspen2_ocr_recognize(const unsigned char *pixels, int width, int height);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -674,6 +675,24 @@ static NSButton *g_glass_buttons[1];
             [g_settings_window setMinSize:NSMakeSize(300, 300)];
         }
         result(nil);
+    } else if ([call.method isEqualToString:@"recognizeText"]) {
+        // Run OCR on current drawing surface
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            if (!g_surface) {
+                dispatch_async(dispatch_get_main_queue(), ^{ result(@""); });
+                return;
+            }
+            cairo_surface_flush(g_surface);
+            const unsigned char *data = cairo_image_surface_get_data(g_surface);
+            int w = cairo_image_surface_get_width(g_surface);
+            int h = cairo_image_surface_get_height(g_surface);
+            char *text = glaspen2_ocr_recognize(data, w, h);
+            NSString *resultText = text ? [NSString stringWithUTF8String:text] : @"";
+            if (text) glaspen2_free_c_string(text);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                result(resultText);
+            });
+        });
     } else {
         result(FlutterMethodNotImplemented);
     }
