@@ -701,7 +701,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _exportPdf() async {
     setState(() => _pdfExporting = true);
     try {
-      final ok = await _channel.invokeMethod<bool>('exportPdf') == true;
+      final ok = await _channel.invokeMethod<int>('exportPdf') == 1;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

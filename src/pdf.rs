@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use printpdf::*;
 
-use crate::{db, runtime};
+use crate::{db, ocr, runtime};
 
 /// Export all pages to a PDF on the desktop.  Returns the file path.
 pub fn export_all_pages() -> Option<String> {
@@ -91,6 +91,47 @@ pub fn export_all_pages() -> Option<String> {
         }
         std::mem::drop(d);
 
+        // Run OCR on this page and save to DB
+        {
+            let boxes = ocr::det::detect_text_regions(&rgba, surf_w, surf_h);
+            if !boxes.is_empty() {
+                let mut ocr_boxes: Vec<db::OcrBox> = Vec::new();
+                let mut full_text = String::new();
+                for (i, tb) in boxes.iter().enumerate() {
+                    let pad = 4u32;
+                    let cx = tb.x.saturating_sub(pad);
+                    let cy = tb.y.saturating_sub(pad);
+                    let cw = (tb.w + pad * 2).min(surf_w - cx);
+                    let ch = (tb.h + pad * 2).min(surf_h - cy);
+                    if cw < 4 || ch < 4 { continue; }
+                    let crop = ocr::det::crop_pixels(&rgba, surf_w, cx, cy, cw, ch);
+                    let text = ocr::rec::recognize(&crop, cw, ch);
+                    if !text.is_empty() {
+                        if i > 0 { full_text.push('\n'); }
+                        full_text.push_str(&text);
+                        let chars: Vec<char> = text.chars().collect();
+                        if !chars.is_empty() {
+                            let char_w = tb.w as f64 / chars.len() as f64;
+                            for (ci, ch) in chars.iter().enumerate() {
+                                ocr_boxes.push(db::OcrBox {
+                                    text: ch.to_string(),
+                                    x: tb.x as f64 + char_w * ci as f64,
+                                    y: tb.y as f64,
+                                    w: char_w,
+                                    h: tb.h as f64,
+                                    confidence: 0.0,
+                                });
+                            }
+                        }
+                    }
+                }
+                if !full_text.is_empty() {
+                    rt.block_on(db::save_ocr_result(*screen_id, &full_text, &ocr_boxes));
+                    eprintln!("[pdf] OCR page {}: {:?}", screen_id, &full_text[..full_text.len().min(60)]);
+                }
+            }
+        }
+
         // Add image to PDF — use raw RGBA pixels
         let raw_img = RawImage {
             pixels: RawImageData::U8(rgba),
@@ -139,8 +180,9 @@ pub fn export_all_pages() -> Option<String> {
                             size: font_size,
                         });
                     }
-                    ops.push(Op::SetTextRenderingMode {
-                        mode: TextRenderingMode::Invisible,
+                    // White text (invisible on white page background) — selectable
+                    ops.push(Op::SetFillColor {
+                        col: Color::Rgb(Rgb { r: 1.0, g: 1.0, b: 1.0, icc_profile: None }),
                     });
                     ops.push(Op::SetTextCursor {
                         pos: Point { x: Pt(pdf_x * 72.0 / 25.4), y: Pt(pdf_y * 72.0 / 25.4) },
