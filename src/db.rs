@@ -10,6 +10,27 @@ pub struct StrokeData {
     pub points: Vec<(f64, f64, f64, f64)>, // (x, y, width, relative_time)
 }
 
+/// A single recognized text line with its bounding box.
+#[derive(Debug, Clone)]
+pub struct OcrBox {
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    pub confidence: f32,
+}
+
+/// Full OCR result for a screen.
+#[derive(Debug, Clone)]
+pub struct OcrResult {
+    pub id: i64,
+    pub screen_id: i64,
+    pub full_text: String,
+    pub boxes: Vec<OcrBox>,
+    pub created_at: f64,
+}
+
 fn db_path() -> std::path::PathBuf {
     let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let exe_dir = exe.parent().unwrap_or_else(|| std::path::Path::new("."));
@@ -117,6 +138,31 @@ mod platform {
 
         sqlx::query("ALTER TABLE points ADD COLUMN t REAL NOT NULL DEFAULT 0.0")
             .execute(&pool).await.ok();
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS ocr_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                screen_id INTEGER NOT NULL REFERENCES screens(id),
+                full_text TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )"
+        ).execute(&pool).await.expect("Failed to create ocr_results table");
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS ocr_boxes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                result_id INTEGER NOT NULL REFERENCES ocr_results(id),
+                box_index INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                x REAL NOT NULL, y REAL NOT NULL,
+                w REAL NOT NULL, h REAL NOT NULL,
+                confidence REAL NOT NULL DEFAULT 0.0
+            )"
+        ).execute(&pool).await.expect("Failed to create ocr_boxes table");
+
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_ocr_results_screen ON ocr_results(screen_id)"
+        ).execute(&pool).await.ok();
 
         apply_defaults(&pool).await;
 
@@ -266,6 +312,43 @@ mod platform {
         let ws: f64 = sqlx::query_scalar::<_, String>("SELECT value FROM user_settings WHERE key = 'width_scale'")
             .fetch_optional(pool).await.ok()??.parse().ok()?;
         Some((r, g, b, ws))
+    }
+
+    pub async fn save_ocr_result(
+        screen_id: i64, full_text: &str, boxes: &[super::OcrBox],
+    ) {
+        let pool = match DB.get() { Some(p) => p, None => return };
+        let now = super::now_f64();
+        let result_id = sqlx::query_scalar::<_, i64>(
+            "INSERT INTO ocr_results (screen_id, full_text, created_at) VALUES (?1, ?2, ?3) RETURNING id"
+        ).bind(screen_id).bind(full_text).bind(now)
+            .fetch_optional(pool).await;
+        let Ok(Some(rid)) = result_id else { return };
+        for (i, b) in boxes.iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO ocr_boxes (result_id, box_index, text, x, y, w, h, confidence) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)"
+            ).bind(rid).bind(i as i64).bind(&b.text)
+                .bind(b.x).bind(b.y).bind(b.w).bind(b.h).bind(b.confidence as f64)
+                .execute(pool).await.ok();
+        }
+    }
+
+    pub async fn load_latest_ocr(screen_id: i64) -> Option<super::OcrResult> {
+        let pool = DB.get()?;
+        let row = sqlx::query_as::<_, (i64, String, f64)>(
+            "SELECT id, full_text, created_at FROM ocr_results WHERE screen_id = ?1 ORDER BY id DESC LIMIT 1"
+        ).bind(screen_id).fetch_optional(pool).await.ok()??;
+        let boxes: Vec<(i64, String, f64, f64, f64, f64, f64)> = sqlx::query_as(
+            "SELECT box_index, text, x, y, w, h, confidence FROM ocr_boxes WHERE result_id = ?1 ORDER BY box_index"
+        ).bind(row.0).fetch_all(pool).await.unwrap_or_default();
+        let ocr_boxes: Vec<super::OcrBox> = boxes.into_iter().map(|(_, t, x, y, w, h, c)| {
+            super::OcrBox { text: t, x, y, w, h, confidence: c as f32 }
+        }).collect();
+        Some(super::OcrResult {
+            id: row.0, screen_id,
+            full_text: row.1, boxes: ocr_boxes,
+            created_at: row.2,
+        })
     }
 }
 

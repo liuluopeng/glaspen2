@@ -74,6 +74,7 @@ extern int glaspen2_save_gif_cropped(const unsigned char *surface_data, int w, i
 extern int glaspen2_save_animated_gif(void);
 extern void glaspen2_draw_rebuild(void *surface_ptr, double scale);
 extern char* glaspen2_ocr_recognize(const unsigned char *pixels, int width, int height);
+extern char* glaspen2_ocr_page(const unsigned char *pixels, int width, int height, long screen_id);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -1155,6 +1156,18 @@ static void rebuild_surface_from_strokes(void) {
 
 @end
 
+/// OCR the current surface and save result to DB.  Returns recognized text
+/// (caller must free), or NULL if surface is unavailable.
+static char* ocr_current_page(void) {
+    if (!g_surface) return NULL;
+    cairo_surface_flush(g_surface);
+    const unsigned char *data = cairo_image_surface_get_data(g_surface);
+    int w = cairo_image_surface_get_width(g_surface);
+    int h = cairo_image_surface_get_height(g_surface);
+    long sid = glaspen2_get_current_screen_id();
+    return glaspen2_ocr_page(data, w, h, sid);
+}
+
 // --- CGEventTap callback ---
 
 // Performance logging (set g_perf_log=YES to enable)
@@ -1223,9 +1236,14 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             BOOL hasCmdCtrl = (mods & NSEventModifierFlagCommand) && (mods & NSEventModifierFlagControl);
             if (hasCmdCtrl) {
                 unsigned short kc = [keyEvent keyCode];
-                if (kc == kVK_ANSI_C) { clear_screen(); return NULL; }
-                else if (kc == kVK_ANSI_V) { toggle_enabled(); return NULL; }
-                else if (kc == 0x26) { // J
+                if (kc == kVK_ANSI_C) {
+                    char *t = ocr_current_page(); if (t) glaspen2_free_c_string(t);
+                    clear_screen();
+                    return NULL;
+                } else if (kc == kVK_ANSI_V) { toggle_enabled(); return NULL; }
+                else if (kc == 0x26) { // J — previous page
+                    // OCR current page before navigating away
+                    char *t = ocr_current_page(); if (t) glaspen2_free_c_string(t);
                     long target = glaspen2_prev_screen_id();
                     if (target > 0) {
                         glaspen2_load_strokes_for_screen(target);
@@ -1235,7 +1253,8 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                         show_notification(L(@"没有上一页", @"No previous page"));
                     }
                     return NULL;
-                } else if (kc == 0x28) { // K
+                } else if (kc == 0x28) { // K — next page
+                    char *t = ocr_current_page(); if (t) glaspen2_free_c_string(t);
                     long target = glaspen2_next_screen_id();
                     if (target > 0) {
                         glaspen2_load_strokes_for_screen(target);

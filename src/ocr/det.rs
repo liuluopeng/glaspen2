@@ -272,8 +272,9 @@ pub fn detect_text_regions(pixels: &[u8], width: u32, height: u32) -> Vec<TextBo
     text_boxes
 }
 
-/// Crop a rectangular region from RGBA pixels.
-fn crop_pixels(pixels: &[u8], src_w: u32, x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
+/// Crop a rectangular region from RGBA pixels.  `pub` because export.rs uses it
+/// directly to get per-character bounding boxes.
+pub fn crop_pixels(pixels: &[u8], src_w: u32, x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
     let mut cropped = Vec::with_capacity((w * h * 4) as usize);
     for row in y..y + h {
         let src_off = (row * src_w + x) as usize * 4;

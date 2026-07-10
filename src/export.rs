@@ -8,7 +8,7 @@ use std::slice;
 
 use crate::{
     db, desktop_path, modeler, ocr, pressure_to_width, runtime, state, timestamped_name,
-    timestamped_path, RAW_STROKE_START, Stroke, STROKES,
+    timestamped_path, db::OcrBox, RAW_STROKE_START, Stroke, STROKES,
 };
 
 // ---------------------------------------------------------------------------
@@ -1390,6 +1390,71 @@ pub extern "C" fn glaspen2_ocr_recognize(
     let pixel_slice = unsafe { std::slice::from_raw_parts(pixels, len) };
     let text = ocr::detect_and_recognize(pixel_slice, w, h);
     match CString::new(text) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Run OCR on the current surface and save results to DB for this page.
+/// Returns the recognized text as a C string (caller must free with
+/// glaspen2_free_c_string), or NULL if no text found.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_ocr_page(
+    pixels: *const c_uchar,
+    width: c_int,
+    height: c_int,
+    screen_id: i64,
+) -> *mut c_char {
+    if pixels.is_null() || width <= 0 || height <= 0 {
+        return std::ptr::null_mut();
+    }
+    let w = width as u32;
+    let h = height as u32;
+    let len = (w * h * 4) as usize;
+    let pixel_slice = unsafe { std::slice::from_raw_parts(pixels, len) };
+
+    // Run detection + recognition
+    let boxes = ocr::det::detect_text_regions(pixel_slice, w, h);
+
+    // Recognize each box, build OcrBox entries
+    let mut ocr_boxes: Vec<OcrBox> = Vec::new();
+    let mut full_text = String::new();
+    for (i, tb) in boxes.iter().enumerate() {
+        let pad = 4u32;
+        let cx = tb.x.saturating_sub(pad);
+        let cy = tb.y.saturating_sub(pad);
+        let cw = (tb.w + pad * 2).min(w - cx);
+        let ch = (tb.h + pad * 2).min(h - cy);
+        if cw < 4 || ch < 4 { continue; }
+
+        let crop = ocr::det::crop_pixels(pixel_slice, w, cx, cy, cw, ch);
+        let text = ocr::rec::recognize(&crop, cw, ch);
+        if !text.is_empty() {
+            if i > 0 { full_text.push('\n'); }
+            full_text.push_str(&text);
+
+            // Per-char positions (estimate by dividing box width evenly)
+            let chars: Vec<char> = text.chars().collect();
+            if chars.len() > 0 {
+                let char_w = tb.w as f64 / chars.len() as f64;
+                for (ci, ch) in chars.iter().enumerate() {
+                    ocr_boxes.push(OcrBox {
+                        text: ch.to_string(),
+                        x: tb.x as f64 + char_w * ci as f64,
+                        y: tb.y as f64,
+                        w: char_w,
+                        h: tb.h as f64,
+                        confidence: 0.0, // per-char confidence not available
+                    });
+                }
+            }
+        }
+    }
+
+    // Save to DB
+    runtime().block_on(db::save_ocr_result(screen_id, &full_text, &ocr_boxes));
+
+    match CString::new(full_text) {
         Ok(cs) => cs.into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
