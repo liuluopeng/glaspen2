@@ -56,16 +56,29 @@ pub fn recognize(pixels: &[u8], width: u32, height: u32) -> String {
     target_w = target_w.max(8);
     target_w = ((target_w + 7) / 8) * 8;
 
-    // Build CHW tensor
+    // Build CHW tensor with PP-OCR preprocessing:
+    // 1. Composite onto white background (CAIRO_ARGB32 has alpha)
+    // 2. BGR channel order (model expects BGR)
+    // 3. Normalize to [-1, 1]: (pixel/255 - 0.5) / 0.5 = pixel/127.5 - 1.0
     let mut array = Array4::<f32>::zeros((1, 3, target_h as usize, target_w as usize));
     for y in 0..target_h {
         let src_y = ((y as f64) / scale).min((height - 1) as f64) as u32;
         for x in 0..target_w {
             let src_x = ((x as f64) / scale).min((width - 1) as f64) as u32;
             let off = (src_y * width + src_x) as usize * 4;
-            array[[0, 0, y as usize, x as usize]] = pixels[off + 2] as f32 / 255.0;
-            array[[0, 1, y as usize, x as usize]] = pixels[off + 1] as f32 / 255.0;
-            array[[0, 2, y as usize, x as usize]] = pixels[off] as f32 / 255.0;
+            let r = pixels[off + 2] as f32;
+            let g = pixels[off + 1] as f32;
+            let b = pixels[off] as f32;
+            let a = pixels[off + 3] as f32 / 255.0;
+            // Alpha composite onto white background
+            let inv_a = 1.0 - a;
+            let rc = r * a + 255.0 * inv_a;
+            let gc = g * a + 255.0 * inv_a;
+            let bc = b * a + 255.0 * inv_a;
+            // BGR order + normalize to [-1, 1]
+            array[[0, 0, y as usize, x as usize]] = bc / 127.5 - 1.0;
+            array[[0, 1, y as usize, x as usize]] = gc / 127.5 - 1.0;
+            array[[0, 2, y as usize, x as usize]] = rc / 127.5 - 1.0;
         }
     }
 
@@ -104,6 +117,22 @@ pub fn recognize(pixels: &[u8], width: u32, height: u32) -> String {
         prev = best;
     }
 
+    // Debug: if result is empty, show first few argmax values
+    if result.is_empty() {
+        for t in 0..seq_len.min(5) {
+            let mut best = blank;
+            let mut best_val = f32::NEG_INFINITY;
+            for c in 0..num_classes {
+                let v = arr[[0, t, c]];
+                if v > best_val {
+                    best_val = v;
+                    best = c;
+                }
+            }
+            eprintln!("[ocr] t={}: best_idx={} best_val={:.4}", t, best, best_val);
+        }
+    }
+
     result
 }
 
@@ -116,5 +145,49 @@ mod tests {
         let pixels = vec![0u8; 50 * 30 * 4];
         let text = recognize(&pixels, 50, 30);
         assert!(text.len() < 100, "should not explode");
+    }
+
+    /// Feed a synthetic image with a bold black dash on white to test model output.
+    #[test]
+    fn test_synthetic_dash() {
+        let w = 200u32;
+        let h = 48u32;
+        let mut pixels = vec![255u8; (w * h * 4) as usize]; // white
+        // Draw a bold black horizontal line (like a dash) across the middle
+        for y in 14..34 {
+            for x in 20..180 {
+                let off = (y * w + x) as usize * 4;
+                pixels[off] = 0;     // B
+                pixels[off + 1] = 0; // G
+                pixels[off + 2] = 0; // R
+                pixels[off + 3] = 255; // A
+            }
+        }
+        let text = recognize(&pixels, w, h);
+        eprintln!("[ocr_synthetic] dash recognized: {:?}", text);
+        // At minimum should not panic; check if we got some characters
+        if text.is_empty() {
+            eprintln!("[ocr_synthetic] WARNING: empty result for bold dash!");
+        }
+    }
+
+    /// Feed a synthetic image with vertical bar (like 'l' or '1')
+    #[test]
+    fn test_synthetic_vert_bar() {
+        let w = 48u32;
+        let h = 48u32;
+        let mut pixels = vec![255u8; (w * h * 4) as usize];
+        // Draw a bold vertical bar at center
+        for x in 20..28 {
+            for y in 4..44 {
+                let off = (y * w + x) as usize * 4;
+                pixels[off] = 0;
+                pixels[off + 1] = 0;
+                pixels[off + 2] = 0;
+                pixels[off + 3] = 255;
+            }
+        }
+        let text = recognize(&pixels, w, h);
+        eprintln!("[ocr_synthetic] vert bar recognized: {:?}", text);
     }
 }
