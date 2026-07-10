@@ -116,4 +116,77 @@ mod tests {
         assert!(a > 0, "pixel on scaled stroke should have alpha");
         STROKES.lock().unwrap().clear();
     }
+
+    /// End-to-end OCR test: render strokes → run OCR → print result.
+    /// Run with: cargo test draw::tests::test_ocr_e2e -- --nocapture
+    #[test]
+    fn test_ocr_e2e() {
+        STROKES.lock().unwrap().clear();
+        // Draw some stroke patterns that should look like "test" or similar
+        // Characters: draw horizontal+vertical strokes
+        let strokes_data: Vec<(f64, f64, f64, f64, f64, f64)> = vec![
+            // "T" shape
+            (10.0, 20.0, 50.0, 20.0, 6.0, 0.0), // horizontal bar
+            (30.0, 20.0, 30.0, 50.0, 6.0, 0.0), // vertical bar
+            // "e" shape (simplified)
+            (60.0, 35.0, 90.0, 35.0, 5.0, 0.0), // horizontal
+            (75.0, 25.0, 60.0, 35.0, 5.0, 0.0),
+            (75.0, 25.0, 75.0, 45.0, 5.0, 0.0),
+            // "s" shape
+            (100.0, 25.0, 125.0, 25.0, 5.0, 0.0),
+            (125.0, 25.0, 125.0, 35.0, 5.0, 0.0),
+            (125.0, 35.0, 100.0, 35.0, 5.0, 0.0),
+            (100.0, 35.0, 100.0, 45.0, 5.0, 0.0),
+            (100.0, 45.0, 125.0, 45.0, 5.0, 0.0),
+            // "t" shape
+            (135.0, 25.0, 135.0, 50.0, 5.0, 0.0),
+            (130.0, 35.0, 145.0, 35.0, 5.0, 0.0),
+        ];
+        STROKES.lock().unwrap().push(crate::Stroke {
+            r: 0.0, g: 0.0, b: 0.0,
+            points: strokes_data.iter().map(|&(x1,y1,_,_,w,_)| {
+                (x1, y1, w, 0.0)
+            }).collect(),
+        });
+        STROKES.lock().unwrap().push(crate::Stroke {
+            r: 0.0, g: 0.0, b: 0.0,
+            points: strokes_data.iter().skip(1).map(|&(_,_,x2,y2,w,_)| {
+                (x2, y2, w, 0.0)
+            }).collect(),
+        });
+
+        // Render to surface
+        let mut s = crate::cairo::ImageSurface::create(
+            crate::cairo::Format::ARgb32, 160, 70).unwrap();
+        draw_rebuild_on_surface(&s, 1.0);
+
+        // Read pixel data
+        let stride = s.stride() as usize;
+        let w = s.width() as u32;
+        let h = s.height() as u32;
+        let data = s.data().unwrap();
+        let mut rgba = vec![0u8; (w * h * 4) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let off = y as usize * stride + x as usize * 4;
+                let b = data[off];
+                let g = data[off + 1];
+                let r = data[off + 2];
+                let a = data[off + 3];
+                let pix_off = (y * w + x) as usize * 4;
+                rgba[pix_off] = r;
+                rgba[pix_off + 1] = g;
+                rgba[pix_off + 2] = b;
+                rgba[pix_off + 3] = a;
+            }
+        }
+        std::mem::drop(data);
+
+        // Run OCR
+        let text = crate::ocr::recognize(&rgba, w, h);
+        eprintln!("[ocr_e2e] recognized: {:?}", text);
+        // Pipeline should not crash; any output is a bonus
+        assert!(text.len() < 100);
+        STROKES.lock().unwrap().clear();
+    }
 }
