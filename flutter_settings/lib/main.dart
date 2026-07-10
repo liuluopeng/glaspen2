@@ -632,11 +632,27 @@ class _SettingsPageState extends State<SettingsPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
         ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _ocrBackfilling ? null : _ocrBackfill,
+          icon: _ocrBackfilling
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.database, size: 16),
+          label: Text(_ocrBackfilling ? '补全中…' : '补全所有页面 OCR'),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+        ),
       ],
     );
   }
 
   bool _ocrLoading = false;
+  bool _ocrBackfilling = false;
   final _ocrController = TextEditingController();
 
   Future<void> _recognizeText() async {
@@ -667,6 +683,26 @@ class _SettingsPageState extends State<SettingsPage> {
     _ocrController.dispose();
     _bridge.dispose();
     super.dispose();
+  }
+
+  Future<void> _ocrBackfill() async {
+    setState(() => _ocrBackfilling = true);
+    try {
+      await _channel.invokeMethod('ocrBackfill');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('OCR 补全完成'), duration: Duration(seconds: 2)),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('补全失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _ocrBackfilling = false);
+    }
   }
 
   bool _gifExporting = false;
