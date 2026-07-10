@@ -11,29 +11,28 @@ use crate::{db, ocr, runtime};
 pub fn export_all_pages() -> Option<String> {
     let rt = runtime();
 
-    // Collect all screens from DB
-    let screens: Vec<(i64, i32, i32)> = {
-        let pool = rt.block_on(async {
-            sqlx::SqlitePool::connect_with(
-                sqlx::sqlite::SqliteConnectOptions::new()
-                    .filename(db::db_path())
-                    .read_only(true),
-            ).await
-        });
-        let pool = match pool {
-            Ok(p) => p,
-            Err(e) => { eprintln!("[pdf] DB: {e}"); return None; }
-        };
-        let rows = rt.block_on(async {
-            sqlx::query_as(
-                "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
-                 WHERE EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
-                 ORDER BY s.id"
-            ).fetch_all(&pool).await.unwrap_or_default()
-        });
-        let _ = rt.block_on(pool.close());
-        rows
-    };
+    let db_path = std::env::var("GLASPEN2_DB")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| db::db_path());
+
+    // Open DB pool
+    let pool = rt.block_on(async {
+        sqlx::SqlitePool::connect_with(
+            sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(&db_path)
+                .read_only(true),
+        ).await
+    });
+    let pool = match pool { Ok(p) => p, Err(e) => { eprintln!("[pdf] DB: {e}"); return None; } };
+
+    // Collect all screens
+    let screens: Vec<(i64, i32, i32)> = rt.block_on(async {
+        sqlx::query_as(
+            "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
+             WHERE EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
+             ORDER BY s.id"
+        ).fetch_all(&pool).await.unwrap_or_default()
+    });
 
     if screens.is_empty() { eprintln!("[pdf] No pages"); return None; }
     eprintln!("[pdf] Exporting {} pages", screens.len());
@@ -42,8 +41,20 @@ pub fn export_all_pages() -> Option<String> {
     let font_id = load_cjk_font(&mut doc);
 
     for (screen_id, sw, sh) in &screens {
-        let strokes = rt.block_on(db::strokes_for_screen(*screen_id));
-        if strokes.is_empty() { continue; }
+        // Load strokes directly (not via db::strokes_for_screen which uses the app's global pool)
+        let strokes: Vec<db::StrokeData> = rt.block_on(async {
+            let rows: Vec<(i64, f64, f64, f64, f64)> = sqlx::query_as(
+                "SELECT id, color_r, color_g, color_b, width_scale FROM strokes WHERE screen_id = ?1 ORDER BY id"
+            ).bind(screen_id).fetch_all(&pool).await.unwrap_or_default();
+            let mut result = Vec::new();
+            for (sid, r, g, b, ws) in rows {
+                let pts: Vec<(f64,f64,f64,f64)> = sqlx::query_as(
+                    "SELECT x, y, width, t FROM points WHERE stroke_id = ?1 ORDER BY seq"
+                ).bind(sid).fetch_all(&pool).await.unwrap_or_default();
+                result.push(db::StrokeData { r, g, b, width_scale: ws, points: pts });
+            }
+            result
+        });
         eprintln!("[pdf] Page {}: {}x{} ({} strokes)", screen_id, sw, sh, strokes.len());
 
         // Page dimensions in mm (72 pt/inch → 25.4 mm/inch)
@@ -111,33 +122,68 @@ pub fn export_all_pages() -> Option<String> {
             }
         }
 
-        // Load OCR data from DB (must backfill first via backfill_ocr_all_pages())
-        let ocr_boxes = rt.block_on(db::load_latest_ocr(*screen_id))
-            .map(|r| r.boxes)
-            .unwrap_or_default();
+        // Load OCR data from DB
+        let ocr_boxes: Vec<db::OcrBox> = rt.block_on(async {
+            let row = sqlx::query_as::<_, (i64, String, f64)>(
+                "SELECT id, full_text, created_at FROM ocr_results WHERE screen_id = ?1 ORDER BY id DESC LIMIT 1"
+            ).bind(screen_id).fetch_optional(&pool).await.ok().flatten();
+            let Some((rid, _full_text, _created_at)) = row else { return Vec::new() };
+            let boxes: Vec<(i64, String, f64, f64, f64, f64, f64)> = sqlx::query_as(
+                "SELECT box_index, text, x, y, w, h, confidence FROM ocr_boxes WHERE result_id = ?1 ORDER BY box_index"
+            ).bind(rid).fetch_all(&pool).await.unwrap_or_default();
+            boxes.into_iter().map(|(_bi, t, x, y, w, h, c)| {
+                db::OcrBox { text: t, x, y, w, h, confidence: c as f32 }
+            }).collect()
+        });
         if !ocr_boxes.is_empty() {
             eprintln!("[pdf] Page {}: {} OCR chars", screen_id, ocr_boxes.len());
         }
 
-        // Add invisible selectable text
+        // Add invisible selectable text — group per-character boxes into lines
         if !ocr_boxes.is_empty() {
-            ops.push(Op::StartTextSection);
-            for ob in &ocr_boxes {
-                let pdf_x = ob.x as f32;
-                let pdf_y = *sh as f32 - ob.y as f32 - ob.h as f32;
-                let font_size = Pt((ob.h as f32 * 0.8).max(4.0));
+            // Group by y-position (line tolerance = half average char height)
+            let avg_h: f32 = ocr_boxes.iter().map(|b| b.h as f32).sum::<f32>() / ocr_boxes.len() as f32;
+            let line_tol = (avg_h * 1.5).max(8.0);
 
-                // Always set a font. Built-in Helvetica works for Latin;
-                // CJK fonts are embedded when available for Chinese text.
+            let mut lines: Vec<Vec<&db::OcrBox>> = Vec::new();
+            for ob in &ocr_boxes {
+                let ob_y = ob.y as f32;
+                let mut placed = false;
+                for line in &mut lines {
+                    let first_y = line[0].y as f32;
+                    if (ob_y - first_y).abs() < line_tol {
+                        line.push(ob);
+                        placed = true;
+                        break;
+                    }
+                }
+                if !placed {
+                    lines.push(vec![ob]);
+                }
+            }
+
+            // Sort each line by x, then build text
+            ops.push(Op::StartTextSection);
+            for line in &lines {
+                let mut sorted = line.clone();
+                sorted.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap());
+
+                let line_text: String = sorted.iter().map(|b| b.text.clone()).collect::<Vec<_>>().join("");
+                if line_text.is_empty() { continue; }
+
+                let avg_y: f32 = sorted.iter().map(|b| b.y as f32).sum::<f32>() / sorted.len() as f32;
+                let min_x = sorted.iter().map(|b| b.x as f32).reduce(f32::min).unwrap_or(0.0);
+                let avg_h_line: f32 = sorted.iter().map(|b| b.h as f32).sum::<f32>() / sorted.len() as f32;
+
+                let pdf_x = min_x;
+                let pdf_y = *sh as f32 - avg_y - avg_h_line;
+                let font_size = Pt(avg_h_line.max(4.0));
+
                 let pdf_font = match font_id {
                     Some(ref fid) => PdfFontHandle::External(fid.clone()),
                     None => PdfFontHandle::Builtin(BuiltinFont::Helvetica),
                 };
-                ops.push(Op::SetFont {
-                    font: pdf_font,
-                    size: font_size,
-                });
-                // White fill → invisible on page background, but selectable
+                ops.push(Op::SetFont { font: pdf_font, size: font_size });
                 ops.push(Op::SetFillColor {
                     col: Color::Rgb(Rgb { r: 1.0, g: 1.0, b: 1.0, icc_profile: None }),
                 });
@@ -145,7 +191,7 @@ pub fn export_all_pages() -> Option<String> {
                     pos: Point { x: Pt(pdf_x), y: Pt(pdf_y) },
                 });
                 ops.push(Op::ShowText {
-                    items: vec![TextItem::Text(ob.text.clone())],
+                    items: vec![TextItem::Text(line_text)],
                 });
             }
             ops.push(Op::EndTextSection);
@@ -153,6 +199,9 @@ pub fn export_all_pages() -> Option<String> {
 
         doc.pages.push(PdfPage::new(Mm(mm_w), Mm(mm_h), ops));
     }
+
+    // Close DB
+    rt.block_on(pool.close());
 
     // Save
     let desktop = desktop_path();
@@ -365,29 +414,47 @@ mod tests {
         backfill_ocr_all_pages();
     }
 
-    /// Test font loading
+    /// Generate a minimal test PDF and dump its structure.
+    /// Run: cargo test pdf::tests::test_generate_minimal -- --nocapture
     #[test]
-    fn test_font_load() {
-        for path in &[
-            "/System/Library/Fonts/STHeiti Medium.ttc",
-            "/System/Library/Fonts/Helvetica.ttc",
-        ] {
-            if !std::path::Path::new(path).exists() {
-                eprintln!("[test] NOT FOUND: {path}");
-                continue;
-            }
-            let bytes = std::fs::read(path).unwrap();
-            let mut warns = Vec::new();
-            let parsed = ParsedFont::from_bytes(&bytes, 0, &mut warns);
-            eprintln!("[test] {path} -> {:?} (warns: {})", parsed.is_some(), warns.len());
-            for w in &warns {
-                eprintln!("  warn: {:?}", w);
-            }
-            if let Some(p) = parsed {
-                let mut doc = PdfDocument::new("test");
-                let fid = doc.add_font(&p);
-                eprintln!("[test] font_id: {:?}", fid);
-            }
-        }
+    fn test_generate_minimal() {
+        use printpdf::*;
+        let mut doc = PdfDocument::new("test");
+
+        let font_path = "/System/Library/Fonts/Helvetica.ttc";
+        let bytes = std::fs::read(font_path).unwrap();
+        let mut warns = Vec::new();
+        let parsed = ParsedFont::from_bytes(&bytes, 0, &mut warns).unwrap();
+        let fid = doc.add_font(&parsed);
+        eprintln!("[test] font loaded");
+
+        let mut ops = Vec::new();
+        ops.push(Op::StartTextSection);
+        ops.push(Op::SetFont {
+            font: PdfFontHandle::External(fid),
+            size: Pt(12.0),
+        });
+        ops.push(Op::SetTextRenderingMode {
+            mode: TextRenderingMode::Invisible,
+        });
+        ops.push(Op::SetTextCursor {
+            pos: Point { x: Pt(50.0), y: Pt(50.0) },
+        });
+        ops.push(Op::ShowText {
+            items: vec![TextItem::Text("HelloWorld".to_string())],
+        });
+        ops.push(Op::EndTextSection);
+
+        doc.pages.push(PdfPage::new(Mm(210.0), Mm(297.0), ops));
+
+        let path = std::path::Path::new("/tmp/test_invisible.pdf");
+        let opts = PdfSaveOptions::default();
+        let mut warnings = Vec::new();
+        let bytes = doc.save(&opts, &mut warnings);
+        std::fs::write(path, &bytes).unwrap();
+        eprintln!("[test] Wrote {}", path.display());
+
+        // Now generate using our actual export function
+        let _ = export_all_pages();
     }
 }
