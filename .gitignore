@@ -25,3 +25,9 @@ flame.txt
 *.db
 .gitignore
 models/*.onnx
+
+# Python test artifacts
+python_test/venv/
+python_test/output/
+python_test/*.png
+python_test/__pycache__/
