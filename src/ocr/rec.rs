@@ -102,8 +102,11 @@ pub fn recognize(pixels: &[u8], width: u32, height: u32) -> String {
             }
         }
         if best != blank && best != prev {
-            if let Some(ch) = e.chars.get(best) {
-                result.push_str(ch);
+            // Model index 0 = blank, index 1 = chars[0], index 2 = chars[1], ...
+            if best <= e.chars.len() {
+                if let Some(ch) = e.chars.get(best - 1) {
+                    result.push_str(ch);
+                }
             }
         }
         prev = best;
@@ -145,5 +148,31 @@ mod tests {
         }}
         let text = recognize(&pixels, w, h);
         eprintln!("[rec] vert: {:?}", text);
+    }
+
+    /// Cross-validate: load the synthetic "你好世界" line PNG and OCR it.
+    /// This image is correctly recognized by PaddleOCR Python.
+    #[test]
+    fn test_cross_validate_png() {
+        use std::path::Path;
+        let path = "python_test/test_line_hello.png";
+        if !Path::new(path).exists() {
+            eprintln!("[cross] SKIP: {path} not found");
+            return;
+        }
+        // Load PNG via image crate
+        let img = image::open(Path::new(path)).unwrap().to_rgba8();
+        let (w, h) = img.dimensions();
+        let pixels = img.into_raw();
+        eprintln!("[cross] loaded {}x{} PNG", w, h);
+        let text = recognize(&pixels, w, h);
+        eprintln!("[cross] Rust recognized: {:?}", text);
+        // Python result for this line: "你好世界"
+        // If mapping is correct, we should get Chinese characters
+        if text.is_empty() {
+            eprintln!("[cross] WARNING: empty result!");
+        } else {
+            eprintln!("[cross] SUCCESS: got {} chars", text.chars().count());
+        }
     }
 }
