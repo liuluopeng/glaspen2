@@ -1472,3 +1472,9 @@ pub extern "C" fn glaspen2_export_pdf() -> c_int {
         None => 0,
     }
 }
+
+/// Backfill OCR data for all pages that don't have it yet.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_ocr_backfill_all() {
+    crate::pdf::backfill_ocr_all_pages();
+}

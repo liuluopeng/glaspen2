@@ -76,6 +76,7 @@ extern void glaspen2_draw_rebuild(void *surface_ptr, double scale);
 extern char* glaspen2_ocr_recognize(const unsigned char *pixels, int width, int height);
 extern char* glaspen2_ocr_page(const unsigned char *pixels, int width, int height, long screen_id);
 extern int glaspen2_export_pdf(void);
+extern void glaspen2_ocr_backfill_all(void);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -700,6 +701,13 @@ static NSButton *g_glass_buttons[1];
             int ok = glaspen2_export_pdf();
             dispatch_async(dispatch_get_main_queue(), ^{
                 result(@(ok));
+            });
+        });
+    } else if ([call.method isEqualToString:@"ocrBackfill"]) {
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            glaspen2_ocr_backfill_all();
+            dispatch_async(dispatch_get_main_queue(), ^{
+                result(nil);
             });
         });
     } else {

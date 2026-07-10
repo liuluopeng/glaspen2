@@ -111,8 +111,13 @@ pub fn export_all_pages() -> Option<String> {
             }
         }
 
-        // Run OCR for selectable text layer
-        let ocr_boxes = render_and_ocr(&strokes, *sw, *sh, *screen_id, &rt);
+        // Load OCR data from DB (must backfill first via backfill_ocr_all_pages())
+        let ocr_boxes = rt.block_on(db::load_latest_ocr(*screen_id))
+            .map(|r| r.boxes)
+            .unwrap_or_default();
+        if !ocr_boxes.is_empty() {
+            eprintln!("[pdf] Page {}: {} OCR chars", screen_id, ocr_boxes.len());
+        }
 
         // Add invisible selectable text
         if !ocr_boxes.is_empty() {
@@ -122,12 +127,16 @@ pub fn export_all_pages() -> Option<String> {
                 let pdf_y = *sh as f32 - ob.y as f32 - ob.h as f32;
                 let font_size = Pt((ob.h as f32 * 0.8).max(4.0));
 
-                if let Some(ref fid) = font_id {
-                    ops.push(Op::SetFont {
-                        font: PdfFontHandle::External(fid.clone()),
-                        size: font_size,
-                    });
-                }
+                // Always set a font. Built-in Helvetica works for Latin;
+                // CJK fonts are embedded when available for Chinese text.
+                let pdf_font = match font_id {
+                    Some(ref fid) => PdfFontHandle::External(fid.clone()),
+                    None => PdfFontHandle::Builtin(BuiltinFont::Helvetica),
+                };
+                ops.push(Op::SetFont {
+                    font: pdf_font,
+                    size: font_size,
+                });
                 // White fill → invisible on page background, but selectable
                 ops.push(Op::SetFillColor {
                     col: Color::Rgb(Rgb { r: 1.0, g: 1.0, b: 1.0, icc_profile: None }),
@@ -266,6 +275,53 @@ fn render_and_ocr(
     ocr_boxes
 }
 
+/// Backfill OCR data for all pages that don't have OCR results yet.
+/// Set GLASPEN2_DB env var to override DB path (for tests).
+pub fn backfill_ocr_all_pages() {
+    let rt = runtime();
+
+    let path = std::env::var("GLASPEN2_DB")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| db::db_path());
+    let screens: Vec<(i64, i32, i32)> = {
+        let pool = rt.block_on(async {
+            sqlx::SqlitePool::connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&path)
+                    .read_only(true),
+            ).await
+        });
+        let pool = match pool {
+            Ok(p) => p,
+            Err(e) => { eprintln!("[backfill] DB: {e}"); return; }
+        };
+        let rows = rt.block_on(async {
+            sqlx::query_as(
+                "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
+                 WHERE EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
+                 AND NOT EXISTS (SELECT 1 FROM ocr_results WHERE screen_id = s.id) \
+                 ORDER BY s.id"
+            ).fetch_all(&pool).await.unwrap_or_default()
+        });
+        let _ = rt.block_on(pool.close());
+        rows
+    };
+
+    if screens.is_empty() {
+        eprintln!("[backfill] All pages already have OCR data");
+        return;
+    }
+
+    eprintln!("[backfill] Backfilling OCR for {} pages", screens.len());
+    for (screen_id, sw, sh) in &screens {
+        eprintln!("[backfill] Page {}: {}x{}", screen_id, sw, sh);
+        let strokes = rt.block_on(db::strokes_for_screen(*screen_id));
+        if strokes.is_empty() { continue; }
+        render_and_ocr(&strokes, *sw, *sh, *screen_id, rt);
+    }
+    eprintln!("[backfill] Done");
+}
+
 fn load_cjk_font(doc: &mut PdfDocument) -> Option<FontId> {
     for path in &[
         "/System/Library/Fonts/PingFang.ttc",
@@ -297,4 +353,15 @@ fn timestamped_name(ext: &str) -> String {
     let s = secs % 60; let m = (secs / 60) % 60; let h = (secs / 3600 + 8) % 24;
     let days = secs / 86400; let y = 1970 + days / 365; let d = days % 365;
     format!("glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.{}", y, d, h, m, s, ext)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Run: cargo test pdf::tests::test_backfill -- --nocapture
+    #[test]
+    fn test_backfill() {
+        backfill_ocr_all_pages();
+    }
 }
