@@ -259,7 +259,8 @@ fn render_and_ocr(
 
     if !full_text.is_empty() {
         rt.block_on(db::save_ocr_result(screen_id, &full_text, &ocr_boxes));
-        eprintln!("[pdf] OCR page {}: {:?}", screen_id, &full_text[..full_text.len().min(60)]);
+        let truncated: String = full_text.chars().take(60).collect();
+        eprintln!("[pdf] OCR page {}: {:?}", screen_id, truncated);
     }
 
     ocr_boxes
