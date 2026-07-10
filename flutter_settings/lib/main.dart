@@ -582,6 +582,18 @@ class _SettingsPageState extends State<SettingsPage> {
           label: Text(_gifExporting ? '生成中…' : '导出动画 GIF'),
           onPressed: _gifExporting ? null : _exportAnimatedGif,
         ),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          icon: _pdfExporting
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.picture_as_pdf, size: 18),
+          label: Text(_pdfExporting ? '导出中…' : '导出全部页面为 PDF'),
+          onPressed: _pdfExporting ? null : _exportPdf,
+        ),
       ],
     );
   }
@@ -681,6 +693,31 @@ class _SettingsPageState extends State<SettingsPage> {
       }
     } finally {
       if (mounted) setState(() => _gifExporting = false);
+    }
+  }
+
+  bool _pdfExporting = false;
+
+  Future<void> _exportPdf() async {
+    setState(() => _pdfExporting = true);
+    try {
+      final ok = await _channel.invokeMethod<bool>('exportPdf') == true;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ok ? 'PDF 已保存到桌面' : '导出失败'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF 导出失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _pdfExporting = false);
     }
   }
 }

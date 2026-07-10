@@ -1459,3 +1459,16 @@ pub extern "C" fn glaspen2_ocr_page(
         Err(_) => std::ptr::null_mut(),
     }
 }
+
+// ---------------------------------------------------------------------------
+// PDF export
+// ---------------------------------------------------------------------------
+
+/// Export all pages to a PDF on the desktop.  Returns 1 on success, 0 on failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_export_pdf() -> c_int {
+    match crate::pdf::export_all_pages() {
+        Some(_) => 1,
+        None => 0,
+    }
+}

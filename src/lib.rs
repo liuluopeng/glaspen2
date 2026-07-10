@@ -35,6 +35,7 @@ pub mod draw;
 pub mod export;
 pub mod modeler;
 pub mod ocr;
+pub mod pdf;
 pub mod state;
 
 // ---------------------------------------------------------------------------

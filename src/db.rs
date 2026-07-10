@@ -31,7 +31,7 @@ pub struct OcrResult {
     pub created_at: f64,
 }
 
-fn db_path() -> std::path::PathBuf {
+pub fn db_path() -> std::path::PathBuf {
     let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let exe_dir = exe.parent().unwrap_or_else(|| std::path::Path::new("."));
 
