@@ -641,7 +641,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   height: 14,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.database, size: 16),
+              : const Icon(Icons.storage, size: 16),
           label: Text(_ocrBackfilling ? '补全中…' : '补全所有页面 OCR'),
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
