@@ -181,7 +181,7 @@ pub use cairo_renderer::CairoRenderer;
 
 // ── Cairo Renderer FFI ──
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_renderer_create(w: c_int, h: c_int) -> *mut CairoRenderer {
     match CairoRenderer::new(w, h) {
@@ -190,7 +190,7 @@ pub extern "C" fn glaspen2_cairo_renderer_create(w: c_int, h: c_int) -> *mut Cai
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_renderer_destroy(renderer: *mut CairoRenderer) {
     if !renderer.is_null() {
@@ -198,7 +198,7 @@ pub extern "C" fn glaspen2_cairo_renderer_destroy(renderer: *mut CairoRenderer) 
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_draw_line(
     renderer: *mut CairoRenderer,
@@ -210,7 +210,7 @@ pub extern "C" fn glaspen2_cairo_draw_line(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_draw_dot(
     renderer: *mut CairoRenderer,
@@ -222,7 +222,7 @@ pub extern "C" fn glaspen2_cairo_draw_dot(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_clear(renderer: *mut CairoRenderer) {
     if !renderer.is_null() {
@@ -230,21 +230,21 @@ pub extern "C" fn glaspen2_cairo_clear(renderer: *mut CairoRenderer) {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_surface_data(renderer: *mut CairoRenderer) -> *const c_uchar {
     if renderer.is_null() { return std::ptr::null(); }
     unsafe { (*renderer).surface_data() }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_surface_data_mut(renderer: *mut CairoRenderer) -> *mut c_uchar {
     if renderer.is_null() { return std::ptr::null_mut(); }
     unsafe { (*renderer).surface_data_mut() }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_undo(renderer: *mut CairoRenderer) -> c_int {
     if renderer.is_null() { return -1; }
@@ -259,7 +259,7 @@ pub extern "C" fn glaspen2_cairo_undo(renderer: *mut CairoRenderer) -> c_int {
     count
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_surface_size(
     renderer: *mut CairoRenderer,
@@ -273,7 +273,7 @@ pub extern "C" fn glaspen2_cairo_surface_size(
     unsafe { *w = width; *h = height; *stride = s; }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_draw_modeler_buffer(
     renderer: *mut CairoRenderer,
@@ -284,7 +284,7 @@ pub extern "C" fn glaspen2_cairo_draw_modeler_buffer(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_replay_strokes(renderer: *mut CairoRenderer) {
     if !renderer.is_null() {

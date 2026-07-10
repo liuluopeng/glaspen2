@@ -41,15 +41,16 @@ pub fn draw_rebuild_on_surface(surface: &crate::cairo::Surface, scale: f64) {
 /// Called on undo, page‑nav, and display changes.
 /// `surface_ptr` is a borrowed `cairo_surface_t*` — Rust does not free it.
 #[cfg(feature = "cairo_real")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn glaspen2_draw_rebuild(
     surface_ptr: *mut std::ffi::c_void,
     scale: c_double,
 ) {
-    let surface = crate::cairo::Surface::from_raw_none(
-        surface_ptr as *mut crate::cairo::ffi::cairo_surface_t,
-    );
-    draw_rebuild_on_surface(&surface, scale);
+    let surface = unsafe {
+        crate::cairo::Surface::from_raw_none(
+            surface_ptr as *mut crate::cairo::ffi::cairo_surface_t,
+        )
+    };    draw_rebuild_on_surface(&surface, scale);
 }
 
 #[cfg(all(test, feature = "cairo_real"))]
