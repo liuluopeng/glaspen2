@@ -164,6 +164,10 @@ pub fn export_all_pages() -> Option<String> {
 
             // Sort each line by x, then build text
             ops.push(Op::StartTextSection);
+            // Use invisible text rendering mode (same as reference PDF)
+            ops.push(Op::SetTextRenderingMode {
+                mode: TextRenderingMode::Invisible,
+            });
             for line in &lines {
                 let mut sorted = line.clone();
                 sorted.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap());
@@ -184,9 +188,6 @@ pub fn export_all_pages() -> Option<String> {
                     None => PdfFontHandle::Builtin(BuiltinFont::Helvetica),
                 };
                 ops.push(Op::SetFont { font: pdf_font, size: font_size });
-                ops.push(Op::SetFillColor {
-                    col: Color::Rgb(Rgb { r: 1.0, g: 1.0, b: 1.0, icc_profile: None }),
-                });
                 ops.push(Op::SetTextCursor {
                     pos: Point { x: Pt(pdf_x), y: Pt(pdf_y) },
                 });
