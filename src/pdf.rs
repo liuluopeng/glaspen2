@@ -183,10 +183,7 @@ pub fn export_all_pages() -> Option<String> {
                 let pdf_y = *sh as f32 - avg_y - avg_h_line;
                 let font_size = Pt(avg_h_line.max(4.0));
 
-                let pdf_font = match font_id {
-                    Some(ref fid) => PdfFontHandle::External(fid.clone()),
-                    None => PdfFontHandle::Builtin(BuiltinFont::Helvetica),
-                };
+                let pdf_font = PdfFontHandle::Builtin(BuiltinFont::Helvetica);
                 ops.push(Op::SetFont { font: pdf_font, size: font_size });
                 ops.push(Op::SetTextCursor {
                     pos: Point { x: Pt(pdf_x), y: Pt(pdf_y) },
