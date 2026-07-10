@@ -150,9 +150,6 @@ mod platform {
         let pool = DB.get().expect("DB not initialized");
         let screen_id = state::current_screen_id();
         let now = now_f64();
-        // Flush any pending stroke first
-        let _ = sqlx::query("DELETE FROM points WHERE stroke_id IN (SELECT id FROM strokes WHERE screen_id = ?1 AND id > ?2)")
-            .bind(screen_id).bind(0).execute(pool).await;
         let stroke_id = sqlx::query_scalar::<_, i64>(
             "INSERT INTO strokes (screen_id, color_r, color_g, color_b, width_scale, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id"
         ).bind(screen_id).bind(r).bind(g).bind(b).bind(width_scale).bind(now)
