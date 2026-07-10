@@ -1,11 +1,34 @@
 //! PDF export — render strokes as vector paths + invisible selectable text.
-//! Uses printpdf for both vector rendering and text overlay.
+//! Uses printpdf for vector rendering, lopdf post-processing for glyphless CID font text layer.
 
 use std::path::PathBuf;
 
 use printpdf::*;
+use lopdf::{self, Dictionary, Object, Stream};
+use lopdf::dictionary;
 
 use crate::{db, ocr, runtime};
+
+/// Embedded glyphless TTF — all glyphs empty, CID = Unicode codepoint.
+const GLYPHLESS_TTF: &[u8] = include_bytes!("../models/glyphless.ttf");
+
+/// Identity ToUnicode CMap — maps CID 0x0000..0xFFFF → Unicode U+0000..U+FFFF.
+const IDENTITY_CMAP: &[u8] = b"/CIDInit /ProcSet findresource begin
+12 dict begin
+begincmap
+/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
+/CMapName /Adobe-Identity-UCS def
+/CMapType 2 def
+1 begincodespacerange
+<0000><FFFF>
+endcodespacerange
+1 beginbfrange
+<0000><FFFF><0000>
+endbfrange
+endcmap
+CMapName currentdict /CMap defineresource pop
+end
+end";
 
 /// Export all pages to a vector PDF on the desktop. Returns the file path.
 pub fn export_all_pages() -> Option<String> {
@@ -38,10 +61,12 @@ pub fn export_all_pages() -> Option<String> {
     eprintln!("[pdf] Exporting {} pages", screens.len());
 
     let mut doc = PdfDocument::new("glaspen2");
-    let font_id = load_cjk_font(&mut doc);
+
+    // Store OCR data per page for lopdf post-processing: (screen_w, screen_h, ocr_boxes)
+    let mut pages_ocr: Vec<(i32, i32, Vec<db::OcrBox>)> = Vec::new();
 
     for (screen_id, sw, sh) in &screens {
-        // Load strokes directly (not via db::strokes_for_screen which uses the app's global pool)
+        // Load strokes directly
         let strokes: Vec<db::StrokeData> = rt.block_on(async {
             let rows: Vec<(i64, f64, f64, f64, f64)> = sqlx::query_as(
                 "SELECT id, color_r, color_g, color_b, width_scale FROM strokes WHERE screen_id = ?1 ORDER BY id"
@@ -68,7 +93,6 @@ pub fn export_all_pages() -> Option<String> {
             let pts = &s.points;
             if pts.len() < 2 { continue; }
 
-            // Convert color to PDF Rgb
             let color = Color::Rgb(Rgb {
                 r: s.r as f32, g: s.g as f32, b: s.b as f32,
                 icc_profile: None,
@@ -76,17 +100,14 @@ pub fn export_all_pages() -> Option<String> {
 
             for i in 0..pts.len() {
                 let (x, y, w, _t) = pts[i];
-                // PDF origin is bottom-left
                 let px = Pt(x as f32);
                 let py = Pt(*sh as f32 - y as f32);
 
                 if i == 0 {
-                    // First point: filled circle (approximated with horizontal line w=0)
                     ops.push(Op::SaveGraphicsState);
                     ops.push(Op::SetFillColor { col: color.clone() });
                     ops.push(Op::SetOutlineThickness { pt: Pt(w as f32) });
                     ops.push(Op::SetLineCapStyle { cap: LineCapStyle::Round });
-                    // Draw a short line segment at the same point → round cap creates a dot
                     ops.push(Op::DrawLine {
                         line: Line {
                             points: vec![
@@ -98,7 +119,6 @@ pub fn export_all_pages() -> Option<String> {
                     });
                     ops.push(Op::RestoreGraphicsState);
                 } else {
-                    // Line segment
                     let (px_prev, py_prev, _pw, _pt) = pts[i - 1];
                     let ppx = Pt(px_prev as f32);
                     let ppy = Pt(*sh as f32 - py_prev as f32);
@@ -122,7 +142,7 @@ pub fn export_all_pages() -> Option<String> {
             }
         }
 
-        // Load OCR data from DB
+        // Load OCR data from DB (store for lopdf post-processing, no text via printpdf)
         let ocr_boxes: Vec<db::OcrBox> = rt.block_on(async {
             let row = sqlx::query_as::<_, (i64, String, f64)>(
                 "SELECT id, full_text, created_at FROM ocr_results WHERE screen_id = ?1 ORDER BY id DESC LIMIT 1"
@@ -139,89 +159,293 @@ pub fn export_all_pages() -> Option<String> {
             eprintln!("[pdf] Page {}: {} OCR chars", screen_id, ocr_boxes.len());
         }
 
-        // Add invisible selectable text — group per-character boxes into lines
-        if !ocr_boxes.is_empty() {
-            // Group by y-position (line tolerance = half average char height)
-            let avg_h: f32 = ocr_boxes.iter().map(|b| b.h as f32).sum::<f32>() / ocr_boxes.len() as f32;
-            let line_tol = (avg_h * 1.5).max(8.0);
-
-            let mut lines: Vec<Vec<&db::OcrBox>> = Vec::new();
-            for ob in &ocr_boxes {
-                let ob_y = ob.y as f32;
-                let mut placed = false;
-                for line in &mut lines {
-                    let first_y = line[0].y as f32;
-                    if (ob_y - first_y).abs() < line_tol {
-                        line.push(ob);
-                        placed = true;
-                        break;
-                    }
-                }
-                if !placed {
-                    lines.push(vec![ob]);
-                }
-            }
-
-            // Sort each line by x, then build text
-            ops.push(Op::StartTextSection);
-            // Use invisible text rendering mode (same as reference PDF)
-            ops.push(Op::SetTextRenderingMode {
-                mode: TextRenderingMode::Invisible,
-            });
-            for line in &lines {
-                let mut sorted = line.clone();
-                sorted.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap());
-
-                let line_text: String = sorted.iter().map(|b| b.text.clone()).collect::<Vec<_>>().join("");
-                if line_text.is_empty() { continue; }
-
-                let avg_y: f32 = sorted.iter().map(|b| b.y as f32).sum::<f32>() / sorted.len() as f32;
-                let min_x = sorted.iter().map(|b| b.x as f32).reduce(f32::min).unwrap_or(0.0);
-                let avg_h_line: f32 = sorted.iter().map(|b| b.h as f32).sum::<f32>() / sorted.len() as f32;
-
-                let pdf_x = min_x;
-                let pdf_y = *sh as f32 - avg_y - avg_h_line;
-                let font_size = Pt(avg_h_line.max(4.0));
-
-                let pdf_font = match font_id {
-                    Some(ref fid) => PdfFontHandle::External(fid.clone()),
-                    None => PdfFontHandle::Builtin(BuiltinFont::Helvetica),
-                };
-                ops.push(Op::SetFont { font: pdf_font, size: font_size });
-                ops.push(Op::SetTextCursor {
-                    pos: Point { x: Pt(pdf_x), y: Pt(pdf_y) },
-                });
-                ops.push(Op::ShowText {
-                    items: vec![TextItem::Text(line_text)],
-                });
-            }
-            ops.push(Op::EndTextSection);
-        }
-
+        pages_ocr.push((*sw, *sh, ocr_boxes));
         doc.pages.push(PdfPage::new(Mm(mm_w), Mm(mm_h), ops));
     }
 
     // Close DB
     rt.block_on(pool.close());
 
-    // Save
-    let desktop = desktop_path();
-    let path = desktop.join(timestamped_name("pdf"));
+    // Convert to lopdf for glyphless CID font text layer
     let opts = PdfSaveOptions::default();
     let mut warnings = Vec::new();
+    let mut lopdf_doc = doc.to_lopdf_document(&opts, &mut warnings);
 
-    // Generate PDF and save directly
-    let pdf_bytes = doc.save(&opts, &mut warnings);
-    std::fs::write(&path, &pdf_bytes).ok();
+    // Post-process: add glyphless CID font + invisible Unicode text
+    add_glyphless_text_layer(&mut lopdf_doc, &pages_ocr);
 
-    if path.exists() {
-        eprintln!("[pdf] Saved vector PDF to {}", path.display());
-        Some(path.to_string_lossy().to_string())
-    } else {
-        eprintln!("[pdf] Save failed");
-        None
+    // Save with lopdf
+    let desktop = desktop_path();
+    let path = desktop.join(timestamped_name("pdf"));
+    let mut pdf_bytes = Vec::new();
+    match lopdf_doc.save_to(&mut pdf_bytes) {
+        Ok(()) => {
+            std::fs::write(&path, &pdf_bytes).ok();
+            if path.exists() {
+                eprintln!("[pdf] Saved vector PDF to {}", path.display());
+                return Some(path.to_string_lossy().to_string());
+            }
+        }
+        Err(e) => eprintln!("[pdf] Save error: {e}"),
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
+// lopdf post-processing: glyphless CID font + invisible Unicode text layer
+// ---------------------------------------------------------------------------
+
+/// Add glyphless CID font + invisible text layer to all pages with OCR data.
+fn add_glyphless_text_layer(
+    doc: &mut lopdf::Document,
+    pages_ocr: &[(i32, i32, Vec<db::OcrBox>)],
+) {
+    // 1. Add font infrastructure objects
+    let type0_font_id = add_glyphless_font_objects(doc);
+    let font_name = b"C1";
+
+    // 2. Collect page IDs (must collect before mutating)
+    let page_ids: Vec<lopdf::ObjectId> = doc.get_pages().into_values().collect();
+
+    for (page_num, page_id) in page_ids.iter().enumerate() {
+        if page_num >= pages_ocr.len() { break; }
+        let (sw, sh, ocr_boxes) = &pages_ocr[page_num];
+        if ocr_boxes.is_empty() { continue; }
+
+        // Build text content stream
+        let text_content = build_text_content(*sw, *sh, ocr_boxes);
+
+        // Get existing content bytes
+        let old_content = get_page_content_bytes(doc, *page_id);
+
+        // Combine: text ops first (underneath vector strokes), then original content
+        let mut new_content = text_content;
+        new_content.extend_from_slice(&old_content);
+
+        // Create new content stream
+        let new_stream_id = doc.add_object(Stream::new(Dictionary::new(), new_content));
+
+        // Add font to page's Resources
+        add_font_to_page_resources(doc, *page_id, font_name, type0_font_id);
+
+        // Update page's Contents reference
+        if let Ok(page_dict) = doc.get_dictionary_mut(*page_id) {
+            page_dict.set(b"Contents", Object::Reference(new_stream_id));
+        }
     }
 }
+
+/// Add the glyphless font infrastructure to the lopdf document.
+/// Returns the Type0 font object ID.
+fn add_glyphless_font_objects(doc: &mut lopdf::Document) -> lopdf::ObjectId {
+    // 1. Font file stream (glyphless.ttf)
+    let font_stream_id = doc.add_object(Stream::new(
+        {
+            let mut d = Dictionary::new();
+            d.set("Length", GLYPHLESS_TTF.len() as i64);
+            d
+        },
+        GLYPHLESS_TTF.to_vec(),
+    ));
+
+    // 2. Font descriptor
+    let font_desc_id = doc.add_object(dictionary! {
+        b"Type" => Object::Name(b"FontDescriptor".to_vec()),
+        b"FontName" => Object::Name(b"GLYPHLESS+GlyphLessFont".to_vec()),
+        b"Flags" => Object::Integer(4),
+        b"FontBBox" => Object::Array(vec![
+            Object::Integer(0), Object::Integer(0),
+            Object::Integer(0), Object::Integer(0),
+        ]),
+        b"ItalicAngle" => Object::Integer(0),
+        b"Ascent" => Object::Integer(0),
+        b"Descent" => Object::Integer(0),
+        b"CapHeight" => Object::Integer(0),
+        b"StemV" => Object::Integer(0),
+        b"FontFile2" => Object::Reference(font_stream_id),
+    });
+
+    // 3. CIDFontType2 descendant
+    let mut cid_system_info = Dictionary::new();
+    cid_system_info.set(b"Registry", Object::string_literal("Adobe"));
+    cid_system_info.set(b"Ordering", Object::string_literal("Identity"));
+    cid_system_info.set(b"Supplement", Object::Integer(0));
+
+    let cid_font_id = doc.add_object(dictionary! {
+        b"Type" => Object::Name(b"Font".to_vec()),
+        b"Subtype" => Object::Name(b"CIDFontType2".to_vec()),
+        b"BaseFont" => Object::Name(b"GLYPHLESS+GlyphLessFont".to_vec()),
+        b"CIDSystemInfo" => Object::Dictionary(cid_system_info),
+        b"DW" => Object::Integer(1000),
+        b"FontDescriptor" => Object::Reference(font_desc_id),
+    });
+
+    // 4. ToUnicode CMap stream
+    let cmap_stream_id = doc.add_object(Stream::new(
+        Dictionary::new(),
+        IDENTITY_CMAP.to_vec(),
+    ));
+
+    // 5. Type0 font (root font object)
+    doc.add_object(dictionary! {
+        b"Type" => Object::Name(b"Font".to_vec()),
+        b"Subtype" => Object::Name(b"Type0".to_vec()),
+        b"BaseFont" => Object::Name(b"GLYPHLESS+GlyphLessFont-Identity-H".to_vec()),
+        b"Encoding" => Object::Name(b"Identity-H".to_vec()),
+        b"DescendantFonts" => Object::Array(vec![Object::Reference(cid_font_id)]),
+        b"ToUnicode" => Object::Reference(cmap_stream_id),
+    })
+}
+
+/// Build PDF content stream bytes for invisible text using the glyphless CID font.
+/// Text rendering mode 3 (invisible) — text is selectable/searchable but not visible.
+fn build_text_content(_sw: i32, sh: i32, ocr_boxes: &[db::OcrBox]) -> Vec<u8> {
+    if ocr_boxes.is_empty() {
+        return Vec::new();
+    }
+
+    // Group per-character boxes into lines by y-position
+    let avg_h: f32 = ocr_boxes.iter().map(|b| b.h as f32).sum::<f32>() / ocr_boxes.len() as f32;
+    let line_tol = (avg_h * 1.5).max(8.0);
+
+    let mut lines: Vec<Vec<&db::OcrBox>> = Vec::new();
+    for ob in ocr_boxes {
+        let ob_y = ob.y as f32;
+        let mut placed = false;
+        for line in &mut lines {
+            let first_y = line[0].y as f32;
+            if (ob_y - first_y).abs() < line_tol {
+                line.push(ob);
+                placed = true;
+                break;
+            }
+        }
+        if !placed {
+            lines.push(vec![ob]);
+        }
+    }
+
+    let mut content = Vec::new();
+
+    // q = save graphics state; BT = begin text; 3 Tr = invisible text
+    content.extend_from_slice(b"q\nBT\n3 Tr\n");
+
+    for line in &lines {
+        let mut sorted: Vec<&&db::OcrBox> = line.iter().collect();
+        sorted.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap());
+
+        let line_text: String = sorted.iter().map(|b| b.text.clone()).collect::<Vec<_>>().join("");
+        if line_text.is_empty() { continue; }
+
+        let avg_y: f32 = sorted.iter().map(|b| b.y as f32).sum::<f32>() / sorted.len() as f32;
+        let min_x = sorted.iter().map(|b| b.x as f32).reduce(f32::min).unwrap_or(0.0);
+        let avg_h_line: f32 = sorted.iter().map(|b| b.h as f32).sum::<f32>() / sorted.len() as f32;
+
+        let pdf_x = min_x;
+        let pdf_y = sh as f32 - avg_y - avg_h_line;
+        let font_size = avg_h_line.max(4.0);
+
+        // Build hex-encoded CID string (UTF-16BE hex = Unicode codepoints)
+        let hex_cids: String = line_text
+            .encode_utf16()
+            .map(|cp| format!("{:04X}", cp))
+            .collect::<Vec<_>>()
+            .join("");
+
+        // /C1 font_size Tf  —  select font
+        // 1 0 0 1 x y Tm  —  set absolute text matrix
+        // <hex> Tj          —  show text
+        use std::io::Write;
+        let _ = write!(&mut content, "/C1 {font_size:.1} Tf\n");
+        let _ = write!(&mut content, "1 0 0 1 {pdf_x:.1} {pdf_y:.1} Tm\n");
+        let _ = write!(&mut content, "<{hex_cids}> Tj\n");
+    }
+
+    // ET = end text; Q = restore graphics state
+    content.extend_from_slice(b"ET\nQ\n");
+    content
+}
+
+/// Extract the decoded content bytes from a page's /Contents stream(s).
+fn get_page_content_bytes(doc: &lopdf::Document, page_id: lopdf::ObjectId) -> Vec<u8> {
+    let page_dict = match doc.get_dictionary(page_id) {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+
+    let contents = match page_dict.get(b"Contents") {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    match contents {
+        Object::Reference(stream_id) => {
+            get_stream_bytes(doc, *stream_id).unwrap_or_default()
+        }
+        Object::Array(refs) => {
+            let mut result = Vec::new();
+            for obj in refs {
+                if let Ok(stream_id) = obj.as_reference() {
+                    if let Ok(content) = get_stream_bytes(doc, stream_id) {
+                        result.extend_from_slice(&content);
+                        result.push(b'\n');
+                    }
+                }
+            }
+            result
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Get decoded content from a stream object.
+fn get_stream_bytes(doc: &lopdf::Document, stream_id: lopdf::ObjectId) -> lopdf::Result<Vec<u8>> {
+    let obj = doc.get_object(stream_id)?;
+    obj.as_stream()?.get_plain_content()
+}
+
+/// Add /C1 font reference to a page's Resources dictionary.
+fn add_font_to_page_resources(
+    doc: &mut lopdf::Document,
+    page_id: lopdf::ObjectId,
+    font_name: &[u8],
+    font_id: lopdf::ObjectId,
+) {
+    // Get the Resources reference from the page
+    let res_id = {
+        let page_dict = match doc.get_dictionary(page_id) {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        match page_dict.get(b"Resources") {
+            Ok(Object::Reference(id)) => *id,
+            _ => return,
+        }
+    };
+
+    // Get Resources dict and add font
+    let res_dict = match doc.get_dictionary_mut(res_id) {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+
+    // /Font may be a dict or a reference to a dict. Handle inline dict.
+    match res_dict.get_mut(b"Font") {
+        Ok(Object::Dictionary(font_dict)) => {
+            font_dict.set(font_name, Object::Reference(font_id));
+        }
+        _ => {
+            // No /Font entry yet — create one
+            let mut font_dict = Dictionary::new();
+            font_dict.set(font_name, Object::Reference(font_id));
+            res_dict.set(b"Font", Object::Dictionary(font_dict));
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// OCR + backfill (unchanged)
+// ---------------------------------------------------------------------------
 
 /// Render strokes to a temporary image, OCR, return boxes + save to DB.
 fn render_and_ocr(
@@ -376,23 +600,9 @@ pub fn backfill_ocr_all_pages() {
     eprintln!("[backfill] Done");
 }
 
-fn load_cjk_font(doc: &mut PdfDocument) -> Option<FontId> {
-    for path in &[
-        "/System/Library/Fonts/STHeiti Medium.ttc",
-        "/System/Library/Fonts/Hiragino Sans GB.ttc",
-        "/System/Library/Fonts/Helvetica.ttc",
-    ] {
-        if !std::path::Path::new(path).exists() { continue; }
-        if let Ok(bytes) = std::fs::read(path) {
-            let mut warns = Vec::new();
-            if let Some(parsed) = ParsedFont::from_bytes(&bytes, 0, &mut warns) {
-                eprintln!("[pdf] Font: {path}");
-                return Some(doc.add_font(&parsed));
-            }
-        }
-    }
-    None
-}
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 fn desktop_path() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -408,6 +618,10 @@ fn timestamped_name(ext: &str) -> String {
     let days = secs / 86400; let y = 1970 + days / 365; let d = days % 365;
     format!("glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.{}", y, d, h, m, s, ext)
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
