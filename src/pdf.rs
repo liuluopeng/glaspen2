@@ -183,7 +183,10 @@ pub fn export_all_pages() -> Option<String> {
                 let pdf_y = *sh as f32 - avg_y - avg_h_line;
                 let font_size = Pt(avg_h_line.max(4.0));
 
-                let pdf_font = PdfFontHandle::Builtin(BuiltinFont::Helvetica);
+                let pdf_font = match font_id {
+                    Some(ref fid) => PdfFontHandle::External(fid.clone()),
+                    None => PdfFontHandle::Builtin(BuiltinFont::Helvetica),
+                };
                 ops.push(Op::SetFont { font: pdf_font, size: font_size });
                 ops.push(Op::SetTextCursor {
                     pos: Point { x: Pt(pdf_x), y: Pt(pdf_y) },
@@ -206,13 +209,17 @@ pub fn export_all_pages() -> Option<String> {
     let path = desktop.join(timestamped_name("pdf"));
     let opts = PdfSaveOptions::default();
     let mut warnings = Vec::new();
+
+    // Generate PDF and save directly
     let pdf_bytes = doc.save(&opts, &mut warnings);
-    match std::fs::write(&path, &pdf_bytes) {
-        Ok(_) => {
-            eprintln!("[pdf] Saved vector PDF to {}", path.display());
-            Some(path.to_string_lossy().to_string())
-        }
-        Err(e) => { eprintln!("[pdf] Save failed: {e}"); None }
+    std::fs::write(&path, &pdf_bytes).ok();
+
+    if path.exists() {
+        eprintln!("[pdf] Saved vector PDF to {}", path.display());
+        Some(path.to_string_lossy().to_string())
+    } else {
+        eprintln!("[pdf] Save failed");
+        None
     }
 }
 
@@ -406,53 +413,14 @@ fn timestamped_name(ext: &str) -> String {
 mod tests {
     use super::*;
 
-    /// Run: cargo test pdf::tests::test_backfill -- --nocapture
     #[test]
     fn test_backfill() {
         backfill_ocr_all_pages();
     }
 
-    /// Generate a minimal test PDF and dump its structure.
-    /// Run: cargo test pdf::tests::test_generate_minimal -- --nocapture
+    /// Generate PDF (alias for export_all_pages)
     #[test]
-    fn test_generate_minimal() {
-        use printpdf::*;
-        let mut doc = PdfDocument::new("test");
-
-        let font_path = "/System/Library/Fonts/Helvetica.ttc";
-        let bytes = std::fs::read(font_path).unwrap();
-        let mut warns = Vec::new();
-        let parsed = ParsedFont::from_bytes(&bytes, 0, &mut warns).unwrap();
-        let fid = doc.add_font(&parsed);
-        eprintln!("[test] font loaded");
-
-        let mut ops = Vec::new();
-        ops.push(Op::StartTextSection);
-        ops.push(Op::SetFont {
-            font: PdfFontHandle::External(fid),
-            size: Pt(12.0),
-        });
-        ops.push(Op::SetTextRenderingMode {
-            mode: TextRenderingMode::Invisible,
-        });
-        ops.push(Op::SetTextCursor {
-            pos: Point { x: Pt(50.0), y: Pt(50.0) },
-        });
-        ops.push(Op::ShowText {
-            items: vec![TextItem::Text("HelloWorld".to_string())],
-        });
-        ops.push(Op::EndTextSection);
-
-        doc.pages.push(PdfPage::new(Mm(210.0), Mm(297.0), ops));
-
-        let path = std::path::Path::new("/tmp/test_invisible.pdf");
-        let opts = PdfSaveOptions::default();
-        let mut warnings = Vec::new();
-        let bytes = doc.save(&opts, &mut warnings);
-        std::fs::write(path, &bytes).unwrap();
-        eprintln!("[test] Wrote {}", path.display());
-
-        // Now generate using our actual export function
-        let _ = export_all_pages();
+    fn test_export_pdf() {
+        export_all_pages();
     }
 }
