@@ -324,8 +324,8 @@ pub fn backfill_ocr_all_pages() {
 
 fn load_cjk_font(doc: &mut PdfDocument) -> Option<FontId> {
     for path in &[
-        "/System/Library/Fonts/PingFang.ttc",
-        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/System/Library/Fonts/STHeiti Medium.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
         "/System/Library/Fonts/Helvetica.ttc",
     ] {
         if !std::path::Path::new(path).exists() { continue; }
@@ -363,5 +363,31 @@ mod tests {
     #[test]
     fn test_backfill() {
         backfill_ocr_all_pages();
+    }
+
+    /// Test font loading
+    #[test]
+    fn test_font_load() {
+        for path in &[
+            "/System/Library/Fonts/STHeiti Medium.ttc",
+            "/System/Library/Fonts/Helvetica.ttc",
+        ] {
+            if !std::path::Path::new(path).exists() {
+                eprintln!("[test] NOT FOUND: {path}");
+                continue;
+            }
+            let bytes = std::fs::read(path).unwrap();
+            let mut warns = Vec::new();
+            let parsed = ParsedFont::from_bytes(&bytes, 0, &mut warns);
+            eprintln!("[test] {path} -> {:?} (warns: {})", parsed.is_some(), warns.len());
+            for w in &warns {
+                eprintln!("  warn: {:?}", w);
+            }
+            if let Some(p) = parsed {
+                let mut doc = PdfDocument::new("test");
+                let fid = doc.add_font(&p);
+                eprintln!("[test] font_id: {:?}", fid);
+            }
+        }
     }
 }
