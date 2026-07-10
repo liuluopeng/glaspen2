@@ -304,7 +304,7 @@ mod tests {
 
         eprintln!("[ocr_db] running OCR on {}x{} crop...", crop_w, crop_h);
         eprintln!("[ocr_db] after resize to 48h: w={}", (crop_w as f64 * 48.0 / crop_h as f64).ceil());
-        let text = crate::ocr::recognize(&rgba, crop_w, crop_h);
+        let text = crate::ocr::detect_and_recognize(&rgba, crop_w, crop_h);
         eprintln!("[ocr_db] ======== RECOGNIZED: {:?} ========", text);
 
         STROKES.lock().unwrap().clear();

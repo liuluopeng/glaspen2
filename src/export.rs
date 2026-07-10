@@ -1388,7 +1388,7 @@ pub extern "C" fn glaspen2_ocr_recognize(
     let h = height as u32;
     let len = (w * h * 4) as usize;
     let pixel_slice = unsafe { std::slice::from_raw_parts(pixels, len) };
-    let text = ocr::recognize(pixel_slice, w, h);
+    let text = ocr::detect_and_recognize(pixel_slice, w, h);
     match CString::new(text) {
         Ok(cs) => cs.into_raw(),
         Err(_) => std::ptr::null_mut(),
