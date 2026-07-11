@@ -303,6 +303,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  final _columnKey = GlobalKey();
   late _SettingsBridge _bridge;
   int _selectedColor = 0;
   int _selectedWidth = 2;
@@ -326,16 +327,24 @@ class _SettingsPageState extends State<SettingsPage> {
     _bridge.onSettingsChanged(_onSettingsChanged);
     _loadSettings();
 
-    // Ask the host to resize this window to fit content.
-    // Must run after the first frame so Flutter has measured layout.
+    // Resize window to fit content after layout is complete.
     if (Platform.isMacOS) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _channel.invokeMethod('setWindowSize', {
-          'width': 460,
-          'height': 580,
-        });
-      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToFit());
     }
+  }
+
+  /// Measure the scroll content and tell the host to resize the window to fit.
+  void _resizeToFit() {
+    final box = _columnKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    // box.size gives the laid-out size of the Column (its actual content height
+    // since the ScrollView allows it to grow unbounded vertically).
+    const width = 460.0;
+    const vPadding = 48.0;
+    _channel.invokeMethod('setWindowSize', {
+      'width': width,
+      'height': (box.size.height + vPadding).ceilToDouble(),
+    });
   }
 
   void _onSettingsChanged(Map<dynamic, dynamic> s) {
@@ -362,6 +371,10 @@ class _SettingsPageState extends State<SettingsPage> {
           _pressureMonitor = settings['pressureMonitor'] ?? false;
           _connected = true;
         });
+        // Re-measure after settings change content height.
+        if (Platform.isMacOS) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToFit());
+        }
       }
     } catch (_) {
       // Fallback: use defaults if bridge not available
@@ -389,6 +402,7 @@ class _SettingsPageState extends State<SettingsPage> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
+          key: _columnKey,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildSection('Color', _buildColorGrid()),
