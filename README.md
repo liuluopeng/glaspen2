@@ -2,12 +2,12 @@
 
 # 玻璃数位笔
 
-<p align="center"><img src="./icon.svg" width="120"></p>
+<p align="center"><img src="./introduct/icon.svg" width="120"></p>
 
 实现了键鼠和数位板的分离.  
 相当于在显示器前加了一面玻璃做笔记.
 
-<p align="center"><img src="./demo.gif" width="480"></p>
+<p align="center"><img src="./introduct/demo.gif" width="480"></p>
 
 普通的数位笔不在笔记软件中操作时, 会被操作系统当成鼠标, 本人不希望数位笔有鼠标的作用.  
 此APP适用于远程会议 远程教学 屏幕标注 临时便签 等场景.
@@ -22,7 +22,7 @@
 - 发送手写消息
   微信抖音把小GIF图片当做表情包显示, 利用这一特性, 可以在屏幕上涂鸦,然后在微信中粘贴即可发送手写体消息 (3行以内 大约50字).
 
-<p align="center"><img src="./chat.jpg" width="320"><img src="./converted.gif" width="320"></p>
+<p align="center"><img src="./introduct/chat.jpg" width="320"><img src="./introduct/converted.gif" width="320"></p>
 
 - 导出 有背景截图/ 无背景截图/ xournal格式
 

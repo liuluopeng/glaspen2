@@ -2,14 +2,16 @@
 set -e
 
 APP_NAME="glaspen2"
-DMG_NAME="${APP_NAME}.dmg"
+VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/version *= *"\(.*\)"/\1/')
+ARCH=$(uname -m)
+DMG_NAME="${APP_NAME}-${VERSION}-${ARCH}.dmg"
+DMG_PATH="release_history/${DMG_NAME}"
 VOLUME_NAME="Glaspen2"
 BUILD_DIR="target/release"
 APP_DIR="/tmp/${APP_NAME}-dmg"
 APP_BUNDLE="${APP_DIR}/${APP_NAME}.app"
 FW_DIR="${APP_BUNDLE}/Contents/Frameworks"
 BIN="${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
-VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/version *= *"\(.*\)"/\1/')
 
 echo "=== Building Flutter frameworks ==="
 cd flutter_settings && fvm flutter build macos-framework --release && cd ..
@@ -160,16 +162,17 @@ EOF
 ln -s /Applications "${APP_DIR}/Applications"
 
 echo "=== Creating DMG ==="
-rm -f "${DMG_NAME}"
+mkdir -p release_history
+rm -f "${DMG_PATH}"
 hdiutil create -volname "${VOLUME_NAME}" \
     -srcfolder "${APP_DIR}" \
     -ov -format UDZO \
-    "${DMG_NAME}"
+    "${DMG_PATH}"
 
 echo ""
-echo "Done: ${DMG_NAME}"
+echo "Done: ${DMG_PATH}"
 echo ""
 echo "Bundled frameworks:"
 ls "${FW_DIR}/"
 echo ""
-echo "DMG size: $(du -h "${DMG_NAME}" | cut -f1)"
+echo "DMG size: $(du -h "${DMG_PATH}" | cut -f1)"
