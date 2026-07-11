@@ -8,6 +8,7 @@
 #import <FlutterMacOS/FlutterMacOS.h>
 #include <signal.h>
 #include <string.h>
+#include <unistd.h>
 #include <mach/mach_time.h>
 
 // App enabled state
@@ -978,13 +979,12 @@ static void flush_to_layer(void) {
 }
 
 /// Render a page thumbnail to PNG data.
-/// Renders strokes at full resolution onto a Cairo surface, then downsizes
-/// to thumbnail size via Core Graphics for correct stroke width appearance.
+/// Renders strokes at full resolution, then writes a scaled-down PNG via Cairo.
 /// Restores the current screen afterwards. Returns PNG bytes (or nil on failure).
 static NSData *render_page_thumbnail(int64_t screen_id, int w, int h, int max_size) {
     if (w <= 0 || h <= 0) return nil;
 
-    // Compute thumbnail size maintaining aspect ratio
+    // Compute thumbnail size
     double scale;
     if (w >= h) {
         scale = (double)max_size / w;
@@ -996,58 +996,45 @@ static NSData *render_page_thumbnail(int64_t screen_id, int w, int h, int max_si
     if (tw < 1) tw = 1;
     if (th < 1) th = 1;
 
-    // Save current screen ID, load target, render at full resolution
     int64_t prev_id = glaspen2_get_current_screen_id();
+    NSData *pngData = nil;
+
+    // Render at full resolution
     cairo_surface_t *full = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
-    glaspen2_load_strokes_for_screen(screen_id);
-    glaspen2_draw_rebuild((void *)full, 1.0);
-    cairo_surface_flush(full);
+    int n = glaspen2_load_strokes_for_screen(screen_id);
+    if (n > 0) {
+        glaspen2_draw_rebuild((void *)full, 1.0);
+        cairo_surface_flush(full);
 
-    // Get full-resolution pixel data
-    unsigned char *full_data = cairo_image_surface_get_data(full);
-    int full_stride = cairo_image_surface_get_stride(full);
+        // Create thumbnail surface and scale into it via Cairo
+        cairo_surface_t *thumb = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, tw, th);
+        cairo_t *cr = cairo_create(thumb);
+        cairo_scale(cr, scale, scale);
+        cairo_set_source_surface(cr, full, 0, 0);
+        cairo_paint(cr);
+        cairo_destroy(cr);
+        cairo_surface_flush(thumb);
+        cairo_surface_destroy(full);
 
-    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
-    CGDataProviderRef full_provider = CGDataProviderCreateWithData(NULL, full_data,
-                                                                    full_stride * h, NULL);
-    CGImageRef full_img = CGImageCreate(w, h, 8, 32, full_stride, cs,
-                                         kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst,
-                                         full_provider, NULL, NO, kCGRenderingIntentDefault);
-    CGDataProviderRelease(full_provider);
-
-    // Scale down to thumbnail size by drawing into a smaller bitmap context
-    CGColorSpaceRef rgb = CGColorSpaceCreateDeviceRGB();
-    CGContextRef thumb_ctx = CGBitmapContextCreate(NULL, tw, th, 8, tw * 4, rgb,
-                                                    kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
-    CGColorSpaceRelease(rgb);
-    CGContextSetInterpolationQuality(thumb_ctx, kCGInterpolationMedium);
-    CGContextDrawImage(thumb_ctx, CGRectMake(0, 0, tw, th), full_img);
-    CGImageRef thumb_img = CGBitmapContextCreateImage(thumb_ctx);
-    CGContextRelease(thumb_ctx);
-
-    // Encode to PNG
-    NSMutableData *pngData = [NSMutableData data];
-    CGImageDestinationRef dest = CGImageDestinationCreateWithData((CFMutableDataRef)pngData,
-                                                                    CFSTR("public.png"), 1, NULL);
-    NSData *result = nil;
-    if (dest && thumb_img) {
-        CGImageDestinationAddImage(dest, thumb_img, NULL);
-        if (CGImageDestinationFinalize(dest)) {
-            result = pngData;
+        // Write thumbnail to temp file and read back
+        char tmp_path[] = "/tmp/glaspen2_thumb_XXXXXX.png";
+        int fd = mkstemps(tmp_path, 4);
+        if (fd >= 0) {
+            close(fd);
+            cairo_surface_write_to_png(thumb, tmp_path);
+            pngData = [NSData dataWithContentsOfFile:@(tmp_path)];
+            unlink(tmp_path);
+            if (pngData.length == 0) pngData = nil;
         }
-        CFRelease(dest);
+        cairo_surface_destroy(thumb);
+    } else {
+        cairo_surface_destroy(full);
     }
-    CGImageRelease(thumb_img);
-    CGImageRelease(full_img);
-    CGColorSpaceRelease(cs);
-    cairo_surface_destroy(full);
 
-    // Restore previous screen's strokes
     if (prev_id != 0 && prev_id != screen_id) {
         glaspen2_load_strokes_for_screen(prev_id);
     }
-
-    return result;
+    return pngData;
 }
 
 /// Update the active cairo context's source and stroke/fill helpers using
