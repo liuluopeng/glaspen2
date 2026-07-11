@@ -1499,8 +1499,7 @@ pub extern "C" fn glaspen2_ocr_backfill_all() {
 /// List all screens with their OCR text as JSON.
 /// Returns a C string (caller must free via glaspen2_free_c_string).
 /// JSON: [{"id":1,"w":1920,"h":1080,"ocr":"text or null"}, ...]
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
+pub fn glaspen2_list_screens_json_as_string() -> String {
     let rows = runtime().block_on(db::list_screens_with_ocr());
     let list: Vec<serde_json::Value> = rows
         .into_iter()
@@ -1513,7 +1512,12 @@ pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
             })
         })
         .collect();
-    let json = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
+    serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
+    let json = glaspen2_list_screens_json_as_string();
     CString::new(json).unwrap_or_default().into_raw()
 }
 

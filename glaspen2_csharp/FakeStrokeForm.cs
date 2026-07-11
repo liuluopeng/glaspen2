@@ -207,7 +207,12 @@ namespace GlasPen2
         }
 
         // Convenience: throttled full blit
-        private void BlitCairoToWindow() { CopyCairoToDib(); PresentDib(false); }
+        public void BlitCairoToWindow()
+        {
+            CopyCairoToDib();
+            DrawGridToDib();
+            PresentDib(false);
+        }
 
         /// <summary>
         /// Compute bounding box for a line segment with width margin.
@@ -231,7 +236,35 @@ namespace GlasPen2
             bw = (int)(pad * 2) + 1; bh = (int)(pad * 2) + 1;
         }
 
-        // ── Crosshair / Notification (drawn to DIB via GDI+) ──
+        // ── Crosshair / Notification / Grid (drawn to DIB via GDI+) ──
+
+        private bool _showGrid = false;
+
+        public void SetGrid(bool show)
+        {
+            _showGrid = show;
+        }
+
+        private void DrawGridToDib()
+        {
+            if (!_showGrid || _dibHdc == IntPtr.Zero) return;
+            using (var g = Graphics.FromHdc(_dibHdc))
+            {
+                int step = 40;
+                using (var brush = new SolidBrush(Color.FromArgb(38, 128, 128, 128)))
+                {
+                    int w = this.Width;
+                    int h = this.Height;
+                    for (int x = 0; x < w; x += step)
+                    {
+                        for (int y = 0; y < h; y += step)
+                        {
+                            g.FillEllipse(brush, x - 1, y - 1, 2, 2);
+                        }
+                    }
+                }
+            }
+        }
 
         private void DrawCrosshairToDib()
         {
@@ -308,8 +341,9 @@ namespace GlasPen2
             _notification = text;
             _notificationTimer.Stop();
             _notificationTimer.Start();
-            // Copy Cairo → DIB first, then draw notification on top, then present
+            // Copy Cairo → DIB first, then draw grid + notification, then present
             CopyCairoToDib();
+            DrawGridToDib();
             DrawNotificationToDib();
             PresentDib(true); // NOT BlitCairoToWindow — would overwrite notification
         }
@@ -320,6 +354,7 @@ namespace GlasPen2
             _notificationRect = Rectangle.Empty;
             // Re-blit: copy Cairo → DIB (without notification) and present
             CopyCairoToDib();
+            DrawGridToDib();
             PresentDib(true);
         }
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
@@ -19,6 +20,7 @@ const _pipeName = r'\\.\pipe\glaspen2_settings';
 abstract class _SettingsBridge {
   Future<Map<dynamic, dynamic>> getSettings();
   Future<void> setSetting(String key, dynamic value);
+  Future<String?> invokeMethod(String method, Map<String, dynamic> args);
   void onSettingsChanged(void Function(Map<dynamic, dynamic> s) callback);
   void dispose();
 }
@@ -43,6 +45,11 @@ class _MethodChannelBridge extends _SettingsBridge {
   @override
   Future<void> setSetting(String key, dynamic value) async {
     await _channel.invokeMethod('setSetting', {'key': key, 'value': value});
+  }
+
+  @override
+  Future<String?> invokeMethod(String method, Map<String, dynamic> args) async {
+    return await _channel.invokeMethod<String>(method, args);
   }
 
   @override
@@ -78,6 +85,8 @@ class _NamedPipeBridge extends _SettingsBridge {
   final _buffer = <int>[];
   void Function(Map<dynamic, dynamic>)? _onChanged;
   Completer<Map<dynamic, dynamic>>? _settingsCompleter;
+  int _invokeIdCounter = 0;
+  final Map<int, Completer<String?>> _invokeCompleters = {};
   bool _connected = false;
   Timer? _reconnectTimer;
   Timer? _readTimer;
@@ -194,6 +203,12 @@ class _NamedPipeBridge extends _SettingsBridge {
       } else if (type == 'getSettings_response' && _settingsCompleter != null) {
         _settingsCompleter!.complete(msg['data'] as Map<dynamic, dynamic>);
         _settingsCompleter = null;
+      } else if (type == 'invokeMethod_response') {
+        final id = msg['id'] as int? ?? 0;
+        final completer = _invokeCompleters.remove(id);
+        if (completer != null) {
+          completer.complete(msg['result'] as String?);
+        }
       }
     } catch (e) {
       debugPrint('[Settings] Parse error: $e');
@@ -241,6 +256,33 @@ class _NamedPipeBridge extends _SettingsBridge {
       _writeData(jsonEncode({'type': 'setSetting', 'key': key, 'value': value}) + '\n');
     } catch (e) {
       debugPrint('[Settings] setSetting error: $e');
+    }
+  }
+
+  @override
+  Future<String?> invokeMethod(String method, Map<String, dynamic> args) async {
+    if (!_connected) return null;
+    try {
+      final id = ++_invokeIdCounter;
+      final completer = Completer<String?>();
+      _invokeCompleters[id] = completer;
+      _writeData(jsonEncode({
+        'type': 'invokeMethod',
+        'id': id,
+        'method': method,
+        'args': args,
+      }) + '\n');
+      return await completer.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          _invokeCompleters.remove(id);
+          return null;
+        },
+      );
+    } catch (e) {
+      debugPrint('[Settings] invokeMethod $method error: $e');
+      _invokeCompleters.remove(method);
+      return null;
     }
   }
 
@@ -444,7 +486,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Future<void> _loadPages() async {
     setState(() => _pagesLoading = true);
     try {
-      final json = await _channel.invokeMethod<String>('listPages') ?? '[]';
+      final json = Platform.isWindows
+          ? (await _bridge.invokeMethod('listPages', {}) ?? '[]')
+          : (await _channel.invokeMethod<String>('listPages') ?? '[]');
       final list = jsonDecode(json) as List<dynamic>;
       if (mounted) {
         setState(() {
@@ -465,16 +509,31 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       return;
     }
     try {
-      final bytes = await _channel.invokeMethod<Uint8List>('getPageThumbnail', {
-        'screenId': page.id,
-        'w': page.w,
-        'h': page.h,
-        'maxSize': 280,
-      });
-      if (bytes != null && bytes.isNotEmpty && mounted) {
-        _thumbnailCache[page.id] = bytes;
-        page.thumbnail = bytes;
-        setState(() {});
+      if (Platform.isWindows) {
+        final json = await _bridge.invokeMethod('getPageThumbnail', {
+          'screenId': page.id,
+          'w': page.w,
+          'h': page.h,
+          'maxSize': 280,
+        });
+        if (json != null && json.isNotEmpty && mounted) {
+          final bytes = base64Decode(json);
+          _thumbnailCache[page.id] = bytes;
+          page.thumbnail = bytes;
+          setState(() {});
+        }
+      } else {
+        final bytes = await _channel.invokeMethod<Uint8List>('getPageThumbnail', {
+          'screenId': page.id,
+          'w': page.w,
+          'h': page.h,
+          'maxSize': 280,
+        });
+        if (bytes != null && bytes.isNotEmpty && mounted) {
+          _thumbnailCache[page.id] = bytes;
+          page.thumbnail = bytes;
+          setState(() {});
+        }
       }
     } catch (e) {
       debugPrint('[Content] thumbnail error for page ${page.id}: $e');
@@ -497,7 +556,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     }
     setState(() => _searchLoading = true);
     try {
-      final json = await _channel.invokeMethod<String>('searchText', {'query': query.trim()}) ?? '[]';
+      final json = Platform.isWindows
+          ? (await _bridge.invokeMethod('searchText', {'query': query.trim()}) ?? '[]')
+          : (await _channel.invokeMethod<String>('searchText', {'query': query.trim()}) ?? '[]');
       final list = jsonDecode(json) as List<dynamic>;
       if (mounted) {
         setState(() {
@@ -562,6 +623,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   _buildSection('Export', _buildExportButtons()),
                   const SizedBox(height: 16),
                   if (Platform.isMacOS) _buildSection('OCR 文字识别', _buildOcrRow()),
+                  if (!Platform.isMacOS) _buildSection('OCR 文字识别', _buildOcrRowWindows()),
                 ],
               ),
             ),
@@ -651,7 +713,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () {
-          _channel.invokeMethod('navigateToPage', {'screenId': page.id});
+          if (Platform.isWindows) {
+            _bridge.invokeMethod('navigateToPage', {'screenId': page.id});
+          } else {
+            _channel.invokeMethod('navigateToPage', {'screenId': page.id});
+          }
         },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -724,7 +790,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
   Future<void> _deletePage(_PageInfo page) async {
     try {
-      final ok = await _channel.invokeMethod<int>('deletePage', {'screenId': page.id}) == 1;
+      final ok = Platform.isWindows
+          ? (await _bridge.invokeMethod('deletePage', {'screenId': page.id}) ?? '0') == '1'
+          : await _channel.invokeMethod<int>('deletePage', {'screenId': page.id}) == 1;
       if (mounted) {
         if (ok) {
           _thumbnailCache.remove(page.id);
@@ -955,6 +1023,28 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
+  Widget _buildOcrRowWindows() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        OutlinedButton.icon(
+          onPressed: _ocrBackfilling ? null : _ocrBackfill,
+          icon: _ocrBackfilling
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.storage, size: 16),
+          label: Text(_ocrBackfilling ? '补全中…' : '补全所有页面 OCR'),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildOcrRow() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1015,7 +1105,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Future<void> _recognizeText() async {
     setState(() => _ocrLoading = true);
     try {
-      final text = await _channel.invokeMethod<String>('recognizeText') ?? '';
+      final text = Platform.isWindows
+          ? (await _bridge.invokeMethod('recognizeText', {}) ?? '')
+          : (await _channel.invokeMethod<String>('recognizeText') ?? '');
       if (mounted) {
         _ocrController.text = text;
         if (text.isEmpty) {
@@ -1061,7 +1153,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Future<void> _exportAnimatedGif() async {
     setState(() => _gifExporting = true);
     try {
-      final ok = await _channel.invokeMethod<bool>('exportAnimatedGif') == true;
+      final ok = Platform.isWindows
+          ? (await _bridge.invokeMethod('exportAnimatedGif', {}) == 'true')
+          : (await _channel.invokeMethod<bool>('exportAnimatedGif') == true);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

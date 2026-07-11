@@ -1140,7 +1140,16 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                     PostMessageW(HWND(hwnd as *mut _), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(val as isize))
                 };
             }
+        } else if key == "grid" {
+            crate::runtime().block_on(crate::db::save_setting("grid", if json_get_i64(line, "value").unwrap_or(0) != 0 { "1" } else { "0" }));
+        } else if key == "pressureMonitor" || key == "export_pdf" || key == "ocr_backfill" {
+            // These are handled by C# overlay pipe server — ignore on Rust side
         }
+    } else if msg_type == "invokeMethod" {
+        let method = json_get_str(line, "method");
+        let resp = handle_invoke_method(method, line);
+        let _ = writer.write_all(resp.as_bytes());
+        let _ = writer.flush();
     }
 }
 
@@ -1189,6 +1198,45 @@ fn closest_width_index(w: f64) -> usize {
         if d < best_dist { best_dist = d; best = i; }
     }
     best
+}
+
+/// Handle invokeMethod requests from Flutter content tab.
+/// Returns the full JSON response including newline.
+fn handle_invoke_method(method: &str, line: &str) -> String {
+    use std::io::Write;
+
+    let id = json_get_i64(line, "id").unwrap_or(0);
+    let result = match method {
+        "listPages" => crate::export::glaspen2_list_screens_json_as_string(),
+        "searchText" => {
+            let query = json_get_arg(line, "query");
+            if query.is_empty() {
+                crate::export::glaspen2_list_screens_json_as_string()
+            } else {
+                "[]".to_string()
+            }
+        }
+        "getPageThumbnail" | "deletePage" | "navigateToPage" | "recognizeText" | "exportAnimatedGif" => "".to_string(),
+        _ => "".to_string(),
+    };
+    let escaped = result.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("{{\"type\":\"invokeMethod_response\",\"id\":{},\"method\":\"{}\",\"result\":\"{}\"}}\n", id, method, escaped)
+}
+
+/// Extract a value that's nested inside "args":{...} — for "query" etc.
+fn json_get_arg<'a>(json: &'a str, key: &str) -> &'a str {
+    // Find "\"args\":{" then look for the key inside
+    if let Some(args_start) = json.find("\"args\":{") {
+        let rest = &json[args_start + 7..];
+        let pattern = format!("\"{}\":\"", key);
+        if let Some(start) = rest.find(&pattern) {
+            let val_start = start + pattern.len();
+            if let Some(end) = rest[val_start..].find('"') {
+                return &rest[val_start..val_start + end];
+            }
+        }
+    }
+    ""
 }
 
 // ── Command handlers ──

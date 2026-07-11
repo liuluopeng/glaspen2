@@ -84,6 +84,9 @@ namespace GlasPen2
         private PressureForm _pressureForm;
         private bool _showPressureMonitor = false; // default off; toggled by Flutter
 
+        // Grid overlay
+        private bool _showGrid = false;
+
         // Auto-block delay: wait after pen lift before unblocking
         private System.Windows.Forms.Timer _unblockTimer;
         private const int UNBLOCK_DELAY_MS = 200; // 200ms delay after pen lift
@@ -97,10 +100,11 @@ namespace GlasPen2
             {
                 var cp = base.CreateParams;
                 // Start in TRANSPARENT mode (mouse available) — auto-block on pen down
-                cp.ExStyle |= NativeMethods.WS_EX_TRANSPARENT
-                           | NativeMethods.WS_EX_NOACTIVATE
+                cp.ExStyle |= NativeMethods.WS_EX_NOACTIVATE
                            | NativeMethods.WS_EX_TOOLWINDOW
-                           | NativeMethods.WS_EX_TOPMOST;
+                           | NativeMethods.WS_EX_TOPMOST
+                           | NativeMethods.WS_EX_TRANSPARENT
+                           | NativeMethods.WS_EX_LAYERED;
                 return cp;
             }
         }
@@ -110,18 +114,30 @@ namespace GlasPen2
         public OverlayForm()
         {
             var bounds = SystemInformation.VirtualScreen;
+            var workingArea = Screen.PrimaryScreen.WorkingArea;
+            // Exclude taskbar area so DWM acrylic/transparency on taskbar stays intact
             this.StartPosition = FormStartPosition.Manual;
-            this.Location = bounds.Location;
-            this.Size = bounds.Size;
+            this.Location = workingArea.Location;
+            this.Size = workingArea.Size;
             this.FormBorderStyle = FormBorderStyle.None;
             this.ShowInTaskbar = false;
             this.TopMost = true;
             this.ShowIcon = false;
             this.BackColor = Color.Black;
-            this.Opacity = 0.01; // nearly invisible overlay
+            this.Opacity = 0.01;
             this.DoubleBuffered = true;
 
-            _canvas = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
+
+
+            // Load persisted grid state
+            _showGrid = GlaspenNative.glaspen2_load_bool_setting("grid") != 0;
+            if (_showGrid)
+            {
+                _fakeStrokeForm.SetGrid(true);
+                _fakeStrokeForm.BlitCairoToWindow();
+            }
+
+            _canvas = new Bitmap(workingArea.Width, workingArea.Height, PixelFormat.Format32bppArgb);
             _g = Graphics.FromImage(_canvas);
             _g.SmoothingMode = SmoothingMode.AntiAlias;
             _g.CompositingQuality = CompositingQuality.HighQuality;
@@ -130,7 +146,7 @@ namespace GlasPen2
             _g.Clear(Color.Transparent);
 
             // Create fake stroke form (sits above overlay, WS_EX_TRANSPARENT lets input pass through)
-            _fakeStrokeForm = new FakeStrokeForm(bounds);
+            _fakeStrokeForm = new FakeStrokeForm(workingArea);
             _fakeStrokeForm.Show();
 
             byte[] andPlane = { 0xFF };
@@ -824,11 +840,15 @@ namespace GlasPen2
             if (this.Opacity < 0.5)
             {
                 this.Opacity = 0.81;
+                this.TransparencyKey = Color.Empty;
+                this.BackColor = Color.Black;
                 Log("[Overlay] Highlight ON");
             }
             else
             {
-                this.Opacity = 0.01;
+                this.Opacity = 1.0;
+                this.BackColor = Color.Fuchsia;
+                this.TransparencyKey = Color.Fuchsia;
                 Log("[Overlay] Highlight OFF");
             }
         }
@@ -1263,6 +1283,14 @@ namespace GlasPen2
                         _pressureForm.Hide();
                     return;
                 }
+                if (key == "grid")
+                {
+                    _showGrid = Convert.ToBoolean(value);
+                    GlaspenNative.glaspen2_save_bool_setting("grid", _showGrid ? 1 : 0);
+                    _fakeStrokeForm.SetGrid(_showGrid);
+                    _fakeStrokeForm.BlitCairoToWindow();
+                    return;
+                }
                 int intVal = Convert.ToInt32(value);
                 if (key == "color" && intVal >= 0 && intVal < PresetColors.Length)
                 {
@@ -1284,9 +1312,6 @@ namespace GlasPen2
             }
         }
 
-        /// <summary>
-        /// Returns current settings for the Flutter UI.
-        /// </summary>
         public Dictionary<string, object> GetSettings()
         {
             return new Dictionary<string, object>
@@ -1294,6 +1319,7 @@ namespace GlasPen2
                 { "color", _colorIndex },
                 { "width", _widthIndex },
                 { "pressureMonitor", _showPressureMonitor },
+                { "grid", _showGrid },
             };
         }
 

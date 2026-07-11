@@ -71,6 +71,7 @@ struct CState {
     cap: LineCap,
     join: LineJoin,
     op: Operator,
+    sx: f64, sy: f64,
     sub: Vec<Vec<Pt>>,
     cur: usize,
     pos: Pt,
@@ -85,6 +86,7 @@ impl<'a> Context<'a> {
                 r: 0.0, g: 0.0, b: 0.0, a: 1.0,
                 lw: 1.0, cap: LineCap::Butt, join: LineJoin::Round,
                 op: Operator::Over,
+                sx: 1.0, sy: 1.0,
                 sub: Vec::new(), cur: 0,
                 pos: Pt { x: 0.0, y: 0.0 }, has_pos: false,
             }),
@@ -96,12 +98,17 @@ impl<'a> Context<'a> {
     pub fn set_source_rgba(&self, r: f64, g: f64, b: f64, a: f64) {
         let s = self.st(); s.r = r; s.g = g; s.b = b; s.a = a;
     }
-    pub fn set_line_width(&self, w: f64) { self.st().lw = w; }
+    pub fn set_line_width(&self, w: f64) { self.st().lw = w * self.st().sx; }
     pub fn set_line_cap(&self, cap: LineCap) { self.st().cap = cap; }
     pub fn set_line_join(&self, j: LineJoin) { self.st().join = j; }
     pub fn set_operator(&self, op: Operator) { self.st().op = op; }
 
-    pub fn move_to(&self, x: f64, y: f64) {
+    fn apply_scale(&self, x: f64, y: f64) -> (f64, f64) {
+        let s = self.st();
+        (x * s.sx, y * s.sy)
+    }
+
+    fn move_to_raw(&self, x: f64, y: f64) {
         let s = self.st();
         s.sub.push(vec![Pt { x, y }]);
         s.cur = s.sub.len() - 1;
@@ -109,10 +116,10 @@ impl<'a> Context<'a> {
         s.has_pos = true;
     }
 
-    pub fn line_to(&self, x: f64, y: f64) {
+    fn line_to_raw(&self, x: f64, y: f64) {
         let s = self.st();
         if !s.has_pos {
-            self.move_to(x, y);
+            self.move_to_raw(x, y);
             return;
         }
         if s.sub.is_empty() {
@@ -123,24 +130,52 @@ impl<'a> Context<'a> {
         s.pos = Pt { x, y };
     }
 
+    pub fn move_to(&self, x: f64, y: f64) {
+        let (sx, sy) = self.apply_scale(x, y);
+        let s = self.st();
+        s.sub.push(vec![Pt { x: sx, y: sy }]);
+        s.cur = s.sub.len() - 1;
+        s.pos = Pt { x: sx, y: sy };
+        s.has_pos = true;
+    }
+
+    pub fn line_to(&self, x: f64, y: f64) {
+        let (sx, sy) = self.apply_scale(x, y);
+        let s = self.st();
+        if !s.has_pos {
+            self.move_to(x, y);
+            return;
+        }
+        if s.sub.is_empty() {
+            s.sub.push(vec![s.pos]);
+            s.cur = s.sub.len() - 1;
+        }
+        s.sub[s.cur].push(Pt { x: sx, y: sy });
+        s.pos = Pt { x: sx, y: sy };
+    }
+
     pub fn arc(&self, cx: f64, cy: f64, r: f64, start: f64, end: f64) {
+        let (scx, scy) = self.apply_scale(cx, cy);
+        let sr = r * self.st().sx;
         let steps = 48;
         let da = (end - start) / steps as f64;
         for i in 0..=steps {
             let a = start + da * i as f64;
-            let x = cx + r * a.cos();
-            let y = cy + r * a.sin();
-            if i == 0 { self.move_to(x, y); }
-            else { self.line_to(x, y); }
+            let x = scx + sr * a.cos();
+            let y = scy + sr * a.sin();
+            if i == 0 { self.move_to_raw(x, y); }
+            else { self.line_to_raw(x, y); }
         }
     }
 
     pub fn rectangle(&self, x: f64, y: f64, w: f64, h: f64) {
-        self.move_to(x, y);
-        self.line_to(x + w, y);
-        self.line_to(x + w, y + h);
-        self.line_to(x, y + h);
-        self.line_to(x, y);
+        let (sx, sy) = self.apply_scale(x, y);
+        let (sw, sh) = self.apply_scale(w, h);
+        self.move_to_raw(sx, sy);
+        self.line_to_raw(sx + sw, sy);
+        self.line_to_raw(sx + sw, sy + sh);
+        self.line_to_raw(sx, sy + sh);
+        self.line_to_raw(sx, sy);
     }
 
     pub fn stroke(&self) -> Result<(), ()> {
@@ -245,7 +280,11 @@ impl<'a> Context<'a> {
         Ok(())
     }
     pub fn set_source_surface(&self, _s: &ImageSurface, _x: f64, _y: f64) -> Result<(), ()> { Ok(()) }
-    pub fn scale(&self, _sx: f64, _sy: f64) {}
+    pub fn scale(&self, sx: f64, sy: f64) {
+        let s = self.st();
+        s.sx *= sx;
+        s.sy *= sy;
+    }
 }
 
 fn blend_over(dst: &mut [u8], sr: f64, sg: f64, sb: f64, sa: f64) {

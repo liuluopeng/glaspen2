@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -145,6 +146,27 @@ namespace GlasPen2
                         OnSettingChanged.Invoke(key, value);
                     }
                 }
+                else if (type == "invokeMethod")
+                {
+                    string method = msg.ContainsKey("method") ? msg["method"].ToString() : "";
+                    string idStr = msg.ContainsKey("id") ? msg["id"].ToString() : "0";
+                    var args = new Dictionary<string, object>();
+                    if (msg.ContainsKey("args") && msg["args"] is Dictionary<string, object>)
+                    {
+                        args = (Dictionary<string, object>)msg["args"];
+                    }
+                    string result = HandleInvokeMethod(method, args);
+                    // Build response: {"type":"invokeMethod_response","id":N,"method":"...","result":"..."}
+                    var sb = new StringBuilder();
+                    sb.Append("{\"type\":\"invokeMethod_response\",\"id\":");
+                    sb.Append(idStr);
+                    sb.Append(",\"method\":\"");
+                    sb.Append(EscapeJsonString(method));
+                    sb.Append("\",\"result\":\"");
+                    sb.Append(EscapeJsonString(result ?? ""));
+                    sb.Append("\"}\n");
+                    WriteToClient(pipe, sb.ToString());
+                }
             }
             catch (Exception e)
             {
@@ -189,6 +211,95 @@ namespace GlasPen2
         public void Dispose()
         {
             Stop();
+        }
+
+        /// <summary>
+        /// Handle invokeMethod calls from Flutter content tab.
+        /// Returns result as a string. For non-string returns, the result
+        /// is already serialized JSON (lists/dicts) wrapped in the message.
+        /// </summary>
+        private string HandleInvokeMethod(string method, Dictionary<string, object> args)
+        {
+            try
+            {
+                switch (method)
+                {
+                    case "listPages":
+                    {
+                        IntPtr jsonPtr = GlaspenNative.glaspen2_list_screens_json();
+                        string json = Marshal.PtrToStringAnsi(jsonPtr) ?? "[]";
+                        GlaspenNative.glaspen2_free_c_string(jsonPtr);
+                        return json;
+                    }
+
+                    case "searchText":
+                    {
+                        string query = args.ContainsKey("query") ? args["query"].ToString() : "";
+                        IntPtr jsonPtr = GlaspenNative.glaspen2_search_ocr_json(query);
+                        string json = Marshal.PtrToStringAnsi(jsonPtr) ?? "[]";
+                        GlaspenNative.glaspen2_free_c_string(jsonPtr);
+                        return json;
+                    }
+
+                    case "getPageThumbnail":
+                    {
+                        long screenId = Convert.ToInt64(args.ContainsKey("screenId") ? args["screenId"] : "0");
+                        int surfW = Convert.ToInt32(args.ContainsKey("w") ? args["w"] : "0");
+                        int surfH = Convert.ToInt32(args.ContainsKey("h") ? args["h"] : "0");
+                        int maxSize = Convert.ToInt32(args.ContainsKey("maxSize") ? args["maxSize"] : "280");
+                        if (screenId <= 0 || surfW <= 0 || surfH <= 0) return "";
+                        int outLen = 0;
+                        IntPtr pngPtr = GlaspenNative.glaspen2_render_thumbnail(screenId, surfW, surfH, maxSize, out outLen);
+                        if (pngPtr == IntPtr.Zero || outLen <= 0) return "";
+                        byte[] pngBytes = new byte[outLen];
+                        Marshal.Copy(pngPtr, pngBytes, 0, outLen);
+                        GlaspenNative.glaspen2_free_rust_bytes(pngPtr, outLen);
+                        return Convert.ToBase64String(pngBytes);
+                    }
+
+                    case "deletePage":
+                    {
+                        long screenId = Convert.ToInt64(args.ContainsKey("screenId") ? args["screenId"] : "0");
+                        int ok = screenId > 0 ? GlaspenNative.glaspen2_delete_screen(screenId) : 0;
+                        return ok == 1 ? "1" : "0";
+                    }
+
+                    case "navigateToPage":
+                    {
+                        long screenId = Convert.ToInt64(args.ContainsKey("screenId") ? args["screenId"] : "0");
+                        if (screenId > 0)
+                        {
+                            GlaspenNative.glaspen2_load_strokes_for_screen(screenId);
+                            GlaspenNative.glaspen2_smooth_loaded_strokes();
+                        }
+                        return "";
+                    }
+
+                    case "recognizeText":
+                    {
+                        return "";
+                    }
+
+                    case "exportAnimatedGif":
+                    {
+                        int ok = GlaspenNative.glaspen2_save_animated_gif();
+                        return ok == 1 ? "true" : "false";
+                    }
+
+                    default:
+                        return "";
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("[Pipe] invokeMethod '{0}' error: {1}", method, e.Message);
+                return "";
+            }
+        }
+
+        private static string EscapeJsonString(string s)
+        {
+            return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
         }
     }
 }

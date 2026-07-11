@@ -23,6 +23,12 @@ namespace GlasPen2
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int glaspen2_load_settings_parts(out double r, out double g, out double b, out double w);
 
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void glaspen2_save_bool_setting(string key, int val);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int glaspen2_load_bool_setting(string key);
+
         // ── Modeler (ink-stroke-modeler-rs) ──
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -96,6 +102,9 @@ namespace GlasPen2
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern void glaspen2_smooth_loaded_strokes();
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int glaspen2_delete_screen(long screenId);
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern long glaspen2_prev_screen_id();
