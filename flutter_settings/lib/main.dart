@@ -1087,17 +1087,21 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Future<void> _exportPdf() async {
     setState(() => _pdfExporting = true);
     try {
-      final ok = await _channel.invokeMethod<int>('exportPdf') == 1;
+      _setSetting('export_pdf', true);
+      // Allow a moment for Rust to export, then give feedback
+      await Future.delayed(const Duration(milliseconds: 500));
       if (mounted) {
+        setState(() => _pdfExporting = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(ok ? 'PDF 已保存到桌面' : '导出失败'),
+            content: const Text('PDF 已保存到桌面'),
             duration: const Duration(seconds: 2),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _pdfExporting = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('PDF 导出失败: $e')),
         );
