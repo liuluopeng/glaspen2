@@ -978,9 +978,9 @@ static void flush_to_layer(void) {
 }
 
 /// Render a page thumbnail to PNG data.
-/// Creates a small Cairo surface, loads the target screen's strokes, renders
-/// them, then converts to PNG via Core Graphics. Restores the current screen
-/// afterwards. Returns NSData with PNG bytes (or nil on failure).
+/// Renders strokes at full resolution onto a Cairo surface, then downsizes
+/// to thumbnail size via Core Graphics for correct stroke width appearance.
+/// Restores the current screen afterwards. Returns PNG bytes (or nil on failure).
 static NSData *render_page_thumbnail(int64_t screen_id, int w, int h, int max_size) {
     if (w <= 0 || h <= 0) return nil;
 
@@ -996,39 +996,51 @@ static NSData *render_page_thumbnail(int64_t screen_id, int w, int h, int max_si
     if (tw < 1) tw = 1;
     if (th < 1) th = 1;
 
-    // Save current screen ID, load target, render (clear + draw strokes at scale)
+    // Save current screen ID, load target, render at full resolution
     int64_t prev_id = glaspen2_get_current_screen_id();
-    cairo_surface_t *thumb = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, tw, th);
+    cairo_surface_t *full = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
     glaspen2_load_strokes_for_screen(screen_id);
-    glaspen2_draw_rebuild((void *)thumb, scale);
-    cairo_surface_flush(thumb);
+    glaspen2_draw_rebuild((void *)full, 1.0);
+    cairo_surface_flush(full);
 
-    // Get pixel data for CGImage
-    unsigned char *data = cairo_image_surface_get_data(thumb);
-    int stride = cairo_image_surface_get_stride(thumb);
+    // Get full-resolution pixel data
+    unsigned char *full_data = cairo_image_surface_get_data(full);
+    int full_stride = cairo_image_surface_get_stride(full);
 
     CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
-    CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, data, stride * th, NULL);
-    CGImageRef cgImg = CGImageCreate(tw, th, 8, 32, stride, cs,
-                                      kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst,
-                                      provider, NULL, NO, kCGRenderingIntentDefault);
-    CGColorSpaceRelease(cs);
-    CGDataProviderRelease(provider);
+    CGDataProviderRef full_provider = CGDataProviderCreateWithData(NULL, full_data,
+                                                                    full_stride * h, NULL);
+    CGImageRef full_img = CGImageCreate(w, h, 8, 32, full_stride, cs,
+                                         kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst,
+                                         full_provider, NULL, NO, kCGRenderingIntentDefault);
+    CGDataProviderRelease(full_provider);
+
+    // Scale down to thumbnail size by drawing into a smaller bitmap context
+    CGColorSpaceRef rgb = CGColorSpaceCreateDeviceRGB();
+    CGContextRef thumb_ctx = CGBitmapContextCreate(NULL, tw, th, 8, tw * 4, rgb,
+                                                    kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
+    CGColorSpaceRelease(rgb);
+    CGContextSetInterpolationQuality(thumb_ctx, kCGInterpolationMedium);
+    CGContextDrawImage(thumb_ctx, CGRectMake(0, 0, tw, th), full_img);
+    CGImageRef thumb_img = CGBitmapContextCreateImage(thumb_ctx);
+    CGContextRelease(thumb_ctx);
 
     // Encode to PNG
     NSMutableData *pngData = [NSMutableData data];
     CGImageDestinationRef dest = CGImageDestinationCreateWithData((CFMutableDataRef)pngData,
                                                                     CFSTR("public.png"), 1, NULL);
     NSData *result = nil;
-    if (dest && cgImg) {
-        CGImageDestinationAddImage(dest, cgImg, NULL);
+    if (dest && thumb_img) {
+        CGImageDestinationAddImage(dest, thumb_img, NULL);
         if (CGImageDestinationFinalize(dest)) {
             result = pngData;
         }
         CFRelease(dest);
     }
-    CGImageRelease(cgImg);
-    cairo_surface_destroy(thumb);
+    CGImageRelease(thumb_img);
+    CGImageRelease(full_img);
+    CGColorSpaceRelease(cs);
+    cairo_surface_destroy(full);
 
     // Restore previous screen's strokes
     if (prev_id != 0 && prev_id != screen_id) {

@@ -352,6 +352,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Timer? _searchDebounce;
   final _searchController = TextEditingController();
   final _thumbnailCache = <int, Uint8List>{};
+  final _loadingThumbnails = <int>{};
 
   @override
   void initState() {
@@ -463,6 +464,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       page.thumbnail = _thumbnailCache[page.id];
       return;
     }
+    if (_loadingThumbnails.contains(page.id)) return;
+    _loadingThumbnails.add(page.id);
     try {
       final bytes = await _channel.invokeMethod<Uint8List>('getPageThumbnail', {
         'screenId': page.id,
@@ -473,11 +476,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       if (bytes != null && bytes.isNotEmpty && mounted) {
         _thumbnailCache[page.id] = bytes;
         page.thumbnail = bytes;
-        // Trigger rebuild just for this item
         setState(() {});
       }
     } catch (e) {
       debugPrint('[Content] thumbnail error for page ${page.id}: $e');
+    } finally {
+      _loadingThumbnails.remove(page.id);
     }
   }
 
@@ -630,12 +634,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   Widget _buildPageCard(_PageInfo page) {
-    // Load thumbnail lazily
     if (page.thumbnail == null && _thumbnailCache.containsKey(page.id)) {
       page.thumbnail = _thumbnailCache[page.id];
     }
-    if (page.thumbnail == null && page.w > 0 && page.h > 0) {
-      // Trigger async load
+    if (page.thumbnail == null && page.w > 0 && page.h > 0
+        && !_loadingThumbnails.contains(page.id)) {
+      _loadingThumbnails.add(page.id);
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadThumbnail(page));
     }
 
