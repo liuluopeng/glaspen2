@@ -807,6 +807,18 @@ static NSButton *g_glass_buttons[1];
                 result(@(ok));
             });
         });
+    } else if ([call.method isEqualToString:@"navigateToPage"]) {
+        NSDictionary *args = call.arguments;
+        int64_t screenId = [args[@"screenId"] longLongValue];
+        if (screenId > 0) {
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+                glaspen2_load_strokes_for_screen(screenId);
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    rebuild_surface_from_strokes();
+                });
+            });
+        }
+        result(nil);
     } else {
         result(FlutterMethodNotImplemented);
     }

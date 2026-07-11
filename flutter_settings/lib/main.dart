@@ -648,8 +648,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-          // Navigate to this page on the main canvas
-          _channel.invokeMethod('setSetting', {'key': 'navigateToPage', 'value': page.id});
+          _channel.invokeMethod('navigateToPage', {'screenId': page.id});
         },
         child: Padding(
           padding: const EdgeInsets.all(10),
