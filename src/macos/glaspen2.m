@@ -8,7 +8,6 @@
 #import <FlutterMacOS/FlutterMacOS.h>
 #include <signal.h>
 #include <string.h>
-#include <unistd.h>
 #include <mach/mach_time.h>
 
 // App enabled state
@@ -37,7 +36,6 @@ static void gl_settings_set_glass_enabled(BOOL on);
 static void gl_settings_set_glass_opacity(double alpha);
 static void gl_settings_set_grid(BOOL on);
 static void draw_grid(void);
-static NSData *render_page_thumbnail(int64_t screen_id, int w, int h, int max_size);
 static void gl_glass_apply(void);
 static void gl_settings_set_enabled(BOOL on);
 static void toggle_enabled(void);
@@ -83,6 +81,8 @@ extern int glaspen2_export_pdf(void);
 extern void glaspen2_ocr_backfill_all(void);
 extern char* glaspen2_list_screens_json(void);
 extern char* glaspen2_search_ocr_json(const char *query);
+extern unsigned char* glaspen2_render_thumbnail(long long screen_id, int w, int h, int max_size, int *out_len);
+extern void glaspen2_free_rust_bytes(unsigned char *ptr, int len);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -771,12 +771,15 @@ static NSButton *g_glass_buttons[1];
         int w = [args[@"w"] intValue];
         int h = [args[@"h"] intValue];
         int maxSize = [args[@"maxSize"] intValue];
-        if (maxSize < 32) maxSize = 200;
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            NSData *png = render_page_thumbnail(screenId, w, h, maxSize);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                result(png ?: [NSData data]);
-            });
+            int outLen = 0;
+            unsigned char *png = glaspen2_render_thumbnail(screenId, w, h, maxSize, &outLen);
+            NSData *data = [NSData data];
+            if (png && outLen > 0) {
+                data = [NSData dataWithBytes:png length:outLen];
+                glaspen2_free_rust_bytes(png, outLen);
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{ result(data); });
         });
     } else {
         result(FlutterMethodNotImplemented);
@@ -978,64 +981,6 @@ static void flush_to_layer(void) {
     // far slower than raw pen events (200+ Hz).
 }
 
-/// Render a page thumbnail to PNG data.
-/// Renders strokes at full resolution, then writes a scaled-down PNG via Cairo.
-/// Restores the current screen afterwards. Returns PNG bytes (or nil on failure).
-static NSData *render_page_thumbnail(int64_t screen_id, int w, int h, int max_size) {
-    if (w <= 0 || h <= 0) return nil;
-
-    // Compute thumbnail size
-    double scale;
-    if (w >= h) {
-        scale = (double)max_size / w;
-    } else {
-        scale = (double)max_size / h;
-    }
-    int tw = (int)(w * scale);
-    int th = (int)(h * scale);
-    if (tw < 1) tw = 1;
-    if (th < 1) th = 1;
-
-    int64_t prev_id = glaspen2_get_current_screen_id();
-    NSData *pngData = nil;
-
-    // Render at full resolution
-    cairo_surface_t *full = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
-    int n = glaspen2_load_strokes_for_screen(screen_id);
-    if (n > 0) {
-        glaspen2_draw_rebuild((void *)full, 1.0);
-        cairo_surface_flush(full);
-
-        // Create thumbnail surface and scale into it via Cairo
-        cairo_surface_t *thumb = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, tw, th);
-        cairo_t *cr = cairo_create(thumb);
-        cairo_scale(cr, scale, scale);
-        cairo_set_source_surface(cr, full, 0, 0);
-        cairo_paint(cr);
-        cairo_destroy(cr);
-        cairo_surface_flush(thumb);
-        cairo_surface_destroy(full);
-
-        // Write thumbnail to temp file and read back
-        char tmp_path[] = "/tmp/glaspen2_thumb_XXXXXX.png";
-        int fd = mkstemps(tmp_path, 4);
-        if (fd >= 0) {
-            close(fd);
-            cairo_surface_write_to_png(thumb, tmp_path);
-            pngData = [NSData dataWithContentsOfFile:@(tmp_path)];
-            unlink(tmp_path);
-            if (pngData.length == 0) pngData = nil;
-        }
-        cairo_surface_destroy(thumb);
-    } else {
-        cairo_surface_destroy(full);
-    }
-
-    if (prev_id != 0 && prev_id != screen_id) {
-        glaspen2_load_strokes_for_screen(prev_id);
-    }
-    return pngData;
-}
 
 /// Update the active cairo context's source and stroke/fill helpers using
 /// the shared g_active_cr (must have been created via stroke_begin).

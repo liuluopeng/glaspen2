@@ -1530,3 +1530,123 @@ pub extern "C" fn glaspen2_search_ocr_json(query: *const c_char) -> *mut c_char 
     let json = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
     CString::new(json).unwrap_or_default().into_raw()
 }
+
+// ---------------------------------------------------------------------------
+// Thumbnail rendering (pure Rust, full-resolution → scaled PNG)
+// ---------------------------------------------------------------------------
+
+/// Render a page thumbnail entirely in Rust.
+#[cfg(feature = "cairo_real")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_render_thumbnail(
+    screen_id: i64,
+    w: c_int,
+    h: c_int,
+    max_size: c_int,
+    out_len: *mut c_int,
+) -> *mut c_uchar {
+    if w <= 0 || h <= 0 || max_size <= 0 || out_len.is_null() {
+        if !out_len.is_null() { unsafe { *out_len = 0; } }
+        return std::ptr::null_mut();
+    }
+
+    let scale = if w >= h {
+        max_size as f64 / w as f64
+    } else {
+        max_size as f64 / h as f64
+    };
+    let tw = ((w as f64) * scale).max(1.0) as i32;
+    let th = ((h as f64) * scale).max(1.0) as i32;
+
+    let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
+    if strokes.is_empty() {
+        unsafe { *out_len = 0; }
+        return std::ptr::null_mut();
+    }
+    {
+        let mut dst = STROKES.lock().unwrap();
+        dst.clear();
+        dst.extend(strokes.into_iter().map(|s| Stroke {
+            r: s.r, g: s.g, b: s.b, points: s.points,
+        }));
+    }
+
+    let Ok(full) = crate::cairo::ImageSurface::create(
+        crate::cairo::Format::ARgb32, w, h,
+    ) else {
+        unsafe { *out_len = 0; }
+        return std::ptr::null_mut();
+    };
+    crate::draw::draw_rebuild_on_surface(&full, 1.0);
+
+    let mut thumb = match crate::cairo::ImageSurface::create(
+        crate::cairo::Format::ARgb32, tw, th,
+    ) {
+        Ok(s) => s,
+        Err(_) => { unsafe { *out_len = 0; } return std::ptr::null_mut(); }
+    };
+    {
+        let Ok(cr) = crate::cairo::Context::new(&thumb) else {
+            unsafe { *out_len = 0; }
+            return std::ptr::null_mut();
+        };
+        cr.scale(scale, scale);
+        let _ = cr.set_source_surface(&full, 0.0, 0.0);
+        let _ = cr.paint();
+    }
+
+    let stride = thumb.stride() as usize;
+    let Ok(data) = thumb.data() else {
+        unsafe { *out_len = 0; }
+        return std::ptr::null_mut();
+    };
+    let (tw_u, th_u) = (tw as u32, th as u32);
+    let mut rgba = Vec::with_capacity((tw_u * th_u * 4) as usize);
+    for y in 0..th_u {
+        for x in 0..tw_u {
+            let off = y as usize * stride + x as usize * 4;
+            let (b, g, r, a) = (data[off], data[off + 1], data[off + 2], data[off + 3]);
+            rgba.push(r); rgba.push(g); rgba.push(b); rgba.push(a);
+        }
+    }
+    drop(data);
+
+    let png_bytes = match encode_png_rgba(&rgba, tw_u, th_u) {
+        Some(b) => b,
+        None => { unsafe { *out_len = 0; } return std::ptr::null_mut(); }
+    };
+
+    let len = png_bytes.len() as c_int;
+    let ptr = png_bytes.as_ptr() as *mut c_uchar;
+    std::mem::forget(png_bytes);
+    unsafe { *out_len = len; }
+    ptr
+}
+
+#[cfg(not(feature = "cairo_real"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_render_thumbnail(
+    _screen_id: i64, _w: c_int, _h: c_int, _max_size: c_int,
+    out_len: *mut c_int,
+) -> *mut c_uchar {
+    if !out_len.is_null() { unsafe { *out_len = 0; } }
+    std::ptr::null_mut()
+}
+
+/// Free a buffer returned by glaspen2_render_thumbnail.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_free_rust_bytes(ptr: *mut c_uchar, len: c_int) {
+    if !ptr.is_null() && len > 0 {
+        unsafe { let _ = Vec::from_raw_parts(ptr, len as usize, len as usize); }
+    }
+}
+
+/// Encode RGBA pixel data as PNG bytes.
+fn encode_png_rgba(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
+    use image::ImageEncoder;
+    let mut buf = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut buf)
+        .write_image(rgba, width, height, image::ExtendedColorType::Rgba8)
+        .ok()?;
+    Some(buf)
+}
