@@ -31,12 +31,16 @@ pub mod cairo_renderer;
 pub mod windows;
 
 pub mod db;
+#[cfg(all(feature = "cairo_real", not(target_os = "windows")))]
 pub mod draw;
 pub mod export;
 pub mod modeler;
 pub mod ocr;
 pub mod pdf;
 pub mod state;
+
+// Re-export FFI functions from export module so crate::glaspen2_* paths work
+pub use export::*;
 
 // ---------------------------------------------------------------------------
 // Core types

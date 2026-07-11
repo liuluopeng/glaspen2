@@ -170,5 +170,38 @@ namespace GlasPen2
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern int glaspen2_cairo_undo(IntPtr renderer);
+
+        // ── PDF export ──
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int glaspen2_export_pdf();
+
+        // ── OCR ──
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr glaspen2_ocr_recognize(IntPtr pixels, int width, int height);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int glaspen2_ocr_page(IntPtr pixels, int width, int height, long screenId);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void glaspen2_ocr_backfill_all();
+
+        // ── Content tab ──
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr glaspen2_list_screens_json();
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr glaspen2_search_ocr_json(string query);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr glaspen2_render_thumbnail(long screenId, int w, int h, int maxSize, out int outLen);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void glaspen2_free_c_string(IntPtr ptr);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void glaspen2_free_rust_bytes(IntPtr ptr, int len);
     }
 }

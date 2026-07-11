@@ -34,14 +34,14 @@ mod cairo_renderer {
 
         pub fn clear(&mut self) {
             match &self.surface {
-                CairoBackend::Real(ref s) => {
+                CairoBackend::Real(s) => {
                     if let Some(cr) = crate::windows::cairo_dl::CairoRealContext::new(s) {
                         cr.set_operator_clear();
                         cr.paint();
                         cr.set_operator_over();
                     }
                 }
-                CairoBackend::Stub(ref s) => {
+                CairoBackend::Stub(s) => {
                     use crate::cairo::{Context, Operator};
                     if let Ok(cr) = Context::new(s) {
                         cr.set_operator(Operator::Clear);
@@ -53,7 +53,7 @@ mod cairo_renderer {
 
         pub fn draw_line(&mut self, x0: f64, y0: f64, x1: f64, y1: f64, width: f64, r: f64, g: f64, b: f64) {
             match &self.surface {
-                CairoBackend::Real(ref s) => {
+                CairoBackend::Real(s) => {
                     if let Some(cr) = crate::windows::cairo_dl::CairoRealContext::new(s) {
                         cr.set_source_rgba(r, g, b, 1.0);
                         cr.set_line_width(width);
@@ -64,7 +64,7 @@ mod cairo_renderer {
                         cr.stroke();
                     }
                 }
-                CairoBackend::Stub(ref s) => {
+                CairoBackend::Stub(s) => {
                     use crate::cairo::{Context, LineCap, LineJoin};
                     if let Ok(cr) = Context::new(s) {
                         cr.set_source_rgba(r, g, b, 1.0);
@@ -81,14 +81,14 @@ mod cairo_renderer {
 
         pub fn draw_dot(&mut self, x: f64, y: f64, width: f64, r: f64, g: f64, b: f64) {
             match &self.surface {
-                CairoBackend::Real(ref s) => {
+                CairoBackend::Real(s) => {
                     if let Some(cr) = crate::windows::cairo_dl::CairoRealContext::new(s) {
                         cr.set_source_rgba(r, g, b, 1.0);
                         cr.arc(x, y, width * 0.5, 0.0, 2.0 * PI);
                         cr.fill();
                     }
                 }
-                CairoBackend::Stub(ref s) => {
+                CairoBackend::Stub(s) => {
                     use crate::cairo::Context;
                     if let Ok(cr) = Context::new(s) {
                         cr.set_source_rgba(r, g, b, 1.0);
@@ -101,11 +101,11 @@ mod cairo_renderer {
 
         pub fn surface_data(&self) -> *const c_uchar {
             match &self.surface {
-                CairoBackend::Real(ref s) => {
+                CairoBackend::Real(s) => {
                     s.flush();
                     s.data_ptr()
                 }
-                CairoBackend::Stub(ref s) => {
+                CairoBackend::Stub(s) => {
                     s.data().map(|d| d.as_ptr()).unwrap_or(std::ptr::null())
                 }
             }
@@ -113,11 +113,11 @@ mod cairo_renderer {
 
         pub fn surface_data_mut(&self) -> *mut c_uchar {
             match &self.surface {
-                CairoBackend::Real(ref s) => {
+                CairoBackend::Real(s) => {
                     s.flush();
                     s.data_ptr_mut()
                 }
-                CairoBackend::Stub(ref s) => {
+                CairoBackend::Stub(s) => {
                     s.pixels_mut().as_mut_ptr()
                 }
             }
@@ -125,15 +125,15 @@ mod cairo_renderer {
 
         pub fn surface_size(&self) -> (i32, i32, i32) {
             let stride = match &self.surface {
-                CairoBackend::Real(ref s) => s.stride(),
-                CairoBackend::Stub(ref s) => s.stride(),
+                CairoBackend::Real(s) => s.stride(),
+                CairoBackend::Stub(s) => s.stride(),
             };
             (self.width, self.height, stride)
         }
 
         pub fn mark_dirty(&self) {
             match &self.surface {
-                CairoBackend::Real(ref s) => s.mark_dirty(),
+                CairoBackend::Real(s) => s.mark_dirty(),
                 CairoBackend::Stub(_) => {}
             }
         }

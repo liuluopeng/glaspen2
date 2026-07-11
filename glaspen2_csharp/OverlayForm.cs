@@ -1080,6 +1080,21 @@ namespace GlasPen2
             }
         }
 
+        private void ExportPdf()
+        {
+            try
+            {
+                int ok = GlaspenNative.glaspen2_export_pdf();
+                string msg = ok == 1 ? "PDF 导出成功" : "PDF 导出失败";
+                _fakeStrokeForm.ShowNotification(msg);
+                Log("[Export] PDF: {0}", msg);
+            }
+            catch (Exception ex)
+            {
+                Log("[Export] PDF error: {0}", ex.Message);
+            }
+        }
+
         /// <summary>
         /// Copy GIF file to clipboard as CF_HDROP (file reference) + CF_DIB (bitmap preview).
         /// </summary>
@@ -1226,6 +1241,11 @@ namespace GlasPen2
                 if (key == "export_animated_gif")
                 {
                     ExportAnimatedGif();
+                    return;
+                }
+                if (key == "export_pdf")
+                {
+                    ExportPdf();
                     return;
                 }
                 if (key == "pressureMonitor")

@@ -1,7 +1,11 @@
 use std::cell::UnsafeCell;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Format { ARGB32 }
+pub enum Format {
+    ARGB32,
+    #[allow(non_camel_case_types)]
+    ARgb32,
+}
 
 pub struct ImageSurface {
     data: UnsafeCell<Vec<u8>>,
@@ -241,6 +245,7 @@ impl<'a> Context<'a> {
         Ok(())
     }
     pub fn set_source_surface(&self, _s: &ImageSurface, _x: f64, _y: f64) -> Result<(), ()> { Ok(()) }
+    pub fn scale(&self, _sx: f64, _sy: f64) {}
 }
 
 fn blend_over(dst: &mut [u8], sr: f64, sg: f64, sb: f64, sa: f64) {

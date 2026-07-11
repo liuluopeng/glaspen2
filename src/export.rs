@@ -1591,7 +1591,38 @@ pub extern "C" fn glaspen2_render_thumbnail(
         unsafe { *out_len = 0; }
         return std::ptr::null_mut();
     };
-    crate::draw::draw_rebuild_on_surface(&full, 1.0);
+    // Draw strokes onto the surface
+    let Ok(cr) = crate::cairo::Context::new(&full) else {
+        unsafe { *out_len = 0; }
+        return std::ptr::null_mut();
+    };
+    cr.set_operator(crate::cairo::Operator::Clear);
+    let _ = cr.paint();
+    cr.set_operator(crate::cairo::Operator::Over);
+    cr.scale(1.0, 1.0);
+    {
+        let strokes = STROKES.lock().unwrap();
+        cr.set_line_cap(crate::cairo::LineCap::Round);
+        cr.set_line_join(crate::cairo::LineJoin::Round);
+        for s in strokes.iter() {
+            let pts = &s.points;
+            if pts.len() < 2 { continue; }
+            cr.set_source_rgba(s.r, s.g, s.b, 1.0);
+            for i in 0..pts.len() {
+                let (x, y, w, _t) = pts[i];
+                if i == 0 {
+                    let _ = cr.arc(x, y, w * 0.5, 0.0, 2.0 * std::f64::consts::PI);
+                    let _ = cr.fill();
+                } else {
+                    let (px, py, _pw, _pt) = pts[i - 1];
+                    cr.set_line_width(w);
+                    let _ = cr.move_to(px, py);
+                    let _ = cr.line_to(x, y);
+                    let _ = cr.stroke();
+                }
+            }
+        }
+    }
 
     let mut thumb = match crate::cairo::ImageSurface::create(
         crate::cairo::Format::ARgb32, tw, th,

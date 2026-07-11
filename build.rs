@@ -115,6 +115,13 @@ fn main() {
     }
 
     if is_windows {
+        // Link Windows SDK libs needed by ort (ONNX Runtime)
+        println!("cargo:rustc-link-lib=d2d1");
+        println!("cargo:rustc-link-lib=dxguid");
+        // ort prebuilt binaries need the dynamic MSVC CRT
+        println!("cargo:rustc-link-arg=/NODEFAULTLIB:libcmt");
+        println!("cargo:rustc-link-arg=/DEFAULTLIB:msvcrt");
+
         let csharp_dir = std::path::Path::new("glaspen2_csharp");
 
         // Output C# exe to Cargo target dir (same dir as glaspen2.dll)

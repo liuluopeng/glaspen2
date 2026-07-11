@@ -77,14 +77,14 @@ struct RawMouse {
     ul_extra_information: u32,
 }
 
-extern "system" {
-    fn RegisterRawInputDevices(
+unsafe extern "system" {
+    unsafe fn RegisterRawInputDevices(
         p_raw_input_devices: *const RawInputDevice,
         ui_num_devices: u32,
         cb_size: u32,
     ) -> BOOL;
 
-    fn GetRawInputData(
+    unsafe fn GetRawInputData(
         h_raw_input: isize,
         ui_command: u32,
         p_data: *mut u8,
@@ -102,8 +102,8 @@ const PIPE_WAIT: u32 = 0x00000000;
 const PIPE_UNLIMITED_INSTANCES: u32 = 255;
 const BUFFER_SIZE: u32 = 4096;
 
-extern "system" {
-    fn CreateNamedPipeW(
+unsafe extern "system" {
+    unsafe fn CreateNamedPipeW(
         lp_name: PCWSTR,
         dw_open_mode: u32,
         dw_pipe_mode: u32,
@@ -114,20 +114,20 @@ extern "system" {
         lp_security_attributes: *const std::ffi::c_void,
     ) -> isize;
 
-    fn ConnectNamedPipe(h_named_pipe: isize, lp_overlapped: *mut std::ffi::c_void) -> i32;
+    unsafe fn ConnectNamedPipe(h_named_pipe: isize, lp_overlapped: *mut std::ffi::c_void) -> i32;
 
-    fn DisconnectNamedPipe(h_named_pipe: isize) -> i32;
+    unsafe fn DisconnectNamedPipe(h_named_pipe: isize) -> i32;
 
-    fn CreateEventW(
+    unsafe fn CreateEventW(
         lp_event_attributes: *mut std::ffi::c_void,
         b_manual_reset: i32,
         b_initial_state: i32,
         lp_name: PCWSTR,
     ) -> isize;
 
-    fn WaitForSingleObject(h_handle: isize, dw_milliseconds: u32) -> u32;
+    unsafe fn WaitForSingleObject(h_handle: isize, dw_milliseconds: u32) -> u32;
 
-    fn SetEvent(h_event: isize) -> i32;
+    unsafe fn SetEvent(h_event: isize) -> i32;
 }
 
 // ── Custom messages ──
