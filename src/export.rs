@@ -1478,3 +1478,55 @@ pub extern "C" fn glaspen2_export_pdf() -> c_int {
 pub extern "C" fn glaspen2_ocr_backfill_all() {
     crate::pdf::backfill_ocr_all_pages();
 }
+
+// ---------------------------------------------------------------------------
+// Content tab data (page listing, OCR, search)
+// ---------------------------------------------------------------------------
+
+/// List all screens with their OCR text as JSON.
+/// Returns a C string (caller must free via glaspen2_free_c_string).
+/// JSON: [{"id":1,"w":1920,"h":1080,"ocr":"text or null"}, ...]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
+    let rows = runtime().block_on(db::list_screens_with_ocr());
+    let list: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(id, w, h, ocr)| {
+            serde_json::json!({
+                "id": id,
+                "w": w,
+                "h": h,
+                "ocr": ocr,
+            })
+        })
+        .collect();
+    let json = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
+    CString::new(json).unwrap_or_default().into_raw()
+}
+
+/// Search OCR text across all pages.
+/// Returns JSON array of matching screens with OCR text.
+/// JSON: [{"id":1,"w":1920,"h":1080,"ocr":"full text"}, ...]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_search_ocr_json(query: *const c_char) -> *mut c_char {
+    let Ok(q) = unsafe { CStr::from_ptr(query) }.to_str() else {
+        return CString::new("[]".to_string()).unwrap_or_default().into_raw();
+    };
+    if q.is_empty() {
+        return glaspen2_list_screens_json();
+    }
+    let rows = runtime().block_on(db::search_ocr(q));
+    let list: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(id, w, h, ocr)| {
+            serde_json::json!({
+                "id": id,
+                "w": w,
+                "h": h,
+                "ocr": ocr,
+            })
+        })
+        .collect();
+    let json = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
+    CString::new(json).unwrap_or_default().into_raw()
+}

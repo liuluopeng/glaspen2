@@ -280,6 +280,38 @@ mod platform {
         strokes
     }
 
+    pub async fn list_screens() -> Vec<(i64, i32, i32)> {
+        let pool = match DB.get() { Some(p) => p, None => return Vec::new() };
+        sqlx::query_as(
+            "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
+             WHERE EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
+             ORDER BY s.id"
+        ).fetch_all(pool).await.unwrap_or_default()
+    }
+
+    pub async fn list_screens_with_ocr() -> Vec<(i64, i32, i32, Option<String>)> {
+        let pool = match DB.get() { Some(p) => p, None => return Vec::new() };
+        let rows: Vec<(i64, i32, i32, Option<String>)> = sqlx::query_as(
+            "SELECT s.id, s.screen_w, s.screen_h, \
+                    (SELECT r.full_text FROM ocr_results r WHERE r.screen_id = s.id ORDER BY r.id DESC LIMIT 1) \
+             FROM screens s \
+             WHERE EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
+             ORDER BY s.id"
+        ).fetch_all(pool).await.unwrap_or_default();
+        rows
+    }
+
+    pub async fn search_ocr(query: &str) -> Vec<(i64, i32, i32, String)> {
+        let pool = match DB.get() { Some(p) => p, None => return Vec::new() };
+        let pattern = format!("%{}%", query);
+        sqlx::query_as(
+            "SELECT s.id, s.screen_w, s.screen_h, r.full_text FROM screens s \
+             JOIN ocr_results r ON r.screen_id = s.id \
+             WHERE r.full_text LIKE ?1 \
+             ORDER BY s.id"
+        ).bind(&pattern).fetch_all(pool).await.unwrap_or_default()
+    }
+
     pub async fn save_setting(key: &str, value: &str) {
         let pool = match DB.get() { Some(p) => p, None => return };
         sqlx::query("INSERT OR REPLACE INTO user_settings (key, value) VALUES (?1, ?2)")

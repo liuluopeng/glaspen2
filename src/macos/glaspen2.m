@@ -36,6 +36,7 @@ static void gl_settings_set_glass_enabled(BOOL on);
 static void gl_settings_set_glass_opacity(double alpha);
 static void gl_settings_set_grid(BOOL on);
 static void draw_grid(void);
+static NSData *render_page_thumbnail(int64_t screen_id, int w, int h, int max_size);
 static void gl_glass_apply(void);
 static void gl_settings_set_enabled(BOOL on);
 static void toggle_enabled(void);
@@ -79,6 +80,8 @@ extern char* glaspen2_ocr_recognize(const unsigned char *pixels, int width, int 
 extern char* glaspen2_ocr_page(const unsigned char *pixels, int width, int height, long screen_id);
 extern int glaspen2_export_pdf(void);
 extern void glaspen2_ocr_backfill_all(void);
+extern char* glaspen2_list_screens_json(void);
+extern char* glaspen2_search_ocr_json(const char *query);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -742,6 +745,38 @@ static NSButton *g_glass_buttons[1];
                 result(nil);
             });
         });
+    } else if ([call.method isEqualToString:@"listPages"]) {
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            char *json = glaspen2_list_screens_json();
+            NSString *str = json ? [NSString stringWithUTF8String:json] : @"[]";
+            if (json) glaspen2_free_c_string(json);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                result(str);
+            });
+        });
+    } else if ([call.method isEqualToString:@"searchText"]) {
+        NSString *query = call.arguments[@"query"] ?: @"";
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            char *json = glaspen2_search_ocr_json([query UTF8String]);
+            NSString *str = json ? [NSString stringWithUTF8String:json] : @"[]";
+            if (json) glaspen2_free_c_string(json);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                result(str);
+            });
+        });
+    } else if ([call.method isEqualToString:@"getPageThumbnail"]) {
+        NSDictionary *args = call.arguments;
+        int64_t screenId = [args[@"screenId"] longLongValue];
+        int w = [args[@"w"] intValue];
+        int h = [args[@"h"] intValue];
+        int maxSize = [args[@"maxSize"] intValue];
+        if (maxSize < 32) maxSize = 200;
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            NSData *png = render_page_thumbnail(screenId, w, h, maxSize);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                result(png ?: [NSData data]);
+            });
+        });
     } else {
         result(FlutterMethodNotImplemented);
     }
@@ -940,6 +975,67 @@ static void flush_to_layer(void) {
     // pen events into a single frame.  This cuts CPU from ~20 % to ~8-10 %
     // without perceptible latency because the vsync cadence (60/120 Hz) is
     // far slower than raw pen events (200+ Hz).
+}
+
+/// Render a page thumbnail to PNG data.
+/// Creates a small Cairo surface, loads the target screen's strokes, renders
+/// them, then converts to PNG via Core Graphics. Restores the current screen
+/// afterwards. Returns NSData with PNG bytes (or nil on failure).
+static NSData *render_page_thumbnail(int64_t screen_id, int w, int h, int max_size) {
+    if (w <= 0 || h <= 0) return nil;
+
+    // Compute thumbnail size maintaining aspect ratio
+    double scale;
+    if (w >= h) {
+        scale = (double)max_size / w;
+    } else {
+        scale = (double)max_size / h;
+    }
+    int tw = (int)(w * scale);
+    int th = (int)(h * scale);
+    if (tw < 1) tw = 1;
+    if (th < 1) th = 1;
+
+    // Save current screen ID, load target, render (clear + draw strokes at scale)
+    int64_t prev_id = glaspen2_get_current_screen_id();
+    cairo_surface_t *thumb = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, tw, th);
+    glaspen2_load_strokes_for_screen(screen_id);
+    glaspen2_draw_rebuild((void *)thumb, scale);
+    cairo_surface_flush(thumb);
+
+    // Get pixel data for CGImage
+    unsigned char *data = cairo_image_surface_get_data(thumb);
+    int stride = cairo_image_surface_get_stride(thumb);
+
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, data, stride * th, NULL);
+    CGImageRef cgImg = CGImageCreate(tw, th, 8, 32, stride, cs,
+                                      kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst,
+                                      provider, NULL, NO, kCGRenderingIntentDefault);
+    CGColorSpaceRelease(cs);
+    CGDataProviderRelease(provider);
+
+    // Encode to PNG
+    NSMutableData *pngData = [NSMutableData data];
+    CGImageDestinationRef dest = CGImageDestinationCreateWithData((CFMutableDataRef)pngData,
+                                                                    CFSTR("public.png"), 1, NULL);
+    NSData *result = nil;
+    if (dest && cgImg) {
+        CGImageDestinationAddImage(dest, cgImg, NULL);
+        if (CGImageDestinationFinalize(dest)) {
+            result = pngData;
+        }
+        CFRelease(dest);
+    }
+    CGImageRelease(cgImg);
+    cairo_surface_destroy(thumb);
+
+    // Restore previous screen's strokes
+    if (prev_id != 0 && prev_id != screen_id) {
+        glaspen2_load_strokes_for_screen(prev_id);
+    }
+
+    return result;
 }
 
 /// Update the active cairo context's source and stroke/fill helpers using

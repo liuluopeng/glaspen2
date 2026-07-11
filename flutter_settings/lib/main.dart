@@ -8,10 +8,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// GetLastError from kernel32
-final _getLastError = DynamicLibrary.open('kernel32.dll')
-    .lookupFunction<Uint32 Function(), int Function()>('GetLastError');
-
 void main() => runApp(const GlaspenSettingsApp());
 
 // ── Platform-specific communication ──
@@ -274,6 +270,32 @@ _SettingsBridge createBridge() {
   return _MethodChannelBridge(null);
 }
 
+// ── Data models ──
+
+class _PageInfo {
+  final int id;
+  final int w;
+  final int h;
+  final String? ocr;
+  Uint8List? thumbnail;
+
+  _PageInfo({
+    required this.id,
+    required this.w,
+    required this.h,
+    this.ocr,
+  });
+
+  factory _PageInfo.fromJson(Map<String, dynamic> json) {
+    return _PageInfo(
+      id: json['id'] as int,
+      w: json['w'] as int,
+      h: json['h'] as int,
+      ocr: json['ocr'] as String?,
+    );
+  }
+}
+
 // ── App ──
 
 class GlaspenSettingsApp extends StatelessWidget {
@@ -302,9 +324,10 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderStateMixin {
   final _columnKey = GlobalKey();
   late _SettingsBridge _bridge;
+  late TabController _tabController;
   int _selectedColor = 0;
   int _selectedWidth = 2;
   bool _smooth = true;
@@ -321,14 +344,43 @@ class _SettingsPageState extends State<SettingsPage> {
   ];
   static const _widthNames = ['极细', '很细', '细', '中', '粗', '很粗', '超粗', '极粗'];
 
+  // Content tab state
+  List<_PageInfo> _pages = [];
+  List<_PageInfo> _filteredPages = [];
+  bool _pagesLoading = false;
+  bool _searchLoading = false;
+  Timer? _searchDebounce;
+  final _searchController = TextEditingController();
+  final _thumbnailCache = <int, Uint8List>{};
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_onTabChanged);
     _bridge = createBridge();
     _bridge.onSettingsChanged(_onSettingsChanged);
     _loadSettings();
 
-    // Resize window to fit content after layout is complete.
+    if (Platform.isMacOS) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToFit());
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _searchController.dispose();
+    _searchDebounce?.cancel();
+    _ocrController.dispose();
+    _bridge.dispose();
+    super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (_tabController.index == 1 && _pages.isEmpty && !_pagesLoading) {
+      _loadPages();
+    }
     if (Platform.isMacOS) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToFit());
     }
@@ -338,13 +390,12 @@ class _SettingsPageState extends State<SettingsPage> {
   void _resizeToFit() {
     final box = _columnKey.currentContext?.findRenderObject() as RenderBox?;
     if (box == null) return;
-    // box.size gives the laid-out size of the Column (its actual content height
-    // since the ScrollView allows it to grow unbounded vertically).
-    const width = 460.0;
+    const width = 600.0;
     const vPadding = 48.0;
+    final height = (box.size.height + vPadding).ceilToDouble();
     _channel.invokeMethod('setWindowSize', {
       'width': width,
-      'height': (box.size.height + vPadding).ceilToDouble(),
+      'height': height < 540 ? 540 : height,
     });
   }
 
@@ -374,7 +425,6 @@ class _SettingsPageState extends State<SettingsPage> {
           _showGrid = settings['grid'] ?? false;
           _connected = true;
         });
-        // Re-measure after settings change content height.
         if (Platform.isMacOS) {
           WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToFit());
         }
@@ -387,6 +437,86 @@ class _SettingsPageState extends State<SettingsPage> {
   void _setSetting(String key, dynamic value) {
     _bridge.setSetting(key, value);
   }
+
+  // ── Content tab ──
+
+  Future<void> _loadPages() async {
+    setState(() => _pagesLoading = true);
+    try {
+      final json = await _channel.invokeMethod<String>('listPages') ?? '[]';
+      final list = jsonDecode(json) as List<dynamic>;
+      if (mounted) {
+        setState(() {
+          _pages = list.map((e) => _PageInfo.fromJson(e as Map<String, dynamic>)).toList();
+          _filteredPages = List.from(_pages);
+          _pagesLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[Content] listPages error: $e');
+      if (mounted) setState(() => _pagesLoading = false);
+    }
+  }
+
+  Future<void> _loadThumbnail(_PageInfo page) async {
+    if (_thumbnailCache.containsKey(page.id)) {
+      page.thumbnail = _thumbnailCache[page.id];
+      return;
+    }
+    try {
+      final bytes = await _channel.invokeMethod<Uint8List>('getPageThumbnail', {
+        'screenId': page.id,
+        'w': page.w,
+        'h': page.h,
+        'maxSize': 120,
+      });
+      if (bytes != null && bytes.isNotEmpty && mounted) {
+        _thumbnailCache[page.id] = bytes;
+        page.thumbnail = bytes;
+        // Trigger rebuild just for this item
+        setState(() {});
+      }
+    } catch (e) {
+      debugPrint('[Content] thumbnail error for page ${page.id}: $e');
+    }
+  }
+
+  void _onSearchChanged(String query) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      _performSearch(query);
+    });
+  }
+
+  Future<void> _performSearch(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() => _filteredPages = List.from(_pages));
+      return;
+    }
+    setState(() => _searchLoading = true);
+    try {
+      final json = await _channel.invokeMethod<String>('searchText', {'query': query.trim()}) ?? '[]';
+      final list = jsonDecode(json) as List<dynamic>;
+      if (mounted) {
+        setState(() {
+          _filteredPages = list.map((e) => _PageInfo.fromJson(e as Map<String, dynamic>)).toList();
+          _searchLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('[Content] search error: $e');
+      if (mounted) setState(() => _searchLoading = false);
+    }
+  }
+
+  String _ocrPreview(String? text, {int maxLen = 80}) {
+    if (text == null || text.isEmpty) return '(无识别文本)';
+    final oneLine = text.replaceAll(RegExp(r'\s+'), ' ');
+    if (oneLine.length <= maxLen) return oneLine;
+    return '${oneLine.substring(0, maxLen)}…';
+  }
+
+  // ── Build ──
 
   @override
   Widget build(BuildContext context) {
@@ -401,25 +531,166 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Icon(Icons.cloud_off, color: Colors.red, size: 20),
             ),
         ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          key: _columnKey,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSection('Color', _buildColorGrid()),
-            const SizedBox(height: 16),
-            _buildSection('Width', _buildWidthRow()),
-            const SizedBox(height: 16),
-            _buildSection('Actions', _buildActionButtons()),
-            const SizedBox(height: 16),
-            _buildSection('Options', _buildToggles()),
-            const SizedBox(height: 16),
-            _buildSection('Export', _buildExportButtons()),
-            const SizedBox(height: 16),
-            if (Platform.isMacOS) _buildSection('OCR 文字识别', _buildOcrRow()),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: '设置'),
+            Tab(text: '内容'),
           ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+            // ── Settings tab ──
+            SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                key: _columnKey,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSection('Color', _buildColorGrid()),
+                  const SizedBox(height: 16),
+                  _buildSection('Width', _buildWidthRow()),
+                  const SizedBox(height: 16),
+                  _buildSection('Actions', _buildActionButtons()),
+                  const SizedBox(height: 16),
+                  _buildSection('Options', _buildToggles()),
+                  const SizedBox(height: 16),
+                  _buildSection('Export', _buildExportButtons()),
+                  const SizedBox(height: 16),
+                  if (Platform.isMacOS) _buildSection('OCR 文字识别', _buildOcrRow()),
+                ],
+              ),
+            ),
+            // ── Content tab ──
+            _buildContentTab(),
+          ],
+        ),
+      );
+  }
+
+  Widget _buildContentTab() {
+    return Column(
+      children: [
+        // Search bar
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: TextField(
+            controller: _searchController,
+            onChanged: _onSearchChanged,
+            decoration: InputDecoration(
+              hintText: '搜索文本…',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: _searchLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: Padding(
+                        padding: EdgeInsets.all(14),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : (_searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _searchController.clear();
+                            _performSearch('');
+                          },
+                        )
+                      : null),
+              border: const OutlineInputBorder(),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              isDense: true,
+            ),
+            style: const TextStyle(fontSize: 14),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Page list
+        Expanded(
+          child: _pagesLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _filteredPages.isEmpty
+                  ? const Center(
+                      child: Text('暂无页面', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                    )
+                  : ListView.builder(
+                      itemCount: _filteredPages.length,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      itemBuilder: (context, i) {
+                        final page = _filteredPages[i];
+                        return _buildPageCard(page);
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPageCard(_PageInfo page) {
+    // Load thumbnail lazily
+    if (page.thumbnail == null && _thumbnailCache.containsKey(page.id)) {
+      page.thumbnail = _thumbnailCache[page.id];
+    }
+    if (page.thumbnail == null && page.w > 0 && page.h > 0) {
+      // Trigger async load
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadThumbnail(page));
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          // Navigate to this page on the main canvas
+          _channel.invokeMethod('setSetting', {'key': 'navigateToPage', 'value': page.id});
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Thumbnail
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: page.thumbnail != null
+                    ? Image.memory(
+                        page.thumbnail!,
+                        width: 100,
+                        height: 70,
+                        fit: BoxFit.cover,
+                      )
+                    : Container(
+                        width: 100,
+                        height: 70,
+                        color: Colors.grey.shade200,
+                        child: const Icon(Icons.image_outlined, color: Colors.grey),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              // Text content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '页面 ${page.id}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _ocrPreview(page.ocr),
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -704,13 +975,6 @@ class _SettingsPageState extends State<SettingsPage> {
     } finally {
       if (mounted) setState(() => _ocrLoading = false);
     }
-  }
-
-  @override
-  void dispose() {
-    _ocrController.dispose();
-    _bridge.dispose();
-    super.dispose();
   }
 
   Future<void> _ocrBackfill() async {
