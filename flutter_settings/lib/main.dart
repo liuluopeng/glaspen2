@@ -464,8 +464,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       page.thumbnail = _thumbnailCache[page.id];
       return;
     }
-    if (_loadingThumbnails.contains(page.id)) return;
-    _loadingThumbnails.add(page.id);
     try {
       final bytes = await _channel.invokeMethod<Uint8List>('getPageThumbnail', {
         'screenId': page.id,
