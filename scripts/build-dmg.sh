@@ -28,6 +28,13 @@ mkdir -p "${FW_DIR}"
 cp "${BUILD_DIR}/${APP_NAME}" "${BIN}"
 cp "glaspen2.icns" "${APP_BUNDLE}/Contents/Resources/"
 
+# --- Copy OCR models into Resources ---
+echo "=== Copying OCR models ==="
+mkdir -p "${APP_BUNDLE}/Contents/Resources/models"
+cp models/ppocr_v6_det.onnx models/ppocr_v6_rec.onnx models/ppocr_v6_dict.json \
+    "${APP_BUNDLE}/Contents/Resources/models/"
+echo "  done ($(du -sh models/ | cut -f1))"
+
 # --- Copy Flutter frameworks ---
 FLUTTER_FW="flutter_settings/build/macos/framework/Release"
 cp -R "${FLUTTER_FW}/FlutterMacOS.xcframework/macos-arm64_x86_64/FlutterMacOS.framework" "${FW_DIR}/"

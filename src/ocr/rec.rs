@@ -15,10 +15,18 @@ pub(super) struct RecEngine {
 
 pub(super) fn model_path(p: &str) -> std::path::PathBuf {
     if let Ok(exe) = std::env::current_exe() {
+        // Standard macOS bundle location: glaspen2.app/Contents/Resources/models/
+        let resources = exe.parent().unwrap()
+            .parent().unwrap().join("Resources").join("models");
+        let f = resources.join(p);
+        if f.exists() { return f; }
+
+        // Next to the executable (debug/dev builds)
         let dir = exe.parent().unwrap().join("models");
         let f = dir.join(p);
         if f.exists() { return f; }
     }
+    // Fallback: current working directory
     std::path::Path::new("models").join(p)
 }
 
