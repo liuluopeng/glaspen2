@@ -1558,9 +1558,7 @@ pub extern "C" fn glaspen2_render_thumbnail(
     max_size: c_int,
     out_len: *mut c_int,
 ) -> *mut c_uchar {
-    eprintln!("[thumb] CALLED screen={} w={} h={} max={}", screen_id, w, h, max_size);
     if w <= 0 || h <= 0 || max_size <= 0 || out_len.is_null() {
-        eprintln!("[thumb] EARLY EXIT: invalid params");
         if !out_len.is_null() { unsafe { *out_len = 0; } }
         return std::ptr::null_mut();
     }
@@ -1586,8 +1584,8 @@ pub extern "C" fn glaspen2_render_thumbnail(
         }));
     }
 
-    // Clamp stroke widths to minimum visible (≥1px at thumbnail scale)
-    let min_w = 1.0 / scale;
+    // Clamp stroke widths so thin lines don't disappear at thumbnail scale
+    let min_w = 0.5 / scale;
     {
         let mut dst2 = STROKES.lock().unwrap();
         for s in dst2.iter_mut() {
@@ -1627,20 +1625,13 @@ pub extern "C" fn glaspen2_render_thumbnail(
         None => { unsafe { *out_len = 0; } return std::ptr::null_mut(); }
     };
 
-    // Drop the STROKES we loaded (don't pollute global state)
+    // Drop the STROKES we loaded
     STROKES.lock().unwrap().clear();
 
     let len = png_bytes.len() as c_int;
     let ptr = png_bytes.as_ptr() as *mut c_uchar;
     std::mem::forget(png_bytes);
     unsafe { *out_len = len; }
-    // Debug: write PNG to temp file
-    if len > 0 {
-        let buf = unsafe { std::slice::from_raw_parts(ptr, len as usize) };
-        let _ = std::fs::write("/tmp/glaspen2_thumb.png", buf);
-    }
-    eprintln!("[thumb] screen={} dim={}x{} scale={:.4} thumb={}x{} strokes={} png={}B",
-              screen_id, w, h, scale, tw, th, "ok", len);
     ptr
 }
 

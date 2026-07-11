@@ -772,11 +772,9 @@ static NSButton *g_glass_buttons[1];
         int w = [args[@"w"] intValue];
         int h = [args[@"h"] intValue];
         int maxSize = [args[@"maxSize"] intValue];
-        NSLog(@"[thumb] ObjC handler called: screenId=%lld w=%d h=%d max=%d", screenId, w, h, maxSize);
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             int outLen = 0;
             unsigned char *png = glaspen2_render_thumbnail(screenId, w, h, maxSize, &outLen);
-            NSLog(@"[thumb] Rust returned: png=%p outLen=%d", png, outLen);
             NSData *data = [NSData data];
             if (png && outLen > 0) {
                 data = [NSData dataWithBytes:png length:outLen];

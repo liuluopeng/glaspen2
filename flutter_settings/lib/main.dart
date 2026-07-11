@@ -469,7 +469,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         'screenId': page.id,
         'w': page.w,
         'h': page.h,
-        'maxSize': 120,
+        'maxSize': 280,
       });
       if (bytes != null && bytes.isNotEmpty && mounted) {
         _thumbnailCache[page.id] = bytes;
@@ -610,7 +610,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           ),
         ),
         const SizedBox(height: 8),
-        // Page list
+        // Page grid
         Expanded(
           child: _pagesLoading
               ? const Center(child: CircularProgressIndicator())
@@ -618,9 +618,15 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   ? const Center(
                       child: Text('暂无页面', style: TextStyle(fontSize: 14, color: Colors.grey)),
                     )
-                  : ListView.builder(
+                  : GridView.builder(
                       itemCount: _filteredPages.length,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        childAspectRatio: 1.0,
+                      ),
                       itemBuilder: (context, i) {
                         final page = _filteredPages[i];
                         return _buildPageCard(page);
@@ -642,66 +648,54 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     }
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
         onTap: () {
           _channel.invokeMethod('navigateToPage', {'screenId': page.id});
         },
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Thumbnail
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: page.thumbnail != null
-                    ? Image.memory(
-                        page.thumbnail!,
-                        width: 100,
-                        height: 70,
-                        fit: BoxFit.cover,
-                      )
-                    : Container(
-                        width: 100,
-                        height: 70,
-                        color: Colors.grey.shade200,
-                        child: const Icon(Icons.image_outlined, color: Colors.grey),
-                      ),
-              ),
-              const SizedBox(width: 12),
-              // Text content
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '页面 ${page.id}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Thumbnail
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: page.thumbnail != null
+                  ? Image.memory(page.thumbnail!, fit: BoxFit.cover)
+                  : Container(
+                      color: Colors.grey.shade200,
+                      child: const Icon(Icons.image_outlined, color: Colors.grey),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _ocrPreview(page.ocr),
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
+            ),
+            // Page info
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('页面 ${page.id}',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        const SizedBox(height: 2),
+                        Text(_ocrPreview(page.ocr, maxLen: 40),
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                            maxLines: 2, overflow: TextOverflow.ellipsis),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 16),
+                    color: Colors.red.shade300,
+                    tooltip: '删除此页面',
+                    onPressed: () => _confirmDeletePage(page),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
               ),
-              const SizedBox(width: 4),
-              // Delete button
-              IconButton(
-                icon: const Icon(Icons.delete_outline, size: 18),
-                color: Colors.red.shade300,
-                tooltip: '删除此页面',
-                onPressed: () => _confirmDeletePage(page),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
