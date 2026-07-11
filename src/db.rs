@@ -251,6 +251,22 @@ mod platform {
         true
     }
 
+    pub async fn delete_screen(target_id: i64) -> bool {
+        let pool = match DB.get() { Some(p) => p, None => return false };
+        // Delete in FK order: points → strokes → ocr_boxes → ocr_results → screen
+        sqlx::query("DELETE FROM points WHERE stroke_id IN (SELECT id FROM strokes WHERE screen_id = ?1)")
+            .bind(target_id).execute(pool).await.ok();
+        sqlx::query("DELETE FROM strokes WHERE screen_id = ?1")
+            .bind(target_id).execute(pool).await.ok();
+        sqlx::query("DELETE FROM ocr_boxes WHERE result_id IN (SELECT id FROM ocr_results WHERE screen_id = ?1)")
+            .bind(target_id).execute(pool).await.ok();
+        sqlx::query("DELETE FROM ocr_results WHERE screen_id = ?1")
+            .bind(target_id).execute(pool).await.ok();
+        let deleted = sqlx::query("DELETE FROM screens WHERE id = ?1")
+            .bind(target_id).execute(pool).await.ok();
+        deleted.is_some()
+    }
+
     pub async fn prev_screen(current: i64) -> Option<i64> {
         let pool = DB.get()?;
         sqlx::query_scalar::<_, i64>(

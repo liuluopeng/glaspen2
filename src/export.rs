@@ -250,6 +250,19 @@ pub extern "C" fn glaspen2_get_current_screen_id() -> i64 {
     state::current_screen_id()
 }
 
+/// Delete a screen (page) and all its data (strokes, points, OCR).
+/// Returns 1 on success, 0 on failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_delete_screen(screen_id: i64) -> c_int {
+    let ok = runtime().block_on(db::delete_screen(screen_id));
+    // If deleted screen was the current one, clear STROKES and navigate
+    if ok && screen_id == state::current_screen_id() {
+        state::set_current_screen_id(0);
+        STROKES.lock().unwrap().clear();
+    }
+    ok as c_int
+}
+
 // ---------------------------------------------------------------------------
 // Stroke introspection
 // ---------------------------------------------------------------------------

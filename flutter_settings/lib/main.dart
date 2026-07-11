@@ -693,11 +693,66 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   ],
                 ),
               ),
+              const SizedBox(width: 4),
+              // Delete button
+              IconButton(
+                icon: const Icon(Icons.delete_outline, size: 18),
+                color: Colors.red.shade300,
+                tooltip: '删除此页面',
+                onPressed: () => _confirmDeletePage(page),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  void _confirmDeletePage(_PageInfo page) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除页面'),
+        content: Text('确定删除页面 ${page.id} 及其所有笔迹吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('取消')),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _deletePage(page);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deletePage(_PageInfo page) async {
+    try {
+      final ok = await _channel.invokeMethod<int>('deletePage', {'screenId': page.id}) == 1;
+      if (mounted) {
+        if (ok) {
+          _thumbnailCache.remove(page.id);
+          _pages.removeWhere((p) => p.id == page.id);
+          _filteredPages.removeWhere((p) => p.id == page.id);
+          setState(() {});
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('删除失败'), duration: Duration(seconds: 2)),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('删除失败: $e')),
+        );
+      }
+    }
   }
 
   Widget _buildSection(String title, Widget child) {

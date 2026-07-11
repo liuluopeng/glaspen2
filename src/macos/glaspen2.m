@@ -83,6 +83,7 @@ extern char* glaspen2_list_screens_json(void);
 extern char* glaspen2_search_ocr_json(const char *query);
 extern unsigned char* glaspen2_render_thumbnail(long long screen_id, int w, int h, int max_size, int *out_len);
 extern void glaspen2_free_rust_bytes(unsigned char *ptr, int len);
+extern int glaspen2_delete_screen(long long screen_id);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -782,6 +783,29 @@ static NSButton *g_glass_buttons[1];
                 glaspen2_free_rust_bytes(png, outLen);
             }
             dispatch_async(dispatch_get_main_queue(), ^{ result(data); });
+        });
+    } else if ([call.method isEqualToString:@"deletePage"]) {
+        NSDictionary *args = call.arguments;
+        int64_t screenId = [args[@"screenId"] longLongValue];
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            int ok = glaspen2_delete_screen(screenId);
+            if (ok && screenId == glaspen2_get_current_screen_id()) {
+                int64_t next = glaspen2_next_screen_id();
+                if (next == 0) next = glaspen2_prev_screen_id();
+                if (next != 0) {
+                    glaspen2_load_strokes_for_screen(next);
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        rebuild_surface_from_strokes();
+                    });
+                } else {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        clear_screen();
+                    });
+                }
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                result(@(ok));
+            });
         });
     } else {
         result(FlutterMethodNotImplemented);
