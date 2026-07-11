@@ -1038,7 +1038,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Future<void> _ocrBackfill() async {
     setState(() => _ocrBackfilling = true);
     try {
-      await _channel.invokeMethod('ocrBackfill');
+      _setSetting('ocr_backfill', true);
+      await Future.delayed(const Duration(seconds: 3));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('OCR 补全完成'), duration: Duration(seconds: 2)),

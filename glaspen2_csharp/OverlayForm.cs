@@ -1248,6 +1248,12 @@ namespace GlasPen2
                     ExportPdf();
                     return;
                 }
+                if (key == "ocr_backfill")
+                {
+                    GlaspenNative.glaspen2_ocr_backfill_all();
+                    Log("[OCR] Backfill all pages");
+                    return;
+                }
                 if (key == "pressureMonitor")
                 {
                     _showPressureMonitor = Convert.ToBoolean(value);
