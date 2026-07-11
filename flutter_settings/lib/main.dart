@@ -207,7 +207,15 @@ class _NamedPipeBridge extends _SettingsBridge {
         final id = msg['id'] as int? ?? 0;
         final completer = _invokeCompleters.remove(id);
         if (completer != null) {
-          completer.complete(msg['result'] as String?);
+          final result = msg['result'];
+          if (result is String) {
+            completer.complete(result);
+          } else if (result != null) {
+            // If result is already a parsed JSON value (List/Map), re-encode it
+            completer.complete(jsonEncode(result));
+          } else {
+            completer.complete(null);
+          }
         }
       }
     } catch (e) {
@@ -262,8 +270,8 @@ class _NamedPipeBridge extends _SettingsBridge {
   @override
   Future<String?> invokeMethod(String method, Map<String, dynamic> args) async {
     if (!_connected) return null;
+    final id = ++_invokeIdCounter;
     try {
-      final id = ++_invokeIdCounter;
       final completer = Completer<String?>();
       _invokeCompleters[id] = completer;
       _writeData(jsonEncode({
@@ -281,7 +289,7 @@ class _NamedPipeBridge extends _SettingsBridge {
       );
     } catch (e) {
       debugPrint('[Settings] invokeMethod $method error: $e');
-      _invokeCompleters.remove(method);
+      _invokeCompleters.remove(id);
       return null;
     }
   }
@@ -396,6 +404,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   final _thumbnailCache = <int, Uint8List>{};
   final _loadingThumbnails = <int>{};
 
+  // Debug info
+  String _dbDebugInfo = '';
+
   @override
   void initState() {
     super.initState();
@@ -423,6 +434,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   void _onTabChanged() {
     if (_tabController.index == 1 && _pages.isEmpty && !_pagesLoading) {
       _loadPages();
+    }
+    if (_tabController.index == 1) {
+      _dbCheckDebug();
     }
     if (Platform.isMacOS) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToFit());
@@ -500,6 +514,37 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     } catch (e) {
       debugPrint('[Content] listPages error: $e');
       if (mounted) setState(() => _pagesLoading = false);
+    }
+  }
+
+  Future<void> _dbCheckDebug() async {
+    try {
+      final info = StringBuffer();
+      info.writeln('--- DB Debug ---');
+      // Direct invokeMethod returning raw JSON
+      final raw = Platform.isWindows
+          ? (await _bridge.invokeMethod('listPages', {}) ?? 'null')
+          : (await _channel.invokeMethod<String>('listPages') ?? 'null');
+      info.writeln('listPages raw: $raw');
+      // Try to parse
+      try {
+        final list = jsonDecode(raw) as List;
+        info.writeln('parsed count: ${list.length}');
+        if (list.isNotEmpty) {
+          info.writeln('first item: ${list[0]}');
+        }
+      } catch (e) {
+        info.writeln('parse error: $e');
+      }
+      // Check which pipe server responds
+      if (Platform.isWindows) {
+        final test = await _bridge.invokeMethod('ping', {});
+        info.writeln('ping: $test');
+      }
+      info.writeln('platform: ${Platform.operatingSystem}');
+      setState(() => _dbDebugInfo = info.toString());
+    } catch (e) {
+      setState(() => _dbDebugInfo = 'Debug error: $e');
     }
   }
 
@@ -672,6 +717,14 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           ),
         ),
         const SizedBox(height: 8),
+        // Debug info
+        if (_dbDebugInfo.isNotEmpty)
+          Container(
+            width: double.infinity,
+            color: Colors.yellow.shade50,
+            padding: const EdgeInsets.all(8),
+            child: Text(_dbDebugInfo, style: const TextStyle(fontSize: 10, fontFamily: 'monospace')),
+          ),
         // Page grid
         Expanded(
           child: _pagesLoading

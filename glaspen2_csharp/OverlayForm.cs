@@ -131,11 +131,6 @@ namespace GlasPen2
 
             // Load persisted grid state
             _showGrid = GlaspenNative.glaspen2_load_bool_setting("grid") != 0;
-            if (_showGrid)
-            {
-                _fakeStrokeForm.SetGrid(true);
-                _fakeStrokeForm.BlitCairoToWindow();
-            }
 
             _canvas = new Bitmap(workingArea.Width, workingArea.Height, PixelFormat.Format32bppArgb);
             _g = Graphics.FromImage(_canvas);
@@ -148,6 +143,13 @@ namespace GlasPen2
             // Create fake stroke form (sits above overlay, WS_EX_TRANSPARENT lets input pass through)
             _fakeStrokeForm = new FakeStrokeForm(workingArea);
             _fakeStrokeForm.Show();
+
+            // Apply grid to FakeStrokeForm after it's created
+            if (_showGrid)
+            {
+                _fakeStrokeForm.SetGrid(true);
+                _fakeStrokeForm.BlitCairoToWindow();
+            }
 
             byte[] andPlane = { 0xFF };
             byte[] xorPlane = { 0x00 };

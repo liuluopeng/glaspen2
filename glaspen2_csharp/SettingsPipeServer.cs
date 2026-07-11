@@ -156,15 +156,28 @@ namespace GlasPen2
                         args = (Dictionary<string, object>)msg["args"];
                     }
                     string result = HandleInvokeMethod(method, args);
-                    // Build response: {"type":"invokeMethod_response","id":N,"method":"...","result":"..."}
+                    // JSON arrays/objects get embedded raw; plain strings get quoted
                     var sb = new StringBuilder();
                     sb.Append("{\"type\":\"invokeMethod_response\",\"id\":");
                     sb.Append(idStr);
                     sb.Append(",\"method\":\"");
                     sb.Append(EscapeJsonString(method));
-                    sb.Append("\",\"result\":\"");
-                    sb.Append(EscapeJsonString(result ?? ""));
-                    sb.Append("\"}\n");
+                    sb.Append("\",\"result\":");
+                    if (string.IsNullOrEmpty(result))
+                    {
+                        sb.Append("\"\"");
+                    }
+                    else if (result.Length > 0 && (result[0] == '[' || result[0] == '{'))
+                    {
+                        sb.Append(result);
+                    }
+                    else
+                    {
+                        sb.Append('"');
+                        sb.Append(EscapeJsonString(result));
+                        sb.Append('"');
+                    }
+                    sb.Append("}\n");
                     WriteToClient(pipe, sb.ToString());
                 }
             }
@@ -231,6 +244,9 @@ namespace GlasPen2
                         GlaspenNative.glaspen2_free_c_string(jsonPtr);
                         return json;
                     }
+
+                    case "ping":
+                        return "pong-from-csharp";
 
                     case "searchText":
                     {

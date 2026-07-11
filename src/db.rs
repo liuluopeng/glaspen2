@@ -32,6 +32,13 @@ pub struct OcrResult {
 }
 
 pub fn db_path() -> std::path::PathBuf {
+    // GLASPEN2_DB env var overrides everything (used when C# overlay calls into Rust)
+    if let Ok(path) = std::env::var("GLASPEN2_DB") {
+        if !path.is_empty() {
+            return std::path::PathBuf::from(path);
+        }
+    }
+
     let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let exe_dir = exe.parent().unwrap_or_else(|| std::path::Path::new("."));
 
@@ -72,9 +79,8 @@ fn now_f64() -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// macOS + Windows: async sqlx
+// Async sqlx — shared for all platforms
 // ---------------------------------------------------------------------------
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod platform {
     use std::sync::OnceLock;
     use sqlx::SqlitePool;

@@ -10,10 +10,18 @@ pub mod cairo_dl;
 /// Launches glaspen2_app.exe — the C# transparent overlay (main app).
 /// The Rust process waits for the C# overlay to exit (app lifecycle).
 pub fn win_main() {
-    // Initialize the database
-    crate::db::init();
-
     let csharp_exe = find_csharp_exe();
+
+    // Set GLASPEN2_DB FIRST so ALL db::init() calls resolve to the same file
+    // Use the same db_path logic as db_path(): exe_dir/glaspen2.db
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(parent) = exe_path.parent() {
+            let db_path = parent.join("glaspen2.db");
+            unsafe { std::env::set_var("GLASPEN2_DB", db_path.to_string_lossy().to_string()); }
+        }
+    }
+    // Initialize the database (db_path() now sees GLASPEN2_DB)
+    crate::runtime().block_on(crate::db::init());
 
     // Launch Flutter settings UI (non-blocking)
     if let Some(settings_path) = find_settings_exe() {

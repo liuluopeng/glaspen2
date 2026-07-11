@@ -1216,11 +1216,17 @@ fn handle_invoke_method(method: &str, line: &str) -> String {
                 "[]".to_string()
             }
         }
+        "ping" => "pong-from-rust".to_string(),
         "getPageThumbnail" | "deletePage" | "navigateToPage" | "recognizeText" | "exportAnimatedGif" => "".to_string(),
         _ => "".to_string(),
     };
-    let escaped = result.replace('\\', "\\\\").replace('"', "\\\"");
-    format!("{{\"type\":\"invokeMethod_response\",\"id\":{},\"method\":\"{}\",\"result\":\"{}\"}}\n", id, method, escaped)
+    // JSON arrays/objects → embed raw (no escaping). Plain strings → quote+escape.
+    if result.starts_with('[') || result.starts_with('{') {
+        format!("{{\"type\":\"invokeMethod_response\",\"id\":{},\"method\":\"{}\",\"result\":{}}}\n", id, method, result)
+    } else {
+        let escaped = result.replace('\\', "\\\\").replace('"', "\\\"");
+        format!("{{\"type\":\"invokeMethod_response\",\"id\":{},\"method\":\"{}\",\"result\":\"{}\"}}\n", id, method, escaped)
+    }
 }
 
 /// Extract a value that's nested inside "args":{...} — for "query" etc.
