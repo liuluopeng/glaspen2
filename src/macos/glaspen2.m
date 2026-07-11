@@ -34,6 +34,8 @@ static void perf_log_summary(void);
 static void gl_settings_set_launch(BOOL on);
 static void gl_settings_set_glass_enabled(BOOL on);
 static void gl_settings_set_glass_opacity(double alpha);
+static void gl_settings_set_grid(BOOL on);
+static void draw_grid(void);
 static void gl_glass_apply(void);
 static void gl_settings_set_enabled(BOOL on);
 static void toggle_enabled(void);
@@ -158,6 +160,9 @@ static int g_selected_width_index = 2; // default: 1.0x
 
 // Rainbow indicator toggle (default off)
 static BOOL g_show_rainbow = NO;
+
+// Grid overlay toggle (default off)
+static BOOL g_show_grid = NO;
 
 // Glass overlay opacity (0.0 = off, 0.0-0.3 range)
 static BOOL g_glass_enabled = NO;  // frosted glass ON/OFF
@@ -326,6 +331,7 @@ static void clear_screen(void) {
     cairo_destroy(cr);
     g_has_last = NO;
     glaspen2_clear_strokes(g_screen_w, g_screen_h);
+    draw_grid();
     if (g_show_rainbow) draw_rainbow_indicator();
     flush_to_layer();
     show_notification(L(@"清屏成功", @"Screen cleared"));
@@ -337,6 +343,7 @@ static void replay_strokes_from_memory(void) {
     glaspen2_draw_rebuild((void *)g_surface, g_scale);
 
     cairo_surface_flush(g_surface);
+    draw_grid();
     if (g_show_rainbow) draw_rainbow_indicator();
     g_has_last = NO;
     flush_to_layer();
@@ -374,6 +381,28 @@ static void draw_rainbow_indicator(void) {
         cairo_fill(cr);
     }
 
+    cairo_destroy(cr);
+    flush_to_layer();
+}
+
+static void draw_grid(void) {
+    if (!g_surface || !g_show_grid) return;
+    cairo_t *cr = cairo_create_scaled();
+    // DEST_OVER places grid behind existing content (strokes)
+    cairo_set_operator(cr, CAIRO_OPERATOR_DEST_OVER);
+    cairo_set_source_rgba(cr, 0.5, 0.5, 0.5, 0.15);
+    cairo_set_line_width(cr, 0.5);
+
+    for (int x = 0; x < g_screen_w; x += 40) {
+        cairo_move_to(cr, x, 0);
+        cairo_line_to(cr, x, g_screen_h);
+        cairo_stroke(cr);
+    }
+    for (int y = 0; y < g_screen_h; y += 40) {
+        cairo_move_to(cr, 0, y);
+        cairo_line_to(cr, g_screen_w, y);
+        cairo_stroke(cr);
+    }
     cairo_destroy(cr);
     flush_to_layer();
 }
@@ -611,6 +640,7 @@ static NSButton *g_glass_buttons[1];
             @"rainbow": @(g_show_rainbow),
             @"launchAtLogin": @(glaspen2_is_launch_at_login()),
             @"frostedGlass": @(g_glass_enabled),
+            @"grid": @(g_show_grid),
         });
     } else if ([call.method isEqualToString:@"setSetting"]) {
         NSDictionary *args = call.arguments;
@@ -629,6 +659,8 @@ static NSButton *g_glass_buttons[1];
         } else if ([key isEqualToString:@"opacity"]) {
             gl_settings_set_glass_opacity([value doubleValue]);
             if (!g_glass_enabled) gl_settings_set_glass_enabled(YES);
+        } else if ([key isEqualToString:@"grid"]) {
+            gl_settings_set_grid([value boolValue]);
         }
         result(nil);
     } else if ([call.method isEqualToString:@"exportAnimatedGif"]) {
@@ -747,6 +779,17 @@ static void gl_settings_set_rainbow(BOOL on) {
     if (on) draw_rainbow_indicator(); else clear_screen();
 }
 
+static void gl_settings_set_grid(BOOL on) {
+    g_show_grid = on;
+    glaspen2_save_bool_setting("grid", on ? 1 : 0);
+    sync_settings_panel();
+    if (on) {
+        draw_grid();
+    } else {
+        rebuild_surface_from_strokes();
+    }
+}
+
 static void gl_settings_set_launch(BOOL on) {
     glaspen2_set_launch_at_login(on ? 1 : 0);
     NSMenuItem *item = [g_menu itemWithTag:777];
@@ -796,6 +839,7 @@ static void sync_settings_panel(void) {
         @"rainbow": @(g_show_rainbow),
         @"launchAtLogin": @(glaspen2_is_launch_at_login()),
         @"frostedGlass": @(g_glass_enabled),
+        @"grid": @(g_show_grid),
     }];
 }
 
@@ -1038,6 +1082,9 @@ static void rebuild_surface_from_strokes(void) {
     if (!g_surface) return;
     // Delegate the actual Cairo rendering to Rust (avoids per-point FFI overhead)
     glaspen2_draw_rebuild((void *)g_surface, g_scale);
+
+    // Grid goes behind strokes (DEST_OVER)
+    draw_grid();
 
     // Rainbow is drawn by ObjC (g_show_rainbow is a host-side boolean)
     cairo_surface_flush(g_surface);
@@ -1636,6 +1683,9 @@ void glaspen2_run(void) {
         if (glass_milli > 0) g_glass_opacity = glass_milli / 1000.0;
         g_glass_enabled = glaspen2_load_bool_setting("glass_enabled") != 0;
         gl_glass_apply();
+
+        // Restore grid setting
+        g_show_grid = glaspen2_load_bool_setting("grid") != 0;
 
         // Apply glass visual on startup
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{

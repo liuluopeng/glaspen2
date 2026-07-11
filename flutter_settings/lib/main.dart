@@ -310,6 +310,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _smooth = true;
   bool _invert = false;
   bool _pressureMonitor = false;
+  bool _showGrid = false;
   bool _connected = false;
 
   // Match C# tray menu's PresetColors and widths
@@ -355,6 +356,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _smooth = s['smooth'] ?? _smooth;
         _invert = s['invert'] ?? _invert;
         _pressureMonitor = s['pressureMonitor'] ?? _pressureMonitor;
+        _showGrid = s['grid'] ?? _showGrid;
       });
     }
   }
@@ -369,6 +371,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _smooth = settings['smooth'] ?? true;
           _invert = settings['invert'] ?? false;
           _pressureMonitor = settings['pressureMonitor'] ?? false;
+          _showGrid = settings['grid'] ?? false;
           _connected = true;
         });
         // Re-measure after settings change content height.
@@ -562,6 +565,17 @@ class _SettingsPageState extends State<SettingsPage> {
           onChanged: (v) {
             setState(() => _pressureMonitor = v);
             _setSetting('pressureMonitor', v);
+          },
+        ),
+        SwitchListTile(
+          title: const Text('显示网格 (40px)', style: TextStyle(fontSize: 15)),
+          subtitle: const Text('涂鸦时辅助对齐', style: TextStyle(fontSize: 12)),
+          value: _showGrid,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (v) {
+            setState(() => _showGrid = v);
+            _setSetting('grid', v);
           },
         ),
       ],
