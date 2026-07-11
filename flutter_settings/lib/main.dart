@@ -851,6 +851,16 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
         ),
+        ElevatedButton.icon(
+          onPressed: () {
+            _setSetting('export_pdf', true);
+          },
+          icon: const Icon(Icons.picture_as_pdf, size: 16),
+          label: const Text('导出 PDF', style: TextStyle(fontSize: 15)),
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          ),
+        ),
       ],
     );
   }
@@ -904,46 +914,44 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   Widget _buildExportButtons() {
-    // Animated GIF export is only supported on macOS (ObjC handler).
-    if (!Platform.isMacOS) {
-      return const Text('（动画 GIF 导出仅在 macOS 可用）',
-          style: TextStyle(fontSize: 14, color: Colors.grey));
+    // Animated GIF is macOS-only (uses ObjC). PDF works on all platforms.
+    final children = <Widget>[];
+    if (Platform.isMacOS) {
+      children.add(const Text(
+        '将当前笔迹按笔顺生成为动画 GIF，自动复制到剪贴板并保存到桌面。',
+        style: TextStyle(fontSize: 13, color: Colors.grey),
+      ));
+      children.add(const SizedBox(height: 8));
+      children.add(FilledButton.icon(
+        icon: _gifExporting
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.animation, size: 18),
+        label: Text(_gifExporting ? '生成中…' : '导出动画 GIF'),
+        onPressed: _gifExporting ? null : _exportAnimatedGif,
+      ));
+      children.add(const SizedBox(height: 8));
     }
+    children.add(FilledButton.icon(
+      icon: _pdfExporting
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            )
+          : const Icon(Icons.picture_as_pdf, size: 18),
+      label: Text(_pdfExporting ? '导出中…' : '导出全部页面为 PDF'),
+      onPressed: _pdfExporting ? null : _exportPdf,
+    ));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          '将当前笔迹按笔顺生成为动画 GIF，自动复制到剪贴板并保存到桌面。',
-          style: TextStyle(fontSize: 13, color: Colors.grey),
-        ),
-        const SizedBox(height: 8),
-        FilledButton.icon(
-          icon: _gifExporting
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Icon(Icons.animation, size: 18),
-          label: Text(_gifExporting ? '生成中…' : '导出动画 GIF'),
-          onPressed: _gifExporting ? null : _exportAnimatedGif,
-        ),
-        const SizedBox(height: 8),
-        FilledButton.icon(
-          icon: _pdfExporting
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
-              : const Icon(Icons.picture_as_pdf, size: 18),
-          label: Text(_pdfExporting ? '导出中…' : '导出全部页面为 PDF'),
-          onPressed: _pdfExporting ? null : _exportPdf,
-        ),
-      ],
+      children: children,
     );
   }
 
