@@ -1584,25 +1584,30 @@ pub extern "C" fn glaspen2_render_thumbnail(
         }));
     }
 
-    // Clamp stroke widths so thin lines don't disappear at thumbnail scale
-    let min_w = 0.5 / scale;
-    {
-        let mut dst2 = STROKES.lock().unwrap();
-        for s in dst2.iter_mut() {
-            for p in s.points.iter_mut() {
-                if p.2 < min_w { p.2 = min_w; }
-            }
-        }
-    }
+    // Render full resolution → scale down (preserves stroke proportions)
+    let Ok(full) = crate::cairo::ImageSurface::create(
+        crate::cairo::Format::ARgb32, w, h,
+    ) else {
+        unsafe { *out_len = 0; }
+        return std::ptr::null_mut();
+    };
+    crate::draw::draw_rebuild_on_surface(&full, 1.0);
 
-    // Render directly at thumbnail scale
     let mut thumb = match crate::cairo::ImageSurface::create(
         crate::cairo::Format::ARgb32, tw, th,
     ) {
         Ok(s) => s,
         Err(_) => { unsafe { *out_len = 0; } return std::ptr::null_mut(); }
     };
-    crate::draw::draw_rebuild_on_surface(&thumb, scale);
+    {
+        let Ok(cr) = crate::cairo::Context::new(&thumb) else {
+            unsafe { *out_len = 0; }
+            return std::ptr::null_mut();
+        };
+        cr.scale(scale, scale);
+        let _ = cr.set_source_surface(&full, 0.0, 0.0);
+        let _ = cr.paint();
+    }
 
     let stride = thumb.stride() as usize;
     let Ok(data) = thumb.data() else {
