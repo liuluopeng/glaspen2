@@ -5,7 +5,10 @@
 
 fn main() {
     #[cfg(target_os = "macos")]
-    glaspen2::macos::macos_run();
+    {
+        glaspen2::ws::start_server();
+        glaspen2::macos::macos_run();
+    }
 
     #[cfg(target_os = "windows")]
     glaspen2::windows::win_main();

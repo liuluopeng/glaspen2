@@ -37,6 +37,7 @@ pub mod modeler;
 pub mod ocr;
 pub mod pdf;
 pub mod state;
+pub mod ws;
 
 // ---------------------------------------------------------------------------
 // Core types

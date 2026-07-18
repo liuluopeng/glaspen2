@@ -8,7 +8,7 @@ use std::slice;
 
 use crate::{
     db, desktop_path, modeler, ocr, pressure_to_width, runtime, state, timestamped_name,
-    timestamped_path, db::OcrBox, RAW_STROKE_START, Stroke, STROKES,
+    timestamped_path, ws, db::OcrBox, RAW_STROKE_START, Stroke, STROKES,
 };
 
 // ---------------------------------------------------------------------------
@@ -162,6 +162,12 @@ pub extern "C" fn glaspen2_modeler_commit_to_strokes(
         for (sx, sy, sw, st) in smoothed {
             last.points.push((sx, sy, sw, st));
         }
+    }
+    drop(strokes);
+
+    // Broadcast SVG to WebSocket clients (draw-guess)
+    if let Some(svg) = build_cropped_svg() {
+        ws::broadcast_svg(&svg);
     }
 }
 
