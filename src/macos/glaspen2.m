@@ -1511,8 +1511,18 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     NSInteger subtype = [nsevent subtype];
     NSEventType etype = [nsevent type];
     CGFloat pressure = [nsevent pressure];
+
     BOOL isPen = (devType == NSPenPointingDevice || devType == NSEraserPointingDevice ||
                   subtype == 1 || subtype == 2);
+
+    // Non-pen mouse move while no active stroke and cursor visible → hide crosshair.
+    // Covers pen-leave-proximity on tablets that don't emit proximity events.
+    // The g_stroke_active guard prevents spurious non-pen events interleaved during
+    // a stroke (from trackpad / secondary input) from causing extra redraws.
+    if (!isPen && etype == NSEventTypeMouseMoved && g_cursor_visible && !g_stroke_active) {
+        g_cursor_visible = NO;
+        [g_draw_view setNeedsDisplay:YES];
+    }
 
     // Update cursor position for pen events only
     if (isPen) {
