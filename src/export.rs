@@ -6,10 +6,14 @@ use std::os::raw::{c_char, c_double, c_int, c_uchar};
 use std::path::PathBuf;
 use std::slice;
 
+use std::time::Instant;
 use crate::{
     db, desktop_path, modeler, ocr, pressure_to_width, runtime, state, timestamped_name,
     timestamped_path, ws, db::OcrBox, RAW_STROKE_START, Stroke, STROKES,
 };
+
+// Throttle: send at most one move event per 20ms
+static WS_LAST_MOVE: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
 
 // ---------------------------------------------------------------------------
 // Drawing FFI (legacy, non-modeler path)
@@ -93,19 +97,18 @@ pub extern "C" fn glaspen2_modeler_begin(
     timestamp: c_double,
     width_scale: c_double,
 ) {
+    let w = pressure_to_width(pressure, width_scale);
     modeler::begin_stroke(x, y, pressure, timestamp, width_scale);
     *RAW_STROKE_START.lock().unwrap() = Some(timestamp);
-    // Start DB stroke with correct color
     runtime().block_on(db::begin_stroke(r, g, b, width_scale));
-    state::buffer_point(x, y, pressure_to_width(pressure, width_scale), 0.0); // sync
-    // Start STROKES entry
+    state::buffer_point(x, y, w, 0.0);
     let mut strokes = STROKES.lock().unwrap();
-    strokes.push(Stroke {
-        r,
-        g,
-        b,
-        points: Vec::new(),
-    });
+    strokes.push(Stroke { r, g, b, points: Vec::new() });
+    drop(strokes);
+    ws::broadcast(&format!(
+        r##"{{"t":"d","x":{},"y":{},"w":{},"r":{},"g":{},"b":{}}}"##,
+        x as i64, y as i64, w as i64, r, g, b
+    ));
 }
 
 #[unsafe(no_mangle)]
@@ -116,14 +119,19 @@ pub extern "C" fn glaspen2_modeler_move(
     timestamp: c_double,
     width_scale: c_double,
 ) {
+    let w = pressure_to_width(pressure, width_scale);
     modeler::pen_move(x, y, pressure, timestamp, width_scale);
     let start = RAW_STROKE_START.lock().unwrap().unwrap_or(timestamp);
-    state::buffer_point(
-        x,
-        y,
-        pressure_to_width(pressure, width_scale),
-        timestamp - start,
-    );
+    state::buffer_point(x, y, w, timestamp - start);
+    // Throttled broadcast (max 50 Hz)
+    let now = Instant::now();
+    if WS_LAST_MOVE.lock().unwrap().map_or(true, |t| now.duration_since(t).as_millis() >= 20) {
+        *WS_LAST_MOVE.lock().unwrap() = Some(now);
+        ws::broadcast(&format!(
+            r##"{{"t":"m","x":{},"y":{},"w":{}}}"##,
+            x as i64, y as i64, w as i64
+        ));
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -136,13 +144,9 @@ pub extern "C" fn glaspen2_modeler_end(
 ) {
     modeler::end_stroke(x, y, pressure, timestamp, width_scale);
     let start = RAW_STROKE_START.lock().unwrap().unwrap_or(timestamp);
-    state::buffer_point(
-        x,
-        y,
-        pressure_to_width(pressure, width_scale),
-        timestamp - start,
-    ); // sync
+    state::buffer_point(x, y, pressure_to_width(pressure, width_scale), timestamp - start);
     db::end_stroke_spawned();
+    ws::broadcast(r##"{"t":"u"}"##);
 }
 
 /// Commit the modeler buffer into STROKES. Call after drawing the buffer.
@@ -162,12 +166,6 @@ pub extern "C" fn glaspen2_modeler_commit_to_strokes(
         for (sx, sy, sw, st) in smoothed {
             last.points.push((sx, sy, sw, st));
         }
-    }
-    drop(strokes);
-
-    // Broadcast SVG to WebSocket clients (draw-guess)
-    if let Some(svg) = build_cropped_svg() {
-        ws::broadcast_svg(&svg);
     }
 }
 

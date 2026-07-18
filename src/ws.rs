@@ -15,20 +15,31 @@ const PAGE: &str = r#"<!DOCTYPE html>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#222;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;color:#fff}
 #container{text-align:center}
-#canvas{max-width:100vw;max-height:90vh;border:1px solid #444;background:#fff;image-rendering:pixelated}
-#status{padding:8px;font-size:14px}
+canvas{max-width:100vw;max-height:90vh;border:1px solid #444;background:#fff}
+#status{padding:8px;font-size:14px;color:#fff}
 </style></head><body>
 <div id=container>
-<img id=canvas src="" alt="waiting for strokes">
+<canvas id=c width=1200 height=800></canvas>
 <div id=status>Connecting...</div>
 </div>
 <script>
 let ws = new WebSocket('ws://localhost:9876');
-let img = document.getElementById('canvas');
+let cv = document.getElementById('c'), cx = cv.getContext('2d');
 let st = document.getElementById('status');
+let curX, curY, curW, curR, curG, curB;
+cx.lineCap = 'round'; cx.lineJoin = 'round';
+
 ws.onopen = () => st.textContent = 'Connected';
-ws.onmessage = (e) => { img.src = 'data:image/svg+xml;base64,' + btoa(e.data); };
-ws.onerror = (e) => st.textContent = 'WS Error: ' + JSON.stringify(e);
+ws.onmessage = (e) => {
+    let d = JSON.parse(e.data);
+    if (d.t === 'd') { curX=d.x; curY=d.y; curW=d.w; curR=d.r; curG=d.g; curB=d.b; }
+    if (d.t === 'm') {
+        cx.strokeStyle = 'rgb('+(curR*255|0)+','+(curG*255|0)+','+(curB*255|0)+')';
+        cx.lineWidth = curW;
+        cx.beginPath(); cx.moveTo(curX, curY); cx.lineTo(d.x, d.y); cx.stroke();
+        curX = d.x; curY = d.y;
+    }
+};
 ws.onclose = () => st.textContent = 'Disconnected';
 </script></body></html>"#;
 
@@ -88,8 +99,8 @@ async fn handle_ws(mut ws: WsStream<tokio::net::TcpStream>, tx: broadcast::Sende
     }
 }
 
-pub fn broadcast_svg(svg: &str) {
+pub fn broadcast(msg: &str) {
     if let Some(tx) = BROADCASTER.lock().unwrap().as_ref() {
-        tx.send(svg.to_string()).ok();
+        tx.send(msg.to_string()).ok();
     }
 }
