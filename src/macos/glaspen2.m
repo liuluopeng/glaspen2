@@ -1668,6 +1668,35 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     double raw_w = (pressure > 0.01) ? (0.3 + pressure * pressure * 7.7) * g_width_scale
                                      : 1.0 * g_width_scale;
 
+    // Pressure monitor: update on pen event before early returns
+    if (g_pressure_monitor && isPen) {
+        g_pm_in_range = YES;
+        int64_t rawField = CGEventGetIntegerValueField(event, kCGTabletEventPointPressure);
+        g_pm_pressure = (rawField > 0)
+            ? (int)(rawField * 65535 / 65536)
+            : (int)(pressure * 65535);
+        g_pm_x = px;
+        g_pm_y = py;
+        g_pm_tip_down = (etype == NSEventTypeLeftMouseDown || etype == NSEventTypeRightMouseDown ||
+                         etype == NSEventTypeOtherMouseDown ||
+                         etype == NSEventTypeLeftMouseDragged || etype == NSEventTypeRightMouseDragged ||
+                         etype == NSEventTypeOtherMouseDragged);
+                switch (etype) {
+            case NSEventTypeLeftMouseDown:    g_pm_evtype = @"DOWN";  break;
+            case NSEventTypeLeftMouseUp:      g_pm_evtype = @"UP";    break;
+            case NSEventTypeLeftMouseDragged: g_pm_evtype = @"DRAG";  break;
+            case NSEventTypeRightMouseDown:   g_pm_evtype = @"R_DOWN"; break;
+            case NSEventTypeRightMouseUp:     g_pm_evtype = @"R_UP";  break;
+            case NSEventTypeRightMouseDragged:g_pm_evtype = @"R_DRAG"; break;
+            case NSEventTypeOtherMouseDown:   g_pm_evtype = @"O_DOWN"; break;
+            case NSEventTypeOtherMouseUp:     g_pm_evtype = @"O_UP";  break;
+            case NSEventTypeOtherMouseDragged:g_pm_evtype = @"O_DRAG"; break;
+            case NSEventTypeMouseMoved:       g_pm_evtype = g_pm_tip_down ? @"DOWN" : @"MOVE"; break;
+            default:                          g_pm_evtype = g_pm_tip_down ? @"DOWN" : @"MOVE"; break;
+        }
+        pm_update();
+    }
+
     if (isPen && (etype == NSEventTypeLeftMouseDown || etype == NSEventTypeRightMouseDown ||
                   etype == NSEventTypeOtherMouseDown)) {
         // Pen down: start modeler, draw raw dot immediately (no lag)
@@ -1715,39 +1744,11 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         return NULL;
     }
 
-    // Pressure monitor: update state and refresh display
-    if (g_pressure_monitor) {
-        if (isPen) {
-            g_pm_in_range = YES;
-            int64_t rawField = CGEventGetIntegerValueField(event, kCGTabletEventPointPressure);
-            g_pm_pressure = (rawField > 0)
-                ? (int)(rawField * 65535 / 65536)
-                : (int)(pressure * 65535);
-            g_pm_x = px;
-            g_pm_y = py;
-            g_pm_tip_down = (etype == NSEventTypeLeftMouseDown || etype == NSEventTypeRightMouseDown ||
-                             etype == NSEventTypeOtherMouseDown ||
-                             etype == NSEventTypeLeftMouseDragged || etype == NSEventTypeRightMouseDragged ||
-                             etype == NSEventTypeOtherMouseDragged);
-            switch (etype) {
-                case NSEventTypeLeftMouseDown:    g_pm_evtype = @"DOWN";  break;
-                case NSEventTypeLeftMouseUp:      g_pm_evtype = @"UP";    break;
-                case NSEventTypeLeftMouseDragged: g_pm_evtype = @"DRAG";  break;
-                case NSEventTypeRightMouseDown:   g_pm_evtype = @"R_DOWN"; break;
-                case NSEventTypeRightMouseUp:     g_pm_evtype = @"R_UP";  break;
-                case NSEventTypeRightMouseDragged:g_pm_evtype = @"R_DRAG"; break;
-                case NSEventTypeOtherMouseDown:   g_pm_evtype = @"O_DOWN"; break;
-                case NSEventTypeOtherMouseUp:     g_pm_evtype = @"O_UP";  break;
-                case NSEventTypeOtherMouseDragged:g_pm_evtype = @"O_DRAG"; break;
-                case NSEventTypeMouseMoved:       g_pm_evtype = g_pm_tip_down ? @"DOWN" : @"MOVE"; break;
-                default:                          g_pm_evtype = g_pm_tip_down ? @"DOWN" : @"MOVE"; break;
-            }
-            pm_update();
-        } else if (etype == NSEventTypeMouseMoved && g_pm_in_range) {
-            g_pm_in_range = NO;
-            g_pm_evtype = @"AWAY";
-            pm_update();
-        }
+    // Pressure monitor: away detection (non-pen mouse move after pen in range)
+    if (g_pressure_monitor && etype == NSEventTypeMouseMoved && !isPen && g_pm_in_range) {
+        g_pm_in_range = NO;
+        g_pm_evtype = @"AWAY";
+        pm_update();
     }
 
     perf_log_event("tick", elapsed_us(t0));
