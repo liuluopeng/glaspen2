@@ -100,6 +100,7 @@ async fn handle_ws(mut ws: WsStream<tokio::net::TcpStream>, tx: broadcast::Sende
 }
 
 pub fn broadcast(msg: &str) {
+    eprintln!("[ws] bcast: {}", &msg[..msg.len().min(60)]);
     if let Some(tx) = BROADCASTER.lock().unwrap().as_ref() {
         tx.send(msg.to_string()).ok();
     }
