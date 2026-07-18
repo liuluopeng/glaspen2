@@ -36,6 +36,9 @@ static void gl_settings_set_glass_enabled(BOOL on);
 static void gl_settings_set_glass_opacity(double alpha);
 static void gl_settings_set_grid(BOOL on);
 static void gl_settings_set_pressure_monitor(BOOL on);
+static void pm_ensure_window(void);
+static void pm_show(void);
+static void pm_hide(void);
 static void pm_destroy(void);
 static void pm_update(void);
 static void draw_grid(void);
@@ -923,7 +926,7 @@ static void gl_settings_set_enabled(BOOL on) {
 
 // --- Pressure monitor (top-left info window) ---
 
-static void pm_create_window(void) {
+static void pm_ensure_window(void) {
     if (g_pm_window) return;
     NSScreen *screen = [NSScreen mainScreen];
     NSRect screenFrame = [screen frame];
@@ -937,6 +940,7 @@ static void pm_create_window(void) {
     [g_pm_window setBackgroundColor:[NSColor colorWithWhite:0.12 alpha:1.0]];
     [g_pm_window setIgnoresMouseEvents:YES];
     [g_pm_window setTitle:@"Pressure"];
+    [g_pm_window setReleasedWhenClosed:NO];
 
     g_pm_label = [[NSTextField alloc] initWithFrame:NSMakeRect(4, 2, 212, 26)];
     [g_pm_label setStringValue:@"P=-----  AWAY  (---,---)"];
@@ -947,8 +951,17 @@ static void pm_create_window(void) {
     [g_pm_label setEditable:NO];
     [g_pm_label setSelectable:NO];
     [[g_pm_window contentView] addSubview:g_pm_label];
+}
 
+static void pm_show(void) {
+    pm_ensure_window();
     [g_pm_window orderFront:nil];
+}
+
+static void pm_hide(void) {
+    if (g_pm_window) {
+        [g_pm_window orderOut:nil];
+    }
 }
 
 static void pm_update(void) {
@@ -977,13 +990,13 @@ static void pm_destroy(void) {
 static void gl_settings_set_pressure_monitor(BOOL on) {
     g_pressure_monitor = on;
     glaspen2_save_bool_setting("pressure_monitor", on ? 1 : 0);
-    sync_settings_panel();
     if (on) {
-        pm_create_window();
+        pm_show();
         pm_update();
     } else {
-        pm_destroy();
+        pm_hide();
     }
+    sync_settings_panel();
 }
 
 static void sync_settings_panel(void) {
@@ -1876,7 +1889,8 @@ void glaspen2_run(void) {
         g_pressure_monitor = glaspen2_load_bool_setting("pressure_monitor") != 0;
         if (g_pressure_monitor) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                pm_create_window();
+                pm_ensure_window();
+                pm_show();
                 pm_update();
             });
         }
