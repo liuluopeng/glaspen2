@@ -16,38 +16,28 @@ const PAGE: &str = r#"<!DOCTYPE html>
 body{background:#222;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;color:#fff}
 #container{text-align:center}
 #c{max-width:100vw;max-height:90vh;border:1px solid #444;background:#fff}
-#s{padding:8px;font-size:14px;color:#fff;white-space:pre-wrap}
+#s{color:#888;font-size:13px}
 </style></head><body>
-<div id=container>
+<div>
 <canvas id=c width=3440 height=1440></canvas>
-<div id=s>Connecting...</div>
+<div id=s>Connected</div>
 </div>
 <script>
-let ws = new WebSocket('ws://localhost:9876');
-let cv = document.getElementById('c'), cx = cv.getContext('2d');
-let s = document.getElementById('s');
+let ws = new WebSocket('ws://localhost:9876'), cv = document.getElementById('c'), cx = cv.getContext('2d'), s = document.getElementById('s');
 let curX, curY, curR, curG, curB;
-
-cx.lineCap = 'round'; cx.lineJoin = 'round';
-
-ws.onopen = () => { s.textContent = 'Connected OK'; log('WS opened') };
-ws.onerror = (e) => { s.textContent = 'WS ERROR: ' + (e.message||'?'); log('WS err: '+JSON.stringify(e)) };
-ws.onclose = (e) => { s.textContent = 'Disconnected code='+e.code; log('WS close '+e.code) };
+cx.lineCap='round'; cx.lineJoin='round';
+ws.onopen = () => console.log('WS connected');
+ws.onerror = (e) => { console.error('WS error:', e); s.textContent = 'Error — see console' };
+ws.onclose = (e) => { console.log('WS closed:', e.code); s.textContent = 'Disconnected' };
 ws.onmessage = (e) => {
-    log('rcv: '+e.data.slice(0,40));
     let d = JSON.parse(e.data);
     if (d.t === 'd') { curX=d.x; curY=d.y; curR=d.r; curG=d.g; curB=d.b; }
-    if (d.t === 'm') {
-        let w = Math.max(d.w, 1);
-        cx.strokeStyle = 'rgb('+(curR*255|0)+','+(curG*255|0)+','+(curB*255|0)+')';
-        cx.lineWidth = w;
-        cx.beginPath(); cx.moveTo(curX, curY); cx.lineTo(d.x, d.y); cx.stroke();
-        curX = d.x; curY = d.y;
+    else if (d.t === 'm') {
+        cx.strokeStyle='rgb('+(curR*255|0)+','+(curG*255|0)+','+(curB*255|0)+')';
+        cx.lineWidth=Math.max(d.w,1); cx.beginPath(); cx.moveTo(curX,curY); cx.lineTo(d.x,d.y); cx.stroke();
+        curX=d.x; curY=d.y;
     }
-    if (d.t === 'u') { curX = null; }
 };
-
-let log = (m) => { let e = document.createElement('div'); e.textContent = m; s.appendChild(e); };
 </script></body></html>"#;
 
 pub fn start_server() {
@@ -109,7 +99,6 @@ async fn handle_ws(mut ws: WsStream<tokio::net::TcpStream>, tx: broadcast::Sende
 }
 
 pub fn broadcast(msg: &str) {
-    eprintln!("[ws] bcast: {}", &msg[..msg.len().min(60)]);
     if let Some(tx) = BROADCASTER.lock().unwrap().as_ref() {
         tx.send(msg.to_string()).ok();
     }
