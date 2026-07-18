@@ -15,32 +15,39 @@ const PAGE: &str = r#"<!DOCTYPE html>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#222;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;color:#fff}
 #container{text-align:center}
-canvas{max-width:100vw;max-height:90vh;border:1px solid #444;background:#fff}
-#status{padding:8px;font-size:14px;color:#fff}
+#c{max-width:100vw;max-height:90vh;border:1px solid #444;background:#fff}
+#s{padding:8px;font-size:14px;color:#fff;white-space:pre-wrap}
 </style></head><body>
 <div id=container>
-<canvas id=c width=1200 height=800></canvas>
-<div id=status>Connecting...</div>
+<canvas id=c width=3440 height=1440></canvas>
+<div id=s>Connecting...</div>
 </div>
 <script>
 let ws = new WebSocket('ws://localhost:9876');
 let cv = document.getElementById('c'), cx = cv.getContext('2d');
-let st = document.getElementById('status');
-let curX, curY, curW, curR, curG, curB;
+let s = document.getElementById('s');
+let curX, curY, curR, curG, curB;
+
 cx.lineCap = 'round'; cx.lineJoin = 'round';
 
-ws.onopen = () => st.textContent = 'Connected';
+ws.onopen = () => { s.textContent = 'Connected OK'; log('WS opened') };
+ws.onerror = (e) => { s.textContent = 'WS ERROR: ' + (e.message||'?'); log('WS err: '+JSON.stringify(e)) };
+ws.onclose = (e) => { s.textContent = 'Disconnected code='+e.code; log('WS close '+e.code) };
 ws.onmessage = (e) => {
+    log('rcv: '+e.data.slice(0,40));
     let d = JSON.parse(e.data);
-    if (d.t === 'd') { curX=d.x; curY=d.y; curW=d.w; curR=d.r; curG=d.g; curB=d.b; }
+    if (d.t === 'd') { curX=d.x; curY=d.y; curR=d.r; curG=d.g; curB=d.b; }
     if (d.t === 'm') {
+        let w = Math.max(d.w, 1);
         cx.strokeStyle = 'rgb('+(curR*255|0)+','+(curG*255|0)+','+(curB*255|0)+')';
-        cx.lineWidth = curW;
+        cx.lineWidth = w;
         cx.beginPath(); cx.moveTo(curX, curY); cx.lineTo(d.x, d.y); cx.stroke();
         curX = d.x; curY = d.y;
     }
+    if (d.t === 'u') { curX = null; }
 };
-ws.onclose = () => st.textContent = 'Disconnected';
+
+let log = (m) => { let e = document.createElement('div'); e.textContent = m; s.appendChild(e); };
 </script></body></html>"#;
 
 pub fn start_server() {
@@ -67,12 +74,14 @@ pub fn start_server() {
             let (tx, _) = broadcast::channel::<String>(32);
             *BROADCASTER.lock().unwrap() = Some(tx.clone());
             let listener = TcpListener::bind("127.0.0.1:9876").await.expect("bind WS");
-            while let Ok((stream, _)) = listener.accept().await {
+            eprintln!("[ws] WS server ready on port 9876");
+            while let Ok((stream, peer)) = listener.accept().await {
+                eprintln!("[ws] connection from {}", peer);
                 let tx = tx.clone();
                 tokio::spawn(async move {
                     match accept_async(stream).await {
-                        Ok(ws) => handle_ws(ws, tx).await,
-                        Err(_) => {}
+                        Ok(ws) => { eprintln!("[ws] WS upgraded OK"); handle_ws(ws, tx).await; }
+                        Err(e) => eprintln!("[ws] WS upgrade failed: {}", e),
                     }
                 });
             }
