@@ -39,8 +39,6 @@ static void gl_settings_set_pressure_monitor(BOOL on);
 static void pm_ensure_window(void);
 static void pm_show(void);
 static void pm_hide(void);
-static void pm_start_away_timer(void);
-static void pm_cancel_away_timer(void);
 static void pm_destroy(void);
 static void pm_update(void);
 static void draw_grid(void);
@@ -171,7 +169,6 @@ static NSString *g_pm_evtype = nil;
 static BOOL g_pm_tip_down = NO;
 static BOOL g_pm_in_range = NO;
 static CGFloat g_pm_x = 0, g_pm_y = 0;
-static dispatch_source_t g_pm_away_timer = nil;
 
 // Pen color state
 static double g_pen_r = 1.0, g_pen_g = 0.0, g_pen_b = 0.0;
@@ -947,8 +944,8 @@ static void pm_ensure_window(void) {
     [g_pm_window setReleasedWhenClosed:NO];
 
     g_pm_label = [[NSTextField alloc] initWithFrame:NSMakeRect(4, 2, 212, 26)];
-    g_pm_evtype = @"AWAY";
-    [g_pm_label setStringValue:@"P=-----  AWAY  (---,---)"];
+    g_pm_evtype = nil;
+    [g_pm_label setStringValue:@"P=-----  ---  (---,---)"];
     [g_pm_label setTextColor:[NSColor whiteColor]];
     [g_pm_label setFont:[NSFont fontWithName:@"Menlo" size:12]];
     [g_pm_label setBezeled:NO];
@@ -964,37 +961,14 @@ static void pm_show(void) {
 }
 
 static void pm_hide(void) {
-    pm_cancel_away_timer();
     if (g_pm_window) {
         [g_pm_window orderOut:nil];
     }
 }
 
-static void pm_start_away_timer(void) {
-    pm_cancel_away_timer();
-    g_pm_away_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
-    dispatch_source_set_timer(g_pm_away_timer, dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC),
-                              DISPATCH_TIME_FOREVER, 0);
-    dispatch_source_set_event_handler(g_pm_away_timer, ^{
-        g_pm_in_range = NO;
-        g_pm_evtype = @"AWAY";
-        pm_update();
-        dispatch_source_cancel(g_pm_away_timer);
-        g_pm_away_timer = nil;
-    });
-    dispatch_resume(g_pm_away_timer);
-}
-
-static void pm_cancel_away_timer(void) {
-    if (g_pm_away_timer) {
-        dispatch_source_cancel(g_pm_away_timer);
-        g_pm_away_timer = nil;
-    }
-}
-
 static void pm_update(void) {
     if (!g_pm_window || !g_pm_label) return;
-    NSString *typeStr = g_pm_evtype ? g_pm_evtype : (g_pm_in_range ? @"MOVE" : @"AWAY");
+    NSString *typeStr = g_pm_evtype ? g_pm_evtype : @"---";
     [g_pm_label setStringValue:[NSString stringWithFormat:@"P=%-5d  %@  (%d,%d)",
                                  g_pm_pressure, typeStr,
                                  (int)g_pm_x, (int)g_pm_y]];
@@ -1720,7 +1694,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             case NSEventTypeMouseMoved:       g_pm_evtype = g_pm_tip_down ? @"DOWN" : @"MOVE"; break;
             default:                          g_pm_evtype = g_pm_tip_down ? @"DOWN" : @"MOVE"; break;
         }
-        pm_cancel_away_timer();
         pm_update();
     }
 
@@ -1767,17 +1740,8 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             stroke_end(); // release shared cairo context
             g_stroke_active = NO;
             g_raw_has_last = NO;
-            pm_start_away_timer();
         }
         return NULL;
-    }
-
-    // Pressure monitor: any non-pen event means pen left proximity
-    if (g_pressure_monitor && !isPen && g_pm_in_range) {
-        pm_cancel_away_timer();
-        g_pm_in_range = NO;
-        g_pm_evtype = @"AWAY";
-        pm_update();
     }
 
     perf_log_event("tick", elapsed_us(t0));
