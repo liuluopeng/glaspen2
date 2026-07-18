@@ -1585,7 +1585,10 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 }
             }
         }
-        // Not a hotkey — pass through to system
+        // Not a hotkey — log and pass through
+        NSString *chars = [keyEvent characters];
+        unsigned short kc = [keyEvent keyCode];
+        NSLog(@"[pen-btn] KEY_DOWN keyCode=%hu chars=%@", kc, chars);
         return event;
     }
 
@@ -1604,27 +1607,12 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     BOOL isPen = (devType == NSPenPointingDevice || devType == NSEraserPointingDevice ||
                   subtype == 1 || subtype == 2);
 
-    // DEBUG: log pen button events (OtherMouse = button 2+)
-    if (etype == NSEventTypeOtherMouseDown || etype == NSEventTypeOtherMouseUp ||
-        etype == NSEventTypeOtherMouseDragged) {
-        NSInteger btn = [nsevent buttonNumber];
+    // DEBUG: log ALL pen events with full tablet button state
+    if (isPen) {
         int64_t tabletButtons = CGEventGetIntegerValueField(event, kCGTabletEventPointButtons);
-        NSLog(@"[pen-btn] %@ btn=%ld isPen=%d subtype=%ld tabletButtons=0x%llx pressure=%.2f",
-              (etype == NSEventTypeOtherMouseDown ? @"DOWN" :
-               etype == NSEventTypeOtherMouseUp ? @"UP" : @"DRAG"),
-              (long)btn, isPen, (long)subtype, tabletButtons, pressure);
+        NSLog(@"[pen-btn] type=%ld subtype=%ld btn=%ld tabletButtons=0x%llx pressure=%.2f",
+              (long)etype, (long)subtype, (long)[nsevent buttonNumber], tabletButtons, pressure);
     }
-    // DEBUG: also log Left/Right mouse events that are from the pen
-    if (isPen && (etype == NSEventTypeLeftMouseDown || etype == NSEventTypeLeftMouseUp ||
-                  etype == NSEventTypeRightMouseDown || etype == NSEventTypeRightMouseUp)) {
-        int64_t tabletButtons = CGEventGetIntegerValueField(event, kCGTabletEventPointButtons);
-        NSLog(@"[pen-btn] %s btn=%ld isPen=%d tabletButtons=0x%llx",
-              (etype == NSEventTypeLeftMouseDown ? "LEFT_DOWN" :
-               etype == NSEventTypeLeftMouseUp ? "LEFT_UP" :
-               etype == NSEventTypeRightMouseDown ? "RIGHT_DOWN" : "RIGHT_UP"),
-              (long)[nsevent buttonNumber], isPen, tabletButtons);
-    }
-
     // Non-pen mouse move while no active stroke and cursor visible → hide crosshair.
     // Covers pen-leave-proximity on tablets that don't emit proximity events.
     // The g_stroke_active guard prevents spurious non-pen events interleaved during
