@@ -164,7 +164,8 @@ static NSCursor *g_arrow_cursor = nil;
 static BOOL g_pressure_monitor = NO;
 static NSWindow *g_pm_window = nil;
 static NSTextField *g_pm_label = nil;
-static CGFloat g_pm_pressure = 0;
+static int g_pm_pressure = 0;
+static NSString *g_pm_evtype = nil;
 static BOOL g_pm_tip_down = NO;
 static BOOL g_pm_in_range = NO;
 static CGFloat g_pm_x = 0, g_pm_y = 0;
@@ -943,6 +944,7 @@ static void pm_ensure_window(void) {
     [g_pm_window setReleasedWhenClosed:NO];
 
     g_pm_label = [[NSTextField alloc] initWithFrame:NSMakeRect(4, 2, 212, 26)];
+    g_pm_evtype = @"AWAY";
     [g_pm_label setStringValue:@"P=-----  AWAY  (---,---)"];
     [g_pm_label setTextColor:[NSColor whiteColor]];
     [g_pm_label setFont:[NSFont fontWithName:@"Menlo" size:12]];
@@ -966,16 +968,9 @@ static void pm_hide(void) {
 
 static void pm_update(void) {
     if (!g_pm_window || !g_pm_label) return;
-    NSString *stateStr;
-    if (!g_pm_in_range) {
-        stateStr = @"AWAY";
-    } else if (g_pm_tip_down) {
-        stateStr = (g_pm_pressure > 0.01) ? @"DRAWING" : @"TOUCH";
-    } else {
-        stateStr = @"HOVER";
-    }
+    NSString *typeStr = g_pm_evtype ? g_pm_evtype : (g_pm_in_range ? @"MOVE" : @"AWAY");
     [g_pm_label setStringValue:[NSString stringWithFormat:@"P=%-5d  %@  (%d,%d)",
-                                 (int)(g_pm_pressure * 65535), stateStr,
+                                 g_pm_pressure, typeStr,
                                  (int)g_pm_x, (int)g_pm_y]];
 }
 
@@ -1724,16 +1719,33 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     if (g_pressure_monitor) {
         if (isPen) {
             g_pm_in_range = YES;
-            g_pm_pressure = pressure;
+            int64_t rawField = CGEventGetIntegerValueField(event, kCGTabletEventPointPressure);
+            g_pm_pressure = (rawField > 0)
+                ? (int)(rawField * 65535 / 65536)
+                : (int)(pressure * 65535);
             g_pm_x = px;
             g_pm_y = py;
             g_pm_tip_down = (etype == NSEventTypeLeftMouseDown || etype == NSEventTypeRightMouseDown ||
                              etype == NSEventTypeOtherMouseDown ||
                              etype == NSEventTypeLeftMouseDragged || etype == NSEventTypeRightMouseDragged ||
                              etype == NSEventTypeOtherMouseDragged);
+            switch (etype) {
+                case NSEventTypeLeftMouseDown:    g_pm_evtype = @"DOWN";  break;
+                case NSEventTypeLeftMouseUp:      g_pm_evtype = @"UP";    break;
+                case NSEventTypeLeftMouseDragged: g_pm_evtype = @"DRAG";  break;
+                case NSEventTypeRightMouseDown:   g_pm_evtype = @"R_DOWN"; break;
+                case NSEventTypeRightMouseUp:     g_pm_evtype = @"R_UP";  break;
+                case NSEventTypeRightMouseDragged:g_pm_evtype = @"R_DRAG"; break;
+                case NSEventTypeOtherMouseDown:   g_pm_evtype = @"O_DOWN"; break;
+                case NSEventTypeOtherMouseUp:     g_pm_evtype = @"O_UP";  break;
+                case NSEventTypeOtherMouseDragged:g_pm_evtype = @"O_DRAG"; break;
+                case NSEventTypeMouseMoved:       g_pm_evtype = g_pm_tip_down ? @"DOWN" : @"MOVE"; break;
+                default:                          g_pm_evtype = g_pm_tip_down ? @"DOWN" : @"MOVE"; break;
+            }
             pm_update();
         } else if (etype == NSEventTypeMouseMoved && g_pm_in_range) {
             g_pm_in_range = NO;
+            g_pm_evtype = @"AWAY";
             pm_update();
         }
     }
