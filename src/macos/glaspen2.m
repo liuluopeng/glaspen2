@@ -1586,9 +1586,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             }
         }
         // Not a hotkey — log and pass through
-        NSString *chars = [keyEvent characters];
-        unsigned short kc = [keyEvent keyCode];
-        NSLog(@"[pen-btn] KEY_DOWN keyCode=%hu chars=%@", kc, chars);
         return event;
     }
 
@@ -1607,11 +1604,17 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     BOOL isPen = (devType == NSPenPointingDevice || devType == NSEraserPointingDevice ||
                   subtype == 1 || subtype == 2);
 
-    // DEBUG: log ALL pen events with full tablet button state
-    if (isPen) {
-        int64_t tabletButtons = CGEventGetIntegerValueField(event, kCGTabletEventPointButtons);
-        NSLog(@"[pen-btn] type=%ld subtype=%ld btn=%ld tabletButtons=0x%llx pressure=%.2f",
-              (long)etype, (long)subtype, (long)[nsevent buttonNumber], tabletButtons, pressure);
+    // DEBUG: log ALL events with full CGEvent fields
+    int64_t tabletButtons = CGEventGetIntegerValueField(event, kCGTabletEventPointButtons);
+    int64_t mouseButton = CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber);
+    int64_t tabletPointerType = CGEventGetIntegerValueField(event, kCGTabletProximityEventPointerType);
+    int64_t btnNum = [nsevent buttonNumber];
+    if (isPen || etype == NSEventTypeOtherMouseDown || etype == NSEventTypeOtherMouseUp ||
+        etype == NSEventTypeOtherMouseDragged || etype == NSEventTypeKeyDown ||
+        tabletButtons != 0 || mouseButton != 0) {
+        NSLog(@"[pen-btn] type=%ld subtype=%ld isPen=%d btnNSEvent=%lld btnCG=%lld tabButtons=0x%llx ptrType=%lld pressure=%.2f",
+              (long)etype, (long)subtype, isPen, btnNum, (long long)mouseButton, tabletButtons,
+              (long long)tabletPointerType, pressure);
     }
     // Non-pen mouse move while no active stroke and cursor visible → hide crosshair.
     // Covers pen-leave-proximity on tablets that don't emit proximity events.
