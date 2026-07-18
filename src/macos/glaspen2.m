@@ -35,6 +35,9 @@ static void gl_settings_set_launch(BOOL on);
 static void gl_settings_set_glass_enabled(BOOL on);
 static void gl_settings_set_glass_opacity(double alpha);
 static void gl_settings_set_grid(BOOL on);
+static void gl_settings_set_pressure_monitor(BOOL on);
+static void pm_destroy(void);
+static void pm_update(void);
 static void draw_grid(void);
 static void gl_glass_apply(void);
 static void gl_settings_set_enabled(BOOL on);
@@ -153,6 +156,15 @@ static double g_cursor_x = -100, g_cursor_y = -100;
 static BOOL g_cursor_visible = NO;
 static NSCursor *g_blank_cursor = nil;
 static NSCursor *g_arrow_cursor = nil;
+
+// Pressure monitor
+static BOOL g_pressure_monitor = NO;
+static NSWindow *g_pm_window = nil;
+static NSTextField *g_pm_label = nil;
+static CGFloat g_pm_pressure = 0;
+static BOOL g_pm_tip_down = NO;
+static BOOL g_pm_in_range = NO;
+static CGFloat g_pm_x = 0, g_pm_y = 0;
 
 // Pen color state
 static double g_pen_r = 1.0, g_pen_g = 0.0, g_pen_b = 0.0;
@@ -356,6 +368,7 @@ static void replay_strokes_from_memory(void) {
 
 static void save_and_exit(int sig) {
     (void)sig;
+    pm_destroy();
     CGDisplayShowCursor(kCGDirectMainDisplay);
     exit(0);
 }
@@ -646,6 +659,7 @@ static NSButton *g_glass_buttons[1];
             @"launchAtLogin": @(glaspen2_is_launch_at_login()),
             @"frostedGlass": @(g_glass_enabled),
             @"grid": @(g_show_grid),
+            @"pressureMonitor": @(g_pressure_monitor),
         });
     } else if ([call.method isEqualToString:@"setSetting"]) {
         NSDictionary *args = call.arguments;
@@ -666,6 +680,8 @@ static NSButton *g_glass_buttons[1];
             if (!g_glass_enabled) gl_settings_set_glass_enabled(YES);
         } else if ([key isEqualToString:@"grid"]) {
             gl_settings_set_grid([value boolValue]);
+        } else if ([key isEqualToString:@"pressureMonitor"]) {
+            gl_settings_set_pressure_monitor([value boolValue]);
         }
         result(nil);
     } else if ([call.method isEqualToString:@"exportAnimatedGif"]) {
@@ -905,9 +921,73 @@ static void gl_settings_set_enabled(BOOL on) {
     update_status_icon_state();
 }
 
+// --- Pressure monitor (top-left info window) ---
+
+static void pm_create_window(void) {
+    if (g_pm_window) return;
+    NSScreen *screen = [NSScreen mainScreen];
+    NSRect screenFrame = [screen frame];
+    NSRect frame = NSMakeRect(10, screenFrame.size.height - 40, 220, 30);
+    g_pm_window = [[NSWindow alloc] initWithContentRect:frame
+                                              styleMask:NSWindowStyleMaskBorderless
+                                                backing:NSBackingStoreBuffered
+                                                  defer:NO];
+    [g_pm_window setLevel:kCGMaximumWindowLevel];
+    [g_pm_window setOpaque:YES];
+    [g_pm_window setBackgroundColor:[NSColor colorWithWhite:0.12 alpha:1.0]];
+    [g_pm_window setIgnoresMouseEvents:YES];
+    [g_pm_window setTitle:@"Pressure"];
+
+    g_pm_label = [[NSTextField alloc] initWithFrame:NSMakeRect(4, 2, 212, 26)];
+    [g_pm_label setStringValue:@"P=-----  AWAY  (---,---)"];
+    [g_pm_label setTextColor:[NSColor whiteColor]];
+    [g_pm_label setFont:[NSFont fontWithName:@"Menlo" size:12]];
+    [g_pm_label setBezeled:NO];
+    [g_pm_label setDrawsBackground:NO];
+    [g_pm_label setEditable:NO];
+    [g_pm_label setSelectable:NO];
+    [[g_pm_window contentView] addSubview:g_pm_label];
+
+    [g_pm_window orderFront:nil];
+}
+
+static void pm_update(void) {
+    if (!g_pm_window || !g_pm_label) return;
+    NSString *stateStr;
+    if (!g_pm_in_range) {
+        stateStr = @"AWAY";
+    } else if (g_pm_tip_down) {
+        stateStr = (g_pm_pressure > 0.01) ? @"DRAWING" : @"TOUCH";
+    } else {
+        stateStr = @"HOVER";
+    }
+    [g_pm_label setStringValue:[NSString stringWithFormat:@"P=%-5d  %@  (%d,%d)",
+                                 (int)(g_pm_pressure * 65535), stateStr,
+                                 (int)g_pm_x, (int)g_pm_y]];
+}
+
+static void pm_destroy(void) {
+    if (g_pm_window) {
+        [g_pm_window close];
+        g_pm_window = nil;
+        g_pm_label = nil;
+    }
+}
+
+static void gl_settings_set_pressure_monitor(BOOL on) {
+    g_pressure_monitor = on;
+    glaspen2_save_bool_setting("pressure_monitor", on ? 1 : 0);
+    sync_settings_panel();
+    if (on) {
+        pm_create_window();
+        pm_update();
+    } else {
+        pm_destroy();
+    }
+}
+
 static void sync_settings_panel(void) {
     if (!g_settings_channel) return;
-    // Notify Flutter of updated settings via MethodChannel
     [g_settings_channel invokeMethod:@"onSettingsChanged" arguments:@{
         @"color": @(g_selectedColorIndex),
         @"width": @(g_selected_width_index),
@@ -915,6 +995,7 @@ static void sync_settings_panel(void) {
         @"launchAtLogin": @(glaspen2_is_launch_at_login()),
         @"frostedGlass": @(g_glass_enabled),
         @"grid": @(g_show_grid),
+        @"pressureMonitor": @(g_pressure_monitor),
     }];
 }
 
@@ -1626,6 +1707,24 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         return NULL;
     }
 
+    // Pressure monitor: update state and refresh display
+    if (g_pressure_monitor) {
+        if (isPen) {
+            g_pm_in_range = YES;
+            g_pm_pressure = pressure;
+            g_pm_x = px;
+            g_pm_y = py;
+            g_pm_tip_down = (etype == NSEventTypeLeftMouseDown || etype == NSEventTypeRightMouseDown ||
+                             etype == NSEventTypeOtherMouseDown ||
+                             etype == NSEventTypeLeftMouseDragged || etype == NSEventTypeRightMouseDragged ||
+                             etype == NSEventTypeOtherMouseDragged);
+            pm_update();
+        } else if (etype == NSEventTypeMouseMoved && g_pm_in_range) {
+            g_pm_in_range = NO;
+            pm_update();
+        }
+    }
+
     perf_log_event("tick", elapsed_us(t0));
     return event;
 }
@@ -1772,6 +1871,15 @@ void glaspen2_run(void) {
 
         // Restore grid setting
         g_show_grid = glaspen2_load_bool_setting("grid") != 0;
+
+        // Restore pressure monitor setting
+        g_pressure_monitor = glaspen2_load_bool_setting("pressure_monitor") != 0;
+        if (g_pressure_monitor) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                pm_create_window();
+                pm_update();
+            });
+        }
 
         // Apply glass visual on startup
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
