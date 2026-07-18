@@ -2,14 +2,14 @@ use std::sync::Mutex;
 use tokio::sync::broadcast;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream as WsStream;
-use tokio_tungstenite::tungstenite::protocol::Role;
 use futures_util::{SinkExt, StreamExt};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio_tungstenite::accept_async;
+use std::io::{Read, Write};
 
 static BROADCASTER: Mutex<Option<broadcast::Sender<String>>> = Mutex::new(None);
 
-const INDEX_HTML: &str = r#"<!DOCTYPE html>
+const PAGE: &str = r#"<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>你画我猜</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -23,89 +23,52 @@ body{background:#222;display:flex;justify-content:center;align-items:center;heig
 <div id=status>Connecting...</div>
 </div>
 <script>
-let ws = new WebSocket('ws://' + location.host);
+let ws = new WebSocket('ws://localhost:9876');
 let img = document.getElementById('canvas');
 let st = document.getElementById('status');
-ws.onopen = () => st.textContent = 'Connected - draw on glaspen2';
+ws.onopen = () => st.textContent = 'Connected';
 ws.onmessage = (e) => { img.src = 'data:image/svg+xml;base64,' + btoa(e.data); };
-ws.onerror = (e) => st.textContent = 'WS Error: ' + (e.message || 'unknown');
+ws.onerror = (e) => st.textContent = 'WS Error: ' + JSON.stringify(e);
 ws.onclose = () => st.textContent = 'Disconnected';
 </script></body></html>"#;
 
 pub fn start_server() {
-    eprintln!("[ws] draw-guess: open http://localhost:9876 in browser");
+    // Simple HTTP server thread (serves the HTML page)
     std::thread::spawn(|| {
-        let rt = tokio::runtime::Runtime::new().expect("WS runtime");
-        rt.block_on(server_task());
-    });
-}
-
-async fn server_task() {
-    let (tx, _) = broadcast::channel::<String>(32);
-    *BROADCASTER.lock().unwrap() = Some(tx.clone());
-    let listener = TcpListener::bind("127.0.0.1:9876").await.expect("bind");
-    loop {
-        let (stream, _) = match listener.accept().await {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        let tx = tx.clone();
-        tokio::spawn(async move { handle(stream, tx).await; });
-    }
-}
-
-async fn handle(mut stream: tokio::net::TcpStream, tx: broadcast::Sender<String>) {
-    use sha1::{Sha1, Digest};
-    use base64::Engine;
-
-    // Read request line by line, collect into buf
-    let mut buf = [0u8; 4096];
-    let mut used = 0usize;
-    loop {
-        if used >= buf.len() { return; }
-        match stream.read(&mut buf[used..used + 1]).await {
-            Ok(0) | Err(_) => return,
-            Ok(_) => {
-                used += 1;
-                if used >= 4 && buf[used - 4..used] == [b'\r', b'\n', b'\r', b'\n'] { break; }
-                if used >= 2 && buf[used - 2..used] == [b'\n', b'\n'] { break; }
+        let listener = std::net::TcpListener::bind("127.0.0.1:9875").unwrap();
+        for stream in listener.incoming() {
+            if let Ok(mut s) = stream {
+                let mut buf = [0u8; 4096];
+                s.read(&mut buf).ok();
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+                    PAGE.len(), PAGE
+                );
+                s.write_all(resp.as_bytes()).ok();
             }
         }
-    }
+    });
 
-    let request = String::from_utf8_lossy(&buf[..used]);
-    let is_ws = request.to_lowercase().contains("upgrade: websocket");
+    // WebSocket server on tokio
+    std::thread::spawn(|| {
+        let rt = tokio::runtime::Runtime::new().expect("WS runtime");
+        rt.block_on(async {
+            let (tx, _) = broadcast::channel::<String>(32);
+            *BROADCASTER.lock().unwrap() = Some(tx.clone());
+            let listener = TcpListener::bind("127.0.0.1:9876").await.expect("bind WS");
+            while let Ok((stream, _)) = listener.accept().await {
+                let tx = tx.clone();
+                tokio::spawn(async move {
+                    match accept_async(stream).await {
+                        Ok(ws) => handle_ws(ws, tx).await,
+                        Err(_) => {}
+                    }
+                });
+            }
+        });
+    });
 
-    if is_ws {
-        let key = request.lines()
-            .find(|l| l.to_lowercase().starts_with("sec-websocket-key:"))
-            .and_then(|l| l.split(':').nth(1))
-            .map(|s| s.trim())
-            .unwrap_or("");
-        if key.is_empty() { return; }
-
-        let accept = {
-            let mut h = Sha1::new();
-            h.update(key.as_bytes());
-            h.update(b"258EAFA5-E914-47DA-95CA-5AB5C5D5EFB1");
-            base64::engine::general_purpose::STANDARD.encode(h.finalize())
-        };
-
-        let upgrade = format!(
-            "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n",
-            accept
-        );
-        if stream.write_all(upgrade.as_bytes()).await.is_err() { return; }
-
-        let ws = WsStream::from_raw_socket(stream, Role::Server, None).await;
-        handle_ws(ws, tx).await;
-    } else {
-        let resp = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
-            INDEX_HTML.len(), INDEX_HTML
-        );
-        stream.write_all(resp.as_bytes()).await.ok();
-    }
+    eprintln!("[ws] open http://localhost:9875  and draw on glaspen2");
 }
 
 async fn handle_ws(mut ws: WsStream<tokio::net::TcpStream>, tx: broadcast::Sender<String>) {
