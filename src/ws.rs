@@ -1,14 +1,15 @@
 use std::sync::Mutex;
-use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::WebSocketStream;
+use tokio_tungstenite::WebSocketStream as WsStream;
+use tokio_tungstenite::tungstenite::protocol::Role;
 use futures_util::{SinkExt, StreamExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 static BROADCASTER: Mutex<Option<broadcast::Sender<String>>> = Mutex::new(None);
 
-const HTML: &str = r#"<!DOCTYPE html>
+const INDEX_HTML: &str = r#"<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>你画我猜</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -22,20 +23,19 @@ body{background:#222;display:flex;justify-content:center;align-items:center;heig
 <div id=status>Connecting...</div>
 </div>
 <script>
-let ws = new WebSocket('ws://' + location.host + '/ws');
+let ws = new WebSocket('ws://' + location.host);
 let img = document.getElementById('canvas');
 let st = document.getElementById('status');
-ws.onopen = () => st.textContent = 'Connected';
+ws.onopen = () => st.textContent = 'Connected - draw on glaspen2';
 ws.onmessage = (e) => { img.src = 'data:image/svg+xml;base64,' + btoa(e.data); };
+ws.onerror = (e) => st.textContent = 'WS Error: ' + (e.message || 'unknown');
 ws.onclose = () => st.textContent = 'Disconnected';
 </script></body></html>"#;
 
 pub fn start_server() {
+    eprintln!("[ws] draw-guess: open http://localhost:9876 in browser");
     std::thread::spawn(|| {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to build WS runtime");
+        let rt = tokio::runtime::Runtime::new().expect("WS runtime");
         rt.block_on(server_task());
     });
 }
@@ -43,41 +43,38 @@ pub fn start_server() {
 async fn server_task() {
     let (tx, _) = broadcast::channel::<String>(32);
     *BROADCASTER.lock().unwrap() = Some(tx.clone());
-
-    let listener = TcpListener::bind("127.0.0.1:9876").await
-        .expect("Failed to bind server");
-    println!("[ws] draw-guess server on http://127.0.0.1:9876");
-
-    while let Ok((stream, _)) = listener.accept().await {
+    let listener = TcpListener::bind("127.0.0.1:9876").await.expect("bind");
+    loop {
+        let (stream, _) = match listener.accept().await {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
         let tx = tx.clone();
-        tokio::spawn(async move {
-            handle_connection(stream, tx).await;
-        });
+        tokio::spawn(async move { handle(stream, tx).await; });
     }
 }
 
-async fn handle_connection(mut raw: tokio::net::TcpStream, tx: broadcast::Sender<String>) {
-    use tokio::io::AsyncReadExt;
+async fn handle(mut stream: tokio::net::TcpStream, tx: broadcast::Sender<String>) {
     use sha1::{Sha1, Digest};
     use base64::Engine;
 
-    let mut buf = Vec::new();
-    let mut empty_lines = 0u32;
+    // Read request line by line, collect into buf
+    let mut buf = [0u8; 4096];
+    let mut used = 0usize;
     loop {
-        let mut byte = [0u8; 1];
-        match raw.read(&mut byte).await {
+        if used >= buf.len() { return; }
+        match stream.read(&mut buf[used..used + 1]).await {
             Ok(0) | Err(_) => return,
             Ok(_) => {
-                buf.push(byte[0]);
-                if byte[0] == b'\n' { empty_lines += 1; }
-                else if byte[0] != b'\r' { empty_lines = 0; }
-                if empty_lines >= 2 { break; }
+                used += 1;
+                if used >= 4 && buf[used - 4..used] == [b'\r', b'\n', b'\r', b'\n'] { break; }
+                if used >= 2 && buf[used - 2..used] == [b'\n', b'\n'] { break; }
             }
         }
     }
 
-    let request = String::from_utf8_lossy(&buf);
-    let is_ws = request.contains("Upgrade: websocket");
+    let request = String::from_utf8_lossy(&buf[..used]);
+    let is_ws = request.to_lowercase().contains("upgrade: websocket");
 
     if is_ws {
         let key = request.lines()
@@ -87,28 +84,31 @@ async fn handle_connection(mut raw: tokio::net::TcpStream, tx: broadcast::Sender
             .unwrap_or("");
         if key.is_empty() { return; }
 
-        let mut hasher = Sha1::new();
-        hasher.update(key.as_bytes());
-        hasher.update(b"258EAFA5-E914-47DA-95CA-5AB5C5D5EFB1");
-        let accept = base64::engine::general_purpose::STANDARD.encode(hasher.finalize());
+        let accept = {
+            let mut h = Sha1::new();
+            h.update(key.as_bytes());
+            h.update(b"258EAFA5-E914-47DA-95CA-5AB5C5D5EFB1");
+            base64::engine::general_purpose::STANDARD.encode(h.finalize())
+        };
+
         let upgrade = format!(
             "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {}\r\n\r\n",
             accept
         );
-        if raw.write_all(upgrade.as_bytes()).await.is_err() { return; }
+        if stream.write_all(upgrade.as_bytes()).await.is_err() { return; }
 
-        let ws = WebSocketStream::from_raw_socket(raw, tokio_tungstenite::tungstenite::protocol::Role::Server, None).await;
+        let ws = WsStream::from_raw_socket(stream, Role::Server, None).await;
         handle_ws(ws, tx).await;
     } else {
         let resp = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
-            HTML.len(), HTML
+            INDEX_HTML.len(), INDEX_HTML
         );
-        raw.write_all(resp.as_bytes()).await.ok();
+        stream.write_all(resp.as_bytes()).await.ok();
     }
 }
 
-async fn handle_ws(mut ws: WebSocketStream<tokio::net::TcpStream>, tx: broadcast::Sender<String>) {
+async fn handle_ws(mut ws: WsStream<tokio::net::TcpStream>, tx: broadcast::Sender<String>) {
     let mut rx = tx.subscribe();
     loop {
         tokio::select! {
