@@ -1604,18 +1604,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     BOOL isPen = (devType == NSPenPointingDevice || devType == NSEraserPointingDevice ||
                   subtype == 1 || subtype == 2);
 
-    // DEBUG: log ALL events with full CGEvent fields
-    int64_t tabletButtons = CGEventGetIntegerValueField(event, kCGTabletEventPointButtons);
-    int64_t mouseButton = CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber);
-    int64_t tabletPointerType = CGEventGetIntegerValueField(event, kCGTabletProximityEventPointerType);
-    int64_t btnNum = [nsevent buttonNumber];
-    if (isPen || etype == NSEventTypeOtherMouseDown || etype == NSEventTypeOtherMouseUp ||
-        etype == NSEventTypeOtherMouseDragged || etype == NSEventTypeKeyDown ||
-        tabletButtons != 0 || mouseButton != 0) {
-        NSLog(@"[pen-btn] type=%ld subtype=%ld isPen=%d btnNSEvent=%lld btnCG=%lld tabButtons=0x%llx ptrType=%lld pressure=%.2f",
-              (long)etype, (long)subtype, isPen, btnNum, (long long)mouseButton, tabletButtons,
-              (long long)tabletPointerType, pressure);
-    }
     // Non-pen mouse move while no active stroke and cursor visible → hide crosshair.
     // Covers pen-leave-proximity on tablets that don't emit proximity events.
     // The g_stroke_active guard prevents spurious non-pen events interleaved during
@@ -1912,6 +1900,20 @@ void glaspen2_run(void) {
                 pm_update();
             });
         }
+
+        // NSEvent global monitor: catch pen button events missed by CGEventTap
+        [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskOtherMouseDown|NSEventMaskOtherMouseUp
+                                               handler:^(NSEvent *event) {
+            NSInteger btn = event.buttonNumber;
+            NSInteger st = event.subtype;
+            NSEventType et = event.type;
+            NSPointingDeviceType dt = event.pointingDeviceType;
+            BOOL pen = (dt == NSPenPointingDevice || dt == NSEraserPointingDevice || st == 1 || st == 2);
+            if (pen && (btn == 2 || btn == 3)) {
+                NSLog(@"[pen-btn] NSEVENT: type=%ld btn=%ld subtype=%ld devType=%ld",
+                      (long)et, (long)btn, (long)st, (long)dt);
+            }
+        }];
 
         // Apply glass visual on startup
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
