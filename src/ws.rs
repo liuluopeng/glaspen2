@@ -13,31 +13,20 @@ const PAGE: &str = r#"<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>你画我猜</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#222;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif;color:#fff}
-#container{text-align:center}
-#c{max-width:100vw;max-height:90vh;border:1px solid #444;background:#fff}
-#s{color:#888;font-size:13px}
+body{background:#1a1a1a;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif}
+canvas{max-width:calc(100vw - 40px);max-height:calc(100vh - 80px);border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.5);background:#fff}
+#s{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);color:#666;font-size:13px}
 </style></head><body>
-<div>
 <canvas id=c width=3440 height=1440></canvas>
 <div id=s>Connected</div>
-</div>
 <script>
-let ws = new WebSocket('ws://localhost:9876'), cv = document.getElementById('c'), cx = cv.getContext('2d'), s = document.getElementById('s');
-let curX, curY, curR, curG, curB;
-cx.lineCap='round'; cx.lineJoin='round';
-ws.onopen = () => console.log('WS connected');
-ws.onerror = (e) => { console.error('WS error:', e); s.textContent = 'Error — see console' };
-ws.onclose = (e) => { console.log('WS closed:', e.code); s.textContent = 'Disconnected' };
-ws.onmessage = (e) => {
-    let d = JSON.parse(e.data);
-    if (d.t === 'd') { curX=d.x; curY=d.y; curR=d.r; curG=d.g; curB=d.b; }
-    else if (d.t === 'm') {
-        cx.strokeStyle='rgb('+(curR*255|0)+','+(curG*255|0)+','+(curB*255|0)+')';
-        cx.lineWidth=Math.max(d.w,1); cx.beginPath(); cx.moveTo(curX,curY); cx.lineTo(d.x,d.y); cx.stroke();
-        curX=d.x; curY=d.y;
-    }
-};
+let ws=new WebSocket('ws://localhost:9876'),c=document.getElementById('c'),cx=c.getContext('2d'),st=document.getElementById('s');
+let x,y,r,g,b;
+cx.lineCap='round';cx.lineJoin='round';
+ws.onopen=()=>console.log('WS connected');
+ws.onerror=()=>st.textContent='Connection failed';
+ws.onclose=()=>st.textContent='Disconnected';
+ws.onmessage=e=>{let d=JSON.parse(e.data);if(d.t=='d'){x=d.x;y=d.y;r=d.r;g=d.g;b=d.b;}else if(d.t=='m'){cx.strokeStyle='rgb('+(r*255|0)+','+(g*255|0)+','+(b*255|0)+')';cx.lineWidth=Math.max(d.w,1);cx.beginPath();cx.moveTo(x,y);cx.lineTo(d.x,d.y);cx.stroke();x=d.x;y=d.y;}};
 </script></body></html>"#;
 
 pub fn start_server() {
