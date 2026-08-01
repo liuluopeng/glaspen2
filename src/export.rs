@@ -77,15 +77,21 @@ pub extern "C" fn glaspen2_end_stroke() {
     db::end_stroke_spawned();
 }
 
+/// Start a new canvas: only when the current canvas was ever edited
+/// (a blank canvas cannot spawn another blank canvas). Returns 1 if a new
+/// screen was created, 0 if it was blocked (current canvas never edited).
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) {
+pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) -> c_int {
     runtime().block_on(db::end_stroke()); // flush before checking — must block
     let current = state::current_screen_id();
-    if runtime().block_on(db::screen_has_strokes(current)) {
+    let mut created = 0;
+    if runtime().block_on(db::screen_edited(current)) {
         runtime().block_on(db::new_screen(screen_w, screen_h));
+        created = 1;
     }
     let mut strokes = STROKES.lock().unwrap();
     strokes.clear();
+    created
 }
 
 /// Undo the last stroke: remove from both STROKES (memory) and DB.

@@ -58,7 +58,7 @@ extern void glaspen2_begin_stroke(double r, double g, double b, double width_sca
 extern void glaspen2_add_point(double x, double y, double width);
 extern void glaspen2_end_stroke(void);
 extern void glaspen2_save_xoj(void);
-extern void glaspen2_clear_strokes(int screen_w, int screen_h);
+extern int glaspen2_clear_strokes(int screen_w, int screen_h);
 extern void glaspen2_init_db(int screen_w, int screen_h);
 extern void glaspen2_save_settings(double r, double g, double b, double width_scale);
 extern int  glaspen2_load_settings_parts(double *r, double *g, double *b, double *w);
@@ -398,10 +398,15 @@ static void clear_screen(void) {
     cairo_paint(cr);
     cairo_destroy(cr);
     g_has_last = NO;
-    glaspen2_clear_strokes(g_screen_w, g_screen_h);
+    int created = glaspen2_clear_strokes(g_screen_w, g_screen_h);
     if (g_show_rainbow) draw_rainbow_indicator();
     flush_to_layer();
-    show_notification(L(@"新画布已创建", @"New canvas created"));
+    if (created) {
+        show_notification(L(@"新画布已创建", @"New canvas created"));
+    } else {
+        // The current canvas was never edited — don't allow blank-on-blank.
+        show_notification(L(@"不能连续创建空白画布, 请先涂鸦", @"Canvas is blank — draw something first"));
+    }
 }
 
 static void replay_strokes_from_memory(void) {

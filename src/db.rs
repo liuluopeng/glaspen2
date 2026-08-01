@@ -98,9 +98,14 @@ mod platform {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at REAL NOT NULL,
                 screen_w INTEGER NOT NULL,
-                screen_h INTEGER NOT NULL
+                screen_h INTEGER NOT NULL,
+                edited INTEGER NOT NULL DEFAULT 0
             )"
         ).execute(&pool).await.expect("Failed to create screens table");
+
+        // Migration for existing DBs (edited = 0 by default; strokes imply edited)
+        sqlx::query("ALTER TABLE screens ADD COLUMN edited INTEGER NOT NULL DEFAULT 0")
+            .execute(&pool).await.ok();
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS strokes (
@@ -205,6 +210,10 @@ mod platform {
         match stroke_id {
             Ok(Some(id)) => {
                 state::begin_pending(id);
+                // Mark the canvas as edited — even if all strokes are later
+                // cleared/undone, the canvas counts as used.
+                sqlx::query("UPDATE screens SET edited = 1 WHERE id = ?1")
+                    .bind(screen_id).execute(pool).await.ok();
                 id
             }
             _ => 0,
@@ -243,6 +252,19 @@ mod platform {
         sqlx::query_scalar::<_, i64>(
             "SELECT EXISTS(SELECT 1 FROM strokes WHERE screen_id = ?1)"
         ).bind(screen_id).fetch_one(pool).await.unwrap_or(0) != 0
+    }
+
+    /// Whether the canvas was ever edited (a stroke was started on it).
+    /// True even if every stroke was later cleared/undone. Strokes in the
+    /// table also imply edited (covers pre-migration databases).
+    pub async fn screen_edited(screen_id: i64) -> bool {
+        let pool = match DB.get() { Some(p) => p, None => return false };
+        if screen_id <= 0 { return false; }
+        sqlx::query_scalar::<_, i64>(
+            "SELECT CASE WHEN edited = 1 OR EXISTS \
+             (SELECT 1 FROM strokes WHERE screen_id = screens.id) \
+             THEN 1 ELSE 0 END FROM screens WHERE id = ?1"
+        ).bind(screen_id).fetch_optional(pool).await.ok().flatten().unwrap_or(0) != 0
     }
 
     /// Delete a stroke by id. Returns true if the stroke existed.

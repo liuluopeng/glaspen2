@@ -64,7 +64,7 @@ namespace GlasPen2
         public static extern void glaspen2_end_stroke();
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void glaspen2_clear_strokes(int screenW, int screenH);
+        public static extern int glaspen2_clear_strokes(int screenW, int screenH);
 
         [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
         public static extern void glaspen2_delete_last_stroke();
