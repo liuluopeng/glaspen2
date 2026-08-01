@@ -599,20 +599,17 @@ static void toggle_enabled(void) {
     }
 }
 
-// Hide/show the current page (overlay window). Hiding also disables drawing
-// so the pen and mouse pass through to other apps; showing re-enables it.
-// Shortcut: ⌘ + ⌃ + X
+// Hide/show the current page (overlay window) only. Whether the pen passes
+// through is managed separately by ⌘ + ⌃ + V (g_enabled) — X never touches
+// the passthrough state. Shortcut: ⌘ + ⌃ + X
 static void toggle_page_visible(void) {
     BOOL currentlyVisible = g_window && g_window.isVisible;
     if (currentlyVisible) {
         finish_active_stroke(); // commit any in-flight stroke before hiding
-        g_enabled = NO;
-        restore_system_cursor();
         if (g_window) [g_window setIsVisible:NO];
         if (g_pressure_monitor) pm_hide();
         show_notification(L(@"页面已隐藏", @"Page hidden"));
     } else {
-        g_enabled = YES;
         if (g_window) {
             [g_window setIsVisible:YES];
             if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
@@ -620,12 +617,6 @@ static void toggle_page_visible(void) {
         }
         if (g_pressure_monitor) pm_show();
         show_notification(L(@"页面已显示", @"Page shown"));
-    }
-    update_status_icon_state();
-    NSMenuItem *item = [g_menu itemWithTag:888];
-    if (item) {
-        [item setState:g_enabled ? NSControlStateValueOn : NSControlStateValueOff];
-        [item setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
     }
 }
 
