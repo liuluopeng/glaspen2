@@ -8,17 +8,19 @@ use std::sync::{Mutex, OnceLock};
 
 use super::rec;
 
-static DET_ENGINE: OnceLock<Mutex<Session>> = OnceLock::new();
+static DET_ENGINE: OnceLock<Result<Mutex<Session>, String>> = OnceLock::new();
 
-fn det_session() -> &'static Mutex<Session> {
-    DET_ENGINE.get_or_init(|| {
-        let model_file = rec::model_path("ppocr_v6_det.onnx");
-        let session = Session::builder()
-            .unwrap()
-            .commit_from_file(&model_file)
-            .unwrap_or_else(|e| panic!("Failed to load det model: {}", e));
-        Mutex::new(session)
-    })
+fn det_session() -> Option<&'static Mutex<Session>> {
+    DET_ENGINE
+        .get_or_init(|| {
+            let model_file = rec::model_path("ppocr_v6_det.onnx");
+            Session::builder()
+                .and_then(|mut b| b.commit_from_file(&model_file))
+                .map(Mutex::new)
+                .map_err(|e| format!("det model load failed: {}", e))
+        })
+        .as_ref()
+        .ok()
 }
 
 // ── Preprocessing (ImageNet normalization: mean, std, BGR) ──
@@ -215,18 +217,49 @@ fn merge_overlapping(boxes: &mut Vec<TextBox>) {
 
 /// Run detection on RGBA image, return list of text boxes.
 /// Box coordinates are in the original image space.
+/// Never panics: model/session/inference failures return an empty list.
 pub fn detect_text_regions(pixels: &[u8], width: u32, height: u32) -> Vec<TextBox> {
-    let session = det_session();
+    let Some(session) = det_session() else {
+        eprintln!("[det] session unavailable (model load failed)");
+        return Vec::new();
+    };
     let (input_tensor, _nw, _nh, _scale) = det_preprocess(pixels, width, height);
-    eprintln!("[det] input {}x{} resized to {}x{} scale={:.3}", width, height, _nw, _nh, _scale);
 
-    let input = TensorRef::from_array_view(&input_tensor).unwrap();
-    let mut sess = session.lock().unwrap();
-    let outputs = sess.run(ort::inputs![input]).unwrap();
-    let output = &outputs[0];
+    let input = match TensorRef::from_array_view(&input_tensor) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("[det] tensor creation failed: {}", e);
+            return Vec::new();
+        }
+    };
+    let Ok(mut sess) = session.lock() else {
+        eprintln!("[det] session mutex poisoned");
+        return Vec::new();
+    };
+    let outputs = match sess.run(ort::inputs![input]) {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("[det] inference failed: {}", e);
+            return Vec::new();
+        }
+    };
+    let Some(output) = (outputs.len() > 0).then(|| &outputs[0]) else {
+        eprintln!("[det] no output tensors");
+        return Vec::new();
+    };
 
-    let arr = output.try_extract_array::<f32>().unwrap();
-    let shape = arr.shape(); // [1, 1, H/4, W/4]
+    let arr = match output.try_extract_array::<f32>() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("[det] output extraction failed: {}", e);
+            return Vec::new();
+        }
+    };
+    let shape = arr.shape(); // expected [1, 1, H/4, W/4]
+    if shape.len() != 4 || shape[0] != 1 || shape[1] != 1 {
+        eprintln!("[det] unexpected output shape {:?}", shape);
+        return Vec::new();
+    }
     let oh = shape[2];
     let ow = shape[3];
 
@@ -277,7 +310,11 @@ pub fn detect_text_regions(pixels: &[u8], width: u32, height: u32) -> Vec<TextBo
 pub fn crop_pixels(pixels: &[u8], src_w: u32, x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
     let mut cropped = Vec::with_capacity((w * h * 4) as usize);
     for row in y..y + h {
-        let src_off = (row * src_w + x) as usize * 4;
+        let src_off = match (row as usize).checked_mul(src_w as usize) {
+            Some(v) => (v + x as usize) * 4,
+            None => break,
+        };
+        if src_off > pixels.len() { break; }
         let end = src_off + w as usize * 4;
         cropped.extend_from_slice(&pixels[src_off..end.min(pixels.len())]);
     }

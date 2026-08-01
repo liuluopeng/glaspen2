@@ -43,7 +43,9 @@ pub mod state;
 // ---------------------------------------------------------------------------
 
 /// Stroke data stored in STROKES — used for rendering, SVG/GIF export, and XOJ save.
+/// `id` is the DB row id (0 when the stroke has no DB row yet).
 pub struct Stroke {
+    pub id: i64,
     pub r: f64,
     pub g: f64,
     pub b: f64,
@@ -116,16 +118,22 @@ pub(crate) fn timestamped_name(ext: &str) -> String {
 mod tests {
     use crate::*;
 
+    /// Serializes tests that mutate the global STROKES/modeler state.
+    pub(crate) static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_build_cropped_svg_empty() {
+        let _g = TEST_LOCK.lock().unwrap();
         STROKES.lock().unwrap().clear();
         assert!(crate::export::build_cropped_svg().is_none());
     }
 
     #[test]
     fn test_build_cropped_svg_one_stroke() {
+        let _g = TEST_LOCK.lock().unwrap();
         STROKES.lock().unwrap().clear();
         STROKES.lock().unwrap().push(Stroke {
+            id: 0,
             r: 1.0,
             g: 0.0,
             b: 0.0,
@@ -141,6 +149,7 @@ mod tests {
     #[test]
     fn test_stroke_avg_width() {
         let s = Stroke {
+            id: 0,
             r: 0.0,
             g: 0.0,
             b: 0.0,
@@ -153,6 +162,7 @@ mod tests {
     #[test]
     fn test_empty_stroke_avg_width() {
         let s = Stroke {
+            id: 0,
             r: 0.0,
             g: 0.0,
             b: 0.0,

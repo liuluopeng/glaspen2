@@ -2,19 +2,21 @@
 //! MacOS-only (uses real Cairo from cairo-rs crate).
 
 use std::os::raw::c_double;
-use crate::STROKES;
+use crate::{Stroke, STROKES};
 
-/// Draw all strokes from `STROKES` onto a surface (clear + stroke rendering).
-/// Internal helper called by both the FFI export and unit tests.
+/// Draw a set of strokes onto a surface (clear + stroke rendering).
 #[cfg(feature = "cairo_real")]
-pub fn draw_rebuild_on_surface(surface: &crate::cairo::Surface, scale: f64) {
+pub fn draw_strokes_on_surface(
+    surface: &crate::cairo::Surface,
+    strokes: &[Stroke],
+    scale: f64,
+) {
     let Ok(cr) = crate::cairo::Context::new(surface) else { return };
     cr.set_operator(crate::cairo::Operator::Clear);
     let _ = cr.paint();
     cr.set_operator(crate::cairo::Operator::Over);
     cr.scale(scale, scale);
 
-    let strokes = STROKES.lock().unwrap();
     cr.set_line_cap(crate::cairo::LineCap::Round);
     cr.set_line_join(crate::cairo::LineJoin::Round);
     for s in strokes.iter() {
@@ -37,6 +39,14 @@ pub fn draw_rebuild_on_surface(surface: &crate::cairo::Surface, scale: f64) {
     }
 }
 
+/// Draw all strokes from `STROKES` onto a surface (clear + stroke rendering).
+/// Internal helper called by both the FFI export and unit tests.
+#[cfg(feature = "cairo_real")]
+pub fn draw_rebuild_on_surface(surface: &crate::cairo::Surface, scale: f64) {
+    let strokes = STROKES.lock().unwrap();
+    draw_strokes_on_surface(surface, &strokes, scale);
+}
+
 /// Re‑render every stroke from `STROKES` onto a Cairo surface.
 /// Called on undo, page‑nav, and display changes.
 /// `surface_ptr` is a borrowed `cairo_surface_t*` — Rust does not free it.
@@ -56,6 +66,7 @@ pub unsafe extern "C" fn glaspen2_draw_rebuild(
 #[cfg(all(test, feature = "cairo_real"))]
 mod tests {
     use crate::draw::draw_rebuild_on_surface;
+    use crate::tests::TEST_LOCK;
     use crate::{Stroke, STROKES};
 
     fn pixel(s: &mut crate::cairo::ImageSurface, x: u32, y: u32) -> (u8, u8, u8, u8) {
@@ -67,6 +78,7 @@ mod tests {
 
     #[test]
     fn test_empty_surface_transparent() {
+        let _g = TEST_LOCK.lock().unwrap();
         STROKES.lock().unwrap().clear();
         let mut s = crate::cairo::ImageSurface::create(
             crate::cairo::Format::ARgb32, 50, 50).unwrap();
@@ -76,8 +88,10 @@ mod tests {
 
     #[test]
     fn test_red_stroke_renders() {
+        let _g = TEST_LOCK.lock().unwrap();
         STROKES.lock().unwrap().clear();
         STROKES.lock().unwrap().push(Stroke {
+            id: 0,
             r: 1.0, g: 0.0, b: 0.0,
             points: vec![(5.0, 25.0, 8.0, 0.0), (45.0, 25.0, 8.0, 1.0)],
         });
@@ -103,8 +117,10 @@ mod tests {
 
     #[test]
     fn test_scale_2x_respected() {
+        let _g = TEST_LOCK.lock().unwrap();
         STROKES.lock().unwrap().clear();
         STROKES.lock().unwrap().push(Stroke {
+            id: 0,
             r: 0.0, g: 1.0, b: 0.0,
             points: vec![(5.0, 5.0, 4.0, 0.0), (45.0, 5.0, 4.0, 1.0)],
         });
@@ -121,6 +137,7 @@ mod tests {
     /// Run with: cargo test draw::tests::test_ocr_e2e -- --nocapture
     #[test]
     fn test_ocr_e2e() {
+        let _g = TEST_LOCK.lock().unwrap();
         STROKES.lock().unwrap().clear();
         // Draw some stroke patterns that should look like "test" or similar
         // Characters: draw horizontal+vertical strokes
@@ -143,12 +160,14 @@ mod tests {
             (130.0, 35.0, 145.0, 35.0, 5.0, 0.0),
         ];
         STROKES.lock().unwrap().push(crate::Stroke {
+            id: 0,
             r: 0.0, g: 0.0, b: 0.0,
             points: strokes_data.iter().map(|&(x1,y1,_,_,w,_)| {
                 (x1, y1, w, 0.0)
             }).collect(),
         });
         STROKES.lock().unwrap().push(crate::Stroke {
+            id: 0,
             r: 0.0, g: 0.0, b: 0.0,
             points: strokes_data.iter().skip(1).map(|&(_,_,x2,y2,w,_)| {
                 (x2, y2, w, 0.0)
@@ -194,6 +213,7 @@ mod tests {
     /// Set GLASPEN2_DB env var to the path, or defaults to target/debug/glaspen2.db
     #[test]
     fn test_ocr_from_db() {
+        let _g = TEST_LOCK.lock().unwrap();
         let db_path = std::env::var("GLASPEN2_DB")
             .unwrap_or_else(|_| "target/debug/glaspen2.db".to_string());
 
@@ -235,7 +255,7 @@ mod tests {
                     let points: Vec<(f64,f64,f64,f64)> = sqlx::query_as(
                         "SELECT x, y, width, t FROM points WHERE stroke_id = ?1 ORDER BY seq"
                     ).bind(stroke_id).fetch_all(&pool).await.unwrap_or_default();
-                    result.push(Stroke { r, g, b, points });
+                    result.push(Stroke { id: stroke_id, r, g, b, points });
                 }
                 pool.close().await;
                 result

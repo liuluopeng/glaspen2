@@ -3,11 +3,21 @@ use std::sync::Mutex;
 // ---------------------------------------------------------------------------
 // In-memory drawing state — NOT database.
 // These are pure memory operations accessed from the hot drawing path.
+// PENDING_STROKE_ID and PENDING_POINTS share one mutex so that begin/flush
+// can never observe a torn (id, points) pair across threads.
 // ---------------------------------------------------------------------------
 
 static CURRENT_SCREEN_ID: Mutex<i64> = Mutex::new(0);
-static PENDING_STROKE_ID: Mutex<Option<i64>> = Mutex::new(None);
-static PENDING_POINTS: Mutex<Vec<(f64, f64, f64, f64)>> = Mutex::new(Vec::new()); // (x, y, width, relative_time)
+
+struct PendingStroke {
+    id: Option<i64>,
+    points: Vec<(f64, f64, f64, f64)>, // (x, y, width, relative_time)
+}
+
+static PENDING: Mutex<PendingStroke> = Mutex::new(PendingStroke {
+    id: None,
+    points: Vec::new(),
+});
 
 // --- Screen id ---
 
@@ -24,26 +34,37 @@ pub fn set_current_screen_id(id: i64) {
 /// Push a point into the in-memory buffer. Called on every pen-move event.
 /// NOT async — just a Mutex<Vec> push.
 pub fn buffer_point(x: f64, y: f64, width: f64, t: f64) {
-    PENDING_POINTS.lock().unwrap().push((x, y, width, t));
+    PENDING.lock().unwrap().points.push((x, y, width, t));
 }
 
 /// Take the buffered points and clear the buffer. Used by db::flush_pending.
 pub fn take_pending() -> Vec<(f64, f64, f64, f64)> {
-    let mut p = PENDING_POINTS.lock().unwrap();
-    std::mem::take(&mut *p)
+    let mut p = PENDING.lock().unwrap();
+    std::mem::take(&mut p.points)
 }
 
 /// Set the pending stroke id and clear the point buffer.
 /// Used by db::begin_stroke.
 pub fn begin_pending(stroke_id: i64) {
-    *PENDING_STROKE_ID.lock().unwrap() = Some(stroke_id);
-    PENDING_POINTS.lock().unwrap().clear();
+    let mut p = PENDING.lock().unwrap();
+    p.id = Some(stroke_id);
+    p.points.clear();
 }
 
 /// Take the pending stroke id (returns id or None).
 pub fn take_pending_stroke_id() -> Option<i64> {
-    let mut pending = PENDING_STROKE_ID.lock().unwrap();
-    pending.take()
+    let mut pending = PENDING.lock().unwrap();
+    pending.id.take()
+}
+
+/// Atomically take (stroke id, points). Either both are consumed or neither
+/// is: begin_pending/buffer_point/this function share one lock, so a flush
+/// can never pair a stale id with a newer stroke's points.
+pub fn take_pending_bundle() -> Option<(i64, Vec<(f64, f64, f64, f64)>)> {
+    let mut p = PENDING.lock().unwrap();
+    let id = p.id.take()?;
+    let points = std::mem::take(&mut p.points);
+    Some((id, points))
 }
 
 #[cfg(test)]
@@ -91,5 +112,17 @@ mod tests {
         let id = take_pending_stroke_id(); // may be None or Some(456) from prior test
         // Just verify the API doesn't panic
         assert!(id.is_some() || id.is_none());
+    }
+
+    #[test]
+    fn test_take_bundle_atomic() {
+        begin_pending(789);
+        buffer_point(1.0, 1.0, 2.0, 0.0);
+        buffer_point(2.0, 2.0, 3.0, 1.0);
+        let (id, pts) = take_pending_bundle().unwrap();
+        assert_eq!(id, 789);
+        assert_eq!(pts.len(), 2);
+        // Both consumed: second bundle take is None
+        assert!(take_pending_bundle().is_none());
     }
 }

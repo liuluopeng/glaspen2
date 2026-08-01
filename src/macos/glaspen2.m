@@ -74,6 +74,7 @@ extern int glaspen2_modeler_point_count(void);
 extern void glaspen2_modeler_get_point(int idx, double *x, double *y, double *w);
 extern void glaspen2_modeler_clear_buffer(void);
 extern void glaspen2_modeler_commit_to_strokes(double r, double g, double b);
+extern void glaspen2_modeler_erase_finish(void);
 extern int glaspen2_stroke_bbox(double *x_min, double *y_min, double *x_max, double *y_max);
 extern void glaspen2_save_svg(void);
 extern char* glaspen2_get_cropped_svg(void);
@@ -85,6 +86,7 @@ extern char* glaspen2_ocr_recognize(const unsigned char *pixels, int width, int 
 extern char* glaspen2_ocr_page(const unsigned char *pixels, int width, int height, long screen_id);
 extern int glaspen2_export_pdf(void);
 extern void glaspen2_ocr_backfill_all(void);
+extern void glaspen2_on_display_change(int screen_w, int screen_h);
 extern char* glaspen2_list_screens_json(void);
 extern char* glaspen2_search_ocr_json(const char *query);
 extern unsigned char* glaspen2_render_thumbnail(long long screen_id, int w, int h, int max_size, int *out_len);
@@ -135,6 +137,9 @@ static BOOL g_raw_has_last = NO;
 // Track if a stroke is active (modeler has been initialized)
 static BOOL g_stroke_active = NO;
 
+// Eraser (back end of pen) mode — clears pixels instead of drawing ink
+static BOOL g_eraser_mode = NO;
+
 // Active cairo context (reused across pen events during a stroke).
 // Created on pen-down, destroyed on pen-up. Avoids per-event malloc/free
 // of cairo_t and avoids the CTM scale setup cost.
@@ -153,12 +158,30 @@ static inline void dirty_include_point(double x, double y, double r) {
     if (!g_dirty_has) { g_dirty_rect = add; g_dirty_has = YES; }
     else g_dirty_rect = NSUnionRect(g_dirty_rect, add);
 }
+// Include a point given in SURFACE coordinates (origin top-left).
+// The view is non-flipped (origin bottom-left), so flip Y first.
+static inline void dirty_include_surface_point(double x, double y, double r) {
+    double view_h = g_draw_view ? [g_draw_view bounds].size.height : y;
+    dirty_include_point(x, view_h - y, r);
+}
 
 // Cursor state
 static double g_cursor_x = -100, g_cursor_y = -100;
 static BOOL g_cursor_visible = NO;
 static NSCursor *g_blank_cursor = nil;
 static NSCursor *g_arrow_cursor = nil;
+
+// System cursor hidden while pen is drawing (file scope so toggle_enabled
+// can restore it when the app is disabled mid-stroke).
+static BOOL g_pen_drawing = NO;
+
+// Restore the system cursor if it is currently hidden by pen drawing.
+static void restore_system_cursor(void) {
+    if (g_pen_drawing) {
+        CGDisplayShowCursor(kCGDirectMainDisplay);
+        g_pen_drawing = NO;
+    }
+}
 
 // Pressure monitor
 static BOOL g_pressure_monitor = NO;
@@ -255,11 +278,30 @@ static void save_drawing_only(void) {
 static void save_with_background(void) {
     if (!g_surface) return;
 
+    // Copy the cairo surface on the main thread so the background capture
+    // never reads live surface memory (data race / use-after-free on rebuild).
+    cairo_surface_flush(g_surface);
+    int dw = cairo_image_surface_get_width(g_surface);
+    int dh = cairo_image_surface_get_height(g_surface);
+    int dstride = cairo_image_surface_get_stride(g_surface);
+    const unsigned char *dptr = cairo_image_surface_get_data(g_surface);
+    if (!dptr || dw <= 0 || dh <= 0 || dstride <= 0) {
+        save_drawing_only();
+        return;
+    }
+    unsigned char *drawingCopy = malloc((size_t)dstride * dh);
+    if (!drawingCopy) {
+        save_drawing_only();
+        return;
+    }
+    memcpy(drawingCopy, dptr, (size_t)dstride * dh);
+
     // Use ScreenCaptureKit to capture screen
     [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent *content, NSError *error) {
         if (error || !content.displays.count) {
             NSLog(@"[glaspen2] Screen capture failed: %@", error);
-            save_drawing_only();
+            free(drawingCopy);
+            dispatch_async(dispatch_get_main_queue(), ^{ save_drawing_only(); });
             return;
         }
 
@@ -272,10 +314,11 @@ static void save_with_background(void) {
         [SCScreenshotManager captureImageWithFilter:filter configuration:config completionHandler:^(CGImageRef image, NSError *error) {
             if (error || !image) {
                 NSLog(@"[glaspen2] Screenshot failed: %@", error);
+                free(drawingCopy);
                 dispatch_async(dispatch_get_main_queue(), ^{
                     show_notification(L(@"截图失败，已保存涂鸦", @"Screenshot failed, drawing saved"));
+                    save_drawing_only();
                 });
-                save_drawing_only();
                 return;
             }
 
@@ -297,17 +340,14 @@ static void save_with_background(void) {
             const unsigned char *bgData = CFDataGetBytePtr(bgDataRef);
             size_t bgStride = CGImageGetBytesPerRow(p3Image);
 
-            // Convert cairo surface (sRGB) to Display P3
-            cairo_surface_flush(g_surface);
-            int dw = cairo_image_surface_get_width(g_surface);
-            int dh = cairo_image_surface_get_height(g_surface);
-            int dstride = cairo_image_surface_get_stride(g_surface);
-
+            // Convert the copied cairo surface (sRGB, BGRA in memory) to Display P3.
+            // Cairo ARGB32 on little-endian is B,G,R,A in memory — matches
+            // kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst.
             CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
             CGDataProviderRef drawProvider = CGDataProviderCreateWithData(NULL,
-                cairo_image_surface_get_data(g_surface), dstride * dh, NULL);
+                drawingCopy, dstride * dh, NULL);
             CGImageRef drawImage = CGImageCreate(dw, dh, 8, 32, dstride, srgb,
-                kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedLast,
+                kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst,
                 drawProvider, NULL, false, kCGRenderingIntentDefault);
             CGDataProviderRelease(drawProvider);
             CGColorSpaceRelease(srgb);
@@ -327,6 +367,7 @@ static void save_with_background(void) {
             size_t drawStride = CGImageGetBytesPerRow(p3DrawImage);
 
             CGColorSpaceRelease(displayP3);
+            free(drawingCopy);
 
             // Call Rust to composite and save (both in Display P3)
             glaspen2_save_with_background(
@@ -543,6 +584,7 @@ static void update_menu_checkmarks(void) {
 
 static void toggle_enabled(void) {
     g_enabled = !g_enabled;
+    if (!g_enabled) restore_system_cursor();
     update_status_icon_state();
     show_notification(g_enabled
         ? L(@"涂鸦已开启", @"Drawing enabled")
@@ -736,19 +778,31 @@ static NSButton *g_glass_buttons[1];
         }
         result(nil);
     } else if ([call.method isEqualToString:@"recognizeText"]) {
-        // Run OCR on current drawing surface
+        // Run OCR on current drawing surface.
+        // Copy the pixels on the main thread first — the background queue must
+        // never read live cairo surface memory (torn reads / use-after-free).
+        if (!g_surface) {
+            result(@"");
+            return;
+        }
+        cairo_surface_flush(g_surface);
+        const unsigned char *data = cairo_image_surface_get_data(g_surface);
+        int w = cairo_image_surface_get_width(g_surface);
+        int h = cairo_image_surface_get_height(g_surface);
+        int stride = cairo_image_surface_get_stride(g_surface);
+        if (!data || w <= 0 || h <= 0 || stride <= 0) {
+            result(@"");
+            return;
+        }
+        unsigned char *copy = malloc((size_t)stride * h);
+        if (!copy) { result(@""); return; }
+        memcpy(copy, data, (size_t)stride * h);
+
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            if (!g_surface) {
-                dispatch_async(dispatch_get_main_queue(), ^{ result(@""); });
-                return;
-            }
-            cairo_surface_flush(g_surface);
-            const unsigned char *data = cairo_image_surface_get_data(g_surface);
-            int w = cairo_image_surface_get_width(g_surface);
-            int h = cairo_image_surface_get_height(g_surface);
-            char *text = glaspen2_ocr_recognize(data, w, h);
+            char *text = glaspen2_ocr_recognize(copy, w, h);
             NSString *resultText = text ? [NSString stringWithUTF8String:text] : @"";
             if (text) glaspen2_free_c_string(text);
+            free(copy);
             dispatch_async(dispatch_get_main_queue(), ^{
                 result(resultText);
             });
@@ -871,7 +925,8 @@ static void gl_settings_set_rainbow(BOOL on) {
     NSMenuItem *item = [g_menu itemWithTag:999];
     [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
     sync_settings_panel();
-    if (on) draw_rainbow_indicator(); else clear_screen();
+    // Redraw the surface without the rainbow — never clear the page.
+    rebuild_surface_from_strokes();
 }
 
 static void gl_settings_set_grid(BOOL on) {
@@ -1076,6 +1131,24 @@ static void show_settings_panel(void) {
     g_settings_window = window;
 }
 
+// Cached full-surface CGImage for drawRect (rebuilt only when the surface
+// changes). CGImage wraps the shared cairo buffer, so pixels stay live.
+static CGImageRef g_surface_cgimage = NULL;
+static const unsigned char *g_surface_cgimage_data = NULL;
+static int g_surface_cgimage_w = 0, g_surface_cgimage_h = 0, g_surface_cgimage_stride = 0;
+
+// Drop the cached surface image (call before the surface is destroyed).
+static void surface_image_cache_invalidate(void) {
+    if (g_surface_cgimage) {
+        CGImageRelease(g_surface_cgimage);
+        g_surface_cgimage = NULL;
+    }
+    g_surface_cgimage_data = NULL;
+    g_surface_cgimage_w = 0;
+    g_surface_cgimage_h = 0;
+    g_surface_cgimage_stride = 0;
+}
+
 static void ensure_surface(NSView *view) {
     NSRect bounds = [view bounds];
     CGFloat scale = [[view window] backingScaleFactor];
@@ -1084,7 +1157,10 @@ static void ensure_surface(NSView *view) {
     int h = (int)(bounds.size.height * scale);
     if (g_surface && cairo_image_surface_get_width(g_surface) == w &&
         cairo_image_surface_get_height(g_surface) == h && g_scale == scale) return;
-    if (g_surface) cairo_surface_destroy(g_surface);
+    if (g_surface) {
+        surface_image_cache_invalidate();
+        cairo_surface_destroy(g_surface);
+    }
     g_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
     g_scale = scale;
     cairo_t *cr = cairo_create_scaled();
@@ -1146,6 +1222,23 @@ static void stroke_end(void) {
     }
 }
 
+/// Properly finish an in-flight stroke (used by hotkeys / re-entrant pen-down
+/// so an interrupted stroke is committed or erased instead of silently lost).
+static void finish_active_stroke(void) {
+    if (!g_stroke_active) return;
+    double ts = [[NSProcessInfo processInfo] systemUptime];
+    if (g_eraser_mode) {
+        glaspen2_modeler_erase_finish();
+        g_eraser_mode = NO;
+    } else {
+        glaspen2_modeler_end(g_raw_last_x, g_raw_last_y, 0.0, ts, g_width_scale);
+        glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
+    }
+    stroke_end();
+    g_stroke_active = NO;
+    g_raw_has_last = NO;
+}
+
 // Handle display configuration changes (resolution, arrangement, etc.)
 static void on_display_changed(void) {
     NSScreen *screen = [NSScreen mainScreen];
@@ -1157,7 +1250,8 @@ static void on_display_changed(void) {
     NSLog(@"[glaspen2] display changed: %dx%d -> %dx%d", g_screen_w, g_screen_h, new_w, new_h);
     g_screen_w = new_w;
     g_screen_h = new_h;
-    glaspen2_init_db(g_screen_w, g_screen_h);
+    // Only start a new page when the current one has strokes (no silent page switch).
+    glaspen2_on_display_change(g_screen_w, g_screen_h);
 
     if (g_window) {
         [g_window setFrame:newFrame display:YES];
@@ -1205,18 +1299,22 @@ static void pen_draw(double x, double y, double width) {
 static void raw_draw_dot(double x, double y, double width) {
     if (!g_surface) return;
     cairo_t *cr = g_active_cr ? g_active_cr : cairo_create_scaled();
+    if (g_eraser_mode) cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    else cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
     cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
     cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
     cairo_fill(cr);
     if (!g_active_cr) cairo_destroy(cr);
     double pad = width * 0.5 + 1.5; // AA padding
-    dirty_include_point(x, y, pad);
+    dirty_include_surface_point(x, y, pad);
     flush_dirty_to_layer();
 }
 
 static void raw_draw_segment(double x, double y, double width) {
     if (!g_surface) return;
     cairo_t *cr = g_active_cr ? g_active_cr : cairo_create_scaled();
+    if (g_eraser_mode) cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    else cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
     cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
     cairo_set_line_width(cr, width);
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
@@ -1233,9 +1331,9 @@ static void raw_draw_segment(double x, double y, double width) {
 
     double pad = width * 0.5 + 1.5; // AA padding
     if (g_raw_has_last) {
-        dirty_include_point(g_raw_last_x, g_raw_last_y, pad);
+        dirty_include_surface_point(g_raw_last_x, g_raw_last_y, pad);
     }
-    dirty_include_point(x, y, pad);
+    dirty_include_surface_point(x, y, pad);
 
     g_raw_last_x = x;
     g_raw_last_y = y;
@@ -1285,13 +1383,28 @@ static void rebuild_surface_from_strokes(void) {
     NSRect clipRect = [self isFlipped] ? rect : rect;
     CGContextClipToRect(ctx, NSRectToCGRect(clipRect));
 
-    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
-    CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, data, stride * h, NULL);
-    CGImageRef image = CGImageCreate(w, h, 8, 32, stride, cs,
-                                      kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst,
-                                      provider, NULL, false, kCGRenderingIntentDefault);
-    CGDataProviderRelease(provider);
-    CGColorSpaceRelease(cs);
+    // Reuse the cached CGImage; it wraps the live cairo buffer, so it is
+    // only rebuilt when the surface itself changes.
+    if (!g_surface_cgimage ||
+        g_surface_cgimage_data != data ||
+        g_surface_cgimage_w != w ||
+        g_surface_cgimage_h != h ||
+        g_surface_cgimage_stride != stride) {
+        CGImageRelease(g_surface_cgimage);
+        g_surface_cgimage = NULL;
+        CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+        CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, data, stride * h, NULL);
+        g_surface_cgimage = CGImageCreate(w, h, 8, 32, stride, cs,
+                                          kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst,
+                                          provider, NULL, false, kCGRenderingIntentDefault);
+        CGDataProviderRelease(provider);
+        CGColorSpaceRelease(cs);
+        g_surface_cgimage_data = data;
+        g_surface_cgimage_w = w;
+        g_surface_cgimage_h = h;
+        g_surface_cgimage_stride = stride;
+    }
+    CGImageRef image = g_surface_cgimage;
 
     if (image) {
         // If only a small dirty rect was requested, extract just that sub-image
@@ -1321,7 +1434,7 @@ static void rebuild_surface_from_strokes(void) {
             NSRect bounds = [self bounds];
             CGContextDrawImage(ctx, CGRectMake(0, 0, bounds.size.width, bounds.size.height), image);
         }
-        CGImageRelease(image);
+        // image is the cached surface image — NOT released here.
 
         // Draw notification text
         if (g_notification) {
@@ -1465,7 +1578,7 @@ static void perf_log_event(const char *evtype, uint64_t dur_us) {
 
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                       CGEventRef event, void *refcon) {
-    if (!g_perf_file) perf_log_begin();
+    if (g_perf_log && !g_perf_file) perf_log_begin();
 
     uint64_t t0 = mach_absolute_time();
 
@@ -1486,11 +1599,13 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             if (hasCmdCtrl) {
                 unsigned short kc = [keyEvent keyCode];
                 if (kc == kVK_ANSI_C) {
+                    finish_active_stroke(); // don't strand an in-flight stroke
                     ocr_current_page_async();
                     clear_screen();
                     return NULL;
                 } else if (kc == kVK_ANSI_V) { toggle_enabled(); return NULL; }
                 else if (kc == 0x26) { // J — previous page
+                    finish_active_stroke();
                     ocr_current_page_async();
                     long target = glaspen2_prev_screen_id();
                     if (target > 0) {
@@ -1502,6 +1617,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                     }
                     return NULL;
                 } else if (kc == 0x28) { // K — next page
+                    finish_active_stroke();
                     ocr_current_page_async();
                     long target = glaspen2_next_screen_id();
                     if (target > 0) {
@@ -1589,8 +1705,13 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         return event;
     }
 
-    // All non-keyboard events: if app is disabled, pass through
-    if (!g_enabled) return event;
+    // All non-keyboard events: if app is disabled, pass through.
+    // Restore the system cursor first — disabling mid-stroke must never
+    // leave the cursor hidden.
+    if (!g_enabled) {
+        restore_system_cursor();
+        return event;
+    }
 
     // Convert to NSEvent to check pen properties
     NSEvent *nsevent = [NSEvent eventWithCGEvent:event];
@@ -1609,21 +1730,27 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     // The g_stroke_active guard prevents spurious non-pen events interleaved during
     // a stroke (from trackpad / secondary input) from causing extra redraws.
     if (!isPen && etype == NSEventTypeMouseMoved && g_cursor_visible && !g_stroke_active) {
+        // Invalidate only the old crosshair region (partial refresh).
+        dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
         g_cursor_visible = NO;
-        [g_draw_view setNeedsDisplay:YES];
+        flush_dirty_to_layer();
     }
 
-    // Update cursor position for pen events only
+    // Update cursor position for pen events only (partial refresh of the
+    // old + new crosshair regions instead of the whole view each event).
     if (isPen) {
         NSPoint loc = [nsevent locationInWindow];
+        if (g_cursor_visible && (g_cursor_x != loc.x || g_cursor_y != loc.y)) {
+            dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
+        }
         g_cursor_x = loc.x;
         g_cursor_y = loc.y;
         g_cursor_visible = YES;
-        [g_draw_view setNeedsDisplay:YES];
+        dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
+        flush_dirty_to_layer();
     }
 
     // Hide system cursor while pen is drawing, restore on any mouse up
-    static BOOL g_pen_drawing = NO;
     if (isPen && (etype == NSEventTypeLeftMouseDown || etype == NSEventTypeRightMouseDown ||
                   etype == NSEventTypeOtherMouseDown ||
                   etype == NSEventTypeLeftMouseDragged || etype == NSEventTypeRightMouseDragged ||
@@ -1635,16 +1762,15 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     }
     if (etype == NSEventTypeLeftMouseUp || etype == NSEventTypeRightMouseUp ||
         etype == NSEventTypeOtherMouseUp) {
-        if (g_pen_drawing) {
-            CGDisplayShowCursor(kCGDirectMainDisplay);
-            g_pen_drawing = NO;
-        }
+        restore_system_cursor();
         g_cursor_visible = NO;
-        [g_draw_view setNeedsDisplay:YES];
+        dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
+        flush_dirty_to_layer();
     }
 
-    // Check if click is on the menu bar
-    if (etype == NSEventTypeLeftMouseDown) {
+    // Check if click is on the menu bar (real mouse clicks only — a pen
+    // stroke starting near the top of the screen must not freeze input).
+    if (etype == NSEventTypeLeftMouseDown && !isPen) {
         CGPoint cgLoc = CGEventGetLocation(event);
         if (cgLoc.y < 30) {
             CGEventTapEnable(g_event_tap, false);
@@ -1700,6 +1826,11 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     if (isPen && (etype == NSEventTypeLeftMouseDown || etype == NSEventTypeRightMouseDown ||
                   etype == NSEventTypeOtherMouseDown)) {
         // Pen down: start modeler, draw raw dot immediately (no lag)
+        // If a previous stroke was never ended (missed pen-up), finish it first.
+        if (g_stroke_active) {
+            finish_active_stroke();
+        }
+        g_eraser_mode = (devType == NSEraserPointingDevice);
         NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f", px, py, pressure, ts);
         glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
         g_stroke_active = YES;
@@ -1714,6 +1845,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                   etype == NSEventTypeOtherMouseDragged)) {
         // If no DOWN event was seen (pen detection lag), auto-initialize
         if (!g_stroke_active) {
+            g_eraser_mode = (devType == NSEraserPointingDevice);
             glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
             g_stroke_active = YES;
             stroke_begin();
@@ -1730,10 +1862,15 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     }
     if (isPen && (etype == NSEventTypeLeftMouseUp || etype == NSEventTypeRightMouseUp ||
                   etype == NSEventTypeOtherMouseUp)) {
-        // Pen up: finalize modeler, commit smoothed points
+        // Pen up: finalize modeler, commit smoothed points (or erase)
         if (g_stroke_active) {
-            glaspen2_modeler_end(px, py, pressure, ts, g_width_scale);
-            glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
+            if (g_eraser_mode) {
+                glaspen2_modeler_erase_finish();
+                g_eraser_mode = NO;
+            } else {
+                glaspen2_modeler_end(px, py, pressure, ts, g_width_scale);
+                glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
+            }
 
             // P0: no rebuild — raw drawing remains on the surface.
             // Undo still calls rebuild_surface_from_strokes() to clear erased strokes.
@@ -1901,8 +2038,9 @@ void glaspen2_run(void) {
             });
         }
 
-        // Apply glass visual on startup
+        // Apply glass visual on startup (skip if the user already started drawing)
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            if (g_stroke_active) return;
             if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
             rebuild_surface_from_strokes();
         });

@@ -15,6 +15,35 @@ use crate::{
 // Drawing FFI (legacy, non-modeler path)
 // ---------------------------------------------------------------------------
 
+/// Keep points whose distance from the last kept point exceeds `min_dist`,
+/// or whose width changed by more than `width_ratio` from the last kept width.
+/// Preserves stroke shape while bounding point count in long-running sessions.
+pub(crate) fn decimate(
+    points: &[(f64, f64, f64, f64)],
+) -> Vec<(f64, f64, f64, f64)> {
+    if points.len() <= 4 {
+        return points.to_vec();
+    }
+    let min_dist = 0.8f64;
+    let width_ratio = 0.12f64;
+    let mut out: Vec<(f64, f64, f64, f64)> = Vec::with_capacity(points.len() / 2 + 2);
+    let mut last: (f64, f64, f64, f64) = points[0];
+    out.push(last);
+    for &p in points.iter().skip(1) {
+        let dx = p.0 - last.0;
+        let dy = p.1 - last.1;
+        let dw = (p.2 - last.2).abs() / last.2.max(1e-6);
+        if dx * dx + dy * dy >= min_dist * min_dist || dw > width_ratio {
+            out.push(p);
+            last = p;
+        }
+    }
+    if *out.last().unwrap() != *points.last().unwrap() {
+        out.push(*points.last().unwrap());
+    }
+    out
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_begin_stroke(
     r: c_double,
@@ -22,15 +51,16 @@ pub extern "C" fn glaspen2_begin_stroke(
     b: c_double,
     width_scale: c_double,
 ) {
+    let id = runtime().block_on(db::begin_stroke(r, g, b, width_scale));
     let mut strokes = STROKES.lock().unwrap();
     strokes.push(Stroke {
+        id,
         r,
         g,
         b,
         points: Vec::new(),
     });
     *RAW_STROKE_START.lock().unwrap() = None;
-    runtime().block_on(db::begin_stroke(r, g, b, width_scale));
 }
 
 #[unsafe(no_mangle)]
@@ -62,13 +92,17 @@ pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) {
 /// Returns the number of remaining strokes, or -1 if there was nothing to undo.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_undo_last_stroke() -> c_int {
-    let mut strokes = STROKES.lock().unwrap();
-    if strokes.is_empty() {
-        return -1;
+    let id = {
+        let mut strokes = STROKES.lock().unwrap();
+        if strokes.is_empty() {
+            return -1;
+        }
+        strokes.pop().map(|s| s.id).unwrap_or(0)
+    };
+    if id > 0 {
+        runtime().block_on(db::delete_stroke_by_id(id));
     }
-    strokes.pop();
-    runtime().block_on(db::delete_last_stroke());
-    strokes.len() as c_int
+    STROKES.lock().unwrap().len() as c_int
 }
 
 /// Initialize the database and create the first screen record. Call once at app start.
@@ -76,6 +110,17 @@ pub extern "C" fn glaspen2_undo_last_stroke() -> c_int {
 pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
     runtime().block_on(db::init());
     runtime().block_on(db::new_screen(screen_w, screen_h));
+}
+
+/// Called when the display size/arrangement changed. Only starts a new page
+/// when the current page already has strokes; otherwise the current page is
+/// kept (avoiding silent page switches from resolution changes).
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_on_display_change(screen_w: c_int, screen_h: c_int) {
+    let current = state::current_screen_id();
+    if runtime().block_on(db::screen_has_strokes(current)) {
+        runtime().block_on(db::new_screen(screen_w, screen_h));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -96,11 +141,12 @@ pub extern "C" fn glaspen2_modeler_begin(
     modeler::begin_stroke(x, y, pressure, timestamp, width_scale);
     *RAW_STROKE_START.lock().unwrap() = Some(timestamp);
     // Start DB stroke with correct color
-    runtime().block_on(db::begin_stroke(r, g, b, width_scale));
+    let id = runtime().block_on(db::begin_stroke(r, g, b, width_scale));
     state::buffer_point(x, y, pressure_to_width(pressure, width_scale), 0.0); // sync
     // Start STROKES entry
     let mut strokes = STROKES.lock().unwrap();
     strokes.push(Stroke {
+        id,
         r,
         g,
         b,
@@ -162,7 +208,65 @@ pub extern "C" fn glaspen2_modeler_commit_to_strokes(
         for (sx, sy, sw, st) in smoothed {
             last.points.push((sx, sy, sw, st));
         }
+        // Bound point count for long-running sessions.
+        last.points = decimate(&last.points);
     }
+}
+
+/// Eraser: remove strokes overlapped by the just-finished eraser stroke.
+/// The eraser stroke itself produced no DB points; its pending DB row is
+/// deleted here along with any hit strokes (memory + DB).
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_modeler_erase_finish() {
+    let eraser_pts = modeler::take_buffer();
+
+    let removed_ids: Vec<i64> = {
+        let mut strokes = STROKES.lock().unwrap();
+        let mut removed = Vec::new();
+        strokes.retain(|s| {
+            let hit = if eraser_pts.is_empty() {
+                false
+            } else {
+                stroke_intersects_eraser(s, &eraser_pts)
+            };
+            if hit {
+                removed.push(s.id);
+            }
+            !hit
+        });
+        removed
+    };
+
+    // Discard the eraser stroke's own DB row (it has no points).
+    // Deletes run synchronously so an immediate page-nav/undo can't see
+    // strokes that should already be gone.
+    if let Some(id) = state::take_pending_stroke_id() {
+        // clear any buffered points so they never flush under a stale id
+        state::take_pending();
+        runtime().block_on(db::delete_stroke_by_id(id));
+    }
+
+    for id in removed_ids {
+        runtime().block_on(db::delete_stroke_by_id(id));
+    }
+}
+
+/// True if the eraser path (points with width) touches the stroke.
+fn stroke_intersects_eraser(
+    stroke: &Stroke,
+    eraser_pts: &[(f64, f64, f64, f64)],
+) -> bool {
+    for &(ex, ey, ew, _) in eraser_pts {
+        for &(px, py, pw, _) in &stroke.points {
+            let dx = px - ex;
+            let dy = py - ey;
+            let r = (ew + pw) * 0.5;
+            if dx * dx + dy * dy <= r * r {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Get the number of smoothed points available after the last modeler call.
@@ -201,12 +305,16 @@ pub extern "C" fn glaspen2_modeler_clear_buffer() {
 /// Load strokes from DB into STROKES for a given screen. Returns stroke count.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_load_strokes_for_screen(screen_id: i64) -> c_int {
+    // Flush any stroke whose pen-up was still queued, so page navigation
+    // never races the async point flush.
+    runtime().block_on(db::end_stroke());
     let data = runtime().block_on(db::strokes_for_screen(screen_id));
     let count = data.len() as c_int;
     let mut strokes = STROKES.lock().unwrap();
     strokes.clear();
     for s in data {
         strokes.push(Stroke {
+            id: s.id,
             r: s.r,
             g: s.g,
             b: s.b,
@@ -221,12 +329,25 @@ pub extern "C" fn glaspen2_load_strokes_for_screen(screen_id: i64) -> c_int {
 /// Smooth all loaded strokes in STROKES through the modeler. Call after loading.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_smooth_loaded_strokes() {
+    // Snapshot under lock; run CPU-heavy smoothing outside the lock.
+    let snapshot: Vec<(f64, f64, f64, Vec<(f64, f64, f64)>)> = {
+        let strokes = STROKES.lock().unwrap();
+        strokes.iter().map(|s| {
+            (s.r, s.g, s.b, s.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect())
+        }).collect()
+    };
+
+    let mut smoothed_all: Vec<Vec<(f64, f64, f64, f64)>> =
+        Vec::with_capacity(snapshot.len());
+    for (_, _, _, raw) in snapshot.iter() {
+        let smoothed = modeler::smooth_points(raw);
+        smoothed_all.push(smoothed);
+    }
+
     let mut strokes = STROKES.lock().unwrap();
-    for stroke in strokes.iter_mut() {
-        let raw: Vec<_> = stroke.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect();
-        let smoothed = modeler::smooth_points(&raw);
+    for (stroke, smoothed) in strokes.iter_mut().zip(smoothed_all.into_iter()) {
         if !smoothed.is_empty() {
-            stroke.points = smoothed;
+            stroke.points = decimate(&smoothed);
         }
     }
 }
@@ -357,63 +478,49 @@ fn xoj_timestamped_path() -> PathBuf {
 pub extern "C" fn glaspen2_save_xoj() {
     use flate2::write::GzEncoder;
     use flate2::Compression;
+    use std::fmt::Write as _;
     use std::io::Write;
 
-    let strokes = STROKES.lock().unwrap();
+    // Snapshot strokes under lock, then encode/write without holding it.
+    let snapshot: Vec<(f64, f64, f64, Vec<(f64, f64, f64)>)> = {
+        let strokes = STROKES.lock().unwrap();
+        strokes.iter().map(|s| {
+            (s.r, s.g, s.b, s.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect())
+        }).collect()
+    };
 
     // Get screen dimensions from the first point bounds, or use defaults
     let (mut max_x, mut max_y) = (1920.0f64, 1080.0f64);
-    for stroke in strokes.iter() {
-        for &(x, y, _, _) in &stroke.points {
-            if x > max_x {
-                max_x = x;
-            }
-            if y > max_y {
-                max_y = y;
-            }
+    for (_, _, _, points) in snapshot.iter() {
+        for &(x, y, _) in points {
+            if x > max_x { max_x = x; }
+            if y > max_y { max_y = y; }
         }
     }
     let page_w = (max_x + 10.0).ceil() as i32;
     let page_h = (max_y + 10.0).ceil() as i32;
 
-    // Build XML
+    // Build XML — Xournal 0.4 spec: <stroke tool="pen" color="#rrggbb">
+    // followed by "x y width" triples in the element body.
     let mut xml = String::new();
     xml.push_str("<?xml version=\"1.0\" standalone=\"no\"?>\n");
-    xml.push_str(&format!(
-        "<xournal version=\"0.4\" fileversion=\"4\">\n"
-    ));
-    xml.push_str(&format!(
-        "  <page width=\"{}\" height=\"{}\">\n",
-        page_w, page_h
-    ));
+    xml.push_str("<xournal version=\"0.4\" fileversion=\"4\">\n");
+    xml.push_str(&format!("  <page width=\"{}\" height=\"{}\">\n", page_w, page_h));
     xml.push_str("    <layer>\n");
 
-    for stroke in strokes.iter() {
+    for (r, g, b, points) in snapshot.iter() {
+        if points.is_empty() { continue; }
         let color_hex = format!(
             "#{:02x}{:02x}{:02x}",
-            (stroke.r * 255.0) as u8,
-            (stroke.g * 255.0) as u8,
-            (stroke.b * 255.0) as u8
+            (r * 255.0) as u8,
+            (g * 255.0) as u8,
+            (b * 255.0) as u8
         );
-
-        let widths: String = stroke
-            .points
-            .iter()
-            .map(|&(_, _, w, _)| format!("{:.2}", w))
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        let coords: String = stroke
-            .points
-            .iter()
-            .map(|&(x, y, _, _)| format!("{:.2} {:.2}", x, y))
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        xml.push_str(&format!(
-            "      <stroke color=\"{}\" tool=\"pen\" width=\"{}\">\n        {}\n      </stroke>\n",
-            color_hex, widths, coords
-        ));
+        xml.push_str(&format!("      <stroke tool=\"pen\" color=\"{}\">\n        ", color_hex));
+        for &(x, y, w) in points {
+            write!(xml, "{:.2} {:.2} {:.2} ", x, y, w).ok();
+        }
+        xml.push_str("\n      </stroke>\n");
     }
 
     xml.push_str("    </layer>\n");
@@ -422,8 +529,8 @@ pub extern "C" fn glaspen2_save_xoj() {
 
     // Gzip compress
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-    encoder.write_all(xml.as_bytes()).unwrap();
-    let compressed = encoder.finish().unwrap();
+    if encoder.write_all(xml.as_bytes()).is_err() { return; }
+    let Ok(compressed) = encoder.finish() else { return };
 
     // Write to file
     let path = xoj_timestamped_path();
@@ -470,6 +577,7 @@ pub extern "C" fn glaspen2_load_settings_parts(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_save_bool_setting(key: *const c_char, val: c_int) {
+    if key.is_null() { return; }
     let k = unsafe { CStr::from_ptr(key) }
         .to_str()
         .unwrap_or("");
@@ -478,6 +586,7 @@ pub extern "C" fn glaspen2_save_bool_setting(key: *const c_char, val: c_int) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_load_bool_setting(key: *const c_char) -> c_int {
+    if key.is_null() { return 0; }
     let k = unsafe { CStr::from_ptr(key) }
         .to_str()
         .unwrap_or("");
@@ -594,6 +703,9 @@ pub extern "C" fn glaspen2_save_drawing(
     height: c_int,
     stride: c_int,
 ) {
+    if data.is_null() || width <= 0 || height <= 0 || stride < width * 4 {
+        return;
+    }
     let w = width as u32;
     let h = height as u32;
     let s = stride as usize;
@@ -633,6 +745,13 @@ pub extern "C" fn glaspen2_save_with_background(
     bg_height: c_int,
     bg_stride: c_int,
 ) {
+    if drawing_data.is_null() || drawing_width <= 0 || drawing_height <= 0
+        || bg_data.is_null() || bg_width <= 0 || bg_height <= 0 {
+        return;
+    }
+    if drawing_stride < drawing_width * 4 || bg_stride < bg_width * 4 {
+        return;
+    }
     let dw = drawing_width as u32;
     let dh = drawing_height as u32;
     let ds = drawing_stride as usize;
@@ -741,28 +860,26 @@ pub extern "C" fn glaspen2_stroke_bbox(
 
 /// Build cropped SVG string from current STROKES. Returns None if no strokes.
 pub(crate) fn build_cropped_svg() -> Option<String> {
-    let strokes = STROKES.lock().unwrap();
-    if strokes.is_empty() {
-        return None;
-    }
+    // Snapshot under lock, then build the string without holding it.
+    let snapshot: Vec<(f64, f64, f64, Vec<(f64, f64, f64)>)> = {
+        let strokes = STROKES.lock().unwrap();
+        if strokes.is_empty() {
+            return None;
+        }
+        strokes.iter().map(|s| {
+            (s.r, s.g, s.b, s.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect())
+        }).collect()
+    };
     let mut bx_min = f64::MAX;
     let mut by_min = f64::MAX;
     let mut bx_max = f64::MIN;
     let mut by_max = f64::MIN;
-    for s in strokes.iter() {
-        for &(x, y, _, _) in &s.points {
-            if x < bx_min {
-                bx_min = x;
-            }
-            if y < by_min {
-                by_min = y;
-            }
-            if x > bx_max {
-                bx_max = x;
-            }
-            if y > by_max {
-                by_max = y;
-            }
+    for (_, _, _, points) in snapshot.iter() {
+        for &(x, y, _) in points {
+            if x < bx_min { bx_min = x; }
+            if y < by_min { by_min = y; }
+            if x > bx_max { bx_max = x; }
+            if y > by_max { by_max = y; }
         }
     }
     let pad = 10.0;
@@ -777,18 +894,18 @@ pub(crate) fn build_cropped_svg() -> Option<String> {
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {:.1} {:.1}\" width=\"{:.1}\" height=\"{:.1}\">\n",
         bw, bh, bw, bh
     ));
-    for s in strokes.iter() {
-        if s.points.is_empty() {
+    for (r, g, b, points) in snapshot.iter() {
+        if points.is_empty() {
             continue;
         }
         let color_hex = format!(
             "#{:02x}{:02x}{:02x}",
-            (s.r * 255.0) as u8,
-            (s.g * 255.0) as u8,
-            (s.b * 255.0) as u8
+            (r * 255.0) as u8,
+            (g * 255.0) as u8,
+            (b * 255.0) as u8
         );
-        for i in 0..s.points.len() {
-            let (x, y, w, _t) = s.points[i];
+        for i in 0..points.len() {
+            let (x, y, w) = points[i];
             let cx = x - bx_min;
             let cy = y - by_min;
             if i == 0 {
@@ -801,7 +918,7 @@ pub(crate) fn build_cropped_svg() -> Option<String> {
                     color_hex
                 ));
             } else {
-                let (prev_x, prev_y, _, _) = s.points[i - 1];
+                let (prev_x, prev_y, _) = points[i - 1];
                 // Segment with destination-point width and round caps
                 svg.push_str(&format!(
                     "  <line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"{:.1}\" stroke-linecap=\"round\"/>\n",
@@ -864,56 +981,55 @@ pub extern "C" fn glaspen2_save_gif_cropped(
     surface_stride: c_int,
     surface_scale: c_double,
 ) -> c_int {
+    if surface_data.is_null() || surface_w <= 0 || surface_h <= 0 {
+        return 0;
+    }
+    if surface_stride < surface_w * 4 {
+        return 0;
+    }
     let w = surface_w as u32;
     let h = surface_h as u32;
     let scale = surface_scale.max(0.5).min(4.0);
     let stride = surface_stride as usize;
     let raw = unsafe { slice::from_raw_parts(surface_data, stride * h as usize) };
-    let strokes = STROKES.lock().unwrap();
-    if strokes.is_empty() {
-        return 0;
-    }
-    let mut bx_min = f64::MAX;
-    let mut by_min = f64::MAX;
-    let mut bx_max = f64::MIN;
-    let mut by_max = f64::MIN;
-    for s in strokes.iter() {
-        for &(x, y, _, _) in &s.points {
-            if x < bx_min {
-                bx_min = x;
-            }
-            if y < by_min {
-                by_min = y;
-            }
-            if x > bx_max {
-                bx_max = x;
-            }
-            if y > by_max {
-                by_max = y;
+
+    // Compute bbox under lock (cheap), then drop the lock before encoding.
+    let (bx_min_u, by_min_u, bx_max_u, by_max_u) = {
+        let strokes = STROKES.lock().unwrap();
+        if strokes.is_empty() {
+            return 0;
+        }
+        let mut bx_min = f64::MAX;
+        let mut by_min = f64::MAX;
+        let mut bx_max = f64::MIN;
+        let mut by_max = f64::MIN;
+        for s in strokes.iter() {
+            for &(x, y, _, _) in &s.points {
+                if x < bx_min { bx_min = x; }
+                if y < by_min { by_min = y; }
+                if x > bx_max { bx_max = x; }
+                if y > by_max { by_max = y; }
             }
         }
-    }
-    // Scale to physical surface coordinates
-    bx_min = (bx_min * scale).floor();
-    by_min = (by_min * scale).floor();
-    bx_max = (bx_max * scale).ceil();
-    by_max = (by_max * scale).ceil();
-    let pad = (5.0 * scale).ceil() as u32;
-    let bx_min_u = (bx_min as u32).saturating_sub(pad);
-    let by_min_u = (by_min as u32).saturating_sub(pad);
-    let bx_max_u = ((bx_max as u32) + pad).min(w.saturating_sub(1));
-    let by_max_u = ((by_max as u32) + pad).min(h.saturating_sub(1));
-    let crop_w = if bx_max_u > bx_min_u {
-        bx_max_u - bx_min_u + 1
-    } else {
-        1
+        // Scale to physical surface coordinates
+        bx_min = (bx_min * scale).floor();
+        by_min = (by_min * scale).floor();
+        bx_max = (bx_max * scale).ceil();
+        by_max = (by_max * scale).ceil();
+        let pad = (5.0 * scale).ceil() as u32;
+        let bx_min_u = (bx_min as u32).saturating_sub(pad);
+        let by_min_u = (by_min as u32).saturating_sub(pad);
+        let bx_max_u = ((bx_max as u32) + pad).min(w.saturating_sub(1));
+        let by_max_u = ((by_max as u32) + pad).min(h.saturating_sub(1));
+        (bx_min_u, by_min_u, bx_max_u, by_max_u)
     };
-    let crop_h = if by_max_u > by_min_u {
-        by_max_u - by_min_u + 1
-    } else {
-        1
+    let crop_w = if bx_max_u > bx_min_u { bx_max_u - bx_min_u + 1 } else { 1 };
+    let crop_h = if by_max_u > by_min_u { by_max_u - by_min_u + 1 } else { 1 };
+
+    let Some(crop_bytes) = (crop_w as usize).checked_mul(crop_h as usize).and_then(|v| v.checked_mul(4)) else {
+        return 0;
     };
-    let mut flat: Vec<u8> = Vec::with_capacity((crop_w * crop_h * 4) as usize);
+    let mut flat: Vec<u8> = Vec::with_capacity(crop_bytes);
     for cy in 0..crop_h {
         let sy = (by_min_u + cy) as usize;
         for cx in 0..crop_w {
@@ -932,10 +1048,13 @@ pub extern "C" fn glaspen2_save_gif_cropped(
             }
         }
     }
-    // Downscale to 50% for smaller GIF (clamp to minimum 1 pixel)
-    let gif_w = (crop_w / 2).max(1);
-    let gif_h = (crop_h / 2).max(1);
-    let mut gif_pixels: Vec<u8> = Vec::with_capacity((gif_w * gif_h * 4) as usize);
+    // Downscale to 50% for smaller GIF (ceil so no edge column/row is dropped)
+    let gif_w = ((crop_w + 1) / 2).max(1);
+    let gif_h = ((crop_h + 1) / 2).max(1);
+    let Some(gif_bytes) = (gif_w as usize).checked_mul(gif_h as usize).and_then(|v| v.checked_mul(4)) else {
+        return 0;
+    };
+    let mut gif_pixels: Vec<u8> = Vec::with_capacity(gif_bytes);
     for gy in 0..gif_h {
         for gx in 0..gif_w {
             let sx = gx * 2;
@@ -952,20 +1071,29 @@ pub extern "C" fn glaspen2_save_gif_cropped(
         .chunks(4)
         .map(|p| quantizer.index_of(&[p[0], p[1], p[2], p[3]]) as u8)
         .collect();
-    let mut idx_counts = [0u32; 128];
-    for (i, &idx) in indices.iter().enumerate() {
-        if gif_pixels[i * 4 + 3] == 0 {
-            idx_counts[idx as usize] += 1;
+    // Only use an index that transparent pixels map to and opaque pixels never use.
+    let transparent = {
+        let mut idx_counts = [0u32; 128];
+        let mut opaque_used = [false; 128];
+        for (i, &idx) in indices.iter().enumerate() {
+            let idx = idx as usize;
+            if idx >= 128 { continue; }
+            if gif_pixels[i * 4 + 3] == 0 {
+                idx_counts[idx] += 1;
+            } else {
+                opaque_used[idx] = true;
+            }
         }
-    }
-    let mut transparent_idx: u8 = 0;
-    let mut max_count = 0u32;
-    for i in 0..128 {
-        if idx_counts[i] > max_count {
-            max_count = idx_counts[i];
-            transparent_idx = i as u8;
+        let mut best: Option<u8> = None;
+        let mut max_count = 0u32;
+        for i in 0..128 {
+            if idx_counts[i] > max_count && !opaque_used[i] {
+                max_count = idx_counts[i];
+                best = Some(i as u8);
+            }
         }
-    }
+        best
+    };
     let palette = quantizer.color_map_rgba();
     let gif_palette: Vec<u8> = (0..128)
         .flat_map(|i| {
@@ -981,7 +1109,7 @@ pub extern "C" fn glaspen2_save_gif_cropped(
             width: gif_w as u16,
             height: gif_h as u16,
             buffer: std::borrow::Cow::Owned(indices),
-            transparent: Some(transparent_idx),
+            transparent,
             ..gif::Frame::default()
         };
         if let Err(e) = enc.write_frame(&frame) {
@@ -1171,24 +1299,42 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
         })
         .collect();
 
-    // Transparent index
-    let transparent_idx = {
-        let mut idx_counts = [0u32; 64];
-        for (px, _) in &frame_pixels {
-            for ch in px.chunks(4) {
-                if ch.len() == 4 && ch[3] == 0 {
-                    let idx =
-                        quantizer.index_of(&[ch[0], ch[1], ch[2], 0]) as u8;
-                    idx_counts[idx as usize] += 1;
+    // Per-frame palette indices (computed once, reused for transparency + encoding)
+    let frame_indices: Vec<Vec<u8>> = frame_pixels
+        .iter()
+        .map(|(pixels, _)| {
+            pixels
+                .chunks(4)
+                .map(|p| quantizer.index_of(&[p[0], p[1], p[2], 0]) as u8)
+                .collect()
+        })
+        .collect();
+
+    // Transparent index: only choose an index that transparent pixels map to
+    // and that no opaque pixel ever uses; None when no transparent pixels exist.
+    let transparent = {
+        let mut counts = [0u32; 64];
+        let mut opaque_used = [false; 64];
+        for (fi, indices) in frame_indices.iter().enumerate() {
+            let px = &frame_pixels[fi].0;
+            for (i, &idx) in indices.iter().enumerate() {
+                let idx = idx as usize;
+                if idx >= 64 {
+                    continue;
+                }
+                if px[i * 4 + 3] == 0 {
+                    counts[idx] += 1;
+                } else {
+                    opaque_used[idx] = true;
                 }
             }
         }
-        let mut best = 0u8;
+        let mut best: Option<u8> = None;
         let mut max_count = 0u32;
         for i in 0..64 {
-            if idx_counts[i] > max_count {
-                max_count = idx_counts[i];
-                best = i as u8;
+            if counts[i] > max_count && !opaque_used[i] {
+                max_count = counts[i];
+                best = Some(i as u8);
             }
         }
         best
@@ -1208,18 +1354,16 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
         };
         enc.set_repeat(gif::Repeat::Infinite).ok();
 
-        for (pixels, delay) in &frame_pixels {
-            let indices: Vec<u8> = pixels
-                .chunks(4)
-                .map(|p| quantizer.index_of(&[p[0], p[1], p[2], 0]) as u8)
-                .collect();
-
+        for ((pixels, delay), indices) in frame_pixels.iter().zip(frame_indices.iter()) {
+            if pixels.len() != indices.len() * 4 {
+                continue;
+            }
             let frame = gif::Frame {
                 width: gif_w,
                 height: gif_h,
-                buffer: std::borrow::Cow::Owned(indices),
+                buffer: std::borrow::Cow::Owned(indices.clone()),
                 delay: *delay,
-                transparent: Some(transparent_idx),
+                transparent,
                 ..gif::Frame::default()
             };
             if enc.write_frame(&frame).is_err() {
@@ -1330,7 +1474,10 @@ fn render_gif_frame(
     }
 
     // Read pixels
-    let pix = &*surface.data().unwrap_or_else(|_| panic!("Surface data"));
+    let pix = match surface.data() {
+        Ok(d) => d,
+        Err(_) => return (Vec::new(), false),
+    };
     let mut flat = Vec::with_capacity((gif_w as u32 * gif_h as u32 * 4) as usize);
     for gy in 0..gif_h as u32 {
         for gx in 0..gif_w as u32 {
@@ -1386,6 +1533,11 @@ pub extern "C" fn glaspen2_delete_last_stroke() {
 // OCR
 // ---------------------------------------------------------------------------
 
+/// Checked byte length for a w×h RGBA buffer (returns None on overflow).
+fn checked_rgba_len(w: u32, h: u32) -> Option<usize> {
+    (w as usize).checked_mul(h as usize)?.checked_mul(4)
+}
+
 /// Run OCR on an RGBA pixel buffer. Returns a C string that the caller must
 /// free with glaspen2_free_c_string.
 #[unsafe(no_mangle)]
@@ -1399,7 +1551,9 @@ pub extern "C" fn glaspen2_ocr_recognize(
     }
     let w = width as u32;
     let h = height as u32;
-    let len = (w * h * 4) as usize;
+    let Some(len) = checked_rgba_len(w, h) else {
+        return std::ptr::null_mut();
+    };
     let pixel_slice = unsafe { std::slice::from_raw_parts(pixels, len) };
     let text = ocr::detect_and_recognize(pixel_slice, w, h);
     match CString::new(text) {
@@ -1423,7 +1577,9 @@ pub extern "C" fn glaspen2_ocr_page(
     }
     let w = width as u32;
     let h = height as u32;
-    let len = (w * h * 4) as usize;
+    let Some(len) = checked_rgba_len(w, h) else {
+        return std::ptr::null_mut();
+    };
     let pixel_slice = unsafe { std::slice::from_raw_parts(pixels, len) };
 
     // Run detection + recognition
@@ -1522,6 +1678,9 @@ pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
 /// JSON: [{"id":1,"w":1920,"h":1080,"ocr":"full text"}, ...]
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_search_ocr_json(query: *const c_char) -> *mut c_char {
+    if query.is_null() {
+        return CString::new("[]".to_string()).unwrap_or_default().into_raw();
+    }
     let Ok(q) = unsafe { CStr::from_ptr(query) }.to_str() else {
         return CString::new("[]".to_string()).unwrap_or_default().into_raw();
     };
@@ -1548,7 +1707,7 @@ pub extern "C" fn glaspen2_search_ocr_json(query: *const c_char) -> *mut c_char 
 // Thumbnail rendering (pure Rust, full-resolution → scaled PNG)
 // ---------------------------------------------------------------------------
 
-/// Render a page thumbnail entirely in Rust.
+/// Render a page thumbnail entirely in Rust. Never touches the global STROKES.
 #[cfg(feature = "cairo_real")]
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_render_thumbnail(
@@ -1571,18 +1730,22 @@ pub extern "C" fn glaspen2_render_thumbnail(
     let tw = ((w as f64) * scale).max(1.0) as i32;
     let th = ((h as f64) * scale).max(1.0) as i32;
 
+    // Render from a local stroke list loaded from the DB — no global state.
     let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
     if strokes.is_empty() {
         unsafe { *out_len = 0; }
         return std::ptr::null_mut();
     }
-    {
-        let mut dst = STROKES.lock().unwrap();
-        dst.clear();
-        dst.extend(strokes.into_iter().map(|s| Stroke {
-            r: s.r, g: s.g, b: s.b, points: s.points,
-        }));
-    }
+    let local: Vec<Stroke> = strokes
+        .into_iter()
+        .map(|s| Stroke {
+            id: s.id,
+            r: s.r,
+            g: s.g,
+            b: s.b,
+            points: s.points,
+        })
+        .collect();
 
     // Render full resolution → scale down (preserves stroke proportions)
     let Ok(full) = crate::cairo::ImageSurface::create(
@@ -1591,7 +1754,7 @@ pub extern "C" fn glaspen2_render_thumbnail(
         unsafe { *out_len = 0; }
         return std::ptr::null_mut();
     };
-    crate::draw::draw_rebuild_on_surface(&full, 1.0);
+    crate::draw::draw_strokes_on_surface(&full, &local, 1.0);
 
     let mut thumb = match crate::cairo::ImageSurface::create(
         crate::cairo::Format::ARgb32, tw, th,
@@ -1615,7 +1778,11 @@ pub extern "C" fn glaspen2_render_thumbnail(
         return std::ptr::null_mut();
     };
     let (tw_u, th_u) = (tw as u32, th as u32);
-    let mut rgba = Vec::with_capacity((tw_u * th_u * 4) as usize);
+    let Some(cap) = (tw_u as usize).checked_mul(th_u as usize).and_then(|v| v.checked_mul(4)) else {
+        unsafe { *out_len = 0; }
+        return std::ptr::null_mut();
+    };
+    let mut rgba = Vec::with_capacity(cap);
     for y in 0..th_u {
         for x in 0..tw_u {
             let off = y as usize * stride + x as usize * 4;
@@ -1629,9 +1796,6 @@ pub extern "C" fn glaspen2_render_thumbnail(
         Some(b) => b,
         None => { unsafe { *out_len = 0; } return std::ptr::null_mut(); }
     };
-
-    // Drop the STROKES we loaded
-    STROKES.lock().unwrap().clear();
 
     let len = png_bytes.len() as c_int;
     let ptr = png_bytes.as_ptr() as *mut c_uchar;

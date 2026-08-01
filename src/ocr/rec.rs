@@ -6,7 +6,7 @@ use ort::session::Session;
 use ort::value::TensorRef;
 use std::sync::{Mutex, OnceLock};
 
-static REC_ENGINE: OnceLock<RecEngine> = OnceLock::new();
+static REC_ENGINE: OnceLock<Result<RecEngine, String>> = OnceLock::new();
 
 pub(super) struct RecEngine {
     pub session: Mutex<Session>,
@@ -30,30 +30,36 @@ pub(super) fn model_path(p: &str) -> std::path::PathBuf {
     std::path::Path::new("models").join(p)
 }
 
-fn load_chars() -> Vec<String> {
+fn load_chars() -> Result<Vec<String>, String> {
     let path = model_path("ppocr_v6_dict.json");
     let data = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("Failed to read {}: {}", path.display(), e));
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
     serde_json::from_str(&data)
-        .unwrap_or_else(|e| panic!("Failed to parse char dict: {}", e))
+        .map_err(|e| format!("Failed to parse char dict: {}", e))
 }
 
-pub(super) fn engine() -> &'static RecEngine {
-    REC_ENGINE.get_or_init(|| {
-        let model_file = model_path("ppocr_v6_rec.onnx");
-        let session = Session::builder()
-            .unwrap()
-            .commit_from_file(&model_file)
-            .unwrap_or_else(|e| panic!("Failed to load model from {}: {}", model_file.display(), e));
-        let chars = load_chars();
-        RecEngine { session: Mutex::new(session), chars }
-    })
+pub(super) fn engine() -> Option<&'static RecEngine> {
+    REC_ENGINE
+        .get_or_init(|| {
+            let model_file = model_path("ppocr_v6_rec.onnx");
+            let session = Session::builder()
+                .and_then(|mut b| b.commit_from_file(&model_file))
+                .map_err(|e| format!("Failed to load model from {}: {}", model_file.display(), e))?;
+            let chars = load_chars()?;
+            Ok(RecEngine { session: Mutex::new(session), chars })
+        })
+        .as_ref()
+        .ok()
 }
 
 /// Run recognition on a tight crop of a text line (RGBA pixels).
 /// The image should have text filling most of the height.
+/// Never panics: engine/session/inference failures return an empty string.
 pub fn recognize(pixels: &[u8], width: u32, height: u32) -> String {
-    let e = engine();
+    let Some(e) = engine() else {
+        eprintln!("[rec] engine unavailable (model load failed)");
+        return String::new();
+    };
 
     // Resize to H=48 maintaining aspect ratio
     let target_h = 48u32;
@@ -84,13 +90,38 @@ pub fn recognize(pixels: &[u8], width: u32, height: u32) -> String {
     }
 
     // Inference
-    let input = TensorRef::from_array_view(&array).unwrap();
-    let mut session = e.session.lock().unwrap();
-    let outputs = session.run(ort::inputs![input]).unwrap();
-    let output = &outputs[0];
+    let Ok(input) = TensorRef::from_array_view(&array) else {
+        eprintln!("[rec] tensor creation failed");
+        return String::new();
+    };
+    let Ok(mut session) = e.session.lock() else {
+        eprintln!("[rec] session mutex poisoned");
+        return String::new();
+    };
+    let outputs = match session.run(ort::inputs![input]) {
+        Ok(o) => o,
+        Err(err) => {
+            eprintln!("[rec] inference failed: {}", err);
+            return String::new();
+        }
+    };
+    let Some(output) = (outputs.len() > 0).then(|| &outputs[0]) else {
+        eprintln!("[rec] no output tensors");
+        return String::new();
+    };
 
-    let arr = output.try_extract_array::<f32>().unwrap();
+    let arr = match output.try_extract_array::<f32>() {
+        Ok(a) => a,
+        Err(err) => {
+            eprintln!("[rec] output extraction failed: {}", err);
+            return String::new();
+        }
+    };
     let shape = arr.shape();
+    if shape.len() != 3 || shape[0] != 1 {
+        eprintln!("[rec] unexpected output shape {:?}", shape);
+        return String::new();
+    }
     let seq_len = shape[1];
     let num_classes = shape[2];
 

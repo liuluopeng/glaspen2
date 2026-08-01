@@ -47,7 +47,6 @@ pub fn begin_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: 
 
     match state.modeler.update(input) {
         Ok(results) => {
-            eprintln!("[modeler] Down: got {} results", results.len());
             for r in results {
                 let w = pressure_to_width(r.pressure, width_scale);
                 // Store approximate absolute wall-clock time so timestamps
@@ -99,7 +98,6 @@ pub fn end_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f6
 
         match state.modeler.update(input) {
             Ok(results) => {
-                eprintln!("[modeler] Up: got {} results", results.len());
                 for r in results {
                     let w = pressure_to_width(r.pressure, width_scale);
                     state.buffer.push((r.pos.0, r.pos.1, w, state.start_time + r.time));

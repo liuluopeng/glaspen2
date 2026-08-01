@@ -248,11 +248,13 @@ pub extern "C" fn glaspen2_cairo_surface_data_mut(renderer: *mut CairoRenderer) 
 #[cfg(target_os = "windows")]
 pub extern "C" fn glaspen2_cairo_undo(renderer: *mut CairoRenderer) -> c_int {
     if renderer.is_null() { return -1; }
-    {
+    let id = {
         let mut strokes = STROKES.lock().unwrap();
-        strokes.pop();
+        strokes.pop().map(|s| s.id).unwrap_or(0)
+    };
+    if id > 0 {
+        crate::runtime().block_on(crate::db::delete_stroke_by_id(id));
     }
-    crate::db::delete_last_stroke();
     unsafe { (*renderer).replay_strokes(); }
     let count = STROKES.lock().unwrap().len() as c_int;
     eprintln!("[cairo_undo] remaining strokes: {}", count);
