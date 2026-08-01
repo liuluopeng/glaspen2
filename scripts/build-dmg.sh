@@ -123,18 +123,6 @@ else
     done
 fi
 
-# --- Re-sign everything (install_name_tool invalidates signatures) ---
-echo "=== Code signing ==="
-# Sign all dylibs first
-for f in "${FW_DIR}"/*.dylib; do
-    [ -f "$f" ] && codesign --force --sign - "$f" 2>/dev/null
-done
-# Sign frameworks
-codesign --force --sign - "${FW_DIR}/FlutterMacOS.framework" 2>/dev/null
-codesign --force --sign - "${FW_DIR}/App.framework" 2>/dev/null
-# Sign main binary last
-codesign --force --sign - "${BIN}"
-
 # --- Info.plist ---
 cat > "${APP_BUNDLE}/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -164,6 +152,31 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" << EOF
 </dict>
 </plist>
 EOF
+
+# --- Re-sign everything (install_name_tool invalidates signatures) ---
+# Sign with the stable self-signed certificate so the macOS Accessibility
+# permission (TCC) survives app updates. Ad-hoc signatures are keyed on the
+# build's cdhash and force the user to re-grant the permission every time.
+echo "=== Code signing ==="
+SIGN_IDENTITY="Glaspen2 Development"
+if security find-identity -p codesigning 2>/dev/null | grep -q "${SIGN_IDENTITY}"; then
+    echo "  using identity: ${SIGN_IDENTITY}"
+    IDENTITY_ARGS=(--sign "${SIGN_IDENTITY}")
+else
+    echo "  WARNING: '${SIGN_IDENTITY}' not found in keychain — falling back to ad-hoc."
+    echo "  Run scripts/create-signing-cert.sh once; ad-hoc signatures require"
+    echo "  re-adding the Accessibility permission after every update."
+    IDENTITY_ARGS=(--sign -)
+fi
+# Sign all dylibs first
+for f in "${FW_DIR}"/*.dylib; do
+    [ -f "$f" ] && codesign --force "${IDENTITY_ARGS[@]}" "$f" 2>/dev/null
+done
+# Sign frameworks
+codesign --force "${IDENTITY_ARGS[@]}" "${FW_DIR}/FlutterMacOS.framework" 2>/dev/null
+codesign --force "${IDENTITY_ARGS[@]}" "${FW_DIR}/App.framework" 2>/dev/null
+# Sign the whole bundle last (seals executable + Info.plist together)
+codesign --force "${IDENTITY_ARGS[@]}" "${APP_BUNDLE}"
 
 ln -s /Applications "${APP_DIR}/Applications"
 
