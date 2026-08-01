@@ -253,6 +253,16 @@ mod platform {
         deleted.is_some()
     }
 
+    /// Delete all strokes (and their points) of a screen, keeping the screen
+    /// row so the page can be reused (one canvas per day workflow).
+    pub async fn delete_screen_strokes(screen_id: i64) {
+        let pool = match DB.get() { Some(p) => p, None => return };
+        sqlx::query("DELETE FROM points WHERE stroke_id IN (SELECT id FROM strokes WHERE screen_id = ?1)")
+            .bind(screen_id).execute(pool).await.ok();
+        sqlx::query("DELETE FROM strokes WHERE screen_id = ?1")
+            .bind(screen_id).execute(pool).await.ok();
+    }
+
     pub async fn delete_last_stroke() -> bool {
         use crate::state;
         let pool = match DB.get() { Some(p) => p, None => return false };

@@ -79,11 +79,12 @@ pub extern "C" fn glaspen2_end_stroke() {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) {
-    runtime().block_on(db::end_stroke()); // flush before checking — must block
+    let _ = (screen_w, screen_h);
+    runtime().block_on(db::end_stroke()); // flush before clearing
     let current = state::current_screen_id();
-    if runtime().block_on(db::screen_has_strokes(current)) {
-        runtime().block_on(db::new_screen(screen_w, screen_h));
-    }
+    // Empty the current page in place — do NOT start a new page (one canvas
+    // per day; clearing mid-day keeps the same page).
+    runtime().block_on(db::delete_screen_strokes(current));
     let mut strokes = STROKES.lock().unwrap();
     strokes.clear();
 }
