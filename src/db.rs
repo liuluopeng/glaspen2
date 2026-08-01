@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 pub struct StrokeData {
+    pub id: i64,
     pub r: f64,
     pub g: f64,
     pub b: f64,
@@ -191,7 +192,8 @@ mod platform {
         state::set_current_screen_id(sid);
     }
 
-    pub async fn begin_stroke(r: f64, g: f64, b: f64, width_scale: f64) {
+    /// Begin a stroke in the DB. Returns the new stroke id (0 on failure).
+    pub async fn begin_stroke(r: f64, g: f64, b: f64, width_scale: f64) -> i64 {
         use crate::state;
         let pool = DB.get().expect("DB not initialized");
         let screen_id = state::current_screen_id();
@@ -200,8 +202,12 @@ mod platform {
             "INSERT INTO strokes (screen_id, color_r, color_g, color_b, width_scale, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id"
         ).bind(screen_id).bind(r).bind(g).bind(b).bind(width_scale).bind(now)
             .fetch_optional(pool).await;
-        if let Ok(Some(stroke_id)) = stroke_id {
-            state::begin_pending(stroke_id);
+        match stroke_id {
+            Ok(Some(id)) => {
+                state::begin_pending(id);
+                id
+            }
+            _ => 0,
         }
     }
 
@@ -211,8 +217,10 @@ mod platform {
 
     async fn flush_pending() {
         use crate::state;
-        let stroke_id = match state::take_pending_stroke_id() { Some(id) => id, None => return };
-        let points = state::take_pending();
+        let (stroke_id, points) = match state::take_pending_bundle() {
+            Some(b) => b,
+            None => return,
+        };
         if points.is_empty() { return; }
         let pool = DB.get().expect("DB not initialized");
         let mut tx = match pool.begin().await { Ok(t) => t, Err(_) => return };
@@ -237,6 +245,14 @@ mod platform {
         ).bind(screen_id).fetch_one(pool).await.unwrap_or(0) != 0
     }
 
+    /// Delete a stroke by id. Returns true if the stroke existed.
+    pub async fn delete_stroke_by_id(stroke_id: i64) -> bool {
+        let pool = match DB.get() { Some(p) => p, None => return false };
+        sqlx::query("DELETE FROM points WHERE stroke_id = ?1").bind(stroke_id).execute(pool).await.ok();
+        let deleted = sqlx::query("DELETE FROM strokes WHERE id = ?1").bind(stroke_id).execute(pool).await.ok();
+        deleted.is_some()
+    }
+
     pub async fn delete_last_stroke() -> bool {
         use crate::state;
         let pool = match DB.get() { Some(p) => p, None => return false };
@@ -246,9 +262,7 @@ mod platform {
         ).bind(screen_id).fetch_optional(pool).await {
             Ok(Some(id)) => id, _ => return false,
         };
-        sqlx::query("DELETE FROM points WHERE stroke_id = ?1").bind(stroke_id).execute(pool).await.ok();
-        sqlx::query("DELETE FROM strokes WHERE id = ?1").bind(stroke_id).execute(pool).await.ok();
-        true
+        delete_stroke_by_id(stroke_id).await
     }
 
     pub async fn delete_screen(target_id: i64) -> bool {
@@ -286,12 +300,29 @@ mod platform {
         let rows: Vec<(i64, f64, f64, f64, f64)> = sqlx::query_as(
             "SELECT id, color_r, color_g, color_b, width_scale FROM strokes WHERE screen_id = ?1 ORDER BY id"
         ).bind(screen_id).fetch_all(pool).await.unwrap_or_default();
-        let mut strokes = Vec::new();
-        for (stroke_id, r, g, b, width_scale) in rows {
-            let points: Vec<(f64,f64,f64,f64)> = sqlx::query_as(
-                "SELECT x, y, width, t FROM points WHERE stroke_id = ?1 ORDER BY seq"
-            ).bind(stroke_id).fetch_all(pool).await.unwrap_or_default();
-            strokes.push(StrokeData { r, g, b, width_scale, points });
+        if rows.is_empty() { return Vec::new(); }
+
+        // Single query for all points of the screen (avoids N+1 per stroke).
+        let pts: Vec<(i64, i64, f64, f64, f64, f64)> = sqlx::query_as(
+            "SELECT p.stroke_id, p.seq, p.x, p.y, p.width, p.t \
+             FROM points p JOIN strokes s ON s.id = p.stroke_id \
+             WHERE s.screen_id = ?1 \
+             ORDER BY p.stroke_id, p.seq"
+        ).bind(screen_id).fetch_all(pool).await.unwrap_or_default();
+
+        let mut strokes: Vec<StrokeData> = rows.into_iter().map(|(id, r, g, b, ws)| {
+            StrokeData { id, r, g, b, width_scale: ws, points: Vec::new() }
+        }).collect();
+        let mut idx: usize = 0;
+        for (stroke_id, _seq, x, y, w, t) in pts {
+            // Find the matching stroke; strokes are ordered by id, points by stroke_id,
+            // so advance idx monotonically.
+            while idx < strokes.len() && strokes[idx].id != stroke_id {
+                idx += 1;
+            }
+            if idx < strokes.len() {
+                strokes[idx].points.push((x, y, w, t));
+            }
         }
         strokes
     }

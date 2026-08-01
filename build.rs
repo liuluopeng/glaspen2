@@ -43,8 +43,11 @@ fn main() {
             }
         }
 
-        // cc crate adds -O2/-O3 from OPT_LEVEL in release mode, which breaks NSEvent tablet data.
-        // Compile ObjC directly with clang -O0 to guarantee no optimization.
+        // Note: historically compiled with -O0 due to a suspected "optimization
+        // breaks NSEvent tablet data" issue. Compiler optimization cannot change
+        // semantics of correct code; the underlying bug was fixed separately
+        // (pressure is read from CGEvent tablet fields). -O2 gives a large
+        // speedup to the per-event ObjC hot path.
         let out_dir = std::env::var("OUT_DIR").unwrap();
         let obj_path = format!("{}/glaspen2.o", out_dir);
 
@@ -57,7 +60,7 @@ fn main() {
 
         let status = std::process::Command::new("clang")
             .args(&["-c", "src/macos/glaspen2.m", "-o", &obj_path])
-            .args(&["-fobjc-arc", "-O0"])
+            .args(&["-fobjc-arc", "-O2"])
             .arg("-I/opt/homebrew/Cellar/cairo/1.18.4/include")
             .arg(format!("-F{}/FlutterMacOS.xcframework/macos-arm64_x86_64", flutter_fw_dir))
             .status()

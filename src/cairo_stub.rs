@@ -265,7 +265,7 @@ fn dist_sq_point_to_seg(px: f64, py: f64, x0: f64, y0: f64, x1: f64, y1: f64) ->
     if len_sq < 1e-10 {
         return (px - x0).powi(2) + (py - y0).powi(2);
     }
-    let t = ((px - x0) * dx + (py - y0) * dy / len_sq).max(0.0).min(1.0);
+    let t = (((px - x0) * dx + (py - y0) * dy) / len_sq).max(0.0).min(1.0);
     let proj_x = x0 + t * dx;
     let proj_y = y0 + t * dy;
     (px - proj_x).powi(2) + (py - proj_y).powi(2)

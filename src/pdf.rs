@@ -66,20 +66,9 @@ pub fn export_all_pages() -> Option<String> {
     let mut pages_ocr: Vec<(i32, i32, Vec<db::OcrBox>)> = Vec::new();
 
     for (screen_id, sw, sh) in &screens {
-        // Load strokes directly
-        let strokes: Vec<db::StrokeData> = rt.block_on(async {
-            let rows: Vec<(i64, f64, f64, f64, f64)> = sqlx::query_as(
-                "SELECT id, color_r, color_g, color_b, width_scale FROM strokes WHERE screen_id = ?1 ORDER BY id"
-            ).bind(screen_id).fetch_all(&pool).await.unwrap_or_default();
-            let mut result = Vec::new();
-            for (sid, r, g, b, ws) in rows {
-                let pts: Vec<(f64,f64,f64,f64)> = sqlx::query_as(
-                    "SELECT x, y, width, t FROM points WHERE stroke_id = ?1 ORDER BY seq"
-                ).bind(sid).fetch_all(&pool).await.unwrap_or_default();
-                result.push(db::StrokeData { r, g, b, width_scale: ws, points: pts });
-            }
-            result
-        });
+        // Load strokes directly (single JOIN query, no N+1)
+        let strokes: Vec<db::StrokeData> =
+            rt.block_on(db::strokes_for_screen(*screen_id));
         eprintln!("[pdf] Page {}: {}x{} ({} strokes)", screen_id, sw, sh, strokes.len());
 
         // Page dimensions in mm (72 pt/inch → 25.4 mm/inch)
@@ -493,7 +482,9 @@ fn render_and_ocr(
     let stride = surface.stride() as usize;
     let surf_w = surface.width() as u32;
     let surf_h = surface.height() as u32;
-    let d = surface.data().unwrap();
+    let Ok(d) = surface.data() else {
+        return Vec::new();
+    };
     let mut rgba = vec![0u8; (surf_w * surf_h * 4) as usize];
     for y in 0..surf_h {
         for x in 0..surf_w {
