@@ -656,30 +656,43 @@ static void toggle_enabled(void) {
     }
 }
 
-// Privacy mode — automatic canvas visibility. On: the canvas auto-shows
-// when the pen hovers over it and auto-hides 10 s after the pen leaves
-// (any pen activity resets the timer, so drawing never flickers).
+// 飘渺模式 (ethereal mode) — automatic canvas visibility. On: the canvas
+// auto-shows when the pen hovers over it and auto-hides 1 s after the pen
+// leaves (any pen activity resets the timer, so drawing never flickers).
+// Peek: hovering over a hidden canvas without ever touching down hides it
+// again immediately on pen-leave (no toast) — a quick glance. Once a stroke
+// was drawn, the 1 s timer applies instead.
 // Manual ⌘ + ⌃ + X always remains available as an instant override.
 static BOOL g_privacy_mode = NO;
 static NSTimer *g_privacy_hide_timer = nil;
+static BOOL g_peek_hover = NO; // pen hovered but has not touched down yet
 
 static void privacy_cancel_hide(void) {
     [g_privacy_hide_timer invalidate];
     g_privacy_hide_timer = nil;
 }
 
-// Arm the 10 s auto-hide timer. Called when the pen leaves proximity.
+// Hide the canvas now (shared by the timer and the peek path).
+// Returns YES if it actually hid the canvas.
+static BOOL privacy_hide_now(void) {
+    if (!g_privacy_mode) return NO;
+    if (!g_window || !g_window.isVisible) return NO;
+    finish_active_stroke(); // don't strand an in-flight stroke
+    if (g_window) [g_window setIsVisible:NO];
+    if (g_pressure_monitor) pm_hide();
+    return YES;
+}
+
+// Arm the 1 s auto-hide timer. Called when the pen leaves proximity
+// after a real drawing session.
 static void privacy_arm_hide(void) {
     if (!g_privacy_mode) return;
     [g_privacy_hide_timer invalidate];
-    g_privacy_hide_timer = [NSTimer scheduledTimerWithTimeInterval:10.0 repeats:NO block:^(NSTimer *timer) {
+    g_privacy_hide_timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:NO block:^(NSTimer *timer) {
         g_privacy_hide_timer = nil;
-        if (!g_privacy_mode) return;
-        if (!g_window || !g_window.isVisible) return; // already hidden / gone
-        finish_active_stroke(); // don't strand an in-flight stroke
-        if (g_window) [g_window setIsVisible:NO];
-        if (g_pressure_monitor) pm_hide();
-        show_toast(L(@"画布已自动隐藏 (隐私模式)", @"Canvas auto-hidden (privacy mode)"));
+        if (privacy_hide_now()) {
+            show_toast(L(@"画布已自动隐藏 (飘渺模式)", @"Canvas auto-hidden (ethereal mode)"));
+        }
     }];
 }
 
@@ -696,7 +709,7 @@ static void privacy_auto_show(void) {
     }
 }
 
-// Toggle privacy mode on/off. Persisted in user settings. Shortcut: ⌘ + ⌃ + P
+// Toggle 飘渺模式 on/off. Persisted in user settings. Shortcut: ⌘ + ⌃ + P
 static void toggle_privacy_mode(void) {
     g_privacy_mode = !g_privacy_mode;
     glaspen2_save_bool_setting("privacy_mode", g_privacy_mode ? 1 : 0);
@@ -704,8 +717,8 @@ static void toggle_privacy_mode(void) {
     NSMenuItem *item = [g_menu itemWithTag:778];
     [item setState:g_privacy_mode ? NSControlStateValueOn : NSControlStateValueOff];
     show_notification(g_privacy_mode
-        ? L(@"隐私模式已开启", @"Privacy mode on")
-        : L(@"隐私模式已关闭", @"Privacy mode off"));
+        ? L(@"飘渺模式已开启", @"Ethereal mode on")
+        : L(@"飘渺模式已关闭", @"Ethereal mode off"));
 }
 
 // Hide/show the current page (overlay window) only. Whether the pen passes
@@ -1729,7 +1742,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         return event;
     }
 
-    // Pen proximity (hover in/out) drives privacy-mode auto show/hide.
+    // Pen proximity (hover in/out) drives 飘渺模式 auto show/hide.
     if (type == kCGEventTabletProximity) {
         if (g_privacy_mode) {
             NSEvent *proxEvent = [NSEvent eventWithCGEvent:event];
@@ -1740,9 +1753,19 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 int64_t proxState =
                     CGEventGetIntegerValueField(event, kCGTabletProximityEventEnterProximity);
                 if (proxState == 1) {
+                    // Hover: show for a peek. If the canvas was hidden, a
+                    // hover-without-draw will hide it again immediately on leave.
+                    g_peek_hover = !(g_window && g_window.isVisible);
                     privacy_auto_show();
                 } else {
-                    privacy_arm_hide();
+                    if (g_peek_hover) {
+                        // Peek over: never touched down — hide immediately, silently.
+                        g_peek_hover = NO;
+                        privacy_hide_now();
+                    } else {
+                        // Real drawing session — hide after 1 s of no pen activity.
+                        privacy_arm_hide();
+                    }
                 }
             }
         }
@@ -1903,9 +1926,16 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         // Invalidate only the old crosshair region (partial refresh).
         dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
         g_cursor_visible = NO;
-        // Privacy mode: the pen just left (no proximity events on this tablet) —
-        // arm the 10 s auto-hide as a fallback.
-        if (g_privacy_mode) privacy_arm_hide();
+        // 飘渺模式: the pen just left (no proximity events on this tablet) —
+        // arm the 1 s auto-hide as a fallback; a hover-without-draw hides now.
+        if (g_privacy_mode) {
+            if (g_peek_hover) {
+                g_peek_hover = NO;
+                privacy_hide_now();
+            } else {
+                privacy_arm_hide();
+            }
+        }
         flush_dirty_to_layer();
     }
 
@@ -2027,6 +2057,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         if (g_stroke_active) {
             finish_active_stroke();
         }
+        g_peek_hover = NO; // real drawing session — no longer a peek
         g_eraser_mode = (devType == NSEraserPointingDevice);
         NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f", px, py, pressure, ts);
         glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
@@ -2042,6 +2073,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                   etype == NSEventTypeOtherMouseDragged)) {
         // If no DOWN event was seen (pen detection lag), auto-initialize
         if (!g_stroke_active) {
+            g_peek_hover = NO; // pen is in contact — real drawing session
             g_eraser_mode = (devType == NSEraserPointingDevice);
             glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
             g_stroke_active = YES;
@@ -2157,7 +2189,7 @@ void glaspen2_run(void) {
         glassItem.target = g_menuHandler;
         glassItem.tag = 444;
         glassItem.state = g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff;
-        NSMenuItem *privacyItem = [g_menu addItemWithTitle:L(@"隐私模式 (悬空自动显示)", @"Privacy mode (auto-show on hover)") action:@selector(togglePrivacy) keyEquivalent:@""];
+        NSMenuItem *privacyItem = [g_menu addItemWithTitle:L(@"飘渺模式 (悬空自动显示)", @"Ethereal mode (auto-show on hover)") action:@selector(togglePrivacy) keyEquivalent:@""];
         privacyItem.target = g_menuHandler;
         privacyItem.tag = 778;
         privacyItem.state = NSControlStateValueOff;
