@@ -159,6 +159,12 @@ EOF
 # build's cdhash and force the user to re-grant the permission every time.
 echo "=== Code signing ==="
 SIGN_IDENTITY="Glaspen2 Development"
+# Unlock the dedicated signing keychain (known password) so codesign never
+# prompts; its partition list already allows codesign access.
+SIGN_KEYCHAIN="${HOME}/Library/Keychains/glaspen2-signing.keychain-db"
+if [ -f "${SIGN_KEYCHAIN}" ]; then
+    security unlock-keychain -p glaspen2 "${SIGN_KEYCHAIN}" 2>/dev/null || true
+fi
 if security find-identity -p codesigning 2>/dev/null | grep -q "${SIGN_IDENTITY}"; then
     echo "  using identity: ${SIGN_IDENTITY}"
     IDENTITY_ARGS=(--sign "${SIGN_IDENTITY}")
