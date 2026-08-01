@@ -630,8 +630,37 @@ static void auto_show_canvas(void) {
     }
 }
 
+// ── Page-navigation peek (ethereal mode) ──
+// 翻页 loads strokes onto the hidden canvas; show them briefly so the user
+// can see the page they navigated to, then hide again after `seconds`
+// unless the user interacted (pen activity) or left 飘渺画布涂鸦模式.
+static NSTimer *g_peek_timer = nil;
+
+static void peek_cancel_timer(void) {
+    [g_peek_timer invalidate];
+    g_peek_timer = nil;
+}
+
+static void peek_strokes(double seconds) {
+    if (!g_ethereal_canvas) return; // fixed mode: strokes are always visible
+    peek_cancel_timer();
+    if (!g_strokes_visible) {
+        g_strokes_visible = YES;
+        gl_glass_apply();
+        if (g_pressure_monitor) pm_show();
+        [g_draw_view setNeedsDisplay:YES];
+    }
+    g_peek_timer = [NSTimer scheduledTimerWithTimeInterval:seconds repeats:NO block:^(NSTimer *timer) {
+        g_peek_timer = nil;
+        if (g_ethereal_canvas && !g_stroke_active) {
+            auto_hide_now();
+        }
+    }];
+}
+
 // Switch between 固定画布涂鸦模式 and 飘渺画布涂鸦模式. Shortcut: ⌘ + ⌃ + X
 static void toggle_canvas_mode(void) {
+    peek_cancel_timer(); // a pending page-peek hide must not fire after a mode switch
     if (!g_ethereal_canvas) {
         // → 飘渺画布涂鸦模式: hide the strokes, peek rules take over
         g_ethereal_canvas = YES;
@@ -1770,6 +1799,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             int64_t proxState =
                 CGEventGetIntegerValueField(event, kCGTabletProximityEventEnterProximity);
             if (proxState == 1) {
+                peek_cancel_timer(); // pen is back — the peek stays
                 if (g_ethereal_canvas) auto_show_canvas();
             } else {
                 // Pen left the screen: hide the crosshair right away instead
@@ -1807,6 +1837,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                         glaspen2_load_strokes_for_screen(target);
                         glaspen2_smooth_loaded_strokes();
                         replay_strokes_from_memory();
+                        peek_strokes(1.0); // show the page briefly in ethereal mode
                     } else {
                         show_notification(L(@"没有上一页", @"No previous page"));
                     }
@@ -1819,6 +1850,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                         glaspen2_load_strokes_for_screen(target);
                         glaspen2_smooth_loaded_strokes();
                         replay_strokes_from_memory();
+                        peek_strokes(1.0); // show the page briefly in ethereal mode
                     } else {
                         show_notification(L(@"没有下一页", @"No next page"));
                     }
@@ -1944,6 +1976,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         // Tablets without proximity events: hover moves are the only signal —
         // treat them like a hover to show the strokes in 飘渺画布涂鸦模式.
         if (!g_strokes_visible) auto_show_canvas();
+        peek_cancel_timer(); // pen interaction overrides a pending page peek
         NSPoint loc = [nsevent locationInWindow];
         if (g_cursor_visible && (g_cursor_x != loc.x || g_cursor_y != loc.y)) {
             dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
