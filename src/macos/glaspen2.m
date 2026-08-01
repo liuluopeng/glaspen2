@@ -209,6 +209,11 @@ static BOOL g_show_rainbow = NO;
 // Grid overlay toggle (default off)
 static BOOL g_show_grid = NO;
 
+// When YES the grid follows the strokes and is hidden with them by
+// 飘渺画布涂鸦模式 (X). When NO the grid is always visible while its own
+// Flutter switch is on. Controlled by the Flutter settings panel.
+static BOOL g_grid_follow_strokes = NO;
+
 // Glass overlay opacity (0.0 = off, 0.0-0.3 range)
 static BOOL g_glass_enabled = NO;  // frosted glass ON/OFF
 static double g_glass_opacity = 0.45; // opacity level (used only when enabled)
@@ -752,6 +757,7 @@ static NSButton *g_glass_buttons[1];
             @"launchAtLogin": @(glaspen2_is_launch_at_login()),
             @"frostedGlass": @(g_glass_enabled),
             @"grid": @(g_show_grid),
+            @"gridFollowStrokes": @(g_grid_follow_strokes),
             @"pressureMonitor": @(g_pressure_monitor),
         });
     } else if ([call.method isEqualToString:@"setSetting"]) {
@@ -773,6 +779,10 @@ static NSButton *g_glass_buttons[1];
             if (!g_glass_enabled) gl_settings_set_glass_enabled(YES);
         } else if ([key isEqualToString:@"grid"]) {
             gl_settings_set_grid([value boolValue]);
+        } else if ([key isEqualToString:@"gridFollowStrokes"]) {
+            g_grid_follow_strokes = [value boolValue];
+            glaspen2_save_bool_setting("grid_follow_strokes", g_grid_follow_strokes ? 1 : 0);
+            if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
         } else if ([key isEqualToString:@"pressureMonitor"]) {
             gl_settings_set_pressure_monitor([value boolValue]);
         }
@@ -1102,6 +1112,7 @@ static void sync_settings_panel(void) {
         @"launchAtLogin": @(glaspen2_is_launch_at_login()),
         @"frostedGlass": @(g_glass_enabled),
         @"grid": @(g_show_grid),
+        @"gridFollowStrokes": @(g_grid_follow_strokes),
         @"pressureMonitor": @(g_pressure_monitor),
     }];
 }
@@ -1424,10 +1435,10 @@ static void rebuild_surface_from_strokes(void) {
     NSRect clipRect = [self isFlipped] ? rect : rect;
     CGContextClipToRect(ctx, NSRectToCGRect(clipRect));
 
-    // Grid — drawn directly in the view, gated only by its own toggle
-    // (显示网格). It stays visible even when the strokes are hidden by
-    // 飘渺画布涂鸦模式, and sits behind the strokes image below.
-    if (g_show_grid) {
+    // Grid — drawn directly in the view, gated by its own toggle (显示网格).
+    // When 网格跟随涂鸦 is on, it hides with the strokes in 飘渺画布涂鸦模式;
+    // otherwise it stays visible regardless. Always sits behind the strokes.
+    if (g_show_grid && (g_strokes_visible || !g_grid_follow_strokes)) {
         CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0.5 alpha:0.15] CGColor]);
         CGContextSetLineWidth(ctx, 0.5);
         NSRect bounds = [self bounds];
@@ -2141,6 +2152,7 @@ void glaspen2_run(void) {
 
         // Restore grid setting
         g_show_grid = glaspen2_load_bool_setting("grid") != 0;
+        g_grid_follow_strokes = glaspen2_load_bool_setting("grid_follow_strokes") != 0;
 
         // Canvas mode starts in 固定画布涂鸦模式; menu item shows the switch target
         [[g_menu itemWithTag:778] setTitle:L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];

@@ -334,6 +334,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _invert = false;
   bool _pressureMonitor = false;
   bool _showGrid = false;
+  bool _gridFollowStrokes = false;
   bool _connected = false;
 
   // Match C# tray menu's PresetColors and widths
@@ -409,6 +410,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _invert = s['invert'] ?? _invert;
         _pressureMonitor = s['pressureMonitor'] ?? _pressureMonitor;
         _showGrid = s['grid'] ?? _showGrid;
+        _gridFollowStrokes = s['gridFollowStrokes'] ?? _gridFollowStrokes;
       });
     }
   }
@@ -424,6 +426,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _invert = settings['invert'] ?? false;
           _pressureMonitor = settings['pressureMonitor'] ?? false;
           _showGrid = settings['grid'] ?? false;
+          _gridFollowStrokes = settings['gridFollowStrokes'] ?? false;
           _connected = true;
         });
         if (Platform.isMacOS) {
@@ -897,6 +900,17 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           onChanged: (v) {
             setState(() => _showGrid = v);
             _setSetting('grid', v);
+          },
+        ),
+        SwitchListTile(
+          title: const Text('网格跟随涂鸦', style: TextStyle(fontSize: 15)),
+          subtitle: const Text('开启后网格随涂鸦一起受 ⌘⌃X 控制', style: TextStyle(fontSize: 12)),
+          value: _gridFollowStrokes,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (v) {
+            setState(() => _gridFollowStrokes = v);
+            _setSetting('gridFollowStrokes', v);
           },
         ),
       ],
