@@ -266,15 +266,27 @@ static void show_notification(NSString *text) {
     dispatch_resume(g_notification_timer);
 }
 
-// Toast state — a tiny floating panel that is visible even when the
-// overlay canvas is hidden (used for page-visibility feedback).
+// Toast state — big centered text (same style as the overlay notification),
+// shown on its own window so it is visible even when the canvas is hidden.
 static NSWindow *g_toast_window = nil;
 static NSTextField *g_toast_label = nil;
 static NSTimer *g_toast_timer = nil;
 
 static void show_toast(NSString *text) {
+    NSShadow *shadow = [[NSShadow alloc] init];
+    shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.8];
+    shadow.shadowOffset = NSMakeSize(2, -2);
+    shadow.shadowBlurRadius = 4;
+    NSDictionary *attrs = @{
+        NSFontAttributeName: [NSFont monospacedSystemFontOfSize:36 weight:NSFontWeightMedium],
+        NSForegroundColorAttributeName: [NSColor whiteColor],
+        NSShadowAttributeName: shadow
+    };
+    NSSize ts = [text sizeWithAttributes:attrs];
+    CGFloat tw = ts.width + 80;
+    CGFloat th = ts.height + 40;
+    NSRect frame = NSMakeRect(0, 0, tw, th);
     if (!g_toast_window) {
-        NSRect frame = NSMakeRect(0, 0, 520, 52);
         g_toast_window = [[NSWindow alloc] initWithContentRect:frame
             styleMask:NSWindowStyleMaskBorderless
             backing:NSBackingStoreBuffered
@@ -284,36 +296,28 @@ static void show_toast(NSString *text) {
         [g_toast_window setBackgroundColor:[NSColor clearColor]];
         [g_toast_window setIgnoresMouseEvents:YES];
         [g_toast_window setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces];
-        NSVisualEffectView *bg = [[NSVisualEffectView alloc] initWithFrame:frame];
-        bg.material = NSVisualEffectMaterialHUDWindow;
-        bg.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-        bg.appearance = [NSAppearance appearanceNamed:NSAppearanceNameVibrantDark];
-        bg.wantsLayer = YES;
-        bg.layer.cornerRadius = 10.0;
-        bg.layer.masksToBounds = YES;
-        [g_toast_window.contentView addSubview:bg];
-        g_toast_label = [[NSTextField alloc] initWithFrame:NSInsetRect(frame, 16, 10)];
+        g_toast_label = [[NSTextField alloc] initWithFrame:frame];
         g_toast_label.editable = NO;
         g_toast_label.selectable = NO;
         g_toast_label.bezeled = NO;
         g_toast_label.drawsBackground = NO;
-        g_toast_label.textColor = [NSColor whiteColor];
-        g_toast_label.font = [NSFont systemFontOfSize:15];
         g_toast_label.alignment = NSTextAlignmentCenter;
-        g_toast_label.lineBreakMode = NSLineBreakByTruncatingMiddle;
         [g_toast_window.contentView addSubview:g_toast_label];
     }
+    g_toast_label.attributedStringValue =
+        [[NSAttributedString alloc] initWithString:text attributes:attrs];
+    // Label frame is in content coordinates (origin 0,0) — NOT the screen frame.
+    g_toast_label.frame = NSMakeRect(0, 0, tw, th);
+
     NSScreen *screen = [NSScreen mainScreen];
     NSRect sf = [screen visibleFrame];
-    CGFloat tw = 520.0;
-    NSRect frame = NSMakeRect(NSMidX(sf) - tw / 2, NSMinY(sf) + 60, tw, 52);
+    frame.origin.x = NSMidX(sf) - tw / 2;
+    frame.origin.y = NSMidY(sf) - th / 2;
     [g_toast_window setFrame:frame display:YES];
-    g_toast_label.frame = NSInsetRect(frame, 16, 10);
-    g_toast_label.stringValue = text;
     [g_toast_window orderFrontRegardless];
 
     [g_toast_timer invalidate];
-    g_toast_timer = [NSTimer scheduledTimerWithTimeInterval:2.2 repeats:NO block:^(NSTimer *timer) {
+    g_toast_timer = [NSTimer scheduledTimerWithTimeInterval:1.6 repeats:NO block:^(NSTimer *timer) {
         [g_toast_window orderOut:nil];
         g_toast_timer = nil;
     }];
@@ -1909,12 +1913,17 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     // on an invisible surface (would overlap unseen strokes). Remind the
     // user to show the canvas first; the pen is still swallowed so it does
     // not act as a mouse while drawing mode (V) is enabled.
+    // The toast fires only on the down event — drags are swallowed silently
+    // so the reminder's auto-dismiss timer is not reset at event rate.
     if (g_window && !g_window.isVisible && isPen &&
         (etype == NSEventTypeLeftMouseDown || etype == NSEventTypeRightMouseDown ||
          etype == NSEventTypeOtherMouseDown ||
          etype == NSEventTypeLeftMouseDragged || etype == NSEventTypeRightMouseDragged ||
          etype == NSEventTypeOtherMouseDragged)) {
-        show_toast(L(@"画布已隐藏, 按 ⌘⌃X 显示后再涂鸦", @"Canvas hidden — press ⌘⌃X to show before drawing"));
+        if (etype == NSEventTypeLeftMouseDown || etype == NSEventTypeRightMouseDown ||
+            etype == NSEventTypeOtherMouseDown) {
+            show_toast(L(@"画布已隐藏, 按 ⌘⌃X 显示后再涂鸦", @"Canvas hidden — press ⌘⌃X to show before drawing"));
+        }
         return NULL;
     }
 
