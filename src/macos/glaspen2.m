@@ -398,7 +398,7 @@ static void clear_screen(void) {
     draw_grid();
     if (g_show_rainbow) draw_rainbow_indicator();
     flush_to_layer();
-    show_notification(L(@"清屏成功", @"Screen cleared"));
+    show_notification(L(@"新画布已创建", @"New canvas created"));
 }
 
 static void replay_strokes_from_memory(void) {
@@ -502,7 +502,7 @@ static void update_menu_texts(void) {
     [[g_menu itemAtIndex:base+0] setTitle:L(@"保存(含背景)", @"Save (with bg)")];
     [[g_menu itemAtIndex:base+1] setTitle:L(@"保存(涂鸦)", @"Save (drawing)")];
     [[g_menu itemAtIndex:base+2] setTitle:L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)")];
-    [[g_menu itemAtIndex:base+3] setTitle:L(@"清屏", @"Clear screen")];
+    [[g_menu itemAtIndex:base+3] setTitle:L(@"新建画布", @"New canvas")];
     [[g_menu itemAtIndex:base+4] setTitle:L(@"彩虹指示器", @"Rainbow indicator")];
     [[g_menu itemAtIndex:base+5] setTitle:L(@"开机自启", @"Launch at login")];
     [[g_menu itemAtIndex:base+6] setTitle:L(@"磨砂玻璃", @"Frosted Glass")];
@@ -1983,7 +1983,7 @@ void glaspen2_run(void) {
         [g_menu addItemWithTitle:L(@"保存(含背景)", @"Save (with bg)") action:@selector(saveWithBg) keyEquivalent:@""];
         [g_menu addItemWithTitle:L(@"保存(涂鸦)", @"Save (drawing)") action:@selector(saveOnly) keyEquivalent:@""];
         [g_menu addItemWithTitle:L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)") action:@selector(saveXoj) keyEquivalent:@""];
-        [g_menu addItemWithTitle:L(@"清屏", @"Clear screen") action:@selector(clearScreen) keyEquivalent:@""];
+        [g_menu addItemWithTitle:L(@"新建画布", @"New canvas") action:@selector(clearScreen) keyEquivalent:@""];
         NSMenuItem *rainbowItem = [g_menu addItemWithTitle:L(@"彩虹指示器", @"Rainbow indicator") action:@selector(toggleRainbow) keyEquivalent:@""];
         rainbowItem.target = g_menuHandler;
         rainbowItem.tag = 999;
