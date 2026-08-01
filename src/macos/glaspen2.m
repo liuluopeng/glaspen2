@@ -266,63 +266,6 @@ static void show_notification(NSString *text) {
     dispatch_resume(g_notification_timer);
 }
 
-// Toast state — big centered text (same style as the overlay notification),
-// shown on its own window so it is visible even when the canvas is hidden.
-static NSWindow *g_toast_window = nil;
-static NSTextField *g_toast_label = nil;
-static NSTimer *g_toast_timer = nil;
-
-static void show_toast(NSString *text) {
-    NSShadow *shadow = [[NSShadow alloc] init];
-    shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.8];
-    shadow.shadowOffset = NSMakeSize(2, -2);
-    shadow.shadowBlurRadius = 4;
-    NSDictionary *attrs = @{
-        NSFontAttributeName: [NSFont monospacedSystemFontOfSize:36 weight:NSFontWeightMedium],
-        NSForegroundColorAttributeName: [NSColor whiteColor],
-        NSShadowAttributeName: shadow
-    };
-    NSSize ts = [text sizeWithAttributes:attrs];
-    CGFloat tw = ts.width + 80;
-    CGFloat th = ts.height + 40;
-    NSRect frame = NSMakeRect(0, 0, tw, th);
-    if (!g_toast_window) {
-        g_toast_window = [[NSWindow alloc] initWithContentRect:frame
-            styleMask:NSWindowStyleMaskBorderless
-            backing:NSBackingStoreBuffered
-            defer:NO];
-        [g_toast_window setLevel:kCGMaximumWindowLevel];
-        [g_toast_window setOpaque:NO];
-        [g_toast_window setBackgroundColor:[NSColor clearColor]];
-        [g_toast_window setIgnoresMouseEvents:YES];
-        [g_toast_window setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces];
-        g_toast_label = [[NSTextField alloc] initWithFrame:frame];
-        g_toast_label.editable = NO;
-        g_toast_label.selectable = NO;
-        g_toast_label.bezeled = NO;
-        g_toast_label.drawsBackground = NO;
-        g_toast_label.alignment = NSTextAlignmentCenter;
-        [g_toast_window.contentView addSubview:g_toast_label];
-    }
-    g_toast_label.attributedStringValue =
-        [[NSAttributedString alloc] initWithString:text attributes:attrs];
-    // Label frame is in content coordinates (origin 0,0) — NOT the screen frame.
-    g_toast_label.frame = NSMakeRect(0, 0, tw, th);
-
-    NSScreen *screen = [NSScreen mainScreen];
-    NSRect sf = [screen visibleFrame];
-    frame.origin.x = NSMidX(sf) - tw / 2;
-    frame.origin.y = NSMidY(sf) - th / 2;
-    [g_toast_window setFrame:frame display:YES];
-    [g_toast_window orderFrontRegardless];
-
-    [g_toast_timer invalidate];
-    g_toast_timer = [NSTimer scheduledTimerWithTimeInterval:1.6 repeats:NO block:^(NSTimer *timer) {
-        [g_toast_window orderOut:nil];
-        g_toast_timer = nil;
-    }];
-}
-
 static void save_drawing_only(void) {
     if (!g_surface) return;
     cairo_surface_flush(g_surface);
@@ -659,51 +602,57 @@ static void toggle_enabled(void) {
 // Two canvas drawing modes, switched by ⌘⌃X:
 //   - 固定画布涂鸦模式 (fixed canvas mode): the canvas is always visible;
 //     the pen never auto-shows or hides it.
-//   - 飘渺画布涂鸦模式 (ethereal canvas mode): the canvas starts hidden;
-//     hovering or touching down shows it, and pen-leave hides it again
-//     immediately (silent). Pen passthrough is managed separately by
-//     ⌘ + ⌃ + V (g_enabled) — X never touches it.
+//   - 飘渺画布涂鸦模式 (ethereal canvas mode): the strokes start hidden;
+//     hovering or touching down shows them, and pen-leave hides them again
+//     immediately (silent).
+// Hiding only affects the strokes (and the frosted-glass backdrop) — the
+// overlay window itself stays visible, so notifications and the crosshair
+// keep working. Pen passthrough is managed separately by ⌘ + ⌃ + V
+// (g_enabled) — X never touches it.
 static BOOL g_ethereal_canvas = NO; // YES = 飘渺画布涂鸦模式
+static BOOL g_strokes_visible = YES; // strokes drawn on the overlay?
 
-// Hide the canvas now (飘渺 mode). Returns YES if it actually hid it.
+// Hide the strokes (飘渺 mode). Returns YES if it actually hid them.
 static BOOL auto_hide_now(void) {
     if (!g_ethereal_canvas) return NO;
-    if (!g_window || !g_window.isVisible) return NO;
+    if (!g_strokes_visible) return NO;
     finish_active_stroke(); // don't strand an in-flight stroke
-    if (g_window) [g_window setIsVisible:NO];
+    g_strokes_visible = NO;
+    if (g_glass_view) g_glass_view.hidden = YES;
     if (g_pressure_monitor) pm_hide();
+    [g_draw_view setNeedsDisplay:YES];
     return YES;
 }
 
-// Show the canvas because the pen came back (飘渺 mode).
+// Show the strokes because the pen came back (飘渺 mode).
 static void auto_show_canvas(void) {
     if (!g_ethereal_canvas) return;
-    if (g_window && !g_window.isVisible) {
-        [g_window setIsVisible:YES];
-        if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
-        [g_window orderFrontRegardless];
+    if (!g_strokes_visible) {
+        g_strokes_visible = YES;
+        gl_glass_apply(); // restore the glass per its own toggle
         if (g_pressure_monitor) pm_show();
+        [g_draw_view setNeedsDisplay:YES];
     }
 }
 
 // Switch between 固定画布涂鸦模式 and 飘渺画布涂鸦模式. Shortcut: ⌘ + ⌃ + X
 static void toggle_canvas_mode(void) {
     if (!g_ethereal_canvas) {
-        // → 飘渺画布涂鸦模式: hide the canvas, peek rules take over
+        // → 飘渺画布涂鸦模式: hide the strokes, peek rules take over
         g_ethereal_canvas = YES;
         finish_active_stroke(); // commit any in-flight stroke before hiding
-        if (g_window) [g_window setIsVisible:NO];
+        g_strokes_visible = NO;
+        if (g_glass_view) g_glass_view.hidden = YES;
         if (g_pressure_monitor) pm_hide();
-        show_toast(L(@"飘渺画布涂鸦模式 (悬空/落笔显示)", @"Ethereal canvas mode (hover/down to show)"));
+        [g_draw_view setNeedsDisplay:YES];
+        show_notification(L(@"飘渺画布涂鸦模式 (悬空/落笔显示)", @"Ethereal canvas mode (hover/down to show)"));
     } else {
-        // → 固定画布涂鸦模式: show the canvas and keep it visible
+        // → 固定画布涂鸦模式: show the strokes and keep them visible
         g_ethereal_canvas = NO;
-        if (g_window) {
-            [g_window setIsVisible:YES];
-            if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
-            [g_window orderFrontRegardless];
-        }
+        g_strokes_visible = YES;
+        gl_glass_apply();
         if (g_pressure_monitor) pm_show();
+        [g_draw_view setNeedsDisplay:YES];
         show_notification(L(@"固定画布涂鸦模式", @"Fixed canvas mode"));
     }
     // Sync the menu item (title shows the mode you switch TO, like toggleDraw)
@@ -1529,7 +1478,9 @@ static void rebuild_surface_from_strokes(void) {
     }
     CGImageRef image = g_surface_cgimage;
 
-    if (image) {
+    // The strokes can be hidden independently (飘渺画布涂鸦模式) — skip the
+    // surface image, but keep drawing the notification and crosshair below.
+    if (image && g_strokes_visible) {
         // If only a small dirty rect was requested, extract just that sub-image
         // from the surface (in physical pixel coords) to avoid scaling the
         // whole 3840×2160 surface each frame.
@@ -1558,62 +1509,62 @@ static void rebuild_surface_from_strokes(void) {
             CGContextDrawImage(ctx, CGRectMake(0, 0, bounds.size.width, bounds.size.height), image);
         }
         // image is the cached surface image — NOT released here.
+    }
 
-        // Draw notification text
-        if (g_notification) {
-            NSShadow *shadow = [[NSShadow alloc] init];
-            shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.8];
-            shadow.shadowOffset = NSMakeSize(2, -2);
-            shadow.shadowBlurRadius = 4;
+    // Draw notification text
+    if (g_notification) {
+        NSShadow *shadow = [[NSShadow alloc] init];
+        shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.8];
+        shadow.shadowOffset = NSMakeSize(2, -2);
+        shadow.shadowBlurRadius = 4;
 
-            NSDictionary *attrs = @{
-                NSFontAttributeName: [NSFont monospacedSystemFontOfSize:36 weight:NSFontWeightMedium],
-                NSForegroundColorAttributeName: [NSColor whiteColor],
-                NSShadowAttributeName: shadow
-            };
-            NSSize textSize = [g_notification sizeWithAttributes:attrs];
-            // Use view bounds for centering, not surface dimensions — surface may
-            // be stale after display resolution changes.
-            NSRect bounds = [self bounds];
-            CGFloat x = (bounds.size.width - textSize.width) / 2;
-            CGFloat y = (bounds.size.height - textSize.height) / 2;
-            [g_notification drawAtPoint:NSMakePoint(x, y) withAttributes:attrs];
-        }
+        NSDictionary *attrs = @{
+            NSFontAttributeName: [NSFont monospacedSystemFontOfSize:36 weight:NSFontWeightMedium],
+            NSForegroundColorAttributeName: [NSColor whiteColor],
+            NSShadowAttributeName: shadow
+        };
+        NSSize textSize = [g_notification sizeWithAttributes:attrs];
+        // Use view bounds for centering, not surface dimensions — surface may
+        // be stale after display resolution changes.
+        NSRect bounds = [self bounds];
+        CGFloat x = (bounds.size.width - textSize.width) / 2;
+        CGFloat y = (bounds.size.height - textSize.height) / 2;
+        [g_notification drawAtPoint:NSMakePoint(x, y) withAttributes:attrs];
+    }
 
-        // Draw pen crosshair cursor
-        if (g_cursor_visible && g_cursor_x >= 0) {
-            CGFloat cx = g_cursor_x;
-            CGFloat cy = g_cursor_y;
-            CGFloat radius = 8.0;
+    // Draw pen crosshair cursor
+    if (g_cursor_visible && g_cursor_x >= 0) {
+        CGFloat cx = g_cursor_x;
+        CGFloat cy = g_cursor_y;
+        CGFloat radius = 8.0;
 
-            // Outer circle
-            CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:1.0 alpha:0.8] CGColor]);
-            CGContextSetLineWidth(ctx, 1.5);
-            CGContextStrokeEllipseInRect(ctx, CGRectMake(cx - radius, cy - radius, radius * 2, radius * 2));
+        // Outer circle
+        CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:1.0 alpha:0.8] CGColor]);
+        CGContextSetLineWidth(ctx, 1.5);
+        CGContextStrokeEllipseInRect(ctx, CGRectMake(cx - radius, cy - radius, radius * 2, radius * 2));
 
-            // Center dot
-            CGContextSetFillColorWithColor(ctx, [[NSColor colorWithWhite:1.0 alpha:0.9] CGColor]);
-            CGContextFillEllipseInRect(ctx, CGRectMake(cx - 1.5, cy - 1.5, 3, 3));
+        // Center dot
+        CGContextSetFillColorWithColor(ctx, [[NSColor colorWithWhite:1.0 alpha:0.9] CGColor]);
+        CGContextFillEllipseInRect(ctx, CGRectMake(cx - 1.5, cy - 1.5, 3, 3));
 
-            // Crosshair lines
-            CGFloat gap = 3.0;
-            CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0 alpha:0.5] CGColor]);
-            CGContextSetLineWidth(ctx, 1.0);
+        // Crosshair lines
+        CGFloat gap = 3.0;
+        CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0 alpha:0.5] CGColor]);
+        CGContextSetLineWidth(ctx, 1.0);
 
-            // Top
-            CGContextMoveToPoint(ctx, cx, cy - radius - 2);
-            CGContextAddLineToPoint(ctx, cx, cy - gap);
-            // Bottom
-            CGContextMoveToPoint(ctx, cx, cy + gap);
-            CGContextAddLineToPoint(ctx, cx, cy + radius + 2);
-            // Left
-            CGContextMoveToPoint(ctx, cx - radius - 2, cy);
-            CGContextAddLineToPoint(ctx, cx - gap, cy);
-            // Right
-            CGContextMoveToPoint(ctx, cx + gap, cy);
-            CGContextAddLineToPoint(ctx, cx + radius + 2, cy);
-            CGContextStrokePath(ctx);
-        }
+        // Top
+        CGContextMoveToPoint(ctx, cx, cy - radius - 2);
+        CGContextAddLineToPoint(ctx, cx, cy - gap);
+        // Bottom
+        CGContextMoveToPoint(ctx, cx, cy + gap);
+        CGContextAddLineToPoint(ctx, cx, cy + radius + 2);
+        // Left
+        CGContextMoveToPoint(ctx, cx - radius - 2, cy);
+        CGContextAddLineToPoint(ctx, cx - gap, cy);
+        // Right
+        CGContextMoveToPoint(ctx, cx + gap, cy);
+        CGContextAddLineToPoint(ctx, cx + radius + 2, cy);
+        CGContextStrokePath(ctx);
     }
     CGContextRestoreGState(ctx);
 }
@@ -1975,10 +1926,10 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         pm_update();
     }
 
-    // Canvas hidden: only possible inside X-hidden mode, where touching down
-    // always auto-shows the canvas and the stroke proceeds below. The pen is
-    // swallowed so it never acts as a mouse while drawing mode (V) is enabled.
-    if (g_window && !g_window.isVisible && isPen &&
+    // Strokes hidden (飘渺画布涂鸦模式): touching down always re-shows them
+    // and the stroke proceeds below. The pen is swallowed so it never acts
+    // as a mouse while drawing mode (V) is enabled.
+    if (!g_strokes_visible && isPen &&
         (etype == NSEventTypeLeftMouseDown || etype == NSEventTypeRightMouseDown ||
          etype == NSEventTypeOtherMouseDown ||
          etype == NSEventTypeLeftMouseDragged || etype == NSEventTypeRightMouseDragged ||
