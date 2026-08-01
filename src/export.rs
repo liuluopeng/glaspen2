@@ -1881,3 +1881,54 @@ fn encode_png_rgba(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
         .ok()?;
     Some(buf)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pts(data: &[(f64, f64, f64)]) -> Vec<(f64, f64, f64, f64)> {
+        data.iter().map(|&(x, y, w)| (x, y, w, 0.0)).collect()
+    }
+
+    #[test]
+    fn test_decimate_short_list_unchanged() {
+        let input = pts(&[(0.0, 0.0, 2.0), (1.0, 1.0, 3.0), (2.0, 0.0, 2.0), (3.0, 1.0, 3.0)]);
+        assert_eq!(decimate(&input), input);
+    }
+
+    #[test]
+    fn test_decimate_single_point_unchanged() {
+        let input = pts(&[(5.0, 5.0, 2.0)]);
+        assert_eq!(decimate(&input), input);
+    }
+
+    #[test]
+    fn test_decimate_drops_close_points() {
+        // 0.3/0.6 away from (0,0) with same width → dropped; 10.0/20.0 kept
+        let input = pts(&[(0.0, 0.0, 2.0), (0.3, 0.0, 2.0), (0.6, 0.0, 2.0), (10.0, 0.0, 2.0), (20.0, 0.0, 2.0)]);
+        let out = decimate(&input);
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[0], input[0]);
+        assert_eq!(out[1], input[3]);
+        assert_eq!(out[2], input[4]);
+    }
+
+    #[test]
+    fn test_decimate_keeps_width_changes() {
+        // width jumps 1.0 → 4.0 (>12%) even at close distance → kept
+        let input = pts(&[(0.0, 0.0, 1.0), (0.2, 0.0, 1.0), (0.4, 0.0, 4.0), (0.6, 0.0, 4.0), (10.0, 0.0, 1.0)]);
+        let out = decimate(&input);
+        assert!(out.iter().any(|p| p.0 == 0.4 && p.2 == 4.0), "width jump must be kept: {:?}", out);
+        assert_eq!(*out.last().unwrap(), *input.last().unwrap());
+    }
+
+    #[test]
+    fn test_decimate_keeps_last_point() {
+        // everything within threshold — first and last survive
+        let input = pts(&[(0.0, 0.0, 2.0), (0.1, 0.1, 2.0), (0.2, 0.2, 2.0), (0.3, 0.3, 2.0), (0.4, 0.4, 2.0)]);
+        let out = decimate(&input);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0], input[0]);
+        assert_eq!(out[1], input[4]);
+    }
+}

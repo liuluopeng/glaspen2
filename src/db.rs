@@ -317,6 +317,25 @@ mod platform {
         ).bind(current).fetch_optional(pool).await.ok()?
     }
 
+    /// Group point rows (stroke_id, seq, x, y, width, t) into stroke records.
+    /// Strokes and points are both ordered by id/stroke_id ascending, so the
+    /// grouping advances monotonically; orphan point rows are ignored.
+    pub(super) fn attach_points(
+        mut strokes: Vec<StrokeData>,
+        pts: Vec<(i64, i64, f64, f64, f64, f64)>,
+    ) -> Vec<StrokeData> {
+        let mut idx: usize = 0;
+        for (stroke_id, _seq, x, y, w, t) in pts {
+            while idx < strokes.len() && strokes[idx].id != stroke_id {
+                idx += 1;
+            }
+            if idx < strokes.len() {
+                strokes[idx].points.push((x, y, w, t));
+            }
+        }
+        strokes
+    }
+
     pub async fn strokes_for_screen(screen_id: i64) -> Vec<StrokeData> {
         let pool = match DB.get() { Some(p) => p, None => return Vec::new() };
         let rows: Vec<(i64, f64, f64, f64, f64)> = sqlx::query_as(
@@ -332,21 +351,10 @@ mod platform {
              ORDER BY p.stroke_id, p.seq"
         ).bind(screen_id).fetch_all(pool).await.unwrap_or_default();
 
-        let mut strokes: Vec<StrokeData> = rows.into_iter().map(|(id, r, g, b, ws)| {
+        let strokes: Vec<StrokeData> = rows.into_iter().map(|(id, r, g, b, ws)| {
             StrokeData { id, r, g, b, width_scale: ws, points: Vec::new() }
         }).collect();
-        let mut idx: usize = 0;
-        for (stroke_id, _seq, x, y, w, t) in pts {
-            // Find the matching stroke; strokes are ordered by id, points by stroke_id,
-            // so advance idx monotonically.
-            while idx < strokes.len() && strokes[idx].id != stroke_id {
-                idx += 1;
-            }
-            if idx < strokes.len() {
-                strokes[idx].points.push((x, y, w, t));
-            }
-        }
-        strokes
+        attach_points(strokes, pts)
     }
 
     pub async fn list_screens() -> Vec<(i64, i32, i32)> {
@@ -363,7 +371,16 @@ mod platform {
     /// Date grouping uses local time (same calendar date = 今天/昨天/…).
     pub async fn page_info(screen_id: i64) -> Option<(i64, i64, i64, i64, f64)> {
         let pool = DB.get()?;
+        page_info_with(pool, screen_id).await
+    }
+
+    pub(super) async fn page_info_with(
+        pool: &SqlitePool,
+        screen_id: i64,
+    ) -> Option<(i64, i64, i64, i64, f64)> {
         if screen_id <= 0 { return None; }
+        // The outer WHERE id = ?1 guarantees an unknown id yields no row
+        // (otherwise the subqueries would still produce a NULL-created row).
         sqlx::query_as(
             "SELECT \
                (SELECT COUNT(*) FROM screens s WHERE \
@@ -375,7 +392,8 @@ mod platform {
                    (SELECT date(datetime(created_at,'unixepoch','localtime')) FROM screens WHERE id = ?1)) AS date_total, \
                (SELECT COUNT(*) FROM screens WHERE id <= ?1) AS pos, \
                (SELECT COUNT(*) FROM screens) AS total, \
-               (SELECT created_at FROM screens WHERE id = ?1) AS created"
+               (SELECT created_at FROM screens WHERE id = ?1) AS created \
+             FROM screens WHERE id = ?1"
         ).bind(screen_id).fetch_optional(pool).await.ok()?
     }
 
@@ -475,4 +493,119 @@ mod platform {
 }
 
 pub use platform::*;
+
+#[cfg(test)]
+mod tests {
+    use super::platform::{attach_points, page_info_with};
+    use super::StrokeData;
+    use crate::runtime;
+    use sqlx::SqlitePool;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static DB_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    /// Fresh temp-file DB per test (pool + :memory: would fragment the DB
+    /// across connections).
+    async fn temp_pool() -> (SqlitePool, std::path::PathBuf) {
+        let n = DB_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let path = std::env::temp_dir().join(format!(
+            "glaspen2_db_test_{}_{}.db",
+            std::process::id(),
+            n
+        ));
+        let _ = std::fs::remove_file(&path);
+        let pool = SqlitePool::connect_with(
+            sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(&path)
+                .create_if_missing(true),
+        )
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TABLE screens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at REAL NOT NULL,
+                screen_w INTEGER NOT NULL,
+                screen_h INTEGER NOT NULL,
+                edited INTEGER NOT NULL DEFAULT 0
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        (pool, path)
+    }
+
+    async fn add_screen(pool: &SqlitePool, ts: f64) -> i64 {
+        sqlx::query_scalar::<_, i64>(
+            "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (?1, 1920, 1080) RETURNING id",
+        )
+        .bind(ts)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+    }
+
+    #[test]
+    fn test_page_info_grouping_local_dates() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        runtime().block_on(async {
+            let (pool, path) = temp_pool().await;
+            // Fixed reference (2025-01-01 08:00 local): grouping is relative
+            // to the stored rows, never to the wall clock.
+            let a = 1735689600.0; // 2025-01-01 08:00 (UTC+8)
+            let prev_day = add_screen(&pool, a - 86400.0).await; // 2024-12-31
+            let _today1 = add_screen(&pool, a).await; // 2025-01-01
+            let today2 = add_screen(&pool, a + 3600.0).await; // 2025-01-01
+            let next_day = add_screen(&pool, a + 86400.0).await; // 2025-01-02
+
+            let (nth, date_total, pos, total, _created) =
+                page_info_with(&pool, today2).await.unwrap();
+            assert_eq!((nth, date_total, pos, total), (2, 2, 3, 4));
+
+            let (nth, date_total, pos, total, _created) =
+                page_info_with(&pool, prev_day).await.unwrap();
+            assert_eq!((nth, date_total, pos, total), (1, 1, 1, 4));
+
+            let (nth, date_total, pos, total, _created) =
+                page_info_with(&pool, next_day).await.unwrap();
+            assert_eq!((nth, date_total, pos, total), (1, 1, 4, 4));
+
+            // Invalid ids
+            assert!(page_info_with(&pool, 0).await.is_none());
+            assert!(page_info_with(&pool, 9999).await.is_none());
+
+            pool.close().await;
+            let _ = std::fs::remove_file(&path);
+        });
+    }
+
+    #[test]
+    fn test_attach_points_groups_and_ignores_orphans() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let strokes = vec![
+            StrokeData { id: 2, r: 1.0, g: 0.0, b: 0.0, width_scale: 1.0, points: vec![] },
+            StrokeData { id: 5, r: 0.0, g: 1.0, b: 0.0, width_scale: 1.5, points: vec![] },
+        ];
+        let pts = vec![
+            (2, 0, 0.0, 0.0, 2.0, 0.0),
+            (2, 1, 1.0, 1.0, 3.0, 0.1),
+            (5, 0, 10.0, 10.0, 2.0, 0.0),
+            (5, 1, 20.0, 20.0, 2.0, 0.5),
+            (99, 0, 9.0, 9.0, 9.0, 9.0), // orphan (only possible after the known strokes in the real JOIN query)
+        ];
+        let out = attach_points(strokes, pts);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].points.len(), 2);
+        assert_eq!(out[0].points[1], (1.0, 1.0, 3.0, 0.1));
+        assert_eq!(out[1].points.len(), 2);
+        assert_eq!(out[1].points[0], (10.0, 10.0, 2.0, 0.0));
+        // stroke without points keeps an empty list
+        let empty = attach_points(
+            vec![StrokeData { id: 1, r: 0.0, g: 0.0, b: 0.0, width_scale: 1.0, points: vec![] }],
+            vec![],
+        );
+        assert!(empty[0].points.is_empty());
+    }
+}
 

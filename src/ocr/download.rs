@@ -131,6 +131,22 @@ pub fn last_error() -> String {
     LAST_ERROR.lock().unwrap().clone()
 }
 
+/// Hex-encode a sha256 digest (32 bytes) for verification comparison.
+fn digest_to_hex(digest: &[u8]) -> String {
+    digest.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+/// Overall download progress in percent for a file spanning
+/// [span_start, span_end] of the total.
+fn progress_percent(span_start: f64, span_end: f64, written: u64, total: u64) -> i32 {
+    if total == 0 {
+        return (span_end * 100.0) as i32;
+    }
+    let frac = (written as f64 / total as f64).min(1.0);
+    let pct = span_start + (span_end - span_start) * frac;
+    (pct * 100.0) as i32
+}
+
 fn download_all() -> Result<(), String> {
     let dir = models_dir();
     std::fs::create_dir_all(&dir)
@@ -181,17 +197,14 @@ fn download_one(
         hasher.update(&buf[..n]);
         written += n as u64;
         if total > 0 {
-            let frac = (written as f64 / total as f64).min(1.0);
-            let pct = span_start + (span_end - span_start) * frac;
-            PROGRESS.store((pct * 100.0) as i32, Ordering::Relaxed);
+            PROGRESS.store(progress_percent(span_start, span_end, written, total), Ordering::Relaxed);
         }
     }
 
     if written != total {
         return Err(format!("{} 下载不完整: 期望 {} 字节, 实际 {}", filename, total, written));
     }
-    let digest = hasher.finalize();
-    let hex: String = digest.iter().map(|b| format!("{:02x}", b)).collect();
+    let hex = digest_to_hex(&hasher.finalize());
     if hex != expected_sha256 {
         std::fs::remove_file(&tmp).ok();
         return Err(format!("{} 校验失败 (sha256 不匹配): 期望 {} 实际 {}", filename, expected_sha256, hex));
@@ -200,4 +213,34 @@ fn download_one(
     std::fs::rename(&tmp, &dest)
         .map_err(|e| format!("无法移动 {}: {}", tmp.display(), e))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{digest_to_hex, progress_percent};
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn test_digest_to_hex_known_vector() {
+        // sha256("abc") — standard test vector
+        let digest = Sha256::digest(b"abc");
+        assert_eq!(
+            digest_to_hex(&digest),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn test_progress_percent_span_and_clamp() {
+        // first file (0.0–0.5): halfway = 25%
+        assert_eq!(progress_percent(0.0, 0.5, 50, 100), 25);
+        // first file complete = 50%
+        assert_eq!(progress_percent(0.0, 0.5, 100, 100), 50);
+        // second file (0.5–1.0): 76% of it = 50 + 38 = 88%
+        assert_eq!(progress_percent(0.5, 1.0, 76, 100), 88);
+        // written beyond total clamps to the span end
+        assert_eq!(progress_percent(0.5, 1.0, 200, 100), 100);
+        // zero total falls back to the span end
+        assert_eq!(progress_percent(0.0, 0.5, 0, 0), 50);
+    }
 }
