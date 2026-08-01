@@ -93,6 +93,7 @@ extern char* glaspen2_search_ocr_json(const char *query);
 extern unsigned char* glaspen2_render_thumbnail(long long screen_id, int w, int h, int max_size, int *out_len);
 extern void glaspen2_free_rust_bytes(unsigned char *ptr, int len);
 extern int glaspen2_delete_screen(long long screen_id);
+extern char* glaspen2_page_info_json(long long screen_id);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -280,6 +281,45 @@ static void show_notification(NSString *text) {
     dispatch_resume(g_notification_timer);
 }
 
+// Date label for the page notification: 今天 / 昨天 / YYYY-MM-DD (local time).
+static NSString *page_date_label(double created) {
+    NSDate *d = [NSDate dateWithTimeIntervalSince1970:created];
+    NSCalendar *cal = [NSCalendar currentCalendar];
+    NSUInteger units = NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay;
+    NSDateComponents *dc = [cal components:units fromDate:d];
+    NSDateComponents *nc = [cal components:units fromDate:[NSDate date]];
+    if (dc.year == nc.year && dc.month == nc.month && dc.day == nc.day) {
+        return L(@"今天", @"Today");
+    }
+    NSDate *yesterday = [cal dateByAddingUnit:NSCalendarUnitDay value:-1
+                                       toDate:[NSDate date] options:0];
+    NSDateComponents *yc = [cal components:units fromDate:yesterday];
+    if (dc.year == yc.year && dc.month == yc.month && dc.day == yc.day) {
+        return L(@"昨天", @"Yesterday");
+    }
+    return [NSString stringWithFormat:@"%04ld-%02ld-%02ld",
+            (long)dc.year, (long)dc.month, (long)dc.day];
+}
+
+// Show "今天 第2页  第3/5页" for the given screen.
+static void show_page_info(long long screen_id) {
+    char *json = glaspen2_page_info_json(screen_id);
+    if (!json) return;
+    NSString *s = [NSString stringWithUTF8String:json];
+    glaspen2_free_c_string(json);
+    NSData *data = [s dataUsingEncoding:NSUTF8StringEncoding];
+    NSDictionary *d = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (!d) return;
+    long nth = [d[@"nth"] longValue];
+    long pos = [d[@"pos"] longValue];
+    long total = [d[@"total"] longValue];
+    double created = [d[@"created"] doubleValue];
+    NSString *label = page_date_label(created);
+    show_notification([NSString stringWithFormat:L(@"%@ 第%ld页  第%ld/%ld页",
+                                                   @"%@ page %ld (%ld/%ld)"),
+                       label, nth, pos, total]);
+}
+
 static void save_drawing_only(void) {
     if (!g_surface) return;
     cairo_surface_flush(g_surface);
@@ -412,7 +452,7 @@ static void clear_screen(void) {
     if (g_show_rainbow) draw_rainbow_indicator();
     flush_to_layer();
     if (created) {
-        show_notification(L(@"新画布已创建", @"New canvas created"));
+        show_page_info(glaspen2_get_current_screen_id());
     } else {
         // The current canvas was never edited — don't allow blank-on-blank.
         show_notification(L(@"不能连续创建空白画布, 请先涂鸦", @"Canvas is blank — draw something first"));
@@ -1838,6 +1878,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                         glaspen2_smooth_loaded_strokes();
                         replay_strokes_from_memory();
                         peek_strokes(1.0); // show the page briefly in ethereal mode
+                        show_page_info(target);
                     } else {
                         show_notification(L(@"没有上一页", @"No previous page"));
                     }
@@ -1851,6 +1892,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                         glaspen2_smooth_loaded_strokes();
                         replay_strokes_from_memory();
                         peek_strokes(1.0); // show the page briefly in ethereal mode
+                        show_page_info(target);
                     } else {
                         show_notification(L(@"没有下一页", @"No next page"));
                     }

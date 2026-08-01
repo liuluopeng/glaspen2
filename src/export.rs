@@ -1699,6 +1699,30 @@ pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
     CString::new(json).unwrap_or_default().into_raw()
 }
 
+/// Page info JSON for the 新建画布/翻页 notification:
+/// {"nth":n,"date_total":m,"pos":x,"total":y,"created":unix_ts}
+/// Caller frees with glaspen2_free_c_string. NULL when the page is unknown.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_page_info_json(screen_id: i64) -> *mut c_char {
+    let Some((nth, date_total, pos, total, created)) =
+        runtime().block_on(db::page_info(screen_id))
+    else {
+        return std::ptr::null_mut();
+    };
+    let json = serde_json::json!({
+        "nth": nth,
+        "date_total": date_total,
+        "pos": pos,
+        "total": total,
+        "created": created,
+    })
+    .to_string();
+    match CString::new(json) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
 /// Search OCR text across all pages.
 /// Returns JSON array of matching screens with OCR text.
 /// JSON: [{"id":1,"w":1920,"h":1080,"ocr":"full text"}, ...]

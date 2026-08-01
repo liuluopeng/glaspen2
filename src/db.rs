@@ -358,6 +358,27 @@ mod platform {
         ).fetch_all(pool).await.unwrap_or_default()
     }
 
+    /// Page info for the 新建画布/翻页 notification:
+    /// (nth-of-date, date_total, position, total, created_at).
+    /// Date grouping uses local time (same calendar date = 今天/昨天/…).
+    pub async fn page_info(screen_id: i64) -> Option<(i64, i64, i64, i64, f64)> {
+        let pool = DB.get()?;
+        if screen_id <= 0 { return None; }
+        sqlx::query_as(
+            "SELECT \
+               (SELECT COUNT(*) FROM screens s WHERE \
+                   date(datetime(s.created_at,'unixepoch','localtime')) = \
+                   (SELECT date(datetime(created_at,'unixepoch','localtime')) FROM screens WHERE id = ?1) \
+                   AND s.id <= ?1) AS nth, \
+               (SELECT COUNT(*) FROM screens s WHERE \
+                   date(datetime(s.created_at,'unixepoch','localtime')) = \
+                   (SELECT date(datetime(created_at,'unixepoch','localtime')) FROM screens WHERE id = ?1)) AS date_total, \
+               (SELECT COUNT(*) FROM screens WHERE id <= ?1) AS pos, \
+               (SELECT COUNT(*) FROM screens) AS total, \
+               (SELECT created_at FROM screens WHERE id = ?1) AS created"
+        ).bind(screen_id).fetch_optional(pool).await.ok()?
+    }
+
     pub async fn list_screens_with_ocr() -> Vec<(i64, i32, i32, Option<String>)> {
         let pool = match DB.get() { Some(p) => p, None => return Vec::new() };
         let rows: Vec<(i64, i32, i32, Option<String>)> = sqlx::query_as(
