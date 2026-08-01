@@ -1664,23 +1664,29 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         return event;
     }
 
-    // Pen proximity (hover in/out) drives the 飘渺画布涂鸦模式 show/hide.
+    // Pen proximity (hover in/out): the crosshair tracks the pen itself —
+    // it appears with hover moves and is hidden on leave regardless of the
+    // canvas mode. In 飘渺画布涂鸦模式 hovering also shows the strokes and
+    // pen-leave hides them.
     if (type == kCGEventTabletProximity) {
-        if (g_ethereal_canvas) {
-            NSEvent *proxEvent = [NSEvent eventWithCGEvent:event];
-            BOOL isStylus = proxEvent &&
-                ([proxEvent pointingDeviceType] == NSPenPointingDevice ||
-                 [proxEvent pointingDeviceType] == NSEraserPointingDevice);
-            if (isStylus) {
-                int64_t proxState =
-                    CGEventGetIntegerValueField(event, kCGTabletProximityEventEnterProximity);
-                if (proxState == 1) {
-                    // Hover: show the canvas (peek).
-                    auto_show_canvas();
-                } else {
-                    // Pen left — hide immediately, silently.
-                    auto_hide_now();
+        NSEvent *proxEvent = [NSEvent eventWithCGEvent:event];
+        BOOL isStylus = proxEvent &&
+            ([proxEvent pointingDeviceType] == NSPenPointingDevice ||
+             [proxEvent pointingDeviceType] == NSEraserPointingDevice);
+        if (isStylus) {
+            int64_t proxState =
+                CGEventGetIntegerValueField(event, kCGTabletProximityEventEnterProximity);
+            if (proxState == 1) {
+                if (g_ethereal_canvas) auto_show_canvas();
+            } else {
+                // Pen left the screen: hide the crosshair right away instead
+                // of leaving a frozen ghost over the hidden strokes.
+                if (g_cursor_visible) {
+                    dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
+                    g_cursor_visible = NO;
+                    flush_dirty_to_layer();
                 }
+                if (g_ethereal_canvas) auto_hide_now();
             }
         }
         return event;
@@ -1842,6 +1848,9 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     // Update cursor position for pen events only (partial refresh of the
     // old + new crosshair regions instead of the whole view each event).
     if (isPen) {
+        // Tablets without proximity events: hover moves are the only signal —
+        // treat them like a hover to show the strokes in 飘渺画布涂鸦模式.
+        if (!g_strokes_visible) auto_show_canvas();
         NSPoint loc = [nsevent locationInWindow];
         if (g_cursor_visible && (g_cursor_x != loc.x || g_cursor_y != loc.y)) {
             dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
