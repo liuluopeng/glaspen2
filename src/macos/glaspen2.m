@@ -41,7 +41,6 @@ static void pm_show(void);
 static void pm_hide(void);
 static void pm_destroy(void);
 static void pm_update(void);
-static void draw_grid(void);
 static void gl_glass_apply(void);
 static void gl_settings_set_enabled(BOOL on);
 static void toggle_enabled(void);
@@ -395,7 +394,6 @@ static void clear_screen(void) {
     cairo_destroy(cr);
     g_has_last = NO;
     glaspen2_clear_strokes(g_screen_w, g_screen_h);
-    draw_grid();
     if (g_show_rainbow) draw_rainbow_indicator();
     flush_to_layer();
     show_notification(L(@"新画布已创建", @"New canvas created"));
@@ -407,7 +405,6 @@ static void replay_strokes_from_memory(void) {
     glaspen2_draw_rebuild((void *)g_surface, g_scale);
 
     cairo_surface_flush(g_surface);
-    draw_grid();
     if (g_show_rainbow) draw_rainbow_indicator();
     g_has_last = NO;
     flush_to_layer();
@@ -446,28 +443,6 @@ static void draw_rainbow_indicator(void) {
         cairo_fill(cr);
     }
 
-    cairo_destroy(cr);
-    flush_to_layer();
-}
-
-static void draw_grid(void) {
-    if (!g_surface || !g_show_grid) return;
-    cairo_t *cr = cairo_create_scaled();
-    // DEST_OVER places grid behind existing content (strokes)
-    cairo_set_operator(cr, CAIRO_OPERATOR_DEST_OVER);
-    cairo_set_source_rgba(cr, 0.5, 0.5, 0.5, 0.15);
-    cairo_set_line_width(cr, 0.5);
-
-    for (int x = 0; x < g_screen_w; x += 40) {
-        cairo_move_to(cr, x, 0);
-        cairo_line_to(cr, x, g_screen_h);
-        cairo_stroke(cr);
-    }
-    for (int y = 0; y < g_screen_h; y += 40) {
-        cairo_move_to(cr, 0, y);
-        cairo_line_to(cr, g_screen_w, y);
-        cairo_stroke(cr);
-    }
     cairo_destroy(cr);
     flush_to_layer();
 }
@@ -1005,11 +980,8 @@ static void gl_settings_set_grid(BOOL on) {
     g_show_grid = on;
     glaspen2_save_bool_setting("grid", on ? 1 : 0);
     sync_settings_panel();
-    if (on) {
-        draw_grid();
-    } else {
-        rebuild_surface_from_strokes();
-    }
+    // The grid is drawn by drawRect per frame (own toggle) — just redraw.
+    if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
 }
 
 static void gl_settings_set_launch(BOOL on) {
@@ -1418,9 +1390,6 @@ static void rebuild_surface_from_strokes(void) {
     // Delegate the actual Cairo rendering to Rust (avoids per-point FFI overhead)
     glaspen2_draw_rebuild((void *)g_surface, g_scale);
 
-    // Grid goes behind strokes (DEST_OVER)
-    draw_grid();
-
     // Rainbow is drawn by ObjC (g_show_rainbow is a host-side boolean)
     cairo_surface_flush(g_surface);
     if (g_show_rainbow) draw_rainbow_indicator();
@@ -1454,6 +1423,24 @@ static void rebuild_surface_from_strokes(void) {
     CGContextSaveGState(ctx);
     NSRect clipRect = [self isFlipped] ? rect : rect;
     CGContextClipToRect(ctx, NSRectToCGRect(clipRect));
+
+    // Grid — drawn directly in the view, gated only by its own toggle
+    // (显示网格). It stays visible even when the strokes are hidden by
+    // 飘渺画布涂鸦模式, and sits behind the strokes image below.
+    if (g_show_grid) {
+        CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0.5 alpha:0.15] CGColor]);
+        CGContextSetLineWidth(ctx, 0.5);
+        NSRect bounds = [self bounds];
+        for (CGFloat gx = 0; gx < bounds.size.width; gx += 40.0) {
+            CGContextMoveToPoint(ctx, gx, 0);
+            CGContextAddLineToPoint(ctx, gx, bounds.size.height);
+        }
+        for (CGFloat gy = 0; gy < bounds.size.height; gy += 40.0) {
+            CGContextMoveToPoint(ctx, 0, gy);
+            CGContextAddLineToPoint(ctx, bounds.size.width, gy);
+        }
+        CGContextStrokePath(ctx);
+    }
 
     // Reuse the cached CGImage; it wraps the live cairo buffer, so it is
     // only rebuilt when the surface itself changes.
