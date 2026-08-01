@@ -14,6 +14,10 @@ pub(super) struct RecEngine {
 }
 
 pub(super) fn model_path(p: &str) -> std::path::PathBuf {
+    // Downloaded models (on-demand, app support) take priority.
+    let dl = super::download::models_dir().join(p);
+    if dl.exists() { return dl; }
+
     if let Ok(exe) = std::env::current_exe() {
         // Standard macOS bundle location: glaspen2.app/Contents/Resources/models/
         let resources = exe.parent().unwrap()

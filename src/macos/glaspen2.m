@@ -85,6 +85,8 @@ extern char* glaspen2_ocr_recognize(const unsigned char *pixels, int width, int 
 extern char* glaspen2_ocr_page(const unsigned char *pixels, int width, int height, long screen_id);
 extern int glaspen2_export_pdf(void);
 extern void glaspen2_ocr_backfill_all(void);
+extern int glaspen2_ocr_ensure_models(void);
+extern double glaspen2_ocr_download_progress(void);
 extern void glaspen2_on_display_change(int screen_w, int screen_h);
 extern char* glaspen2_list_screens_json(void);
 extern char* glaspen2_search_ocr_json(const char *query);
@@ -112,6 +114,7 @@ extern int glaspen2_undo_last_stroke(void);
 static void rebuild_surface_from_strokes(void);
 static void finish_active_stroke(void);
 static void ensure_surface(NSView *view);
+static void ocr_ensure_models_async(void);
 static NSWindow *g_window = nil;
 static NSVisualEffectView *g_glass_view = nil;
 
@@ -673,6 +676,10 @@ static void toggle_canvas_mode(void) {
     show_notification(L(@"笔记已保存", @"Notes saved"));
 }
 
+- (void)downloadOcrModels {
+    ocr_ensure_models_async();
+}
+
 - (void)toggleLanguage {
     g_lang = 1 - g_lang;
     update_menu_texts();
@@ -847,6 +854,7 @@ static NSButton *g_glass_buttons[1];
             result(@"");
             return;
         }
+        ocr_ensure_models_async(); // download models on first use if needed
         cairo_surface_flush(g_surface);
         const unsigned char *data = cairo_image_surface_get_data(g_surface);
         int w = cairo_image_surface_get_width(g_surface);
@@ -877,6 +885,7 @@ static NSButton *g_glass_buttons[1];
             });
         });
     } else if ([call.method isEqualToString:@"ocrBackfill"]) {
+        ocr_ensure_models_async(); // download models on first use if needed
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             glaspen2_ocr_backfill_all();
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -1574,9 +1583,44 @@ static void rebuild_surface_from_strokes(void) {
 
 @end
 
+// ── OCR model on-demand download (models are not bundled) ──
+
+static NSTimer *g_ocr_dl_timer = nil;
+
+// Start the OCR model download if the models are missing, and show a
+// progress notification while it runs. Safe to call repeatedly.
+static void ocr_ensure_models_async(void) {
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        int r = glaspen2_ocr_ensure_models();
+        if (r == 0) return; // models already ready
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (r < 0) {
+                show_notification(L(@"OCR 模型下载启动失败", @"OCR model download failed to start"));
+                return;
+            }
+            [g_ocr_dl_timer invalidate];
+            g_ocr_dl_timer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) {
+                double p = glaspen2_ocr_download_progress();
+                if (p >= 100.0) {
+                    [timer invalidate];
+                    g_ocr_dl_timer = nil;
+                    show_notification(L(@"OCR 模型下载完成", @"OCR models ready"));
+                } else if (p <= -2.0) {
+                    [timer invalidate];
+                    g_ocr_dl_timer = nil;
+                    show_notification(L(@"OCR 模型下载失败", @"OCR model download failed"));
+                } else if (p >= 0.0) {
+                    show_notification([NSString stringWithFormat:L(@"下载 OCR 模型 %d%%", @"Downloading OCR models %d%%"), (int)p]);
+                }
+            }];
+        });
+    });
+}
+
 /// OCR the current surface on a background queue and save result to DB.
 /// Copies the pixel data so the UI thread can proceed without waiting.
 static void ocr_current_page_async(void) {
+    ocr_ensure_models_async(); // download models on first use if needed
     if (!g_surface) return;
     cairo_surface_flush(g_surface);
     const unsigned char *data = cairo_image_surface_get_data(g_surface);
@@ -2073,6 +2117,8 @@ void glaspen2_run(void) {
         [g_menu addItemWithTitle:L(@"保存(含背景)", @"Save (with bg)") action:@selector(saveWithBg) keyEquivalent:@""];
         [g_menu addItemWithTitle:L(@"保存(涂鸦)", @"Save (drawing)") action:@selector(saveOnly) keyEquivalent:@""];
         [g_menu addItemWithTitle:L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)") action:@selector(saveXoj) keyEquivalent:@""];
+        NSMenuItem *ocrDlItem = [g_menu addItemWithTitle:L(@"下载 OCR 模型 (135M)", @"Download OCR models (135M)") action:@selector(downloadOcrModels) keyEquivalent:@""];
+        ocrDlItem.target = g_menuHandler;
         [g_menu addItemWithTitle:L(@"新建画布", @"New canvas") action:@selector(clearScreen) keyEquivalent:@""];
         NSMenuItem *rainbowItem = [g_menu addItemWithTitle:L(@"彩虹指示器", @"Rainbow indicator") action:@selector(toggleRainbow) keyEquivalent:@""];
         rainbowItem.target = g_menuHandler;

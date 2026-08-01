@@ -1544,6 +1544,26 @@ fn checked_rgba_len(w: u32, h: u32) -> Option<usize> {
     (w as usize).checked_mul(h as usize)?.checked_mul(4)
 }
 
+/// Ensure the OCR models are present, downloading them on demand from
+/// HuggingFace if missing. Returns:
+///   0 = ready (already present), 1 = download started by this call,
+///   2 = download already in progress, -1 = failed to start.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_ocr_ensure_models() -> c_int {
+    match ocr::download::ensure_models() {
+        ocr::download::EnsureResult::Ready => 0,
+        ocr::download::EnsureResult::Started => 1,
+        ocr::download::EnsureResult::AlreadyRunning => 2,
+        ocr::download::EnsureResult::Failed => -1,
+    }
+}
+
+/// Current OCR model download progress: -1 idle, -2 failed, 0..100 percent.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_ocr_download_progress() -> c_double {
+    ocr::download::progress()
+}
+
 /// Run OCR on an RGBA pixel buffer. Returns a C string that the caller must
 /// free with glaspen2_free_c_string.
 #[unsafe(no_mangle)]
