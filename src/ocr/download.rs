@@ -23,10 +23,10 @@ pub const REC_SHA256: &str = "9c09abf0957f7968c7586464b7397b84ad2387a0497a351af4
 pub const DET_EXPECTED_BYTES: u64 = 62032837;
 pub const REC_EXPECTED_BYTES: u64 = 76554979;
 
-// ── HuggingFace download URLs (set these to your model repo) ──
+// ── HuggingFace download URLs (PaddleOCR official repos) ──
 // Use "resolve/main" so the server redirects to the actual file.
-const DET_URL: &str = "https://huggingface.co/<your-repo>/resolve/main/ppocr_v6_det.onnx";
-const REC_URL: &str = "https://huggingface.co/<your-repo>/resolve/main/ppocr_v6_rec.onnx";
+const DET_URL: &str = "https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_det_onnx/resolve/main/inference.onnx";
+const REC_URL: &str = "https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_rec_onnx/resolve/main/inference.onnx";
 
 // ── Download state (read by ObjC/C# via FFI) ──
 // PROGRESS: -200 failed, -100 idle, 0..=100 percent (100 = done)

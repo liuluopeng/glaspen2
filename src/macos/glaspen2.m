@@ -115,6 +115,7 @@ static void rebuild_surface_from_strokes(void);
 static void finish_active_stroke(void);
 static void ensure_surface(NSView *view);
 static void ocr_ensure_models_async(void);
+static void toggle_ocr_enabled(void);
 static NSWindow *g_window = nil;
 static NSVisualEffectView *g_glass_view = nil;
 
@@ -216,6 +217,12 @@ static BOOL g_show_grid = NO;
 // 飘渺画布涂鸦模式 (X). When NO the grid is always visible while its own
 // Flutter switch is on. Controlled by the Flutter settings panel.
 static BOOL g_grid_follow_strokes = NO;
+
+// OCR feature switch. Off by default: the models are not bundled and are
+// downloaded on demand (~135 MB), so a user who never OCRs must not be
+// prompted on every 新建画布/翻页. When turned on, the models download on
+// first use automatically.
+static BOOL g_ocr_enabled = NO;
 
 // Glass overlay opacity (0.0 = off, 0.0-0.3 range)
 static BOOL g_glass_enabled = NO;  // frosted glass ON/OFF
@@ -696,6 +703,10 @@ static void toggle_canvas_mode(void) {
     toggle_canvas_mode();
 }
 
+- (void)toggleOcr {
+    toggle_ocr_enabled();
+}
+
 - (void)toggleLaunch {
     gl_settings_set_launch(!glaspen2_is_launch_at_login());
 }
@@ -771,6 +782,7 @@ static NSButton *g_glass_buttons[1];
             @"grid": @(g_show_grid),
             @"gridFollowStrokes": @(g_grid_follow_strokes),
             @"pressureMonitor": @(g_pressure_monitor),
+            @"ocrEnabled": @(g_ocr_enabled),
         });
     } else if ([call.method isEqualToString:@"setSetting"]) {
         NSDictionary *args = call.arguments;
@@ -795,6 +807,10 @@ static NSButton *g_glass_buttons[1];
             g_grid_follow_strokes = [value boolValue];
             glaspen2_save_bool_setting("grid_follow_strokes", g_grid_follow_strokes ? 1 : 0);
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
+        } else if ([key isEqualToString:@"ocrEnabled"]) {
+            if (g_ocr_enabled != [value boolValue]) toggle_ocr_enabled();
+            result(nil);
+            return;
         } else if ([key isEqualToString:@"pressureMonitor"]) {
             gl_settings_set_pressure_monitor([value boolValue]);
         }
@@ -850,6 +866,10 @@ static NSButton *g_glass_buttons[1];
         // Run OCR on current drawing surface.
         // Copy the pixels on the main thread first — the background queue must
         // never read live cairo surface memory (torn reads / use-after-free).
+        if (!g_ocr_enabled) {
+            result(@"");
+            return;
+        }
         if (!g_surface) {
             result(@"");
             return;
@@ -885,6 +905,10 @@ static NSButton *g_glass_buttons[1];
             });
         });
     } else if ([call.method isEqualToString:@"ocrBackfill"]) {
+        if (!g_ocr_enabled) {
+            result(nil);
+            return;
+        }
         ocr_ensure_models_async(); // download models on first use if needed
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             glaspen2_ocr_backfill_all();
@@ -1128,6 +1152,7 @@ static void sync_settings_panel(void) {
         @"grid": @(g_show_grid),
         @"gridFollowStrokes": @(g_grid_follow_strokes),
         @"pressureMonitor": @(g_pressure_monitor),
+        @"ocrEnabled": @(g_ocr_enabled),
     }];
 }
 
@@ -1583,6 +1608,26 @@ static void rebuild_surface_from_strokes(void) {
 
 @end
 
+// OCR feature on/off (models are downloaded on demand, so OCR must be
+// opted in). Menu item tag 666; also exposed in the Flutter settings.
+static void toggle_ocr_enabled(void) {
+    g_ocr_enabled = !g_ocr_enabled;
+    glaspen2_save_bool_setting("ocr_enabled", g_ocr_enabled ? 1 : 0);
+    NSMenuItem *item = [g_menu itemWithTag:666];
+    if (item) {
+        [item setState:g_ocr_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+        [item setTitle:g_ocr_enabled
+            ? L(@"关闭 OCR 识别", @"Disable OCR")
+            : L(@"开启 OCR 识别 (需下载模型)", @"Enable OCR (downloads models)")];
+    }
+    if (g_ocr_enabled) {
+        ocr_ensure_models_async(); // start the download right away
+    }
+    show_notification(g_ocr_enabled
+        ? L(@"OCR 识别已开启", @"OCR enabled")
+        : L(@"OCR 识别已关闭", @"OCR disabled"));
+}
+
 // ── OCR model on-demand download (models are not bundled) ──
 
 static NSTimer *g_ocr_dl_timer = nil;
@@ -1620,6 +1665,7 @@ static void ocr_ensure_models_async(void) {
 /// OCR the current surface on a background queue and save result to DB.
 /// Copies the pixel data so the UI thread can proceed without waiting.
 static void ocr_current_page_async(void) {
+    if (!g_ocr_enabled) return; // OCR is off — no downloads, no inference
     ocr_ensure_models_async(); // download models on first use if needed
     if (!g_surface) return;
     cairo_surface_flush(g_surface);
@@ -2136,6 +2182,10 @@ void glaspen2_run(void) {
         modeItem.target = g_menuHandler;
         modeItem.tag = 778;
         modeItem.state = NSControlStateValueOff;
+        NSMenuItem *ocrItem = [g_menu addItemWithTitle:L(@"开启 OCR 识别 (需下载模型)", @"Enable OCR (downloads models)") action:@selector(toggleOcr) keyEquivalent:@""];
+        ocrItem.target = g_menuHandler;
+        ocrItem.tag = 666;
+        ocrItem.state = NSControlStateValueOff;
         [g_menu addItem:[NSMenuItem separatorItem]];
         NSMenuItem *toggleItem = [g_menu addItemWithTitle:L(@"开启涂鸦", @"Enable Drawing") action:@selector(toggleDraw) keyEquivalent:@""];
         toggleItem.target = g_menuHandler;
@@ -2207,6 +2257,16 @@ void glaspen2_run(void) {
 
         // Canvas mode starts in 固定画布涂鸦模式; menu item shows the switch target
         [[g_menu itemWithTag:778] setTitle:L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];
+
+        // Restore OCR feature setting (off by default — models download on demand)
+        g_ocr_enabled = glaspen2_load_bool_setting("ocr_enabled") != 0;
+        NSMenuItem *restoredOcrItem = [g_menu itemWithTag:666];
+        if (restoredOcrItem) {
+            [restoredOcrItem setState:g_ocr_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+            [restoredOcrItem setTitle:g_ocr_enabled
+                ? L(@"关闭 OCR 识别", @"Disable OCR")
+                : L(@"开启 OCR 识别 (需下载模型)", @"Enable OCR (downloads models)")];
+        }
 
         // Restore pressure monitor setting
         g_pressure_monitor = glaspen2_load_bool_setting("pressure_monitor") != 0;

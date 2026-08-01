@@ -335,6 +335,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _pressureMonitor = false;
   bool _showGrid = false;
   bool _gridFollowStrokes = false;
+  bool _ocrEnabled = false;
   bool _connected = false;
 
   // Match C# tray menu's PresetColors and widths
@@ -411,6 +412,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _pressureMonitor = s['pressureMonitor'] ?? _pressureMonitor;
         _showGrid = s['grid'] ?? _showGrid;
         _gridFollowStrokes = s['gridFollowStrokes'] ?? _gridFollowStrokes;
+        _ocrEnabled = s['ocrEnabled'] ?? _ocrEnabled;
       });
     }
   }
@@ -427,6 +429,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _pressureMonitor = settings['pressureMonitor'] ?? false;
           _showGrid = settings['grid'] ?? false;
           _gridFollowStrokes = settings['gridFollowStrokes'] ?? false;
+          _ocrEnabled = settings['ocrEnabled'] ?? false;
           _connected = true;
         });
         if (Platform.isMacOS) {
@@ -911,6 +914,17 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           onChanged: (v) {
             setState(() => _gridFollowStrokes = v);
             _setSetting('gridFollowStrokes', v);
+          },
+        ),
+        SwitchListTile(
+          title: const Text('OCR 识别', style: TextStyle(fontSize: 15)),
+          subtitle: const Text('首次使用时需下载模型 (约 135MB)', style: TextStyle(fontSize: 12)),
+          value: _ocrEnabled,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (v) {
+            setState(() => _ocrEnabled = v);
+            _setSetting('ocrEnabled', v);
           },
         ),
       ],
