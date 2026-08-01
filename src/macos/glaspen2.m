@@ -656,33 +656,18 @@ static void toggle_enabled(void) {
     }
 }
 
-// Automatic canvas visibility — the "X hidden" mode. Entered only by a
-// manual ⌘⌃X press: the canvas starts hidden, hovering or touching down
-// shows it again, and leaving hides it. While in this mode 飘渺模式 is a
-// fine-grained secondary setting that controls the leave behavior:
-//   - 飘渺 off: pen-leave hides the canvas immediately (silent peek)
-//   - 飘渺 on:  after a real stroke the canvas hides 1 s after leave
-//     (anti-flicker grace); a hover-without-draw still hides immediately.
-// Outside the X-hidden mode (canvas shown by ⌘⌃X) 飘渺模式 has no effect —
-// the canvas stays visible until X hides it.
-static BOOL g_ethereal_mode = NO;
-static NSTimer *g_auto_hide_timer = nil;
-static BOOL g_peek_hover = NO; // pen hovered but has not touched down yet
-static BOOL g_hidden_by_x = NO; // X-hidden mode active (canvas may be shown)
+// Two canvas drawing modes, switched by ⌘⌃X:
+//   - 固定画布涂鸦模式 (fixed canvas mode): the canvas is always visible;
+//     the pen never auto-shows or hides it.
+//   - 飘渺画布涂鸦模式 (ethereal canvas mode): the canvas starts hidden;
+//     hovering or touching down shows it, and pen-leave hides it again
+//     immediately (silent). Pen passthrough is managed separately by
+//     ⌘ + ⌃ + V (g_enabled) — X never touches it.
+static BOOL g_ethereal_canvas = NO; // YES = 飘渺画布涂鸦模式
 
-static BOOL x_peek_active(void) {
-    return g_hidden_by_x;
-}
-
-static void auto_cancel_hide(void) {
-    [g_auto_hide_timer invalidate];
-    g_auto_hide_timer = nil;
-}
-
-// Hide the canvas now (shared by the timer, the peek path, and X).
-// Returns YES if it actually hid the canvas. Stays inside the X-hidden mode.
+// Hide the canvas now (飘渺 mode). Returns YES if it actually hid it.
 static BOOL auto_hide_now(void) {
-    if (!x_peek_active()) return NO;
+    if (!g_ethereal_canvas) return NO;
     if (!g_window || !g_window.isVisible) return NO;
     finish_active_stroke(); // don't strand an in-flight stroke
     if (g_window) [g_window setIsVisible:NO];
@@ -690,24 +675,9 @@ static BOOL auto_hide_now(void) {
     return YES;
 }
 
-// Arm the 1 s auto-hide timer. Called when the pen leaves proximity
-// after a real drawing session (飘渺模式 on).
-static void auto_arm_hide(void) {
-    if (!x_peek_active()) return;
-    [g_auto_hide_timer invalidate];
-    g_auto_hide_timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:NO block:^(NSTimer *timer) {
-        g_auto_hide_timer = nil;
-        if (auto_hide_now()) {
-            show_toast(L(@"画布已自动隐藏 (飘渺模式)", @"Canvas auto-hidden (ethereal mode)"));
-        }
-    }];
-}
-
-// Show the canvas because the pen came back (peek). Any pen activity also
-// cancels a pending auto-hide. Stays inside the X-hidden mode.
+// Show the canvas because the pen came back (飘渺 mode).
 static void auto_show_canvas(void) {
-    if (!x_peek_active()) return;
-    auto_cancel_hide();
+    if (!g_ethereal_canvas) return;
     if (g_window && !g_window.isVisible) {
         [g_window setIsVisible:YES];
         if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
@@ -716,54 +686,33 @@ static void auto_show_canvas(void) {
     }
 }
 
-// Handle pen-leave: peek (never touched) hides immediately and silently;
-// otherwise 飘渺模式 decides between the 1 s grace and immediate hide.
-static void auto_handle_pen_leave(void) {
-    if (g_peek_hover) {
-        g_peek_hover = NO;
-        auto_hide_now();
-    } else if (g_ethereal_mode) {
-        auto_arm_hide();
-    } else {
-        auto_hide_now();
-    }
-}
-
-// Toggle 飘渺模式 on/off. Persisted in user settings. Shortcut: ⌘ + ⌃ + P
-static void toggle_ethereal_mode(void) {
-    g_ethereal_mode = !g_ethereal_mode;
-    glaspen2_save_bool_setting("ethereal_mode", g_ethereal_mode ? 1 : 0);
-    if (!g_ethereal_mode) auto_cancel_hide();
-    NSMenuItem *item = [g_menu itemWithTag:778];
-    [item setState:g_ethereal_mode ? NSControlStateValueOn : NSControlStateValueOff];
-    show_notification(g_ethereal_mode
-        ? L(@"飘渺模式已开启", @"Ethereal mode on")
-        : L(@"飘渺模式已关闭", @"Ethereal mode off"));
-}
-
-// Hide/show the current page (overlay window). Hiding with X arms the peek
-// behavior: hovering or touching down shows the canvas again, and leaving
-// hides it. Whether the pen passes through is managed separately by
-// ⌘ + ⌃ + V (g_enabled) — X never touches the passthrough state.
-// Shortcut: ⌘ + ⌃ + X
-static void toggle_page_visible(void) {
-    auto_cancel_hide(); // manual action overrides any pending auto-hide
-    BOOL currentlyVisible = g_window && g_window.isVisible;
-    if (currentlyVisible) {
+// Switch between 固定画布涂鸦模式 and 飘渺画布涂鸦模式. Shortcut: ⌘ + ⌃ + X
+static void toggle_canvas_mode(void) {
+    if (!g_ethereal_canvas) {
+        // → 飘渺画布涂鸦模式: hide the canvas, peek rules take over
+        g_ethereal_canvas = YES;
         finish_active_stroke(); // commit any in-flight stroke before hiding
-        g_hidden_by_x = YES; // hidden manually — peek armed
         if (g_window) [g_window setIsVisible:NO];
         if (g_pressure_monitor) pm_hide();
-        show_toast(L(@"页面已隐藏 (悬空自动显示)", @"Page hidden (hover to show)"));
+        show_toast(L(@"飘渺画布涂鸦模式 (悬空/落笔显示)", @"Ethereal canvas mode (hover/down to show)"));
     } else {
-        g_hidden_by_x = NO;
+        // → 固定画布涂鸦模式: show the canvas and keep it visible
+        g_ethereal_canvas = NO;
         if (g_window) {
             [g_window setIsVisible:YES];
             if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
             [g_window orderFrontRegardless];
         }
         if (g_pressure_monitor) pm_show();
-        show_notification(L(@"页面已显示", @"Page shown"));
+        show_notification(L(@"固定画布涂鸦模式", @"Fixed canvas mode"));
+    }
+    // Sync the menu item (title shows the mode you switch TO, like toggleDraw)
+    NSMenuItem *item = [g_menu itemWithTag:778];
+    if (item) {
+        [item setState:g_ethereal_canvas ? NSControlStateValueOn : NSControlStateValueOff];
+        [item setTitle:g_ethereal_canvas
+            ? L(@"固定画布涂鸦模式", @"Fixed canvas mode")
+            : L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];
     }
 }
 
@@ -802,8 +751,8 @@ static void toggle_page_visible(void) {
     gl_settings_set_rainbow(!g_show_rainbow);
 }
 
-- (void)toggleEthereal {
-    toggle_ethereal_mode();
+- (void)toggleCanvasMode {
+    toggle_canvas_mode();
 }
 
 - (void)toggleLaunch {
@@ -1764,9 +1713,9 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         return event;
     }
 
-    // Pen proximity (hover in/out) drives the X-hidden peek behavior.
+    // Pen proximity (hover in/out) drives the 飘渺画布涂鸦模式 show/hide.
     if (type == kCGEventTabletProximity) {
-        if (x_peek_active()) {
+        if (g_ethereal_canvas) {
             NSEvent *proxEvent = [NSEvent eventWithCGEvent:event];
             BOOL isStylus = proxEvent &&
                 ([proxEvent pointingDeviceType] == NSPenPointingDevice ||
@@ -1775,12 +1724,11 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 int64_t proxState =
                     CGEventGetIntegerValueField(event, kCGTabletProximityEventEnterProximity);
                 if (proxState == 1) {
-                    // Hover: show for a peek. If the canvas was hidden, a
-                    // hover-without-draw will hide it again immediately on leave.
-                    g_peek_hover = !(g_window && g_window.isVisible);
+                    // Hover: show the canvas (peek).
                     auto_show_canvas();
                 } else {
-                    auto_handle_pen_leave();
+                    // Pen left — hide immediately, silently.
+                    auto_hide_now();
                 }
             }
         }
@@ -1892,13 +1840,9 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 } else if (kc == kVK_ANSI_B) {
                     gl_settings_set_glass_enabled(!g_glass_enabled);
                     return NULL;
-                } else if (kc == kVK_ANSI_P) {
-                    // 飘渺模式 (auto show/hide canvas with pen)
-                    toggle_ethereal_mode();
-                    return NULL;
                 } else if (kc == kVK_ANSI_X) {
-                    // Hide/show current page (⌘ + ⌃ + X)
-                    toggle_page_visible();
+                    // Switch canvas mode: 固定 ↔ 飘渺 (⌘ + ⌃ + X)
+                    toggle_canvas_mode();
                     return NULL;
                 } else if (kc == kVK_ANSI_Comma) {
                     show_settings_panel();
@@ -1930,9 +1874,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     BOOL isPen = (devType == NSPenPointingDevice || devType == NSEraserPointingDevice ||
                   subtype == 1 || subtype == 2);
 
-    // Any pen activity cancels a pending 飘渺模式 auto-hide (pen is back).
-    if (isPen) auto_cancel_hide();
-
     // Non-pen mouse move while no active stroke and cursor visible → hide crosshair.
     // Covers pen-leave-proximity on tablets that don't emit proximity events.
     // The g_stroke_active guard prevents spurious non-pen events interleaved during
@@ -1941,9 +1882,9 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         // Invalidate only the old crosshair region (partial refresh).
         dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
         g_cursor_visible = NO;
-        // X-hidden mode: the pen just left (no proximity events on this tablet) —
-        // same peek/1s decision as the proximity-out path.
-        if (x_peek_active()) auto_handle_pen_leave();
+        // 飘渺画布涂鸦模式: the pen just left (no proximity events on this
+        // tablet) — hide as a fallback.
+        if (g_ethereal_canvas) auto_hide_now();
         flush_dirty_to_layer();
     }
 
@@ -2052,7 +1993,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         if (g_stroke_active) {
             finish_active_stroke();
         }
-        g_peek_hover = NO; // real drawing session — no longer a peek
         g_eraser_mode = (devType == NSEraserPointingDevice);
         NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f", px, py, pressure, ts);
         glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
@@ -2068,7 +2008,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                   etype == NSEventTypeOtherMouseDragged)) {
         // If no DOWN event was seen (pen detection lag), auto-initialize
         if (!g_stroke_active) {
-            g_peek_hover = NO; // pen is in contact — real drawing session
             g_eraser_mode = (devType == NSEraserPointingDevice);
             glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
             g_stroke_active = YES;
@@ -2184,10 +2123,10 @@ void glaspen2_run(void) {
         glassItem.target = g_menuHandler;
         glassItem.tag = 444;
         glassItem.state = g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff;
-        NSMenuItem *etherealItem = [g_menu addItemWithTitle:L(@"飘渺模式 (延迟隐藏)", @"Ethereal mode (delayed hide)") action:@selector(toggleEthereal) keyEquivalent:@""];
-        etherealItem.target = g_menuHandler;
-        etherealItem.tag = 778;
-        etherealItem.state = NSControlStateValueOff;
+        NSMenuItem *modeItem = [g_menu addItemWithTitle:L(@"固定画布涂鸦模式", @"Fixed canvas mode") action:@selector(toggleCanvasMode) keyEquivalent:@""];
+        modeItem.target = g_menuHandler;
+        modeItem.tag = 778;
+        modeItem.state = NSControlStateValueOff;
         [g_menu addItem:[NSMenuItem separatorItem]];
         NSMenuItem *toggleItem = [g_menu addItemWithTitle:L(@"开启涂鸦", @"Enable Drawing") action:@selector(toggleDraw) keyEquivalent:@""];
         toggleItem.target = g_menuHandler;
@@ -2256,9 +2195,8 @@ void glaspen2_run(void) {
         // Restore grid setting
         g_show_grid = glaspen2_load_bool_setting("grid") != 0;
 
-        // Restore 飘渺模式 setting
-        g_ethereal_mode = glaspen2_load_bool_setting("ethereal_mode") != 0;
-        [[g_menu itemWithTag:778] setState:g_ethereal_mode ? NSControlStateValueOn : NSControlStateValueOff];
+        // Canvas mode starts in 固定画布涂鸦模式; menu item shows the switch target
+        [[g_menu itemWithTag:778] setTitle:L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];
 
         // Restore pressure monitor setting
         g_pressure_monitor = glaspen2_load_bool_setting("pressure_monitor") != 0;
