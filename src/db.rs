@@ -90,7 +90,12 @@ mod platform {
         let pool = SqlitePool::connect_with(
             sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(&path)
-                .create_if_missing(true),
+                .create_if_missing(true)
+                // WAL + synchronous=NORMAL: commits don't fsync on every
+                // write, so the per-stroke begin INSERT (running on the main
+                // thread via block_on) no longer hitches pen-down.
+                .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+                .synchronous(sqlx::sqlite::SqliteSynchronous::Normal),
         ).await.expect("Failed to open glaspen2.db");
 
         sqlx::query(

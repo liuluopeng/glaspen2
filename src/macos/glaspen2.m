@@ -177,6 +177,10 @@ static BOOL g_cursor_visible = NO;
 static NSCursor *g_blank_cursor = nil;
 static NSCursor *g_arrow_cursor = nil;
 
+// Crosshair hover redraw throttle: flush at most every ~16 ms; the dirty
+// rect accumulates intermediate positions so no ghost trails appear.
+static uint64_t g_last_cursor_flush = 0;
+
 // System cursor hidden while pen is drawing (file scope so toggle_enabled
 // can restore it when the app is disabled mid-stroke).
 static BOOL g_pen_drawing = NO;
@@ -2012,22 +2016,30 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         flush_dirty_to_layer();
     }
 
-    // Update cursor position for pen events only (partial refresh of the
-    // old + new crosshair regions instead of the whole view each event).
+    // Update cursor position for pen events only. The crosshair is hidden
+    // while a stroke is being drawn (the ink itself is the feedback) and
+    // re-shown on pen-up; during hover its redraws are throttled to ~16 ms
+    // to cut per-event work at high hover rates.
     if (isPen) {
         // Tablets without proximity events: hover moves are the only signal —
         // treat them like a hover to show the strokes in 飘渺画布涂鸦模式.
         if (!g_strokes_visible) auto_show_canvas();
         peek_cancel_timer(); // pen interaction overrides a pending page peek
         NSPoint loc = [nsevent locationInWindow];
-        if (g_cursor_visible && (g_cursor_x != loc.x || g_cursor_y != loc.y)) {
-            dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
+        BOOL moved = (g_cursor_x != loc.x || g_cursor_y != loc.y);
+        if (moved && g_cursor_visible && !g_stroke_active) {
+            dirty_include_point(g_cursor_x, g_cursor_y, 14.0); // old position
         }
         g_cursor_x = loc.x;
         g_cursor_y = loc.y;
-        g_cursor_visible = YES;
-        dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
-        flush_dirty_to_layer();
+        if (!g_stroke_active) {
+            g_cursor_visible = YES;
+            dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
+            if (moved && elapsed_us(g_last_cursor_flush) >= 16000) {
+                g_last_cursor_flush = mach_absolute_time();
+                flush_dirty_to_layer();
+            }
+        }
     }
 
     // Hide system cursor while pen is drawing, restore on any mouse up
@@ -2125,6 +2137,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f", px, py, pressure, ts);
         glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
         g_stroke_active = YES;
+        g_cursor_visible = NO; // the ink is the feedback while drawing
         stroke_begin(); // reuse one cairo context for the whole stroke
         raw_draw_dot(px, py, raw_w);
         g_raw_last_x = px;
@@ -2139,6 +2152,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             g_eraser_mode = (devType == NSEraserPointingDevice);
             glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
             g_stroke_active = YES;
+            g_cursor_visible = NO;
             stroke_begin();
             raw_draw_dot(px, py, raw_w);
             g_raw_last_x = px;
@@ -2168,6 +2182,10 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             stroke_end(); // release shared cairo context
             g_stroke_active = NO;
             g_raw_has_last = NO;
+            // Pen is back to hovering — restore the crosshair.
+            g_cursor_visible = YES;
+            dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
+            flush_dirty_to_layer();
         }
         return NULL;
     }
