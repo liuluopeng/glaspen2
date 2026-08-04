@@ -14,24 +14,16 @@ pub fn runtime() -> &'static tokio::runtime::Runtime {
 // Module declarations
 // ---------------------------------------------------------------------------
 
-// Cairo: real crate when available, stub for cross-compilation / Windows
-#[cfg(all(feature = "cairo_real", not(target_os = "windows")))]
-extern crate cairo;
-#[cfg(any(not(feature = "cairo_real"), target_os = "windows"))]
-#[path = "cairo_stub.rs"]
-pub mod cairo;
+// Cairo 渲染:唯一实现是 cairo_dl(动态加载 libcairo,源自 wAPItry 已验证原型)
+pub mod cairo_dl;
 
 #[cfg(target_os = "macos")]
 pub mod macos;
-
-#[cfg(windows)]
-pub mod cairo_renderer;
 
 #[cfg(target_os = "windows")]
 pub mod windows;
 
 pub mod db;
-pub mod draw;
 pub mod export;
 pub mod modeler;
 pub mod ocr;

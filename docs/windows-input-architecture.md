@@ -3,6 +3,10 @@
 > 本文档在 macOS 侧整理, 供 Windows 侧开发时参考。核心结论:
 > 输入源选择 (Wintab/WM_POINTER/HID) 与"是否穿透"是**两回事**,
 > 穿透由驱动合成的鼠标事件造成, 必须单独拦截。
+>
+> **状态更新 (2026-08)**: 历史 C# 实现已全部删除, Windows 版已重写为纯 Rust
+> (单层 WS_EX_LAYERED + WM_INPUT HID 解析 + ink-stroke-modeler + cairo 轮廓),
+> 见 `src/windows/overlay.rs`。下方 C# 路径均为历史分析记录。
 
 ## 1. 三层模型
 

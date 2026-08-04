@@ -442,61 +442,55 @@ fn render_and_ocr(
     rt: &tokio::runtime::Runtime,
 ) -> Vec<db::OcrBox> {
     // Create a small surface for OCR (downscale for speed)
-    use crate::cairo;
     let scale = 0.5f64;
     let rw = (sw as f64 * scale).ceil() as i32;
     let rh = (sh as f64 * scale).ceil() as i32;
-    let mut surface = match cairo::ImageSurface::create(cairo::Format::ARgb32, rw, rh) {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
+    let renderer = match crate::cairo_dl::CairoRenderer::create_owned(rw, rh) {
+        Some(r) => r,
+        None => return Vec::new(),
     };
+    renderer.clear();
 
-    {
-        let Ok(cr) = cairo::Context::new(&surface) else { return Vec::new() };
-        cr.set_operator(cairo::Operator::Clear);
-        let _ = cr.paint();
-        cr.set_operator(cairo::Operator::Over);
-        cr.scale(scale, scale);
-        cr.set_line_cap(cairo::LineCap::Round);
-        cr.set_line_join(cairo::LineJoin::Round);
-        for s in strokes {
-            if s.points.len() < 2 { continue; }
-            cr.set_source_rgba(s.r, s.g, s.b, 1.0);
-            for i in 0..s.points.len() {
-                let (x, y, w, _t) = s.points[i];
-                if i == 0 {
-                    let _ = cr.arc(x, y, w * 0.5, 0.0, 2.0 * std::f64::consts::PI);
-                    let _ = cr.fill();
-                } else {
-                    let (px, py, _pw, _pt) = s.points[i - 1];
-                    cr.set_line_width(w);
-                    let _ = cr.move_to(px, py);
-                    let _ = cr.line_to(x, y);
-                    let _ = cr.stroke();
-                }
+    for s in strokes {
+        if s.points.len() < 2 { continue; }
+        let color = (
+            (s.r * 255.0) as u8,
+            (s.g * 255.0) as u8,
+            (s.b * 255.0) as u8,
+        );
+        for i in 0..s.points.len() {
+            let (x, y, w, _t) = s.points[i];
+            if i == 0 {
+                renderer.fill_circle((x * scale) as f32, (y * scale) as f32, (w * 0.5 * scale) as f32, color);
+            } else {
+                let (px, py, _pw, _pt) = s.points[i - 1];
+                renderer.stroke_line(
+                    (px * scale) as f32, (py * scale) as f32,
+                    (x * scale) as f32, (y * scale) as f32,
+                    (w * scale) as f32, color,
+                );
             }
         }
     }
+    renderer.flush();
 
-    // Read RGBA pixels
-    let stride = surface.stride() as usize;
-    let surf_w = surface.width() as u32;
-    let surf_h = surface.height() as u32;
-    let Ok(d) = surface.data() else {
-        return Vec::new();
-    };
+    // Read RGBA pixels (BGRA premultiplied, stride = rw*4)
+    let bits = renderer.bits();
+    let surf_w = rw as u32;
+    let surf_h = rh as u32;
     let mut rgba = vec![0u8; (surf_w * surf_h * 4) as usize];
-    for y in 0..surf_h {
-        for x in 0..surf_w {
-            let off = y as usize * stride + x as usize * 4;
-            let pi = (y * surf_w + x) as usize * 4;
-            rgba[pi] = d[off + 2];
-            rgba[pi + 1] = d[off + 1];
-            rgba[pi + 2] = d[off];
-            rgba[pi + 3] = d[off + 3];
+    unsafe {
+        for y in 0..surf_h {
+            for x in 0..surf_w {
+                let off = (y * surf_w + x) as usize * 4;
+                let pi = (y * surf_w + x) as usize * 4;
+                rgba[pi] = *bits.add(off + 2);
+                rgba[pi + 1] = *bits.add(off + 1);
+                rgba[pi + 2] = *bits.add(off);
+                rgba[pi + 3] = *bits.add(off + 3);
+            }
         }
     }
-    std::mem::drop(d);
 
     // Detect + recognize
     let boxes = ocr::det::detect_text_regions(&rgba, surf_w, surf_h);

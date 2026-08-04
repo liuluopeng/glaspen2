@@ -118,13 +118,7 @@ fn main() {
     }
 
     if is_windows {
-        let csharp_dir = std::path::Path::new("glaspen2_csharp");
-
-        // Output C# exe to Cargo target dir (same dir as glaspen2.dll)
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-        let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
-        let target_debug = std::path::Path::new(&manifest_dir).join("target").join(&profile);
-        let csharp_exe = target_debug.join("glaspen2_app.exe");
 
         // Auto-build Flutter Windows app (like macOS does)
         let flutter_dir = std::path::Path::new(&manifest_dir).join("flutter_settings");
@@ -200,131 +194,49 @@ fn main() {
             println!("cargo:warning=Flutter settings (debug): {}", flutter_debug_exe.display());
         }
 
-        let cs_files: Vec<_> = std::fs::read_dir(csharp_dir)
-            .into_iter()
-            .flatten()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "cs"))
-            .collect();
-
-        // Atomic lock: create a .lock file. First build.rs wins, second skips.
-        // The lock persists — delete it (along with the exe) to force recompilation.
-        let lock_file = target_debug.join(".csharp_compile.lock");
-        // Tell Cargo to re-run if the exe or lock file is missing
-        println!("cargo:rerun-if-changed={}", csharp_exe.display());
-        println!("cargo:rerun-if-changed={}", lock_file.display());
-        let has_lock = lock_file.exists()
-            || std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&lock_file)
-                .is_ok();
-        let needs_compile = !csharp_exe.exists() && has_lock;
-
-        if needs_compile && !cs_files.is_empty() && !csharp_exe.exists() {
-            // Find csc.exe — prefer .NET Framework 64-bit
-            let csc_candidates = [
-                r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
-                r"C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe",
-            ];
-            let csc = csc_candidates.iter().find(|p| std::path::Path::new(p).exists());
-
-            if let Some(csc_path) = csc {
-                // Compile to a temp file first, then move into place.
-                // This avoids CS0016 "file in use" when the exe is locked
-                // (e.g. by Windows Defender or a previous run).
-                // Use unique temp name to avoid collision between cdylib/binary build.rs
-                let tmp_exe = target_debug.join(format!("glaspen2_app_{}.exe", std::process::id()));
-                let out_arg = format!("/out:{}", tmp_exe.display());
-                let mut cmd = std::process::Command::new(csc_path);
-                cmd.args(&[
-                    "/target:winexe",
-                    &out_arg,
-                    "/platform:x64",
-                    "/unsafe",
-                ]);
-                for f in &cs_files {
-                    let abs = std::fs::canonicalize(f.path())
-                        .unwrap_or_else(|_| f.path())
-                        .display()
-                        .to_string()
-                        .replace("\\\\?\\", "");
-                    cmd.arg(abs);
-                }
-
-                match cmd.output() {
-                    Ok(output) => {
-                        if output.status.success() {
-                            // Only move if exe doesn't already exist (another build.rs
-                            // may have created it between our check and now).
-                            let moved = if !csharp_exe.exists() {
-                                std::fs::rename(&tmp_exe, &csharp_exe).is_ok()
-                            } else {
-                                false
-                            };
-                            let _ = std::fs::remove_file(&tmp_exe);
-                            if moved {
-                                println!("cargo:warning=Compiled C# overlay → {}", csharp_exe.display());
-                            }
-                        } else {
-                            let _ = std::fs::remove_file(&tmp_exe);
-                            let stderr = String::from_utf8_lossy(&output.stderr);
-                            let stdout = String::from_utf8_lossy(&output.stdout);
-                            println!("cargo:warning=C# compilation FAILED:");
-                            for line in stderr.lines().chain(stdout.lines()) {
-                                if !line.trim().is_empty() {
-                                    println!("cargo:warning=  {}", line);
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        println!("cargo:warning=Failed to run csc.exe: {}", e);
-                    }
-                }
-            } else {
-                println!("cargo:warning=csc.exe not found — C# overlay not compiled");
-            }
-        }
-
-        // Tell Rust where to find the C# exe at runtime
-        if csharp_exe.exists() {
-            println!("cargo:rustc-env=GLASPEN2_CSHARP_EXE={}", csharp_exe.display());
-            println!("cargo:warning=C# overlay: {}", csharp_exe.display());
-        } else {
-            println!("cargo:warning=glaspen2_app.exe not found — Rust fallback will be used");
-        }
-
-        // ── Copy Cairo DLLs from MSYS2 to target dir ──
+        // ── Copy Cairo DLLs to target dir (next to the exe) ──
+        // 优先项目内自带 vendor/win/cairo(不依赖用户安装 Rnote/MSYS2),
+        // 缺失时回退到 MSYS2 目录。
+        let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
+        let target_dir = std::path::Path::new(&manifest_dir).join("target").join(&profile);
+        let vendor_dir = std::path::Path::new(&manifest_dir).join("vendor").join("win").join("cairo");
         let msys_bin = std::path::Path::new("C:/msys64/mingw64/bin");
-        if msys_bin.exists() {
-            let cairo_dlls = [
-                "libcairo-2.dll", "libpixman-1-0.dll", "libpng16-16.dll",
-                "zlib1.dll", "libfontconfig-1.dll", "libfreetype-6.dll",
-                "libexpat-1.dll", "libglib-2.0-0.dll", "libharfbuzz-0.dll",
-                "libiconv-2.dll", "libintl-8.dll", "libpcre2-8-0.dll",
-                "libbz2-1.dll", "libbrotlicommon.dll", "libbrotlidec.dll",
-                "libffi-8.dll", "libgraphite2.dll",
-                "libgcc_s_seh-1.dll", "libwinpthread-1.dll", "libstdc++-6.dll",
-                "libdatrie-1.dll", "libfribidi-0.dll",
-            ];
-            for dll in &cairo_dlls {
-                let src = msys_bin.join(dll);
-                let dst = target_debug.join(dll);
-                if src.exists() {
-                    if dst.exists() {
-                        // Only copy if source is newer
-                        let src_time = std::fs::metadata(&src).and_then(|m| m.modified()).ok();
-                        let dst_time = std::fs::metadata(&dst).and_then(|m| m.modified()).ok();
-                        if src_time > dst_time {
-                            if let Err(e) = std::fs::copy(&src, &dst) {
-                                println!("cargo:warning=Failed to copy {}: {}", dll, e);
-                            }
-                        }
-                    } else {
+        let cairo_dlls = [
+            "libcairo-2.dll", "libpixman-1-0.dll", "libpng16-16.dll",
+            "zlib1.dll", "libfontconfig-1.dll", "libfreetype-6.dll",
+            "libexpat-1.dll", "libglib-2.0-0.dll", "libharfbuzz-0.dll",
+            "libiconv-2.dll", "libintl-8.dll", "libpcre2-8-0.dll",
+            "libbz2-1.dll", "libbrotlicommon.dll", "libbrotlidec.dll",
+            "libffi-8.dll", "libgraphite2.dll",
+            "libgcc_s_seh-1.dll", "libwinpthread-1.dll", "libstdc++-6.dll",
+            "libdatrie-1.dll", "libfribidi-0.dll",
+        ];
+        let src_root: &std::path::Path = if vendor_dir.exists() {
+            println!("cargo:warning=Cairo DLLs from vendor/win/cairo");
+            &vendor_dir
+        } else if msys_bin.exists() {
+            println!("cargo:warning=Cairo DLLs from MSYS2 (vendor/win/cairo missing)");
+            msys_bin
+        } else {
+            println!("cargo:warning=Cairo DLLs not found (vendor/win/cairo or MSYS2 required)");
+            return;
+        };
+        for dll in &cairo_dlls {
+            let src = src_root.join(dll);
+            let dst = target_dir.join(dll);
+            if src.exists() {
+                if dst.exists() {
+                    // Only copy if source is newer
+                    let src_time = std::fs::metadata(&src).and_then(|m| m.modified()).ok();
+                    let dst_time = std::fs::metadata(&dst).and_then(|m| m.modified()).ok();
+                    if src_time > dst_time {
                         if let Err(e) = std::fs::copy(&src, &dst) {
                             println!("cargo:warning=Failed to copy {}: {}", dll, e);
                         }
+                    }
+                } else {
+                    if let Err(e) = std::fs::copy(&src, &dst) {
+                        println!("cargo:warning=Failed to copy {}: {}", dll, e);
                     }
                 }
             }

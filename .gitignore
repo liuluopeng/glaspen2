@@ -7,11 +7,7 @@ Cargo.lock
 /.claude
 zinnia/
 
-# C# build artifacts
-glaspen2_csharp/*.exe
-installer/*.exe
-glaspen2_csharp/glaspen2.dll
-glaspen2_csharp/glaspen2_app.exe
+# C# build artifacts (legacy — C# removed)
 .csharp_compile.lock
 
 /release_history

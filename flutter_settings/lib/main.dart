@@ -330,8 +330,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   late TabController _tabController;
   int _selectedColor = 0;
   int _selectedWidth = 2;
-  bool _smooth = true;
-  bool _invert = false;
   bool _pressureMonitor = false;
   bool _showGrid = false;
   bool _gridFollowStrokes = false;
@@ -407,8 +405,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       setState(() {
         _selectedColor = s['color'] ?? _selectedColor;
         _selectedWidth = s['width'] ?? _selectedWidth;
-        _smooth = s['smooth'] ?? _smooth;
-        _invert = s['invert'] ?? _invert;
         _pressureMonitor = s['pressureMonitor'] ?? _pressureMonitor;
         _showGrid = s['grid'] ?? _showGrid;
         _gridFollowStrokes = s['gridFollowStrokes'] ?? _gridFollowStrokes;
@@ -424,8 +420,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         setState(() {
           _selectedColor = settings['color'] ?? 0;
           _selectedWidth = settings['width'] ?? 2;
-          _smooth = settings['smooth'] ?? true;
-          _invert = settings['invert'] ?? false;
           _pressureMonitor = settings['pressureMonitor'] ?? false;
           _showGrid = settings['grid'] ?? false;
           _gridFollowStrokes = settings['gridFollowStrokes'] ?? false;
@@ -864,26 +858,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Widget _buildToggles() {
     return Column(
       children: [
-        SwitchListTile(
-          title: const Text('笔迹美化 (去抖)', style: TextStyle(fontSize: 15)),
-          value: _smooth,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            setState(() => _smooth = v);
-            _setSetting('smooth', v);
-          },
-        ),
-        SwitchListTile(
-          title: const Text('坐标翻转 (180°)', style: TextStyle(fontSize: 15)),
-          value: _invert,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            setState(() => _invert = v);
-            _setSetting('invert', v);
-          },
-        ),
         SwitchListTile(
           title: const Text('压力监控', style: TextStyle(fontSize: 15)),
           value: _pressureMonitor,
