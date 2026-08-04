@@ -58,9 +58,13 @@
 2. **钩子方案** (若找到替代标志): 单可见窗口 + 点穿, 最干净
 3. **双窗口清理**: OverlayForm Opacity 0.01→0 + 删掉其不可见画布渲染
 
-## 5. 待办: 替代标志探针 (Windows 上跑)
+## 5. 待办: 替代标志探针 (Windows 上跑, 不动 C# 代码)
 
-`glaspen2_csharp/PenEventProbe.cs` — 记录每个鼠标事件的
-`dwExtraInfo` 完整值 + `LLMHF_INJECTED` 位, 对比真鼠标 vs 笔。
-若驱动对笔事件设置了 INJECTED 位或写了某个非 0 的 extra info,
-方案 b 就有了可用标志 (否则 b 对本机不可行, 维持方案 a/1)。
+在 Windows 上临时写一个独立的小探针 (WH_MOUSE_LL 钩子), 记录每个鼠标事件的
+`dwExtraInfo` 完整值 (hex) + `MSLLHOOKSTRUCT.flags` 的 `LLMHF_INJECTED` 位,
+对比"真鼠标移动"与"笔悬停/落笔"的日志差异:
+- 若笔事件带 INJECTED 位或写了某个非 0 的 extra info → 方案 b 有了可用标志
+- 否则方案 b 对本机不可行, 维持方案 a / 单窗口演进 (方案 1)
+
+探针要点: 编译用 `csc /out:PenEventProbe.exe PenEventProbe.cs` (单文件控制台,
+不进仓库), 所有事件 pass through 不拦截, 秒级去重打日志。
