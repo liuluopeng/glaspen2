@@ -433,6 +433,21 @@ class GlaspenSettingsApp extends StatelessWidget {
     return MaterialApp(
       title: 'Glaspen2 Settings',
       debugShowCheckedModeBanner: false,
+      // macOS runs at native 1x (no display scaling), so the whole UI looks
+      // small vs Windows — scale the entire UI up to match. Windows keeps 1.0
+      // (the OS display scaling handles it).
+      builder: (context, child) {
+        final s = Platform.isMacOS ? 1.4 : 1.0;
+        if (s == 1.0) return child!;
+        return Transform.scale(
+          scale: s,
+          child: FractionallySizedBox(
+            widthFactor: 1 / s,
+            heightFactor: 1 / s,
+            child: child,
+          ),
+        );
+      },
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,
