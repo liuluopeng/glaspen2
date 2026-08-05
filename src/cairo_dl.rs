@@ -11,6 +11,7 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use libloading::{Library, Symbol};
+use std::sync::OnceLock;
 
 /// CAIRO_FORMAT_ARGB32 = 0
 const CAIRO_FORMAT_ARGB32: i32 = 0;
@@ -20,7 +21,7 @@ const CAIRO_LINE_CAP_ROUND: i32 = 1;
 const CAIRO_LINE_JOIN_ROUND: i32 = 1;
 
 pub struct CairoRenderer {
-    _lib: Library,
+    _lib: &'static Library,
     surface: *mut std::ffi::c_void,
     cr: *mut std::ffi::c_void,
     bits: *mut u8,
@@ -426,12 +427,26 @@ fn find_loaded_cairo_path() -> Option<std::path::PathBuf> {
     None
 }
 
-/// 加载 cairo 库。候选顺序:
+/// 加载 cairo 库(结果缓存, 全局只 dlopen 一次)。
+fn load_library() -> Option<&'static Library> {
+    static CACHE: OnceLock<Option<Library>> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let l = load_library_uncached();
+            if l.is_some() {
+                eprintln!("[cairo_dl] cairo 已加载并缓存");
+            }
+            l
+        })
+        .as_ref()
+}
+
+/// 平台相关的实际加载。候选顺序:
 ///   1. exe 同目录(build.rs 已把 vendor/win/cairo 的 DLL 复制到产物目录,
 ///      安装器也随包分发,不依赖用户安装 Rnote/MSYS2)
 ///   2. 系统 DLL 搜索路径
 /// 找到后把所在目录加入 DLL 搜索路径,保证 cairo 的依赖 DLL 可解析。
-fn load_library() -> Option<Library> {
+fn load_library_uncached() -> Option<Library> {
     #[cfg(windows)]
     {
         // 1) exe 同目录(构建产物 target/*,或打包后的安装目录)
@@ -449,7 +464,6 @@ fn load_library() -> Option<Library> {
                     }
                     let l = unsafe { Library::new(&dll) };
                     if let Ok(l) = l {
-                        eprintln!("[cairo_dl] 加载 cairo: {}", dll.display());
                         return Some(l);
                     }
                 }
@@ -464,7 +478,6 @@ fn load_library() -> Option<Library> {
         let path = find_loaded_cairo_path()?;
         let l = unsafe { Library::new(&path) };
         if let Ok(l) = l {
-            eprintln!("[cairo_dl] 加载 cairo: {}", path.display());
             return Some(l);
         }
         // 兜底: 常见 Homebrew 位置
