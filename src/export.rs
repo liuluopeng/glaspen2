@@ -691,6 +691,8 @@ fn launch_agent_program() -> String {
 }
 
 #[unsafe(no_mangle)]
+// `enable` is only used in the macOS branch; other platforms ignore it.
+#[allow(unused_variables)]
 pub extern "C" fn glaspen2_set_launch_at_login(enable: c_int) -> c_int {
     #[cfg(target_os = "macos")]
     {
