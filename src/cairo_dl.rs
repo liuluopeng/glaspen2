@@ -309,52 +309,35 @@ impl Drop for CairoRenderer {
 }
 
 /// 加载 cairo 库。候选顺序:
-///   1. exe 同目录(构建产物 target/*,或打包后的安装目录)
-///   2. 项目内 vendor/win/cairo(源码树内自带,不依赖用户安装 Rnote/MSYS2)
-///   3. Rnote / MSYS2 目录(兜底,兼容老环境)
-///   4. 系统 DLL 搜索路径
+///   1. exe 同目录(build.rs 已把 vendor/win/cairo 的 DLL 复制到产物目录,
+///      安装器也随包分发,不依赖用户安装 Rnote/MSYS2)
+///   2. 系统 DLL 搜索路径
 /// 找到后把所在目录加入 DLL 搜索路径,保证 cairo 的依赖 DLL 可解析。
 fn load_library() -> Option<Library> {
     #[cfg(windows)]
     {
-        let mut candidates: Vec<String> = Vec::new();
-
-        // 1) exe 同目录
+        // 1) exe 同目录(构建产物 target/*,或打包后的安装目录)
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent() {
-                candidates.push(dir.join("libcairo-2.dll").to_string_lossy().to_string());
+                let dll = dir.join("libcairo-2.dll");
+                if dll.exists() {
+                    let dir_str = dir.to_string_lossy().to_string();
+                    // 让 cairo 的依赖 DLL(glib/pixman/freetype...)也能被解析
+                    let wide: Vec<u16> = dir_str.encode_utf16().chain(std::iter::once(0)).collect();
+                    unsafe {
+                        let _ = windows::Win32::System::LibraryLoader::SetDllDirectoryW(
+                            windows::core::PCWSTR(wide.as_ptr()),
+                        );
+                    }
+                    let l = unsafe { Library::new(&dll) };
+                    if let Ok(l) = l {
+                        eprintln!("[cairo_dl] 加载 cairo: {}", dll.display());
+                        return Some(l);
+                    }
+                }
             }
         }
-        // 2) 项目内 vendor(开发时 cwd 为项目根,或显式环境变量)
-        if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
-            candidates.push(format!("{}\\vendor\\win\\cairo\\libcairo-2.dll", manifest));
-        }
-        // 3) Rnote / MSYS2(兜底)
-        candidates.push("C:\\Program Files\\Rnote\\bin\\libcairo-2.dll".to_string());
-        candidates.push("C:\\msys64\\mingw64\\bin\\libcairo-2.dll".to_string());
-
-        for dll in &candidates {
-            if !std::path::Path::new(dll).exists() {
-                continue;
-            }
-            let dir = std::path::Path::new(dll)
-                .parent()
-                .unwrap_or(std::path::Path::new("."))
-                .to_string_lossy()
-                .to_string();
-            // 让 cairo 的依赖 DLL(glib/pixman/freetype...)也能被解析
-            let wide: Vec<u16> = dir.encode_utf16().chain(std::iter::once(0)).collect();
-            unsafe {
-                let _ = windows::Win32::System::LibraryLoader::SetDllDirectoryW(
-                    windows::core::PCWSTR(wide.as_ptr()),
-                );
-            }
-            let l = unsafe { Library::new(dll) };
-            if let Ok(l) = l {
-                eprintln!("[cairo_dl] 加载 cairo: {}", dll);
-                return Some(l);
-            }
-        }
+        // 2) 系统 DLL 搜索路径
         unsafe { Library::new("libcairo-2.dll") }.ok()
     }
     #[cfg(not(windows))]

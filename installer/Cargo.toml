@@ -1,0 +1,10 @@
+[package]
+name = "glaspen2_installer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+flate2 = "1"
+
+[profile.release]
+strip = true

@@ -1974,7 +1974,7 @@ fn apply_frosted(hwnd: HWND, on: bool) {
     };
     let f: FnSetWca = *f;
     let mut accent = AccentPolicy {
-        accent_state: if on { ACCENT_ENABLE_BLURBEHIND } else { 0 },
+        accent_state: if on { ACCENT_ENABLE_ACRYLICBLURBEHIND } else { 0 },
         flags: 0,
         color: 0,
         animation_id: 0,
@@ -2172,8 +2172,8 @@ unsafe extern "system" {
 
 /// WCA_ACCENT_POLICY
 const WCA_ACCENT_POLICY: i32 = 19;
-/// ACCENT_ENABLE_BLURBEHIND
-const ACCENT_ENABLE_BLURBEHIND: i32 = 3;
+/// ACCENT_ENABLE_ACRYLICBLURBEHIND(亚克力,模糊较轻);3 = BLURBEHIND 全屏高斯模糊(过糊)
+const ACCENT_ENABLE_ACRYLICBLURBEHIND: i32 = 4;
 
 #[repr(C)]
 struct AccentPolicy {

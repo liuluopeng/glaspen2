@@ -27,3 +27,4 @@ python_test/venv/
 python_test/output/
 python_test/*.png
 python_test/__pycache__/
+installer/target/
