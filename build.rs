@@ -14,33 +14,24 @@ fn main() {
             }
         }
 
-        // Auto-rebuild Flutter macOS framework if Dart sources or assets changed.
-        // fvm flutter build macos-framework is fast (incremental), so this adds
-        // minimal overhead when nothing changed.
+        // Auto-rebuild Flutter macOS framework whenever this build script
+        // runs (triggered by rerun-if-changed on main.dart/pubspec/assets).
+        // fvm flutter build macos-framework is fast (incremental), so this
+        // adds minimal overhead. No mtime comparison — a rerun always means
+        // Dart sources changed, so always rebuild.
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let flutter_dir = format!("{}/flutter_settings", manifest_dir);
-        let flutter_framework = format!(
-            "{}/build/macos/framework/Release/App.xcframework/macos-arm64_x86_64/App.framework/App",
-            flutter_dir
-        );
 
-        // Rebuild if the framework doesn't exist yet
-        let needs_build = !std::path::Path::new(&flutter_framework).exists();
-        if !needs_build {
-            // Compare mtimes of main.dart vs framework binary
-            if let (Ok(dart_meta), Ok(fw_meta)) = (
-                std::fs::metadata(format!("{}/lib/main.dart", flutter_dir)),
-                std::fs::metadata(&flutter_framework),
-            ) {
-                if let (Ok(dart_mtime), Ok(fw_mtime)) = (dart_meta.modified(), fw_meta.modified()) {
-                    if dart_mtime >= fw_mtime {
-                        std::process::Command::new("fvm")
-                            .args(["flutter", "build", "macos-framework"])
-                            .current_dir(&flutter_dir)
-                            .status().ok();
-                    }
-                }
-            }
+        let status = std::process::Command::new("fvm")
+            .args(["flutter", "build", "macos-framework"])
+            .current_dir(&flutter_dir)
+            .status();
+        match status {
+            Ok(s) if s.success() => {}
+            other => eprintln!(
+                "[build.rs] fvm flutter build macos-framework failed: {:?}",
+                other
+            ),
         }
 
         // Note: historically compiled with -O0 due to a suspected "optimization
