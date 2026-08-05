@@ -1295,14 +1295,13 @@ static void show_settings_panel(void) {
                                                          nibName:nil
                                                           bundle:nil];
 
-    // Create window — fixed size, on the large 3440×1440 display a small
-    // panel looks tiny. 720×1000 is comfortable; resizable.
-    NSRect frame = NSMakeRect(0, 0, 720, 1000);
+    // Create window — large enough for the 1.4× scaled UI on the big screen.
+    NSRect frame = NSMakeRect(0, 0, 900, 1200);
     NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
         backing:NSBackingStoreBuffered defer:NO];
     [window setTitle:L(@"Glaspen2 设置", @"Glaspen2 Settings")];
-    [window setMinSize:NSMakeSize(520, 850)];
+    [window setMinSize:NSMakeSize(600, 800)];
     [window setReleasedWhenClosed:NO];
 
     // Set delegate to switch back to Accessory when window closes
