@@ -391,6 +391,31 @@ impl Drop for CairoRenderer {
     }
 }
 
+/// macOS: 在已加载镜像里找到 libcairo 的绝对路径 (由 ObjC 的 -lcairo 链接进来)。
+/// macOS 的 dlopen 不自动补 "lib" 前缀, 按名加载 ("cairo"/"libcairo.2.dylib") 都会失败。
+#[cfg(target_os = "macos")]
+fn find_loaded_cairo_path() -> Option<std::path::PathBuf> {
+    unsafe extern "C" {
+        fn _dyld_image_count() -> u32;
+        fn _dyld_get_image_name(i: u32) -> *const std::ffi::c_char;
+    }
+    unsafe {
+        for i in 0.._dyld_image_count() {
+            let name = _dyld_get_image_name(i);
+            if name.is_null() {
+                continue;
+            }
+            let cstr = std::ffi::CStr::from_ptr(name);
+            if let Ok(s) = cstr.to_str() {
+                if s.contains("/libcairo") {
+                    return Some(std::path::PathBuf::from(s));
+                }
+            }
+        }
+    }
+    None
+}
+
 /// 加载 cairo 库。候选顺序:
 ///   1. exe 同目录(build.rs 已把 vendor/win/cairo 的 DLL 复制到产物目录,
 ///      安装器也随包分发,不依赖用户安装 Rnote/MSYS2)
@@ -423,8 +448,53 @@ fn load_library() -> Option<Library> {
         // 2) 系统 DLL 搜索路径
         unsafe { Library::new("libcairo-2.dll") }.ok()
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
+        // 主进程已链接 libcairo (ObjC -lcairo), 按它的绝对路径 dlopen
+        let path = find_loaded_cairo_path()?;
+        let l = unsafe { Library::new(&path) };
+        if let Ok(l) = l {
+            eprintln!("[cairo_dl] 加载 cairo: {}", path.display());
+            return Some(l);
+        }
+        // 兜底: 常见 Homebrew 位置
+        unsafe { Library::new("/opt/homebrew/opt/cairo/lib/libcairo.2.dylib") }.ok()
+    }
+    #[cfg(all(not(windows), not(target_os = "macos")))]
+    {
+        // Linux: dlopen 自动补 lib 前缀
         unsafe { Library::new("cairo") }.ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 验证 macOS 上 cairo_dl 能真正加载 cairo 并绘制 (撤销/缩略图/PDF 依赖它)
+    #[test]
+    fn test_create_owned_draws_pixels() {
+        let Some(r) = CairoRenderer::create_owned(64, 64) else {
+            panic!("cairo must load via main-process handle");
+        };
+        r.clear();
+        r.fill_circle(16.0, 16.0, 8.0, (255, 0, 0));
+        r.stroke_line(16.0, 16.0, 48.0, 48.0, 6.0, (0, 255, 0));
+        r.flush();
+        let bits = unsafe { std::slice::from_raw_parts(r.bits(), 64 * 64 * 4) };
+        let mut non_zero = 0usize;
+        for px in bits.chunks(4) {
+            if px[3] != 0 {
+                non_zero += 1;
+            }
+        }
+        assert!(non_zero > 100, "stroke + circle must produce visible pixels (got {})", non_zero);
+        // 圆帽端点和线段中点附近应有像素
+        let at = |x: usize, y: usize| -> u8 {
+            let off = (y * 64 + x) * 4;
+            bits[off + 3]
+        };
+        assert!(at(16, 16) > 0, "circle center should be opaque");
+        assert!(at(32, 32) > 0, "line midpoint should be opaque");
     }
 }
