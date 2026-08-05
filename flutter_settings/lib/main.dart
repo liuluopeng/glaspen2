@@ -20,6 +20,8 @@ abstract class _SettingsBridge {
   Future<Map<dynamic, dynamic>> getSettings();
   Future<void> setSetting(String key, dynamic value);
   void onSettingsChanged(void Function(Map<dynamic, dynamic> s) callback);
+  /// 连接建立后回调(Windows 管道异步连接;用于连接后重新拉取设置)
+  void Function()? onConnected;
   void dispose();
 }
 
@@ -127,6 +129,8 @@ class _NamedPipeBridge extends _SettingsBridge {
       _connected = true;
       debugPrint('[Settings] Connected to pipe $_pipeName (handle=$_handle)');
       _startReading();
+      // 连接成功后重新拉取设置(启动时 initState 的 getSettings 会因未连接返回空)
+      onConnected?.call();
     } catch (e) {
       debugPrint('[Settings] Pipe connect failed: $e — retrying in 2s');
       _reconnectTimer = Timer(const Duration(seconds: 2), _connect);
@@ -220,13 +224,14 @@ class _NamedPipeBridge extends _SettingsBridge {
     try {
       _settingsCompleter = Completer<Map<dynamic, dynamic>>();
       _writeData(jsonEncode({'type': 'getSettings'}) + '\n');
-      return await _settingsCompleter!.future.timeout(
+      final r = await _settingsCompleter!.future.timeout(
         const Duration(seconds: 3),
         onTimeout: () {
           _settingsCompleter = null;
           return <dynamic, dynamic>{};
         },
       );
+      return r;
     } catch (e) {
       debugPrint('[Settings] getSettings error: $e');
       _settingsCompleter = null;
@@ -335,6 +340,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _gridFollowStrokes = false;
   bool _ocrEnabled = false;
   bool _connected = false;
+  Timer? _reloadTimer;
 
   // Match C# tray menu's PresetColors and widths
   static const _colorNames = ['红色', '蓝色', '绿色', '橙色', '紫色', '黑色', '白色'];
@@ -361,6 +367,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     _tabController.addListener(_onTabChanged);
     _bridge = createBridge();
     _bridge.onSettingsChanged(_onSettingsChanged);
+    // Windows 管道连接成功后重新拉取设置(macOS 通道立即可用,不影响)
+    _bridge.onConnected = () => _loadSettings();
     _loadSettings();
 
     if (Platform.isMacOS) {
@@ -374,6 +382,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     _searchController.dispose();
     _searchDebounce?.cancel();
     _ocrController.dispose();
+    _reloadTimer?.cancel();
     _bridge.dispose();
     super.dispose();
   }
@@ -400,15 +409,18 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     });
   }
 
+  /// 服务器 JSON 里的开关是数字 0/1,统一转 bool
+  static bool _b(dynamic v) => v == true || v == 1 || v == '1';
+
   void _onSettingsChanged(Map<dynamic, dynamic> s) {
     if (mounted) {
       setState(() {
-        _selectedColor = s['color'] ?? _selectedColor;
-        _selectedWidth = s['width'] ?? _selectedWidth;
-        _pressureMonitor = s['pressureMonitor'] ?? _pressureMonitor;
-        _showGrid = s['grid'] ?? _showGrid;
-        _gridFollowStrokes = s['gridFollowStrokes'] ?? _gridFollowStrokes;
-        _ocrEnabled = s['ocrEnabled'] ?? _ocrEnabled;
+        _selectedColor = (s['color'] as num?)?.toInt() ?? _selectedColor;
+        _selectedWidth = (s['width'] as num?)?.toInt() ?? _selectedWidth;
+        _pressureMonitor = _b(s['pressureMonitor']);
+        _showGrid = _b(s['grid']);
+        _gridFollowStrokes = _b(s['gridFollowStrokes']);
+        _ocrEnabled = _b(s['ocrEnabled']);
       });
     }
   }
@@ -418,17 +430,20 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       final settings = await _bridge.getSettings();
       if (mounted && settings.isNotEmpty) {
         setState(() {
-          _selectedColor = settings['color'] ?? 0;
-          _selectedWidth = settings['width'] ?? 2;
-          _pressureMonitor = settings['pressureMonitor'] ?? false;
-          _showGrid = settings['grid'] ?? false;
-          _gridFollowStrokes = settings['gridFollowStrokes'] ?? false;
-          _ocrEnabled = settings['ocrEnabled'] ?? false;
+          _selectedColor = (settings['color'] as num?)?.toInt() ?? 0;
+          _selectedWidth = (settings['width'] as num?)?.toInt() ?? 2;
+          _pressureMonitor = _b(settings['pressureMonitor']);
+          _showGrid = _b(settings['grid']);
+          _gridFollowStrokes = _b(settings['gridFollowStrokes']);
+          _ocrEnabled = _b(settings['ocrEnabled']);
           _connected = true;
         });
         if (Platform.isMacOS) {
           WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToFit());
         }
+      } else if (mounted) {
+        // Windows 管道未就绪时 getSettings 返回空:稍后重试
+        _reloadTimer = Timer(const Duration(seconds: 2), _loadSettings);
       }
     } catch (_) {
       // Fallback: use defaults if bridge not available

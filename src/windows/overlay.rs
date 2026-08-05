@@ -2300,9 +2300,15 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
         let pressure_monitor = crate::runtime().block_on(crate::db::load_setting("pressureMonitor"))
             .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+        let grid_follow = crate::runtime().block_on(crate::db::load_setting("gridFollowStrokes"))
+            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+        let ocr_enabled = crate::runtime().block_on(crate::db::load_setting("ocrEnabled"))
+            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+        let ethereal = crate::runtime().block_on(crate::db::load_setting("ethereal"))
+            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"rainbow\":false,\"launchAtLogin\":false}}}}\n",
-            color, width, outline, grid, frosted, pressure_monitor
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ocrEnabled\":{},\"ethereal\":{},\"rainbow\":false,\"launchAtLogin\":false}}}}\n",
+            color, width, outline, grid, grid_follow, frosted, pressure_monitor, ocr_enabled, ethereal
         );
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
@@ -2361,6 +2367,13 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             if let Some(on) = json_get_bool(line, "value") {
                 crate::runtime().block_on(crate::db::save_setting(
                     "gridFollowStrokes",
+                    if on { "1" } else { "0" },
+                ));
+            }
+        } else if key == "ocrEnabled" {
+            if let Some(on) = json_get_bool(line, "value") {
+                crate::runtime().block_on(crate::db::save_setting(
+                    "ocrEnabled",
                     if on { "1" } else { "0" },
                 ));
             }
