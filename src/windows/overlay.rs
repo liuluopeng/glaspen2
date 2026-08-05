@@ -1009,6 +1009,23 @@ const HUD_PM_H: i32 = 32;
 const HUD_NOTIF_TIMER: usize = 10;
 const HUD_NOTIF_MS: u32 = 1200;
 
+/// 日期标签:今天 / 昨天 / YYYY-MM-DD(本地时区,chrono 计算)
+fn date_label(unix_secs: u64) -> String {
+    use chrono::{Local, TimeZone};
+    let now = Local::now();
+    let ts = Local
+        .timestamp_opt(unix_secs as i64, 0)
+        .single()
+        .unwrap_or(now);
+    if ts.date_naive() == now.date_naive() {
+        "今天".to_string()
+    } else if now.date_naive().signed_duration_since(ts.date_naive()).num_days() == 1 {
+        "昨天".to_string()
+    } else {
+        ts.format("%Y-%m-%d").to_string()
+    }
+}
+
 // ── Flutter 字体(LXGWWenKaiMono) ──
 
 #[link(name = "gdi32")]
@@ -1716,9 +1733,18 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
         }
     } else {
         match cmd {
-            x if x == CMD_SAVE_WITH_BG => save_with_bg(state),
-            x if x == CMD_SAVE_DRAWING => save_drawing(state),
-            x if x == CMD_SAVE_XOJ => crate::export::glaspen2_save_xoj(),
+            x if x == CMD_SAVE_WITH_BG => {
+                save_with_bg(state);
+                hud_notify("截图成功(含背景)");
+            }
+            x if x == CMD_SAVE_DRAWING => {
+                save_drawing(state);
+                hud_notify("截图成功");
+            }
+            x if x == CMD_SAVE_XOJ => {
+                crate::export::glaspen2_save_xoj();
+                hud_notify("笔记已保存");
+            }
             x if x == CMD_CLEAR_SCREEN => clear_screen(state),
             x if x == CMD_UNDO => undo_last_stroke(state),
             x if x == CMD_TOGGLE_RAINBOW => {
@@ -1875,11 +1901,16 @@ fn clear_screen(state: &mut OverlayState) {
         state.canvas.draw_grid();
     }
     state.canvas.set_bg_alpha(BG_BLOCK);
-    crate::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
+    let created = crate::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
     if state.draw.show_rainbow {
         draw_rainbow_indicator(state);
     }
-    hud_notify("已新建画布");
+    if created == 0 {
+        // 当前页从未涂鸦:不能连续创建空白画布(macOS 同款提示)
+        hud_notify("不能连续创建空白画布,请先涂鸦");
+    } else {
+        hud_notify("已新建画布");
+    }
 }
 
 fn toggle_enabled(state: &mut OverlayState) {
@@ -1950,7 +1981,7 @@ fn navigate_page(state: &mut OverlayState, next: bool) {
 }
 
 /// 跳转到指定页面:加载该页笔画并重绘,可继续绘画
-fn navigate_to(state: &mut OverlayState, target: i64, label: &str) {
+fn navigate_to(state: &mut OverlayState, target: i64, _label: &str) {
     let current = crate::export::glaspen2_get_current_screen_id();
     if target <= 0 || target == current {
         eprintln!("[overlay] 没有更多页面 (current={}, target={})", current, target);
@@ -1960,12 +1991,32 @@ fn navigate_to(state: &mut OverlayState, target: i64, label: &str) {
     let count = crate::export::glaspen2_load_strokes_for_screen(target);
     redraw_from_strokes(state);
     eprintln!("[overlay] 已切换到页面 {} ({} 笔)", target, count);
-    hud_notify(label);
+    hud_notify(&page_info_text(target));
     // 飘渺模式:短暂显示目标页,随后自动隐藏(除非笔在活动)
     if state.draw.ethereal {
         let hwnd = state.canvas.hwnd;
         let _ = unsafe { SetTimer(Some(hwnd), TIMER_PEEK, PEEK_DELAY_MS, None) };
     }
+}
+
+/// 页数+日期通知文本,如 "今天 第2页  第3/5页"(与 macOS 一致)
+fn page_info_text(screen_id: i64) -> String {
+    let ptr = crate::export::glaspen2_page_info_json(screen_id);
+    if ptr.is_null() {
+        return format!("第 {} 页", screen_id);
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy().to_string();
+    crate::export::glaspen2_free_c_string(ptr);
+    let v: serde_json::Value = match serde_json::from_str(&s) {
+        Ok(v) => v,
+        Err(_) => return format!("第 {} 页", screen_id),
+    };
+    let nth = v["nth"].as_i64().unwrap_or(screen_id);
+    let pos = v["pos"].as_i64().unwrap_or(0);
+    let total = v["total"].as_i64().unwrap_or(0);
+    let created = v["created"].as_f64().unwrap_or(0.0) as u64;
+    let label = date_label(created);
+    format!("{} 第{}页  第{}/{}页", label, nth, pos, total)
 }
 
 /// 飘渺模式:隐藏笔迹(保留数据,仅清空显示;网格按"网格跟随涂鸦"决定)
@@ -2042,7 +2093,7 @@ fn copy_canvas_to_clipboard(state: &mut OverlayState) {
         let _ = GlobalUnlock(mem);
     }
     unsafe {
-        if OpenClipboard(Some(state.canvas.hwnd)) != 0 {
+        if OpenClipboard(state.canvas.hwnd) != 0 {
             EmptyClipboard();
             let h = SetClipboardData(CF_DIB, mem);
             CloseClipboard();
@@ -2260,7 +2311,7 @@ const GMEM_MOVEABLE: u32 = 0x0002;
 
 #[link(name = "user32")]
 unsafe extern "system" {
-    fn OpenClipboard(hwnd: Option<HWND>) -> i32;
+    fn OpenClipboard(hwnd: HWND) -> i32;
     fn EmptyClipboard() -> i32;
     fn SetClipboardData(uformat: u32, hmem: HANDLE) -> HANDLE;
     fn CloseClipboard() -> i32;
@@ -2509,7 +2560,19 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let _ = writer.flush();
     } else if msg_type == "setSetting" {
         let key = json_get_str(line, "key");
-        if key == "undo" {
+        if key == "save_drawing" {
+            let _ = unsafe {
+                PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(CMD_SAVE_DRAWING), LPARAM(0))
+            };
+        } else if key == "save_with_bg" {
+            let _ = unsafe {
+                PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(CMD_SAVE_WITH_BG), LPARAM(0))
+            };
+        } else if key == "save_xoj" {
+            let _ = unsafe {
+                PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(CMD_SAVE_XOJ), LPARAM(0))
+            };
+        } else if key == "undo" {
             let _ = unsafe {
                 PostMessageW(
                     Some(HWND(hwnd as *mut _)),
