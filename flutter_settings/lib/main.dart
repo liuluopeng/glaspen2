@@ -661,11 +661,13 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 key: _columnKey,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (Platform.isWindows)
-                    ...[
-                      _buildSection('快捷键 (Ctrl+Alt+…)', _buildHotkeyGrid()),
-                      const SizedBox(height: 16),
-                    ],
+                  _buildSection(
+                    Platform.isWindows
+                        ? '快捷键 (Ctrl+Alt+…)'
+                        : '快捷键 (⌘⌃…)',
+                    _buildHotkeyGrid(),
+                  ),
+                  const SizedBox(height: 16),
                   _buildSection('Color', _buildColorGrid()),
                   const SizedBox(height: 16),
                   _buildSection('Width', _buildWidthRow()),

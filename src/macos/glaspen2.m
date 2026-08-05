@@ -117,6 +117,7 @@ static void finish_active_stroke(void);
 static void ensure_surface(NSView *view);
 static void ocr_ensure_models_async(void);
 static void toggle_ocr_enabled(void);
+static BOOL perform_hotkey(unsigned short keyCode);
 static NSWindow *g_window = nil;
 static NSVisualEffectView *g_glass_view = nil;
 
@@ -887,6 +888,22 @@ static NSButton *g_glass_buttons[1];
         } else if ([key isEqualToString:@"pressureMonitor"]) {
             gl_settings_set_pressure_monitor([value boolValue]);
         }
+        result(nil);
+    } else if ([call.method isEqualToString:@"hotkey"]) {
+        // 设置面板快捷键按钮 → 执行与物理快捷键相同的动作
+        NSDictionary *args = call.arguments;
+        NSString *key = args[@"key"];
+        unsigned short kc = 0;
+        if ([key isEqualToString:@"Q"]) kc = kVK_ANSI_Q;
+        else if ([key isEqualToString:@"G"]) kc = kVK_ANSI_G;
+        else if ([key isEqualToString:@"J"]) kc = 0x26; // J
+        else if ([key isEqualToString:@"K"]) kc = 0x28; // K
+        else if ([key isEqualToString:@"Z"]) kc = kVK_ANSI_Z;
+        else if ([key isEqualToString:@"X"]) kc = kVK_ANSI_X;
+        else if ([key isEqualToString:@"C"]) kc = kVK_ANSI_C;
+        else if ([key isEqualToString:@"V"]) kc = kVK_ANSI_V;
+        else if ([key isEqualToString:@"B"]) kc = kVK_ANSI_B;
+        if (kc) perform_hotkey(kc);
         result(nil);
     } else if ([call.method isEqualToString:@"exportAnimatedGif"]) {
         // Run on background queue so UI stays responsive during Cairo rendering.
@@ -1816,6 +1833,125 @@ static void perf_log_event(const char *evtype, uint64_t dur_us) {
     if (g_perf_total_calls % 100 == 0) fflush(g_perf_file);
 }
 
+// Execute a hotkey action by key code. Returns YES if handled.
+// Used by the physical shortcut (event tap) and the settings-panel buttons.
+static BOOL perform_hotkey(unsigned short kc) {
+    if (kc == kVK_ANSI_C) {
+        finish_active_stroke(); // don't strand an in-flight stroke
+        ocr_current_page_async();
+        clear_screen();
+        return YES;
+    } else if (kc == kVK_ANSI_V) { toggle_enabled(); return YES; }
+    else if (kc == 0x26) { // J — previous page
+        finish_active_stroke();
+        ocr_current_page_async();
+        long target = glaspen2_prev_screen_id();
+        if (target > 0) {
+            glaspen2_load_strokes_for_screen(target);
+            glaspen2_smooth_loaded_strokes();
+            replay_strokes_from_memory();
+            peek_strokes(1.0); // show the page briefly in ethereal mode
+            show_page_info(target);
+        } else {
+            show_notification(L(@"没有上一页", @"No previous page"));
+        }
+        return YES;
+    } else if (kc == 0x28) { // K — next page
+        finish_active_stroke();
+        ocr_current_page_async();
+        long target = glaspen2_next_screen_id();
+        if (target > 0) {
+            glaspen2_load_strokes_for_screen(target);
+            glaspen2_smooth_loaded_strokes();
+            replay_strokes_from_memory();
+            peek_strokes(1.0); // show the page briefly in ethereal mode
+            show_page_info(target);
+        } else {
+            show_notification(L(@"没有下一页", @"No next page"));
+        }
+        return YES;
+    } else if (kc == kVK_ANSI_G) {
+        glaspen2_save_svg();
+        if (g_surface) {
+            cairo_surface_flush(g_surface);
+            const unsigned char *data = cairo_image_surface_get_data(g_surface);
+            int w = cairo_image_surface_get_width(g_surface);
+            int h = cairo_image_surface_get_height(g_surface);
+            int stride = cairo_image_surface_get_stride(g_surface);
+            if (glaspen2_save_gif_cropped(data, w, h, stride, (double)g_scale)) {
+                NSString *desktop = [NSSearchPathForDirectoriesInDomains(NSDesktopDirectory, NSUserDomainMask, YES) firstObject];
+                NSFileManager *fm = [NSFileManager defaultManager];
+                NSArray *files = [fm contentsOfDirectoryAtPath:desktop error:nil];
+                NSString *newestGif = nil;
+                NSDate *newestDate = nil;
+                for (NSString *f in files) {
+                    if ([f hasPrefix:@"glaspen2_"] && [f hasSuffix:@".gif"]) {
+                        NSString *full = [desktop stringByAppendingPathComponent:f];
+                        NSDictionary *attr = [fm attributesOfItemAtPath:full error:nil];
+                        NSDate *d = attr[NSFileModificationDate];
+                        if (!newestDate || [d compare:newestDate] == NSOrderedDescending) {
+                            newestDate = d; newestGif = full;
+                        }
+                    }
+                }
+                if (newestGif) {
+                    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+                    [pb clearContents];
+                    [pb writeObjects:@[[NSURL fileURLWithPath:newestGif]]];
+                }
+                show_notification(L(@"已导出 SVG + GIF", @"SVG + GIF saved"));
+            } else {
+                show_notification(L(@"导出失败", @"Export failed"));
+            }
+        }
+        return YES;
+    } else if (kc == kVK_ANSI_Z) {
+        if (g_stroke_active) {
+            show_notification(L(@"正在书写中", @"Stroke in progress"));
+        } else {
+            int remaining = glaspen2_undo_last_stroke();
+            if (remaining < 0) {
+                show_notification(L(@"没有可撤销的笔画", @"Nothing to undo"));
+            } else {
+                rebuild_surface_from_strokes();
+                show_notification(L(@"撤销成功", @"Undo"));
+            }
+        }
+        return YES;
+    } else if (kc == kVK_ANSI_S) {
+        char *svg = glaspen2_get_cropped_svg();
+        if (svg) {
+            NSString *svgStr = [NSString stringWithUTF8String:svg];
+            NSData *svgData = [svgStr dataUsingEncoding:NSUTF8StringEncoding];
+            NSString *base64 = [svgData base64EncodedStringWithOptions:0];
+            NSString *htmlTag = [NSString stringWithFormat:@"<img src=\"data:image/svg+xml;base64,%@\" />", base64];
+            NSPasteboard *pb = [NSPasteboard generalPasteboard];
+            [pb clearContents];
+            [pb setString:htmlTag forType:NSPasteboardTypeString];
+            glaspen2_free_c_string(svg);
+            show_notification(L(@"SVG 已复制到剪贴板", @"SVG copied to clipboard"));
+        } else {
+            show_notification(L(@"没有笔迹可复制", @"No strokes to copy"));
+        }
+        return YES;
+    } else if (kc == kVK_ANSI_B) {
+        gl_settings_set_glass_enabled(!g_glass_enabled);
+        return YES;
+    } else if (kc == kVK_ANSI_X) {
+        // Switch canvas mode: 固定 ↔ 飘渺 (⌘ + ⌃ + X)
+        toggle_canvas_mode();
+        return YES;
+    } else if (kc == kVK_ANSI_Q) {
+        // 退出程序 (设置面板按钮; 无对应物理快捷键)
+        [NSApp terminate:nil];
+        return YES;
+    } else if (kc == kVK_ANSI_Comma) {
+        show_settings_panel();
+        return YES;
+    }
+    return NO;
+}
+
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                       CGEventRef event, void *refcon) {
     if (g_perf_log && !g_perf_file) perf_log_begin();
@@ -1866,116 +2002,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             NSUInteger mods = [keyEvent modifierFlags];
             BOOL hasCmdCtrl = (mods & NSEventModifierFlagCommand) && (mods & NSEventModifierFlagControl);
             if (hasCmdCtrl) {
-                unsigned short kc = [keyEvent keyCode];
-                if (kc == kVK_ANSI_C) {
-                    finish_active_stroke(); // don't strand an in-flight stroke
-                    ocr_current_page_async();
-                    clear_screen();
-                    return NULL;
-                } else if (kc == kVK_ANSI_V) { toggle_enabled(); return NULL; }
-                else if (kc == 0x26) { // J — previous page
-                    finish_active_stroke();
-                    ocr_current_page_async();
-                    long target = glaspen2_prev_screen_id();
-                    if (target > 0) {
-                        glaspen2_load_strokes_for_screen(target);
-                        glaspen2_smooth_loaded_strokes();
-                        replay_strokes_from_memory();
-                        peek_strokes(1.0); // show the page briefly in ethereal mode
-                        show_page_info(target);
-                    } else {
-                        show_notification(L(@"没有上一页", @"No previous page"));
-                    }
-                    return NULL;
-                } else if (kc == 0x28) { // K — next page
-                    finish_active_stroke();
-                    ocr_current_page_async();
-                    long target = glaspen2_next_screen_id();
-                    if (target > 0) {
-                        glaspen2_load_strokes_for_screen(target);
-                        glaspen2_smooth_loaded_strokes();
-                        replay_strokes_from_memory();
-                        peek_strokes(1.0); // show the page briefly in ethereal mode
-                        show_page_info(target);
-                    } else {
-                        show_notification(L(@"没有下一页", @"No next page"));
-                    }
-                    return NULL;
-                } else if (kc == kVK_ANSI_G) {
-                    glaspen2_save_svg();
-                    if (g_surface) {
-                        cairo_surface_flush(g_surface);
-                        const unsigned char *data = cairo_image_surface_get_data(g_surface);
-                        int w = cairo_image_surface_get_width(g_surface);
-                        int h = cairo_image_surface_get_height(g_surface);
-                        int stride = cairo_image_surface_get_stride(g_surface);
-                        if (glaspen2_save_gif_cropped(data, w, h, stride, (double)g_scale)) {
-                            NSString *desktop = [NSSearchPathForDirectoriesInDomains(NSDesktopDirectory, NSUserDomainMask, YES) firstObject];
-                            NSFileManager *fm = [NSFileManager defaultManager];
-                            NSArray *files = [fm contentsOfDirectoryAtPath:desktop error:nil];
-                            NSString *newestGif = nil;
-                            NSDate *newestDate = nil;
-                            for (NSString *f in files) {
-                                if ([f hasPrefix:@"glaspen2_"] && [f hasSuffix:@".gif"]) {
-                                    NSString *full = [desktop stringByAppendingPathComponent:f];
-                                    NSDictionary *attr = [fm attributesOfItemAtPath:full error:nil];
-                                    NSDate *d = attr[NSFileModificationDate];
-                                    if (!newestDate || [d compare:newestDate] == NSOrderedDescending) {
-                                        newestDate = d; newestGif = full;
-                                    }
-                                }
-                            }
-                            if (newestGif) {
-                                NSPasteboard *pb = [NSPasteboard generalPasteboard];
-                                [pb clearContents];
-                                [pb writeObjects:@[[NSURL fileURLWithPath:newestGif]]];
-                            }
-                            show_notification(L(@"已导出 SVG + GIF", @"SVG + GIF saved"));
-                        } else {
-                            show_notification(L(@"导出失败", @"Export failed"));
-                        }
-                    }
-                    return NULL;
-                } else if (kc == kVK_ANSI_Z) {
-                    if (g_stroke_active) {
-                        show_notification(L(@"正在书写中", @"Stroke in progress"));
-                    } else {
-                        int remaining = glaspen2_undo_last_stroke();
-                        if (remaining < 0) {
-                            show_notification(L(@"没有可撤销的笔画", @"Nothing to undo"));
-                        } else {
-                            rebuild_surface_from_strokes();
-                            show_notification(L(@"撤销成功", @"Undo"));
-                        }
-                    }
-                    return NULL;
-                } else if (kc == kVK_ANSI_S) {
-                    char *svg = glaspen2_get_cropped_svg();
-                    if (svg) {
-                        NSString *svgStr = [NSString stringWithUTF8String:svg];
-                        NSData *svgData = [svgStr dataUsingEncoding:NSUTF8StringEncoding];
-                        NSString *base64 = [svgData base64EncodedStringWithOptions:0];
-                        NSString *htmlTag = [NSString stringWithFormat:@"<img src=\"data:image/svg+xml;base64,%@\" />", base64];
-                        NSPasteboard *pb = [NSPasteboard generalPasteboard];
-                        [pb clearContents];
-                        [pb setString:htmlTag forType:NSPasteboardTypeString];
-                        glaspen2_free_c_string(svg);
-                        show_notification(L(@"SVG 已复制到剪贴板", @"SVG copied to clipboard"));
-                    } else {
-                        show_notification(L(@"没有笔迹可复制", @"No strokes to copy"));
-                    }
-                    return NULL;
-                } else if (kc == kVK_ANSI_B) {
-                    gl_settings_set_glass_enabled(!g_glass_enabled);
-                    return NULL;
-                } else if (kc == kVK_ANSI_X) {
-                    // Switch canvas mode: 固定 ↔ 飘渺 (⌘ + ⌃ + X)
-                    toggle_canvas_mode();
-                    return NULL;
-                } else if (kc == kVK_ANSI_Comma) {
-                    show_settings_panel();
-                    return NULL;
-                }
+                if (perform_hotkey([keyEvent keyCode])) return NULL;
             }
         }
         // Not a hotkey — pass through to system
