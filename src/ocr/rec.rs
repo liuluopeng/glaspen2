@@ -16,19 +16,30 @@ pub(super) struct RecEngine {
 pub(super) fn model_path(p: &str) -> std::path::PathBuf {
     // Downloaded models (on-demand, app support) take priority.
     let dl = super::download::models_dir().join(p);
-    if dl.exists() { return dl; }
+    if dl.exists() {
+        return dl;
+    }
 
     if let Ok(exe) = std::env::current_exe() {
         // Standard macOS bundle location: glaspen2.app/Contents/Resources/models/
-        let resources = exe.parent().unwrap()
-            .parent().unwrap().join("Resources").join("models");
+        let resources = exe
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("Resources")
+            .join("models");
         let f = resources.join(p);
-        if f.exists() { return f; }
+        if f.exists() {
+            return f;
+        }
 
         // Next to the executable (debug/dev builds)
         let dir = exe.parent().unwrap().join("models");
         let f = dir.join(p);
-        if f.exists() { return f; }
+        if f.exists() {
+            return f;
+        }
     }
     // Fallback: current working directory
     std::path::Path::new("models").join(p)
@@ -38,8 +49,7 @@ fn load_chars() -> Result<Vec<String>, String> {
     let path = model_path("ppocr_v6_dict.json");
     let data = std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-    serde_json::from_str(&data)
-        .map_err(|e| format!("Failed to parse char dict: {}", e))
+    serde_json::from_str(&data).map_err(|e| format!("Failed to parse char dict: {}", e))
 }
 
 pub(super) fn engine() -> Option<&'static RecEngine> {
@@ -48,9 +58,14 @@ pub(super) fn engine() -> Option<&'static RecEngine> {
             let model_file = model_path("ppocr_v6_rec.onnx");
             let session = Session::builder()
                 .and_then(|mut b| b.commit_from_file(&model_file))
-                .map_err(|e| format!("Failed to load model from {}: {}", model_file.display(), e))?;
+                .map_err(|e| {
+                    format!("Failed to load model from {}: {}", model_file.display(), e)
+                })?;
             let chars = load_chars()?;
-            Ok(RecEngine { session: Mutex::new(session), chars })
+            Ok(RecEngine {
+                session: Mutex::new(session),
+                chars,
+            })
         })
         .as_ref()
         .ok()
@@ -70,7 +85,7 @@ pub fn recognize(pixels: &[u8], width: u32, height: u32) -> String {
     let scale = target_h as f64 / height.max(1) as f64;
     let mut target_w = (width as f64 * scale).ceil() as u32;
     target_w = target_w.max(8);
-    target_w = ((target_w + 7) / 8) * 8;
+    target_w = target_w.div_ceil(8) * 8;
 
     // CHW tensor with BGR + [-1,1] norm
     let mut array = Array4::<f32>::zeros((1, 3, target_h as usize, target_w as usize));
@@ -146,10 +161,10 @@ pub fn recognize(pixels: &[u8], width: u32, height: u32) -> String {
         }
         if best != blank && best != prev {
             // Model index 0 = blank, index 1 = chars[0], index 2 = chars[1], ...
-            if best <= e.chars.len() {
-                if let Some(ch) = e.chars.get(best - 1) {
-                    result.push_str(ch);
-                }
+            if best <= e.chars.len()
+                && let Some(ch) = e.chars.get(best - 1)
+            {
+                result.push_str(ch);
             }
         }
         prev = best;
@@ -171,24 +186,36 @@ mod tests {
 
     #[test]
     fn test_synthetic_dash() {
-        let w = 200u32; let h = 48u32;
+        let w = 200u32;
+        let h = 48u32;
         let mut pixels = vec![255u8; (w * h * 4) as usize];
-        for y in 14..34 { for x in 20..180 {
-            let off = (y * w + x) as usize * 4;
-            pixels[off] = 0; pixels[off+1] = 0; pixels[off+2] = 0; pixels[off+3] = 255;
-        }}
+        for y in 14..34 {
+            for x in 20..180 {
+                let off = (y * w + x) as usize * 4;
+                pixels[off] = 0;
+                pixels[off + 1] = 0;
+                pixels[off + 2] = 0;
+                pixels[off + 3] = 255;
+            }
+        }
         let text = recognize(&pixels, w, h);
         eprintln!("[rec] dash: {:?}", text);
     }
 
     #[test]
     fn test_synthetic_vert_bar() {
-        let w = 48u32; let h = 48u32;
+        let w = 48u32;
+        let h = 48u32;
         let mut pixels = vec![255u8; (w * h * 4) as usize];
-        for x in 20..28 { for y in 4..44 {
-            let off = (y * w + x) as usize * 4;
-            pixels[off] = 0; pixels[off+1] = 0; pixels[off+2] = 0; pixels[off+3] = 255;
-        }}
+        for x in 20..28 {
+            for y in 4..44 {
+                let off = (y * w + x) as usize * 4;
+                pixels[off] = 0;
+                pixels[off + 1] = 0;
+                pixels[off + 2] = 0;
+                pixels[off + 3] = 255;
+            }
+        }
         let text = recognize(&pixels, w, h);
         eprintln!("[rec] vert: {:?}", text);
     }

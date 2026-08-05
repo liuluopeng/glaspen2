@@ -136,7 +136,10 @@ fn main() {
         }
     };
     let mut data = Vec::new();
-    if std::fs::File::open(&exe).and_then(|mut f| f.read_to_end(&mut data)).is_err() {
+    if std::fs::File::open(&exe)
+        .and_then(|mut f| f.read_to_end(&mut data))
+        .is_err()
+    {
         msgbox("无法读取安装程序自身", "glaspen2 安装失败");
         return;
     }
@@ -187,7 +190,10 @@ fn main() {
         let start_menu = std::env::var("APPDATA")
             .unwrap_or_else(|_| local.clone())
             .replace('\\', "/");
-        let lnk = format!("{}/Microsoft/Windows/Start Menu/Programs/glaspen2.lnk", start_menu);
+        let lnk = format!(
+            "{}/Microsoft/Windows/Start Menu/Programs/glaspen2.lnk",
+            start_menu
+        );
         let app = app_exe.to_string_lossy().replace('\\', "/");
         let wd = dest.to_string_lossy().replace('\\', "/");
         let script = format!(
@@ -202,6 +208,13 @@ fn main() {
     // 启动 glaspen2
     unsafe {
         let app = wide(&app_exe.to_string_lossy());
-        ShellExecuteW(0, wide("open").as_ptr(), app.as_ptr(), std::ptr::null(), std::ptr::null(), SHOW_NORMAL);
+        ShellExecuteW(
+            0,
+            wide("open").as_ptr(),
+            app.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SHOW_NORMAL,
+        );
     }
 }

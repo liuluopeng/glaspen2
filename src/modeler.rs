@@ -1,7 +1,5 @@
+use ink_stroke_modeler_rs::{ModelerInput, ModelerInputEventType, ModelerParams, StrokeModeler};
 use std::sync::Mutex;
-use ink_stroke_modeler_rs::{
-    ModelerInput, ModelerInputEventType, ModelerParams, StrokeModeler,
-};
 
 struct StrokeModelerState {
     modeler: StrokeModeler,
@@ -51,7 +49,9 @@ pub fn begin_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: 
                 let w = pressure_to_width(r.pressure, width_scale);
                 // Store approximate absolute wall-clock time so timestamps
                 // are comparable across strokes.
-                state.buffer.push((r.pos.0, r.pos.1, w, state.start_time + r.time));
+                state
+                    .buffer
+                    .push((r.pos.0, r.pos.1, w, state.start_time + r.time));
             }
         }
         Err(e) => eprintln!("[modeler] Down error: {:?}", e),
@@ -74,7 +74,9 @@ pub fn pen_move(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f64)
             Ok(results) => {
                 for r in results {
                     let w = pressure_to_width(r.pressure, width_scale);
-                    state.buffer.push((r.pos.0, r.pos.1, w, state.start_time + r.time));
+                    state
+                        .buffer
+                        .push((r.pos.0, r.pos.1, w, state.start_time + r.time));
                 }
             }
             Err(e) => eprintln!("[modeler] Move error: {:?}", e),
@@ -100,7 +102,9 @@ pub fn end_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f6
             Ok(results) => {
                 for r in results {
                     let w = pressure_to_width(r.pressure, width_scale);
-                    state.buffer.push((r.pos.0, r.pos.1, w, state.start_time + r.time));
+                    state
+                        .buffer
+                        .push((r.pos.0, r.pos.1, w, state.start_time + r.time));
                 }
             }
             Err(e) => eprintln!("[modeler] Up error: {:?}", e),
@@ -143,7 +147,9 @@ pub fn clear_buffer() {
 /// inherits the width of the nearest raw input point, and time is estimated
 /// at 120 Hz sampling rate.
 pub fn smooth_points(points: &[(f64, f64, f64)]) -> Vec<(f64, f64, f64, f64)> {
-    if points.len() < 2 { return points.iter().map(|&(x, y, w)| (x, y, w, 0.0)).collect(); }
+    if points.len() < 2 {
+        return points.iter().map(|&(x, y, w)| (x, y, w, 0.0)).collect();
+    }
 
     let params = modeler_params();
     let mut modeler = match StrokeModeler::new(params) {
@@ -242,13 +248,12 @@ mod tests {
     #[test]
     fn test_smooth_points_produces_valid_output() {
         // A short diagonal stroke
-        let raw = vec![
-            (0.0, 0.0, 2.0),
-            (10.0, 0.0, 3.0),
-            (20.0, 0.0, 2.0),
-        ];
+        let raw = vec![(0.0, 0.0, 2.0), (10.0, 0.0, 3.0), (20.0, 0.0, 2.0)];
         let result = smooth_points(&raw);
-        assert!(result.len() >= 3, "should produce at least same number of points");
+        assert!(
+            result.len() >= 3,
+            "should produce at least same number of points"
+        );
         // All points should have positive width
         for &(_, _, w, _) in &result {
             assert!(w > 0.0, "each point must have width");
@@ -260,6 +265,9 @@ mod tests {
         let _ = STATE.lock().unwrap().take();
         begin_stroke(0.0, 0.0, 0.5, 0.0, 1.0);
         let buf = take_buffer();
-        assert!(!buf.is_empty(), "begin_stroke should produce modeler output");
+        assert!(
+            !buf.is_empty(),
+            "begin_stroke should produce modeler output"
+        );
     }
 }

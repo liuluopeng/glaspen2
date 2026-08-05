@@ -3,9 +3,9 @@
 
 use std::path::PathBuf;
 
-use printpdf::*;
-use lopdf::{self, Dictionary, Object, Stream};
 use lopdf::dictionary;
+use lopdf::{self, Dictionary, Object, Stream};
+use printpdf::*;
 
 use crate::{db, ocr, runtime};
 
@@ -44,20 +44,33 @@ pub fn export_all_pages() -> Option<String> {
             sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(&db_path)
                 .read_only(true),
-        ).await
+        )
+        .await
     });
-    let pool = match pool { Ok(p) => p, Err(e) => { eprintln!("[pdf] DB: {e}"); return None; } };
+    let pool = match pool {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("[pdf] DB: {e}");
+            return None;
+        }
+    };
 
     // Collect all screens
     let screens: Vec<(i64, i32, i32)> = rt.block_on(async {
         sqlx::query_as(
             "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
              WHERE EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
-             ORDER BY s.id"
-        ).fetch_all(&pool).await.unwrap_or_default()
+             ORDER BY s.id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap_or_default()
     });
 
-    if screens.is_empty() { eprintln!("[pdf] No pages"); return None; }
+    if screens.is_empty() {
+        eprintln!("[pdf] No pages");
+        return None;
+    }
     eprintln!("[pdf] Exporting {} pages", screens.len());
 
     let mut doc = PdfDocument::new("glaspen2");
@@ -67,9 +80,14 @@ pub fn export_all_pages() -> Option<String> {
 
     for (screen_id, sw, sh) in &screens {
         // Load strokes directly (single JOIN query, no N+1)
-        let strokes: Vec<db::StrokeData> =
-            rt.block_on(db::strokes_for_screen(*screen_id));
-        eprintln!("[pdf] Page {}: {}x{} ({} strokes)", screen_id, sw, sh, strokes.len());
+        let strokes: Vec<db::StrokeData> = rt.block_on(db::strokes_for_screen(*screen_id));
+        eprintln!(
+            "[pdf] Page {}: {}x{} ({} strokes)",
+            screen_id,
+            sw,
+            sh,
+            strokes.len()
+        );
 
         // Page dimensions in mm (72 pt/inch → 25.4 mm/inch)
         let mm_w = *sw as f32 * 25.4 / 72.0;
@@ -80,10 +98,14 @@ pub fn export_all_pages() -> Option<String> {
         // Render each stroke as vector paths
         for s in &strokes {
             let pts = &s.points;
-            if pts.len() < 2 { continue; }
+            if pts.len() < 2 {
+                continue;
+            }
 
             let color = Color::Rgb(Rgb {
-                r: s.r as f32, g: s.g as f32, b: s.b as f32,
+                r: s.r as f32,
+                g: s.g as f32,
+                b: s.b as f32,
                 icc_profile: None,
             });
 
@@ -96,12 +118,20 @@ pub fn export_all_pages() -> Option<String> {
                     ops.push(Op::SaveGraphicsState);
                     ops.push(Op::SetFillColor { col: color.clone() });
                     ops.push(Op::SetOutlineThickness { pt: Pt(w as f32) });
-                    ops.push(Op::SetLineCapStyle { cap: LineCapStyle::Round });
+                    ops.push(Op::SetLineCapStyle {
+                        cap: LineCapStyle::Round,
+                    });
                     ops.push(Op::DrawLine {
                         line: Line {
                             points: vec![
-                                LinePoint { p: Point { x: px, y: py }, bezier: false },
-                                LinePoint { p: Point { x: px, y: py }, bezier: false },
+                                LinePoint {
+                                    p: Point { x: px, y: py },
+                                    bezier: false,
+                                },
+                                LinePoint {
+                                    p: Point { x: px, y: py },
+                                    bezier: false,
+                                },
                             ],
                             is_closed: false,
                         },
@@ -115,13 +145,23 @@ pub fn export_all_pages() -> Option<String> {
                     ops.push(Op::SaveGraphicsState);
                     ops.push(Op::SetOutlineColor { col: color.clone() });
                     ops.push(Op::SetOutlineThickness { pt: Pt(w as f32) });
-                    ops.push(Op::SetLineCapStyle { cap: LineCapStyle::Round });
-                    ops.push(Op::SetLineJoinStyle { join: LineJoinStyle::Round });
+                    ops.push(Op::SetLineCapStyle {
+                        cap: LineCapStyle::Round,
+                    });
+                    ops.push(Op::SetLineJoinStyle {
+                        join: LineJoinStyle::Round,
+                    });
                     ops.push(Op::DrawLine {
                         line: Line {
                             points: vec![
-                                LinePoint { p: Point { x: ppx, y: ppy }, bezier: false },
-                                LinePoint { p: Point { x: px, y: py }, bezier: false },
+                                LinePoint {
+                                    p: Point { x: ppx, y: ppy },
+                                    bezier: false,
+                                },
+                                LinePoint {
+                                    p: Point { x: px, y: py },
+                                    bezier: false,
+                                },
                             ],
                             is_closed: false,
                         },
@@ -185,10 +225,7 @@ pub fn export_all_pages() -> Option<String> {
 // ---------------------------------------------------------------------------
 
 /// Add glyphless CID font + invisible text layer to all pages with OCR data.
-fn add_glyphless_text_layer(
-    doc: &mut lopdf::Document,
-    pages_ocr: &[(i32, i32, Vec<db::OcrBox>)],
-) {
+fn add_glyphless_text_layer(doc: &mut lopdf::Document, pages_ocr: &[(i32, i32, Vec<db::OcrBox>)]) {
     // 1. Add font infrastructure objects
     let type0_font_id = add_glyphless_font_objects(doc);
     let font_name = b"C1";
@@ -197,9 +234,13 @@ fn add_glyphless_text_layer(
     let page_ids: Vec<lopdf::ObjectId> = doc.get_pages().into_values().collect();
 
     for (page_num, page_id) in page_ids.iter().enumerate() {
-        if page_num >= pages_ocr.len() { break; }
+        if page_num >= pages_ocr.len() {
+            break;
+        }
         let (sw, sh, ocr_boxes) = &pages_ocr[page_num];
-        if ocr_boxes.is_empty() { continue; }
+        if ocr_boxes.is_empty() {
+            continue;
+        }
 
         // Build text content stream
         let text_content = build_text_content(*sw, *sh, ocr_boxes);
@@ -270,10 +311,7 @@ fn add_glyphless_font_objects(doc: &mut lopdf::Document) -> lopdf::ObjectId {
     });
 
     // 4. ToUnicode CMap stream
-    let cmap_stream_id = doc.add_object(Stream::new(
-        Dictionary::new(),
-        IDENTITY_CMAP.to_vec(),
-    ));
+    let cmap_stream_id = doc.add_object(Stream::new(Dictionary::new(), IDENTITY_CMAP.to_vec()));
 
     // 5. Type0 font (root font object)
     doc.add_object(dictionary! {
@@ -323,11 +361,21 @@ fn build_text_content(_sw: i32, sh: i32, ocr_boxes: &[db::OcrBox]) -> Vec<u8> {
         let mut sorted: Vec<&&db::OcrBox> = line.iter().collect();
         sorted.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap());
 
-        let line_text: String = sorted.iter().map(|b| b.text.clone()).collect::<Vec<_>>().join("");
-        if line_text.is_empty() { continue; }
+        let line_text: String = sorted
+            .iter()
+            .map(|b| b.text.clone())
+            .collect::<Vec<_>>()
+            .join("");
+        if line_text.is_empty() {
+            continue;
+        }
 
         let avg_y: f32 = sorted.iter().map(|b| b.y as f32).sum::<f32>() / sorted.len() as f32;
-        let min_x = sorted.iter().map(|b| b.x as f32).reduce(f32::min).unwrap_or(0.0);
+        let min_x = sorted
+            .iter()
+            .map(|b| b.x as f32)
+            .reduce(f32::min)
+            .unwrap_or(0.0);
         let avg_h_line: f32 = sorted.iter().map(|b| b.h as f32).sum::<f32>() / sorted.len() as f32;
 
         let pdf_x = min_x;
@@ -345,9 +393,9 @@ fn build_text_content(_sw: i32, sh: i32, ocr_boxes: &[db::OcrBox]) -> Vec<u8> {
         // 1 0 0 1 x y Tm  —  set absolute text matrix
         // <hex> Tj          —  show text
         use std::io::Write;
-        let _ = write!(&mut content, "/C1 {font_size:.1} Tf\n");
-        let _ = write!(&mut content, "1 0 0 1 {pdf_x:.1} {pdf_y:.1} Tm\n");
-        let _ = write!(&mut content, "<{hex_cids}> Tj\n");
+        let _ = writeln!(&mut content, "/C1 {font_size:.1} Tf");
+        let _ = writeln!(&mut content, "1 0 0 1 {pdf_x:.1} {pdf_y:.1} Tm");
+        let _ = writeln!(&mut content, "<{hex_cids}> Tj");
     }
 
     // ET = end text; Q = restore graphics state
@@ -368,17 +416,15 @@ fn get_page_content_bytes(doc: &lopdf::Document, page_id: lopdf::ObjectId) -> Ve
     };
 
     match contents {
-        Object::Reference(stream_id) => {
-            get_stream_bytes(doc, *stream_id).unwrap_or_default()
-        }
+        Object::Reference(stream_id) => get_stream_bytes(doc, *stream_id).unwrap_or_default(),
         Object::Array(refs) => {
             let mut result = Vec::new();
             for obj in refs {
-                if let Ok(stream_id) = obj.as_reference() {
-                    if let Ok(content) = get_stream_bytes(doc, stream_id) {
-                        result.extend_from_slice(&content);
-                        result.push(b'\n');
-                    }
+                if let Ok(stream_id) = obj.as_reference()
+                    && let Ok(content) = get_stream_bytes(doc, stream_id)
+                {
+                    result.extend_from_slice(&content);
+                    result.push(b'\n');
                 }
             }
             result
@@ -438,7 +484,10 @@ fn add_font_to_page_resources(
 
 /// Render strokes to a temporary image, OCR, return boxes + save to DB.
 fn render_and_ocr(
-    strokes: &[db::StrokeData], sw: i32, sh: i32, screen_id: i64,
+    strokes: &[db::StrokeData],
+    sw: i32,
+    sh: i32,
+    screen_id: i64,
     rt: &tokio::runtime::Runtime,
 ) -> Vec<db::OcrBox> {
     // Create a small surface for OCR (downscale for speed)
@@ -452,7 +501,9 @@ fn render_and_ocr(
     renderer.clear();
 
     for s in strokes {
-        if s.points.len() < 2 { continue; }
+        if s.points.len() < 2 {
+            continue;
+        }
         let color = (
             (s.r * 255.0) as u8,
             (s.g * 255.0) as u8,
@@ -461,13 +512,21 @@ fn render_and_ocr(
         for i in 0..s.points.len() {
             let (x, y, w, _t) = s.points[i];
             if i == 0 {
-                renderer.fill_circle((x * scale) as f32, (y * scale) as f32, (w * 0.5 * scale) as f32, color);
+                renderer.fill_circle(
+                    (x * scale) as f32,
+                    (y * scale) as f32,
+                    (w * 0.5 * scale) as f32,
+                    color,
+                );
             } else {
                 let (px, py, _pw, _pt) = s.points[i - 1];
                 renderer.stroke_line(
-                    (px * scale) as f32, (py * scale) as f32,
-                    (x * scale) as f32, (y * scale) as f32,
-                    (w * scale) as f32, color,
+                    (px * scale) as f32,
+                    (py * scale) as f32,
+                    (x * scale) as f32,
+                    (y * scale) as f32,
+                    (w * scale) as f32,
+                    color,
                 );
             }
         }
@@ -503,11 +562,15 @@ fn render_and_ocr(
         let cy = tb.y.saturating_sub(pad);
         let cw = (tb.w + pad * 2).min(surf_w - cx);
         let ch = (tb.h + pad * 2).min(surf_h - cy);
-        if cw < 4 || ch < 4 { continue; }
+        if cw < 4 || ch < 4 {
+            continue;
+        }
         let crop = ocr::det::crop_pixels(&rgba, surf_w, cx, cy, cw, ch);
         let text = ocr::rec::recognize(&crop, cw, ch);
         if !text.is_empty() {
-            if i > 0 { full_text.push('\n'); }
+            if i > 0 {
+                full_text.push('\n');
+            }
             full_text.push_str(&text);
 
             // Scale box coordinates back to full resolution
@@ -552,21 +615,28 @@ pub fn backfill_ocr_all_pages() {
                 sqlx::sqlite::SqliteConnectOptions::new()
                     .filename(&path)
                     .read_only(true),
-            ).await
+            )
+            .await
         });
         let pool = match pool {
             Ok(p) => p,
-            Err(e) => { eprintln!("[backfill] DB: {e}"); return; }
+            Err(e) => {
+                eprintln!("[backfill] DB: {e}");
+                return;
+            }
         };
         let rows = rt.block_on(async {
             sqlx::query_as(
                 "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
                  WHERE EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
                  AND NOT EXISTS (SELECT 1 FROM ocr_results WHERE screen_id = s.id) \
-                 ORDER BY s.id"
-            ).fetch_all(&pool).await.unwrap_or_default()
+                 ORDER BY s.id",
+            )
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default()
         });
-        let _ = rt.block_on(pool.close());
+        rt.block_on(pool.close());
         rows
     };
 
@@ -579,7 +649,9 @@ pub fn backfill_ocr_all_pages() {
     for (screen_id, sw, sh) in &screens {
         eprintln!("[backfill] Page {}: {}x{}", screen_id, sw, sh);
         let strokes = rt.block_on(db::strokes_for_screen(*screen_id));
-        if strokes.is_empty() { continue; }
+        if strokes.is_empty() {
+            continue;
+        }
         render_and_ocr(&strokes, *sw, *sh, *screen_id, rt);
     }
     eprintln!("[backfill] Done");
@@ -591,17 +663,31 @@ pub fn backfill_ocr_all_pages() {
 
 fn desktop_path() -> PathBuf {
     #[cfg(target_os = "windows")]
-    { PathBuf::from(std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string())).join("Desktop") }
+    {
+        PathBuf::from(std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string()))
+            .join("Desktop")
+    }
     #[cfg(not(target_os = "windows"))]
-    { PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string())).join("Desktop") }
+    {
+        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string())).join("Desktop")
+    }
 }
 
 fn timestamped_name(ext: &str) -> String {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
     let secs = now.as_secs();
-    let s = secs % 60; let m = (secs / 60) % 60; let h = (secs / 3600 + 8) % 24;
-    let days = secs / 86400; let y = 1970 + days / 365; let d = days % 365;
-    format!("glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.{}", y, d, h, m, s, ext)
+    let s = secs % 60;
+    let m = (secs / 60) % 60;
+    let h = (secs / 3600 + 8) % 24;
+    let days = secs / 86400;
+    let y = 1970 + days / 365;
+    let d = days % 365;
+    format!(
+        "glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.{}",
+        y, d, h, m, s, ext
+    )
 }
 
 // ---------------------------------------------------------------------------

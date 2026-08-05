@@ -7,7 +7,10 @@ pub mod overlay;
 pub fn win_main() {
     // Launch Flutter settings UI (non-blocking)
     if let Some(settings_path) = find_settings_exe() {
-        eprintln!("[glaspen2] Launching Flutter settings: {}", settings_path.display());
+        eprintln!(
+            "[glaspen2] Launching Flutter settings: {}",
+            settings_path.display()
+        );
         let _ = std::process::Command::new(settings_path).spawn();
     }
 
@@ -22,7 +25,10 @@ fn find_settings_exe() -> Option<std::path::PathBuf> {
 
     // 1) Next to the Rust binary (for distribution)
     if let Ok(exe_path) = std::env::current_exe() {
-        let sibling = exe_path.parent().unwrap_or(std::path::Path::new(".")).join(name);
+        let sibling = exe_path
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .join(name);
         if sibling.exists() {
             return Some(sibling);
         }

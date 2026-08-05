@@ -19,15 +19,15 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 use std::time::Instant;
 
 use ink_stroke_modeler_rs::{ModelerInput, ModelerInputEventType, ModelerParams, StrokeModeler};
-use windows::core::PCWSTR;
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    RegisterHotKey, HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL,
+    HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, RegisterHotKey,
 };
 use windows::Win32::UI::Input::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
+use windows::core::PCWSTR;
 
 use crate::cairo_dl::CairoRenderer;
 
@@ -73,8 +73,16 @@ pub const CMD_QUIT: usize = 999;
 
 // ── 颜色 & 线宽预设 ──
 pub const COLOR_PRESETS: [(f64, f64, f64); 10] = [
-    (1.0, 0.0, 0.0), (1.0, 0.5, 0.0), (1.0, 1.0, 0.0), (0.0, 0.8, 0.0), (0.0, 0.8, 0.8),
-    (0.0, 0.4, 1.0), (0.6, 0.0, 0.8), (1.0, 0.4, 0.7), (1.0, 1.0, 1.0), (0.0, 0.0, 0.0),
+    (1.0, 0.0, 0.0),
+    (1.0, 0.5, 0.0),
+    (1.0, 1.0, 0.0),
+    (0.0, 0.8, 0.0),
+    (0.0, 0.8, 0.8),
+    (0.0, 0.4, 1.0),
+    (0.6, 0.0, 0.8),
+    (1.0, 0.4, 0.7),
+    (1.0, 1.0, 1.0),
+    (0.0, 0.0, 0.0),
 ];
 pub const COLOR_NAMES_ZH: [&str; 10] = ["红", "橙", "黄", "绿", "青", "蓝", "紫", "粉", "白", "黑"];
 // 8 档线宽倍率,与 Flutter 设置 UI 的 8 档一一对应
@@ -82,10 +90,14 @@ pub const WIDTH_PRESETS: [f64; 8] = [0.15, 0.3, 0.6, 1.0, 1.5, 2.0, 2.5, 3.5];
 pub const WIDTH_NAMES_ZH: [&str; 8] = ["极细", "很细", "细", "中", "粗", "很粗", "超粗", "极粗"];
 
 pub struct DrawState {
-    pub pen_r: f64, pub pen_g: f64, pub pen_b: f64,
+    pub pen_r: f64,
+    pub pen_g: f64,
+    pub pen_b: f64,
     pub width_scale: f64,
-    pub selected_color: usize, pub selected_width: usize,
-    pub enabled: bool, pub show_rainbow: bool,
+    pub selected_color: usize,
+    pub selected_width: usize,
+    pub enabled: bool,
+    pub show_rainbow: bool,
     pub outline_enabled: bool,
     pub show_grid: bool,
     pub frosted: bool,
@@ -157,15 +169,8 @@ impl OverlayCanvas {
             bmi.bmiHeader.biCompression = BI_RGB.0;
 
             let mut bits: *mut std::ffi::c_void = std::ptr::null_mut();
-            let dib = CreateDIBSection(
-                Some(dib_dc),
-                &bmi,
-                DIB_RGB_COLORS,
-                &mut bits,
-                None,
-                0,
-            )
-            .expect("CreateDIBSection failed");
+            let dib = CreateDIBSection(Some(dib_dc), &bmi, DIB_RGB_COLORS, &mut bits, None, 0)
+                .expect("CreateDIBSection failed");
             let old = SelectObject(dib_dc, dib.into());
 
             // 初始全透明(alpha=0)
@@ -177,8 +182,17 @@ impl OverlayCanvas {
             // 加载 cairo(画到同一像素缓冲),失败则回退自绘
             let cairo = CairoRenderer::load(bits as *mut u8, w.max(1), h.max(1));
             Self {
-                hwnd, dib_dc, dib, old, bits: bits as *mut u8, screen_dc,
-                w: w.max(1), h: h.max(1), pos, cairo, color: (0, 0, 0),
+                hwnd,
+                dib_dc,
+                dib,
+                old,
+                bits: bits as *mut u8,
+                screen_dc,
+                w: w.max(1),
+                h: h.max(1),
+                pos,
+                cairo,
+                color: (0, 0, 0),
             }
         }
     }
@@ -256,7 +270,12 @@ impl OverlayCanvas {
 
         if let Some(c) = &self.cairo {
             c.fill_circle(x0, y0, r, self.color);
-            return RECT { left, top, right, bottom };
+            return RECT {
+                left,
+                top,
+                right,
+                bottom,
+            };
         }
 
         let dx = x1 - x0;
@@ -274,7 +293,13 @@ impl OverlayCanvas {
                     let fx = px as f32;
                     let fy = py as f32;
                     let t = ((fx - x0) * dx + (fy - y0) * dy) * inv_l2;
-                    let t = if t < 0.0 { 0.0 } else if t > 1.0 { 1.0 } else { t };
+                    let t = if t < 0.0 {
+                        0.0
+                    } else if t > 1.0 {
+                        1.0
+                    } else {
+                        t
+                    };
                     let nx = x0 + t * dx;
                     let ny = y0 + t * dy;
                     let d2 = (fx - nx) * (fx - nx) + (fy - ny) * (fy - ny);
@@ -296,7 +321,12 @@ impl OverlayCanvas {
             }
         }
 
-        RECT { left, top, right, bottom }
+        RECT {
+            left,
+            top,
+            right,
+            bottom,
+        }
     }
 
     /// 把脏矩形合成到屏幕(ULW)
@@ -308,7 +338,10 @@ impl OverlayCanvas {
                 SourceConstantAlpha: 255,
                 AlphaFormat: 1, // AC_SRC_ALPHA
             };
-            let size = SIZE { cx: self.w, cy: self.h };
+            let size = SIZE {
+                cx: self.w,
+                cy: self.h,
+            };
             let src = POINT { x: 0, y: 0 };
             let info = UPDATELAYEREDWINDOWINFO {
                 cbSize: std::mem::size_of::<UPDATELAYEREDWINDOWINFO>() as u32,
@@ -328,7 +361,12 @@ impl OverlayCanvas {
 
     /// 全屏刷新(清屏后用)
     fn present_all(&self) {
-        let dirty = RECT { left: 0, top: 0, right: self.w, bottom: self.h };
+        let dirty = RECT {
+            left: 0,
+            top: 0,
+            right: self.w,
+            bottom: self.h,
+        };
         self.present_rect(&dirty);
     }
 
@@ -356,10 +394,10 @@ impl OverlayCanvas {
             while gx <= w {
                 for y in 0..h {
                     let i = ((y as usize) * (w as usize) + gx as usize) * 4;
-                    *bits.add(i) = GR;       // B
-                    *bits.add(i + 1) = GR;   // G
-                    *bits.add(i + 2) = GR;   // R
-                    *bits.add(i + 3) = GA;   // A
+                    *bits.add(i) = GR; // B
+                    *bits.add(i + 1) = GR; // G
+                    *bits.add(i + 2) = GR; // R
+                    *bits.add(i + 3) = GA; // A
                 }
                 gx += GAP;
             }
@@ -469,17 +507,30 @@ fn merge_rect(dirty: &mut Option<RECT>, r: &RECT) {
 }
 
 /// 模型器输出点转 pen_path 点列(带半径)
-fn modeler_pts_to_path(results: &[ink_stroke_modeler_rs::ModelerResult], scale: f32) -> Vec<(f32, f32, f32)> {
+fn modeler_pts_to_path(
+    results: &[ink_stroke_modeler_rs::ModelerResult],
+    scale: f32,
+) -> Vec<(f32, f32, f32)> {
     results
         .iter()
-        .map(|r| (r.pos.0 as f32, r.pos.1 as f32, width_r(r.pressure as f32, scale)))
+        .map(|r| {
+            (
+                r.pos.0 as f32,
+                r.pos.1 as f32,
+                width_r(r.pressure as f32, scale),
+            )
+        })
         .collect()
 }
 
 /// 轮廓色(黑/白,根据笔迹亮度取对比色,用于描边增强)
 fn contrast_color(r: u8, g: u8, b: u8) -> (u8, u8, u8) {
     let lum = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
-    if lum > 128.0 { (0, 0, 0) } else { (255, 255, 255) }
+    if lum > 128.0 {
+        (0, 0, 0)
+    } else {
+        (255, 255, 255)
+    }
 }
 
 /// 用给定点列填充整笔轮廓 + 端点圆帽(带可选描边),返回脏矩形
@@ -494,8 +545,7 @@ fn fill_stroke_path(canvas: &mut OverlayCanvas, path: &[(f32, f32, f32)], ol: f3
         let ol_color = contrast_color(canvas.color.0, canvas.color.1, canvas.color.2);
         let saved = canvas.color;
         canvas.color = ol_color;
-        let wide: Vec<(f32, f32, f32)> =
-            path.iter().map(|&(x, y, r)| (x, y, r + ol)).collect();
+        let wide: Vec<(f32, f32, f32)> = path.iter().map(|&(x, y, r)| (x, y, r + ol)).collect();
         let outline = build_outline(&wide);
         if outline.len() >= 3 {
             let rect = canvas.fill_outline(&outline);
@@ -645,10 +695,16 @@ unsafe fn process_raw_hid(buf: &[u64]) -> Option<RECT> {
     if dw_type != 2 {
         return None; // 不是 RIM_TYPEHID
     }
-    let dw_size_hid =
-        u32::from_le_bytes(std::slice::from_raw_parts(raw.add(24), 4).try_into().unwrap()) as usize;
-    let dw_count =
-        u32::from_le_bytes(std::slice::from_raw_parts(raw.add(28), 4).try_into().unwrap()) as usize;
+    let dw_size_hid = u32::from_le_bytes(
+        std::slice::from_raw_parts(raw.add(24), 4)
+            .try_into()
+            .unwrap(),
+    ) as usize;
+    let dw_count = u32::from_le_bytes(
+        std::slice::from_raw_parts(raw.add(28), 4)
+            .try_into()
+            .unwrap(),
+    ) as usize;
     if dw_size_hid == 0 || dw_count == 0 {
         return None;
     }
@@ -686,7 +742,12 @@ unsafe fn process_raw_hid(buf: &[u64]) -> Option<RECT> {
 
 // ── 窗口过程 ──
 
-unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn wnd_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     if STATE.load(Ordering::SeqCst).is_null() {
         return DefWindowProcW(hwnd, msg, wparam, lparam);
     }
@@ -778,9 +839,9 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
                 // Ctrl+Alt+X 切换固定/飘渺画布模式
                 9 => handle_command(state, CMD_TOGGLE_ETHEREAL, usize::MAX),
                 // Ctrl+Alt+Q 退出
-                8 => {
-                    unsafe { let _ = DestroyWindow(hwnd); }
-                }
+                8 => unsafe {
+                    let _ = DestroyWindow(hwnd);
+                },
                 _ => {}
             }
             LRESULT(0)
@@ -818,22 +879,51 @@ pub fn run() {
 
         let hwnd = create_overlay_window();
 
-        let mut pen_r = 1.0; let mut pen_g = 0.0; let mut pen_b = 0.0; let mut width_scale = 0.3;
-        crate::export::glaspen2_load_settings_parts(&mut pen_r, &mut pen_g, &mut pen_b, &mut width_scale);
-        let outline_enabled = crate::runtime().block_on(crate::db::load_setting("outline_enabled"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
-        let frosted = crate::runtime().block_on(crate::db::load_setting("frostedGlass"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
-        let show_grid = crate::runtime().block_on(crate::db::load_setting("grid"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
-        let ethereal = crate::runtime().block_on(crate::db::load_setting("ethereal"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
-        let grid_follow_strokes = crate::runtime().block_on(crate::db::load_setting("gridFollowStrokes"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
-        let pressure_monitor = crate::runtime().block_on(crate::db::load_setting("pressureMonitor"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
-        let ocr_enabled = crate::runtime().block_on(crate::db::load_setting("ocrEnabled"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
+        let mut pen_r = 1.0;
+        let mut pen_g = 0.0;
+        let mut pen_b = 0.0;
+        let mut width_scale = 0.3;
+        crate::export::glaspen2_load_settings_parts(
+            &mut pen_r,
+            &mut pen_g,
+            &mut pen_b,
+            &mut width_scale,
+        );
+        let outline_enabled = crate::runtime()
+            .block_on(crate::db::load_setting("outline_enabled"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
+        let frosted = crate::runtime()
+            .block_on(crate::db::load_setting("frostedGlass"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
+        let show_grid = crate::runtime()
+            .block_on(crate::db::load_setting("grid"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
+        let ethereal = crate::runtime()
+            .block_on(crate::db::load_setting("ethereal"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
+        let grid_follow_strokes = crate::runtime()
+            .block_on(crate::db::load_setting("gridFollowStrokes"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
+        let pressure_monitor = crate::runtime()
+            .block_on(crate::db::load_setting("pressureMonitor"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
+        let ocr_enabled = crate::runtime()
+            .block_on(crate::db::load_setting("ocrEnabled"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
 
         // HUD 窗口(通知居中 + 压力监控左上角)
         {
@@ -852,13 +942,21 @@ pub fn run() {
         canvas.color = (pen_r as u8, pen_g as u8, pen_b as u8);
 
         let draw = DrawState {
-            pen_r, pen_g, pen_b, width_scale,
+            pen_r,
+            pen_g,
+            pen_b,
+            width_scale,
             selected_color: closest_color_index(pen_r, pen_g, pen_b),
             selected_width: closest_width_index(width_scale),
-            enabled: true, show_rainbow: false,
-            outline_enabled, show_grid, frosted,
-            ethereal, grid_follow_strokes,
-            pressure_monitor, ocr_enabled,
+            enabled: true,
+            show_rainbow: false,
+            outline_enabled,
+            show_grid,
+            frosted,
+            ethereal,
+            grid_follow_strokes,
+            pressure_monitor,
+            ocr_enabled,
         };
 
         let mut state = OverlayState {
@@ -925,7 +1023,9 @@ pub fn run() {
         }
 
         println!("[overlay] 全屏透明涂鸦已启动(WM_INPUT + ink-stroke-modeler + cairo)。");
-        println!("[overlay] 快捷键: Ctrl+Alt+C 新建画布 / V 开关 / Z 撤销 / J/K 翻页 / G 导出 / B 模糊背景 / X 固定↔飘渺 / Q 退出");
+        println!(
+            "[overlay] 快捷键: Ctrl+Alt+C 新建画布 / V 开关 / Z 撤销 / J/K 翻页 / G 导出 / B 模糊背景 / X 固定↔飘渺 / Q 退出"
+        );
         run_loop();
 
         let p = STATE.swap(std::ptr::null_mut(), Ordering::SeqCst);
@@ -985,7 +1085,10 @@ fn create_overlay_window() -> HWND {
             cy,
             SWP_NOACTIVATE | SWP_SHOWWINDOW,
         );
-        { let mut h = OVERLAY_HWND.lock().unwrap(); *h = hwnd.0 as isize; }
+        {
+            let mut h = OVERLAY_HWND.lock().unwrap();
+            *h = hwnd.0 as isize;
+        }
         hwnd
     }
 }
@@ -993,7 +1096,11 @@ fn create_overlay_window() -> HWND {
 fn set_input_blocking(hwnd: HWND, blocking: bool) {
     unsafe {
         let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        let transparent = if blocking { 0 } else { WS_EX_TRANSPARENT.0 as isize };
+        let transparent = if blocking {
+            0
+        } else {
+            WS_EX_TRANSPARENT.0 as isize
+        };
         let new_style = (style & !(WS_EX_TRANSPARENT.0 as isize)) | transparent;
         let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_style);
     }
@@ -1019,7 +1126,12 @@ fn date_label(unix_secs: u64) -> String {
         .unwrap_or(now);
     if ts.date_naive() == now.date_naive() {
         "今天".to_string()
-    } else if now.date_naive().signed_duration_since(ts.date_naive()).num_days() == 1 {
+    } else if now
+        .date_naive()
+        .signed_duration_since(ts.date_naive())
+        .num_days()
+        == 1
+    {
         "昨天".to_string()
     } else {
         ts.format("%Y-%m-%d").to_string()
@@ -1073,9 +1185,16 @@ struct Gdiplus {
     set_text_rendering_hint: unsafe extern "C" fn(*mut std::ffi::c_void, i32) -> i32,
     new_private_font_collection: unsafe extern "C" fn(*mut *mut std::ffi::c_void) -> i32,
     private_add_font_file: unsafe extern "C" fn(*mut std::ffi::c_void, *const u16) -> i32,
-    create_font_family_from_name: unsafe extern "C" fn(*const u16, *mut std::ffi::c_void, *mut *mut std::ffi::c_void) -> i32,
+    create_font_family_from_name:
+        unsafe extern "C" fn(*const u16, *mut std::ffi::c_void, *mut *mut std::ffi::c_void) -> i32,
     delete_font_family: unsafe extern "C" fn(*mut std::ffi::c_void) -> i32,
-    create_font: unsafe extern "C" fn(*mut std::ffi::c_void, f32, i32, i32, *mut *mut std::ffi::c_void) -> i32,
+    create_font: unsafe extern "C" fn(
+        *mut std::ffi::c_void,
+        f32,
+        i32,
+        i32,
+        *mut *mut std::ffi::c_void,
+    ) -> i32,
     delete_font: unsafe extern "C" fn(*mut std::ffi::c_void) -> i32,
     create_solid_fill: unsafe extern "C" fn(u32, *mut *mut std::ffi::c_void) -> i32,
     delete_brush: unsafe extern "C" fn(*mut std::ffi::c_void) -> i32,
@@ -1114,8 +1233,11 @@ fn gdiplus() -> Option<&'static Gdiplus> {
             let s: Symbol<T> = lib.get(name).ok()?;
             Some(*s)
         }
-        let startup: unsafe extern "C" fn(*mut usize, *const GdiplusStartupInput, *mut GdiplusStartupOutput) -> i32 =
-            unsafe { sym(&lib, b"GdiplusStartup") }?;
+        let startup: unsafe extern "C" fn(
+            *mut usize,
+            *const GdiplusStartupInput,
+            *mut GdiplusStartupOutput,
+        ) -> i32 = unsafe { sym(&lib, b"GdiplusStartup") }?;
         let shutdown: unsafe extern "C" fn(usize) = unsafe { sym(&lib, b"GdiplusShutdown") }?;
         let _ = shutdown;
 
@@ -1181,7 +1303,9 @@ fn find_font_file() -> Option<std::path::PathBuf> {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             candidates.push(
-                dir.join("data").join("flutter_assets").join("assets")
+                dir.join("data")
+                    .join("flutter_assets")
+                    .join("assets")
                     .join("LXGWWenKaiMono-Regular.ttf"),
             );
         }
@@ -1314,7 +1438,12 @@ fn hud_ref() -> &'static mut HudState {
     unsafe { &mut *HUD }
 }
 
-unsafe extern "system" fn hud_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn hud_wnd_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     match msg {
         WM_PAINT => {
             let mut ps = PAINTSTRUCT::default();
@@ -1323,21 +1452,49 @@ unsafe extern "system" fn hud_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpa
             // 通知窗口内容由 UpdateLayeredWindow 直接呈现,这里只清无效区;
             // 压力窗口保持 GDI 绘制(黑底)
             if hwnd == hud.pm_hwnd {
-                let text = if hud.pm_visible { hud.pm_text.clone() } else { String::new() };
+                let text = if hud.pm_visible {
+                    hud.pm_text.clone()
+                } else {
+                    String::new()
+                };
                 if !text.is_empty() {
-                    let font_name = if HUD_FONT_OK { "霞鹜文楷等宽" } else { "Microsoft YaHei UI" };
+                    let font_name = if HUD_FONT_OK {
+                        "霞鹜文楷等宽"
+                    } else {
+                        "Microsoft YaHei UI"
+                    };
                     let font = CreateFontW(
-                        -13, 0, 0, 0, 400, 0, 0, 0,
-                        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                        CLEARTYPE_QUALITY, 0x40, // FF_DONTCARE
+                        -13,
+                        0,
+                        0,
+                        0,
+                        400,
+                        0,
+                        0,
+                        0,
+                        DEFAULT_CHARSET,
+                        OUT_DEFAULT_PRECIS,
+                        CLIP_DEFAULT_PRECIS,
+                        CLEARTYPE_QUALITY,
+                        0x40, // FF_DONTCARE
                         PCWSTR(wide_string(font_name).as_ptr()),
                     );
                     let old_font = SelectObject(hdc, font.into());
                     let _ = SetBkMode(hdc, TRANSPARENT);
                     let _ = SetTextColor(hdc, COLORREF(0x00_FF_FF_FF));
-                    let mut rc = RECT { left: 4, top: 0, right: HUD_PM_W - 4, bottom: HUD_PM_H };
+                    let mut rc = RECT {
+                        left: 4,
+                        top: 0,
+                        right: HUD_PM_W - 4,
+                        bottom: HUD_PM_H,
+                    };
                     let mut wide: Vec<u16> = text.encode_utf16().collect();
-                    let _ = DrawTextW(hdc, wide.as_mut_slice(), &mut rc, DT_VCENTER | DT_SINGLELINE);
+                    let _ = DrawTextW(
+                        hdc,
+                        wide.as_mut_slice(),
+                        &mut rc,
+                        DT_VCENTER | DT_SINGLELINE,
+                    );
                     let _ = SelectObject(hdc, old_font);
                     let _ = DeleteObject(font.into());
                 }
@@ -1443,8 +1600,18 @@ unsafe fn hud_render_notif_text(hwnd: HWND, text: &str) {
     let mut wide: Vec<u16> = text.encode_utf16().collect();
 
     // 测量文字尺寸(GDI+ 测量)
-    let mut layout = RectF { x: 0.0, y: 0.0, width: 10000.0, height: 10000.0 };
-    let mut measured = RectF { x: 0.0, y: 0.0, width: 0.0, height: 0.0 };
+    let mut layout = RectF {
+        x: 0.0,
+        y: 0.0,
+        width: 10000.0,
+        height: 10000.0,
+    };
+    let mut measured = RectF {
+        x: 0.0,
+        y: 0.0,
+        width: 0.0,
+        height: 0.0,
+    };
     let w;
     let h;
     {
@@ -1576,14 +1743,29 @@ unsafe fn hud_render_notif_text(hwnd: HWND, text: &str) {
         let mut shadow_brush: *mut std::ffi::c_void = std::ptr::null_mut();
         let _ = (gp.create_solid_fill)(0xB0000000, &mut shadow_brush); // ARGB: alpha 176, 黑
         if !shadow_brush.is_null() {
-            for (dx, dy) in [(2.0, 2.0), (1.0, 1.0), (2.0, 0.0), (0.0, 2.0), (1.0, 2.0), (2.0, 1.0)] {
+            for (dx, dy) in [
+                (2.0, 2.0),
+                (1.0, 1.0),
+                (2.0, 0.0),
+                (0.0, 2.0),
+                (1.0, 2.0),
+                (2.0, 1.0),
+            ] {
                 let sr = RectF {
                     x: area.x + dx,
                     y: area.y + dy,
                     width: area.width,
                     height: area.height,
                 };
-                let _ = (gp.draw_string)(graphics, wide.as_ptr(), wide.len() as i32, font, &sr, format, shadow_brush);
+                let _ = (gp.draw_string)(
+                    graphics,
+                    wide.as_ptr(),
+                    wide.len() as i32,
+                    font,
+                    &sr,
+                    format,
+                    shadow_brush,
+                );
             }
             let _ = (gp.delete_brush)(shadow_brush);
         }
@@ -1591,7 +1773,15 @@ unsafe fn hud_render_notif_text(hwnd: HWND, text: &str) {
         let mut white_brush: *mut std::ffi::c_void = std::ptr::null_mut();
         let _ = (gp.create_solid_fill)(0xFFFFFFFF, &mut white_brush);
         if !white_brush.is_null() {
-            let _ = (gp.draw_string)(graphics, wide.as_ptr(), wide.len() as i32, font, &area, format, white_brush);
+            let _ = (gp.draw_string)(
+                graphics,
+                wide.as_ptr(),
+                wide.len() as i32,
+                font,
+                &area,
+                format,
+                white_brush,
+            );
             let _ = (gp.delete_brush)(white_brush);
         }
         let _ = (gp.delete_string_format)(format);
@@ -1623,9 +1813,22 @@ unsafe fn hud_render_notif_text(hwnd: HWND, text: &str) {
         SourceConstantAlpha: 255,
         AlphaFormat: 1, // AC_SRC_ALPHA
     };
-    let size = SIZE { cx: w.max(1), cy: h.max(1) };
+    let size = SIZE {
+        cx: w.max(1),
+        cy: h.max(1),
+    };
     let src = POINT { x: 0, y: 0 };
-    let _ = UpdateLayeredWindow(hwnd, None, None, Some(&size), Some(dib_dc), Some(&src), COLORREF(0), Some(&blend), ULW_ALPHA);
+    let _ = UpdateLayeredWindow(
+        hwnd,
+        None,
+        None,
+        Some(&size),
+        Some(dib_dc),
+        Some(&src),
+        COLORREF(0),
+        Some(&blend),
+        ULW_ALPHA,
+    );
 
     // 清理
     let _ = SelectObject(dib_dc, old);
@@ -1692,14 +1895,23 @@ fn run_loop() {
 }
 
 fn wide_string(s: &str) -> Vec<u16> {
-    OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+    OsStr::new(s)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
 
 // ── 命令处理(设置管道 / 热键) ──
 
 fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
     // 开关类命令:管道传入 0/1 时按值设置,否则翻转(热键/无参调用)
-    let param_on = |cur: bool| -> bool { if param == 0 || param == 1 { param == 1 } else { !cur } };
+    let param_on = |cur: bool| -> bool {
+        if param == 0 || param == 1 {
+            param == 1
+        } else {
+            !cur
+        }
+    };
     if cmd >= CMD_SELECT_COLOR && cmd < CMD_SELECT_COLOR + 10 {
         let idx = cmd - CMD_SELECT_COLOR;
         if idx < COLOR_PRESETS.len() {
@@ -1758,24 +1970,34 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
             x if x == CMD_TOGGLE_OUTLINE => {
                 let on = param_on(state.draw.outline_enabled);
                 state.draw.outline_enabled = on;
-                crate::runtime().block_on(crate::db::save_setting("outline_enabled", if on { "1" } else { "0" }));
+                crate::runtime().block_on(crate::db::save_setting(
+                    "outline_enabled",
+                    if on { "1" } else { "0" },
+                ));
             }
             x if x == CMD_TOGGLE_GRID => {
                 let on = param_on(state.draw.show_grid);
                 state.draw.show_grid = on;
-                crate::runtime().block_on(crate::db::save_setting("grid", if on { "1" } else { "0" }));
+                crate::runtime()
+                    .block_on(crate::db::save_setting("grid", if on { "1" } else { "0" }));
                 redraw_from_strokes(state);
             }
             x if x == CMD_TOGGLE_FROSTED => {
                 let on = param_on(state.draw.frosted);
                 state.draw.frosted = on;
-                crate::runtime().block_on(crate::db::save_setting("frostedGlass", if on { "1" } else { "0" }));
+                crate::runtime().block_on(crate::db::save_setting(
+                    "frostedGlass",
+                    if on { "1" } else { "0" },
+                ));
                 apply_frosted(state.canvas.hwnd, on);
             }
             x if x == CMD_TOGGLE_ETHEREAL => {
                 let on = param_on(state.draw.ethereal);
                 state.draw.ethereal = on;
-                crate::runtime().block_on(crate::db::save_setting("ethereal", if on { "1" } else { "0" }));
+                crate::runtime().block_on(crate::db::save_setting(
+                    "ethereal",
+                    if on { "1" } else { "0" },
+                ));
                 if on {
                     hide_strokes(state);
                     hud_notify("飘渺画布涂鸦模式 (悬空/落笔显示)");
@@ -1792,7 +2014,11 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                     if on { "1" } else { "0" },
                 ));
                 hud_toggle_pressure(on);
-                hud_notify(if on { "压力监控已开启" } else { "压力监控已关闭" });
+                hud_notify(if on {
+                    "压力监控已开启"
+                } else {
+                    "压力监控已关闭"
+                });
             }
             x if x == CMD_TOGGLE_OCR => {
                 let on = param_on(state.draw.ocr_enabled);
@@ -1859,21 +2085,19 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                     });
                 }
             }
-            x if x == CMD_OCR_PROGRESS => {
-                match param {
-                    1 => {
-                        let err = crate::ocr::download::last_error();
-                        if err.is_empty() {
-                            hud_notify("OCR 模型下载失败");
-                        } else {
-                            hud_notify(&format!("OCR 模型下载失败: {}", err));
-                        }
+            x if x == CMD_OCR_PROGRESS => match param {
+                1 => {
+                    let err = crate::ocr::download::last_error();
+                    if err.is_empty() {
+                        hud_notify("OCR 模型下载失败");
+                    } else {
+                        hud_notify(&format!("OCR 模型下载失败: {}", err));
                     }
-                    2 => hud_notify("OCR 模型下载完成"),
-                    p if p >= 100 => hud_notify(&format!("下载 OCR 模型 {}%", p - 100)),
-                    _ => {}
                 }
-            }
+                2 => hud_notify("OCR 模型下载完成"),
+                p if p >= 100 => hud_notify(&format!("下载 OCR 模型 {}%", p - 100)),
+                _ => {}
+            },
             x if x == CMD_NAVIGATE_TO_PAGE => {
                 // 内容 tab 点击页面:恢复该页笔迹继续绘画
                 navigate_to(state, param as i64, "已切换到该页面");
@@ -1882,9 +2106,9 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
             x if x == CMD_PAGE_NEXT => navigate_page(state, true),
             x if x == CMD_EXPORT_SVG_GIF => export_svg_gif_clipboard(state),
             x if x == CMD_TOGGLE_ENABLED => toggle_enabled(state),
-            x if x == CMD_QUIT => {
-                unsafe { let _ = DestroyWindow(state.canvas.hwnd); }
-            }
+            x if x == CMD_QUIT => unsafe {
+                let _ = DestroyWindow(state.canvas.hwnd);
+            },
             _ => {}
         }
     }
@@ -1919,7 +2143,11 @@ fn toggle_enabled(state: &mut OverlayState) {
         // 立即恢复穿透
         set_input_blocking(state.canvas.hwnd, false);
     }
-    hud_notify(if state.draw.enabled { "涂鸦已开启" } else { "涂鸦已关闭" });
+    hud_notify(if state.draw.enabled {
+        "涂鸦已开启"
+    } else {
+        "涂鸦已关闭"
+    });
 }
 
 fn undo_last_stroke(state: &mut OverlayState) {
@@ -1956,7 +2184,8 @@ fn redraw_from_strokes(state: &mut OverlayState) {
                 (s.g * 255.0) as u8,
                 (s.b * 255.0) as u8,
             );
-            let path: Vec<(f32, f32, f32)> = s.points
+            let path: Vec<(f32, f32, f32)> = s
+                .points
                 .iter()
                 .map(|&(x, y, w, _)| (x as f32, y as f32, (w as f32 * 0.5).max(0.5)))
                 .collect();
@@ -1984,7 +2213,10 @@ fn navigate_page(state: &mut OverlayState, next: bool) {
 fn navigate_to(state: &mut OverlayState, target: i64, _label: &str) {
     let current = crate::export::glaspen2_get_current_screen_id();
     if target <= 0 || target == current {
-        eprintln!("[overlay] 没有更多页面 (current={}, target={})", current, target);
+        eprintln!(
+            "[overlay] 没有更多页面 (current={}, target={})",
+            current, target
+        );
         hud_notify("没有可跳转的页面");
         return;
     }
@@ -2005,7 +2237,9 @@ fn page_info_text(screen_id: i64) -> String {
     if ptr.is_null() {
         return format!("第 {} 页", screen_id);
     }
-    let s = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy().to_string();
+    let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
+        .to_string_lossy()
+        .to_string();
     crate::export::glaspen2_free_c_string(ptr);
     let v: serde_json::Value = match serde_json::from_str(&s) {
         Ok(v) => v,
@@ -2049,7 +2283,10 @@ fn show_strokes(state: &mut OverlayState) {
 fn export_svg_gif_clipboard(state: &mut OverlayState) {
     crate::export::glaspen2_save_svg();
     let ok = crate::export::glaspen2_save_animated_gif();
-    eprintln!("[overlay] SVG 已导出;GIF 导出: {}", if ok != 0 { "OK" } else { "FAILED" });
+    eprintln!(
+        "[overlay] SVG 已导出;GIF 导出: {}",
+        if ok != 0 { "OK" } else { "FAILED" }
+    );
     copy_canvas_to_clipboard(state);
     hud_notify("已导出 SVG + GIF,并复制到剪贴板");
 }
@@ -2067,7 +2304,9 @@ fn copy_canvas_to_clipboard(state: &mut OverlayState) {
     }
     let ptr = unsafe { GlobalLock(mem) };
     if ptr.is_null() {
-        unsafe { let _ = GlobalFree(mem); }
+        unsafe {
+            let _ = GlobalFree(mem);
+        }
         return;
     }
     let snap = state.canvas.snapshot();
@@ -2100,7 +2339,10 @@ fn copy_canvas_to_clipboard(state: &mut OverlayState) {
             if h.0.is_null() {
                 let _ = GlobalFree(mem);
             }
-            eprintln!("[overlay] 画布已复制到剪贴板 ({}x{})", state.canvas.w, state.canvas.h);
+            eprintln!(
+                "[overlay] 画布已复制到剪贴板 ({}x{})",
+                state.canvas.w, state.canvas.h
+            );
         } else {
             let _ = GlobalFree(mem);
             eprintln!("[overlay] 剪贴板打开失败,未复制");
@@ -2127,7 +2369,11 @@ fn apply_frosted(hwnd: HWND, on: bool) {
     };
     let f: FnSetWca = *f;
     let mut accent = AccentPolicy {
-        accent_state: if on { ACCENT_ENABLE_ACRYLICBLURBEHIND } else { 0 },
+        accent_state: if on {
+            ACCENT_ENABLE_ACRYLICBLURBEHIND
+        } else {
+            0
+        },
         flags: 0,
         color: 0,
         animation_id: 0,
@@ -2138,7 +2384,10 @@ fn apply_frosted(hwnd: HWND, on: bool) {
         size: std::mem::size_of::<AccentPolicy>(),
     };
     let ret = unsafe { f(hwnd, &mut data) };
-    eprintln!("[overlay] SetWindowCompositionAttribute(blur={}) -> {}", on, ret);
+    eprintln!(
+        "[overlay] SetWindowCompositionAttribute(blur={}) -> {}",
+        on, ret
+    );
 }
 
 /// Ctrl+Alt+B:模糊背景(磨砂玻璃)开关
@@ -2149,8 +2398,15 @@ fn toggle_frosted(state: &mut OverlayState) {
         if state.draw.frosted { "1" } else { "0" },
     ));
     apply_frosted(state.canvas.hwnd, state.draw.frosted);
-    eprintln!("[overlay] 模糊背景: {}", if state.draw.frosted { "开" } else { "关" });
-    hud_notify(if state.draw.frosted { "模糊背景已开启" } else { "模糊背景已关闭" });
+    eprintln!(
+        "[overlay] 模糊背景: {}",
+        if state.draw.frosted { "开" } else { "关" }
+    );
+    hud_notify(if state.draw.frosted {
+        "模糊背景已开启"
+    } else {
+        "模糊背景已关闭"
+    });
 }
 
 /// 显示分辨率/排列变化:重建画布并重绘已保存笔画
@@ -2183,7 +2439,9 @@ fn draw_rainbow_indicator(state: &mut OverlayState) {
         let h = col as f64 / 14.0;
         let (r, g, b) = hsv_to_rgb(h);
         let color = ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
-        state.canvas.fill_rect(col as f32 * 2.0, 0.0, 2.0, 4.0, color);
+        state
+            .canvas
+            .fill_rect(col as f32 * 2.0, 0.0, 2.0, 4.0, color);
     }
     state.canvas.present_all();
 }
@@ -2207,7 +2465,12 @@ fn hsv_to_rgb(h: f64) -> (f64, f64, f64) {
 
 fn save_drawing(state: &mut OverlayState) {
     let snap = state.canvas.snapshot();
-    crate::export::glaspen2_save_drawing(snap.as_ptr(), state.canvas.w, state.canvas.h, state.canvas.w * 4);
+    crate::export::glaspen2_save_drawing(
+        snap.as_ptr(),
+        state.canvas.w,
+        state.canvas.h,
+        state.canvas.w * 4,
+    );
 }
 
 fn save_with_bg(state: &mut OverlayState) {
@@ -2229,7 +2492,8 @@ fn save_with_bg(state: &mut OverlayState) {
             ..Default::default()
         };
         let mut bg_bits: *mut std::ffi::c_void = ptr::null_mut();
-        let bg_bmp = CreateDIBSection(Some(bg_dc), &bmi, DIB_RGB_COLORS, &mut bg_bits, None, 0).unwrap();
+        let bg_bmp =
+            CreateDIBSection(Some(bg_dc), &bmi, DIB_RGB_COLORS, &mut bg_bits, None, 0).unwrap();
         let old = SelectObject(bg_dc, bg_bmp.into());
         let _ = BitBlt(bg_dc, 0, 0, bw, bh, Some(screen_dc), 0, 0, SRCCOPY);
         let snap = state.canvas.snapshot();
@@ -2403,9 +2667,7 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
     use std::os::windows::io::{FromRawHandle, IntoRawHandle};
 
     // Wrap pipe HANDLE in a single File for both read and write
-    let mut stream = unsafe {
-        std::fs::File::from_raw_handle(pipe as *mut std::ffi::c_void)
-    };
+    let mut stream = unsafe { std::fs::File::from_raw_handle(pipe as *mut std::ffi::c_void) };
 
     let mut buf = [0u8; 4096];
     let mut line_buf = Vec::new();
@@ -2446,12 +2708,21 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let ptr = crate::export::glaspen2_list_screens_json();
         if ptr.is_null() {
             let _ = writer.write_all(
-                format!("{{\"type\":\"listPages_response\",\"reqId\":{},\"data\":[]}}\n", req_id).as_bytes(),
+                format!(
+                    "{{\"type\":\"listPages_response\",\"reqId\":{},\"data\":[]}}\n",
+                    req_id
+                )
+                .as_bytes(),
             );
         } else {
-            let s = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy().to_string();
+            let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .to_string();
             crate::export::glaspen2_free_c_string(ptr);
-            let resp = format!("{{\"type\":\"listPages_response\",\"reqId\":{},\"data\":{}}}\n", req_id, s);
+            let resp = format!(
+                "{{\"type\":\"listPages_response\",\"reqId\":{},\"data\":{}}}\n",
+                req_id, s
+            );
             let _ = writer.write_all(resp.as_bytes());
         }
         let _ = writer.flush();
@@ -2472,7 +2743,10 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             let bytes = unsafe { std::slice::from_raw_parts(ptr, out_len as usize) };
             let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
             crate::export::glaspen2_free_rust_bytes(ptr, out_len);
-            let resp = format!("{{\"type\":\"getPageThumbnail_response\",\"reqId\":{},\"data\":{{\"png\":\"{}\"}}}}\n", req_id, b64);
+            let resp = format!(
+                "{{\"type\":\"getPageThumbnail_response\",\"reqId\":{},\"data\":{{\"png\":\"{}\"}}}}\n",
+                req_id, b64
+            );
             let _ = writer.write_all(resp.as_bytes());
         }
         let _ = writer.flush();
@@ -2484,12 +2758,21 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let ptr = crate::export::glaspen2_search_ocr_json(q.as_ptr());
         if ptr.is_null() {
             let _ = writer.write_all(
-                format!("{{\"type\":\"searchText_response\",\"reqId\":{},\"data\":[]}}\n", req_id).as_bytes(),
+                format!(
+                    "{{\"type\":\"searchText_response\",\"reqId\":{},\"data\":[]}}\n",
+                    req_id
+                )
+                .as_bytes(),
             );
         } else {
-            let s = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy().to_string();
+            let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .to_string();
             crate::export::glaspen2_free_c_string(ptr);
-            let resp = format!("{{\"type\":\"searchText_response\",\"reqId\":{},\"data\":{}}}\n", req_id, s);
+            let resp = format!(
+                "{{\"type\":\"searchText_response\",\"reqId\":{},\"data\":{}}}\n",
+                req_id, s
+            );
             let _ = writer.write_all(resp.as_bytes());
         }
         let _ = writer.flush();
@@ -2535,26 +2818,50 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         }
     } else if msg_type == "getSettings" {
         // Respond with current settings from DB
-        let (r, g, b, w) = crate::runtime().block_on(crate::db::load_settings()).unwrap_or((1.0, 0.0, 0.0, 1.0));
+        let (r, g, b, w) = crate::runtime()
+            .block_on(crate::db::load_settings())
+            .unwrap_or((1.0, 0.0, 0.0, 1.0));
         let color = closest_color_index(r, g, b);
         let width = closest_width_index(w);
-        let outline = crate::runtime().block_on(crate::db::load_setting("outline_enabled"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
-        let grid = crate::runtime().block_on(crate::db::load_setting("grid"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
-        let frosted = crate::runtime().block_on(crate::db::load_setting("frostedGlass"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
-        let pressure_monitor = crate::runtime().block_on(crate::db::load_setting("pressureMonitor"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
-        let grid_follow = crate::runtime().block_on(crate::db::load_setting("gridFollowStrokes"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
-        let ocr_enabled = crate::runtime().block_on(crate::db::load_setting("ocrEnabled"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
-        let ethereal = crate::runtime().block_on(crate::db::load_setting("ethereal"))
-            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+        let outline = crate::runtime()
+            .block_on(crate::db::load_setting("outline_enabled"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
+        let grid = crate::runtime()
+            .block_on(crate::db::load_setting("grid"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
+        let frosted = crate::runtime()
+            .block_on(crate::db::load_setting("frostedGlass"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
+        let pressure_monitor = crate::runtime()
+            .block_on(crate::db::load_setting("pressureMonitor"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
+        let grid_follow = crate::runtime()
+            .block_on(crate::db::load_setting("gridFollowStrokes"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
+        let ocr_enabled = crate::runtime()
+            .block_on(crate::db::load_setting("ocrEnabled"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
+        let ethereal = crate::runtime()
+            .block_on(crate::db::load_setting("ethereal"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
         let resp = format!(
             "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ocrEnabled\":{},\"ethereal\":{},\"rainbow\":false,\"launchAtLogin\":false}}}}\n",
-            color, width, outline, grid, grid_follow, frosted, pressure_monitor, ocr_enabled, ethereal
+            color,
+            width,
+            outline,
+            grid,
+            grid_follow,
+            frosted,
+            pressure_monitor,
+            ocr_enabled,
+            ethereal
         );
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
@@ -2562,15 +2869,30 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let key = json_get_str(line, "key");
         if key == "save_drawing" {
             let _ = unsafe {
-                PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(CMD_SAVE_DRAWING), LPARAM(0))
+                PostMessageW(
+                    Some(HWND(hwnd as *mut _)),
+                    WM_TRAY_COMMAND,
+                    WPARAM(CMD_SAVE_DRAWING),
+                    LPARAM(0),
+                )
             };
         } else if key == "save_with_bg" {
             let _ = unsafe {
-                PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(CMD_SAVE_WITH_BG), LPARAM(0))
+                PostMessageW(
+                    Some(HWND(hwnd as *mut _)),
+                    WM_TRAY_COMMAND,
+                    WPARAM(CMD_SAVE_WITH_BG),
+                    LPARAM(0),
+                )
             };
         } else if key == "save_xoj" {
             let _ = unsafe {
-                PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(CMD_SAVE_XOJ), LPARAM(0))
+                PostMessageW(
+                    Some(HWND(hwnd as *mut _)),
+                    WM_TRAY_COMMAND,
+                    WPARAM(CMD_SAVE_XOJ),
+                    LPARAM(0),
+                )
             };
         } else if key == "undo" {
             let _ = unsafe {
@@ -2583,18 +2905,37 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             };
         } else if key == "export_animated_gif" {
             let result = crate::export::glaspen2_save_animated_gif();
-            eprintln!("[pipe] animated GIF export: {}", if result != 0 { "OK" } else { "FAILED" });
-            hud_notify(if result != 0 { "动画 GIF 已保存到桌面" } else { "动画 GIF 导出失败" });
+            eprintln!(
+                "[pipe] animated GIF export: {}",
+                if result != 0 { "OK" } else { "FAILED" }
+            );
+            hud_notify(if result != 0 {
+                "动画 GIF 已保存到桌面"
+            } else {
+                "动画 GIF 导出失败"
+            });
         } else if key == "export_pdf" {
             let result = crate::export::glaspen2_export_pdf();
-            eprintln!("[pipe] PDF export: {}", if result != 0 { "OK" } else { "FAILED" });
-            hud_notify(if result != 0 { "PDF 已保存到桌面" } else { "PDF 导出失败" });
+            eprintln!(
+                "[pipe] PDF export: {}",
+                if result != 0 { "OK" } else { "FAILED" }
+            );
+            hud_notify(if result != 0 {
+                "PDF 已保存到桌面"
+            } else {
+                "PDF 导出失败"
+            });
         } else if key == "color" {
             if let Some(val) = json_get_i64(line, "value") {
                 let idx = val as usize;
                 let cmd = CMD_SELECT_COLOR + idx;
                 let _ = unsafe {
-                    PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(0))
+                    PostMessageW(
+                        Some(HWND(hwnd as *mut _)),
+                        WM_TRAY_COMMAND,
+                        WPARAM(cmd),
+                        LPARAM(0),
+                    )
                 };
             }
         } else if key == "width" {
@@ -2602,28 +2943,48 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 let idx = val as usize;
                 let cmd = CMD_SELECT_WIDTH + idx;
                 let _ = unsafe {
-                    PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(0))
+                    PostMessageW(
+                        Some(HWND(hwnd as *mut _)),
+                        WM_TRAY_COMMAND,
+                        WPARAM(cmd),
+                        LPARAM(0),
+                    )
                 };
             }
         } else if key == "outline" {
             if let Some(on) = json_get_bool(line, "value") {
                 let cmd = CMD_TOGGLE_OUTLINE;
                 let _ = unsafe {
-                    PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(if on { 1 } else { 0 }))
+                    PostMessageW(
+                        Some(HWND(hwnd as *mut _)),
+                        WM_TRAY_COMMAND,
+                        WPARAM(cmd),
+                        LPARAM(if on { 1 } else { 0 }),
+                    )
                 };
             }
         } else if key == "grid" {
             if let Some(on) = json_get_bool(line, "value") {
                 let cmd = CMD_TOGGLE_GRID;
                 let _ = unsafe {
-                    PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(if on { 1 } else { 0 }))
+                    PostMessageW(
+                        Some(HWND(hwnd as *mut _)),
+                        WM_TRAY_COMMAND,
+                        WPARAM(cmd),
+                        LPARAM(if on { 1 } else { 0 }),
+                    )
                 };
             }
         } else if key == "frostedGlass" {
             if let Some(on) = json_get_bool(line, "value") {
                 let cmd = CMD_TOGGLE_FROSTED;
                 let _ = unsafe {
-                    PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(if on { 1 } else { 0 }))
+                    PostMessageW(
+                        Some(HWND(hwnd as *mut _)),
+                        WM_TRAY_COMMAND,
+                        WPARAM(cmd),
+                        LPARAM(if on { 1 } else { 0 }),
+                    )
                 };
             }
         } else if key == "gridFollowStrokes" {
@@ -2637,14 +2998,24 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             if let Some(on) = json_get_bool(line, "value") {
                 let cmd = CMD_TOGGLE_OCR;
                 let _ = unsafe {
-                    PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(if on { 1 } else { 0 }))
+                    PostMessageW(
+                        Some(HWND(hwnd as *mut _)),
+                        WM_TRAY_COMMAND,
+                        WPARAM(cmd),
+                        LPARAM(if on { 1 } else { 0 }),
+                    )
                 };
             }
         } else if key == "pressureMonitor" {
             if let Some(on) = json_get_bool(line, "value") {
                 let cmd = CMD_TOGGLE_PRESSURE_MONITOR;
                 let _ = unsafe {
-                    PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(if on { 1 } else { 0 }))
+                    PostMessageW(
+                        Some(HWND(hwnd as *mut _)),
+                        WM_TRAY_COMMAND,
+                        WPARAM(cmd),
+                        LPARAM(if on { 1 } else { 0 }),
+                    )
                 };
             }
         }
@@ -2669,7 +3040,9 @@ fn json_get_i64(json: &str, key: &str) -> Option<i64> {
     if let Some(start) = json.find(&pattern) {
         let val_start = start + pattern.len();
         let rest = &json[val_start..].trim_start();
-        let end = rest.find(|c: char| !c.is_ascii_digit() && c != '-').unwrap_or(rest.len());
+        let end = rest
+            .find(|c: char| !c.is_ascii_digit() && c != '-')
+            .unwrap_or(rest.len());
         if end > 0 {
             return rest[..end].parse::<i64>().ok();
         }

@@ -1,4 +1,10 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+// 本 crate 的核心接口就是 extern "C" 裸指针 FFI(由 ObjC/C#/Windows overlay
+// 调用)。把这些函数标成 unsafe fn 需要改动所有内部调用点, 与"不破坏功能"
+// 原则冲突, 故对以下结构性 lint 做 crate 级豁免:
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
 
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
@@ -79,8 +85,7 @@ pub(crate) fn desktop_path() -> PathBuf {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
-            .join("Desktop")
+        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string())).join("Desktop")
     }
 }
 
@@ -99,7 +104,10 @@ pub(crate) fn timestamped_name(ext: &str) -> String {
     let days = secs / 86400;
     let y = 1970 + days / 365;
     let d = days % 365;
-    format!("glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.{}", y, d, h, m, s, ext)
+    format!(
+        "glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.{}",
+        y, d, h, m, s, ext
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -133,7 +141,10 @@ mod tests {
         });
         let svg = crate::export::build_cropped_svg().unwrap();
         assert!(svg.starts_with("<svg"), "SVG should start with <svg tag");
-        assert!(svg.contains("stroke-width"), "should have stroke-width attr");
+        assert!(
+            svg.contains("stroke-width"),
+            "should have stroke-width attr"
+        );
         assert!(svg.contains("</svg>\n"), "should close svg tag");
         STROKES.lock().unwrap().clear();
     }

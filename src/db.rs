@@ -40,11 +40,9 @@ pub fn db_path() -> std::path::PathBuf {
         .ancestors()
         .any(|a| a.join("Contents").join("Info.plist").exists());
 
-    if is_bundled {
-        if let Some(app_support) = app_support_dir() {
-            std::fs::create_dir_all(&app_support).ok();
-            return app_support.join("glaspen2.db");
-        }
+    if is_bundled && let Some(app_support) = app_support_dir() {
+        std::fs::create_dir_all(&app_support).ok();
+        return app_support.join("glaspen2.db");
     }
 
     exe_dir.join("glaspen2.db")
@@ -54,10 +52,12 @@ fn app_support_dir() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
     {
         let home = std::env::var("HOME").ok()?;
-        Some(std::path::PathBuf::from(home)
-            .join("Library")
-            .join("Application Support")
-            .join("glaspen2"))
+        Some(
+            std::path::PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("glaspen2"),
+        )
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -77,11 +77,11 @@ fn now_f64() -> f64 {
 // ---------------------------------------------------------------------------
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod platform {
-    use std::sync::OnceLock;
-    use sqlx::SqlitePool;
     use crate::state;
+    use sqlx::SqlitePool;
+    use std::sync::OnceLock;
 
-    use super::{db_path, now_f64, StrokeData};
+    use super::{StrokeData, db_path, now_f64};
 
     static DB: OnceLock<SqlitePool> = OnceLock::new();
 
@@ -96,7 +96,9 @@ mod platform {
                 // thread via block_on) no longer hitches pen-down.
                 .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
                 .synchronous(sqlx::sqlite::SqliteSynchronous::Normal),
-        ).await.expect("Failed to open glaspen2.db");
+        )
+        .await
+        .expect("Failed to open glaspen2.db");
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS screens (
@@ -105,12 +107,17 @@ mod platform {
                 screen_w INTEGER NOT NULL,
                 screen_h INTEGER NOT NULL,
                 edited INTEGER NOT NULL DEFAULT 0
-            )"
-        ).execute(&pool).await.expect("Failed to create screens table");
+            )",
+        )
+        .execute(&pool)
+        .await
+        .expect("Failed to create screens table");
 
         // Migration for existing DBs (edited = 0 by default; strokes imply edited)
         sqlx::query("ALTER TABLE screens ADD COLUMN edited INTEGER NOT NULL DEFAULT 0")
-            .execute(&pool).await.ok();
+            .execute(&pool)
+            .await
+            .ok();
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS strokes (
@@ -121,8 +128,11 @@ mod platform {
                 color_b REAL NOT NULL,
                 width_scale REAL NOT NULL DEFAULT 1.0,
                 created_at REAL NOT NULL
-            )"
-        ).execute(&pool).await.expect("Failed to create strokes table");
+            )",
+        )
+        .execute(&pool)
+        .await
+        .expect("Failed to create strokes table");
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS points (
@@ -133,22 +143,31 @@ mod platform {
                 width REAL NOT NULL,
                 t REAL NOT NULL DEFAULT 0.0,
                 PRIMARY KEY (stroke_id, seq)
-            )"
-        ).execute(&pool).await.expect("Failed to create points table");
+            )",
+        )
+        .execute(&pool)
+        .await
+        .expect("Failed to create points table");
 
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_strokes_screen ON strokes(screen_id)"
-        ).execute(&pool).await.ok();
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_strokes_screen ON strokes(screen_id)")
+            .execute(&pool)
+            .await
+            .ok();
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS user_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
-            )"
-        ).execute(&pool).await.expect("Failed to create user_settings table");
+            )",
+        )
+        .execute(&pool)
+        .await
+        .expect("Failed to create user_settings table");
 
         sqlx::query("ALTER TABLE points ADD COLUMN t REAL NOT NULL DEFAULT 0.0")
-            .execute(&pool).await.ok();
+            .execute(&pool)
+            .await
+            .ok();
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS ocr_results (
@@ -156,8 +175,11 @@ mod platform {
                 screen_id INTEGER NOT NULL REFERENCES screens(id),
                 full_text TEXT NOT NULL,
                 created_at REAL NOT NULL
-            )"
-        ).execute(&pool).await.expect("Failed to create ocr_results table");
+            )",
+        )
+        .execute(&pool)
+        .await
+        .expect("Failed to create ocr_results table");
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS ocr_boxes (
@@ -168,12 +190,16 @@ mod platform {
                 x REAL NOT NULL, y REAL NOT NULL,
                 w REAL NOT NULL, h REAL NOT NULL,
                 confidence REAL NOT NULL DEFAULT 0.0
-            )"
-        ).execute(&pool).await.expect("Failed to create ocr_boxes table");
+            )",
+        )
+        .execute(&pool)
+        .await
+        .expect("Failed to create ocr_boxes table");
 
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_ocr_results_screen ON ocr_results(screen_id)"
-        ).execute(&pool).await.ok();
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_ocr_results_screen ON ocr_results(screen_id)")
+            .execute(&pool)
+            .await
+            .ok();
 
         apply_defaults(&pool).await;
 
@@ -183,12 +209,20 @@ mod platform {
 
     async fn apply_defaults(pool: &SqlitePool) {
         let defaults = [
-            ("pen_r", "1.0"), ("pen_g", "0.0"), ("pen_b", "0.0"),
-            ("width_scale", "1.0"), ("glass_alpha", "0"), ("glass_enabled", "0"),
+            ("pen_r", "1.0"),
+            ("pen_g", "0.0"),
+            ("pen_b", "0.0"),
+            ("width_scale", "1.0"),
+            ("glass_alpha", "0"),
+            ("glass_enabled", "0"),
         ];
         for &(key, val) in &defaults {
             sqlx::query("INSERT OR IGNORE INTO user_settings (key, value) VALUES (?1, ?2)")
-                .bind(key).bind(val).execute(pool).await.ok();
+                .bind(key)
+                .bind(val)
+                .execute(pool)
+                .await
+                .ok();
         }
     }
 
@@ -196,9 +230,14 @@ mod platform {
         let pool = DB.get().expect("DB not initialized");
         let now = now_f64();
         let sid = sqlx::query_scalar::<_, i64>(
-            "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (?1, ?2, ?3) RETURNING id"
-        ).bind(now).bind(screen_w).bind(screen_h)
-            .fetch_one(pool).await.unwrap_or(0);
+            "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (?1, ?2, ?3) RETURNING id",
+        )
+        .bind(now)
+        .bind(screen_w)
+        .bind(screen_h)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
         state::set_current_screen_id(sid);
     }
 
@@ -218,7 +257,10 @@ mod platform {
                 // Mark the canvas as edited — even if all strokes are later
                 // cleared/undone, the canvas counts as used.
                 sqlx::query("UPDATE screens SET edited = 1 WHERE id = ?1")
-                    .bind(screen_id).execute(pool).await.ok();
+                    .bind(screen_id)
+                    .execute(pool)
+                    .await
+                    .ok();
                 id
             }
             _ => 0,
@@ -235,9 +277,14 @@ mod platform {
             Some(b) => b,
             None => return,
         };
-        if points.is_empty() { return; }
+        if points.is_empty() {
+            return;
+        }
         let pool = DB.get().expect("DB not initialized");
-        let mut tx = match pool.begin().await { Ok(t) => t, Err(_) => return };
+        let mut tx = match pool.begin().await {
+            Ok(t) => t,
+            Err(_) => return,
+        };
         for (i, &(x, y, w, t)) in points.iter().enumerate() {
             sqlx::query(
                 "INSERT INTO points (stroke_id, seq, x, y, width, t) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
@@ -249,62 +296,121 @@ mod platform {
 
     pub fn end_stroke_spawned() {
         let rt = crate::runtime();
-        let _ = rt.spawn(async { flush_pending().await; });
+        // 后台任务由 tokio runtime 立即执行; JoinHandle 丢弃即分离,
+        // 不是"绑定但从不运行"的 future, 故豁免该 lint。
+        #[allow(clippy::let_underscore_future)]
+        let _ = rt.spawn(async {
+            flush_pending().await;
+        });
     }
 
     pub async fn screen_has_strokes(screen_id: i64) -> bool {
-        let pool = match DB.get() { Some(p) => p, None => return false };
-        sqlx::query_scalar::<_, i64>(
-            "SELECT EXISTS(SELECT 1 FROM strokes WHERE screen_id = ?1)"
-        ).bind(screen_id).fetch_one(pool).await.unwrap_or(0) != 0
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return false,
+        };
+        sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM strokes WHERE screen_id = ?1)")
+            .bind(screen_id)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0)
+            != 0
     }
 
     /// Whether the canvas was ever edited (a stroke was started on it).
     /// True even if every stroke was later cleared/undone. Strokes in the
     /// table also imply edited (covers pre-migration databases).
     pub async fn screen_edited(screen_id: i64) -> bool {
-        let pool = match DB.get() { Some(p) => p, None => return false };
-        if screen_id <= 0 { return false; }
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return false,
+        };
+        if screen_id <= 0 {
+            return false;
+        }
         sqlx::query_scalar::<_, i64>(
             "SELECT CASE WHEN edited = 1 OR EXISTS \
              (SELECT 1 FROM strokes WHERE screen_id = screens.id) \
-             THEN 1 ELSE 0 END FROM screens WHERE id = ?1"
-        ).bind(screen_id).fetch_optional(pool).await.ok().flatten().unwrap_or(0) != 0
+             THEN 1 ELSE 0 END FROM screens WHERE id = ?1",
+        )
+        .bind(screen_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(0)
+            != 0
     }
 
     /// Delete a stroke by id. Returns true if the stroke existed.
     pub async fn delete_stroke_by_id(stroke_id: i64) -> bool {
-        let pool = match DB.get() { Some(p) => p, None => return false };
-        sqlx::query("DELETE FROM points WHERE stroke_id = ?1").bind(stroke_id).execute(pool).await.ok();
-        let deleted = sqlx::query("DELETE FROM strokes WHERE id = ?1").bind(stroke_id).execute(pool).await.ok();
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return false,
+        };
+        sqlx::query("DELETE FROM points WHERE stroke_id = ?1")
+            .bind(stroke_id)
+            .execute(pool)
+            .await
+            .ok();
+        let deleted = sqlx::query("DELETE FROM strokes WHERE id = ?1")
+            .bind(stroke_id)
+            .execute(pool)
+            .await
+            .ok();
         deleted.is_some()
     }
 
     pub async fn delete_last_stroke() -> bool {
         use crate::state;
-        let pool = match DB.get() { Some(p) => p, None => return false };
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return false,
+        };
         let screen_id = state::current_screen_id();
         let stroke_id = match sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM strokes WHERE screen_id = ?1 ORDER BY id DESC LIMIT 1"
-        ).bind(screen_id).fetch_optional(pool).await {
-            Ok(Some(id)) => id, _ => return false,
+            "SELECT id FROM strokes WHERE screen_id = ?1 ORDER BY id DESC LIMIT 1",
+        )
+        .bind(screen_id)
+        .fetch_optional(pool)
+        .await
+        {
+            Ok(Some(id)) => id,
+            _ => return false,
         };
         delete_stroke_by_id(stroke_id).await
     }
 
     pub async fn delete_screen(target_id: i64) -> bool {
-        let pool = match DB.get() { Some(p) => p, None => return false };
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return false,
+        };
         // Delete in FK order: points → strokes → ocr_boxes → ocr_results → screen
-        sqlx::query("DELETE FROM points WHERE stroke_id IN (SELECT id FROM strokes WHERE screen_id = ?1)")
-            .bind(target_id).execute(pool).await.ok();
+        sqlx::query(
+            "DELETE FROM points WHERE stroke_id IN (SELECT id FROM strokes WHERE screen_id = ?1)",
+        )
+        .bind(target_id)
+        .execute(pool)
+        .await
+        .ok();
         sqlx::query("DELETE FROM strokes WHERE screen_id = ?1")
-            .bind(target_id).execute(pool).await.ok();
+            .bind(target_id)
+            .execute(pool)
+            .await
+            .ok();
         sqlx::query("DELETE FROM ocr_boxes WHERE result_id IN (SELECT id FROM ocr_results WHERE screen_id = ?1)")
             .bind(target_id).execute(pool).await.ok();
         sqlx::query("DELETE FROM ocr_results WHERE screen_id = ?1")
-            .bind(target_id).execute(pool).await.ok();
+            .bind(target_id)
+            .execute(pool)
+            .await
+            .ok();
         let deleted = sqlx::query("DELETE FROM screens WHERE id = ?1")
-            .bind(target_id).execute(pool).await.ok();
+            .bind(target_id)
+            .execute(pool)
+            .await
+            .ok();
         deleted.is_some()
     }
 
@@ -342,33 +448,56 @@ mod platform {
     }
 
     pub async fn strokes_for_screen(screen_id: i64) -> Vec<StrokeData> {
-        let pool = match DB.get() { Some(p) => p, None => return Vec::new() };
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return Vec::new(),
+        };
         let rows: Vec<(i64, f64, f64, f64, f64)> = sqlx::query_as(
             "SELECT id, color_r, color_g, color_b, width_scale FROM strokes WHERE screen_id = ?1 ORDER BY id"
         ).bind(screen_id).fetch_all(pool).await.unwrap_or_default();
-        if rows.is_empty() { return Vec::new(); }
+        if rows.is_empty() {
+            return Vec::new();
+        }
 
         // Single query for all points of the screen (avoids N+1 per stroke).
         let pts: Vec<(i64, i64, f64, f64, f64, f64)> = sqlx::query_as(
             "SELECT p.stroke_id, p.seq, p.x, p.y, p.width, p.t \
              FROM points p JOIN strokes s ON s.id = p.stroke_id \
              WHERE s.screen_id = ?1 \
-             ORDER BY p.stroke_id, p.seq"
-        ).bind(screen_id).fetch_all(pool).await.unwrap_or_default();
+             ORDER BY p.stroke_id, p.seq",
+        )
+        .bind(screen_id)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
 
-        let strokes: Vec<StrokeData> = rows.into_iter().map(|(id, r, g, b, ws)| {
-            StrokeData { id, r, g, b, width_scale: ws, points: Vec::new() }
-        }).collect();
+        let strokes: Vec<StrokeData> = rows
+            .into_iter()
+            .map(|(id, r, g, b, ws)| StrokeData {
+                id,
+                r,
+                g,
+                b,
+                width_scale: ws,
+                points: Vec::new(),
+            })
+            .collect();
         attach_points(strokes, pts)
     }
 
     pub async fn list_screens() -> Vec<(i64, i32, i32)> {
-        let pool = match DB.get() { Some(p) => p, None => return Vec::new() };
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return Vec::new(),
+        };
         sqlx::query_as(
             "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
              WHERE EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
-             ORDER BY s.id"
-        ).fetch_all(pool).await.unwrap_or_default()
+             ORDER BY s.id",
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default()
     }
 
     /// Page info for the 新建画布/翻页 notification:
@@ -383,7 +512,9 @@ mod platform {
         pool: &SqlitePool,
         screen_id: i64,
     ) -> Option<(i64, i64, i64, i64, f64)> {
-        if screen_id <= 0 { return None; }
+        if screen_id <= 0 {
+            return None;
+        }
         // The outer WHERE id = ?1 guarantees an unknown id yields no row
         // (otherwise the subqueries would still produce a NULL-created row).
         sqlx::query_as(
@@ -403,7 +534,10 @@ mod platform {
     }
 
     pub async fn list_screens_with_ocr() -> Vec<(i64, i32, i32, Option<String>)> {
-        let pool = match DB.get() { Some(p) => p, None => return Vec::new() };
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return Vec::new(),
+        };
         let rows: Vec<(i64, i32, i32, Option<String>)> = sqlx::query_as(
             "SELECT s.id, s.screen_w, s.screen_h, \
                     (SELECT r.full_text FROM ocr_results r WHERE r.screen_id = s.id ORDER BY r.id DESC LIMIT 1) \
@@ -415,54 +549,104 @@ mod platform {
     }
 
     pub async fn search_ocr(query: &str) -> Vec<(i64, i32, i32, String)> {
-        let pool = match DB.get() { Some(p) => p, None => return Vec::new() };
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return Vec::new(),
+        };
         let pattern = format!("%{}%", query);
         sqlx::query_as(
             "SELECT s.id, s.screen_w, s.screen_h, r.full_text FROM screens s \
              JOIN ocr_results r ON r.screen_id = s.id \
              WHERE r.full_text LIKE ?1 \
-             ORDER BY s.id"
-        ).bind(&pattern).fetch_all(pool).await.unwrap_or_default()
+             ORDER BY s.id",
+        )
+        .bind(&pattern)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default()
     }
 
     pub async fn save_setting(key: &str, value: &str) {
-        let pool = match DB.get() { Some(p) => p, None => return };
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return,
+        };
         sqlx::query("INSERT OR REPLACE INTO user_settings (key, value) VALUES (?1, ?2)")
-            .bind(key).bind(value).execute(pool).await.ok();
+            .bind(key)
+            .bind(value)
+            .execute(pool)
+            .await
+            .ok();
     }
 
     pub async fn load_setting(key: &str) -> Option<String> {
         let pool = DB.get()?;
-        sqlx::query_scalar::<_, String>(
-            "SELECT value FROM user_settings WHERE key = ?1"
-        ).bind(key).fetch_optional(pool).await.ok()?
+        sqlx::query_scalar::<_, String>("SELECT value FROM user_settings WHERE key = ?1")
+            .bind(key)
+            .fetch_optional(pool)
+            .await
+            .ok()?
     }
 
     pub async fn save_settings(pen_r: f64, pen_g: f64, pen_b: f64, width_scale: f64) {
-        let pool = match DB.get() { Some(p) => p, None => return };
-        for &(k, v) in &[("pen_r", pen_r), ("pen_g", pen_g), ("pen_b", pen_b), ("width_scale", width_scale)] {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return,
+        };
+        for &(k, v) in &[
+            ("pen_r", pen_r),
+            ("pen_g", pen_g),
+            ("pen_b", pen_b),
+            ("width_scale", width_scale),
+        ] {
             sqlx::query("INSERT OR REPLACE INTO user_settings (key, value) VALUES (?1, ?2)")
-                .bind(k).bind(format!("{:.6}", v)).execute(pool).await.ok();
+                .bind(k)
+                .bind(format!("{:.6}", v))
+                .execute(pool)
+                .await
+                .ok();
         }
     }
 
     pub async fn load_settings() -> Option<(f64, f64, f64, f64)> {
         let pool = DB.get()?;
-        let r: f64 = sqlx::query_scalar::<_, String>("SELECT value FROM user_settings WHERE key = 'pen_r'")
-            .fetch_optional(pool).await.ok()??.parse().ok()?;
-        let g: f64 = sqlx::query_scalar::<_, String>("SELECT value FROM user_settings WHERE key = 'pen_g'")
-            .fetch_optional(pool).await.ok()??.parse().ok()?;
-        let b: f64 = sqlx::query_scalar::<_, String>("SELECT value FROM user_settings WHERE key = 'pen_b'")
-            .fetch_optional(pool).await.ok()??.parse().ok()?;
-        let ws: f64 = sqlx::query_scalar::<_, String>("SELECT value FROM user_settings WHERE key = 'width_scale'")
-            .fetch_optional(pool).await.ok()??.parse().ok()?;
+        let r: f64 =
+            sqlx::query_scalar::<_, String>("SELECT value FROM user_settings WHERE key = 'pen_r'")
+                .fetch_optional(pool)
+                .await
+                .ok()??
+                .parse()
+                .ok()?;
+        let g: f64 =
+            sqlx::query_scalar::<_, String>("SELECT value FROM user_settings WHERE key = 'pen_g'")
+                .fetch_optional(pool)
+                .await
+                .ok()??
+                .parse()
+                .ok()?;
+        let b: f64 =
+            sqlx::query_scalar::<_, String>("SELECT value FROM user_settings WHERE key = 'pen_b'")
+                .fetch_optional(pool)
+                .await
+                .ok()??
+                .parse()
+                .ok()?;
+        let ws: f64 = sqlx::query_scalar::<_, String>(
+            "SELECT value FROM user_settings WHERE key = 'width_scale'",
+        )
+        .fetch_optional(pool)
+        .await
+        .ok()??
+        .parse()
+        .ok()?;
         Some((r, g, b, ws))
     }
 
-    pub async fn save_ocr_result(
-        screen_id: i64, full_text: &str, boxes: &[super::OcrBox],
-    ) {
-        let pool = match DB.get() { Some(p) => p, None => return };
+    pub async fn save_ocr_result(screen_id: i64, full_text: &str, boxes: &[super::OcrBox]) {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return,
+        };
         let now = super::now_f64();
         let result_id = sqlx::query_scalar::<_, i64>(
             "INSERT INTO ocr_results (screen_id, full_text, created_at) VALUES (?1, ?2, ?3) RETURNING id"
@@ -486,12 +670,22 @@ mod platform {
         let boxes: Vec<(i64, String, f64, f64, f64, f64, f64)> = sqlx::query_as(
             "SELECT box_index, text, x, y, w, h, confidence FROM ocr_boxes WHERE result_id = ?1 ORDER BY box_index"
         ).bind(row.0).fetch_all(pool).await.unwrap_or_default();
-        let ocr_boxes: Vec<super::OcrBox> = boxes.into_iter().map(|(_, t, x, y, w, h, c)| {
-            super::OcrBox { text: t, x, y, w, h, confidence: c as f32 }
-        }).collect();
+        let ocr_boxes: Vec<super::OcrBox> = boxes
+            .into_iter()
+            .map(|(_, t, x, y, w, h, c)| super::OcrBox {
+                text: t,
+                x,
+                y,
+                w,
+                h,
+                confidence: c as f32,
+            })
+            .collect();
         Some(super::OcrResult {
-            id: row.0, screen_id,
-            full_text: row.1, boxes: ocr_boxes,
+            id: row.0,
+            screen_id,
+            full_text: row.1,
+            boxes: ocr_boxes,
             created_at: row.2,
         })
     }
@@ -501,8 +695,8 @@ pub use platform::*;
 
 #[cfg(test)]
 mod tests {
-    use super::platform::{attach_points, page_info_with};
     use super::StrokeData;
+    use super::platform::{attach_points, page_info_with};
     use crate::runtime;
     use sqlx::SqlitePool;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -513,11 +707,8 @@ mod tests {
     /// across connections).
     async fn temp_pool() -> (SqlitePool, std::path::PathBuf) {
         let n = DB_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let path = std::env::temp_dir().join(format!(
-            "glaspen2_db_test_{}_{}.db",
-            std::process::id(),
-            n
-        ));
+        let path =
+            std::env::temp_dir().join(format!("glaspen2_db_test_{}_{}.db", std::process::id(), n));
         let _ = std::fs::remove_file(&path);
         let pool = SqlitePool::connect_with(
             sqlx::sqlite::SqliteConnectOptions::new()
@@ -589,8 +780,22 @@ mod tests {
     fn test_attach_points_groups_and_ignores_orphans() {
         let _g = crate::tests::TEST_LOCK.lock().unwrap();
         let strokes = vec![
-            StrokeData { id: 2, r: 1.0, g: 0.0, b: 0.0, width_scale: 1.0, points: vec![] },
-            StrokeData { id: 5, r: 0.0, g: 1.0, b: 0.0, width_scale: 1.5, points: vec![] },
+            StrokeData {
+                id: 2,
+                r: 1.0,
+                g: 0.0,
+                b: 0.0,
+                width_scale: 1.0,
+                points: vec![],
+            },
+            StrokeData {
+                id: 5,
+                r: 0.0,
+                g: 1.0,
+                b: 0.0,
+                width_scale: 1.5,
+                points: vec![],
+            },
         ];
         let pts = vec![
             (2, 0, 0.0, 0.0, 2.0, 0.0),
@@ -607,10 +812,16 @@ mod tests {
         assert_eq!(out[1].points[0], (10.0, 10.0, 2.0, 0.0));
         // stroke without points keeps an empty list
         let empty = attach_points(
-            vec![StrokeData { id: 1, r: 0.0, g: 0.0, b: 0.0, width_scale: 1.0, points: vec![] }],
+            vec![StrokeData {
+                id: 1,
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                width_scale: 1.0,
+                points: vec![],
+            }],
             vec![],
         );
         assert!(empty[0].points.is_empty());
     }
 }
-

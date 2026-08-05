@@ -4,5 +4,7 @@ pub fn macos_run() {
     unsafe extern "C" {
         fn glaspen2_run();
     }
-    unsafe { glaspen2_run(); }
+    unsafe {
+        glaspen2_run();
+    }
 }

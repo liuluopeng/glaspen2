@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use std::slice;
 
 use crate::{
-    db, desktop_path, modeler, ocr, pressure_to_width, runtime, state, timestamped_name,
-    timestamped_path, db::OcrBox, RAW_STROKE_START, Stroke, STROKES,
+    RAW_STROKE_START, STROKES, Stroke, db, db::OcrBox, desktop_path, modeler, ocr,
+    pressure_to_width, runtime, state, timestamped_name, timestamped_path,
 };
 
 // ---------------------------------------------------------------------------
@@ -18,9 +18,7 @@ use crate::{
 /// Keep points whose distance from the last kept point exceeds `min_dist`,
 /// or whose width changed by more than `width_ratio` from the last kept width.
 /// Preserves stroke shape while bounding point count in long-running sessions.
-pub(crate) fn decimate(
-    points: &[(f64, f64, f64, f64)],
-) -> Vec<(f64, f64, f64, f64)> {
+pub(crate) fn decimate(points: &[(f64, f64, f64, f64)]) -> Vec<(f64, f64, f64, f64)> {
     if points.len() <= 4 {
         return points.to_vec();
     }
@@ -248,11 +246,7 @@ pub extern "C" fn glaspen2_modeler_end(
 
 /// Commit the modeler buffer into STROKES. Call after drawing the buffer.
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_modeler_commit_to_strokes(
-    r: c_double,
-    g: c_double,
-    b: c_double,
-) {
+pub extern "C" fn glaspen2_modeler_commit_to_strokes(r: c_double, g: c_double, b: c_double) {
     let smoothed = modeler::take_buffer();
     let mut strokes = STROKES.lock().unwrap();
     if let Some(last) = strokes.last_mut() {
@@ -307,10 +301,7 @@ pub extern "C" fn glaspen2_modeler_erase_finish() {
 }
 
 /// True if the eraser path (points with width) touches the stroke.
-fn stroke_intersects_eraser(
-    stroke: &Stroke,
-    eraser_pts: &[(f64, f64, f64, f64)],
-) -> bool {
+fn stroke_intersects_eraser(stroke: &Stroke, eraser_pts: &[(f64, f64, f64, f64)]) -> bool {
     for &(ex, ey, ew, _) in eraser_pts {
         for &(px, py, pw, _) in &stroke.points {
             let dx = px - ex;
@@ -387,20 +378,27 @@ pub extern "C" fn glaspen2_smooth_loaded_strokes() {
     // Snapshot under lock; run CPU-heavy smoothing outside the lock.
     let snapshot: Vec<(f64, f64, f64, Vec<(f64, f64, f64)>)> = {
         let strokes = STROKES.lock().unwrap();
-        strokes.iter().map(|s| {
-            (s.r, s.g, s.b, s.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect())
-        }).collect()
+        strokes
+            .iter()
+            .map(|s| {
+                (
+                    s.r,
+                    s.g,
+                    s.b,
+                    s.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect(),
+                )
+            })
+            .collect()
     };
 
-    let mut smoothed_all: Vec<Vec<(f64, f64, f64, f64)>> =
-        Vec::with_capacity(snapshot.len());
+    let mut smoothed_all: Vec<Vec<(f64, f64, f64, f64)>> = Vec::with_capacity(snapshot.len());
     for (_, _, _, raw) in snapshot.iter() {
         let smoothed = modeler::smooth_points(raw);
         smoothed_all.push(smoothed);
     }
 
     let mut strokes = STROKES.lock().unwrap();
-    for (stroke, smoothed) in strokes.iter_mut().zip(smoothed_all.into_iter()) {
+    for (stroke, smoothed) in strokes.iter_mut().zip(smoothed_all) {
         if !smoothed.is_empty() {
             stroke.points = decimate(&smoothed);
         }
@@ -476,9 +474,7 @@ pub extern "C" fn glaspen2_get_stroke_color(
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_get_stroke_avg_width(idx: c_int) -> c_double {
     let strokes = STROKES.lock().unwrap();
-    strokes
-        .get(idx as usize)
-        .map_or(1.0, |s| s.avg_width())
+    strokes.get(idx as usize).map_or(1.0, |s| s.avg_width())
 }
 
 #[unsafe(no_mangle)]
@@ -489,12 +485,12 @@ pub extern "C" fn glaspen2_get_stroke_point(
     y: *mut c_double,
 ) {
     let strokes = STROKES.lock().unwrap();
-    if let Some(s) = strokes.get(idx as usize) {
-        if let Some(&(px, py, _, _)) = s.points.get(pidx as usize) {
-            unsafe {
-                *x = px;
-                *y = py;
-            }
+    if let Some(s) = strokes.get(idx as usize)
+        && let Some(&(px, py, _, _)) = s.points.get(pidx as usize)
+    {
+        unsafe {
+            *x = px;
+            *y = py;
         }
     }
 }
@@ -524,32 +520,43 @@ fn xoj_timestamped_path() -> PathBuf {
     let days = secs / 86400;
     let y = 1970 + days / 365;
     let d = days % 365;
-    let filename =
-        format!("glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.xoj", y, d, h, m, s);
+    let filename = format!("glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.xoj", y, d, h, m, s);
     desktop.join(filename)
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_save_xoj() {
-    use flate2::write::GzEncoder;
     use flate2::Compression;
+    use flate2::write::GzEncoder;
     use std::fmt::Write as _;
     use std::io::Write;
 
     // Snapshot strokes under lock, then encode/write without holding it.
     let snapshot: Vec<(f64, f64, f64, Vec<(f64, f64, f64)>)> = {
         let strokes = STROKES.lock().unwrap();
-        strokes.iter().map(|s| {
-            (s.r, s.g, s.b, s.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect())
-        }).collect()
+        strokes
+            .iter()
+            .map(|s| {
+                (
+                    s.r,
+                    s.g,
+                    s.b,
+                    s.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect(),
+                )
+            })
+            .collect()
     };
 
     // Get screen dimensions from the first point bounds, or use defaults
     let (mut max_x, mut max_y) = (1920.0f64, 1080.0f64);
     for (_, _, _, points) in snapshot.iter() {
         for &(x, y, _) in points {
-            if x > max_x { max_x = x; }
-            if y > max_y { max_y = y; }
+            if x > max_x {
+                max_x = x;
+            }
+            if y > max_y {
+                max_y = y;
+            }
         }
     }
     let page_w = (max_x + 10.0).ceil() as i32;
@@ -560,18 +567,26 @@ pub extern "C" fn glaspen2_save_xoj() {
     let mut xml = String::new();
     xml.push_str("<?xml version=\"1.0\" standalone=\"no\"?>\n");
     xml.push_str("<xournal version=\"0.4\" fileversion=\"4\">\n");
-    xml.push_str(&format!("  <page width=\"{}\" height=\"{}\">\n", page_w, page_h));
+    xml.push_str(&format!(
+        "  <page width=\"{}\" height=\"{}\">\n",
+        page_w, page_h
+    ));
     xml.push_str("    <layer>\n");
 
     for (r, g, b, points) in snapshot.iter() {
-        if points.is_empty() { continue; }
+        if points.is_empty() {
+            continue;
+        }
         let color_hex = format!(
             "#{:02x}{:02x}{:02x}",
             (r * 255.0) as u8,
             (g * 255.0) as u8,
             (b * 255.0) as u8
         );
-        xml.push_str(&format!("      <stroke tool=\"pen\" color=\"{}\">\n        ", color_hex));
+        xml.push_str(&format!(
+            "      <stroke tool=\"pen\" color=\"{}\">\n        ",
+            color_hex
+        ));
         for &(x, y, w) in points {
             write!(xml, "{:.2} {:.2} {:.2} ", x, y, w).ok();
         }
@@ -584,8 +599,12 @@ pub extern "C" fn glaspen2_save_xoj() {
 
     // Gzip compress
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-    if encoder.write_all(xml.as_bytes()).is_err() { return; }
-    let Ok(compressed) = encoder.finish() else { return };
+    if encoder.write_all(xml.as_bytes()).is_err() {
+        return;
+    }
+    let Ok(compressed) = encoder.finish() else {
+        return;
+    };
 
     // Write to file
     let path = xoj_timestamped_path();
@@ -632,19 +651,19 @@ pub extern "C" fn glaspen2_load_settings_parts(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_save_bool_setting(key: *const c_char, val: c_int) {
-    if key.is_null() { return; }
-    let k = unsafe { CStr::from_ptr(key) }
-        .to_str()
-        .unwrap_or("");
+    if key.is_null() {
+        return;
+    }
+    let k = unsafe { CStr::from_ptr(key) }.to_str().unwrap_or("");
     runtime().block_on(db::save_setting(k, if val != 0 { "1" } else { "0" }));
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_load_bool_setting(key: *const c_char) -> c_int {
-    if key.is_null() { return 0; }
-    let k = unsafe { CStr::from_ptr(key) }
-        .to_str()
-        .unwrap_or("");
+    if key.is_null() {
+        return 0;
+    }
+    let k = unsafe { CStr::from_ptr(key) }.to_str().unwrap_or("");
     runtime()
         .block_on(db::load_setting(k))
         .and_then(|v| v.parse::<i32>().ok())
@@ -668,9 +687,7 @@ fn launch_agent_plist() -> std::path::PathBuf {
 fn launch_agent_program() -> String {
     std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| {
-            "/Applications/glaspen2.app/Contents/MacOS/glaspen2".to_string()
-        })
+        .unwrap_or_else(|_| "/Applications/glaspen2.app/Contents/MacOS/glaspen2".to_string())
 }
 
 #[unsafe(no_mangle)]
@@ -725,11 +742,7 @@ pub extern "C" fn glaspen2_set_launch_at_login(enable: c_int) -> c_int {
 pub extern "C" fn glaspen2_is_launch_at_login() -> c_int {
     #[cfg(target_os = "macos")]
     {
-        if launch_agent_plist().exists() {
-            1
-        } else {
-            0
-        }
+        if launch_agent_plist().exists() { 1 } else { 0 }
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -800,8 +813,13 @@ pub extern "C" fn glaspen2_save_with_background(
     bg_height: c_int,
     bg_stride: c_int,
 ) {
-    if drawing_data.is_null() || drawing_width <= 0 || drawing_height <= 0
-        || bg_data.is_null() || bg_width <= 0 || bg_height <= 0 {
+    if drawing_data.is_null()
+        || drawing_width <= 0
+        || drawing_height <= 0
+        || bg_data.is_null()
+        || bg_width <= 0
+        || bg_height <= 0
+    {
         return;
     }
     if drawing_stride < drawing_width * 4 || bg_stride < bg_width * 4 {
@@ -859,10 +877,7 @@ pub extern "C" fn glaspen2_save_with_background(
 
     let path = timestamped_path();
     match img.save(&path) {
-        Ok(_) => println!(
-            "[glaspen2] Saved (with background) to {}",
-            path.display()
-        ),
+        Ok(_) => println!("[glaspen2] Saved (with background) to {}", path.display()),
         Err(e) => eprintln!("[glaspen2] Save failed: {}", e),
     }
 }
@@ -921,9 +936,17 @@ pub(crate) fn build_cropped_svg() -> Option<String> {
         if strokes.is_empty() {
             return None;
         }
-        strokes.iter().map(|s| {
-            (s.r, s.g, s.b, s.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect())
-        }).collect()
+        strokes
+            .iter()
+            .map(|s| {
+                (
+                    s.r,
+                    s.g,
+                    s.b,
+                    s.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect(),
+                )
+            })
+            .collect()
     };
     let mut bx_min = f64::MAX;
     let mut by_min = f64::MAX;
@@ -931,10 +954,18 @@ pub(crate) fn build_cropped_svg() -> Option<String> {
     let mut by_max = f64::MIN;
     for (_, _, _, points) in snapshot.iter() {
         for &(x, y, _) in points {
-            if x < bx_min { bx_min = x; }
-            if y < by_min { by_min = y; }
-            if x > bx_max { bx_max = x; }
-            if y > by_max { by_max = y; }
+            if x < bx_min {
+                bx_min = x;
+            }
+            if y < by_min {
+                by_min = y;
+            }
+            if x > bx_max {
+                bx_max = x;
+            }
+            if y > by_max {
+                by_max = y;
+            }
         }
     }
     let pad = 10.0;
@@ -1044,7 +1075,7 @@ pub extern "C" fn glaspen2_save_gif_cropped(
     }
     let w = surface_w as u32;
     let h = surface_h as u32;
-    let scale = surface_scale.max(0.5).min(4.0);
+    let scale = surface_scale.clamp(0.5, 4.0);
     let stride = surface_stride as usize;
     let raw = unsafe { slice::from_raw_parts(surface_data, stride * h as usize) };
 
@@ -1060,10 +1091,18 @@ pub extern "C" fn glaspen2_save_gif_cropped(
         let mut by_max = f64::MIN;
         for s in strokes.iter() {
             for &(x, y, _, _) in &s.points {
-                if x < bx_min { bx_min = x; }
-                if y < by_min { by_min = y; }
-                if x > bx_max { bx_max = x; }
-                if y > by_max { by_max = y; }
+                if x < bx_min {
+                    bx_min = x;
+                }
+                if y < by_min {
+                    by_min = y;
+                }
+                if x > bx_max {
+                    bx_max = x;
+                }
+                if y > by_max {
+                    by_max = y;
+                }
             }
         }
         // Scale to physical surface coordinates
@@ -1078,10 +1117,21 @@ pub extern "C" fn glaspen2_save_gif_cropped(
         let by_max_u = ((by_max as u32) + pad).min(h.saturating_sub(1));
         (bx_min_u, by_min_u, bx_max_u, by_max_u)
     };
-    let crop_w = if bx_max_u > bx_min_u { bx_max_u - bx_min_u + 1 } else { 1 };
-    let crop_h = if by_max_u > by_min_u { by_max_u - by_min_u + 1 } else { 1 };
+    let crop_w = if bx_max_u > bx_min_u {
+        bx_max_u - bx_min_u + 1
+    } else {
+        1
+    };
+    let crop_h = if by_max_u > by_min_u {
+        by_max_u - by_min_u + 1
+    } else {
+        1
+    };
 
-    let Some(crop_bytes) = (crop_w as usize).checked_mul(crop_h as usize).and_then(|v| v.checked_mul(4)) else {
+    let Some(crop_bytes) = (crop_w as usize)
+        .checked_mul(crop_h as usize)
+        .and_then(|v| v.checked_mul(4))
+    else {
         return 0;
     };
     let mut flat: Vec<u8> = Vec::with_capacity(crop_bytes);
@@ -1104,9 +1154,12 @@ pub extern "C" fn glaspen2_save_gif_cropped(
         }
     }
     // Downscale to 50% for smaller GIF (ceil so no edge column/row is dropped)
-    let gif_w = ((crop_w + 1) / 2).max(1);
-    let gif_h = ((crop_h + 1) / 2).max(1);
-    let Some(gif_bytes) = (gif_w as usize).checked_mul(gif_h as usize).and_then(|v| v.checked_mul(4)) else {
+    let gif_w = crop_w.div_ceil(2).max(1);
+    let gif_h = crop_h.div_ceil(2).max(1);
+    let Some(gif_bytes) = (gif_w as usize)
+        .checked_mul(gif_h as usize)
+        .and_then(|v| v.checked_mul(4))
+    else {
         return 0;
     };
     let mut gif_pixels: Vec<u8> = Vec::with_capacity(gif_bytes);
@@ -1132,7 +1185,9 @@ pub extern "C" fn glaspen2_save_gif_cropped(
         let mut opaque_used = [false; 128];
         for (i, &idx) in indices.iter().enumerate() {
             let idx = idx as usize;
-            if idx >= 128 { continue; }
+            if idx >= 128 {
+                continue;
+            }
             if gif_pixels[i * 4 + 3] == 0 {
                 idx_counts[idx] += 1;
             } else {
@@ -1151,15 +1206,12 @@ pub extern "C" fn glaspen2_save_gif_cropped(
     };
     let palette = quantizer.color_map_rgba();
     let gif_palette: Vec<u8> = (0..128)
-        .flat_map(|i| {
-            [palette[i * 4], palette[i * 4 + 1], palette[i * 4 + 2]]
-        })
+        .flat_map(|i| [palette[i * 4], palette[i * 4 + 1], palette[i * 4 + 2]])
         .collect();
     let mut gif_data = Vec::new();
     {
         let mut enc =
-            gif::Encoder::new(&mut gif_data, gif_w as u16, gif_h as u16, &gif_palette)
-                .unwrap();
+            gif::Encoder::new(&mut gif_data, gif_w as u16, gif_h as u16, &gif_palette).unwrap();
         let frame = gif::Frame {
             width: gif_w as u16,
             height: gif_h as u16,
@@ -1305,8 +1357,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     const N_DRAW: usize = 60;
     const N_HOLD: usize = 5;
     let n_frames = N_DRAW + N_HOLD;
-    let draw_delay =
-        ((total_active.min(5.0).max(0.5) / N_DRAW as f64) * 100.0).max(2.0) as u16;
+    let draw_delay = ((total_active.clamp(0.5, 5.0) / N_DRAW as f64) * 100.0).max(2.0) as u16;
 
     // ── Phase 3: parallel frame rendering (rayon global thread pool) ──
     use rayon::prelude::*;
@@ -1321,21 +1372,32 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
         .into_par_iter()
         .map(|fi| {
             let is_hold = fi >= N_DRAW;
-            let cutoff =
-                (fi.min(N_DRAW - 1) as f64 / N_DRAW as f64) * total_active;
+            let cutoff = (fi.min(N_DRAW - 1) as f64 / N_DRAW as f64) * total_active;
             let delay = if is_hold { 100u16 } else { draw_delay };
 
             let (flat, _ok) = render_gif_frame(
-                &gif_strokes, &seg_offset, bw, bh, bx_min, by_min, gif_w, gif_h, fi,
-                is_hold, cutoff, delay,
+                &gif_strokes,
+                &seg_offset,
+                bw,
+                bh,
+                bx_min,
+                by_min,
+                gif_w,
+                gif_h,
+                fi,
+                is_hold,
+                cutoff,
+                delay,
             );
             (fi, flat, delay)
         })
         .collect();
 
     frame_results.sort_by_key(|&(fi, _, _)| fi);
-    let frame_pixels: Vec<(Vec<u8>, u16)> =
-        frame_results.into_iter().map(|(_, px, d)| (px, d)).collect();
+    let frame_pixels: Vec<(Vec<u8>, u16)> = frame_results
+        .into_iter()
+        .map(|(_, px, d)| (px, d))
+        .collect();
 
     // ── Phase 4: palette ──
     let all_pixels: Vec<u8> = frame_pixels
@@ -1349,9 +1411,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     let quantizer = color_quant::NeuQuant::new(30, 64, &all_pixels);
     let palette = quantizer.color_map_rgba();
     let gif_palette: Vec<u8> = (0..64)
-        .flat_map(|i| {
-            [palette[i * 4], palette[i * 4 + 1], palette[i * 4 + 2]]
-        })
+        .flat_map(|i| [palette[i * 4], palette[i * 4 + 1], palette[i * 4 + 2]])
         .collect();
 
     // Per-frame palette indices (computed once, reused for transparency + encoding)
@@ -1398,12 +1458,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     // ── Phase 5: encode GIF ──
     let mut gif_data = Vec::new();
     {
-        let mut enc = match gif::Encoder::new(
-            &mut gif_data,
-            gif_w,
-            gif_h,
-            &gif_palette,
-        ) {
+        let mut enc = match gif::Encoder::new(&mut gif_data, gif_w, gif_h, &gif_palette) {
             Ok(e) => e,
             Err(_) => return 0,
         };
@@ -1480,9 +1535,8 @@ fn render_gif_frame(
                 .collect()
         } else if cutoff > seg_start {
             let local_frac = (cutoff - seg_start) / (seg_end - seg_start);
-            let local_cut = s.points[0].3
-                + local_frac
-                    * (s.points[s.points.len() - 1].3 - s.points[0].3);
+            let local_cut =
+                s.points[0].3 + local_frac * (s.points[s.points.len() - 1].3 - s.points[0].3);
             s.points
                 .iter()
                 .take_while(|&&(_, _, _, t)| t <= local_cut)
@@ -1524,7 +1578,7 @@ fn render_gif_frame(
                 let off = (sy * stride + sx) as usize * 4;
                 flat.push(*bits.add(off + 2)); // R
                 flat.push(*bits.add(off + 1)); // G
-                flat.push(*bits.add(off));     // B
+                flat.push(*bits.add(off)); // B
                 flat.push(*bits.add(off + 3)); // A
             }
         }
@@ -1547,10 +1601,7 @@ pub extern "C" fn glaspen2_now_secs() -> c_double {
 
 /// Get the time component of a single stroke point. Used by Windows Flutter overlay.
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_get_stroke_point_time(
-    idx: c_int,
-    pidx: c_int,
-) -> c_double {
+pub extern "C" fn glaspen2_get_stroke_point_time(idx: c_int, pidx: c_int) -> c_double {
     let strokes = STROKES.lock().unwrap();
     strokes
         .get(idx as usize)
@@ -1651,17 +1702,21 @@ pub extern "C" fn glaspen2_ocr_page(
         let cy = tb.y.saturating_sub(pad);
         let cw = (tb.w + pad * 2).min(w - cx);
         let ch = (tb.h + pad * 2).min(h - cy);
-        if cw < 4 || ch < 4 { continue; }
+        if cw < 4 || ch < 4 {
+            continue;
+        }
 
         let crop = ocr::det::crop_pixels(pixel_slice, w, cx, cy, cw, ch);
         let text = ocr::rec::recognize(&crop, cw, ch);
         if !text.is_empty() {
-            if i > 0 { full_text.push('\n'); }
+            if i > 0 {
+                full_text.push('\n');
+            }
             full_text.push_str(&text);
 
             // Per-char positions (estimate by dividing box width evenly)
             let chars: Vec<char> = text.chars().collect();
-            if chars.len() > 0 {
+            if !chars.is_empty() {
                 let char_w = tb.w as f64 / chars.len() as f64;
                 for (ci, ch) in chars.iter().enumerate() {
                     ocr_boxes.push(OcrBox {
@@ -1735,8 +1790,7 @@ pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
 /// Caller frees with glaspen2_free_c_string. NULL when the page is unknown.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_page_info_json(screen_id: i64) -> *mut c_char {
-    let Some((nth, date_total, pos, total, created)) =
-        runtime().block_on(db::page_info(screen_id))
+    let Some((nth, date_total, pos, total, created)) = runtime().block_on(db::page_info(screen_id))
     else {
         return std::ptr::null_mut();
     };
@@ -1760,10 +1814,14 @@ pub extern "C" fn glaspen2_page_info_json(screen_id: i64) -> *mut c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_search_ocr_json(query: *const c_char) -> *mut c_char {
     if query.is_null() {
-        return CString::new("[]".to_string()).unwrap_or_default().into_raw();
+        return CString::new("[]".to_string())
+            .unwrap_or_default()
+            .into_raw();
     }
     let Ok(q) = unsafe { CStr::from_ptr(query) }.to_str() else {
-        return CString::new("[]".to_string()).unwrap_or_default().into_raw();
+        return CString::new("[]".to_string())
+            .unwrap_or_default()
+            .into_raw();
     };
     if q.is_empty() {
         return glaspen2_list_screens_json();
@@ -1798,7 +1856,11 @@ pub extern "C" fn glaspen2_render_thumbnail(
     out_len: *mut c_int,
 ) -> *mut c_uchar {
     if w <= 0 || h <= 0 || max_size <= 0 || out_len.is_null() {
-        if !out_len.is_null() { unsafe { *out_len = 0; } }
+        if !out_len.is_null() {
+            unsafe {
+                *out_len = 0;
+            }
+        }
         return std::ptr::null_mut();
     }
 
@@ -1813,7 +1875,9 @@ pub extern "C" fn glaspen2_render_thumbnail(
     // Render from a local stroke list loaded from the DB — no global state.
     let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
     if strokes.is_empty() {
-        unsafe { *out_len = 0; }
+        unsafe {
+            *out_len = 0;
+        }
         return std::ptr::null_mut();
     }
     let local: Vec<Stroke> = strokes
@@ -1830,11 +1894,18 @@ pub extern "C" fn glaspen2_render_thumbnail(
     // Render full resolution → scale down (preserves stroke proportions)
     let renderer = match crate::cairo_dl::CairoRenderer::create_owned(w, h) {
         Some(r) => r,
-        None => { unsafe { *out_len = 0; } return std::ptr::null_mut(); }
+        None => {
+            unsafe {
+                *out_len = 0;
+            }
+            return std::ptr::null_mut();
+        }
     };
     renderer.clear();
     for s in &local {
-        if s.points.len() < 2 { continue; }
+        if s.points.len() < 2 {
+            continue;
+        }
         let color = (
             (s.r * 255.0) as u8,
             (s.g * 255.0) as u8,
@@ -1856,8 +1927,13 @@ pub extern "C" fn glaspen2_render_thumbnail(
     let bits = renderer.bits();
     let stride = w as u32;
     let (tw_u, th_u) = (tw as u32, th as u32);
-    let Some(cap) = (tw_u as usize).checked_mul(th_u as usize).and_then(|v| v.checked_mul(4)) else {
-        unsafe { *out_len = 0; }
+    let Some(cap) = (tw_u as usize)
+        .checked_mul(th_u as usize)
+        .and_then(|v| v.checked_mul(4))
+    else {
+        unsafe {
+            *out_len = 0;
+        }
         return std::ptr::null_mut();
     };
     let mut rgba = Vec::with_capacity(cap);
@@ -1868,7 +1944,10 @@ pub extern "C" fn glaspen2_render_thumbnail(
             for x in 0..tw_u {
                 let sx0 = (x as u64 * w as u64 / tw_u as u64) as i32;
                 let sx1 = (((x + 1) as u64 * w as u64 / tw_u as u64) as i32).max(sx0 + 1);
-                let mut sr = 0u32; let mut sg = 0u32; let mut sb = 0u32; let mut sa = 0u32;
+                let mut sr = 0u32;
+                let mut sg = 0u32;
+                let mut sb = 0u32;
+                let mut sa = 0u32;
                 let mut n = 0u32;
                 for py in sy0..sy1 {
                     for px in sx0..sx1 {
@@ -1880,7 +1959,9 @@ pub extern "C" fn glaspen2_render_thumbnail(
                         n += 1;
                     }
                 }
-                if n == 0 { n = 1; }
+                if n == 0 {
+                    n = 1;
+                }
                 rgba.push((sr / n) as u8);
                 rgba.push((sg / n) as u8);
                 rgba.push((sb / n) as u8);
@@ -1891,13 +1972,20 @@ pub extern "C" fn glaspen2_render_thumbnail(
 
     let png_bytes = match encode_png_rgba(&rgba, tw_u, th_u) {
         Some(b) => b,
-        None => { unsafe { *out_len = 0; } return std::ptr::null_mut(); }
+        None => {
+            unsafe {
+                *out_len = 0;
+            }
+            return std::ptr::null_mut();
+        }
     };
 
     let len = png_bytes.len() as c_int;
     let ptr = png_bytes.as_ptr() as *mut c_uchar;
     std::mem::forget(png_bytes);
-    unsafe { *out_len = len; }
+    unsafe {
+        *out_len = len;
+    }
     ptr
 }
 
@@ -1905,7 +1993,9 @@ pub extern "C" fn glaspen2_render_thumbnail(
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_free_rust_bytes(ptr: *mut c_uchar, len: c_int) {
     if !ptr.is_null() && len > 0 {
-        unsafe { let _ = Vec::from_raw_parts(ptr, len as usize, len as usize); }
+        unsafe {
+            let _ = Vec::from_raw_parts(ptr, len as usize, len as usize);
+        }
     }
 }
 
@@ -1929,7 +2019,12 @@ mod tests {
 
     #[test]
     fn test_decimate_short_list_unchanged() {
-        let input = pts(&[(0.0, 0.0, 2.0), (1.0, 1.0, 3.0), (2.0, 0.0, 2.0), (3.0, 1.0, 3.0)]);
+        let input = pts(&[
+            (0.0, 0.0, 2.0),
+            (1.0, 1.0, 3.0),
+            (2.0, 0.0, 2.0),
+            (3.0, 1.0, 3.0),
+        ]);
         assert_eq!(decimate(&input), input);
     }
 
@@ -1942,7 +2037,13 @@ mod tests {
     #[test]
     fn test_decimate_drops_close_points() {
         // 0.3/0.6 away from (0,0) with same width → dropped; 10.0/20.0 kept
-        let input = pts(&[(0.0, 0.0, 2.0), (0.3, 0.0, 2.0), (0.6, 0.0, 2.0), (10.0, 0.0, 2.0), (20.0, 0.0, 2.0)]);
+        let input = pts(&[
+            (0.0, 0.0, 2.0),
+            (0.3, 0.0, 2.0),
+            (0.6, 0.0, 2.0),
+            (10.0, 0.0, 2.0),
+            (20.0, 0.0, 2.0),
+        ]);
         let out = decimate(&input);
         assert_eq!(out.len(), 3);
         assert_eq!(out[0], input[0]);
@@ -1953,16 +2054,32 @@ mod tests {
     #[test]
     fn test_decimate_keeps_width_changes() {
         // width jumps 1.0 → 4.0 (>12%) even at close distance → kept
-        let input = pts(&[(0.0, 0.0, 1.0), (0.2, 0.0, 1.0), (0.4, 0.0, 4.0), (0.6, 0.0, 4.0), (10.0, 0.0, 1.0)]);
+        let input = pts(&[
+            (0.0, 0.0, 1.0),
+            (0.2, 0.0, 1.0),
+            (0.4, 0.0, 4.0),
+            (0.6, 0.0, 4.0),
+            (10.0, 0.0, 1.0),
+        ]);
         let out = decimate(&input);
-        assert!(out.iter().any(|p| p.0 == 0.4 && p.2 == 4.0), "width jump must be kept: {:?}", out);
+        assert!(
+            out.iter().any(|p| p.0 == 0.4 && p.2 == 4.0),
+            "width jump must be kept: {:?}",
+            out
+        );
         assert_eq!(*out.last().unwrap(), *input.last().unwrap());
     }
 
     #[test]
     fn test_decimate_keeps_last_point() {
         // everything within threshold — first and last survive
-        let input = pts(&[(0.0, 0.0, 2.0), (0.1, 0.1, 2.0), (0.2, 0.2, 2.0), (0.3, 0.3, 2.0), (0.4, 0.4, 2.0)]);
+        let input = pts(&[
+            (0.0, 0.0, 2.0),
+            (0.1, 0.1, 2.0),
+            (0.2, 0.2, 2.0),
+            (0.3, 0.3, 2.0),
+            (0.4, 0.4, 2.0),
+        ]);
         let out = decimate(&input);
         assert_eq!(out.len(), 2);
         assert_eq!(out[0], input[0]);

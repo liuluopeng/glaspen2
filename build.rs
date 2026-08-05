@@ -8,10 +8,11 @@ fn main() {
         println!("cargo:rerun-if-changed=src/macos/glaspen2.m");
         println!("cargo:rerun-if-changed=flutter_settings/lib/main.dart");
         println!("cargo:rerun-if-changed=flutter_settings/pubspec.yaml");
-        for entry in std::fs::read_dir("flutter_settings/assets").unwrap() {
-            if let Ok(e) = entry {
-                println!("cargo:rerun-if-changed={}", e.path().display());
-            }
+        for e in std::fs::read_dir("flutter_settings/assets")
+            .unwrap()
+            .flatten()
+        {
+            println!("cargo:rerun-if-changed={}", e.path().display());
         }
 
         // Auto-rebuild Flutter macOS framework whenever this build script
@@ -50,10 +51,13 @@ fn main() {
         );
 
         let status = std::process::Command::new("clang")
-            .args(&["-c", "src/macos/glaspen2.m", "-o", &obj_path])
-            .args(&["-fobjc-arc", "-O2"])
+            .args(["-c", "src/macos/glaspen2.m", "-o", &obj_path])
+            .args(["-fobjc-arc", "-O2"])
             .arg("-I/opt/homebrew/Cellar/cairo/1.18.4/include")
-            .arg(format!("-F{}/FlutterMacOS.xcframework/macos-arm64_x86_64", flutter_fw_dir))
+            .arg(format!(
+                "-F{}/FlutterMacOS.xcframework/macos-arm64_x86_64",
+                flutter_fw_dir
+            ))
             .status()
             .expect("Failed to run clang");
 
@@ -66,7 +70,7 @@ fn main() {
         // Create an archive from the object file using ar
         let lib_path = format!("{}/libglaspen2_objc.a", out_dir);
         let status = std::process::Command::new("ar")
-            .args(&["crus", &lib_path, &obj_path])
+            .args(["crus", &lib_path, &obj_path])
             .status()
             .expect("Failed to run ar");
 
@@ -78,10 +82,7 @@ fn main() {
             "{}/FlutterMacOS.xcframework/macos-arm64_x86_64",
             flutter_fw_dir
         );
-        let app_search = format!(
-            "{}/App.xcframework/macos-arm64_x86_64",
-            flutter_fw_dir
-        );
+        let app_search = format!("{}/App.xcframework/macos-arm64_x86_64", flutter_fw_dir);
         println!("cargo:rustc-link-search=framework={}", flutter_search);
         println!("cargo:rustc-link-search=framework={}", app_search);
         println!("cargo:rustc-link-lib=framework=FlutterMacOS");
@@ -114,14 +115,24 @@ fn main() {
 
         // Auto-build Flutter Windows app (like macOS does)
         let flutter_dir = std::path::Path::new(&manifest_dir).join("flutter_settings");
-        let flutter_exe = flutter_dir.join("build").join("windows").join("x64")
-            .join("runner").join("Release").join("glaspen2_settings.exe");
-        let flutter_debug_exe = flutter_dir.join("build").join("windows").join("x64")
-            .join("runner").join("Debug").join("glaspen2_settings.exe");
+        let flutter_exe = flutter_dir
+            .join("build")
+            .join("windows")
+            .join("x64")
+            .join("runner")
+            .join("Release")
+            .join("glaspen2_settings.exe");
+        let flutter_debug_exe = flutter_dir
+            .join("build")
+            .join("windows")
+            .join("x64")
+            .join("runner")
+            .join("Debug")
+            .join("glaspen2_settings.exe");
 
         // Determine flutter command (prefer fvm)
         let flutter_cmd = if std::process::Command::new("fvm")
-            .args(&["flutter", "--version"])
+            .args(["flutter", "--version"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
@@ -169,7 +180,10 @@ fn main() {
                     println!("cargo:warning=Flutter build succeeded");
                 }
                 Ok(s) => {
-                    println!("cargo:warning=Flutter build failed (exit code {:?})", s.code());
+                    println!(
+                        "cargo:warning=Flutter build failed (exit code {:?})",
+                        s.code()
+                    );
                 }
                 Err(e) => {
                     println!("cargo:warning=Failed to run flutter build: {}", e);
@@ -179,29 +193,57 @@ fn main() {
 
         // Tell Rust where to find the Flutter settings exe
         if flutter_exe.exists() {
-            println!("cargo:rustc-env=GLASPEN2_FLUTTER_EXE={}", flutter_exe.display());
+            println!(
+                "cargo:rustc-env=GLASPEN2_FLUTTER_EXE={}",
+                flutter_exe.display()
+            );
             println!("cargo:warning=Flutter settings: {}", flutter_exe.display());
         } else if flutter_debug_exe.exists() {
-            println!("cargo:rustc-env=GLASPEN2_FLUTTER_EXE={}", flutter_debug_exe.display());
-            println!("cargo:warning=Flutter settings (debug): {}", flutter_debug_exe.display());
+            println!(
+                "cargo:rustc-env=GLASPEN2_FLUTTER_EXE={}",
+                flutter_debug_exe.display()
+            );
+            println!(
+                "cargo:warning=Flutter settings (debug): {}",
+                flutter_debug_exe.display()
+            );
         }
 
         // ── Copy Cairo DLLs to target dir (next to the exe) ──
         // 优先项目内自带 vendor/win/cairo(不依赖用户安装 Rnote/MSYS2),
         // 缺失时回退到 MSYS2 目录。
         let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
-        let target_dir = std::path::Path::new(&manifest_dir).join("target").join(&profile);
-        let vendor_dir = std::path::Path::new(&manifest_dir).join("vendor").join("win").join("cairo");
+        let target_dir = std::path::Path::new(&manifest_dir)
+            .join("target")
+            .join(&profile);
+        let vendor_dir = std::path::Path::new(&manifest_dir)
+            .join("vendor")
+            .join("win")
+            .join("cairo");
         let msys_bin = std::path::Path::new("C:/msys64/mingw64/bin");
         let cairo_dlls = [
-            "libcairo-2.dll", "libpixman-1-0.dll", "libpng16-16.dll",
-            "zlib1.dll", "libfontconfig-1.dll", "libfreetype-6.dll",
-            "libexpat-1.dll", "libglib-2.0-0.dll", "libharfbuzz-0.dll",
-            "libiconv-2.dll", "libintl-8.dll", "libpcre2-8-0.dll",
-            "libbz2-1.dll", "libbrotlicommon.dll", "libbrotlidec.dll",
-            "libffi-8.dll", "libgraphite2.dll",
-            "libgcc_s_seh-1.dll", "libwinpthread-1.dll", "libstdc++-6.dll",
-            "libdatrie-1.dll", "libfribidi-0.dll",
+            "libcairo-2.dll",
+            "libpixman-1-0.dll",
+            "libpng16-16.dll",
+            "zlib1.dll",
+            "libfontconfig-1.dll",
+            "libfreetype-6.dll",
+            "libexpat-1.dll",
+            "libglib-2.0-0.dll",
+            "libharfbuzz-0.dll",
+            "libiconv-2.dll",
+            "libintl-8.dll",
+            "libpcre2-8-0.dll",
+            "libbz2-1.dll",
+            "libbrotlicommon.dll",
+            "libbrotlidec.dll",
+            "libffi-8.dll",
+            "libgraphite2.dll",
+            "libgcc_s_seh-1.dll",
+            "libwinpthread-1.dll",
+            "libstdc++-6.dll",
+            "libdatrie-1.dll",
+            "libfribidi-0.dll",
         ];
         let src_root: &std::path::Path = if vendor_dir.exists() {
             println!("cargo:warning=Cairo DLLs from vendor/win/cairo");
@@ -221,10 +263,10 @@ fn main() {
                     // Only copy if source is newer
                     let src_time = std::fs::metadata(&src).and_then(|m| m.modified()).ok();
                     let dst_time = std::fs::metadata(&dst).and_then(|m| m.modified()).ok();
-                    if src_time > dst_time {
-                        if let Err(e) = std::fs::copy(&src, &dst) {
-                            println!("cargo:warning=Failed to copy {}: {}", dll, e);
-                        }
+                    if src_time > dst_time
+                        && let Err(e) = std::fs::copy(&src, &dst)
+                    {
+                        println!("cargo:warning=Failed to copy {}: {}", dll, e);
                     }
                 } else {
                     if let Err(e) = std::fs::copy(&src, &dst) {
@@ -240,26 +282,27 @@ fn main() {
         let ort_root = std::env::var("LOCALAPPDATA")
             .map(|l| std::path::Path::new(&l).join("ort.pyke.io").join("dfbin"))
             .unwrap_or_default();
-        if ort_root.exists() {
-            if let Ok(dirs) = std::fs::read_dir(&ort_root) {
-                for d in dirs.flatten() {
-                    if !d.path().is_dir() {
-                        continue;
-                    }
-                    let dml = d.path().join("DirectML.dll");
-                    let dst = target_dir.join("DirectML.dll");
-                    if dml.exists() {
-                        if !dst.exists() || std::fs::metadata(&dml).and_then(|m| m.modified()).ok()
+        if ort_root.exists()
+            && let Ok(dirs) = std::fs::read_dir(&ort_root)
+        {
+            for d in dirs.flatten() {
+                if !d.path().is_dir() {
+                    continue;
+                }
+                let dml = d.path().join("DirectML.dll");
+                let dst = target_dir.join("DirectML.dll");
+                if dml.exists() {
+                    if !dst.exists()
+                        || std::fs::metadata(&dml).and_then(|m| m.modified()).ok()
                             > std::fs::metadata(&dst).and_then(|m| m.modified()).ok()
-                        {
-                            if let Err(e) = std::fs::copy(&dml, &dst) {
-                                println!("cargo:warning=Failed to copy DirectML.dll: {}", e);
-                            } else {
-                                println!("cargo:warning=DirectML.dll copied for OCR");
-                            }
+                    {
+                        if let Err(e) = std::fs::copy(&dml, &dst) {
+                            println!("cargo:warning=Failed to copy DirectML.dll: {}", e);
+                        } else {
+                            println!("cargo:warning=DirectML.dll copied for OCR");
                         }
-                        break;
                     }
+                    break;
                 }
             }
         }

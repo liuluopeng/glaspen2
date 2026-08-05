@@ -80,7 +80,7 @@ mod tests {
     fn test_screen_id_set_and_get() {
         set_current_screen_id(42);
         assert_eq!(current_screen_id(), 42);
-        set_current_screen_id(0);  // reset for other tests
+        set_current_screen_id(0); // reset for other tests
     }
 
     #[test]
