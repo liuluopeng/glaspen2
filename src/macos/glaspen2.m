@@ -1295,8 +1295,9 @@ static void show_settings_panel(void) {
                                                          nibName:nil
                                                           bundle:nil];
 
-    // Create window — fixed size (520×850), matching the Windows runner.
-    NSRect frame = NSMakeRect(0, 0, 520, 850);
+    // Create window — fixed size, on the large 3440×1440 display a small
+    // panel looks tiny. 720×1000 is comfortable; resizable.
+    NSRect frame = NSMakeRect(0, 0, 720, 1000);
     NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
         backing:NSBackingStoreBuffered defer:NO];
@@ -1309,8 +1310,7 @@ static void show_settings_panel(void) {
     [window setDelegate:g_settings_delegate];
 
     // Standard embedding: FlutterViewController owns the content view so the
-    // device pixel ratio / backing scale is applied correctly (addSubview to
-    // a plain contentView rendered the UI at 1x on retina — "内容偏小").
+    // device pixel ratio / backing scale is applied correctly.
     window.contentViewController = g_flutter_vc;
 
     // Switch to Regular mode so the window can get focus
