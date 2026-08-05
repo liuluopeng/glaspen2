@@ -71,9 +71,7 @@ fn main() {
             "-F{}/FlutterMacOS.xcframework/macos-arm64_x86_64",
             flutter_fw_dir
         ));
-        let status = clang
-            .status()
-            .expect("Failed to run clang");
+        let status = clang.status().expect("Failed to run clang");
 
         assert!(status.success(), "clang failed to compile glaspen2.m");
 

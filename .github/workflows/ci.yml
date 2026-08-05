@@ -38,9 +38,13 @@ jobs:
           channel: stable
       # Pre-build the Release framework the linker needs (build.rs's own
       # auto-build uses fvm which is not installed on CI; the existing
-      # framework is simply linked).
+      # framework is simply linked). GitHub runners have no Apple signing
+      # identity, so code signing is disabled for the framework build.
       - name: Build Flutter macOS framework
         working-directory: flutter_settings
+        env:
+          CODE_SIGN_IDENTITY: ""
+          CODE_SIGNING_REQUIRED: "NO"
         run: |
           flutter pub get
           flutter build macos-framework --release
