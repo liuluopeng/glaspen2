@@ -62,6 +62,8 @@ pub const CMD_TOGGLE_GRID: usize = 652;
 pub const CMD_TOGGLE_FROSTED: usize = 653;
 pub const CMD_TOGGLE_ETHEREAL: usize = 654;
 pub const CMD_TOGGLE_PRESSURE_MONITOR: usize = 655;
+pub const CMD_TOGGLE_OCR: usize = 660;
+pub const CMD_OCR_PROGRESS: usize = 870;
 pub const CMD_UNDO: usize = 800;
 pub const CMD_QUIT: usize = 999;
 
@@ -89,6 +91,8 @@ pub struct DrawState {
     pub grid_follow_strokes: bool,
     /// 压力监控 HUD 是否开启
     pub pressure_monitor: bool,
+    /// OCR 是否开启(首次开启时下载模型)
+    pub ocr_enabled: bool,
 }
 
 // ── 共享状态(仅消息循环线程访问) ──
@@ -824,6 +828,8 @@ pub fn run() {
             .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
         let pressure_monitor = crate::runtime().block_on(crate::db::load_setting("pressureMonitor"))
             .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
+        let ocr_enabled = crate::runtime().block_on(crate::db::load_setting("ocrEnabled"))
+            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
 
         // HUD 窗口(通知居中 + 压力监控左上角)
         {
@@ -836,7 +842,6 @@ pub fn run() {
                 pm_visible: pressure_monitor,
             }));
             hud_toggle_pressure(pressure_monitor);
-            // TODO: 临时诊断通知,验证后删除
         }
 
         let mut canvas = OverlayCanvas::create(hwnd);
@@ -849,7 +854,7 @@ pub fn run() {
             enabled: true, show_rainbow: false,
             outline_enabled, show_grid, frosted,
             ethereal, grid_follow_strokes,
-            pressure_monitor,
+            pressure_monitor, ocr_enabled,
         };
 
         let mut state = OverlayState {
@@ -1759,6 +1764,86 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                 hud_toggle_pressure(on);
                 hud_notify(if on { "压力监控已开启" } else { "压力监控已关闭" });
             }
+            x if x == CMD_TOGGLE_OCR => {
+                let on = param_on(state.draw.ocr_enabled);
+                state.draw.ocr_enabled = on;
+                crate::runtime().block_on(crate::db::save_setting(
+                    "ocrEnabled",
+                    if on { "1" } else { "0" },
+                ));
+                if on {
+                    // 首次开启 OCR:后台确保模型存在(存在则立即就绪,缺失则下载)
+                    hud_notify("正在准备 OCR 模型...");
+                    let hwnd = state.canvas.hwnd.0 as isize;
+                    std::thread::spawn(move || {
+                        let r = crate::export::glaspen2_ocr_ensure_models();
+                        if r == 0 {
+                            return; // 模型已就绪
+                        }
+                        if r < 0 {
+                            unsafe {
+                                let _ = PostMessageW(
+                                    Some(HWND(hwnd as *mut _)),
+                                    WM_TRAY_COMMAND,
+                                    WPARAM(CMD_OCR_PROGRESS),
+                                    LPARAM(1),
+                                );
+                            }
+                            return;
+                        }
+                        // 轮询下载进度并通知主线程
+                        loop {
+                            let p = crate::export::glaspen2_ocr_download_progress();
+                            let param: usize = if p >= 100.0 {
+                                2 // done
+                            } else if p <= -2.0 {
+                                1 // failed
+                            } else if p >= 0.0 {
+                                100 + p as usize // progress
+                            } else {
+                                0 // idle, keep waiting
+                            };
+                            if param == 2 || param == 1 {
+                                unsafe {
+                                    let _ = PostMessageW(
+                                        Some(HWND(hwnd as *mut _)),
+                                        WM_TRAY_COMMAND,
+                                        WPARAM(CMD_OCR_PROGRESS),
+                                        LPARAM(param as isize),
+                                    );
+                                }
+                                break;
+                            }
+                            if param >= 100 {
+                                unsafe {
+                                    let _ = PostMessageW(
+                                        Some(HWND(hwnd as *mut _)),
+                                        WM_TRAY_COMMAND,
+                                        WPARAM(CMD_OCR_PROGRESS),
+                                        LPARAM(param as isize),
+                                    );
+                                }
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                        }
+                    });
+                }
+            }
+            x if x == CMD_OCR_PROGRESS => {
+                match param {
+                    1 => {
+                        let err = crate::ocr::download::last_error();
+                        if err.is_empty() {
+                            hud_notify("OCR 模型下载失败");
+                        } else {
+                            hud_notify(&format!("OCR 模型下载失败: {}", err));
+                        }
+                    }
+                    2 => hud_notify("OCR 模型下载完成"),
+                    p if p >= 100 => hud_notify(&format!("下载 OCR 模型 {}%", p - 100)),
+                    _ => {}
+                }
+            }
             x if x == CMD_TOGGLE_ENABLED => toggle_enabled(state),
             x if x == CMD_QUIT => {
                 unsafe { let _ = DestroyWindow(state.canvas.hwnd); }
@@ -2326,6 +2411,11 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         } else if key == "export_animated_gif" {
             let result = crate::export::glaspen2_save_animated_gif();
             eprintln!("[pipe] animated GIF export: {}", if result != 0 { "OK" } else { "FAILED" });
+            hud_notify(if result != 0 { "动画 GIF 已保存到桌面" } else { "动画 GIF 导出失败" });
+        } else if key == "export_pdf" {
+            let result = crate::export::glaspen2_export_pdf();
+            eprintln!("[pipe] PDF export: {}", if result != 0 { "OK" } else { "FAILED" });
+            hud_notify(if result != 0 { "PDF 已保存到桌面" } else { "PDF 导出失败" });
         } else if key == "color" {
             if let Some(val) = json_get_i64(line, "value") {
                 let idx = val as usize;
@@ -2372,10 +2462,10 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             }
         } else if key == "ocrEnabled" {
             if let Some(on) = json_get_bool(line, "value") {
-                crate::runtime().block_on(crate::db::save_setting(
-                    "ocrEnabled",
-                    if on { "1" } else { "0" },
-                ));
+                let cmd = CMD_TOGGLE_OCR;
+                let _ = unsafe {
+                    PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(if on { 1 } else { 0 }))
+                };
             }
         } else if key == "pressureMonitor" {
             if let Some(on) = json_get_bool(line, "value") {

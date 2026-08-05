@@ -169,22 +169,95 @@ fn download_one(
     let tmp = dir.join(format!("{}.part", filename));
     let dest = dir.join(filename);
 
-    let resp = ureq::get(url)
-        .call()
-        .map_err(|e| format!("{} 下载失败: {}", filename, e))?;
-    let total: u64 = resp
+    // 断点续传:已有 .part 的字节数
+    let mut offset = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+
+    // 自动重试(网络中断恢复),最多 3 次
+    let mut last_err: Option<String> = None;
+    for attempt in 0..3 {
+        match try_download_once(url, filename, &tmp, offset, expected_bytes, span_start, span_end) {
+            Ok(written) => {
+                offset = written;
+                last_err = None;
+                break;
+            }
+            Err(e) => {
+                // 保存已下载进度,下一轮 Range 续传
+                offset = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(offset);
+                last_err = Some(e);
+                if attempt < 2 {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
+            }
+        }
+    }
+    if let Some(e) = last_err {
+        return Err(e);
+    }
+
+    if offset != expected_bytes {
+        std::fs::remove_file(&tmp).ok();
+        return Err(format!("{} 下载不完整: 期望 {} 字节, 实际 {}", filename, expected_bytes, offset));
+    }
+    let hex = digest_to_hex(&Sha256::digest(std::fs::read(&tmp).map_err(|e| e.to_string())?));
+    if hex != expected_sha256 {
+        std::fs::remove_file(&tmp).ok();
+        return Err(format!("{} 校验失败 (sha256 不匹配): 期望 {} 实际 {}", filename, expected_sha256, hex));
+    }
+
+    std::fs::rename(&tmp, &dest)
+        .map_err(|e| format!("无法移动 {}: {}", tmp.display(), e))?;
+    Ok(())
+}
+
+/// 单次下载尝试:支持 Range 断点续传。返回累计已写入字节数。
+fn try_download_once(
+    url: &str,
+    filename: &str,
+    tmp: &std::path::Path,
+    offset: u64,
+    expected_bytes: u64,
+    span_start: f64,
+    span_end: f64,
+) -> Result<u64, String> {
+    use std::io::{Read, Seek, SeekFrom, Write};
+
+    let mut req = ureq::get(url);
+    if offset > 0 {
+        req = req.header("Range", &format!("bytes={}-", offset));
+    }
+    let resp = req.call().map_err(|e| format!("{} 下载失败: {}", filename, e))?;
+    let status = resp.status().as_u16();
+    let resumed = status == 206;
+    let remaining: u64 = resp
         .headers()
         .get("content-length")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse().ok())
-        .unwrap_or(expected_bytes);
+        .unwrap_or(0);
+    // 总大小:续传时 = offset + 剩余;否则 = content-length(可能 0)
+    let total = if resumed {
+        offset + remaining
+    } else {
+        remaining.max(expected_bytes)
+    };
+
     let mut reader = resp.into_body().into_reader();
 
-    let mut file = std::fs::File::create(&tmp)
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(tmp)
         .map_err(|e| format!("无法写入 {}: {}", tmp.display(), e))?;
-    let mut hasher = Sha256::new();
+    if resumed {
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|e| format!("无法定位 {}: {}", tmp.display(), e))?;
+    } else {
+        file.set_len(0).ok();
+    }
+
     let mut buf = [0u8; 64 * 1024];
-    let mut written: u64 = 0;
+    let mut written: u64 = offset;
     loop {
         let n = reader
             .read(&mut buf)
@@ -194,25 +267,15 @@ fn download_one(
         }
         file.write_all(&buf[..n])
             .map_err(|e| format!("{} 写入失败: {}", filename, e))?;
-        hasher.update(&buf[..n]);
         written += n as u64;
         if total > 0 {
-            PROGRESS.store(progress_percent(span_start, span_end, written, total), Ordering::Relaxed);
+            PROGRESS.store(
+                progress_percent(span_start, span_end, written.min(total), total),
+                Ordering::Relaxed,
+            );
         }
     }
-
-    if written != total {
-        return Err(format!("{} 下载不完整: 期望 {} 字节, 实际 {}", filename, total, written));
-    }
-    let hex = digest_to_hex(&hasher.finalize());
-    if hex != expected_sha256 {
-        std::fs::remove_file(&tmp).ok();
-        return Err(format!("{} 校验失败 (sha256 不匹配): 期望 {} 实际 {}", filename, expected_sha256, hex));
-    }
-
-    std::fs::rename(&tmp, &dest)
-        .map_err(|e| format!("无法移动 {}: {}", tmp.display(), e))?;
-    Ok(())
+    Ok(written)
 }
 
 #[cfg(test)]

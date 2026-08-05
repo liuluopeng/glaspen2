@@ -342,11 +342,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _connected = false;
   Timer? _reloadTimer;
 
-  // Match C# tray menu's PresetColors and widths
-  static const _colorNames = ['红色', '蓝色', '绿色', '橙色', '紫色', '黑色', '白色'];
+  // 10 colors, matching Rust COLOR_PRESETS / macOS g_color_presets
+  // (红橙黄绿青蓝紫粉白黑). Index must match the overlay's preset order.
+  static const _colorNames = ['红色', '橙色', '黄色', '绿色', '青色', '蓝色', '紫色', '粉色', '白色', '黑色'];
   static const _colorValues = [
-    0xFFDC1E1E, 0xFF1E78DC, 0xFF1EB43C, 0xFFF0A014,
-    0xFFA050DC, 0xFF141414, 0xFFFFFFFF,
+    0xFFFF0000, 0xFFFF8000, 0xFFFFFF00, 0xFF00CC00, 0xFF00CCCC,
+    0xFF0066FF, 0xFF9900CC, 0xFFFF66B2, 0xFFFFFFFF, 0xFF000000,
   ];
   static const _widthNames = ['极细', '很细', '细', '中', '粗', '很粗', '超粗', '极粗'];
 
@@ -921,11 +922,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   Widget _buildExportButtons() {
-    // Animated GIF export is only supported on macOS (ObjC handler).
-    if (!Platform.isMacOS) {
-      return const Text('（动画 GIF 导出仅在 macOS 可用）',
-          style: TextStyle(fontSize: 14, color: Colors.grey));
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1069,16 +1065,21 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Future<void> _exportAnimatedGif() async {
     setState(() => _gifExporting = true);
     try {
-      final ok = await _channel.invokeMethod<bool>('exportAnimatedGif') == true;
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(ok
-                ? '动画 GIF 已保存并复制到剪贴板'
-                : '没有笔迹或导出失败'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+      if (Platform.isMacOS) {
+        final ok = await _channel.invokeMethod<bool>('exportAnimatedGif') == true;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(ok
+                  ? '动画 GIF 已保存并复制到剪贴板'
+                  : '没有笔迹或导出失败'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        // Windows:通过管道触发导出,结果以屏幕通知提示
+        _setSetting('export_animated_gif', true);
       }
     } catch (e) {
       if (mounted) {
@@ -1096,14 +1097,19 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Future<void> _exportPdf() async {
     setState(() => _pdfExporting = true);
     try {
-      final ok = await _channel.invokeMethod<int>('exportPdf') == 1;
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(ok ? 'PDF 已保存到桌面' : '导出失败'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+      if (Platform.isMacOS) {
+        final ok = await _channel.invokeMethod<int>('exportPdf') == 1;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(ok ? 'PDF 已保存到桌面' : '导出失败'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        // Windows:通过管道触发导出,结果以屏幕通知提示
+        _setSetting('export_pdf', true);
       }
     } catch (e) {
       if (mounted) {
