@@ -1308,9 +1308,10 @@ static void show_settings_panel(void) {
     g_settings_delegate = [[SettingsWindowDelegate alloc] init];
     [window setDelegate:g_settings_delegate];
 
-    [window.contentView addSubview:g_flutter_vc.view];
-    g_flutter_vc.view.frame = window.contentView.bounds;
-    g_flutter_vc.view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    // Standard embedding: FlutterViewController owns the content view so the
+    // device pixel ratio / backing scale is applied correctly (addSubview to
+    // a plain contentView rendered the UI at 1x on retina — "内容偏小").
+    window.contentViewController = g_flutter_vc;
 
     // Switch to Regular mode so the window can get focus
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
