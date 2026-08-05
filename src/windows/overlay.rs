@@ -33,7 +33,11 @@ use crate::cairo_dl::CairoRenderer;
 
 const WM_INPUT: u32 = 0x00FF;
 const TIMER_UNBLOCK: usize = 1;
-const UNBLOCK_DELAY_MS: u32 = 500;
+const TIMER_PEEK: usize = 2;
+// 笔事件停止后的延迟:恢复穿透 + 飘渺模式隐藏笔迹
+const UNBLOCK_DELAY_MS: u32 = 50;
+// 飘渺模式下翻页后短暂显示笔迹的时长(ms)
+const PEEK_DELAY_MS: u32 = 2000;
 // 近透明底色 alpha=2(0.01*255):肉眼不可见,但窗口可命中/可收指针消息
 const BG_BLOCK: u8 = 2;
 
@@ -54,6 +58,10 @@ pub const CMD_CLEAR_SCREEN: usize = 400;
 pub const CMD_TOGGLE_RAINBOW: usize = 500;
 pub const CMD_TOGGLE_ENABLED: usize = 600;
 pub const CMD_TOGGLE_OUTLINE: usize = 650;
+pub const CMD_TOGGLE_GRID: usize = 652;
+pub const CMD_TOGGLE_FROSTED: usize = 653;
+pub const CMD_TOGGLE_ETHEREAL: usize = 654;
+pub const CMD_TOGGLE_PRESSURE_MONITOR: usize = 655;
 pub const CMD_UNDO: usize = 800;
 pub const CMD_QUIT: usize = 999;
 
@@ -63,8 +71,9 @@ pub const COLOR_PRESETS: [(f64, f64, f64); 10] = [
     (0.0, 0.4, 1.0), (0.6, 0.0, 0.8), (1.0, 0.4, 0.7), (1.0, 1.0, 1.0), (0.0, 0.0, 0.0),
 ];
 pub const COLOR_NAMES_ZH: [&str; 10] = ["红", "橙", "黄", "绿", "青", "蓝", "紫", "粉", "白", "黑"];
-pub const WIDTH_PRESETS: [f64; 5] = [0.3, 0.6, 1.0, 1.5, 2.5];
-pub const WIDTH_NAMES_ZH: [&str; 5] = ["极细", "细", "中", "粗", "极粗"];
+// 8 档线宽倍率,与 Flutter 设置 UI 的 8 档一一对应
+pub const WIDTH_PRESETS: [f64; 8] = [0.15, 0.3, 0.6, 1.0, 1.5, 2.0, 2.5, 3.5];
+pub const WIDTH_NAMES_ZH: [&str; 8] = ["极细", "很细", "细", "中", "粗", "很粗", "超粗", "极粗"];
 
 pub struct DrawState {
     pub pen_r: f64, pub pen_g: f64, pub pen_b: f64,
@@ -72,7 +81,14 @@ pub struct DrawState {
     pub selected_color: usize, pub selected_width: usize,
     pub enabled: bool, pub show_rainbow: bool,
     pub outline_enabled: bool,
+    pub show_grid: bool,
     pub frosted: bool,
+    /// 飘渺画布涂鸦模式:悬空/落笔显示笔迹,笔离开后隐藏
+    pub ethereal: bool,
+    /// 网格跟随涂鸦:飘渺模式下隐藏笔迹时网格也隐藏
+    pub grid_follow_strokes: bool,
+    /// 压力监控 HUD 是否开启
+    pub pressure_monitor: bool,
 }
 
 // ── 共享状态(仅消息循环线程访问) ──
@@ -89,6 +105,8 @@ struct OverlayState {
     start_time: Instant,
     /// 当前是否处于笔画中(首事件必须发 Down)
     in_stroke: bool,
+    /// 笔迹当前是否可见(飘渺模式)
+    strokes_visible: bool,
 }
 
 static STATE: AtomicPtr<OverlayState> = AtomicPtr::new(std::ptr::null_mut());
@@ -312,6 +330,42 @@ impl OverlayCanvas {
             std::slice::from_raw_parts_mut(self.bits, n).fill(0);
         }
         self.present_all();
+    }
+
+    /// 绘制网格线(与 macOS 一致:40px 间距、半透明白、画在笔画下方)。
+    /// 直接在像素缓冲写入 premultiplied 半透明白;清屏后先画网格再画笔画。
+    fn draw_grid(&mut self) {
+        const GAP: i32 = 40;
+        const GA: u8 = 38; // 0.15 * 255
+        let w = self.w;
+        let h = self.h;
+        unsafe {
+            let bits = self.bits;
+            // 竖线
+            let mut gx = 0;
+            while gx <= w {
+                for y in 0..h {
+                    let i = ((y as usize) * (w as usize) + gx as usize) * 4;
+                    *bits.add(i) = GA;       // B
+                    *bits.add(i + 1) = GA;   // G
+                    *bits.add(i + 2) = GA;   // R
+                    *bits.add(i + 3) = GA;   // A
+                }
+                gx += GAP;
+            }
+            // 横线
+            let mut gy = 0;
+            while gy <= h {
+                for x in 0..w {
+                    let i = ((gy as usize) * (w as usize) + x as usize) * 4;
+                    *bits.add(i) = GA;
+                    *bits.add(i + 1) = GA;
+                    *bits.add(i + 2) = GA;
+                    *bits.add(i + 3) = GA;
+                }
+                gy += GAP;
+            }
+        }
     }
 
     /// 设置背景像素 alpha(只改完全透明的像素,保留笔迹及其软边抗锯齿像素):
@@ -609,6 +663,10 @@ unsafe fn process_raw_hid(buf: &[u64]) -> Option<RECT> {
         let sy = (y.min(MAX_RAW_Y as u32) as i64 * (state.canvas.h - 1) as i64 / MAX_RAW_Y) as f32;
         let pnorm = (press as f32 / 16383.0).clamp(0.0, 1.0);
         let down = (switches & 0x05) != 0;
+        // 压力监控:每帧刷新
+        if state.draw.pressure_monitor {
+            hud_update_pressure(press as i32, down, sx as i32, sy as i32);
+        }
         if let Some(rect) = handle_point(state, sx, sy, pnorm, down) {
             merge_rect(&mut dirty, &rect);
         }
@@ -634,6 +692,12 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
             // 笔报告到达 = 笔在范围内:拦截输入(清除 WS_EX_TRANSPARENT),重置离开计时
             set_input_blocking(hwnd, true);
             let _ = KillTimer(Some(hwnd), TIMER_UNBLOCK);
+            let _ = KillTimer(Some(hwnd), TIMER_PEEK);
+
+            // 飘渺模式:笔悬空/落笔 → 显示笔迹(仅首次,避免高频全量重绘)
+            if state.draw.ethereal && !state.strokes_visible {
+                show_strokes(state);
+            }
 
             let hraw = HRAWINPUT(lparam.0 as *mut core::ffi::c_void);
             let mut size: u32 = 0;
@@ -665,10 +729,25 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
             LRESULT(0)
         }
         WM_TIMER => {
-            if wparam.0 as usize == TIMER_UNBLOCK {
-                let _ = KillTimer(Some(hwnd), TIMER_UNBLOCK);
-                // 笔离开:设 WS_EX_TRANSPARENT 恢复穿透
-                set_input_blocking(hwnd, false);
+            let state = &mut *STATE.load(Ordering::SeqCst);
+            match wparam.0 as usize {
+                TIMER_UNBLOCK => {
+                    let _ = KillTimer(Some(hwnd), TIMER_UNBLOCK);
+                    // 笔离开:设 WS_EX_TRANSPARENT 恢复穿透
+                    set_input_blocking(hwnd, false);
+                    // 飘渺模式:隐藏笔迹
+                    if state.draw.ethereal && state.strokes_visible && !state.in_stroke {
+                        hide_strokes(state);
+                    }
+                }
+                TIMER_PEEK => {
+                    let _ = KillTimer(Some(hwnd), TIMER_PEEK);
+                    // 飘渺模式翻页 peek 到期:无笔活动时隐藏
+                    if state.draw.ethereal && !state.in_stroke && state.strokes_visible {
+                        hide_strokes(state);
+                    }
+                }
+                _ => {}
             }
             LRESULT(0)
         }
@@ -686,6 +765,8 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
                 6 => export_svg_gif_clipboard(state),
                 // Ctrl+Alt+B 模糊背景(磨砂玻璃)
                 7 => toggle_frosted(state),
+                // Ctrl+Alt+X 切换固定/飘渺画布模式
+                9 => handle_command(state, CMD_TOGGLE_ETHEREAL, usize::MAX),
                 // Ctrl+Alt+Q 退出
                 8 => {
                     unsafe { let _ = DestroyWindow(hwnd); }
@@ -733,6 +814,26 @@ pub fn run() {
             .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
         let frosted = crate::runtime().block_on(crate::db::load_setting("frostedGlass"))
             .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
+        let show_grid = crate::runtime().block_on(crate::db::load_setting("grid"))
+            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
+        let ethereal = crate::runtime().block_on(crate::db::load_setting("ethereal"))
+            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
+        let grid_follow_strokes = crate::runtime().block_on(crate::db::load_setting("gridFollowStrokes"))
+            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
+        let pressure_monitor = crate::runtime().block_on(crate::db::load_setting("pressureMonitor"))
+            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) != 0;
+
+        // HUD 窗口(通知 + 压力监控)
+        {
+            let hud_hwnd = hud_create();
+            HUD = Box::into_raw(Box::new(HudState {
+                hwnd: hud_hwnd,
+                notif: None,
+                pm_text: String::new(),
+                pm_visible: pressure_monitor,
+            }));
+            hud_toggle_pressure(pressure_monitor);
+        }
 
         let mut canvas = OverlayCanvas::create(hwnd);
         canvas.color = (pen_r as u8, pen_g as u8, pen_b as u8);
@@ -742,7 +843,9 @@ pub fn run() {
             selected_color: closest_color_index(pen_r, pen_g, pen_b),
             selected_width: closest_width_index(width_scale),
             enabled: true, show_rainbow: false,
-            outline_enabled, frosted,
+            outline_enabled, show_grid, frosted,
+            ethereal, grid_follow_strokes,
+            pressure_monitor,
         };
 
         let mut state = OverlayState {
@@ -752,8 +855,12 @@ pub fn run() {
             stroke_modeler: StrokeModeler::default(),
             start_time: Instant::now(),
             in_stroke: false,
+            strokes_visible: true,
         };
         let _ = state.stroke_modeler.reset_w_params(modeler_params());
+        if show_grid {
+            state.canvas.draw_grid();
+        }
         state.canvas.set_bg_alpha(BG_BLOCK);
         // 初始穿透(WS_EX_TRANSPARENT),鼠标可正常操作;笔事件到达时自动唤醒拦截
         set_input_blocking(hwnd, false);
@@ -788,6 +895,7 @@ pub fn run() {
         RegisterHotKey(Some(hwnd), 6, mods, 'G' as u32).ok();
         RegisterHotKey(Some(hwnd), 7, mods, 'B' as u32).ok();
         RegisterHotKey(Some(hwnd), 8, mods, 'Q' as u32).ok();
+        RegisterHotKey(Some(hwnd), 9, mods, 'X' as u32).ok();
 
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         let _ = UpdateWindow(hwnd);
@@ -804,12 +912,16 @@ pub fn run() {
         }
 
         println!("[overlay] 全屏透明涂鸦已启动(WM_INPUT + ink-stroke-modeler + cairo)。");
-        println!("[overlay] 快捷键: Ctrl+Alt+C 新建画布 / V 开关 / Z 撤销 / J/K 翻页 / G 导出 / B 模糊背景 / Q 退出");
+        println!("[overlay] 快捷键: Ctrl+Alt+C 新建画布 / V 开关 / Z 撤销 / J/K 翻页 / G 导出 / B 模糊背景 / X 固定↔飘渺 / Q 退出");
         run_loop();
 
         let p = STATE.swap(std::ptr::null_mut(), Ordering::SeqCst);
         if !p.is_null() {
             drop(Box::from_raw(p));
+        }
+        if !HUD.is_null() {
+            drop(Box::from_raw(HUD));
+            HUD = std::ptr::null_mut();
         }
     }
 }
@@ -874,6 +986,182 @@ fn set_input_blocking(hwnd: HWND, blocking: bool) {
     }
 }
 
+// ── HUD 窗口:屏幕顶部提示条(通知 + 压力监控) ──
+// 黑色半透明底 + 白字,主消息循环线程访问。
+
+const HUD_W: i32 = 440;
+const HUD_H: i32 = 40;
+const HUD_NOTIF_TIMER: usize = 10;
+const HUD_NOTIF_MS: u32 = 1200;
+
+const DT_CENTER: u32 = 0x0001;
+const DT_VCENTER: u32 = 0x0004;
+const DT_SINGLELINE: u32 = 0x0020;
+
+#[link(name = "user32")]
+unsafe extern "system" {
+    fn DrawTextW(hdc: HDC, lpchtext: *const u16, cchtext: i32, lprc: *mut RECT, format: u32) -> i32;
+}
+
+struct HudState {
+    hwnd: HWND,
+    /// 短暂通知文本(1.2s 后清除)
+    notif: Option<String>,
+    /// 压力监控文本(常驻,开关控制)
+    pm_text: String,
+    pm_visible: bool,
+}
+
+static mut HUD: *mut HudState = std::ptr::null_mut();
+
+fn hud_ref() -> &'static mut HudState {
+    unsafe { &mut *HUD }
+}
+
+unsafe extern "system" fn hud_wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    match msg {
+        WM_PAINT => {
+            let mut ps = PAINTSTRUCT::default();
+            let hdc = BeginPaint(hwnd, &mut ps);
+            let hud = hud_ref();
+            let mut text = String::new();
+            if hud.pm_visible {
+                text.push_str(&hud.pm_text);
+                if hud.notif.is_some() {
+                    text.push_str("   |   ");
+                }
+            }
+            if let Some(n) = &hud.notif {
+                text.push_str(n);
+            }
+            if !text.is_empty() {
+                let font = CreateFontW(
+                    -18, 0, 0, 0, 400, 0, 0, 0,
+                    DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                    CLEARTYPE_QUALITY, 0x40, // FF_DONTCARE
+                    PCWSTR(wide_string("Microsoft YaHei UI").as_ptr()),
+                );
+                let old_font = SelectObject(hdc, font.into());
+                let _ = SetBkMode(hdc, TRANSPARENT);
+                let _ = SetTextColor(hdc, COLORREF(0x00_FF_FF_FF));
+                let mut rc = RECT { left: 4, top: 0, right: HUD_W - 4, bottom: HUD_H };
+                let wide: Vec<u16> = text.encode_utf16().collect();
+                let _ = DrawTextW(hdc, wide.as_ptr(), wide.len() as i32, &mut rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                let _ = SelectObject(hdc, old_font);
+                let _ = DeleteObject(font.into());
+            }
+            let _ = EndPaint(hwnd, &ps);
+            LRESULT(0)
+        }
+        WM_TIMER => {
+            if wparam.0 as usize == HUD_NOTIF_TIMER {
+                let _ = KillTimer(Some(hwnd), HUD_NOTIF_TIMER);
+                let hud = hud_ref();
+                hud.notif = None;
+                if !hud.pm_visible {
+                    let _ = ShowWindow(hwnd, SW_HIDE);
+                } else {
+                    let _ = InvalidateRect(Some(hwnd), None, false);
+                }
+            }
+            LRESULT(0)
+        }
+        WM_ERASEBKGND => LRESULT(1),
+        WM_DESTROY => LRESULT(0),
+        _ => DefWindowProcW(hwnd, msg, wparam, lparam),
+    }
+}
+
+/// 创建 HUD 窗口(屏幕顶部中央,黑色半透明)
+fn hud_create() -> HWND {
+    unsafe {
+        let class_name = wide_string("Glaspen2Hud");
+        let hinst: HINSTANCE = GetModuleHandleW(None).unwrap_or_default().into();
+        let wc = WNDCLASSW {
+            style: WNDCLASS_STYLES(0),
+            lpfnWndProc: Some(hud_wnd_proc),
+            cbClsExtra: 0,
+            cbWndExtra: 0,
+            hInstance: hinst,
+            hIcon: HICON::default(),
+            hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
+            hbrBackground: HBRUSH::default(),
+            lpszMenuName: PCWSTR::null(),
+            lpszClassName: PCWSTR(class_name.as_ptr()),
+        };
+        let _ = RegisterClassW(&wc);
+
+        let sw = GetSystemMetrics(SM_CXSCREEN);
+        let x = (sw - HUD_W) / 2;
+        let hwnd = CreateWindowExW(
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
+            PCWSTR(class_name.as_ptr()),
+            PCWSTR::null(),
+            WS_POPUP,
+            x,
+            10,
+            HUD_W,
+            HUD_H,
+            None,
+            None,
+            Some(hinst),
+            None,
+        )
+        .expect("CreateWindowExW (HUD) failed");
+        // 半透明黑底
+        let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 220, LWA_ALPHA);
+        hwnd
+    }
+}
+
+/// 显示短暂通知(1.2s 后自动消失)
+fn hud_notify(text: &str) {
+    unsafe {
+        if HUD.is_null() {
+            return;
+        }
+        let hud = hud_ref();
+        hud.notif = Some(text.to_string());
+        let _ = SetTimer(Some(hud.hwnd), HUD_NOTIF_TIMER, HUD_NOTIF_MS, None);
+        let _ = ShowWindow(hud.hwnd, SW_SHOWNOACTIVATE);
+        let _ = InvalidateRect(Some(hud.hwnd), None, false);
+    }
+}
+
+/// 更新压力监控文本(悬空/按下事件每帧调用)
+fn hud_update_pressure(pressure: i32, down: bool, x: i32, y: i32) {
+    unsafe {
+        if HUD.is_null() {
+            return;
+        }
+        let hud = hud_ref();
+        if !hud.pm_visible {
+            return;
+        }
+        let evtype = if down { "按下" } else { "悬空" };
+        hud.pm_text = format!("压力 P={:<5}  {}  ({},{})", pressure, evtype, x, y);
+        let _ = InvalidateRect(Some(hud.hwnd), None, false);
+    }
+}
+
+/// 开关压力监控
+fn hud_toggle_pressure(on: bool) {
+    unsafe {
+        if HUD.is_null() {
+            return;
+        }
+        let hud = hud_ref();
+        hud.pm_visible = on;
+        if on {
+            hud.pm_text = "压力 P=-----  悬空  (---,---)".to_string();
+            let _ = ShowWindow(hud.hwnd, SW_SHOWNOACTIVATE);
+        } else if hud.notif.is_none() {
+            let _ = ShowWindow(hud.hwnd, SW_HIDE);
+        }
+        let _ = InvalidateRect(Some(hud.hwnd), None, false);
+    }
+}
+
 fn run_loop() {
     unsafe {
         let mut msg = MSG::default();
@@ -890,7 +1178,9 @@ fn wide_string(s: &str) -> Vec<u16> {
 
 // ── 命令处理(设置管道 / 热键) ──
 
-fn handle_command(state: &mut OverlayState, cmd: usize, _param: usize) {
+fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
+    // 开关类命令:管道传入 0/1 时按值设置,否则翻转(热键/无参调用)
+    let param_on = |cur: bool| -> bool { if param == 0 || param == 1 { param == 1 } else { !cur } };
     if cmd >= CMD_SELECT_COLOR && cmd < CMD_SELECT_COLOR + 10 {
         let idx = cmd - CMD_SELECT_COLOR;
         if idx < COLOR_PRESETS.len() {
@@ -938,11 +1228,43 @@ fn handle_command(state: &mut OverlayState, cmd: usize, _param: usize) {
                 }
             }
             x if x == CMD_TOGGLE_OUTLINE => {
-                state.draw.outline_enabled = !state.draw.outline_enabled;
+                let on = param_on(state.draw.outline_enabled);
+                state.draw.outline_enabled = on;
+                crate::runtime().block_on(crate::db::save_setting("outline_enabled", if on { "1" } else { "0" }));
+            }
+            x if x == CMD_TOGGLE_GRID => {
+                let on = param_on(state.draw.show_grid);
+                state.draw.show_grid = on;
+                crate::runtime().block_on(crate::db::save_setting("grid", if on { "1" } else { "0" }));
+                redraw_from_strokes(state);
+            }
+            x if x == CMD_TOGGLE_FROSTED => {
+                let on = param_on(state.draw.frosted);
+                state.draw.frosted = on;
+                crate::runtime().block_on(crate::db::save_setting("frostedGlass", if on { "1" } else { "0" }));
+                apply_frosted(state.canvas.hwnd, on);
+            }
+            x if x == CMD_TOGGLE_ETHEREAL => {
+                let on = param_on(state.draw.ethereal);
+                state.draw.ethereal = on;
+                crate::runtime().block_on(crate::db::save_setting("ethereal", if on { "1" } else { "0" }));
+                if on {
+                    hide_strokes(state);
+                    hud_notify("飘渺画布涂鸦模式 (悬空/落笔显示)");
+                } else {
+                    show_strokes(state);
+                    hud_notify("固定画布涂鸦模式");
+                }
+            }
+            x if x == CMD_TOGGLE_PRESSURE_MONITOR => {
+                let on = param_on(state.draw.pressure_monitor);
+                state.draw.pressure_monitor = on;
                 crate::runtime().block_on(crate::db::save_setting(
-                    "outline_enabled",
-                    if state.draw.outline_enabled { "1" } else { "0" },
+                    "pressureMonitor",
+                    if on { "1" } else { "0" },
                 ));
+                hud_toggle_pressure(on);
+                hud_notify(if on { "压力监控已开启" } else { "压力监控已关闭" });
             }
             x if x == CMD_TOGGLE_ENABLED => toggle_enabled(state),
             x if x == CMD_QUIT => {
@@ -960,11 +1282,15 @@ fn clear_screen(state: &mut OverlayState) {
     let _ = state.stroke_modeler.reset_w_params(params);
     state.start_time = Instant::now();
     state.canvas.clear();
+    if state.draw.show_grid {
+        state.canvas.draw_grid();
+    }
     state.canvas.set_bg_alpha(BG_BLOCK);
     crate::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
     if state.draw.show_rainbow {
         draw_rainbow_indicator(state);
     }
+    hud_notify("已新建画布");
 }
 
 fn toggle_enabled(state: &mut OverlayState) {
@@ -973,18 +1299,21 @@ fn toggle_enabled(state: &mut OverlayState) {
         // 立即恢复穿透
         set_input_blocking(state.canvas.hwnd, false);
     }
+    hud_notify(if state.draw.enabled { "涂鸦已开启" } else { "涂鸦已关闭" });
 }
 
 fn undo_last_stroke(state: &mut OverlayState) {
     let remaining = crate::export::glaspen2_undo_last_stroke();
     if remaining < 0 {
+        hud_notify("没有可撤销的笔画");
         return;
     }
     // 清空画布,从 STROKES 重绘全部剩余笔画
     redraw_from_strokes(state);
+    hud_notify("已撤销上一笔");
 }
 
-/// 清空画布并从 STROKES 重绘全部笔画(撤销/翻页后使用)
+/// 清空画布并从 STROKES 重绘全部笔画(撤销/翻页/网格开关后使用)
 fn redraw_from_strokes(state: &mut OverlayState) {
     state.pen_path.clear();
     state.in_stroke = false;
@@ -992,6 +1321,9 @@ fn redraw_from_strokes(state: &mut OverlayState) {
     let _ = state.stroke_modeler.reset_w_params(params);
     state.start_time = Instant::now();
     state.canvas.clear();
+    if state.draw.show_grid {
+        state.canvas.draw_grid();
+    }
     let ol = if state.draw.outline_enabled { 1.0 } else { 0.0 };
     {
         let strokes = crate::STROKES.lock().unwrap();
@@ -1033,6 +1365,38 @@ fn navigate_page(state: &mut OverlayState, next: bool) {
     let count = crate::export::glaspen2_load_strokes_for_screen(target);
     redraw_from_strokes(state);
     eprintln!("[overlay] 已切换到页面 {} ({} 笔)", target, count);
+    hud_notify(if next { "下一页" } else { "上一页" });
+    // 飘渺模式:短暂显示目标页,随后自动隐藏(除非笔在活动)
+    if state.draw.ethereal {
+        let hwnd = state.canvas.hwnd;
+        let _ = unsafe { SetTimer(Some(hwnd), TIMER_PEEK, PEEK_DELAY_MS, None) };
+    }
+}
+
+/// 飘渺模式:隐藏笔迹(保留数据,仅清空显示;网格按"网格跟随涂鸦"决定)
+fn hide_strokes(state: &mut OverlayState) {
+    // 提交未完成的笔画,避免悬空
+    if state.in_stroke {
+        crate::export::glaspen2_end_stroke();
+        state.in_stroke = false;
+        state.pen_path.clear();
+    }
+    state.strokes_visible = false;
+    state.canvas.clear();
+    // 网格跟随涂鸦 → 一起隐藏;否则网格保持可见
+    if state.draw.show_grid && !state.draw.grid_follow_strokes {
+        state.canvas.draw_grid();
+    }
+    state.canvas.set_bg_alpha(BG_BLOCK);
+    state.canvas.present_all();
+}
+
+/// 飘渺模式:显示笔迹(从 STROKES 重绘)
+fn show_strokes(state: &mut OverlayState) {
+    if !state.strokes_visible {
+        state.strokes_visible = true;
+        redraw_from_strokes(state);
+    }
 }
 
 /// Ctrl+Alt+G:导出 SVG + GIF,并把当前画布复制到系统剪贴板(CF_DIB)
@@ -1041,6 +1405,7 @@ fn export_svg_gif_clipboard(state: &mut OverlayState) {
     let ok = crate::export::glaspen2_save_animated_gif();
     eprintln!("[overlay] SVG 已导出;GIF 导出: {}", if ok != 0 { "OK" } else { "FAILED" });
     copy_canvas_to_clipboard(state);
+    hud_notify("已导出 SVG + GIF,并复制到剪贴板");
 }
 
 /// 把当前画布(32bit BGRA 预乘)复制为 CF_DIB 到系统剪贴板
@@ -1139,6 +1504,7 @@ fn toggle_frosted(state: &mut OverlayState) {
     ));
     apply_frosted(state.canvas.hwnd, state.draw.frosted);
     eprintln!("[overlay] 模糊背景: {}", if state.draw.frosted { "开" } else { "关" });
+    hud_notify(if state.draw.frosted { "模糊背景已开启" } else { "模糊背景已关闭" });
 }
 
 /// 显示分辨率/排列变化:重建画布并重绘已保存笔画
@@ -1161,39 +1527,9 @@ fn on_display_change(state: &mut OverlayState) {
     }
     crate::export::glaspen2_on_display_change(w, h);
     let color = state.canvas.color;
-    let mut new_canvas = OverlayCanvas::create(hwnd);
-    new_canvas.color = color;
-    new_canvas.set_bg_alpha(BG_BLOCK);
-    state.canvas = new_canvas;
-    state.pen_path.clear();
-    state.in_stroke = false;
-    let params = modeler_params();
-    let _ = state.stroke_modeler.reset_w_params(params);
-    state.start_time = Instant::now();
-    let ol = if state.draw.outline_enabled { 1.0 } else { 0.0 };
-    {
-        let strokes = crate::STROKES.lock().unwrap();
-        for s in strokes.iter() {
-            if s.points.is_empty() {
-                continue;
-            }
-            state.canvas.color = (
-                (s.r * 255.0) as u8,
-                (s.g * 255.0) as u8,
-                (s.b * 255.0) as u8,
-            );
-            let path: Vec<(f32, f32, f32)> = s.points
-                .iter()
-                .map(|&(x, y, w, _)| (x as f32, y as f32, (w as f32 * 0.5).max(0.5)))
-                .collect();
-            fill_stroke_path(&mut state.canvas, &path, ol);
-        }
-    }
-    state.canvas.set_bg_alpha(BG_BLOCK);
-    state.canvas.present_all();
-    if state.draw.show_rainbow {
-        draw_rainbow_indicator(state);
-    }
+    state.canvas = OverlayCanvas::create(hwnd);
+    state.canvas.color = color;
+    redraw_from_strokes(state);
 }
 
 fn draw_rainbow_indicator(state: &mut OverlayState) {
@@ -1465,9 +1801,15 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let width = closest_width_index(w);
         let outline = crate::runtime().block_on(crate::db::load_setting("outline_enabled"))
             .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+        let grid = crate::runtime().block_on(crate::db::load_setting("grid"))
+            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+        let frosted = crate::runtime().block_on(crate::db::load_setting("frostedGlass"))
+            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+        let pressure_monitor = crate::runtime().block_on(crate::db::load_setting("pressureMonitor"))
+            .and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"rainbow\":false,\"launchAtLogin\":false,\"frostedGlass\":false}}}}\n",
-            color, width, outline
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"rainbow\":false,\"launchAtLogin\":false}}}}\n",
+            color, width, outline, grid, frosted, pressure_monitor
         );
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
@@ -1502,10 +1844,38 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 };
             }
         } else if key == "outline" {
-            if let Some(val) = json_get_i64(line, "value") {
+            if let Some(on) = json_get_bool(line, "value") {
                 let cmd = CMD_TOGGLE_OUTLINE;
                 let _ = unsafe {
-                    PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(val as isize))
+                    PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(if on { 1 } else { 0 }))
+                };
+            }
+        } else if key == "grid" {
+            if let Some(on) = json_get_bool(line, "value") {
+                let cmd = CMD_TOGGLE_GRID;
+                let _ = unsafe {
+                    PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(if on { 1 } else { 0 }))
+                };
+            }
+        } else if key == "frostedGlass" {
+            if let Some(on) = json_get_bool(line, "value") {
+                let cmd = CMD_TOGGLE_FROSTED;
+                let _ = unsafe {
+                    PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(if on { 1 } else { 0 }))
+                };
+            }
+        } else if key == "gridFollowStrokes" {
+            if let Some(on) = json_get_bool(line, "value") {
+                crate::runtime().block_on(crate::db::save_setting(
+                    "gridFollowStrokes",
+                    if on { "1" } else { "0" },
+                ));
+            }
+        } else if key == "pressureMonitor" {
+            if let Some(on) = json_get_bool(line, "value") {
+                let cmd = CMD_TOGGLE_PRESSURE_MONITOR;
+                let _ = unsafe {
+                    PostMessageW(Some(HWND(hwnd as *mut _)), WM_TRAY_COMMAND, WPARAM(cmd), LPARAM(if on { 1 } else { 0 }))
                 };
             }
         }
@@ -1536,4 +1906,18 @@ fn json_get_i64(json: &str, key: &str) -> Option<i64> {
         }
     }
     None
+}
+
+/// 解析 JSON bool 值(Flutter 发送的开关为 true/false)
+fn json_get_bool(json: &str, key: &str) -> Option<bool> {
+    let pattern = format!("\"{}\":", key);
+    let start = json.find(&pattern)?;
+    let rest = json[start + pattern.len()..].trim_start();
+    if rest.starts_with("true") {
+        Some(true)
+    } else if rest.starts_with("false") {
+        Some(false)
+    } else {
+        None
+    }
 }
