@@ -64,6 +64,10 @@ pub const CMD_TOGGLE_ETHEREAL: usize = 654;
 pub const CMD_TOGGLE_PRESSURE_MONITOR: usize = 655;
 pub const CMD_TOGGLE_OCR: usize = 660;
 pub const CMD_OCR_PROGRESS: usize = 870;
+pub const CMD_NAVIGATE_TO_PAGE: usize = 810;
+pub const CMD_PAGE_PREV: usize = 720;
+pub const CMD_PAGE_NEXT: usize = 721;
+pub const CMD_EXPORT_SVG_GIF: usize = 722;
 pub const CMD_UNDO: usize = 800;
 pub const CMD_QUIT: usize = 999;
 
@@ -1844,6 +1848,13 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                     _ => {}
                 }
             }
+            x if x == CMD_NAVIGATE_TO_PAGE => {
+                // 内容 tab 点击页面:恢复该页笔迹继续绘画
+                navigate_to(state, param as i64, "已切换到该页面");
+            }
+            x if x == CMD_PAGE_PREV => navigate_page(state, false),
+            x if x == CMD_PAGE_NEXT => navigate_page(state, true),
+            x if x == CMD_EXPORT_SVG_GIF => export_svg_gif_clipboard(state),
             x if x == CMD_TOGGLE_ENABLED => toggle_enabled(state),
             x if x == CMD_QUIT => {
                 unsafe { let _ = DestroyWindow(state.canvas.hwnd); }
@@ -1935,15 +1946,21 @@ fn navigate_page(state: &mut OverlayState, next: bool) {
     } else {
         crate::export::glaspen2_prev_screen_id()
     };
+    navigate_to(state, target, if next { "下一页" } else { "上一页" });
+}
+
+/// 跳转到指定页面:加载该页笔画并重绘,可继续绘画
+fn navigate_to(state: &mut OverlayState, target: i64, label: &str) {
     let current = crate::export::glaspen2_get_current_screen_id();
     if target <= 0 || target == current {
         eprintln!("[overlay] 没有更多页面 (current={}, target={})", current, target);
+        hud_notify("没有可跳转的页面");
         return;
     }
     let count = crate::export::glaspen2_load_strokes_for_screen(target);
     redraw_from_strokes(state);
     eprintln!("[overlay] 已切换到页面 {} ({} 笔)", target, count);
-    hud_notify(if next { "下一页" } else { "上一页" });
+    hud_notify(label);
     // 飘渺模式:短暂显示目标页,随后自动隐藏(除非笔在活动)
     if state.draw.ethereal {
         let hwnd = state.canvas.hwnd;
@@ -2372,7 +2389,100 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
 
     let msg_type = json_get_str(line, "type");
 
-    if msg_type == "getSettings" {
+    if msg_type == "listPages" {
+        // 页面列表(内容 tab)
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let ptr = crate::export::glaspen2_list_screens_json();
+        if ptr.is_null() {
+            let _ = writer.write_all(
+                format!("{{\"type\":\"listPages_response\",\"reqId\":{},\"data\":[]}}\n", req_id).as_bytes(),
+            );
+        } else {
+            let s = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy().to_string();
+            crate::export::glaspen2_free_c_string(ptr);
+            let resp = format!("{{\"type\":\"listPages_response\",\"reqId\":{},\"data\":{}}}\n", req_id, s);
+            let _ = writer.write_all(resp.as_bytes());
+        }
+        let _ = writer.flush();
+    } else if msg_type == "getPageThumbnail" {
+        // 页面缩略图(PNG,base64 编码)
+        let screen_id = json_get_i64(line, "screenId").unwrap_or(0);
+        let w = json_get_i64(line, "w").unwrap_or(0) as i32;
+        let h = json_get_i64(line, "h").unwrap_or(0) as i32;
+        let max_size = json_get_i64(line, "maxSize").unwrap_or(280) as i32;
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let mut out_len: i32 = 0;
+        let ptr = crate::export::glaspen2_render_thumbnail(screen_id, w, h, max_size, &mut out_len);
+        if ptr.is_null() || out_len <= 0 {
+            let _ = writer.write_all(
+                format!("{{\"type\":\"getPageThumbnail_response\",\"reqId\":{},\"data\":{{\"png\":\"\"}}}}\n", req_id).as_bytes(),
+            );
+        } else {
+            let bytes = unsafe { std::slice::from_raw_parts(ptr, out_len as usize) };
+            let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
+            crate::export::glaspen2_free_rust_bytes(ptr, out_len);
+            let resp = format!("{{\"type\":\"getPageThumbnail_response\",\"reqId\":{},\"data\":{{\"png\":\"{}\"}}}}\n", req_id, b64);
+            let _ = writer.write_all(resp.as_bytes());
+        }
+        let _ = writer.flush();
+    } else if msg_type == "searchText" {
+        // OCR 文本搜索(内容 tab)
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let query = json_get_str(line, "query");
+        let q = std::ffi::CString::new(query).unwrap_or_default();
+        let ptr = crate::export::glaspen2_search_ocr_json(q.as_ptr());
+        if ptr.is_null() {
+            let _ = writer.write_all(
+                format!("{{\"type\":\"searchText_response\",\"reqId\":{},\"data\":[]}}\n", req_id).as_bytes(),
+            );
+        } else {
+            let s = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy().to_string();
+            crate::export::glaspen2_free_c_string(ptr);
+            let resp = format!("{{\"type\":\"searchText_response\",\"reqId\":{},\"data\":{}}}\n", req_id, s);
+            let _ = writer.write_all(resp.as_bytes());
+        }
+        let _ = writer.flush();
+    } else if msg_type == "hotkey" {
+        // Flutter 快捷键按钮:转发为对应命令
+        let key = json_get_str(line, "key");
+        let cmd = match key {
+            "Q" => Some(CMD_QUIT),
+            "G" => Some(CMD_EXPORT_SVG_GIF),
+            "J" => Some(CMD_PAGE_PREV),
+            "K" => Some(CMD_PAGE_NEXT),
+            "Z" => Some(CMD_UNDO),
+            "X" => Some(CMD_TOGGLE_ETHEREAL),
+            "C" => Some(CMD_CLEAR_SCREEN),
+            "V" => Some(CMD_TOGGLE_ENABLED),
+            "B" => Some(CMD_TOGGLE_FROSTED),
+            _ => None,
+        };
+        if let Some(cmd) = cmd {
+            // param = usize::MAX:handle_command 的开关类命令按"切换"处理
+            // (与键盘 Ctrl+Alt+键 行为一致,而不是被 0 强制关闭)
+            let _ = unsafe {
+                PostMessageW(
+                    Some(HWND(hwnd as *mut _)),
+                    WM_TRAY_COMMAND,
+                    WPARAM(cmd),
+                    LPARAM(usize::MAX as isize),
+                )
+            };
+        }
+    } else if msg_type == "navigateToPage" {
+        // 内容 tab 点击页面 → 恢复该页笔迹(指定页面跳转)
+        let screen_id = json_get_i64(line, "screenId").unwrap_or(0);
+        if screen_id > 0 {
+            let _ = unsafe {
+                PostMessageW(
+                    Some(HWND(hwnd as *mut _)),
+                    WM_TRAY_COMMAND,
+                    WPARAM(CMD_NAVIGATE_TO_PAGE),
+                    LPARAM(screen_id as isize),
+                )
+            };
+        }
+    } else if msg_type == "getSettings" {
         // Respond with current settings from DB
         let (r, g, b, w) = crate::runtime().block_on(crate::db::load_settings()).unwrap_or((1.0, 0.0, 0.0, 1.0));
         let color = closest_color_index(r, g, b);

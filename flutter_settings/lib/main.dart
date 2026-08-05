@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
@@ -22,6 +23,16 @@ abstract class _SettingsBridge {
   void onSettingsChanged(void Function(Map<dynamic, dynamic> s) callback);
   /// 连接建立后回调(Windows 管道异步连接;用于连接后重新拉取设置)
   void Function()? onConnected;
+  /// Content tab: page list JSON
+  Future<String> listPages();
+  /// Content tab: page thumbnail PNG bytes (null if none)
+  Future<Uint8List?> getPageThumbnail(int screenId, int w, int h, int maxSize);
+  /// Content tab: OCR text search, returns JSON list
+  Future<String> searchText(String query);
+  /// 跳转到指定页面并恢复笔迹(继续绘画)
+  Future<void> navigateToPage(int screenId);
+  /// 触发一个快捷键动作(与 Ctrl+Alt+<key> 等价)
+  Future<void> triggerHotkey(String key);
   void dispose();
 }
 
@@ -53,6 +64,33 @@ class _MethodChannelBridge extends _SettingsBridge {
   }
 
   @override
+  Future<String> listPages() async {
+    return await _channel.invokeMethod<String>('listPages') ?? '[]';
+  }
+
+  @override
+  Future<Uint8List?> getPageThumbnail(int screenId, int w, int h, int maxSize) async {
+    return await _channel.invokeMethod<Uint8List>('getPageThumbnail', {
+      'screenId': screenId, 'w': w, 'h': h, 'maxSize': maxSize,
+    });
+  }
+
+  @override
+  Future<String> searchText(String query) async {
+    return await _channel.invokeMethod<String>('searchText', {'query': query}) ?? '[]';
+  }
+
+  @override
+  Future<void> navigateToPage(int screenId) async {
+    await _channel.invokeMethod('navigateToPage', {'screenId': screenId});
+  }
+
+  @override
+  Future<void> triggerHotkey(String key) async {
+    await _channel.invokeMethod('hotkey', {'key': key});
+  }
+
+  @override
   void dispose() {}
 }
 
@@ -80,6 +118,9 @@ class _NamedPipeBridge extends _SettingsBridge {
   final _buffer = <int>[];
   void Function(Map<dynamic, dynamic>)? _onChanged;
   Completer<Map<dynamic, dynamic>>? _settingsCompleter;
+  /// 并发请求表:reqId -> completer(缩略图等多请求并发)
+  final _pendingReqs = <int, Completer<Map<dynamic, dynamic>>>{};
+  int _reqSeq = 0;
   bool _connected = false;
   Timer? _reconnectTimer;
   Timer? _readTimer;
@@ -198,10 +239,91 @@ class _NamedPipeBridge extends _SettingsBridge {
       } else if (type == 'getSettings_response' && _settingsCompleter != null) {
         _settingsCompleter!.complete(msg['data'] as Map<dynamic, dynamic>);
         _settingsCompleter = null;
+      } else if (type != null && type.endsWith('_response')) {
+        // 并发请求按 reqId 匹配 completer
+        final id = (msg['reqId'] as num?)?.toInt() ?? 0;
+        final c = _pendingReqs.remove(id);
+        if (c != null) {
+          final d = msg['data'];
+          if (d is Map<dynamic, dynamic>) {
+            c.complete(d);
+          } else if (d is List<dynamic>) {
+            c.complete({'data': d});
+          } else {
+            c.complete({});
+          }
+        } else {
+        }
       }
     } catch (e) {
       debugPrint('[Settings] Parse error: $e');
     }
+  }
+
+  /// 通用管道请求:发送请求并等待对应 *_response 消息(支持并发,按 reqId 匹配)
+  Future<Map<dynamic, dynamic>> _request(String type, Map<String, dynamic>? params) async {
+    if (!_connected) {
+      return {};
+    }
+    final id = ++_reqSeq;
+    final c = Completer<Map<dynamic, dynamic>>();
+    _pendingReqs[id] = c;
+    final msg = <String, dynamic>{'type': type, 'reqId': id, ...?params};
+    _writeData(jsonEncode(msg) + '\n');
+    try {
+      final r = await c.future.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          _pendingReqs.remove(id);
+          return <dynamic, dynamic>{};
+        },
+      );
+      return r;
+    } catch (_) {
+      _pendingReqs.remove(id);
+      return {};
+    }
+  }
+
+  @override
+  Future<String> listPages() async {
+    final r = await _request('listPages', null);
+    final data = r['data'];
+    return data == null ? '[]' : jsonEncode(data);
+  }
+
+  @override
+  Future<Uint8List?> getPageThumbnail(int screenId, int w, int h, int maxSize) async {
+    final r = await _request('getPageThumbnail', {
+      'screenId': screenId, 'w': w, 'h': h, 'maxSize': maxSize,
+    });
+    final png = r['png'] as String?;
+    if (png == null || png.isEmpty) return null;
+    try {
+      final bytes = base64Decode(png);
+      return bytes;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  @override
+  Future<String> searchText(String query) async {
+    final r = await _request('searchText', {'query': query});
+    final data = r['data'];
+    return data == null ? '[]' : jsonEncode(data);
+  }
+
+  @override
+  Future<void> navigateToPage(int screenId) async {
+    if (!_connected) return;
+    _writeData(jsonEncode({'type': 'navigateToPage', 'screenId': screenId}) + '\n');
+  }
+
+  @override
+  Future<void> triggerHotkey(String key) async {
+    if (!_connected) return;
+    _writeData(jsonEncode({'type': 'hotkey', 'key': key}) + '\n');
   }
 
   bool _writeData(String data) {
@@ -460,7 +582,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Future<void> _loadPages() async {
     setState(() => _pagesLoading = true);
     try {
-      final json = await _channel.invokeMethod<String>('listPages') ?? '[]';
+      final json = await _bridge.listPages();
       final list = jsonDecode(json) as List<dynamic>;
       if (mounted) {
         setState(() {
@@ -481,12 +603,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       return;
     }
     try {
-      final bytes = await _channel.invokeMethod<Uint8List>('getPageThumbnail', {
-        'screenId': page.id,
-        'w': page.w,
-        'h': page.h,
-        'maxSize': 280,
-      });
+      final bytes = await _bridge.getPageThumbnail(page.id, page.w, page.h, 280);
       if (bytes != null && bytes.isNotEmpty && mounted) {
         _thumbnailCache[page.id] = bytes;
         page.thumbnail = bytes;
@@ -513,7 +630,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     }
     setState(() => _searchLoading = true);
     try {
-      final json = await _channel.invokeMethod<String>('searchText', {'query': query.trim()}) ?? '[]';
+      final json = await _bridge.searchText(query.trim());
       final list = jsonDecode(json) as List<dynamic>;
       if (mounted) {
         setState(() {
@@ -567,6 +684,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 key: _columnKey,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (Platform.isWindows)
+                    ...[
+                      _buildSection('快捷键 (Ctrl+Alt+…)', _buildHotkeyGrid()),
+                      const SizedBox(height: 16),
+                    ],
                   _buildSection('Color', _buildColorGrid()),
                   const SizedBox(height: 16),
                   _buildSection('Width', _buildWidthRow()),
@@ -667,7 +789,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () {
-          _channel.invokeMethod('navigateToPage', {'screenId': page.id});
+          _bridge.navigateToPage(page.id);
         },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -867,6 +989,64 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
         ),
+      ],
+    );
+  }
+
+  /// 快捷键按钮,按键盘排布(如:X 在 V 左侧,按钮也在 V 左侧),
+  /// 长方形按钮:键名 + 汉字功能提示
+  Widget _buildHotkeyGrid() {
+    Widget key(String k, String label) {
+      return Tooltip(
+        message: label,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 6, bottom: 6),
+          child: SizedBox(
+            width: 64,
+            height: 48,
+            child: OutlinedButton(
+              onPressed: () => _bridge.triggerHotkey(k),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(k,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.bold)),
+                  Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 9, color: Colors.grey.shade700)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget row(List<Widget> children, {double indent = 0}) {
+      return Padding(
+        padding: EdgeInsets.only(left: indent),
+        child: Row(children: children),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        row([key('Q', '退出程序')]),
+        row([key('G', '导出图片'), key('J', '上一页'), key('K', '下一页')], indent: 22),
+        row([
+          key('Z', '撤销上一笔'),
+          key('X', '飘渺画布'),
+          key('C', '新建画布'),
+          key('V', '开关涂鸦'),
+          key('B', '模糊背景'),
+        ]),
       ],
     );
   }
