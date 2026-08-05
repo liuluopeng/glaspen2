@@ -21,36 +21,19 @@ jobs:
       - name: rustfmt --check
         run: cargo fmt --check
 
-  # Clippy + tests — needs the macOS toolchain (cairo + Flutter frameworks)
-  # because build.rs compiles glaspen2.m and links the Flutter framework.
+  # Clippy + tests on Linux: build.rs skips the macOS/Windows toolchains
+  # (no Flutter frameworks, no clang/ObjC), so the shared Rust code is
+  # checked without the macOS-specific setup that requires code signing.
   clippy-test:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt, clippy
-      - name: Install cairo + pkg-config
-        run: brew install cairo pkg-config
-      - name: Setup Flutter (stable)
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-      # Pre-build the Release framework the linker needs (build.rs's own
-      # auto-build uses fvm which is not installed on CI; the existing
-      # framework is simply linked). GitHub runners have no Apple signing
-      # identity — disable code signing entirely for the framework build.
-      - name: Build Flutter macOS framework
-        working-directory: flutter_settings
-        env:
-          CODE_SIGN_IDENTITY: ""
-          CODE_SIGNING_REQUIRED: "NO"
-          CODE_SIGNING_ALLOWED: "NO"
-          EXPANDED_CODE_SIGN_IDENTITY: ""
-          DEVELOPMENT_TEAM: ""
-        run: |
-          flutter pub get
-          flutter build macos-framework --release
+      # libcairo is dlopen'ed at runtime by cairo_dl (used by the unit tests)
+      - name: Install libcairo
+        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev pkg-config
       - name: clippy
         run: cargo clippy --all-targets -- -D warnings
       - name: test
