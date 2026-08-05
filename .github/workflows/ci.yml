@@ -33,8 +33,25 @@ jobs:
           components: rustfmt, clippy
       # libcairo is dlopen'ed at runtime by cairo_dl (used by the unit tests)
       - name: Install libcairo
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev pkg-config xz-utils
+      # ort-sys (ONNX Runtime, used by OCR) downloads prebuilt binaries from
+      # cdn.pyke.io at build time — flaky on runners. Pre-fetch the linux
+      # build and point ort-sys at it via ORT_LIB_PATH (pinned to ort-sys
+      # 2.0.0-rc.12's dist; bump with Cargo.lock).
+      - name: Pre-fetch onnxruntime
+        run: |
+          mkdir -p /tmp/onnxrt
+          curl -sL --retry 3 \
+            "https://cdn.pyke.io/0/pyke:ort-rs/ms@1.24.2/x86_64-unknown-linux-gnu.tar.lzma2" \
+            -o /tmp/onnxrt/ort.tar.lzma2
+          xz -dc --format=raw --lzma2=dict=64MiB /tmp/onnxrt/ort.tar.lzma2 > /tmp/onnxrt/ort.tar
+          tar -xf /tmp/onnxrt/ort.tar -C /tmp/onnxrt
+          ls -la /tmp/onnxrt/libonnxruntime.a
       - name: clippy
+        env:
+          ORT_LIB_PATH: /tmp/onnxrt
         run: cargo clippy --all-targets -- -D warnings
       - name: test
+        env:
+          ORT_LIB_PATH: /tmp/onnxrt
         run: cargo test
