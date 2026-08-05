@@ -73,9 +73,9 @@ fn now_f64() -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// macOS + Windows: async sqlx
+// async sqlx (all platforms — the module itself is platform-agnostic;
+// gating it to macOS/Windows broke Linux CI compilation of `pub use platform::*`)
 // ---------------------------------------------------------------------------
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod platform {
     use crate::state;
     use sqlx::SqlitePool;
