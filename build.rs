@@ -50,14 +50,28 @@ fn main() {
             manifest_dir
         );
 
-        let status = std::process::Command::new("clang")
-            .args(["-c", "src/macos/glaspen2.m", "-o", &obj_path])
-            .args(["-fobjc-arc", "-O2"])
-            .arg("-I/opt/homebrew/Cellar/cairo/1.18.4/include")
-            .arg(format!(
-                "-F{}/FlutterMacOS.xcframework/macos-arm64_x86_64",
-                flutter_fw_dir
-            ))
+        // cairo via pkg-config — portable across Homebrew versions / CI runners
+        // (pkg_config::probe also emits the cargo link-search/lib directives).
+        let cairo = pkg_config::Config::new()
+            .probe("cairo")
+            .expect("cairo not found via pkg-config (brew install cairo)");
+
+        let mut clang = std::process::Command::new("clang");
+        clang.args(["-c", "src/macos/glaspen2.m", "-o", &obj_path]);
+        clang.args(["-fobjc-arc", "-O2"]);
+        for p in &cairo.include_paths {
+            clang.arg(format!("-I{}", p.display()));
+            // glaspen2.m 用 <cairo/cairo.h> 风格: pkg-config 给的是 .../include/cairo,
+            // 需要父目录 .../include 才能解析 <cairo/...>。
+            if let Some(parent) = p.parent() {
+                clang.arg(format!("-I{}", parent.display()));
+            }
+        }
+        clang.arg(format!(
+            "-F{}/FlutterMacOS.xcframework/macos-arm64_x86_64",
+            flutter_fw_dir
+        ));
+        let status = clang
             .status()
             .expect("Failed to run clang");
 
@@ -98,8 +112,7 @@ fn main() {
             flutter_fw_dir
         );
 
-        println!("cargo:rustc-link-search=native=/opt/homebrew/Cellar/cairo/1.18.4/lib");
-        println!("cargo:rustc-link-lib=cairo");
+        // cairo link directives are emitted by the pkg-config probe above
         println!("cargo:rustc-link-lib=framework=Cocoa");
         println!("cargo:rustc-link-lib=framework=QuartzCore");
         println!("cargo:rustc-link-lib=framework=ScreenCaptureKit");

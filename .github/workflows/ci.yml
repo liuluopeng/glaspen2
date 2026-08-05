@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Formatting check — no compile step, runs anywhere.
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: rustfmt --check
+        run: cargo fmt --check
+
+  # Clippy + tests — needs the macOS toolchain (cairo + Flutter frameworks)
+  # because build.rs compiles glaspen2.m and links the Flutter framework.
+  clippy-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Install cairo + pkg-config
+        run: brew install cairo pkg-config
+      - name: Setup Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      # Pre-build the Release framework the linker needs (build.rs's own
+      # auto-build uses fvm which is not installed on CI; the existing
+      # framework is simply linked).
+      - name: Build Flutter macOS framework
+        working-directory: flutter_settings
+        run: |
+          flutter pub get
+          flutter build macos-framework --release
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: test
+        run: cargo test
