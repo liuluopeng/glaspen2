@@ -26,6 +26,9 @@ pub struct CairoRenderer {
     bits: *mut u8,
     pub w: i32,
     pub h: i32,
+    /// 是否拥有 surface。from_surface 绑定 ObjC 外部 surface, 析构时
+    /// 绝不能 cairo_surface_destroy 掉它(否则 ObjC use-after-free 段错误)。
+    owns_surface: bool,
     set_source_rgba: unsafe extern "C" fn(*mut std::ffi::c_void, f64, f64, f64, f64),
     set_line_width: unsafe extern "C" fn(*mut std::ffi::c_void, f64),
     move_to: unsafe extern "C" fn(*mut std::ffi::c_void, f64, f64),
@@ -101,6 +104,7 @@ impl CairoRenderer {
                 bits,
                 w,
                 h,
+                owns_surface: true,
                 set_source_rgba,
                 set_line_width,
                 move_to,
@@ -185,6 +189,7 @@ impl CairoRenderer {
                 bits,
                 w,
                 h,
+                owns_surface: true,
                 set_source_rgba,
                 set_line_width,
                 move_to,
@@ -268,6 +273,7 @@ impl CairoRenderer {
                 bits,
                 w: get_width(surface),
                 h: get_height(surface),
+                owns_surface: false, // 外部 surface — 析构时绝不销毁
                 set_source_rgba,
                 set_line_width,
                 move_to,
@@ -383,10 +389,14 @@ impl Drop for CairoRenderer {
             let _ = (self.flush)(self.surface);
             let destroy: unsafe extern "C" fn(*mut std::ffi::c_void) =
                 *self._lib.get(b"cairo_destroy").unwrap();
-            let surface_destroy: unsafe extern "C" fn(*mut std::ffi::c_void) =
-                *self._lib.get(b"cairo_surface_destroy").unwrap();
             destroy(self.cr);
-            surface_destroy(self.surface);
+            // 只销毁自己创建的 surface; from_surface 绑定的外部 surface
+            // (ObjC 的 g_surface) 归 ObjC 所有, 绝不能在这里释放。
+            if self.owns_surface {
+                let surface_destroy: unsafe extern "C" fn(*mut std::ffi::c_void) =
+                    *self._lib.get(b"cairo_surface_destroy").unwrap();
+                surface_destroy(self.surface);
+            }
         }
     }
 }
