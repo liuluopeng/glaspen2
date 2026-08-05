@@ -890,12 +890,17 @@ static NSButton *g_glass_buttons[1];
         }
         result(nil);
     } else if ([call.method isEqualToString:@"hotkey"]) {
-        // 设置面板快捷键按钮 → 执行与物理快捷键相同的动作
+        // 设置面板快捷键按钮 → 执行与物理快捷键相同的动作。
+        // Q (退出) 不走 perform_hotkey: 那是按钮专属动作, ⌃⌘Q 必须留给锁屏。
         NSDictionary *args = call.arguments;
         NSString *key = args[@"key"];
+        if ([key isEqualToString:@"Q"]) {
+            [NSApp terminate:nil];
+            result(nil);
+            return;
+        }
         unsigned short kc = 0;
-        if ([key isEqualToString:@"Q"]) kc = kVK_ANSI_Q;
-        else if ([key isEqualToString:@"G"]) kc = kVK_ANSI_G;
+        if ([key isEqualToString:@"G"]) kc = kVK_ANSI_G;
         else if ([key isEqualToString:@"J"]) kc = 0x26; // J
         else if ([key isEqualToString:@"K"]) kc = 0x28; // K
         else if ([key isEqualToString:@"Z"]) kc = kVK_ANSI_Z;
@@ -1941,14 +1946,12 @@ static BOOL perform_hotkey(unsigned short kc) {
         // Switch canvas mode: 固定 ↔ 飘渺 (⌘ + ⌃ + X)
         toggle_canvas_mode();
         return YES;
-    } else if (kc == kVK_ANSI_Q) {
-        // 退出程序 (设置面板按钮; 无对应物理快捷键)
-        [NSApp terminate:nil];
-        return YES;
     } else if (kc == kVK_ANSI_Comma) {
         show_settings_panel();
         return YES;
     }
+    // 注意: 不要在这里处理 Q — ⌃⌘Q 是 macOS 的系统锁屏快捷键,
+    // 拦截它会顶掉锁屏。退出只由设置面板按钮触发(见 'hotkey' 处理器)。
     return NO;
 }
 
