@@ -106,6 +106,7 @@ fn main() {
             flutter_fw_dir
         );
 
+        println!("cargo:rustc-link-search=native=/opt/homebrew/Cellar/cairo/1.18.4/lib");
         println!("cargo:rustc-link-lib=cairo");
         println!("cargo:rustc-link-lib=framework=Cocoa");
         println!("cargo:rustc-link-lib=framework=QuartzCore");

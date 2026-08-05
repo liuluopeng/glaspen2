@@ -94,6 +94,55 @@ pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) -> c_
     created
 }
 
+/// Re-render every stroke from STROKES onto the ObjC-owned cairo surface.
+/// Used on undo, page navigation, display changes and the rainbow toggle.
+/// Coordinates are scaled by `scale` (retina factor); the surface is an
+/// external cairo image surface owned by ObjC.
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scale: c_double) {
+    let Some(r) = crate::cairo_dl::CairoRenderer::from_surface(surface_ptr) else {
+        return;
+    };
+    r.clear();
+    let strokes = STROKES.lock().unwrap();
+    for s in strokes.iter() {
+        let pts = &s.points;
+        if pts.len() < 2 {
+            continue;
+        }
+        let color = (
+            (s.r.clamp(0.0, 1.0) * 255.0) as u8,
+            (s.g.clamp(0.0, 1.0) * 255.0) as u8,
+            (s.b.clamp(0.0, 1.0) * 255.0) as u8,
+        );
+        for i in 0..pts.len() {
+            let (x, y, w, _t) = pts[i];
+            if i == 0 {
+                // 起点实心圆点(圆帽)
+                r.fill_circle(
+                    (x * scale) as f32,
+                    (y * scale) as f32,
+                    (w * 0.5 * scale) as f32,
+                    color,
+                );
+            } else {
+                let (px, py, _pw, _pt) = pts[i - 1];
+                r.stroke_line(
+                    (px * scale) as f32,
+                    (py * scale) as f32,
+                    (x * scale) as f32,
+                    (y * scale) as f32,
+                    (w * scale) as f32,
+                    color,
+                );
+            }
+        }
+    }
+    drop(strokes);
+    r.flush();
+}
+
 /// Undo the last stroke: remove from both STROKES (memory) and DB.
 /// Returns the number of remaining strokes, or -1 if there was nothing to undo.
 #[unsafe(no_mangle)]

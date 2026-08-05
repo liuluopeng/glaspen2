@@ -198,6 +198,89 @@ impl CairoRenderer {
         }
     }
 
+    /// 绑定一个外部 cairo image surface(macOS ObjC 侧传入的 g_surface)。
+    /// 不拥有 surface(ObjC 负责创建/销毁),只持有 context 和绘制函数指针,
+    /// 用于把 STROKES 重绘进既有表面(glaspen2_draw_rebuild)。
+    pub fn from_surface(surface: *mut std::ffi::c_void) -> Option<Self> {
+        unsafe {
+            let lib = load_library()?;
+
+            unsafe fn sym<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
+                let s: Symbol<T> = lib.get(name).ok()?;
+                Some(*s)
+            }
+
+            let cairo_create: unsafe extern "C" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void =
+                sym(&lib, b"cairo_create")?;
+            let get_data: unsafe extern "C" fn(*mut std::ffi::c_void) -> *mut u8 =
+                sym(&lib, b"cairo_image_surface_get_data")?;
+            let get_width: unsafe extern "C" fn(*mut std::ffi::c_void) -> i32 =
+                sym(&lib, b"cairo_image_surface_get_width")?;
+            let get_height: unsafe extern "C" fn(*mut std::ffi::c_void) -> i32 =
+                sym(&lib, b"cairo_image_surface_get_height")?;
+            let get_stride: unsafe extern "C" fn(*mut std::ffi::c_void) -> i32 =
+                sym(&lib, b"cairo_image_surface_get_stride")?;
+            let set_source_rgba: unsafe extern "C" fn(*mut std::ffi::c_void, f64, f64, f64, f64) =
+                sym(&lib, b"cairo_set_source_rgba")?;
+            let set_line_width: unsafe extern "C" fn(*mut std::ffi::c_void, f64) =
+                sym(&lib, b"cairo_set_line_width")?;
+            let set_line_cap: unsafe extern "C" fn(*mut std::ffi::c_void, i32) =
+                sym(&lib, b"cairo_set_line_cap")?;
+            let set_line_join: unsafe extern "C" fn(*mut std::ffi::c_void, i32) =
+                sym(&lib, b"cairo_set_line_join")?;
+            let move_to: unsafe extern "C" fn(*mut std::ffi::c_void, f64, f64) =
+                sym(&lib, b"cairo_move_to")?;
+            let line_to: unsafe extern "C" fn(*mut std::ffi::c_void, f64, f64) =
+                sym(&lib, b"cairo_line_to")?;
+            let stroke: unsafe extern "C" fn(*mut std::ffi::c_void) =
+                sym(&lib, b"cairo_stroke")?;
+            let flush: unsafe extern "C" fn(*mut std::ffi::c_void) =
+                sym(&lib, b"cairo_surface_flush")?;
+            let new_path: unsafe extern "C" fn(*mut std::ffi::c_void) =
+                sym(&lib, b"cairo_new_path")?;
+            let fill: unsafe extern "C" fn(*mut std::ffi::c_void) =
+                sym(&lib, b"cairo_fill")?;
+            let arc: unsafe extern "C" fn(*mut std::ffi::c_void, f64, f64, f64, f64, f64) =
+                sym(&lib, b"cairo_arc")?;
+
+            if surface.is_null() {
+                return None;
+            }
+            let cr = cairo_create(surface);
+            if cr.is_null() {
+                return None;
+            }
+            let _ = (set_line_cap)(cr, CAIRO_LINE_CAP_ROUND);
+            let _ = (set_line_join)(cr, CAIRO_LINE_JOIN_ROUND);
+
+            let bits = get_data(surface);
+            if bits.is_null() {
+                let destroy: unsafe extern "C" fn(*mut std::ffi::c_void) =
+                    sym(&lib, b"cairo_destroy")?;
+                destroy(cr);
+                return None;
+            }
+
+            Some(Self {
+                _lib: lib,
+                surface,
+                cr,
+                bits,
+                w: get_width(surface),
+                h: get_height(surface),
+                set_source_rgba,
+                set_line_width,
+                move_to,
+                line_to,
+                stroke,
+                flush,
+                new_path,
+                fill,
+                arc,
+            })
+        }
+    }
+
     /// 像素缓冲(BGRA 预乘)
     pub fn bits(&self) -> *mut u8 {
         self.bits

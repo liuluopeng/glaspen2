@@ -30,6 +30,7 @@ ureq = "3"
 sha2 = "0.10"
 base64 = "0.22"
 chrono = "0.4"
+libloading = "0.9"
 printpdf = { version = "0.10.0", features = ["text_layout"] }
 lopdf = "0.39"
 
@@ -38,7 +39,6 @@ objc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 # Versions match C:\Users\liulu\Downloads\wAPItry (verified Windows pen-input prototype)
-libloading = "0.9"
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Devices_HumanInterfaceDevice",
