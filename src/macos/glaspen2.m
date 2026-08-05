@@ -1273,13 +1273,13 @@ static void show_settings_panel(void) {
                                                          nibName:nil
                                                           bundle:nil];
 
-    // Create window — Flutter sets the actual size via method channel
-    NSRect frame = NSMakeRect(0, 0, 300, 300);
+    // Create window — fixed size (520×850), matching the Windows runner.
+    NSRect frame = NSMakeRect(0, 0, 520, 850);
     NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
         backing:NSBackingStoreBuffered defer:NO];
     [window setTitle:L(@"Glaspen2 设置", @"Glaspen2 Settings")];
-    [window setMinSize:NSMakeSize(300, 300)];
+    [window setMinSize:NSMakeSize(520, 850)];
     [window setReleasedWhenClosed:NO];
 
     // Set delegate to switch back to Accessory when window closes

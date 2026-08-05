@@ -493,10 +493,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     // Windows 管道连接成功后重新拉取设置(macOS 通道立即可用,不影响)
     _bridge.onConnected = () => _loadSettings();
     _loadSettings();
-
-    if (Platform.isMacOS) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToFit());
-    }
   }
 
   @override
@@ -514,22 +510,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     if (_tabController.index == 1 && _pages.isEmpty && !_pagesLoading) {
       _loadPages();
     }
-    if (Platform.isMacOS) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToFit());
-    }
-  }
-
-  /// Measure the scroll content and tell the host to resize the window to fit.
-  void _resizeToFit() {
-    final box = _columnKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    const width = 600.0;
-    const vPadding = 48.0;
-    final height = (box.size.height + vPadding).ceilToDouble();
-    _channel.invokeMethod('setWindowSize', {
-      'width': width,
-      'height': height < 540 ? 540 : height,
-    });
   }
 
   /// 服务器 JSON 里的开关是数字 0/1,统一转 bool
@@ -561,9 +541,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _ocrEnabled = _b(settings['ocrEnabled']);
           _connected = true;
         });
-        if (Platform.isMacOS) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => _resizeToFit());
-        }
       } else if (mounted) {
         // Windows 管道未就绪时 getSettings 返回空:稍后重试
         _reloadTimer = Timer(const Duration(seconds: 2), _loadSettings);
