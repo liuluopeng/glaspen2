@@ -21,37 +21,41 @@ jobs:
       - name: rustfmt --check
         run: cargo fmt --check
 
-  # Clippy + tests on Linux: build.rs skips the macOS/Windows toolchains
-  # (no Flutter frameworks, no clang/ObjC), so the shared Rust code is
-  # checked without the macOS-specific setup that requires code signing.
+  # Clippy + tests on the primary target (macOS) — this is what we ship.
+  # Requires the Flutter macOS framework: flutter build macos-framework
+  # refuses to run without a *valid* (trusted) signing identity on runners,
+  # so a self-signed cert is created and added to the system trust store.
   clippy-test:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: rustfmt, clippy
-      # libcairo is dlopen'ed at runtime by cairo_dl (used by the unit tests)
-      - name: Install libcairo
-        run: sudo apt-get update && sudo apt-get install -y libcairo2-dev pkg-config xz-utils
-      # ort-sys (ONNX Runtime, used by OCR) downloads prebuilt binaries from
-      # cdn.pyke.io at build time — flaky on runners. Pre-fetch the linux
-      # build and point ort-sys at it via ORT_LIB_PATH (pinned to ort-sys
-      # 2.0.0-rc.12's dist; bump with Cargo.lock).
-      - name: Pre-fetch onnxruntime
+      - name: Install cairo
+        run: brew install cairo pkg-config
+      - name: Setup Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Create + trust signing identity
         run: |
-          mkdir -p /tmp/onnxrt
-          curl -sL --retry 3 \
-            "https://cdn.pyke.io/0/pyke:ort-rs/ms@1.24.2/x86_64-unknown-linux-gnu.tar.lzma2" \
-            -o /tmp/onnxrt/ort.tar.lzma2
-          xz -dc --format=raw --lzma2=dict=64MiB /tmp/onnxrt/ort.tar.lzma2 > /tmp/onnxrt/ort.tar
-          tar -xf /tmp/onnxrt/ort.tar -C /tmp/onnxrt
-          ls -la /tmp/onnxrt/libonnxruntime.a
-      - name: clippy
+          bash scripts/create-signing-cert.sh
+          security find-certificate -c "Glaspen2 Development" -p > /tmp/gp-cert.pem
+          openssl x509 -in /tmp/gp-cert.pem -outform der -out /tmp/gp-cert.der
+          sudo security add-trusted-cert -d -r trustRoot \
+            -k /Library/Keychains/System.keychain /tmp/gp-cert.der
+          security find-identity -v -p codesigning
+      - name: Build Flutter macOS framework
+        working-directory: flutter_settings
         env:
-          ORT_LIB_PATH: /tmp/onnxrt
+          CODE_SIGN_IDENTITY: ""
+          CODE_SIGNING_REQUIRED: "NO"
+          CODE_SIGNING_ALLOWED: "NO"
+        run: |
+          flutter pub get
+          flutter build macos-framework --release
+      - name: clippy
         run: cargo clippy --all-targets -- -D warnings
       - name: test
-        env:
-          ORT_LIB_PATH: /tmp/onnxrt
         run: cargo test
