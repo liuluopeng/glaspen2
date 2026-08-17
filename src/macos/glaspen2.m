@@ -1596,7 +1596,7 @@ static void rebuild_surface_from_strokes(void) {
         g_surface_cgimage_stride != stride) {
         CGImageRelease(g_surface_cgimage);
         g_surface_cgimage = NULL;
-        CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+        CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
         CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, data, stride * h, NULL);
         g_surface_cgimage = CGImageCreate(w, h, 8, 32, stride, cs,
                                           kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst,
