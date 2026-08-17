@@ -531,4 +531,23 @@ mod tests {
         assert!(at(16, 16) > 0, "circle center should be opaque");
         assert!(at(32, 32) > 0, "line midpoint should be opaque");
     }
+
+    // 颜色精确性: 填充实心色块, 中心像素的 RGB 必须完全等于输入 (无偏移)
+    #[test]
+    fn test_color_precision() {
+        let Some(r) = CairoRenderer::create_owned(32, 32) else {
+            panic!("cairo must load");
+        };
+        r.clear();
+        r.fill_rect(4.0, 4.0, 24.0, 24.0, (200, 50, 30)); // R=200 G=50 B=30
+        r.flush();
+        let bits = unsafe { std::slice::from_raw_parts(r.bits(), 32 * 32 * 4) };
+        // cairo ARGB32 little-endian 内存序 = [B, G, R, A]
+        let off = (16 * 32 + 16) * 4; // 中心像素
+        let (b, g, r_, a) = (bits[off], bits[off + 1], bits[off + 2], bits[off + 3]);
+        assert_eq!(a, 255, "opaque");
+        assert_eq!(r_, 200, "R preserved");
+        assert_eq!(g, 50, "G preserved");
+        assert_eq!(b, 30, "B preserved");
+    }
 }
