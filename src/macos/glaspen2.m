@@ -626,7 +626,21 @@ static void update_menu_checkmarks(void) {
 
 static void toggle_enabled(void) {
     g_enabled = !g_enabled;
-    if (!g_enabled) restore_system_cursor();
+    if (!g_enabled) {
+        // 关闭涂鸦: 临时隐藏整个 glaspen 覆盖层(笔迹/方格/磨砂玻璃),
+        // 以便干净地使用其他绘图软件。
+        restore_system_cursor();
+        finish_active_stroke();
+        if (g_window) [g_window orderOut:nil];
+        if (g_pressure_monitor) pm_hide();
+    } else {
+        if (g_window) {
+            if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
+            [g_window orderFrontRegardless];
+            rebuild_surface_from_strokes();
+        }
+        if (g_pressure_monitor) pm_show();
+    }
     update_status_icon_state();
     show_notification(g_enabled
         ? L(@"涂鸦已开启", @"Drawing enabled")
