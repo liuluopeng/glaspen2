@@ -2,7 +2,9 @@
 //!
 //! 架构(基于已验证原型 raw_input_trans_draw.rs):
 //!   - 单层全屏 WS_EX_LAYERED 窗口 + UpdateLayeredWindowIndirect(32bit BGRA alpha) 合成
-//!   - 输入:WM_INPUT(Raw Input)手工解析 HID 报告,任何窗口状态都能收到
+//!   - 输入:WM_INPUT(Raw Input)手工解析 HID 报告,任何窗口状态都能收到;
+//!     量程按 hDevice 从 HID value caps 动态读取(驱动更新后虚拟数位板
+//!     VID_00FF/BACC 归一化到 32767x32767,写死 XP-Pen 量程会笔迹偏移)
 //!   - 笔迹:ink-stroke-modeler(位置/压力双平滑 + 120Hz 重采样)→ 可变宽度轮廓
 //!     (法线偏移 + cairo 抗锯齿填充 + 端点圆帽)
 //!   - 拦截:笔事件到达清除 WS_EX_TRANSPARENT,笔离开 500ms 后恢复穿透
@@ -12,6 +14,7 @@
 
 #![allow(unsafe_op_in_unsafe_fn)]
 
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::ptr;
@@ -19,8 +22,14 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 use std::time::Instant;
 
 use ink_stroke_modeler_rs::{ModelerInput, ModelerInputEventType, ModelerParams, StrokeModeler};
+use windows::Win32::Devices::HumanInterfaceDevice::{
+    HidD_GetPreparsedData, HidP_GetValueCaps, HidP_Input, HIDP_VALUE_CAPS, PHIDP_PREPARSED_DATA,
+};
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
+use windows::Win32::Storage::FileSystem::{
+    CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, RegisterHotKey,
@@ -41,9 +50,154 @@ const PEEK_DELAY_MS: u32 = 2000;
 // 近透明底色 alpha=2(0.01*255):肉眼不可见,但窗口可命中/可收指针消息
 const BG_BLOCK: u8 = 2;
 
-// XP-Pen 板面逻辑范围(Generic X/Y logical max)
-const MAX_RAW_X: i64 = 25400;
-const MAX_RAW_Y: i64 = 15875;
+// caps 不可用时的回退量程(XP-Pen 板面历史值,Generic X/Y logical max)
+const FALLBACK_MAX_X: f64 = 25400.0;
+const FALLBACK_MAX_Y: f64 = 15875.0;
+const FALLBACK_MAX_P: f64 = 16383.0;
+
+// ── 动态量程(修复驱动更新后笔迹偏移):按 hDevice 缓存 caps 读出的逻辑范围 ──
+// 驱动更新后系统多出虚拟数位板(VID_00FF/BACC),笔事件改道到它那里,
+// 坐标系从 XP-Pen 的 25400x15875 变成全屏归一化的 32767x32767,
+// 写死量程导致笔迹越往右下偏得越多(WM_POINTER 不受影响)。
+// 修复:按 hDevice 缓存 preparsed data,从 HID value caps 动态读
+// GX/GY/压力的 LogicalMax 归一化;物理板/虚拟板各用各的量程。
+// 已在 wAPItry/raw_input_trans_draw_dbg 验证:与 WM_POINTER 对照偏差 ≤7px。
+
+struct DevCtx {
+    x_max: f64,
+    y_max: f64,
+    p_max: f64,
+}
+
+static CTX: AtomicPtr<HashMap<isize, DevCtx>> = AtomicPtr::new(std::ptr::null_mut());
+
+fn ctx_map() -> &'static mut HashMap<isize, DevCtx> {
+    unsafe {
+        let p = CTX.load(Ordering::SeqCst);
+        if p.is_null() {
+            let b = Box::into_raw(Box::new(HashMap::new()));
+            let _ = CTX.compare_exchange(std::ptr::null_mut(), b, Ordering::SeqCst, Ordering::SeqCst);
+        }
+        &mut *CTX.load(Ordering::SeqCst)
+    }
+}
+
+fn device_name(h: HANDLE) -> Option<String> {
+    unsafe {
+        let mut len: u32 = 0;
+        let _ = GetRawInputDeviceInfoW(Some(h), RIDI_DEVICENAME, None, &mut len);
+        if len == 0 {
+            return None;
+        }
+        let mut buf = vec![0u16; len as usize];
+        let n = GetRawInputDeviceInfoW(
+            Some(h),
+            RIDI_DEVICENAME,
+            Some(buf.as_mut_ptr() as *mut core::ffi::c_void),
+            &mut len,
+        );
+        if n == u32::MAX || n == 0 {
+            return None;
+        }
+        buf.truncate(n as usize);
+        Some(String::from_utf16_lossy(&buf))
+    }
+}
+
+/// 获取设备 preparsed data:RIDI_PREPARSEDDATA → 设备路径+CreateFile+HidD → 直接 HidD
+fn get_preparsed(h: HANDLE) -> Option<PHIDP_PREPARSED_DATA> {
+    unsafe {
+        let mut prep = PHIDP_PREPARSED_DATA(0);
+        let mut size = std::mem::size_of::<PHIDP_PREPARSED_DATA>() as u32;
+        let n = GetRawInputDeviceInfoW(
+            Some(h),
+            RIDI_PREPARSEDDATA,
+            Some(&mut prep as *mut PHIDP_PREPARSED_DATA as *mut core::ffi::c_void),
+            &mut size,
+        );
+        if n != u32::MAX && n != 0 && prep.0 != 0 {
+            return Some(prep);
+        }
+
+        if let Some(name) = device_name(h) {
+            let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+            let path = PCWSTR(wide.as_ptr());
+            let access_modes = [(GENERIC_READ | GENERIC_WRITE).0, (GENERIC_READ).0, 0];
+            for access in access_modes {
+                if let Ok(handle) = CreateFileW(
+                    path,
+                    access,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    None,
+                    OPEN_EXISTING,
+                    FILE_FLAG_OVERLAPPED,
+                    None,
+                ) {
+                    let mut pp = PHIDP_PREPARSED_DATA(0);
+                    if HidD_GetPreparsedData(handle, &mut pp) && pp.0 != 0 {
+                        return Some(pp);
+                    }
+                    let _ = CloseHandle(handle);
+                }
+            }
+        }
+
+        let mut pp = PHIDP_PREPARSED_DATA(0);
+        if HidD_GetPreparsedData(h, &mut pp) && pp.0 != 0 {
+            return Some(pp);
+        }
+        None
+    }
+}
+
+/// 从 value caps 提取 GX/GY/压力的逻辑上限
+fn load_caps_ranges(ptr: PHIDP_PREPARSED_DATA) -> (f64, f64, f64) {
+    unsafe {
+        let mut x_max = FALLBACK_MAX_X;
+        let mut y_max = FALLBACK_MAX_Y;
+        let mut p_max = FALLBACK_MAX_P;
+
+        let mut n: u16 = 0;
+        let _ = HidP_GetValueCaps(HidP_Input, std::ptr::null_mut(), &mut n, ptr);
+        if n > 0 {
+            let mut vc = vec![HIDP_VALUE_CAPS::default(); n as usize];
+            let _ = HidP_GetValueCaps(HidP_Input, vc.as_mut_ptr(), &mut n, ptr);
+            for c in vc {
+                let usage = c.Anonymous.NotRange.Usage;
+                if c.UsagePage == 0x01 && usage == 0x30 && c.LogicalMax > 1000 {
+                    x_max = c.LogicalMax as f64;
+                } else if c.UsagePage == 0x01 && usage == 0x31 && c.LogicalMax > 1000 {
+                    y_max = c.LogicalMax as f64;
+                } else if c.UsagePage == 0x0D && usage == 0x30 && c.LogicalMax > 255 {
+                    p_max = c.LogicalMax as f64;
+                }
+            }
+        }
+        (x_max, y_max, p_max)
+    }
+}
+
+/// 首次见到该设备时构建量程上下文(并打印一行量程来源)
+fn ctx_for(hdev: isize) -> &'static mut DevCtx {
+    let map = ctx_map();
+    if !map.contains_key(&hdev) {
+        let h = HANDLE(hdev as *mut core::ffi::c_void);
+        let (x_max, y_max, p_max, from_caps) = match get_preparsed(h) {
+            Some(ptr) => {
+                let (x, y, p) = load_caps_ranges(ptr);
+                (x, y, p, true)
+            }
+            None => (FALLBACK_MAX_X, FALLBACK_MAX_Y, FALLBACK_MAX_P, false),
+        };
+        let src = if from_caps { "caps" } else { "⚠ preparsed 不可用,回退常量" };
+        eprintln!(
+            "[overlay] [新输入设备 hDev=0x{:X}] 量程({}): X 0..{:.0} Y 0..{:.0} P 0..{:.0}",
+            hdev, src, x_max, y_max, p_max
+        );
+        map.insert(hdev, DevCtx { x_max, y_max, p_max });
+    }
+    map.get_mut(&hdev).unwrap()
+}
 
 // ── 自定义消息与命令 ID(Flutter 设置管道用) ──
 
@@ -709,8 +863,13 @@ unsafe fn process_raw_hid(buf: &[u64]) -> Option<RECT> {
         return None;
     }
     let base = raw.add(32);
+    // RAWINPUTHEADER.hDevice 在偏移 8(类型 4B + 大小 4B 之后):标识上报设备,
+    // 用于按设备选择归一化量程(驱动更新后物理板/虚拟板并存)
+    let hdev =
+        usize::from_le_bytes(std::slice::from_raw_parts(raw.add(8), 8).try_into().unwrap()) as isize;
 
     let state = &mut *STATE.load(Ordering::SeqCst);
+    let ctx = ctx_for(hdev);
 
     let mut dirty: Option<RECT> = None;
     for i in 0..dw_count {
@@ -722,12 +881,14 @@ unsafe fn process_raw_hid(buf: &[u64]) -> Option<RECT> {
         let x = (data[2] as u32) | ((data[3] as u32) << 8);
         let y = (data[4] as u32) | ((data[5] as u32) << 8);
         let press = (data[6] as u32) | ((data[7] as u32) << 8);
-        if x > 0x1_0000 || y > 0x1_0000 {
-            continue;
+        if x as f64 > ctx.x_max * 1.5 || y as f64 > ctx.y_max * 1.5 {
+            continue; // 明显超出量程的坏报告
         }
-        let sx = (x.min(MAX_RAW_X as u32) as i64 * (state.canvas.w - 1) as i64 / MAX_RAW_X) as f32;
-        let sy = (y.min(MAX_RAW_Y as u32) as i64 * (state.canvas.h - 1) as i64 / MAX_RAW_Y) as f32;
-        let pnorm = (press as f32 / 16383.0).clamp(0.0, 1.0);
+        let sx =
+            (x.min(ctx.x_max as u32) as f64 / ctx.x_max * (state.canvas.w - 1) as f64) as f32;
+        let sy =
+            (y.min(ctx.y_max as u32) as f64 / ctx.y_max * (state.canvas.h - 1) as f64) as f32;
+        let pnorm = ((press as f64 / ctx.p_max).clamp(0.0, 1.0)) as f32;
         let down = (switches & 0x05) != 0;
         // 压力监控:每帧刷新
         if state.draw.pressure_monitor {
@@ -1138,14 +1299,6 @@ fn date_label(unix_secs: u64) -> String {
     }
 }
 
-// ── Flutter 字体(LXGWWenKaiMono) ──
-
-#[link(name = "gdi32")]
-unsafe extern "system" {
-    fn AddFontResourceExW(name: PCWSTR, flags: u32, res: *const std::ffi::c_void) -> i32;
-    fn GetTextFaceW(hdc: HDC, cchcount: i32, lpname: *mut u16) -> i32;
-}
-
 // ── GDI+ 文字渲染(灰度抗锯齿,消除 GDI 文本的颗粒感) ──
 
 use libloading::{Library, Symbol};
@@ -1294,8 +1447,6 @@ fn gdiplus() -> Option<&'static Gdiplus> {
     .as_ref()
 }
 
-const FR_PRIVATE: u32 = 0x10;
-
 /// 查找 Flutter 打包的字体文件路径(exe 旁 → 开发构建目录 → 源码 assets)
 fn find_font_file() -> Option<std::path::PathBuf> {
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
@@ -1323,28 +1474,6 @@ fn find_font_file() -> Option<std::path::PathBuf> {
     }
     candidates.into_iter().find(|p| p.exists())
 }
-
-/// 注册 Flutter 打包的 LXGWWenKaiMono 字体(仅当前进程 FR_PRIVATE,
-/// 不污染系统,供 GDI 压力窗口使用)。返回 true 表示可用。
-fn register_flutter_font() -> bool {
-    let Some(path) = find_font_file() else {
-        return false;
-    };
-    let wide: Vec<u16> = path
-        .to_string_lossy()
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
-    let ret = unsafe { AddFontResourceExW(PCWSTR(wide.as_ptr()), FR_PRIVATE, std::ptr::null()) };
-    if ret > 0 {
-        eprintln!("[overlay] 已注册 Flutter 字体: {}", path.display());
-        return true;
-    }
-    false
-}
-
-/// 字体是否已注册(LXGWWenKaiMono);仅主线程在 hud_create 时设置
-static mut HUD_FONT_OK: bool = false;
 
 /// GDI+ 私人字体集合(通知渲染用,系统字体不经过 GDI 注册表),仅主线程访问
 static mut GP_FONT_COLLECTION: *mut std::ffi::c_void = std::ptr::null_mut();
@@ -1450,19 +1579,29 @@ unsafe extern "system" fn hud_wnd_proc(
             let hdc = BeginPaint(hwnd, &mut ps);
             let hud = hud_ref();
             // 通知窗口内容由 UpdateLayeredWindow 直接呈现,这里只清无效区;
-            // 压力窗口保持 GDI 绘制(黑底)
+            // 压力窗口保持 GDI 绘制
             if hwnd == hud.pm_hwnd {
+                // 先把无效区涂成不透明黑底:类背景刷为空、WM_ERASEBKGND 不擦除,
+                // 高频刷新时旧字残影叠加会糊成一团(看起来像乱码)
+                let rc = ps.rcPaint;
+                let _ = PatBlt(
+                    hdc,
+                    rc.left,
+                    rc.top,
+                    rc.right - rc.left,
+                    rc.bottom - rc.top,
+                    BLACKNESS,
+                );
                 let text = if hud.pm_visible {
                     hud.pm_text.clone()
                 } else {
                     String::new()
                 };
                 if !text.is_empty() {
-                    let font_name = if HUD_FONT_OK {
-                        "霞鹜文楷等宽"
-                    } else {
-                        "Microsoft YaHei UI"
-                    };
+                    // 固定系统雅黑:LXGW 私有字体经 GDI CreateFont 匹配会失败
+                    // (NotTrueTypeFont,见 gdiplus_load_font_file 注释),
+                    // 回退渲染缺字形导致乱码;数字/中文用雅黑都稳定
+                    let font_name = "Microsoft YaHei UI";
                     let font = CreateFontW(
                         -13,
                         0,
@@ -1552,7 +1691,6 @@ unsafe fn hud_create_window(
 /// 创建 HUD 窗口(通知:屏幕正中央透明;压力:左上角 macOS 同位置黑底)
 fn hud_create() -> (HWND, HWND) {
     unsafe {
-        HUD_FONT_OK = register_flutter_font();
         if gdiplus().is_some() {
             eprintln!("[overlay] GDI+ 已初始化");
         } else {
