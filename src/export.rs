@@ -1251,67 +1251,63 @@ struct GifStroke {
     points: Vec<(f64, f64, f64, f64)>, // (x, y, width, relative_time)
 }
 
-/// Save an animated GIF showing stroke drawing order at real speed.
-/// Uses the timing data stored in each point (relative_time).
-/// Frames are rendered in parallel across available CPU cores.
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
-    // ── Phase 1: lock, extract, drop ──
-    let (gif_strokes, bw, bh, gif_w, gif_h, bx_min, by_min) = {
-        let strokes = STROKES.lock().unwrap();
-        if strokes.is_empty() {
-            return 0;
-        }
+/// Clone a slice of strokes into the render-only GifStroke representation.
+fn gif_strokes_from(strokes: &[Stroke]) -> Vec<GifStroke> {
+    strokes
+        .iter()
+        .map(|s| GifStroke {
+            r: s.r,
+            g: s.g,
+            b: s.b,
+            points: s.points.clone(),
+        })
+        .collect()
+}
 
-        // Bounding box
-        let mut bx_min = f64::MAX;
-        let mut by_min = f64::MAX;
-        let mut bx_max = f64::MIN;
-        let mut by_max = f64::MIN;
-        for s in strokes.iter() {
-            for &(x, y, _, _) in &s.points {
-                if x < bx_min {
-                    bx_min = x;
-                }
-                if y < by_min {
-                    by_min = y;
-                }
-                if x > bx_max {
-                    bx_max = x;
-                }
-                if y > by_max {
-                    by_max = y;
-                }
+/// Encode an animated GIF that replays `gif_strokes` in drawing order at
+/// (roughly) real speed. Caller owns the slice — no lock is taken here, so it
+/// is safe to run on a background thread once the data has been cloned.
+/// Returns raw GIF bytes, or None on any failure.
+fn encode_animated_gif(gif_strokes: &[GifStroke]) -> Option<Vec<u8>> {
+    if gif_strokes.is_empty() {
+        return None;
+    }
+
+    // ── Bounding box ──
+    let mut bx_min = f64::MAX;
+    let mut by_min = f64::MAX;
+    let mut bx_max = f64::MIN;
+    let mut by_max = f64::MIN;
+    for s in gif_strokes.iter() {
+        for &(x, y, _, _) in &s.points {
+            if x < bx_min {
+                bx_min = x;
+            }
+            if y < by_min {
+                by_min = y;
+            }
+            if x > bx_max {
+                bx_max = x;
+            }
+            if y > by_max {
+                by_max = y;
             }
         }
-        let pad = 10.0;
-        bx_min -= pad;
-        by_min -= pad;
-        bx_max += pad;
-        by_max += pad;
-        let bw = (bx_max - bx_min).ceil() as i32;
-        let bh = (by_max - by_min).ceil() as i32;
-        if bw < 4 || bh < 4 {
-            return 0;
-        }
-        let gif_w = ((bw as u32) / 2).max(1) as u16;
-        let gif_h = ((bh as u32) / 2).max(1) as u16;
+    }
+    let pad = 10.0;
+    bx_min -= pad;
+    by_min -= pad;
+    bx_max += pad;
+    by_max += pad;
+    let bw = (bx_max - bx_min).ceil() as i32;
+    let bh = (by_max - by_min).ceil() as i32;
+    if bw < 4 || bh < 4 {
+        return None;
+    }
+    let gif_w = ((bw as u32) / 2).max(1) as u16;
+    let gif_h = ((bh as u32) / 2).max(1) as u16;
 
-        // Clone stroke data so lock can be dropped
-        let gif_strokes: Vec<GifStroke> = strokes
-            .iter()
-            .map(|s| GifStroke {
-                r: s.r,
-                g: s.g,
-                b: s.b,
-                points: s.points.clone(),
-            })
-            .collect();
-        // lock drops here
-        (gif_strokes, bw, bh, gif_w, gif_h, bx_min, by_min)
-    };
-
-    // ── Phase 2: compressed timeline (no lock needed) ──
+    // ── Compressed timeline ──
     struct Seg {
         si: usize,
         dur: f64,
@@ -1332,7 +1328,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
         })
         .collect();
     if segments.is_empty() {
-        return 0;
+        return None;
     }
 
     const SPEED: f64 = 2.0;
@@ -1342,7 +1338,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
         .map(|seg| (seg.dur / SPEED).max(MIN_SEG))
         .sum();
     if total_active < 0.01 {
-        return 0;
+        return None;
     }
 
     let seg_offset: Vec<(usize, f64, f64)> = {
@@ -1361,7 +1357,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
     let n_frames = N_DRAW + N_HOLD;
     let draw_delay = ((total_active.clamp(0.5, 5.0) / N_DRAW as f64) * 100.0).max(2.0) as u16;
 
-    // ── Phase 3: parallel frame rendering (rayon global thread pool) ──
+    // ── Parallel frame rendering (rayon global thread pool) ──
     use rayon::prelude::*;
 
     let n_threads = rayon::current_num_threads();
@@ -1378,7 +1374,7 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
             let delay = if is_hold { 100u16 } else { draw_delay };
 
             let (flat, _ok) = render_gif_frame(
-                &gif_strokes,
+                gif_strokes,
                 &seg_offset,
                 bw,
                 bh,
@@ -1401,14 +1397,14 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
         .map(|(_, px, d)| (px, d))
         .collect();
 
-    // ── Phase 4: palette ──
+    // ── Palette ──
     let all_pixels: Vec<u8> = frame_pixels
         .iter()
         .flat_map(|(px, _)| px.iter())
         .copied()
         .collect();
     if all_pixels.is_empty() {
-        return 0;
+        return None;
     }
     let quantizer = color_quant::NeuQuant::new(30, 64, &all_pixels);
     let palette = quantizer.color_map_rgba();
@@ -1457,12 +1453,12 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
         best
     };
 
-    // ── Phase 5: encode GIF ──
+    // ── Encode GIF ──
     let mut gif_data = Vec::new();
     {
         let mut enc = match gif::Encoder::new(&mut gif_data, gif_w, gif_h, &gif_palette) {
             Ok(e) => e,
-            Err(_) => return 0,
+            Err(_) => return None,
         };
         enc.set_repeat(gif::Repeat::Infinite).ok();
 
@@ -1479,25 +1475,92 @@ pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
                 ..gif::Frame::default()
             };
             if enc.write_frame(&frame).is_err() {
-                return 0;
+                return None;
             }
         }
     }
+
+    Some(gif_data)
+}
+
+/// Save an animated GIF of every stroke currently in memory to the desktop.
+/// The GIF replays the strokes in drawing order at (roughly) real speed.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_save_animated_gif() -> c_int {
+    let gif_strokes = {
+        let strokes = STROKES.lock().unwrap();
+        gif_strokes_from(&strokes)
+    };
+
+    let gif_data = match encode_animated_gif(&gif_strokes) {
+        Some(d) => d,
+        None => return 0,
+    };
 
     let path = desktop_path().join(timestamped_name("gif"));
     match std::fs::write(&path, &gif_data) {
         Ok(_) => {
             println!(
-                "[glaspen2] Saved animated GIF to {} ({} frames, {} threads)",
+                "[glaspen2] Saved animated GIF to {} ({} bytes)",
                 path.display(),
-                n_frames,
-                n_threads
+                gif_data.len()
             );
             1
         }
         Err(e) => {
             eprintln!("[glaspen2] Animated GIF write failed: {}", e);
             0
+        }
+    }
+}
+
+/// Encode an animated GIF of the strokes in the half-open index range
+/// `[start_index, end_index)` of the in-memory stroke list. The range is
+/// passed explicitly by the caller (captured at key-down and key-up) so a new
+/// recording can never clobber a pending one. Returns a heap buffer the caller
+/// must free with glaspen2_free_rust_bytes (len via `out_len`), or NULL on
+/// failure or an empty range.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_gif_record_end(
+    start_index: c_int,
+    end_index: c_int,
+    out_len: *mut c_int,
+) -> *mut c_uchar {
+    if out_len.is_null() || start_index < 0 || end_index < 0 {
+        unsafe {
+            *out_len = 0;
+        }
+        return std::ptr::null_mut();
+    }
+
+    let gif_strokes = {
+        let strokes = STROKES.lock().unwrap();
+        let start = start_index as usize;
+        let end = (end_index as usize).min(strokes.len());
+        if end <= start || start >= strokes.len() {
+            unsafe {
+                *out_len = 0;
+            }
+            return std::ptr::null_mut();
+        }
+        gif_strokes_from(&strokes[start..end])
+    };
+
+    match encode_animated_gif(&gif_strokes) {
+        Some(gif_data) => {
+            let len = gif_data.len() as c_int;
+            let ptr = gif_data.as_ptr() as *mut c_uchar;
+            std::mem::forget(gif_data);
+            unsafe {
+                *out_len = len;
+            }
+            ptr
+        }
+        None => {
+            unsafe {
+                *out_len = 0;
+            }
+            std::ptr::null_mut()
         }
     }
 }
@@ -2086,5 +2149,33 @@ mod tests {
         assert_eq!(out.len(), 2);
         assert_eq!(out[0], input[0]);
         assert_eq!(out[1], input[4]);
+    }
+
+    #[test]
+    fn test_encode_animated_gif_empty_is_none() {
+        assert!(encode_animated_gif(&[]).is_none());
+    }
+
+    #[test]
+    fn test_encode_animated_gif_produces_gif_bytes() {
+        // Two strokes with monotonic relative_time so the timeline has duration.
+        let strokes = vec![
+            GifStroke {
+                r: 1.0,
+                g: 0.0,
+                b: 0.0,
+                points: vec![(0.0, 0.0, 2.0, 0.0), (20.0, 20.0, 3.0, 0.5)],
+            },
+            GifStroke {
+                r: 0.0,
+                g: 0.0,
+                b: 1.0,
+                points: vec![(5.0, 5.0, 2.0, 0.0), (30.0, 10.0, 2.0, 0.4)],
+            },
+        ];
+        let bytes = encode_animated_gif(&strokes).expect("should encode");
+        // GIF89a magic, plus a non-trivial payload.
+        assert!(bytes.starts_with(b"GIF89a"));
+        assert!(bytes.len() > 20);
     }
 }

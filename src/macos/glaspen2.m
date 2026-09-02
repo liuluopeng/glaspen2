@@ -80,6 +80,7 @@ extern char* glaspen2_get_cropped_svg(void);
 extern void glaspen2_free_c_string(char *ptr);
 extern int glaspen2_save_gif_cropped(const unsigned char *surface_data, int w, int h, int stride, double surface_scale);
 extern int glaspen2_save_animated_gif(void);
+extern unsigned char * glaspen2_gif_record_end(int start_index, int end_index, int *out_len);
 extern void glaspen2_draw_rebuild(void *surface_ptr, double scale);
 extern char* glaspen2_ocr_recognize(const unsigned char *pixels, int width, int height);
 extern char* glaspen2_ocr_page(const unsigned char *pixels, int width, int height, long screen_id);
@@ -143,6 +144,11 @@ static BOOL g_raw_has_last = NO;
 
 // Track if a stroke is active (modeler has been initialized)
 static BOOL g_stroke_active = NO;
+
+// Quick GIF recording: true between the Cmd+Ctrl+R key-down and key-up.
+// g_gif_record_start is the stroke count at key-down, pinning the window.
+static BOOL g_gif_recording = NO;
+static int g_gif_record_start = -1;
 
 // Eraser (back end of pen) mode — clears pixels instead of drawing ink
 static BOOL g_eraser_mode = NO;
@@ -1969,6 +1975,60 @@ static BOOL perform_hotkey(unsigned short kc) {
     return NO;
 }
 
+// ── Quick GIF recording (hold Cmd+Ctrl+R, doodle, release to copy) ──
+
+// Write the GIF bytes to a temp .gif file and put that file URL on the
+// pasteboard so it can be pasted as an animation in apps that accept files.
+static void copy_gif_data_to_clipboard(unsigned char *gif, int len) {
+    if (!gif || len <= 0) return;
+    NSData *data = [NSData dataWithBytes:gif length:len];
+    NSString *name = [NSString stringWithFormat:@"glaspen2_record_%.0f.gif",
+                      [NSDate timeIntervalSinceReferenceDate] * 1000];
+    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:name];
+    if (![data writeToFile:path atomically:YES]) {
+        NSLog(@"[glaspen2] failed to write GIF temp file: %@", path);
+        return;
+    }
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    [pb clearContents];
+    [pb writeObjects:@[[NSURL fileURLWithPath:path]]];
+}
+
+// Begin a recording session. Commits any in-flight stroke first so the
+// snapshot index is exactly where the held-key doodle starts.
+static void gif_record_start(void) {
+    if (g_gif_recording) return;
+    finish_active_stroke();
+    g_gif_record_start = glaspen2_stroke_count();
+    g_gif_recording = YES;
+    show_notification(L(@"按住绘制, 松开生成 GIF", @"Hold & draw, release to make GIF"));
+}
+
+// Finish the recording and copy the resulting GIF to the clipboard. The heavy
+// Cairo rendering/encoding runs on a background queue; the stroke window is
+// pinned from start (key-down) and end (key-up) captured on the main thread,
+// so a new recording can never clobber a pending one.
+static void gif_record_stop_async(void) {
+    int start = g_gif_record_start;
+    g_gif_record_start = -1;
+    g_gif_recording = NO;
+    finish_active_stroke();
+    int end = glaspen2_stroke_count();
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        int out_len = 0;
+        unsigned char *gif = glaspen2_gif_record_end(start, end, &out_len);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (gif && out_len > 0) {
+                copy_gif_data_to_clipboard(gif, out_len);
+                glaspen2_free_rust_bytes(gif, out_len);
+                show_notification(L(@"GIF 已复制到剪贴板", @"GIF copied to clipboard"));
+            } else {
+                show_notification(L(@"没有笔迹或导出失败", @"No strokes or export failed"));
+            }
+        });
+    });
+}
+
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                       CGEventRef event, void *refcon) {
     if (g_perf_log && !g_perf_file) perf_log_begin();
@@ -2013,13 +2073,25 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     }
 
     // Handle keyboard events separately — always intercept hotkeys
-    if (type == kCGEventKeyDown) {
+    if (type == kCGEventKeyDown || type == kCGEventKeyUp) {
         NSEvent *keyEvent = [NSEvent eventWithCGEvent:event];
         if (keyEvent) {
             NSUInteger mods = [keyEvent modifierFlags];
             BOOL hasCmdCtrl = (mods & NSEventModifierFlagCommand) && (mods & NSEventModifierFlagControl);
-            if (hasCmdCtrl) {
-                if (perform_hotkey([keyEvent keyCode])) return NULL;
+            unsigned short kc = [keyEvent keyCode];
+            // Stop the GIF recorder on R key-up regardless of modifiers, so a
+            // Cmd/Ctrl released before R can't leave the recorder stuck.
+            if (type == kCGEventKeyUp && kc == kVK_ANSI_R && g_gif_recording) {
+                gif_record_stop_async();
+                return NULL;
+            }
+            if (hasCmdCtrl && kc == kVK_ANSI_R && type == kCGEventKeyDown) {
+                // Hold-to-record GIF: key-down starts the recording.
+                if (!g_gif_recording) gif_record_start();
+                return NULL;
+            }
+            if (hasCmdCtrl && type == kCGEventKeyDown) {
+                if (perform_hotkey(kc)) return NULL;
             }
         }
         // Not a hotkey — pass through to system
@@ -2506,7 +2578,8 @@ void glaspen2_run(void) {
                               CGEventMaskBit(kCGEventOtherMouseUp) |
                               CGEventMaskBit(kCGEventTabletProximity) |
                               CGEventMaskBit(kCGEventTabletPointer) |
-                              CGEventMaskBit(kCGEventKeyDown);
+                              CGEventMaskBit(kCGEventKeyDown) |
+                              CGEventMaskBit(kCGEventKeyUp);
 
         g_event_tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
                                        kCGEventTapOptionDefault, tapMask,
