@@ -1517,6 +1517,25 @@ fn encode_animated_gif(
     let transparent = Some(TRANSPARENT_IDX as u8);
 
     // ── Encode GIF ──
+    // Turn each frame's palette indices into a `gif::Frame`, then LZW-compress
+    // them independently IN PARALLEL (the gif crate explicitly supports this:
+    // frames can be compressed separately from the Encoder). This step was the
+    // single-core bottleneck, so parallelizing it scales across cores. The final
+    // sequential `write_lzw_pre_encoded_frame` only copies the compressed bytes.
+    let mut frames: Vec<gif::Frame<'static>> = frame_pixels
+        .iter()
+        .zip(frame_indices.iter())
+        .map(|((_, delay), indices)| gif::Frame {
+            width: gif_w,
+            height: gif_h,
+            buffer: std::borrow::Cow::Owned(indices.clone()),
+            delay: *delay,
+            transparent,
+            ..gif::Frame::default()
+        })
+        .collect();
+    frames.par_iter_mut().for_each(|f| f.make_lzw_pre_encoded());
+
     let mut gif_data = Vec::new();
     {
         let mut enc = match gif::Encoder::new(&mut gif_data, gif_w, gif_h, &gif_palette) {
@@ -1532,19 +1551,8 @@ fn encode_animated_gif(
         };
         enc.set_repeat(repeat).ok();
 
-        for ((pixels, delay), indices) in frame_pixels.iter().zip(frame_indices.iter()) {
-            if pixels.len() != indices.len() * 4 {
-                continue;
-            }
-            let frame = gif::Frame {
-                width: gif_w,
-                height: gif_h,
-                buffer: std::borrow::Cow::Owned(indices.clone()),
-                delay: *delay,
-                transparent,
-                ..gif::Frame::default()
-            };
-            if enc.write_frame(&frame).is_err() {
+        for f in &frames {
+            if enc.write_lzw_pre_encoded_frame(f).is_err() {
                 return None;
             }
         }
