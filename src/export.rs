@@ -1403,7 +1403,10 @@ fn encode_animated_gif(
     // Frame count and delay follow the requested fps: the GIF plays the
     // (speed-compressed) timeline at `fps` frames/second. Long clips are capped
     // at MAX_DRAW frames; the delay is clamped to >=2cs (GIF/decoder minimum).
-    const MAX_DRAW: usize = 240;
+    // Cap the frame count so a long/high-fps recording never spins up 240+
+    // full frames (which dominates generation time). ~150 frames still plays
+    // smoothly (effective fps adjusts via draw_delay).
+    const MAX_DRAW: usize = 150;
     // Ending hold frames: 0 = stop on last frame / loop immediately,
     // 1 = a single 1s (100cs) hold frame before looping.
     let n_hold: usize = match end_mode {
@@ -1466,12 +1469,14 @@ fn encode_animated_gif(
     const PALETTE_SIZE: usize = 1 << PALETTE_BITS;
     const TRANSPARENT_IDX: usize = PALETTE_SIZE - 1; // reserved, never quantized
     // Uniform alpha (255) so NeuQuant's alpha distance can't bias matching
-    // toward the low-alpha background.
+    // toward the low-alpha background. Built in parallel across frames.
     let train: Vec<u8> = frame_pixels
-        .iter()
-        .flat_map(|(px, _)| px.chunks(4))
-        .filter(|p| p[3] > 0)
-        .flat_map(|p| [p[0], p[1], p[2], 255u8])
+        .par_iter()
+        .flat_map_iter(|(px, _)| {
+            px.chunks(4)
+                .filter(|p| p[3] > 0)
+                .flat_map(|p| [p[0], p[1], p[2], 255u8])
+        })
         .collect();
     let quantizer = if train.is_empty() {
         color_quant::NeuQuant::new(30, PALETTE_SIZE - 1, &[0u8, 0, 0, 255])
@@ -1491,8 +1496,9 @@ fn encode_animated_gif(
 
     // Per-frame palette indices: background pixels always use the reserved
     // transparent index; opaque (or antialiased) pixels quantize to 0..(N-2).
+    // Computed in parallel across frames (the pixel-per-index match dominates).
     let frame_indices: Vec<Vec<u8>> = frame_pixels
-        .iter()
+        .par_iter()
         .map(|(pixels, _)| {
             pixels
                 .chunks(4)
@@ -1656,21 +1662,39 @@ fn render_gif_frame(
     cutoff: f64,
     _delay: u16,
 ) -> (Vec<u8>, bool) {
-    // 渲染统一走 crate::cairo_dl(动态加载 cairo)
-    let renderer = match crate::cairo_dl::CairoRenderer::create_owned(bw, bh) {
+    // 渲染统一走 crate::cairo_dl(动态加载 cairo). Render directly at the GIF
+    // resolution (not the full bbox) so low-resolution GIFs do far less work.
+    let scale_x = if bw > 0 {
+        gif_w as f64 / bw as f64
+    } else {
+        1.0
+    };
+    let scale_y = if bh > 0 {
+        gif_h as f64 / bh as f64
+    } else {
+        1.0
+    };
+    let width_scale = (scale_x + scale_y) * 0.5;
+    let renderer = match crate::cairo_dl::CairoRenderer::create_owned(gif_w as i32, gif_h as i32) {
         Some(r) => r,
         None => return (Vec::new(), false),
     };
     renderer.clear();
 
-    // Render strokes
+    // Render strokes (coordinates scaled to GIF resolution)
     for &(si, seg_start, seg_end) in seg_offset {
         let s = &strokes[si];
 
         let pts: Vec<(f64, f64, f64)> = if is_hold || cutoff >= seg_end {
             s.points
                 .iter()
-                .map(|&(x, y, w, _)| (x - bx_min, y - by_min, w))
+                .map(|&(x, y, w, _)| {
+                    (
+                        (x - bx_min) * scale_x,
+                        (y - by_min) * scale_y,
+                        w * width_scale,
+                    )
+                })
                 .collect()
         } else if cutoff > seg_start {
             let local_frac = (cutoff - seg_start) / (seg_end - seg_start);
@@ -1679,7 +1703,13 @@ fn render_gif_frame(
             s.points
                 .iter()
                 .take_while(|&&(_, _, _, t)| t <= local_cut)
-                .map(|&(x, y, w, _)| (x - bx_min, y - by_min, w))
+                .map(|&(x, y, w, _)| {
+                    (
+                        (x - bx_min) * scale_x,
+                        (y - by_min) * scale_y,
+                        w * width_scale,
+                    )
+                })
                 .collect()
         } else {
             Vec::new()
@@ -1705,27 +1735,17 @@ fn render_gif_frame(
     }
     renderer.flush();
 
-    // Read pixels (BGRA premultiplied, stride = bw*4)
+    // Read pixels directly at GIF resolution (BGRA premultiplied, stride = gif_w*4)
     let bits = renderer.bits();
-    let stride = bw.max(1) as u32;
-    // Sample step scales with the requested resolution (bw/gif_w ≈ 1/res).
-    let step_x = if gif_w > 0 {
-        bw as f64 / gif_w as f64
-    } else {
-        1.0
-    };
-    let step_y = if gif_h > 0 {
-        bh as f64 / gif_h as f64
-    } else {
-        1.0
-    };
-    let mut flat = Vec::with_capacity((gif_w as u32 * gif_h as u32 * 4) as usize);
+    let stride = gif_w.max(1) as u32;
+    let gw = gif_w as u32;
+    let gh = gif_h as u32;
+    let mut flat = Vec::with_capacity((gw * gh * 4) as usize);
     unsafe {
-        for gy in 0..gif_h as u32 {
-            for gx in 0..gif_w as u32 {
-                let sx = ((gx as f64 * step_x) as u32).min(stride.saturating_sub(1));
-                let sy = ((gy as f64 * step_y) as u32).min((bh as u32).saturating_sub(1));
-                let off = (sy * stride + sx) as usize * 4;
+        for y in 0..gh {
+            let row = (y * stride) as usize * 4;
+            for x in 0..gw {
+                let off = row + x as usize * 4;
                 flat.push(*bits.add(off + 2)); // R
                 flat.push(*bits.add(off + 1)); // G
                 flat.push(*bits.add(off)); // B
@@ -2329,5 +2349,68 @@ mod tests {
 
     fn contains_netescape(bytes: &[u8]) -> bool {
         bytes.windows(11).any(|w| w == b"NETSCAPE2.0")
+    }
+
+    /// Synthetic "20 hanzi" workload for a rough speed measurement of the
+    /// animated-GIF pipeline. Run with `cargo test -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn bench_animated_gif_20_hanzi() {
+        fn make_strokes() -> Vec<GifStroke> {
+            // 20 characters, ~5 strokes each; laid out in 2 rows of 10, spread
+            // across a large area to approximate a full-canvas doodle.
+            let mut out = Vec::new();
+            for hi in 0..20usize {
+                let cx = (hi % 10) as f64 * 150.0 + 60.0;
+                let cy = (hi / 10) as f64 * 200.0 + 60.0;
+                for si in 0..5usize {
+                    let (x0, y0) = (cx, cy + si as f64 * 10.0);
+                    let (x1, y1) = (cx + 60.0, cy + si as f64 * 10.0 + 30.0);
+                    let dur = 0.2;
+                    let n = 20usize;
+                    let points: Vec<(f64, f64, f64, f64)> = (0..=n)
+                        .map(|k| {
+                            let f = k as f64 / n as f64;
+                            (x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, 2.0, f * dur)
+                        })
+                        .collect();
+                    out.push(GifStroke {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        points,
+                    });
+                }
+            }
+            out
+        }
+        let strokes = make_strokes();
+        let bbox_w = 10.0 * 150.0;
+        let bbox_h = 2.0 * 200.0;
+        eprintln!(
+            "strokes={}, points≈{}, bbox≈{}x{}",
+            strokes.len(),
+            strokes.iter().map(|s| s.points.len()).sum::<usize>(),
+            bbox_w,
+            bbox_h
+        );
+        for (fps, res, speed) in [
+            (15, 0.5, 2.0),
+            (24, 0.5, 2.0),
+            (30, 0.75, 2.0),
+            (50, 1.0, 2.0),
+        ] {
+            let start = std::time::Instant::now();
+            let bytes = encode_animated_gif(&strokes, fps, res, speed, 1);
+            let el = start.elapsed();
+            eprintln!(
+                "fps={} res={} speed={} -> {:?} ({} bytes)",
+                fps,
+                res,
+                speed,
+                el,
+                bytes.map(|b| b.len()).unwrap_or(0)
+            );
+        }
     }
 }
