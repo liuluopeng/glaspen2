@@ -2420,7 +2420,9 @@ fn show_strokes(state: &mut OverlayState) {
 /// Ctrl+Alt+G:导出 SVG + GIF,并把当前画布复制到系统剪贴板(CF_DIB)
 fn export_svg_gif_clipboard(state: &mut OverlayState) {
     crate::export::glaspen2_save_svg();
-    let ok = crate::export::glaspen2_save_animated_gif();
+    // Default GIF quality/speed (fps, resolution, playback speed); the macOS
+    // settings panel exposes these for the Cmd+Ctrl+R recording flow.
+    let ok = crate::export::glaspen2_save_animated_gif(15, 0.5, 2.0);
     eprintln!(
         "[overlay] SVG 已导出;GIF 导出: {}",
         if ok != 0 { "OK" } else { "FAILED" }
@@ -3042,7 +3044,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 )
             };
         } else if key == "export_animated_gif" {
-            let result = crate::export::glaspen2_save_animated_gif();
+            let result = crate::export::glaspen2_save_animated_gif(15, 0.5, 2.0);
             eprintln!(
                 "[pipe] animated GIF export: {}",
                 if result != 0 { "OK" } else { "FAILED" }

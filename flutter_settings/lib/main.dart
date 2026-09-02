@@ -479,6 +479,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _connected = false;
   Timer? _reloadTimer;
 
+  // GIF quality/speed (⌘⌃R 快捷录制)
+  int _gifFps = 15;
+  double _gifResolution = 0.5;
+  double _gifSpeed = 2.0;
+
   // 10 colors, matching Rust COLOR_PRESETS / macOS g_color_presets
   // (红橙黄绿青蓝紫粉白黑). Index must match the overlay's preset order.
   static const _colorNames = ['红色', '橙色', '黄色', '绿色', '青色', '蓝色', '紫色', '粉色', '白色', '黑色'];
@@ -539,6 +544,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _showGrid = _b(s['grid']);
         _gridFollowStrokes = _b(s['gridFollowStrokes']);
         _ocrEnabled = _b(s['ocrEnabled']);
+        _gifFps = (s['gifFps'] as num?)?.toInt() ?? _gifFps;
+        _gifResolution = (s['gifResolution'] as num?)?.toDouble() ?? _gifResolution;
+        _gifSpeed = (s['gifSpeed'] as num?)?.toDouble() ?? _gifSpeed;
       });
     }
   }
@@ -554,6 +562,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _showGrid = _b(settings['grid']);
           _gridFollowStrokes = _b(settings['gridFollowStrokes']);
           _ocrEnabled = _b(settings['ocrEnabled']);
+          _gifFps = (settings['gifFps'] as num?)?.toInt() ?? 15;
+          _gifResolution = (settings['gifResolution'] as num?)?.toDouble() ?? 0.5;
+          _gifSpeed = (settings['gifSpeed'] as num?)?.toDouble() ?? 2.0;
           _connected = true;
         });
       } else if (mounted) {
@@ -688,6 +699,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   _buildSection('Width', _buildWidthRow()),
                   const SizedBox(height: 16),
                   _buildSection('Actions', _buildActionButtons()),
+                  const SizedBox(height: 16),
+                  _buildSection('GIF 动画 (⌘⌃R 录制)', _buildGifSettings()),
                   const SizedBox(height: 16),
                   _buildSection('Options', _buildToggles()),
                   const SizedBox(height: 16),
@@ -985,6 +998,99 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         ),
       ],
     );
+  }
+
+  /// GIF quality/speed settings for ⌘⌃R 快捷录制. The gray estimate refreshes
+  /// as the sliders/chips change (rough per-second-of-recording file size).
+  Widget _buildGifSettings() {
+    const fpsOptions = [10, 15, 20, 24, 30, 50];
+    const resOptions = [0.25, 0.5, 0.75, 1.0];
+    const speedOptions = [0.5, 1.0, 2.0, 4.0, 8.0];
+
+    Widget chips<T>(
+        String label, List<T> options, T current, String Function(T) fmt,
+        void Function(T) onPick) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 60,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(label, style: const TextStyle(fontSize: 14)),
+            ),
+          ),
+          Expanded(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: options.map((v) {
+                final sel = v == current;
+                return ChoiceChip(
+                  label: Text(fmt(v)),
+                  selected: sel,
+                  onSelected: (_) {
+                    setState(() => onPick(v));
+                  },
+                  showCheckmark: false,
+                  labelStyle: TextStyle(
+                    fontSize: 13,
+                    color: sel ? Colors.white : Colors.black87,
+                  ),
+                  selectedColor: Colors.blueGrey.shade600,
+                  visualDensity: VisualDensity.compact,
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        chips<int>('帧率', fpsOptions, _gifFps, (v) => '$v fps', (v) {
+          _gifFps = v;
+          _setSetting('gifFps', v);
+        }),
+        const SizedBox(height: 8),
+        chips<double>('分辨率', resOptions, _gifResolution, (v) => '${(v * 100).round()}%',
+            (v) {
+          _gifResolution = v;
+          _setSetting('gifResolution', v);
+        }),
+        const SizedBox(height: 8),
+        chips<double>('速度', speedOptions, _gifSpeed, (v) => '${v}x', (v) {
+          _gifSpeed = v;
+          _setSetting('gifSpeed', v);
+        }),
+        const SizedBox(height: 10),
+        Text('预估大小 ${_estimateGifSize()}',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+      ],
+    );
+  }
+
+  /// Rough estimate of the GIF file size per second of recording, driven by
+  /// frame rate, resolution and playback speed. Uses a reference doodle
+  /// window (~720×450 logical points) and a palette-GIF compression factor.
+  /// It is an approximation, not a measured result.
+  String _estimateGifSize() {
+    if (_gifFps <= 0 || _gifResolution <= 0 || _gifSpeed <= 0) return '—';
+    const refW = 720.0;
+    const refH = 450.0;
+    const bytesPerPixel = 0.30; // palette-GIF LZW estimate
+    final w = refW * _gifResolution;
+    final h = refH * _gifResolution;
+    final pixels = w * h;
+    // frames packed into 1s of recording after playback-speed adjustment
+    final framesPerRecordingSecond = _gifFps / _gifSpeed;
+    final bytesPerSec = framesPerRecordingSecond * pixels * bytesPerPixel;
+    if (bytesPerSec >= 1024 * 1024) {
+      return '≈ ${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} MB/s';
+    }
+    return '≈ ${(bytesPerSec / 1024).round()} KB/s';
   }
 
   /// 快捷键按钮,按键盘排布(如:X 在 V 左侧,按钮也在 V 左侧),
