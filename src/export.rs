@@ -1204,39 +1204,43 @@ pub extern "C" fn glaspen2_save_gif_cropped(
         }
     }
 
-    let quantizer = color_quant::NeuQuant::new(30, 128, &gif_pixels);
+    // Train the palette on opaque pixels only and reserve the last palette
+    // index for transparency, so the transparent background (0,0,0,0) never
+    // shares a palette entry with dark ink (which rendered the bg black).
+    const PALETTE_BITS: usize = 7; // 2^7 = 128 colors
+    const PALETTE_SIZE: usize = 1 << PALETTE_BITS;
+    const TRANSPARENT_IDX: usize = PALETTE_SIZE - 1; // reserved, never quantized
+    let train: Vec<u8> = gif_pixels
+        .chunks(4)
+        .filter(|p| p[3] > 0)
+        .flat_map(|p| [p[0], p[1], p[2], 255u8])
+        .collect();
+    let quantizer = if train.is_empty() {
+        color_quant::NeuQuant::new(30, PALETTE_SIZE - 1, &[0u8, 0, 0, 255])
+    } else {
+        color_quant::NeuQuant::new(30, PALETTE_SIZE - 1, &train)
+    };
     let indices: Vec<u8> = gif_pixels
         .chunks(4)
-        .map(|p| quantizer.index_of(&[p[0], p[1], p[2], p[3]]) as u8)
-        .collect();
-    // Only use an index that transparent pixels map to and opaque pixels never use.
-    let transparent = {
-        let mut idx_counts = [0u32; 128];
-        let mut opaque_used = [false; 128];
-        for (i, &idx) in indices.iter().enumerate() {
-            let idx = idx as usize;
-            if idx >= 128 {
-                continue;
-            }
-            if gif_pixels[i * 4 + 3] == 0 {
-                idx_counts[idx] += 1;
+        .map(|p| {
+            if p[3] == 0 {
+                TRANSPARENT_IDX as u8
             } else {
-                opaque_used[idx] = true;
+                quantizer.index_of(&[p[0], p[1], p[2], 255]) as u8
             }
-        }
-        let mut best: Option<u8> = None;
-        let mut max_count = 0u32;
-        for i in 0..128 {
-            if idx_counts[i] > max_count && !opaque_used[i] {
-                max_count = idx_counts[i];
-                best = Some(i as u8);
-            }
-        }
-        best
-    };
+        })
+        .collect();
+    // A single fixed transparent index that no opaque pixel ever maps to.
+    let transparent = Some(TRANSPARENT_IDX as u8);
     let palette = quantizer.color_map_rgba();
-    let gif_palette: Vec<u8> = (0..128)
-        .flat_map(|i| [palette[i * 4], palette[i * 4 + 1], palette[i * 4 + 2]])
+    let gif_palette: Vec<u8> = (0..PALETTE_SIZE)
+        .flat_map(|i| {
+            if i == TRANSPARENT_IDX {
+                [0u8, 0u8, 0u8]
+            } else {
+                [palette[i * 4], palette[i * 4 + 1], palette[i * 4 + 2]]
+            }
+        })
         .collect();
     let mut gif_data = Vec::new();
     {
@@ -1454,60 +1458,57 @@ fn encode_animated_gif(
         .collect();
 
     // ── Palette ──
-    let all_pixels: Vec<u8> = frame_pixels
+    // Train the palette on OPAQUE pixels only (alpha > 0) and reserve the last
+    // palette index as the transparent index. This stops the transparent
+    // background (0,0,0,0) from sharing a palette entry with dark ink, which
+    // used to flash the background black once a frame got busy.
+    const PALETTE_BITS: usize = 6; // 2^6 = 64 colors
+    const PALETTE_SIZE: usize = 1 << PALETTE_BITS;
+    const TRANSPARENT_IDX: usize = PALETTE_SIZE - 1; // reserved, never quantized
+    // Uniform alpha (255) so NeuQuant's alpha distance can't bias matching
+    // toward the low-alpha background.
+    let train: Vec<u8> = frame_pixels
         .iter()
-        .flat_map(|(px, _)| px.iter())
-        .copied()
+        .flat_map(|(px, _)| px.chunks(4))
+        .filter(|p| p[3] > 0)
+        .flat_map(|p| [p[0], p[1], p[2], 255u8])
         .collect();
-    if all_pixels.is_empty() {
-        return None;
-    }
-    let quantizer = color_quant::NeuQuant::new(30, 64, &all_pixels);
+    let quantizer = if train.is_empty() {
+        color_quant::NeuQuant::new(30, PALETTE_SIZE - 1, &[0u8, 0, 0, 255])
+    } else {
+        color_quant::NeuQuant::new(30, PALETTE_SIZE - 1, &train)
+    };
     let palette = quantizer.color_map_rgba();
-    let gif_palette: Vec<u8> = (0..64)
-        .flat_map(|i| [palette[i * 4], palette[i * 4 + 1], palette[i * 4 + 2]])
+    let gif_palette: Vec<u8> = (0..PALETTE_SIZE)
+        .flat_map(|i| {
+            if i == TRANSPARENT_IDX {
+                [0u8, 0u8, 0u8] // unused (transparent) — value does not matter
+            } else {
+                [palette[i * 4], palette[i * 4 + 1], palette[i * 4 + 2]]
+            }
+        })
         .collect();
 
-    // Per-frame palette indices (computed once, reused for transparency + encoding)
+    // Per-frame palette indices: background pixels always use the reserved
+    // transparent index; opaque (or antialiased) pixels quantize to 0..(N-2).
     let frame_indices: Vec<Vec<u8>> = frame_pixels
         .iter()
         .map(|(pixels, _)| {
             pixels
                 .chunks(4)
-                .map(|p| quantizer.index_of(&[p[0], p[1], p[2], 0]) as u8)
+                .map(|p| {
+                    if p[3] == 0 {
+                        TRANSPARENT_IDX as u8
+                    } else {
+                        quantizer.index_of(&[p[0], p[1], p[2], 255]) as u8
+                    }
+                })
                 .collect()
         })
         .collect();
 
-    // Transparent index: only choose an index that transparent pixels map to
-    // and that no opaque pixel ever uses; None when no transparent pixels exist.
-    let transparent = {
-        let mut counts = [0u32; 64];
-        let mut opaque_used = [false; 64];
-        for (fi, indices) in frame_indices.iter().enumerate() {
-            let px = &frame_pixels[fi].0;
-            for (i, &idx) in indices.iter().enumerate() {
-                let idx = idx as usize;
-                if idx >= 64 {
-                    continue;
-                }
-                if px[i * 4 + 3] == 0 {
-                    counts[idx] += 1;
-                } else {
-                    opaque_used[idx] = true;
-                }
-            }
-        }
-        let mut best: Option<u8> = None;
-        let mut max_count = 0u32;
-        for i in 0..64 {
-            if counts[i] > max_count && !opaque_used[i] {
-                max_count = counts[i];
-                best = Some(i as u8);
-            }
-        }
-        best
-    };
+    // A single fixed transparent index that no opaque pixel ever maps to.
+    let transparent = Some(TRANSPARENT_IDX as u8);
 
     // ── Encode GIF ──
     let mut gif_data = Vec::new();
@@ -2282,6 +2283,48 @@ mod tests {
         let loop_now = encode_animated_gif(&strokes, 15, 0.5, 2.0, 2).expect("loop");
         assert!(contains_netescape(&hold), "hold-then-loop must loop");
         assert!(contains_netescape(&loop_now), "immediate-loop must loop");
+    }
+
+    #[test]
+    fn test_gif_background_stays_transparent_with_black_ink() {
+        // Black ink: under the old palette logic the transparent background
+        // (0,0,0,0) shared the black palette entry and rendered as black once
+        // a frame got busy. Now a reserved index is always transparent.
+        let strokes = vec![GifStroke {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            points: vec![(50.0, 50.0, 3.0, 0.0), (150.0, 150.0, 3.0, 0.5)],
+        }];
+        let bytes = encode_animated_gif(&strokes, 15, 0.5, 2.0, 1).expect("encode");
+
+        let mut options = gif::DecodeOptions::new();
+        options.set_color_output(gif::ColorOutput::Indexed);
+        let mut decoder = options.read_info(&bytes[..]).expect("decode header");
+        let mut last: Option<(Vec<u8>, Option<u8>, usize, usize)> = None;
+        while let Some(f) = decoder.read_next_frame().expect("frame") {
+            last = Some((
+                f.buffer.to_vec(),
+                f.transparent,
+                f.width as usize,
+                f.height as usize,
+            ));
+        }
+        let (buffer, transparent, w, h) = last.expect("must have frames");
+        let transp = transparent.expect("must have a transparent index");
+        // Corner pixels (outside the ink bbox + pad) must be transparent, never black.
+        assert_eq!(buffer[0], transp, "top-left must be transparent");
+        assert_eq!(buffer[w - 1], transp, "top-right must be transparent");
+        assert_eq!(
+            buffer[(h - 1) * w],
+            transp,
+            "bottom-left must be transparent"
+        );
+        assert_ne!(
+            buffer[w / 2 + h / 2 * w],
+            transp,
+            "ink pixel must not be transparent"
+        );
     }
 
     fn contains_netescape(bytes: &[u8]) -> bool {
