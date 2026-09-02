@@ -936,7 +936,7 @@ static NSButton *g_glass_buttons[1];
         } else if ([key isEqualToString:@"gifSpeed"]) {
             g_gif_speed = [value doubleValue];
             if (g_gif_speed < 0.25) g_gif_speed = 0.25;
-            if (g_gif_speed > 10.0) g_gif_speed = 10.0;
+            if (g_gif_speed > 20.0) g_gif_speed = 20.0;
             NSString *s = [NSString stringWithFormat:@"%.4f", g_gif_speed];
             glaspen2_save_string_setting("gif_speed", [s UTF8String]);
         } else if ([key isEqualToString:@"gifEndMode"]) {
@@ -2543,7 +2543,7 @@ void glaspen2_run(void) {
         if (g_gif_resolution < 0.1) g_gif_resolution = 0.1;
         if (g_gif_resolution > 1.0) g_gif_resolution = 1.0;
         if (g_gif_speed < 0.25) g_gif_speed = 0.25;
-        if (g_gif_speed > 10.0) g_gif_speed = 10.0;
+        if (g_gif_speed > 20.0) g_gif_speed = 20.0;
         if (g_gif_end_mode < 0) g_gif_end_mode = 0;
         if (g_gif_end_mode > 2) g_gif_end_mode = 2;
 

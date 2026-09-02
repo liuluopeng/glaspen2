@@ -1008,7 +1008,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Widget _buildGifSettings() {
     const fpsOptions = [10, 15, 20, 24, 30, 50];
     const resOptions = [0.25, 0.5, 0.75, 1.0];
-    const speedOptions = [0.5, 1.0, 2.0, 3.0, 4.0, 8.0];
+    const speedOptions = [0.5, 1.0, 2.0, 3.0, 4.0, 8.0, 10.0, 15.0, 20.0];
 
     Widget chips<T>(
         String label, List<T> options, T current, String Function(T) fmt,

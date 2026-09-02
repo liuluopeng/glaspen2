@@ -1320,7 +1320,7 @@ fn encode_animated_gif(
 
     let fps = fps.clamp(1, 50) as f64;
     let res = resolution.clamp(0.1, 1.0);
-    let speed = speed.clamp(0.25, 10.0);
+    let speed = speed.clamp(0.25, 20.0);
 
     // ── Bounding box ──
     let mut bx_min = f64::MAX;
@@ -1380,7 +1380,9 @@ fn encode_animated_gif(
         return None;
     }
 
-    const MIN_SEG: f64 = 0.05;
+    // Small floor so very fast playback (up to 20x) still shows each stroke
+    // instead of collapsing to zero duration; low enough that high speeds differ.
+    const MIN_SEG: f64 = 0.01;
     let total_active: f64 = segments
         .iter()
         .map(|seg| (seg.dur / speed).max(MIN_SEG))
