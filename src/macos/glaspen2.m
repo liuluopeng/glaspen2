@@ -82,8 +82,8 @@ extern void glaspen2_save_svg(void);
 extern char* glaspen2_get_cropped_svg(void);
 extern void glaspen2_free_c_string(char *ptr);
 extern int glaspen2_save_gif_cropped(const unsigned char *surface_data, int w, int h, int stride, double surface_scale);
-extern int glaspen2_save_animated_gif(int fps, double resolution, double speed);
-extern unsigned char * glaspen2_gif_record_end(int start_index, int end_index, int fps, double resolution, double speed, int *out_len);
+extern int glaspen2_save_animated_gif(int fps, double resolution, double speed, int end_mode);
+extern unsigned char * glaspen2_gif_record_end(int start_index, int end_index, int fps, double resolution, double speed, int end_mode, int *out_len);
 extern void glaspen2_draw_rebuild(void *surface_ptr, double scale);
 extern char* glaspen2_ocr_recognize(const unsigned char *pixels, int width, int height);
 extern char* glaspen2_ocr_page(const unsigned char *pixels, int width, int height, long screen_id);
@@ -157,6 +157,8 @@ static int g_gif_record_start = -1;
 static int g_gif_fps = 15;
 static double g_gif_resolution = 0.5;
 static double g_gif_speed = 2.0;
+// GIF ending: 0 = stop on last frame, 1 = hold 1s then loop, 2 = loop immediately
+static int g_gif_end_mode = 1;
 
 // Eraser (back end of pen) mode — clears pixels instead of drawing ink
 static BOOL g_eraser_mode = NO;
@@ -888,6 +890,7 @@ static NSButton *g_glass_buttons[1];
             @"gifFps": @(g_gif_fps),
             @"gifResolution": @(g_gif_resolution),
             @"gifSpeed": @(g_gif_speed),
+            @"gifEndMode": @(g_gif_end_mode),
         });
     } else if ([call.method isEqualToString:@"setSetting"]) {
         NSDictionary *args = call.arguments;
@@ -936,6 +939,12 @@ static NSButton *g_glass_buttons[1];
             if (g_gif_speed > 10.0) g_gif_speed = 10.0;
             NSString *s = [NSString stringWithFormat:@"%.4f", g_gif_speed];
             glaspen2_save_string_setting("gif_speed", [s UTF8String]);
+        } else if ([key isEqualToString:@"gifEndMode"]) {
+            g_gif_end_mode = [value intValue];
+            if (g_gif_end_mode < 0) g_gif_end_mode = 0;
+            if (g_gif_end_mode > 2) g_gif_end_mode = 2;
+            NSString *s = [NSString stringWithFormat:@"%d", g_gif_end_mode];
+            glaspen2_save_string_setting("gif_end_mode", [s UTF8String]);
         }
         result(nil);
     } else if ([call.method isEqualToString:@"hotkey"]) {
@@ -963,7 +972,7 @@ static NSButton *g_glass_buttons[1];
         // Run on background queue so UI stays responsive during Cairo rendering.
         // Copy newest GIF to clipboard afterwards (same as Cmd+Ctrl+A hotkey did).
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            int ok = glaspen2_save_animated_gif(g_gif_fps, g_gif_resolution, g_gif_speed);
+            int ok = glaspen2_save_animated_gif(g_gif_fps, g_gif_resolution, g_gif_speed, g_gif_end_mode);
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (ok) {
                     NSString *desktop = [NSSearchPathForDirectoriesInDomains(NSDesktopDirectory, NSUserDomainMask, YES) firstObject];
@@ -2042,13 +2051,14 @@ static void gif_record_stop_async(void) {
     int fps = g_gif_fps;
     double resolution = g_gif_resolution;
     double speed = g_gif_speed;
+    int end_mode = g_gif_end_mode;
     g_gif_record_start = -1;
     g_gif_recording = NO;
     finish_active_stroke();
     int end = glaspen2_stroke_count();
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         int out_len = 0;
-        unsigned char *gif = glaspen2_gif_record_end(start, end, fps, resolution, speed, &out_len);
+        unsigned char *gif = glaspen2_gif_record_end(start, end, fps, resolution, speed, end_mode, &out_len);
         dispatch_async(dispatch_get_main_queue(), ^{
             if (gif && out_len > 0) {
                 copy_gif_data_to_clipboard(gif, out_len);
@@ -2526,12 +2536,16 @@ void glaspen2_run(void) {
         if (vres) { g_gif_resolution = atof(vres); glaspen2_free_c_string(vres); }
         char *vspeed = glaspen2_load_string_setting("gif_speed");
         if (vspeed) { g_gif_speed = atof(vspeed); glaspen2_free_c_string(vspeed); }
+        char *vend = glaspen2_load_string_setting("gif_end_mode");
+        if (vend) { g_gif_end_mode = atoi(vend); glaspen2_free_c_string(vend); }
         if (g_gif_fps < 1) g_gif_fps = 1;
         if (g_gif_fps > 50) g_gif_fps = 50;
         if (g_gif_resolution < 0.1) g_gif_resolution = 0.1;
         if (g_gif_resolution > 1.0) g_gif_resolution = 1.0;
         if (g_gif_speed < 0.25) g_gif_speed = 0.25;
         if (g_gif_speed > 10.0) g_gif_speed = 10.0;
+        if (g_gif_end_mode < 0) g_gif_end_mode = 0;
+        if (g_gif_end_mode > 2) g_gif_end_mode = 2;
 
         // Apply glass visual on startup (skip if the user already started drawing)
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{

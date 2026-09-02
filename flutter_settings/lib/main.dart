@@ -483,6 +483,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   int _gifFps = 15;
   double _gifResolution = 0.5;
   double _gifSpeed = 2.0;
+  int _gifEndMode = 1; // 0=停在最后, 1=停1秒后循环, 2=立即循环
 
   // 10 colors, matching Rust COLOR_PRESETS / macOS g_color_presets
   // (红橙黄绿青蓝紫粉白黑). Index must match the overlay's preset order.
@@ -547,6 +548,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _gifFps = (s['gifFps'] as num?)?.toInt() ?? _gifFps;
         _gifResolution = (s['gifResolution'] as num?)?.toDouble() ?? _gifResolution;
         _gifSpeed = (s['gifSpeed'] as num?)?.toDouble() ?? _gifSpeed;
+        _gifEndMode = (s['gifEndMode'] as num?)?.toInt() ?? _gifEndMode;
       });
     }
   }
@@ -565,6 +567,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _gifFps = (settings['gifFps'] as num?)?.toInt() ?? 15;
           _gifResolution = (settings['gifResolution'] as num?)?.toDouble() ?? 0.5;
           _gifSpeed = (settings['gifSpeed'] as num?)?.toDouble() ?? 2.0;
+          _gifEndMode = (settings['gifEndMode'] as num?)?.toInt() ?? 1;
           _connected = true;
         });
       } else if (mounted) {
@@ -1005,7 +1008,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Widget _buildGifSettings() {
     const fpsOptions = [10, 15, 20, 24, 30, 50];
     const resOptions = [0.25, 0.5, 0.75, 1.0];
-    const speedOptions = [0.5, 1.0, 2.0, 4.0, 8.0];
+    const speedOptions = [0.5, 1.0, 2.0, 3.0, 4.0, 8.0];
 
     Widget chips<T>(
         String label, List<T> options, T current, String Function(T) fmt,
@@ -1064,6 +1067,16 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         chips<double>('速度', speedOptions, _gifSpeed, (v) => '${v}x', (v) {
           _gifSpeed = v;
           _setSetting('gifSpeed', v);
+        }),
+        const SizedBox(height: 8),
+        chips<int>('结束时', const [0, 1, 2], _gifEndMode,
+            (v) => v == 0
+                ? '停在最后'
+                : v == 1
+                    ? '停1秒后循环'
+                    : '立即循环', (v) {
+          _gifEndMode = v;
+          _setSetting('gifEndMode', v);
         }),
         const SizedBox(height: 10),
         Text('预估大小 ${_estimateGifSize()}',

@@ -2422,7 +2422,7 @@ fn export_svg_gif_clipboard(state: &mut OverlayState) {
     crate::export::glaspen2_save_svg();
     // Default GIF quality/speed (fps, resolution, playback speed); the macOS
     // settings panel exposes these for the Cmd+Ctrl+R recording flow.
-    let ok = crate::export::glaspen2_save_animated_gif(15, 0.5, 2.0);
+    let ok = crate::export::glaspen2_save_animated_gif(15, 0.5, 2.0, 1);
     eprintln!(
         "[overlay] SVG 已导出;GIF 导出: {}",
         if ok != 0 { "OK" } else { "FAILED" }
@@ -3044,7 +3044,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 )
             };
         } else if key == "export_animated_gif" {
-            let result = crate::export::glaspen2_save_animated_gif(15, 0.5, 2.0);
+            let result = crate::export::glaspen2_save_animated_gif(15, 0.5, 2.0, 1);
             eprintln!(
                 "[pipe] animated GIF export: {}",
                 if result != 0 { "OK" } else { "FAILED" }

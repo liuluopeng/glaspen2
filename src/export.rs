@@ -1298,13 +1298,17 @@ fn gif_strokes_from(strokes: &[Stroke]) -> Vec<GifStroke> {
 /// Returns raw GIF bytes, or None on any failure.
 ///
 /// `fps` is the GIF frame rate (1..=50), `resolution` the size multiplier in
-/// (0.0, 1.0] (1.0 = full size), and `speed` the playback speed multiplier
-/// (higher = faster replay).
+/// (0.0, 1.0] (1.0 = full size), `speed` the playback speed multiplier
+/// (higher = faster replay). `end_mode` controls the ending:
+///   0 = play once and stop on the last stroke,
+///   1 = hold the last stroke ~1s then loop,
+///   2 = loop immediately after the last stroke.
 fn encode_animated_gif(
     gif_strokes: &[GifStroke],
     fps: i32,
     resolution: f64,
     speed: f64,
+    end_mode: i32,
 ) -> Option<Vec<u8>> {
     if gif_strokes.is_empty() {
         return None;
@@ -1396,13 +1400,18 @@ fn encode_animated_gif(
     // (speed-compressed) timeline at `fps` frames/second. Long clips are capped
     // at MAX_DRAW frames; the delay is clamped to >=2cs (GIF/decoder minimum).
     const MAX_DRAW: usize = 240;
-    const N_HOLD: usize = 5;
+    // Ending hold frames: 0 = stop on last frame / loop immediately,
+    // 1 = a single 1s (100cs) hold frame before looping.
+    let n_hold: usize = match end_mode {
+        1 => 1,
+        _ => 0,
+    };
     let play_time = total_active.clamp(0.5, 5.0);
     let n_draw = ((play_time * fps).round() as usize).clamp(1, MAX_DRAW);
     let draw_delay = ((play_time / n_draw as f64) * 100.0)
         .round()
         .clamp(2.0, 100.0) as u16;
-    let n_frames = n_draw + N_HOLD;
+    let n_frames = n_draw + n_hold;
 
     // ── Parallel frame rendering (rayon global thread pool) ──
     use rayon::prelude::*;
@@ -1507,7 +1516,14 @@ fn encode_animated_gif(
             Ok(e) => e,
             Err(_) => return None,
         };
-        enc.set_repeat(gif::Repeat::Infinite).ok();
+        // Repeat::Finite(0) writes no Netscape loop extension, so viewers play
+        // the GIF once and hold the last frame; Infinite makes it loop.
+        let repeat = if end_mode == 0 {
+            gif::Repeat::Finite(0)
+        } else {
+            gif::Repeat::Infinite
+        };
+        enc.set_repeat(repeat).ok();
 
         for ((pixels, delay), indices) in frame_pixels.iter().zip(frame_indices.iter()) {
             if pixels.len() != indices.len() * 4 {
@@ -1537,13 +1553,14 @@ pub extern "C" fn glaspen2_save_animated_gif(
     fps: c_int,
     resolution: c_double,
     speed: c_double,
+    end_mode: c_int,
 ) -> c_int {
     let gif_strokes = {
         let strokes = STROKES.lock().unwrap();
         gif_strokes_from(&strokes)
     };
 
-    let gif_data = match encode_animated_gif(&gif_strokes, fps, resolution, speed) {
+    let gif_data = match encode_animated_gif(&gif_strokes, fps, resolution, speed, end_mode) {
         Some(d) => d,
         None => return 0,
     };
@@ -1570,7 +1587,8 @@ pub extern "C" fn glaspen2_save_animated_gif(
 /// passed explicitly by the caller (captured at key-down and key-up) so a new
 /// recording can never clobber a pending one. Returns a heap buffer the caller
 /// must free with glaspen2_free_rust_bytes (len via `out_len`), or NULL on
-/// failure or an empty range. `fps`, `resolution` and `speed` drive the encoder.
+/// failure or an empty range. `fps`, `resolution`, `speed` and `end_mode` drive
+/// the encoder.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_gif_record_end(
     start_index: c_int,
@@ -1578,6 +1596,7 @@ pub extern "C" fn glaspen2_gif_record_end(
     fps: c_int,
     resolution: c_double,
     speed: c_double,
+    end_mode: c_int,
     out_len: *mut c_int,
 ) -> *mut c_uchar {
     if out_len.is_null() || start_index < 0 || end_index < 0 {
@@ -1600,7 +1619,7 @@ pub extern "C" fn glaspen2_gif_record_end(
         gif_strokes_from(&strokes[start..end])
     };
 
-    match encode_animated_gif(&gif_strokes, fps, resolution, speed) {
+    match encode_animated_gif(&gif_strokes, fps, resolution, speed, end_mode) {
         Some(gif_data) => {
             let len = gif_data.len() as c_int;
             let ptr = gif_data.as_ptr() as *mut c_uchar;
@@ -2218,7 +2237,7 @@ mod tests {
 
     #[test]
     fn test_encode_animated_gif_empty_is_none() {
-        assert!(encode_animated_gif(&[], 15, 0.5, 2.0).is_none());
+        assert!(encode_animated_gif(&[], 15, 0.5, 2.0, 1).is_none());
     }
 
     #[test]
@@ -2238,9 +2257,34 @@ mod tests {
                 points: vec![(5.0, 5.0, 2.0, 0.0), (30.0, 10.0, 2.0, 0.4)],
             },
         ];
-        let bytes = encode_animated_gif(&strokes, 15, 0.5, 2.0).expect("should encode");
+        let bytes = encode_animated_gif(&strokes, 15, 0.5, 2.0, 1).expect("should encode");
         // GIF89a magic, plus a non-trivial payload.
         assert!(bytes.starts_with(b"GIF89a"));
         assert!(bytes.len() > 20);
+    }
+
+    #[test]
+    fn test_encode_animated_gif_end_mode_loop_control() {
+        let strokes = vec![GifStroke {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            points: vec![(0.0, 0.0, 2.0, 0.0), (20.0, 20.0, 3.0, 0.5)],
+        }];
+        // mode 0 = play once → no Netscape loop extension (stop on last frame)
+        let once = encode_animated_gif(&strokes, 15, 0.5, 2.0, 0).expect("once");
+        assert!(
+            !contains_netescape(&once),
+            "stop-on-last-frame GIF must not write the loop extension"
+        );
+        // mode 1/2 = loop → Netscape loop extension present
+        let hold = encode_animated_gif(&strokes, 15, 0.5, 2.0, 1).expect("hold");
+        let loop_now = encode_animated_gif(&strokes, 15, 0.5, 2.0, 2).expect("loop");
+        assert!(contains_netescape(&hold), "hold-then-loop must loop");
+        assert!(contains_netescape(&loop_now), "immediate-loop must loop");
+    }
+
+    fn contains_netescape(bytes: &[u8]) -> bool {
+        bytes.windows(11).any(|w| w == b"NETSCAPE2.0")
     }
 }
