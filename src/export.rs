@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use std::slice;
 
 use crate::{
-    RAW_STROKE_START, STROKES, Stroke, db, db::OcrBox, desktop_path, modeler, ocr,
-    pressure_to_width, runtime, state, timestamped_name, timestamped_path,
+    RAW_STROKE_START, STROKES, Stroke, db, desktop_path, modeler, pressure_to_width, runtime,
+    state, timestamped_name, timestamped_path,
 };
 
 // ---------------------------------------------------------------------------
@@ -424,7 +424,7 @@ pub extern "C" fn glaspen2_get_current_screen_id() -> i64 {
     state::current_screen_id()
 }
 
-/// Delete a screen (page) and all its data (strokes, points, OCR).
+/// Delete a screen (page) and all its data (strokes, points).
 /// Returns 1 on success, 0 on failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_delete_screen(screen_id: i64) -> c_int {
@@ -1798,130 +1798,6 @@ pub extern "C" fn glaspen2_delete_last_stroke() {
 }
 
 // ---------------------------------------------------------------------------
-// OCR
-// ---------------------------------------------------------------------------
-
-/// Checked byte length for a w×h RGBA buffer (returns None on overflow).
-fn checked_rgba_len(w: u32, h: u32) -> Option<usize> {
-    (w as usize).checked_mul(h as usize)?.checked_mul(4)
-}
-
-/// Ensure the OCR models are present, downloading them on demand from
-/// HuggingFace if missing. Returns:
-///   0 = ready (already present), 1 = download started by this call,
-///   2 = download already in progress, -1 = failed to start.
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_ocr_ensure_models() -> c_int {
-    match ocr::download::ensure_models() {
-        ocr::download::EnsureResult::Ready => 0,
-        ocr::download::EnsureResult::Started => 1,
-        ocr::download::EnsureResult::AlreadyRunning => 2,
-        ocr::download::EnsureResult::Failed => -1,
-    }
-}
-
-/// Current OCR model download progress: -1 idle, -2 failed, 0..100 percent.
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_ocr_download_progress() -> c_double {
-    ocr::download::progress()
-}
-
-/// Run OCR on an RGBA pixel buffer. Returns a C string that the caller must
-/// free with glaspen2_free_c_string.
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_ocr_recognize(
-    pixels: *const c_uchar,
-    width: c_int,
-    height: c_int,
-) -> *mut c_char {
-    if pixels.is_null() || width <= 0 || height <= 0 {
-        return std::ptr::null_mut();
-    }
-    let w = width as u32;
-    let h = height as u32;
-    let Some(len) = checked_rgba_len(w, h) else {
-        return std::ptr::null_mut();
-    };
-    let pixel_slice = unsafe { std::slice::from_raw_parts(pixels, len) };
-    let text = ocr::detect_and_recognize(pixel_slice, w, h);
-    match CString::new(text) {
-        Ok(cs) => cs.into_raw(),
-        Err(_) => std::ptr::null_mut(),
-    }
-}
-
-/// Run OCR on the current surface and save results to DB for this page.
-/// Returns the recognized text as a C string (caller must free with
-/// glaspen2_free_c_string), or NULL if no text found.
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_ocr_page(
-    pixels: *const c_uchar,
-    width: c_int,
-    height: c_int,
-    screen_id: i64,
-) -> *mut c_char {
-    if pixels.is_null() || width <= 0 || height <= 0 {
-        return std::ptr::null_mut();
-    }
-    let w = width as u32;
-    let h = height as u32;
-    let Some(len) = checked_rgba_len(w, h) else {
-        return std::ptr::null_mut();
-    };
-    let pixel_slice = unsafe { std::slice::from_raw_parts(pixels, len) };
-
-    // Run detection + recognition
-    let boxes = ocr::det::detect_text_regions(pixel_slice, w, h);
-
-    // Recognize each box, build OcrBox entries
-    let mut ocr_boxes: Vec<OcrBox> = Vec::new();
-    let mut full_text = String::new();
-    for (i, tb) in boxes.iter().enumerate() {
-        let pad = 4u32;
-        let cx = tb.x.saturating_sub(pad);
-        let cy = tb.y.saturating_sub(pad);
-        let cw = (tb.w + pad * 2).min(w - cx);
-        let ch = (tb.h + pad * 2).min(h - cy);
-        if cw < 4 || ch < 4 {
-            continue;
-        }
-
-        let crop = ocr::det::crop_pixels(pixel_slice, w, cx, cy, cw, ch);
-        let text = ocr::rec::recognize(&crop, cw, ch);
-        if !text.is_empty() {
-            if i > 0 {
-                full_text.push('\n');
-            }
-            full_text.push_str(&text);
-
-            // Per-char positions (estimate by dividing box width evenly)
-            let chars: Vec<char> = text.chars().collect();
-            if !chars.is_empty() {
-                let char_w = tb.w as f64 / chars.len() as f64;
-                for (ci, ch) in chars.iter().enumerate() {
-                    ocr_boxes.push(OcrBox {
-                        text: ch.to_string(),
-                        x: tb.x as f64 + char_w * ci as f64,
-                        y: tb.y as f64,
-                        w: char_w,
-                        h: tb.h as f64,
-                        confidence: 0.0, // per-char confidence not available
-                    });
-                }
-            }
-        }
-    }
-
-    // Save to DB
-    runtime().block_on(db::save_ocr_result(screen_id, &full_text, &ocr_boxes));
-
-    match CString::new(full_text) {
-        Ok(cs) => cs.into_raw(),
-        Err(_) => std::ptr::null_mut(),
-    }
-}
-
-// ---------------------------------------------------------------------------
 // PDF export
 // ---------------------------------------------------------------------------
 
@@ -1934,32 +1810,19 @@ pub extern "C" fn glaspen2_export_pdf() -> c_int {
     }
 }
 
-/// Backfill OCR data for all pages that don't have it yet.
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_ocr_backfill_all() {
-    crate::pdf::backfill_ocr_all_pages();
-}
-
 // ---------------------------------------------------------------------------
-// Content tab data (page listing, OCR, search)
+// Content tab data (page listing)
 // ---------------------------------------------------------------------------
 
-/// List all screens with their OCR text as JSON.
+/// List all screens as JSON.
 /// Returns a C string (caller must free via glaspen2_free_c_string).
-/// JSON: [{"id":1,"w":1920,"h":1080,"ocr":"text or null"}, ...]
+/// JSON: [{"id":1,"w":1920,"h":1080}, ...]
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
-    let rows = runtime().block_on(db::list_screens_with_ocr());
+    let rows = runtime().block_on(db::list_screens());
     let list: Vec<serde_json::Value> = rows
         .into_iter()
-        .map(|(id, w, h, ocr)| {
-            serde_json::json!({
-                "id": id,
-                "w": w,
-                "h": h,
-                "ocr": ocr,
-            })
-        })
+        .map(|(id, w, h)| serde_json::json!({ "id": id, "w": w, "h": h }))
         .collect();
     let json = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
     CString::new(json).unwrap_or_default().into_raw()
@@ -1986,40 +1849,6 @@ pub extern "C" fn glaspen2_page_info_json(screen_id: i64) -> *mut c_char {
         Ok(cs) => cs.into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
-}
-
-/// Search OCR text across all pages.
-/// Returns JSON array of matching screens with OCR text.
-/// JSON: [{"id":1,"w":1920,"h":1080,"ocr":"full text"}, ...]
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_search_ocr_json(query: *const c_char) -> *mut c_char {
-    if query.is_null() {
-        return CString::new("[]".to_string())
-            .unwrap_or_default()
-            .into_raw();
-    }
-    let Ok(q) = unsafe { CStr::from_ptr(query) }.to_str() else {
-        return CString::new("[]".to_string())
-            .unwrap_or_default()
-            .into_raw();
-    };
-    if q.is_empty() {
-        return glaspen2_list_screens_json();
-    }
-    let rows = runtime().block_on(db::search_ocr(q));
-    let list: Vec<serde_json::Value> = rows
-        .into_iter()
-        .map(|(id, w, h, ocr)| {
-            serde_json::json!({
-                "id": id,
-                "w": w,
-                "h": h,
-                "ocr": ocr,
-            })
-        })
-        .collect();
-    let json = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
-    CString::new(json).unwrap_or_default().into_raw()
 }
 
 // ---------------------------------------------------------------------------

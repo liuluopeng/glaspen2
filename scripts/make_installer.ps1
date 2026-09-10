@@ -72,10 +72,6 @@ foreach ($dll in $vcDlls) {
     if (Test-Path $src) { Copy-Item $src $payload }
 }
 
-# onnxruntime runtime dep (DirectML.dll) - needed by OCR on Windows
-$dml = Get-ChildItem "$env:LOCALAPPDATA\ort.pyke.io\dfbin" -Recurse -Filter DirectML.dll -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($dml) { Copy-Item $dml.FullName $payload; Write-Host "  Bundled DirectML.dll (OCR)" -ForegroundColor Green }
-
 # Cairo DLLs - prefer bundled vendor/win/cairo
 $cairoDlls = @(
     "libcairo-2.dll", "libpixman-1-0.dll", "libpng16-16.dll",

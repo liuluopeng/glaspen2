@@ -66,10 +66,6 @@ foreach ($dll in $vcDlls) {
     }
 }
 
-# onnxruntime runtime dep (DirectML.dll) - needed by OCR on Windows
-$dml = Get-ChildItem "$env:LOCALAPPDATA\ort.pyke.io\dfbin" -Recurse -Filter DirectML.dll -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($dml) { Copy-Item $dml.FullName $payload; Write-Host "  Bundled DirectML.dll (OCR)" -ForegroundColor Green }
-
 # Cairo DLLs - required for anti-aliased stroke rendering.
 # Prefer bundled vendor/win/cairo, fall back to MSYS2.
 $cairoDlls = @(

@@ -32,7 +32,6 @@ pub mod windows;
 pub mod db;
 pub mod export;
 pub mod modeler;
-pub mod ocr;
 pub mod pdf;
 pub mod state;
 
@@ -177,16 +176,5 @@ mod tests {
     #[test]
     fn test_pressure_to_width_zero_pressure() {
         assert!((pressure_to_width(0.0, 1.0) - 1.0).abs() < 1e-6);
-    }
-
-    /// Windows OCR 可用性验证:加载模型并跑一次推理(空图,不应 panic)
-    #[test]
-    fn test_ocr_windows_inference() {
-        let w = 160u32;
-        let h = 80u32;
-        let rgba = vec![0u8; (w * h * 4) as usize];
-        let t = crate::ocr::recognize(&rgba, w, h);
-        eprintln!("[ocr_test] inference ok, recognized: {:?}", t);
-        assert!(t.len() < 1000);
     }
 }

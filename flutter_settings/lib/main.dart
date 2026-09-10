@@ -27,8 +27,6 @@ abstract class _SettingsBridge {
   Future<String> listPages();
   /// Content tab: page thumbnail PNG bytes (null if none)
   Future<Uint8List?> getPageThumbnail(int screenId, int w, int h, int maxSize);
-  /// Content tab: OCR text search, returns JSON list
-  Future<String> searchText(String query);
   /// 跳转到指定页面并恢复笔迹(继续绘画)
   Future<void> navigateToPage(int screenId);
   /// 触发一个快捷键动作(与 Ctrl+Alt+<key> 等价)
@@ -73,11 +71,6 @@ class _MethodChannelBridge extends _SettingsBridge {
     return await _channel.invokeMethod<Uint8List>('getPageThumbnail', {
       'screenId': screenId, 'w': w, 'h': h, 'maxSize': maxSize,
     });
-  }
-
-  @override
-  Future<String> searchText(String query) async {
-    return await _channel.invokeMethod<String>('searchText', {'query': query}) ?? '[]';
   }
 
   @override
@@ -308,13 +301,6 @@ class _NamedPipeBridge extends _SettingsBridge {
   }
 
   @override
-  Future<String> searchText(String query) async {
-    final r = await _request('searchText', {'query': query});
-    final data = r['data'];
-    return data == null ? '[]' : jsonEncode(data);
-  }
-
-  @override
   Future<void> navigateToPage(int screenId) async {
     if (!_connected) return;
     _writeData(jsonEncode({'type': 'navigateToPage', 'screenId': screenId}) + '\n');
@@ -403,14 +389,12 @@ class _PageInfo {
   final int id;
   final int w;
   final int h;
-  final String? ocr;
   Uint8List? thumbnail;
 
   _PageInfo({
     required this.id,
     required this.w,
     required this.h,
-    this.ocr,
   });
 
   factory _PageInfo.fromJson(Map<String, dynamic> json) {
@@ -418,7 +402,6 @@ class _PageInfo {
       id: json['id'] as int,
       w: json['w'] as int,
       h: json['h'] as int,
-      ocr: json['ocr'] as String?,
     );
   }
 }
@@ -475,7 +458,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _pressureMonitor = false;
   bool _showGrid = false;
   bool _gridFollowStrokes = false;
-  bool _ocrEnabled = false;
   bool _connected = false;
   Timer? _reloadTimer;
 
@@ -498,9 +480,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   List<_PageInfo> _pages = [];
   List<_PageInfo> _filteredPages = [];
   bool _pagesLoading = false;
-  bool _searchLoading = false;
-  Timer? _searchDebounce;
-  final _searchController = TextEditingController();
   final _thumbnailCache = <int, Uint8List>{};
   final _loadingThumbnails = <int>{};
 
@@ -519,9 +498,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   @override
   void dispose() {
     _tabController.dispose();
-    _searchController.dispose();
-    _searchDebounce?.cancel();
-    _ocrController.dispose();
     _reloadTimer?.cancel();
     _bridge.dispose();
     super.dispose();
@@ -544,7 +520,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _pressureMonitor = _b(s['pressureMonitor']);
         _showGrid = _b(s['grid']);
         _gridFollowStrokes = _b(s['gridFollowStrokes']);
-        _ocrEnabled = _b(s['ocrEnabled']);
         _gifFps = (s['gifFps'] as num?)?.toInt() ?? _gifFps;
         _gifResolution = (s['gifResolution'] as num?)?.toDouble() ?? _gifResolution;
         _gifSpeed = (s['gifSpeed'] as num?)?.toDouble() ?? _gifSpeed;
@@ -563,7 +538,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _pressureMonitor = _b(settings['pressureMonitor']);
           _showGrid = _b(settings['grid']);
           _gridFollowStrokes = _b(settings['gridFollowStrokes']);
-          _ocrEnabled = _b(settings['ocrEnabled']);
           _gifFps = (settings['gifFps'] as num?)?.toInt() ?? 15;
           _gifResolution = (settings['gifResolution'] as num?)?.toDouble() ?? 0.5;
           _gifSpeed = (settings['gifSpeed'] as num?)?.toDouble() ?? 2.0;
@@ -622,41 +596,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     }
   }
 
-  void _onSearchChanged(String query) {
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-      _performSearch(query);
-    });
-  }
-
-  Future<void> _performSearch(String query) async {
-    if (query.trim().isEmpty) {
-      setState(() => _filteredPages = List.from(_pages));
-      return;
-    }
-    setState(() => _searchLoading = true);
-    try {
-      final json = await _bridge.searchText(query.trim());
-      final list = jsonDecode(json) as List<dynamic>;
-      if (mounted) {
-        setState(() {
-          _filteredPages = list.map((e) => _PageInfo.fromJson(e as Map<String, dynamic>)).toList();
-          _searchLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('[Content] search error: $e');
-      if (mounted) setState(() => _searchLoading = false);
-    }
-  }
-
-  String _ocrPreview(String? text, {int maxLen = 80}) {
-    if (text == null || text.isEmpty) return '(无识别文本)';
-    final oneLine = text.replaceAll(RegExp(r'\s+'), ' ');
-    if (oneLine.length <= maxLen) return oneLine;
-    return '${oneLine.substring(0, maxLen)}…';
-  }
-
   // ── Build ──
 
   @override
@@ -708,8 +647,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   _buildSection('Options', _buildToggles()),
                   const SizedBox(height: 16),
                   _buildSection('Export', _buildExportButtons()),
-                  const SizedBox(height: 16),
-                  if (Platform.isMacOS) _buildSection('OCR 文字识别', _buildOcrRow()),
                 ],
               ),
             ),
@@ -723,41 +660,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Widget _buildContentTab() {
     return Column(
       children: [
-        // Search bar
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-          child: TextField(
-            controller: _searchController,
-            onChanged: _onSearchChanged,
-            decoration: InputDecoration(
-              hintText: '搜索文本…',
-              prefixIcon: const Icon(Icons.search, size: 20),
-              suffixIcon: _searchLoading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: Padding(
-                        padding: EdgeInsets.all(14),
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  : (_searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, size: 18),
-                          onPressed: () {
-                            _searchController.clear();
-                            _performSearch('');
-                          },
-                        )
-                      : null),
-              border: const OutlineInputBorder(),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              isDense: true,
-            ),
-            style: const TextStyle(fontSize: 14),
-          ),
-        ),
-        const SizedBox(height: 8),
         // Page grid
         Expanded(
           child: _pagesLoading
@@ -825,10 +727,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                       children: [
                         Text('页面 ${page.id}',
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                        const SizedBox(height: 2),
-                        Text(_ocrPreview(page.ocr, maxLen: 40),
-                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                            maxLines: 2, overflow: TextOverflow.ellipsis),
                       ],
                     ),
                   ),
@@ -1199,17 +1097,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             _setSetting('gridFollowStrokes', v);
           },
         ),
-        SwitchListTile(
-          title: const Text('OCR 识别', style: TextStyle(fontSize: 15)),
-          subtitle: const Text('首次使用时需下载模型 (约 135MB)', style: TextStyle(fontSize: 12)),
-          value: _ocrEnabled,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            setState(() => _ocrEnabled = v);
-            _setSetting('ocrEnabled', v);
-          },
-        ),
       ],
     );
   }
@@ -1251,106 +1138,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         ),
       ],
     );
-  }
-
-  Widget _buildOcrRow() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: double.infinity,
-          child: TextField(
-            controller: _ocrController,
-            readOnly: true,
-            maxLines: 3,
-            minLines: 1,
-            decoration: const InputDecoration(
-              hintText: '识别结果将显示在这里',
-              border: OutlineInputBorder(),
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            style: const TextStyle(fontSize: 15),
-          ),
-        ),
-        const SizedBox(height: 8),
-        ElevatedButton.icon(
-          onPressed: _ocrLoading ? null : _recognizeText,
-          icon: _ocrLoading
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.text_snippet, size: 16),
-          label: Text(_ocrLoading ? '识别中…' : '识别笔迹'),
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          ),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: _ocrBackfilling ? null : _ocrBackfill,
-          icon: _ocrBackfilling
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.storage, size: 16),
-          label: Text(_ocrBackfilling ? '补全中…' : '补全所有页面 OCR'),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          ),
-        ),
-      ],
-    );
-  }
-
-  bool _ocrLoading = false;
-  bool _ocrBackfilling = false;
-  final _ocrController = TextEditingController();
-
-  Future<void> _recognizeText() async {
-    setState(() => _ocrLoading = true);
-    try {
-      final text = await _channel.invokeMethod<String>('recognizeText') ?? '';
-      if (mounted) {
-        _ocrController.text = text;
-        if (text.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('未识别到文字'), duration: Duration(seconds: 2)),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('识别失败: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _ocrLoading = false);
-    }
-  }
-
-  Future<void> _ocrBackfill() async {
-    setState(() => _ocrBackfilling = true);
-    try {
-      await _channel.invokeMethod('ocrBackfill');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('OCR 补全完成'), duration: Duration(seconds: 2)),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('补全失败: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _ocrBackfilling = false);
-    }
   }
 
   bool _gifExporting = false;

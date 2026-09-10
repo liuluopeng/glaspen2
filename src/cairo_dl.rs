@@ -6,7 +6,7 @@
 //!
 //! 两种用法:
 //!   - `load(bits, w, h)`:绑定外部缓冲(overlay 的 DIB 内存)
-//!   - `create_owned(w, h)`:创建自有表面(导出/OCR 渲染,之后读 `bits()`)
+//!   - `create_owned(w, h)`:创建自有表面(导出渲染,之后读 `bits()`)
 
 #![allow(unsafe_op_in_unsafe_fn)]
 
@@ -122,7 +122,7 @@ impl CairoRenderer {
         }
     }
 
-    /// 创建自有表面(导出/OCR 渲染用),之后通过 `bits()` 读像素
+    /// 创建自有表面(导出渲染用),之后通过 `bits()` 读像素
     pub fn create_owned(w: i32, h: i32) -> Option<Self> {
         unsafe {
             let lib = load_library()?;

@@ -216,8 +216,6 @@ pub const CMD_TOGGLE_GRID: usize = 652;
 pub const CMD_TOGGLE_FROSTED: usize = 653;
 pub const CMD_TOGGLE_ETHEREAL: usize = 654;
 pub const CMD_TOGGLE_PRESSURE_MONITOR: usize = 655;
-pub const CMD_TOGGLE_OCR: usize = 660;
-pub const CMD_OCR_PROGRESS: usize = 870;
 pub const CMD_NAVIGATE_TO_PAGE: usize = 810;
 pub const CMD_PAGE_PREV: usize = 720;
 pub const CMD_PAGE_NEXT: usize = 721;
@@ -261,8 +259,6 @@ pub struct DrawState {
     pub grid_follow_strokes: bool,
     /// 压力监控 HUD 是否开启
     pub pressure_monitor: bool,
-    /// OCR 是否开启(首次开启时下载模型)
-    pub ocr_enabled: bool,
 }
 
 // ── 共享状态(仅消息循环线程访问) ──
@@ -1080,11 +1076,6 @@ pub fn run() {
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0)
             != 0;
-        let ocr_enabled = crate::runtime()
-            .block_on(crate::db::load_setting("ocrEnabled"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0)
-            != 0;
 
         // HUD 窗口(通知居中 + 压力监控左上角)
         {
@@ -1117,7 +1108,6 @@ pub fn run() {
             ethereal,
             grid_follow_strokes,
             pressure_monitor,
-            ocr_enabled,
         };
 
         let mut state = OverlayState {
@@ -2158,84 +2148,6 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                     "压力监控已关闭"
                 });
             }
-            x if x == CMD_TOGGLE_OCR => {
-                let on = param_on(state.draw.ocr_enabled);
-                state.draw.ocr_enabled = on;
-                crate::runtime().block_on(crate::db::save_setting(
-                    "ocrEnabled",
-                    if on { "1" } else { "0" },
-                ));
-                if on {
-                    // 首次开启 OCR:后台确保模型存在(存在则立即就绪,缺失则下载)
-                    hud_notify("正在准备 OCR 模型...");
-                    let hwnd = state.canvas.hwnd.0 as isize;
-                    std::thread::spawn(move || {
-                        let r = crate::export::glaspen2_ocr_ensure_models();
-                        if r == 0 {
-                            return; // 模型已就绪
-                        }
-                        if r < 0 {
-                            unsafe {
-                                let _ = PostMessageW(
-                                    Some(HWND(hwnd as *mut _)),
-                                    WM_TRAY_COMMAND,
-                                    WPARAM(CMD_OCR_PROGRESS),
-                                    LPARAM(1),
-                                );
-                            }
-                            return;
-                        }
-                        // 轮询下载进度并通知主线程
-                        loop {
-                            let p = crate::export::glaspen2_ocr_download_progress();
-                            let param: usize = if p >= 100.0 {
-                                2 // done
-                            } else if p <= -2.0 {
-                                1 // failed
-                            } else if p >= 0.0 {
-                                100 + p as usize // progress
-                            } else {
-                                0 // idle, keep waiting
-                            };
-                            if param == 2 || param == 1 {
-                                unsafe {
-                                    let _ = PostMessageW(
-                                        Some(HWND(hwnd as *mut _)),
-                                        WM_TRAY_COMMAND,
-                                        WPARAM(CMD_OCR_PROGRESS),
-                                        LPARAM(param as isize),
-                                    );
-                                }
-                                break;
-                            }
-                            if param >= 100 {
-                                unsafe {
-                                    let _ = PostMessageW(
-                                        Some(HWND(hwnd as *mut _)),
-                                        WM_TRAY_COMMAND,
-                                        WPARAM(CMD_OCR_PROGRESS),
-                                        LPARAM(param as isize),
-                                    );
-                                }
-                            }
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                        }
-                    });
-                }
-            }
-            x if x == CMD_OCR_PROGRESS => match param {
-                1 => {
-                    let err = crate::ocr::download::last_error();
-                    if err.is_empty() {
-                        hud_notify("OCR 模型下载失败");
-                    } else {
-                        hud_notify(&format!("OCR 模型下载失败: {}", err));
-                    }
-                }
-                2 => hud_notify("OCR 模型下载完成"),
-                p if p >= 100 => hud_notify(&format!("下载 OCR 模型 {}%", p - 100)),
-                _ => {}
-            },
             x if x == CMD_NAVIGATE_TO_PAGE => {
                 // 内容 tab 点击页面:恢复该页笔迹继续绘画
                 navigate_to(state, param as i64, "已切换到该页面");
@@ -2890,32 +2802,6 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             let _ = writer.write_all(resp.as_bytes());
         }
         let _ = writer.flush();
-    } else if msg_type == "searchText" {
-        // OCR 文本搜索(内容 tab)
-        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        let query = json_get_str(line, "query");
-        let q = std::ffi::CString::new(query).unwrap_or_default();
-        let ptr = crate::export::glaspen2_search_ocr_json(q.as_ptr());
-        if ptr.is_null() {
-            let _ = writer.write_all(
-                format!(
-                    "{{\"type\":\"searchText_response\",\"reqId\":{},\"data\":[]}}\n",
-                    req_id
-                )
-                .as_bytes(),
-            );
-        } else {
-            let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
-                .to_string_lossy()
-                .to_string();
-            crate::export::glaspen2_free_c_string(ptr);
-            let resp = format!(
-                "{{\"type\":\"searchText_response\",\"reqId\":{},\"data\":{}}}\n",
-                req_id, s
-            );
-            let _ = writer.write_all(resp.as_bytes());
-        }
-        let _ = writer.flush();
     } else if msg_type == "hotkey" {
         // Flutter 快捷键按钮:转发为对应命令
         let key = json_get_str(line, "key");
@@ -2983,16 +2869,12 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .block_on(crate::db::load_setting("gridFollowStrokes"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0);
-        let ocr_enabled = crate::runtime()
-            .block_on(crate::db::load_setting("ocrEnabled"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
         let ethereal = crate::runtime()
             .block_on(crate::db::load_setting("ethereal"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0);
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ocrEnabled\":{},\"ethereal\":{},\"rainbow\":false,\"launchAtLogin\":false}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"rainbow\":false,\"launchAtLogin\":false}}}}\n",
             color,
             width,
             outline,
@@ -3000,7 +2882,6 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             grid_follow,
             frosted,
             pressure_monitor,
-            ocr_enabled,
             ethereal
         );
         let _ = writer.write_all(resp.as_bytes());
@@ -3133,18 +3014,6 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                     "gridFollowStrokes",
                     if on { "1" } else { "0" },
                 ));
-            }
-        } else if key == "ocrEnabled" {
-            if let Some(on) = json_get_bool(line, "value") {
-                let cmd = CMD_TOGGLE_OCR;
-                let _ = unsafe {
-                    PostMessageW(
-                        Some(HWND(hwnd as *mut _)),
-                        WM_TRAY_COMMAND,
-                        WPARAM(cmd),
-                        LPARAM(if on { 1 } else { 0 }),
-                    )
-                };
             }
         } else if key == "pressureMonitor" {
             if let Some(on) = json_get_bool(line, "value") {

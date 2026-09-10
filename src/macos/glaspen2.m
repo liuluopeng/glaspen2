@@ -85,15 +85,9 @@ extern int glaspen2_save_gif_cropped(const unsigned char *surface_data, int w, i
 extern int glaspen2_save_animated_gif(int fps, double resolution, double speed, int end_mode);
 extern unsigned char * glaspen2_gif_record_end(int start_index, int end_index, int fps, double resolution, double speed, int end_mode, int *out_len);
 extern void glaspen2_draw_rebuild(void *surface_ptr, double scale);
-extern char* glaspen2_ocr_recognize(const unsigned char *pixels, int width, int height);
-extern char* glaspen2_ocr_page(const unsigned char *pixels, int width, int height, long screen_id);
 extern int glaspen2_export_pdf(void);
-extern void glaspen2_ocr_backfill_all(void);
-extern int glaspen2_ocr_ensure_models(void);
-extern double glaspen2_ocr_download_progress(void);
 extern void glaspen2_on_display_change(int screen_w, int screen_h);
 extern char* glaspen2_list_screens_json(void);
-extern char* glaspen2_search_ocr_json(const char *query);
 extern unsigned char* glaspen2_render_thumbnail(long long screen_id, int w, int h, int max_size, int *out_len);
 extern void glaspen2_free_rust_bytes(unsigned char *ptr, int len);
 extern int glaspen2_delete_screen(long long screen_id);
@@ -119,8 +113,6 @@ extern int glaspen2_undo_last_stroke(void);
 static void rebuild_surface_from_strokes(void);
 static void finish_active_stroke(void);
 static void ensure_surface(NSView *view);
-static void ocr_ensure_models_async(void);
-static void toggle_ocr_enabled(void);
 static BOOL perform_hotkey(unsigned short keyCode);
 static NSWindow *g_window = nil;
 static NSVisualEffectView *g_glass_view = nil;
@@ -239,12 +231,6 @@ static BOOL g_show_grid = NO;
 // 飘渺画布涂鸦模式 (X). When NO the grid is always visible while its own
 // Flutter switch is on. Controlled by the Flutter settings panel.
 static BOOL g_grid_follow_strokes = NO;
-
-// OCR feature switch. Off by default: the models are not bundled and are
-// downloaded on demand (~135 MB), so a user who never OCRs must not be
-// prompted on every 新建画布/翻页. When turned on, the models download on
-// first use automatically.
-static BOOL g_ocr_enabled = NO;
 
 // Glass overlay opacity (0.0 = off, 0.0-0.3 range)
 static BOOL g_glass_enabled = NO;  // frosted glass ON/OFF
@@ -787,10 +773,6 @@ static void toggle_canvas_mode(void) {
     show_notification(L(@"笔记已保存", @"Notes saved"));
 }
 
-- (void)downloadOcrModels {
-    ocr_ensure_models_async();
-}
-
 - (void)toggleLanguage {
     g_lang = 1 - g_lang;
     update_menu_texts();
@@ -805,10 +787,6 @@ static void toggle_canvas_mode(void) {
 
 - (void)toggleCanvasMode {
     toggle_canvas_mode();
-}
-
-- (void)toggleOcr {
-    toggle_ocr_enabled();
 }
 
 - (void)toggleLaunch {
@@ -886,7 +864,6 @@ static NSButton *g_glass_buttons[1];
             @"grid": @(g_show_grid),
             @"gridFollowStrokes": @(g_grid_follow_strokes),
             @"pressureMonitor": @(g_pressure_monitor),
-            @"ocrEnabled": @(g_ocr_enabled),
             @"gifFps": @(g_gif_fps),
             @"gifResolution": @(g_gif_resolution),
             @"gifSpeed": @(g_gif_speed),
@@ -915,10 +892,6 @@ static NSButton *g_glass_buttons[1];
             g_grid_follow_strokes = [value boolValue];
             glaspen2_save_bool_setting("grid_follow_strokes", g_grid_follow_strokes ? 1 : 0);
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
-        } else if ([key isEqualToString:@"ocrEnabled"]) {
-            if (g_ocr_enabled != [value boolValue]) toggle_ocr_enabled();
-            result(nil);
-            return;
         } else if ([key isEqualToString:@"pressureMonitor"]) {
             gl_settings_set_pressure_monitor([value boolValue]);
         } else if ([key isEqualToString:@"gifFps"]) {
@@ -1015,41 +988,6 @@ static NSButton *g_glass_buttons[1];
             [g_settings_window setMinSize:NSMakeSize(300, 300)];
         }
         result(nil);
-    } else if ([call.method isEqualToString:@"recognizeText"]) {
-        // Run OCR on current drawing surface.
-        // Copy the pixels on the main thread first — the background queue must
-        // never read live cairo surface memory (torn reads / use-after-free).
-        if (!g_ocr_enabled) {
-            result(@"");
-            return;
-        }
-        if (!g_surface) {
-            result(@"");
-            return;
-        }
-        ocr_ensure_models_async(); // download models on first use if needed
-        cairo_surface_flush(g_surface);
-        const unsigned char *data = cairo_image_surface_get_data(g_surface);
-        int w = cairo_image_surface_get_width(g_surface);
-        int h = cairo_image_surface_get_height(g_surface);
-        int stride = cairo_image_surface_get_stride(g_surface);
-        if (!data || w <= 0 || h <= 0 || stride <= 0) {
-            result(@"");
-            return;
-        }
-        unsigned char *copy = malloc((size_t)stride * h);
-        if (!copy) { result(@""); return; }
-        memcpy(copy, data, (size_t)stride * h);
-
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            char *text = glaspen2_ocr_recognize(copy, w, h);
-            NSString *resultText = text ? [NSString stringWithUTF8String:text] : @"";
-            if (text) glaspen2_free_c_string(text);
-            free(copy);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                result(resultText);
-            });
-        });
     } else if ([call.method isEqualToString:@"exportPdf"]) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             int ok = glaspen2_export_pdf();
@@ -1057,31 +995,9 @@ static NSButton *g_glass_buttons[1];
                 result(@(ok));
             });
         });
-    } else if ([call.method isEqualToString:@"ocrBackfill"]) {
-        if (!g_ocr_enabled) {
-            result(nil);
-            return;
-        }
-        ocr_ensure_models_async(); // download models on first use if needed
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            glaspen2_ocr_backfill_all();
-            dispatch_async(dispatch_get_main_queue(), ^{
-                result(nil);
-            });
-        });
     } else if ([call.method isEqualToString:@"listPages"]) {
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             char *json = glaspen2_list_screens_json();
-            NSString *str = json ? [NSString stringWithUTF8String:json] : @"[]";
-            if (json) glaspen2_free_c_string(json);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                result(str);
-            });
-        });
-    } else if ([call.method isEqualToString:@"searchText"]) {
-        NSString *query = call.arguments[@"query"] ?: @"";
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            char *json = glaspen2_search_ocr_json([query UTF8String]);
             NSString *str = json ? [NSString stringWithUTF8String:json] : @"[]";
             if (json) glaspen2_free_c_string(json);
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -1305,7 +1221,6 @@ static void sync_settings_panel(void) {
         @"grid": @(g_show_grid),
         @"gridFollowStrokes": @(g_grid_follow_strokes),
         @"pressureMonitor": @(g_pressure_monitor),
-        @"ocrEnabled": @(g_ocr_enabled),
     }];
 }
 
@@ -1761,95 +1676,6 @@ static void rebuild_surface_from_strokes(void) {
 
 @end
 
-// OCR feature on/off (models are downloaded on demand, so OCR must be
-// opted in). Menu item tag 666; also exposed in the Flutter settings.
-static void toggle_ocr_enabled(void) {
-    g_ocr_enabled = !g_ocr_enabled;
-    glaspen2_save_bool_setting("ocr_enabled", g_ocr_enabled ? 1 : 0);
-    NSMenuItem *item = [g_menu itemWithTag:666];
-    if (item) {
-        [item setState:g_ocr_enabled ? NSControlStateValueOn : NSControlStateValueOff];
-        [item setTitle:g_ocr_enabled
-            ? L(@"关闭 OCR 识别", @"Disable OCR")
-            : L(@"开启 OCR 识别 (需下载模型)", @"Enable OCR (downloads models)")];
-    }
-    if (g_ocr_enabled) {
-        ocr_ensure_models_async(); // start the download right away
-    }
-    show_notification(g_ocr_enabled
-        ? L(@"OCR 识别已开启", @"OCR enabled")
-        : L(@"OCR 识别已关闭", @"OCR disabled"));
-}
-
-// ── OCR model on-demand download (models are not bundled) ──
-
-static NSTimer *g_ocr_dl_timer = nil;
-
-// Start the OCR model download if the models are missing, and show a
-// progress notification while it runs. Safe to call repeatedly.
-static void ocr_ensure_models_async(void) {
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        int r = glaspen2_ocr_ensure_models();
-        if (r == 0) return; // models already ready
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (r < 0) {
-                show_notification(L(@"OCR 模型下载启动失败", @"OCR model download failed to start"));
-                return;
-            }
-            [g_ocr_dl_timer invalidate];
-            g_ocr_dl_timer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) {
-                double p = glaspen2_ocr_download_progress();
-                if (p >= 100.0) {
-                    [timer invalidate];
-                    g_ocr_dl_timer = nil;
-                    show_notification(L(@"OCR 模型下载完成", @"OCR models ready"));
-                } else if (p <= -2.0) {
-                    [timer invalidate];
-                    g_ocr_dl_timer = nil;
-                    show_notification(L(@"OCR 模型下载失败", @"OCR model download failed"));
-                } else if (p >= 0.0) {
-                    show_notification([NSString stringWithFormat:L(@"下载 OCR 模型 %d%%", @"Downloading OCR models %d%%"), (int)p]);
-                }
-            }];
-        });
-    });
-}
-
-/// OCR the current surface on a background queue and save result to DB.
-/// Copies the pixel data so the UI thread can proceed without waiting.
-static void ocr_current_page_async(void) {
-    if (!g_ocr_enabled) return; // OCR is off — no downloads, no inference
-    ocr_ensure_models_async(); // download models on first use if needed
-    if (!g_surface) return;
-    cairo_surface_flush(g_surface);
-    const unsigned char *data = cairo_image_surface_get_data(g_surface);
-    int w = cairo_image_surface_get_width(g_surface);
-    int h = cairo_image_surface_get_height(g_surface);
-    int stride = cairo_image_surface_get_stride(g_surface);
-    long sid = glaspen2_get_current_screen_id();
-
-    size_t data_size = stride * h;
-    unsigned char *copy = malloc(data_size);
-    memcpy(copy, data, data_size);
-
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        char *text = glaspen2_ocr_page(copy, w, h, sid);
-        if (text) glaspen2_free_c_string(text);
-        free(copy);
-    });
-}
-
-/// OCR the current surface and return recognized text (caller must free).
-static char* ocr_current_page(void) {
-    if (!g_surface) return NULL;
-    cairo_surface_flush(g_surface);
-    const unsigned char *data = cairo_image_surface_get_data(g_surface);
-    int w = cairo_image_surface_get_width(g_surface);
-    int h = cairo_image_surface_get_height(g_surface);
-    long sid = glaspen2_get_current_screen_id();
-    return glaspen2_ocr_page(data, w, h, sid);
-}
-
 // --- CGEventTap callback ---
 
 // Performance logging (set g_perf_log=YES to enable)
@@ -1901,13 +1727,11 @@ static void perf_log_event(const char *evtype, uint64_t dur_us) {
 static BOOL perform_hotkey(unsigned short kc) {
     if (kc == kVK_ANSI_C) {
         finish_active_stroke(); // don't strand an in-flight stroke
-        ocr_current_page_async();
         clear_screen();
         return YES;
     } else if (kc == kVK_ANSI_V) { toggle_enabled(); return YES; }
     else if (kc == 0x26) { // J — previous page
         finish_active_stroke();
-        ocr_current_page_async();
         long target = glaspen2_prev_screen_id();
         if (target > 0) {
             glaspen2_load_strokes_for_screen(target);
@@ -1921,7 +1745,6 @@ static BOOL perform_hotkey(unsigned short kc) {
         return YES;
     } else if (kc == 0x28) { // K — next page
         finish_active_stroke();
-        ocr_current_page_async();
         long target = glaspen2_next_screen_id();
         if (target > 0) {
             glaspen2_load_strokes_for_screen(target);
@@ -2414,8 +2237,6 @@ void glaspen2_run(void) {
         [g_menu addItemWithTitle:L(@"保存(含背景)", @"Save (with bg)") action:@selector(saveWithBg) keyEquivalent:@""];
         [g_menu addItemWithTitle:L(@"保存(涂鸦)", @"Save (drawing)") action:@selector(saveOnly) keyEquivalent:@""];
         [g_menu addItemWithTitle:L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)") action:@selector(saveXoj) keyEquivalent:@""];
-        NSMenuItem *ocrDlItem = [g_menu addItemWithTitle:L(@"下载 OCR 模型 (135M)", @"Download OCR models (135M)") action:@selector(downloadOcrModels) keyEquivalent:@""];
-        ocrDlItem.target = g_menuHandler;
         [g_menu addItemWithTitle:L(@"新建画布", @"New canvas") action:@selector(clearScreen) keyEquivalent:@""];
         NSMenuItem *rainbowItem = [g_menu addItemWithTitle:L(@"彩虹指示器", @"Rainbow indicator") action:@selector(toggleRainbow) keyEquivalent:@""];
         rainbowItem.target = g_menuHandler;
@@ -2433,10 +2254,6 @@ void glaspen2_run(void) {
         modeItem.target = g_menuHandler;
         modeItem.tag = 778;
         modeItem.state = NSControlStateValueOff;
-        NSMenuItem *ocrItem = [g_menu addItemWithTitle:L(@"开启 OCR 识别 (需下载模型)", @"Enable OCR (downloads models)") action:@selector(toggleOcr) keyEquivalent:@""];
-        ocrItem.target = g_menuHandler;
-        ocrItem.tag = 666;
-        ocrItem.state = NSControlStateValueOff;
         [g_menu addItem:[NSMenuItem separatorItem]];
         NSMenuItem *toggleItem = [g_menu addItemWithTitle:L(@"开启涂鸦", @"Enable Drawing") action:@selector(toggleDraw) keyEquivalent:@""];
         toggleItem.target = g_menuHandler;
@@ -2508,16 +2325,6 @@ void glaspen2_run(void) {
 
         // Canvas mode starts in 固定画布涂鸦模式; menu item shows the switch target
         [[g_menu itemWithTag:778] setTitle:L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];
-
-        // Restore OCR feature setting (off by default — models download on demand)
-        g_ocr_enabled = glaspen2_load_bool_setting("ocr_enabled") != 0;
-        NSMenuItem *restoredOcrItem = [g_menu itemWithTag:666];
-        if (restoredOcrItem) {
-            [restoredOcrItem setState:g_ocr_enabled ? NSControlStateValueOn : NSControlStateValueOff];
-            [restoredOcrItem setTitle:g_ocr_enabled
-                ? L(@"关闭 OCR 识别", @"Disable OCR")
-                : L(@"开启 OCR 识别 (需下载模型)", @"Enable OCR (downloads models)")];
-        }
 
         // Restore pressure monitor setting
         g_pressure_monitor = glaspen2_load_bool_setting("pressure_monitor") != 0;

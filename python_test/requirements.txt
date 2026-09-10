@@ -1,6 +1,0 @@
-PaddleOCR>=3.0
-opencv-python-headless
-numpy
-Pillow
-requests
-onnxruntime

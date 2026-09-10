@@ -286,36 +286,5 @@ fn main() {
                 }
             }
         }
-
-        // ── Copy onnxruntime runtime deps (DirectML.dll) next to the exe ──
-        // ort 以静态库链接 onnxruntime,但运行时需要 DirectML.dll
-        // (ort 缓存: %LOCALAPPDATA%\ort.pyke.io\dfbin\<target>\...)
-        let ort_root = std::env::var("LOCALAPPDATA")
-            .map(|l| std::path::Path::new(&l).join("ort.pyke.io").join("dfbin"))
-            .unwrap_or_default();
-        if ort_root.exists()
-            && let Ok(dirs) = std::fs::read_dir(&ort_root)
-        {
-            for d in dirs.flatten() {
-                if !d.path().is_dir() {
-                    continue;
-                }
-                let dml = d.path().join("DirectML.dll");
-                let dst = target_dir.join("DirectML.dll");
-                if dml.exists() {
-                    if !dst.exists()
-                        || std::fs::metadata(&dml).and_then(|m| m.modified()).ok()
-                            > std::fs::metadata(&dst).and_then(|m| m.modified()).ok()
-                    {
-                        if let Err(e) = std::fs::copy(&dml, &dst) {
-                            println!("cargo:warning=Failed to copy DirectML.dll: {}", e);
-                        } else {
-                            println!("cargo:warning=DirectML.dll copied for OCR");
-                        }
-                    }
-                    break;
-                }
-            }
-        }
     }
 }
