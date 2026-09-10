@@ -1,5 +1,5 @@
 [workspace]
-members = ["installer"]
+members = ["installer", "chat"]
 
 [package]
 name = "glaspen2"

@@ -1,0 +1,257 @@
+// glaspen 手写笔记 — 聊天流式消息协议 v1
+//
+// 设计要点(对应格式讨论):
+//   * 一本笔记 = 一条 append-only 消息流(notebook_id),一条笔迹与一张图片、
+//     一段语音在结构上完全平级。
+//   * (type, subtype) 两级分类,编号尽量沿用微信语义;真正的载荷放在
+//     payload oneof 里。遇到未知的 type/payload 一律渲染占位卡片,不丢弃。
+//   * 只追加不修改:撤销/删除通过 Tombstone(10000/2)表达。
+//   * 媒体按内容寻址(sha256),与消息分开上传/下载。
+//   * 服务端(本地 axum + tonic)负责分配 msg_id 与落库;客户端只持有 seq。
+
+syntax = "proto3";
+
+package glaspen.chat.v1;
+
+// ---------------------------------------------------------------------------
+// 枚举
+// ---------------------------------------------------------------------------
+
+// 消息大类。数值对齐微信 Type,便于记忆与工具互通。
+// 新增大类时必须追加在文末,不得复用旧编号。
+enum MsgType {
+  MSG_TYPE_UNSPECIFIED = 0;
+  // 手写笔迹(一次落笔 = 一条消息)。
+  MSG_TYPE_STROKE = 1;
+  // 键入文本,或挂在笔迹上的 OCR 衍生文本(经 QuoteContent 引用)。
+  MSG_TYPE_TYPED_TEXT = 2;
+  MSG_TYPE_IMAGE = 3;
+  MSG_TYPE_VOICE = 34;
+  MSG_TYPE_VIDEO = 43;
+  // 第三方贴纸/表情包。
+  MSG_TYPE_STICKER = 47;
+  // 卡片类(文件/合并笔记/引用),细分见 subtype。
+  MSG_TYPE_CARD = 49;
+  // 系统通知(新建画布/翻页等居中灰字)与撤销 tombstone。
+  MSG_TYPE_SYSTEM = 10000;
+}
+
+// 细分语义(字段在 ChatMessage.subtype,proto 顶层无法声明枚举外的通用说明):
+//   CARD:   6 = 文件, 19 = 合并笔记, 57 = 带引用的消息(对齐微信)
+//   SYSTEM: 0 = 系统通知(新建画布/翻页), 2 = 撤销/删除 tombstone
+//   其余类型 subtype 固定填 0。
+
+// ---------------------------------------------------------------------------
+// 消息体
+// ---------------------------------------------------------------------------
+
+// 流内的一条消息。字段编号分区:1-19 信封,20-39 payload,40+ 扩展。
+message ChatMessage {
+  // 所属笔记本(消息流)。
+  string notebook_id = 1;
+  // 流内严格递增序号,排序唯一依据。客户端按本地顺序编号;
+  // 服务端以 (notebook_id, seq) 去重,重传幂等。
+  uint64 seq = 2;
+  // 客户端幂等键(UUID),跨会话重试去重用。
+  string client_msg_id = 3;
+
+  MsgType type = 4;
+  // 见文件头注释:仅 CARD/SYSTEM 使用细分,其余填 0。
+  uint32 subtype = 5;
+
+  string author = 6; // 作者标识
+  string device = 7; // 发出设备(留多设备同步)
+  int64 created_at_ms = 8;
+
+  Layout layout = 9;
+  // 本地缓存路径、来源页等可丢弃元数据(BytesExtra 类比物)。
+  map<string, string> meta = 10;
+
+  oneof payload {
+    StrokeContent stroke = 20;
+    TextContent text = 21;
+    MediaContent image = 22;
+    MediaContent voice = 23;
+    MediaContent video = 24;
+    StickerContent sticker = 25;
+    FileContent file = 26;
+    MergedNotes merged = 27;
+    QuoteContent quote = 28;
+    SystemNotice system = 29;
+    Tombstone tombstone = 30;
+  }
+}
+
+// 消息在流里的摆法。
+message Layout {
+  // 流式:独占一个块,渲染时从上往下排。
+  message Flow {}
+  // 画布锚点:叠加在页面 (x,y) 处,兼容现有全屏画布页。
+  message Anchor {
+    double x = 1;
+    double y = 2;
+  }
+  oneof kind {
+    Flow flow = 1;
+    Anchor anchor = 2;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 各 payload
+// ---------------------------------------------------------------------------
+
+// 手写笔迹点。与 glaspen2 现有 (x, y, width, relative_time) 一一对应。
+message StrokePoint {
+  double x = 1;
+  double y = 2;
+  double width = 3;  // 该点线宽(px)
+  double t_rel = 4;  // 相对笔画起点的时间(秒),笔顺回放/GIF 用
+}
+
+message StrokeContent {
+  repeated StrokePoint points = 1;
+  // 0xRRGGBB。
+  uint32 color_rgb = 2;
+  // 全局线宽倍率(对齐 glaspen2 的 width_scale)。
+  double width_scale = 3;
+  // NOTE: 超长笔画可后续切换为 SoA 编码(repeated double xs/ys/ws/ts),
+  // 届时新增字段而非复用本字段,旧渲染器照常渲染占位。
+}
+
+message TextContent {
+  string text = 1;
+}
+
+// 图片/语音/视频共用的媒体引用。二进制走 UploadMedia/DownloadMedia,
+// 消息里只带元数据。
+message MediaContent {
+  // 内容寻址 id(sha256 hex)。
+  string media_id = 1;
+  uint32 width = 2;   // 图片/视频
+  uint32 height = 3;
+  uint64 duration_ms = 4; // 语音/视频
+  // 缩略图/封面(视频、大图),也是 MediaContent 体系里的一张媒体。
+  string thumb_media_id = 5;
+}
+
+message StickerContent {
+  string pack_id = 1;
+  string sticker_id = 2;
+}
+
+message FileContent {
+  string file_name = 1;
+  uint64 size = 2;
+  string media_id = 3;
+}
+
+// 合并笔记(微信 49/19):引用一段可跨笔记本的消息,渲染成卡片,
+// 点开后按子流回放。
+message MergedNotes {
+  string title = 1;
+  repeated MergedItem items = 2;
+  message MergedItem {
+    string notebook_id = 1;
+    uint64 msg_id = 2;        // 服务端 id
+    string client_msg_id = 3; // 或客户端 id(合并尚未入库的内容时)
+  }
+}
+
+// 引用消息(微信 49/57):引用一条旧消息或某页笔迹的一块区域。
+message QuoteContent {
+  oneof target {
+    // 引用整条消息。
+    uint64 quote_msg_id = 1;
+    // 引用某页(由 SYSTEM 页头消息的 seq 界定)上若干笔迹的包围盒。
+    StrokeRegion quote_region = 2;
+  }
+  // 引用之上的回复内容。递归结构,建议深度限制为 1 层。
+  ChatMessage reply = 3;
+
+  message StrokeRegion {
+    uint64 page_seq = 1; // 页头 SYSTEM 消息的 seq
+    repeated uint64 stroke_seqs = 2;
+    BBox bbox = 3;
+  }
+}
+
+message BBox {
+  double x = 1;
+  double y = 2;
+  double w = 3;
+  double h = 4;
+}
+
+// 系统通知(新建画布/翻页,渲染为居中灰字)。
+message SystemNotice {
+  string text = 1;
+  map<string, string> extra = 2;
+}
+
+// 撤销/删除 tombstone:不物理删,追加一条指向被撤消息。
+message Tombstone {
+  uint64 target_msg_id = 1;
+  string reason = 2;
+}
+
+// ---------------------------------------------------------------------------
+// 服务(本地 axum + tonic 实现)
+// ---------------------------------------------------------------------------
+
+service ChatStore {
+  // 追加消息(客户端流)。服务端按到达顺序校验去重后落库,
+  // 为每条分配全局递增的 msg_id。
+  rpc AppendMessages(stream ChatMessage) returns (AppendReply);
+
+  // 回放一个笔记本的消息,按 seq 升序。
+  rpc FetchMessages(FetchRequest) returns (stream ChatMessage);
+
+  // 媒体按内容寻址上传/下载。
+  rpc UploadMedia(stream MediaChunk) returns (MediaAck);
+  rpc DownloadMedia(MediaQuery) returns (stream MediaChunk);
+}
+
+message AppendReply {
+  // 服务端分配的首个 msg_id(后续依次 +1)。
+  uint64 first_msg_id = 1;
+  // 实际接受的条数(排除重复)。
+  uint64 accepted = 2;
+  // 接受消息的 seq 列表,与 msg_id 分配顺序一致。
+  repeated uint64 seqs = 3;
+}
+
+message FetchRequest {
+  string notebook_id = 1;
+  // 只返回 seq > after_seq 的消息(增量拉取),0 表示从头。
+  uint64 after_seq = 2;
+  // 最多返回条数,0 = 不限。
+  uint32 limit = 3;
+}
+
+message MediaChunk {
+  oneof data {
+    // 首帧:元数据声明。
+    MediaInfo info = 1;
+    // 后续帧:数据分片。
+    bytes chunk = 2;
+  }
+}
+
+message MediaInfo {
+  // sha256 hex;服务端校验一致后按内容落盘(重复内容去重)。
+  string media_id = 1;
+  string mime = 2;
+  uint64 size = 3;
+}
+
+message MediaAck {
+  string media_id = 1;
+  uint64 size = 2;
+  // true = 该内容此前已存在,未重复落盘。
+  bool deduplicated = 3;
+}
+
+message MediaQuery {
+  string media_id = 1;
+}
