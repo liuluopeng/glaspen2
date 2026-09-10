@@ -187,7 +187,6 @@ CREATE TABLE IF NOT EXISTS messages (
     layout_kind    INTEGER NOT NULL DEFAULT 0,  -- 0=flow 1=anchor(无 layout 同 0)
     anchor_x       REAL,
     anchor_y       REAL,
-    meta           TEXT    NOT NULL DEFAULT '{}', -- JSON,可丢弃的缓存类信息
     payload_branch TEXT    NOT NULL,  -- oneof 分支名: 'stroke'/'image'/...
     payload        BLOB    NOT NULL,  -- 见下方"关键取舍"
     received_at_ms INTEGER NOT NULL
