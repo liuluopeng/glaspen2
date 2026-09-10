@@ -2018,9 +2018,131 @@ fn encode_png_rgba(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
     Some(buf)
 }
 
+// ---------------------------------------------------------------------------
+// 聊天流(⌘⌃3 录制的手写消息 → 本地 axum 存储)
+// ---------------------------------------------------------------------------
+
+/// 手写消息归属的流。当前形态是"本机涂鸦工具",单一流即可;
+/// 服务端按 (notebook_id, seq) 去重。
+const CHAT_NOTEBOOK: &str = "glaspen2-doodle";
+
+/// 流内 seq 的高水位,持久化在 user_settings 里:应用重启后接着涨,
+/// 避免服务端把重放的新消息当成重复吞掉。
+static CHAT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 预留 n 个连续 seq,返回首个 seq。首次调用时从 DB 加载高水位。
+fn reserve_chat_seqs(n: u64) -> u64 {
+    use std::sync::atomic::Ordering;
+    static LOADED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    LOADED.get_or_init(|| {
+        let v = runtime()
+            .block_on(db::load_setting("chat_seq"))
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        CHAT_SEQ.store(v, Ordering::SeqCst);
+    });
+    let first = CHAT_SEQ.fetch_add(n, Ordering::SeqCst) + 1;
+    runtime().block_on(db::save_setting(
+        "chat_seq",
+        &CHAT_SEQ.load(Ordering::SeqCst).to_string(),
+    ));
+    first
+}
+
+/// 一条笔迹 → 一条 STROKE 消息(无作者/设备字段,涂鸦工具不携带身份)。
+fn stroke_to_chat_message(seq: u64, s: &Stroke) -> glaspen_chat::pb::ChatMessage {
+    let to8 = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u32;
+    let color_rgb = (to8(s.r) << 16) | (to8(s.g) << 8) | to8(s.b);
+    glaspen_chat::stroke_message(
+        CHAT_NOTEBOOK,
+        seq,
+        "",
+        "",
+        color_rgb,
+        1.0, // 线宽逐点携带在 points 里,全局倍率固定 1.0
+        &s.points,
+        None, // flow 布局:聊天流里按块下排
+    )
+}
+
+/// 把录制窗口 [start_index, end_index) 内的笔迹打包成手写消息,发送到聊天服务。
+/// 由 macOS 端 ⌘⌃3 key-up 在后台线程调用(start/end 均在主线程钉好)。
+/// 返回发送的消息条数;无新笔迹返回 0;发送失败返回 -1。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_chat_send_strokes(start_index: c_int, end_index: c_int) -> c_int {
+    let strokes: Vec<Stroke> = {
+        let all = STROKES.lock().unwrap();
+        let start = start_index.clamp(0, all.len() as i32) as usize;
+        let end = (end_index.clamp(0, all.len() as i32) as usize).max(start);
+        all[start..end].to_vec()
+    };
+    if strokes.is_empty() {
+        return 0;
+    }
+
+    let first = reserve_chat_seqs(strokes.len() as u64);
+    let msgs: Vec<_> = strokes
+        .iter()
+        .enumerate()
+        .map(|(i, s)| stroke_to_chat_message(first + i as u64, s))
+        .collect();
+
+    let endpoint = glaspen_chat::endpoint_from_env();
+    let send = async {
+        let mut sink = glaspen_chat::connect(&endpoint).await.map_err(|e| e.to_string())?;
+        sink.append(&msgs).await
+    };
+    match runtime().block_on(send) {
+        Ok(summary) => {
+            eprintln!(
+                "[chat] sent {} strokes (seq {}..)",
+                summary.accepted,
+                first
+            );
+            summary.accepted as c_int
+        }
+        Err(e) => {
+            eprintln!("[chat] send failed: {e}");
+            -1
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 笔迹 → STROKE 消息:颜色转 0xRRGGBB,点列保序,不带作者/设备。
+    #[test]
+    fn stroke_to_chat_message_mapping() {
+        let s = Stroke {
+            id: 0,
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            points: vec![(0.0, 0.0, 2.0, 0.0), (10.0, 10.0, 3.0, 0.05)],
+        };
+        let m = stroke_to_chat_message(7, &s);
+        assert_eq!(m.seq, 7);
+        assert_eq!(m.r#type, glaspen_chat::pb::MsgType::Stroke as i32);
+        assert_eq!(m.author, "");
+        assert_eq!(m.device, "");
+        assert_eq!(m.notebook_id, CHAT_NOTEBOOK);
+        let Some(glaspen_chat::pb::chat_message::Payload::Stroke(sc)) = m.payload else {
+            panic!("wrong payload");
+        };
+        assert_eq!(sc.color_rgb, 0xFF0000);
+        assert_eq!(sc.points.len(), 2);
+        assert_eq!(
+            (
+                sc.points[1].x,
+                sc.points[1].y,
+                sc.points[1].width,
+                sc.points[1].t_rel
+            ),
+            (10.0, 10.0, 3.0, 0.05)
+        );
+    }
 
     fn pts(data: &[(f64, f64, f64)]) -> Vec<(f64, f64, f64, f64)> {
         data.iter().map(|&(x, y, w)| (x, y, w, 0.0)).collect()

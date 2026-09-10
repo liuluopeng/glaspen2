@@ -92,6 +92,7 @@ extern unsigned char* glaspen2_render_thumbnail(long long screen_id, int w, int 
 extern void glaspen2_free_rust_bytes(unsigned char *ptr, int len);
 extern int glaspen2_delete_screen(long long screen_id);
 extern char* glaspen2_page_info_json(long long screen_id);
+extern int glaspen2_chat_send_strokes(int start_index, int end_index);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -144,6 +145,11 @@ static BOOL g_stroke_active = NO;
 // g_gif_record_start is the stroke count at key-down, pinning the window.
 static BOOL g_gif_recording = NO;
 static int g_gif_record_start = -1;
+
+// Handwriting message recording (Cmd+Ctrl+3 hold-to-write): the stroke
+// window [start, end) pinned at key-down/key-up is sent as one batch of
+// chat messages when the key is released.
+static int g_msg_record_start = -1;
 
 // GIF quality/speed settings (frame rate, resolution multiplier, playback speed)
 static int g_gif_fps = 15;
@@ -1894,6 +1900,40 @@ static void gif_record_stop_async(void) {
     });
 }
 
+// Begin a handwriting message recording session. Commits any in-flight
+// stroke first so the snapshot index is exactly where the recording starts.
+static void msg_record_start(void) {
+    if (g_msg_record_start >= 0) return;
+    finish_active_stroke();
+    g_msg_record_start = glaspen2_stroke_count();
+    show_notification(L(@"书写手写消息… 松开 ⌘⌃3 发送", @"Writing handwriting… release ⌘⌃3 to send"));
+}
+
+// Finish the recording and send the captured stroke window as one batch of
+// chat messages. The gRPC append runs on a background queue; the window is
+// pinned on the main thread (key-down/key-up), matching the GIF recorder.
+static void msg_record_stop_async(void) {
+    int start = g_msg_record_start;
+    g_msg_record_start = -1;
+    finish_active_stroke();
+    int end = glaspen2_stroke_count();
+    if (end <= start) {
+        show_notification(L(@"没有新手写内容", @"No new strokes"));
+        return;
+    }
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        int sent = glaspen2_chat_send_strokes(start, end);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (sent >= 0) {
+                show_notification([NSString stringWithFormat:
+                    L(@"手写消息已发送 (%d 笔)", @"Handwriting sent (%d strokes)"), sent]);
+            } else {
+                show_notification(L(@"手写消息发送失败", @"Handwriting send failed"));
+            }
+        });
+    });
+}
+
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                       CGEventRef event, void *refcon) {
     if (g_perf_log && !g_perf_file) perf_log_begin();
@@ -1953,6 +1993,17 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             if (hasCmdCtrl && kc == kVK_ANSI_R && type == kCGEventKeyDown) {
                 // Hold-to-record GIF: key-down starts the recording.
                 if (!g_gif_recording) gif_record_start();
+                return NULL;
+            }
+            // Stop the handwriting recorder on '3' key-up regardless of
+            // modifiers, so a Cmd/Ctrl released before '3' can't wedge it.
+            if (type == kCGEventKeyUp && kc == kVK_ANSI_3 && g_msg_record_start >= 0) {
+                msg_record_stop_async();
+                return NULL;
+            }
+            if (hasCmdCtrl && kc == kVK_ANSI_3 && type == kCGEventKeyDown) {
+                // Hold-to-record handwriting message: key-down pins the start.
+                if (g_msg_record_start < 0) msg_record_start();
                 return NULL;
             }
             if (hasCmdCtrl && type == kCGEventKeyDown) {

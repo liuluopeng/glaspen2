@@ -41,6 +41,7 @@ pub mod state;
 
 /// Stroke data stored in STROKES — used for rendering, SVG/GIF export, and XOJ save.
 /// `id` is the DB row id (0 when the stroke has no DB row yet).
+#[derive(Clone)]
 pub struct Stroke {
     pub id: i64,
     pub r: f64,
