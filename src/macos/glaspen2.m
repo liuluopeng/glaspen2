@@ -225,9 +225,10 @@ static double g_pen_r = 1.0, g_pen_g = 0.0, g_pen_b = 0.0;
 
 // Width scale presets
 static double g_width_scale = 1.0;
-static const double g_width_presets[] = { 0.3, 0.6, 1.0, 1.5, 2.5 };
-static const int g_width_preset_count = 5;
-static int g_selected_width_index = 2; // default: 1.0x
+// 8 档线宽倍率,与 Flutter 设置面板 / Windows WIDTH_PRESETS 一一对应
+static const double g_width_presets[] = { 0.15, 0.3, 0.6, 1.0, 1.5, 2.0, 2.5, 3.5 };
+static const int g_width_preset_count = 8;
+static int g_selected_width_index = 3; // default: 1.0x
 
 // Rainbow indicator toggle (default off)
 static BOOL g_show_rainbow = NO;
@@ -548,8 +549,8 @@ static void update_menu_texts(void) {
         }
     }
     int wBase = g_color_preset_count + 1;
-    NSString *zhWidthNames[] = {@"极细", @"细", @"中", @"粗", @"极粗"};
-    NSString *enWidthNames[] = {@"Fine", @"Thin", @"Medium", @"Thick", @"Bold"};
+    NSString *zhWidthNames[] = {@"极细", @"很细", @"细", @"中", @"粗", @"很粗", @"超粗", @"极粗"};
+    NSString *enWidthNames[] = {@"Hair", @"Very fine", @"Fine", @"Medium", @"Thick", @"Very thick", @"Extra thick", @"Boldest"};
     for (int i = 0; i < g_width_preset_count; i++) {
         NSMenuItem *item = [g_menu itemAtIndex:wBase + i];
         [item setTitle:(g_lang == 0) ? zhWidthNames[i] : enWidthNames[i]];
@@ -2344,8 +2345,8 @@ void glaspen2_run(void) {
         [g_menu addItem:[NSMenuItem separatorItem]];
 
         // Width items with line indicator images
-        NSString *zhWidthNames[] = {@"极细", @"细", @"中", @"粗", @"极粗"};
-        NSString *enWidthNames[] = {@"Fine", @"Thin", @"Medium", @"Thick", @"Bold"};
+        NSString *zhWidthNames[] = {@"极细", @"很细", @"细", @"中", @"粗", @"很粗", @"超粗", @"极粗"};
+        NSString *enWidthNames[] = {@"Hair", @"Very fine", @"Fine", @"Medium", @"Thick", @"Very thick", @"Extra thick", @"Boldest"};
         for (int i = 0; i < g_width_preset_count; i++) {
             NSString *title = (g_lang == 0) ? zhWidthNames[i] : enWidthNames[i];
             NSMenuItem *item = [g_menu addItemWithTitle:title action:@selector(selectWidth:) keyEquivalent:@""];
@@ -2427,7 +2428,7 @@ void glaspen2_run(void) {
             }
             g_selectedColorIndex = bestColor;
             // Find closest matching width preset
-            int bestWidth = 2;
+            int bestWidth = 3;
             bestDist = 1e9;
             for (int i = 0; i < g_width_preset_count; i++) {
                 double d = g_width_presets[i] - sw;
