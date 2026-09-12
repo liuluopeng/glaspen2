@@ -116,6 +116,7 @@ static void rebuild_surface_from_strokes(void);
 static void finish_active_stroke(void);
 static void ensure_surface(NSView *view);
 static BOOL perform_hotkey(unsigned short keyCode);
+static void apply_outline(BOOL on);
 static NSWindow *g_window = nil;
 static NSVisualEffectView *g_glass_view = nil;
 
@@ -812,16 +813,7 @@ static void toggle_canvas_mode(void) {
 }
 
 - (void)toggleOutline {
-    g_outline_enabled = !g_outline_enabled;
-    glaspen2_set_stroke_outline(g_outline_enabled ? 1 : 0);
-    NSMenuItem *item = [g_menu itemWithTag:667];
-    if (item) [item setState:g_outline_enabled ? NSControlStateValueOn : NSControlStateValueOff];
-    // 立即对已有笔迹生效(重绘 = 从 STROKES 按当前描边开关重建)
-    finish_active_stroke();
-    rebuild_surface_from_strokes();
-    show_notification(g_outline_enabled
-        ? L(@"笔迹描边已开启", @"Stroke outline on")
-        : L(@"笔迹描边已关闭", @"Stroke outline off"));
+    apply_outline(!g_outline_enabled);
 }
 
 - (void)selectColor:(NSMenuItem *)sender {
@@ -891,6 +883,7 @@ static NSButton *g_glass_buttons[1];
             @"grid": @(g_show_grid),
             @"gridFollowStrokes": @(g_grid_follow_strokes),
             @"pressureMonitor": @(g_pressure_monitor),
+            @"outline": @(g_outline_enabled),
             @"gifFps": @(g_gif_fps),
             @"gifResolution": @(g_gif_resolution),
             @"gifSpeed": @(g_gif_speed),
@@ -919,6 +912,10 @@ static NSButton *g_glass_buttons[1];
             g_grid_follow_strokes = [value boolValue];
             glaspen2_save_bool_setting("grid_follow_strokes", g_grid_follow_strokes ? 1 : 0);
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
+        } else if ([key isEqualToString:@"outline"]) {
+            apply_outline([value boolValue]);
+            result(nil);
+            return;
         } else if ([key isEqualToString:@"pressureMonitor"]) {
             gl_settings_set_pressure_monitor([value boolValue]);
         } else if ([key isEqualToString:@"gifFps"]) {
@@ -1248,6 +1245,7 @@ static void sync_settings_panel(void) {
         @"grid": @(g_show_grid),
         @"gridFollowStrokes": @(g_grid_follow_strokes),
         @"pressureMonitor": @(g_pressure_monitor),
+        @"outline": @(g_outline_enabled),
     }];
 }
 
@@ -1737,6 +1735,22 @@ static void rebuild_surface_from_strokes(void) {
 }
 
 @end
+
+// 应用描边开关(菜单与 Flutter 设置面板共用的唯一入口)。
+// 纯渲染设置:只改内存状态与菜单勾选,不落库。
+static void apply_outline(BOOL on) {
+    if (g_outline_enabled == on) return;
+    g_outline_enabled = on;
+    glaspen2_set_stroke_outline(on ? 1 : 0);
+    NSMenuItem *item = [g_menu itemWithTag:667];
+    if (item) [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    // 立即对已有笔迹生效(重绘 = 从 STROKES 按当前描边开关重建)
+    finish_active_stroke();
+    rebuild_surface_from_strokes();
+    show_notification(on
+        ? L(@"笔迹描边已开启", @"Stroke outline on")
+        : L(@"笔迹描边已关闭", @"Stroke outline off"));
+}
 
 // --- CGEventTap callback ---
 

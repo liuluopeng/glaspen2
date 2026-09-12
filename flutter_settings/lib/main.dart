@@ -458,6 +458,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _pressureMonitor = false;
   bool _showGrid = false;
   bool _gridFollowStrokes = false;
+  bool _outlineEnabled = false;
   bool _connected = false;
   Timer? _reloadTimer;
 
@@ -521,6 +522,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _pressureMonitor = _b(s['pressureMonitor']);
         _showGrid = _b(s['grid']);
         _gridFollowStrokes = _b(s['gridFollowStrokes']);
+        _outlineEnabled = _b(s['outline']);
         _gifFps = (s['gifFps'] as num?)?.toInt() ?? _gifFps;
         _gifResolution = (s['gifResolution'] as num?)?.toDouble() ?? _gifResolution;
         _gifSpeed = (s['gifSpeed'] as num?)?.toDouble() ?? _gifSpeed;
@@ -539,6 +541,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _pressureMonitor = _b(settings['pressureMonitor']);
           _showGrid = _b(settings['grid']);
           _gridFollowStrokes = _b(settings['gridFollowStrokes']);
+          _outlineEnabled = _b(settings['outline']);
           _gifFps = (settings['gifFps'] as num?)?.toInt() ?? 15;
           _gifResolution = (settings['gifResolution'] as num?)?.toDouble() ?? 0.5;
           _gifSpeed = (settings['gifSpeed'] as num?)?.toDouble() ?? 2.0;
@@ -1096,6 +1099,17 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           onChanged: (v) {
             setState(() => _gridFollowStrokes = v);
             _setSetting('gridFollowStrokes', v);
+          },
+        ),
+        SwitchListTile(
+          title: const Text('笔迹描边', style: TextStyle(fontSize: 15)),
+          subtitle: const Text('按笔色亮度自动加反色描边 · 渲染设置,不持久化', style: TextStyle(fontSize: 12)),
+          value: _outlineEnabled,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (v) {
+            setState(() => _outlineEnabled = v);
+            _setSetting('outline', v);
           },
         ),
       ],
