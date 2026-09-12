@@ -253,15 +253,15 @@ static double g_glass_opacity = 0.45; // opacity level (used only when enabled)
 // Color presets
 typedef struct { const char *name; double r, g, b; } ColorPreset;
 static const ColorPreset g_color_presets[] = {
-    // GNOME HIG 中暗档取色,浅色背景对比度 ≥3:1(白/黑保留,适配深色桌面)
-    {"Red",     0.878, 0.106, 0.141},  // #e01b24
-    {"Orange",  0.902, 0.380, 0.000},  // #e66100
-    {"Yellow",  0.898, 0.647, 0.039},  // #e5a50a
-    {"Green",   0.149, 0.635, 0.412},  // #26a269
-    {"Cyan",    0.208, 0.518, 0.894},  // #3584e4
-    {"Blue",    0.110, 0.443, 0.847},  // #1c71d8
-    {"Purple",  0.569, 0.255, 0.675},  // #9141ac
-    {"Pink",    0.753, 0.380, 0.796},  // #c061cb
+    // 对齐 rnote 实测色板:全部 S=100% 全饱和,鲜艳度优先(浅色场景配描边)
+    {"Red",     0.839, 0.000, 0.227},  // #D6003A
+    {"Orange",  1.000, 0.302, 0.000},  // #FF4D00
+    {"Yellow",  0.988, 0.718, 0.000},  // #FCB700
+    {"Green",   0.000, 0.694, 0.431},  // #00B16E
+    {"Cyan",    0.431, 0.769, 0.957},  // #6EC4F4
+    {"Blue",    0.000, 0.439, 0.741},  // #0070BD
+    {"Purple",  0.541, 0.000, 0.902},  // #8A00E6
+    {"Pink",    1.000, 0.000, 0.502},  // #FF0080
     {"White",   1.0,   1.0,   1.0},
     {"Black",   0.0,   0.0,   0.0},
 };

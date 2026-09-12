@@ -470,11 +470,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
   // 10 colors, matching Rust COLOR_PRESETS / macOS g_color_presets
   // (红橙黄绿青蓝紫粉白黑). Index must match the overlay's preset order.
-  // GNOME HIG 中暗档取色,浅色背景对比度 ≥3:1(白/黑保留,适配深色桌面)
+  // 对齐 rnote 实测色板:全部 S=100% 全饱和,鲜艳度优先(浅色场景配描边)
   static const _colorNames = ['红色', '橙色', '黄色', '绿色', '青色', '蓝色', '紫色', '粉色', '白色', '黑色'];
   static const _colorValues = [
-    0xFFE01B24, 0xFFE66100, 0xFFE5A50A, 0xFF26A269, 0xFF3584E4,
-    0xFF1C71D8, 0xFF9141AC, 0xFFC061CB, 0xFFFFFFFF, 0xFF000000,
+    0xFFD6003A, 0xFFFF4D00, 0xFFFCB700, 0xFF00B16E, 0xFF6EC4F4,
+    0xFF0070BD, 0xFF8A00E6, 0xFFFF0080, 0xFFFFFFFF, 0xFF000000,
   ];
   static const _widthNames = ['极细', '很细', '细', '中', '粗', '很粗', '超粗', '极粗'];
 
