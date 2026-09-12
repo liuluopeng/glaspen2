@@ -225,16 +225,17 @@ pub const CMD_QUIT: usize = 999;
 
 // ── 颜色 & 线宽预设 ──
 pub const COLOR_PRESETS: [(f64, f64, f64); 10] = [
-    (1.0, 0.0, 0.0),
-    (1.0, 0.5, 0.0),
-    (1.0, 1.0, 0.0),
-    (0.0, 0.8, 0.0),
-    (0.0, 0.8, 0.8),
-    (0.0, 0.4, 1.0),
-    (0.6, 0.0, 0.8),
-    (1.0, 0.4, 0.7),
-    (1.0, 1.0, 1.0),
-    (0.0, 0.0, 0.0),
+    // GNOME HIG 中暗档取色,浅色背景对比度 ≥3:1(白/黑保留,适配深色桌面)
+    (0.878, 0.106, 0.141), // Red    #e01b24
+    (0.902, 0.380, 0.000), // Orange #e66100
+    (0.898, 0.647, 0.039), // Yellow #e5a50a
+    (0.149, 0.635, 0.412), // Green  #26a269
+    (0.208, 0.518, 0.894), // Cyan   #3584e4
+    (0.110, 0.443, 0.847), // Blue   #1c71d8
+    (0.569, 0.255, 0.675), // Purple #9141ac
+    (0.753, 0.380, 0.796), // Pink   #c061cb
+    (1.0, 1.0, 1.0),       // White
+    (0.0, 0.0, 0.0),       // Black
 ];
 pub const COLOR_NAMES_ZH: [&str; 10] = ["红", "橙", "黄", "绿", "青", "蓝", "紫", "粉", "白", "黑"];
 // 8 档线宽倍率,与 Flutter 设置 UI 的 8 档一一对应
@@ -264,6 +265,10 @@ pub struct DrawState {
 // ── 共享状态(仅消息循环线程访问) ──
 
 pub static OVERLAY_HWND: std::sync::Mutex<isize> = std::sync::Mutex::new(0);
+
+/// 笔迹描边(渲染设置):仅在内存,不落库,重启恢复关闭。
+/// 管道线程(getSettings)与消息循环共享此值。
+pub static OUTLINE_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 struct OverlayState {
     canvas: OverlayCanvas,
@@ -1046,11 +1051,7 @@ pub fn run() {
             &mut pen_b,
             &mut width_scale,
         );
-        let outline_enabled = crate::runtime()
-            .block_on(crate::db::load_setting("outline_enabled"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0)
-            != 0;
+        let outline_enabled = OUTLINE_ENABLED.load(std::sync::atomic::Ordering::Relaxed);
         let frosted = crate::runtime()
             .block_on(crate::db::load_setting("frostedGlass"))
             .and_then(|v| v.parse::<i32>().ok())
@@ -2098,10 +2099,7 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
             x if x == CMD_TOGGLE_OUTLINE => {
                 let on = param_on(state.draw.outline_enabled);
                 state.draw.outline_enabled = on;
-                crate::runtime().block_on(crate::db::save_setting(
-                    "outline_enabled",
-                    if on { "1" } else { "0" },
-                ));
+                OUTLINE_ENABLED.store(on, std::sync::atomic::Ordering::Relaxed);
             }
             x if x == CMD_TOGGLE_GRID => {
                 let on = param_on(state.draw.show_grid);
@@ -2849,10 +2847,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .unwrap_or((1.0, 0.0, 0.0, 1.0));
         let color = closest_color_index(r, g, b);
         let width = closest_width_index(w);
-        let outline = crate::runtime()
-            .block_on(crate::db::load_setting("outline_enabled"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
+        let outline = if OUTLINE_ENABLED.load(std::sync::atomic::Ordering::Relaxed) { 1 } else { 0 };
         let grid = crate::runtime()
             .block_on(crate::db::load_setting("grid"))
             .and_then(|v| v.parse::<i32>().ok())

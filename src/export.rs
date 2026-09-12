@@ -92,6 +92,28 @@ pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) -> c_
     created
 }
 
+/// 描边(轮廓)渲染开关 —— 纯渲染设置,只在内存,不落库、重启即恢复关闭。
+static STROKE_OUTLINE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 描边比笔迹宽出的半径(px)。描边层 = 同路径加宽 2×OUTLINE 后置于笔迹之下。
+const OUTLINE_PAD: f64 = 1.0;
+
+/// 按笔色亮度选对比描边色(与 Windows contrast_color 同参数:BT.601,阈值 128)。
+fn outline_contrast_color(r: f64, g: f64, b: f64) -> (u8, u8, u8) {
+    let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    if lum > 0.5 {
+        (0, 0, 0)
+    } else {
+        (255, 255, 255)
+    }
+}
+
+/// 开关描边渲染(仅当前会话生效)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_set_stroke_outline(enabled: c_int) {
+    STROKE_OUTLINE.store(enabled != 0, std::sync::atomic::Ordering::SeqCst);
+}
+
 /// Re-render every stroke from STROKES onto the ObjC-owned cairo surface.
 /// Used on undo, page navigation, display changes and the rainbow toggle.
 /// Coordinates are scaled by `scale` (retina factor); the surface is an
@@ -103,6 +125,7 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
         return;
     };
     r.clear();
+    let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
     let strokes = STROKES.lock().unwrap();
     for s in strokes.iter() {
         let pts = &s.points;
@@ -114,6 +137,31 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
             (s.g.clamp(0.0, 1.0) * 255.0) as u8,
             (s.b.clamp(0.0, 1.0) * 255.0) as u8,
         );
+        // 描边层:同路径加宽 + 对比色,先画(垫在笔迹之下)
+        if outline {
+            let ol = outline_contrast_color(s.r, s.g, s.b);
+            for i in 0..pts.len() {
+                let (x, y, w, _t) = pts[i];
+                if i == 0 {
+                    r.fill_circle(
+                        (x * scale) as f32,
+                        (y * scale) as f32,
+                        ((w * 0.5 + OUTLINE_PAD) * scale) as f32,
+                        ol,
+                    );
+                } else {
+                    let (px, py, _pw, _pt) = pts[i - 1];
+                    r.stroke_line(
+                        (px * scale) as f32,
+                        (py * scale) as f32,
+                        (x * scale) as f32,
+                        (y * scale) as f32,
+                        ((w + OUTLINE_PAD * 2.0) * scale) as f32,
+                        ol,
+                    );
+                }
+            }
+        }
         for i in 0..pts.len() {
             let (x, y, w, _t) = pts[i];
             if i == 0 {
@@ -2111,6 +2159,15 @@ pub extern "C" fn glaspen2_chat_send_strokes(start_index: c_int, end_index: c_in
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 描边对比色:亮色(黄/白)配黑边,暗色(蓝/黑)配白边。
+    #[test]
+    fn outline_contrast_follows_luminance() {
+        assert_eq!(outline_contrast_color(1.0, 1.0, 0.0), (0, 0, 0)); // 黄
+        assert_eq!(outline_contrast_color(1.0, 1.0, 1.0), (0, 0, 0)); // 白
+        assert_eq!(outline_contrast_color(0.11, 0.44, 0.85), (255, 255, 255)); // 蓝
+        assert_eq!(outline_contrast_color(0.0, 0.0, 0.0), (255, 255, 255)); // 黑
+    }
 
     /// 笔迹 → STROKE 消息:颜色转 0xRRGGBB,点列保序,不带作者/设备。
     #[test]

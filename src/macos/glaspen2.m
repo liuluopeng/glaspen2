@@ -93,6 +93,7 @@ extern void glaspen2_free_rust_bytes(unsigned char *ptr, int len);
 extern int glaspen2_delete_screen(long long screen_id);
 extern char* glaspen2_page_info_json(long long screen_id);
 extern int glaspen2_chat_send_strokes(int start_index, int end_index);
+extern void glaspen2_set_stroke_outline(int enabled);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -238,6 +239,11 @@ static BOOL g_show_grid = NO;
 // Flutter switch is on. Controlled by the Flutter settings panel.
 static BOOL g_grid_follow_strokes = NO;
 
+// 笔迹描边(渲染设置):仅在内存,不落库,重启恢复关闭。
+static BOOL g_outline_enabled = NO;
+// 描边比笔迹宽出的半径(逻辑 px),与 Rust OUTLINE_PAD 保持一致。
+static const double kOutlinePad = 1.0;
+
 // Glass overlay opacity (0.0 = off, 0.0-0.3 range)
 static BOOL g_glass_enabled = NO;  // frosted glass ON/OFF
 static double g_glass_opacity = 0.45; // opacity level (used only when enabled)
@@ -245,16 +251,17 @@ static double g_glass_opacity = 0.45; // opacity level (used only when enabled)
 // Color presets
 typedef struct { const char *name; double r, g, b; } ColorPreset;
 static const ColorPreset g_color_presets[] = {
-    {"Red",     1.0, 0.0, 0.0},
-    {"Orange",  1.0, 0.5, 0.0},
-    {"Yellow",  1.0, 1.0, 0.0},
-    {"Green",   0.0, 0.8, 0.0},
-    {"Cyan",    0.0, 0.8, 0.8},
-    {"Blue",    0.0, 0.4, 1.0},
-    {"Purple",  0.6, 0.0, 0.8},
-    {"Pink",    1.0, 0.4, 0.7},
-    {"White",   1.0, 1.0, 1.0},
-    {"Black",   0.0, 0.0, 0.0},
+    // GNOME HIG 中暗档取色,浅色背景对比度 ≥3:1(白/黑保留,适配深色桌面)
+    {"Red",     0.878, 0.106, 0.141},  // #e01b24
+    {"Orange",  0.902, 0.380, 0.000},  // #e66100
+    {"Yellow",  0.898, 0.647, 0.039},  // #e5a50a
+    {"Green",   0.149, 0.635, 0.412},  // #26a269
+    {"Cyan",    0.208, 0.518, 0.894},  // #3584e4
+    {"Blue",    0.110, 0.443, 0.847},  // #1c71d8
+    {"Purple",  0.569, 0.255, 0.675},  // #9141ac
+    {"Pink",    0.753, 0.380, 0.796},  // #c061cb
+    {"White",   1.0,   1.0,   1.0},
+    {"Black",   0.0,   0.0,   0.0},
 };
 static const int g_color_preset_count = 10;
 
@@ -554,11 +561,12 @@ static void update_menu_texts(void) {
     [[g_menu itemAtIndex:base+4] setTitle:L(@"彩虹指示器", @"Rainbow indicator")];
     [[g_menu itemAtIndex:base+5] setTitle:L(@"开机自启", @"Launch at login")];
     [[g_menu itemAtIndex:base+6] setTitle:L(@"磨砂玻璃", @"Frosted Glass")];
+    [[g_menu itemAtIndex:base+7] setTitle:L(@"笔迹描边", @"Stroke outline")];
     // Update toggle item title based on state
     NSMenuItem *toggleItem = [g_menu itemWithTag:888];
     if (toggleItem) [toggleItem setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
-    [[g_menu itemAtIndex:base+10] setTitle:L(@"English", @"中文")];
-    [[g_menu itemAtIndex:base+11] setTitle:L(@"退出", @"Quit")];
+    [[g_menu itemAtIndex:base+11] setTitle:L(@"English", @"中文")];
+    [[g_menu itemAtIndex:base+12] setTitle:L(@"退出", @"Quit")];
 }
 
 static NSImage* colorSwatchImage(NSColor *color, CGFloat size) {
@@ -801,6 +809,19 @@ static void toggle_canvas_mode(void) {
 
 - (void)toggleGlass {
     gl_settings_set_glass_enabled(!g_glass_enabled);
+}
+
+- (void)toggleOutline {
+    g_outline_enabled = !g_outline_enabled;
+    glaspen2_set_stroke_outline(g_outline_enabled ? 1 : 0);
+    NSMenuItem *item = [g_menu itemWithTag:667];
+    if (item) [item setState:g_outline_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+    // 立即对已有笔迹生效(重绘 = 从 STROKES 按当前描边开关重建)
+    finish_active_stroke();
+    rebuild_surface_from_strokes();
+    show_notification(g_outline_enabled
+        ? L(@"笔迹描边已开启", @"Stroke outline on")
+        : L(@"笔迹描边已关闭", @"Stroke outline off"));
 }
 
 - (void)selectColor:(NSMenuItem *)sender {
@@ -1461,6 +1482,13 @@ static void pen_draw(double x, double y, double width) {
 }
 
 
+// 按笔色亮度选描边对比色(与 Rust outline_contrast_color 同参数:BT.601,阈值 0.5)
+static void outline_color_for_pen(double *r, double *g, double *b) {
+    double lum = 0.299 * g_pen_r + 0.587 * g_pen_g + 0.114 * g_pen_b;
+    if (lum > 0.5) { *r = 0.0; *g = 0.0; *b = 0.0; }
+    else           { *r = 1.0; *g = 1.0; *b = 1.0; }
+}
+
 // Raw drawing — surface only, no STROKES/DB side effects.
 // Uses g_active_cr (set up by stroke_begin) for the duration of the stroke.
 // Marks the affected pixel area as dirty so only that region is repainted.
@@ -1469,6 +1497,16 @@ static void raw_draw_dot(double x, double y, double width) {
     cairo_t *cr = g_active_cr ? g_active_cr : cairo_create_scaled();
     if (g_eraser_mode) cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     else cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+    // 描边层(垫底):同圆放大一圈对比色
+    if (g_outline_enabled && !g_eraser_mode) {
+        double ol_r, ol_g, ol_b;
+        outline_color_for_pen(&ol_r, &ol_g, &ol_b);
+        cairo_set_source_rgba(cr, ol_r, ol_g, ol_b, 1.0);
+        cairo_arc(cr, x, y, width * 0.5 + kOutlinePad, 0, 2 * M_PI);
+        cairo_fill(cr);
+    }
+
     cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
     cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
     cairo_fill(cr);
@@ -1483,10 +1521,28 @@ static void raw_draw_segment(double x, double y, double width) {
     cairo_t *cr = g_active_cr ? g_active_cr : cairo_create_scaled();
     if (g_eraser_mode) cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     else cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
-    cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
-    cairo_set_line_width(cr, width);
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
     cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+    // 描边层(垫底):同线段加宽一圈对比色。每段"先描边后上墨",
+    // 接缝处墨迹圆帽覆盖描边,与整笔轮廓重绘的视觉效果一致。
+    if (g_outline_enabled && !g_eraser_mode) {
+        double ol_r, ol_g, ol_b;
+        outline_color_for_pen(&ol_r, &ol_g, &ol_b);
+        cairo_set_source_rgba(cr, ol_r, ol_g, ol_b, 1.0);
+        cairo_set_line_width(cr, width + 2.0 * kOutlinePad);
+        if (g_raw_has_last) {
+            cairo_move_to(cr, g_raw_last_x, g_raw_last_y);
+            cairo_line_to(cr, x, y);
+            cairo_stroke(cr);
+        } else {
+            cairo_arc(cr, x, y, width * 0.5 + kOutlinePad, 0, 2 * M_PI);
+            cairo_fill(cr);
+        }
+    }
+
+    cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
+    cairo_set_line_width(cr, width);
     if (g_raw_has_last) {
         cairo_move_to(cr, g_raw_last_x, g_raw_last_y);
         cairo_line_to(cr, x, y);
@@ -2301,6 +2357,10 @@ void glaspen2_run(void) {
         glassItem.target = g_menuHandler;
         glassItem.tag = 444;
         glassItem.state = g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff;
+        NSMenuItem *outlineItem = [g_menu addItemWithTitle:L(@"笔迹描边", @"Stroke outline") action:@selector(toggleOutline) keyEquivalent:@""];
+        outlineItem.target = g_menuHandler;
+        outlineItem.tag = 667;
+        outlineItem.state = NSControlStateValueOff;
         NSMenuItem *modeItem = [g_menu addItemWithTitle:L(@"固定画布涂鸦模式", @"Fixed canvas mode") action:@selector(toggleCanvasMode) keyEquivalent:@""];
         modeItem.target = g_menuHandler;
         modeItem.tag = 778;
