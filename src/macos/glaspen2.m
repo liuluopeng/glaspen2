@@ -1819,14 +1819,12 @@ static void canvas_pan_by(double dx, double dy) {
     canvas_apply_transform();
 }
 
-// 缩放镜头(⌘⌃⇧滚轮):以视口中心为锚,zoom ∈ (0.05, 1.0]
-static void canvas_zoom_by(double factor) {
+// 缩放镜头(⌘⌃滚轮):以鼠标位置为锚,zoom ∈ (0.05, 1.0]。
+// 锚点的画布坐标在缩放前后保持同一屏幕位置(view = (canvas−pan)×zoom)。
+static void canvas_zoom_at(double factor, double vx, double vy) {
     if (g_stroke_active) return;
-    double cx = (double)g_screen_w * 0.5;
-    double cy = (double)g_screen_h * 0.5;
-    // 视口中心在画布坐标系中的位置(缩放前后保持不变)
-    double ccx = cx / g_zoom + g_pan_x;
-    double ccy = cy / g_zoom + g_pan_y;
+    double ccx = vx / g_zoom + g_pan_x;
+    double ccy = vy / g_zoom + g_pan_y;
     double nz = g_zoom * factor;
     if (nz > 1.0) {
         nz = 1.0;
@@ -1841,8 +1839,8 @@ static void canvas_zoom_by(double factor) {
     }
     if (nz < 0.05) nz = 0.05; // 防退化下限
     g_zoom = nz;
-    g_pan_x = ccx - cx / nz;
-    g_pan_y = ccy - cy / nz;
+    g_pan_x = ccx - vx / nz;
+    g_pan_y = ccy - vy / nz;
     canvas_apply_transform();
 }
 
@@ -2174,9 +2172,9 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         if (scrollEvent) {
             NSUInteger smods = [scrollEvent modifierFlags];
             BOOL sHasCmdCtrl = (smods & NSEventModifierFlagCommand) && (smods & NSEventModifierFlagControl);
-            BOOL sHasShift = (smods & NSEventModifierFlagShift) != 0;
-            if (sHasCmdCtrl && sHasShift && g_enabled && !g_stroke_active) {
-                // ⌘⌃⇧滚轮:缩放(上限 100%)
+            if (sHasCmdCtrl && g_enabled && !g_stroke_active) {
+                // ⌘⌃滚轮:缩放,以鼠标位置为中心(上限 100%)。
+                // 平移改用 ⌘⌃方向键。
                 double dy = [scrollEvent scrollingDeltaY];
                 double factor;
                 if ([scrollEvent hasPreciseScrollingDeltas]) {
@@ -2184,17 +2182,14 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 } else {
                     factor = (dy > 0) ? 1.1 : ((dy < 0) ? 1.0 / 1.1 : 1.0);
                 }
-                canvas_zoom_by(factor);
+                // 鼠标位置 → 绘图坐标(与笔事件同约定:窗口原点在左下)
+                NSPoint mloc = [scrollEvent locationInWindow];
+                double vh = [g_draw_view bounds].size.height;
+                double mx = mloc.x;
+                double my = vh - mloc.y;
+                canvas_zoom_at(factor, mx, my);
                 perf_log_event("scroll_zoom", elapsed_us(t0));
-                return NULL;
-            }
-            if (sHasCmdCtrl && g_enabled && !g_stroke_active) {
-                double dx = [scrollEvent scrollingDeltaX];
-                double dy = [scrollEvent scrollingDeltaY];
-                if (![scrollEvent hasPreciseScrollingDeltas]) { dx *= 20.0; dy *= 20.0; }
-                canvas_pan_by(dx, dy);
-                perf_log_event("scroll_pan", elapsed_us(t0));
-                return NULL; // 吞掉,避免下层 app 同时滚动
+                return NULL; // 吞掉,避免下层 app 同时滚动/缩放
             }
         }
         return event;
