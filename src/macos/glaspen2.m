@@ -2229,6 +2229,20 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 if (g_msg_record_start < 0) msg_record_start();
                 return NULL;
             }
+            // ⌘⌃方向键:无限画布镜头平移(按住方向键靠系统自动重复连续移动)。
+            // 步长除以 zoom,保证屏幕上每次移动的视觉距离一致。
+            if (g_infinite_canvas && hasCmdCtrl && g_enabled && !g_stroke_active
+                && type == kCGEventKeyDown
+                && kc >= kVK_LeftArrow && kc <= kVK_UpArrow) {
+                double step = 80.0 / g_zoom;
+                double dx = 0.0, dy = 0.0;
+                if (kc == kVK_LeftArrow)       dx = -step;
+                else if (kc == kVK_RightArrow) dx = step;
+                else if (kc == kVK_UpArrow)    dy = -step;
+                else if (kc == kVK_DownArrow)  dy = step;
+                canvas_pan_by(dx, dy);
+                return NULL;
+            }
             if (hasCmdCtrl && type == kCGEventKeyDown) {
                 if (perform_hotkey(kc)) return NULL;
             }
