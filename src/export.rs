@@ -114,6 +114,46 @@ pub extern "C" fn glaspen2_set_stroke_outline(enabled: c_int) {
     STROKE_OUTLINE.store(enabled != 0, std::sync::atomic::Ordering::SeqCst);
 }
 
+// ── 无限画布:视口平移 ──
+// 画布坐标 = 视口坐标 + pan。笔迹以画布坐标存储(可为负/超界),
+// 渲染时减去 pan。翻页模式下 pan 恒为 0,行为与从前一致。
+static VIEW_PAN_X: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static VIEW_PAN_Y: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn view_pan() -> (f64, f64) {
+    use std::sync::atomic::Ordering;
+    (
+        f64::from_bits(VIEW_PAN_X.load(Ordering::SeqCst)),
+        f64::from_bits(VIEW_PAN_Y.load(Ordering::SeqCst)),
+    )
+}
+
+/// 设置渲染视口平移(macOS rebuild 用)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_set_view_pan(pan_x: c_double, pan_y: c_double) {
+    use std::sync::atomic::Ordering;
+    VIEW_PAN_X.store(pan_x.to_bits(), Ordering::SeqCst);
+    VIEW_PAN_Y.store(pan_y.to_bits(), Ordering::SeqCst);
+}
+
+/// 保存一页的镜头平移(无限画布)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_set_screen_pan(screen_id: i64, pan_x: c_double, pan_y: c_double) {
+    runtime().block_on(db::set_screen_pan(screen_id, pan_x, pan_y));
+}
+
+/// 读取一页的镜头平移(无限画布)。无记录时写回 0。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_get_screen_pan(screen_id: i64, x: *mut c_double, y: *mut c_double) {
+    let (px, py) = runtime()
+        .block_on(db::get_screen_pan(screen_id))
+        .unwrap_or((0.0, 0.0));
+    unsafe {
+        *x = px;
+        *y = py;
+    }
+}
+
 /// Re-render every stroke from STROKES onto the ObjC-owned cairo surface.
 /// Used on undo, page navigation, display changes and the rainbow toggle.
 /// Coordinates are scaled by `scale` (retina factor); the surface is an
@@ -125,6 +165,7 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
         return;
     };
     r.clear();
+    let (pan_x, pan_y) = view_pan();
     let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
     let strokes = STROKES.lock().unwrap();
     for s in strokes.iter() {
@@ -144,18 +185,18 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
                 let (x, y, w, _t) = pts[i];
                 if i == 0 {
                     r.fill_circle(
-                        (x * scale) as f32,
-                        (y * scale) as f32,
+                        ((x - pan_x) * scale) as f32,
+                        ((y - pan_y) * scale) as f32,
                         ((w * 0.5 + OUTLINE_PAD) * scale) as f32,
                         ol,
                     );
                 } else {
                     let (px, py, _pw, _pt) = pts[i - 1];
                     r.stroke_line(
-                        (px * scale) as f32,
-                        (py * scale) as f32,
-                        (x * scale) as f32,
-                        (y * scale) as f32,
+                        ((px - pan_x) * scale) as f32,
+                        ((py - pan_y) * scale) as f32,
+                        ((x - pan_x) * scale) as f32,
+                        ((y - pan_y) * scale) as f32,
                         ((w + OUTLINE_PAD * 2.0) * scale) as f32,
                         ol,
                     );
@@ -167,18 +208,18 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
             if i == 0 {
                 // 起点实心圆点(圆帽)
                 r.fill_circle(
-                    (x * scale) as f32,
-                    (y * scale) as f32,
+                    ((x - pan_x) * scale) as f32,
+                    ((y - pan_y) * scale) as f32,
                     (w * 0.5 * scale) as f32,
                     color,
                 );
             } else {
                 let (px, py, _pw, _pt) = pts[i - 1];
                 r.stroke_line(
-                    (px * scale) as f32,
-                    (py * scale) as f32,
-                    (x * scale) as f32,
-                    (y * scale) as f32,
+                    ((px - pan_x) * scale) as f32,
+                    ((py - pan_y) * scale) as f32,
+                    ((x - pan_x) * scale) as f32,
+                    ((y - pan_y) * scale) as f32,
                     (w * scale) as f32,
                     color,
                 );

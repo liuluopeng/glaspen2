@@ -148,6 +148,16 @@ mod platform {
             .await
             .ok();
 
+        // 无限画布模式:每页的镜头平移(视口左上角在画布坐标系中的位置)
+        sqlx::query("ALTER TABLE screens ADD COLUMN pan_x REAL NOT NULL DEFAULT 0.0")
+            .execute(&pool)
+            .await
+            .ok();
+        sqlx::query("ALTER TABLE screens ADD COLUMN pan_y REAL NOT NULL DEFAULT 0.0")
+            .execute(&pool)
+            .await
+            .ok();
+
         apply_defaults(&pool).await;
 
         DB.set(pool).ok();
@@ -471,6 +481,31 @@ mod platform {
                (SELECT created_at FROM screens WHERE id = ?1) AS created \
              FROM screens WHERE id = ?1"
         ).bind(screen_id).fetch_optional(pool).await.ok()?
+    }
+
+    /// 无限画布:保存一页的镜头平移
+    pub async fn set_screen_pan(screen_id: i64, pan_x: f64, pan_y: f64) {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return,
+        };
+        sqlx::query("UPDATE screens SET pan_x = ?2, pan_y = ?3 WHERE id = ?1")
+            .bind(screen_id)
+            .bind(pan_x)
+            .bind(pan_y)
+            .execute(pool)
+            .await
+            .ok();
+    }
+
+    /// 无限画布:读取一页的镜头平移(无记录时为原点)
+    pub async fn get_screen_pan(screen_id: i64) -> Option<(f64, f64)> {
+        let pool = DB.get()?;
+        sqlx::query_as::<_, (f64, f64)>("SELECT pan_x, pan_y FROM screens WHERE id = ?1")
+            .bind(screen_id)
+            .fetch_optional(pool)
+            .await
+            .ok()?
     }
 
     pub async fn save_setting(key: &str, value: &str) {

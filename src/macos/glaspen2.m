@@ -94,6 +94,9 @@ extern int glaspen2_delete_screen(long long screen_id);
 extern char* glaspen2_page_info_json(long long screen_id);
 extern int glaspen2_chat_send_strokes(int start_index, int end_index);
 extern void glaspen2_set_stroke_outline(int enabled);
+extern void glaspen2_set_view_pan(double pan_x, double pan_y);
+extern void glaspen2_set_screen_pan(long long screen_id, double pan_x, double pan_y);
+extern void glaspen2_get_screen_pan(long long screen_id, double *pan_x, double *pan_y);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -117,6 +120,8 @@ static void finish_active_stroke(void);
 static void ensure_surface(NSView *view);
 static BOOL perform_hotkey(unsigned short keyCode);
 static void apply_outline(BOOL on);
+static void canvas_pan_load(long target);
+static void canvas_pan_persist(void);
 static NSWindow *g_window = nil;
 static NSVisualEffectView *g_glass_view = nil;
 
@@ -229,6 +234,12 @@ static double g_width_scale = 1.0;
 static const double g_width_presets[] = { 0.15, 0.3, 0.6, 1.0, 1.5, 2.0, 2.5, 3.5 };
 static const int g_width_preset_count = 8;
 static int g_selected_width_index = 3; // default: 1.0x
+
+// ── 无限画布模式 ──
+// 画布坐标 = 视口坐标 + pan(pan = 视口左上角在画布坐标系中的位置)。
+// 模式开启时 ⌘⌃滚轮移动镜头,笔迹以画布坐标存储(可为负/超界)。
+static BOOL g_infinite_canvas = NO;
+static double g_pan_x = 0.0, g_pan_y = 0.0;
 
 // Rainbow indicator toggle (default off)
 static BOOL g_show_rainbow = NO;
@@ -471,6 +482,12 @@ static void clear_screen(void) {
     cairo_destroy(cr);
     g_has_last = NO;
     int created = glaspen2_clear_strokes(g_screen_w, g_screen_h);
+    if (created && g_infinite_canvas) {
+        // 新画布从原点开始
+        g_pan_x = 0.0;
+        g_pan_y = 0.0;
+        glaspen2_set_view_pan(0.0, 0.0);
+    }
     if (g_show_rainbow) draw_rainbow_indicator();
     flush_to_layer();
     if (created) {
@@ -564,11 +581,12 @@ static void update_menu_texts(void) {
     [[g_menu itemAtIndex:base+5] setTitle:L(@"开机自启", @"Launch at login")];
     [[g_menu itemAtIndex:base+6] setTitle:L(@"磨砂玻璃", @"Frosted Glass")];
     [[g_menu itemAtIndex:base+7] setTitle:L(@"笔迹描边", @"Stroke outline")];
+    [[g_menu itemAtIndex:base+8] setTitle:L(@"无限画布", @"Infinite canvas")];
     // Update toggle item title based on state
     NSMenuItem *toggleItem = [g_menu itemWithTag:888];
     if (toggleItem) [toggleItem setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
-    [[g_menu itemAtIndex:base+11] setTitle:L(@"English", @"中文")];
-    [[g_menu itemAtIndex:base+12] setTitle:L(@"退出", @"Quit")];
+    [[g_menu itemAtIndex:base+12] setTitle:L(@"English", @"中文")];
+    [[g_menu itemAtIndex:base+13] setTitle:L(@"退出", @"Quit")];
 }
 
 static NSImage* colorSwatchImage(NSColor *color, CGFloat size) {
@@ -817,6 +835,19 @@ static void toggle_canvas_mode(void) {
     apply_outline(!g_outline_enabled);
 }
 
+- (void)toggleInfiniteCanvas {
+    g_infinite_canvas = !g_infinite_canvas;
+    glaspen2_save_bool_setting("infinite_canvas", g_infinite_canvas ? 1 : 0);
+    NSMenuItem *item = [g_menu itemWithTag:668];
+    if (item) [item setState:g_infinite_canvas ? NSControlStateValueOn : NSControlStateValueOff];
+    finish_active_stroke();
+    canvas_pan_load(g_infinite_canvas ? glaspen2_get_current_screen_id() : 0);
+    rebuild_surface_from_strokes();
+    show_notification(g_infinite_canvas
+        ? L(@"无限画布已开启 (⌘⌃滚轮移动镜头)", @"Infinite canvas on (⌘⌃scroll to pan)")
+        : L(@"无限画布已关闭", @"Infinite canvas off"));
+}
+
 - (void)selectColor:(NSMenuItem *)sender {
     gl_settings_set_color((int)[sender tag]);
 }
@@ -1049,12 +1080,14 @@ static NSButton *g_glass_buttons[1];
         NSDictionary *args = call.arguments;
         int64_t screenId = [args[@"screenId"] longLongValue];
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            canvas_pan_persist();
             int ok = glaspen2_delete_screen(screenId);
             if (ok && screenId == glaspen2_get_current_screen_id()) {
                 int64_t next = glaspen2_next_screen_id();
                 if (next == 0) next = glaspen2_prev_screen_id();
                 if (next != 0) {
                     glaspen2_load_strokes_for_screen(next);
+                    canvas_pan_load(next);
                     dispatch_async(dispatch_get_main_queue(), ^{
                         rebuild_surface_from_strokes();
                     });
@@ -1419,7 +1452,7 @@ static void finish_active_stroke(void) {
         glaspen2_modeler_erase_finish();
         g_eraser_mode = NO;
     } else {
-        glaspen2_modeler_end(g_raw_last_x, g_raw_last_y, 0.0, ts, g_width_scale);
+        glaspen2_modeler_end(g_raw_last_x + g_pan_x, g_raw_last_y + g_pan_y, 0.0, ts, g_width_scale);
         glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
     }
     stroke_end();
@@ -1610,11 +1643,19 @@ static void rebuild_surface_from_strokes(void) {
         CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0.5 alpha:0.15] CGColor]);
         CGContextSetLineWidth(ctx, 0.5);
         NSRect bounds = [self bounds];
-        for (CGFloat gx = 0; gx < bounds.size.width; gx += 40.0) {
+        // 网格随镜头平移(无限画布):线网锚定画布坐标,pan 取模出视口起点。
+        // pan=0 时与旧行为完全一致。
+        CGFloat gx0 = -fmod(g_pan_x, 40.0);
+        if (gx0 > 0) gx0 -= 40.0;
+        for (CGFloat gx = gx0; gx < bounds.size.width; gx += 40.0) {
             CGContextMoveToPoint(ctx, gx, 0);
             CGContextAddLineToPoint(ctx, gx, bounds.size.height);
         }
-        for (CGFloat gy = 0; gy < bounds.size.height; gy += 40.0) {
+        // 竖线画在表面坐标(y 向下),视图坐标(y 向上)锚点是 view_h + pan_y
+        CGFloat view_h = bounds.size.height;
+        CGFloat gy0 = fmod(view_h + g_pan_y, 40.0);
+        if (gy0 < 0) gy0 += 40.0;
+        for (CGFloat gy = gy0; gy < bounds.size.height; gy += 40.0) {
             CGContextMoveToPoint(ctx, 0, gy);
             CGContextAddLineToPoint(ctx, bounds.size.width, gy);
         }
@@ -1753,6 +1794,45 @@ static void apply_outline(BOOL on) {
         : L(@"笔迹描边已关闭", @"Stroke outline off"));
 }
 
+// ── 无限画布:镜头平移 ──
+
+// 滚轮平移镜头(⌘⌃滚轮,书写中忽略)
+static void canvas_pan_by(double dx, double dy) {
+    if (g_stroke_active) return;
+    g_pan_x -= dx;
+    g_pan_y -= dy;
+    glaspen2_set_view_pan(g_pan_x, g_pan_y);
+    rebuild_surface_from_strokes();
+    // 节流持久化(0.5s 一次,崩溃只丢半秒内的镜头位置)
+    static CFAbsoluteTime last_save = 0.0;
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    if (now - last_save > 0.5) {
+        last_save = now;
+        long cur = glaspen2_get_current_screen_id();
+        if (cur > 0) glaspen2_set_screen_pan(cur, g_pan_x, g_pan_y);
+    }
+}
+
+// 翻页前:把当前镜头写回当前页
+static void canvas_pan_persist(void) {
+    long cur = glaspen2_get_current_screen_id();
+    if (cur > 0) glaspen2_set_screen_pan(cur, g_pan_x, g_pan_y);
+}
+
+// 切到目标页后:载入该页镜头(仅无限画布模式;翻页模式恒回原点)
+static void canvas_pan_load(long target) {
+    if (!g_infinite_canvas || target <= 0) {
+        g_pan_x = 0.0;
+        g_pan_y = 0.0;
+    } else {
+        double px = 0.0, py = 0.0;
+        glaspen2_get_screen_pan(target, &px, &py);
+        g_pan_x = px;
+        g_pan_y = py;
+    }
+    glaspen2_set_view_pan(g_pan_x, g_pan_y);
+}
+
 // --- CGEventTap callback ---
 
 // Performance logging (set g_perf_log=YES to enable)
@@ -1809,9 +1889,11 @@ static BOOL perform_hotkey(unsigned short kc) {
     } else if (kc == kVK_ANSI_V) { toggle_enabled(); return YES; }
     else if (kc == 0x26) { // J — previous page
         finish_active_stroke();
+        canvas_pan_persist();
         long target = glaspen2_prev_screen_id();
         if (target > 0) {
             glaspen2_load_strokes_for_screen(target);
+            canvas_pan_load(target);
             glaspen2_smooth_loaded_strokes();
             replay_strokes_from_memory();
             peek_strokes(1.0); // show the page briefly in ethereal mode
@@ -1822,9 +1904,11 @@ static BOOL perform_hotkey(unsigned short kc) {
         return YES;
     } else if (kc == 0x28) { // K — next page
         finish_active_stroke();
+        canvas_pan_persist();
         long target = glaspen2_next_screen_id();
         if (target > 0) {
             glaspen2_load_strokes_for_screen(target);
+            canvas_pan_load(target);
             glaspen2_smooth_loaded_strokes();
             replay_strokes_from_memory();
             peek_strokes(1.0); // show the page briefly in ethereal mode
@@ -2048,6 +2132,25 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         return event;
     }
 
+    // ⌘⌃滚轮:无限画布镜头平移。书写中忽略(模型器坐标系不能中途跳变);
+    // 非无限画布/未按修饰键时滚轮原样放行给系统。
+    if (type == kCGEventScrollWheel && g_infinite_canvas) {
+        NSEvent *scrollEvent = [NSEvent eventWithCGEvent:event];
+        if (scrollEvent) {
+            NSUInteger smods = [scrollEvent modifierFlags];
+            BOOL sHasCmdCtrl = (smods & NSEventModifierFlagCommand) && (smods & NSEventModifierFlagControl);
+            if (sHasCmdCtrl && g_enabled && !g_stroke_active) {
+                double dx = [scrollEvent scrollingDeltaX];
+                double dy = [scrollEvent scrollingDeltaY];
+                if (![scrollEvent hasPreciseScrollingDeltas]) { dx *= 20.0; dy *= 20.0; }
+                canvas_pan_by(dx, dy);
+                perf_log_event("scroll_pan", elapsed_us(t0));
+                return NULL; // 吞掉,避免下层 app 同时滚动
+            }
+        }
+        return event;
+    }
+
     // Handle keyboard events separately — always intercept hotkeys
     if (type == kCGEventKeyDown || type == kCGEventKeyUp) {
         NSEvent *keyEvent = [NSEvent eventWithCGEvent:event];
@@ -2238,7 +2341,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         }
         g_eraser_mode = (devType == NSEraserPointingDevice);
         NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f", px, py, pressure, ts);
-        glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
+        glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px + g_pan_x, py + g_pan_y, pressure, ts, g_width_scale);
         g_stroke_active = YES;
         g_cursor_visible = NO; // the ink is the feedback while drawing
         stroke_begin(); // reuse one cairo context for the whole stroke
@@ -2253,7 +2356,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         // If no DOWN event was seen (pen detection lag), auto-initialize
         if (!g_stroke_active) {
             g_eraser_mode = (devType == NSEraserPointingDevice);
-            glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px, py, pressure, ts, g_width_scale);
+            glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px + g_pan_x, py + g_pan_y, pressure, ts, g_width_scale);
             g_stroke_active = YES;
             g_cursor_visible = NO;
             stroke_begin();
@@ -2264,7 +2367,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             return NULL; // begin already recorded this point, don't feed duplicate to modeler
         }
         // Feed modeler, draw raw segment for responsive real-time feedback
-        glaspen2_modeler_move(px, py, pressure, ts, g_width_scale);
+        glaspen2_modeler_move(px + g_pan_x, py + g_pan_y, pressure, ts, g_width_scale);
         raw_draw_segment(px, py, raw_w);
         return NULL;
     }
@@ -2276,7 +2379,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 glaspen2_modeler_erase_finish();
                 g_eraser_mode = NO;
             } else {
-                glaspen2_modeler_end(px, py, pressure, ts, g_width_scale);
+                glaspen2_modeler_end(px + g_pan_x, py + g_pan_y, pressure, ts, g_width_scale);
                 glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
             }
 
@@ -2376,6 +2479,10 @@ void glaspen2_run(void) {
         outlineItem.target = g_menuHandler;
         outlineItem.tag = 667;
         outlineItem.state = NSControlStateValueOff;
+        NSMenuItem *infiniteItem = [g_menu addItemWithTitle:L(@"无限画布", @"Infinite canvas") action:@selector(toggleInfiniteCanvas) keyEquivalent:@""];
+        infiniteItem.target = g_menuHandler;
+        infiniteItem.tag = 668;
+        infiniteItem.state = NSControlStateValueOff;
         NSMenuItem *modeItem = [g_menu addItemWithTitle:L(@"固定画布涂鸦模式", @"Fixed canvas mode") action:@selector(toggleCanvasMode) keyEquivalent:@""];
         modeItem.target = g_menuHandler;
         modeItem.tag = 778;
@@ -2448,6 +2555,23 @@ void glaspen2_run(void) {
         // Restore grid setting
         g_show_grid = glaspen2_load_bool_setting("grid") != 0;
         g_grid_follow_strokes = glaspen2_load_bool_setting("grid_follow_strokes") != 0;
+
+        // Restore infinite canvas mode + lens pan for the current page
+        g_infinite_canvas = glaspen2_load_bool_setting("infinite_canvas") != 0;
+        NSMenuItem *infiniteRestoreItem = [g_menu itemWithTag:668];
+        if (infiniteRestoreItem) {
+            [infiniteRestoreItem setState:g_infinite_canvas ? NSControlStateValueOn : NSControlStateValueOff];
+        }
+        {
+            long cur = glaspen2_get_current_screen_id();
+            if (cur > 0) {
+                double px0 = 0.0, py0 = 0.0;
+                glaspen2_get_screen_pan(cur, &px0, &py0);
+                g_pan_x = g_infinite_canvas ? px0 : 0.0;
+                g_pan_y = g_infinite_canvas ? py0 : 0.0;
+            }
+            glaspen2_set_view_pan(g_pan_x, g_pan_y);
+        }
 
         // Canvas mode starts in 固定画布涂鸦模式; menu item shows the switch target
         [[g_menu itemWithTag:778] setTitle:L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];
