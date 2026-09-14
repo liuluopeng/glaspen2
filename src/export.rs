@@ -114,43 +114,61 @@ pub extern "C" fn glaspen2_set_stroke_outline(enabled: c_int) {
     STROKE_OUTLINE.store(enabled != 0, std::sync::atomic::Ordering::SeqCst);
 }
 
-// ── 无限画布:视口平移 ──
-// 画布坐标 = 视口坐标 + pan。笔迹以画布坐标存储(可为负/超界),
-// 渲染时减去 pan。翻页模式下 pan 恒为 0,行为与从前一致。
+// ── 无限画布:视口变换 ──
+// 视图 = (画布坐标 − pan) × zoom。笔迹以画布坐标存储(可为负/超界),
+// 渲染时减 pan 乘 zoom。zoom ∈ (0,1],上限 100% 防蚂蚁大小涂鸦。
+// 翻页模式下 pan=0、zoom=1,行为与从前一致。
 static VIEW_PAN_X: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static VIEW_PAN_Y: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static VIEW_ZOOM: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-fn view_pan() -> (f64, f64) {
+fn view_transform() -> (f64, f64, f64) {
     use std::sync::atomic::Ordering;
     (
         f64::from_bits(VIEW_PAN_X.load(Ordering::SeqCst)),
         f64::from_bits(VIEW_PAN_Y.load(Ordering::SeqCst)),
+        {
+            let z = f64::from_bits(VIEW_ZOOM.load(Ordering::SeqCst));
+            if z > 0.0 { z } else { 1.0 }
+        },
     )
 }
 
-/// 设置渲染视口平移(macOS rebuild 用)。
+/// 设置渲染视口变换(macOS rebuild 用)。
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_set_view_pan(pan_x: c_double, pan_y: c_double) {
+pub extern "C" fn glaspen2_set_view_transform(pan_x: c_double, pan_y: c_double, zoom: c_double) {
     use std::sync::atomic::Ordering;
     VIEW_PAN_X.store(pan_x.to_bits(), Ordering::SeqCst);
     VIEW_PAN_Y.store(pan_y.to_bits(), Ordering::SeqCst);
+    VIEW_ZOOM.store(zoom.to_bits(), Ordering::SeqCst);
 }
 
-/// 保存一页的镜头平移(无限画布)。
+/// 保存一页的镜头变换(无限画布)。
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_set_screen_pan(screen_id: i64, pan_x: c_double, pan_y: c_double) {
-    runtime().block_on(db::set_screen_pan(screen_id, pan_x, pan_y));
+pub extern "C" fn glaspen2_set_screen_transform(
+    screen_id: i64,
+    pan_x: c_double,
+    pan_y: c_double,
+    zoom: c_double,
+) {
+    runtime().block_on(db::set_screen_transform(screen_id, pan_x, pan_y, zoom));
 }
 
-/// 读取一页的镜头平移(无限画布)。无记录时写回 0。
+/// 读取一页的镜头变换(无限画布)。无记录时写回原点 + 100%。
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_get_screen_pan(screen_id: i64, x: *mut c_double, y: *mut c_double) {
-    let (px, py) = runtime()
-        .block_on(db::get_screen_pan(screen_id))
-        .unwrap_or((0.0, 0.0));
+pub extern "C" fn glaspen2_get_screen_transform(
+    screen_id: i64,
+    x: *mut c_double,
+    y: *mut c_double,
+    z: *mut c_double,
+) {
+    let (px, py, pz) = runtime()
+        .block_on(db::get_screen_transform(screen_id))
+        .unwrap_or((0.0, 0.0, 1.0));
     unsafe {
         *x = px;
         *y = py;
+        *z = pz;
     }
 }
 
@@ -165,7 +183,7 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
         return;
     };
     r.clear();
-    let (pan_x, pan_y) = view_pan();
+    let (pan_x, pan_y, zoom) = view_transform();
     let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
     let strokes = STROKES.lock().unwrap();
     for s in strokes.iter() {
@@ -185,19 +203,19 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
                 let (x, y, w, _t) = pts[i];
                 if i == 0 {
                     r.fill_circle(
-                        ((x - pan_x) * scale) as f32,
-                        ((y - pan_y) * scale) as f32,
-                        ((w * 0.5 + OUTLINE_PAD) * scale) as f32,
+                        ((x - pan_x) * zoom * scale) as f32,
+                        ((y - pan_y) * zoom * scale) as f32,
+                        ((w * 0.5 + OUTLINE_PAD) * zoom * scale) as f32,
                         ol,
                     );
                 } else {
                     let (px, py, _pw, _pt) = pts[i - 1];
                     r.stroke_line(
-                        ((px - pan_x) * scale) as f32,
-                        ((py - pan_y) * scale) as f32,
-                        ((x - pan_x) * scale) as f32,
-                        ((y - pan_y) * scale) as f32,
-                        ((w + OUTLINE_PAD * 2.0) * scale) as f32,
+                        ((px - pan_x) * zoom * scale) as f32,
+                        ((py - pan_y) * zoom * scale) as f32,
+                        ((x - pan_x) * zoom * scale) as f32,
+                        ((y - pan_y) * zoom * scale) as f32,
+                        ((w + OUTLINE_PAD * 2.0) * zoom * scale) as f32,
                         ol,
                     );
                 }
@@ -208,19 +226,19 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
             if i == 0 {
                 // 起点实心圆点(圆帽)
                 r.fill_circle(
-                    ((x - pan_x) * scale) as f32,
-                    ((y - pan_y) * scale) as f32,
-                    (w * 0.5 * scale) as f32,
+                    ((x - pan_x) * zoom * scale) as f32,
+                    ((y - pan_y) * zoom * scale) as f32,
+                    (w * 0.5 * zoom * scale) as f32,
                     color,
                 );
             } else {
                 let (px, py, _pw, _pt) = pts[i - 1];
                 r.stroke_line(
-                    ((px - pan_x) * scale) as f32,
-                    ((py - pan_y) * scale) as f32,
-                    ((x - pan_x) * scale) as f32,
-                    ((y - pan_y) * scale) as f32,
-                    (w * scale) as f32,
+                    ((px - pan_x) * zoom * scale) as f32,
+                    ((py - pan_y) * zoom * scale) as f32,
+                    ((x - pan_x) * zoom * scale) as f32,
+                    ((y - pan_y) * zoom * scale) as f32,
+                    (w * zoom * scale) as f32,
                     color,
                 );
             }

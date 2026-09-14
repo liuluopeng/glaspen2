@@ -149,11 +149,16 @@ mod platform {
             .ok();
 
         // 无限画布模式:每页的镜头平移(视口左上角在画布坐标系中的位置)
+        // zoom ∈ (0,1],100% = 1:1,上限防"蚂蚁大小"的涂鸦
         sqlx::query("ALTER TABLE screens ADD COLUMN pan_x REAL NOT NULL DEFAULT 0.0")
             .execute(&pool)
             .await
             .ok();
         sqlx::query("ALTER TABLE screens ADD COLUMN pan_y REAL NOT NULL DEFAULT 0.0")
+            .execute(&pool)
+            .await
+            .ok();
+        sqlx::query("ALTER TABLE screens ADD COLUMN zoom REAL NOT NULL DEFAULT 1.0")
             .execute(&pool)
             .await
             .ok();
@@ -483,25 +488,26 @@ mod platform {
         ).bind(screen_id).fetch_optional(pool).await.ok()?
     }
 
-    /// 无限画布:保存一页的镜头平移
-    pub async fn set_screen_pan(screen_id: i64, pan_x: f64, pan_y: f64) {
+    /// 无限画布:保存一页的镜头变换(平移 + 缩放)
+    pub async fn set_screen_transform(screen_id: i64, pan_x: f64, pan_y: f64, zoom: f64) {
         let pool = match DB.get() {
             Some(p) => p,
             None => return,
         };
-        sqlx::query("UPDATE screens SET pan_x = ?2, pan_y = ?3 WHERE id = ?1")
+        sqlx::query("UPDATE screens SET pan_x = ?2, pan_y = ?3, zoom = ?4 WHERE id = ?1")
             .bind(screen_id)
             .bind(pan_x)
             .bind(pan_y)
+            .bind(zoom)
             .execute(pool)
             .await
             .ok();
     }
 
-    /// 无限画布:读取一页的镜头平移(无记录时为原点)
-    pub async fn get_screen_pan(screen_id: i64) -> Option<(f64, f64)> {
+    /// 无限画布:读取一页的镜头变换(无记录时为原点 + 100%)
+    pub async fn get_screen_transform(screen_id: i64) -> Option<(f64, f64, f64)> {
         let pool = DB.get()?;
-        sqlx::query_as::<_, (f64, f64)>("SELECT pan_x, pan_y FROM screens WHERE id = ?1")
+        sqlx::query_as::<_, (f64, f64, f64)>("SELECT pan_x, pan_y, zoom FROM screens WHERE id = ?1")
             .bind(screen_id)
             .fetch_optional(pool)
             .await

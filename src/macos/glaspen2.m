@@ -94,9 +94,9 @@ extern int glaspen2_delete_screen(long long screen_id);
 extern char* glaspen2_page_info_json(long long screen_id);
 extern int glaspen2_chat_send_strokes(int start_index, int end_index);
 extern void glaspen2_set_stroke_outline(int enabled);
-extern void glaspen2_set_view_pan(double pan_x, double pan_y);
-extern void glaspen2_set_screen_pan(long long screen_id, double pan_x, double pan_y);
-extern void glaspen2_get_screen_pan(long long screen_id, double *pan_x, double *pan_y);
+extern void glaspen2_set_view_transform(double pan_x, double pan_y, double zoom);
+extern void glaspen2_set_screen_transform(long long screen_id, double pan_x, double pan_y, double zoom);
+extern void glaspen2_get_screen_transform(long long screen_id, double *pan_x, double *pan_y, double *zoom);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -240,6 +240,7 @@ static int g_selected_width_index = 3; // default: 1.0x
 // 模式开启时 ⌘⌃滚轮移动镜头,笔迹以画布坐标存储(可为负/超界)。
 static BOOL g_infinite_canvas = NO;
 static double g_pan_x = 0.0, g_pan_y = 0.0;
+static double g_zoom = 1.0; // 视图缩放,(0,1],上限 100%
 
 // Rainbow indicator toggle (default off)
 static BOOL g_show_rainbow = NO;
@@ -483,10 +484,11 @@ static void clear_screen(void) {
     g_has_last = NO;
     int created = glaspen2_clear_strokes(g_screen_w, g_screen_h);
     if (created && g_infinite_canvas) {
-        // 新画布从原点开始
+        // 新画布从原点 + 100% 开始
         g_pan_x = 0.0;
         g_pan_y = 0.0;
-        glaspen2_set_view_pan(0.0, 0.0);
+        g_zoom = 1.0;
+        glaspen2_set_view_transform(0.0, 0.0, 1.0);
     }
     if (g_show_rainbow) draw_rainbow_indicator();
     flush_to_layer();
@@ -1452,7 +1454,7 @@ static void finish_active_stroke(void) {
         glaspen2_modeler_erase_finish();
         g_eraser_mode = NO;
     } else {
-        glaspen2_modeler_end(g_raw_last_x + g_pan_x, g_raw_last_y + g_pan_y, 0.0, ts, g_width_scale);
+        glaspen2_modeler_end(g_raw_last_x / g_zoom + g_pan_x, g_raw_last_y / g_zoom + g_pan_y, 0.0, ts, g_width_scale);
         glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
     }
     stroke_end();
@@ -1796,41 +1798,74 @@ static void apply_outline(BOOL on) {
 
 // ── 无限画布:镜头平移 ──
 
-// 滚轮平移镜头(⌘⌃滚轮,书写中忽略)
-static void canvas_pan_by(double dx, double dy) {
-    if (g_stroke_active) return;
-    g_pan_x -= dx;
-    g_pan_y -= dy;
-    glaspen2_set_view_pan(g_pan_x, g_pan_y);
+// 把当前镜头变换应用到渲染 + 节流持久化(0.5s 一次)
+static void canvas_apply_transform(void) {
+    glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
     rebuild_surface_from_strokes();
-    // 节流持久化(0.5s 一次,崩溃只丢半秒内的镜头位置)
     static CFAbsoluteTime last_save = 0.0;
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
     if (now - last_save > 0.5) {
         last_save = now;
         long cur = glaspen2_get_current_screen_id();
-        if (cur > 0) glaspen2_set_screen_pan(cur, g_pan_x, g_pan_y);
+        if (cur > 0) glaspen2_set_screen_transform(cur, g_pan_x, g_pan_y, g_zoom);
     }
+}
+
+// 滚轮平移镜头(⌘⌃滚轮,书写中忽略)
+static void canvas_pan_by(double dx, double dy) {
+    if (g_stroke_active) return;
+    g_pan_x -= dx;
+    g_pan_y -= dy;
+    canvas_apply_transform();
+}
+
+// 缩放镜头(⌘⌃⇧滚轮):以视口中心为锚,zoom ∈ (0.05, 1.0]
+static void canvas_zoom_by(double factor) {
+    if (g_stroke_active) return;
+    double cx = (double)g_screen_w * 0.5;
+    double cy = (double)g_screen_h * 0.5;
+    // 视口中心在画布坐标系中的位置(缩放前后保持不变)
+    double ccx = cx / g_zoom + g_pan_x;
+    double ccy = cy / g_zoom + g_pan_y;
+    double nz = g_zoom * factor;
+    if (nz > 1.0) {
+        nz = 1.0;
+        if (g_zoom < 1.0) {
+            static CFAbsoluteTime last_hint = 0.0;
+            CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+            if (now - last_hint > 1.5) {
+                last_hint = now;
+                show_notification(L(@"已达最大缩放 100%", @"Max zoom 100%"));
+            }
+        }
+    }
+    if (nz < 0.05) nz = 0.05; // 防退化下限
+    g_zoom = nz;
+    g_pan_x = ccx - cx / nz;
+    g_pan_y = ccy - cy / nz;
+    canvas_apply_transform();
 }
 
 // 翻页前:把当前镜头写回当前页
 static void canvas_pan_persist(void) {
     long cur = glaspen2_get_current_screen_id();
-    if (cur > 0) glaspen2_set_screen_pan(cur, g_pan_x, g_pan_y);
+    if (cur > 0) glaspen2_set_screen_transform(cur, g_pan_x, g_pan_y, g_zoom);
 }
 
-// 切到目标页后:载入该页镜头(仅无限画布模式;翻页模式恒回原点)
+// 切到目标页后:载入该页镜头(仅无限画布模式;翻页模式恒回原点 + 100%)
 static void canvas_pan_load(long target) {
     if (!g_infinite_canvas || target <= 0) {
         g_pan_x = 0.0;
         g_pan_y = 0.0;
+        g_zoom = 1.0;
     } else {
-        double px = 0.0, py = 0.0;
-        glaspen2_get_screen_pan(target, &px, &py);
+        double px = 0.0, py = 0.0, pz = 1.0;
+        glaspen2_get_screen_transform(target, &px, &py, &pz);
         g_pan_x = px;
         g_pan_y = py;
+        g_zoom = (pz > 0.0) ? pz : 1.0;
     }
-    glaspen2_set_view_pan(g_pan_x, g_pan_y);
+    glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
 }
 
 // --- CGEventTap callback ---
@@ -2139,6 +2174,20 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         if (scrollEvent) {
             NSUInteger smods = [scrollEvent modifierFlags];
             BOOL sHasCmdCtrl = (smods & NSEventModifierFlagCommand) && (smods & NSEventModifierFlagControl);
+            BOOL sHasShift = (smods & NSEventModifierFlagShift) != 0;
+            if (sHasCmdCtrl && sHasShift && g_enabled && !g_stroke_active) {
+                // ⌘⌃⇧滚轮:缩放(上限 100%)
+                double dy = [scrollEvent scrollingDeltaY];
+                double factor;
+                if ([scrollEvent hasPreciseScrollingDeltas]) {
+                    factor = exp(-dy * 0.0015); // 触控板连续缩放
+                } else {
+                    factor = (dy > 0) ? 1.1 : ((dy < 0) ? 1.0 / 1.1 : 1.0);
+                }
+                canvas_zoom_by(factor);
+                perf_log_event("scroll_zoom", elapsed_us(t0));
+                return NULL;
+            }
             if (sHasCmdCtrl && g_enabled && !g_stroke_active) {
                 double dx = [scrollEvent scrollingDeltaX];
                 double dy = [scrollEvent scrollingDeltaY];
@@ -2291,6 +2340,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     // Width from pressure (same formula as Rust modeler::pressure_to_width)
     double raw_w = (pressure > 0.01) ? (0.3 + pressure * pressure * 7.7) * g_width_scale
                                      : 1.0 * g_width_scale;
+    raw_w *= g_zoom; // 屏幕呈现宽度随缩放
 
     // Pressure monitor: update on pen event before early returns
     if (g_pressure_monitor && isPen) {
@@ -2341,7 +2391,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         }
         g_eraser_mode = (devType == NSEraserPointingDevice);
         NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f", px, py, pressure, ts);
-        glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px + g_pan_x, py + g_pan_y, pressure, ts, g_width_scale);
+        glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px / g_zoom + g_pan_x, py / g_zoom + g_pan_y, pressure, ts, g_width_scale);
         g_stroke_active = YES;
         g_cursor_visible = NO; // the ink is the feedback while drawing
         stroke_begin(); // reuse one cairo context for the whole stroke
@@ -2356,7 +2406,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         // If no DOWN event was seen (pen detection lag), auto-initialize
         if (!g_stroke_active) {
             g_eraser_mode = (devType == NSEraserPointingDevice);
-            glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px + g_pan_x, py + g_pan_y, pressure, ts, g_width_scale);
+            glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px / g_zoom + g_pan_x, py / g_zoom + g_pan_y, pressure, ts, g_width_scale);
             g_stroke_active = YES;
             g_cursor_visible = NO;
             stroke_begin();
@@ -2367,7 +2417,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             return NULL; // begin already recorded this point, don't feed duplicate to modeler
         }
         // Feed modeler, draw raw segment for responsive real-time feedback
-        glaspen2_modeler_move(px + g_pan_x, py + g_pan_y, pressure, ts, g_width_scale);
+        glaspen2_modeler_move(px / g_zoom + g_pan_x, py / g_zoom + g_pan_y, pressure, ts, g_width_scale);
         raw_draw_segment(px, py, raw_w);
         return NULL;
     }
@@ -2379,7 +2429,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 glaspen2_modeler_erase_finish();
                 g_eraser_mode = NO;
             } else {
-                glaspen2_modeler_end(px + g_pan_x, py + g_pan_y, pressure, ts, g_width_scale);
+                glaspen2_modeler_end(px / g_zoom + g_pan_x, py / g_zoom + g_pan_y, pressure, ts, g_width_scale);
                 glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
             }
 
@@ -2565,12 +2615,13 @@ void glaspen2_run(void) {
         {
             long cur = glaspen2_get_current_screen_id();
             if (cur > 0) {
-                double px0 = 0.0, py0 = 0.0;
-                glaspen2_get_screen_pan(cur, &px0, &py0);
+                double px0 = 0.0, py0 = 0.0, pz0 = 1.0;
+                glaspen2_get_screen_transform(cur, &px0, &py0, &pz0);
                 g_pan_x = g_infinite_canvas ? px0 : 0.0;
                 g_pan_y = g_infinite_canvas ? py0 : 0.0;
+                g_zoom = (g_infinite_canvas && pz0 > 0.0) ? pz0 : 1.0;
             }
-            glaspen2_set_view_pan(g_pan_x, g_pan_y);
+            glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
         }
 
         // Canvas mode starts in 固定画布涂鸦模式; menu item shows the switch target
