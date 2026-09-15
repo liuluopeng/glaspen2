@@ -120,6 +120,7 @@ static void finish_active_stroke(void);
 static void ensure_surface(NSView *view);
 static BOOL perform_hotkey(unsigned short keyCode);
 static void apply_outline(BOOL on);
+static void apply_infinite_canvas(BOOL on);
 static void canvas_pan_load(long target);
 static void canvas_pan_persist(void);
 static NSWindow *g_window = nil;
@@ -838,16 +839,7 @@ static void toggle_canvas_mode(void) {
 }
 
 - (void)toggleInfiniteCanvas {
-    g_infinite_canvas = !g_infinite_canvas;
-    glaspen2_save_bool_setting("infinite_canvas", g_infinite_canvas ? 1 : 0);
-    NSMenuItem *item = [g_menu itemWithTag:668];
-    if (item) [item setState:g_infinite_canvas ? NSControlStateValueOn : NSControlStateValueOff];
-    finish_active_stroke();
-    canvas_pan_load(g_infinite_canvas ? glaspen2_get_current_screen_id() : 0);
-    rebuild_surface_from_strokes();
-    show_notification(g_infinite_canvas
-        ? L(@"无限画布已开启 (⌘⌃滚轮移动镜头)", @"Infinite canvas on (⌘⌃scroll to pan)")
-        : L(@"无限画布已关闭", @"Infinite canvas off"));
+    apply_infinite_canvas(!g_infinite_canvas);
 }
 
 - (void)selectColor:(NSMenuItem *)sender {
@@ -918,6 +910,7 @@ static NSButton *g_glass_buttons[1];
             @"gridFollowStrokes": @(g_grid_follow_strokes),
             @"pressureMonitor": @(g_pressure_monitor),
             @"outline": @(g_outline_enabled),
+            @"infiniteCanvas": @(g_infinite_canvas),
             @"gifFps": @(g_gif_fps),
             @"gifResolution": @(g_gif_resolution),
             @"gifSpeed": @(g_gif_speed),
@@ -948,6 +941,10 @@ static NSButton *g_glass_buttons[1];
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
         } else if ([key isEqualToString:@"outline"]) {
             apply_outline([value boolValue]);
+            result(nil);
+            return;
+        } else if ([key isEqualToString:@"infiniteCanvas"]) {
+            apply_infinite_canvas([value boolValue]);
             result(nil);
             return;
         } else if ([key isEqualToString:@"pressureMonitor"]) {
@@ -1282,6 +1279,7 @@ static void sync_settings_panel(void) {
         @"gridFollowStrokes": @(g_grid_follow_strokes),
         @"pressureMonitor": @(g_pressure_monitor),
         @"outline": @(g_outline_enabled),
+        @"infiniteCanvas": @(g_infinite_canvas),
     }];
 }
 
@@ -1780,6 +1778,22 @@ static void rebuild_surface_from_strokes(void) {
 
 @end
 
+// 应用无限画布开关(菜单与 Flutter 设置面板共用的唯一入口)。
+// 模式本身持久化在 user_settings(结构性的模式,与描边这类渲染设置不同)。
+static void apply_infinite_canvas(BOOL on) {
+    if (g_infinite_canvas == on) return;
+    g_infinite_canvas = on;
+    glaspen2_save_bool_setting("infinite_canvas", on ? 1 : 0);
+    NSMenuItem *item = [g_menu itemWithTag:668];
+    if (item) [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    finish_active_stroke();
+    canvas_pan_load(on ? glaspen2_get_current_screen_id() : 0);
+    rebuild_surface_from_strokes();
+    show_notification(on
+        ? L(@"无限画布已开启 (⌥⌘滚轮缩放 · ⌥⌘方向键平移)", @"Infinite canvas on (⌥⌘scroll zoom · ⌥⌘arrows pan)")
+        : L(@"无限画布已关闭", @"Infinite canvas off"));
+}
+
 // 应用描边开关(菜单与 Flutter 设置面板共用的唯一入口)。
 // 纯渲染设置:只改内存状态与菜单勾选,不落库。
 static void apply_outline(BOOL on) {
@@ -2171,8 +2185,9 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         NSEvent *scrollEvent = [NSEvent eventWithCGEvent:event];
         if (scrollEvent) {
             NSUInteger smods = [scrollEvent modifierFlags];
-            BOOL sHasCmdCtrl = (smods & NSEventModifierFlagCommand) && (smods & NSEventModifierFlagControl);
-            if (sHasCmdCtrl && g_enabled && !g_stroke_active) {
+            // ⌥⌘ 避开系统占用的 ⌘⌃(⌃滚轮=辅助功能缩放)
+            BOOL sHasOptCmd = (smods & NSEventModifierFlagOption) && (smods & NSEventModifierFlagCommand);
+            if (sHasOptCmd && g_enabled && !g_stroke_active) {
                 // ⌘⌃滚轮:缩放,以鼠标位置为中心(上限 100%)。
                 // 平移改用 ⌘⌃方向键。
                 double dy = [scrollEvent scrollingDeltaY];
@@ -2226,7 +2241,8 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             }
             // ⌘⌃方向键:无限画布镜头平移(按住方向键靠系统自动重复连续移动)。
             // 步长除以 zoom,保证屏幕上每次移动的视觉距离一致。
-            if (g_infinite_canvas && hasCmdCtrl && g_enabled && !g_stroke_active
+            BOOL kHasOptCmd = (mods & NSEventModifierFlagOption) && (mods & NSEventModifierFlagCommand);
+            if (g_infinite_canvas && kHasOptCmd && g_enabled && !g_stroke_active
                 && type == kCGEventKeyDown
                 && kc >= kVK_LeftArrow && kc <= kVK_UpArrow) {
                 double step = 80.0 / g_zoom;

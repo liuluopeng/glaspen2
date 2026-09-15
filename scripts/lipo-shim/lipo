@@ -1,0 +1,15 @@
+#!/bin/bash
+# 兼容层:macOS 27 的 lipo 不再接受 "lipo <file> -verify_arch <a1> <a2>" 多架构形式
+# (报 "requires exactly one input file"),而 flutter 3.41 的 macOS 构建校验正是
+# 这个形式。把多架构 -verify_arch 拆成逐架构校验,其余调用原样透传。
+# 用法:PATH="scripts/lipo-shim:$PATH" fvm flutter build macos-framework --release
+if [ "$2" = "-verify_arch" ] && [ $# -gt 3 ]; then
+    file="$1"
+    shift 2
+    rc=0
+    for a in "$@"; do
+        /usr/bin/lipo "$file" -verify_arch "$a" || rc=1
+    done
+    exit $rc
+fi
+exec /usr/bin/lipo "$@"
