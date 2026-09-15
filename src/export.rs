@@ -2638,4 +2638,49 @@ mod tests {
         assert!(svg.contains("stroke-width=\"1.00\""));
         assert!(svg.contains("stroke-width=\"4.00\""));
     }
+
+    /// Measure SVG node count / byte size at various canvas sizes, for both
+    /// smooth pressure (few width runs) and noisy pressure (worst case, one run
+    /// per point). Run: cargo test --lib bench_svg_scaling -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn bench_svg_scaling() {
+        for (n_strokes, pts_per) in [(1_000usize, 50usize), (5_000, 100), (20_000, 100)] {
+            // Smooth: width varies over a slow sine -> long equal-width runs.
+            let mut smooth: Vec<(f64, f64, f64, Vec<(f64, f64, f64)>)> =
+                Vec::with_capacity(n_strokes);
+            let mut noisy: Vec<(f64, f64, f64, Vec<(f64, f64, f64)>)> =
+                Vec::with_capacity(n_strokes);
+            for s in 0..n_strokes {
+                let (ox, oy) = ((s % 200) as f64 * 60.0, (s / 200) as f64 * 60.0);
+                let mut sp = Vec::with_capacity(pts_per);
+                let mut np = Vec::with_capacity(pts_per);
+                for i in 0..pts_per {
+                    let f = i as f64 / pts_per as f64;
+                    let x = ox + f * 40.0;
+                    let y = oy + (f * 8.0).sin() * 10.0;
+                    let w_smooth = 1.0 + (f * std::f64::consts::TAU).sin() * 0.5 + 2.0;
+                    let w_noisy = 1.0 + ((i * 7 % 37) as f64) / 6.0; // jitters every point
+                    sp.push((x, y, w_smooth));
+                    np.push((x, y, w_noisy));
+                }
+                smooth.push((0.0, 0.0, 0.0, sp));
+                noisy.push((0.0, 0.0, 0.0, np));
+            }
+            let total_pts = n_strokes * pts_per;
+            for (label, snap) in [("smooth", &smooth), ("noisy", &noisy)] {
+                let svg = build_svg_from(snap).expect("svg");
+                eprintln!(
+                    "strokes={} pts={} ({label}): elements={} bytes={} (~{} B/point, old per-point <line> would be ~{} elements, ~{} MB)",
+                    n_strokes,
+                    total_pts,
+                    svg.matches("<path").count() + svg.matches("<circle").count(),
+                    svg.len(),
+                    svg.len() / total_pts.max(1),
+                    total_pts,
+                    total_pts * 130 / 1_000_000
+                );
+            }
+        }
+    }
 }
