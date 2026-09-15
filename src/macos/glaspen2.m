@@ -86,6 +86,9 @@ extern int glaspen2_save_animated_gif(int fps, double resolution, double speed, 
 extern unsigned char * glaspen2_gif_record_end(int start_index, int end_index, int fps, double resolution, double speed, int end_mode, int *out_len);
 extern void glaspen2_draw_rebuild(void *surface_ptr, double scale);
 extern int glaspen2_export_pdf(void);
+// 无限画布导出(独立存储):分页 PDF / 整幅 SVG
+extern int glaspen2_export_infinite_pdf_paged(int page_w, int page_h);
+extern int glaspen2_export_infinite_svg(void);
 extern void glaspen2_on_display_change(int screen_w, int screen_h);
 extern char* glaspen2_list_screens_json(void);
 extern unsigned char* glaspen2_render_thumbnail(long long screen_id, int w, int h, int max_size, int *out_len);
@@ -589,17 +592,19 @@ static void update_menu_texts(void) {
     [[g_menu itemAtIndex:base+0] setTitle:L(@"保存(含背景)", @"Save (with bg)")];
     [[g_menu itemAtIndex:base+1] setTitle:L(@"保存(涂鸦)", @"Save (drawing)")];
     [[g_menu itemAtIndex:base+2] setTitle:L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)")];
-    [[g_menu itemAtIndex:base+3] setTitle:L(@"新建画布", @"New canvas")];
-    [[g_menu itemAtIndex:base+4] setTitle:L(@"彩虹指示器", @"Rainbow indicator")];
-    [[g_menu itemAtIndex:base+5] setTitle:L(@"开机自启", @"Launch at login")];
-    [[g_menu itemAtIndex:base+6] setTitle:L(@"磨砂玻璃", @"Frosted Glass")];
-    [[g_menu itemAtIndex:base+7] setTitle:L(@"笔迹描边", @"Stroke outline")];
-    [[g_menu itemAtIndex:base+8] setTitle:L(@"无限画布", @"Infinite canvas")];
+    [[g_menu itemAtIndex:base+3] setTitle:L(@"导出无限画布 PDF (分页)", @"Export infinite canvas PDF (paged)")];
+    [[g_menu itemAtIndex:base+4] setTitle:L(@"导出无限画布 SVG (整幅)", @"Export infinite canvas SVG (whole)")];
+    [[g_menu itemAtIndex:base+5] setTitle:L(@"新建画布", @"New canvas")];
+    [[g_menu itemAtIndex:base+6] setTitle:L(@"彩虹指示器", @"Rainbow indicator")];
+    [[g_menu itemAtIndex:base+7] setTitle:L(@"开机自启", @"Launch at login")];
+    [[g_menu itemAtIndex:base+8] setTitle:L(@"磨砂玻璃", @"Frosted Glass")];
+    [[g_menu itemAtIndex:base+9] setTitle:L(@"笔迹描边", @"Stroke outline")];
+    [[g_menu itemAtIndex:base+10] setTitle:L(@"无限画布", @"Infinite canvas")];
     // Update toggle item title based on state
     NSMenuItem *toggleItem = [g_menu itemWithTag:888];
     if (toggleItem) [toggleItem setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
-    [[g_menu itemAtIndex:base+12] setTitle:L(@"English", @"中文")];
-    [[g_menu itemAtIndex:base+13] setTitle:L(@"退出", @"Quit")];
+    [[g_menu itemAtIndex:base+14] setTitle:L(@"English", @"中文")];
+    [[g_menu itemAtIndex:base+15] setTitle:L(@"退出", @"Quit")];
 }
 
 static NSImage* colorSwatchImage(NSColor *color, CGFloat size) {
@@ -850,6 +855,31 @@ static void toggle_canvas_mode(void) {
 
 - (void)toggleInfiniteCanvas {
     apply_infinite_canvas(!g_infinite_canvas);
+}
+
+// 无限画布 → 分页 PDF(按当前屏幕尺寸切页)
+- (void)exportInfinitePdf {
+    int pw = g_screen_w, ph = g_screen_h;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        int ok = glaspen2_export_infinite_pdf_paged(pw, ph);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            show_notification(ok
+                ? L(@"无限画布 PDF 已导出到桌面", @"Infinite-canvas PDF saved to Desktop")
+                : L(@"无限画布为空或页数过多", @"Infinite canvas empty or too many pages"));
+        });
+    });
+}
+
+// 无限画布 → 整幅 SVG(内容包围盒, 不受镜头影响)
+- (void)exportInfiniteSvg {
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        int ok = glaspen2_export_infinite_svg();
+        dispatch_async(dispatch_get_main_queue(), ^{
+            show_notification(ok
+                ? L(@"无限画布 SVG 已导出到桌面", @"Infinite-canvas SVG saved to Desktop")
+                : L(@"无限画布为空", @"Infinite canvas is empty"));
+        });
+    });
 }
 
 - (void)selectColor:(NSMenuItem *)sender {
@@ -2587,6 +2617,8 @@ void glaspen2_run(void) {
         [g_menu addItemWithTitle:L(@"保存(含背景)", @"Save (with bg)") action:@selector(saveWithBg) keyEquivalent:@""];
         [g_menu addItemWithTitle:L(@"保存(涂鸦)", @"Save (drawing)") action:@selector(saveOnly) keyEquivalent:@""];
         [g_menu addItemWithTitle:L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)") action:@selector(saveXoj) keyEquivalent:@""];
+        [g_menu addItemWithTitle:L(@"导出无限画布 PDF (分页)", @"Export infinite canvas PDF (paged)") action:@selector(exportInfinitePdf) keyEquivalent:@""];
+        [g_menu addItemWithTitle:L(@"导出无限画布 SVG (整幅)", @"Export infinite canvas SVG (whole)") action:@selector(exportInfiniteSvg) keyEquivalent:@""];
         [g_menu addItemWithTitle:L(@"新建画布", @"New canvas") action:@selector(clearScreen) keyEquivalent:@""];
         NSMenuItem *rainbowItem = [g_menu addItemWithTitle:L(@"彩虹指示器", @"Rainbow indicator") action:@selector(toggleRainbow) keyEquivalent:@""];
         rainbowItem.target = g_menuHandler;

@@ -548,12 +548,16 @@ mod platform {
 
     // ── 无限画布(独立存储,全局仅一个画布) ──
 
-    /// 读取整个无限画布的笔迹。
+    /// 读取整个无限画布的笔迹(全局 DB)。
     pub async fn load_infinite_strokes() -> Vec<StrokeData> {
-        let pool = match DB.get() {
-            Some(p) => p,
-            None => return Vec::new(),
-        };
+        match DB.get() {
+            Some(pool) => load_infinite_strokes_with(pool).await,
+            None => Vec::new(),
+        }
+    }
+
+    /// 读取整个无限画布的笔迹(指定连接池;导出用只读池时走这个)。
+    pub async fn load_infinite_strokes_with(pool: &SqlitePool) -> Vec<StrokeData> {
         let rows: Vec<(i64, f64, f64, f64, f64)> = sqlx::query_as(
             "SELECT id, color_r, color_g, color_b, width_scale FROM infinite_strokes ORDER BY id",
         )

@@ -1115,9 +1115,6 @@ pub(crate) fn build_cropped_svg() -> Option<String> {
     // Snapshot under lock, then build the string without holding it.
     let snapshot: Vec<(f64, f64, f64, Vec<(f64, f64, f64)>)> = {
         let strokes = STROKES.lock().unwrap();
-        if strokes.is_empty() {
-            return None;
-        }
         strokes
             .iter()
             .map(|s| {
@@ -1130,25 +1127,50 @@ pub(crate) fn build_cropped_svg() -> Option<String> {
             })
             .collect()
     };
+    build_svg_from(&snapshot)
+}
+
+/// Snapshot DB stroke rows into the plain `(r, g, b, points)` form.
+fn snapshot_from_stroke_data(
+    data: &[db::StrokeData],
+) -> Vec<(f64, f64, f64, Vec<(f64, f64, f64)>)> {
+    data.iter()
+        .map(|s| {
+            (
+                s.r,
+                s.g,
+                s.b,
+                s.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect(),
+            )
+        })
+        .collect()
+}
+
+/// Round a stroke width to a 0.25px bucket so consecutive points that differ
+/// only by sub-pixel pressure share one `<path>` run.
+fn quantize_width(w: f64) -> f64 {
+    (w * 4.0).round() / 4.0
+}
+
+/// Build an SVG cropped to the content bbox. Emits ONE `<path>` per run of
+/// consecutive points that share a quantized width (plus one `<circle>` for the
+/// first point) instead of one element per point, so a canvas with tens of
+/// thousands of points stays a few thousand nodes and opens quickly.
+fn build_svg_from(snapshot: &[(f64, f64, f64, Vec<(f64, f64, f64)>)]) -> Option<String> {
     let mut bx_min = f64::MAX;
     let mut by_min = f64::MAX;
     let mut bx_max = f64::MIN;
     let mut by_max = f64::MIN;
     for (_, _, _, points) in snapshot.iter() {
         for &(x, y, _) in points {
-            if x < bx_min {
-                bx_min = x;
-            }
-            if y < by_min {
-                by_min = y;
-            }
-            if x > bx_max {
-                bx_max = x;
-            }
-            if y > by_max {
-                by_max = y;
-            }
+            bx_min = bx_min.min(x);
+            by_min = by_min.min(y);
+            bx_max = bx_max.max(x);
+            by_max = by_max.max(y);
         }
+    }
+    if snapshot.is_empty() || bx_min > bx_max || by_min > by_max {
+        return None;
     }
     let pad = 10.0;
     bx_min -= pad;
@@ -1157,6 +1179,7 @@ pub(crate) fn build_cropped_svg() -> Option<String> {
     by_max += pad;
     let bw = bx_max - bx_min;
     let bh = by_max - by_min;
+
     let mut svg = String::new();
     svg.push_str(&format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {:.1} {:.1}\" width=\"{:.1}\" height=\"{:.1}\">\n",
@@ -1172,31 +1195,80 @@ pub(crate) fn build_cropped_svg() -> Option<String> {
             (g * 255.0) as u8,
             (b * 255.0) as u8
         );
-        for i in 0..points.len() {
-            let (x, y, w) = points[i];
-            let cx = x - bx_min;
-            let cy = y - by_min;
-            if i == 0 {
-                // First point: filled circle dot
-                svg.push_str(&format!(
-                    "  <circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"{:.1}\" fill=\"{}\"/>\n",
-                    cx,
-                    cy,
-                    w * 0.5,
-                    color_hex
+        let (x0, y0, w0) = points[0];
+        // First point: filled dot (round cap of a zero-length stroke).
+        svg.push_str(&format!(
+            "  <circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"{:.2}\" fill=\"{}\"/>\n",
+            x0 - bx_min,
+            y0 - by_min,
+            w0 * 0.5,
+            color_hex
+        ));
+        // Segment i is drawn with points[i]'s width; merge equal-width runs.
+        let n = points.len();
+        let mut i = 1;
+        while i < n {
+            let wq = quantize_width(points[i].2);
+            let mut d = format!(
+                "M {:.1} {:.1}",
+                points[i - 1].0 - bx_min,
+                points[i - 1].1 - by_min
+            );
+            let mut j = i;
+            while j < n && quantize_width(points[j].2) == wq {
+                d.push_str(&format!(
+                    " L {:.1} {:.1}",
+                    points[j].0 - bx_min,
+                    points[j].1 - by_min
                 ));
-            } else {
-                let (prev_x, prev_y, _) = points[i - 1];
-                // Segment with destination-point width and round caps
-                svg.push_str(&format!(
-                    "  <line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{}\" stroke-width=\"{:.1}\" stroke-linecap=\"round\"/>\n",
-                    prev_x - bx_min, prev_y - by_min, cx, cy, color_hex, w
-                ));
+                j += 1;
             }
+            svg.push_str(&format!(
+                "  <path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{:.2}\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n",
+                d, color_hex, wq
+            ));
+            i = j;
         }
     }
     svg.push_str("</svg>\n");
     Some(svg)
+}
+
+/// Export the whole infinite canvas as one SVG (content bbox, no lens). 1 on success.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_export_infinite_svg() -> c_int {
+    let data = runtime().block_on(db::load_infinite_strokes());
+    let snapshot = snapshot_from_stroke_data(&data);
+    match build_svg_from(&snapshot) {
+        Some(svg) => {
+            let path = desktop_path().join(timestamped_name("svg"));
+            match std::fs::write(&path, &svg) {
+                Ok(_) => {
+                    println!(
+                        "[glaspen2] Saved infinite-canvas SVG to {} ({} bytes)",
+                        path.display(),
+                        svg.len()
+                    );
+                    1
+                }
+                Err(e) => {
+                    eprintln!("[glaspen2] SVG save failed: {}", e);
+                    0
+                }
+            }
+        }
+        None => 0,
+    }
+}
+
+/// Export the whole infinite canvas as a PDF split into screen-sized pages.
+/// 1 on success, 0 on failure / nothing to export.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_export_infinite_pdf_paged(page_w: c_int, page_h: c_int) -> c_int {
+    match crate::pdf::export_infinite_paged(page_w, page_h) {
+        Some(_) => 1,
+        None => 0,
+    }
 }
 
 /// Save strokes as SVG to desktop (cropped to bbox).
@@ -2536,5 +2608,34 @@ mod tests {
                 bytes.map(|b| b.len()).unwrap_or(0)
             );
         }
+    }
+
+    #[test]
+    fn test_svg_merges_equal_width_runs_into_one_path() {
+        // 100 points of constant width must collapse to ONE <path>, not 100
+        // elements — this is what keeps large canvases small and quick to open.
+        let pts: Vec<(f64, f64, f64)> = (0..100).map(|i| (i as f64, i as f64, 2.0)).collect();
+        let snap = vec![(0.0, 0.0, 0.0, pts)];
+        let svg = build_svg_from(&snap).expect("svg");
+        assert!(svg.starts_with("<svg"));
+        assert!(svg.contains("stroke-width"));
+        assert!(svg.ends_with("</svg>\n"));
+        assert_eq!(svg.matches("<path").count(), 1, "constant width = one path");
+    }
+
+    #[test]
+    fn test_svg_splits_width_runs() {
+        // Widths 1,1,4,4 -> two runs -> two <path> elements.
+        let pts = vec![
+            (0.0, 0.0, 1.0),
+            (1.0, 0.0, 1.0),
+            (2.0, 0.0, 4.0),
+            (3.0, 0.0, 4.0),
+        ];
+        let snap = vec![(1.0, 0.0, 0.0, pts)];
+        let svg = build_svg_from(&snap).expect("svg");
+        assert_eq!(svg.matches("<path").count(), 2);
+        assert!(svg.contains("stroke-width=\"1.00\""));
+        assert!(svg.contains("stroke-width=\"4.00\""));
     }
 }
