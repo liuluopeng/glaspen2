@@ -2242,6 +2242,15 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             // ⌘⌃方向键:无限画布镜头平移(按住方向键靠系统自动重复连续移动)。
             // 步长除以 zoom,保证屏幕上每次移动的视觉距离一致。
             BOOL kHasOptCmd = (mods & NSEventModifierFlagOption) && (mods & NSEventModifierFlagCommand);
+            // ⌘⌃PageUp/PageDown:缩放(额外绑定,不依赖滚轮)
+            if (g_infinite_canvas && hasCmdCtrl && g_enabled && !g_stroke_active
+                && type == kCGEventKeyDown
+                && (kc == kVK_PageUp || kc == kVK_PageDown)) {
+                // 键盘缩放以视口中心为锚
+                canvas_zoom_at(kc == kVK_PageUp ? 1.15 : 1.0 / 1.15,
+                               (double)g_screen_w * 0.5, (double)g_screen_h * 0.5);
+                return NULL;
+            }
             if (g_infinite_canvas && kHasOptCmd && g_enabled && !g_stroke_active
                 && type == kCGEventKeyDown
                 && kc >= kVK_LeftArrow && kc <= kVK_UpArrow) {
@@ -2772,7 +2781,8 @@ void glaspen2_run(void) {
                               CGEventMaskBit(kCGEventTabletProximity) |
                               CGEventMaskBit(kCGEventTabletPointer) |
                               CGEventMaskBit(kCGEventKeyDown) |
-                              CGEventMaskBit(kCGEventKeyUp);
+                              CGEventMaskBit(kCGEventKeyUp) |
+                              CGEventMaskBit(kCGEventScrollWheel);
 
         g_event_tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
                                        kCGEventTapOptionDefault, tapMask,
