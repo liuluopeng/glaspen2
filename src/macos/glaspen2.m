@@ -1790,7 +1790,7 @@ static void apply_infinite_canvas(BOOL on) {
     canvas_pan_load(on ? glaspen2_get_current_screen_id() : 0);
     rebuild_surface_from_strokes();
     show_notification(on
-        ? L(@"无限画布已开启 (⌥⌘滚轮缩放 · ⌥⌘方向键平移)", @"Infinite canvas on (⌥⌘scroll zoom · ⌥⌘arrows pan)")
+        ? L(@"无限画布已开启 (⌥⇧滚轮缩放 · ⌥⌘方向键平移)", @"Infinite canvas on (⌥⇧scroll zoom · ⌥⌘arrows pan)")
         : L(@"无限画布已关闭", @"Infinite canvas off"));
 }
 

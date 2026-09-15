@@ -1117,7 +1117,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         if (Platform.isMacOS)
           SwitchListTile(
             title: const Text('无限画布', style: TextStyle(fontSize: 15)),
-            subtitle: const Text('⌥⌘滚轮缩放(上限100%) · ⌥⌘方向键平移 · 菜单里也有同一开关', style: TextStyle(fontSize: 12)),
+            subtitle: const Text('⌥⇧滚轮缩放(上限100%) · ⌥⌘方向键平移 · 菜单里也有同一开关', style: TextStyle(fontSize: 12)),
             value: _infiniteCanvas,
             dense: true,
             contentPadding: EdgeInsets.zero,
