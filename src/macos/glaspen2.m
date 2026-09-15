@@ -2329,8 +2329,8 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 double dx = 0.0, dy = 0.0;
                 if (kc == kVK_LeftArrow)       dx = -step;
                 else if (kc == kVK_RightArrow) dx = step;
-                else if (kc == kVK_UpArrow)    dy = -step;
-                else if (kc == kVK_DownArrow)  dy = step;
+                else if (kc == kVK_UpArrow)    dy = step;
+                else if (kc == kVK_DownArrow)  dy = -step;
                 canvas_pan_by(dx, dy);
                 return NULL;
             }
