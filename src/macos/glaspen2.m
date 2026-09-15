@@ -97,6 +97,7 @@ extern int glaspen2_delete_screen(long long screen_id);
 extern char* glaspen2_page_info_json(long long screen_id);
 extern int glaspen2_chat_send_strokes(int start_index, int end_index);
 extern void glaspen2_set_stroke_outline(int enabled);
+extern unsigned char* glaspen2_render_canvas_overview(double bx, double by, double bw, double bh, int out_w, int out_h, int *out_len);
 extern void glaspen2_set_view_transform(double pan_x, double pan_y, double zoom);
 // 画布存储切换 + 无限画布(独立存储,全局仅一个画布)
 extern void glaspen2_set_canvas_kind(int infinite);
@@ -130,6 +131,7 @@ static void apply_infinite_canvas(BOOL on);
 static void canvas_infinite_load(void);
 static void canvas_infinite_persist(void);
 static void canvas_reset_lens(void);
+static void canvas_apply_transform(void);
 static NSWindow *g_window = nil;
 static NSVisualEffectView *g_glass_view = nil;
 
@@ -242,6 +244,9 @@ static double g_width_scale = 1.0;
 static const double g_width_presets[] = { 0.15, 0.3, 0.6, 1.0, 1.5, 2.0, 2.5, 3.5 };
 static const int g_width_preset_count = 8;
 static int g_selected_width_index = 3; // default: 1.0x
+
+// 网格大小(逻辑 px),设置面板可调,默认 40
+static double g_grid_size = 40.0;
 
 // ── 无限画布模式 ──
 // 画布坐标 = 视口坐标 + pan(pan = 视口左上角在画布坐标系中的位置)。
@@ -934,6 +939,44 @@ static NSButton *g_launch_toggle = nil;
 static NSButton *g_glass_toggle = nil;
 static NSButton *g_glass_buttons[1];
 
+// 无限画布总览载荷:渲染当前页包围盒适配图 + 当前视口矩形。
+// 返回 nil 表示空画布(无笔迹)。
+static NSDictionary *canvas_overview_payload(double w, double h) {
+    double bx, by, bx2, by2;
+    if (!glaspen2_stroke_bbox(&bx, &by, &bx2, &by2)) {
+        return nil;
+    }
+    double bw = bx2 - bx, bh = by2 - by;
+    if (bw < 1.0) bw = 1.0;
+    if (bh < 1.0) bh = 1.0;
+    // 外扩 5%,笔迹不贴边
+    double mx = bw * 0.05, my = bh * 0.05;
+    bx -= mx; by -= my; bw += mx * 2; bh += my * 2;
+
+    int ow = (int)w, oh = (int)h;
+    int outLen = 0;
+    unsigned char *png = glaspen2_render_canvas_overview(bx, by, bw, bh, ow, oh, &outLen);
+    if (!png || outLen <= 0) return nil;
+
+    // 总览映射(scale/offset 必须与渲染一致),再映射当前视口矩形
+    double ov_scale = (ow / bw) < (oh / bh) ? (ow / bw) : (oh / bh);
+    double ov_ox = (ow - bw * ov_scale) * 0.5;
+    double ov_oy = (oh - bh * ov_scale) * 0.5;
+    double z = g_zoom > 0.05 ? g_zoom : 1.0;
+    double vr_w = g_screen_w / z * ov_scale;
+    double vr_h = g_screen_h / z * ov_scale;
+    double vx = ov_ox + (g_pan_x - bx) * ov_scale;
+    double vy = ov_oy + (g_pan_y - by) * ov_scale;
+
+    NSData *data = [NSData dataWithBytes:png length:outLen];
+    glaspen2_free_rust_bytes(png, outLen);
+    return @{
+        @"png": data,
+        @"rect": @[[NSNumber numberWithDouble:vx], [NSNumber numberWithDouble:vy],
+                   [NSNumber numberWithDouble:vr_w], [NSNumber numberWithDouble:vr_h]],
+    };
+}
+
 @interface SettingsMethodChannelHandler : NSObject <FlutterPlugin>
 @end
 
@@ -951,6 +994,7 @@ static NSButton *g_glass_buttons[1];
             @"pressureMonitor": @(g_pressure_monitor),
             @"outline": @(g_outline_enabled),
             @"infiniteCanvas": @(g_infinite_canvas),
+            @"gridSize": @(g_grid_size),
             @"gifFps": @(g_gif_fps),
             @"gifResolution": @(g_gif_resolution),
             @"gifSpeed": @(g_gif_speed),
@@ -985,6 +1029,16 @@ static NSButton *g_glass_buttons[1];
             return;
         } else if ([key isEqualToString:@"infiniteCanvas"]) {
             apply_infinite_canvas([value boolValue]);
+            result(nil);
+            return;
+        } else if ([key isEqualToString:@"gridSize"]) {
+            double gs = [value doubleValue];
+            if (gs < 10) gs = 10;
+            if (gs > 200) gs = 200;
+            g_grid_size = gs;
+            NSString *gsStr = [NSString stringWithFormat:@"%.0f", gs];
+            glaspen2_save_string_setting("grid_size", [gsStr UTF8String]);
+            if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
             result(nil);
             return;
         } else if ([key isEqualToString:@"pressureMonitor"]) {
@@ -1115,6 +1169,57 @@ static NSButton *g_glass_buttons[1];
             }
             dispatch_async(dispatch_get_main_queue(), ^{ result(data); });
         });
+    } else if ([call.method isEqualToString:@"canvasOverview"]) {
+        NSDictionary *args = call.arguments;
+        double w = [args[@"w"] doubleValue];
+        double h = [args[@"h"] doubleValue];
+        if (w < 400) w = 1024;
+        if (h < 400) h = 768;
+        // 同一方法承载镜头动作:home = 回原点+100%,center = 居中内容包围盒
+        if ([args[@"home"] boolValue]) {
+            g_pan_x = 0.0;
+            g_pan_y = 0.0;
+            g_zoom = 1.0;
+            canvas_apply_transform();
+            rebuild_surface_from_strokes();
+        } else if ([args[@"center"] boolValue]) {
+            double bx, by, bx2, by2;
+            if (glaspen2_stroke_bbox(&bx, &by, &bx2, &by2)) {
+                double z = g_zoom > 0.05 ? g_zoom : 1.0;
+                g_pan_x = (bx + bx2) * 0.5 - g_screen_w * 0.5 / z;
+                g_pan_y = (by + by2) * 0.5 - g_screen_h * 0.5 / z;
+                canvas_apply_transform();
+                rebuild_surface_from_strokes();
+            }
+        }
+        NSDictionary *payload = canvas_overview_payload(w, h);
+        result(payload ?: @{});
+    } else if ([call.method isEqualToString:@"canvasHome"]) {
+        NSDictionary *args = call.arguments;
+        double w = [args[@"w"] doubleValue];
+        double h = [args[@"h"] doubleValue];
+        if (w < 400) w = 1024;
+        if (h < 400) h = 768;
+        g_pan_x = 0.0;
+        g_pan_y = 0.0;
+        g_zoom = 1.0;
+        canvas_apply_transform(); // 应用 + 按模式持久化
+        rebuild_surface_from_strokes();
+        NSDictionary *payload = canvas_overview_payload(w, h);
+        result(payload ?: @{});
+    } else if ([call.method isEqualToString:@"canvasCenter"]) {
+        double bx, by, bx2, by2;
+        if (glaspen2_stroke_bbox(&bx, &by, &bx2, &by2)) {
+            double z = g_zoom > 0.05 ? g_zoom : 1.0;
+            g_pan_x = (bx + bx2) * 0.5 - g_screen_w * 0.5 / z;
+            g_pan_y = (by + by2) * 0.5 - g_screen_h * 0.5 / z;
+            glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
+            long cur = glaspen2_get_current_screen_id();
+            canvas_apply_transform(); // 应用 + 按模式持久化
+            rebuild_surface_from_strokes();
+        }
+        NSDictionary *payload = canvas_overview_payload(1024, 768);
+        result(payload ?: @{});
     } else if ([call.method isEqualToString:@"deletePage"]) {
         NSDictionary *args = call.arguments;
         int64_t screenId = [args[@"screenId"] longLongValue];
@@ -1330,6 +1435,7 @@ static void sync_settings_panel(void) {
         @"pressureMonitor": @(g_pressure_monitor),
         @"outline": @(g_outline_enabled),
         @"infiniteCanvas": @(g_infinite_canvas),
+        @"gridSize": @(g_grid_size),
     }];
 }
 
@@ -1695,17 +1801,18 @@ static void rebuild_surface_from_strokes(void) {
         NSRect bounds = [self bounds];
         // 网格随镜头平移(无限画布):线网锚定画布坐标,pan 取模出视口起点。
         // pan=0 时与旧行为完全一致。
-        CGFloat gx0 = -fmod(g_pan_x, 40.0);
-        if (gx0 > 0) gx0 -= 40.0;
-        for (CGFloat gx = gx0; gx < bounds.size.width; gx += 40.0) {
+        CGFloat gs = g_grid_size;
+        CGFloat gx0 = -fmod(g_pan_x, gs);
+        if (gx0 > 0) gx0 -= gs;
+        for (CGFloat gx = gx0; gx < bounds.size.width; gx += gs) {
             CGContextMoveToPoint(ctx, gx, 0);
             CGContextAddLineToPoint(ctx, gx, bounds.size.height);
         }
         // 竖线画在表面坐标(y 向下),视图坐标(y 向上)锚点是 view_h + pan_y
         CGFloat view_h = bounds.size.height;
-        CGFloat gy0 = fmod(view_h + g_pan_y, 40.0);
-        if (gy0 < 0) gy0 += 40.0;
-        for (CGFloat gy = gy0; gy < bounds.size.height; gy += 40.0) {
+        CGFloat gy0 = fmod(view_h + g_pan_y, gs);
+        if (gy0 < 0) gy0 += gs;
+        for (CGFloat gy = gy0; gy < bounds.size.height; gy += gs) {
             CGContextMoveToPoint(ctx, 0, gy);
             CGContextAddLineToPoint(ctx, bounds.size.width, gy);
         }
@@ -2711,6 +2818,14 @@ void glaspen2_run(void) {
 
         // Restore grid setting
         g_show_grid = glaspen2_load_bool_setting("grid") != 0;
+        {
+            char *vgs = glaspen2_load_string_setting("grid_size");
+            if (vgs) {
+                double gs = atof(vgs);
+                if (gs >= 10 && gs <= 200) g_grid_size = gs;
+                glaspen2_free_c_string(vgs);
+            }
+        }
         g_grid_follow_strokes = glaspen2_load_bool_setting("grid_follow_strokes") != 0;
 
         // Restore canvas mode and load the matching independent store.

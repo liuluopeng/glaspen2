@@ -31,6 +31,12 @@ abstract class _SettingsBridge {
   Future<void> navigateToPage(int screenId);
   /// 触发一个快捷键动作(与 Ctrl+Alt+<key> 等价)
   Future<void> triggerHotkey(String key);
+  /// 无限画布总览:返回 {png: Uint8List, rect: [x,y,w,h]};空画布返回 {}
+  Future<Map<dynamic, dynamic>> canvasOverview({int w = 1024, int h = 768});
+  /// 镜头回到原点 + 100%,返回新的总览载荷
+  Future<Map<dynamic, dynamic>> canvasHome();
+  /// 镜头居中到内容包围盒,返回新的总览载荷
+  Future<Map<dynamic, dynamic>> canvasCenter();
   void dispose();
 }
 
@@ -81,6 +87,21 @@ class _MethodChannelBridge extends _SettingsBridge {
   @override
   Future<void> triggerHotkey(String key) async {
     await _channel.invokeMethod('hotkey', {'key': key});
+  }
+
+  @override
+  Future<Map<dynamic, dynamic>> canvasOverview({int w = 1024, int h = 768}) async {
+    return await _channel.invokeMethod('canvasOverview', {'w': w, 'h': h}) ?? {};
+  }
+
+  @override
+  Future<Map<dynamic, dynamic>> canvasHome() async {
+    return await _channel.invokeMethod('canvasOverview', {'home': true}) ?? {};
+  }
+
+  @override
+  Future<Map<dynamic, dynamic>> canvasCenter() async {
+    return await _channel.invokeMethod('canvasOverview', {'center': true}) ?? {};
   }
 
   @override
@@ -312,6 +333,15 @@ class _NamedPipeBridge extends _SettingsBridge {
     _writeData(jsonEncode({'type': 'hotkey', 'key': key}) + '\n');
   }
 
+  @override
+  Future<Map<dynamic, dynamic>> canvasOverview({int w = 1024, int h = 768}) async => {};
+
+  @override
+  Future<Map<dynamic, dynamic>> canvasHome() async => {};
+
+  @override
+  Future<Map<dynamic, dynamic>> canvasCenter() async => {};
+
   bool _writeData(String data) {
     if (!_connected || _handle == -1) return false;
     final bytes = utf8.encode(data);
@@ -460,6 +490,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _gridFollowStrokes = false;
   bool _outlineEnabled = false;
   bool _infiniteCanvas = false;
+  int _gridSizeValue = 40; // 网格大小(逻辑 px)
+  // 画布总览 tab
+  Uint8List? _canvasPng;
+  List<double>? _canvasRect;
+  bool _canvasLoading = false;
   bool _connected = false;
   Timer? _reloadTimer;
 
@@ -489,7 +524,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController =
+        TabController(length: Platform.isMacOS ? 3 : 2, vsync: this);
     _tabController.addListener(_onTabChanged);
     _bridge = createBridge();
     _bridge.onSettingsChanged(_onSettingsChanged);
@@ -510,6 +546,117 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     if (_tabController.index == 1 && _pages.isEmpty && !_pagesLoading) {
       _loadPages();
     }
+    if (_tabController.index == 2) {
+      _loadCanvasOverview();
+    }
+  }
+
+  /// 拉取无限画布总览(当前激活画布按内容包围盒适配 + 当前视口矩形)
+  Future<void> _loadCanvasOverview(
+      {Map<dynamic, dynamic>? action}) async {
+    if (_canvasLoading) return;
+    setState(() => _canvasLoading = true);
+    try {
+      final payload = action ?? await _bridge.canvasOverview();
+      if (!mounted) return;
+      setState(() {
+        _canvasPng = payload['png'] as Uint8List?;
+        final r = payload['rect'] as List<dynamic>?;
+        _canvasRect =
+            (r == null || r.length < 4) ? null : r.map((e) => (e as num).toDouble()).toList();
+        _canvasLoading = false;
+      });
+    } catch (e) {
+      debugPrint('[Canvas] overview error: $e');
+      if (mounted) setState(() => _canvasLoading = false);
+    }
+  }
+
+  Future<void> _canvasAction(String action) async {
+    setState(() => _canvasLoading = true);
+    try {
+      final payload = await (action == 'home'
+          ? _bridge.canvasHome()
+          : _bridge.canvasCenter());
+      if (!mounted) return;
+      setState(() {
+        _canvasPng = payload['png'] as Uint8List?;
+        final r = payload['rect'] as List<dynamic>?;
+        _canvasRect =
+            (r == null || r.length < 4) ? null : r.map((e) => (e as num).toDouble()).toList();
+        _canvasLoading = false;
+      });
+    } catch (e) {
+      debugPrint('[Canvas] $action error: $e');
+      if (mounted) setState(() => _canvasLoading = false);
+    }
+  }
+
+  /// 画布总览 tab(仅 macOS;展示当前激活画布与视口位置)
+  Widget _buildCanvasTab() {
+    final body = _canvasLoading
+        ? const Center(child: CircularProgressIndicator())
+        : (_canvasPng == null
+            ? const Center(
+                child: Text('空画布,先去涂鸦吧', style: TextStyle(fontSize: 14, color: Colors.grey)))
+            : InteractiveViewer(
+                maxScale: 8,
+                child: Center(
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    final image = Image.memory(_canvasPng!);
+                    final rect = _canvasRect;
+                    return Stack(children: [
+                      image,
+                      if (rect != null)
+                        Positioned(
+                          left: rect[0],
+                          top: rect[1],
+                          width: rect[2],
+                          height: rect[3],
+                          child: Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.red, width: 2),
+                            ),
+                          ),
+                        ),
+                    ]);
+                  }),
+                ),
+              ));
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(8),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _canvasLoading ? null : () => _canvasAction('home'),
+                icon: const Icon(Icons.home_outlined, size: 18),
+                label: const Text('回到原点', style: TextStyle(fontSize: 13)),
+              ),
+              OutlinedButton.icon(
+                onPressed: _canvasLoading ? null : () => _canvasAction('center'),
+                icon: const Icon(Icons.center_focus_strong, size: 18),
+                label: const Text('居中内容', style: TextStyle(fontSize: 13)),
+              ),
+              OutlinedButton.icon(
+                onPressed: _canvasLoading ? null : () => _loadCanvasOverview(),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('刷新', style: TextStyle(fontSize: 13)),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(child: body),
+        const Padding(
+          padding: EdgeInsets.all(6),
+          child: Text('红框 = 主屏当前视口 · 涂鸦后点刷新', style: TextStyle(fontSize: 11, color: Colors.grey)),
+        ),
+      ],
+    );
   }
 
   /// 服务器 JSON 里的开关是数字 0/1,统一转 bool
@@ -619,9 +766,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: '设置'),
-            Tab(text: '内容'),
+          tabs: [
+            const Tab(text: '设置'),
+            const Tab(text: '内容'),
+            if (Platform.isMacOS) const Tab(text: '画布'),
           ],
         ),
       ),
@@ -658,6 +806,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             ),
             // ── Content tab ──
             _buildContentTab(),
+            if (Platform.isMacOS) _buildCanvasTab(),
           ],
         ),
       );
@@ -1125,6 +1274,27 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               setState(() => _infiniteCanvas = v);
               _setSetting('infiniteCanvas', v);
             },
+          ),
+        if (Platform.isMacOS)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 8),
+            child: Row(
+              children: [
+                const Text('网格大小', style: TextStyle(fontSize: 15)),
+                const Spacer(),
+                SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  segments: [
+                    ...[20, 40, 80].map((v) => ButtonSegment(value: v, label: Text('$v'))),
+                  ],
+                  selected: {_gridSizeValue},
+                  onSelectionChanged: (s) {
+                    setState(() => _gridSizeValue = s.first);
+                    _setSetting('gridSize', s.first);
+                  },
+                ),
+              ],
+            ),
           ),
       ],
     );

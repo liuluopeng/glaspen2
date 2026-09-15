@@ -2236,6 +2236,87 @@ pub extern "C" fn glaspen2_free_rust_bytes(ptr: *mut c_uchar, len: c_int) {
     }
 }
 
+/// 无限画布总览:把当前 STROKES 按包围盒 [bx,by,bw,bh] 适配进
+/// out_w×out_h(居中、透明底),返回 PNG 字节,由 glaspen2_free_rust_bytes
+/// 释放。失败返回 NULL 且 *out_len = 0。
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_render_canvas_overview(
+    bx: c_double,
+    by: c_double,
+    bw: c_double,
+    bh: c_double,
+    out_w: c_int,
+    out_h: c_int,
+    out_len: *mut c_int,
+) -> *mut c_uchar {
+    if out_len.is_null() || out_w <= 0 || out_h <= 0 || bw <= 0.0 || bh <= 0.0 {
+        if !out_len.is_null() {
+            unsafe {
+                *out_len = 0;
+            }
+        }
+        return std::ptr::null_mut();
+    }
+    unsafe {
+        *out_len = 0;
+    }
+    let scale = (out_w as f64 / bw).min(out_h as f64 / bh);
+    let off_x = (out_w as f64 - bw * scale) * 0.5;
+    let off_y = (out_h as f64 - bh * scale) * 0.5;
+    let Some(r) = crate::cairo_dl::CairoRenderer::create_owned(out_w, out_h) else {
+        return std::ptr::null_mut();
+    };
+    r.clear();
+    let strokes = STROKES.lock().unwrap();
+    for s in strokes.iter() {
+        let pts = &s.points;
+        if pts.len() < 2 {
+            continue;
+        }
+        let color = (
+            (s.r.clamp(0.0, 1.0) * 255.0) as u8,
+            (s.g.clamp(0.0, 1.0) * 255.0) as u8,
+            (s.b.clamp(0.0, 1.0) * 255.0) as u8,
+        );
+        for i in 0..pts.len() {
+            let (x, y, w, _t) = pts[i];
+            let sx = ((x - bx) * scale + off_x) as f32;
+            let sy = ((y - by) * scale + off_y) as f32;
+            let sw = (w * scale).max(1.0) as f32;
+            if i == 0 {
+                r.fill_circle(sx, sy, sw * 0.5, color);
+            } else {
+                let (px, py, _pw, _pt) = pts[i - 1];
+                r.stroke_line(
+                    ((px - bx) * scale + off_x) as f32,
+                    ((py - by) * scale + off_y) as f32,
+                    sx,
+                    sy,
+                    sw,
+                    color,
+                );
+            }
+        }
+    }
+    drop(strokes);
+    r.flush();
+
+    let bits = r.bits();
+    let n = (out_w as usize) * (out_h as usize) * 4;
+    let rgba = unsafe { std::slice::from_raw_parts(bits, n).to_vec() };
+    let Some(png) = encode_png_rgba(&rgba, out_w as u32, out_h as u32) else {
+        return std::ptr::null_mut();
+    };
+    let len = png.len() as c_int;
+    let ptr = png.as_ptr() as *mut c_uchar;
+    std::mem::forget(png);
+    unsafe {
+        *out_len = len;
+    }
+    ptr
+}
+
 /// Encode RGBA pixel data as PNG bytes.
 fn encode_png_rgba(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
     use image::ImageEncoder;
