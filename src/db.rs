@@ -133,6 +133,37 @@ mod platform {
             .await
             .ok();
 
+        // 无限画布模式:独立存储,与翻页模式完全分开。
+        // 目前全局只有一个无限画布,故这两张表不再按页(screen_id)分组。
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS infinite_strokes (
+                id INTEGER PRIMARY KEY,
+                color_r REAL NOT NULL,
+                color_g REAL NOT NULL,
+                color_b REAL NOT NULL,
+                width_scale REAL NOT NULL DEFAULT 1.0,
+                created_at REAL NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await
+        .expect("Failed to create infinite_strokes table");
+
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS infinite_points (
+                stroke_id INTEGER NOT NULL REFERENCES infinite_strokes(id),
+                seq INTEGER NOT NULL,
+                x REAL NOT NULL,
+                y REAL NOT NULL,
+                width REAL NOT NULL,
+                t REAL NOT NULL DEFAULT 0.0,
+                PRIMARY KEY (stroke_id, seq)
+            )",
+        )
+        .execute(&pool)
+        .await
+        .expect("Failed to create infinite_points table");
+
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS user_settings (
                 key TEXT PRIMARY KEY,
@@ -148,20 +179,9 @@ mod platform {
             .await
             .ok();
 
-        // 无限画布模式:每页的镜头平移(视口左上角在画布坐标系中的位置)
-        // zoom ∈ (0,1],100% = 1:1,上限防"蚂蚁大小"的涂鸦
-        sqlx::query("ALTER TABLE screens ADD COLUMN pan_x REAL NOT NULL DEFAULT 0.0")
-            .execute(&pool)
-            .await
-            .ok();
-        sqlx::query("ALTER TABLE screens ADD COLUMN pan_y REAL NOT NULL DEFAULT 0.0")
-            .execute(&pool)
-            .await
-            .ok();
-        sqlx::query("ALTER TABLE screens ADD COLUMN zoom REAL NOT NULL DEFAULT 1.0")
-            .execute(&pool)
-            .await
-            .ok();
+        // 注:旧版本曾在 screens 上存 per-page 镜头(pan_x/pan_y/zoom)。
+        // 现在无限画布独立存储且全局只有一个画布,镜头改存 user_settings,
+        // 这几列不再读写(旧库中残留的列保持不动,无副作用)。
 
         apply_defaults(&pool).await;
 
@@ -204,18 +224,41 @@ mod platform {
     }
 
     /// Begin a stroke in the DB. Returns the new stroke id (0 on failure).
+    /// Routed by the current canvas kind: page mode writes to strokes (+ marks
+    /// the page edited); infinite mode writes to the single infinite canvas.
     pub async fn begin_stroke(r: f64, g: f64, b: f64, width_scale: f64) -> i64 {
         use crate::state;
         let pool = DB.get().expect("DB not initialized");
-        let screen_id = state::current_screen_id();
         let now = now_f64();
+        if state::canvas_kind() == state::CanvasKind::Infinite {
+            let stroke_id = sqlx::query_scalar::<_, i64>(
+                "INSERT INTO infinite_strokes (color_r, color_g, color_b, width_scale, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5) RETURNING id",
+            )
+            .bind(r)
+            .bind(g)
+            .bind(b)
+            .bind(width_scale)
+            .bind(now)
+            .fetch_optional(pool)
+            .await;
+            return match stroke_id {
+                Ok(Some(id)) => {
+                    state::begin_pending(id, state::CanvasKind::Infinite);
+                    id
+                }
+                _ => 0,
+            };
+        }
+
+        let screen_id = state::current_screen_id();
         let stroke_id = sqlx::query_scalar::<_, i64>(
             "INSERT INTO strokes (screen_id, color_r, color_g, color_b, width_scale, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id"
         ).bind(screen_id).bind(r).bind(g).bind(b).bind(width_scale).bind(now)
             .fetch_optional(pool).await;
         match stroke_id {
             Ok(Some(id)) => {
-                state::begin_pending(id);
+                state::begin_pending(id, state::CanvasKind::Page);
                 // Mark the canvas as edited — even if all strokes are later
                 // cleared/undone, the canvas counts as used.
                 sqlx::query("UPDATE screens SET edited = 1 WHERE id = ?1")
@@ -235,7 +278,7 @@ mod platform {
 
     async fn flush_pending() {
         use crate::state;
-        let (stroke_id, points) = match state::take_pending_bundle() {
+        let (stroke_id, kind, points) = match state::take_pending_bundle() {
             Some(b) => b,
             None => return,
         };
@@ -247,11 +290,26 @@ mod platform {
             Ok(t) => t,
             Err(_) => return,
         };
+        // Route by the kind recorded at stroke begin (NOT the current kind) so
+        // an async pen-up flush can't land in a mode the user just switched to.
+        let table = match kind {
+            state::CanvasKind::Infinite => "infinite_points",
+            state::CanvasKind::Page => "points",
+        };
+        let sql = format!(
+            "INSERT INTO {table} (stroke_id, seq, x, y, width, t) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+        );
         for (i, &(x, y, w, t)) in points.iter().enumerate() {
-            sqlx::query(
-                "INSERT INTO points (stroke_id, seq, x, y, width, t) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
-            ).bind(stroke_id).bind(i as i64).bind(x).bind(y).bind(w).bind(t)
-                .execute(&mut *tx).await.ok();
+            sqlx::query(&sql)
+                .bind(stroke_id)
+                .bind(i as i64)
+                .bind(x)
+                .bind(y)
+                .bind(w)
+                .bind(t)
+                .execute(&mut *tx)
+                .await
+                .ok();
         }
         tx.commit().await.ok();
     }
@@ -488,30 +546,120 @@ mod platform {
         ).bind(screen_id).fetch_optional(pool).await.ok()?
     }
 
-    /// 无限画布:保存一页的镜头变换(平移 + 缩放)
-    pub async fn set_screen_transform(screen_id: i64, pan_x: f64, pan_y: f64, zoom: f64) {
+    // ── 无限画布(独立存储,全局仅一个画布) ──
+
+    /// 读取整个无限画布的笔迹。
+    pub async fn load_infinite_strokes() -> Vec<StrokeData> {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return Vec::new(),
+        };
+        let rows: Vec<(i64, f64, f64, f64, f64)> = sqlx::query_as(
+            "SELECT id, color_r, color_g, color_b, width_scale FROM infinite_strokes ORDER BY id",
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+        if rows.is_empty() {
+            return Vec::new();
+        }
+        let pts: Vec<(i64, i64, f64, f64, f64, f64)> = sqlx::query_as(
+            "SELECT p.stroke_id, p.seq, p.x, p.y, p.width, p.t \
+             FROM infinite_points p ORDER BY p.stroke_id, p.seq",
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+        let strokes: Vec<StrokeData> = rows
+            .into_iter()
+            .map(|(id, r, g, b, ws)| StrokeData {
+                id,
+                r,
+                g,
+                b,
+                width_scale: ws,
+                points: Vec::new(),
+            })
+            .collect();
+        attach_points(strokes, pts)
+    }
+
+    pub async fn delete_infinite_stroke_by_id(stroke_id: i64) -> bool {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return false,
+        };
+        sqlx::query("DELETE FROM infinite_points WHERE stroke_id = ?1")
+            .bind(stroke_id)
+            .execute(pool)
+            .await
+            .ok();
+        let deleted = sqlx::query("DELETE FROM infinite_strokes WHERE id = ?1")
+            .bind(stroke_id)
+            .execute(pool)
+            .await
+            .ok();
+        deleted.is_some()
+    }
+
+    pub async fn delete_last_infinite_stroke() -> bool {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return false,
+        };
+        let stroke_id = match sqlx::query_scalar::<_, i64>(
+            "SELECT id FROM infinite_strokes ORDER BY id DESC LIMIT 1",
+        )
+        .fetch_optional(pool)
+        .await
+        {
+            Ok(Some(id)) => id,
+            _ => return false,
+        };
+        delete_infinite_stroke_by_id(stroke_id).await
+    }
+
+    pub async fn infinite_canvas_has_strokes() -> bool {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return false,
+        };
+        sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM infinite_strokes)")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0)
+            != 0
+    }
+
+    /// 清空无限画布的全部内容(不删画布本身,画布只有一个)。
+    pub async fn clear_infinite_canvas() {
         let pool = match DB.get() {
             Some(p) => p,
             None => return,
         };
-        sqlx::query("UPDATE screens SET pan_x = ?2, pan_y = ?3, zoom = ?4 WHERE id = ?1")
-            .bind(screen_id)
-            .bind(pan_x)
-            .bind(pan_y)
-            .bind(zoom)
+        sqlx::query("DELETE FROM infinite_points")
+            .execute(pool)
+            .await
+            .ok();
+        sqlx::query("DELETE FROM infinite_strokes")
             .execute(pool)
             .await
             .ok();
     }
 
-    /// 无限画布:读取一页的镜头变换(无记录时为原点 + 100%)
-    pub async fn get_screen_transform(screen_id: i64) -> Option<(f64, f64, f64)> {
-        let pool = DB.get()?;
-        sqlx::query_as::<_, (f64, f64, f64)>("SELECT pan_x, pan_y, zoom FROM screens WHERE id = ?1")
-            .bind(screen_id)
-            .fetch_optional(pool)
-            .await
-            .ok()?
+    /// 无限画布镜头变换(全局唯一,存 user_settings)。
+    pub async fn set_infinite_transform(pan_x: f64, pan_y: f64, zoom: f64) {
+        save_setting("infinite_pan_x", &format!("{pan_x:.6}")).await;
+        save_setting("infinite_pan_y", &format!("{pan_y:.6}")).await;
+        save_setting("infinite_zoom", &format!("{zoom:.6}")).await;
+    }
+
+    /// 无限画布镜头变换(未设置 → None,调用方用 0,0,1)。
+    pub async fn get_infinite_transform() -> Option<(f64, f64, f64)> {
+        let x = load_setting("infinite_pan_x").await?.parse::<f64>().ok()?;
+        let y = load_setting("infinite_pan_y").await?.parse::<f64>().ok()?;
+        let z = load_setting("infinite_zoom").await?.parse::<f64>().ok()?;
+        Some((x, y, z))
     }
 
     pub async fn save_setting(key: &str, value: &str) {

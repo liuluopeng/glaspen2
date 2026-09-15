@@ -81,6 +81,14 @@ pub extern "C" fn glaspen2_end_stroke() {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) -> c_int {
     runtime().block_on(db::end_stroke()); // flush before checking — must block
+    // 无限画布:全局只有一个画布,清空内容即可,不新建页。
+    // 返回 1 表示"清掉了东西",0 表示本来就是空的。
+    if state::canvas_kind() == state::CanvasKind::Infinite {
+        let had = runtime().block_on(db::infinite_canvas_has_strokes());
+        runtime().block_on(db::clear_infinite_canvas());
+        STROKES.lock().unwrap().clear();
+        return if had { 1 } else { 0 };
+    }
     let current = state::current_screen_id();
     let mut created = 0;
     if runtime().block_on(db::screen_edited(current)) {
@@ -143,27 +151,57 @@ pub extern "C" fn glaspen2_set_view_transform(pan_x: c_double, pan_y: c_double, 
     VIEW_ZOOM.store(zoom.to_bits(), Ordering::SeqCst);
 }
 
-/// 保存一页的镜头变换(无限画布)。
+/// 切换当前画布使用的存储:0 = 翻页模式,1 = 无限画布。
+/// 调用方负责在切换前后 flush 笔画并重新载入对应画布的笔迹。
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_set_screen_transform(
-    screen_id: i64,
+pub extern "C" fn glaspen2_set_canvas_kind(infinite: c_int) {
+    state::set_canvas_kind(if infinite != 0 {
+        state::CanvasKind::Infinite
+    } else {
+        state::CanvasKind::Page
+    });
+}
+
+/// 载入全局唯一的无限画布笔迹到 STROKES。返回笔迹数。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_load_infinite_strokes() -> c_int {
+    // 先把仍在排队的抬笔冲刷掉,避免与异步落点竞争。
+    runtime().block_on(db::end_stroke());
+    let data = runtime().block_on(db::load_infinite_strokes());
+    let count = data.len() as c_int;
+    let mut strokes = STROKES.lock().unwrap();
+    strokes.clear();
+    for s in data {
+        strokes.push(Stroke {
+            id: s.id,
+            r: s.r,
+            g: s.g,
+            b: s.b,
+            points: s.points,
+        });
+    }
+    count
+}
+
+/// 保存无限画布镜头变换(全局唯一,存 user_settings)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_set_infinite_transform(
     pan_x: c_double,
     pan_y: c_double,
     zoom: c_double,
 ) {
-    runtime().block_on(db::set_screen_transform(screen_id, pan_x, pan_y, zoom));
+    runtime().block_on(db::set_infinite_transform(pan_x, pan_y, zoom));
 }
 
-/// 读取一页的镜头变换(无限画布)。无记录时写回原点 + 100%。
+/// 读取无限画布镜头变换。未设置时回原点 + 100%。
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_get_screen_transform(
-    screen_id: i64,
+pub extern "C" fn glaspen2_get_infinite_transform(
     x: *mut c_double,
     y: *mut c_double,
     z: *mut c_double,
 ) {
     let (px, py, pz) = runtime()
-        .block_on(db::get_screen_transform(screen_id))
+        .block_on(db::get_infinite_transform())
         .unwrap_or((0.0, 0.0, 1.0));
     unsafe {
         *x = px;
@@ -260,7 +298,11 @@ pub extern "C" fn glaspen2_undo_last_stroke() -> c_int {
         strokes.pop().map(|s| s.id).unwrap_or(0)
     };
     if id > 0 {
-        runtime().block_on(db::delete_stroke_by_id(id));
+        if state::canvas_kind() == state::CanvasKind::Infinite {
+            runtime().block_on(db::delete_infinite_stroke_by_id(id));
+        } else {
+            runtime().block_on(db::delete_stroke_by_id(id));
+        }
     }
     STROKES.lock().unwrap().len() as c_int
 }
@@ -536,8 +578,11 @@ pub extern "C" fn glaspen2_get_current_screen_id() -> i64 {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_delete_screen(screen_id: i64) -> c_int {
     let ok = runtime().block_on(db::delete_screen(screen_id));
-    // If deleted screen was the current one, clear STROKES and navigate
-    if ok && screen_id == state::current_screen_id() {
+    // 只有翻页模式才把"被删的是当前页"反映到内存;无限画布与页存储无关。
+    if ok
+        && state::canvas_kind() == state::CanvasKind::Page
+        && screen_id == state::current_screen_id()
+    {
         state::set_current_screen_id(0);
         STROKES.lock().unwrap().clear();
     }
@@ -1900,7 +1945,11 @@ pub extern "C" fn glaspen2_get_stroke_point_time(idx: c_int, pidx: c_int) -> c_d
 /// The macOS equivalent glaspen2_undo_last_stroke returns remaining count.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_delete_last_stroke() {
-    runtime().block_on(db::delete_last_stroke());
+    if state::canvas_kind() == state::CanvasKind::Infinite {
+        runtime().block_on(db::delete_last_infinite_stroke());
+    } else {
+        runtime().block_on(db::delete_last_stroke());
+    }
     STROKES.lock().unwrap().pop();
 }
 
@@ -2196,16 +2245,14 @@ pub extern "C" fn glaspen2_chat_send_strokes(start_index: c_int, end_index: c_in
 
     let endpoint = glaspen_chat::endpoint_from_env();
     let send = async {
-        let mut sink = glaspen_chat::connect(&endpoint).await.map_err(|e| e.to_string())?;
+        let mut sink = glaspen_chat::connect(&endpoint)
+            .await
+            .map_err(|e| e.to_string())?;
         sink.append(&msgs).await
     };
     match runtime().block_on(send) {
         Ok(summary) => {
-            eprintln!(
-                "[chat] sent {} strokes (seq {}..)",
-                summary.accepted,
-                first
-            );
+            eprintln!("[chat] sent {} strokes (seq {}..)", summary.accepted, first);
             summary.accepted as c_int
         }
         Err(e) => {

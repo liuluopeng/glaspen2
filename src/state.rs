@@ -9,13 +9,38 @@ use std::sync::Mutex;
 
 static CURRENT_SCREEN_ID: Mutex<i64> = Mutex::new(0);
 
+// --- Canvas kind (storage backend) ---
+//
+// Page mode stores strokes under screens/strokes/points (one page at a time).
+// Infinite mode stores strokes in the single infinite_strokes/infinite_points
+// canvas, fully independent from the page store.
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CanvasKind {
+    Page,
+    Infinite,
+}
+
+static CANVAS_KIND: Mutex<CanvasKind> = Mutex::new(CanvasKind::Page);
+
+pub fn canvas_kind() -> CanvasKind {
+    *CANVAS_KIND.lock().unwrap()
+}
+
+pub fn set_canvas_kind(kind: CanvasKind) {
+    *CANVAS_KIND.lock().unwrap() = kind;
+}
+
 struct PendingStroke {
     id: Option<i64>,
+    /// Store this pending stroke belongs to (recorded at begin, used at flush).
+    kind: CanvasKind,
     points: Vec<(f64, f64, f64, f64)>, // (x, y, width, relative_time)
 }
 
 static PENDING: Mutex<PendingStroke> = Mutex::new(PendingStroke {
     id: None,
+    kind: CanvasKind::Page,
     points: Vec::new(),
 });
 
@@ -43,11 +68,14 @@ pub fn take_pending() -> Vec<(f64, f64, f64, f64)> {
     std::mem::take(&mut p.points)
 }
 
-/// Set the pending stroke id and clear the point buffer.
-/// Used by db::begin_stroke.
-pub fn begin_pending(stroke_id: i64) {
+/// Set the pending stroke id + the store it belongs to, and clear the buffer.
+/// Used by db::begin_stroke. Recording the kind here (rather than reading the
+/// current kind at flush time) keeps the async pen-up flush from writing a
+/// stroke's points into the table of a mode the user just switched to.
+pub fn begin_pending(stroke_id: i64, kind: CanvasKind) {
     let mut p = PENDING.lock().unwrap();
     p.id = Some(stroke_id);
+    p.kind = kind;
     p.points.clear();
 }
 
@@ -57,14 +85,15 @@ pub fn take_pending_stroke_id() -> Option<i64> {
     pending.id.take()
 }
 
-/// Atomically take (stroke id, points). Either both are consumed or neither
-/// is: begin_pending/buffer_point/this function share one lock, so a flush
-/// can never pair a stale id with a newer stroke's points.
-pub fn take_pending_bundle() -> Option<(i64, Vec<(f64, f64, f64, f64)>)> {
+/// Atomically take (stroke id, canvas kind, points). Either all are consumed or
+/// none are: begin_pending/buffer_point/this function share one lock, so a
+/// flush can never pair a stale id with a newer stroke's points.
+pub fn take_pending_bundle() -> Option<(i64, CanvasKind, Vec<(f64, f64, f64, f64)>)> {
     let mut p = PENDING.lock().unwrap();
     let id = p.id.take()?;
+    let kind = p.kind;
     let points = std::mem::take(&mut p.points);
-    Some((id, points))
+    Some((id, kind, points))
 }
 
 #[cfg(test)]
@@ -85,7 +114,7 @@ mod tests {
 
     #[test]
     fn test_buffer_roundtrip() {
-        begin_pending(123);
+        begin_pending(123, CanvasKind::Page);
         assert_eq!(take_pending_stroke_id(), Some(123));
 
         buffer_point(1.0, 2.0, 3.0, 0.5);
@@ -102,7 +131,7 @@ mod tests {
     #[test]
     fn test_begin_pending_clears_buffer() {
         buffer_point(1.0, 2.0, 3.0, 0.0);
-        begin_pending(456);
+        begin_pending(456, CanvasKind::Page);
         assert!(take_pending().is_empty());
         assert_eq!(take_pending_stroke_id(), Some(456));
     }
@@ -116,13 +145,26 @@ mod tests {
 
     #[test]
     fn test_take_bundle_atomic() {
-        begin_pending(789);
+        begin_pending(789, CanvasKind::Infinite);
         buffer_point(1.0, 1.0, 2.0, 0.0);
         buffer_point(2.0, 2.0, 3.0, 1.0);
-        let (id, pts) = take_pending_bundle().unwrap();
+        // The bundle carries the kind recorded at begin (survives a mode switch).
+        let (id, kind, pts) = take_pending_bundle().unwrap();
         assert_eq!(id, 789);
+        assert_eq!(kind, CanvasKind::Infinite);
         assert_eq!(pts.len(), 2);
         // Both consumed: second bundle take is None
         assert!(take_pending_bundle().is_none());
+    }
+
+    #[test]
+    fn test_canvas_kind_defaults_to_page_and_round_trips() {
+        // Fresh state is page mode; switching routes stroke storage.
+        set_canvas_kind(CanvasKind::Page);
+        assert_eq!(canvas_kind(), CanvasKind::Page);
+        set_canvas_kind(CanvasKind::Infinite);
+        assert_eq!(canvas_kind(), CanvasKind::Infinite);
+        set_canvas_kind(CanvasKind::Page); // reset for other tests
+        assert_eq!(canvas_kind(), CanvasKind::Page);
     }
 }

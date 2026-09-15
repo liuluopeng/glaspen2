@@ -95,8 +95,11 @@ extern char* glaspen2_page_info_json(long long screen_id);
 extern int glaspen2_chat_send_strokes(int start_index, int end_index);
 extern void glaspen2_set_stroke_outline(int enabled);
 extern void glaspen2_set_view_transform(double pan_x, double pan_y, double zoom);
-extern void glaspen2_set_screen_transform(long long screen_id, double pan_x, double pan_y, double zoom);
-extern void glaspen2_get_screen_transform(long long screen_id, double *pan_x, double *pan_y, double *zoom);
+// 画布存储切换 + 无限画布(独立存储,全局仅一个画布)
+extern void glaspen2_set_canvas_kind(int infinite);
+extern int glaspen2_load_infinite_strokes(void);
+extern void glaspen2_set_infinite_transform(double pan_x, double pan_y, double zoom);
+extern void glaspen2_get_infinite_transform(double *pan_x, double *pan_y, double *zoom);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
@@ -121,8 +124,9 @@ static void ensure_surface(NSView *view);
 static BOOL perform_hotkey(unsigned short keyCode);
 static void apply_outline(BOOL on);
 static void apply_infinite_canvas(BOOL on);
-static void canvas_pan_load(long target);
-static void canvas_pan_persist(void);
+static void canvas_infinite_load(void);
+static void canvas_infinite_persist(void);
+static void canvas_reset_lens(void);
 static NSWindow *g_window = nil;
 static NSVisualEffectView *g_glass_view = nil;
 
@@ -484,12 +488,18 @@ static void clear_screen(void) {
     cairo_destroy(cr);
     g_has_last = NO;
     int created = glaspen2_clear_strokes(g_screen_w, g_screen_h);
-    if (created && g_infinite_canvas) {
-        // 新画布从原点 + 100% 开始
-        g_pan_x = 0.0;
-        g_pan_y = 0.0;
-        g_zoom = 1.0;
-        glaspen2_set_view_transform(0.0, 0.0, 1.0);
+    if (g_infinite_canvas) {
+        // 无限画布只有一个画布:清空内容 + 复位镜头,不新建页。
+        if (created) {
+            canvas_reset_lens();
+            canvas_infinite_persist();
+        }
+        if (g_show_rainbow) draw_rainbow_indicator();
+        flush_to_layer();
+        show_notification(created
+            ? L(@"已清空无限画布", @"Infinite canvas cleared")
+            : L(@"无限画布本来就是空的", @"Infinite canvas is already empty"));
+        return;
     }
     if (g_show_rainbow) draw_rainbow_indicator();
     flush_to_layer();
@@ -1079,14 +1089,20 @@ static NSButton *g_glass_buttons[1];
         NSDictionary *args = call.arguments;
         int64_t screenId = [args[@"screenId"] longLongValue];
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            canvas_pan_persist();
             int ok = glaspen2_delete_screen(screenId);
+            if (g_infinite_canvas) {
+                // 无限画布独立存储,不受页存储的删除影响
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    rebuild_surface_from_strokes();
+                    result(@(ok));
+                });
+                return;
+            }
             if (ok && screenId == glaspen2_get_current_screen_id()) {
                 int64_t next = glaspen2_next_screen_id();
                 if (next == 0) next = glaspen2_prev_screen_id();
                 if (next != 0) {
                     glaspen2_load_strokes_for_screen(next);
-                    canvas_pan_load(next);
                     dispatch_async(dispatch_get_main_queue(), ^{
                         rebuild_surface_from_strokes();
                     });
@@ -1104,6 +1120,10 @@ static NSButton *g_glass_buttons[1];
         NSDictionary *args = call.arguments;
         int64_t screenId = [args[@"screenId"] longLongValue];
         if (screenId > 0) {
+            // 从无限画布跳转到某一页:先切回翻页模式(否则会把页笔迹塞进无限画布内存)
+            if (g_infinite_canvas) {
+                apply_infinite_canvas(NO);
+            }
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
                 glaspen2_load_strokes_for_screen(screenId);
                 dispatch_async(dispatch_get_main_queue(), ^{
@@ -1779,15 +1799,31 @@ static void rebuild_surface_from_strokes(void) {
 @end
 
 // 应用无限画布开关(菜单与 Flutter 设置面板共用的唯一入口)。
+// 两种模式各自独立存储:翻页模式用 screens/strokes,无限画布用
+// infinite_strokes(全局仅一个画布)。切换时冲刷当前笔画、切存储、载入对应笔迹。
 // 模式本身持久化在 user_settings(结构性的模式,与描边这类渲染设置不同)。
 static void apply_infinite_canvas(BOOL on) {
     if (g_infinite_canvas == on) return;
+    finish_active_stroke(); // 先把在写的笔画落库到"旧"存储
+    if (g_infinite_canvas) canvas_infinite_persist(); // 离开无限画布前存镜头
     g_infinite_canvas = on;
     glaspen2_save_bool_setting("infinite_canvas", on ? 1 : 0);
     NSMenuItem *item = [g_menu itemWithTag:668];
     if (item) [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
-    finish_active_stroke();
-    canvas_pan_load(on ? glaspen2_get_current_screen_id() : 0);
+    glaspen2_set_canvas_kind(on ? 1 : 0);
+    if (on) {
+        glaspen2_load_infinite_strokes();
+        canvas_infinite_load();
+    } else {
+        // 回到翻页模式:载入当前页;没有页就建一页
+        long cur = glaspen2_get_current_screen_id();
+        if (cur > 0) {
+            glaspen2_load_strokes_for_screen(cur);
+        } else {
+            glaspen2_clear_strokes(g_screen_w, g_screen_h);
+        }
+        canvas_reset_lens();
+    }
     rebuild_surface_from_strokes();
     show_notification(on
         ? L(@"无限画布已开启 (⌥⇧滚轮缩放 · ⌥⌘方向键平移)", @"Infinite canvas on (⌥⇧scroll zoom · ⌥⌘arrows pan)")
@@ -1810,7 +1846,7 @@ static void apply_outline(BOOL on) {
         : L(@"笔迹描边已关闭", @"Stroke outline off"));
 }
 
-// ── 无限画布:镜头平移 ──
+// ── 无限画布:镜头平移(全局唯一画布) ──
 
 // 把当前镜头变换应用到渲染 + 节流持久化(0.5s 一次)
 static void canvas_apply_transform(void) {
@@ -1820,8 +1856,7 @@ static void canvas_apply_transform(void) {
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
     if (now - last_save > 0.5) {
         last_save = now;
-        long cur = glaspen2_get_current_screen_id();
-        if (cur > 0) glaspen2_set_screen_transform(cur, g_pan_x, g_pan_y, g_zoom);
+        canvas_infinite_persist();
     }
 }
 
@@ -1858,26 +1893,28 @@ static void canvas_zoom_at(double factor, double vx, double vy) {
     canvas_apply_transform();
 }
 
-// 翻页前:把当前镜头写回当前页
-static void canvas_pan_persist(void) {
-    long cur = glaspen2_get_current_screen_id();
-    if (cur > 0) glaspen2_set_screen_transform(cur, g_pan_x, g_pan_y, g_zoom);
+// 保存唯一的无限画布镜头(仅无限模式;翻页模式无镜头)
+static void canvas_infinite_persist(void) {
+    if (!g_infinite_canvas) return;
+    glaspen2_set_infinite_transform(g_pan_x, g_pan_y, g_zoom);
 }
 
-// 切到目标页后:载入该页镜头(仅无限画布模式;翻页模式恒回原点 + 100%)
-static void canvas_pan_load(long target) {
-    if (!g_infinite_canvas || target <= 0) {
-        g_pan_x = 0.0;
-        g_pan_y = 0.0;
-        g_zoom = 1.0;
-    } else {
-        double px = 0.0, py = 0.0, pz = 1.0;
-        glaspen2_get_screen_transform(target, &px, &py, &pz);
-        g_pan_x = px;
-        g_pan_y = py;
-        g_zoom = (pz > 0.0) ? pz : 1.0;
-    }
+// 载入唯一的无限画布镜头 + 应用到渲染
+static void canvas_infinite_load(void) {
+    double px = 0.0, py = 0.0, pz = 1.0;
+    glaspen2_get_infinite_transform(&px, &py, &pz);
+    g_pan_x = px;
+    g_pan_y = py;
+    g_zoom = (pz > 0.0) ? pz : 1.0;
     glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
+}
+
+// 翻页模式:镜头恒为原点 + 100%
+static void canvas_reset_lens(void) {
+    g_pan_x = 0.0;
+    g_pan_y = 0.0;
+    g_zoom = 1.0;
+    glaspen2_set_view_transform(0.0, 0.0, 1.0);
 }
 
 // --- CGEventTap callback ---
@@ -1935,12 +1972,14 @@ static BOOL perform_hotkey(unsigned short kc) {
         return YES;
     } else if (kc == kVK_ANSI_V) { toggle_enabled(); return YES; }
     else if (kc == 0x26) { // J — previous page
+        if (g_infinite_canvas) {
+            show_notification(L(@"无限画布只有一个画布", @"Infinite canvas has a single canvas"));
+            return YES;
+        }
         finish_active_stroke();
-        canvas_pan_persist();
         long target = glaspen2_prev_screen_id();
         if (target > 0) {
             glaspen2_load_strokes_for_screen(target);
-            canvas_pan_load(target);
             glaspen2_smooth_loaded_strokes();
             replay_strokes_from_memory();
             peek_strokes(1.0); // show the page briefly in ethereal mode
@@ -1950,12 +1989,14 @@ static BOOL perform_hotkey(unsigned short kc) {
         }
         return YES;
     } else if (kc == 0x28) { // K — next page
+        if (g_infinite_canvas) {
+            show_notification(L(@"无限画布只有一个画布", @"Infinite canvas has a single canvas"));
+            return YES;
+        }
         finish_active_stroke();
-        canvas_pan_persist();
         long target = glaspen2_next_screen_id();
         if (target > 0) {
             glaspen2_load_strokes_for_screen(target);
-            canvas_pan_load(target);
             glaspen2_smooth_loaded_strokes();
             replay_strokes_from_memory();
             peek_strokes(1.0); // show the page briefly in ethereal mode
@@ -2640,22 +2681,19 @@ void glaspen2_run(void) {
         g_show_grid = glaspen2_load_bool_setting("grid") != 0;
         g_grid_follow_strokes = glaspen2_load_bool_setting("grid_follow_strokes") != 0;
 
-        // Restore infinite canvas mode + lens pan for the current page
+        // Restore canvas mode and load the matching independent store.
+        // 翻页/无限两套存储互不影响:无限画布全局仅一个。
         g_infinite_canvas = glaspen2_load_bool_setting("infinite_canvas") != 0;
         NSMenuItem *infiniteRestoreItem = [g_menu itemWithTag:668];
         if (infiniteRestoreItem) {
             [infiniteRestoreItem setState:g_infinite_canvas ? NSControlStateValueOn : NSControlStateValueOff];
         }
-        {
-            long cur = glaspen2_get_current_screen_id();
-            if (cur > 0) {
-                double px0 = 0.0, py0 = 0.0, pz0 = 1.0;
-                glaspen2_get_screen_transform(cur, &px0, &py0, &pz0);
-                g_pan_x = g_infinite_canvas ? px0 : 0.0;
-                g_pan_y = g_infinite_canvas ? py0 : 0.0;
-                g_zoom = (g_infinite_canvas && pz0 > 0.0) ? pz0 : 1.0;
-            }
-            glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
+        glaspen2_set_canvas_kind(g_infinite_canvas ? 1 : 0);
+        if (g_infinite_canvas) {
+            glaspen2_load_infinite_strokes();
+            canvas_infinite_load();
+        } else {
+            canvas_reset_lens();
         }
 
         // Canvas mode starts in 固定画布涂鸦模式; menu item shows the switch target
