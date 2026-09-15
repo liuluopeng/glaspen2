@@ -13,6 +13,11 @@ APP_BUNDLE="${APP_DIR}/${APP_NAME}.app"
 FW_DIR="${APP_BUNDLE}/Contents/Frameworks"
 BIN="${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 
+# macOS 27 的 lipo 拒绝 flutter 3.41 使用的双架构 -verify_arch 调用形式
+# ("requires exactly one input file"),shim 把它拆成逐架构校验
+# (见 scripts/lipo-shim/lipo)。必须先入 PATH,后续所有 lipo 调用都走 shim。
+export PATH="$PWD/scripts/lipo-shim:$PATH"
+
 echo "=== Building Flutter frameworks ==="
 cd flutter_settings && fvm flutter build macos-framework --release && cd ..
 
