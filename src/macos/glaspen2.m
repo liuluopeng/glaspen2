@@ -2759,21 +2759,16 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 if (g_msg_record_start < 0) msg_record_start();
                 return NULL;
             }
-            // ⌘⌃方向键:无限画布镜头平移(按住方向键靠系统自动重复连续移动)。
-            // 步长除以 zoom,保证屏幕上每次移动的视觉距离一致。
-            // 连续滚动(活页本模式,设置开启后):方向键滑动视图。
-            // 纵向跨过一整页时自动切换当前页(连续多页滚动);
-            // 开启期间方向键被全局占用,不用时请在设置里关闭。
+            // 连续滚动(活页本模式,设置开启后):↑/↓ 滑动视图,
+            // 纵向跨过一整页时自动切换当前页(连续多页滚动)。
+            // 活页本只允许上下移动(不做水平移动);开启期间上下键被全局占用。
             if (g_continuous_scroll && !g_infinite_canvas && g_enabled && !g_stroke_active
                 && type == kCGEventKeyDown
-                && kc >= kVK_LeftArrow && kc <= kVK_UpArrow) {
+                && (kc == kVK_UpArrow || kc == kVK_DownArrow)) {
                 double step = 120.0;
-                if (kc == kVK_LeftArrow)       g_page_off_x += step;
-                else if (kc == kVK_RightArrow) g_page_off_x -= step;
-                else if (kc == kVK_UpArrow)    g_page_off_y += step;
-                else if (kc == kVK_DownArrow)  g_page_off_y -= step;
-                if (g_page_off_x > g_screen_w) g_page_off_x = g_screen_w;
-                if (g_page_off_x < -g_screen_w) g_page_off_x = -g_screen_w;
+                if (kc == kVK_UpArrow) g_page_off_y += step;
+                else                   g_page_off_y -= step;
+                g_page_off_x = 0.0; // 活页本不做水平移动
                 while (g_page_off_y >= g_screen_h) {
                     long prev = glaspen2_prev_screen_id();
                     if (prev == 0) { g_page_off_y = 0; break; }
@@ -2799,19 +2794,17 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                (double)g_screen_w * 0.5, (double)g_screen_h * 0.5);
                 return NULL;
             }
-            // 活页本模式:⌥⌘↑/↓ = 翻到上一页/下一页(带滑动动效);
-            // ⌥⌘←/→ = 视图左右平移。每次按键翻一整页,不用连续按多次。
+            // 活页本模式:⌥⌘↑/↓ = 翻页(上下 = 书写/翻页方向):
+            // ↑ 上一页、↓ 下一页,每次翻一整页,带滑动动效。
+            // 活页本只允许上下移动:⌥⌘←/→ 不处理,交给系统。
             if (!g_infinite_canvas && kHasOptCmd && !g_stroke_active
                 && type == kCGEventKeyDown
-                && kc >= kVK_LeftArrow && kc <= kVK_UpArrow) {
+                && (kc == kVK_UpArrow || kc == kVK_DownArrow)) {
                 finish_active_stroke();
-                BOOL isFlip = (kc == kVK_UpArrow || kc == kVK_DownArrow);
-                page_flip_animation(isFlip ? (kc == kVK_UpArrow ? NO : YES)
-                                           : (kc == kVK_LeftArrow ? NO : YES));
-                long target = glaspen2_prev_screen_id();
-                if (kc == kVK_RightArrow || kc == kVK_DownArrow) {
-                    target = glaspen2_next_screen_id();
-                }
+                BOOL forward = (kc == kVK_DownArrow); // ↓ = 下一页, ↑ = 上一页
+                page_flip_animation(forward);
+                long target = forward ? glaspen2_next_screen_id()
+                                      : glaspen2_prev_screen_id();
                 if (target > 0) {
                     g_page_off_x = 0.0;
                     g_page_off_y = 0.0;
@@ -2819,8 +2812,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                     glaspen2_load_strokes_for_screen(target);
                     glaspen2_smooth_loaded_strokes();
                     replay_strokes_from_memory();
-                    page_flip_finish(isFlip ? (kc == kVK_UpArrow ? NO : YES)
-                                            : (kc == kVK_LeftArrow ? NO : YES));
+                    page_flip_finish(forward);
                     show_page_info(target);
                 } else {
                     // 没有目标页:动画不会播放,释放刚抓的快照(否则泄漏到下次翻页)
@@ -2829,32 +2821,8 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 }
                 return NULL;
             }
-            // 活页本模式:⌥⌘方向键滑动视图(跨页走页)
-            if (!g_infinite_canvas && kHasOptCmd && !g_stroke_active
-                && type == kCGEventKeyDown
-                && kc >= kVK_LeftArrow && kc <= kVK_UpArrow) {
-                double step = 120.0;
-                if (kc == kVK_LeftArrow)       g_page_off_x += step;
-                else if (kc == kVK_RightArrow) g_page_off_x -= step;
-                else if (kc == kVK_UpArrow)    g_page_off_y += step;
-                else if (kc == kVK_DownArrow)  g_page_off_y -= step;
-                if (g_page_off_x > g_screen_w) g_page_off_x = g_screen_w;
-                if (g_page_off_x < -g_screen_w) g_page_off_x = -g_screen_w;
-                while (g_page_off_y >= g_screen_h) {
-                    long prev = glaspen2_prev_screen_id();
-                    if (prev == 0) { g_page_off_y = 0; break; }
-                    glaspen2_load_strokes_for_screen(prev);
-                    g_page_off_y -= g_screen_h;
-                }
-                while (g_page_off_y < 0) {
-                    long next = glaspen2_next_screen_id();
-                    if (next == 0) { g_page_off_y = 0; break; }
-                    glaspen2_load_strokes_for_screen(next);
-                    g_page_off_y += g_screen_h;
-                }
-                page_scroll_apply();
-                return NULL;
-            }
+            // 自由画布(无限画布)模式:⌥⌘上下左右 = 镜头四向平移。
+            // (活页本模式只做上下移动,⌥⌘←/→ 在此不处理,见上。)
             if (g_infinite_canvas && kHasOptCmd && g_enabled && !g_stroke_active
                 && type == kCGEventKeyDown
                 && kc >= kVK_LeftArrow && kc <= kVK_UpArrow) {
