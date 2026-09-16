@@ -651,6 +651,17 @@ mod platform {
             .ok();
     }
 
+    /// 当前页高度(逻辑 px)
+    pub async fn page_height(screen_id: i64) -> Option<f64> {
+        let pool = DB.get()?;
+        sqlx::query_scalar::<_, i32>("SELECT screen_h FROM screens WHERE id = ?1")
+            .bind(screen_id)
+            .fetch_optional(pool)
+            .await
+            .ok()?
+            .map(|v| v as f64)
+    }
+
     /// 无限画布镜头变换(全局唯一,存 user_settings)。
     pub async fn set_infinite_transform(pan_x: f64, pan_y: f64, zoom: f64) {
         save_setting("infinite_pan_x", &format!("{pan_x:.6}")).await;

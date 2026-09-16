@@ -224,7 +224,79 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
     let (pan_x, pan_y, zoom) = view_transform();
     let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
     let strokes = STROKES.lock().unwrap();
-    for s in strokes.iter() {
+
+    // 主页笔迹
+    paint_strokes(&r, &strokes, pan_x, pan_y, zoom, scale, 0.0, outline);
+
+    // 活页本跨页显示:相邻两页的笔迹画在本页上下(视口滑出页界时可见)。
+    // 仅翻页模式(无限画布全局只有一张,无邻页)。
+    let cur = crate::state::current_screen_id();
+    if cur > 0 && crate::state::canvas_kind() != crate::state::CanvasKind::Infinite {
+        let neighbors = runtime().block_on(async {
+            let mut out: Vec<(f64, Vec<Stroke>)> = Vec::new();
+            for (dy, id) in [(-1.0f64, db::prev_screen(cur).await), (1.0f64, db::next_screen(cur).await)] {
+                if let Some(id) = id {
+                    let sts = db::strokes_for_screen(id).await;
+                    if !sts.is_empty() {
+                        out.push((
+                            dy,
+                            sts.into_iter()
+                                .map(|s| Stroke { id: s.id, r: s.r, g: s.g, b: s.b, points: s.points })
+                                .collect(),
+                        ));
+                    }
+                }
+            }
+            out
+        });
+        let stride = runtime()
+            .block_on(db::page_height(cur))
+            .unwrap_or(0.0);
+        for (dy, group) in &neighbors {
+            paint_strokes(&r, group, pan_x, pan_y, zoom, scale, *dy * stride, outline);
+        }
+        // 页号跟随:各页区域顶部标注页号(滑动跨页时知道自己在哪)
+        if let Some(info) = runtime().block_on(db::page_info(cur)) {
+            let cur_ord = info.2 as i64; // 全局位置(1 起)
+            let label = |shift: f64, text: String| {
+                r.draw_text(
+                    (20.0 - pan_x) * zoom * scale,
+                    (44.0 + shift - pan_y) * zoom * scale,
+                    22.0 * zoom * scale,
+                    (150, 146, 138),
+                    &text,
+                );
+            };
+            if !neighbors.is_empty() {
+                if let Some((_, prev)) = neighbors.iter().find(|(dy, _)| *dy < 0.0) {
+                    let n = format!("第 {} 页", cur_ord - 1);
+                    label(-stride + 60.0 * zoom * scale, n);
+                }
+            }
+            label(0.0, format!("第 {} 页", cur_ord));
+            if neighbors.iter().any(|(dy, _)| *dy > 0.0) {
+                let n = format!("第 {} 页", cur_ord + 1);
+                label(stride + 60.0 * zoom * scale, n);
+            }
+        }
+    }
+
+    drop(strokes);
+    r.flush();
+}
+
+/// 把一组笔迹画到 renderer 上(支持跨页 y 偏移与描边层)。
+fn paint_strokes(
+    r: &crate::cairo_dl::CairoRenderer,
+    strokes: &[Stroke],
+    pan_x: f64,
+    pan_y: f64,
+    zoom: f64,
+    scale: f64,
+    y_shift: f64,
+    outline: bool,
+) {
+    for s in strokes {
         let pts = &s.points;
         if pts.len() < 2 {
             continue;
@@ -242,7 +314,7 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
                 if i == 0 {
                     r.fill_circle(
                         ((x - pan_x) * zoom * scale) as f32,
-                        ((y - pan_y) * zoom * scale) as f32,
+                        ((y + y_shift - pan_y) * zoom * scale) as f32,
                         ((w * 0.5 + OUTLINE_PAD) * zoom * scale) as f32,
                         ol,
                     );
@@ -250,9 +322,9 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
                     let (px, py, _pw, _pt) = pts[i - 1];
                     r.stroke_line(
                         ((px - pan_x) * zoom * scale) as f32,
-                        ((py - pan_y) * zoom * scale) as f32,
+                        ((py + y_shift - pan_y) * zoom * scale) as f32,
                         ((x - pan_x) * zoom * scale) as f32,
-                        ((y - pan_y) * zoom * scale) as f32,
+                        ((y + y_shift - pan_y) * zoom * scale) as f32,
                         ((w + OUTLINE_PAD * 2.0) * zoom * scale) as f32,
                         ol,
                     );
@@ -265,7 +337,7 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
                 // 起点实心圆点(圆帽)
                 r.fill_circle(
                     ((x - pan_x) * zoom * scale) as f32,
-                    ((y - pan_y) * zoom * scale) as f32,
+                    ((y + y_shift - pan_y) * zoom * scale) as f32,
                     (w * 0.5 * zoom * scale) as f32,
                     color,
                 );
@@ -273,17 +345,15 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
                 let (px, py, _pw, _pt) = pts[i - 1];
                 r.stroke_line(
                     ((px - pan_x) * zoom * scale) as f32,
-                    ((py - pan_y) * zoom * scale) as f32,
+                    ((py + y_shift - pan_y) * zoom * scale) as f32,
                     ((x - pan_x) * zoom * scale) as f32,
-                    ((y - pan_y) * zoom * scale) as f32,
+                    ((y + y_shift - pan_y) * zoom * scale) as f32,
                     (w * zoom * scale) as f32,
                     color,
                 );
             }
         }
     }
-    drop(strokes);
-    r.flush();
 }
 
 /// Undo the last stroke: remove from both STROKES (memory) and DB.

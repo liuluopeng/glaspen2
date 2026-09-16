@@ -1861,10 +1861,10 @@ static void rebuild_surface_from_strokes(void) {
         long ky0 = (long)floor(pan_y / gs) - 1;
         long ky1 = (long)floor((pan_y + bounds.size.height / z) / gs) + 1;
 
-        // 分界线:每 4 格一条稍明显的主线(先次线后主线,主线盖在上面)
+        // 分界线:每 4 格一条更明显的主线(先次线后主线,主线盖在上面)
         for (int pass = 0; pass < 2; pass++) {
-            CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0.5 alpha:(pass == 0 ? 0.35 : 0.15)] CGColor]);
-            CGContextSetLineWidth(ctx, 0.5);
+            CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0.5 alpha:(pass == 0 ? 0.50 : 0.15)] CGColor]);
+            CGContextSetLineWidth(ctx, pass == 0 ? 0.75 : 0.5);
             for (long k = kx0; k <= kx1; k++) {
                 if ((k % 4 == 0) != (pass == 0)) continue;
                 CGFloat gx = (k * gs - pan_x) * z;

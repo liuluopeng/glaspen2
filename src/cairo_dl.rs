@@ -383,6 +383,57 @@ impl CairoRenderer {
     }
 
     /// 把 cairo 的绘制结果写回像素缓冲
+    /// 画一行文字(cairo toy 字体;页号标签等简单文本用,失败静默)。
+    pub fn draw_text(&self, x: f64, y: f64, size: f64, color: (u8, u8, u8), text: &str) {
+        unsafe {
+        let Some(lib) = load_library() else { return; };
+        let Ok(show_text) = lib.get::<unsafe extern "C" fn(
+            *mut std::ffi::c_void,
+            *const std::ffi::c_char,
+        )>(b"cairo_show_text") else {
+            return;
+        };
+        let Ok(select_font) = lib.get::<unsafe extern "C" fn(
+            *mut std::ffi::c_void,
+            *const std::ffi::c_char,
+            i32,
+            i32,
+        )>(b"cairo_select_font_face") else {
+            return;
+        };
+        let Ok(set_font_size) = lib.get::<unsafe extern "C" fn(
+            *mut std::ffi::c_void,
+            f64,
+        )>(b"cairo_set_font_size") else {
+            return;
+        };
+        let Ok(move_to) = lib.get::<unsafe extern "C" fn(
+            *mut std::ffi::c_void,
+            f64,
+            f64,
+        )>(b"cairo_move_to") else {
+            return;
+        };
+        let Ok(ctext) = std::ffi::CString::new(text) else {
+            return;
+        };
+        unsafe {
+            // 灰度转 rgba(透明底上要可见)
+            (self.set_source_rgba)(
+                self.cr,
+                color.0 as f64 / 255.0,
+                color.1 as f64 / 255.0,
+                color.2 as f64 / 255.0,
+                1.0,
+            );
+            select_font(self.cr, c"sans".as_ptr() as *const std::ffi::c_char, 0, 0);
+            set_font_size(self.cr, size);
+            move_to(self.cr, x, y);
+            show_text(self.cr, ctext.as_ptr());
+        }
+        }
+    }
+
     pub fn flush(&self) {
         unsafe {
             (self.flush)(self.surface);
