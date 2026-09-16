@@ -132,7 +132,11 @@ static void canvas_infinite_load(void);
 static void canvas_infinite_persist(void);
 static void page_flip_animation(BOOL forward);
 static void page_flip_finish(BOOL forward);
+static void event_tap_install(BOOL include_scroll);
+static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
+                                     CGEventRef event, void *refcon);
 static void draw_minimap(CGContextRef ctx, NSRect bounds);
+static void page_scroll_apply(void);
 static void canvas_reset_lens(void);
 static void canvas_apply_transform(void);
 static NSWindow *g_window = nil;
@@ -185,6 +189,10 @@ static BOOL g_eraser_mode = NO;
 // Created on pen-down, destroyed on pen-up. Avoids per-event malloc/free
 // of cairo_t and avoids the CTM scale setup cost.
 static cairo_t *g_active_cr = NULL;
+
+// 滚轮劫持修复:滚轮事件只在无限画布模式下进入 tap;
+// 翻页模式重装不含滚轮的 tap,系统滚轮零拦截。
+static BOOL g_tap_has_scroll = NO;
 
 // Dirty-rect tracking (logical points, view coordinate space — origin bottom-left).
 // Pen events union their affected area into g_dirty_rect and invalidate it
@@ -250,6 +258,10 @@ static int g_selected_width_index = 3; // default: 1.0x
 
 // 网格大小(逻辑 px),设置面板可调,默认 40
 static double g_grid_size = 40.0;
+
+// ── 连续滚动(活页本模式):方向键滑动视图,上下键可停在两页之间 ──
+static BOOL g_continuous_scroll = NO;
+static double g_page_off_x = 0.0, g_page_off_y = 0.0;
 
 // ── 页面缩略图条(minimap,翻页模式) ──
 static BOOL g_minimap_enabled = NO;
@@ -1643,7 +1655,7 @@ static void finish_active_stroke(void) {
         glaspen2_modeler_erase_finish();
         g_eraser_mode = NO;
     } else {
-        glaspen2_modeler_end(g_raw_last_x / g_zoom + g_pan_x, g_raw_last_y / g_zoom + g_pan_y, 0.0, ts, g_width_scale);
+        glaspen2_modeler_end(g_raw_last_x / g_zoom + g_page_off_x + g_pan_x, g_raw_last_y / g_zoom + g_page_off_y + g_pan_y, 0.0, ts, g_width_scale);
         glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
     }
     stroke_end();
@@ -1831,27 +1843,41 @@ static void rebuild_surface_from_strokes(void) {
     // When 网格跟随涂鸦 is on, it hides with the strokes in 飘渺画布涂鸦模式;
     // otherwise it stays visible regardless. Always sits behind the strokes.
     if (g_show_grid && (g_strokes_visible || !g_grid_follow_strokes)) {
-        CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0.5 alpha:0.15] CGColor]);
-        CGContextSetLineWidth(ctx, 0.5);
         NSRect bounds = [self bounds];
-        // 网格随镜头平移(无限画布):线网锚定画布坐标,pan 取模出视口起点。
-        // pan=0 时与旧行为完全一致。
-        CGFloat gs = g_grid_size;
-        CGFloat gx0 = -fmod(g_pan_x, gs);
-        if (gx0 > 0) gx0 -= gs;
-        for (CGFloat gx = gx0; gx < bounds.size.width; gx += gs) {
-            CGContextMoveToPoint(ctx, gx, 0);
-            CGContextAddLineToPoint(ctx, gx, bounds.size.height);
+        // 两种模式统一:视图 = (画布 − 镜头偏移) × 缩放。
+        // 无限画布:偏移=pan、缩放=zoom;活页本:偏移=−滚动偏移、缩放=1。
+        double pan_x = 0.0, pan_y = 0.0, z = 1.0;
+        if (g_infinite_canvas) {
+            pan_x = g_pan_x; pan_y = g_pan_y;
+            z = (g_zoom > 0.05) ? g_zoom : 0.05;
+        } else {
+            pan_x = -g_page_off_x; pan_y = -g_page_off_y;
         }
-        // 竖线画在表面坐标(y 向下),视图坐标(y 向上)锚点是 view_h + pan_y
-        CGFloat view_h = bounds.size.height;
-        CGFloat gy0 = fmod(view_h + g_pan_y, gs);
-        if (gy0 < 0) gy0 += gs;
-        for (CGFloat gy = gy0; gy < bounds.size.height; gy += gs) {
-            CGContextMoveToPoint(ctx, 0, gy);
-            CGContextAddLineToPoint(ctx, bounds.size.width, gy);
+        double gs = g_grid_size;
+
+        long kx0 = (long)floor(pan_x / gs) - 1;
+        long kx1 = (long)floor((pan_x + bounds.size.width / z) / gs) + 1;
+        long ky0 = (long)floor(pan_y / gs) - 1;
+        long ky1 = (long)floor((pan_y + bounds.size.height / z) / gs) + 1;
+
+        // 分界线:每 4 格一条稍明显的主线(先次线后主线,主线盖在上面)
+        for (int pass = 0; pass < 2; pass++) {
+            CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0.5 alpha:(pass == 0 ? 0.35 : 0.15)] CGColor]);
+            CGContextSetLineWidth(ctx, 0.5);
+            for (long k = kx0; k <= kx1; k++) {
+                if ((k % 4 == 0) != (pass == 0)) continue;
+                CGFloat gx = (k * gs - pan_x) * z;
+                CGContextMoveToPoint(ctx, gx, 0);
+                CGContextAddLineToPoint(ctx, gx, bounds.size.height);
+            }
+            for (long k = ky0; k <= ky1; k++) {
+                if ((k % 4 == 0) != (pass == 0)) continue;
+                CGFloat gy = bounds.size.height - ((k * gs - pan_y) * z);
+                CGContextMoveToPoint(ctx, 0, gy);
+                CGContextAddLineToPoint(ctx, bounds.size.width, gy);
+            }
+            CGContextStrokePath(ctx);
         }
-        CGContextStrokePath(ctx);
     }
 
     // Reuse the cached CGImage; it wraps the live cairo buffer, so it is
@@ -2038,6 +2064,12 @@ static void canvas_apply_transform(void) {
         last_save = now;
         canvas_infinite_persist();
     }
+}
+
+// 翻页模式连续滚动:把滚动偏移应用到渲染(视图 = 画布 + 偏移)。
+static void page_scroll_apply(void) {
+    glaspen2_set_view_transform(-g_page_off_x, -g_page_off_y, 1.0);
+    rebuild_surface_from_strokes();
 }
 
 // 滚轮平移镜头(⌘⌃滚轮,书写中忽略)
@@ -2253,6 +2285,8 @@ static void canvas_infinite_load(void) {
 
 // 翻页模式:镜头恒为原点 + 100%
 static void canvas_reset_lens(void) {
+    g_page_off_x = 0.0;
+    g_page_off_y = 0.0;
     g_pan_x = 0.0;
     g_pan_y = 0.0;
     g_zoom = 1.0;
@@ -2529,6 +2563,47 @@ static void msg_record_stop_async(void) {
     });
 }
 
+// (重)装 event tap:include_scroll 决定滚轮事件是否进入 tap。
+static void event_tap_install(BOOL include_scroll) {
+    if (g_event_tap) {
+        CFMachPortInvalidate(g_event_tap);
+        CFRelease(g_event_tap);
+        g_event_tap = NULL;
+    }
+    CGEventMask tapMask = CGEventMaskBit(kCGEventMouseMoved) |
+                          CGEventMaskBit(kCGEventLeftMouseDown) |
+                          CGEventMaskBit(kCGEventLeftMouseDragged) |
+                          CGEventMaskBit(kCGEventLeftMouseUp) |
+                          CGEventMaskBit(kCGEventRightMouseDown) |
+                          CGEventMaskBit(kCGEventRightMouseDragged) |
+                          CGEventMaskBit(kCGEventRightMouseUp) |
+                          CGEventMaskBit(kCGEventOtherMouseDown) |
+                          CGEventMaskBit(kCGEventOtherMouseDragged) |
+                          CGEventMaskBit(kCGEventOtherMouseUp) |
+                          CGEventMaskBit(kCGEventTabletProximity) |
+                          CGEventMaskBit(kCGEventTabletPointer) |
+                          CGEventMaskBit(kCGEventKeyDown) |
+                          CGEventMaskBit(kCGEventKeyUp);
+    if (include_scroll) {
+        tapMask |= CGEventMaskBit(kCGEventScrollWheel);
+    }
+    g_event_tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
+                                   kCGEventTapOptionDefault, tapMask,
+                                   event_tap_callback, NULL);
+    if (g_event_tap) {
+        CGEventTapEnable(g_event_tap, true);
+        CFRunLoopSourceRef source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, g_event_tap, 0);
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, kCFRunLoopCommonModes);
+        CFRelease(source);
+        g_tap_has_scroll = include_scroll;
+    }
+}
+
+// 按当前画布模式重装 event tap(无限=含滚轮,翻页=不含)。
+static void event_tap_reinstall(void) {
+    event_tap_install(g_infinite_canvas);
+}
+
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                       CGEventRef event, void *refcon) {
     if (g_perf_log && !g_perf_file) perf_log_begin();
@@ -2634,6 +2709,23 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             }
             // ⌘⌃方向键:无限画布镜头平移(按住方向键靠系统自动重复连续移动)。
             // 步长除以 zoom,保证屏幕上每次移动的视觉距离一致。
+            // 连续滚动(活页本模式,设置开启后):方向键滑动视图。
+            // 开启期间方向键被全局占用,不用时请在设置里关闭。
+            if (g_continuous_scroll && !g_infinite_canvas && g_enabled && !g_stroke_active
+                && type == kCGEventKeyDown
+                && kc >= kVK_LeftArrow && kc <= kVK_UpArrow) {
+                double step = 120.0;
+                if (kc == kVK_LeftArrow)       g_page_off_x += step;
+                else if (kc == kVK_RightArrow) g_page_off_x -= step;
+                else if (kc == kVK_UpArrow)    g_page_off_y += step;
+                else if (kc == kVK_DownArrow)  g_page_off_y -= step;
+                if (g_page_off_x > g_screen_w) g_page_off_x = g_screen_w;
+                if (g_page_off_x < -g_screen_w) g_page_off_x = -g_screen_w;
+                if (g_page_off_y > g_screen_h) g_page_off_y = g_screen_h;
+                if (g_page_off_y < -g_screen_h) g_page_off_y = -g_screen_h;
+                page_scroll_apply();
+                return NULL;
+            }
             BOOL kHasOptCmd = (mods & NSEventModifierFlagOption) && (mods & NSEventModifierFlagCommand);
             // ⌘⌃PageUp/PageDown:缩放(额外绑定,不依赖滚轮)
             if (g_infinite_canvas && hasCmdCtrl && g_enabled && !g_stroke_active
@@ -2818,7 +2910,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         }
         g_eraser_mode = (devType == NSEraserPointingDevice);
         NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f", px, py, pressure, ts);
-        glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px / g_zoom + g_pan_x, py / g_zoom + g_pan_y, pressure, ts, g_width_scale);
+        glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px / g_zoom + g_page_off_x + g_pan_x, py / g_zoom + g_page_off_y + g_pan_y, pressure, ts, g_width_scale);
         g_stroke_active = YES;
         g_cursor_visible = NO; // the ink is the feedback while drawing
         stroke_begin(); // reuse one cairo context for the whole stroke
@@ -2833,7 +2925,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         // If no DOWN event was seen (pen detection lag), auto-initialize
         if (!g_stroke_active) {
             g_eraser_mode = (devType == NSEraserPointingDevice);
-            glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px / g_zoom + g_pan_x, py / g_zoom + g_pan_y, pressure, ts, g_width_scale);
+            glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px / g_zoom + g_page_off_x + g_pan_x, py / g_zoom + g_page_off_y + g_pan_y, pressure, ts, g_width_scale);
             g_stroke_active = YES;
             g_cursor_visible = NO;
             stroke_begin();
@@ -2844,7 +2936,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             return NULL; // begin already recorded this point, don't feed duplicate to modeler
         }
         // Feed modeler, draw raw segment for responsive real-time feedback
-        glaspen2_modeler_move(px / g_zoom + g_pan_x, py / g_zoom + g_pan_y, pressure, ts, g_width_scale);
+        glaspen2_modeler_move(px / g_zoom + g_page_off_x + g_pan_x, py / g_zoom + g_page_off_y + g_pan_y, pressure, ts, g_width_scale);
         raw_draw_segment(px, py, raw_w);
         return NULL;
     }
@@ -2856,7 +2948,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 glaspen2_modeler_erase_finish();
                 g_eraser_mode = NO;
             } else {
-                glaspen2_modeler_end(px / g_zoom + g_pan_x, py / g_zoom + g_pan_y, pressure, ts, g_width_scale);
+                glaspen2_modeler_end(px / g_zoom + g_page_off_x + g_pan_x, py / g_zoom + g_page_off_y + g_pan_y, pressure, ts, g_width_scale);
                 glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
             }
 
@@ -3169,31 +3261,9 @@ void glaspen2_run(void) {
             usingBlock:^(NSNotification *note) { on_display_changed(); }];
 
         // CGEventTap: intercept events at system level before dispatch
-        CGEventMask tapMask = CGEventMaskBit(kCGEventMouseMoved) |
-                              CGEventMaskBit(kCGEventLeftMouseDown) |
-                              CGEventMaskBit(kCGEventLeftMouseDragged) |
-                              CGEventMaskBit(kCGEventLeftMouseUp) |
-                              CGEventMaskBit(kCGEventRightMouseDown) |
-                              CGEventMaskBit(kCGEventRightMouseDragged) |
-                              CGEventMaskBit(kCGEventRightMouseUp) |
-                              CGEventMaskBit(kCGEventOtherMouseDown) |
-                              CGEventMaskBit(kCGEventOtherMouseDragged) |
-                              CGEventMaskBit(kCGEventOtherMouseUp) |
-                              CGEventMaskBit(kCGEventTabletProximity) |
-                              CGEventMaskBit(kCGEventTabletPointer) |
-                              CGEventMaskBit(kCGEventKeyDown) |
-                              CGEventMaskBit(kCGEventKeyUp) |
-                              CGEventMaskBit(kCGEventScrollWheel);
-
-        g_event_tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
-                                       kCGEventTapOptionDefault, tapMask,
-                                       event_tap_callback, NULL);
+        event_tap_reinstall();
 
         if (g_event_tap) {
-            CFRunLoopSourceRef source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, g_event_tap, 0);
-            CFRunLoopAddSource(CFRunLoopGetMain(), source, kCFRunLoopCommonModes);
-            CGEventTapEnable(g_event_tap, true);
-            CFRelease(source);
             NSLog(@"[glaspen2] CGEventTap created OK, enabled=%d", CGEventTapIsEnabled(g_event_tap));
         } else {
             NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
