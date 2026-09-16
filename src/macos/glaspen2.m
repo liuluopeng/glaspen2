@@ -139,6 +139,7 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds);
 static void page_scroll_apply(void);
 static void canvas_reset_lens(void);
 static void canvas_apply_transform(void);
+static void event_tap_reinstall(void);
 static NSWindow *g_window = nil;
 static NSVisualEffectView *g_glass_view = nil;
 
@@ -2028,6 +2029,8 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
         canvas_reset_lens();
     }
     rebuild_surface_from_strokes();
+    // 滚轮劫持的根治:翻页模式重装不含滚轮的 tap,系统滚轮零拦截
+    event_tap_reinstall();
     sync_settings_panel(); // Flutter 面板的开关/圆点同步
     if (notify) {
         show_notification(on
@@ -2106,7 +2109,7 @@ static void canvas_zoom_at(double factor, double vx, double vy) {
 }
 
 // 保存唯一的无限画布镜头(仅无限模式;翻页模式无镜头)
-// 页面缩略图条(minimap,仅翻页模式):屏幕上方展示附近 10 页。
+// 页面缩略图条(minimap,仅翻页模式):屏幕右缘竖向展示附近 10 页(VS Code 风)。
 // 缩略图后台按页渲染并缓存;当前页红框高亮,其余灰框。
 static void draw_minimap(CGContextRef ctx, NSRect bounds) {
     if (g_infinite_canvas) return; // 仅翻页模式
@@ -2137,16 +2140,17 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
     NSUInteger n = end - start;
     if (n == 0) return;
 
-    const CGFloat tw = 92, th = 58, gap = 6;
-    CGFloat total = n * tw + (n - 1) * gap;
-    CGFloat x0 = (bounds.size.width - total) / 2.0;
-    CGFloat y0 = bounds.size.height - th - 10; // 非翻转视图:顶部
+    const CGFloat tw = 64, th = 40, gap = 4;
+    CGFloat x0 = bounds.size.width - tw - 8;   // 右缘
+    CGFloat y_top = bounds.size.height - 8;    // 非翻转视图:y 大 = 屏幕顶部
 
     for (NSUInteger i = start; i < end; i++) {
         NSNumber *pid = g_minimap_ids[i];
         BOOL isCur = ([pid longLongValue] == cur);
-        CGFloat x = x0 + (i - start) * (tw + gap);
-        NSRect rect = NSMakeRect(x, y0, tw, th);
+        NSUInteger row = i - start;
+        CGFloat x = x0;
+        CGFloat y = y_top - th - row * (th + gap);
+        NSRect rect = NSMakeRect(x, y, tw, th);
 
         NSImage *img = [g_minimap_thumbs objectForKey:pid];
         if (!img && ![g_minimap_inflight containsObject:pid]) {

@@ -957,6 +957,20 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+          child: _buildSection('页面缩略图', SwitchListTile(
+            title: const Text('显示附近 10 页', style: TextStyle(fontSize: 14)),
+            subtitle: const Text('屏幕右缘竖向 minimap · 仅活页本(翻页)模式', style: TextStyle(fontSize: 12)),
+            value: _minimapEnabled,
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            onChanged: (v) {
+              setState(() => _minimapEnabled = v);
+              _setSetting('minimap', v);
+            },
+          )),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
           child: _buildSection('Export', _buildExportButtons()),
         ),
         // Page grid
@@ -1448,18 +1462,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             _setSetting('outline', v);
           },
         ),
-        if (Platform.isMacOS && !_infiniteCanvas)
-          SwitchListTile(
-            title: const Text('页面缩略图', style: TextStyle(fontSize: 15)),
-            subtitle: const Text('屏幕上方显示附近 10 页的 minimap(翻页模式)', style: TextStyle(fontSize: 12)),
-            value: _minimapEnabled,
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (v) {
-              setState(() => _minimapEnabled = v);
-              _setSetting('minimap', v);
-            },
-          ),
+        // 页面缩略图(minimap)开关已移到「活页本」tab
         // 无限画布模式由 tab 承载:活页本=翻页模式,自由涂鸦=无限画布
         // (选中 tab 的红线下方,模式 tab 上有一颗小圆点)
 
