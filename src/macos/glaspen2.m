@@ -2235,19 +2235,28 @@ static BOOL g_flip_forward = YES;
 
 static CGImageRef page_flip_capture(void) {
     if (!g_surface || !g_surface_cgimage) return NULL;
-    double w_px = cairo_image_surface_get_width(g_surface);
-    double h_px = cairo_image_surface_get_height(g_surface);
+    size_t w_px = (size_t)cairo_image_surface_get_width(g_surface);
+    size_t h_px = (size_t)cairo_image_surface_get_height(g_surface);
+    if (w_px == 0 || h_px == 0) return NULL;
     CGImageRef snap = CGImageCreateWithImageInRect(g_surface_cgimage, CGRectMake(0, 0, w_px, h_px));
     if (!snap) return NULL;
     // 深拷贝像素:底层缓冲马上会被新页重绘,共享数据会跟着变
     CGDataProviderRef prov = CGImageGetDataProvider(snap);
     CFDataRef data = CGDataProviderCopyData(prov);
+    if (!data) {
+        CGImageRelease(snap);
+        return NULL;
+    }
     CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    // 必须用 CreateWithCFData(它会 retain 住 data)。此前用
+    // CreateWithData(..., NULL) 不 retain,随后 CFRelease(data) 就留下悬垂
+    // 像素指针 —— 第一次翻页侥幸,连续翻页时内存被复用即崩溃。
+    CGDataProviderRef frozen_prov = CGDataProviderCreateWithCFData(data);
     CGImageRef frozen = CGImageCreate(w_px, h_px, 8, 32,
                                       CGImageGetBytesPerRow(snap), cs,
                                       CGImageGetBitmapInfo(snap),
-                                      CGDataProviderCreateWithData(NULL, CFDataGetBytePtr(data), CFDataGetLength(data), NULL),
-                                      NULL, false, kCGRenderingIntentDefault);
+                                      frozen_prov, NULL, false, kCGRenderingIntentDefault);
+    CGDataProviderRelease(frozen_prov);
     CGColorSpaceRelease(cs);
     CFRelease(data);
     CGImageRelease(snap);
@@ -2268,12 +2277,16 @@ static void page_flip_finish(BOOL forward) {
         if (g_flip_old) { CGImageRelease(g_flip_old); g_flip_old = NULL; }
         return;
     }
+    // 把所有权取到局部变量:完成回调是异步的,期间若再次翻页,全局会被改写
+    // (旧代码在回调里读 g_flip_old,而它已被置 NULL → CGImageRelease(NULL))。
+    CGImageRef old_snap = g_flip_old;
+    g_flip_old = NULL;
     CGImageRef new_snap = page_flip_capture();
-    if (!new_snap) { CGImageRelease(g_flip_old); g_flip_old = NULL; return; }
+    if (!new_snap) { CGImageRelease(old_snap); return; }
 
     NSRect bounds = [g_draw_view bounds];
     NSImageView *oldView = [[NSImageView alloc] initWithFrame:bounds];
-    oldView.image = [[NSImage alloc] initWithCGImage:g_flip_old size:NSMakeSize(g_screen_w, g_screen_h)];
+    oldView.image = [[NSImage alloc] initWithCGImage:old_snap size:NSMakeSize(g_screen_w, g_screen_h)];
     NSImageView *newView = [[NSImageView alloc] initWithFrame:bounds];
     newView.image = [[NSImage alloc] initWithCGImage:new_snap size:NSMakeSize(g_screen_w, g_screen_h)];
     [g_draw_view addSubview:oldView positioned:NSWindowAbove relativeTo:nil];
@@ -2295,13 +2308,12 @@ static void page_flip_finish(BOOL forward) {
     [NSAnimationContext currentContext].completionHandler = ^(void) {
         [oldView removeFromSuperview];
         [newView removeFromSuperview];
-        CGImageRelease(g_flip_old);
+        CGImageRelease(old_snap);
         CGImageRelease(new_snap);
     };
     [[oldView animator] setFrame:offOld];
     [[newView animator] setFrame:bounds];
     [NSAnimationContext endGrouping];
-    g_flip_old = NULL;
 }
 
 static void canvas_infinite_persist(void) {
@@ -2811,6 +2823,8 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                             : (kc == kVK_LeftArrow ? NO : YES));
                     show_page_info(target);
                 } else {
+                    // 没有目标页:动画不会播放,释放刚抓的快照(否则泄漏到下次翻页)
+                    if (g_flip_old) { CGImageRelease(g_flip_old); g_flip_old = NULL; }
                     show_notification(L(@"没有更多页了", @"No more pages"));
                 }
                 return NULL;
