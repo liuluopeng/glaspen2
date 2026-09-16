@@ -2750,6 +2750,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             // ⌘⌃方向键:无限画布镜头平移(按住方向键靠系统自动重复连续移动)。
             // 步长除以 zoom,保证屏幕上每次移动的视觉距离一致。
             // 连续滚动(活页本模式,设置开启后):方向键滑动视图。
+            // 纵向跨过一整页时自动切换当前页(连续多页滚动);
             // 开启期间方向键被全局占用,不用时请在设置里关闭。
             if (g_continuous_scroll && !g_infinite_canvas && g_enabled && !g_stroke_active
                 && type == kCGEventKeyDown
@@ -2761,8 +2762,18 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 else if (kc == kVK_DownArrow)  g_page_off_y -= step;
                 if (g_page_off_x > g_screen_w) g_page_off_x = g_screen_w;
                 if (g_page_off_x < -g_screen_w) g_page_off_x = -g_screen_w;
-                if (g_page_off_y > g_screen_h) g_page_off_y = g_screen_h;
-                if (g_page_off_y < -g_screen_h) g_page_off_y = -g_screen_h;
+                while (g_page_off_y >= g_screen_h) {
+                    long prev = glaspen2_prev_screen_id();
+                    if (prev == 0) { g_page_off_y = 0; break; }
+                    glaspen2_load_strokes_for_screen(prev);
+                    g_page_off_y -= g_screen_h;
+                }
+                while (g_page_off_y < 0) {
+                    long next = glaspen2_next_screen_id();
+                    if (next == 0) { g_page_off_y = 0; break; }
+                    glaspen2_load_strokes_for_screen(next);
+                    g_page_off_y += g_screen_h;
+                }
                 page_scroll_apply();
                 return NULL;
             }
@@ -2789,6 +2800,32 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 if (g_page_off_x < -g_screen_w) g_page_off_x = -g_screen_w;
                 if (g_page_off_y > g_screen_h) g_page_off_y = g_screen_h;
                 if (g_page_off_y < -g_screen_h) g_page_off_y = -g_screen_h;
+                page_scroll_apply();
+                return NULL;
+            }
+            // 活页本模式:⌥⌘方向键滑动视图(跨页走页)
+            if (!g_infinite_canvas && kHasOptCmd && !g_stroke_active
+                && type == kCGEventKeyDown
+                && kc >= kVK_LeftArrow && kc <= kVK_UpArrow) {
+                double step = 120.0;
+                if (kc == kVK_LeftArrow)       g_page_off_x += step;
+                else if (kc == kVK_RightArrow) g_page_off_x -= step;
+                else if (kc == kVK_UpArrow)    g_page_off_y += step;
+                else if (kc == kVK_DownArrow)  g_page_off_y -= step;
+                if (g_page_off_x > g_screen_w) g_page_off_x = g_screen_w;
+                if (g_page_off_x < -g_screen_w) g_page_off_x = -g_screen_w;
+                while (g_page_off_y >= g_screen_h) {
+                    long prev = glaspen2_prev_screen_id();
+                    if (prev == 0) { g_page_off_y = 0; break; }
+                    glaspen2_load_strokes_for_screen(prev);
+                    g_page_off_y -= g_screen_h;
+                }
+                while (g_page_off_y < 0) {
+                    long next = glaspen2_next_screen_id();
+                    if (next == 0) { g_page_off_y = 0; break; }
+                    glaspen2_load_strokes_for_screen(next);
+                    g_page_off_y += g_screen_h;
+                }
                 page_scroll_apply();
                 return NULL;
             }
