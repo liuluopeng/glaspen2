@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ffi';
+import 'dart:ffi' hide Size;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -436,6 +436,85 @@ class _PageInfo {
   }
 }
 
+// ── 纸墨主题 ──
+const _paperBg = Color(0xFFF3EEE3);   // 暖纸底
+const _paperCard = Color(0xFFFBF8F1); // 区块卡纸面
+const _ink = Color(0xFF2C2A26);       // 墨色文字
+const _inkFaint = Color(0xFF8A857A);  // 淡墨(次要)
+const _penRed = Color(0xFFC4353F);    // 笔锋红(强调色)
+const _paperLine = Color(0xFFE0D9C8); // 分隔/描边
+
+ThemeData _buildPaperTheme() {
+  final scheme = ColorScheme.light(
+    primary: _penRed,
+    onPrimary: Colors.white,
+    secondary: const Color(0xFF0070BD),
+    surface: _paperCard,
+    onSurface: _ink,
+    surfaceContainerHighest: _paperBg,
+    outline: const Color(0xFFD8D2C4),
+    outlineVariant: const Color(0xFFE4DECF),
+  );
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: Colors.transparent,
+    fontFamily: 'LXGWWenKaiMono',
+    textTheme: ThemeData(brightness: Brightness.light)
+        .textTheme
+        .apply(bodyColor: _ink, displayColor: _ink),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: _paperBg,
+      foregroundColor: _ink,
+      elevation: 0,
+      centerTitle: true,
+      titleTextStyle: TextStyle(
+          fontFamily: 'LXGWWenKaiMono',
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: _ink),
+    ),
+    tabBarTheme: const TabBarThemeData(
+      labelColor: _ink,
+      unselectedLabelColor: _inkFaint,
+      indicatorColor: _penRed,
+      dividerColor: _paperLine,
+    ),
+    dividerTheme: const DividerThemeData(color: _paperLine),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? Colors.white : const Color(0xFFB9B2A2)),
+      trackColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? _penRed : const Color(0xFFD8D2C4)),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: _ink,
+        side: const BorderSide(color: Color(0xFFD8D2C4)),
+        backgroundColor: _paperCard,
+      ),
+    ),
+  );
+}
+
+/// 方格手账纸的点阵背景
+class _PaperDotsPainter extends CustomPainter {
+  const _PaperDotsPainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = const Color(0x1A2C2A26);
+    const gap = 24.0;
+    for (double y = gap; y < size.height; y += gap) {
+      for (double x = gap; x < size.width; x += gap) {
+        canvas.drawCircle(Offset(x, y), 1.0, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 // ── App ──
 
 class GlaspenSettingsApp extends StatelessWidget {
@@ -451,22 +530,24 @@ class GlaspenSettingsApp extends StatelessWidget {
       // (the OS display scaling handles it).
       builder: (context, child) {
         final s = Platform.isMacOS ? 1.4 : 1.0;
-        if (s == 1.0) return child!;
-        return Transform.scale(
-          scale: s,
-          child: FractionallySizedBox(
-            widthFactor: 1 / s,
-            heightFactor: 1 / s,
-            child: child,
-          ),
+        Widget w = child!;
+        if (s != 1.0) {
+          w = Transform.scale(
+            scale: s,
+            child: FractionallySizedBox(
+              widthFactor: 1 / s,
+              heightFactor: 1 / s,
+              child: w,
+            ),
+          );
+        }
+        // 纸底 + 点阵(Scaffold 背景透明,点阵从底层透出)
+        return Container(
+          color: _paperBg,
+          child: CustomPaint(painter: const _PaperDotsPainter(), child: w),
         );
       },
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.light,
-        colorSchemeSeed: Colors.blueGrey,
-        fontFamily: 'LXGWWenKaiMono',
-      ),
+      theme: _buildPaperTheme(),
       home: const SettingsPage(),
     );
   }
@@ -948,14 +1029,27 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   Widget _buildSection(String title, Widget child) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-        const SizedBox(height: 8),
-        child,
-      ],
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: BoxDecoration(
+        color: _paperCard,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _paperLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(width: 3, height: 14, color: _penRed,
+                margin: const EdgeInsets.only(right: 8)),
+            Text(title,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 15, color: _ink)),
+          ]),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
     );
   }
 
