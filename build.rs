@@ -23,9 +23,17 @@ fn main() {
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let flutter_dir = format!("{}/flutter_settings", manifest_dir);
 
+        // macOS 27 lipo rejects the multi-arch `-verify_arch a b` form that
+        // Flutter's macOS build validation uses; scripts/lipo-shim/lipo splits
+        // it into per-arch checks. Must be on PATH or the framework build fails
+        // (and this match would silently swallow it, shipping stale Dart).
+        let lipo_shim = format!("{}/scripts/lipo-shim", manifest_dir);
+        let path_env = std::env::var("PATH").unwrap_or_default();
+
         let status = std::process::Command::new("fvm")
-            .args(["flutter", "build", "macos-framework"])
+            .args(["flutter", "build", "macos-framework", "--release"])
             .current_dir(&flutter_dir)
+            .env("PATH", format!("{lipo_shim}:{path_env}"))
             .status();
         match status {
             Ok(s) if s.success() => {}

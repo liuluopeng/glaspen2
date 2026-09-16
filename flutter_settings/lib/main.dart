@@ -715,6 +715,27 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     }
   }
 
+  /// 淡色章鱼插画作为 tab 的底图:铺满、很淡、不拦截点击。
+  Widget _tabBackground(String asset, Widget child) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Opacity(
+              opacity: 0.14,
+              child: Image.asset(
+                asset,
+                fit: BoxFit.cover,
+                alignment: Alignment.centerLeft,
+              ),
+            ),
+          ),
+        ),
+        Positioned.fill(child: child),
+      ],
+    );
+  }
+
   /// 画布总览 tab(仅 macOS;展示当前激活画布与视口位置)
   Widget _buildCanvasTab() {
     final body = _canvasLoading
@@ -942,8 +963,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               ),
             ),
             // ── Content(活页本) tab ──
-            _buildContentTab(),
-            if (Platform.isMacOS) _buildCanvasTab(),
+            _tabBackground('assets/tab_bg_pages.jpg', _buildContentTab()),
+            if (Platform.isMacOS)
+              _tabBackground('assets/tab_bg_infinite.jpg', _buildCanvasTab()),
           ],
         ),
           ),
