@@ -37,6 +37,8 @@ abstract class _SettingsBridge {
   Future<Map<dynamic, dynamic>> canvasHome();
   /// 镜头居中到内容包围盒,返回新的总览载荷
   Future<Map<dynamic, dynamic>> canvasCenter();
+  /// 手动新建无限画布:清空内容 + 镜头回原点,返回新的总览载荷
+  Future<Map<dynamic, dynamic>> canvasNew();
   void dispose();
 }
 
@@ -102,6 +104,11 @@ class _MethodChannelBridge extends _SettingsBridge {
   @override
   Future<Map<dynamic, dynamic>> canvasCenter() async {
     return await _channel.invokeMethod('canvasOverview', {'center': true}) ?? {};
+  }
+
+  @override
+  Future<Map<dynamic, dynamic>> canvasNew() async {
+    return await _channel.invokeMethod('canvasNew') ?? {};
   }
 
   @override
@@ -342,6 +349,9 @@ class _NamedPipeBridge extends _SettingsBridge {
   @override
   Future<Map<dynamic, dynamic>> canvasCenter() async => {};
 
+  @override
+  Future<Map<dynamic, dynamic>> canvasNew() async => {};
+
   bool _writeData(String data) {
     if (!_connected || _handle == -1) return false;
     final bytes = utf8.encode(data);
@@ -462,7 +472,10 @@ ThemeData _buildPaperTheme() {
     fontFamily: 'LXGWWenKaiMono',
     textTheme: ThemeData(brightness: Brightness.light)
         .textTheme
-        .apply(bodyColor: _ink, displayColor: _ink),
+        .apply(
+            bodyColor: _ink,
+            displayColor: _ink,
+            fontFamily: 'LXGWWenKaiMono'),
     appBarTheme: const AppBarTheme(
       backgroundColor: _paperBg,
       foregroundColor: _ink,
@@ -658,7 +671,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     try {
       final payload = await (action == 'home'
           ? _bridge.canvasHome()
-          : _bridge.canvasCenter());
+          : action == 'new'
+              ? _bridge.canvasNew()
+              : _bridge.canvasCenter());
       if (!mounted) return;
       setState(() {
         _canvasPng = payload['png'] as Uint8List?;
@@ -722,6 +737,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 icon: const Icon(Icons.center_focus_strong, size: 18),
                 label: const Text('居中内容', style: TextStyle(fontSize: 13)),
               ),
+              if (_infiniteCanvas)
+                OutlinedButton.icon(
+                  onPressed: _canvasLoading ? null : () => _canvasAction('new'),
+                  icon: const Icon(Icons.note_add_outlined, size: 18),
+                  label: const Text('新建画布', style: TextStyle(fontSize: 13)),
+                ),
               OutlinedButton.icon(
                 onPressed: _canvasLoading ? null : () => _loadCanvasOverview(),
                 icon: const Icon(Icons.refresh, size: 18),

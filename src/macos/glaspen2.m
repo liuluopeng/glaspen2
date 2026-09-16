@@ -130,6 +130,7 @@ static void apply_outline(BOOL on);
 static void apply_infinite_canvas(BOOL on);
 static void canvas_infinite_load(void);
 static void canvas_infinite_persist(void);
+static void page_flip_animation(BOOL forward);
 static void canvas_reset_lens(void);
 static void canvas_apply_transform(void);
 static NSWindow *g_window = nil;
@@ -489,6 +490,12 @@ static void save_with_background(void) {
 }
 
 static void clear_screen(void) {
+    if (g_infinite_canvas) {
+        // 无限画布只能手动新建,菜单/快捷键不清空
+        show_notification(L(@"无限画布不会被清除 · 新建请到设置面板手动新建",
+                            @"Infinite canvas is kept — create a new one in settings"));
+        return;
+    }
     if (!g_surface) return;
     cairo_t *cr = cairo_create_scaled();
     cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
@@ -1169,6 +1176,17 @@ static NSDictionary *canvas_overview_payload(double w, double h) {
             }
             dispatch_async(dispatch_get_main_queue(), ^{ result(data); });
         });
+    } else if ([call.method isEqualToString:@"canvasNew"]) {
+        // 手动新建:清空全局无限画布内容,镜头回原点 + 100%
+        finish_active_stroke();
+        glaspen2_clear_strokes(g_screen_w, g_screen_h);
+        g_pan_x = 0.0;
+        g_pan_y = 0.0;
+        g_zoom = 1.0;
+        glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
+        rebuild_surface_from_strokes();
+        NSDictionary *payload = canvas_overview_payload(1024, 768);
+        result(payload ?: @{});
     } else if ([call.method isEqualToString:@"canvasOverview"]) {
         NSDictionary *args = call.arguments;
         double w = [args[@"w"] doubleValue];
@@ -2031,6 +2049,49 @@ static void canvas_zoom_at(double factor, double vx, double vy) {
 }
 
 // 保存唯一的无限画布镜头(仅无限模式;翻页模式无镜头)
+// 翻页动效:把旧页快照做成浮层,沿翻页方向滑出(0.22s),露出新页。
+// forward = 下一页(旧页向上滑出),否则向下滑出。
+static void page_flip_animation(BOOL forward) {
+    if (!g_draw_view || !g_surface_cgimage) return;
+    double w_px = cairo_image_surface_get_width(g_surface);
+    double h_px = cairo_image_surface_get_height(g_surface);
+    CGImageRef snap = CGImageCreateWithImageInRect(g_surface_cgimage,
+                                                   CGRectMake(0, 0, w_px, h_px));
+    if (!snap) return;
+    // 真拷贝像素:底层缓冲马上会被新页重绘,共享数据会跟着变
+    CGDataProviderRef prov = CGImageGetDataProvider(snap);
+    CFDataRef data = CGDataProviderCopyData(prov);
+    CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGImageRef frozen = CGImageCreate(w_px, h_px, 8, 32,
+                                      CGImageGetBytesPerRow(snap), cs,
+                                      CGImageGetBitmapInfo(snap),
+                                      CGDataProviderCreateWithData(NULL, CFDataGetBytePtr(data), CFDataGetLength(data), NULL),
+                                      NULL, false, kCGRenderingIntentDefault);
+    CGColorSpaceRelease(cs);
+    CFRelease(data);
+    CGImageRelease(snap);
+    if (!frozen) return;
+
+    NSImage *img = [[NSImage alloc] initWithCGImage:frozen size:NSMakeSize(g_screen_w, g_screen_h)];
+    CGImageRelease(frozen);
+    NSImageView *iv = [[NSImageView alloc] initWithFrame:[g_draw_view bounds]];
+    iv.image = img;
+    iv.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [g_draw_view addSubview:iv positioned:NSWindowAbove relativeTo:nil];
+
+    [NSAnimationContext beginGrouping];
+    [NSAnimationContext currentContext].duration = 0.22;
+    [NSAnimationContext currentContext].timingFunction =
+        [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+    [NSAnimationContext currentContext].completionHandler = ^(void) {
+        [iv removeFromSuperview];
+    };
+    NSRect target = [g_draw_view bounds];
+    target.origin.y += forward ? target.size.height : -target.size.height;
+    [[iv animator] setFrame:target];
+    [NSAnimationContext endGrouping];
+}
+
 static void canvas_infinite_persist(void) {
     if (!g_infinite_canvas) return;
     glaspen2_set_infinite_transform(g_pan_x, g_pan_y, g_zoom);
@@ -2105,6 +2166,12 @@ static void perf_log_event(const char *evtype, uint64_t dur_us) {
 static BOOL perform_hotkey(unsigned short kc) {
     if (kc == kVK_ANSI_C) {
         finish_active_stroke(); // don't strand an in-flight stroke
+        if (g_infinite_canvas) {
+            // 无限画布不清空(内容多,误清损失大):新建请走设置面板
+            show_notification(L(@"无限画布不会被清除 · 新建请到设置面板手动新建",
+                                @"Infinite canvas is kept — create a new one in settings"));
+            return YES;
+        }
         clear_screen();
         return YES;
     } else if (kc == kVK_ANSI_V) { toggle_enabled(); return YES; }
@@ -2116,6 +2183,7 @@ static BOOL perform_hotkey(unsigned short kc) {
         finish_active_stroke();
         long target = glaspen2_prev_screen_id();
         if (target > 0) {
+            page_flip_animation(NO); // 重建前抓旧页快照
             glaspen2_load_strokes_for_screen(target);
             glaspen2_smooth_loaded_strokes();
             replay_strokes_from_memory();
@@ -2133,6 +2201,7 @@ static BOOL perform_hotkey(unsigned short kc) {
         finish_active_stroke();
         long target = glaspen2_next_screen_id();
         if (target > 0) {
+            page_flip_animation(YES); // 重建前抓旧页快照
             glaspen2_load_strokes_for_screen(target);
             glaspen2_smooth_loaded_strokes();
             replay_strokes_from_memory();
