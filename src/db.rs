@@ -430,14 +430,14 @@ mod platform {
     pub async fn prev_screen(current: i64) -> Option<i64> {
         let pool = DB.get()?;
         sqlx::query_scalar::<_, i64>(
-            "SELECT s.id FROM screens s WHERE s.id < ?1 AND EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) ORDER BY s.id DESC LIMIT 1"
+            "SELECT id FROM screens WHERE id < ?1 ORDER BY id DESC LIMIT 1"
         ).bind(current).fetch_optional(pool).await.ok()?
     }
 
     pub async fn next_screen(current: i64) -> Option<i64> {
         let pool = DB.get()?;
         sqlx::query_scalar::<_, i64>(
-            "SELECT s.id FROM screens s WHERE s.id > ?1 AND EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) ORDER BY s.id ASC LIMIT 1"
+            "SELECT id FROM screens WHERE id > ?1 ORDER BY id ASC LIMIT 1"
         ).bind(current).fetch_optional(pool).await.ok()?
     }
 
@@ -504,9 +504,7 @@ mod platform {
             None => return Vec::new(),
         };
         sqlx::query_as(
-            "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
-             WHERE EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
-             ORDER BY s.id",
+            "SELECT s.id, s.screen_w, s.screen_h FROM screens s ORDER BY s.id",
         )
         .fetch_all(pool)
         .await
