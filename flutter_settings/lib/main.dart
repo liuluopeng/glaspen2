@@ -523,7 +523,7 @@ class GlaspenSettingsApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Glaspen2 Settings',
+      title: '玻璃涂鸦',
       debugShowCheckedModeBanner: false,
       // macOS runs at native 1x (no display scaling), so the whole UI looks
       // small vs Windows — scale the entire UI up to match. Windows keeps 1.0
@@ -835,28 +835,37 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Glaspen2 Settings'),
-        centerTitle: true,
-        actions: [
-          if (!_connected)
-            const Padding(
-              padding: EdgeInsets.only(right: 12),
-              child: Icon(Icons.cloud_off, color: Colors.red, size: 20),
-            ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: [
-            const Tab(text: '设置'),
-            const Tab(text: '内容'),
-            if (Platform.isMacOS) const Tab(text: '画布'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
+      backgroundColor: Colors.transparent,
+      body: Column(
         children: [
+          // 顶栏:tab + 未连接指示(原 AppBar 已按需求去掉)
+          Container(
+            color: _paperBg,
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TabBar(
+                    controller: _tabController,
+                    tabs: [
+                      const Tab(text: '设置'),
+                      const Tab(text: '活页本'),
+                      if (Platform.isMacOS) const Tab(text: '自由涂鸦'),
+                    ],
+                  ),
+                ),
+                if (!_connected)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 12),
+                    child: Icon(Icons.cloud_off, color: Colors.red, size: 18),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
             // ── Settings tab ──
             SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -871,31 +880,30 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                     _buildHotkeyGrid(),
                   ),
                   const SizedBox(height: 16),
-                  _buildSection('Color', _buildColorGrid()),
+                  _buildSection('笔', _buildPenSection()),
                   const SizedBox(height: 16),
-                  _buildSection('Width', _buildWidthRow()),
-                  const SizedBox(height: 16),
-                  _buildSection('Actions', _buildActionButtons()),
-                  const SizedBox(height: 16),
-                  _buildSection('GIF 动画 (⌘⌃R 录制)', _buildGifSettings()),
-                  const SizedBox(height: 16),
-                  _buildSection('Options', _buildToggles()),
-                  const SizedBox(height: 16),
-                  _buildSection('Export', _buildExportButtons()),
+                  _buildSection('Options', _buildOptionsSection()),
                 ],
               ),
             ),
-            // ── Content tab ──
+            // ── Content(活页本) tab ──
             _buildContentTab(),
             if (Platform.isMacOS) _buildCanvasTab(),
           ],
         ),
-      );
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildContentTab() {
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+          child: _buildSection('Export', _buildExportButtons()),
+        ),
         // Page grid
         Expanded(
           child: _pagesLoading
@@ -1121,35 +1129,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildActionButtons() {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        ElevatedButton.icon(
-          onPressed: () {
-            _setSetting('undo', true);
-          },
-          icon: const Icon(Icons.undo, size: 16),
-          label: const Text('撤销上一笔', style: TextStyle(fontSize: 15)),
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          ),
-        ),
-        ElevatedButton.icon(
-          onPressed: () {
-            _setSetting('export_animated_gif', true);
-          },
-          icon: const Icon(Icons.gif, size: 16),
-          label: const Text('导出动画 GIF', style: TextStyle(fontSize: 15)),
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          ),
-        ),
-      ],
-    );
-  }
-
   /// GIF quality/speed settings for ⌘⌃R 快捷录制. The gray estimate refreshes
   /// as the sliders/chips change (rough per-second-of-recording file size).
   Widget _buildGifSettings() {
@@ -1311,6 +1290,39 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
+  // ── 笔:颜色 + 粗细 ──
+  Widget _buildPenSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('颜色',
+            style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        _buildColorGrid(),
+        const SizedBox(height: 14),
+        const Text('粗细',
+            style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        _buildWidthRow(),
+      ],
+    );
+  }
+
+  // ── Options:GIF 动画 + 开关组 ──
+  Widget _buildOptionsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('GIF 动画 (⌘⌃R 录制)',
+            style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 10),
+        _buildGifSettings(),
+        const Divider(height: 24),
+        _buildToggles(),
+      ],
+    );
+  }
+
   Widget _buildToggles() {
     return Column(
       children: [
@@ -1325,7 +1337,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           },
         ),
         SwitchListTile(
-          title: const Text('显示网格 (40px)', style: TextStyle(fontSize: 15)),
+          title: const Text('显示网格', style: TextStyle(fontSize: 15)),
           subtitle: const Text('涂鸦时辅助对齐', style: TextStyle(fontSize: 12)),
           value: _showGrid,
           dense: true,
@@ -1335,6 +1347,30 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             _setSetting('grid', v);
           },
         ),
+        if (_showGrid && Platform.isMacOS)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 4),
+            child: Row(
+              children: [
+                const Text('网格大小', style: TextStyle(fontSize: 13, color: _inkFaint)),
+                const Spacer(),
+                SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  style: const ButtonStyle(
+                    visualDensity: VisualDensity(horizontal: -2, vertical: -2),
+                  ),
+                  segments: [
+                    ...[20, 40, 80].map((v) => ButtonSegment(value: v, label: Text('$v'))),
+                  ],
+                  selected: {_gridSizeValue},
+                  onSelectionChanged: (s) {
+                    setState(() => _gridSizeValue = s.first);
+                    _setSetting('gridSize', s.first);
+                  },
+                ),
+              ],
+            ),
+          ),
         SwitchListTile(
           title: const Text('网格跟随涂鸦', style: TextStyle(fontSize: 15)),
           subtitle: const Text('开启后网格随涂鸦一起受 ⌘⌃X 控制', style: TextStyle(fontSize: 12)),
@@ -1369,27 +1405,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               _setSetting('infiniteCanvas', v);
             },
           ),
-        if (Platform.isMacOS)
-          Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 8),
-            child: Row(
-              children: [
-                const Text('网格大小', style: TextStyle(fontSize: 15)),
-                const Spacer(),
-                SegmentedButton<int>(
-                  showSelectedIcon: false,
-                  segments: [
-                    ...[20, 40, 80].map((v) => ButtonSegment(value: v, label: Text('$v'))),
-                  ],
-                  selected: {_gridSizeValue},
-                  onSelectionChanged: (s) {
-                    setState(() => _gridSizeValue = s.first);
-                    _setSetting('gridSize', s.first);
-                  },
-                ),
-              ],
-            ),
-          ),
+
       ],
     );
   }

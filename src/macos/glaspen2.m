@@ -1488,7 +1488,7 @@ static void show_settings_panel(void) {
     NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
         styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
         backing:NSBackingStoreBuffered defer:NO];
-    [window setTitle:L(@"Glaspen2 设置", @"Glaspen2 Settings")];
+    [window setTitle:L(@"玻璃涂鸦", @"glaspen2")];
     [window setMinSize:NSMakeSize(600, 800)];
     [window setReleasedWhenClosed:NO];
 
