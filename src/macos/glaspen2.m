@@ -2398,6 +2398,8 @@ static BOOL perform_hotkey(unsigned short kc) {
         long target = glaspen2_prev_screen_id();
         if (target > 0) {
             page_flip_animation(NO); // 重建前抓旧页快照
+            g_page_off_x = 0.0;
+            g_page_off_y = 0.0;
             glaspen2_load_strokes_for_screen(target);
             glaspen2_smooth_loaded_strokes();
             replay_strokes_from_memory();
@@ -2417,6 +2419,8 @@ static BOOL perform_hotkey(unsigned short kc) {
         long target = glaspen2_next_screen_id();
         if (target > 0) {
             page_flip_animation(YES); // 重建前抓旧页快照
+            g_page_off_x = 0.0;
+            g_page_off_y = 0.0;
             glaspen2_load_strokes_for_screen(target);
             glaspen2_smooth_loaded_strokes();
             replay_strokes_from_memory();
@@ -2770,6 +2774,22 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 // 键盘缩放以视口中心为锚
                 canvas_zoom_at(kc == kVK_PageUp ? 1.15 : 1.0 / 1.15,
                                (double)g_screen_w * 0.5, (double)g_screen_h * 0.5);
+                return NULL;
+            }
+            // 活页本模式:⌥⌘方向键在页间滑动(偏移 ±1 屏),J/K 整页翻页时复位
+            if (!g_infinite_canvas && kHasOptCmd && !g_stroke_active
+                && type == kCGEventKeyDown
+                && kc >= kVK_LeftArrow && kc <= kVK_UpArrow) {
+                double step = 120.0;
+                if (kc == kVK_LeftArrow)       g_page_off_x += step;
+                else if (kc == kVK_RightArrow) g_page_off_x -= step;
+                else if (kc == kVK_UpArrow)    g_page_off_y += step;
+                else if (kc == kVK_DownArrow)  g_page_off_y -= step;
+                if (g_page_off_x > g_screen_w) g_page_off_x = g_screen_w;
+                if (g_page_off_x < -g_screen_w) g_page_off_x = -g_screen_w;
+                if (g_page_off_y > g_screen_h) g_page_off_y = g_screen_h;
+                if (g_page_off_y < -g_screen_h) g_page_off_y = -g_screen_h;
+                page_scroll_apply();
                 return NULL;
             }
             if (g_infinite_canvas && kHasOptCmd && g_enabled && !g_stroke_active
