@@ -2110,13 +2110,19 @@ static void canvas_zoom_at(double factor, double vx, double vy) {
 
 // 保存唯一的无限画布镜头(仅无限模式;翻页模式无镜头)
 // 页面缩略图条(minimap,仅翻页模式):屏幕右缘竖向展示附近 10 页(VS Code 风)。
-// 缩略图后台按页渲染并缓存;当前页红框高亮,其余灰框。
+// 性能要点:缩略图在专属串行低优先级队列逐张渲染(避免并发全屏渲染打爆 CPU),
+// 每帧只把合成好的整条 strip 图贴一次(而不是逐张画 10 次)。
+static dispatch_queue_t g_minimap_queue = nil;
+static NSImage *g_minimap_strip = nil;           // 合成好的整条(含边框/页号)
+static NSInteger g_minimap_strip_key = -1;       // 条带指纹:(当前页, 取图版本)
+static NSInteger g_minimap_fetch_version = 0;    // 每完成一张取图 +1
+
 static void draw_minimap(CGContextRef ctx, NSRect bounds) {
     if (g_infinite_canvas) return; // 仅翻页模式
     long cur = glaspen2_get_current_screen_id();
     if (cur <= 0) return;
 
-    // 附近页 id 列表(当前页变化时重新解析 list_screens_json)
+    // 附近页 id 列表(当前页变化时重新解析)
     if (g_minimap_ids == nil || g_minimap_ids_for != cur) {
         char *json = glaspen2_list_screens_json();
         if (!json) return;
@@ -2132,6 +2138,7 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
         }
         g_minimap_ids = ids;
         g_minimap_ids_for = cur;
+        g_minimap_strip_key = -1; // 列表变了,条带重合成
     }
     NSUInteger idx = [g_minimap_ids indexOfObject:@(cur)];
     if (idx == NSNotFound) return;
@@ -2141,59 +2148,84 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
     if (n == 0) return;
 
     const CGFloat tw = 64, th = 40, gap = 4;
-    CGFloat x0 = bounds.size.width - tw - 8;   // 右缘
-    CGFloat y_top = bounds.size.height - 8;    // 非翻转视图:y 大 = 屏幕顶部
+    CGFloat total_h = n * th + (n - 1) * gap;
 
+    // 1) 缺失的缩略图:排入专属串行队列逐张渲染(utility 优先级,
+    //    不与书写落库抢锁、不并发打爆 CPU)
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        g_minimap_queue = dispatch_queue_create("glaspen2.minimap", DISPATCH_QUEUE_SERIAL);
+        dispatch_set_target_queue(g_minimap_queue,
+            dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+    });
     for (NSUInteger i = start; i < end; i++) {
         NSNumber *pid = g_minimap_ids[i];
-        BOOL isCur = ([pid longLongValue] == cur);
-        NSUInteger row = i - start;
-        CGFloat x = x0;
-        CGFloat y = y_top - th - row * (th + gap);
-        NSRect rect = NSMakeRect(x, y, tw, th);
-
-        NSImage *img = [g_minimap_thumbs objectForKey:pid];
-        if (!img && ![g_minimap_inflight containsObject:pid]) {
-            [g_minimap_inflight addObject:pid];
-            long long p = [pid longLongValue];
-            dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{
-                int len = 0;
-                unsigned char *png = glaspen2_render_thumbnail(p, g_screen_w, g_screen_h, 128, &len);
-                NSImage *im = nil;
-                if (png && len > 0) {
-                    im = [[NSImage alloc] initWithData:[NSData dataWithBytes:png length:len]];
-                    glaspen2_free_rust_bytes(png, len);
+        if ([g_minimap_thumbs objectForKey:pid]) continue;
+        if ([g_minimap_inflight containsObject:pid]) continue;
+        [g_minimap_inflight addObject:pid];
+        long long p = [pid longLongValue];
+        dispatch_async(g_minimap_queue, ^{
+            int len = 0;
+            unsigned char *png = glaspen2_render_thumbnail(p, g_screen_w, g_screen_h, 128, &len);
+            NSImage *im = nil;
+            if (png && len > 0) {
+                im = [[NSImage alloc] initWithData:[NSData dataWithBytes:png length:len]];
+                glaspen2_free_rust_bytes(png, len);
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (im) {
+                    [g_minimap_thumbs setObject:im forKey:pid];
+                    g_minimap_fetch_version++;
                 }
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if (im) {
-                        [g_minimap_thumbs setObject:im forKey:pid];
-                        [g_draw_view setNeedsDisplay:YES];
-                    }
-                    [g_minimap_inflight removeObject:pid];
-                });
+                [g_minimap_inflight removeObject:pid];
+                [g_draw_view setNeedsDisplay:YES];
             });
-        }
-
-        if (img) {
-            [img drawInRect:rect fromRect:NSZeroRect
-                  operation:NSCompositingOperationSourceOver fraction:1.0];
-        } else {
-            [[[NSColor colorWithCalibratedWhite:0.94 alpha:0.9] colorWithAlphaComponent:0.9] setFill];
-            [NSBezierPath fillRect:rect];
-        }
-        // 边框:当前页红 2px,其余灰 1px
-        NSBezierPath *border = [NSBezierPath bezierPathWithRect:rect];
-        border.lineWidth = isCur ? 2.0 : 1.0;
-        (isCur ? NSColor.systemRedColor : NSColor.systemGrayColor).setStroke;
-        [border stroke];
-        // 页号
-        NSString *num = [NSString stringWithFormat:@"%lu", (unsigned long)(i + 1)];
-        [num drawAtPoint:NSMakePoint(rect.origin.x + 3, rect.origin.y + 2)
-          withAttributes:@{
-            NSFontAttributeName: [NSFont monospacedSystemFontOfSize:9 weight:NSFontWeightRegular],
-            NSForegroundColorAttributeName: [NSColor colorWithCalibratedWhite:0.25 alpha:0.9],
-          }];
+        });
     }
+
+    // 2) 合成整条 strip(小图,只在缩略图版本/当前页变化时重建)
+    NSInteger key = g_minimap_fetch_version * 100000 + (NSInteger)cur;
+    if (g_minimap_strip == nil || key != g_minimap_strip_key) {
+        g_minimap_strip_key = key;
+        NSImage *strip = [[NSImage alloc] initWithSize:NSMakeSize(tw, total_h)];
+        [strip lockFocus];
+        for (NSUInteger i = start; i < end; i++) {
+            NSNumber *pid = g_minimap_ids[i];
+            BOOL isCur = ([pid longLongValue] == cur);
+            NSUInteger row = i - start;
+            // lockFocus 坐标 y 向上:row 0 画在条带顶部
+            CGFloat y = (n - 1 - row) * (th + gap);
+            NSRect rect = NSMakeRect(0, y, tw, th);
+            NSImage *im = [g_minimap_thumbs objectForKey:pid];
+            if (im) {
+                [im drawInRect:rect fromRect:NSZeroRect
+                     operation:NSCompositingOperationSourceOver fraction:1.0];
+            } else {
+                [[NSColor colorWithCalibratedWhite:0.94 alpha:0.9] setFill];
+                [NSBezierPath fillRect:rect];
+            }
+            NSBezierPath *border = [NSBezierPath bezierPathWithRect:rect];
+            border.lineWidth = isCur ? 2.0 : 1.0;
+            (isCur ? NSColor.systemRedColor : NSColor.systemGrayColor).setStroke;
+            [border stroke];
+            // 页号 = 全列表中的序号(从 1 起)
+            NSString *num = [NSString stringWithFormat:@"%lu", (unsigned long)(start + row + 1)];
+            [num drawAtPoint:NSMakePoint(rect.origin.x + 3, rect.origin.y + 3)
+              withAttributes:@{
+                NSFontAttributeName: [NSFont monospacedSystemFontOfSize:9 weight:NSFontWeightRegular],
+                NSForegroundColorAttributeName: [NSColor colorWithCalibratedWhite:0.25 alpha:0.9],
+              }];
+        }
+        [strip unlockFocus];
+        g_minimap_strip = strip;
+    }
+
+    // 3) 一次贴图(右缘,自上而下)
+    NSRect dst = NSMakeRect(bounds.size.width - tw - 8,
+                            bounds.size.height - total_h - 8,
+                            tw, total_h);
+    [g_minimap_strip drawInRect:dst fromRect:NSZeroRect
+                     operation:NSCompositingOperationSourceOver fraction:1.0];
 }
 
 // 翻页动效(两段式):翻页前抓旧页快照,重建后旧页加速滑出、
