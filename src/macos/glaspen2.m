@@ -127,10 +127,12 @@ static void finish_active_stroke(void);
 static void ensure_surface(NSView *view);
 static BOOL perform_hotkey(unsigned short keyCode);
 static void apply_outline(BOOL on);
-static void apply_infinite_canvas(BOOL on);
+static void apply_infinite_canvas(BOOL on, BOOL notify);
 static void canvas_infinite_load(void);
 static void canvas_infinite_persist(void);
 static void page_flip_animation(BOOL forward);
+static void page_flip_finish(BOOL forward);
+static void draw_minimap(CGContextRef ctx, NSRect bounds);
 static void canvas_reset_lens(void);
 static void canvas_apply_transform(void);
 static NSWindow *g_window = nil;
@@ -248,6 +250,13 @@ static int g_selected_width_index = 3; // default: 1.0x
 
 // 网格大小(逻辑 px),设置面板可调,默认 40
 static double g_grid_size = 40.0;
+
+// ── 页面缩略图条(minimap,翻页模式) ──
+static BOOL g_minimap_enabled = NO;
+static NSMutableDictionary *g_minimap_thumbs = nil; // screenId(NSNumber) → NSImage
+static NSMutableArray *g_minimap_inflight = nil;     // 正在后台取图的 screenId
+static NSArray *g_minimap_ids = nil;                 // 附近页 id 列表(缓存)
+static long g_minimap_ids_for = -1;                  // 该列表对应的当前页 id
 
 // ── 无限画布模式 ──
 // 画布坐标 = 视口坐标 + pan(pan = 视口左上角在画布坐标系中的位置)。
@@ -866,7 +875,7 @@ static void toggle_canvas_mode(void) {
 }
 
 - (void)toggleInfiniteCanvas {
-    apply_infinite_canvas(!g_infinite_canvas);
+    apply_infinite_canvas(!g_infinite_canvas, YES);
 }
 
 // 无限画布 → 分页 PDF(按当前屏幕尺寸切页)
@@ -1001,6 +1010,7 @@ static NSDictionary *canvas_overview_payload(double w, double h) {
             @"pressureMonitor": @(g_pressure_monitor),
             @"outline": @(g_outline_enabled),
             @"infiniteCanvas": @(g_infinite_canvas),
+            @"minimap": @(g_minimap_enabled),
             @"gridSize": @(g_grid_size),
             @"gifFps": @(g_gif_fps),
             @"gifResolution": @(g_gif_resolution),
@@ -1035,7 +1045,13 @@ static NSDictionary *canvas_overview_payload(double w, double h) {
             result(nil);
             return;
         } else if ([key isEqualToString:@"infiniteCanvas"]) {
-            apply_infinite_canvas([value boolValue]);
+            apply_infinite_canvas([value boolValue], NO);
+            result(nil);
+            return;
+        } else if ([key isEqualToString:@"minimap"]) {
+            g_minimap_enabled = [value boolValue];
+            glaspen2_save_bool_setting("minimap", g_minimap_enabled ? 1 : 0);
+            if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
             result(nil);
             return;
         } else if ([key isEqualToString:@"gridSize"]) {
@@ -1275,7 +1291,7 @@ static NSDictionary *canvas_overview_payload(double w, double h) {
         if (screenId > 0) {
             // 从无限画布跳转到某一页:先切回翻页模式(否则会把页笔迹塞进无限画布内存)
             if (g_infinite_canvas) {
-                apply_infinite_canvas(NO);
+                apply_infinite_canvas(NO, NO);
             }
             dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
                 glaspen2_load_strokes_for_screen(screenId);
@@ -1453,6 +1469,7 @@ static void sync_settings_panel(void) {
         @"pressureMonitor": @(g_pressure_monitor),
         @"outline": @(g_outline_enabled),
         @"infiniteCanvas": @(g_infinite_canvas),
+        @"minimap": @(g_minimap_enabled),
         @"gridSize": @(g_grid_size),
     }];
 }
@@ -1893,6 +1910,11 @@ static void rebuild_surface_from_strokes(void) {
         // image is the cached surface image — NOT released here.
     }
 
+    // 页面缩略图条(minimap,翻页模式)
+    if (g_minimap_enabled && !g_infinite_canvas) {
+        draw_minimap(ctx, [self bounds]);
+    }
+
     // Draw notification text
     if (g_notification) {
         NSShadow *shadow = [[NSShadow alloc] init];
@@ -1957,7 +1979,7 @@ static void rebuild_surface_from_strokes(void) {
 // 两种模式各自独立存储:翻页模式用 screens/strokes,无限画布用
 // infinite_strokes(全局仅一个画布)。切换时冲刷当前笔画、切存储、载入对应笔迹。
 // 模式本身持久化在 user_settings(结构性的模式,与描边这类渲染设置不同)。
-static void apply_infinite_canvas(BOOL on) {
+static void apply_infinite_canvas(BOOL on, BOOL notify) {
     if (g_infinite_canvas == on) return;
     finish_active_stroke(); // 先把在写的笔画落库到"旧"存储
     if (g_infinite_canvas) canvas_infinite_persist(); // 离开无限画布前存镜头
@@ -1980,9 +2002,11 @@ static void apply_infinite_canvas(BOOL on) {
         canvas_reset_lens();
     }
     rebuild_surface_from_strokes();
-    show_notification(on
-        ? L(@"无限画布已开启 (⌥⇧滚轮缩放 · ⌥⌘方向键平移)", @"Infinite canvas on (⌥⇧scroll zoom · ⌥⌘arrows pan)")
-        : L(@"无限画布已关闭", @"Infinite canvas off"));
+    if (notify) {
+        show_notification(on
+            ? L(@"无限画布已开启 (⌥⇧滚轮缩放 · ⌥⌘方向键平移)", @"Infinite canvas on (⌥⇧scroll zoom · ⌥⌘arrows pan)")
+            : L(@"无限画布已关闭", @"Infinite canvas off"));
+    }
 }
 
 // 应用描边开关(菜单与 Flutter 设置面板共用的唯一入口)。
@@ -2049,16 +2073,104 @@ static void canvas_zoom_at(double factor, double vx, double vy) {
 }
 
 // 保存唯一的无限画布镜头(仅无限模式;翻页模式无镜头)
-// 翻页动效:把旧页快照做成浮层,沿翻页方向滑出(0.22s),露出新页。
-// forward = 下一页(旧页向上滑出),否则向下滑出。
-static void page_flip_animation(BOOL forward) {
-    if (!g_draw_view || !g_surface_cgimage) return;
+// 页面缩略图条(minimap,仅翻页模式):屏幕上方展示附近 10 页。
+// 缩略图后台按页渲染并缓存;当前页红框高亮,其余灰框。
+static void draw_minimap(CGContextRef ctx, NSRect bounds) {
+    if (g_infinite_canvas) return; // 仅翻页模式
+    long cur = glaspen2_get_current_screen_id();
+    if (cur <= 0) return;
+
+    // 附近页 id 列表(当前页变化时重新解析 list_screens_json)
+    if (g_minimap_ids == nil || g_minimap_ids_for != cur) {
+        char *json = glaspen2_list_screens_json();
+        if (!json) return;
+        NSString *str = [[NSString alloc] initWithUTF8String:json];
+        glaspen2_free_c_string(json);
+        NSData *d = [str dataUsingEncoding:NSUTF8StringEncoding];
+        NSArray *arr = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+        if (![arr isKindOfClass:[NSArray class]]) return;
+        NSMutableArray *ids = [NSMutableArray array];
+        for (NSDictionary *o in arr) {
+            NSNumber *pid = o[@"id"];
+            if (pid) [ids addObject:pid];
+        }
+        g_minimap_ids = ids;
+        g_minimap_ids_for = cur;
+    }
+    NSUInteger idx = [g_minimap_ids indexOfObject:@(cur)];
+    if (idx == NSNotFound) return;
+    NSUInteger start = (idx > 5) ? idx - 5 : 0;
+    NSUInteger end = MIN(start + 10, [g_minimap_ids count]);
+    NSUInteger n = end - start;
+    if (n == 0) return;
+
+    const CGFloat tw = 92, th = 58, gap = 6;
+    CGFloat total = n * tw + (n - 1) * gap;
+    CGFloat x0 = (bounds.size.width - total) / 2.0;
+    CGFloat y0 = bounds.size.height - th - 10; // 非翻转视图:顶部
+
+    for (NSUInteger i = start; i < end; i++) {
+        NSNumber *pid = g_minimap_ids[i];
+        BOOL isCur = ([pid longLongValue] == cur);
+        CGFloat x = x0 + (i - start) * (tw + gap);
+        NSRect rect = NSMakeRect(x, y0, tw, th);
+
+        NSImage *img = [g_minimap_thumbs objectForKey:pid];
+        if (!img && ![g_minimap_inflight containsObject:pid]) {
+            [g_minimap_inflight addObject:pid];
+            long long p = [pid longLongValue];
+            dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{
+                int len = 0;
+                unsigned char *png = glaspen2_render_thumbnail(p, g_screen_w, g_screen_h, 128, &len);
+                NSImage *im = nil;
+                if (png && len > 0) {
+                    im = [[NSImage alloc] initWithData:[NSData dataWithBytes:png length:len]];
+                    glaspen2_free_rust_bytes(png, len);
+                }
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (im) {
+                        [g_minimap_thumbs setObject:im forKey:pid];
+                        [g_draw_view setNeedsDisplay:YES];
+                    }
+                    [g_minimap_inflight removeObject:pid];
+                });
+            });
+        }
+
+        if (img) {
+            [img drawInRect:rect fromRect:NSZeroRect
+                  operation:NSCompositingOperationSourceOver fraction:1.0];
+        } else {
+            [[[NSColor colorWithCalibratedWhite:0.94 alpha:0.9] colorWithAlphaComponent:0.9] setFill];
+            [NSBezierPath fillRect:rect];
+        }
+        // 边框:当前页红 2px,其余灰 1px
+        NSBezierPath *border = [NSBezierPath bezierPathWithRect:rect];
+        border.lineWidth = isCur ? 2.0 : 1.0;
+        (isCur ? NSColor.systemRedColor : NSColor.systemGrayColor).setStroke;
+        [border stroke];
+        // 页号
+        NSString *num = [NSString stringWithFormat:@"%lu", (unsigned long)(i + 1)];
+        [num drawAtPoint:NSMakePoint(rect.origin.x + 3, rect.origin.y + 2)
+          withAttributes:@{
+            NSFontAttributeName: [NSFont monospacedSystemFontOfSize:9 weight:NSFontWeightRegular],
+            NSForegroundColorAttributeName: [NSColor colorWithCalibratedWhite:0.25 alpha:0.9],
+          }];
+    }
+}
+
+// 翻页动效(两段式):翻页前抓旧页快照,重建后旧页加速滑出、
+// 新页减速滑入(ease-out 的入位减速 = 刹车感)。forward = 下一页。
+static CGImageRef g_flip_old = NULL;   // page_flip_animation 抓取的旧页快照
+static BOOL g_flip_forward = YES;
+
+static CGImageRef page_flip_capture(void) {
+    if (!g_surface || !g_surface_cgimage) return NULL;
     double w_px = cairo_image_surface_get_width(g_surface);
     double h_px = cairo_image_surface_get_height(g_surface);
-    CGImageRef snap = CGImageCreateWithImageInRect(g_surface_cgimage,
-                                                   CGRectMake(0, 0, w_px, h_px));
-    if (!snap) return;
-    // 真拷贝像素:底层缓冲马上会被新页重绘,共享数据会跟着变
+    CGImageRef snap = CGImageCreateWithImageInRect(g_surface_cgimage, CGRectMake(0, 0, w_px, h_px));
+    if (!snap) return NULL;
+    // 深拷贝像素:底层缓冲马上会被新页重绘,共享数据会跟着变
     CGDataProviderRef prov = CGImageGetDataProvider(snap);
     CFDataRef data = CGDataProviderCopyData(prov);
     CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
@@ -2070,26 +2182,57 @@ static void page_flip_animation(BOOL forward) {
     CGColorSpaceRelease(cs);
     CFRelease(data);
     CGImageRelease(snap);
-    if (!frozen) return;
+    return frozen;
+}
 
-    NSImage *img = [[NSImage alloc] initWithCGImage:frozen size:NSMakeSize(g_screen_w, g_screen_h)];
-    CGImageRelease(frozen);
-    NSImageView *iv = [[NSImageView alloc] initWithFrame:[g_draw_view bounds]];
-    iv.image = img;
-    iv.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    [g_draw_view addSubview:iv positioned:NSWindowAbove relativeTo:nil];
+// 翻页前调用:只抓快照,不动画面
+static void page_flip_animation(BOOL forward) {
+    if (g_flip_old) { CGImageRelease(g_flip_old); g_flip_old = NULL; } // 未播放的残帧丢弃
+    g_flip_forward = forward;
+    g_flip_old = page_flip_capture();
+}
+
+// 翻页重建完成后调用:双层动画 —— 旧页加速滑出,新页减速滑入(刹车)。
+// 两个快照的所有权转移给本函数,动画结束释放。
+static void page_flip_finish(BOOL forward) {
+    if (!g_draw_view || !g_flip_old) {
+        if (g_flip_old) { CGImageRelease(g_flip_old); g_flip_old = NULL; }
+        return;
+    }
+    CGImageRef new_snap = page_flip_capture();
+    if (!new_snap) { CGImageRelease(g_flip_old); g_flip_old = NULL; return; }
+
+    NSRect bounds = [g_draw_view bounds];
+    NSImageView *oldView = [[NSImageView alloc] initWithFrame:bounds];
+    oldView.image = [[NSImage alloc] initWithCGImage:g_flip_old size:NSMakeSize(g_screen_w, g_screen_h)];
+    NSImageView *newView = [[NSImageView alloc] initWithFrame:bounds];
+    newView.image = [[NSImage alloc] initWithCGImage:new_snap size:NSMakeSize(g_screen_w, g_screen_h)];
+    [g_draw_view addSubview:oldView positioned:NSWindowAbove relativeTo:nil];
+    [g_draw_view addSubview:newView positioned:NSWindowAbove relativeTo:oldView];
+
+    NSRect offOld = bounds, offNew = bounds;
+    if (forward) {
+        offOld.origin.y += bounds.size.height;  // 下一页:旧页向上滑出,新页自下滑入
+        offNew.origin.y -= bounds.size.height;
+    } else {
+        offOld.origin.y -= bounds.size.height;  // 上一页:旧页向下滑出,新页自上滑入
+        offNew.origin.y += bounds.size.height;
+    }
 
     [NSAnimationContext beginGrouping];
-    [NSAnimationContext currentContext].duration = 0.22;
+    [NSAnimationContext currentContext].duration = 0.26;
     [NSAnimationContext currentContext].timingFunction =
         [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
     [NSAnimationContext currentContext].completionHandler = ^(void) {
-        [iv removeFromSuperview];
+        [oldView removeFromSuperview];
+        [newView removeFromSuperview];
+        CGImageRelease(g_flip_old);
+        CGImageRelease(new_snap);
     };
-    NSRect target = [g_draw_view bounds];
-    target.origin.y += forward ? target.size.height : -target.size.height;
-    [[iv animator] setFrame:target];
+    [[oldView animator] setFrame:offOld];
+    [[newView animator] setFrame:bounds];
     [NSAnimationContext endGrouping];
+    g_flip_old = NULL;
 }
 
 static void canvas_infinite_persist(void) {
@@ -2187,6 +2330,7 @@ static BOOL perform_hotkey(unsigned short kc) {
             glaspen2_load_strokes_for_screen(target);
             glaspen2_smooth_loaded_strokes();
             replay_strokes_from_memory();
+            page_flip_finish(NO); // 新页减速滑入(刹车)
             peek_strokes(1.0); // show the page briefly in ethereal mode
             show_page_info(target);
         } else {
@@ -2205,6 +2349,7 @@ static BOOL perform_hotkey(unsigned short kc) {
             glaspen2_load_strokes_for_screen(target);
             glaspen2_smooth_loaded_strokes();
             replay_strokes_from_memory();
+            page_flip_finish(YES); // 新页减速滑入(刹车)
             peek_strokes(1.0); // show the page briefly in ethereal mode
             show_page_info(target);
         } else {
@@ -2900,6 +3045,7 @@ void glaspen2_run(void) {
         // Restore canvas mode and load the matching independent store.
         // 翻页/无限两套存储互不影响:无限画布全局仅一个。
         g_infinite_canvas = glaspen2_load_bool_setting("infinite_canvas") != 0;
+        g_minimap_enabled = glaspen2_load_bool_setting("minimap") != 0;
         NSMenuItem *infiniteRestoreItem = [g_menu itemWithTag:668];
         if (infiniteRestoreItem) {
             [infiniteRestoreItem setState:g_infinite_canvas ? NSControlStateValueOn : NSControlStateValueOff];

@@ -585,6 +585,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _outlineEnabled = false;
   bool _infiniteCanvas = false;
   int _gridSizeValue = 40; // 网格大小(逻辑 px)
+  bool _minimapEnabled = false;
   // 画布总览 tab
   Uint8List? _canvasPng;
   List<double>? _canvasRect;
@@ -637,12 +638,35 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   void _onTabChanged() {
-    if (_tabController.index == 1 && _pages.isEmpty && !_pagesLoading) {
+    final idx = _tabController.index;
+    // 切 tab 同时切换画布模式:活页本=翻页模式,自由涂鸦=无限画布(仅 macOS)
+    if (Platform.isMacOS && idx == 1 && _infiniteCanvas) {
+      _setSetting('infiniteCanvas', false);
+    } else if (Platform.isMacOS && idx == 2 && !_infiniteCanvas) {
+      _setSetting('infiniteCanvas', true);
+    }
+    if (idx == 1 && _pages.isEmpty && !_pagesLoading) {
       _loadPages();
     }
-    if (_tabController.index == 2) {
+    if (idx == 2) {
       _loadCanvasOverview();
     }
+  }
+
+  /// 模式 tab 标签:激活的模式带一颗小圆点
+  Widget _modeTabLabel(String text, bool active) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        width: 6,
+        height: 6,
+        margin: const EdgeInsets.only(right: 5),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: active ? _penRed : Colors.transparent,
+        ),
+      ),
+      Text(text),
+    ]);
   }
 
   /// 拉取无限画布总览(当前激活画布按内容包围盒适配 + 当前视口矩形)
@@ -774,6 +798,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _gridFollowStrokes = _b(s['gridFollowStrokes']);
         _outlineEnabled = _b(s['outline']);
         _infiniteCanvas = _b(s['infiniteCanvas']);
+        _minimapEnabled = _b(s['minimap']);
         _gifFps = (s['gifFps'] as num?)?.toInt() ?? _gifFps;
         _gifResolution = (s['gifResolution'] as num?)?.toDouble() ?? _gifResolution;
         _gifSpeed = (s['gifSpeed'] as num?)?.toDouble() ?? _gifSpeed;
@@ -793,6 +818,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _showGrid = _b(settings['grid']);
           _gridFollowStrokes = _b(settings['gridFollowStrokes']);
           _infiniteCanvas = _b(settings['infiniteCanvas']);
+          _minimapEnabled = _b(settings['minimap']);
           _gifFps = (settings['gifFps'] as num?)?.toInt() ?? 15;
           _gifResolution = (settings['gifResolution'] as num?)?.toDouble() ?? 0.5;
           _gifSpeed = (settings['gifSpeed'] as num?)?.toDouble() ?? 2.0;
@@ -870,8 +896,13 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                     controller: _tabController,
                     tabs: [
                       const Tab(text: '设置'),
-                      const Tab(text: '活页本'),
-                      if (Platform.isMacOS) const Tab(text: '自由涂鸦'),
+                      Tab(
+                        child: _modeTabLabel('活页本', !_infiniteCanvas),
+                      ),
+                      if (Platform.isMacOS)
+                        Tab(
+                          child: _modeTabLabel('自由涂鸦', _infiniteCanvas),
+                        ),
                     ],
                   ),
                 ),
@@ -1414,18 +1445,20 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             _setSetting('outline', v);
           },
         ),
-        if (Platform.isMacOS)
+        if (Platform.isMacOS && !_infiniteCanvas)
           SwitchListTile(
-            title: const Text('无限画布', style: TextStyle(fontSize: 15)),
-            subtitle: const Text('⌥⇧滚轮缩放(上限100%) · ⌥⌘方向键平移 · 菜单里也有同一开关', style: TextStyle(fontSize: 12)),
-            value: _infiniteCanvas,
+            title: const Text('页面缩略图', style: TextStyle(fontSize: 15)),
+            subtitle: const Text('屏幕上方显示附近 10 页的 minimap(翻页模式)', style: TextStyle(fontSize: 12)),
+            value: _minimapEnabled,
             dense: true,
             contentPadding: EdgeInsets.zero,
             onChanged: (v) {
-              setState(() => _infiniteCanvas = v);
-              _setSetting('infiniteCanvas', v);
+              setState(() => _minimapEnabled = v);
+              _setSetting('minimap', v);
             },
           ),
+        // 无限画布模式由 tab 承载:活页本=翻页模式,自由涂鸦=无限画布
+        // (选中 tab 的红线下方,模式 tab 上有一颗小圆点)
 
       ],
     );
@@ -1436,23 +1469,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          '将当前笔迹按笔顺生成为动画 GIF，自动复制到剪贴板并保存到桌面。',
+          '将全部页面的笔迹导出为 PDF 保存到桌面。',
           style: TextStyle(fontSize: 13, color: Colors.grey),
-        ),
-        const SizedBox(height: 8),
-        FilledButton.icon(
-          icon: _gifExporting
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Icon(Icons.animation, size: 18),
-          label: Text(_gifExporting ? '生成中…' : '导出动画 GIF'),
-          onPressed: _gifExporting ? null : _exportAnimatedGif,
         ),
         const SizedBox(height: 8),
         FilledButton.icon(
@@ -1468,38 +1486,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         ),
       ],
     );
-  }
-
-  bool _gifExporting = false;
-
-  Future<void> _exportAnimatedGif() async {
-    setState(() => _gifExporting = true);
-    try {
-      if (Platform.isMacOS) {
-        final ok = await _channel.invokeMethod<bool>('exportAnimatedGif') == true;
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(ok
-                  ? '动画 GIF 已保存并复制到剪贴板'
-                  : '没有笔迹或导出失败'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-      } else {
-        // Windows:通过管道触发导出,结果以屏幕通知提示
-        _setSetting('export_animated_gif', true);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导出失败: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _gifExporting = false);
-    }
   }
 
   bool _pdfExporting = false;
