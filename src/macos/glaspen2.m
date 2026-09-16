@@ -1861,24 +1861,42 @@ static void rebuild_surface_from_strokes(void) {
         long ky0 = (long)floor(pan_y / gs) - 1;
         long ky1 = (long)floor((pan_y + bounds.size.height / z) / gs) + 1;
 
-        // 分界线:每 4 格一条更明显的主线(先次线后主线,主线盖在上面)
-        for (int pass = 0; pass < 2; pass++) {
-            CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0.5 alpha:(pass == 0 ? 0.50 : 0.15)] CGColor]);
-            CGContextSetLineWidth(ctx, pass == 0 ? 0.75 : 0.5);
-            for (long k = kx0; k <= kx1; k++) {
-                if ((k % 4 == 0) != (pass == 0)) continue;
-                CGFloat gx = (k * gs - pan_x) * z;
-                CGContextMoveToPoint(ctx, gx, 0);
-                CGContextAddLineToPoint(ctx, gx, bounds.size.height);
-            }
-            for (long k = ky0; k <= ky1; k++) {
-                if ((k % 4 == 0) != (pass == 0)) continue;
-                CGFloat gy = bounds.size.height - ((k * gs - pan_y) * z);
-                CGContextMoveToPoint(ctx, 0, gy);
-                CGContextAddLineToPoint(ctx, bounds.size.width, gy);
-            }
-            CGContextStrokePath(ctx);
+        // 细网格:每 gs 一格,统一淡细线(不再每 4 格加粗)。
+        CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0.5 alpha:0.15] CGColor]);
+        CGContextSetLineWidth(ctx, 0.5);
+        for (long k = kx0; k <= kx1; k++) {
+            CGFloat gx = (k * gs - pan_x) * z;
+            CGContextMoveToPoint(ctx, gx, 0);
+            CGContextAddLineToPoint(ctx, gx, bounds.size.height);
         }
+        for (long k = ky0; k <= ky1; k++) {
+            CGFloat gy = bounds.size.height - ((k * gs - pan_y) * z);
+            CGContextMoveToPoint(ctx, 0, gy);
+            CGContextAddLineToPoint(ctx, bounds.size.width, gy);
+        }
+        CGContextStrokePath(ctx);
+
+        // 分界线:只在"屏幕尺寸"为单位处加深加粗
+        // (活页本 = 页边界;无限画布 = 每屏一条参考线)。
+        double bw = (g_screen_w > 0) ? (double)g_screen_w : gs * 4.0;
+        double bh = (g_screen_h > 0) ? (double)g_screen_h : gs * 4.0;
+        CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0.5 alpha:0.55] CGColor]);
+        CGContextSetLineWidth(ctx, 1.0);
+        long jx0 = (long)floor(pan_x / bw) - 1;
+        long jx1 = (long)floor((pan_x + bounds.size.width / z) / bw) + 1;
+        for (long k = jx0; k <= jx1; k++) {
+            CGFloat gx = (k * bw - pan_x) * z;
+            CGContextMoveToPoint(ctx, gx, 0);
+            CGContextAddLineToPoint(ctx, gx, bounds.size.height);
+        }
+        long jy0 = (long)floor(pan_y / bh) - 1;
+        long jy1 = (long)floor((pan_y + bounds.size.height / z) / bh) + 1;
+        for (long k = jy0; k <= jy1; k++) {
+            CGFloat gy = bounds.size.height - ((k * bh - pan_y) * z);
+            CGContextMoveToPoint(ctx, 0, gy);
+            CGContextAddLineToPoint(ctx, bounds.size.width, gy);
+        }
+        CGContextStrokePath(ctx);
     }
 
     // Reuse the cached CGImage; it wraps the live cairo buffer, so it is
@@ -2794,31 +2812,30 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                (double)g_screen_w * 0.5, (double)g_screen_h * 0.5);
                 return NULL;
             }
-            // 活页本模式:⌥⌘↑/↓ = 翻页(上下 = 书写/翻页方向):
-            // ↑ 上一页、↓ 下一页,每次翻一整页,带滑动动效。
+            // 活页本模式:⌥⌘↑/↓ = 视图上下滑动一小步(≈浏览器方向键一次滚动),
+            // 滑过一页边界时自动切换当前页。不再整页翻转(J/K 仍整页翻)。
             // 活页本只允许上下移动:⌥⌘←/→ 不处理,交给系统。
             if (!g_infinite_canvas && kHasOptCmd && !g_stroke_active
                 && type == kCGEventKeyDown
                 && (kc == kVK_UpArrow || kc == kVK_DownArrow)) {
                 finish_active_stroke();
-                BOOL forward = (kc == kVK_DownArrow); // ↓ = 下一页, ↑ = 上一页
-                page_flip_animation(forward);
-                long target = forward ? glaspen2_next_screen_id()
-                                      : glaspen2_prev_screen_id();
-                if (target > 0) {
-                    g_page_off_x = 0.0;
-                    g_page_off_y = 0.0;
-                    glaspen2_set_view_transform(0.0, 0.0, 1.0);
-                    glaspen2_load_strokes_for_screen(target);
-                    glaspen2_smooth_loaded_strokes();
-                    replay_strokes_from_memory();
-                    page_flip_finish(forward);
-                    show_page_info(target);
-                } else {
-                    // 没有目标页:动画不会播放,释放刚抓的快照(否则泄漏到下次翻页)
-                    if (g_flip_old) { CGImageRelease(g_flip_old); g_flip_old = NULL; }
-                    show_notification(L(@"没有更多页了", @"No more pages"));
+                const double step = 40.0; // 浏览器方向键一次约 40px
+                if (kc == kVK_UpArrow) g_page_off_y += step;
+                else                   g_page_off_y -= step;
+                g_page_off_x = 0.0; // 活页本只上下移动
+                while (g_page_off_y >= g_screen_h) {
+                    long prev = glaspen2_prev_screen_id();
+                    if (prev == 0) { g_page_off_y = 0; break; }
+                    glaspen2_load_strokes_for_screen(prev);
+                    g_page_off_y -= g_screen_h;
                 }
+                while (g_page_off_y < 0) {
+                    long next = glaspen2_next_screen_id();
+                    if (next == 0) { g_page_off_y = 0; break; }
+                    glaspen2_load_strokes_for_screen(next);
+                    g_page_off_y += g_screen_h;
+                }
+                page_scroll_apply();
                 return NULL;
             }
             // 自由画布(无限画布)模式:⌥⌘上下左右 = 镜头四向平移。
