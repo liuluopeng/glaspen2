@@ -447,8 +447,8 @@ class _PageInfo {
 }
 
 // ── 纸墨主题 ──
-const _paperBg = Color(0xFFF3EEE3);   // 暖纸底
-const _paperCard = Color(0xFFFBF8F1); // 区块卡纸面
+const _paperBg = Color(0xFFF3EEE3);   // 暖纸底(最底层,不透明)
+const _paperCard = Color(0x9EFBF8F1); // 区块卡纸面(半透明:让底层插画透出来)
 const _ink = Color(0xFF2C2A26);       // 墨色文字
 const _inkFaint = Color(0xFF8A857A);  // 淡墨(次要)
 const _penRed = Color(0xFFC4353F);    // 笔锋红(强调色)
@@ -505,6 +505,15 @@ ThemeData _buildPaperTheme() {
         foregroundColor: _ink,
         side: const BorderSide(color: Color(0xFFD8D2C4)),
         backgroundColor: _paperCard,
+      ),
+    ),
+    // 卡片(页面缩略图等)也半透明,与模块卡纸一致
+    cardTheme: CardThemeData(
+      color: _paperCard,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        side: const BorderSide(color: _paperLine),
+        borderRadius: BorderRadius.circular(10),
       ),
     ),
   );
@@ -722,7 +731,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         Positioned.fill(
           child: IgnorePointer(
             child: Opacity(
-              opacity: 0.14,
+              opacity: 0.30,
               child: Image.asset(
                 asset,
                 fit: BoxFit.cover,
@@ -943,7 +952,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               controller: _tabController,
               children: [
             // ── Settings tab ──
-            SingleChildScrollView(
+            _tabBackground('assets/tab_bg_settings.jpg', SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
                 key: _columnKey,
@@ -961,7 +970,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   _buildSection('Options', _buildOptionsSection()),
                 ],
               ),
-            ),
+            )),
             // ── Content(活页本) tab ──
             _tabBackground('assets/tab_bg_pages.jpg', _buildContentTab()),
             if (Platform.isMacOS)

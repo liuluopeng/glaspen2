@@ -278,6 +278,19 @@ static BOOL g_infinite_canvas = NO;
 static double g_pan_x = 0.0, g_pan_y = 0.0;
 static double g_zoom = 1.0; // 视图缩放,(0,1],上限 100%
 
+// 输入坐标(视图/屏幕逻辑点)→ 画布坐标。
+// 渲染是 view = (canvas − pan) × zoom,所以 canvas = view / zoom + pan。
+// 翻页模式渲染时设的 pan = −page_off(page_scroll_apply),无限画布则是 g_pan。
+// 注意:此前输入写成 `+ g_page_off`,符号反了 —— 在两张之间涂鸦后一移动就跳位。
+static inline double canvas_input_x(double view_x) {
+    if (g_infinite_canvas) return view_x / g_zoom + g_pan_x;
+    return view_x - g_page_off_x; // 翻页模式 zoom 恒为 1
+}
+static inline double canvas_input_y(double view_y) {
+    if (g_infinite_canvas) return view_y / g_zoom + g_pan_y;
+    return view_y - g_page_off_y; // 翻页模式 zoom 恒为 1
+}
+
 // Rainbow indicator toggle (default off)
 static BOOL g_show_rainbow = NO;
 
@@ -1656,7 +1669,7 @@ static void finish_active_stroke(void) {
         glaspen2_modeler_erase_finish();
         g_eraser_mode = NO;
     } else {
-        glaspen2_modeler_end(g_raw_last_x / g_zoom + g_page_off_x + g_pan_x, g_raw_last_y / g_zoom + g_page_off_y + g_pan_y, 0.0, ts, g_width_scale);
+        glaspen2_modeler_end(canvas_input_x(g_raw_last_x), canvas_input_y(g_raw_last_y), 0.0, ts, g_width_scale);
         glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
     }
     stroke_end();
@@ -3014,7 +3027,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         }
         g_eraser_mode = (devType == NSEraserPointingDevice);
         NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f", px, py, pressure, ts);
-        glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px / g_zoom + g_page_off_x + g_pan_x, py / g_zoom + g_page_off_y + g_pan_y, pressure, ts, g_width_scale);
+        glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(px), canvas_input_y(py), pressure, ts, g_width_scale);
         g_stroke_active = YES;
         g_cursor_visible = NO; // the ink is the feedback while drawing
         stroke_begin(); // reuse one cairo context for the whole stroke
@@ -3029,7 +3042,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         // If no DOWN event was seen (pen detection lag), auto-initialize
         if (!g_stroke_active) {
             g_eraser_mode = (devType == NSEraserPointingDevice);
-            glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, px / g_zoom + g_page_off_x + g_pan_x, py / g_zoom + g_page_off_y + g_pan_y, pressure, ts, g_width_scale);
+            glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(px), canvas_input_y(py), pressure, ts, g_width_scale);
             g_stroke_active = YES;
             g_cursor_visible = NO;
             stroke_begin();
@@ -3040,7 +3053,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             return NULL; // begin already recorded this point, don't feed duplicate to modeler
         }
         // Feed modeler, draw raw segment for responsive real-time feedback
-        glaspen2_modeler_move(px / g_zoom + g_page_off_x + g_pan_x, py / g_zoom + g_page_off_y + g_pan_y, pressure, ts, g_width_scale);
+        glaspen2_modeler_move(canvas_input_x(px), canvas_input_y(py), pressure, ts, g_width_scale);
         raw_draw_segment(px, py, raw_w);
         return NULL;
     }
@@ -3052,7 +3065,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                 glaspen2_modeler_erase_finish();
                 g_eraser_mode = NO;
             } else {
-                glaspen2_modeler_end(px / g_zoom + g_page_off_x + g_pan_x, py / g_zoom + g_page_off_y + g_pan_y, pressure, ts, g_width_scale);
+                glaspen2_modeler_end(canvas_input_x(px), canvas_input_y(py), pressure, ts, g_width_scale);
                 glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
             }
 
