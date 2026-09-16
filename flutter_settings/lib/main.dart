@@ -639,10 +639,13 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
   void _onTabChanged() {
     final idx = _tabController.index;
-    // 切 tab 同时切换画布模式:活页本=翻页模式,自由涂鸦=无限画布(仅 macOS)
+    // 切 tab 同时切换画布模式:活页本=翻页模式,自由涂鸦=无限画布(仅 macOS)。
+    // 本地状态必须立即更新:否则再点回原 tab 时,Flutter 以为模式没变而不发消息。
     if (Platform.isMacOS && idx == 1 && _infiniteCanvas) {
+      setState(() => _infiniteCanvas = false);
       _setSetting('infiniteCanvas', false);
     } else if (Platform.isMacOS && idx == 2 && !_infiniteCanvas) {
+      setState(() => _infiniteCanvas = true);
       _setSetting('infiniteCanvas', true);
     }
     if (idx == 1 && _pages.isEmpty && !_pagesLoading) {

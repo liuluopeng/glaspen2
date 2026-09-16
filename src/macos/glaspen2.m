@@ -2002,6 +2002,7 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
         canvas_reset_lens();
     }
     rebuild_surface_from_strokes();
+    sync_settings_panel(); // Flutter 面板的开关/圆点同步
     if (notify) {
         show_notification(on
             ? L(@"无限画布已开启 (⌥⇧滚轮缩放 · ⌥⌘方向键平移)", @"Infinite canvas on (⌥⇧scroll zoom · ⌥⌘arrows pan)")
