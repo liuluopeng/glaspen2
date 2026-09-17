@@ -7,6 +7,29 @@ pub mod overlay;
 pub fn win_main() {
     set_app_user_model_id();
 
+    // ── 单实例守卫 ──
+    // 设置管道 \\.\pipe\glaspen2_settings 是全局名字:两个 overlay 并存时,
+    // 设置面板的开关/切 tab 消息会被另一个实例抢走,表现为"模式切不动"。
+    // 命名互斥量随进程存活,持有期间第二个实例弹窗提示并退出。
+    {
+        use windows::core::PCWSTR;
+        use windows::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError};
+        use windows::Win32::System::Threading::CreateMutexW;
+        let name: Vec<u16> = "Local\\glaspen2.single_instance"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let mutex = unsafe { CreateMutexW(None, false, PCWSTR(name.as_ptr())) };
+        if let Ok(mutex) = mutex {
+            // 故意不释放:互斥量随进程生命周期持有
+            std::mem::forget(mutex);
+            if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+                already_running_message();
+                return;
+            }
+        }
+    }
+
     // 清理上次退出残留的设置进程(崩溃/强杀也会留孤儿,积多了任务栏出现
     // 多个同图标窗口)。taskkill 是控制台程序,CREATE_NO_WINDOW 防闪黑框。
     #[cfg(windows)]
@@ -36,6 +59,24 @@ pub fn win_main() {
     }
 
     println!("[glaspen2] Exited");
+}
+
+fn already_running_message() {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::WindowsAndMessaging::{MB_ICONWARNING, MB_OK, MessageBoxW};
+    let text: Vec<u16> = "glaspen2 已在运行,请使用现有实例 (可从系统托盘或 Ctrl+Alt+Q 退出后重试)"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let caption: Vec<u16> = "glaspen2".encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let _ = MessageBoxW(
+            None,
+            PCWSTR(text.as_ptr()),
+            PCWSTR(caption.as_ptr()),
+            MB_ICONWARNING | MB_OK,
+        );
+    }
 }
 
 /// 与 Flutter 设置进程共用同一个 AppUserModelID:任务栏把两个进程的
