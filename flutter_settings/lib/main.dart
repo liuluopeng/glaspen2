@@ -1041,12 +1041,36 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadThumbnail(page));
     }
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () {
-          _bridge.navigateToPage(page.id);
-        },
+    return GestureDetector(
+      onSecondaryTapUp: (details) {
+        final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+        showMenu<String>(
+          context: context,
+          position: RelativeRect.fromLTRB(
+            details.globalPosition.dx,
+            details.globalPosition.dy,
+            overlay.size.width - details.globalPosition.dx,
+            overlay.size.height - details.globalPosition.dy,
+          ),
+          items: [
+            const PopupMenuItem(
+                value: 'delete', height: 36,
+                child: Row(children: [
+                  Icon(Icons.delete_outline, size: 16, color: Colors.red),
+                  SizedBox(width: 8),
+                  Text('删除此页面', style: TextStyle(fontSize: 13)),
+                ])),
+          ],
+        ).then((v) {
+          if (v == 'delete') _confirmDeletePage(page);
+        });
+      },
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
+            _bridge.navigateToPage(page.id);
+          },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1069,7 +1093,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   void _confirmDeletePage(_PageInfo page) {
