@@ -2906,34 +2906,93 @@ fn gif_record_stop(state: &mut OverlayState) {
 }
 
 /// GIF 字节写入剪贴板:注册格式 "GIF"(微信/QQ 粘贴动画时识别此格式)
+/// GIF 写入剪贴板,双格式保证粘贴可用:
+///  1) CF_HDROP:GIF 落临时文件后按"文件"粘贴(微信/QQ 识别为动画,
+///     与 macOS 写文件 URL 到剪贴板同思路);
+///  2) 注册格式 "GIF":原始字节,截图类工具按此读动画。
+/// 返回是否至少写入了一种格式。
 unsafe fn copy_gif_bytes_to_clipboard(gif: &[u8]) -> bool {
     let cf_gif = RegisterClipboardFormatA(b"GIF\0".as_ptr());
     if cf_gif == 0 {
         return false;
     }
-    let mem = GlobalAlloc(GMEM_MOVEABLE, gif.len());
-    if mem.0.is_null() {
+
+    // GIF 落临时文件(剪贴板只存路径引用,文件保留在 %TEMP% 由系统清理)
+    let path = std::env::temp_dir().join(format!(
+        "glaspen2_record_{}.gif",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    ));
+    if std::fs::write(&path, gif).is_err() {
         return false;
     }
-    let p = GlobalLock(mem);
-    if p.is_null() {
-        let _ = GlobalFree(mem);
+    let mut path_wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    path_wide.push(0); // 双 NUL 结尾
+
+    // CF_HDROP 缓冲:DROPFILES 头(20B) + 宽字符路径列表
+    let hdrop_bytes = 20 + path_wide.len() * 2;
+    let mem_hdrop = GlobalAlloc(GMEM_MOVEABLE, hdrop_bytes);
+    if mem_hdrop.0.is_null() {
         return false;
     }
-    std::ptr::copy_nonoverlapping(gif.as_ptr(), p as *mut u8, gif.len());
-    let _ = GlobalUnlock(mem);
+    {
+        let p = GlobalLock(mem_hdrop) as *mut u8;
+        if p.is_null() {
+            let _ = GlobalFree(mem_hdrop);
+            return false;
+        }
+        // DROPFILES { pFiles=20, pt=(0,0), fNC=0, fWide=1 }
+        std::ptr::write_bytes(p, 0, hdrop_bytes);
+        (p as *mut u32).write_unaligned(20);
+        (p.add(16) as *mut i32).write_unaligned(1); // fWide = TRUE
+        std::ptr::copy_nonoverlapping(
+            path_wide.as_ptr() as *const u8,
+            p.add(20),
+            path_wide.len() * 2,
+        );
+        let _ = GlobalUnlock(mem_hdrop);
+    }
+
+    // "GIF" 注册格式的原始字节
+    let mem_gif = GlobalAlloc(GMEM_MOVEABLE, gif.len());
+    if mem_gif.0.is_null() {
+        let _ = GlobalFree(mem_hdrop);
+        return false;
+    }
+    {
+        let p = GlobalLock(mem_gif);
+        if p.is_null() {
+            let _ = GlobalFree(mem_gif);
+            let _ = GlobalFree(mem_hdrop);
+            return false;
+        }
+        std::ptr::copy_nonoverlapping(gif.as_ptr(), p as *mut u8, gif.len());
+        let _ = GlobalUnlock(mem_gif);
+    }
+
+    const CF_HDROP: u32 = 15;
     if OpenClipboard(HWND::default()) == 0 {
-        let _ = GlobalFree(mem);
+        let _ = GlobalFree(mem_hdrop);
+        let _ = GlobalFree(mem_gif);
         return false;
     }
     EmptyClipboard();
-    let h = SetClipboardData(cf_gif, mem);
+    let h1 = SetClipboardData(CF_HDROP, mem_hdrop);
+    let h2 = SetClipboardData(cf_gif, mem_gif);
     CloseClipboard();
-    if h.0.is_null() {
-        let _ = GlobalFree(mem);
-        return false;
+    if h1.0.is_null() {
+        let _ = GlobalFree(mem_hdrop);
     }
-    true
+    if h2.0.is_null() {
+        let _ = GlobalFree(mem_gif);
+    }
+    !(h1.0.is_null() && h2.0.is_null())
 }
 
 /// 键盘 Raw Input:录制中检测 Ctrl+Alt+R 松开。
