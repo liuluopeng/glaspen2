@@ -1,5 +1,9 @@
-// Embed the app icon (same asset as the main exe) into the installer stub.
+// Embed the app icon into the installer stub.
+// 仅在目标是 Windows 时编译资源(在 macOS 上开发/CI 时跳过)。
 fn main() {
+    if std::env::var("CARGO_CFG_WINDOWS").is_err() {
+        return;
+    }
     println!("cargo:rerun-if-changed=../glaspen2.ico");
     let icon = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../glaspen2.ico");
     let mut res = winresource::WindowsResource::new();
