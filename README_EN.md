@@ -74,9 +74,9 @@ Switch from the tabs at the top of the settings panel, or the "Infinite canvas" 
 | Quick GIF recording (hold) | `⌘ + ⌃ + R` | |
 | Record handwritten message (hold) | `⌘ + ⌃ + 3` | |
 | Notebook: slide up/down (auto page switch) | `⌥ + ⌘ + ↑` / `⌥ + ⌘ + ↓` | |
-| Infinite canvas: pan (four directions) | `⌥ + ⌘ + arrows` | |
-| Infinite canvas: pan / zoom | `⌘ + ⌃ + scroll` / `⌥ + ⇧ + scroll` | |
-| Infinite canvas: keyboard zoom | `⌘ + ⌃ + PageUp` / `⌘ + ⌃ + PageDown` | |
+| Infinite canvas: pan (four directions) | `⌥ + ⌘ + arrows` | `Ctrl + Alt + arrows` |
+| Infinite canvas: zoom (cursor anchored) | `⌥ + ⇧ + scroll` | `Ctrl + Alt + scroll` |
+| Infinite canvas: keyboard zoom | `⌘ + ⌃ + PageUp` / `⌘ + ⌃ + PageDown` | `Ctrl + Alt + PageUp` / `Ctrl + Alt + PageDown` |
 
 ## Installation
 

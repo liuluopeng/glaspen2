@@ -2309,7 +2309,6 @@ pub extern "C" fn glaspen2_free_rust_bytes(ptr: *mut c_uchar, len: c_int) {
 /// 无限画布总览:把当前 STROKES 按包围盒 [bx,by,bw,bh] 适配进
 /// out_w×out_h(居中、透明底),返回 PNG 字节,由 glaspen2_free_rust_bytes
 /// 释放。失败返回 NULL 且 *out_len = 0。
-#[cfg(target_os = "macos")]
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_render_canvas_overview(
     bx: c_double,
