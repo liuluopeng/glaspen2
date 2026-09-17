@@ -987,10 +987,12 @@ fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) ->
     if !results.is_empty() {
         let scale = state.draw.width_scale as f32;
         for r in &results {
-            crate::export::glaspen2_add_point(
+            // 相对时间必须带上:GIF 回放时间线按它展开,t=0 会让导出永远为空
+            crate::export::glaspen2_add_point_t(
                 r.pos.0,
                 r.pos.1,
                 (width_r(r.pressure as f32, scale) * 2.0) as f64,
+                r.time,
             );
         }
     }
@@ -2820,6 +2822,9 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool) {
         }
         set_cam(0.0, 0.0, 1.0);
     }
+    // 切换后画布从空白开始:上一模式的内容仍在库里(重启/翻页回来还在),
+    // 只是切换当下不再显示。清空内存副本,新笔画的 undo/导出只作用于本次。
+    crate::STROKES.lock().unwrap().clear();
     redraw_from_strokes(state);
     hud_notify(if on {
         "无限画布已开启 (Ctrl+Alt+滚轮缩放 · Ctrl+Alt+方向键平移)"

@@ -63,11 +63,25 @@ pub extern "C" fn glaspen2_begin_stroke(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_add_point(x: c_double, y: c_double, width: c_double) {
+    glaspen2_add_point_t(x, y, width, 0.0);
+}
+
+/// Variant with the point's relative time (seconds from stroke start).
+/// The animated GIF replay builds its timeline from these times — points
+/// recorded with t=0 all collapse to zero-duration segments and the export
+/// comes out empty, so drawing paths must use this variant.
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_add_point_t(
+    x: c_double,
+    y: c_double,
+    width: c_double,
+    t: c_double,
+) {
     let mut strokes = STROKES.lock().unwrap();
     if let Some(stroke) = strokes.last_mut() {
-        stroke.points.push((x, y, width, 0.0));
+        stroke.points.push((x, y, width, t));
     }
-    state::buffer_point(x, y, width, 0.0); // sync
+    state::buffer_point(x, y, width, t); // sync
 }
 
 #[unsafe(no_mangle)]
