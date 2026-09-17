@@ -504,7 +504,9 @@ mod platform {
             None => return Vec::new(),
         };
         sqlx::query_as(
-            "SELECT s.id, s.screen_w, s.screen_h FROM screens s ORDER BY s.id",
+            "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
+             WHERE EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
+             ORDER BY s.id",
         )
         .fetch_all(pool)
         .await
