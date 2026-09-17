@@ -17,6 +17,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
+  // 与主进程(glaspen2.exe)共用同一个 AppUserModelID:
+  // 任务栏把两个进程的窗口归组为同一个图标。
+  if (HMODULE shell32 = ::GetModuleHandleW(L"shell32.dll")) {
+    using SetAumidFn = HRESULT(WINAPI *)(PCWSTR);
+    auto set_aumid = reinterpret_cast<SetAumidFn>(
+        ::GetProcAddress(shell32, "SetCurrentProcessExplicitAppUserModelID"));
+    if (set_aumid) {
+      set_aumid(L"glaspen2.app");
+    }
+  }
+
   flutter::DartProject project(L"data");
 
   std::vector<std::string> command_line_arguments =
