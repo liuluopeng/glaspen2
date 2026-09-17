@@ -24,3 +24,5 @@ installer/target/
 
 # FVM Version Cache
 .fvm/
+# Local dev tooling (protoc, pipe probes)
+.tools/

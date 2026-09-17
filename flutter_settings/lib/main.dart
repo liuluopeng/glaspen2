@@ -341,16 +341,19 @@ class _NamedPipeBridge extends _SettingsBridge {
   }
 
   @override
-  Future<Map<dynamic, dynamic>> canvasOverview({int w = 1024, int h = 768}) async => {};
+  Future<Map<dynamic, dynamic>> canvasOverview({int w = 1024, int h = 768}) async =>
+      _request('canvasOverview', {'w': w, 'h': h});
 
   @override
-  Future<Map<dynamic, dynamic>> canvasHome() async => {};
+  Future<Map<dynamic, dynamic>> canvasHome() async =>
+      _request('canvasOverview', {'home': true});
 
   @override
-  Future<Map<dynamic, dynamic>> canvasCenter() async => {};
+  Future<Map<dynamic, dynamic>> canvasCenter() async =>
+      _request('canvasOverview', {'center': true});
 
   @override
-  Future<Map<dynamic, dynamic>> canvasNew() async => {};
+  Future<Map<dynamic, dynamic>> canvasNew() async => _request('canvasNew', null);
 
   bool _writeData(String data) {
     if (!_connected || _handle == -1) return false;
@@ -628,8 +631,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _tabController =
-        TabController(length: Platform.isMacOS ? 3 : 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(_onTabChanged);
     _bridge = createBridge();
     _bridge.onSettingsChanged(_onSettingsChanged);
@@ -648,12 +650,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
   void _onTabChanged() {
     final idx = _tabController.index;
-    // 切 tab 同时切换画布模式:活页本=翻页模式,自由涂鸦=无限画布(仅 macOS)。
+    // 切 tab 同时切换画布模式:活页本=翻页模式,自由涂鸦=无限画布。
     // 本地状态必须立即更新:否则再点回原 tab 时,Flutter 以为模式没变而不发消息。
-    if (Platform.isMacOS && idx == 1 && _infiniteCanvas) {
+    if (idx == 1 && _infiniteCanvas) {
       setState(() => _infiniteCanvas = false);
       _setSetting('infiniteCanvas', false);
-    } else if (Platform.isMacOS && idx == 2 && !_infiniteCanvas) {
+    } else if (idx == 2 && !_infiniteCanvas) {
       setState(() => _infiniteCanvas = true);
       _setSetting('infiniteCanvas', true);
     }
@@ -681,6 +683,19 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     ]);
   }
 
+  /// 总览载荷里的 png:macOS 通道给 Uint8List,Windows 管道给 base64 字符串
+  static Uint8List? _pngBytes(dynamic v) {
+    if (v is Uint8List) return v;
+    if (v is String && v.isNotEmpty) {
+      try {
+        return base64Decode(v);
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
   /// 拉取无限画布总览(当前激活画布按内容包围盒适配 + 当前视口矩形)
   Future<void> _loadCanvasOverview(
       {Map<dynamic, dynamic>? action}) async {
@@ -690,7 +705,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       final payload = action ?? await _bridge.canvasOverview();
       if (!mounted) return;
       setState(() {
-        _canvasPng = payload['png'] as Uint8List?;
+        _canvasPng = _pngBytes(payload['png']);
         final r = payload['rect'] as List<dynamic>?;
         _canvasRect =
             (r == null || r.length < 4) ? null : r.map((e) => (e as num).toDouble()).toList();
@@ -712,7 +727,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               : _bridge.canvasCenter());
       if (!mounted) return;
       setState(() {
-        _canvasPng = payload['png'] as Uint8List?;
+        _canvasPng = _pngBytes(payload['png']);
         final r = payload['rect'] as List<dynamic>?;
         _canvasRect =
             (r == null || r.length < 4) ? null : r.map((e) => (e as num).toDouble()).toList();
@@ -745,7 +760,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
-  /// 画布总览 tab(仅 macOS;展示当前激活画布与视口位置)
+  /// 画布总览 tab(展示当前激活画布与视口位置)
   Widget _buildCanvasTab() {
     final body = _canvasLoading
         ? const Center(child: CircularProgressIndicator())
@@ -928,14 +943,15 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   child: TabBar(
                     controller: _tabController,
                     tabs: [
-                      const Tab(text: '设置'),
-                      Tab(
-                        child: _modeTabLabel('活页本', !_infiniteCanvas),
-                      ),
-                      if (Platform.isMacOS)
-                        Tab(
-                          child: _modeTabLabel('自由涂鸦', _infiniteCanvas),
-                        ),
+                  const Tab(
+                    text: '设置',
+                  ),
+                  Tab(
+                    child: _modeTabLabel('活页本', !_infiniteCanvas),
+                  ),
+                  Tab(
+                    child: _modeTabLabel('自由涂鸦', _infiniteCanvas),
+                  ),
                     ],
                   ),
                 ),
@@ -973,8 +989,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             )),
             // ── Content(活页本) tab ──
             _tabBackground('assets/tab_bg_pages.jpg', _buildContentTab()),
-            if (Platform.isMacOS)
-              _tabBackground('assets/tab_bg_infinite.jpg', _buildCanvasTab()),
+            _tabBackground('assets/tab_bg_infinite.jpg', _buildCanvasTab()),
           ],
         ),
           ),
@@ -988,7 +1003,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-          child: _buildSection('页面缩略图', SwitchListTile(
+          child: _buildSection('页面缩略图', _tile(SwitchListTile(
             title: const Text('显示附近 10 页', style: TextStyle(fontSize: 14)),
             subtitle: const Text('屏幕右缘竖向 minimap · 仅活页本(翻页)模式', style: TextStyle(fontSize: 12)),
             value: _minimapEnabled,
@@ -998,7 +1013,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               setState(() => _minimapEnabled = v);
               _setSetting('minimap', v);
             },
-          )),
+          ))),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
@@ -1419,7 +1434,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('GIF 动画 (⌘⌃R 录制)',
+        Text(Platform.isMacOS ? 'GIF 动画 (⌘⌃R 录制)' : 'GIF 动画 (Ctrl+Alt+R 按住录制)',
             style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
         const SizedBox(height: 10),
         _buildGifSettings(),
@@ -1429,10 +1444,16 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
+  /// 卡片(_buildSection 的 DecoratedBox)里直接放 ListTile 会触发框架断言
+  /// ("background color or ink splashes may be invisible"),包一层透明 Material。
+  Widget _tile(Widget child) {
+    return Material(type: MaterialType.transparency, child: child);
+  }
+
   Widget _buildToggles() {
     return Column(
       children: [
-        SwitchListTile(
+        _tile(SwitchListTile(
           title: const Text('压力监控', style: TextStyle(fontSize: 15)),
           value: _pressureMonitor,
           dense: true,
@@ -1441,8 +1462,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             setState(() => _pressureMonitor = v);
             _setSetting('pressureMonitor', v);
           },
-        ),
-        SwitchListTile(
+        )),
+        _tile(SwitchListTile(
           title: const Text('显示网格', style: TextStyle(fontSize: 15)),
           subtitle: const Text('涂鸦时辅助对齐', style: TextStyle(fontSize: 12)),
           value: _showGrid,
@@ -1452,7 +1473,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             setState(() => _showGrid = v);
             _setSetting('grid', v);
           },
-        ),
+        )),
         if (_showGrid && Platform.isMacOS)
           Padding(
             padding: const EdgeInsets.only(left: 16, bottom: 4),
@@ -1477,7 +1498,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               ],
             ),
           ),
-        SwitchListTile(
+        _tile(SwitchListTile(
           title: const Text('网格跟随涂鸦', style: TextStyle(fontSize: 15)),
           subtitle: const Text('开启后网格随涂鸦一起受 ⌘⌃X 控制', style: TextStyle(fontSize: 12)),
           value: _gridFollowStrokes,
@@ -1487,8 +1508,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             setState(() => _gridFollowStrokes = v);
             _setSetting('gridFollowStrokes', v);
           },
-        ),
-        SwitchListTile(
+        )),
+        _tile(SwitchListTile(
           title: const Text('笔迹描边', style: TextStyle(fontSize: 15)),
           subtitle: const Text('按笔色亮度自动加反色描边 · 渲染设置,不持久化', style: TextStyle(fontSize: 12)),
           value: _outlineEnabled,
@@ -1498,7 +1519,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             setState(() => _outlineEnabled = v);
             _setSetting('outline', v);
           },
-        ),
+        )),
         // 页面缩略图(minimap)开关已移到「活页本」tab
         // 无限画布模式由 tab 承载:活页本=翻页模式,自由涂鸦=无限画布
         // (选中 tab 的红线下方,模式 tab 上有一颗小圆点)

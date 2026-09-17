@@ -296,20 +296,46 @@ mod platform {
             state::CanvasKind::Infinite => "infinite_points",
             state::CanvasKind::Page => "points",
         };
-        let sql = format!(
-            "INSERT INTO {table} (stroke_id, seq, x, y, width, t) VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
-        );
-        for (i, &(x, y, w, t)) in points.iter().enumerate() {
-            sqlx::query(&sql)
-                .bind(stroke_id)
-                .bind(i as i64)
-                .bind(x)
-                .bind(y)
-                .bind(w)
-                .bind(t)
-                .execute(&mut *tx)
-                .await
-                .ok();
+        // 批量多行 INSERT(每 100 行一条语句):逐行 INSERT 每行都要 await
+        // 一轮连接池,一整笔几百个点的写事务占用 SQLite 写锁十几~几十毫秒,
+        // 下一笔落笔的同步 INSERT(begin_stroke)在 UI 线程排队等待,
+        // 表现为"每画一笔卡一下"。批量后写事务 ~1-3ms,落笔无感。
+        const CHUNK: usize = 100; // 100 行 × 6 参数,远低于 SQLITE_MAX_VARIABLE_NUMBER
+        let mut done = 0usize;
+        while done < points.len() {
+            let end = (done + CHUNK).min(points.len());
+            let n = end - done;
+            let mut sql = String::with_capacity(n * 48);
+            sql.push_str("INSERT INTO ");
+            sql.push_str(table);
+            sql.push_str(" (stroke_id, seq, x, y, width, t) VALUES ");
+            for k in 0..n {
+                if k > 0 {
+                    sql.push(',');
+                }
+                let b = k * 6;
+                sql.push_str(&format!(
+                    " (?{}, ?{}, ?{}, ?{}, ?{}, ?{})",
+                    b + 1,
+                    b + 2,
+                    b + 3,
+                    b + 4,
+                    b + 5,
+                    b + 6
+                ));
+            }
+            let mut q = sqlx::query(&sql);
+            for (j, &(x, y, w, t)) in points[done..end].iter().enumerate() {
+                q = q
+                    .bind(stroke_id)
+                    .bind((done + j) as i64)
+                    .bind(x)
+                    .bind(y)
+                    .bind(w)
+                    .bind(t);
+            }
+            q.execute(&mut *tx).await.ok();
+            done = end;
         }
         tx.commit().await.ok();
     }

@@ -32,7 +32,8 @@ use windows::Win32::Storage::FileSystem::{
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, RegisterHotKey,
+    GetAsyncKeyState, HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, RegisterHotKey, VK_CONTROL,
+    VK_DOWN, VK_LEFT, VK_MENU, VK_NEXT, VK_PRIOR, VK_RIGHT, VK_UP,
 };
 use windows::Win32::UI::Input::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
@@ -202,6 +203,8 @@ fn ctx_for(hdev: isize) -> &'static mut DevCtx {
 // ── 自定义消息与命令 ID(Flutter 设置管道用) ──
 
 pub const WM_TRAY_COMMAND: u32 = WM_USER + 1;
+/// 录制完成 → 消息循环:wparam 1=已复制剪贴板, 2=没有笔迹/失败
+const WM_RECORD_DONE: u32 = WM_USER + 3;
 
 pub const CMD_SELECT_COLOR: usize = 100;
 pub const CMD_SELECT_WIDTH: usize = 200;
@@ -220,6 +223,10 @@ pub const CMD_NAVIGATE_TO_PAGE: usize = 810;
 pub const CMD_PAGE_PREV: usize = 720;
 pub const CMD_PAGE_NEXT: usize = 721;
 pub const CMD_EXPORT_SVG_GIF: usize = 722;
+pub const CMD_CANVAS_HOME: usize = 730; // 无限画布:镜头回原点 + 100%
+pub const CMD_CANVAS_CENTER: usize = 731; // 无限画布:镜头居中内容包围盒
+pub const CMD_CANVAS_NEW: usize = 732; // 无限画布:清空内容 + 镜头回原点
+pub const CMD_TOGGLE_INFINITE_CANVAS: usize = 733; // 活页本 ↔ 无限画布
 pub const CMD_UNDO: usize = 800;
 pub const CMD_QUIT: usize = 999;
 
@@ -270,6 +277,129 @@ pub static OVERLAY_HWND: std::sync::Mutex<isize> = std::sync::Mutex::new(0);
 /// 管道线程(getSettings)与消息循环共享此值。
 pub static OUTLINE_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+// ── 无限画布:模式开关 + 镜头(macOS 同款) ──
+// 视图 = (画布 − pan) × zoom,zoom ∈ (0.05, 1](上限 100% 防蚂蚁大小涂鸦)。
+// 笔迹以画布坐标存储(可为负/超屏),输入侧 视图→画布,渲染侧 画布→视图。
+// 开关与镜头用原子量:消息循环线程独占改写,管道线程(getSettings /
+// 画布总览)只读。翻页模式下两者不起作用(pan=0、zoom=1)。
+pub static INFINITE_CANVAS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+static CAM_PAN_X: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static CAM_PAN_Y: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static CAM_ZOOM: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+const ZOOM_MIN: f64 = 0.05;
+const ZOOM_MAX: f64 = 1.0;
+const ZOOM_HINT_MS: u64 = 1500; // "已达最大缩放"提示节流
+const CAM_SAVE_INTERVAL_MS: u64 = 500; // 镜头持久化节流(与 macOS 一致)
+
+/// 当前镜头 (pan_x, pan_y, zoom)
+fn cam() -> (f64, f64, f64) {
+    use std::sync::atomic::Ordering;
+    let z = f64::from_bits(CAM_ZOOM.load(Ordering::SeqCst));
+    (
+        f64::from_bits(CAM_PAN_X.load(Ordering::SeqCst)),
+        f64::from_bits(CAM_PAN_Y.load(Ordering::SeqCst)),
+        if z > 0.0 { z } else { 1.0 },
+    )
+}
+
+fn set_cam(px: f64, py: f64, z: f64) {
+    use std::sync::atomic::Ordering;
+    CAM_PAN_X.store(px.to_bits(), Ordering::SeqCst);
+    CAM_PAN_Y.store(py.to_bits(), Ordering::SeqCst);
+    CAM_ZOOM.store(z.to_bits(), Ordering::SeqCst);
+}
+
+fn infinite_on() -> bool {
+    INFINITE_CANVAS.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// 视图坐标 → 画布坐标(笔输入;视图 = 屏幕像素坐标)
+fn canvas_from_view(vx: f64, vy: f64) -> (f64, f64) {
+    if infinite_on() {
+        let (px, py, z) = cam();
+        (vx / z + px, vy / z + py)
+    } else {
+        (vx, vy)
+    }
+}
+
+/// 画布坐标 → 视图坐标(渲染)
+fn view_from_canvas(cx: f64, cy: f64) -> (f64, f64) {
+    if infinite_on() {
+        let (px, py, z) = cam();
+        ((cx - px) * z, (cy - py) * z)
+    } else {
+        (cx, cy)
+    }
+}
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+// ── 快捷录制 GIF(Ctrl+Alt+R 按住):质量设置(macOS 同款键名) ──
+// 消息循环线程独占改写,管道线程(getSettings)只读。
+static GIF_FPS: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(15);
+static GIF_RESOLUTION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static GIF_SPEED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static GIF_END_MODE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(1);
+
+fn gif_settings() -> (i32, f64, f64, i32) {
+    use std::sync::atomic::Ordering;
+    (
+        GIF_FPS.load(Ordering::SeqCst),
+        f64::from_bits(GIF_RESOLUTION.load(Ordering::SeqCst)),
+        f64::from_bits(GIF_SPEED.load(Ordering::SeqCst)),
+        GIF_END_MODE.load(Ordering::SeqCst),
+    )
+}
+
+fn set_gif_settings(fps: i32, resolution: f64, speed: f64, end_mode: i32) {
+    use std::sync::atomic::Ordering;
+    GIF_FPS.store(fps.clamp(1, 50), Ordering::SeqCst);
+    GIF_RESOLUTION.store(resolution.clamp(0.05, 1.0).to_bits(), Ordering::SeqCst);
+    GIF_SPEED.store(speed.clamp(0.5, 20.0).to_bits(), Ordering::SeqCst);
+    GIF_END_MODE.store(end_mode.clamp(0, 2), Ordering::SeqCst);
+}
+
+/// 从 user_settings 恢复(键名与 macOS 一致,设置数据库可互换)
+fn load_gif_settings() {
+    let rt = crate::runtime();
+    let fps = rt
+        .block_on(crate::db::load_setting("gif_fps"))
+        .and_then(|v| v.parse::<i32>().ok())
+        .unwrap_or(15);
+    let resolution = rt
+        .block_on(crate::db::load_setting("gif_resolution"))
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(0.5);
+    let speed = rt
+        .block_on(crate::db::load_setting("gif_speed"))
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(2.0);
+    let end_mode = rt
+        .block_on(crate::db::load_setting("gif_end_mode"))
+        .and_then(|v| v.parse::<i32>().ok())
+        .unwrap_or(1);
+    set_gif_settings(fps, resolution, speed, end_mode);
+}
+
+fn persist_gif_settings(fps: i32, resolution: f64, speed: f64, end_mode: i32) {
+    set_gif_settings(fps, resolution, speed, end_mode);
+    let (fps, res, speed, end_mode) = gif_settings();
+    let rt = crate::runtime();
+    rt.block_on(crate::db::save_setting("gif_fps", &fps.to_string()));
+    rt.block_on(crate::db::save_setting("gif_resolution", &format!("{res:.4}")));
+    rt.block_on(crate::db::save_setting("gif_speed", &format!("{speed:.4}")));
+    rt.block_on(crate::db::save_setting("gif_end_mode", &end_mode.to_string()));
+}
+
 struct OverlayState {
     canvas: OverlayCanvas,
     draw: DrawState,
@@ -282,6 +412,10 @@ struct OverlayState {
     in_stroke: bool,
     /// 笔迹当前是否可见(飘渺模式)
     strokes_visible: bool,
+    /// 快捷录制 GIF 进行中(Ctrl+Alt+R 按住)
+    gif_recording: bool,
+    /// 录制起点笔画序号(-1 = 未在录制)
+    gif_record_start: i32,
 }
 
 static STATE: AtomicPtr<OverlayState> = AtomicPtr::new(std::ptr::null_mut());
@@ -536,37 +670,99 @@ impl OverlayCanvas {
     /// 绘制网格线(与 macOS 一致:40px 间距、50% 灰半透明、画在笔画下方)。
     /// macOS 为 colorWithWhite:0.5 alpha:0.15 → premultiplied 像素
     /// RGB = 128*0.15 ≈ 19,alpha = 38。
+    /// 网格画在画布坐标系:无限画布下跟随镜头平移/缩放,并在「屏幕尺寸」
+    /// 整数倍处加粗(每屏一条参考线);翻页模式 pan=0、zoom=1,与从前一致。
     fn draw_grid(&mut self) {
-        const GAP: i32 = 40;
+        const GAP: f64 = 40.0;
         const GA: u8 = 38; // 0.15 * 255
         const GR: u8 = 19; // 0.5 * 0.15 * 255 (50% 灰,premultiplied)
+        // 加粗参考线(仅无限画布):colorWithWhite:0.5 alpha:0.55
+        const BOLD_GA: u8 = 140; // 0.55 * 255
+        const BOLD_GR: u8 = 70; // 0.5 * 0.55 * 255
+
+        let infinite = infinite_on();
+        let (pan_x, pan_y, zoom) = if infinite {
+            cam()
+        } else {
+            (0.0, 0.0, 1.0)
+        };
         let w = self.w;
         let h = self.h;
+        // 可见画布范围(view = (canvas − pan) × zoom)
+        let cx0 = pan_x;
+        let cx1 = pan_x + w as f64 / zoom;
+        let cy0 = pan_y;
+        let cy1 = pan_y + h as f64 / zoom;
+
         unsafe {
             let bits = self.bits;
-            // 竖线
-            let mut gx = 0;
-            while gx <= w {
-                for y in 0..h {
-                    let i = ((y as usize) * (w as usize) + gx as usize) * 4;
-                    *bits.add(i) = GR; // B
-                    *bits.add(i + 1) = GR; // G
-                    *bits.add(i + 2) = GR; // R
-                    *bits.add(i + 3) = GA; // A
+
+            // 细网格:每 GAP 一格,统一淡细线
+            let kx0 = (cx0 / GAP).floor() as i64 - 1;
+            let kx1 = (cx1 / GAP).floor() as i64 + 1;
+            let mut k = kx0;
+            while k <= kx1 {
+                let gx = ((k as f64 * GAP - pan_x) * zoom).round() as i32;
+                if gx >= 0 && gx < w {
+                    for y in 0..h {
+                        let i = ((y as usize) * (w as usize) + gx as usize) * 4;
+                        *bits.add(i) = GR; // B
+                        *bits.add(i + 1) = GR; // G
+                        *bits.add(i + 2) = GR; // R
+                        *bits.add(i + 3) = GA; // A
+                    }
                 }
-                gx += GAP;
+                k += 1;
             }
-            // 横线
-            let mut gy = 0;
-            while gy <= h {
-                for x in 0..w {
-                    let i = ((gy as usize) * (w as usize) + x as usize) * 4;
-                    *bits.add(i) = GR;
-                    *bits.add(i + 1) = GR;
-                    *bits.add(i + 2) = GR;
-                    *bits.add(i + 3) = GA;
+            let ky0 = (cy0 / GAP).floor() as i64 - 1;
+            let ky1 = (cy1 / GAP).floor() as i64 + 1;
+            let mut k = ky0;
+            while k <= ky1 {
+                let gy = ((k as f64 * GAP - pan_y) * zoom).round() as i32;
+                if gy >= 0 && gy < h {
+                    for x in 0..w {
+                        let i = ((gy as usize) * (w as usize) + x as usize) * 4;
+                        *bits.add(i) = GR;
+                        *bits.add(i + 1) = GR;
+                        *bits.add(i + 2) = GR;
+                        *bits.add(i + 3) = GA;
+                    }
                 }
-                gy += GAP;
+                k += 1;
+            }
+
+            // 分界线:只在「屏幕尺寸」整数倍处加深加粗(无限画布 = 每屏一条参考线)
+            if infinite {
+                let bw = w as f64;
+                let bh = h as f64;
+                let mut k = ((cx0 / bw).floor() as i64) - 1;
+                while k <= ((cx1 / bw).floor() as i64) + 1 {
+                    let gx = ((k as f64 * bw - pan_x) * zoom).round() as i32;
+                    if gx >= 0 && gx < w {
+                        for y in 0..h {
+                            let i = ((y as usize) * (w as usize) + gx as usize) * 4;
+                            *bits.add(i) = BOLD_GR;
+                            *bits.add(i + 1) = BOLD_GR;
+                            *bits.add(i + 2) = BOLD_GR;
+                            *bits.add(i + 3) = BOLD_GA;
+                        }
+                    }
+                    k += 1;
+                }
+                let mut k = ((cy0 / bh).floor() as i64) - 1;
+                while k <= ((cy1 / bh).floor() as i64) + 1 {
+                    let gy = ((k as f64 * bh - pan_y) * zoom).round() as i32;
+                    if gy >= 0 && gy < h {
+                        for x in 0..w {
+                            let i = ((gy as usize) * (w as usize) + x as usize) * 4;
+                            *bits.add(i) = BOLD_GR;
+                            *bits.add(i + 1) = BOLD_GR;
+                            *bits.add(i + 2) = BOLD_GR;
+                            *bits.add(i + 3) = BOLD_GA;
+                        }
+                    }
+                    k += 1;
+                }
             }
         }
     }
@@ -661,23 +857,6 @@ fn merge_rect(dirty: &mut Option<RECT>, r: &RECT) {
     }
 }
 
-/// 模型器输出点转 pen_path 点列(带半径)
-fn modeler_pts_to_path(
-    results: &[ink_stroke_modeler_rs::ModelerResult],
-    scale: f32,
-) -> Vec<(f32, f32, f32)> {
-    results
-        .iter()
-        .map(|r| {
-            (
-                r.pos.0 as f32,
-                r.pos.1 as f32,
-                width_r(r.pressure as f32, scale),
-            )
-        })
-        .collect()
-}
-
 /// 轮廓色(黑/白,根据笔迹亮度取对比色,用于描边增强)
 fn contrast_color(r: u8, g: u8, b: u8) -> (u8, u8, u8) {
     let lum = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
@@ -764,7 +943,9 @@ fn redraw_pen(state: &mut OverlayState, new_pts: &[(f32, f32, f32)]) -> Option<R
     new_dirty
 }
 
-/// 处理一个采样点:喂给 ink-stroke-modeler,输出平滑点列后轮廓填充
+/// 处理一个采样点:喂给 ink-stroke-modeler,输出平滑点列后轮廓填充。
+/// x/y 为画布坐标(无限画布下 = 视图坐标经镜头逆变换);笔迹以画布坐标
+/// 入库,绘制时再经镜头变换回视图。
 fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) -> Option<RECT> {
     // 模型器要求首事件 Down,后续 Move,抬起 Up
     let event_type = if !down {
@@ -806,14 +987,28 @@ fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) ->
     if !results.is_empty() {
         let scale = state.draw.width_scale as f32;
         for r in &results {
-            crate::export::glaspen2_add_point(
+            // 相对时间必须带上:GIF 回放时间线按它展开,t=0 会让导出永远为空
+            crate::export::glaspen2_add_point_t(
                 r.pos.0,
                 r.pos.1,
                 (width_r(r.pressure as f32, scale) * 2.0) as f64,
+                r.time,
             );
         }
     }
-    let pts = modeler_pts_to_path(&results, state.draw.width_scale as f32);
+    let z = if infinite_on() { cam().2 as f32 } else { 1.0 };
+    // 模型器输出是画布坐标;绘制前经镜头变换回视图,线宽同步缩放
+    let pts: Vec<(f32, f32, f32)> = results
+        .iter()
+        .map(|r| {
+            let (vx, vy) = view_from_canvas(r.pos.0, r.pos.1);
+            (
+                vx as f32,
+                vy as f32,
+                (width_r(r.pressure as f32, state.draw.width_scale as f32) * z).max(0.5),
+            )
+        })
+        .collect();
 
     if !down {
         // 抬起:补最后一段轮廓 + 终点圆帽,清空并重置模型器
@@ -891,11 +1086,13 @@ unsafe fn process_raw_hid(buf: &[u64]) -> Option<RECT> {
             (y.min(ctx.y_max as u32) as f64 / ctx.y_max * (state.canvas.h - 1) as f64) as f32;
         let pnorm = ((press as f64 / ctx.p_max).clamp(0.0, 1.0)) as f32;
         let down = (switches & 0x05) != 0;
-        // 压力监控:每帧刷新
+        // 压力监控:每帧刷新(视图坐标 = 屏幕像素位置)
         if state.draw.pressure_monitor {
             hud_update_pressure(press as i32, down, sx as i32, sy as i32);
         }
-        if let Some(rect) = handle_point(state, sx, sy, pnorm, down) {
+        // 无限画布:视图坐标 → 画布坐标(笔迹存画布系,镜头平移/缩放不影响已写笔画)
+        let (cx, cy) = canvas_from_view(sx as f64, sy as f64);
+        if let Some(rect) = handle_point(state, cx as f32, cy as f32, pnorm, down) {
             merge_rect(&mut dirty, &rect);
         }
     }
@@ -916,6 +1113,48 @@ unsafe extern "system" fn wnd_proc(
 
     match msg {
         WM_INPUT => {
+            // 先分流:鼠标输入(滚轮缩放)与数位笔(HID)走不同处理;
+            // 鼠标事件绝不能触碰笔状态/穿透样式(否则会打断下层操作)
+            let hraw = HRAWINPUT(lparam.0 as *mut core::ffi::c_void);
+            let mut size: u32 = 0;
+            let _ = GetRawInputData(
+                hraw,
+                RID_INPUT,
+                None,
+                &mut size,
+                std::mem::size_of::<RAWINPUTHEADER>() as u32,
+            );
+            if size == 0 {
+                return LRESULT(0);
+            }
+            let n = ((size as usize) + 7) / 8;
+            let mut buf = vec![0u64; n];
+            let written = GetRawInputData(
+                hraw,
+                RID_INPUT,
+                Some(buf.as_mut_ptr() as *mut core::ffi::c_void),
+                &mut size,
+                std::mem::size_of::<RAWINPUTHEADER>() as u32,
+            );
+            if written == 0 {
+                return LRESULT(0);
+            }
+            let dw_type =
+                u32::from_le_bytes(std::slice::from_raw_parts(buf.as_ptr() as *const u8, 4).try_into().unwrap());
+            if dw_type == RIM_TYPEMOUSE.0 {
+                let state = &mut *STATE.load(Ordering::SeqCst);
+                handle_mouse_raw(&buf, state);
+                return LRESULT(0);
+            }
+            if dw_type == RIM_TYPEKEYBOARD.0 {
+                // 键盘仅用于录制 GIF 时检测 Ctrl+Alt+R 松开,其余忽略
+                let state = &mut *STATE.load(Ordering::SeqCst);
+                handle_keyboard_raw(&buf, state);
+                return LRESULT(0);
+            }
+            if dw_type != RIM_TYPEHID.0 {
+                return LRESULT(0); // 其余设备不经此窗口
+            }
             let state = &mut *STATE.load(Ordering::SeqCst);
             if !state.draw.enabled {
                 // 涂鸦关闭:保持穿透,不拦截、不处理
@@ -932,31 +1171,9 @@ unsafe extern "system" fn wnd_proc(
                 show_strokes(state);
             }
 
-            let hraw = HRAWINPUT(lparam.0 as *mut core::ffi::c_void);
-            let mut size: u32 = 0;
-            let _ = GetRawInputData(
-                hraw,
-                RID_INPUT,
-                None,
-                &mut size,
-                std::mem::size_of::<RAWINPUTHEADER>() as u32,
-            );
-            if size > 0 {
-                let n = ((size as usize) + 7) / 8;
-                let mut buf = vec![0u64; n];
-                let written = GetRawInputData(
-                    hraw,
-                    RID_INPUT,
-                    Some(buf.as_mut_ptr() as *mut core::ffi::c_void),
-                    &mut size,
-                    std::mem::size_of::<RAWINPUTHEADER>() as u32,
-                );
-                if written > 0 {
-                    if let Some(dirty) = process_raw_hid(&buf) {
-                        let state = &mut *STATE.load(Ordering::SeqCst);
-                        state.canvas.present_rect(&dirty);
-                    }
-                }
+            if let Some(dirty) = process_raw_hid(&buf) {
+                let state = &mut *STATE.load(Ordering::SeqCst);
+                state.canvas.present_rect(&dirty);
             }
             let _ = SetTimer(Some(hwnd), TIMER_UNBLOCK, UNBLOCK_DELAY_MS, None);
             LRESULT(0)
@@ -1004,7 +1221,44 @@ unsafe extern "system" fn wnd_proc(
                 8 => unsafe {
                     let _ = DestroyWindow(hwnd);
                 },
+                // 无限画布:Ctrl+Alt+方向键 平移镜头(步长随缩放,越缩小步长越大)
+                10 | 11 | 12 | 13 => {
+                    if infinite_on() && state.draw.enabled {
+                        let (_, _, z) = cam();
+                        let step = 80.0 / z;
+                        let (dx, dy) = match wparam.0 as i32 {
+                            10 => (-step, 0.0), // ←
+                            11 => (0.0, step),  // ↑
+                            12 => (step, 0.0),  // →
+                            _ => (0.0, -step),  // ↓
+                        };
+                        canvas_pan_by(state, dx, dy);
+                    }
+                }
+                // 无限画布:Ctrl+Alt+PageUp/PageDown 键盘缩放(以视口中心为锚)
+                14 | 15 => {
+                    if infinite_on() && state.draw.enabled {
+                        let factor = if wparam.0 as i32 == 14 { 1.15 } else { 1.0 / 1.15 };
+                        canvas_zoom_at(
+                            state,
+                            factor,
+                            state.canvas.w as f64 * 0.5,
+                            state.canvas.h as f64 * 0.5,
+                        );
+                    }
+                }
+                // Ctrl+Alt+R 按住录制手写 GIF(松开由键盘 Raw Input 检测)
+                16 => gif_record_start(state),
                 _ => {}
+            }
+            LRESULT(0)
+        }
+        WM_RECORD_DONE => {
+            // 后台 GIF 编码/剪贴板完成(0=复制失败, 1=成功, 2=没有笔迹)
+            match wparam.0 as usize {
+                1 => hud_notify("GIF 已复制到剪贴板"),
+                2 => hud_notify("没有笔迹或导出失败"),
+                _ => hud_notify("GIF 复制失败"),
             }
             LRESULT(0)
         }
@@ -1021,6 +1275,10 @@ unsafe extern "system" fn wnd_proc(
         }
         WM_ERASEBKGND => LRESULT(1),
         WM_DESTROY => {
+            // 无限画布退出前存镜头(节流持久化可能丢最后一次拖动)
+            if infinite_on() {
+                persist_camera();
+            }
             PostQuitMessage(0);
             LRESULT(0)
         }
@@ -1078,6 +1336,24 @@ pub fn run() {
             .unwrap_or(0)
             != 0;
 
+        // 恢复画布模式与镜头(与 macOS 一致):两种模式独立存储,
+        // 无限画布全局仅一个;重启后回到离开时的镜头位置。
+        let infinite = crate::runtime()
+            .block_on(crate::db::load_setting("infinite_canvas"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
+        // 快捷录制 GIF 的质量设置(与 macOS 同键名)
+        load_gif_settings();
+        INFINITE_CANVAS.store(infinite, std::sync::atomic::Ordering::SeqCst);
+        crate::export::glaspen2_set_canvas_kind(if infinite { 1 } else { 0 });
+        if infinite {
+            crate::export::glaspen2_load_infinite_strokes();
+            let (mut px, mut py, mut pz) = (0.0f64, 0.0f64, 0.0f64);
+            crate::export::glaspen2_get_infinite_transform(&mut px, &mut py, &mut pz);
+            set_cam(px, py, if pz > 0.0 { pz } else { 1.0 });
+        }
+
         // HUD 窗口(通知居中 + 压力监控左上角)
         {
             let (notif_hwnd, pm_hwnd) = hud_create();
@@ -1119,17 +1395,18 @@ pub fn run() {
             start_time: Instant::now(),
             in_stroke: false,
             strokes_visible: true,
+            gif_recording: false,
+            gif_record_start: -1,
         };
         let _ = state.stroke_modeler.reset_w_params(modeler_params());
-        if show_grid {
-            state.canvas.draw_grid();
-        }
-        state.canvas.set_bg_alpha(BG_BLOCK);
+        // 按当前画布模式绘制网格与笔迹(无限画布重启后恢复镜头与内容)
+        redraw_from_strokes(&mut state);
         // 初始穿透(WS_EX_TRANSPARENT),鼠标可正常操作;笔事件到达时自动唤醒拦截
         set_input_blocking(hwnd, false);
         STATE.store(Box::into_raw(Box::new(state)), Ordering::SeqCst);
 
-        // 注册 Digitizer 设备收笔报告(WM_INPUT 不依赖 hit test,穿透时也能收到)
+        // 注册 Raw Input 设备收报告(WM_INPUT 不依赖 hit test,穿透时也能收到):
+        // 数位笔(悬空+落笔) + 鼠标(滚轮缩放) + 键盘(录制 GIF 检测松键)
         let mut devices = [
             RAWINPUTDEVICE {
                 usUsagePage: 0x0D,
@@ -1143,12 +1420,25 @@ pub fn run() {
                 dwFlags: RIDEV_INPUTSINK,
                 hwndTarget: hwnd,
             },
+            RAWINPUTDEVICE {
+                usUsagePage: 0x01,
+                usUsage: 0x02,
+                dwFlags: RIDEV_INPUTSINK,
+                hwndTarget: hwnd,
+            },
+            RAWINPUTDEVICE {
+                usUsagePage: 0x01,
+                usUsage: 0x06,
+                dwFlags: RIDEV_INPUTSINK,
+                hwndTarget: hwnd,
+            },
         ];
         let r = RegisterRawInputDevices(&mut devices, std::mem::size_of::<RAWINPUTDEVICE>() as u32);
         println!("[overlay] RegisterRawInputDevices: {:?}", r);
 
         // 热键(README 快捷键表):Ctrl+Alt+C 新建画布 / V 开关 / Z 撤销 /
-        // J/K 翻页 / G 导出 / B 模糊背景 / Q 退出
+        // J/K 翻页 / G 导出 / B 模糊背景 / Q 退出 / X 固定↔飘渺;
+        // 无限画布:方向键平移 / PageUp·PageDown 键盘缩放
         let mods = HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0);
         RegisterHotKey(Some(hwnd), 1, mods, 'C' as u32).ok();
         RegisterHotKey(Some(hwnd), 2, mods, 'V' as u32).ok();
@@ -1159,6 +1449,13 @@ pub fn run() {
         RegisterHotKey(Some(hwnd), 7, mods, 'B' as u32).ok();
         RegisterHotKey(Some(hwnd), 8, mods, 'Q' as u32).ok();
         RegisterHotKey(Some(hwnd), 9, mods, 'X' as u32).ok();
+        RegisterHotKey(Some(hwnd), 10, mods, VK_LEFT.0 as u32).ok();
+        RegisterHotKey(Some(hwnd), 11, mods, VK_UP.0 as u32).ok();
+        RegisterHotKey(Some(hwnd), 12, mods, VK_RIGHT.0 as u32).ok();
+        RegisterHotKey(Some(hwnd), 13, mods, VK_DOWN.0 as u32).ok();
+        RegisterHotKey(Some(hwnd), 14, mods, VK_PRIOR.0 as u32).ok(); // PageUp
+        RegisterHotKey(Some(hwnd), 15, mods, VK_NEXT.0 as u32).ok(); // PageDown
+        RegisterHotKey(Some(hwnd), 16, mods, 'R' as u32).ok(); // 按住录 GIF
 
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         let _ = UpdateWindow(hwnd);
@@ -1176,7 +1473,7 @@ pub fn run() {
 
         println!("[overlay] 全屏透明涂鸦已启动(WM_INPUT + ink-stroke-modeler + cairo)。");
         println!(
-            "[overlay] 快捷键: Ctrl+Alt+C 新建画布 / V 开关 / Z 撤销 / J/K 翻页 / G 导出 / B 模糊背景 / X 固定↔飘渺 / Q 退出"
+            "[overlay] 快捷键: Ctrl+Alt+C 新建 / V 开关 / Z 撤销 / J/K 翻页 / G 导出 / B 模糊 / X 固定↔飘渺 / Q 退出;无限画布: 方向键平移 / PageUp·Down 缩放 / Ctrl+Alt+滚轮缩放"
         );
         run_loop();
 
@@ -1248,6 +1545,13 @@ fn create_overlay_window() -> HWND {
 fn set_input_blocking(hwnd: HWND, blocking: bool) {
     unsafe {
         let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let want_transparent = !blocking;
+        let has_transparent = (style & (WS_EX_TRANSPARENT.0 as isize)) != 0;
+        if want_transparent == has_transparent {
+            // 样式未变化时不调用 SetWindowLongPtr:书写中每个笔事件都走到这里,
+            // 200 次/秒的冗余 win32k 调用会加剧输入管线压力(卡顿嫌疑之一)
+            return;
+        }
         let transparent = if blocking {
             0
         } else {
@@ -1256,6 +1560,45 @@ fn set_input_blocking(hwnd: HWND, blocking: bool) {
         let new_style = (style & !(WS_EX_TRANSPARENT.0 as isize)) | transparent;
         let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_style);
     }
+}
+
+// ── 无限画布:Ctrl+Alt+滚轮 缩放(鼠标 Raw Input) ──
+// overlay 平时 WS_EX_TRANSPARENT 穿透且无焦点,滚轮只会发给前台窗口。
+// 不用 WH_MOUSE_LL 低级钩子:LL 钩子是同步回调,系统原始输入线程(RIT)
+// 要等我们处理完才放行输入;书写时本进程线程繁忙会造成钩子超时,
+// 拖慢整条输入管线,笔报告成批延迟(表现为书写周期性卡顿)。
+// 鼠标同样走 Raw Input(RIDEV_INPUTSINK 排队通知,不阻塞 RIT),
+// 与数位笔同一条 WM_INPUT 通道,只取滚轮,其余忽略。
+
+/// 处理鼠标 Raw Input:仅 Ctrl+Alt+滚轮 → 镜头缩放;其余鼠标输入忽略。
+/// 返回 true 表示吞掉了滚轮(已应用缩放)。
+unsafe fn handle_mouse_raw(buf: &[u64], state: &mut OverlayState) -> bool {
+    let raw = buf.as_ptr() as *const RAWINPUT;
+    if (*raw).header.dwType != RIM_TYPEMOUSE.0 {
+        return false;
+    }
+    let mouse = &(*raw).data.mouse;
+    let btn_flags = mouse.Anonymous.Anonymous.usButtonFlags;
+    if (btn_flags & RI_MOUSE_WHEEL as u16) == 0 {
+        return false; // 非滚轮(移动/按键)全部忽略
+    }
+    let delta = mouse.Anonymous.Anonymous.usButtonData as i16;
+    if delta == 0 || !infinite_on() || !state.draw.enabled || state.in_stroke {
+        return false;
+    }
+    let ctrl = GetAsyncKeyState(VK_CONTROL.0 as i32) < 0;
+    let alt = GetAsyncKeyState(VK_MENU.0 as i32) < 0;
+    if !ctrl || !alt {
+        return false;
+    }
+    let factor = if delta > 0 { 1.1 } else { 1.0 / 1.1 };
+    // 光标屏幕坐标(虚拟桌面) → 视图坐标(虚拟屏左上为原点)
+    let mut pt = POINT::default();
+    let _ = GetCursorPos(&mut pt);
+    let vx = (pt.x - GetSystemMetrics(SM_XVIRTUALSCREEN)) as f32;
+    let vy = (pt.y - GetSystemMetrics(SM_YVIRTUALSCREEN)) as f32;
+    canvas_zoom_at(state, factor, vx as f64, vy as f64);
+    true
 }
 
 // ── HUD 窗口:屏幕中央通知 + 左上角压力监控(macOS 一致) ──
@@ -2154,6 +2497,42 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
             x if x == CMD_PAGE_NEXT => navigate_page(state, true),
             x if x == CMD_EXPORT_SVG_GIF => export_svg_gif_clipboard(state),
             x if x == CMD_TOGGLE_ENABLED => toggle_enabled(state),
+            x if x == CMD_TOGGLE_INFINITE_CANVAS => {
+                apply_infinite_canvas(state, param_on(infinite_on()))
+            }
+            x if x == CMD_CANVAS_HOME => {
+                // 回到原点 + 100%(设置面板「回到原点」)
+                set_cam(0.0, 0.0, 1.0);
+                persist_camera();
+                redraw_from_strokes(state);
+            }
+            x if x == CMD_CANVAS_CENTER => {
+                // 居中内容包围盒(设置面板「居中内容」)
+                let (mut bx, mut by, mut bx2, mut by2) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
+                if crate::export::glaspen2_stroke_bbox(&mut bx, &mut by, &mut bx2, &mut by2) != 0 {
+                    let (_, _, z) = cam();
+                    let z = if z > ZOOM_MIN { z } else { 1.0 };
+                    let (w, h) = (state.canvas.w as f64, state.canvas.h as f64);
+                    set_cam((bx + bx2) * 0.5 - w * 0.5 / z, (by + by2) * 0.5 - h * 0.5 / z, z);
+                    persist_camera();
+                }
+                redraw_from_strokes(state);
+            }
+            x if x == CMD_CANVAS_NEW => {
+                // 手动新建:清空内容,镜头回原点 + 100%(活页本退化为普通新建)
+                if infinite_on() {
+                    let _ = crate::export::glaspen2_clear_strokes(
+                        state.canvas.w,
+                        state.canvas.h,
+                    );
+                    set_cam(0.0, 0.0, 1.0);
+                    persist_camera();
+                    redraw_from_strokes(state);
+                    hud_notify("已新建画布");
+                } else {
+                    clear_screen(state);
+                }
+            }
             x if x == CMD_QUIT => unsafe {
                 let _ = DestroyWindow(state.canvas.hwnd);
             },
@@ -2163,6 +2542,11 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
 }
 
 fn clear_screen(state: &mut OverlayState) {
+    // 无限画布不清空(内容多,误清损失大):新建走设置面板的「新建画布」
+    if infinite_on() {
+        hud_notify("无限画布不会被清除 · 新建请到设置面板手动新建");
+        return;
+    }
     state.pen_path.clear();
     state.in_stroke = false;
     let params = modeler_params();
@@ -2221,6 +2605,7 @@ fn redraw_from_strokes(state: &mut OverlayState) {
         state.canvas.draw_grid();
     }
     let ol = if state.draw.outline_enabled { 1.0 } else { 0.0 };
+    let z = if infinite_on() { cam().2 as f32 } else { 1.0 };
     {
         let strokes = crate::STROKES.lock().unwrap();
         for s in strokes.iter() {
@@ -2232,10 +2617,14 @@ fn redraw_from_strokes(state: &mut OverlayState) {
                 (s.g * 255.0) as u8,
                 (s.b * 255.0) as u8,
             );
+            // 笔迹存画布坐标:重绘时经镜头变换到视图,线宽同步缩放
             let path: Vec<(f32, f32, f32)> = s
                 .points
                 .iter()
-                .map(|&(x, y, w, _)| (x as f32, y as f32, (w as f32 * 0.5).max(0.5)))
+                .map(|&(x, y, w, _)| {
+                    let (vx, vy) = view_from_canvas(x, y);
+                    (vx as f32, vy as f32, ((w as f32 * 0.5) * z).max(0.5))
+                })
                 .collect();
             fill_stroke_path(&mut state.canvas, &path, ol);
         }
@@ -2257,8 +2646,12 @@ fn navigate_page(state: &mut OverlayState, next: bool) {
     navigate_to(state, target, if next { "下一页" } else { "上一页" });
 }
 
-/// 跳转到指定页面:加载该页笔画并重绘,可继续绘画
+/// 跳转到指定页面:加载该页笔画并重绘,可继续绘画。
+/// 无限画布下先切回活页本(否则会把页笔迹塞进无限画布内存,macOS 同款)。
 fn navigate_to(state: &mut OverlayState, target: i64, _label: &str) {
+    if infinite_on() {
+        apply_infinite_canvas(state, false);
+    }
     let current = crate::export::glaspen2_get_current_screen_id();
     if target <= 0 || target == current {
         eprintln!(
@@ -2324,6 +2717,296 @@ fn show_strokes(state: &mut OverlayState) {
     if !state.strokes_visible {
         state.strokes_visible = true;
         redraw_from_strokes(state);
+    }
+}
+
+// ── 无限画布(自由涂鸦):模式切换与镜头(macOS 同款行为) ──
+
+/// 镜头持久化到 user_settings(仅无限模式有意义)
+fn persist_camera() {
+    let (px, py, z) = cam();
+    crate::export::glaspen2_set_infinite_transform(px, py, z);
+}
+
+/// 应用镜头变换到渲染 + 节流持久化(0.5s 一次,与 macOS 一致)
+fn canvas_apply_transform(state: &mut OverlayState) {
+    static LAST_SAVE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    redraw_from_strokes(state);
+    let now = now_millis();
+    if now.saturating_sub(LAST_SAVE.load(std::sync::atomic::Ordering::Relaxed))
+        > CAM_SAVE_INTERVAL_MS
+    {
+        LAST_SAVE.store(now, std::sync::atomic::Ordering::Relaxed);
+        persist_camera();
+    }
+}
+
+/// 镜头平移(⌘⌃方向键同款:Ctrl+Alt+方向键)。书写中忽略(模型器坐标系不能中途跳变)
+fn canvas_pan_by(state: &mut OverlayState, dx: f64, dy: f64) {
+    if state.in_stroke {
+        return;
+    }
+    let (px, py, z) = cam();
+    set_cam(px - dx, py - dy, z);
+    canvas_apply_transform(state);
+}
+
+/// 缩放镜头:以视图点 (vx, vy) 为锚,zoom ∈ (0.05, 1.0]。
+/// 锚点的画布坐标在缩放前后保持同一屏幕位置(view = (canvas−pan)×zoom)。
+fn canvas_zoom_at(state: &mut OverlayState, factor: f64, vx: f64, vy: f64) {
+    if state.in_stroke {
+        return;
+    }
+    let (px, py, z) = cam();
+    let ccx = vx / z + px;
+    let ccy = vy / z + py;
+    let mut nz = z * factor;
+    if nz > ZOOM_MAX {
+        nz = ZOOM_MAX;
+        if z < ZOOM_MAX {
+            static LAST_HINT: std::sync::atomic::AtomicU64 =
+                std::sync::atomic::AtomicU64::new(0);
+            let now = now_millis();
+            if now.saturating_sub(LAST_HINT.load(std::sync::atomic::Ordering::Relaxed))
+                > ZOOM_HINT_MS
+            {
+                LAST_HINT.store(now, std::sync::atomic::Ordering::Relaxed);
+                hud_notify("已达最大缩放 100%");
+            }
+        }
+    }
+    if nz < ZOOM_MIN {
+        nz = ZOOM_MIN;
+    }
+    set_cam(ccx - vx / nz, ccy - vy / nz, nz);
+    canvas_apply_transform(state);
+}
+
+/// 应用无限画布开关(设置面板与热键共用的唯一入口)。
+/// 两种模式各自独立存储:活页本用 screens/strokes,无限画布用全局唯一的
+/// infinite_strokes。切换时冲刷当前笔画、切存储、载入对应画布的笔迹与镜头。
+fn apply_infinite_canvas(state: &mut OverlayState, on: bool) {
+    if infinite_on() == on {
+        return;
+    }
+    // 先把在写的笔画落库到"旧"存储
+    if state.in_stroke {
+        crate::export::glaspen2_end_stroke();
+        state.in_stroke = false;
+        state.pen_path.clear();
+        let params = modeler_params();
+        let _ = state.stroke_modeler.reset_w_params(params);
+        state.start_time = Instant::now();
+    }
+    if infinite_on() {
+        persist_camera(); // 离开无限画布前存镜头
+    }
+    INFINITE_CANVAS.store(on, std::sync::atomic::Ordering::SeqCst);
+    crate::runtime()
+        .block_on(crate::db::save_setting("infinite_canvas", if on { "1" } else { "0" }));
+    crate::export::glaspen2_set_canvas_kind(if on { 1 } else { 0 });
+    if on {
+        crate::export::glaspen2_load_infinite_strokes();
+        let mut px = 0.0f64;
+        let mut py = 0.0f64;
+        let mut pz = 0.0f64;
+        crate::export::glaspen2_get_infinite_transform(&mut px, &mut py, &mut pz);
+        set_cam(px, py, if pz > 0.0 { pz } else { 1.0 });
+    } else {
+        // 回到活页本:载入当前页;没有页就建一页;镜头恒为原点 + 100%
+        let cur = crate::export::glaspen2_get_current_screen_id();
+        if cur > 0 {
+            crate::export::glaspen2_load_strokes_for_screen(cur);
+        } else {
+            crate::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
+        }
+        set_cam(0.0, 0.0, 1.0);
+    }
+    // 切换后画布从空白开始:上一模式的内容仍在库里(重启/翻页回来还在),
+    // 只是切换当下不再显示。清空内存副本,新笔画的 undo/导出只作用于本次。
+    crate::STROKES.lock().unwrap().clear();
+    redraw_from_strokes(state);
+    hud_notify(if on {
+        "无限画布已开启 (Ctrl+Alt+滚轮缩放 · Ctrl+Alt+方向键平移)"
+    } else {
+        "无限画布已关闭,回到活页本"
+    });
+}
+
+// ── 快捷录制 GIF(Ctrl+Alt+R 按住,松开生成并复制剪贴板;macOS ⌘⌃R 同款) ──
+
+/// 提交在写的笔画并复位模型器(录制边界必须落在笔画边界上)
+fn finish_active_stroke(state: &mut OverlayState) {
+    if state.in_stroke {
+        crate::export::glaspen2_end_stroke();
+        state.in_stroke = false;
+        state.pen_path.clear();
+        let params = modeler_params();
+        let _ = state.stroke_modeler.reset_w_params(params);
+        state.start_time = Instant::now();
+    }
+}
+
+/// 按键按下:记录起始笔画序号,之后画的每一笔都进这段 GIF
+fn gif_record_start(state: &mut OverlayState) {
+    if state.gif_recording {
+        return;
+    }
+    if !state.draw.enabled {
+        hud_notify("涂鸦已关闭, 无法录制 GIF");
+        return;
+    }
+    finish_active_stroke(state);
+    state.gif_record_start = crate::export::glaspen2_stroke_count();
+    state.gif_recording = true;
+    hud_notify("按住绘制, 松开生成 GIF");
+}
+
+/// 按键松开:固定笔画区间,后台线程回放渲染编码 GIF → 剪贴板
+fn gif_record_stop(state: &mut OverlayState) {
+    if !state.gif_recording {
+        return;
+    }
+    let start = state.gif_record_start;
+    state.gif_recording = false;
+    state.gif_record_start = -1;
+    finish_active_stroke(state);
+    let end = crate::export::glaspen2_stroke_count();
+    let (fps, resolution, speed, end_mode) = gif_settings();
+    // HWND 裸指针不能跨线程,转 isize 传递
+    let hwnd = state.canvas.hwnd.0 as isize;
+    // 回放渲染 + GIF 压缩可能上百毫秒,不阻塞消息循环;
+    // 区间在主线程钉死,新录制不会覆盖尚在编码的这一次
+    std::thread::spawn(move || {
+        let mut len: i32 = 0;
+        let ptr = crate::export::glaspen2_gif_record_end(
+            start, end, fps, resolution, speed, end_mode, &mut len,
+        );
+        let result = if ptr.is_null() || len <= 0 {
+            2 // 没有笔迹或导出失败
+        } else {
+            let gif = unsafe { std::slice::from_raw_parts(ptr, len as usize) };
+            let ok = unsafe { copy_gif_bytes_to_clipboard(gif) };
+            crate::export::glaspen2_free_rust_bytes(ptr, len);
+            if ok {
+                1
+            } else {
+                0
+            }
+        };
+        unsafe {
+            let _ = PostMessageW(
+                Some(HWND(hwnd as *mut core::ffi::c_void)),
+                WM_RECORD_DONE,
+                WPARAM(result as usize),
+                LPARAM(0),
+            );
+        }
+    });
+}
+
+/// GIF 字节写入剪贴板:注册格式 "GIF"(微信/QQ 粘贴动画时识别此格式)
+/// GIF 写入剪贴板,双格式保证粘贴可用:
+///  1) CF_HDROP:GIF 落临时文件后按"文件"粘贴(微信/QQ 识别为动画,
+///     与 macOS 写文件 URL 到剪贴板同思路);
+///  2) 注册格式 "GIF":原始字节,截图类工具按此读动画。
+/// 返回是否至少写入了一种格式。
+unsafe fn copy_gif_bytes_to_clipboard(gif: &[u8]) -> bool {
+    let cf_gif = RegisterClipboardFormatA(b"GIF\0".as_ptr());
+    if cf_gif == 0 {
+        return false;
+    }
+
+    // GIF 落临时文件(剪贴板只存路径引用,文件保留在 %TEMP% 由系统清理)
+    let path = std::env::temp_dir().join(format!(
+        "glaspen2_record_{}.gif",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    ));
+    if std::fs::write(&path, gif).is_err() {
+        return false;
+    }
+    let mut path_wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    path_wide.push(0); // 双 NUL 结尾
+
+    // CF_HDROP 缓冲:DROPFILES 头(20B) + 宽字符路径列表
+    let hdrop_bytes = 20 + path_wide.len() * 2;
+    let mem_hdrop = GlobalAlloc(GMEM_MOVEABLE, hdrop_bytes);
+    if mem_hdrop.0.is_null() {
+        return false;
+    }
+    {
+        let p = GlobalLock(mem_hdrop) as *mut u8;
+        if p.is_null() {
+            let _ = GlobalFree(mem_hdrop);
+            return false;
+        }
+        // DROPFILES { pFiles=20, pt=(0,0), fNC=0, fWide=1 }
+        std::ptr::write_bytes(p, 0, hdrop_bytes);
+        (p as *mut u32).write_unaligned(20);
+        (p.add(16) as *mut i32).write_unaligned(1); // fWide = TRUE
+        std::ptr::copy_nonoverlapping(
+            path_wide.as_ptr() as *const u8,
+            p.add(20),
+            path_wide.len() * 2,
+        );
+        let _ = GlobalUnlock(mem_hdrop);
+    }
+
+    // "GIF" 注册格式的原始字节
+    let mem_gif = GlobalAlloc(GMEM_MOVEABLE, gif.len());
+    if mem_gif.0.is_null() {
+        let _ = GlobalFree(mem_hdrop);
+        return false;
+    }
+    {
+        let p = GlobalLock(mem_gif);
+        if p.is_null() {
+            let _ = GlobalFree(mem_gif);
+            let _ = GlobalFree(mem_hdrop);
+            return false;
+        }
+        std::ptr::copy_nonoverlapping(gif.as_ptr(), p as *mut u8, gif.len());
+        let _ = GlobalUnlock(mem_gif);
+    }
+
+    const CF_HDROP: u32 = 15;
+    if OpenClipboard(HWND::default()) == 0 {
+        let _ = GlobalFree(mem_hdrop);
+        let _ = GlobalFree(mem_gif);
+        return false;
+    }
+    EmptyClipboard();
+    let h1 = SetClipboardData(CF_HDROP, mem_hdrop);
+    let h2 = SetClipboardData(cf_gif, mem_gif);
+    CloseClipboard();
+    if h1.0.is_null() {
+        let _ = GlobalFree(mem_hdrop);
+    }
+    if h2.0.is_null() {
+        let _ = GlobalFree(mem_gif);
+    }
+    !(h1.0.is_null() && h2.0.is_null())
+}
+
+/// 键盘 Raw Input:录制中检测 Ctrl+Alt+R 松开。
+/// RegisterHotKey 只给按下不给抬起;键盘 Raw Input 与数位笔/鼠标
+/// 同走 WM_INPUT 排队通道,不阻塞系统输入线程。
+unsafe fn handle_keyboard_raw(buf: &[u64], state: &mut OverlayState) {
+    let raw = buf.as_ptr() as *const RAWINPUT;
+    if (*raw).header.dwType != RIM_TYPEKEYBOARD.0 {
+        return;
+    }
+    let kb = &(*raw).data.keyboard;
+    if state.gif_recording && kb.VKey == 0x52 && kb.Message == WM_KEYUP {
+        // R 松开(无需再验修饰键:录制只在热键按下时开启)
+        gif_record_stop(state);
     }
 }
 
@@ -2629,6 +3312,7 @@ unsafe extern "system" {
     fn EmptyClipboard() -> i32;
     fn SetClipboardData(uformat: u32, hmem: HANDLE) -> HANDLE;
     fn CloseClipboard() -> i32;
+    fn RegisterClipboardFormatA(lpsz_format: *const u8) -> u32;
     fn GlobalAlloc(uflags: u32, dw_bytes: usize) -> HANDLE;
     fn GlobalFree(hmem: HANDLE) -> HANDLE;
     fn GlobalLock(hmem: HANDLE) -> *mut std::ffi::c_void;
@@ -2726,7 +3410,10 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
         let n = match stream.read(&mut buf) {
             Ok(0) => break,
             Ok(n) => n,
-            Err(_) => break,
+            Err(e) => {
+                eprintln!("[pipe] client read error: {}", e);
+                break;
+            }
         };
 
         for &byte in &buf[..n] {
@@ -2745,6 +3432,58 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
     // Prevent File from closing the handle; we close it ourselves
     let _ = stream.into_raw_handle();
     close_pipe(pipe);
+}
+
+/// 无限画布总览载荷(macOS canvas_overview_payload 同款):
+/// 把当前画布内容按包围盒适配渲染成 PNG + 映射当前视口矩形,
+/// 返回 data JSON 内容("png":"<b64>","rect":[x,y,w,h]);空画布返回空串。
+/// 在管道线程调用:只读 STROKES / 镜头原子量,不动 UI 状态。
+fn render_overview_json(ow: i32, oh: i32) -> String {
+    let (mut bx, mut by, mut bx2, mut by2) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
+    if crate::export::glaspen2_stroke_bbox(&mut bx, &mut by, &mut bx2, &mut by2) == 0 {
+        return String::new();
+    }
+    let (mut bw, mut bh) = (bx2 - bx, by2 - by);
+    if bw < 1.0 {
+        bw = 1.0;
+    }
+    if bh < 1.0 {
+        bh = 1.0;
+    }
+    // 外扩 5%,笔迹不贴边
+    let mx = bw * 0.05;
+    let my = bh * 0.05;
+    bx -= mx;
+    by -= my;
+    bw += mx * 2.0;
+    bh += my * 2.0;
+
+    let mut out_len: i32 = 0;
+    let ptr =
+        crate::export::glaspen2_render_canvas_overview(bx, by, bw, bh, ow, oh, &mut out_len);
+    if ptr.is_null() || out_len <= 0 {
+        return String::new();
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(ptr, out_len as usize) };
+    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
+    crate::export::glaspen2_free_rust_bytes(ptr, out_len);
+
+    // 总览映射(scale/offset 必须与渲染一致),再映射当前视口矩形
+    let ov_scale = ((ow as f64) / bw).min((oh as f64) / bh);
+    let ov_ox = ((ow as f64) - bw * ov_scale) * 0.5;
+    let ov_oy = ((oh as f64) - bh * ov_scale) * 0.5;
+    let (px, py, z) = cam();
+    let z = if z > ZOOM_MIN { z } else { 1.0 };
+    let sw = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) } as f64;
+    let sh = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) } as f64;
+    let vr_w = sw / z * ov_scale;
+    let vr_h = sh / z * ov_scale;
+    let vx = ov_ox + (px - bx) * ov_scale;
+    let vy = ov_oy + (py - by) * ov_scale;
+    format!(
+        "\"png\":\"{}\",\"rect\":[{},{},{},{}]",
+        b64, vx, vy, vr_w, vr_h
+    )
 }
 
 fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
@@ -2840,6 +3579,40 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 )
             };
         }
+    } else if msg_type == "canvasOverview" || msg_type == "canvasNew" {
+        // 无限画布总览 tab:镜头动作(home/center/new)+ 包围盒总览 PNG。
+        // 动作发给消息循环线程应用;总览渲染在管道线程(只读 STROKES/镜头)。
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let cmd = if msg_type == "canvasNew" {
+            Some((CMD_CANVAS_NEW, 0usize))
+        } else if json_get_bool(line, "home") == Some(true) {
+            Some((CMD_CANVAS_HOME, 0))
+        } else if json_get_bool(line, "center") == Some(true) {
+            Some((CMD_CANVAS_CENTER, 0))
+        } else {
+            None
+        };
+        if let Some((cmd, param)) = cmd {
+            let _ = unsafe {
+                PostMessageW(
+                    Some(HWND(hwnd as *mut _)),
+                    WM_TRAY_COMMAND,
+                    WPARAM(cmd),
+                    LPARAM(param as isize),
+                )
+            };
+            // 等消息循环应用动作后再渲染总览
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+        let data = render_overview_json(1024, 768);
+        let _ = writer.write_all(
+            format!(
+                "{{\"type\":\"canvasOverview_response\",\"reqId\":{},\"data\":{}}}\n",
+                req_id, data
+            )
+            .as_bytes(),
+        );
+        let _ = writer.flush();
     } else if msg_type == "getSettings" {
         // Respond with current settings from DB
         let (r, g, b, w) = crate::runtime()
@@ -2868,8 +3641,10 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .block_on(crate::db::load_setting("ethereal"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0);
+        let infinite_canvas = if infinite_on() { 1 } else { 0 };
+        let (gfps, gres, gspd, gem) = gif_settings();
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"rainbow\":false,\"launchAtLogin\":false}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false}}}}\n",
             color,
             width,
             outline,
@@ -2877,7 +3652,12 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             grid_follow,
             frosted,
             pressure_monitor,
-            ethereal
+            ethereal,
+            infinite_canvas,
+            gfps,
+            gres,
+            gspd,
+            gem
         );
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
@@ -3022,6 +3802,38 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                     )
                 };
             }
+        } else if key == "infiniteCanvas" {
+            // 模式 tab 切换:活页本 ↔ 无限画布(参数 0/1 显式设置)
+            if let Some(on) = json_get_bool(line, "value") {
+                let _ = unsafe {
+                    PostMessageW(
+                        Some(HWND(hwnd as *mut _)),
+                        WM_TRAY_COMMAND,
+                        WPARAM(CMD_TOGGLE_INFINITE_CANVAS),
+                        LPARAM(if on { 1 } else { 0 }),
+                    )
+                };
+            }
+        } else if key == "gifFps" {
+            if let Some(v) = json_get_i64(line, "value") {
+                let (_, res, spd, em) = gif_settings();
+                persist_gif_settings(v as i32, res, spd, em);
+            }
+        } else if key == "gifResolution" {
+            if let Some(v) = json_get_f64(line, "value") {
+                let (fps, _, spd, em) = gif_settings();
+                persist_gif_settings(fps, v, spd, em);
+            }
+        } else if key == "gifSpeed" {
+            if let Some(v) = json_get_f64(line, "value") {
+                let (fps, res, _, em) = gif_settings();
+                persist_gif_settings(fps, res, v, em);
+            }
+        } else if key == "gifEndMode" {
+            if let Some(v) = json_get_i64(line, "value") {
+                let (fps, res, spd, _) = gif_settings();
+                persist_gif_settings(fps, res, spd, v as i32);
+            }
         }
     }
 }
@@ -3054,9 +3866,22 @@ fn json_get_i64(json: &str, key: &str) -> Option<i64> {
     None
 }
 
-/// 解析 JSON bool 值(Flutter 发送的开关为 true/false)
-fn json_get_bool(json: &str, key: &str) -> Option<bool> {
+/// 解析 JSON 数值(整数或小数;gifResolution/gifSpeed 用)
+fn json_get_f64(json: &str, key: &str) -> Option<f64> {
     let pattern = format!("\"{}\":", key);
+    let start = json.find(&pattern)?;
+    let rest = json[start + pattern.len()..].trim_start();
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit() && c != '-' && c != '.')
+        .unwrap_or(rest.len());
+    if end > 0 {
+        return rest[..end].parse::<f64>().ok();
+    }
+    None
+}
+
+/// 解析 JSON bool 值(Flutter 发送的开关为 true/false)
+fn json_get_bool(json: &str, key: &str) -> Option<bool> {    let pattern = format!("\"{}\":", key);
     let start = json.find(&pattern)?;
     let rest = json[start + pattern.len()..].trim_start();
     if rest.starts_with("true") {

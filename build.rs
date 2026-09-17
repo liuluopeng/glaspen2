@@ -132,6 +132,13 @@ fn main() {
     if is_windows {
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
 
+        // ── 应用图标(macOS 同款素材转出的 ico)嵌入 exe 资源 ──
+        println!("cargo:rerun-if-changed=glaspen2.ico");
+        let mut res = winresource::WindowsResource::new();
+        res.set_icon("glaspen2.ico");
+        res.compile()
+            .expect("failed to compile Windows resources (icon)");
+
         // Auto-build Flutter Windows app (like macOS does)
         let flutter_dir = std::path::Path::new(&manifest_dir).join("flutter_settings");
         let flutter_exe = flutter_dir
