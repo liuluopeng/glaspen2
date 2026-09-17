@@ -1208,7 +1208,15 @@ static NSDictionary *canvas_overview_payload(double w, double h) {
         int w = [args[@"w"] intValue];
         int h = [args[@"h"] intValue];
         int maxSize = [args[@"maxSize"] intValue];
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        // 串行队列:避免并发全屏渲染打爆 CPU(与 minimap 同策略)
+        static dispatch_queue_t thumb_queue = nil;
+        static dispatch_once_t thumb_once;
+        dispatch_once(&thumb_once, ^{
+            thumb_queue = dispatch_queue_create("glaspen2.thumbs", DISPATCH_QUEUE_SERIAL);
+            dispatch_set_target_queue(thumb_queue,
+                dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
+        });
+        dispatch_async(thumb_queue, ^{
             int outLen = 0;
             unsigned char *png = glaspen2_render_thumbnail(screenId, w, h, maxSize, &outLen);
             NSData *data = [NSData data];

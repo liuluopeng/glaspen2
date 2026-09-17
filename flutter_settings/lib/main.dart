@@ -1063,27 +1063,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             // Page info
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('页面 ${page.id}',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 16),
-                    color: Colors.red.shade300,
-                    tooltip: '删除此页面',
-                    onPressed: () => _confirmDeletePage(page),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
+              child: Text('页面 ${page.id}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             ),
           ],
         ),
