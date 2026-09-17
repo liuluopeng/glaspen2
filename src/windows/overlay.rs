@@ -203,6 +203,8 @@ fn ctx_for(hdev: isize) -> &'static mut DevCtx {
 // ── 自定义消息与命令 ID(Flutter 设置管道用) ──
 
 pub const WM_TRAY_COMMAND: u32 = WM_USER + 1;
+/// 录制完成 → 消息循环:wparam 1=已复制剪贴板, 2=没有笔迹/失败
+const WM_RECORD_DONE: u32 = WM_USER + 3;
 
 pub const CMD_SELECT_COLOR: usize = 100;
 pub const CMD_SELECT_WIDTH: usize = 200;
@@ -341,6 +343,63 @@ fn now_millis() -> u64 {
         .unwrap_or(0)
 }
 
+// ── 快捷录制 GIF(Ctrl+Alt+R 按住):质量设置(macOS 同款键名) ──
+// 消息循环线程独占改写,管道线程(getSettings)只读。
+static GIF_FPS: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(15);
+static GIF_RESOLUTION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static GIF_SPEED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static GIF_END_MODE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(1);
+
+fn gif_settings() -> (i32, f64, f64, i32) {
+    use std::sync::atomic::Ordering;
+    (
+        GIF_FPS.load(Ordering::SeqCst),
+        f64::from_bits(GIF_RESOLUTION.load(Ordering::SeqCst)),
+        f64::from_bits(GIF_SPEED.load(Ordering::SeqCst)),
+        GIF_END_MODE.load(Ordering::SeqCst),
+    )
+}
+
+fn set_gif_settings(fps: i32, resolution: f64, speed: f64, end_mode: i32) {
+    use std::sync::atomic::Ordering;
+    GIF_FPS.store(fps.clamp(1, 50), Ordering::SeqCst);
+    GIF_RESOLUTION.store(resolution.clamp(0.05, 1.0).to_bits(), Ordering::SeqCst);
+    GIF_SPEED.store(speed.clamp(0.5, 20.0).to_bits(), Ordering::SeqCst);
+    GIF_END_MODE.store(end_mode.clamp(0, 2), Ordering::SeqCst);
+}
+
+/// 从 user_settings 恢复(键名与 macOS 一致,设置数据库可互换)
+fn load_gif_settings() {
+    let rt = crate::runtime();
+    let fps = rt
+        .block_on(crate::db::load_setting("gif_fps"))
+        .and_then(|v| v.parse::<i32>().ok())
+        .unwrap_or(15);
+    let resolution = rt
+        .block_on(crate::db::load_setting("gif_resolution"))
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(0.5);
+    let speed = rt
+        .block_on(crate::db::load_setting("gif_speed"))
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(2.0);
+    let end_mode = rt
+        .block_on(crate::db::load_setting("gif_end_mode"))
+        .and_then(|v| v.parse::<i32>().ok())
+        .unwrap_or(1);
+    set_gif_settings(fps, resolution, speed, end_mode);
+}
+
+fn persist_gif_settings(fps: i32, resolution: f64, speed: f64, end_mode: i32) {
+    set_gif_settings(fps, resolution, speed, end_mode);
+    let (fps, res, speed, end_mode) = gif_settings();
+    let rt = crate::runtime();
+    rt.block_on(crate::db::save_setting("gif_fps", &fps.to_string()));
+    rt.block_on(crate::db::save_setting("gif_resolution", &format!("{res:.4}")));
+    rt.block_on(crate::db::save_setting("gif_speed", &format!("{speed:.4}")));
+    rt.block_on(crate::db::save_setting("gif_end_mode", &end_mode.to_string()));
+}
+
 struct OverlayState {
     canvas: OverlayCanvas,
     draw: DrawState,
@@ -353,6 +412,10 @@ struct OverlayState {
     in_stroke: bool,
     /// 笔迹当前是否可见(飘渺模式)
     strokes_visible: bool,
+    /// 快捷录制 GIF 进行中(Ctrl+Alt+R 按住)
+    gif_recording: bool,
+    /// 录制起点笔画序号(-1 = 未在录制)
+    gif_record_start: i32,
 }
 
 static STATE: AtomicPtr<OverlayState> = AtomicPtr::new(std::ptr::null_mut());
@@ -1081,8 +1144,14 @@ unsafe extern "system" fn wnd_proc(
                 handle_mouse_raw(&buf, state);
                 return LRESULT(0);
             }
+            if dw_type == RIM_TYPEKEYBOARD.0 {
+                // 键盘仅用于录制 GIF 时检测 Ctrl+Alt+R 松开,其余忽略
+                let state = &mut *STATE.load(Ordering::SeqCst);
+                handle_keyboard_raw(&buf, state);
+                return LRESULT(0);
+            }
             if dw_type != RIM_TYPEHID.0 {
-                return LRESULT(0); // 键盘等其他设备不经此窗口
+                return LRESULT(0); // 其余设备不经此窗口
             }
             let state = &mut *STATE.load(Ordering::SeqCst);
             if !state.draw.enabled {
@@ -1176,7 +1245,18 @@ unsafe extern "system" fn wnd_proc(
                         );
                     }
                 }
+                // Ctrl+Alt+R 按住录制手写 GIF(松开由键盘 Raw Input 检测)
+                16 => gif_record_start(state),
                 _ => {}
+            }
+            LRESULT(0)
+        }
+        WM_RECORD_DONE => {
+            // 后台 GIF 编码/剪贴板完成(0=复制失败, 1=成功, 2=没有笔迹)
+            match wparam.0 as usize {
+                1 => hud_notify("GIF 已复制到剪贴板"),
+                2 => hud_notify("没有笔迹或导出失败"),
+                _ => hud_notify("GIF 复制失败"),
             }
             LRESULT(0)
         }
@@ -1261,6 +1341,8 @@ pub fn run() {
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0)
             != 0;
+        // 快捷录制 GIF 的质量设置(与 macOS 同键名)
+        load_gif_settings();
         INFINITE_CANVAS.store(infinite, std::sync::atomic::Ordering::SeqCst);
         crate::export::glaspen2_set_canvas_kind(if infinite { 1 } else { 0 });
         if infinite {
@@ -1311,6 +1393,8 @@ pub fn run() {
             start_time: Instant::now(),
             in_stroke: false,
             strokes_visible: true,
+            gif_recording: false,
+            gif_record_start: -1,
         };
         let _ = state.stroke_modeler.reset_w_params(modeler_params());
         // 按当前画布模式绘制网格与笔迹(无限画布重启后恢复镜头与内容)
@@ -1320,7 +1404,7 @@ pub fn run() {
         STATE.store(Box::into_raw(Box::new(state)), Ordering::SeqCst);
 
         // 注册 Raw Input 设备收报告(WM_INPUT 不依赖 hit test,穿透时也能收到):
-        // 数位笔(悬空+落笔两个 usage) + 鼠标(仅用于无限画布的 Ctrl+Alt+滚轮缩放)
+        // 数位笔(悬空+落笔) + 鼠标(滚轮缩放) + 键盘(录制 GIF 检测松键)
         let mut devices = [
             RAWINPUTDEVICE {
                 usUsagePage: 0x0D,
@@ -1337,6 +1421,12 @@ pub fn run() {
             RAWINPUTDEVICE {
                 usUsagePage: 0x01,
                 usUsage: 0x02,
+                dwFlags: RIDEV_INPUTSINK,
+                hwndTarget: hwnd,
+            },
+            RAWINPUTDEVICE {
+                usUsagePage: 0x01,
+                usUsage: 0x06,
                 dwFlags: RIDEV_INPUTSINK,
                 hwndTarget: hwnd,
             },
@@ -1363,6 +1453,7 @@ pub fn run() {
         RegisterHotKey(Some(hwnd), 13, mods, VK_DOWN.0 as u32).ok();
         RegisterHotKey(Some(hwnd), 14, mods, VK_PRIOR.0 as u32).ok(); // PageUp
         RegisterHotKey(Some(hwnd), 15, mods, VK_NEXT.0 as u32).ok(); // PageDown
+        RegisterHotKey(Some(hwnd), 16, mods, 'R' as u32).ok(); // 按住录 GIF
 
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         let _ = UpdateWindow(hwnd);
@@ -2737,6 +2828,124 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool) {
     });
 }
 
+// ── 快捷录制 GIF(Ctrl+Alt+R 按住,松开生成并复制剪贴板;macOS ⌘⌃R 同款) ──
+
+/// 提交在写的笔画并复位模型器(录制边界必须落在笔画边界上)
+fn finish_active_stroke(state: &mut OverlayState) {
+    if state.in_stroke {
+        crate::export::glaspen2_end_stroke();
+        state.in_stroke = false;
+        state.pen_path.clear();
+        let params = modeler_params();
+        let _ = state.stroke_modeler.reset_w_params(params);
+        state.start_time = Instant::now();
+    }
+}
+
+/// 按键按下:记录起始笔画序号,之后画的每一笔都进这段 GIF
+fn gif_record_start(state: &mut OverlayState) {
+    if state.gif_recording {
+        return;
+    }
+    if !state.draw.enabled {
+        hud_notify("涂鸦已关闭, 无法录制 GIF");
+        return;
+    }
+    finish_active_stroke(state);
+    state.gif_record_start = crate::export::glaspen2_stroke_count();
+    state.gif_recording = true;
+    hud_notify("按住绘制, 松开生成 GIF");
+}
+
+/// 按键松开:固定笔画区间,后台线程回放渲染编码 GIF → 剪贴板
+fn gif_record_stop(state: &mut OverlayState) {
+    if !state.gif_recording {
+        return;
+    }
+    let start = state.gif_record_start;
+    state.gif_recording = false;
+    state.gif_record_start = -1;
+    finish_active_stroke(state);
+    let end = crate::export::glaspen2_stroke_count();
+    let (fps, resolution, speed, end_mode) = gif_settings();
+    // HWND 裸指针不能跨线程,转 isize 传递
+    let hwnd = state.canvas.hwnd.0 as isize;
+    // 回放渲染 + GIF 压缩可能上百毫秒,不阻塞消息循环;
+    // 区间在主线程钉死,新录制不会覆盖尚在编码的这一次
+    std::thread::spawn(move || {
+        let mut len: i32 = 0;
+        let ptr = crate::export::glaspen2_gif_record_end(
+            start, end, fps, resolution, speed, end_mode, &mut len,
+        );
+        let result = if ptr.is_null() || len <= 0 {
+            2 // 没有笔迹或导出失败
+        } else {
+            let gif = unsafe { std::slice::from_raw_parts(ptr, len as usize) };
+            let ok = unsafe { copy_gif_bytes_to_clipboard(gif) };
+            crate::export::glaspen2_free_rust_bytes(ptr, len);
+            if ok {
+                1
+            } else {
+                0
+            }
+        };
+        unsafe {
+            let _ = PostMessageW(
+                Some(HWND(hwnd as *mut core::ffi::c_void)),
+                WM_RECORD_DONE,
+                WPARAM(result as usize),
+                LPARAM(0),
+            );
+        }
+    });
+}
+
+/// GIF 字节写入剪贴板:注册格式 "GIF"(微信/QQ 粘贴动画时识别此格式)
+unsafe fn copy_gif_bytes_to_clipboard(gif: &[u8]) -> bool {
+    let cf_gif = RegisterClipboardFormatA(b"GIF\0".as_ptr());
+    if cf_gif == 0 {
+        return false;
+    }
+    let mem = GlobalAlloc(GMEM_MOVEABLE, gif.len());
+    if mem.0.is_null() {
+        return false;
+    }
+    let p = GlobalLock(mem);
+    if p.is_null() {
+        let _ = GlobalFree(mem);
+        return false;
+    }
+    std::ptr::copy_nonoverlapping(gif.as_ptr(), p as *mut u8, gif.len());
+    let _ = GlobalUnlock(mem);
+    if OpenClipboard(HWND::default()) == 0 {
+        let _ = GlobalFree(mem);
+        return false;
+    }
+    EmptyClipboard();
+    let h = SetClipboardData(cf_gif, mem);
+    CloseClipboard();
+    if h.0.is_null() {
+        let _ = GlobalFree(mem);
+        return false;
+    }
+    true
+}
+
+/// 键盘 Raw Input:录制中检测 Ctrl+Alt+R 松开。
+/// RegisterHotKey 只给按下不给抬起;键盘 Raw Input 与数位笔/鼠标
+/// 同走 WM_INPUT 排队通道,不阻塞系统输入线程。
+unsafe fn handle_keyboard_raw(buf: &[u64], state: &mut OverlayState) {
+    let raw = buf.as_ptr() as *const RAWINPUT;
+    if (*raw).header.dwType != RIM_TYPEKEYBOARD.0 {
+        return;
+    }
+    let kb = &(*raw).data.keyboard;
+    if state.gif_recording && kb.VKey == 0x52 && kb.Message == WM_KEYUP {
+        // R 松开(无需再验修饰键:录制只在热键按下时开启)
+        gif_record_stop(state);
+    }
+}
+
 /// Ctrl+Alt+G:导出 SVG + GIF,并把当前画布复制到系统剪贴板(CF_DIB)
 fn export_svg_gif_clipboard(state: &mut OverlayState) {
     crate::export::glaspen2_save_svg();
@@ -3039,6 +3248,7 @@ unsafe extern "system" {
     fn EmptyClipboard() -> i32;
     fn SetClipboardData(uformat: u32, hmem: HANDLE) -> HANDLE;
     fn CloseClipboard() -> i32;
+    fn RegisterClipboardFormatA(lpsz_format: *const u8) -> u32;
     fn GlobalAlloc(uflags: u32, dw_bytes: usize) -> HANDLE;
     fn GlobalFree(hmem: HANDLE) -> HANDLE;
     fn GlobalLock(hmem: HANDLE) -> *mut std::ffi::c_void;
@@ -3368,8 +3578,9 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0);
         let infinite_canvas = if infinite_on() { 1 } else { 0 };
+        let (gfps, gres, gspd, gem) = gif_settings();
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"rainbow\":false,\"launchAtLogin\":false}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false}}}}\n",
             color,
             width,
             outline,
@@ -3378,7 +3589,11 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             frosted,
             pressure_monitor,
             ethereal,
-            infinite_canvas
+            infinite_canvas,
+            gfps,
+            gres,
+            gspd,
+            gem
         );
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
@@ -3535,6 +3750,26 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                     )
                 };
             }
+        } else if key == "gifFps" {
+            if let Some(v) = json_get_i64(line, "value") {
+                let (_, res, spd, em) = gif_settings();
+                persist_gif_settings(v as i32, res, spd, em);
+            }
+        } else if key == "gifResolution" {
+            if let Some(v) = json_get_f64(line, "value") {
+                let (fps, _, spd, em) = gif_settings();
+                persist_gif_settings(fps, v, spd, em);
+            }
+        } else if key == "gifSpeed" {
+            if let Some(v) = json_get_f64(line, "value") {
+                let (fps, res, _, em) = gif_settings();
+                persist_gif_settings(fps, res, v, em);
+            }
+        } else if key == "gifEndMode" {
+            if let Some(v) = json_get_i64(line, "value") {
+                let (fps, res, spd, _) = gif_settings();
+                persist_gif_settings(fps, res, spd, v as i32);
+            }
         }
     }
 }
@@ -3567,9 +3802,22 @@ fn json_get_i64(json: &str, key: &str) -> Option<i64> {
     None
 }
 
-/// 解析 JSON bool 值(Flutter 发送的开关为 true/false)
-fn json_get_bool(json: &str, key: &str) -> Option<bool> {
+/// 解析 JSON 数值(整数或小数;gifResolution/gifSpeed 用)
+fn json_get_f64(json: &str, key: &str) -> Option<f64> {
     let pattern = format!("\"{}\":", key);
+    let start = json.find(&pattern)?;
+    let rest = json[start + pattern.len()..].trim_start();
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit() && c != '-' && c != '.')
+        .unwrap_or(rest.len());
+    if end > 0 {
+        return rest[..end].parse::<f64>().ok();
+    }
+    None
+}
+
+/// 解析 JSON bool 值(Flutter 发送的开关为 true/false)
+fn json_get_bool(json: &str, key: &str) -> Option<bool> {    let pattern = format!("\"{}\":", key);
     let start = json.find(&pattern)?;
     let rest = json[start + pattern.len()..].trim_start();
     if rest.starts_with("true") {

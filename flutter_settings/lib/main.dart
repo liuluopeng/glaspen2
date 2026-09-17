@@ -1428,7 +1428,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('GIF 动画 (⌘⌃R 录制)',
+        Text(Platform.isMacOS ? 'GIF 动画 (⌘⌃R 录制)' : 'GIF 动画 (Ctrl+Alt+R 按住录制)',
             style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
         const SizedBox(height: 10),
         _buildGifSettings(),
