@@ -6,6 +6,8 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 
+mod frb_generated; /* AUTO INJECTED BY flutter_rust_bridge */
+
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
@@ -29,6 +31,7 @@ pub mod macos;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
+pub mod api;
 pub mod db;
 pub mod export;
 pub mod modeler;

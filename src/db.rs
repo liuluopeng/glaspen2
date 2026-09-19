@@ -705,6 +705,21 @@ mod platform {
             .map(|v| v as f64)
     }
 
+    /// 当前页的笔迹数（排除软删除）
+    pub async fn page_stroke_count(screen_id: i64) -> u64 {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return 0,
+        };
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM strokes WHERE screen_id = ?1 AND deleted_at IS NULL",
+        )
+        .bind(screen_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0) as u64
+    }
+
     /// 无限画布镜头变换(全局唯一,存 user_settings)。
     pub async fn set_infinite_transform(pan_x: f64, pan_y: f64, zoom: f64) {
         save_setting("infinite_pan_x", &format!("{pan_x:.6}")).await;
