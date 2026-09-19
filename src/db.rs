@@ -179,6 +179,21 @@ mod platform {
             .await
             .ok();
 
+        // 软删除:deleted_at 非 NULL 表示已删除(不参与查询,可恢复)。
+        // 三张实体表各自记录,points/infinite_points 跟随父级笔迹即可。
+        sqlx::query("ALTER TABLE screens ADD COLUMN deleted_at REAL")
+            .execute(&pool)
+            .await
+            .ok();
+        sqlx::query("ALTER TABLE strokes ADD COLUMN deleted_at REAL")
+            .execute(&pool)
+            .await
+            .ok();
+        sqlx::query("ALTER TABLE infinite_strokes ADD COLUMN deleted_at REAL")
+            .execute(&pool)
+            .await
+            .ok();
+
         // 注:旧版本曾在 screens 上存 per-page 镜头(pan_x/pan_y/zoom)。
         // 现在无限画布独立存储且全局只有一个画布,镜头改存 user_settings,
         // 这几列不再读写(旧库中残留的列保持不动,无副作用)。
@@ -355,7 +370,7 @@ mod platform {
             Some(p) => p,
             None => return false,
         };
-        sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM strokes WHERE screen_id = ?1)")
+        sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM strokes WHERE screen_id = ?1 AND deleted_at IS NULL)")
             .bind(screen_id)
             .fetch_one(pool)
             .await
@@ -376,7 +391,7 @@ mod platform {
         }
         sqlx::query_scalar::<_, i64>(
             "SELECT CASE WHEN edited = 1 OR EXISTS \
-             (SELECT 1 FROM strokes WHERE screen_id = screens.id) \
+             (SELECT 1 FROM strokes WHERE screen_id = screens.id AND deleted_at IS NULL) \
              THEN 1 ELSE 0 END FROM screens WHERE id = ?1",
         )
         .bind(screen_id)
@@ -394,17 +409,17 @@ mod platform {
             Some(p) => p,
             None => return false,
         };
-        sqlx::query("DELETE FROM points WHERE stroke_id = ?1")
-            .bind(stroke_id)
-            .execute(pool)
-            .await
-            .ok();
-        let deleted = sqlx::query("DELETE FROM strokes WHERE id = ?1")
-            .bind(stroke_id)
-            .execute(pool)
-            .await
-            .ok();
-        deleted.is_some()
+        // 软删除:标记而非物理删除(数据可恢复)
+        let now = now_f64();
+        let deleted = sqlx::query(
+            "UPDATE strokes SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL",
+        )
+        .bind(stroke_id)
+        .bind(now)
+        .execute(pool)
+        .await
+        .ok();
+        deleted.map(|r| r.rows_affected() > 0).unwrap_or(false)
     }
 
     pub async fn delete_last_stroke() -> bool {
@@ -432,38 +447,38 @@ mod platform {
             Some(p) => p,
             None => return false,
         };
-        // Delete in FK order: points → strokes → screen
-        sqlx::query(
-            "DELETE FROM points WHERE stroke_id IN (SELECT id FROM strokes WHERE screen_id = ?1)",
+        // 软删除:标记 screens + strokes 而非物理删除
+        let now = now_f64();
+        let screen_del = sqlx::query(
+            "UPDATE screens SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL",
         )
         .bind(target_id)
+        .bind(now)
         .execute(pool)
         .await
         .ok();
-        sqlx::query("DELETE FROM strokes WHERE screen_id = ?1")
-            .bind(target_id)
-            .execute(pool)
-            .await
-            .ok();
-        let deleted = sqlx::query("DELETE FROM screens WHERE id = ?1")
-            .bind(target_id)
-            .execute(pool)
-            .await
-            .ok();
-        deleted.is_some()
+        let stroke_del = sqlx::query(
+            "UPDATE strokes SET deleted_at = ?2 WHERE screen_id = ?1 AND deleted_at IS NULL",
+        )
+        .bind(target_id)
+        .bind(now)
+        .execute(pool)
+        .await
+        .ok();
+        screen_del.is_some() || stroke_del.is_some()
     }
 
     pub async fn prev_screen(current: i64) -> Option<i64> {
         let pool = DB.get()?;
         sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM screens WHERE id < ?1 ORDER BY id DESC LIMIT 1"
+            "SELECT id FROM screens WHERE id < ?1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1"
         ).bind(current).fetch_optional(pool).await.ok()?
     }
 
     pub async fn next_screen(current: i64) -> Option<i64> {
         let pool = DB.get()?;
         sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM screens WHERE id > ?1 ORDER BY id ASC LIMIT 1"
+            "SELECT id FROM screens WHERE id > ?1 AND deleted_at IS NULL ORDER BY id ASC LIMIT 1"
         ).bind(current).fetch_optional(pool).await.ok()?
     }
 
@@ -492,7 +507,7 @@ mod platform {
             None => return Vec::new(),
         };
         let rows: Vec<(i64, f64, f64, f64, f64)> = sqlx::query_as(
-            "SELECT id, color_r, color_g, color_b, width_scale FROM strokes WHERE screen_id = ?1 ORDER BY id"
+            "SELECT id, color_r, color_g, color_b, width_scale FROM strokes WHERE screen_id = ?1 AND deleted_at IS NULL ORDER BY id"
         ).bind(screen_id).fetch_all(pool).await.unwrap_or_default();
         if rows.is_empty() {
             return Vec::new();
@@ -502,7 +517,7 @@ mod platform {
         let pts: Vec<(i64, i64, f64, f64, f64, f64)> = sqlx::query_as(
             "SELECT p.stroke_id, p.seq, p.x, p.y, p.width, p.t \
              FROM points p JOIN strokes s ON s.id = p.stroke_id \
-             WHERE s.screen_id = ?1 \
+             WHERE s.screen_id = ?1 AND s.deleted_at IS NULL \
              ORDER BY p.stroke_id, p.seq",
         )
         .bind(screen_id)
@@ -531,7 +546,8 @@ mod platform {
         };
         sqlx::query_as(
             "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
-             WHERE EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
+             WHERE deleted_at IS NULL \
+             AND EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
              ORDER BY s.id",
         )
         .fetch_all(pool)
@@ -585,7 +601,7 @@ mod platform {
     /// 读取整个无限画布的笔迹(指定连接池;导出用只读池时走这个)。
     pub async fn load_infinite_strokes_with(pool: &SqlitePool) -> Vec<StrokeData> {
         let rows: Vec<(i64, f64, f64, f64, f64)> = sqlx::query_as(
-            "SELECT id, color_r, color_g, color_b, width_scale FROM infinite_strokes ORDER BY id",
+            "SELECT id, color_r, color_g, color_b, width_scale FROM infinite_strokes WHERE deleted_at IS NULL ORDER BY id",
         )
         .fetch_all(pool)
         .await
@@ -619,17 +635,17 @@ mod platform {
             Some(p) => p,
             None => return false,
         };
-        sqlx::query("DELETE FROM infinite_points WHERE stroke_id = ?1")
-            .bind(stroke_id)
-            .execute(pool)
-            .await
-            .ok();
-        let deleted = sqlx::query("DELETE FROM infinite_strokes WHERE id = ?1")
-            .bind(stroke_id)
-            .execute(pool)
-            .await
-            .ok();
-        deleted.is_some()
+        // 软删除:标记而非物理删除
+        let now = now_f64();
+        let deleted = sqlx::query(
+            "UPDATE infinite_strokes SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL",
+        )
+        .bind(stroke_id)
+        .bind(now)
+        .execute(pool)
+        .await
+        .ok();
+        deleted.map(|r| r.rows_affected() > 0).unwrap_or(false)
     }
 
     pub async fn delete_last_infinite_stroke() -> bool {
@@ -654,7 +670,7 @@ mod platform {
             Some(p) => p,
             None => return false,
         };
-        sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM infinite_strokes)")
+        sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM infinite_strokes WHERE deleted_at IS NULL)")
             .fetch_one(pool)
             .await
             .unwrap_or(0)
@@ -667,14 +683,15 @@ mod platform {
             Some(p) => p,
             None => return,
         };
-        sqlx::query("DELETE FROM infinite_points")
-            .execute(pool)
-            .await
-            .ok();
-        sqlx::query("DELETE FROM infinite_strokes")
-            .execute(pool)
-            .await
-            .ok();
+        // 软删除:标记而非物理删除
+        let now = now_f64();
+        sqlx::query(
+            "UPDATE infinite_strokes SET deleted_at = ?1 WHERE deleted_at IS NULL",
+        )
+        .bind(now)
+        .execute(pool)
+        .await
+        .ok();
     }
 
     /// 当前页高度(逻辑 px)
