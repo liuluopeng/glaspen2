@@ -2167,150 +2167,113 @@ pub extern "C" fn glaspen2_page_info_json(screen_id: i64) -> *mut c_char {
 // Thumbnail rendering (cairo_dl → scaled PNG)
 // ---------------------------------------------------------------------------
 
-/// Render a page thumbnail. Never touches the global STROKES.
+/// Render a page thumbnail cropped to the content bounding box.
+/// Instead of rendering the full screen and downsampling (which makes small
+/// doodles illegible), we find the stroke bounding box, add a small margin,
+/// and render only that region — so the thumbnail tightly fits the content.
+/// Never touches the global STROKES.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_render_thumbnail(
     screen_id: i64,
-    w: c_int,
-    h: c_int,
+    _w: c_int,
+    _h: c_int,
     max_size: c_int,
     out_len: *mut c_int,
 ) -> *mut c_uchar {
-    if w <= 0 || h <= 0 || max_size <= 0 || out_len.is_null() {
+    if max_size <= 0 || out_len.is_null() {
         if !out_len.is_null() {
-            unsafe {
-                *out_len = 0;
-            }
+            unsafe { *out_len = 0; }
         }
         return std::ptr::null_mut();
     }
+    unsafe { *out_len = 0; }
 
-    let scale = if w >= h {
-        max_size as f64 / w as f64
-    } else {
-        max_size as f64 / h as f64
-    };
-    let tw = ((w as f64) * scale).max(1.0) as i32;
-    let th = ((h as f64) * scale).max(1.0) as i32;
-
-    // Render from a local stroke list loaded from the DB — no global state.
     let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
     if strokes.is_empty() {
-        unsafe {
-            *out_len = 0;
-        }
         return std::ptr::null_mut();
     }
-    let local: Vec<Stroke> = strokes
-        .into_iter()
-        .map(|s| Stroke {
-            id: s.id,
-            r: s.r,
-            g: s.g,
-            b: s.b,
-            points: s.points,
-        })
-        .collect();
 
-    // Render full resolution → scale down (preserves stroke proportions)
-    let renderer = match crate::cairo_dl::CairoRenderer::create_owned(w, h) {
-        Some(r) => r,
-        None => {
-            unsafe {
-                *out_len = 0;
-            }
-            return std::ptr::null_mut();
+    // ── 1. 内容包围盒(含线宽半径) ──
+    let mut bx0 = f64::MAX;
+    let mut by0 = f64::MAX;
+    let mut bx1 = f64::MIN;
+    let mut by1 = f64::MIN;
+    for s in &strokes {
+        for &(x, y, wd, _) in &s.points {
+            let half = wd * 0.5;
+            bx0 = bx0.min(x - half);
+            by0 = by0.min(y - half);
+            bx1 = bx1.max(x + half);
+            by1 = by1.max(y + half);
         }
+    }
+    // 外扩留白(不低于 16pt,防止贴边)
+    let margin = (bx1 - bx0).max(by1 - by0) * 0.06 + 12.0;
+    bx0 -= margin; by0 -= margin;
+    bx1 += margin; by1 += margin;
+    let bw = (bx1 - bx0).max(1.0);
+    let bh = (by1 - by0).max(1.0);
+
+    // 2. 适配 max_size(最长边 = max_size,保持纵横比)
+    let fit = (max_size as f64 / bw.max(bh)).min(1.0);
+    let ow = ((bw * fit).ceil() as i32).max(1);
+    let oh = ((bh * fit).ceil() as i32).max(1);
+
+    // 3. 渲染(坐标偏移到 bbox 起点,缩放到 fit,透明底)
+    let Some(renderer) = crate::cairo_dl::CairoRenderer::create_owned(ow, oh) else {
+        return std::ptr::null_mut();
     };
     renderer.clear();
-    for s in &local {
+    for s in &strokes {
         if s.points.len() < 2 {
             continue;
         }
         let color = (
-            (s.r * 255.0) as u8,
-            (s.g * 255.0) as u8,
-            (s.b * 255.0) as u8,
+            (s.r.clamp(0.0, 1.0) * 255.0) as u8,
+            (s.g.clamp(0.0, 1.0) * 255.0) as u8,
+            (s.b.clamp(0.0, 1.0) * 255.0) as u8,
         );
         for i in 0..s.points.len() {
-            let (x, y, wdt, _t) = s.points[i];
+            let (x, y, wd, _t) = s.points[i];
+            let px = ((x - bx0) * fit) as f32;
+            let py = ((y - by0) * fit) as f32;
+            let pw = (wd * fit) as f32;
             if i == 0 {
-                renderer.fill_circle(x as f32, y as f32, (wdt * 0.5) as f32, color);
+                renderer.fill_circle(px, py, pw * 0.5, color);
             } else {
-                let (px, py, _pw, _pt) = s.points[i - 1];
-                renderer.stroke_line(px as f32, py as f32, x as f32, y as f32, wdt as f32, color);
+                let (qx, qy, _qw, _qt) = s.points[i - 1];
+                renderer.stroke_line(
+                    ((qx - bx0) * fit) as f32,
+                    ((qy - by0) * fit) as f32,
+                    px, py, pw, color,
+                );
             }
         }
     }
     renderer.flush();
 
-    // Downsample (box average) to tw×th and reorder BGRA → RGBA
+    // 4. BGRA → RGBA + PNG 编码(已是目标尺寸,无需降采样)
     let bits = renderer.bits();
-    let stride = w as u32;
-    let (tw_u, th_u) = (tw as u32, th as u32);
-    let Some(cap) = (tw_u as usize)
-        .checked_mul(th_u as usize)
-        .and_then(|v| v.checked_mul(4))
-    else {
-        unsafe {
-            *out_len = 0;
-        }
+    let stride = ow as usize;
+    let n = stride * oh as usize * 4;
+    let rgba: Vec<u8> = unsafe {
+        std::slice::from_raw_parts(bits, n)
+            .chunks_exact(4)
+            .flat_map(|px| [px[2], px[1], px[0], px[3]]) // BGRA → RGBA
+            .collect()
+    };
+    let Some(png) = encode_png_rgba(&rgba, ow as u32, oh as u32) else {
         return std::ptr::null_mut();
     };
-    let mut rgba = Vec::with_capacity(cap);
-    unsafe {
-        for y in 0..th_u {
-            let sy0 = (y as u64 * h as u64 / th_u as u64) as i32;
-            let sy1 = (((y + 1) as u64 * h as u64 / th_u as u64) as i32).max(sy0 + 1);
-            for x in 0..tw_u {
-                let sx0 = (x as u64 * w as u64 / tw_u as u64) as i32;
-                let sx1 = (((x + 1) as u64 * w as u64 / tw_u as u64) as i32).max(sx0 + 1);
-                let mut sr = 0u32;
-                let mut sg = 0u32;
-                let mut sb = 0u32;
-                let mut sa = 0u32;
-                let mut n = 0u32;
-                for py in sy0..sy1 {
-                    for px in sx0..sx1 {
-                        let off = ((py as u32) * stride + px as u32) as usize * 4;
-                        sb += *bits.add(off) as u32;
-                        sg += *bits.add(off + 1) as u32;
-                        sr += *bits.add(off + 2) as u32;
-                        sa += *bits.add(off + 3) as u32;
-                        n += 1;
-                    }
-                }
-                if n == 0 {
-                    n = 1;
-                }
-                rgba.push((sr / n) as u8);
-                rgba.push((sg / n) as u8);
-                rgba.push((sb / n) as u8);
-                rgba.push((sa / n) as u8);
-            }
-        }
-    }
 
-    let png_bytes = match encode_png_rgba(&rgba, tw_u, th_u) {
-        Some(b) => b,
-        None => {
-            unsafe {
-                *out_len = 0;
-            }
-            return std::ptr::null_mut();
-        }
-    };
-
-    let len = png_bytes.len() as c_int;
-    let ptr = png_bytes.as_ptr() as *mut c_uchar;
-    std::mem::forget(png_bytes);
-    unsafe {
-        *out_len = len;
-    }
+    let len = png.len() as c_int;
+    let ptr = png.as_ptr() as *mut c_uchar;
+    std::mem::forget(png);
+    unsafe { *out_len = len; }
     ptr
 }
 
-/// Free a buffer returned by glaspen2_render_thumbnail.
+/// Free a buffer returned by glaspen2_render_thumbnail./// Free a buffer returned by glaspen2_render_thumbnail.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_free_rust_bytes(ptr: *mut c_uchar, len: c_int) {
     if !ptr.is_null() && len > 0 {
