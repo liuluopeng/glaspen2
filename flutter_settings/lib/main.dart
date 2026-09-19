@@ -598,6 +598,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _infiniteCanvas = false;
   int _gridSizeValue = 40; // 网格大小(逻辑 px)
   bool _minimapEnabled = false;
+  // 缩略图按需加载:只加载可视区域的缩略图,滚动时按需补充
+  final ScrollController _gridScroll = ScrollController();
+  Timer? _gridScrollDebounce;
   // 画布总览 tab
   Uint8List? _canvasPng;
   List<double>? _canvasRect;
@@ -632,7 +635,15 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _updateVisibleRange();
+        });
+      }
+    });
     _tabController.addListener(_onTabChanged);
+    _gridScroll.addListener(_onGridScroll);
     _bridge = createBridge();
     _bridge.onSettingsChanged(_onSettingsChanged);
     // Windows 管道连接成功后重新拉取设置(macOS 通道立即可用,不影响)
@@ -642,10 +653,45 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
   @override
   void dispose() {
+    _gridScrollDebounce?.cancel();
+    _gridScroll.removeListener(_onGridScroll);
+    _gridScroll.dispose();
     _tabController.dispose();
     _reloadTimer?.cancel();
     _bridge.dispose();
     super.dispose();
+  }
+
+  void _onGridScroll() {
+    _gridScrollDebounce?.cancel();
+    _gridScrollDebounce = Timer(const Duration(milliseconds: 80), () {
+      if (mounted) _updateVisibleRange();
+    });
+  }
+
+  /// 计算当前可视的页面索引范围,只加载这些页面的缩略图。
+  /// 跳到第 500 页时直接加载第 500 页附近,不再等前 499 张。
+  void _updateVisibleRange() {
+    if (!_gridScroll.hasClients || _filteredPages.isEmpty) return;
+    final pos = _gridScroll.position;
+    final viewportH = pos.viewportDimension;
+    final scrollPx = pos.pixels;
+    final gw = context.size?.width ?? 300;
+    // 与 maxCrossAxisExtent: 300 的网格布局保持一致
+    final cols = (gw / 300).ceil().clamp(1, 10);
+    final cardW = gw / cols;
+    final cardH = cardW / 1.2 + 30; // 卡片纵横比 + 标题区
+    final rowsTotal = (_filteredPages.length / cols).ceil();
+    final firstRow = (scrollPx / cardH).floor().clamp(0, rowsTotal - 1);
+    final lastRow = ((scrollPx + viewportH) / cardH).ceil().clamp(0, rowsTotal);
+    final lo = ((firstRow - 1) * cols).clamp(0, _filteredPages.length);
+    final hi = ((lastRow + 1) * cols).clamp(0, _filteredPages.length);
+    for (var i = lo; i < hi; i++) {
+      final page = _filteredPages[i];
+      if (page.thumbnail == null && !_loadingThumbnails.contains(page.id)) {
+        _loadThumbnail(page);
+      }
+    }
   }
 
   void _onTabChanged() {
@@ -899,6 +945,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _filteredPages = List.from(_pages);
           _pagesLoading = false;
         });
+        // 列表就绪后立刻加载当前可视区域的缩略图
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _updateVisibleRange();
+        });
       }
     } catch (e) {
       debugPrint('[Content] listPages error: $e');
@@ -911,6 +961,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       page.thumbnail = _thumbnailCache[page.id];
       return;
     }
+    if (_loadingThumbnails.contains(page.id)) return; // 防止滚动中重复请求
+    _loadingThumbnails.add(page.id);
     try {
       final bytes = await _bridge.getPageThumbnail(page.id, page.w, page.h, 280);
       if (bytes != null && bytes.isNotEmpty && mounted) {
@@ -1028,6 +1080,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                       child: Text('暂无页面', style: TextStyle(fontSize: 14, color: Colors.grey)),
                     )
                   : GridView.builder(
+                      controller: _gridScroll,
                       itemCount: _filteredPages.length,
                       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -1049,11 +1102,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Widget _buildPageCard(_PageInfo page) {
     if (page.thumbnail == null && _thumbnailCache.containsKey(page.id)) {
       page.thumbnail = _thumbnailCache[page.id];
-    }
-    if (page.thumbnail == null && page.w > 0 && page.h > 0
-        && !_loadingThumbnails.contains(page.id)) {
-      _loadingThumbnails.add(page.id);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadThumbnail(page));
     }
 
     return GestureDetector(
