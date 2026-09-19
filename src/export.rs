@@ -396,6 +396,39 @@ pub extern "C" fn glaspen2_undo_last_stroke() -> c_int {
 pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
     runtime().block_on(db::init());
     runtime().block_on(db::new_screen(screen_w, screen_h));
+    warm_thumbnail_cache();
+}
+
+/// Background-fill the thumbnail cache so the 活页本 grid opens instantly.
+/// Renders at the settings panel's size (280) only; pages already cached or
+/// drawn later are filled on demand. Yields between pages to stay out of the
+/// way of live drawing.
+fn warm_thumbnail_cache() {
+    std::thread::Builder::new()
+        .name("thumb-warm".into())
+        .spawn(|| {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
+            for (id, _w, _h) in runtime().block_on(db::list_screens()) {
+                let (count, max_id) = runtime().block_on(db::screen_stroke_version(id));
+                if count == 0 {
+                    continue;
+                }
+                let cached = runtime().block_on(db::thumbnail_lookup(
+                    id, 280, count, max_id, outline,
+                ));
+                if cached.is_some() {
+                    continue;
+                }
+                let mut len: c_int = 0;
+                let ptr = glaspen2_render_thumbnail(id, 0, 0, 280, &mut len);
+                if !ptr.is_null() {
+                    glaspen2_free_rust_bytes(ptr, len);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(30));
+            }
+        })
+        .ok();
 }
 
 /// Called when the display size/arrangement changed. Only starts a new page
@@ -2188,6 +2221,17 @@ pub extern "C" fn glaspen2_render_thumbnail(
     }
     unsafe { *out_len = 0; }
 
+    // ── 0. 缓存:内容版本(笔迹数,最大笔迹id)+渲染参数未变 → 直接返回存库 PNG ──
+    let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
+    let (count, max_id) = runtime().block_on(db::screen_stroke_version(screen_id));
+    if count > 0 {
+        if let Some(png) = runtime().block_on(db::thumbnail_lookup(
+            screen_id, max_size, count, max_id, outline,
+        )) {
+            return leak_png(png, out_len);
+        }
+    }
+
     let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
     if strokes.is_empty() {
         return std::ptr::null_mut();
@@ -2266,6 +2310,16 @@ pub extern "C" fn glaspen2_render_thumbnail(
         return std::ptr::null_mut();
     };
 
+    // 存回缓存,下次同类请求直接命中
+    runtime().block_on(db::thumbnail_store(
+        screen_id, max_size, count, max_id, outline, &png,
+    ));
+
+    leak_png(png, out_len)
+}
+
+/// Hand ownership of a PNG buffer to the caller via out_len (leak pattern).
+fn leak_png(png: Vec<u8>, out_len: *mut c_int) -> *mut c_uchar {
     let len = png.len() as c_int;
     let ptr = png.as_ptr() as *mut c_uchar;
     std::mem::forget(png);

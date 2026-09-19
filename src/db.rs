@@ -198,6 +198,25 @@ mod platform {
         // 现在无限画布独立存储且全局只有一个画布,镜头改存 user_settings,
         // 这几列不再读写(旧库中残留的列保持不动,无副作用)。
 
+        // 缩略图缓存:渲染结果(PNG)按页存库,内容未变时直接复用,
+        // 避免每次打开活页本都全量拉笔迹+渲染。新鲜度由
+        // (stroke_count, max_stroke_id, outline, max_size) 四元组判定。
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS screen_thumbnails (
+                screen_id INTEGER NOT NULL REFERENCES screens(id),
+                max_size INTEGER NOT NULL,
+                stroke_count INTEGER NOT NULL,
+                max_stroke_id INTEGER NOT NULL,
+                outline INTEGER NOT NULL DEFAULT 0,
+                png BLOB NOT NULL,
+                generated_at REAL NOT NULL,
+                PRIMARY KEY (screen_id, max_size)
+            )",
+        )
+        .execute(&pool)
+        .await
+        .ok();
+
         apply_defaults(&pool).await;
 
         DB.set(pool).ok();
@@ -465,6 +484,7 @@ mod platform {
         .execute(pool)
         .await
         .ok();
+        thumbnails_purge_screen(target_id).await;
         screen_del.is_some() || stroke_del.is_some()
     }
 
@@ -537,6 +557,136 @@ mod platform {
             })
             .collect();
         attach_points(strokes, pts)
+    }
+
+    // ── 缩略图缓存 ────────────────────────────────────────────────
+    // 内容版本 = (非删除笔迹数, 最大笔迹 id)。笔迹只追加/软删,
+    // 该二元组足以识别内容变化;配合 outline/max_size 一起判定缓存新鲜度。
+
+    /// Per-screen content version for thumbnail freshness checks.
+    pub async fn screen_stroke_version(screen_id: i64) -> (i64, i64) {
+        match DB.get() {
+            Some(p) => screen_stroke_version_with(p, screen_id).await,
+            None => (0, 0),
+        }
+    }
+
+    pub(crate) async fn screen_stroke_version_with(pool: &SqlitePool, screen_id: i64) -> (i64, i64) {
+        let r: (i64, Option<i64>) = sqlx::query_as(
+            "SELECT COUNT(*), MAX(id) FROM strokes WHERE screen_id = ?1 AND deleted_at IS NULL",
+        )
+        .bind(screen_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or((0, None));
+        (r.0, r.1.unwrap_or(0))
+    }
+
+    pub async fn thumbnail_lookup(
+        screen_id: i64,
+        max_size: i32,
+        stroke_count: i64,
+        max_stroke_id: i64,
+        outline: bool,
+    ) -> Option<Vec<u8>> {
+        thumbnail_lookup_with(
+            DB.get()?,
+            screen_id,
+            max_size,
+            stroke_count,
+            max_stroke_id,
+            outline,
+        )
+        .await
+    }
+
+    pub(crate) async fn thumbnail_lookup_with(
+        pool: &SqlitePool,
+        screen_id: i64,
+        max_size: i32,
+        stroke_count: i64,
+        max_stroke_id: i64,
+        outline: bool,
+    ) -> Option<Vec<u8>> {
+        let png: Option<(Vec<u8>,)> = sqlx::query_as(
+            "SELECT png FROM screen_thumbnails \
+             WHERE screen_id = ?1 AND max_size = ?2 \
+             AND stroke_count = ?3 AND max_stroke_id = ?4 AND outline = ?5",
+        )
+        .bind(screen_id)
+        .bind(max_size)
+        .bind(stroke_count)
+        .bind(max_stroke_id)
+        .bind(outline as i64)
+        .fetch_optional(pool)
+        .await
+        .ok()?;
+        png.map(|(p,)| p)
+    }
+
+    pub async fn thumbnail_store(
+        screen_id: i64,
+        max_size: i32,
+        stroke_count: i64,
+        max_stroke_id: i64,
+        outline: bool,
+        png: &[u8],
+    ) {
+        if let Some(pool) = DB.get() {
+            thumbnail_store_with(
+                pool,
+                screen_id,
+                max_size,
+                stroke_count,
+                max_stroke_id,
+                outline,
+                png,
+            )
+            .await;
+        }
+    }
+
+    pub(crate) async fn thumbnail_store_with(
+        pool: &SqlitePool,
+        screen_id: i64,
+        max_size: i32,
+        stroke_count: i64,
+        max_stroke_id: i64,
+        outline: bool,
+        png: &[u8],
+    ) {
+        sqlx::query(
+            "INSERT INTO screen_thumbnails \
+             (screen_id, max_size, stroke_count, max_stroke_id, outline, png, generated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
+             ON CONFLICT(screen_id, max_size) DO UPDATE SET \
+             stroke_count = ?3, max_stroke_id = ?4, outline = ?5, png = ?6, generated_at = ?7",
+        )
+        .bind(screen_id)
+        .bind(max_size)
+        .bind(stroke_count)
+        .bind(max_stroke_id)
+        .bind(outline as i64)
+        .bind(png)
+        .bind(now_f64())
+        .execute(pool)
+        .await
+        .ok();
+    }
+
+    /// Drop cached thumbnails for one screen (page deleted).
+    pub async fn thumbnails_purge_screen(screen_id: i64) {
+        if let Some(pool) = DB.get() {
+            thumbnails_purge_screen_with(pool, screen_id).await;
+        }
+    }
+
+    pub(crate) async fn thumbnails_purge_screen_with(pool: &SqlitePool, screen_id: i64) {
+        sqlx::query("DELETE FROM screen_thumbnails WHERE screen_id = ?1")
+            .bind(screen_id)
+            .execute(pool)
+            .await
+            .ok();
     }
 
     pub async fn list_screens() -> Vec<(i64, i32, i32)> {
@@ -817,7 +967,10 @@ pub use platform::*;
 #[cfg(test)]
 mod tests {
     use super::StrokeData;
-    use super::platform::{attach_points, page_info_with};
+    use super::platform::{
+        attach_points, page_info_with, screen_stroke_version_with, thumbnails_purge_screen_with,
+        thumbnail_lookup_with, thumbnail_store_with,
+    };
     use crate::runtime;
     use sqlx::SqlitePool;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -944,5 +1097,113 @@ mod tests {
             vec![],
         );
         assert!(empty[0].points.is_empty());
+    }
+
+    /// Strokes + thumbnails tables mirroring the real migration, for tests
+    /// that exercise the thumbnail cache without touching the global DB.
+    async fn add_thumb_tables(pool: &SqlitePool) {
+        sqlx::query(
+            "CREATE TABLE strokes (
+                id INTEGER PRIMARY KEY,
+                screen_id INTEGER NOT NULL REFERENCES screens(id),
+                color_r REAL NOT NULL,
+                color_g REAL NOT NULL,
+                color_b REAL NOT NULL,
+                width_scale REAL NOT NULL DEFAULT 1.0,
+                created_at REAL NOT NULL,
+                deleted_at REAL
+            )",
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TABLE screen_thumbnails (
+                screen_id INTEGER NOT NULL REFERENCES screens(id),
+                max_size INTEGER NOT NULL,
+                stroke_count INTEGER NOT NULL,
+                max_stroke_id INTEGER NOT NULL,
+                outline INTEGER NOT NULL DEFAULT 0,
+                png BLOB NOT NULL,
+                generated_at REAL NOT NULL,
+                PRIMARY KEY (screen_id, max_size)
+            )",
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    async fn add_stroke(pool: &SqlitePool, screen_id: i64, deleted: bool) -> i64 {
+        sqlx::query_scalar::<_, i64>(
+            "INSERT INTO strokes (screen_id, color_r, color_g, color_b, width_scale, created_at, deleted_at) \
+             VALUES (?1, 1.0, 0.0, 0.0, 1.0, 1.0, ?2) RETURNING id",
+        )
+        .bind(screen_id)
+        .bind(if deleted { Some(1.0f64) } else { None })
+        .fetch_one(pool)
+        .await
+        .unwrap()
+    }
+
+    #[test]
+    fn test_thumbnail_cache_lookup_store_purge() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        runtime().block_on(async {
+            let (pool, path) = temp_pool().await;
+            add_thumb_tables(&pool).await;
+            let sid = add_screen(&pool, 1.0).await;
+            let s1 = add_stroke(&pool, sid, false).await;
+            let _s2 = add_stroke(&pool, sid, true).await; // soft-deleted: excluded
+
+            // Version counts only live strokes
+            let (count, max_id) = screen_stroke_version_with(&pool, sid).await;
+            assert_eq!((count, max_id), (1, s1));
+
+            // Miss → store → hit
+            let png_a = vec![1u8, 2, 3];
+            assert!(thumbnail_lookup_with(&pool, sid, 280, count, max_id, false)
+                .await
+                .is_none());
+            thumbnail_store_with(&pool, sid, 280, count, max_id, false, &png_a).await;
+            assert_eq!(
+                thumbnail_lookup_with(&pool, sid, 280, count, max_id, false).await,
+                Some(png_a.clone())
+            );
+
+            // Any version-key change invalidates: outline / max_size / content
+            assert!(thumbnail_lookup_with(&pool, sid, 280, count, max_id, true).await.is_none());
+            assert!(thumbnail_lookup_with(&pool, sid, 128, count, max_id, false).await.is_none());
+            let s3 = add_stroke(&pool, sid, false).await;
+            let (count2, max_id2) = screen_stroke_version_with(&pool, sid).await;
+            assert_ne!((count2, max_id2), (count, max_id));
+            assert!(thumbnail_lookup_with(&pool, sid, 280, count2, max_id2, false)
+                .await
+                .is_none());
+
+            // Re-store same key replaces (upsert), other max_size variant coexists
+            let png_b = vec![9u8, 8, 7];
+            thumbnail_store_with(&pool, sid, 280, count2, max_id2, false, &png_b).await;
+            thumbnail_store_with(&pool, sid, 128, count2, max_id2, false, &png_b).await;
+            assert_eq!(
+                thumbnail_lookup_with(&pool, sid, 280, count2, max_id2, false).await,
+                Some(png_b)
+            );
+            assert!(thumbnail_lookup_with(&pool, sid, 128, count2, max_id2, false)
+                .await
+                .is_some());
+
+            // Purge drops both variants
+            thumbnails_purge_screen_with(&pool, sid).await;
+            assert!(thumbnail_lookup_with(&pool, sid, 280, count2, max_id2, false)
+                .await
+                .is_none());
+            assert!(thumbnail_lookup_with(&pool, sid, 128, count2, max_id2, false)
+                .await
+                .is_none());
+
+            pool.close().await;
+            let _ = std::fs::remove_file(&path);
+        });
     }
 }
