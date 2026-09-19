@@ -1030,11 +1030,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   : GridView.builder(
                       itemCount: _filteredPages.length,
                       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
+                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 300,
                         mainAxisSpacing: 8,
                         crossAxisSpacing: 8,
-                        childAspectRatio: 1.0,
+                        childAspectRatio: 1.2,
                       ),
                       itemBuilder: (context, i) {
                         final page = _filteredPages[i];
