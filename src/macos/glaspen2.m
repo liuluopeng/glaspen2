@@ -1091,16 +1091,32 @@ void glaspen2_macos_free_bytes(unsigned char *p) {
     if (p) free(p);
 }
 
+/// 解析 Dart 传来的 JSON 标量(true / 3 / 2.5)。
+///
+/// 必须带 NSJSONReadingFragmentsAllowed:JSONObjectWithData 默认只接受顶层
+/// 容器,裸标量会直接报错返回 nil —— 那样每个设置都会退化成 [nil boolValue]
+/// = NO / [nil intValue] = 0,Dart 侧的表现就是"按了按钮没反应"。
+static id gl_parse_setting_value(const char *json) {
+    if (!json) return nil;
+    NSData *data = [NSData dataWithBytes:json length:strlen(json)];
+    NSError *err = nil;
+    id value = [NSJSONSerialization JSONObjectWithData:data
+                                               options:NSJSONReadingFragmentsAllowed
+                                                 error:&err];
+    if (!value) {
+        NSLog(@"[settings] 无法解析 value_json=\"%s\": %@", json, err.localizedDescription);
+    }
+    return value;
+}
+
 /// 写入一项设置。`value_json` 是 JSON 标量(true / 3 / 2.5),按 key 解析后
 /// 交给与菜单、快捷键共用的 gl_settings_set_* 和全局状态。
 void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
     if (!key_c) return;
     NSString *key = @(key_c);
-    id value = nil;
-    if (value_json) {
-        NSData *d = [NSData dataWithBytes:value_json length:strlen(value_json)];
-        value = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
-    }
+    id value = gl_parse_setting_value(value_json);
+    // 解析不出来就什么都不做:宁可这一项不生效,也不要静默写成 false/0
+    if (!value) return;
     gl_run_on_main_sync(^{
         if ([key isEqualToString:@"color"]) {
             gl_settings_set_color([value intValue]);

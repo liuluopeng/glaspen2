@@ -46,8 +46,45 @@ void main() {
 
   test('导出/删除等写操作在无 ObjC 环境下不抛异常', () async {
     // 这些函数在 macOS 上转发给 ObjC shim;测试进程里没有初始化 AppKit,
-    // 但接口本身必须能完成一次往返。
+    // 但接口本身必须能完成一次往返 —— 挂起或 panic 都会在这里暴露,
+    // 而不是等到用户在面板上点按钮。
     await rust.navigateToPage(screenId: 1);
     await rust.triggerHotkey(key: 'Z');
+    expect(await rust.deletePage(screenId: 999999), isFalse); // 不存在的页
+    expect(await rust.exportPdf(), isFalse); // 测试进程没有数据库
+    expect(
+      await rust.canvasOverview(
+          w: 1024, h: 768, action: rust.CanvasAction.current),
+      isNull, // 空画布
+    );
+    expect(
+      await rust.canvasOverview(w: 1024, h: 768, action: rust.CanvasAction.home),
+      isNull,
+    );
+  }, skip: skipReason);
+
+  test('setSetting → getSettings 往返(JSON 标量必须真的被解析)', () async {
+    // 回归:ObjC 侧用 NSJSONSerialization 解析 value_json 时忘了
+    // NSJSONReadingFragmentsAllowed,裸标量("true"/"3"/"2.5")全部返回 nil,
+    // 于是每个设置都被静默写成 false/0 —— 面板上按按钮"没反应"。
+    await rust.setSetting(key: 'grid', valueJson: 'true');
+    expect((await rust.getSettings())?.grid, isTrue,
+        reason: 'bool 设置没有被应用(值被解析成了 nil?)');
+
+    await rust.setSetting(key: 'grid', valueJson: 'false');
+    expect((await rust.getSettings())?.grid, isFalse);
+
+    await rust.setSetting(key: 'gifFps', valueJson: '25');
+    expect((await rust.getSettings())?.gifFps, 25, reason: 'int 设置没有被应用');
+
+    await rust.setSetting(key: 'gifSpeed', valueJson: '3.5');
+    expect((await rust.getSettings())?.gifSpeed, 3.5,
+        reason: 'double 设置没有被应用');
+
+    // 解析不了的输入必须被忽略,而不是写成 0
+    await rust.setSetting(key: 'gifFps', valueJson: '25');
+    await rust.setSetting(key: 'gifFps', valueJson: 'not json');
+    expect((await rust.getSettings())?.gifFps, 25,
+        reason: '非法 value_json 不应改动已有设置');
   }, skip: skipReason);
 }
