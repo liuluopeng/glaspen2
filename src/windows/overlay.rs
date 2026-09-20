@@ -3539,6 +3539,64 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             let _ = writer.write_all(resp.as_bytes());
         }
         let _ = writer.flush();
+    } else if msg_type == "getPageThumbnails" {
+        // 活页本整屏一次取图:避免每页一次管道往返 + 一次 setState。
+        // 回传与 macOS 通道相同的自描述二进制块,这里按 base64 走 JSON。
+        let ids = json_get_i64_array(line, "ids");
+        let max_size = json_get_i64(line, "maxSize").unwrap_or(280) as i32;
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let blob = crate::export::page_thumbnails_blob(&ids, max_size);
+        let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &blob);
+        let _ = writer.write_all(
+            format!(
+                "{{\"type\":\"getPageThumbnails_response\",\"reqId\":{},\"data\":{{\"blob\":\"{}\"}}}}\n",
+                req_id, b64
+            )
+            .as_bytes(),
+        );
+        let _ = writer.flush();
+    } else if msg_type == "deletePage" {
+        // 删除一页(内容 tab)。删掉当前页时 Rust 侧会清空内存笔迹,
+        // 这里再切到相邻页并让覆盖层重载。
+        let screen_id = json_get_i64(line, "screenId").unwrap_or(0);
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let ok = crate::export::glaspen2_delete_screen(screen_id);
+        if ok != 0 {
+            let mut next = crate::export::glaspen2_next_screen_id();
+            if next == 0 {
+                next = crate::export::glaspen2_prev_screen_id();
+            }
+            if next > 0 {
+                let _ = unsafe {
+                    PostMessageW(
+                        Some(HWND(hwnd as *mut _)),
+                        WM_TRAY_COMMAND,
+                        WPARAM(CMD_NAVIGATE_TO_PAGE),
+                        LPARAM(next as isize),
+                    )
+                };
+            }
+        }
+        let _ = writer.write_all(
+            format!(
+                "{{\"type\":\"deletePage_response\",\"reqId\":{},\"data\":{{\"ok\":{}}}}}\n",
+                req_id, ok
+            )
+            .as_bytes(),
+        );
+        let _ = writer.flush();
+    } else if msg_type == "exportPdf" {
+        // 导出全部页面为 PDF(纯 Rust,不需要覆盖层配合)
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let ok = crate::export::glaspen2_export_pdf();
+        let _ = writer.write_all(
+            format!(
+                "{{\"type\":\"exportPdf_response\",\"reqId\":{},\"data\":{{\"ok\":{}}}}}\n",
+                req_id, ok
+            )
+            .as_bytes(),
+        );
+        let _ = writer.flush();
     } else if msg_type == "hotkey" {
         // Flutter 快捷键按钮:转发为对应命令
         let key = json_get_str(line, "key");
@@ -3864,6 +3922,15 @@ fn json_get_i64(json: &str, key: &str) -> Option<i64> {
         }
     }
     None
+}
+
+/// 解析 JSON 整数数组(如 ids);缺失或类型不符时返回空数组。
+fn json_get_i64_array(json: &str, key: &str) -> Vec<i64> {
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|v| v.get(key)?.as_array().cloned())
+        .map(|a| a.iter().filter_map(|x| x.as_i64()).collect())
+        .unwrap_or_default()
 }
 
 /// 解析 JSON 数值(整数或小数;gifResolution/gifSpeed 用)

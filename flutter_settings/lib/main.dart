@@ -7,26 +7,68 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart' as frb;
 
-void main() => runApp(const GlaspenSettingsApp());
+import 'src/rust/api.dart' as rust;
+import 'src/rust/frb_generated.dart';
+
+void main() {
+  // FRB 需要绑定初始化(消息端口/isolate)后才能解析 Rust 符号
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const GlaspenSettingsApp());
+}
 
 // ── Platform-specific communication ──
 
-const _channel = MethodChannel('com.glaspen/settings');
 const _pipeName = r'\\.\pipe\glaspen2_settings';
 
+/// 缩略图批量块魔数 "GTH1"(与 Rust 侧 THUMB_BLOB_MAGIC 一致)。
+const _thumbBlobMagic = 0x31485447;
+
+/// 活页本缩略图尺寸:一条通道消息里可能带几十张,280 已足够清晰。
+const _thumbMaxSize = 280;
+
+/// 打开活页本时先取回多少页的缩略图(首屏 + 预取);其余滚动时按需批量补。
+const _thumbInitialCount = 48;
+
+/// 解析 Rust 侧 glaspen2_page_thumbnails / 管道 "blob" 的自描述二进制块:
+/// magic u32 "GTH1",count u32,随后每项 id i64、len u32、PNG 字节(均小端)。
+/// 返回的 Uint8List 是原缓冲的视图,不复制 PNG 数据。
+Map<int, Uint8List> parseThumbnailBlob(Uint8List? blob) {
+  if (blob == null || blob.length < 8) return const {};
+  final view = ByteData.sublistView(blob);
+  if (view.getUint32(0, Endian.little) != _thumbBlobMagic) return const {};
+  final count = view.getUint32(4, Endian.little);
+  final out = <int, Uint8List>{};
+  var off = 8;
+  for (var i = 0; i < count; i++) {
+    if (off + 12 > blob.length) break; // 截断的块:保留已解析部分
+    final id = view.getInt64(off, Endian.little);
+    final len = view.getUint32(off + 8, Endian.little);
+    off += 12;
+    if (off + len > blob.length) break;
+    out[id] = Uint8List.sublistView(blob, off, off + len);
+    off += len;
+  }
+  return out;
+}
+
 /// Abstract interface for settings communication.
+///
+/// macOS 用 flutter_rust_bridge 直接调同进程内的 Rust(`_FrbBridge`),
+/// Windows 的面板是独立进程,只能走命名管道(`_NamedPipeBridge`)。
 abstract class _SettingsBridge {
   Future<Map<dynamic, dynamic>> getSettings();
   Future<void> setSetting(String key, dynamic value);
   void onSettingsChanged(void Function(Map<dynamic, dynamic> s) callback);
   /// 连接建立后回调(Windows 管道异步连接;用于连接后重新拉取设置)
   void Function()? onConnected;
-  /// Content tab: page list JSON
-  Future<String> listPages();
-  /// Content tab: page thumbnail PNG bytes (null if none)
-  Future<Uint8List?> getPageThumbnail(int screenId, int w, int h, int maxSize);
+  /// Content tab: 页面列表
+  Future<List<_PageInfo>> listPages();
+  /// Content tab: 一次取多页缩略图(id → PNG);无内容的页不会出现在结果里
+  Future<Map<int, Uint8List>> getPageThumbnails(List<int> ids, int maxSize);
+  /// 删除一页及其笔迹
+  Future<bool> deletePage(int screenId);
   /// 跳转到指定页面并恢复笔迹(继续绘画)
   Future<void> navigateToPage(int screenId);
   /// 触发一个快捷键动作(与 Ctrl+Alt+<key> 等价)
@@ -39,80 +81,162 @@ abstract class _SettingsBridge {
   Future<Map<dynamic, dynamic>> canvasCenter();
   /// 手动新建无限画布:清空内容 + 镜头回原点,返回新的总览载荷
   Future<Map<dynamic, dynamic>> canvasNew();
+  /// 导出全部页面为 PDF,返回是否成功
+  Future<bool> exportPdf();
   void dispose();
 }
 
-/// macOS: uses Flutter MethodChannel (embedded in ObjC host).
-class _MethodChannelBridge extends _SettingsBridge {
-  final void Function(Map<dynamic, dynamic>)? _onChanged;
+/// macOS:直接用 flutter_rust_bridge 调用同一进程内的 Rust。
+///
+/// 设置面板是嵌在 glaspen2 主程序里的 Flutter 视图,Rust 代码就在主可执行
+/// 文件内,所以用 `DynamicLibrary.process()` 解析符号即可 —— 不再有
+/// Flutter MethodChannel,也没有 JSON 中转和逐次平台线程往返。
+class _FrbBridge extends _SettingsBridge {
+  void Function(Map<dynamic, dynamic>)? _onChanged;
+  Future<void>? _ready;
+  StreamSubscription<rust.Settings>? _settingsSub;
 
-  _MethodChannelBridge(this._onChanged) {
-    _channel.setMethodCallHandler((call) async {
-      if (call.method == 'onSettingsChanged' && _onChanged != null) {
-        _onChanged!(call.arguments as Map<dynamic, dynamic>);
-      }
-    });
+  /// 初始化 FRB(幂等):符号来自主可执行文件,不是单独的 dylib。
+  Future<void> _init() {
+    return _ready ??= RustLib.init(
+      externalLibrary: frb.ExternalLibrary.process(iKnowHowToUseIt: true),
+    );
+  }
+
+  /// 设置项在 Rust 侧是强类型结构体,这里转回 UI 使用的 Map 形状。
+  static Map<dynamic, dynamic> _settingsToMap(rust.Settings? s) {
+    if (s == null) return const {};
+    return <dynamic, dynamic>{
+      'color': s.color,
+      'width': s.width,
+      'rainbow': s.rainbow,
+      'launchAtLogin': s.launchAtLogin,
+      'frostedGlass': s.frostedGlass,
+      'grid': s.grid,
+      'gridFollowStrokes': s.gridFollowStrokes,
+      'pressureMonitor': s.pressureMonitor,
+      'outline': s.outline,
+      'infiniteCanvas': s.infiniteCanvas,
+      'minimap': s.minimap,
+      'gridSize': s.gridSize,
+      'gifFps': s.gifFps,
+      'gifResolution': s.gifResolution,
+      'gifSpeed': s.gifSpeed,
+      'gifEndMode': s.gifEndMode,
+    };
+  }
+
+  /// 总览载荷 → UI 期望的 Map;空画布(rust 侧 None)返回 {}。
+  static Map<dynamic, dynamic> _payloadToMap(rust.CanvasPayload? p) {
+    if (p == null) return const {};
+    return <dynamic, dynamic>{
+      'png': p.png,
+      'rect': p.rect.toList(),
+    };
   }
 
   @override
   Future<Map<dynamic, dynamic>> getSettings() async {
-    return await _channel.invokeMethod('getSettings');
+    await _init();
+    return _settingsToMap(await rust.getSettings());
   }
 
   @override
   Future<void> setSetting(String key, dynamic value) async {
-    await _channel.invokeMethod('setSetting', {'key': key, 'value': value});
+    await _init();
+    await rust.setSetting(key: key, valueJson: jsonEncode(value));
   }
 
   @override
   void onSettingsChanged(void Function(Map<dynamic, dynamic> s) callback) {
-    // Handled in constructor via setMethodCallHandler
-  }
-
-  @override
-  Future<String> listPages() async {
-    return await _channel.invokeMethod<String>('listPages') ?? '[]';
-  }
-
-  @override
-  Future<Uint8List?> getPageThumbnail(int screenId, int w, int h, int maxSize) async {
-    return await _channel.invokeMethod<Uint8List>('getPageThumbnail', {
-      'screenId': screenId, 'w': w, 'h': h, 'maxSize': maxSize,
+    _onChanged = callback;
+    _init().then((_) {
+      _settingsSub = rust.settingsChanged().listen(
+            (s) => _onChanged?.call(_settingsToMap(s)),
+            onError: (Object e) => debugPrint('[FRB] settings stream error: $e'),
+          );
+    }).catchError((Object e) {
+      debugPrint('[FRB] init failed, settings updates disabled: $e');
     });
   }
 
   @override
+  Future<List<_PageInfo>> listPages() async {
+    await _init();
+    final pages = await rust.listPages();
+    return pages
+        .map((p) => _PageInfo(id: p.id, w: p.width, h: p.height))
+        .toList();
+  }
+
+  @override
+  Future<Map<int, Uint8List>> getPageThumbnails(List<int> ids, int maxSize) async {
+    if (ids.isEmpty) return const {};
+    await _init();
+    final thumbs = await rust.pageThumbnails(
+      ids: frb.Int64List.fromList(ids),
+      maxSize: maxSize,
+    );
+    return {for (final t in thumbs) t.id: t.png};
+  }
+
+  @override
+  Future<bool> deletePage(int screenId) async {
+    await _init();
+    return rust.deletePage(screenId: screenId);
+  }
+
+  @override
   Future<void> navigateToPage(int screenId) async {
-    await _channel.invokeMethod('navigateToPage', {'screenId': screenId});
+    await _init();
+    await rust.navigateToPage(screenId: screenId);
   }
 
   @override
   Future<void> triggerHotkey(String key) async {
-    await _channel.invokeMethod('hotkey', {'key': key});
+    await _init();
+    await rust.triggerHotkey(key: key);
   }
 
   @override
   Future<Map<dynamic, dynamic>> canvasOverview({int w = 1024, int h = 768}) async {
-    return await _channel.invokeMethod('canvasOverview', {'w': w, 'h': h}) ?? {};
+    await _init();
+    return _payloadToMap(await rust.canvasOverview(
+      w: w, h: h, action: rust.CanvasAction.current));
   }
 
   @override
   Future<Map<dynamic, dynamic>> canvasHome() async {
-    return await _channel.invokeMethod('canvasOverview', {'home': true}) ?? {};
+    await _init();
+    return _payloadToMap(await rust.canvasOverview(
+      w: 1024, h: 768, action: rust.CanvasAction.home));
   }
 
   @override
   Future<Map<dynamic, dynamic>> canvasCenter() async {
-    return await _channel.invokeMethod('canvasOverview', {'center': true}) ?? {};
+    await _init();
+    return _payloadToMap(await rust.canvasOverview(
+      w: 1024, h: 768, action: rust.CanvasAction.center));
   }
 
   @override
   Future<Map<dynamic, dynamic>> canvasNew() async {
-    return await _channel.invokeMethod('canvasNew') ?? {};
+    await _init();
+    return _payloadToMap(await rust.canvasOverview(
+      w: 1024, h: 768, action: rust.CanvasAction.new_));
   }
 
   @override
-  void dispose() {}
+  Future<bool> exportPdf() async {
+    await _init();
+    return rust.exportPdf();
+  }
+
+  @override
+  void dispose() {
+    _settingsSub?.cancel();
+    _settingsSub = null;
+  }
 }
 
 // FFI types
@@ -307,25 +431,40 @@ class _NamedPipeBridge extends _SettingsBridge {
   }
 
   @override
-  Future<String> listPages() async {
+  Future<List<_PageInfo>> listPages() async {
     final r = await _request('listPages', null);
     final data = r['data'];
-    return data == null ? '[]' : jsonEncode(data);
+    if (data is! List) return const [];
+    return data
+        .map((e) => _PageInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   @override
-  Future<Uint8List?> getPageThumbnail(int screenId, int w, int h, int maxSize) async {
-    final r = await _request('getPageThumbnail', {
-      'screenId': screenId, 'w': w, 'h': h, 'maxSize': maxSize,
+  Future<Map<int, Uint8List>> getPageThumbnails(List<int> ids, int maxSize) async {
+    if (ids.isEmpty) return const {};
+    final r = await _request('getPageThumbnails', {
+      'ids': ids, 'maxSize': maxSize,
     });
-    final png = r['png'] as String?;
-    if (png == null || png.isEmpty) return null;
+    final blob = r['blob'] as String?;
+    if (blob == null || blob.isEmpty) return const {};
     try {
-      final bytes = base64Decode(png);
-      return bytes;
+      return parseThumbnailBlob(base64Decode(blob));
     } catch (e) {
-      return null;
+      return const {};
     }
+  }
+
+  @override
+  Future<bool> deletePage(int screenId) async {
+    final r = await _request('deletePage', {'screenId': screenId});
+    return r['ok'] == 1 || r['ok'] == true;
+  }
+
+  @override
+  Future<bool> exportPdf() async {
+    final r = await _request('exportPdf', null);
+    return r['ok'] == 1 || r['ok'] == true;
   }
 
   @override
@@ -420,13 +559,23 @@ class _NamedPipeBridge extends _SettingsBridge {
 /// Create the appropriate bridge for the current platform.
 _SettingsBridge createBridge() {
   if (Platform.isWindows) {
+    // Windows 面板是独立进程,Rust 在覆盖层进程里 → 只能走命名管道
     return _NamedPipeBridge();
   }
-  // macOS: use MethodChannel (default)
-  return _MethodChannelBridge(null);
+  // macOS 面板与 Rust 在同一进程内 → flutter_rust_bridge(无 MethodChannel)
+  return _FrbBridge();
 }
 
 // ── Data models ──
+
+/// 缩略图未就位时的占位:一层极淡的纸面色,而不是"图片缺失"图标——
+/// 图片到达时只是笔迹浮现,不会有图标跳变。
+class _ThumbSkeleton extends StatelessWidget {
+  const _ThumbSkeleton();
+
+  @override
+  Widget build(BuildContext context) => const ColoredBox(color: Color(0x1AF3EEE3));
+}
 
 class _PageInfo {
   final int id;
@@ -630,6 +779,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _pagesLoading = false;
   final _thumbnailCache = <int, Uint8List>{};
   final _loadingThumbnails = <int>{};
+  /// 待批量请求的页 id:同屏多次触发会合并成一次通道往返
+  final _thumbQueue = <int>{};
+  bool _batchRunning = false;
 
   @override
   void initState() {
@@ -686,12 +838,14 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     final lastRow = ((scrollPx + viewportH) / cardH).ceil().clamp(0, rowsTotal);
     final lo = ((firstRow - 1) * cols).clamp(0, _filteredPages.length);
     final hi = ((lastRow + 1) * cols).clamp(0, _filteredPages.length);
+    final want = <int>[];
     for (var i = lo; i < hi; i++) {
       final page = _filteredPages[i];
-      if (page.thumbnail == null && !_loadingThumbnails.contains(page.id)) {
-        _loadThumbnail(page);
+      if (page.thumbnail == null && !_thumbnailCache.containsKey(page.id)) {
+        want.add(page.id);
       }
     }
+    _requestThumbnails(want);
   }
 
   void _onTabChanged() {
@@ -919,33 +1073,60 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _gifEndMode = (settings['gifEndMode'] as num?)?.toInt() ?? 1;
           _connected = true;
         });
+        // 设置就绪后顺手预取活页本首屏缩略图(一次批量往返),
+        // 等用户切到活页本时直接就有图,连加载态都不用出现。
+        if (_pages.isEmpty && !_pagesLoading) unawaited(_loadPages());
       } else if (mounted) {
         // Windows 管道未就绪时 getSettings 返回空:稍后重试
         _reloadTimer = Timer(const Duration(seconds: 2), _loadSettings);
       }
-    } catch (_) {
-      // Fallback: use defaults if bridge not available
+    } catch (e) {
+      // 桥不可用时退回默认值;FRB 初始化失败也会走这里,打日志便于定位
+      // (Rust 符号没导出、库没链接等都会在首次调用时暴露出来)
+      debugPrint('[Settings] load failed: $e');
     }
   }
 
   void _setSetting(String key, dynamic value) {
-    _bridge.setSetting(key, value);
+    // 这是"发出去就不管"的写入:失败只记日志,不该因为桥异常打断 UI
+    _bridge.setSetting(key, value).catchError((Object e) {
+      debugPrint('[Settings] set "$key" failed: $e');
+    });
   }
 
   // ── Content tab ──
 
   Future<void> _loadPages() async {
+    if (_pagesLoading) return;
     setState(() => _pagesLoading = true);
     try {
-      final json = await _bridge.listPages();
-      final list = jsonDecode(json) as List<dynamic>;
+      final pages = await _bridge.listPages();
+
+      // 首屏缩略图先取回来再发布列表:活页本第一帧就带图,不会先闪一圈占位。
+      // 失败或超时只是退回占位,列表照常显示。
+      if (pages.isNotEmpty) {
+        final ids = pages.take(_thumbInitialCount).map((p) => p.id).toList();
+        try {
+          final thumbs = await _bridge
+              .getPageThumbnails(ids, _thumbMaxSize)
+              .timeout(const Duration(seconds: 5), onTimeout: () => const {});
+          _thumbnailCache.addAll(thumbs);
+          await _precacheThumbnails(thumbs.values);
+        } catch (e) {
+          debugPrint('[Content] initial thumbnails error: $e');
+        }
+      }
+
       if (mounted) {
         setState(() {
-          _pages = list.map((e) => _PageInfo.fromJson(e as Map<String, dynamic>)).toList();
-          _filteredPages = List.from(_pages);
+          _pages = pages;
+          _filteredPages = List.from(pages);
           _pagesLoading = false;
+          for (final p in _pages) {
+            p.thumbnail = _thumbnailCache[p.id];
+          }
         });
-        // 列表就绪后立刻加载当前可视区域的缩略图
+        // 布局完成后补齐首屏之外的可见页(滚动时同样走批量)
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _updateVisibleRange();
         });
@@ -956,24 +1137,59 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     }
   }
 
-  Future<void> _loadThumbnail(_PageInfo page) async {
-    if (_thumbnailCache.containsKey(page.id)) {
-      page.thumbnail = _thumbnailCache[page.id];
-      return;
-    }
-    if (_loadingThumbnails.contains(page.id)) return; // 防止滚动中重复请求
-    _loadingThumbnails.add(page.id);
-    try {
-      final bytes = await _bridge.getPageThumbnail(page.id, page.w, page.h, 280);
-      if (bytes != null && bytes.isNotEmpty && mounted) {
-        _thumbnailCache[page.id] = bytes;
-        page.thumbnail = bytes;
-        setState(() {});
+  /// 把 PNG 解码进 ImageCache:随后的 setState 首帧就能画出来,
+  /// 否则 Image.memory 的异步解码会让占位多显示几帧。
+  Future<void> _precacheThumbnails(Iterable<Uint8List> blobs) async {
+    for (final bytes in blobs) {
+      try {
+        await precacheImage(MemoryImage(bytes), context);
+      } catch (_) {
+        // 单张解码失败不影响其它页
       }
-    } catch (e) {
-      debugPrint('[Content] thumbnail error for page ${page.id}: $e');
+    }
+  }
+
+  /// 请求一批缩略图;重复或已在途的页会被跳过,多次触发合并成一次往返。
+  void _requestThumbnails(Iterable<int> ids) {
+    var added = false;
+    for (final id in ids) {
+      if (_thumbnailCache.containsKey(id) || !_loadingThumbnails.add(id)) continue;
+      _thumbQueue.add(id);
+      added = true;
+    }
+    if (added) unawaited(_flushThumbnailQueue());
+  }
+
+  Future<void> _flushThumbnailQueue() async {
+    if (_batchRunning || !mounted) return;
+    _batchRunning = true;
+    try {
+      while (_thumbQueue.isNotEmpty && mounted) {
+        final ids = _thumbQueue.toList();
+        _thumbQueue.clear();
+        var got = const <int, Uint8List>{};
+        try {
+          got = await _bridge
+              .getPageThumbnails(ids, _thumbMaxSize)
+              .timeout(const Duration(seconds: 5), onTimeout: () => const {});
+        } catch (e) {
+          debugPrint('[Content] thumbnails error: $e');
+        }
+        _loadingThumbnails.removeAll(ids);
+        if (got.isEmpty) continue;
+        _thumbnailCache.addAll(got);
+        await _precacheThumbnails(got.values);
+        if (!mounted) return;
+        // 整批只重建一次,而不是每页一次 setState
+        setState(() {
+          for (final p in _pages) {
+            final bytes = _thumbnailCache[p.id];
+            if (bytes != null) p.thumbnail = bytes;
+          }
+        });
+      }
     } finally {
-      _loadingThumbnails.remove(page.id);
+      _batchRunning = false;
     }
   }
 
@@ -1141,11 +1357,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             AspectRatio(
               aspectRatio: 16 / 9,
               child: page.thumbnail != null
-                  ? Image.memory(page.thumbnail!, fit: BoxFit.cover)
-                  : Container(
-                      color: Colors.grey.shade200,
-                      child: const Icon(Icons.image_outlined, color: Colors.grey),
-                    ),
+                  ? Image.memory(page.thumbnail!,
+                      fit: BoxFit.cover, gaplessPlayback: true)
+                  : const _ThumbSkeleton(),
             ),
             // Page info
             Padding(
@@ -1183,7 +1397,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
   Future<void> _deletePage(_PageInfo page) async {
     try {
-      final ok = await _channel.invokeMethod<int>('deletePage', {'screenId': page.id}) == 1;
+      final ok = await _bridge.deletePage(page.id);
       if (mounted) {
         if (ok) {
           _thumbnailCache.remove(page.id);
@@ -1605,19 +1819,14 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Future<void> _exportPdf() async {
     setState(() => _pdfExporting = true);
     try {
-      if (Platform.isMacOS) {
-        final ok = await _channel.invokeMethod<int>('exportPdf') == 1;
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(ok ? 'PDF 已保存到桌面' : '导出失败'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-      } else {
-        // Windows:通过管道触发导出,结果以屏幕通知提示
-        _setSetting('export_pdf', true);
+      final ok = await _bridge.exportPdf();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ok ? 'PDF 已保存到桌面' : '导出失败'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {

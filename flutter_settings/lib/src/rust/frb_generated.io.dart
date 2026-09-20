@@ -19,6 +19,30 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   });
 
   @protected
+  AnyhowException dco_decode_AnyhowException(dynamic raw);
+
+  @protected
+  RustStreamSink<Settings> dco_decode_StreamSink_settings_Sse(dynamic raw);
+
+  @protected
+  String dco_decode_String(dynamic raw);
+
+  @protected
+  bool dco_decode_bool(dynamic raw);
+
+  @protected
+  CanvasPayload dco_decode_box_autoadd_canvas_payload(dynamic raw);
+
+  @protected
+  Settings dco_decode_box_autoadd_settings(dynamic raw);
+
+  @protected
+  CanvasAction dco_decode_canvas_action(dynamic raw);
+
+  @protected
+  CanvasPayload dco_decode_canvas_payload(dynamic raw);
+
+  @protected
   double dco_decode_f_64(dynamic raw);
 
   @protected
@@ -34,13 +58,68 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<PageSummary> dco_decode_list_page_summary(dynamic raw);
 
   @protected
+  List<PageThumb> dco_decode_list_page_thumb(dynamic raw);
+
+  @protected
+  Float64List dco_decode_list_prim_f_64_strict(dynamic raw);
+
+  @protected
+  Int64List dco_decode_list_prim_i_64_strict(dynamic raw);
+
+  @protected
+  Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  CanvasPayload? dco_decode_opt_box_autoadd_canvas_payload(dynamic raw);
+
+  @protected
+  Settings? dco_decode_opt_box_autoadd_settings(dynamic raw);
+
+  @protected
   PageSummary dco_decode_page_summary(dynamic raw);
+
+  @protected
+  PageThumb dco_decode_page_thumb(dynamic raw);
+
+  @protected
+  Settings dco_decode_settings(dynamic raw);
 
   @protected
   BigInt dco_decode_u_64(dynamic raw);
 
   @protected
+  int dco_decode_u_8(dynamic raw);
+
+  @protected
   void dco_decode_unit(dynamic raw);
+
+  @protected
+  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
+
+  @protected
+  RustStreamSink<Settings> sse_decode_StreamSink_settings_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  String sse_decode_String(SseDeserializer deserializer);
+
+  @protected
+  bool sse_decode_bool(SseDeserializer deserializer);
+
+  @protected
+  CanvasPayload sse_decode_box_autoadd_canvas_payload(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  Settings sse_decode_box_autoadd_settings(SseDeserializer deserializer);
+
+  @protected
+  CanvasAction sse_decode_canvas_action(SseDeserializer deserializer);
+
+  @protected
+  CanvasPayload sse_decode_canvas_payload(SseDeserializer deserializer);
 
   @protected
   double sse_decode_f_64(SseDeserializer deserializer);
@@ -58,16 +137,75 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<PageSummary> sse_decode_list_page_summary(SseDeserializer deserializer);
 
   @protected
+  List<PageThumb> sse_decode_list_page_thumb(SseDeserializer deserializer);
+
+  @protected
+  Float64List sse_decode_list_prim_f_64_strict(SseDeserializer deserializer);
+
+  @protected
+  Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer);
+
+  @protected
+  Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  CanvasPayload? sse_decode_opt_box_autoadd_canvas_payload(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  Settings? sse_decode_opt_box_autoadd_settings(SseDeserializer deserializer);
+
+  @protected
   PageSummary sse_decode_page_summary(SseDeserializer deserializer);
+
+  @protected
+  PageThumb sse_decode_page_thumb(SseDeserializer deserializer);
+
+  @protected
+  Settings sse_decode_settings(SseDeserializer deserializer);
 
   @protected
   BigInt sse_decode_u_64(SseDeserializer deserializer);
 
   @protected
+  int sse_decode_u_8(SseDeserializer deserializer);
+
+  @protected
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
-  bool sse_decode_bool(SseDeserializer deserializer);
+  void sse_encode_AnyhowException(
+    AnyhowException self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_settings_Sse(
+    RustStreamSink<Settings> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_String(String self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_canvas_payload(
+    CanvasPayload self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_settings(Settings self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_canvas_action(CanvasAction self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_canvas_payload(CanvasPayload self, SseSerializer serializer);
 
   @protected
   void sse_encode_f_64(double self, SseSerializer serializer);
@@ -88,16 +226,58 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_page_thumb(
+    List<PageThumb> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_f_64_strict(
+    Float64List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_i_64_strict(
+    Int64List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_u_8_strict(
+    Uint8List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_canvas_payload(
+    CanvasPayload? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_settings(
+    Settings? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_page_summary(PageSummary self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_page_thumb(PageThumb self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_settings(Settings self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_64(BigInt self, SseSerializer serializer);
 
   @protected
-  void sse_encode_unit(void self, SseSerializer serializer);
+  void sse_encode_u_8(int self, SseSerializer serializer);
 
   @protected
-  void sse_encode_bool(bool self, SseSerializer serializer);
+  void sse_encode_unit(void self, SseSerializer serializer);
 }
 
 // Section: wire_class

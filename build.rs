@@ -51,6 +51,16 @@ fn main() {
         let out_dir = std::env::var("OUT_DIR").unwrap();
         let obj_path = format!("{}/glaspen2.o", out_dir);
 
+        // flutter_rust_bridge 的入口是单个 dispatcher 符号(frb_pde_ffi_dispatcher_*)。
+        // Rust 是以 rlib 静态链进主可执行文件的:没有任何引用的归档成员会被
+        // 链接器丢掉,而这些符号只由 Dart 侧运行时 dlsym(ExternalLibrary.process)
+        // 解析 —— 于是必须用 -u 强制保留,否则设置面板启动时找不到符号。
+        // 只作用于 bin 目标:测试二进制里没有这些符号(链接参数按 cargo 的
+        // 定义不覆盖 rlib 成员),加上去会让 cargo test 直接链接失败。
+        println!("cargo:rustc-link-arg-bins=-Wl,-u,_frb_pde_ffi_dispatcher_primary");
+        println!("cargo:rustc-link-arg-bins=-Wl,-u,_frb_pde_ffi_dispatcher_sync");
+        println!("cargo:rustc-link-arg-bins=-Wl,-u,_frb_dart_fn_deliver_output");
+
         // Flutter framework paths
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let flutter_fw_dir = format!(

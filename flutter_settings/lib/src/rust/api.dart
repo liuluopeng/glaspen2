@@ -6,18 +6,99 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `fmt`, `fmt`
+// These functions are ignored because they are not marked as `pub`: `current_settings`, `decode_thumb_blob`, `from_json`, `run_blocking`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `glaspen2_notify_settings_changed`
 
-/// 活页本概览：每页的 id 和笔迹数（用于列表展示 + 空页标识）。
+/// 当前设置。
+Future<Settings?> getSettings() => RustLib.instance.api.crateApiGetSettings();
+
+/// 写入一项设置。`value_json` 是 JSON 标量(`true` / `3` / `2.5`),
+/// ObjC 侧按 key 解析,布尔/整数/小数共用一条通道。
+Future<void> setSetting({required String key, required String valueJson}) =>
+    RustLib.instance.api.crateApiSetSetting(key: key, valueJson: valueJson);
+
+/// 设置变化推送流:面板订阅它,菜单/快捷键的改动能实时同步到 UI。
+Stream<Settings> settingsChanged() =>
+    RustLib.instance.api.crateApiSettingsChanged();
+
+/// 活页本概览:每页的 id、尺寸和笔迹数。
 Future<List<PageSummary>> listPages() =>
     RustLib.instance.api.crateApiListPages();
 
-/// 当前镜头状态（无限画布）。
+/// 批量缩略图:一次调用取回整屏(版本查询、缓存读取、缺失渲染都在 Rust 侧
+/// 批量化)。没有笔迹的页不会出现在结果里。
+Future<List<PageThumb>> pageThumbnails({
+  required Int64List ids,
+  required int maxSize,
+}) => RustLib.instance.api.crateApiPageThumbnails(ids: ids, maxSize: maxSize);
+
+/// 删除一页及其笔迹。
+Future<bool> deletePage({required PlatformInt64 screenId}) =>
+    RustLib.instance.api.crateApiDeletePage(screenId: screenId);
+
+/// 跳转到指定页继续绘画。
+Future<void> navigateToPage({required PlatformInt64 screenId}) =>
+    RustLib.instance.api.crateApiNavigateToPage(screenId: screenId);
+
+/// 触发一个快捷键动作(与物理 ⌃⌘<key> 等价)。
+Future<void> triggerHotkey({required String key}) =>
+    RustLib.instance.api.crateApiTriggerHotkey(key: key);
+
+/// 无限画布总览。`w`/`h` 小于 400 时按 1024×768 处理。空画布返回 None。
+Future<CanvasPayload?> canvasOverview({
+  required int w,
+  required int h,
+  required CanvasAction action,
+}) => RustLib.instance.api.crateApiCanvasOverview(w: w, h: h, action: action);
+
+/// 当前镜头状态(无限画布)。
 Future<LensState> getLens() => RustLib.instance.api.crateApiGetLens();
 
-/// 页号跟随：当前页在所有页中的序号（1 起）。
+/// 页号跟随:当前页在所有页中的序号(1 起)。
 Future<BigInt> getPageOrdinal() =>
     RustLib.instance.api.crateApiGetPageOrdinal();
+
+/// 导出当前页为 PDF。
+Future<bool> exportPdf() => RustLib.instance.api.crateApiExportPdf();
+
+/// 导出动画 GIF 并复制到剪贴板。
+Future<bool> exportAnimatedGif() =>
+    RustLib.instance.api.crateApiExportAnimatedGif();
+
+/// 镜头动作。
+enum CanvasAction {
+  /// 只取当前总览
+  current,
+
+  /// 镜头回原点 + 100%
+  home,
+
+  /// 镜头居中到内容包围盒
+  center,
+
+  /// 清空内容 + 镜头回原点
+  new_,
+}
+
+/// 总览载荷:PNG + 当前视口矩形 [x, y, w, h]。
+class CanvasPayload {
+  final Uint8List png;
+  final Float64List rect;
+
+  const CanvasPayload({required this.png, required this.rect});
+
+  @override
+  int get hashCode => png.hashCode ^ rect.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CanvasPayload &&
+          runtimeType == other.runtimeType &&
+          png == other.png &&
+          rect == other.rect;
+}
 
 class LensState {
   final PlatformInt64 pageId;
@@ -73,4 +154,104 @@ class PageSummary {
           width == other.width &&
           height == other.height &&
           strokeCount == other.strokeCount;
+}
+
+/// 一页的缩略图。
+class PageThumb {
+  final PlatformInt64 id;
+  final Uint8List png;
+
+  const PageThumb({required this.id, required this.png});
+
+  @override
+  int get hashCode => id.hashCode ^ png.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PageThumb &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          png == other.png;
+}
+
+/// 设置快照。字段与旧 MethodChannel 字典一一对应,Dart 侧 `_FrbBridge`
+/// 会转回原来的 Map 形状,UI 代码无需改动。
+class Settings {
+  final int color;
+  final int width;
+  final bool rainbow;
+  final bool launchAtLogin;
+  final bool frostedGlass;
+  final bool grid;
+  final bool gridFollowStrokes;
+  final bool pressureMonitor;
+  final bool outline;
+  final bool infiniteCanvas;
+  final bool minimap;
+  final double gridSize;
+  final int gifFps;
+  final double gifResolution;
+  final double gifSpeed;
+  final int gifEndMode;
+
+  const Settings({
+    required this.color,
+    required this.width,
+    required this.rainbow,
+    required this.launchAtLogin,
+    required this.frostedGlass,
+    required this.grid,
+    required this.gridFollowStrokes,
+    required this.pressureMonitor,
+    required this.outline,
+    required this.infiniteCanvas,
+    required this.minimap,
+    required this.gridSize,
+    required this.gifFps,
+    required this.gifResolution,
+    required this.gifSpeed,
+    required this.gifEndMode,
+  });
+
+  @override
+  int get hashCode =>
+      color.hashCode ^
+      width.hashCode ^
+      rainbow.hashCode ^
+      launchAtLogin.hashCode ^
+      frostedGlass.hashCode ^
+      grid.hashCode ^
+      gridFollowStrokes.hashCode ^
+      pressureMonitor.hashCode ^
+      outline.hashCode ^
+      infiniteCanvas.hashCode ^
+      minimap.hashCode ^
+      gridSize.hashCode ^
+      gifFps.hashCode ^
+      gifResolution.hashCode ^
+      gifSpeed.hashCode ^
+      gifEndMode.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Settings &&
+          runtimeType == other.runtimeType &&
+          color == other.color &&
+          width == other.width &&
+          rainbow == other.rainbow &&
+          launchAtLogin == other.launchAtLogin &&
+          frostedGlass == other.frostedGlass &&
+          grid == other.grid &&
+          gridFollowStrokes == other.gridFollowStrokes &&
+          pressureMonitor == other.pressureMonitor &&
+          outline == other.outline &&
+          infiniteCanvas == other.infiniteCanvas &&
+          minimap == other.minimap &&
+          gridSize == other.gridSize &&
+          gifFps == other.gifFps &&
+          gifResolution == other.gifResolution &&
+          gifSpeed == other.gifSpeed &&
+          gifEndMode == other.gifEndMode;
 }

@@ -64,7 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => 2012178029;
+  int get rustContentHash => -595000819;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -76,11 +76,41 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Future<CanvasPayload?> crateApiCanvasOverview({
+    required int w,
+    required int h,
+    required CanvasAction action,
+  });
+
+  Future<bool> crateApiDeletePage({required PlatformInt64 screenId});
+
+  Future<bool> crateApiExportAnimatedGif();
+
+  Future<bool> crateApiExportPdf();
+
   Future<LensState> crateApiGetLens();
 
   Future<BigInt> crateApiGetPageOrdinal();
 
+  Future<Settings?> crateApiGetSettings();
+
   Future<List<PageSummary>> crateApiListPages();
+
+  Future<void> crateApiNavigateToPage({required PlatformInt64 screenId});
+
+  Future<List<PageThumb>> crateApiPageThumbnails({
+    required Int64List ids,
+    required int maxSize,
+  });
+
+  Future<void> crateApiSetSetting({
+    required String key,
+    required String valueJson,
+  });
+
+  Stream<Settings> crateApiSettingsChanged();
+
+  Future<void> crateApiTriggerHotkey({required String key});
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -92,6 +122,124 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
+  Future<CanvasPayload?> crateApiCanvasOverview({
+    required int w,
+    required int h,
+    required CanvasAction action,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_i_32(w, serializer);
+          sse_encode_i_32(h, serializer);
+          sse_encode_canvas_action(action, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 1,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_canvas_payload,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiCanvasOverviewConstMeta,
+        argValues: [w, h, action],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiCanvasOverviewConstMeta => const TaskConstMeta(
+    debugName: "canvas_overview",
+    argNames: ["w", "h", "action"],
+  );
+
+  @override
+  Future<bool> crateApiDeletePage({required PlatformInt64 screenId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_i_64(screenId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiDeletePageConstMeta,
+        argValues: [screenId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiDeletePageConstMeta =>
+      const TaskConstMeta(debugName: "delete_page", argNames: ["screenId"]);
+
+  @override
+  Future<bool> crateApiExportAnimatedGif() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 3,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiExportAnimatedGifConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiExportAnimatedGifConstMeta =>
+      const TaskConstMeta(debugName: "export_animated_gif", argNames: []);
+
+  @override
+  Future<bool> crateApiExportPdf() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiExportPdfConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiExportPdfConstMeta =>
+      const TaskConstMeta(debugName: "export_pdf", argNames: []);
+
+  @override
   Future<LensState> crateApiGetLens() {
     return handler.executeNormal(
       NormalTask(
@@ -100,7 +248,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 1,
+            funcId: 5,
             port: port_,
           );
         },
@@ -127,7 +275,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 2,
+            funcId: 6,
             port: port_,
           );
         },
@@ -146,6 +294,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "get_page_ordinal", argNames: []);
 
   @override
+  Future<Settings?> crateApiGetSettings() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_settings,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiGetSettingsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGetSettingsConstMeta =>
+      const TaskConstMeta(debugName: "get_settings", argNames: []);
+
+  @override
   Future<List<PageSummary>> crateApiListPages() {
     return handler.executeNormal(
       NormalTask(
@@ -154,7 +329,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 8,
             port: port_,
           );
         },
@@ -171,6 +346,218 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiListPagesConstMeta =>
       const TaskConstMeta(debugName: "list_pages", argNames: []);
+
+  @override
+  Future<void> crateApiNavigateToPage({required PlatformInt64 screenId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_i_64(screenId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiNavigateToPageConstMeta,
+        argValues: [screenId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiNavigateToPageConstMeta => const TaskConstMeta(
+    debugName: "navigate_to_page",
+    argNames: ["screenId"],
+  );
+
+  @override
+  Future<List<PageThumb>> crateApiPageThumbnails({
+    required Int64List ids,
+    required int maxSize,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_list_prim_i_64_strict(ids, serializer);
+          sse_encode_i_32(maxSize, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 10,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_page_thumb,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiPageThumbnailsConstMeta,
+        argValues: [ids, maxSize],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiPageThumbnailsConstMeta => const TaskConstMeta(
+    debugName: "page_thumbnails",
+    argNames: ["ids", "maxSize"],
+  );
+
+  @override
+  Future<void> crateApiSetSetting({
+    required String key,
+    required String valueJson,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(key, serializer);
+          sse_encode_String(valueJson, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiSetSettingConstMeta,
+        argValues: [key, valueJson],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSetSettingConstMeta => const TaskConstMeta(
+    debugName: "set_setting",
+    argNames: ["key", "valueJson"],
+  );
+
+  @override
+  Stream<Settings> crateApiSettingsChanged() {
+    final sink = RustStreamSink<Settings>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_StreamSink_settings_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 12,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: null,
+          ),
+          constMeta: kCrateApiSettingsChangedConstMeta,
+          argValues: [sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiSettingsChangedConstMeta =>
+      const TaskConstMeta(debugName: "settings_changed", argNames: ["sink"]);
+
+  @override
+  Future<void> crateApiTriggerHotkey({required String key}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(key, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 13,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiTriggerHotkeyConstMeta,
+        argValues: [key],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiTriggerHotkeyConstMeta =>
+      const TaskConstMeta(debugName: "trigger_hotkey", argNames: ["key"]);
+
+  @protected
+  AnyhowException dco_decode_AnyhowException(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AnyhowException(raw as String);
+  }
+
+  @protected
+  RustStreamSink<Settings> dco_decode_StreamSink_settings_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
+  String dco_decode_String(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as String;
+  }
+
+  @protected
+  bool dco_decode_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
+  CanvasPayload dco_decode_box_autoadd_canvas_payload(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_canvas_payload(raw);
+  }
+
+  @protected
+  Settings dco_decode_box_autoadd_settings(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_settings(raw);
+  }
+
+  @protected
+  CanvasAction dco_decode_canvas_action(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return CanvasAction.values[raw as int];
+  }
+
+  @protected
+  CanvasPayload dco_decode_canvas_payload(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return CanvasPayload(
+      png: dco_decode_list_prim_u_8_strict(arr[0]),
+      rect: dco_decode_list_prim_f_64_strict(arr[1]),
+    );
+  }
 
   @protected
   double dco_decode_f_64(dynamic raw) {
@@ -211,6 +598,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<PageThumb> dco_decode_list_page_thumb(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_page_thumb).toList();
+  }
+
+  @protected
+  Float64List dco_decode_list_prim_f_64_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as Float64List;
+  }
+
+  @protected
+  Int64List dco_decode_list_prim_i_64_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeInt64List(raw);
+  }
+
+  @protected
+  Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as Uint8List;
+  }
+
+  @protected
+  CanvasPayload? dco_decode_opt_box_autoadd_canvas_payload(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_canvas_payload(raw);
+  }
+
+  @protected
+  Settings? dco_decode_opt_box_autoadd_settings(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_settings(raw);
+  }
+
+  @protected
   PageSummary dco_decode_page_summary(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -225,15 +648,116 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  PageThumb dco_decode_page_thumb(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return PageThumb(
+      id: dco_decode_i_64(arr[0]),
+      png: dco_decode_list_prim_u_8_strict(arr[1]),
+    );
+  }
+
+  @protected
+  Settings dco_decode_settings(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 16)
+      throw Exception('unexpected arr length: expect 16 but see ${arr.length}');
+    return Settings(
+      color: dco_decode_i_32(arr[0]),
+      width: dco_decode_i_32(arr[1]),
+      rainbow: dco_decode_bool(arr[2]),
+      launchAtLogin: dco_decode_bool(arr[3]),
+      frostedGlass: dco_decode_bool(arr[4]),
+      grid: dco_decode_bool(arr[5]),
+      gridFollowStrokes: dco_decode_bool(arr[6]),
+      pressureMonitor: dco_decode_bool(arr[7]),
+      outline: dco_decode_bool(arr[8]),
+      infiniteCanvas: dco_decode_bool(arr[9]),
+      minimap: dco_decode_bool(arr[10]),
+      gridSize: dco_decode_f_64(arr[11]),
+      gifFps: dco_decode_i_32(arr[12]),
+      gifResolution: dco_decode_f_64(arr[13]),
+      gifSpeed: dco_decode_f_64(arr[14]),
+      gifEndMode: dco_decode_i_32(arr[15]),
+    );
+  }
+
+  @protected
   BigInt dco_decode_u_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dcoDecodeU64(raw);
   }
 
   @protected
+  int dco_decode_u_8(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
   void dco_decode_unit(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return;
+  }
+
+  @protected
+  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_String(deserializer);
+    return AnyhowException(inner);
+  }
+
+  @protected
+  RustStreamSink<Settings> sse_decode_StreamSink_settings_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
+  String sse_decode_String(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_list_prim_u_8_strict(deserializer);
+    return utf8.decoder.convert(inner);
+  }
+
+  @protected
+  bool sse_decode_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint8() != 0;
+  }
+
+  @protected
+  CanvasPayload sse_decode_box_autoadd_canvas_payload(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_canvas_payload(deserializer));
+  }
+
+  @protected
+  Settings sse_decode_box_autoadd_settings(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_settings(deserializer));
+  }
+
+  @protected
+  CanvasAction sse_decode_canvas_action(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return CanvasAction.values[inner];
+  }
+
+  @protected
+  CanvasPayload sse_decode_canvas_payload(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_png = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_rect = sse_decode_list_prim_f_64_strict(deserializer);
+    return CanvasPayload(png: var_png, rect: var_rect);
   }
 
   @protected
@@ -282,6 +806,63 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<PageThumb> sse_decode_list_page_thumb(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <PageThumb>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_page_thumb(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  Float64List sse_decode_list_prim_f_64_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getFloat64List(len_);
+  }
+
+  @protected
+  Int64List sse_decode_list_prim_i_64_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getInt64List(len_);
+  }
+
+  @protected
+  Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint8List(len_);
+  }
+
+  @protected
+  CanvasPayload? sse_decode_opt_box_autoadd_canvas_payload(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_canvas_payload(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  Settings? sse_decode_opt_box_autoadd_settings(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_settings(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   PageSummary sse_decode_page_summary(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_id = sse_decode_i_64(deserializer);
@@ -297,9 +878,62 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  PageThumb sse_decode_page_thumb(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_i_64(deserializer);
+    var var_png = sse_decode_list_prim_u_8_strict(deserializer);
+    return PageThumb(id: var_id, png: var_png);
+  }
+
+  @protected
+  Settings sse_decode_settings(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_color = sse_decode_i_32(deserializer);
+    var var_width = sse_decode_i_32(deserializer);
+    var var_rainbow = sse_decode_bool(deserializer);
+    var var_launchAtLogin = sse_decode_bool(deserializer);
+    var var_frostedGlass = sse_decode_bool(deserializer);
+    var var_grid = sse_decode_bool(deserializer);
+    var var_gridFollowStrokes = sse_decode_bool(deserializer);
+    var var_pressureMonitor = sse_decode_bool(deserializer);
+    var var_outline = sse_decode_bool(deserializer);
+    var var_infiniteCanvas = sse_decode_bool(deserializer);
+    var var_minimap = sse_decode_bool(deserializer);
+    var var_gridSize = sse_decode_f_64(deserializer);
+    var var_gifFps = sse_decode_i_32(deserializer);
+    var var_gifResolution = sse_decode_f_64(deserializer);
+    var var_gifSpeed = sse_decode_f_64(deserializer);
+    var var_gifEndMode = sse_decode_i_32(deserializer);
+    return Settings(
+      color: var_color,
+      width: var_width,
+      rainbow: var_rainbow,
+      launchAtLogin: var_launchAtLogin,
+      frostedGlass: var_frostedGlass,
+      grid: var_grid,
+      gridFollowStrokes: var_gridFollowStrokes,
+      pressureMonitor: var_pressureMonitor,
+      outline: var_outline,
+      infiniteCanvas: var_infiniteCanvas,
+      minimap: var_minimap,
+      gridSize: var_gridSize,
+      gifFps: var_gifFps,
+      gifResolution: var_gifResolution,
+      gifSpeed: var_gifSpeed,
+      gifEndMode: var_gifEndMode,
+    );
+  }
+
+  @protected
   BigInt sse_decode_u_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getBigUint64();
+  }
+
+  @protected
+  int sse_decode_u_8(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint8();
   }
 
   @protected
@@ -308,9 +942,72 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  bool sse_decode_bool(SseDeserializer deserializer) {
+  void sse_encode_AnyhowException(
+    AnyhowException self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getUint8() != 0;
+    sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void sse_encode_StreamSink_settings_Sse(
+    RustStreamSink<Settings> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_settings,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
+  }
+
+  @protected
+  void sse_encode_String(String self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
+  }
+
+  @protected
+  void sse_encode_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint8(self ? 1 : 0);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_canvas_payload(
+    CanvasPayload self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_canvas_payload(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_settings(
+    Settings self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_settings(self, serializer);
+  }
+
+  @protected
+  void sse_encode_canvas_action(CanvasAction self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_canvas_payload(CanvasPayload self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_prim_u_8_strict(self.png, serializer);
+    sse_encode_list_prim_f_64_strict(self.rect, serializer);
   }
 
   @protected
@@ -353,6 +1050,74 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_page_thumb(
+    List<PageThumb> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_page_thumb(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_prim_f_64_strict(
+    Float64List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putFloat64List(self);
+  }
+
+  @protected
+  void sse_encode_list_prim_i_64_strict(
+    Int64List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putInt64List(self);
+  }
+
+  @protected
+  void sse_encode_list_prim_u_8_strict(
+    Uint8List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint8List(self);
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_canvas_payload(
+    CanvasPayload? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_canvas_payload(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_settings(
+    Settings? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_settings(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_page_summary(PageSummary self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_64(self.id, serializer);
@@ -362,19 +1127,47 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_page_thumb(PageThumb self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.id, serializer);
+    sse_encode_list_prim_u_8_strict(self.png, serializer);
+  }
+
+  @protected
+  void sse_encode_settings(Settings self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.color, serializer);
+    sse_encode_i_32(self.width, serializer);
+    sse_encode_bool(self.rainbow, serializer);
+    sse_encode_bool(self.launchAtLogin, serializer);
+    sse_encode_bool(self.frostedGlass, serializer);
+    sse_encode_bool(self.grid, serializer);
+    sse_encode_bool(self.gridFollowStrokes, serializer);
+    sse_encode_bool(self.pressureMonitor, serializer);
+    sse_encode_bool(self.outline, serializer);
+    sse_encode_bool(self.infiniteCanvas, serializer);
+    sse_encode_bool(self.minimap, serializer);
+    sse_encode_f_64(self.gridSize, serializer);
+    sse_encode_i_32(self.gifFps, serializer);
+    sse_encode_f_64(self.gifResolution, serializer);
+    sse_encode_f_64(self.gifSpeed, serializer);
+    sse_encode_i_32(self.gifEndMode, serializer);
+  }
+
+  @protected
   void sse_encode_u_64(BigInt self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putBigUint64(self);
   }
 
   @protected
-  void sse_encode_unit(void self, SseSerializer serializer) {
+  void sse_encode_u_8(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint8(self);
   }
 
   @protected
-  void sse_encode_bool(bool self, SseSerializer serializer) {
+  void sse_encode_unit(void self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putUint8(self ? 1 : 0);
   }
 }

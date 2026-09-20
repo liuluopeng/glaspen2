@@ -43,6 +43,27 @@ install_name_tool -delete_rpath "${PWD}/${FLUTTER_FW}/FlutterMacOS.xcframework/m
 install_name_tool -delete_rpath "${PWD}/${FLUTTER_FW}/App.xcframework/macos-arm64_x86_64" "${BIN}" 2>/dev/null || true
 install_name_tool -add_rpath "@executable_path/../Frameworks" "${BIN}" 2>/dev/null || true
 
+# --- Verify flutter_rust_bridge entry points ---
+# 设置面板靠 DynamicLibrary.process()(dlopen(NULL) + dlsym)在运行时解析这些
+# 符号;Rust 以 rlib 静态链入,靠 build.rs 的 `-Wl,-u,_<symbol>` 强制保留。
+# 一旦丢失,构建与签名全都正常,只有用户打开设置面板时才会失败 —— 所以这里
+# 直接断言最终二进制,让问题在打包阶段暴露。
+echo "=== Verifying flutter_rust_bridge entry points ==="
+if command -v dyld_info >/dev/null 2>&1; then
+    SYMBOLS=$(dyld_info -exports "${BIN}")
+else
+    SYMBOLS=$(nm -gU "${BIN}")
+fi
+for sym in frb_pde_ffi_dispatcher_primary frb_pde_ffi_dispatcher_sync frb_dart_fn_deliver_output; do
+    if ! echo "${SYMBOLS}" | grep -q "${sym}"; then
+        echo "ERROR: ${sym} 不在 ${BIN} 的导出表里" >&2
+        echo "       Dart 侧会解析不到符号,设置面板将无法与 Rust 通信。" >&2
+        echo "       检查 build.rs 的 cargo:rustc-link-arg-bins=-Wl,-u,_${sym}" >&2
+        exit 1
+    fi
+done
+echo "  ok"
+
 # --- Bundle Homebrew dylibs ---
 echo "=== Collecting Homebrew dylib dependencies ==="
 

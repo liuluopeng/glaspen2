@@ -92,7 +92,12 @@ extern int glaspen2_export_infinite_svg(void);
 extern void glaspen2_on_display_change(int screen_w, int screen_h);
 extern char* glaspen2_list_screens_json(void);
 extern unsigned char* glaspen2_render_thumbnail(long long screen_id, int w, int h, int max_size, int *out_len);
+/// 批量缩略图:一次调用返回多页的 PNG(自描述二进制块,见 export.rs)。
+extern unsigned char* glaspen2_page_thumbnails(const long long *ids, int count, int max_size, int *out_len);
 extern void glaspen2_free_rust_bytes(unsigned char *ptr, int len);
+/// 设置面板改为 flutter_rust_bridge 通信:菜单/快捷键改了状态后通知 Rust,
+/// 由 Rust 推给订阅了设置流的 Dart 侧(取代旧的 MethodChannel 回调)。
+extern void glaspen2_notify_settings_changed(void);
 extern int glaspen2_delete_screen(long long screen_id);
 extern char* glaspen2_page_info_json(long long screen_id);
 extern int glaspen2_chat_send_strokes(int start_index, int end_index);
@@ -968,7 +973,6 @@ static void toggle_canvas_mode(void) {
 static FlutterEngine *g_flutter_engine = nil;
 static FlutterViewController *g_flutter_vc = nil;
 static NSWindow *g_settings_window = nil;
-static FlutterMethodChannel *g_settings_channel = nil;
 
 static void show_settings_panel(void);
 static void sync_settings_panel(void);
@@ -1019,13 +1023,33 @@ static NSDictionary *canvas_overview_payload(double w, double h) {
     };
 }
 
-@interface SettingsMethodChannelHandler : NSObject <FlutterPlugin>
-@end
+// ---------------------------------------------------------------------------
+// flutter_rust_bridge:设置面板的 ObjC 侧入口
+//
+// 设置面板是嵌在同一进程里的 Flutter 视图,Rust 代码就在主可执行文件里,
+// 所以 Dart 用 ExternalLibrary.process() 直接解析 Rust 符号 —— 下面这些 C
+// 函数由 Rust(src/api.rs)反向调用,不再需要 Flutter MethodChannel。
+//
+// 它们会被 FRB 的工作线程调用,因此所有触碰 AppKit 的操作都要切回主线程。
+// 主线程不会反过来等这些线程,所以 dispatch_sync 到主队列不会死锁。
+// ---------------------------------------------------------------------------
 
-@implementation SettingsMethodChannelHandler
-- (void)handleMethodCall:(FlutterMethodCall *)call result:(FlutterResult)result {
-    if ([call.method isEqualToString:@"getSettings"]) {
-        result(@{
+#include <string.h>
+
+/// 把 block 放到主线程同步执行(已在主线程则就地调用)。
+static void gl_run_on_main_sync(dispatch_block_t block) {
+    if ([NSThread isMainThread]) {
+        block();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), block);
+    }
+}
+
+/// 当前设置的 JSON 快照;调用方用 glaspen2_macos_free_c_string 释放。
+char *glaspen2_macos_settings_json(void) {
+    __block char *out = NULL;
+    gl_run_on_main_sync(^{
+        NSDictionary *d = @{
             @"color": @(g_selectedColorIndex),
             @"width": @(g_selected_width_index),
             @"rainbow": @(g_show_rainbow),
@@ -1042,11 +1066,42 @@ static NSDictionary *canvas_overview_payload(double w, double h) {
             @"gifResolution": @(g_gif_resolution),
             @"gifSpeed": @(g_gif_speed),
             @"gifEndMode": @(g_gif_end_mode),
-        });
-    } else if ([call.method isEqualToString:@"setSetting"]) {
-        NSDictionary *args = call.arguments;
-        NSString *key = args[@"key"];
-        id value = args[@"value"];
+        };
+        NSData *json = [NSJSONSerialization dataWithJSONObject:d options:0 error:nil];
+        if (!json) return;
+        NSString *s = [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
+        const char *cs = s.UTF8String;
+        if (!cs) return;
+        size_t n = strlen(cs);
+        char *buf = (char *)malloc(n + 1);
+        if (!buf) return;
+        memcpy(buf, cs, n + 1);
+        out = buf;
+    });
+    return out;
+}
+
+void glaspen2_macos_free_c_string(char *p) {
+    if (p) free(p);
+}
+
+/// 释放 glaspen2_macos_canvas_payload 返回的缓冲区(ObjC 侧 malloc,
+/// 不能交给 Rust 的 Vec::from_raw_parts)。
+void glaspen2_macos_free_bytes(unsigned char *p) {
+    if (p) free(p);
+}
+
+/// 写入一项设置。`value_json` 是 JSON 标量(true / 3 / 2.5),按 key 解析后
+/// 交给与菜单、快捷键共用的 gl_settings_set_* 和全局状态。
+void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
+    if (!key_c) return;
+    NSString *key = @(key_c);
+    id value = nil;
+    if (value_json) {
+        NSData *d = [NSData dataWithBytes:value_json length:strlen(value_json)];
+        value = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+    }
+    gl_run_on_main_sync(^{
         if ([key isEqualToString:@"color"]) {
             gl_settings_set_color([value intValue]);
         } else if ([key isEqualToString:@"width"]) {
@@ -1068,18 +1123,12 @@ static NSDictionary *canvas_overview_payload(double w, double h) {
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
         } else if ([key isEqualToString:@"outline"]) {
             apply_outline([value boolValue]);
-            result(nil);
-            return;
         } else if ([key isEqualToString:@"infiniteCanvas"]) {
             apply_infinite_canvas([value boolValue], NO);
-            result(nil);
-            return;
         } else if ([key isEqualToString:@"minimap"]) {
             g_minimap_enabled = [value boolValue];
             glaspen2_save_bool_setting("minimap", g_minimap_enabled ? 1 : 0);
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
-            result(nil);
-            return;
         } else if ([key isEqualToString:@"gridSize"]) {
             double gs = [value doubleValue];
             if (gs < 10) gs = 10;
@@ -1088,8 +1137,6 @@ static NSDictionary *canvas_overview_payload(double w, double h) {
             NSString *gsStr = [NSString stringWithFormat:@"%.0f", gs];
             glaspen2_save_string_setting("grid_size", [gsStr UTF8String]);
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
-            result(nil);
-            return;
         } else if ([key isEqualToString:@"pressureMonitor"]) {
             gl_settings_set_pressure_monitor([value boolValue]);
         } else if ([key isEqualToString:@"gifFps"]) {
@@ -1117,15 +1164,60 @@ static NSDictionary *canvas_overview_payload(double w, double h) {
             NSString *s = [NSString stringWithFormat:@"%d", g_gif_end_mode];
             glaspen2_save_string_setting("gif_end_mode", [s UTF8String]);
         }
-        result(nil);
-    } else if ([call.method isEqualToString:@"hotkey"]) {
-        // 设置面板快捷键按钮 → 执行与物理快捷键相同的动作。
+    });
+}
+
+/// 删除一页;返回 1 表示成功。删除当前页时自动切到相邻页。
+int glaspen2_macos_delete_page(long long screen_id) {
+    __block int ok = 0;
+    dispatch_sync(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        ok = glaspen2_delete_screen(screen_id);
+        gl_run_on_main_sync(^{
+            if (g_infinite_canvas) {
+                // 无限画布独立存储,不受页存储的删除影响
+                rebuild_surface_from_strokes();
+                return;
+            }
+            if (ok && screen_id == glaspen2_get_current_screen_id()) {
+                int64_t next = glaspen2_next_screen_id();
+                if (next == 0) next = glaspen2_prev_screen_id();
+                if (next != 0) {
+                    glaspen2_load_strokes_for_screen(next);
+                    rebuild_surface_from_strokes();
+                } else {
+                    clear_screen();
+                }
+            }
+        });
+    });
+    return ok;
+}
+
+/// 跳转到指定页继续绘画。
+void glaspen2_macos_navigate_to_page(long long screen_id) {
+    if (screen_id <= 0) return;
+    // 从无限画布跳转到某一页:先切回翻页模式(否则会把页笔迹塞进无限画布内存)
+    if (g_infinite_canvas) {
+        gl_run_on_main_sync(^{
+            apply_infinite_canvas(NO, NO);
+        });
+    }
+    dispatch_sync(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        glaspen2_load_strokes_for_screen(screen_id);
+        gl_run_on_main_sync(^{
+            rebuild_surface_from_strokes();
+        });
+    });
+}
+
+/// 设置面板快捷键按钮 → 执行与物理快捷键相同的动作。
+void glaspen2_macos_hotkey(const char *key_c) {
+    if (!key_c) return;
+    NSString *key = @(key_c);
+    gl_run_on_main_sync(^{
         // Q (退出) 不走 perform_hotkey: 那是按钮专属动作, ⌃⌘Q 必须留给锁屏。
-        NSDictionary *args = call.arguments;
-        NSString *key = args[@"key"];
         if ([key isEqualToString:@"Q"]) {
             [NSApp terminate:nil];
-            result(nil);
             return;
         }
         unsigned short kc = 0;
@@ -1138,208 +1230,108 @@ static NSDictionary *canvas_overview_payload(double w, double h) {
         else if ([key isEqualToString:@"V"]) kc = kVK_ANSI_V;
         else if ([key isEqualToString:@"B"]) kc = kVK_ANSI_B;
         if (kc) perform_hotkey(kc);
-        result(nil);
-    } else if ([call.method isEqualToString:@"exportAnimatedGif"]) {
-        // Run on background queue so UI stays responsive during Cairo rendering.
-        // Copy newest GIF to clipboard afterwards (same as Cmd+Ctrl+A hotkey did).
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            int ok = glaspen2_save_animated_gif(g_gif_fps, g_gif_resolution, g_gif_speed, g_gif_end_mode);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (ok) {
-                    NSString *desktop = [NSSearchPathForDirectoriesInDomains(NSDesktopDirectory, NSUserDomainMask, YES) firstObject];
-                    NSFileManager *fm = [NSFileManager defaultManager];
-                    NSArray *files = [fm contentsOfDirectoryAtPath:desktop error:nil];
-                    NSString *newestGif = nil;
-                    NSDate *newestDate = nil;
-                    for (NSString *f in files) {
-                        if ([f hasPrefix:@"glaspen2_"] && [f hasSuffix:@".gif"]) {
-                            NSString *full = [desktop stringByAppendingPathComponent:f];
-                            NSDictionary *attr = [fm attributesOfItemAtPath:full error:nil];
-                            NSDate *d = attr[NSFileModificationDate];
-                            if (!newestDate || [d compare:newestDate] == NSOrderedDescending) {
-                                newestDate = d; newestGif = full;
-                            }
-                        }
-                    }
-                    if (newestGif) {
-                        NSPasteboard *pb = [NSPasteboard generalPasteboard];
-                        [pb clearContents];
-                        [pb writeObjects:@[[NSURL fileURLWithPath:newestGif]]];
-                    }
-                    show_notification(L(@"动画 GIF 已保存并复制到剪贴板", @"Animated GIF saved & copied"));
-                    result(@(YES));
-                } else {
-                    show_notification(L(@"没有笔迹或导出失败", @"No strokes or export failed"));
-                    result(@(NO));
-                }
-            });
-        });
-    } else if ([call.method isEqualToString:@"setWindowSize"]) {
-        NSDictionary *args = call.arguments;
-        CGFloat width = [args[@"width"] doubleValue];
-        CGFloat height = [args[@"height"] doubleValue];
-        if (g_settings_window && width >= 300 && height >= 300) {
-            NSRect frame = [g_settings_window frame];
-            frame.size.width = width;
-            frame.size.height = height;
-            [g_settings_window setFrame:frame display:YES animate:YES];
-            [g_settings_window setMinSize:NSMakeSize(300, 300)];
-        }
-        result(nil);
-    } else if ([call.method isEqualToString:@"exportPdf"]) {
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            int ok = glaspen2_export_pdf();
-            dispatch_async(dispatch_get_main_queue(), ^{
-                result(@(ok));
-            });
-        });
-    } else if ([call.method isEqualToString:@"listPages"]) {
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            char *json = glaspen2_list_screens_json();
-            NSString *str = json ? [NSString stringWithUTF8String:json] : @"[]";
-            if (json) glaspen2_free_c_string(json);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                result(str);
-            });
-        });
-    } else if ([call.method isEqualToString:@"getPageThumbnail"]) {
-        NSDictionary *args = call.arguments;
-        int64_t screenId = [args[@"screenId"] longLongValue];
-        int w = [args[@"w"] intValue];
-        int h = [args[@"h"] intValue];
-        int maxSize = [args[@"maxSize"] intValue];
-        // 串行队列:避免并发全屏渲染打爆 CPU(与 minimap 同策略)
-        static dispatch_queue_t thumb_queue = nil;
-        static dispatch_once_t thumb_once;
-        dispatch_once(&thumb_once, ^{
-            thumb_queue = dispatch_queue_create("glaspen2.thumbs", DISPATCH_QUEUE_SERIAL);
-            dispatch_set_target_queue(thumb_queue,
-                dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
-        });
-        dispatch_async(thumb_queue, ^{
-            int outLen = 0;
-            unsigned char *png = glaspen2_render_thumbnail(screenId, w, h, maxSize, &outLen);
-            NSData *data = [NSData data];
-            if (png && outLen > 0) {
-                data = [NSData dataWithBytes:png length:outLen];
-                glaspen2_free_rust_bytes(png, outLen);
-            }
-            dispatch_async(dispatch_get_main_queue(), ^{ result(data); });
-        });
-    } else if ([call.method isEqualToString:@"canvasNew"]) {
-        // 手动新建:清空全局无限画布内容,镜头回原点 + 100%
-        finish_active_stroke();
-        glaspen2_clear_strokes(g_screen_w, g_screen_h);
-        g_pan_x = 0.0;
-        g_pan_y = 0.0;
-        g_zoom = 1.0;
-        glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
-        rebuild_surface_from_strokes();
-        NSDictionary *payload = canvas_overview_payload(1024, 768);
-        result(payload ?: @{});
-    } else if ([call.method isEqualToString:@"canvasOverview"]) {
-        NSDictionary *args = call.arguments;
-        double w = [args[@"w"] doubleValue];
-        double h = [args[@"h"] doubleValue];
-        if (w < 400) w = 1024;
-        if (h < 400) h = 768;
-        // 同一方法承载镜头动作:home = 回原点+100%,center = 居中内容包围盒
-        if ([args[@"home"] boolValue]) {
+    });
+}
+
+/// 无限画布总览:action 0=当前 1=镜头回原点 2=居中内容 3=新建(清空)。
+/// 返回 PNG 缓冲区(用 glaspen2_macos_free_bytes 释放),rect_out 收视口矩形;
+/// 空画布返回 NULL 且 *out_len = 0。
+unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *rect_out,
+                                             int *out_len) {
+    __block unsigned char *result_png = NULL;
+    gl_run_on_main_sync(^{
+        // block 捕获的参数是只读副本,尺寸用局部变量调整
+        int ow = w, oh = h;
+        if (ow < 400) ow = 1024;
+        if (oh < 400) oh = 768;
+        if (action == 1) {
             g_pan_x = 0.0;
             g_pan_y = 0.0;
             g_zoom = 1.0;
             canvas_apply_transform();
-            rebuild_surface_from_strokes();
-        } else if ([args[@"center"] boolValue]) {
+        } else if (action == 2) {
             double bx, by, bx2, by2;
             if (glaspen2_stroke_bbox(&bx, &by, &bx2, &by2)) {
                 double z = g_zoom > 0.05 ? g_zoom : 1.0;
                 g_pan_x = (bx + bx2) * 0.5 - g_screen_w * 0.5 / z;
                 g_pan_y = (by + by2) * 0.5 - g_screen_h * 0.5 / z;
                 canvas_apply_transform();
-                rebuild_surface_from_strokes();
             }
-        }
-        NSDictionary *payload = canvas_overview_payload(w, h);
-        result(payload ?: @{});
-    } else if ([call.method isEqualToString:@"canvasHome"]) {
-        NSDictionary *args = call.arguments;
-        double w = [args[@"w"] doubleValue];
-        double h = [args[@"h"] doubleValue];
-        if (w < 400) w = 1024;
-        if (h < 400) h = 768;
-        g_pan_x = 0.0;
-        g_pan_y = 0.0;
-        g_zoom = 1.0;
-        canvas_apply_transform(); // 应用 + 按模式持久化
-        rebuild_surface_from_strokes();
-        NSDictionary *payload = canvas_overview_payload(w, h);
-        result(payload ?: @{});
-    } else if ([call.method isEqualToString:@"canvasCenter"]) {
-        double bx, by, bx2, by2;
-        if (glaspen2_stroke_bbox(&bx, &by, &bx2, &by2)) {
-            double z = g_zoom > 0.05 ? g_zoom : 1.0;
-            g_pan_x = (bx + bx2) * 0.5 - g_screen_w * 0.5 / z;
-            g_pan_y = (by + by2) * 0.5 - g_screen_h * 0.5 / z;
+        } else if (action == 3) {
+            finish_active_stroke();
+            glaspen2_clear_strokes(g_screen_w, g_screen_h);
+            g_pan_x = 0.0;
+            g_pan_y = 0.0;
+            g_zoom = 1.0;
             glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
-            long cur = glaspen2_get_current_screen_id();
-            canvas_apply_transform(); // 应用 + 按模式持久化
             rebuild_surface_from_strokes();
+            ow = 1024;
+            oh = 768;
         }
-        NSDictionary *payload = canvas_overview_payload(1024, 768);
-        result(payload ?: @{});
-    } else if ([call.method isEqualToString:@"deletePage"]) {
-        NSDictionary *args = call.arguments;
-        int64_t screenId = [args[@"screenId"] longLongValue];
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-            int ok = glaspen2_delete_screen(screenId);
-            if (g_infinite_canvas) {
-                // 无限画布独立存储,不受页存储的删除影响
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    rebuild_surface_from_strokes();
-                    result(@(ok));
-                });
-                return;
-            }
-            if (ok && screenId == glaspen2_get_current_screen_id()) {
-                int64_t next = glaspen2_next_screen_id();
-                if (next == 0) next = glaspen2_prev_screen_id();
-                if (next != 0) {
-                    glaspen2_load_strokes_for_screen(next);
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        rebuild_surface_from_strokes();
-                    });
-                } else {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        clear_screen();
-                    });
-                }
-            }
-            dispatch_async(dispatch_get_main_queue(), ^{
-                result(@(ok));
-            });
-        });
-    } else if ([call.method isEqualToString:@"navigateToPage"]) {
-        NSDictionary *args = call.arguments;
-        int64_t screenId = [args[@"screenId"] longLongValue];
-        if (screenId > 0) {
-            // 从无限画布跳转到某一页:先切回翻页模式(否则会把页笔迹塞进无限画布内存)
-            if (g_infinite_canvas) {
-                apply_infinite_canvas(NO, NO);
-            }
-            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-                glaspen2_load_strokes_for_screen(screenId);
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    rebuild_surface_from_strokes();
-                });
-            });
+        NSDictionary *payload = canvas_overview_payload(ow, oh);
+        if (!payload) return;
+        NSData *data = payload[@"png"];
+        NSArray *rect = payload[@"rect"];
+        if (!data || data.length == 0) return;
+        unsigned char *buf = (unsigned char *)malloc(data.length);
+        if (!buf) return;
+        memcpy(buf, data.bytes, data.length);
+        result_png = buf;
+        if (out_len) *out_len = (int)data.length;
+        if (rect_out && rect.count == 4) {
+            for (int i = 0; i < 4; i++) rect_out[i] = [rect[i] doubleValue];
         }
-        result(nil);
-    } else {
-        result(FlutterMethodNotImplemented);
-    }
+    });
+    return result_png;
 }
-@end
+
+int glaspen2_macos_export_pdf(void) {
+    __block int ok = 0;
+    dispatch_sync(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        ok = glaspen2_export_pdf();
+    });
+    return ok;
+}
+
+/// 导出动画 GIF:后台渲染,完成后回主线程复制到剪贴板并提示。
+int glaspen2_macos_export_gif(void) {
+    __block int ok = 0;
+    dispatch_sync(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        ok = glaspen2_save_animated_gif(g_gif_fps, g_gif_resolution, g_gif_speed,
+                                        g_gif_end_mode);
+        gl_run_on_main_sync(^{
+            if (ok) {
+                NSString *desktop = [NSSearchPathForDirectoriesInDomains(
+                    NSDesktopDirectory, NSUserDomainMask, YES) firstObject];
+                NSFileManager *fm = [NSFileManager defaultManager];
+                NSArray *files = [fm contentsOfDirectoryAtPath:desktop error:nil];
+                NSString *newestGif = nil;
+                NSDate *newestDate = nil;
+                for (NSString *f in files) {
+                    if ([f hasPrefix:@"glaspen2_"] && [f hasSuffix:@".gif"]) {
+                        NSString *full = [desktop stringByAppendingPathComponent:f];
+                        NSDictionary *attr = [fm attributesOfItemAtPath:full error:nil];
+                        NSDate *d = attr[NSFileModificationDate];
+                        if (!newestDate || [d compare:newestDate] == NSOrderedDescending) {
+                            newestDate = d;
+                            newestGif = full;
+                        }
+                    }
+                }
+                if (newestGif) {
+                    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+                    [pb clearContents];
+                    [pb writeObjects:@[ [NSURL fileURLWithPath:newestGif] ]];
+                }
+                show_notification(
+                    L(@"动画 GIF 已保存并复制到剪贴板", @"Animated GIF saved & copied"));
+            } else {
+                show_notification(L(@"没有笔迹或导出失败", @"No strokes or export failed"));
+            }
+        });
+    });
+    return ok;
+}
 
 // --- Unified settings functions (single source of truth) ---
 
@@ -1491,21 +1483,8 @@ static void gl_settings_set_pressure_monitor(BOOL on) {
 }
 
 static void sync_settings_panel(void) {
-    if (!g_settings_channel) return;
-    [g_settings_channel invokeMethod:@"onSettingsChanged" arguments:@{
-        @"color": @(g_selectedColorIndex),
-        @"width": @(g_selected_width_index),
-        @"rainbow": @(g_show_rainbow),
-        @"launchAtLogin": @(glaspen2_is_launch_at_login()),
-        @"frostedGlass": @(g_glass_enabled),
-        @"grid": @(g_show_grid),
-        @"gridFollowStrokes": @(g_grid_follow_strokes),
-        @"pressureMonitor": @(g_pressure_monitor),
-        @"outline": @(g_outline_enabled),
-        @"infiniteCanvas": @(g_infinite_canvas),
-        @"minimap": @(g_minimap_enabled),
-        @"gridSize": @(g_grid_size),
-    }];
+    // 菜单/快捷键改了状态 → 推给订阅了 FRB 设置流的设置面板
+    glaspen2_notify_settings_changed();
 }
 
 @interface SettingsWindowDelegate : NSObject <NSWindowDelegate>
@@ -1537,15 +1516,9 @@ static void show_settings_panel(void) {
         [g_flutter_engine runWithEntrypoint:nil];
     }
 
-    // Set up MethodChannel for settings communication
-    g_settings_channel = [FlutterMethodChannel
-        methodChannelWithName:@"com.glaspen/settings"
-              binaryMessenger:g_flutter_engine.binaryMessenger];
-
-    SettingsMethodChannelHandler *handler = [[SettingsMethodChannelHandler alloc] init];
-    [g_settings_channel setMethodCallHandler:^(FlutterMethodCall *call, FlutterResult result) {
-        [handler handleMethodCall:call result:result];
-    }];
+    // 面板与 Rust 的通信全部走 flutter_rust_bridge(Dart 侧
+    // ExternalLibrary.process() 直接解析本进程内的 Rust 符号),
+    // 这里不再建立 FlutterMethodChannel。
 
     // Create FlutterViewController
     g_flutter_vc = [[FlutterViewController alloc] initWithEngine:g_flutter_engine
