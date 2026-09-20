@@ -57,13 +57,20 @@ fn now_f64() -> f64 {
 // ---------------------------------------------------------------------------
 mod platform {
     use crate::state;
-    use sqlx::SqlitePool;
+    use sqlx::{Row, SqlitePool};
     use std::collections::HashMap;
     use std::sync::OnceLock;
 
     use super::{StrokeData, db_path, now_f64};
 
     static DB: OnceLock<SqlitePool> = OnceLock::new();
+
+    /// 当前 schema 版本。**任何改变表结构的改动都要 +1**, 并在 `migrate_with`
+    /// 里补一段迁移。
+    ///
+    /// 两个作用: 旧版程序打开新版写过的库时直接拒绝(而不是按旧 schema 读写出
+    /// 错、把数据写坏); 迁移失败时定位到底停在哪一版。
+    pub(crate) const SCHEMA_VERSION: i32 = 1;
 
     pub async fn init() {
         let path = db_path();
@@ -80,7 +87,79 @@ mod platform {
         .await
         .expect("Failed to open glaspen2.db");
 
-        sqlx::query(
+        if let Err(e) = migrate_with(&pool).await {
+            // 迁移失败绝不能带着半个 schema 继续跑: 报清楚原因并中止启动,
+            // 用户至少知道该从哪个备份恢复, 而不是用着用着丢数据。
+            panic!("[glaspen2] 数据库迁移失败, 已中止启动:\n{e}");
+        }
+
+        apply_defaults(&pool).await;
+
+        DB.set(pool).ok();
+        println!("[glaspen2] DB initialized at {}", path.display());
+    }
+
+    async fn exec(pool: &SqlitePool, sql: &str) -> Result<(), String> {
+        sqlx::query(sql)
+            .execute(pool)
+            .await
+            .map(|_| ())
+            .map_err(|e| {
+                format!(
+                    "{e}\n  SQL: {}",
+                    sql.split_whitespace().collect::<Vec<_>>().join(" ")
+                )
+            })
+    }
+
+    /// 加列迁移:先查 PRAGMA 再决定要不要 ALTER。
+    ///
+    /// 原来这些语句是 `ALTER TABLE ... .ok()`, 列已存在时确实要忽略, 但
+    /// **真正的失败也被一起吞掉了** —— 结果是一个缺列的库继续跑, 直到某次
+    /// 查询报错。现在只有"列已存在"会静默跳过, 别的错误一律上报。
+    async fn add_column_if_missing(
+        pool: &SqlitePool,
+        table: &str,
+        column: &str,
+        decl: &str,
+    ) -> Result<(), String> {
+        let rows = sqlx::query(&format!("PRAGMA table_info({table})"))
+            .fetch_all(pool)
+            .await
+            .map_err(|e| format!("读取 {table} 表结构失败: {e}"))?;
+        let exists = rows.iter().any(|r| {
+            r.try_get::<String, _>("name")
+                .map(|n| n == column)
+                .unwrap_or(false)
+        });
+        if exists {
+            return Ok(());
+        }
+        exec(
+            pool,
+            &format!("ALTER TABLE {table} ADD COLUMN {column} {decl}"),
+        )
+        .await
+    }
+
+    /// 建表 + 迁移。拆出来是为了能在测试里对指定 pool 跑, 而不是只能走全局单例。
+    ///
+    /// 全部语句都是幂等的(`CREATE ... IF NOT EXISTS` / 加列前先查), 所以
+    /// 中途失败后下次启动重跑是安全的。
+    pub(crate) async fn migrate_with(pool: &SqlitePool) -> Result<(), String> {
+        let version: i32 = sqlx::query_scalar("PRAGMA user_version")
+            .fetch_one(pool)
+            .await
+            .map_err(|e| format!("读取 schema 版本失败: {e}"))?;
+        if version > SCHEMA_VERSION {
+            return Err(format!(
+                "数据库 schema 版本为 {version}, 高于本程序支持的 {SCHEMA_VERSION} —— \
+                 这份数据由更新版本的 glaspen2 写入, 请升级程序后再打开。\n  库文件: {}",
+                db_path().display()
+            ));
+        }
+
+        for sql in [
             "CREATE TABLE IF NOT EXISTS screens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at REAL NOT NULL,
@@ -88,18 +167,6 @@ mod platform {
                 screen_h INTEGER NOT NULL,
                 edited INTEGER NOT NULL DEFAULT 0
             )",
-        )
-        .execute(&pool)
-        .await
-        .expect("Failed to create screens table");
-
-        // Migration for existing DBs (edited = 0 by default; strokes imply edited)
-        sqlx::query("ALTER TABLE screens ADD COLUMN edited INTEGER NOT NULL DEFAULT 0")
-            .execute(&pool)
-            .await
-            .ok();
-
-        sqlx::query(
             "CREATE TABLE IF NOT EXISTS strokes (
                 id INTEGER PRIMARY KEY,
                 screen_id INTEGER NOT NULL REFERENCES screens(id),
@@ -109,12 +176,6 @@ mod platform {
                 width_scale REAL NOT NULL DEFAULT 1.0,
                 created_at REAL NOT NULL
             )",
-        )
-        .execute(&pool)
-        .await
-        .expect("Failed to create strokes table");
-
-        sqlx::query(
             "CREATE TABLE IF NOT EXISTS points (
                 stroke_id INTEGER NOT NULL REFERENCES strokes(id),
                 seq INTEGER NOT NULL,
@@ -124,19 +185,9 @@ mod platform {
                 t REAL NOT NULL DEFAULT 0.0,
                 PRIMARY KEY (stroke_id, seq)
             )",
-        )
-        .execute(&pool)
-        .await
-        .expect("Failed to create points table");
-
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_strokes_screen ON strokes(screen_id)")
-            .execute(&pool)
-            .await
-            .ok();
-
-        // 无限画布模式:独立存储,与翻页模式完全分开。
-        // 目前全局只有一个无限画布,故这两张表不再按页(screen_id)分组。
-        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_strokes_screen ON strokes(screen_id)",
+            // 无限画布模式:独立存储,与翻页模式完全分开。
+            // 目前全局只有一个无限画布,故这两张表不再按页(screen_id)分组。
             "CREATE TABLE IF NOT EXISTS infinite_strokes (
                 id INTEGER PRIMARY KEY,
                 color_r REAL NOT NULL,
@@ -145,12 +196,6 @@ mod platform {
                 width_scale REAL NOT NULL DEFAULT 1.0,
                 created_at REAL NOT NULL
             )",
-        )
-        .execute(&pool)
-        .await
-        .expect("Failed to create infinite_strokes table");
-
-        sqlx::query(
             "CREATE TABLE IF NOT EXISTS infinite_points (
                 stroke_id INTEGER NOT NULL REFERENCES infinite_strokes(id),
                 seq INTEGER NOT NULL,
@@ -160,49 +205,13 @@ mod platform {
                 t REAL NOT NULL DEFAULT 0.0,
                 PRIMARY KEY (stroke_id, seq)
             )",
-        )
-        .execute(&pool)
-        .await
-        .expect("Failed to create infinite_points table");
-
-        sqlx::query(
             "CREATE TABLE IF NOT EXISTS user_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             )",
-        )
-        .execute(&pool)
-        .await
-        .expect("Failed to create user_settings table");
-
-        sqlx::query("ALTER TABLE points ADD COLUMN t REAL NOT NULL DEFAULT 0.0")
-            .execute(&pool)
-            .await
-            .ok();
-
-        // 软删除:deleted_at 非 NULL 表示已删除(不参与查询,可恢复)。
-        // 三张实体表各自记录,points/infinite_points 跟随父级笔迹即可。
-        sqlx::query("ALTER TABLE screens ADD COLUMN deleted_at REAL")
-            .execute(&pool)
-            .await
-            .ok();
-        sqlx::query("ALTER TABLE strokes ADD COLUMN deleted_at REAL")
-            .execute(&pool)
-            .await
-            .ok();
-        sqlx::query("ALTER TABLE infinite_strokes ADD COLUMN deleted_at REAL")
-            .execute(&pool)
-            .await
-            .ok();
-
-        // 注:旧版本曾在 screens 上存 per-page 镜头(pan_x/pan_y/zoom)。
-        // 现在无限画布独立存储且全局只有一个画布,镜头改存 user_settings,
-        // 这几列不再读写(旧库中残留的列保持不动,无副作用)。
-
-        // 缩略图缓存:渲染结果(PNG)按页存库,内容未变时直接复用,
-        // 避免每次打开活页本都全量拉笔迹+渲染。新鲜度由
-        // (stroke_count, max_stroke_id, outline, max_size) 四元组判定。
-        sqlx::query(
+            // 缩略图缓存:渲染结果(PNG)按页存库,内容未变时直接复用,
+            // 避免每次打开活页本都全量拉笔迹+渲染。新鲜度由
+            // (stroke_count, max_stroke_id, outline, max_size) 四元组判定。
             "CREATE TABLE IF NOT EXISTS screen_thumbnails (
                 screen_id INTEGER NOT NULL REFERENCES screens(id),
                 max_size INTEGER NOT NULL,
@@ -213,15 +222,29 @@ mod platform {
                 generated_at REAL NOT NULL,
                 PRIMARY KEY (screen_id, max_size)
             )",
-        )
-        .execute(&pool)
-        .await
-        .ok();
+        ] {
+            exec(pool, sql).await?;
+        }
 
-        apply_defaults(&pool).await;
+        // 历史迁移(老库缺这些列)。软删除:deleted_at 非 NULL 表示已删除
+        // (不参与查询,可恢复);三张实体表各自记录,points/infinite_points
+        // 跟随父级笔迹即可。
+        add_column_if_missing(pool, "screens", "edited", "INTEGER NOT NULL DEFAULT 0").await?;
+        add_column_if_missing(pool, "points", "t", "REAL NOT NULL DEFAULT 0.0").await?;
+        add_column_if_missing(pool, "screens", "deleted_at", "REAL").await?;
+        add_column_if_missing(pool, "strokes", "deleted_at", "REAL").await?;
+        add_column_if_missing(pool, "infinite_strokes", "deleted_at", "REAL").await?;
 
-        DB.set(pool).ok();
-        println!("[glaspen2] DB initialized at {}", path.display());
+        // 注:旧版本曾在 screens 上存 per-page 镜头(pan_x/pan_y/zoom)。
+        // 现在无限画布独立存储且全局只有一个画布,镜头改存 user_settings,
+        // 这几列不再读写(旧库中残留的列保持不动,无副作用)。
+
+        // 迁移全部成功才写版本号:中途失败时下次启动会整套重跑(语句都幂等)
+        sqlx::query(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
+            .execute(pool)
+            .await
+            .map_err(|e| format!("写入 schema 版本失败: {e}"))?;
+        Ok(())
     }
 
     async fn apply_defaults(pool: &SqlitePool) {
@@ -1061,9 +1084,9 @@ pub use platform::*;
 mod tests {
     use super::StrokeData;
     use super::platform::{
-        attach_points, page_info_with, screen_stroke_version_with, stroke_versions_many_with,
-        thumbnail_lookup_with, thumbnail_store_with, thumbnails_many_with,
-        thumbnails_purge_screen_with,
+        SCHEMA_VERSION, attach_points, migrate_with, page_info_with, screen_stroke_version_with,
+        stroke_versions_many_with, thumbnail_lookup_with, thumbnail_store_with,
+        thumbnails_many_with, thumbnails_purge_screen_with,
     };
     use crate::runtime;
     use sqlx::SqlitePool;
@@ -1073,6 +1096,23 @@ mod tests {
 
     /// Fresh temp-file DB per test (pool + :memory: would fragment the DB
     /// across connections).
+    /// 只创建连接、不建任何表 —— 迁移测试要从空库或老 schema 起步
+    /// (temp_pool 会先把新 schema 建好, 那样测不到迁移)。
+    async fn raw_temp_pool() -> (SqlitePool, std::path::PathBuf) {
+        let n = DB_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let path =
+            std::env::temp_dir().join(format!("glaspen2_db_raw_{}_{}.db", std::process::id(), n));
+        let _ = std::fs::remove_file(&path);
+        let pool = SqlitePool::connect_with(
+            sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(&path)
+                .create_if_missing(true),
+        )
+        .await
+        .unwrap();
+        (pool, path)
+    }
+
     async fn temp_pool() -> (SqlitePool, std::path::PathBuf) {
         let n = DB_COUNTER.fetch_add(1, Ordering::SeqCst);
         let path =
@@ -1375,6 +1415,85 @@ mod tests {
                     .is_empty()
             );
 
+            pool.close().await;
+            let _ = std::fs::remove_file(&path);
+        });
+    }
+    async fn user_version(pool: &SqlitePool) -> i32 {
+        sqlx::query_scalar("PRAGMA user_version")
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    async fn has_column(pool: &SqlitePool, table: &str, column: &str) -> bool {
+        use sqlx::Row;
+        sqlx::query(&format!("PRAGMA table_info({table})"))
+            .fetch_all(pool)
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| {
+                r.try_get::<String, _>("name")
+                    .map(|n| n == column)
+                    .unwrap_or(false)
+            })
+    }
+
+    /// schema 版本与迁移: 全新库、老库升级、重复执行、以及"更新版本写过的库"。
+    /// 这是数据安全的地基 —— 迁移失败必须中止, 而不是带着半个 schema 继续跑。
+    #[test]
+    fn test_schema_version_and_migrations() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        runtime().block_on(async {
+            // 1) 全新库: 建表后版本号落到 SCHEMA_VERSION, 且重复执行不报错
+            let (pool, path) = raw_temp_pool().await;
+            migrate_with(&pool).await.expect("全新库迁移");
+            assert_eq!(user_version(&pool).await, SCHEMA_VERSION);
+            migrate_with(&pool).await.expect("重复迁移应幂等(每次启动都会跑)");
+            pool.close().await;
+            let _ = std::fs::remove_file(&path);
+
+            // 2) 老库: 缺 edited / deleted_at / t, 版本 0 → 迁移补齐并升版本
+            let (pool, path) = raw_temp_pool().await;
+            for sql in [
+                "CREATE TABLE screens (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at REAL NOT NULL, screen_w INTEGER NOT NULL, screen_h INTEGER NOT NULL)",
+                "CREATE TABLE strokes (id INTEGER PRIMARY KEY, screen_id INTEGER NOT NULL, color_r REAL NOT NULL, color_g REAL NOT NULL, color_b REAL NOT NULL, width_scale REAL NOT NULL DEFAULT 1.0, created_at REAL NOT NULL)",
+                "CREATE TABLE points (stroke_id INTEGER NOT NULL, seq INTEGER NOT NULL, x REAL NOT NULL, y REAL NOT NULL, width REAL NOT NULL, PRIMARY KEY (stroke_id, seq))",
+                "CREATE TABLE infinite_strokes (id INTEGER PRIMARY KEY, color_r REAL NOT NULL, color_g REAL NOT NULL, color_b REAL NOT NULL, width_scale REAL NOT NULL DEFAULT 1.0, created_at REAL NOT NULL)",
+            ] {
+                sqlx::query(sql).execute(&pool).await.unwrap();
+            }
+            migrate_with(&pool).await.expect("老库升级");
+            assert_eq!(user_version(&pool).await, SCHEMA_VERSION);
+            for (table, column) in [
+                ("screens", "edited"),
+                ("screens", "deleted_at"),
+                ("strokes", "deleted_at"),
+                ("infinite_strokes", "deleted_at"),
+                ("points", "t"),
+            ] {
+                assert!(
+                    has_column(&pool, table, column).await,
+                    "迁移后仍缺列 {table}.{column}"
+                );
+            }
+            pool.close().await;
+            let _ = std::fs::remove_file(&path);
+
+            // 3) 更新版本的 glaspen2 写过的库: 必须拒绝打开
+            let (pool, path) = raw_temp_pool().await;
+            sqlx::query(&format!("PRAGMA user_version = {}", SCHEMA_VERSION + 1))
+                .execute(&pool)
+                .await
+                .unwrap();
+            let err = migrate_with(&pool)
+                .await
+                .expect_err("来自更新版本的库必须被拒绝");
+            assert!(
+                err.contains("请升级程序"),
+                "错误信息要能直接指导用户, 实际是: {err}"
+            );
             pool.close().await;
             let _ = std::fs::remove_file(&path);
         });
