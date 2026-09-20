@@ -51,15 +51,37 @@ fn main() {
         let out_dir = std::env::var("OUT_DIR").unwrap();
         let obj_path = format!("{}/glaspen2.o", out_dir);
 
-        // flutter_rust_bridge 的入口是单个 dispatcher 符号(frb_pde_ffi_dispatcher_*)。
-        // Rust 是以 rlib 静态链进主可执行文件的:没有任何引用的归档成员会被
-        // 链接器丢掉,而这些符号只由 Dart 侧运行时 dlsym(ExternalLibrary.process)
-        // 解析 —— 于是必须用 -u 强制保留,否则设置面板启动时找不到符号。
-        // 只作用于 bin 目标:测试二进制里没有这些符号(链接参数按 cargo 的
-        // 定义不覆盖 rlib 成员),加上去会让 cargo test 直接链接失败。
-        println!("cargo:rustc-link-arg-bins=-Wl,-u,_frb_pde_ffi_dispatcher_primary");
-        println!("cargo:rustc-link-arg-bins=-Wl,-u,_frb_pde_ffi_dispatcher_sync");
-        println!("cargo:rustc-link-arg-bins=-Wl,-u,_frb_dart_fn_deliver_output");
+        // flutter_rust_bridge 的 C 入口。Rust 是以 rlib 静态链进主可执行文件
+        // 的:没有任何引用的归档成员会被链接器丢掉,而这些符号**只**由 Dart 侧
+        // 在运行时 dlsym(ExternalLibrary.process)解析 —— 丢一个,面板就在用户
+        // 机器上打不开(编译、链接、签名全都正常)。所以逐个用 -u 强制保留。
+        //
+        // 这 14 个就是 FRB 2.12 的全部 _frb_* 导出,与 Dart 侧
+        // flutter_rust_bridge 包里的 lookup 一一对应。**升级 FRB 或重新生成绑定
+        // 后必须重新核对**:漏项会被 tests/frb_entry_points.rs 的对比测试
+        // (拿 cdylib 的导出集合作基准)以及 scripts/build-dmg.sh 的断言拦下来。
+        //
+        // 只作用于 bin 目标:测试二进制里没有这些符号(链接参数按 cargo 的定义
+        // 不覆盖 rlib 成员),加上去会让 cargo test 直接链接失败。
+        const FRB_SYMBOLS: [&str; 14] = [
+            "frb_pde_ffi_dispatcher_primary",
+            "frb_pde_ffi_dispatcher_sync",
+            "frb_dart_fn_deliver_output",
+            "frb_get_rust_content_hash",
+            "frb_init_frb_dart_api_dl",
+            "frb_create_shutdown_callback",
+            "frb_free_wire_sync_rust2dart_sse",
+            "frb_free_wire_sync_rust2dart_dco",
+            "frb_rust_vec_u8_new",
+            "frb_rust_vec_u8_resize",
+            "frb_rust_vec_u8_free",
+            "frb_dart_opaque_dart2rust_encode",
+            "frb_dart_opaque_rust2dart_decode",
+            "frb_dart_opaque_drop_thread_box_persistent_handle",
+        ];
+        for symbol in FRB_SYMBOLS {
+            println!("cargo:rustc-link-arg-bins=-Wl,-u,_{symbol}");
+        }
 
         // Flutter framework paths
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();

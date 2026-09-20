@@ -45,24 +45,39 @@ install_name_tool -add_rpath "@executable_path/../Frameworks" "${BIN}" 2>/dev/nu
 
 # --- Verify flutter_rust_bridge entry points ---
 # 设置面板靠 DynamicLibrary.process()(dlopen(NULL) + dlsym)在运行时解析这些
-# 符号;Rust 以 rlib 静态链入,靠 build.rs 的 `-Wl,-u,_<symbol>` 强制保留。
+# 符号;Rust 以 rlib 静态链入,靠 build.rs 的 `-Wl,-u,_<symbol>` 逐个保留。
 # 一旦丢失,构建与签名全都正常,只有用户打开设置面板时才会失败 —— 所以这里
 # 直接断言最终二进制,让问题在打包阶段暴露。
+#
+# 基准取同一次构建产出的 cdylib:它是这个 crate 的完整符号集,而 Dart 能
+# lookup 的 frb_* 名字与它一一对应。升级 FRB 后新增入口也能自动覆盖,
+# 不用在这里再维护一份列表。
 echo "=== Verifying flutter_rust_bridge entry points ==="
 if command -v dyld_info >/dev/null 2>&1; then
     SYMBOLS=$(dyld_info -exports "${BIN}")
-else
-    SYMBOLS=$(nm -gU "${BIN}")
-fi
-for sym in frb_pde_ffi_dispatcher_primary frb_pde_ffi_dispatcher_sync frb_dart_fn_deliver_output; do
-    if ! echo "${SYMBOLS}" | grep -q "${sym}"; then
-        echo "ERROR: ${sym} 不在 ${BIN} 的导出表里" >&2
+    DYLIB="${BUILD_DIR}/lib${APP_NAME}.dylib"
+    if [ -f "${DYLIB}" ]; then
+        REQUIRED=$(dyld_info -exports "${DYLIB}" | awk '{print $2}' | grep '^_frb' | sort -u)
+    else
+        echo "  WARNING: 找不到 ${DYLIB},退化为只检查 init 必需项" >&2
+        REQUIRED=$(printf '_frb_pde_ffi_dispatcher_primary\n_frb_pde_ffi_dispatcher_sync\n_frb_get_rust_content_hash\n_frb_init_frb_dart_api_dl\n')
+    fi
+    missing=""
+    for sym in ${REQUIRED}; do
+        echo "${SYMBOLS}" | grep -qE "[[:space:]]${sym}\$" || missing="${missing} ${sym}"
+    done
+    if [ -n "${missing}" ]; then
+        echo "ERROR: 这些 flutter_rust_bridge 符号不在 ${BIN} 的导出表里:" >&2
+        for sym in ${missing}; do
+            echo "         ${sym}  → 检查 build.rs 的 FRB_SYMBOLS / -Wl,-u,${sym}" >&2
+        done
         echo "       Dart 侧会解析不到符号,设置面板将无法与 Rust 通信。" >&2
-        echo "       检查 build.rs 的 cargo:rustc-link-arg-bins=-Wl,-u,_${sym}" >&2
         exit 1
     fi
-done
-echo "  ok"
+    echo "  ok ($(echo "${REQUIRED}" | wc -l | tr -d ' ') 个符号)"
+else
+    echo "  WARNING: 没有 dyld_info,跳过符号校验" >&2
+fi
 
 # --- Bundle Homebrew dylibs ---
 echo "=== Collecting Homebrew dylib dependencies ==="
