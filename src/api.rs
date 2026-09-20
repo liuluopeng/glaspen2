@@ -361,6 +361,50 @@ pub async fn get_page_ordinal() -> u64 {
 }
 
 // ---------------------------------------------------------------------------
+// 数据备份 / 回导
+// ---------------------------------------------------------------------------
+
+/// 备份/回导结果:成败 + 给用户看的一句话(成功时是文件路径)。
+#[frb]
+#[derive(Debug, Clone)]
+pub struct BackupOutcome {
+    pub ok: bool,
+    pub message: String,
+}
+
+/// 把全部数据备份到桌面。产出单个 .db 文件(一致快照), 换机时可直接替换
+/// glaspen2.db 使用。
+#[frb]
+pub async fn backup_now() -> BackupOutcome {
+    match db::backup_now().await {
+        Ok(path) => BackupOutcome {
+            ok: true,
+            message: path,
+        },
+        Err(e) => BackupOutcome {
+            ok: false,
+            message: e,
+        },
+    }
+}
+
+/// 从桌面上最新的备份**合并**恢复: 不会删除备份之后新画的页/笔迹, 同名 id
+/// 以备份为准。恢复后需要重启才能看到覆盖层上的变化。
+#[frb]
+pub async fn restore_latest_backup() -> BackupOutcome {
+    match db::restore_latest_backup().await {
+        Ok((path, pages)) => BackupOutcome {
+            ok: true,
+            message: format!("{path}（当前共 {pages} 页）"),
+        },
+        Err(e) => BackupOutcome {
+            ok: false,
+            message: e,
+        },
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 导出
 // ---------------------------------------------------------------------------
 

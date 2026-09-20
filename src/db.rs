@@ -57,7 +57,7 @@ fn now_f64() -> f64 {
 // ---------------------------------------------------------------------------
 mod platform {
     use crate::state;
-    use sqlx::{Row, SqlitePool};
+    use sqlx::{Connection, Row, SqlitePool};
     use std::collections::HashMap;
     use std::sync::OnceLock;
 
@@ -591,6 +591,175 @@ mod platform {
         attach_points(strokes, pts)
     }
 
+    // ── 全量备份 / 回导 ──────────────────────────────────────────
+    // 备份用 SQLite 的 VACUUM INTO: 产出一个内容一致、已整理的独立库文件
+    // (不受 WAL 影响), 换机时直接替换 glaspen2.db 即可。
+    // 回导是**合并**(INSERT OR REPLACE): 不会删掉备份之后新画的内容。
+    // user_settings 与 screen_thumbnails 不参与(前者是偏好, 后者是派生缓存)。
+
+    const BACKUP_PREFIX: &str = "glaspen2_backup_";
+    const BACKUP_SUFFIX: &str = ".db";
+
+    /// 参与回导的表与列。显式列出而不是 SELECT *: 老库可能多出历史遗留列
+    /// (例如 screens.pan_x/pan_y/zoom), 列数不一致会让合并失败。
+    const RESTORE_TABLES: [(&str, &str); 5] = [
+        (
+            "screens",
+            "id, created_at, screen_w, screen_h, edited, deleted_at",
+        ),
+        (
+            "strokes",
+            "id, screen_id, color_r, color_g, color_b, width_scale, created_at, deleted_at",
+        ),
+        ("points", "stroke_id, seq, x, y, width, t"),
+        (
+            "infinite_strokes",
+            "id, color_r, color_g, color_b, width_scale, created_at, deleted_at",
+        ),
+        ("infinite_points", "stroke_id, seq, x, y, width, t"),
+    ];
+
+    fn backup_file_name() -> String {
+        format!(
+            "{BACKUP_PREFIX}{}{BACKUP_SUFFIX}",
+            chrono::Local::now().format("%Y%m%d_%H%M%S")
+        )
+    }
+
+    /// 备份到指定路径(目录自动创建; 目标已存在先删除, VACUUM INTO 要求目标不存在)。
+    pub(crate) async fn backup_to_with(
+        pool: &SqlitePool,
+        path: &std::path::Path,
+    ) -> Result<(), String> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| format!("创建目录失败: {e}"))?;
+        }
+        if path.exists() {
+            std::fs::remove_file(path).map_err(|e| format!("覆盖旧备份失败: {e}"))?;
+        }
+        sqlx::query("VACUUM INTO ?1")
+            .bind(path.to_string_lossy().to_string())
+            .execute(pool)
+            .await
+            .map_err(|e| format!("备份失败: {e}"))?;
+        Ok(())
+    }
+
+    /// 备份到桌面, 返回文件路径。
+    pub async fn backup_now() -> Result<String, String> {
+        let pool = DB.get().ok_or("数据库未初始化")?;
+        let path = crate::desktop_path().join(backup_file_name());
+        backup_to_with(pool, &path).await?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
+    /// 桌面上最新的备份文件(没有则 None)。
+    pub fn newest_backup() -> Option<std::path::PathBuf> {
+        let mut best: Option<(std::time::SystemTime, std::path::PathBuf)> = None;
+        for entry in std::fs::read_dir(crate::desktop_path()).ok()?.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.starts_with(BACKUP_PREFIX) || !name.ends_with(BACKUP_SUFFIX) {
+                continue;
+            }
+            let Ok(modified) = entry.metadata().and_then(|m| m.modified()) else {
+                continue;
+            };
+            if best.as_ref().is_none_or(|(t, _)| modified > *t) {
+                best = Some((modified, entry.path()));
+            }
+        }
+        best.map(|(_, path)| path)
+    }
+
+    /// 从备份合并恢复, 返回库里恢复后的页数。
+    ///
+    /// 备份文件先复制一份再迁移到当前 schema —— **绝不改动用户手上的备份**;
+    /// 这一步同时验证它确实是个 glaspen2 库(表结构能被迁移)。
+    pub(crate) async fn restore_merge_from_with(
+        pool: &SqlitePool,
+        path: &std::path::Path,
+    ) -> Result<usize, String> {
+        let tmp = std::env::temp_dir().join(format!(
+            "glaspen2_restore_{}_{}.db",
+            std::process::id(),
+            chrono::Local::now().timestamp_millis().unsigned_abs() % 1_000_000
+        ));
+        let _ = std::fs::remove_file(&tmp);
+        std::fs::copy(path, &tmp).map_err(|e| format!("读取备份失败: {e}"))?;
+
+        let upgrade = async {
+            let tmp_pool =
+                SqlitePool::connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(&tmp))
+                    .await
+                    .map_err(|e| format!("打开备份失败: {e}"))?;
+            let result = migrate_with(&tmp_pool).await;
+            tmp_pool.close().await;
+            result
+        }
+        .await;
+        if let Err(e) = upgrade {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!("备份文件不可用: {e}"));
+        }
+
+        // 必须全程用同一条连接: ATTACH 是"连接级"的, 池里换一条连接就看不到
+        // backup.* 了(测试里就是这么抓到 no such table: backup.screens 的)。
+        let mut conn = match pool.acquire().await {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(format!("获取连接失败: {e}"));
+            }
+        };
+
+        if let Err(e) = sqlx::query("ATTACH DATABASE ?1 AS backup")
+            .bind(tmp.to_string_lossy().to_string())
+            .execute(&mut *conn)
+            .await
+        {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!("挂载备份失败: {e}"));
+        }
+
+        let merged = async {
+            let mut tx = conn
+                .begin()
+                .await
+                .map_err(|e| format!("开启事务失败: {e}"))?;
+            for (table, cols) in RESTORE_TABLES {
+                sqlx::query(&format!(
+                    "INSERT OR REPLACE INTO {table} ({cols}) SELECT {cols} FROM backup.{table}"
+                ))
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| format!("合并 {table} 失败: {e}"))?;
+            }
+            tx.commit().await.map_err(|e| format!("提交失败: {e}"))
+        }
+        .await;
+
+        let _ = sqlx::query("DETACH DATABASE backup")
+            .execute(&mut *conn)
+            .await;
+        let _ = std::fs::remove_file(&tmp);
+        merged?;
+
+        let pages: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM screens WHERE deleted_at IS NULL")
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+        Ok(pages as usize)
+    }
+
+    /// 从桌面上最新的备份合并恢复, 返回 (备份路径, 页数)。
+    pub async fn restore_latest_backup() -> Result<(String, usize), String> {
+        let pool = DB.get().ok_or("数据库未初始化")?;
+        let path = newest_backup().ok_or("桌面上没有 glaspen2_backup_*.db 备份文件")?;
+        let pages = restore_merge_from_with(pool, &path).await?;
+        Ok((path.to_string_lossy().into_owned(), pages))
+    }
+
     // ── 缩略图缓存 ────────────────────────────────────────────────
     // 内容版本 = (非删除笔迹数, 最大笔迹 id)。笔迹只追加/软删,
     // 该二元组足以识别内容变化;配合 outline/max_size 一起判定缓存新鲜度。
@@ -1084,9 +1253,10 @@ pub use platform::*;
 mod tests {
     use super::StrokeData;
     use super::platform::{
-        SCHEMA_VERSION, attach_points, migrate_with, page_info_with, screen_stroke_version_with,
-        stroke_versions_many_with, thumbnail_lookup_with, thumbnail_store_with,
-        thumbnails_many_with, thumbnails_purge_screen_with,
+        SCHEMA_VERSION, attach_points, backup_to_with, migrate_with, page_info_with,
+        restore_merge_from_with, screen_stroke_version_with, stroke_versions_many_with,
+        thumbnail_lookup_with, thumbnail_store_with, thumbnails_many_with,
+        thumbnails_purge_screen_with,
     };
     use crate::runtime;
     use sqlx::SqlitePool;
@@ -1496,6 +1666,120 @@ mod tests {
             );
             pool.close().await;
             let _ = std::fs::remove_file(&path);
+        });
+    }
+    /// 备份 → 继续画 → 从备份合并恢复: 现有数据不丢, 备份里的内容回来。
+    /// 这是"库损坏/换机不丢笔迹史"那条承诺的具体形式。
+    #[test]
+    fn test_backup_then_restore_merge() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        runtime().block_on(async {
+            let (pool, path) = raw_temp_pool().await;
+            migrate_with(&pool).await.unwrap();
+
+            // 线上库: 2 页, 第 1 页一笔一点
+            for _ in 0..2 {
+                sqlx::query(
+                    "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (1.0, 100, 100)",
+                )
+                .execute(&pool)
+                .await
+                .unwrap();
+            }
+            sqlx::query(
+                "INSERT INTO strokes (id, screen_id, color_r, color_g, color_b, width_scale, created_at) \
+                 VALUES (1, 1, 0.0, 0.0, 0.0, 1.0, 1.0)",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query("INSERT INTO points (stroke_id, seq, x, y, width, t) VALUES (1, 0, 1.0, 2.0, 3.0, 0.0)")
+                .execute(&pool)
+                .await
+                .unwrap();
+
+            // 备份
+            let backup = path.with_extension("bak.db");
+            backup_to_with(&pool, &backup).await.expect("备份应成功");
+            assert!(backup.exists());
+
+            // 备份文件本身必须是可打开的 glaspen2 库, 且带着当前 schema 版本
+            let backup_pool = SqlitePool::connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new().filename(&backup),
+            )
+            .await
+            .unwrap();
+            assert_eq!(user_version(&backup_pool).await, SCHEMA_VERSION);
+            let backup_screens: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM screens")
+                .fetch_one(&backup_pool)
+                .await
+                .unwrap();
+            assert_eq!(backup_screens, 2);
+            backup_pool.close().await;
+
+            // 备份之后又画了一页一笔(恢复时不能被抹掉)
+            sqlx::query(
+                "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (1.0, 100, 100)",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO strokes (id, screen_id, color_r, color_g, color_b, width_scale, created_at) \
+                 VALUES (2, 3, 0.0, 0.0, 0.0, 1.0, 1.0)",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+
+            let pages = restore_merge_from_with(&pool, &backup)
+                .await
+                .expect("恢复应成功");
+            assert_eq!(pages, 3, "合并恢复: 备份的 2 页 + 备份后新画的 1 页");
+            let strokes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM strokes")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            assert_eq!(strokes, 2, "两边的笔迹都要在");
+            let points: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM points")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            assert_eq!(points, 1, "备份里的点要回来");
+
+            // 损坏/非备份文件必须被拒绝, 而不是把库写坏
+            let junk = path.with_extension("junk.db");
+            std::fs::write(&junk, b"this is not a database").unwrap();
+            assert!(
+                restore_merge_from_with(&pool, &junk).await.is_err(),
+                "非数据库文件必须被拒绝"
+            );
+
+            // 来自更新版本的备份同样拒绝
+            let future = path.with_extension("future.db");
+            {
+                let fp = SqlitePool::connect_with(
+                    sqlx::sqlite::SqliteConnectOptions::new()
+                        .filename(&future)
+                        .create_if_missing(true),
+                )
+                .await
+                .unwrap();
+                sqlx::query(&format!("PRAGMA user_version = {}", SCHEMA_VERSION + 1))
+                    .execute(&fp)
+                    .await
+                    .unwrap();
+                fp.close().await;
+            }
+            let err = restore_merge_from_with(&pool, &future)
+                .await
+                .expect_err("更新版本的备份必须被拒绝");
+            assert!(err.contains("请升级程序"), "错误信息要能指导用户: {err}");
+
+            pool.close().await;
+            for f in [&path, &backup, &junk, &future] {
+                let _ = std::fs::remove_file(f);
+            }
         });
     }
 }

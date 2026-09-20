@@ -63,6 +63,18 @@ void main() {
     );
   }, skip: skipReason);
 
+  test('备份/回导接口在无数据库时优雅返回(不 panic/不挂起)', () async {
+    // 真正的备份/回导逻辑由 Rust 单测覆盖(见 db::tests::test_backup_then_restore_merge);
+    // 这里确认 FRB 这条路径能把错误当成结果返回, 而不是抛异常或卡住。
+    final backup = await rust.backupNow();
+    expect(backup.ok, isFalse);
+    expect(backup.message, isNotEmpty);
+
+    final restore = await rust.restoreLatestBackup();
+    expect(restore.ok, isFalse);
+    expect(restore.message, isNotEmpty);
+  }, skip: skipReason);
+
   test('setSetting → getSettings 往返(JSON 标量必须真的被解析)', () async {
     // 回归:ObjC 侧用 NSJSONSerialization 解析 value_json 时忘了
     // NSJSONReadingFragmentsAllowed,裸标量("true"/"3"/"2.5")全部返回 nil,

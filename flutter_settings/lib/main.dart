@@ -83,6 +83,10 @@ abstract class _SettingsBridge {
   Future<Map<dynamic, dynamic>> canvasNew();
   /// 导出全部页面为 PDF,返回是否成功
   Future<bool> exportPdf();
+  /// 把全部数据备份到桌面;返回 (是否成功, 给用户看的信息)
+  Future<(bool, String)> backupNow();
+  /// 从桌面上最新的备份合并恢复;返回 (是否成功, 给用户看的信息)
+  Future<(bool, String)> restoreLatestBackup();
   void dispose();
 }
 
@@ -230,6 +234,20 @@ class _FrbBridge extends _SettingsBridge {
   Future<bool> exportPdf() async {
     await _init();
     return rust.exportPdf();
+  }
+
+  @override
+  Future<(bool, String)> backupNow() async {
+    await _init();
+    final r = await rust.backupNow();
+    return (r.ok, r.message);
+  }
+
+  @override
+  Future<(bool, String)> restoreLatestBackup() async {
+    await _init();
+    final r = await rust.restoreLatestBackup();
+    return (r.ok, r.message);
   }
 
   @override
@@ -465,6 +483,17 @@ class _NamedPipeBridge extends _SettingsBridge {
   Future<bool> exportPdf() async {
     final r = await _request('exportPdf', null);
     return r['ok'] == 1 || r['ok'] == true;
+  }
+
+  @override
+  Future<(bool, String)> backupNow() async {
+    // 数据在覆盖层进程里, 面板进程无法直接备份库文件
+    return (false, 'Windows 版暂不支持在设置面板里备份, 请直接复制 glaspen2.db');
+  }
+
+  @override
+  Future<(bool, String)> restoreLatestBackup() async {
+    return (false, 'Windows 版暂不支持在设置面板里回导');
   }
 
   @override
@@ -1287,6 +1316,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
           child: _buildSection('Export', _buildExportButtons()),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          child: _buildSection('数据备份', _buildBackupButtons()),
+        ),
         // Page grid
         Expanded(
           child: _pagesLoading
@@ -1812,6 +1845,103 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         ),
       ],
     );
+  }
+
+  bool _backupBusy = false;
+
+  Widget _buildBackupButtons() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '备份是桌面上的单个 .db 文件(一致快照), 换机时可直接替换 glaspen2.db; '
+          '恢复是合并方式, 不会删除备份之后新画的内容。',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            FilledButton.icon(
+              icon: _backupBusy
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.save_alt, size: 18),
+              label: Text(_backupBusy ? '处理中…' : '备份全部数据'),
+              onPressed: _backupBusy ? null : _backupNow,
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.settings_backup_restore, size: 18),
+              label: const Text('从最新备份恢复'),
+              onPressed: _backupBusy ? null : _confirmRestore,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  void _toast(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), duration: const Duration(seconds: 4)),
+    );
+  }
+
+  Future<void> _backupNow() async {
+    setState(() => _backupBusy = true);
+    try {
+      final (ok, message) = await _bridge.backupNow();
+      if (!mounted) return;
+      _toast(ok ? '已备份到 $message' : '备份失败: $message');
+    } catch (e) {
+      if (mounted) _toast('备份失败: $e');
+    } finally {
+      if (mounted) setState(() => _backupBusy = false);
+    }
+  }
+
+  Future<void> _confirmRestore() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('从最新备份恢复'),
+        content: const Text(
+            '将把桌面上最新的 glaspen2_backup_*.db 合并进当前数据: '
+            '同名的页/笔迹以备份为准, 备份之后新画的内容会保留。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('恢复'),
+          ),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+
+    setState(() => _backupBusy = true);
+    try {
+      final (ok, message) = await _bridge.restoreLatestBackup();
+      if (!mounted) return;
+      _toast(ok ? '已从备份恢复: $message(重启后生效)' : '恢复失败: $message');
+      if (ok) {
+        // 缩略图缓存与列表都可能过期, 清掉重拉
+        _thumbnailCache.clear();
+        _pages = [];
+        _filteredPages = [];
+        _loadPages();
+      }
+    } catch (e) {
+      if (mounted) _toast('恢复失败: $e');
+    } finally {
+      if (mounted) setState(() => _backupBusy = false);
+    }
   }
 
   bool _pdfExporting = false;

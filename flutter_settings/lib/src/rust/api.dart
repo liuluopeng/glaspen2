@@ -7,7 +7,7 @@ import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `current_settings`, `decode_thumb_blob`, `from_json`, `run_blocking`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `glaspen2_notify_settings_changed`
 
 /// 当前设置。
@@ -59,12 +59,40 @@ Future<LensState> getLens() => RustLib.instance.api.crateApiGetLens();
 Future<BigInt> getPageOrdinal() =>
     RustLib.instance.api.crateApiGetPageOrdinal();
 
+/// 把全部数据备份到桌面。产出单个 .db 文件(一致快照), 换机时可直接替换
+/// glaspen2.db 使用。
+Future<BackupOutcome> backupNow() => RustLib.instance.api.crateApiBackupNow();
+
+/// 从桌面上最新的备份**合并**恢复: 不会删除备份之后新画的页/笔迹, 同名 id
+/// 以备份为准。恢复后需要重启才能看到覆盖层上的变化。
+Future<BackupOutcome> restoreLatestBackup() =>
+    RustLib.instance.api.crateApiRestoreLatestBackup();
+
 /// 导出当前页为 PDF。
 Future<bool> exportPdf() => RustLib.instance.api.crateApiExportPdf();
 
 /// 导出动画 GIF 并复制到剪贴板。
 Future<bool> exportAnimatedGif() =>
     RustLib.instance.api.crateApiExportAnimatedGif();
+
+/// 备份/回导结果:成败 + 给用户看的一句话(成功时是文件路径)。
+class BackupOutcome {
+  final bool ok;
+  final String message;
+
+  const BackupOutcome({required this.ok, required this.message});
+
+  @override
+  int get hashCode => ok.hashCode ^ message.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BackupOutcome &&
+          runtimeType == other.runtimeType &&
+          ok == other.ok &&
+          message == other.message;
+}
 
 /// 镜头动作。
 enum CanvasAction {
