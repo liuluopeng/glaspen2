@@ -7,7 +7,6 @@
 //! 设置项 / 镜头 / 导出这些状态仍由 ObjC 持有(绘制、窗口、菜单都在那里),
 //! 因此这里通过 `glaspen2_macos_*` C shim 转发;shim 内部负责切回主线程。
 
-use std::os::raw::c_char;
 use std::sync::Mutex;
 
 use crate::db;

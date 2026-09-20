@@ -1257,7 +1257,7 @@ mod tests {
             // Any version-key change invalidates: outline / max_size / content
             assert!(thumbnail_lookup_with(&pool, sid, 280, count, max_id, true).await.is_none());
             assert!(thumbnail_lookup_with(&pool, sid, 128, count, max_id, false).await.is_none());
-            let s3 = add_stroke(&pool, sid, false).await;
+            let _s3 = add_stroke(&pool, sid, false).await;
             let (count2, max_id2) = screen_stroke_version_with(&pool, sid).await;
             assert_ne!((count2, max_id2), (count, max_id));
             assert!(thumbnail_lookup_with(&pool, sid, 280, count2, max_id2, false)

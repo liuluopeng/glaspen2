@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 flate2 = "1"
 
-[profile.release]
-strip = true
+# 注:workspace 成员的 [profile.*] 会被 cargo 忽略(要写在根 Cargo.toml),
+# 这里原本的 strip = true 从来没生效过, 删掉以免每次构建都提醒。
 [build-dependencies]
 winresource = "0.1"

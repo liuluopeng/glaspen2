@@ -417,20 +417,18 @@ impl CairoRenderer {
         let Ok(ctext) = std::ffi::CString::new(text) else {
             return;
         };
-        unsafe {
-            // 灰度转 rgba(透明底上要可见)
-            (self.set_source_rgba)(
-                self.cr,
-                color.0 as f64 / 255.0,
-                color.1 as f64 / 255.0,
-                color.2 as f64 / 255.0,
-                1.0,
-            );
-            select_font(self.cr, c"sans".as_ptr() as *const std::ffi::c_char, 0, 0);
-            set_font_size(self.cr, size);
-            move_to(self.cr, x, y);
-            show_text(self.cr, ctext.as_ptr());
-        }
+        // 灰度转 rgba(透明底上要可见)
+        (self.set_source_rgba)(
+            self.cr,
+            color.0 as f64 / 255.0,
+            color.1 as f64 / 255.0,
+            color.2 as f64 / 255.0,
+            1.0,
+        );
+        select_font(self.cr, c"sans".as_ptr() as *const std::ffi::c_char, 0, 0);
+        set_font_size(self.cr, size);
+        move_to(self.cr, x, y);
+        show_text(self.cr, ctext.as_ptr());
         }
     }
 

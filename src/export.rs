@@ -271,7 +271,7 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
         }
         // 页号跟随:各页区域顶部标注页号(滑动跨页时知道自己在哪)
         if let Some(info) = runtime().block_on(db::page_info(cur)) {
-            let cur_ord = info.2 as i64; // 全局位置(1 起)
+            let cur_ord = info.2; // 全局位置(1 起)
             let label = |shift: f64, text: String| {
                 r.draw_text(
                     (20.0 - pan_x) * zoom * scale,
@@ -281,11 +281,9 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
                     &text,
                 );
             };
-            if !neighbors.is_empty() {
-                if let Some((_, prev)) = neighbors.iter().find(|(dy, _)| *dy < 0.0) {
-                    let n = format!("第 {} 页", cur_ord - 1);
-                    label(-stride + 60.0 * zoom * scale, n);
-                }
+            if neighbors.iter().any(|(dy, _)| *dy < 0.0) {
+                let n = format!("第 {} 页", cur_ord - 1);
+                label(-stride + 60.0 * zoom * scale, n);
             }
             label(0.0, format!("第 {} 页", cur_ord));
             if neighbors.iter().any(|(dy, _)| *dy > 0.0) {
@@ -2224,12 +2222,12 @@ pub extern "C" fn glaspen2_render_thumbnail(
     // ── 0. 缓存:内容版本(笔迹数,最大笔迹id)+渲染参数未变 → 直接返回存库 PNG ──
     let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
     let (count, max_id) = runtime().block_on(db::screen_stroke_version(screen_id));
-    if count > 0 {
-        if let Some(png) = runtime().block_on(db::thumbnail_lookup(
+    if count > 0
+        && let Some(png) = runtime().block_on(db::thumbnail_lookup(
             screen_id, max_size, count, max_id, outline,
-        )) {
-            return leak_png(png, out_len);
-        }
+        ))
+    {
+        return leak_png(png, out_len);
     }
 
     match render_and_store_thumbnail(screen_id, max_size, (count, max_id), outline) {
@@ -2324,7 +2322,9 @@ fn render_strokes_thumbnail(strokes: &[db::StrokeData], max_size: i32) -> Option
     let n = stride * oh as usize * 4;
     let rgba: Vec<u8> = unsafe {
         std::slice::from_raw_parts(bits, n)
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .flat_map(|px| [px[2], px[1], px[0], px[3]]) // BGRA → RGBA
             .collect()
     };

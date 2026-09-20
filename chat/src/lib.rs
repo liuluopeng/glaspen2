@@ -4,6 +4,10 @@
 //! 在 axum 服务尚未存在时,可用模拟发送器([`Sink::Mock`])假装地址存在,
 //! 打印每条消息的 gRPC 帧摘要。
 
+// tonic/prost 生成的服务方法把整个 Response 放进 Err, 属于生成代码的固有
+// 形态, 不是手写代码能改的 —— 关掉这条以免淹没真正需要关注的告警。
+#![allow(clippy::result_large_err)]
+
 pub mod pb {
     //! 由 proto/glaspen/chat/v1/chat.proto 生成(build.rs)。
     tonic::include_proto!("glaspen.chat.v1");

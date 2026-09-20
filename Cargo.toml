@@ -1,6 +1,11 @@
 [workspace]
 members = ["installer", "chat"]
 
+# flutter_rust_bridge 的 #[frb] 宏会展开出 cfg(frb_expand) 供 codegen 使用,
+# 声明一下, 免得 21 条 unexpected_cfgs 告警淹没真正的问题。
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
+
 [package]
 name = "glaspen2"
 version = "0.5.1"
