@@ -45,9 +45,18 @@ fn main() {
             _ => ("Release", &["--release"]),
         };
 
-        let mut fw_cmd = std::process::Command::new("fvm");
+        // fvm 是本机的 Flutter 版本管理器;CI 或只装了 Flutter SDK 的环境没有它,
+        // 退化成直接用 flutter(否则这一步会静默失败, 只剩旧 Dart)。
+        let (flutter_exe, flutter_args): (&str, &[&str]) =
+            if std::process::Command::new("fvm").arg("--version").output().is_ok() {
+                ("fvm", &["flutter", "build", "macos-framework"])
+            } else {
+                ("flutter", &["build", "macos-framework"])
+            };
+
+        let mut fw_cmd = std::process::Command::new(flutter_exe);
         fw_cmd
-            .args(["flutter", "build", "macos-framework"])
+            .args(flutter_args)
             .args(fw_args)
             .current_dir(&flutter_dir)
             .env("PATH", format!("{lipo_shim}:{path_env}"));
@@ -55,8 +64,7 @@ fn main() {
         match status {
             Ok(s) if s.success() => {}
             other => eprintln!(
-                "[build.rs] fvm flutter build macos-framework {fw_args:?} failed: {:?}",
-                other
+                "[build.rs] {flutter_exe} flutter build macos-framework {fw_args:?} failed: {other:?}"
             ),
         }
 

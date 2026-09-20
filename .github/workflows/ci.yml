@@ -9,12 +9,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# 质量检查策略:
-# - CI 只做 rustfmt (零依赖、永远可靠)
-# - clippy + test 走本地 scripts/lint.sh — 因为 macOS CI 上构建
-#   Flutter framework 需要签名身份, runner 无 Apple 证书, 自签名信任
-#   方案也不稳定, 反复失败。clippy/test 依赖完整 macOS 工具链
-#   (cairo + Flutter 框架链接), 本地每次 cargo build 都验证了编译。
+# 质量门:
+# - fmt: 零依赖, 任何平台都能跑(ubuntu, 秒级)
+# - clippy-test: 真正的门。需要 macOS + cairo + Flutter framework(ObjC 宿主
+#   要用 Flutter 头文件)。**构建 framework 不需要 Apple 证书** —— 产物只做
+#   linker-signed 的 ad-hoc 签名; 需要证书的是 build-dmg.sh 给 .app 签名那步,
+#   那一步不在 CI 里。
+# - windows-check: 只做编译检查(Windows 覆盖层/设置面板的代码在 macOS 上编不到)
 jobs:
   fmt:
     runs-on: ubuntu-latest
@@ -25,3 +26,54 @@ jobs:
           components: rustfmt
       - name: rustfmt --check
         run: cargo fmt --check
+
+  clippy-test:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+
+      # cairo: build.rs 用 pkg-config 取头文件, 运行时 cairo_dl 还会 dlopen
+      - name: Install cairo
+        run: brew install cairo pkg-config
+
+      # 与 .fvmrc 一致(channel stable)
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build Flutter framework
+        working-directory: flutter_settings
+        run: flutter build macos-framework --release
+
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: test
+        run: cargo test
+
+      - name: dart analyze
+        working-directory: flutter_settings
+        run: flutter analyze
+
+  windows-check:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    # 新增且尚未在真实 runner 上验证(本机没有 Windows 工具链)。首次跑通后
+    # 请删掉这一行, 让它成为真正的门。
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+
+      # 只编译不链接, 因此不需要 cairo DLL
+      - name: cargo check (Windows)
+        run: cargo check --all-targets
