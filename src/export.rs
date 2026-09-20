@@ -2232,17 +2232,41 @@ pub extern "C" fn glaspen2_render_thumbnail(
         }
     }
 
+    match render_and_store_thumbnail(screen_id, max_size, (count, max_id), outline) {
+        Some(png) => leak_png(png, out_len),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// Load one page's strokes, render its thumbnail and cache it under
+/// `version` = (live stroke count, max stroke id). `None` when the page has
+/// nothing drawable or cairo is unavailable.
+fn render_and_store_thumbnail(
+    screen_id: i64,
+    max_size: i32,
+    version: (i64, i64),
+    outline: bool,
+) -> Option<Vec<u8>> {
     let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
     if strokes.is_empty() {
-        return std::ptr::null_mut();
+        return None;
     }
+    let png = render_strokes_thumbnail(&strokes, max_size)?;
+    runtime().block_on(db::thumbnail_store(
+        screen_id, max_size, version.0, version.1, outline, &png,
+    ));
+    Some(png)
+}
 
+/// Crop to the content bounding box (padded by line width radius + margin) and
+/// render directly at thumbnail resolution, transparent background.
+fn render_strokes_thumbnail(strokes: &[db::StrokeData], max_size: i32) -> Option<Vec<u8>> {
     // ── 1. 内容包围盒(含线宽半径) ──
     let mut bx0 = f64::MAX;
     let mut by0 = f64::MAX;
     let mut bx1 = f64::MIN;
     let mut by1 = f64::MIN;
-    for s in &strokes {
+    for s in strokes {
         for &(x, y, wd, _) in &s.points {
             let half = wd * 0.5;
             bx0 = bx0.min(x - half);
@@ -2264,11 +2288,9 @@ pub extern "C" fn glaspen2_render_thumbnail(
     let oh = ((bh * fit).ceil() as i32).max(1);
 
     // 3. 渲染(坐标偏移到 bbox 起点,缩放到 fit,透明底)
-    let Some(renderer) = crate::cairo_dl::CairoRenderer::create_owned(ow, oh) else {
-        return std::ptr::null_mut();
-    };
+    let renderer = crate::cairo_dl::CairoRenderer::create_owned(ow, oh)?;
     renderer.clear();
-    for s in &strokes {
+    for s in strokes {
         if s.points.len() < 2 {
             continue;
         }
@@ -2306,16 +2328,93 @@ pub extern "C" fn glaspen2_render_thumbnail(
             .flat_map(|px| [px[2], px[1], px[0], px[3]]) // BGRA → RGBA
             .collect()
     };
-    let Some(png) = encode_png_rgba(&rgba, ow as u32, oh as u32) else {
+    encode_png_rgba(&rgba, ow as u32, oh as u32)
+}
+
+/// Magic + per-entry framing for `glaspen2_page_thumbnails` (see there).
+pub(crate) const THUMB_BLOB_MAGIC: u32 = 0x3148_5447; // "GTH1"
+
+/// Batched page thumbnails in a single self-describing blob — one FFI call and
+/// one channel round trip for a whole screenful of the 活页本 grid, instead of
+/// two SQL queries plus a PNG transfer per page.
+///
+/// Layout, little endian: magic u32, entry count u32, then per entry
+/// `id i64, len u32, png bytes`. Pages with no drawable strokes are omitted, so
+/// the blob may describe fewer pages than requested. Caller frees the buffer
+/// with `glaspen2_free_rust_bytes`; NULL means "no thumbnails at all".
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_page_thumbnails(
+    ids: *const i64,
+    count: c_int,
+    max_size: c_int,
+    out_len: *mut c_int,
+) -> *mut c_uchar {
+    if out_len.is_null() {
         return std::ptr::null_mut();
-    };
+    }
+    unsafe { *out_len = 0; }
+    if ids.is_null() || count <= 0 || max_size <= 0 {
+        return std::ptr::null_mut();
+    }
+    let ids = unsafe { std::slice::from_raw_parts(ids, count as usize) };
+    let blob = page_thumbnails_blob(ids, max_size);
+    if blob.is_empty() {
+        return std::ptr::null_mut();
+    }
+    leak_png(blob, out_len)
+}
 
-    // 存回缓存,下次同类请求直接命中
-    runtime().block_on(db::thumbnail_store(
-        screen_id, max_size, count, max_id, outline, &png,
-    ));
+/// Build the blob described by `glaspen2_page_thumbnails`: one batched version
+/// query, one batched cache read, and a render only for the pages whose cache
+/// entry is missing or stale.
+pub(crate) fn page_thumbnails_blob(ids: &[i64], max_size: i32) -> Vec<u8> {
+    let mut seen = std::collections::HashSet::with_capacity(ids.len());
+    let ids: Vec<i64> = ids.iter().copied().filter(|id| seen.insert(*id)).collect();
+    if ids.is_empty() {
+        return Vec::new();
+    }
 
-    leak_png(png, out_len)
+    let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
+    // 分批查询:SQLite 的绑定变量有上限,超长 IN 列表会整条失败
+    const CHUNK: usize = 400;
+    let mut versions = std::collections::HashMap::new();
+    let mut cached = std::collections::HashMap::new();
+    for chunk in ids.chunks(CHUNK) {
+        versions.extend(runtime().block_on(db::stroke_versions_many(chunk)));
+        cached.extend(runtime().block_on(db::thumbnails_many(chunk, max_size, outline)));
+    }
+
+    let mut entries: Vec<(i64, Vec<u8>)> = Vec::with_capacity(ids.len());
+    for &id in &ids {
+        let version = versions.get(&id).copied().unwrap_or((0, 0));
+        // A cached PNG counts only when it was rendered from this exact version.
+        let png = match cached.remove(&id) {
+            Some((count, max_id, png)) if (count, max_id) == version => Some(png),
+            _ if version.0 == 0 => None,
+            _ => render_and_store_thumbnail(id, max_size, version, outline),
+        };
+        if let Some(png) = png {
+            entries.push((id, png));
+        }
+    }
+
+    encode_thumb_blob(&entries)
+}
+
+/// Frame `(id, png)` entries into the blob the settings panel parses.
+/// Kept separate from the DB work so the wire format is unit-testable.
+pub(crate) fn encode_thumb_blob(entries: &[(i64, Vec<u8>)]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(
+        8 + entries.iter().map(|(_, png)| png.len() + 12).sum::<usize>(),
+    );
+    out.extend_from_slice(&THUMB_BLOB_MAGIC.to_le_bytes());
+    out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+    for (id, png) in entries {
+        out.extend_from_slice(&id.to_le_bytes());
+        out.extend_from_slice(&(png.len() as u32).to_le_bytes());
+        out.extend_from_slice(png);
+    }
+    out
 }
 
 /// Hand ownership of a PNG buffer to the caller via out_len (leak pattern).
@@ -2863,5 +2962,50 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Wire format of `glaspen2_page_thumbnails`, parsed exactly the way the
+    /// Dart side does (`_parseThumbnailBlob`). Keeps both ends in sync.
+    #[test]
+    fn test_thumb_blob_layout() {
+        let entries = vec![(7i64, vec![1u8, 2, 3]), (569i64, vec![]), (-1i64, vec![255u8])];
+        let blob = encode_thumb_blob(&entries);
+
+        assert_eq!(
+            u32::from_le_bytes(blob[0..4].try_into().unwrap()),
+            THUMB_BLOB_MAGIC
+        );
+        assert_eq!(u32::from_le_bytes(blob[4..8].try_into().unwrap()), 3);
+
+        let mut off = 8usize;
+        let mut parsed: Vec<(i64, Vec<u8>)> = Vec::new();
+        while off < blob.len() {
+            let id = i64::from_le_bytes(blob[off..off + 8].try_into().unwrap());
+            let len = u32::from_le_bytes(blob[off + 8..off + 12].try_into().unwrap()) as usize;
+            let png = blob[off + 12..off + 12 + len].to_vec();
+            parsed.push((id, png));
+            off += 12 + len;
+        }
+        assert_eq!(parsed, entries);
+        assert_eq!(off, blob.len(), "blob must parse to exactly its length");
+
+        // Empty batch still carries the magic + zero count.
+        let empty = encode_thumb_blob(&[]);
+        assert_eq!(empty.len(), 8);
+        assert_eq!(u32::from_le_bytes(empty[4..8].try_into().unwrap()), 0);
+
+        // The FFI entry point rejects degenerate arguments instead of reading
+        // through a null pointer.
+        let mut len: i32 = 123;
+        assert!(
+            glaspen2_page_thumbnails(std::ptr::null(), 4, 280, &mut len).is_null()
+        );
+        assert_eq!(len, 0);
+        let ids = [7i64];
+        assert!(
+            glaspen2_page_thumbnails(ids.as_ptr(), 1, 0, &mut len).is_null(),
+            "max_size <= 0 must be rejected"
+        );
+        assert_eq!(len, 0);
     }
 }

@@ -58,6 +58,7 @@ fn now_f64() -> f64 {
 mod platform {
     use crate::state;
     use sqlx::SqlitePool;
+    use std::collections::HashMap;
     use std::sync::OnceLock;
 
     use super::{StrokeData, db_path, now_f64};
@@ -674,6 +675,87 @@ mod platform {
         .ok();
     }
 
+    /// Batched content versions for many screens in one query.
+    /// Screens with no live strokes are absent from the map.
+    pub async fn stroke_versions_many(ids: &[i64]) -> HashMap<i64, (i64, i64)> {
+        match DB.get() {
+            Some(pool) => stroke_versions_many_with(pool, ids).await,
+            None => HashMap::new(),
+        }
+    }
+
+    pub(crate) async fn stroke_versions_many_with(
+        pool: &SqlitePool,
+        ids: &[i64],
+    ) -> HashMap<i64, (i64, i64)> {
+        if ids.is_empty() {
+            return HashMap::new();
+        }
+        let mut qb = sqlx::QueryBuilder::new(
+            "SELECT screen_id, COUNT(*), MAX(id) FROM strokes \
+             WHERE deleted_at IS NULL AND screen_id IN (",
+        );
+        let mut sep = qb.separated(", ");
+        for id in ids {
+            sep.push_bind(*id);
+        }
+        sep.push_unseparated(") GROUP BY screen_id");
+        let rows: Vec<(i64, i64, Option<i64>)> = qb
+            .build_query_as()
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+        rows.into_iter()
+            .map(|(id, count, max_id)| (id, (count, max_id.unwrap_or(0))))
+            .collect()
+    }
+
+    /// Batched cached-thumbnail lookup: one row per screen that has a cache
+    /// entry for this size/outline, as (stroke_count, max_stroke_id, png).
+    /// The caller compares the stored version with the live one.
+    pub async fn thumbnails_many(
+        ids: &[i64],
+        max_size: i32,
+        outline: bool,
+    ) -> HashMap<i64, (i64, i64, Vec<u8>)> {
+        match DB.get() {
+            Some(pool) => thumbnails_many_with(pool, ids, max_size, outline).await,
+            None => HashMap::new(),
+        }
+    }
+
+    pub(crate) async fn thumbnails_many_with(
+        pool: &SqlitePool,
+        ids: &[i64],
+        max_size: i32,
+        outline: bool,
+    ) -> HashMap<i64, (i64, i64, Vec<u8>)> {
+        if ids.is_empty() {
+            return HashMap::new();
+        }
+        let mut qb = sqlx::QueryBuilder::new(
+            "SELECT screen_id, stroke_count, max_stroke_id, png FROM screen_thumbnails \
+             WHERE max_size = ",
+        );
+        qb.push_bind(max_size);
+        qb.push(" AND outline = ");
+        qb.push_bind(outline as i64);
+        qb.push(" AND screen_id IN (");
+        let mut sep = qb.separated(", ");
+        for id in ids {
+            sep.push_bind(*id);
+        }
+        sep.push_unseparated(")");
+        let rows: Vec<(i64, i64, i64, Vec<u8>)> = qb
+            .build_query_as()
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+        rows.into_iter()
+            .map(|(id, count, max_id, png)| (id, (count, max_id, png)))
+            .collect()
+    }
+
     /// Drop cached thumbnails for one screen (page deleted).
     pub async fn thumbnails_purge_screen(screen_id: i64) {
         if let Some(pool) = DB.get() {
@@ -968,8 +1050,9 @@ pub use platform::*;
 mod tests {
     use super::StrokeData;
     use super::platform::{
-        attach_points, page_info_with, screen_stroke_version_with, thumbnails_purge_screen_with,
-        thumbnail_lookup_with, thumbnail_store_with,
+        attach_points, page_info_with, screen_stroke_version_with, stroke_versions_many_with,
+        thumbnail_lookup_with, thumbnail_store_with, thumbnails_many_with,
+        thumbnails_purge_screen_with,
     };
     use crate::runtime;
     use sqlx::SqlitePool;
@@ -1201,6 +1284,55 @@ mod tests {
             assert!(thumbnail_lookup_with(&pool, sid, 128, count2, max_id2, false)
                 .await
                 .is_none());
+
+            pool.close().await;
+            let _ = std::fs::remove_file(&path);
+        });
+    }
+
+    /// The batched variants must agree with the per-screen ones, including
+    /// soft-delete handling, size/outline keying and missing screens.
+    #[test]
+    fn test_thumbnail_batch_helpers() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        runtime().block_on(async {
+            let (pool, path) = temp_pool().await;
+            add_thumb_tables(&pool).await;
+            let a = add_screen(&pool, 1.0).await;
+            let b = add_screen(&pool, 1.0).await;
+            let a1 = add_stroke(&pool, a, false).await;
+            let _a2 = add_stroke(&pool, a, true).await; // soft-deleted: excluded
+            let b1 = add_stroke(&pool, b, false).await;
+
+            let ids = [a, b, 9999]; // 9999 has no strokes
+            let versions = stroke_versions_many_with(&pool, &ids).await;
+            assert_eq!(versions.get(&a), Some(&(1, a1)));
+            assert_eq!(versions.get(&b), Some(&(1, b1)));
+            assert!(!versions.contains_key(&9999));
+            assert!(stroke_versions_many_with(&pool, &[]).await.is_empty());
+
+            // Empty cache → nothing, and other sizes/outlines never leak in
+            assert!(thumbnails_many_with(&pool, &ids, 280, false).await.is_empty());
+            thumbnail_store_with(&pool, a, 280, 1, a1, false, &[1, 2, 3]).await;
+            thumbnail_store_with(&pool, b, 128, 1, b1, false, &[4, 5, 6]).await;
+            thumbnail_store_with(&pool, b, 280, 1, b1, true, &[7, 8, 9]).await;
+
+            let got = thumbnails_many_with(&pool, &ids, 280, false).await;
+            assert_eq!(got.len(), 1);
+            assert_eq!(got.get(&a), Some(&(1, a1, vec![1u8, 2, 3])));
+            assert!(thumbnails_many_with(&pool, &[b], 280, false).await.is_empty());
+            assert_eq!(
+                thumbnails_many_with(&pool, &[b], 128, false).await.get(&b),
+                Some(&(1, b1, vec![4u8, 5, 6]))
+            );
+            assert_eq!(
+                thumbnails_many_with(&pool, &[b], 280, true).await.get(&b),
+                Some(&(1, b1, vec![7u8, 8, 9]))
+            );
+
+            // Purge is still per screen and drops the batch view too
+            thumbnails_purge_screen_with(&pool, a).await;
+            assert!(thumbnails_many_with(&pool, &ids, 280, false).await.is_empty());
 
             pool.close().await;
             let _ = std::fs::remove_file(&path);
