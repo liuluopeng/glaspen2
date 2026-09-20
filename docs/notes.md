@@ -45,3 +45,17 @@
 
 A 先行 (一份 UI 成立), 中长期走向 B (宿主对称 + mac 构建瘦身)。
 实施会涉及 Windows 宿主 (C# 管道服务器) — 需 Windows 侧确认后再动。
+
+### 状态更新 (2026-09-20): 方案 A 已落地, 但 macOS 侧不再用 MethodChannel
+
+- 9 个高级调用已全部收进 `_SettingsBridge` 抽象 (`listPages` / `deletePage` /
+  `navigateToPage` / `triggerHotkey` / `exportPdf` / `canvasOverview` 系列等),
+  UI 里的平台分支已消除; OCR 相关功能整体删除。
+- **macOS 侧改用 flutter_rust_bridge, FlutterMethodChannel 已删除**: 面板与 Rust
+  同进程, Dart 用 `ExternalLibrary.process()` 直接 dlsym Rust 符号(`src/api.rs`
+  是唯一接口面, ObjC 状态经 `glaspen2_macos_*` C shim 反向调用)。
+- Windows 仍是独立进程 + 命名管道(FRB 跨进程用不上), 管道补齐了 `deletePage` /
+  `exportPdf` / `pageThumbnails`。
+- 方案 B 的动机之一"mac 主程序不再依赖 Flutter 框架"因此不再成立 —— 现在反而更
+  依赖内嵌引擎了。
+- 调试方式见 `docs/debugging.md`。

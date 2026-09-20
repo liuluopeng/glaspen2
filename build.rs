@@ -30,15 +30,32 @@ fn main() {
         let lipo_shim = format!("{}/scripts/lipo-shim", manifest_dir);
         let path_env = std::env::var("PATH").unwrap_or_default();
 
-        let status = std::process::Command::new("fvm")
-            .args(["flutter", "build", "macos-framework", "--release"])
+        // 链哪一份 Flutter framework。默认 Release(发布/DMG 用);调 Dart 侧
+        // (JIT + VM service + 热重载)时切到 Debug:
+        //     GLASPEN2_FLUTTER_CONFIG=Debug cargo run
+        // Debug/Profile 的 App.framework 含 kernel_blob.bin,引擎跑 JIT,
+        // 于是 flutter attach 能连上;Release 是 AOT,连不上也改不了代码。
+        println!("cargo:rerun-if-env-changed=GLASPEN2_FLUTTER_CONFIG");
+        let flutter_config = std::env::var("GLASPEN2_FLUTTER_CONFIG").unwrap_or_default();
+        // Release 保持历史行为(不带额外开关,构建全部配置);Debug/Profile
+        // 只构建需要的那一个,省掉另外两个的编译时间。
+        let (config, fw_args): (&str, &[&str]) = match flutter_config.as_str() {
+            "Debug" => ("Debug", &["--debug", "--no-profile", "--no-release"]),
+            "Profile" => ("Profile", &["--profile", "--no-debug", "--no-release"]),
+            _ => ("Release", &["--release"]),
+        };
+
+        let mut fw_cmd = std::process::Command::new("fvm");
+        fw_cmd
+            .args(["flutter", "build", "macos-framework"])
+            .args(fw_args)
             .current_dir(&flutter_dir)
-            .env("PATH", format!("{lipo_shim}:{path_env}"))
-            .status();
+            .env("PATH", format!("{lipo_shim}:{path_env}"));
+        let status = fw_cmd.status();
         match status {
             Ok(s) if s.success() => {}
             other => eprintln!(
-                "[build.rs] fvm flutter build macos-framework failed: {:?}",
+                "[build.rs] fvm flutter build macos-framework {fw_args:?} failed: {:?}",
                 other
             ),
         }
@@ -83,12 +100,19 @@ fn main() {
             println!("cargo:rustc-link-arg-bins=-Wl,-u,_{symbol}");
         }
 
-        // Flutter framework paths
+        // Flutter framework paths(配置由上面的 GLASPEN2_FLUTTER_CONFIG 决定)
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let flutter_fw_dir = format!(
-            "{}/flutter_settings/build/macos/framework/Release",
+            "{}/flutter_settings/build/macos/framework/{config}",
             manifest_dir
         );
+        if !std::path::Path::new(&flutter_fw_dir).exists() {
+            panic!(
+                "{flutter_fw_dir} 不存在:先跑一次 \
+                 `cd flutter_settings && fvm flutter build macos-framework --{0}`",
+                config.to_lowercase()
+            );
+        }
 
         // cairo via pkg-config — portable across Homebrew versions / CI runners
         // (pkg_config::probe also emits the cargo link-search/lib directives).
@@ -99,6 +123,11 @@ fn main() {
         let mut clang = std::process::Command::new("clang");
         clang.args(["-c", "src/macos/glaspen2.m", "-o", &obj_path]);
         clang.args(["-fobjc-arc", "-O2"]);
+        // debug 构建带上调试信息:否则 lldb 只能按符号名下断点,
+        // 看不到 glaspen2.m 的行号(backtrace 也只有地址)。
+        if std::env::var("PROFILE").as_deref() == Ok("debug") {
+            clang.arg("-g");
+        }
         for p in &cairo.include_paths {
             clang.arg(format!("-I{}", p.display()));
             // glaspen2.m 用 <cairo/cairo.h> 风格: pkg-config 给的是 .../include/cairo,
