@@ -12,9 +12,9 @@ pub fn win_main() {
     // 设置面板的开关/切 tab 消息会被另一个实例抢走,表现为"模式切不动"。
     // 命名互斥量随进程存活,持有期间第二个实例弹窗提示并退出。
     {
-        use windows::core::PCWSTR;
         use windows::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError};
         use windows::Win32::System::Threading::CreateMutexW;
+        use windows::core::PCWSTR;
         let name: Vec<u16> = "Local\\glaspen2.single_instance"
             .encode_utf16()
             .chain(std::iter::once(0))
@@ -44,11 +44,10 @@ pub fn win_main() {
 
     // Launch Flutter settings UI (non-blocking); keep the handle so quitting
     // the overlay takes the settings window down with it.
-    let mut settings_child = find_settings_exe()
-        .and_then(|p| {
-            eprintln!("[glaspen2] Launching Flutter settings: {}", p.display());
-            std::process::Command::new(p).spawn().ok()
-        });
+    let mut settings_child = find_settings_exe().and_then(|p| {
+        eprintln!("[glaspen2] Launching Flutter settings: {}", p.display());
+        std::process::Command::new(p).spawn().ok()
+    });
 
     // Run the overlay (blocking — message loop until quit)
     overlay::run();
@@ -62,13 +61,16 @@ pub fn win_main() {
 }
 
 fn already_running_message() {
-    use windows::core::PCWSTR;
     use windows::Win32::UI::WindowsAndMessaging::{MB_ICONWARNING, MB_OK, MessageBoxW};
+    use windows::core::PCWSTR;
     let text: Vec<u16> = "glaspen2 已在运行,请使用现有实例 (可从系统托盘或 Ctrl+Alt+Q 退出后重试)"
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();
-    let caption: Vec<u16> = "glaspen2".encode_utf16().chain(std::iter::once(0)).collect();
+    let caption: Vec<u16> = "glaspen2"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
     unsafe {
         let _ = MessageBoxW(
             None,

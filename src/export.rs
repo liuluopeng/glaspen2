@@ -71,12 +71,7 @@ pub extern "C" fn glaspen2_add_point(x: c_double, y: c_double, width: c_double) 
 /// recorded with t=0 all collapse to zero-duration segments and the export
 /// comes out empty, so drawing paths must use this variant.
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_add_point_t(
-    x: c_double,
-    y: c_double,
-    width: c_double,
-    t: c_double,
-) {
+pub extern "C" fn glaspen2_add_point_t(x: c_double, y: c_double, width: c_double, t: c_double) {
     let mut strokes = STROKES.lock().unwrap();
     if let Some(stroke) = strokes.last_mut() {
         stroke.points.push((x, y, width, t));
@@ -248,14 +243,23 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
     if cur > 0 && crate::state::canvas_kind() != crate::state::CanvasKind::Infinite {
         let neighbors = runtime().block_on(async {
             let mut out: Vec<(f64, Vec<Stroke>)> = Vec::new();
-            for (dy, id) in [(-1.0f64, db::prev_screen(cur).await), (1.0f64, db::next_screen(cur).await)] {
+            for (dy, id) in [
+                (-1.0f64, db::prev_screen(cur).await),
+                (1.0f64, db::next_screen(cur).await),
+            ] {
                 if let Some(id) = id {
                     let sts = db::strokes_for_screen(id).await;
                     if !sts.is_empty() {
                         out.push((
                             dy,
                             sts.into_iter()
-                                .map(|s| Stroke { id: s.id, r: s.r, g: s.g, b: s.b, points: s.points })
+                                .map(|s| Stroke {
+                                    id: s.id,
+                                    r: s.r,
+                                    g: s.g,
+                                    b: s.b,
+                                    points: s.points,
+                                })
                                 .collect(),
                         ));
                     }
@@ -263,9 +267,7 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
             }
             out
         });
-        let stride = runtime()
-            .block_on(db::page_height(cur))
-            .unwrap_or(0.0);
+        let stride = runtime().block_on(db::page_height(cur)).unwrap_or(0.0);
         for (dy, group) in &neighbors {
             paint_strokes(&r, group, pan_x, pan_y, zoom, scale, *dy * stride, outline);
         }
@@ -412,9 +414,8 @@ fn warm_thumbnail_cache() {
                 if count == 0 {
                     continue;
                 }
-                let cached = runtime().block_on(db::thumbnail_lookup(
-                    id, 280, count, max_id, outline,
-                ));
+                let cached =
+                    runtime().block_on(db::thumbnail_lookup(id, 280, count, max_id, outline));
                 if cached.is_some() {
                     continue;
                 }
@@ -2213,11 +2214,15 @@ pub extern "C" fn glaspen2_render_thumbnail(
 ) -> *mut c_uchar {
     if max_size <= 0 || out_len.is_null() {
         if !out_len.is_null() {
-            unsafe { *out_len = 0; }
+            unsafe {
+                *out_len = 0;
+            }
         }
         return std::ptr::null_mut();
     }
-    unsafe { *out_len = 0; }
+    unsafe {
+        *out_len = 0;
+    }
 
     // ── 0. 缓存:内容版本(笔迹数,最大笔迹id)+渲染参数未变 → 直接返回存库 PNG ──
     let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
@@ -2275,8 +2280,10 @@ fn render_strokes_thumbnail(strokes: &[db::StrokeData], max_size: i32) -> Option
     }
     // 外扩留白(不低于 16pt,防止贴边)
     let margin = (bx1 - bx0).max(by1 - by0) * 0.06 + 12.0;
-    bx0 -= margin; by0 -= margin;
-    bx1 += margin; by1 += margin;
+    bx0 -= margin;
+    by0 -= margin;
+    bx1 += margin;
+    by1 += margin;
     let bw = (bx1 - bx0).max(1.0);
     let bh = (by1 - by0).max(1.0);
 
@@ -2309,7 +2316,10 @@ fn render_strokes_thumbnail(strokes: &[db::StrokeData], max_size: i32) -> Option
                 renderer.stroke_line(
                     ((qx - bx0) * fit) as f32,
                     ((qy - by0) * fit) as f32,
-                    px, py, pw, color,
+                    px,
+                    py,
+                    pw,
+                    color,
                 );
             }
         }
@@ -2352,7 +2362,9 @@ pub extern "C" fn glaspen2_page_thumbnails(
     if out_len.is_null() {
         return std::ptr::null_mut();
     }
-    unsafe { *out_len = 0; }
+    unsafe {
+        *out_len = 0;
+    }
     if ids.is_null() || count <= 0 || max_size <= 0 {
         return std::ptr::null_mut();
     }
@@ -2404,9 +2416,8 @@ pub(crate) fn page_thumbnails_blob(ids: &[i64], max_size: i32) -> Vec<u8> {
 /// Frame `(id, png)` entries into the blob the settings panel parses.
 /// Kept separate from the DB work so the wire format is unit-testable.
 pub(crate) fn encode_thumb_blob(entries: &[(i64, Vec<u8>)]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(
-        8 + entries.iter().map(|(_, png)| png.len() + 12).sum::<usize>(),
-    );
+    let mut out =
+        Vec::with_capacity(8 + entries.iter().map(|(_, png)| png.len() + 12).sum::<usize>());
     out.extend_from_slice(&THUMB_BLOB_MAGIC.to_le_bytes());
     out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
     for (id, png) in entries {
@@ -2422,7 +2433,9 @@ fn leak_png(png: Vec<u8>, out_len: *mut c_int) -> *mut c_uchar {
     let len = png.len() as c_int;
     let ptr = png.as_ptr() as *mut c_uchar;
     std::mem::forget(png);
-    unsafe { *out_len = len; }
+    unsafe {
+        *out_len = len;
+    }
     ptr
 }
 
@@ -2968,7 +2981,11 @@ mod tests {
     /// Dart side does (`_parseThumbnailBlob`). Keeps both ends in sync.
     #[test]
     fn test_thumb_blob_layout() {
-        let entries = vec![(7i64, vec![1u8, 2, 3]), (569i64, vec![]), (-1i64, vec![255u8])];
+        let entries = vec![
+            (7i64, vec![1u8, 2, 3]),
+            (569i64, vec![]),
+            (-1i64, vec![255u8]),
+        ];
         let blob = encode_thumb_blob(&entries);
 
         assert_eq!(
@@ -2997,9 +3014,7 @@ mod tests {
         // The FFI entry point rejects degenerate arguments instead of reading
         // through a null pointer.
         let mut len: i32 = 123;
-        assert!(
-            glaspen2_page_thumbnails(std::ptr::null(), 4, 280, &mut len).is_null()
-        );
+        assert!(glaspen2_page_thumbnails(std::ptr::null(), 4, 280, &mut len).is_null());
         assert_eq!(len, 0);
         let ids = [7i64];
         assert!(

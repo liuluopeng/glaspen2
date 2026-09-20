@@ -390,11 +390,13 @@ mod platform {
             Some(p) => p,
             None => return false,
         };
-        sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM strokes WHERE screen_id = ?1 AND deleted_at IS NULL)")
-            .bind(screen_id)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0)
+        sqlx::query_scalar::<_, i64>(
+            "SELECT EXISTS(SELECT 1 FROM strokes WHERE screen_id = ?1 AND deleted_at IS NULL)",
+        )
+        .bind(screen_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0)
             != 0
     }
 
@@ -431,14 +433,13 @@ mod platform {
         };
         // 软删除:标记而非物理删除(数据可恢复)
         let now = now_f64();
-        let deleted = sqlx::query(
-            "UPDATE strokes SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL",
-        )
-        .bind(stroke_id)
-        .bind(now)
-        .execute(pool)
-        .await
-        .ok();
+        let deleted =
+            sqlx::query("UPDATE strokes SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL")
+                .bind(stroke_id)
+                .bind(now)
+                .execute(pool)
+                .await
+                .ok();
         deleted.map(|r| r.rows_affected() > 0).unwrap_or(false)
     }
 
@@ -469,14 +470,13 @@ mod platform {
         };
         // 软删除:标记 screens + strokes 而非物理删除
         let now = now_f64();
-        let screen_del = sqlx::query(
-            "UPDATE screens SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL",
-        )
-        .bind(target_id)
-        .bind(now)
-        .execute(pool)
-        .await
-        .ok();
+        let screen_del =
+            sqlx::query("UPDATE screens SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL")
+                .bind(target_id)
+                .bind(now)
+                .execute(pool)
+                .await
+                .ok();
         let stroke_del = sqlx::query(
             "UPDATE strokes SET deleted_at = ?2 WHERE screen_id = ?1 AND deleted_at IS NULL",
         )
@@ -492,15 +492,23 @@ mod platform {
     pub async fn prev_screen(current: i64) -> Option<i64> {
         let pool = DB.get()?;
         sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM screens WHERE id < ?1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1"
-        ).bind(current).fetch_optional(pool).await.ok()?
+            "SELECT id FROM screens WHERE id < ?1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1",
+        )
+        .bind(current)
+        .fetch_optional(pool)
+        .await
+        .ok()?
     }
 
     pub async fn next_screen(current: i64) -> Option<i64> {
         let pool = DB.get()?;
         sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM screens WHERE id > ?1 AND deleted_at IS NULL ORDER BY id ASC LIMIT 1"
-        ).bind(current).fetch_optional(pool).await.ok()?
+            "SELECT id FROM screens WHERE id > ?1 AND deleted_at IS NULL ORDER BY id ASC LIMIT 1",
+        )
+        .bind(current)
+        .fetch_optional(pool)
+        .await
+        .ok()?
     }
 
     /// Group point rows (stroke_id, seq, x, y, width, t) into stroke records.
@@ -572,7 +580,10 @@ mod platform {
         }
     }
 
-    pub(crate) async fn screen_stroke_version_with(pool: &SqlitePool, screen_id: i64) -> (i64, i64) {
+    pub(crate) async fn screen_stroke_version_with(
+        pool: &SqlitePool,
+        screen_id: i64,
+    ) -> (i64, i64) {
         let r: (i64, Option<i64>) = sqlx::query_as(
             "SELECT COUNT(*), MAX(id) FROM strokes WHERE screen_id = ?1 AND deleted_at IS NULL",
         )
@@ -902,10 +913,12 @@ mod platform {
             Some(p) => p,
             None => return false,
         };
-        sqlx::query_scalar::<_, i64>("SELECT EXISTS(SELECT 1 FROM infinite_strokes WHERE deleted_at IS NULL)")
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0)
+        sqlx::query_scalar::<_, i64>(
+            "SELECT EXISTS(SELECT 1 FROM infinite_strokes WHERE deleted_at IS NULL)",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0)
             != 0
     }
 
@@ -917,13 +930,11 @@ mod platform {
         };
         // 软删除:标记而非物理删除
         let now = now_f64();
-        sqlx::query(
-            "UPDATE infinite_strokes SET deleted_at = ?1 WHERE deleted_at IS NULL",
-        )
-        .bind(now)
-        .execute(pool)
-        .await
-        .ok();
+        sqlx::query("UPDATE infinite_strokes SET deleted_at = ?1 WHERE deleted_at IS NULL")
+            .bind(now)
+            .execute(pool)
+            .await
+            .ok();
     }
 
     /// 当前页高度(逻辑 px)
@@ -1245,9 +1256,11 @@ mod tests {
 
             // Miss → store → hit
             let png_a = vec![1u8, 2, 3];
-            assert!(thumbnail_lookup_with(&pool, sid, 280, count, max_id, false)
-                .await
-                .is_none());
+            assert!(
+                thumbnail_lookup_with(&pool, sid, 280, count, max_id, false)
+                    .await
+                    .is_none()
+            );
             thumbnail_store_with(&pool, sid, 280, count, max_id, false, &png_a).await;
             assert_eq!(
                 thumbnail_lookup_with(&pool, sid, 280, count, max_id, false).await,
@@ -1255,14 +1268,24 @@ mod tests {
             );
 
             // Any version-key change invalidates: outline / max_size / content
-            assert!(thumbnail_lookup_with(&pool, sid, 280, count, max_id, true).await.is_none());
-            assert!(thumbnail_lookup_with(&pool, sid, 128, count, max_id, false).await.is_none());
+            assert!(
+                thumbnail_lookup_with(&pool, sid, 280, count, max_id, true)
+                    .await
+                    .is_none()
+            );
+            assert!(
+                thumbnail_lookup_with(&pool, sid, 128, count, max_id, false)
+                    .await
+                    .is_none()
+            );
             let _s3 = add_stroke(&pool, sid, false).await;
             let (count2, max_id2) = screen_stroke_version_with(&pool, sid).await;
             assert_ne!((count2, max_id2), (count, max_id));
-            assert!(thumbnail_lookup_with(&pool, sid, 280, count2, max_id2, false)
-                .await
-                .is_none());
+            assert!(
+                thumbnail_lookup_with(&pool, sid, 280, count2, max_id2, false)
+                    .await
+                    .is_none()
+            );
 
             // Re-store same key replaces (upsert), other max_size variant coexists
             let png_b = vec![9u8, 8, 7];
@@ -1272,18 +1295,24 @@ mod tests {
                 thumbnail_lookup_with(&pool, sid, 280, count2, max_id2, false).await,
                 Some(png_b)
             );
-            assert!(thumbnail_lookup_with(&pool, sid, 128, count2, max_id2, false)
-                .await
-                .is_some());
+            assert!(
+                thumbnail_lookup_with(&pool, sid, 128, count2, max_id2, false)
+                    .await
+                    .is_some()
+            );
 
             // Purge drops both variants
             thumbnails_purge_screen_with(&pool, sid).await;
-            assert!(thumbnail_lookup_with(&pool, sid, 280, count2, max_id2, false)
-                .await
-                .is_none());
-            assert!(thumbnail_lookup_with(&pool, sid, 128, count2, max_id2, false)
-                .await
-                .is_none());
+            assert!(
+                thumbnail_lookup_with(&pool, sid, 280, count2, max_id2, false)
+                    .await
+                    .is_none()
+            );
+            assert!(
+                thumbnail_lookup_with(&pool, sid, 128, count2, max_id2, false)
+                    .await
+                    .is_none()
+            );
 
             pool.close().await;
             let _ = std::fs::remove_file(&path);
@@ -1312,7 +1341,11 @@ mod tests {
             assert!(stroke_versions_many_with(&pool, &[]).await.is_empty());
 
             // Empty cache → nothing, and other sizes/outlines never leak in
-            assert!(thumbnails_many_with(&pool, &ids, 280, false).await.is_empty());
+            assert!(
+                thumbnails_many_with(&pool, &ids, 280, false)
+                    .await
+                    .is_empty()
+            );
             thumbnail_store_with(&pool, a, 280, 1, a1, false, &[1, 2, 3]).await;
             thumbnail_store_with(&pool, b, 128, 1, b1, false, &[4, 5, 6]).await;
             thumbnail_store_with(&pool, b, 280, 1, b1, true, &[7, 8, 9]).await;
@@ -1320,7 +1353,11 @@ mod tests {
             let got = thumbnails_many_with(&pool, &ids, 280, false).await;
             assert_eq!(got.len(), 1);
             assert_eq!(got.get(&a), Some(&(1, a1, vec![1u8, 2, 3])));
-            assert!(thumbnails_many_with(&pool, &[b], 280, false).await.is_empty());
+            assert!(
+                thumbnails_many_with(&pool, &[b], 280, false)
+                    .await
+                    .is_empty()
+            );
             assert_eq!(
                 thumbnails_many_with(&pool, &[b], 128, false).await.get(&b),
                 Some(&(1, b1, vec![4u8, 5, 6]))
@@ -1332,7 +1369,11 @@ mod tests {
 
             // Purge is still per screen and drops the batch view too
             thumbnails_purge_screen_with(&pool, a).await;
-            assert!(thumbnails_many_with(&pool, &ids, 280, false).await.is_empty());
+            assert!(
+                thumbnails_many_with(&pool, &ids, 280, false)
+                    .await
+                    .is_empty()
+            );
 
             pool.close().await;
             let _ = std::fs::remove_file(&path);

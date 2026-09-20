@@ -10,5 +10,6 @@ fn main() {
     res.set("FileDescription", "glaspen2 setup");
     res.set("ProductName", "glaspen2");
     res.set_icon(icon.to_str().expect("icon path"));
-    res.compile().expect("failed to compile installer resources");
+    res.compile()
+        .expect("failed to compile installer resources");
 }

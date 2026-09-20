@@ -342,7 +342,9 @@ pub async fn canvas_overview(w: i32, h: i32, action: CanvasAction) -> Option<Can
 #[frb]
 pub async fn get_lens() -> LensState {
     let cur = crate::state::current_screen_id();
-    let (pan_x, pan_y, zoom) = db::get_infinite_transform().await.unwrap_or((0.0, 0.0, 1.0));
+    let (pan_x, pan_y, zoom) = db::get_infinite_transform()
+        .await
+        .unwrap_or((0.0, 0.0, 1.0));
     LensState {
         page_id: cur,
         pan_x,

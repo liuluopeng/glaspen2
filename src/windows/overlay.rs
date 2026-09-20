@@ -23,7 +23,7 @@ use std::time::Instant;
 
 use ink_stroke_modeler_rs::{ModelerInput, ModelerInputEventType, ModelerParams, StrokeModeler};
 use windows::Win32::Devices::HumanInterfaceDevice::{
-    HidD_GetPreparsedData, HidP_GetValueCaps, HidP_Input, HIDP_VALUE_CAPS, PHIDP_PREPARSED_DATA,
+    HIDP_VALUE_CAPS, HidD_GetPreparsedData, HidP_GetValueCaps, HidP_Input, PHIDP_PREPARSED_DATA,
 };
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Gdi::*;
@@ -32,8 +32,8 @@ use windows::Win32::Storage::FileSystem::{
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, RegisterHotKey, VK_CONTROL,
-    VK_DOWN, VK_LEFT, VK_MENU, VK_NEXT, VK_PRIOR, VK_RIGHT, VK_UP,
+    GetAsyncKeyState, HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, RegisterHotKey, VK_CONTROL, VK_DOWN,
+    VK_LEFT, VK_MENU, VK_NEXT, VK_PRIOR, VK_RIGHT, VK_UP,
 };
 use windows::Win32::UI::Input::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
@@ -77,7 +77,8 @@ fn ctx_map() -> &'static mut HashMap<isize, DevCtx> {
         let p = CTX.load(Ordering::SeqCst);
         if p.is_null() {
             let b = Box::into_raw(Box::new(HashMap::new()));
-            let _ = CTX.compare_exchange(std::ptr::null_mut(), b, Ordering::SeqCst, Ordering::SeqCst);
+            let _ =
+                CTX.compare_exchange(std::ptr::null_mut(), b, Ordering::SeqCst, Ordering::SeqCst);
         }
         &mut *CTX.load(Ordering::SeqCst)
     }
@@ -190,12 +191,23 @@ fn ctx_for(hdev: isize) -> &'static mut DevCtx {
             }
             None => (FALLBACK_MAX_X, FALLBACK_MAX_Y, FALLBACK_MAX_P, false),
         };
-        let src = if from_caps { "caps" } else { "⚠ preparsed 不可用,回退常量" };
+        let src = if from_caps {
+            "caps"
+        } else {
+            "⚠ preparsed 不可用,回退常量"
+        };
         eprintln!(
             "[overlay] [新输入设备 hDev=0x{:X}] 量程({}): X 0..{:.0} Y 0..{:.0} P 0..{:.0}",
             hdev, src, x_max, y_max, p_max
         );
-        map.insert(hdev, DevCtx { x_max, y_max, p_max });
+        map.insert(
+            hdev,
+            DevCtx {
+                x_max,
+                y_max,
+                p_max,
+            },
+        );
     }
     map.get_mut(&hdev).unwrap()
 }
@@ -275,7 +287,8 @@ pub static OVERLAY_HWND: std::sync::Mutex<isize> = std::sync::Mutex::new(0);
 
 /// 笔迹描边(渲染设置):仅在内存,不落库,重启恢复关闭。
 /// 管道线程(getSettings)与消息循环共享此值。
-pub static OUTLINE_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static OUTLINE_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 // ── 无限画布:模式开关 + 镜头(macOS 同款) ──
 // 视图 = (画布 − pan) × zoom,zoom ∈ (0.05, 1](上限 100% 防蚂蚁大小涂鸦)。
@@ -395,9 +408,15 @@ fn persist_gif_settings(fps: i32, resolution: f64, speed: f64, end_mode: i32) {
     let (fps, res, speed, end_mode) = gif_settings();
     let rt = crate::runtime();
     rt.block_on(crate::db::save_setting("gif_fps", &fps.to_string()));
-    rt.block_on(crate::db::save_setting("gif_resolution", &format!("{res:.4}")));
+    rt.block_on(crate::db::save_setting(
+        "gif_resolution",
+        &format!("{res:.4}"),
+    ));
     rt.block_on(crate::db::save_setting("gif_speed", &format!("{speed:.4}")));
-    rt.block_on(crate::db::save_setting("gif_end_mode", &end_mode.to_string()));
+    rt.block_on(crate::db::save_setting(
+        "gif_end_mode",
+        &end_mode.to_string(),
+    ));
 }
 
 struct OverlayState {
@@ -681,11 +700,7 @@ impl OverlayCanvas {
         const BOLD_GR: u8 = 70; // 0.5 * 0.55 * 255
 
         let infinite = infinite_on();
-        let (pan_x, pan_y, zoom) = if infinite {
-            cam()
-        } else {
-            (0.0, 0.0, 1.0)
-        };
+        let (pan_x, pan_y, zoom) = if infinite { cam() } else { (0.0, 0.0, 1.0) };
         let w = self.w;
         let h = self.h;
         // 可见画布范围(view = (canvas − pan) × zoom)
@@ -1061,8 +1076,11 @@ unsafe fn process_raw_hid(buf: &[u64]) -> Option<RECT> {
     let base = raw.add(32);
     // RAWINPUTHEADER.hDevice 在偏移 8(类型 4B + 大小 4B 之后):标识上报设备,
     // 用于按设备选择归一化量程(驱动更新后物理板/虚拟板并存)
-    let hdev =
-        usize::from_le_bytes(std::slice::from_raw_parts(raw.add(8), 8).try_into().unwrap()) as isize;
+    let hdev = usize::from_le_bytes(
+        std::slice::from_raw_parts(raw.add(8), 8)
+            .try_into()
+            .unwrap(),
+    ) as isize;
 
     let state = &mut *STATE.load(Ordering::SeqCst);
     let ctx = ctx_for(hdev);
@@ -1080,10 +1098,8 @@ unsafe fn process_raw_hid(buf: &[u64]) -> Option<RECT> {
         if x as f64 > ctx.x_max * 1.5 || y as f64 > ctx.y_max * 1.5 {
             continue; // 明显超出量程的坏报告
         }
-        let sx =
-            (x.min(ctx.x_max as u32) as f64 / ctx.x_max * (state.canvas.w - 1) as f64) as f32;
-        let sy =
-            (y.min(ctx.y_max as u32) as f64 / ctx.y_max * (state.canvas.h - 1) as f64) as f32;
+        let sx = (x.min(ctx.x_max as u32) as f64 / ctx.x_max * (state.canvas.w - 1) as f64) as f32;
+        let sy = (y.min(ctx.y_max as u32) as f64 / ctx.y_max * (state.canvas.h - 1) as f64) as f32;
         let pnorm = ((press as f64 / ctx.p_max).clamp(0.0, 1.0)) as f32;
         let down = (switches & 0x05) != 0;
         // 压力监控:每帧刷新(视图坐标 = 屏幕像素位置)
@@ -1139,8 +1155,11 @@ unsafe extern "system" fn wnd_proc(
             if written == 0 {
                 return LRESULT(0);
             }
-            let dw_type =
-                u32::from_le_bytes(std::slice::from_raw_parts(buf.as_ptr() as *const u8, 4).try_into().unwrap());
+            let dw_type = u32::from_le_bytes(
+                std::slice::from_raw_parts(buf.as_ptr() as *const u8, 4)
+                    .try_into()
+                    .unwrap(),
+            );
             if dw_type == RIM_TYPEMOUSE.0 {
                 let state = &mut *STATE.load(Ordering::SeqCst);
                 handle_mouse_raw(&buf, state);
@@ -1238,7 +1257,11 @@ unsafe extern "system" fn wnd_proc(
                 // 无限画布:Ctrl+Alt+PageUp/PageDown 键盘缩放(以视口中心为锚)
                 14 | 15 => {
                     if infinite_on() && state.draw.enabled {
-                        let factor = if wparam.0 as i32 == 14 { 1.15 } else { 1.0 / 1.15 };
+                        let factor = if wparam.0 as i32 == 14 {
+                            1.15
+                        } else {
+                            1.0 / 1.15
+                        };
                         canvas_zoom_at(
                             state,
                             factor,
@@ -2513,7 +2536,11 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                     let (_, _, z) = cam();
                     let z = if z > ZOOM_MIN { z } else { 1.0 };
                     let (w, h) = (state.canvas.w as f64, state.canvas.h as f64);
-                    set_cam((bx + bx2) * 0.5 - w * 0.5 / z, (by + by2) * 0.5 - h * 0.5 / z, z);
+                    set_cam(
+                        (bx + bx2) * 0.5 - w * 0.5 / z,
+                        (by + by2) * 0.5 - h * 0.5 / z,
+                        z,
+                    );
                     persist_camera();
                 }
                 redraw_from_strokes(state);
@@ -2521,10 +2548,7 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
             x if x == CMD_CANVAS_NEW => {
                 // 手动新建:清空内容,镜头回原点 + 100%(活页本退化为普通新建)
                 if infinite_on() {
-                    let _ = crate::export::glaspen2_clear_strokes(
-                        state.canvas.w,
-                        state.canvas.h,
-                    );
+                    let _ = crate::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
                     set_cam(0.0, 0.0, 1.0);
                     persist_camera();
                     redraw_from_strokes(state);
@@ -2764,8 +2788,7 @@ fn canvas_zoom_at(state: &mut OverlayState, factor: f64, vx: f64, vy: f64) {
     if nz > ZOOM_MAX {
         nz = ZOOM_MAX;
         if z < ZOOM_MAX {
-            static LAST_HINT: std::sync::atomic::AtomicU64 =
-                std::sync::atomic::AtomicU64::new(0);
+            static LAST_HINT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let now = now_millis();
             if now.saturating_sub(LAST_HINT.load(std::sync::atomic::Ordering::Relaxed))
                 > ZOOM_HINT_MS
@@ -2802,8 +2825,10 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool) {
         persist_camera(); // 离开无限画布前存镜头
     }
     INFINITE_CANVAS.store(on, std::sync::atomic::Ordering::SeqCst);
-    crate::runtime()
-        .block_on(crate::db::save_setting("infinite_canvas", if on { "1" } else { "0" }));
+    crate::runtime().block_on(crate::db::save_setting(
+        "infinite_canvas",
+        if on { "1" } else { "0" },
+    ));
     crate::export::glaspen2_set_canvas_kind(if on { 1 } else { 0 });
     if on {
         crate::export::glaspen2_load_infinite_strokes();
@@ -2888,11 +2913,7 @@ fn gif_record_stop(state: &mut OverlayState) {
             let gif = unsafe { std::slice::from_raw_parts(ptr, len as usize) };
             let ok = unsafe { copy_gif_bytes_to_clipboard(gif) };
             crate::export::glaspen2_free_rust_bytes(ptr, len);
-            if ok {
-                1
-            } else {
-                0
-            }
+            if ok { 1 } else { 0 }
         };
         unsafe {
             let _ = PostMessageW(
@@ -3459,8 +3480,7 @@ fn render_overview_json(ow: i32, oh: i32) -> String {
     bh += my * 2.0;
 
     let mut out_len: i32 = 0;
-    let ptr =
-        crate::export::glaspen2_render_canvas_overview(bx, by, bw, bh, ow, oh, &mut out_len);
+    let ptr = crate::export::glaspen2_render_canvas_overview(bx, by, bw, bh, ow, oh, &mut out_len);
     if ptr.is_null() || out_len <= 0 {
         return String::new();
     }
@@ -3678,7 +3698,11 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .unwrap_or((1.0, 0.0, 0.0, 1.0));
         let color = closest_color_index(r, g, b);
         let width = closest_width_index(w);
-        let outline = if OUTLINE_ENABLED.load(std::sync::atomic::Ordering::Relaxed) { 1 } else { 0 };
+        let outline = if OUTLINE_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
+            1
+        } else {
+            0
+        };
         let grid = crate::runtime()
             .block_on(crate::db::load_setting("grid"))
             .and_then(|v| v.parse::<i32>().ok())
@@ -3948,7 +3972,8 @@ fn json_get_f64(json: &str, key: &str) -> Option<f64> {
 }
 
 /// 解析 JSON bool 值(Flutter 发送的开关为 true/false)
-fn json_get_bool(json: &str, key: &str) -> Option<bool> {    let pattern = format!("\"{}\":", key);
+fn json_get_bool(json: &str, key: &str) -> Option<bool> {
+    let pattern = format!("\"{}\":", key);
     let start = json.find(&pattern)?;
     let rest = json[start + pattern.len()..].trim_start();
     if rest.starts_with("true") {
