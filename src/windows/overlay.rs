@@ -3917,6 +3917,49 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 persist_gif_settings(fps, res, spd, v as i32);
             }
         }
+    } else if msg_type == "appVersion" {
+        // 「关于」区显示的当前版本(与发布物一致,取自 Cargo.toml)
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let data = serde_json::json!({ "version": crate::update::current_version() });
+        let _ = writer.write_all(
+            format!("{{\"type\":\"appVersion_response\",\"reqId\":{req_id},\"data\":{data}}}\n")
+                .as_bytes(),
+        );
+        let _ = writer.flush();
+    } else if msg_type == "checkUpdate" {
+        // 手动「检查更新」:阻塞的网络调用就跑在管道线程上(面板侧 15s 超时,
+        // Rust 侧 10s 超时)。期间其它面板请求会排队 —— 按钮是手动触发的,可接受。
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let current = crate::update::current_version().to_string();
+        let data = match crate::update::fetch_latest() {
+            Ok(r) => {
+                let has = crate::update::is_newer(&r.tag, &current);
+                serde_json::json!({
+                    "ok": true,
+                    "current": current,
+                    "latest": r.tag,
+                    "hasUpdate": has,
+                    "url": r.url,
+                    "error": "",
+                })
+            }
+            Err(e) => serde_json::json!({
+                "ok": false,
+                "current": current,
+                "latest": "",
+                "hasUpdate": false,
+                "url": "",
+                "error": e,
+            }),
+        };
+        let _ = writer.write_all(
+            format!("{{\"type\":\"checkUpdate_response\",\"reqId\":{req_id},\"data\":{data}}}\n")
+                .as_bytes(),
+        );
+        let _ = writer.flush();
+    } else if msg_type == "openUrl" {
+        // 「打开下载页」:http/https 白名单在 open_url_checked 里, 缺 url 会被拒绝
+        crate::api::open_url_checked(json_get_str(line, "url"));
     }
 }
 

@@ -41,6 +41,7 @@ pub(crate) mod shim {
         fn glaspen2_macos_export_pdf() -> c_int;
         fn glaspen2_macos_export_gif() -> c_int;
         fn glaspen2_macos_free_bytes(p: *mut u8);
+        fn glaspen2_macos_open_url(url: *const c_char);
     }
 
     pub fn settings_json() -> Option<String> {
@@ -100,6 +101,13 @@ pub(crate) mod shim {
     pub fn export_gif() -> bool {
         unsafe { glaspen2_macos_export_gif() != 0 }
     }
+
+    /// 用系统默认浏览器打开 URL(实现见 src/macos/glaspen2.m)。
+    pub fn open_url(url: &str) {
+        if let Ok(u) = std::ffi::CString::new(url) {
+            unsafe { glaspen2_macos_open_url(u.as_ptr()) };
+        }
+    }
 }
 
 /// 其它平台没有 ObjC 侧(Windows 设置面板是独立进程,走命名管道)。
@@ -123,6 +131,33 @@ pub(crate) mod shim {
     }
     pub fn export_gif() -> bool {
         false
+    }
+
+    /// 用系统默认浏览器打开 URL:Windows 走 `cmd /c start`,不开控制台窗口。
+    pub fn open_url(url: &str) {
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            let _ = std::process::Command::new("cmd")
+                .args(["/c", "start", "", url])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = url;
+        }
+    }
+}
+
+/// 打开一个 http(s) URL(系统默认浏览器)。设置面板与 Windows 命名管道共用,
+/// 只接受 http/https —— URL 可能来自网络响应, 先在这里挡掉其它 scheme。
+pub(crate) fn open_url_checked(url: &str) {
+    if url.starts_with("https://") || url.starts_with("http://") {
+        shim::open_url(url);
+    } else {
+        eprintln!("[api] 拒绝打开非 http(s) URL: {url}");
     }
 }
 
@@ -402,6 +437,68 @@ pub async fn restore_latest_backup() -> BackupOutcome {
             message: e,
         },
     }
+}
+
+// ---------------------------------------------------------------------------
+// 检查更新
+// ---------------------------------------------------------------------------
+
+/// 「检查更新」结果。`ok=false` 时 `error` 是给用户看的原因;
+/// `has_update=true` 时 `url` 指向最新发布的下载页。
+#[frb]
+#[derive(Debug, Clone)]
+pub struct UpdateCheck {
+    /// 检查是否成功(网络/解析)。
+    pub ok: bool,
+    /// 当前运行的版本(编译时取自 Cargo.toml),检查失败时也总有值。
+    pub current: String,
+    /// GitHub 最新正式版 tag(如 `v0.5.1`);失败时为空。
+    pub latest: String,
+    /// 最新版本是否比当前新。
+    pub has_update: bool,
+    /// 最新发布的页面地址;没有更新或检查失败时为空。
+    pub url: String,
+    /// 失败原因;成功时为空。
+    pub error: String,
+}
+
+/// 当前版本号(与发布物一致,取自 Cargo.toml)。
+#[frb]
+pub async fn app_version() -> String {
+    crate::update::current_version().to_string()
+}
+
+/// 检查 GitHub Releases 上的最新正式版(手动触发;阻塞网络放在独立线程,
+/// 见 [`run_blocking`])。
+#[frb]
+pub async fn check_update() -> UpdateCheck {
+    run_blocking(|| {
+        let current = crate::update::current_version().to_string();
+        match crate::update::fetch_latest() {
+            Ok(r) => UpdateCheck {
+                ok: true,
+                has_update: crate::update::is_newer(&r.tag, &current),
+                latest: r.tag,
+                url: r.url,
+                current,
+                error: String::new(),
+            },
+            Err(error) => UpdateCheck {
+                ok: false,
+                current,
+                latest: String::new(),
+                has_update: false,
+                url: String::new(),
+                error,
+            },
+        }
+    })
+}
+
+/// 用系统默认浏览器打开一个 http(s) URL(「打开下载页」按钮)。
+#[frb]
+pub async fn open_url(url: String) {
+    run_blocking(move || open_url_checked(&url));
 }
 
 // ---------------------------------------------------------------------------

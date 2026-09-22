@@ -55,6 +55,8 @@ Switch from the tabs at the top of the settings panel, or the "Infinite canvas" 
 
 - **Pressure monitor / rainbow indicator / launch at login.**
 
+- **Update check** the About section of the settings panel shows the current version, queries the latest release on GitHub in one click, and opens the download page when a newer version exists.
+
 - **Bezier smoothing** via ink-stroke-modeler removes hand tremor and supports pressure width.
 
 ## Keyboard shortcuts

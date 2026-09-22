@@ -6,8 +6,8 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `current_settings`, `decode_thumb_blob`, `from_json`, `run_blocking`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These functions are ignored because they are not marked as `pub`: `current_settings`, `decode_thumb_blob`, `from_json`, `open_url_checked`, `run_blocking`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `glaspen2_notify_settings_changed`
 
 /// 当前设置。
@@ -67,6 +67,17 @@ Future<BackupOutcome> backupNow() => RustLib.instance.api.crateApiBackupNow();
 /// 以备份为准。恢复后需要重启才能看到覆盖层上的变化。
 Future<BackupOutcome> restoreLatestBackup() =>
     RustLib.instance.api.crateApiRestoreLatestBackup();
+
+/// 当前版本号(与发布物一致,取自 Cargo.toml)。
+Future<String> appVersion() => RustLib.instance.api.crateApiAppVersion();
+
+/// 检查 GitHub Releases 上的最新正式版(手动触发;阻塞网络放在独立线程,
+/// 见 [`run_blocking`])。
+Future<UpdateCheck> checkUpdate() => RustLib.instance.api.crateApiCheckUpdate();
+
+/// 用系统默认浏览器打开一个 http(s) URL(「打开下载页」按钮)。
+Future<void> openUrl({required String url}) =>
+    RustLib.instance.api.crateApiOpenUrl(url: url);
 
 /// 导出当前页为 PDF。
 Future<bool> exportPdf() => RustLib.instance.api.crateApiExportPdf();
@@ -282,4 +293,56 @@ class Settings {
           gifResolution == other.gifResolution &&
           gifSpeed == other.gifSpeed &&
           gifEndMode == other.gifEndMode;
+}
+
+/// 「检查更新」结果。`ok=false` 时 `error` 是给用户看的原因;
+/// `has_update=true` 时 `url` 指向最新发布的下载页。
+class UpdateCheck {
+  /// 检查是否成功(网络/解析)。
+  final bool ok;
+
+  /// 当前运行的版本(编译时取自 Cargo.toml),检查失败时也总有值。
+  final String current;
+
+  /// GitHub 最新正式版 tag(如 `v0.5.1`);失败时为空。
+  final String latest;
+
+  /// 最新版本是否比当前新。
+  final bool hasUpdate;
+
+  /// 最新发布的页面地址;没有更新或检查失败时为空。
+  final String url;
+
+  /// 失败原因;成功时为空。
+  final String error;
+
+  const UpdateCheck({
+    required this.ok,
+    required this.current,
+    required this.latest,
+    required this.hasUpdate,
+    required this.url,
+    required this.error,
+  });
+
+  @override
+  int get hashCode =>
+      ok.hashCode ^
+      current.hashCode ^
+      latest.hashCode ^
+      hasUpdate.hashCode ^
+      url.hashCode ^
+      error.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UpdateCheck &&
+          runtimeType == other.runtimeType &&
+          ok == other.ok &&
+          current == other.current &&
+          latest == other.latest &&
+          hasUpdate == other.hasUpdate &&
+          url == other.url &&
+          error == other.error;
 }

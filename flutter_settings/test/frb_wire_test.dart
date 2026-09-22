@@ -75,6 +75,14 @@ void main() {
     expect(restore.message, isNotEmpty);
   }, skip: skipReason);
 
+  test('appVersion 往返(「检查更新」显示的当前版本)', () async {
+    // 只测版本号这条无网络路径;真正打 GitHub 的部分由 Rust 侧
+    // update::tests::test_fetch_latest_live(-- --ignored)覆盖。
+    final v = await rust.appVersion();
+    expect(RegExp(r'^\d+\.\d+\.\d+').hasMatch(v), isTrue,
+        reason: '版本号应形如 0.5.1, 实际: "$v"');
+  }, skip: skipReason);
+
   test('setSetting → getSettings 往返(JSON 标量必须真的被解析)', () async {
     // 回归:ObjC 侧用 NSJSONSerialization 解析 value_json 时忘了
     // NSJSONReadingFragmentsAllowed,裸标量("true"/"3"/"2.5")全部返回 nil,

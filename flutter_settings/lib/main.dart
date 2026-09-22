@@ -22,6 +22,10 @@ void main() {
 
 const _pipeName = r'\\.\pipe\glaspen2_settings';
 
+/// 「打开下载页」的兜底地址(GitHub 会重定向到最新 release;
+/// 正常情况用检查结果里返回的 html_url)。
+const _releasesPage = 'https://github.com/liuluopeng/glaspen2/releases/latest';
+
 /// 缩略图批量块魔数 "GTH1"(与 Rust 侧 THUMB_BLOB_MAGIC 一致)。
 const _thumbBlobMagic = 0x31485447;
 
@@ -87,6 +91,12 @@ abstract class _SettingsBridge {
   Future<(bool, String)> backupNow();
   /// 从桌面上最新的备份合并恢复;返回 (是否成功, 给用户看的信息)
   Future<(bool, String)> restoreLatestBackup();
+  /// 当前版本号(编译进二进制);取不到时返回空串
+  Future<String> appVersion();
+  /// 检查更新: {ok, current, latest, hasUpdate, url, error}
+  Future<Map<dynamic, dynamic>> checkUpdate();
+  /// 用系统默认浏览器打开 http(s) URL(「打开下载页」)
+  Future<void> openUrl(String url);
   void dispose();
 }
 
@@ -248,6 +258,32 @@ class _FrbBridge extends _SettingsBridge {
     await _init();
     final r = await rust.restoreLatestBackup();
     return (r.ok, r.message);
+  }
+
+  @override
+  Future<String> appVersion() async {
+    await _init();
+    return rust.appVersion();
+  }
+
+  @override
+  Future<Map<dynamic, dynamic>> checkUpdate() async {
+    await _init();
+    final r = await rust.checkUpdate();
+    return {
+      'ok': r.ok,
+      'current': r.current,
+      'latest': r.latest,
+      'hasUpdate': r.hasUpdate,
+      'url': r.url,
+      'error': r.error,
+    };
+  }
+
+  @override
+  Future<void> openUrl(String url) async {
+    await _init();
+    await rust.openUrl(url: url);
   }
 
   @override
@@ -494,6 +530,22 @@ class _NamedPipeBridge extends _SettingsBridge {
   @override
   Future<(bool, String)> restoreLatestBackup() async {
     return (false, 'Windows 版暂不支持在设置面板里回导');
+  }
+
+  @override
+  Future<String> appVersion() async {
+    final r = await _request('appVersion', null);
+    return (r['version'] as String?) ?? '';
+  }
+
+  @override
+  Future<Map<dynamic, dynamic>> checkUpdate() async =>
+      _request('checkUpdate', null);
+
+  @override
+  Future<void> openUrl(String url) async {
+    if (!_connected) return;
+    _writeData(jsonEncode({'type': 'openUrl', 'url': url}) + '\n');
   }
 
   @override
@@ -792,6 +844,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   double _gifSpeed = 2.0;
   int _gifEndMode = 1; // 0=停在最后, 1=停1秒后循环, 2=立即循环
 
+  // 检查更新(「关于」区)
+  String? _appVersion; // null = 还没取到(桥不可用时永远 null → 显示 —)
+  bool _checkingUpdate = false;
+  Map<dynamic, dynamic>? _updateResult;
+
   // 10 colors, matching Rust COLOR_PRESETS / macOS g_color_presets
   // (红橙黄绿青蓝紫粉白黑). Index must match the overlay's preset order.
   // 对齐 rnote 实测色板:全部 S=100% 全饱和,鲜艳度优先(浅色场景配描边)
@@ -830,6 +887,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     // Windows 管道连接成功后重新拉取设置(macOS 通道立即可用,不影响)
     _bridge.onConnected = () => _loadSettings();
     _loadSettings();
+    // 「关于」区显示当前版本;取不到只显示 —,不影响面板其它功能
+    unawaited(_loadAppVersion());
   }
 
   @override
@@ -1281,6 +1340,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   _buildSection('笔', _buildPenSection()),
                   const SizedBox(height: 16),
                   _buildSection('Options', _buildOptionsSection()),
+                  const SizedBox(height: 16),
+                  _buildSection('关于', _buildAboutSection()),
                 ],
               ),
             )),
@@ -1450,6 +1511,101 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         );
       }
     }
+  }
+
+  /// 取当前版本号(桥不可用时静默失败, 版本栏保持 —)。
+  Future<void> _loadAppVersion() async {
+    try {
+      final v = await _bridge.appVersion();
+      if (mounted && v.isNotEmpty) setState(() => _appVersion = v);
+    } catch (e) {
+      debugPrint('[About] appVersion failed: $e');
+    }
+  }
+
+  /// 手动「检查更新」:一次 GitHub API 往返, 成功/失败都放进 _updateResult。
+  Future<void> _checkUpdate() async {
+    if (_checkingUpdate) return;
+    setState(() {
+      _checkingUpdate = true;
+      _updateResult = null;
+    });
+    Map<dynamic, dynamic> result;
+    try {
+      result = await _bridge.checkUpdate();
+      // 空 map = 管道没连上(Windows),或对端没实现该消息
+      if (result.isEmpty) {
+        result = {'ok': false, 'error': '未连接到主程序'};
+      }
+    } catch (e) {
+      result = {'ok': false, 'error': '$e'};
+    }
+    if (!mounted) return;
+    setState(() {
+      _checkingUpdate = false;
+      _updateResult = result;
+    });
+  }
+
+  /// 「关于」区:当前版本 + 检查更新(结果:已是最新 / 新版本+下载页 / 失败原因)。
+  Widget _buildAboutSection() {
+    const faint = TextStyle(fontSize: 13, color: _inkFaint);
+
+    final Widget status;
+    if (_checkingUpdate) {
+      status = Row(children: [
+        const SizedBox(
+            width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+        const SizedBox(width: 8),
+        const Text('正在检查…', style: faint),
+      ]);
+    } else if (_updateResult != null) {
+      final r = _updateResult!;
+      if (r['ok'] == true && r['hasUpdate'] == true) {
+        status = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('发现新版本 ${r['latest']}',
+              style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.bold, color: _penRed)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.open_in_new, size: 15),
+            label: const Text('打开下载页'),
+            onPressed: () async {
+              final url = (r['url'] as String?) ?? '';
+              try {
+                await _bridge.openUrl(url.isEmpty ? _releasesPage : url);
+              } catch (e) {
+                debugPrint('[About] openUrl failed: $e');
+              }
+            },
+          ),
+        ]);
+      } else if (r['ok'] == true) {
+        status = Text('已是最新版本 (v${r['current']})', style: faint);
+      } else {
+        status = Text('检查失败:${r['error'] ?? '未知错误'}',
+            style: const TextStyle(fontSize: 13, color: _penRed));
+      }
+    } else {
+      status = const Text('点一下向 GitHub 查询最新正式版(需联网)',
+          style: TextStyle(fontSize: 12, color: _inkFaint));
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Text('当前版本', style: TextStyle(fontSize: 14, color: _ink)),
+        const Spacer(),
+        Text(_appVersion == null ? '—' : 'v$_appVersion',
+            style: faint.copyWith(fontSize: 14)),
+      ]),
+      const SizedBox(height: 10),
+      OutlinedButton(
+        onPressed: _checkingUpdate ? null : _checkUpdate,
+        child: const Text('检查更新'),
+      ),
+      const SizedBox(height: 10),
+      status,
+    ]);
   }
 
   Widget _buildSection(String title, Widget child) {
