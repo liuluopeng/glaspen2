@@ -323,13 +323,18 @@ mod platform {
         match stroke_id {
             Ok(Some(id)) => {
                 state::begin_pending(id, state::CanvasKind::Page);
-                // Mark the canvas as edited — even if all strokes are later
-                // cleared/undone, the canvas counts as used.
-                sqlx::query("UPDATE screens SET edited = 1 WHERE id = ?1")
-                    .bind(screen_id)
-                    .execute(pool)
-                    .await
-                    .ok();
+                // 标记"这页被编辑过"与笔画行无关, 没人需要它立刻可见 →
+                // 后台写掉。原来紧跟 INSERT 同步跑, 落笔多付一整次 SQL 往返
+                // (实测 pen_down 969µs, 其中约一半是这条 UPDATE)。
+                crate::runtime().spawn(async move {
+                    if let Some(pool) = DB.get() {
+                        sqlx::query("UPDATE screens SET edited = 1 WHERE id = ?1")
+                            .bind(screen_id)
+                            .execute(pool)
+                            .await
+                            .ok();
+                    }
+                });
                 id
             }
             _ => 0,
