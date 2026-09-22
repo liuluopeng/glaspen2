@@ -97,6 +97,13 @@ abstract class _SettingsBridge {
   Future<Map<dynamic, dynamic>> checkUpdate();
   /// 用系统默认浏览器打开 http(s) URL(「打开下载页」)
   Future<void> openUrl(String url);
+  /// 下载最新安装包:每帧 {received, total, done, error, path};
+  /// **取消对流的订阅 = 取消下载**(Rust 侧会删掉 .part)
+  Stream<Map<dynamic, dynamic>> downloadUpdate();
+  /// 解包缓存里的 DMG;{ok, message=暂存 .app 路径或失败原因}
+  Future<Map<dynamic, dynamic>> stageUpdate(String tag);
+  /// 拉起更新帮手并退出本程序(成功**不返回** —— 进程就地结束)
+  Future<Map<dynamic, dynamic>> applyUpdate();
   void dispose();
 }
 
@@ -277,6 +284,11 @@ class _FrbBridge extends _SettingsBridge {
       'hasUpdate': r.hasUpdate,
       'url': r.url,
       'error': r.error,
+      'notes': r.notes,
+      'assets': [
+        for (final a in r.assets)
+          {'name': a.name, 'url': a.url, 'size': a.size.toInt(), 'sha256': a.sha256},
+      ],
     };
   }
 
@@ -284,6 +296,34 @@ class _FrbBridge extends _SettingsBridge {
   Future<void> openUrl(String url) async {
     await _init();
     await rust.openUrl(url: url);
+  }
+
+  @override
+  Stream<Map<dynamic, dynamic>> downloadUpdate() async* {
+    await _init();
+    // async*: 监听者取消订阅时内层流一并取消 → Rust 侧 sink 推不进去
+    // → 回调返回 false → 下载中止并删除 .part。
+    yield* rust.downloadUpdate().map((p) => <dynamic, dynamic>{
+          'received': p.received.toInt(),
+          'total': p.total.toInt(),
+          'done': p.done,
+          'error': p.error,
+          'path': p.path,
+        });
+  }
+
+  @override
+  Future<Map<dynamic, dynamic>> stageUpdate(String tag) async {
+    await _init();
+    final r = await rust.stageUpdate(tag: tag);
+    return {'ok': r.ok, 'message': r.message};
+  }
+
+  @override
+  Future<Map<dynamic, dynamic>> applyUpdate() async {
+    await _init();
+    final r = await rust.applyUpdate();
+    return {'ok': r.ok, 'message': r.message};
   }
 
   @override
@@ -548,6 +588,21 @@ class _NamedPipeBridge extends _SettingsBridge {
     _writeData(jsonEncode({'type': 'openUrl', 'url': url}) + '\n');
   }
 
+  // Windows 的自动更新(P1.5:命名管道 + 安装桩静默参数)还没接;
+  // 先给出与"备份"一致的降级话术, 让 UI 走"打开下载页"这条路。
+  @override
+  Stream<Map<dynamic, dynamic>> downloadUpdate() async* {
+    yield const {'done': true, 'error': 'Windows 版暂不支持自动更新,请打开下载页手动更新'};
+  }
+
+  @override
+  Future<Map<dynamic, dynamic>> stageUpdate(String tag) async =>
+      {'ok': false, 'message': 'Windows 版暂不支持自动更新,请打开下载页手动更新'};
+
+  @override
+  Future<Map<dynamic, dynamic>> applyUpdate() async =>
+      {'ok': false, 'message': 'Windows 版暂不支持自动更新,请打开下载页手动更新'};
+
   @override
   Future<void> navigateToPage(int screenId) async {
     if (!_connected) return;
@@ -648,6 +703,10 @@ _SettingsBridge createBridge() {
 }
 
 // ── Data models ──
+
+/// 「立即更新」的状态机:idle → downloading → staging → ready → applying;
+/// 任何一步失败都进 failed(错误文案在 _updError)。
+enum _UpdPhase { idle, downloading, staging, ready, applying, failed }
 
 /// 缩略图未就位时的占位:一层极淡的纸面色,而不是"图片缺失"图标——
 /// 图片到达时只是笔迹浮现,不会有图标跳变。
@@ -849,6 +908,14 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _checkingUpdate = false;
   Map<dynamic, dynamic>? _updateResult;
 
+  // 「立即更新」状态机(检查到新版本、用户点"立即更新"并确认后才启动)
+  _UpdPhase _upd = _UpdPhase.idle;
+  int _updReceived = 0;
+  int _updTotal = 0;
+  String _updError = '';
+  String _updTag = ''; // 确认对话框里确认过的 tag,stage 用
+  StreamSubscription<Map<dynamic, dynamic>>? _updSub;
+
   // 10 colors, matching Rust COLOR_PRESETS / macOS g_color_presets
   // (红橙黄绿青蓝紫粉白黑). Index must match the overlay's preset order.
   // 对齐 rnote 实测色板:全部 S=100% 全饱和,鲜艳度优先(浅色场景配描边)
@@ -898,6 +965,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     _gridScroll.dispose();
     _tabController.dispose();
     _reloadTimer?.cancel();
+    _updSub?.cancel(); // 还在下载时销毁面板 = 取消下载
     _bridge.dispose();
     super.dispose();
   }
@@ -1548,11 +1616,226 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   /// 「关于」区:当前版本 + 检查更新(结果:已是最新 / 新版本+下载页 / 失败原因)。
+  /// 「立即更新」第一步:确认对话框(版本 + release notes + 提示会重启)。
+  Future<bool> _confirmUpdate() async {
+    final r = _updateResult!;
+    final tag = (r['latest'] as String?) ?? '';
+    final notes = (r['notes'] as String?) ?? '';
+    final res = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('更新到 $tag ?'),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  '将下载新版安装包、退出并自动重启玻璃涂鸦。\n笔迹已实时存盘,不会丢失。',
+                  style: TextStyle(fontSize: 13),
+                ),
+                if (notes.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text('更新内容:',
+                      style: TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  Text(notes,
+                      style: const TextStyle(
+                          fontSize: 12.5, color: _inkFaint, height: 1.5)),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('下载并更新')),
+        ],
+      ),
+    );
+    return res ?? false;
+  }
+
+  /// 「立即更新」:确认 → 下载(进度)→ 解包 → 等待用户点「立即重启更新」。
+  Future<void> _startUpdate() async {
+    if (_upd != _UpdPhase.idle || _updateResult == null) return;
+    if (!await _confirmUpdate() || !mounted) return;
+    final r = _updateResult!;
+    setState(() {
+      _upd = _UpdPhase.downloading;
+      _updTag = (r['latest'] as String?) ?? '';
+      _updReceived = 0;
+      _updTotal = 0;
+      _updError = '';
+    });
+    _updSub = _bridge.downloadUpdate().listen(
+      _onUpdateFrame,
+      onError: (Object e) {
+        if (!mounted) return;
+        setState(() {
+          _upd = _UpdPhase.failed;
+          _updError = '下载失败:$e';
+        });
+      },
+      onDone: () => _updSub = null,
+    );
+  }
+
+  /// 下载流的每一帧;`done` 帧决定去解包还是报错。
+  void _onUpdateFrame(Map<dynamic, dynamic> f) {
+    if (!mounted) return;
+    if (f['done'] != true) {
+      setState(() {
+        _updReceived = (f['received'] as num?)?.toInt() ?? 0;
+        _updTotal = (f['total'] as num?)?.toInt() ?? 0;
+      });
+      return;
+    }
+    _updSub?.cancel();
+    _updSub = null;
+    final err = (f['error'] as String?) ?? '';
+    if (err.isNotEmpty) {
+      setState(() {
+        _upd = _UpdPhase.failed;
+        _updError = err;
+      });
+      return;
+    }
+    _stageUpdate();
+  }
+
+  /// 下载完成 → 解包 DMG(dmg 路径 Rust 侧自己找, 不经 UI 传参)。
+  Future<void> _stageUpdate() async {
+    setState(() => _upd = _UpdPhase.staging);
+    try {
+      final s = await _bridge.stageUpdate(_updTag);
+      if (!mounted) return;
+      setState(() {
+        if (s['ok'] == true) {
+          _upd = _UpdPhase.ready;
+        } else {
+          _upd = _UpdPhase.failed;
+          _updError = (s['message'] as String?) ?? '解包失败';
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _upd = _UpdPhase.failed;
+        _updError = '解包失败:$e';
+      });
+    }
+  }
+
+  /// 「立即重启更新」:拉起帮手 → 本进程退出(正常情况下 Future 永不返回)。
+  Future<void> _applyUpdate() async {
+    setState(() => _upd = _UpdPhase.applying);
+    try {
+      final a = await _bridge.applyUpdate();
+      // 走到这里 = 退出失败(成功的路径进程已经没了)
+      if (!mounted) return;
+      setState(() {
+        _upd = _UpdPhase.failed;
+        _updError = (a['message'] as String?) ?? '退出更新失败';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _upd = _UpdPhase.failed;
+        _updError = '退出更新失败:$e';
+      });
+    }
+  }
+
+  /// 取消下载(解包后的 ready 状态不给取消 —— 文件已就绪,重启才生效)。
+  void _cancelUpdate() {
+    _updSub?.cancel();
+    _updSub = null;
+    setState(() => _upd = _UpdPhase.idle);
+  }
+
+  static String _fmtMb(int bytes) =>
+      '${(bytes / 1048576).toStringAsFixed(1)} MB';
+
+  /// 「立即更新」进行中的 UI(下载进度 / 解包中 / 待重启 / 失败)。
+  Widget _buildUpdateProgress(TextStyle faint) {
+    switch (_upd) {
+      case _UpdPhase.downloading:
+        final value = _updTotal > 0 ? _updReceived / _updTotal : null;
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          LinearProgressIndicator(value: value),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: Text(
+                _updTotal > 0
+                    ? '下载中 ${_fmtMb(_updReceived)} / ${_fmtMb(_updTotal)}'
+                    : '下载中…',
+                style: faint,
+              ),
+            ),
+            TextButton(
+                onPressed: _cancelUpdate,
+                child: const Text('取消',
+                    style: TextStyle(fontSize: 13))),
+          ]),
+        ]);
+      case _UpdPhase.staging:
+        return Row(children: [
+          const SizedBox(
+              width: 14, height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2)),
+          const SizedBox(width: 8),
+          Text('下载完成,正在解包校验…', style: faint),
+        ]);
+      case _UpdPhase.ready:
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('已下载并解包完成。重启后生效。',
+              style: TextStyle(fontSize: 13, color: _ink)),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: _applyUpdate,
+            child: const Text('立即重启更新'),
+          ),
+        ]);
+      case _UpdPhase.applying:
+        return Row(children: [
+          const SizedBox(
+              width: 14, height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2)),
+          const SizedBox(width: 8),
+          Text('正在退出并重启…', style: faint),
+        ]);
+      case _UpdPhase.failed:
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('更新失败:$_updError',
+              style: const TextStyle(fontSize: 13, color: _penRed)),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: () => setState(() => _upd = _UpdPhase.idle),
+            child: const Text('重试'),
+          ),
+        ]);
+      case _UpdPhase.idle:
+        return const SizedBox.shrink();
+    }
+  }
+
   Widget _buildAboutSection() {
     const faint = TextStyle(fontSize: 13, color: _inkFaint);
 
     final Widget status;
-    if (_checkingUpdate) {
+    if (_upd != _UpdPhase.idle) {
+      // 点过「立即更新」之后,状态区整体交给更新状态机
+      status = _buildUpdateProgress(faint);
+    } else if (_checkingUpdate) {
       status = Row(children: [
         const SizedBox(
             width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
@@ -1562,23 +1845,29 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     } else if (_updateResult != null) {
       final r = _updateResult!;
       if (r['ok'] == true && r['hasUpdate'] == true) {
+        final url = (r['url'] as String?) ?? '';
         status = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('发现新版本 ${r['latest']}',
               style: const TextStyle(
                   fontSize: 14, fontWeight: FontWeight.bold, color: _penRed)),
           const SizedBox(height: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.open_in_new, size: 15),
-            label: const Text('打开下载页'),
-            onPressed: () async {
-              final url = (r['url'] as String?) ?? '';
-              try {
-                await _bridge.openUrl(url.isEmpty ? _releasesPage : url);
-              } catch (e) {
-                debugPrint('[About] openUrl failed: $e');
-              }
-            },
-          ),
+          Wrap(spacing: 8, runSpacing: 6, children: [
+            OutlinedButton(
+              onPressed: _startUpdate,
+              child: const Text('立即更新'),
+            ),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.open_in_new, size: 15),
+              label: const Text('打开下载页'),
+              onPressed: () async {
+                try {
+                  await _bridge.openUrl(url.isEmpty ? _releasesPage : url);
+                } catch (e) {
+                  debugPrint('[About] openUrl failed: $e');
+                }
+              },
+            ),
+          ]),
         ]);
       } else if (r['ok'] == true) {
         status = Text('已是最新版本 (v${r['current']})', style: faint);

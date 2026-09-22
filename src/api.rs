@@ -443,6 +443,18 @@ pub async fn restore_latest_backup() -> BackupOutcome {
 // 检查更新
 // ---------------------------------------------------------------------------
 
+/// release 里的一个安装包(挑包下载用)。
+#[frb]
+#[derive(Debug, Clone)]
+pub struct UpdateAsset {
+    pub name: String,
+    pub url: String,
+    /// 字节数(进度条总量;GitHub 可能给 0)。
+    pub size: u64,
+    /// sha256(小写无前缀);GitHub 没给 `digest` 时为 None。
+    pub sha256: Option<String>,
+}
+
 /// 「检查更新」结果。`ok=false` 时 `error` 是给用户看的原因;
 /// `has_update=true` 时 `url` 指向最新发布的下载页。
 #[frb]
@@ -460,6 +472,31 @@ pub struct UpdateCheck {
     pub url: String,
     /// 失败原因;成功时为空。
     pub error: String,
+    /// release notes(确认对话框展示;可能为空)。
+    pub notes: String,
+    /// 安装包资产;挑不到本平台的包时 `下载并更新` 应降级为打开下载页。
+    pub assets: Vec<UpdateAsset>,
+}
+
+/// 下载进度帧(最后一帧 `done=true`;`error` 非空 = 失败)。
+#[frb]
+#[derive(Debug, Clone)]
+pub struct UpdateProgress {
+    pub received: u64,
+    pub total: u64,
+    pub done: bool,
+    pub error: String,
+    /// 成功时 = 下载完成的安装包路径。
+    pub path: String,
+}
+
+/// 解包 / 退出替换这类"一句话结果"。
+#[frb]
+#[derive(Debug, Clone)]
+pub struct UpdateOutcome {
+    pub ok: bool,
+    /// 成功时是给用户看的路径,失败时是原因。
+    pub message: String,
 }
 
 /// 当前版本号(与发布物一致,取自 Cargo.toml)。
@@ -482,6 +519,17 @@ pub async fn check_update() -> UpdateCheck {
                 url: r.url,
                 current,
                 error: String::new(),
+                notes: r.notes,
+                assets: r
+                    .assets
+                    .into_iter()
+                    .map(|a| UpdateAsset {
+                        name: a.name,
+                        url: a.url,
+                        size: a.size,
+                        sha256: a.sha256,
+                    })
+                    .collect(),
             },
             Err(error) => UpdateCheck {
                 ok: false,
@@ -490,7 +538,165 @@ pub async fn check_update() -> UpdateCheck {
                 has_update: false,
                 url: String::new(),
                 error,
+                notes: String::new(),
+                assets: Vec::new(),
             },
+        }
+    })
+}
+
+/// 下载最新安装包到缓存,**流式推进度**。
+///
+/// 重新查一次 release 并由 Rust 侧挑本平台的包(与检查结果解耦,不依赖
+/// UI 传参)。已存在且校验通过的包直接复用。取消订阅流即取消下载:
+/// 下一帧推不进去 → 回调返回 false → 删除 `.part`。
+#[frb]
+pub fn download_update(sink: StreamSink<UpdateProgress>) {
+    std::thread::spawn(move || {
+        let send = |received: u64, total: u64, done: bool, error: &str, path: &str| {
+            sink.add(UpdateProgress {
+                received,
+                total,
+                done,
+                error: error.to_string(),
+                path: path.to_string(),
+            })
+            .is_ok()
+        };
+        let result = download_to_cache(|rec, tot| send(rec, tot, false, "", ""));
+        match result {
+            Ok((path, received, total)) => {
+                let p = path.to_string_lossy().into_owned();
+                send(received, total, true, "", &p);
+            }
+            Err(e) => {
+                send(0, 0, true, &e, "");
+            }
+        }
+    });
+}
+
+/// 查最新 release → 挑包 → 下载(或复用已下载的)。返回 (路径, received, total)。
+fn download_to_cache(
+    mut on_progress: impl FnMut(u64, u64) -> bool,
+) -> Result<(std::path::PathBuf, u64, u64), String> {
+    let rel = crate::update::fetch_latest()?;
+    let asset = crate::update::pick_asset(&rel.assets)
+        .ok_or("当前平台没有对应的安装包,请打开下载页手动更新")?;
+    let dest = crate::update::update_dir().join(&asset.name);
+    if crate::update::cached_asset_is_valid(&dest, asset.sha256.as_deref()) {
+        let total = dest.metadata().map(|m| m.len()).unwrap_or(asset.size);
+        on_progress(total, total);
+        return Ok((dest, total, total));
+    }
+    crate::update::download(&asset.url, &dest, asset.sha256.as_deref(), on_progress)
+        .map_err(|e| e.to_string())?;
+    let total = dest.metadata().map(|m| m.len()).unwrap_or(asset.size);
+    Ok((dest, total, total))
+}
+
+/// 解包缓存里最新的 DMG(挂载 → ditto → 卸载 → 验签 → 剥 quarantine)。
+/// 在主程序退出前完成,失败原因能直接显示在面板上。`tag` 用于命名暂存目录。
+#[frb]
+pub async fn stage_update(tag: String) -> UpdateOutcome {
+    run_blocking(|| {
+        let dir = crate::update::update_dir();
+        let Some(dmg) = crate::update::newest_dmg(&dir) else {
+            return UpdateOutcome {
+                ok: false,
+                message: "找不到已下载的安装包,请重新下载".into(),
+            };
+        };
+        match crate::update::stage_dmg(&dmg, &tag) {
+            Ok(path) => UpdateOutcome {
+                ok: true,
+                message: path.to_string_lossy().into_owned(),
+            },
+            Err(e) => UpdateOutcome {
+                ok: false,
+                message: e,
+            },
+        }
+    })
+}
+
+/// 启动 `--updater` 帮手并退出本程序(用户点「立即重启更新」)。
+///
+/// **成功的路径不返回**:`shim::hotkey("Q")` → `[NSApp terminate:]` 会在
+/// 主线程把进程结束掉;只有每一步失败才回到这里,带着 `ok=false`。
+#[frb]
+pub async fn apply_update() -> UpdateOutcome {
+    #[cfg(not(target_os = "macos"))]
+    {
+        UpdateOutcome {
+            ok: false,
+            message: "当前平台暂不支持自动更新,请打开下载页手动更新".into(),
+        }
+    }
+    #[cfg(target_os = "macos")]
+    run_blocking(|| {
+        let fail = |m: String| UpdateOutcome {
+            ok: false,
+            message: m,
+        };
+
+        let Ok(exe) = std::env::current_exe() else {
+            return fail("定位当前程序失败".into());
+        };
+        // 当前 .app(不是裸可执行文件时退回可执行文件所在目录)
+        let target = exe
+            .ancestors()
+            .find(|a| a.join("Contents").join("Info.plist").exists())
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_else(|| {
+                exe.parent()
+                    .unwrap_or(std::path::Path::new("."))
+                    .to_path_buf()
+            });
+        let cache = crate::update::update_dir();
+        let Some(staging) = crate::update::staged_app(&cache) else {
+            return fail("找不到解包后的新版本,请重新下载".into());
+        };
+
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.args(["--updater", "--target"])
+            .arg(&target)
+            .arg("--staging")
+            .arg(&staging)
+            .arg("--pid")
+            .arg(std::process::id().to_string())
+            .arg("--cache")
+            .arg(&cache)
+            .arg("--db")
+            .arg(crate::db::db_path());
+        if let Some(dmg) = crate::update::newest_dmg(&cache) {
+            cmd.arg("--dmg").arg(dmg);
+        }
+        // 脱离会话:主程序退出后帮手不收信号、不被会话回收
+        #[cfg(target_os = "macos")]
+        unsafe {
+            use std::os::unix::process::CommandExt;
+            cmd.pre_exec(|| {
+                if libc::setsid() < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        if let Err(e) = cmd.spawn() {
+            return fail(format!("启动更新进程失败:{e}"));
+        }
+        eprintln!("[update] helper spawned, quitting…");
+
+        // 给在途的后台写(落笔 edited 标记等)一点时间落地, 再走正常退出
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        // ⌘⌃Q 的同一条路径:gl_run_on_main_sync → [NSApp terminate:nil]。
+        // terminate 结束进程, 正常情况下这行之后什么都不会执行。
+        shim::hotkey("Q");
+        // 走到这里说明 quit 没生效 —— 帮手还在等主进程, 硬退。
+        UpdateOutcome {
+            ok: true,
+            message: "已退出".into(),
         }
     })
 }

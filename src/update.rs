@@ -37,6 +37,22 @@ pub struct LatestRelease {
     pub name: String,
     /// 发布时间(RFC3339,如 `2026-09-16T12:02:48Z`)。
     pub published_at: String,
+    /// release notes(确认对话框里展示)。
+    pub notes: String,
+    /// 安装包资产(供「立即更新」挑包下载)。
+    pub assets: Vec<Asset>,
+}
+
+/// release 里的一个安装包(GitHub `assets[]` 子集)。
+#[derive(Debug, Clone, PartialEq)]
+pub struct Asset {
+    pub name: String,
+    pub url: String,
+    /// 字节数(进度条总量;GitHub 可能给 0)。
+    pub size: u64,
+    /// sha256 十六进制小写。GitHub 的 `digest` 字段(`sha256:...`)提供,
+    /// 缺失时为 `None` —— 下载仍进行,但没有校验。
+    pub sha256: Option<String>,
 }
 
 /// 当前版本:编译时取自 `Cargo.toml`,与发布物一一对应。
@@ -48,19 +64,22 @@ pub fn current_version() -> &'static str {
 // 网络
 // ---------------------------------------------------------------------------
 
-fn agent() -> ureq::Agent {
-    let config = ureq::Agent::config_builder()
-        .timeout_global(Some(TIMEOUT))
-        // 只走 https:这里不解析任何明文 URL,GitHub 也不会降级。
-        .https_only(true)
-        .build();
-    ureq::Agent::new_with_config(config)
+/// 检查端点。`GLASPEN2_UPDATE_API` 可覆盖 —— 冒烟时指到本地 JSON 服务,
+/// 就能在没有"更高版本 release"的情况下把全链路(下载/解包/替换/重启)演练
+/// 一遍(见 docs/auto-update.md)。显式覆盖时允许 http://(本机服务)。
+pub fn api_url() -> String {
+    std::env::var("GLASPEN2_UPDATE_API").unwrap_or_else(|_| RELEASES_API.to_string())
 }
 
 /// 请求 `releases/latest` 并解析。失败时 `Err` 是**给用户看的中文原因**。
 pub fn fetch_latest() -> Result<LatestRelease, String> {
-    let mut resp = match agent()
-        .get(RELEASES_API)
+    let url = api_url();
+    let config = ureq::Agent::config_builder()
+        .timeout_global(Some(TIMEOUT))
+        .https_only(url.starts_with("https://"))
+        .build();
+    let mut resp = match ureq::Agent::new_with_config(config)
+        .get(&url)
         .header("User-Agent", USER_AGENT)
         .header("Accept", "application/vnd.github+json")
         .call()
@@ -107,11 +126,33 @@ pub fn parse_release(json: &str) -> Result<LatestRelease, String> {
             .unwrap_or_default()
             .to_string()
     };
+    let assets = v
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|a| {
+                    Some(Asset {
+                        name: a.get("name")?.as_str()?.to_string(),
+                        url: a.get("browser_download_url")?.as_str()?.to_string(),
+                        size: a.get("size").and_then(|s| s.as_u64()).unwrap_or(0),
+                        sha256: a
+                            .get("digest")
+                            .and_then(|d| d.as_str())
+                            .and_then(|d| d.strip_prefix("sha256:"))
+                            .map(|s| s.to_ascii_lowercase()),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(LatestRelease {
         tag,
         url,
         name: field("name"),
         published_at: field("published_at"),
+        notes: field("body"),
+        assets,
     })
 }
 
@@ -144,6 +185,363 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
         }
     }
     false
+}
+
+// ---------------------------------------------------------------------------
+// 选包 / 缓存目录
+// ---------------------------------------------------------------------------
+
+/// 为 `os` + `arch` 挑安装包资产;挑不到返回 `None`(调用方降级为打开下载页)。
+///
+/// 资产命名在历史上并不统一(`glaspen2-0.5.0-arm64.dmg` vs
+/// `glaspen2-v0.5.0-windows-x64-setup.exe`),这里按后缀 + 关键字宽松匹配:
+///
+/// - macOS: `.dmg`、不含 windows、arch 匹配(`arm64` dmg / `x86_64` dmg,
+///   `universal` 两边都收);
+/// - Windows: `.exe`、含 `windows` 与 64 位标记。
+pub fn pick_asset_for<'a>(assets: &'a [Asset], os: &str, arch: &str) -> Option<&'a Asset> {
+    assets.iter().find(|a| {
+        let n = a.name.to_ascii_lowercase();
+        match os {
+            "macos" => {
+                n.ends_with(".dmg")
+                    && !n.contains("windows")
+                    && match arch {
+                        "arm64" => {
+                            n.contains("arm64") || n.contains("aarch64") || n.contains("universal")
+                        }
+                        "x86_64" => {
+                            n.contains("x86_64") || n.contains("amd64") || n.contains("universal")
+                        }
+                        _ => n.contains("universal"),
+                    }
+            }
+            "windows" => {
+                n.ends_with(".exe")
+                    && n.contains("windows")
+                    && (n.contains("x64") || n.contains("amd64"))
+            }
+            _ => false,
+        }
+    })
+}
+
+/// 为当前编译目标挑安装包。
+pub fn pick_asset(assets: &[Asset]) -> Option<&Asset> {
+    // consts::OS 本来就是 "macos" / "windows",直接用
+    let os = std::env::consts::OS;
+    let arch = match std::env::consts::ARCH {
+        "aarch64" => "arm64",
+        other => other, // "x86_64" 原样
+    };
+    pick_asset_for(assets, os, arch)
+}
+
+/// 更新工作目录:dmg / 暂存 .app / 握手标记 / 日志都在这里。
+///
+/// - macOS: `~/Library/Caches/glaspen2/updates`
+/// - Windows: `%LOCALAPPDATA%\glaspen2\updates`
+/// - 其它: 系统临时目录
+pub fn update_dir() -> std::path::PathBuf {
+    let base = if cfg!(target_os = "macos") {
+        std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .map(|h| h.join("Library/Caches/glaspen2"))
+    } else if cfg!(target_os = "windows") {
+        std::env::var_os("LOCALAPPDATA")
+            .map(std::path::PathBuf::from)
+            .map(|h| h.join("glaspen2"))
+    } else {
+        None
+    };
+    let dir = base.unwrap_or_else(std::env::temp_dir).join("updates");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+// ---------------------------------------------------------------------------
+// 下载
+// ---------------------------------------------------------------------------
+
+/// 下载失败的两种形态:用户主动取消不算故障。
+#[derive(Debug, PartialEq)]
+pub enum DownloadError {
+    /// 用户在面板上取消(回调返回 `false`)。
+    Cancelled,
+    /// 真故障(网络/写盘/校验),`String` 是给用户看的原因。
+    Failed(String),
+}
+
+impl std::fmt::Display for DownloadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DownloadError::Cancelled => write!(f, "已取消"),
+            DownloadError::Failed(m) => write!(f, "{m}"),
+        }
+    }
+}
+
+/// 下载用的 agent:连接/响应快超时,整体 30 分钟兜底(45MB 移动网络也够)。
+fn download_agent() -> ureq::Agent {
+    let config = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(10)))
+        .timeout_recv_response(Some(Duration::from_secs(30)))
+        .timeout_recv_body(Some(Duration::from_secs(30 * 60)))
+        .https_only(true)
+        .build();
+    ureq::Agent::new_with_config(config)
+}
+
+/// 流式下载 `url` → `dest`(先写 `.part`,**校验通过才 rename 成正式名**)。
+///
+/// `on_progress(received, total)` 约每 64KB 一次,返回 `false` 表示取消。
+pub fn download(
+    url: &str,
+    dest: &std::path::Path,
+    expect_sha256: Option<&str>,
+    on_progress: impl FnMut(u64, u64) -> bool,
+) -> Result<(), DownloadError> {
+    download_with_agent(&download_agent(), url, dest, expect_sha256, on_progress)
+}
+
+/// [`download`] 的可注入版本(单测用本地 HTTP 服务、不加 https_only)。
+fn download_with_agent(
+    agent: &ureq::Agent,
+    url: &str,
+    dest: &std::path::Path,
+    expect_sha256: Option<&str>,
+    mut on_progress: impl FnMut(u64, u64) -> bool,
+) -> Result<(), DownloadError> {
+    use sha2::Digest;
+    use std::io::{Read, Write};
+
+    if let Some(dir) = dest.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| DownloadError::Failed(format!("创建目录失败:{e}")))?;
+    }
+    let mut part_os = dest.as_os_str().to_owned();
+    part_os.push(".part");
+    let part = std::path::PathBuf::from(part_os);
+    let _ = std::fs::remove_file(&part);
+
+    let resp = agent
+        .get(url)
+        .header("User-Agent", USER_AGENT)
+        .call()
+        .map_err(|e| DownloadError::Failed(format!("下载失败:{e}")))?;
+    let total = resp
+        .headers()
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+    let mut reader = resp.into_body().into_reader();
+    let mut file = std::fs::File::create(&part)
+        .map_err(|e| DownloadError::Failed(format!("写文件失败:{e}")))?;
+
+    let mut hasher = sha2::Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    let mut received = 0u64;
+    loop {
+        let n = reader
+            .read(&mut buf)
+            .map_err(|e| DownloadError::Failed(format!("下载中断:{e}")))?;
+        if n == 0 {
+            break;
+        }
+        file.write_all(&buf[..n])
+            .map_err(|e| DownloadError::Failed(format!("写文件失败:{e}")))?;
+        <sha2::Sha256 as sha2::Digest>::update(&mut hasher, &buf[..n]);
+        received += n as u64;
+        if !on_progress(received, total) {
+            drop(file);
+            let _ = std::fs::remove_file(&part);
+            return Err(DownloadError::Cancelled);
+        }
+    }
+    file.flush()
+        .and_then(|_| file.sync_all())
+        .map_err(|e| DownloadError::Failed(format!("落盘失败:{e}")))?;
+    drop(file);
+
+    let got = hex_lower(<sha2::Sha256 as sha2::Digest>::finalize(hasher).as_slice());
+    match expect_sha256 {
+        Some(want) if !want.is_empty() && want != got => {
+            let _ = std::fs::remove_file(&part);
+            return Err(DownloadError::Failed(format!(
+                "校验失败(期望 {want},实际 {got}),已删除下载文件"
+            )));
+        }
+        None => eprintln!("[update] 资产没有 sha256,跳过校验:{url}"),
+        _ => {}
+    }
+    if total > 0 && received != total {
+        let _ = std::fs::remove_file(&part);
+        return Err(DownloadError::Failed(format!(
+            "下载不完整({received}/{total} 字节)"
+        )));
+    }
+    std::fs::rename(&part, dest).map_err(|e| DownloadError::Failed(format!("保存失败:{e}")))?;
+    on_progress(received, total);
+    Ok(())
+}
+
+/// 流式计算文件 sha256(十六进制小写)。
+pub fn file_sha256(path: &std::path::Path) -> std::io::Result<String> {
+    use sha2::Digest;
+    use std::io::Read;
+    let mut f = std::fs::File::open(path)?;
+    let mut hasher = sha2::Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = f.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        <sha2::Sha256 as sha2::Digest>::update(&mut hasher, &buf[..n]);
+    }
+    Ok(hex_lower(
+        <sha2::Sha256 as sha2::Digest>::finalize(hasher).as_slice(),
+    ))
+}
+
+/// 缓存里已有且校验通过的安装包可直接复用(重装/重复点更新不重下45MB)。
+pub fn cached_asset_is_valid(dest: &std::path::Path, sha256: Option<&str>) -> bool {
+    if !dest.exists() {
+        return false;
+    }
+    match sha256 {
+        Some(want) if !want.is_empty() => file_sha256(dest).is_ok_and(|got| got == want),
+        _ => true,
+    }
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
+}
+
+// ---------------------------------------------------------------------------
+// macOS: DMG 解包暂存
+// ---------------------------------------------------------------------------
+
+/// 缓存目录里最新的安装包(`.dmg`;按修改时间取最新)。
+pub fn newest_dmg(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "dmg"))
+        .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok())
+}
+
+/// 缓存目录里已解包的暂存 `.app`([`stage_dmg`] 的产物,`Glaspen2-*.app`)。
+pub fn staged_app(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_dir()
+                && p.extension().is_some_and(|x| x == "app")
+                && p.file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with("Glaspen2-"))
+        })
+        .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok())
+}
+
+/// 挂载 dmg → 把 `.app` ditto 到 [`update_dir`] → 卸载 → 验签 → 剥 quarantine。
+///
+/// 在**主程序退出之前**调用(错误能直接显示在面板上);返回暂存的 `.app` 路径,
+/// 后续换 bundle 由 `--updater` 帮手完成。
+#[cfg(target_os = "macos")]
+pub fn stage_dmg(dmg: &std::path::Path, tag: &str) -> Result<std::path::PathBuf, String> {
+    use std::process::Command;
+
+    if !dmg.exists() {
+        return Err("安装包不存在,请重新下载".into());
+    }
+    let dir = update_dir();
+    let mnt = dir.join(format!("mnt-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&mnt);
+    std::fs::create_dir_all(&mnt).map_err(|e| format!("创建挂载点失败:{e}"))?;
+
+    let attached = Command::new("/usr/bin/hdiutil")
+        .args(["attach", "-nobrowse", "-readonly", "-mountpoint"])
+        .arg(&mnt)
+        .arg(dmg)
+        .status()
+        .map_err(|e| format!("调用 hdiutil 失败:{e}"))?;
+    if !attached.success() {
+        let _ = std::fs::remove_dir_all(&mnt);
+        return Err("挂载 DMG 失败(文件可能损坏)".into());
+    }
+
+    // 挂载期间的任何失败都必须先 detach 再返回
+    let staged = stage_from_mount(&mnt, tag);
+    let _ = Command::new("/usr/bin/hdiutil")
+        .args(["detach", "-force"])
+        .arg(&mnt)
+        .status();
+    let _ = std::fs::remove_dir_all(&mnt);
+    staged
+}
+
+#[cfg(target_os = "macos")]
+fn stage_from_mount(mnt: &std::path::Path, tag: &str) -> Result<std::path::PathBuf, String> {
+    use std::process::Command;
+
+    let src = find_app_in(mnt)?;
+    let ver = tag.trim_start_matches(['v', 'V']);
+    let staged = update_dir().join(format!("Glaspen2-{ver}.app"));
+    let _ = std::fs::remove_dir_all(&staged);
+    let st = Command::new("/usr/bin/ditto")
+        .arg(&src)
+        .arg(&staged)
+        .status()
+        .map_err(|e| format!("调用 ditto 失败:{e}"))?;
+    if !st.success() {
+        let _ = std::fs::remove_dir_all(&staged);
+        return Err("从 DMG 拷贝应用失败".into());
+    }
+    // 自签未公证:自己下载的包不带 quarantine,但 ditto 从挂载卷拷贝可能带上
+    let _ = Command::new("/usr/bin/xattr")
+        .args(["-dr", "com.apple.quarantine"])
+        .arg(&staged)
+        .status();
+    // 拷出来的包必须签名完好 —— 半截拷贝在这里就暴露,而不是替换之后
+    let verify = Command::new("/usr/bin/codesign")
+        .args(["--verify", "--deep", "--strict"])
+        .arg(&staged)
+        .status()
+        .map_err(|e| format!("调用 codesign 失败:{e}"))?;
+    if !verify.success() {
+        let _ = std::fs::remove_dir_all(&staged);
+        return Err("解包后的应用签名校验失败,已放弃".into());
+    }
+    Ok(staged)
+}
+
+/// 在挂载目录里找唯一的 `.app`。
+#[cfg(target_os = "macos")]
+fn find_app_in(dir: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("读取 DMG 内容失败:{e}"))?;
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.extension().is_some_and(|x| x == "app") {
+            return Ok(p);
+        }
+    }
+    Err("DMG 里没有找到 .app".into())
+}
+
+/// 非 macOS:FRB 接口仍然存在,但没有可执行的实现。
+#[cfg(not(target_os = "macos"))]
+pub fn stage_dmg(_dmg: &std::path::Path, _tag: &str) -> Result<std::path::PathBuf, String> {
+    Err("当前平台暂不支持自动解包,请打开下载页手动更新".into())
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +615,196 @@ mod tests {
         assert!(!is_newer("v0.5.1", "0.5.2"));
         assert!(!is_newer("v0.5", "0.5.0"));
         assert!(!is_newer("", "0.5.1"));
+    }
+
+    // ── 资产 ──
+
+    fn assets_fixture() -> Vec<Asset> {
+        vec![
+            Asset {
+                name: "glaspen2-0.6.0-arm64.dmg".into(),
+                url: "https://example.com/a.dmg".into(),
+                size: 100,
+                sha256: Some("aa".into()),
+            },
+            Asset {
+                name: "glaspen2-0.6.0-x86_64.dmg".into(),
+                url: "https://example.com/b.dmg".into(),
+                size: 200,
+                sha256: None,
+            },
+            Asset {
+                name: "glaspen2-v0.6.0-windows-x64-setup.exe".into(),
+                url: "https://example.com/c.exe".into(),
+                size: 300,
+                sha256: Some("bb".into()),
+            },
+        ]
+    }
+
+    #[test]
+    fn test_parse_release_reads_assets_notes_and_digest() {
+        // 注意: body 以 `"##` 开头, 会撞上 r#"…"# 的终止符, 必须用双 #。
+        let json = r###"{
+            "tag_name": "v0.6.0",
+            "html_url": "https://github.com/liuluopeng/glaspen2/releases/tag/v0.6.0",
+            "body": "## 新增\n- 检查更新",
+            "assets": [
+                {"name": "glaspen2-0.6.0-arm64.dmg",
+                 "browser_download_url": "https://github.com/x/a.dmg",
+                 "size": 44886733,
+                 "digest": "sha256:D3DDBAF4154322A27C714FC7A80C49F196D26C5AE18BACA3C2EBD95E75C440F6"},
+                {"name": "no-digest.exe",
+                 "browser_download_url": "https://github.com/x/b.exe",
+                 "size": 7}
+            ]
+        }"###;
+        let r = parse_release(json).unwrap();
+        assert_eq!(r.notes, "## 新增\n- 检查更新");
+        assert_eq!(r.assets.len(), 2);
+        assert_eq!(r.assets[0].name, "glaspen2-0.6.0-arm64.dmg");
+        assert_eq!(r.assets[0].size, 44886733);
+        // digest 统一成小写无前缀
+        assert_eq!(
+            r.assets[0].sha256.as_deref(),
+            Some("d3ddbaf4154322a27c714fc7a80c49f196d26c5ae18baca3c2ebd95e75c440f6")
+        );
+        assert_eq!(r.assets[1].sha256, None);
+    }
+
+    #[test]
+    fn test_pick_asset_matrix() {
+        let fx = assets_fixture();
+        assert_eq!(
+            pick_asset_for(&fx, "macos", "arm64").map(|a| a.name.as_str()),
+            Some("glaspen2-0.6.0-arm64.dmg")
+        );
+        assert_eq!(
+            pick_asset_for(&fx, "macos", "x86_64").map(|a| a.name.as_str()),
+            Some("glaspen2-0.6.0-x86_64.dmg")
+        );
+        assert_eq!(
+            pick_asset_for(&fx, "windows", "x86_64").map(|a| a.name.as_str()),
+            Some("glaspen2-v0.6.0-windows-x64-setup.exe")
+        );
+        // 该平台/架构没有资产 → 降级打开下载页
+        assert!(pick_asset_for(&[], "macos", "arm64").is_none());
+        assert!(pick_asset_for(&fx, "linux", "x86_64").is_none());
+        let only_arm = fx[..1].to_vec();
+        assert!(pick_asset_for(&only_arm, "macos", "x86_64").is_none());
+        assert!(pick_asset_for(&only_arm, "windows", "x86_64").is_none());
+        // universal 两边都收
+        let uni = &[Asset {
+            name: "glaspen2-0.6.0-universal2.dmg".into(),
+            url: "u".into(),
+            size: 1,
+            sha256: None,
+        }];
+        assert!(pick_asset_for(uni, "macos", "arm64").is_some());
+        assert!(pick_asset_for(uni, "macos", "x86_64").is_some());
+    }
+
+    // ── 下载(本地一次性 HTTP 服务, 不碰外网) ──
+
+    /// 起一个只服务一次请求的 HTTP/1.1 服务器, 返回下载 URL。
+    fn serve_once(body: Vec<u8>) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut req = [0u8; 4096];
+            // 读到请求头结束
+            loop {
+                let n = sock.read(&mut req).unwrap_or(0);
+                if n == 0 || req[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = sock.write_all(head.as_bytes());
+            let _ = sock.write_all(&body);
+        });
+        (format!("http://{addr}/glaspen2-test.bin"), handle)
+    }
+
+    fn sha256_hex(bytes: &[u8]) -> String {
+        use sha2::Digest;
+        let mut h = sha2::Sha256::new();
+        h.update(bytes);
+        hex_lower(&h.finalize())
+    }
+
+    /// 每个测试一个独立目录(cargo test 并行跑, 只按 pid 化分会互相踩)。
+    fn dl_dir(case: &str) -> std::path::PathBuf {
+        let d =
+            std::env::temp_dir().join(format!("glaspen2_dltest_{}_{}", std::process::id(), case));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn test_download_writes_file_verifies_sha_and_reports_progress() {
+        let body = vec![7u8; 300 * 1024]; // > 一次 64KB 读, 至少触发 4 次进度
+        let want = sha256_hex(&body);
+        let (url, srv) = serve_once(body.clone());
+        let dir = dl_dir("ok");
+        let dest = dir.join("pkg.dmg");
+
+        let agent = ureq::Agent::new_with_config(ureq::Agent::config_builder().build());
+        let mut calls: Vec<(u64, u64)> = Vec::new();
+        let r = download_with_agent(&agent, &url, &dest, Some(&want), |rec, total| {
+            calls.push((rec, total));
+            true
+        });
+        srv.join().unwrap();
+        assert!(r.is_ok(), "{r:?}");
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+        assert!(!dir.join("pkg.dmg.part").exists(), ".part 应该已经转正");
+        assert!(calls.len() >= 4, "进度回调次数: {}", calls.len());
+        assert_eq!(calls.last().unwrap().0, body.len() as u64);
+        assert_eq!(calls.last().unwrap().1, body.len() as u64);
+        assert!(cached_asset_is_valid(&dest, Some(&want)));
+        assert!(!cached_asset_is_valid(&dest, Some("deadbeef")));
+    }
+
+    #[test]
+    fn test_download_rejects_bad_sha_and_keeps_nothing() {
+        let body = vec![1u8; 1024];
+        let (url, srv) = serve_once(body);
+        let dir = dl_dir("badsha");
+        let dest = dir.join("pkg.dmg");
+        let agent = ureq::Agent::new_with_config(ureq::Agent::config_builder().build());
+        let r = download_with_agent(&agent, &url, &dest, Some("00deadbeef"), |_, _| true);
+        srv.join().unwrap();
+        assert!(matches!(r, Err(DownloadError::Failed(_))), "{r:?}");
+        assert!(!dest.exists(), "校验失败不能留下正式文件");
+        assert!(!dir.join("pkg.dmg.part").exists(), ".part 必须删掉");
+    }
+
+    #[test]
+    fn test_download_cancel_removes_partial_file() {
+        let body = vec![9u8; 512 * 1024];
+        let (url, srv) = serve_once(body);
+        let dir = dl_dir("cancel");
+        let dest = dir.join("pkg.dmg");
+        let agent = ureq::Agent::new_with_config(ureq::Agent::config_builder().build());
+        let r = download_with_agent(&agent, &url, &dest, None, |_, _| false); // 第一次进度就取消
+        srv.join().unwrap();
+        assert_eq!(r, Err(DownloadError::Cancelled));
+        assert!(!dest.exists());
+        assert!(!dir.join("pkg.dmg.part").exists());
+    }
+
+    #[test]
+    fn test_update_dir_exists() {
+        let d = update_dir();
+        assert!(d.is_dir(), "{d:?} 应该已创建");
+        assert!(d.to_string_lossy().contains("updates"));
     }
 
     #[test]

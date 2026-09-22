@@ -55,7 +55,7 @@ Switch from the tabs at the top of the settings panel, or the "Infinite canvas" 
 
 - **Pressure monitor / rainbow indicator / launch at login.**
 
-- **Update check** the About section of the settings panel shows the current version, queries the latest release on GitHub in one click, and opens the download page when a newer version exists.
+- **Update check / auto-update** the About section of the settings panel queries the latest release on GitHub in one click; on macOS "Update now" downloads, verifies, quits and replaces the running app — with automatic rollback if the new version fails to start.
 
 - **Bezier smoothing** via ink-stroke-modeler removes hand tremor and supports pressure width.
 

@@ -38,6 +38,7 @@ pub mod modeler;
 pub mod pdf;
 pub mod state;
 pub mod update;
+pub mod updater;
 
 // ---------------------------------------------------------------------------
 // Core types

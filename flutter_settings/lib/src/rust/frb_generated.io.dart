@@ -25,6 +25,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RustStreamSink<Settings> dco_decode_StreamSink_settings_Sse(dynamic raw);
 
   @protected
+  RustStreamSink<UpdateProgress> dco_decode_StreamSink_update_progress_Sse(
+    dynamic raw,
+  );
+
+  @protected
   String dco_decode_String(dynamic raw);
 
   @protected
@@ -73,6 +78,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  List<UpdateAsset> dco_decode_list_update_asset(dynamic raw);
+
+  @protected
+  String? dco_decode_opt_String(dynamic raw);
+
+  @protected
   CanvasPayload? dco_decode_opt_box_autoadd_canvas_payload(dynamic raw);
 
   @protected
@@ -97,13 +108,27 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void dco_decode_unit(dynamic raw);
 
   @protected
+  UpdateAsset dco_decode_update_asset(dynamic raw);
+
+  @protected
   UpdateCheck dco_decode_update_check(dynamic raw);
+
+  @protected
+  UpdateOutcome dco_decode_update_outcome(dynamic raw);
+
+  @protected
+  UpdateProgress dco_decode_update_progress(dynamic raw);
 
   @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
   RustStreamSink<Settings> sse_decode_StreamSink_settings_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  RustStreamSink<UpdateProgress> sse_decode_StreamSink_update_progress_Sse(
     SseDeserializer deserializer,
   );
 
@@ -158,6 +183,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
+  List<UpdateAsset> sse_decode_list_update_asset(SseDeserializer deserializer);
+
+  @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
   CanvasPayload? sse_decode_opt_box_autoadd_canvas_payload(
     SseDeserializer deserializer,
   );
@@ -184,7 +215,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
+  UpdateAsset sse_decode_update_asset(SseDeserializer deserializer);
+
+  @protected
   UpdateCheck sse_decode_update_check(SseDeserializer deserializer);
+
+  @protected
+  UpdateOutcome sse_decode_update_outcome(SseDeserializer deserializer);
+
+  @protected
+  UpdateProgress sse_decode_update_progress(SseDeserializer deserializer);
 
   @protected
   void sse_encode_AnyhowException(
@@ -195,6 +235,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_StreamSink_settings_Sse(
     RustStreamSink<Settings> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_update_progress_Sse(
+    RustStreamSink<UpdateProgress> self,
     SseSerializer serializer,
   );
 
@@ -265,6 +311,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_update_asset(
+    List<UpdateAsset> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
   void sse_encode_opt_box_autoadd_canvas_payload(
     CanvasPayload? self,
     SseSerializer serializer,
@@ -295,7 +350,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_unit(void self, SseSerializer serializer);
 
   @protected
+  void sse_encode_update_asset(UpdateAsset self, SseSerializer serializer);
+
+  @protected
   void sse_encode_update_check(UpdateCheck self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_update_outcome(UpdateOutcome self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_update_progress(
+    UpdateProgress self,
+    SseSerializer serializer,
+  );
 }
 
 // Section: wire_class

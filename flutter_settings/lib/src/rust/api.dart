@@ -6,8 +6,8 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `current_settings`, `decode_thumb_blob`, `from_json`, `open_url_checked`, `run_blocking`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These functions are ignored because they are not marked as `pub`: `current_settings`, `decode_thumb_blob`, `download_to_cache`, `from_json`, `open_url_checked`, `run_blocking`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `glaspen2_notify_settings_changed`
 
 /// 当前设置。
@@ -74,6 +74,26 @@ Future<String> appVersion() => RustLib.instance.api.crateApiAppVersion();
 /// 检查 GitHub Releases 上的最新正式版(手动触发;阻塞网络放在独立线程,
 /// 见 [`run_blocking`])。
 Future<UpdateCheck> checkUpdate() => RustLib.instance.api.crateApiCheckUpdate();
+
+/// 下载最新安装包到缓存,**流式推进度**。
+///
+/// 重新查一次 release 并由 Rust 侧挑本平台的包(与检查结果解耦,不依赖
+/// UI 传参)。已存在且校验通过的包直接复用。取消订阅流即取消下载:
+/// 下一帧推不进去 → 回调返回 false → 删除 `.part`。
+Stream<UpdateProgress> downloadUpdate() =>
+    RustLib.instance.api.crateApiDownloadUpdate();
+
+/// 解包缓存里最新的 DMG(挂载 → ditto → 卸载 → 验签 → 剥 quarantine)。
+/// 在主程序退出前完成,失败原因能直接显示在面板上。`tag` 用于命名暂存目录。
+Future<UpdateOutcome> stageUpdate({required String tag}) =>
+    RustLib.instance.api.crateApiStageUpdate(tag: tag);
+
+/// 启动 `--updater` 帮手并退出本程序(用户点「立即重启更新」)。
+///
+/// **成功的路径不返回**:`shim::hotkey("Q")` → `[NSApp terminate:]` 会在
+/// 主线程把进程结束掉;只有每一步失败才回到这里,带着 `ok=false`。
+Future<UpdateOutcome> applyUpdate() =>
+    RustLib.instance.api.crateApiApplyUpdate();
 
 /// 用系统默认浏览器打开一个 http(s) URL(「打开下载页」按钮)。
 Future<void> openUrl({required String url}) =>
@@ -295,6 +315,39 @@ class Settings {
           gifEndMode == other.gifEndMode;
 }
 
+/// release 里的一个安装包(挑包下载用)。
+class UpdateAsset {
+  final String name;
+  final String url;
+
+  /// 字节数(进度条总量;GitHub 可能给 0)。
+  final BigInt size;
+
+  /// sha256(小写无前缀);GitHub 没给 `digest` 时为 None。
+  final String? sha256;
+
+  const UpdateAsset({
+    required this.name,
+    required this.url,
+    required this.size,
+    this.sha256,
+  });
+
+  @override
+  int get hashCode =>
+      name.hashCode ^ url.hashCode ^ size.hashCode ^ sha256.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UpdateAsset &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          url == other.url &&
+          size == other.size &&
+          sha256 == other.sha256;
+}
+
 /// 「检查更新」结果。`ok=false` 时 `error` 是给用户看的原因;
 /// `has_update=true` 时 `url` 指向最新发布的下载页。
 class UpdateCheck {
@@ -316,6 +369,12 @@ class UpdateCheck {
   /// 失败原因;成功时为空。
   final String error;
 
+  /// release notes(确认对话框展示;可能为空)。
+  final String notes;
+
+  /// 安装包资产;挑不到本平台的包时 `下载并更新` 应降级为打开下载页。
+  final List<UpdateAsset> assets;
+
   const UpdateCheck({
     required this.ok,
     required this.current,
@@ -323,6 +382,8 @@ class UpdateCheck {
     required this.hasUpdate,
     required this.url,
     required this.error,
+    required this.notes,
+    required this.assets,
   });
 
   @override
@@ -332,7 +393,9 @@ class UpdateCheck {
       latest.hashCode ^
       hasUpdate.hashCode ^
       url.hashCode ^
-      error.hashCode;
+      error.hashCode ^
+      notes.hashCode ^
+      assets.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -344,5 +407,66 @@ class UpdateCheck {
           latest == other.latest &&
           hasUpdate == other.hasUpdate &&
           url == other.url &&
-          error == other.error;
+          error == other.error &&
+          notes == other.notes &&
+          assets == other.assets;
+}
+
+/// 解包 / 退出替换这类"一句话结果"。
+class UpdateOutcome {
+  final bool ok;
+
+  /// 成功时是给用户看的路径,失败时是原因。
+  final String message;
+
+  const UpdateOutcome({required this.ok, required this.message});
+
+  @override
+  int get hashCode => ok.hashCode ^ message.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UpdateOutcome &&
+          runtimeType == other.runtimeType &&
+          ok == other.ok &&
+          message == other.message;
+}
+
+/// 下载进度帧(最后一帧 `done=true`;`error` 非空 = 失败)。
+class UpdateProgress {
+  final BigInt received;
+  final BigInt total;
+  final bool done;
+  final String error;
+
+  /// 成功时 = 下载完成的安装包路径。
+  final String path;
+
+  const UpdateProgress({
+    required this.received,
+    required this.total,
+    required this.done,
+    required this.error,
+    required this.path,
+  });
+
+  @override
+  int get hashCode =>
+      received.hashCode ^
+      total.hashCode ^
+      done.hashCode ^
+      error.hashCode ^
+      path.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UpdateProgress &&
+          runtimeType == other.runtimeType &&
+          received == other.received &&
+          total == other.total &&
+          done == other.done &&
+          error == other.error &&
+          path == other.path;
 }
