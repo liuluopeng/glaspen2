@@ -140,6 +140,12 @@ static void page_flip_finish(BOOL forward);
 static void event_tap_install(BOOL include_scroll);
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                      CGEventRef event, void *refcon);
+// 虚拟笔合成事件的标记。这类事件投在 HID 事件口上, 一旦放行就会被系统当
+// 鼠标用(悬停移动光标、点击落到前台应用) —— 处理完必须一律吞掉。
+#define kVirtualPenUserData 0x56504E31LL
+static inline BOOL virtual_pen_is_event(CGEventRef event) {
+    return CGEventGetIntegerValueField(event, kCGEventSourceUserData) == kVirtualPenUserData;
+}
 static void draw_minimap(CGContextRef ctx, NSRect bounds);
 static void page_scroll_apply(void);
 static void canvas_reset_lens(void);
@@ -1871,10 +1877,14 @@ static void rebuild_surface_from_strokes(void) {
         }
         double gs = g_grid_size;
 
-        long kx0 = (long)floor(pan_x / gs) - 1;
-        long kx1 = (long)floor((pan_x + bounds.size.width / z) / gs) + 1;
-        long ky0 = (long)floor(pan_y / gs) - 1;
-        long ky1 = (long)floor((pan_y + bounds.size.height / z) / gs) + 1;
+        // 只算与本次重绘区(clipRect)相交的线: 笔迹一段的脏区只有十几像素,
+        // 省掉整屏遍历。clipRect 是全屏时退化为原来的算法。
+        double vx0 = NSMinX(clipRect), vx1 = NSMaxX(clipRect);
+        double vy0 = NSMinY(clipRect), vy1 = NSMaxY(clipRect);
+        long kx0 = (long)floor((pan_x + vx0 / z) / gs) - 1;
+        long kx1 = (long)floor((pan_x + vx1 / z) / gs) + 1;
+        long ky0 = (long)floor((pan_y + (bounds.size.height - vy1) / z) / gs) - 1;
+        long ky1 = (long)floor((pan_y + (bounds.size.height - vy0) / z) / gs) + 1;
 
         // 细网格:每 gs 一格,统一淡细线(不再每 4 格加粗)。
         CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0.5 alpha:0.15] CGColor]);
@@ -1897,15 +1907,15 @@ static void rebuild_surface_from_strokes(void) {
         double bh = (g_screen_h > 0) ? (double)g_screen_h : gs * 4.0;
         CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0.5 alpha:0.55] CGColor]);
         CGContextSetLineWidth(ctx, 1.0);
-        long jx0 = (long)floor(pan_x / bw) - 1;
-        long jx1 = (long)floor((pan_x + bounds.size.width / z) / bw) + 1;
+        long jx0 = (long)floor((pan_x + vx0 / z) / bw) - 1;
+        long jx1 = (long)floor((pan_x + vx1 / z) / bw) + 1;
         for (long k = jx0; k <= jx1; k++) {
             CGFloat gx = (k * bw - pan_x) * z;
             CGContextMoveToPoint(ctx, gx, 0);
             CGContextAddLineToPoint(ctx, gx, bounds.size.height);
         }
-        long jy0 = (long)floor(pan_y / bh) - 1;
-        long jy1 = (long)floor((pan_y + bounds.size.height / z) / bh) + 1;
+        long jy0 = (long)floor((pan_y + (bounds.size.height - vy1) / z) / bh) - 1;
+        long jy1 = (long)floor((pan_y + (bounds.size.height - vy0) / z) / bh) + 1;
         for (long k = jy0; k <= jy1; k++) {
             CGFloat gy = bounds.size.height - ((k * bh - pan_y) * z);
             CGContextMoveToPoint(ctx, 0, gy);
@@ -1970,8 +1980,10 @@ static void rebuild_surface_from_strokes(void) {
         // image is the cached surface image — NOT released here.
     }
 
-    // 页面缩略图条(minimap,翻页模式)
-    if (g_minimap_enabled && !g_infinite_canvas) {
+    // 页面缩略图条(minimap,翻页模式)。条子贴右缘: 重绘区离得远就整段跳过
+    // (阈值 96pt 远宽于条子, 宁可多画不可漏画)。
+    if (g_minimap_enabled && !g_infinite_canvas &&
+        NSMaxX(rect) >= [self bounds].size.width - 96.0) {
         draw_minimap(ctx, [self bounds]);
     }
 
@@ -2714,8 +2726,8 @@ static void event_tap_reinstall(void) {
     event_tap_install(g_infinite_canvas);
 }
 
-static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
-                                      CGEventRef event, void *refcon) {
+static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy, CGEventType type,
+                                            CGEventRef event, void *refcon) {
     if (g_perf_log && !g_perf_file) perf_log_begin();
 
     uint64_t t0 = mach_absolute_time();
@@ -3119,6 +3131,15 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
     return event;
 }
 
+/// 合成事件(虚拟笔)处理完一律吞掉: 落笔/拖动本来就是 return NULL, 但**悬停
+/// 走的是放行路径** —— 不拦住的话虚拟笔的 hover 流会真的移动用户光标。
+/// 测试工具绝不能抢用户的鼠标。
+static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
+                                     CGEventRef event, void *refcon) {
+    CGEventRef out = event_tap_callback_inner(proxy, type, event, refcon);
+    return virtual_pen_is_event(event) ? NULL : out;
+}
+
 // Call this at app exit to dump stats
 static void perf_log_summary(void) {
     if (!g_perf_file) return;
@@ -3144,6 +3165,7 @@ static void virtual_pen_post(CGEventType type, double x, double y, double pressu
     if (!ev) return;
     // NSEvent.subtype == 1(NSTabletPointEventSubtype) → 被判定为笔事件
     CGEventSetIntegerValueField(ev, kCGMouseEventSubtype, 1);
+    CGEventSetIntegerValueField(ev, kCGEventSourceUserData, kVirtualPenUserData);
     CGEventSetIntegerValueField(ev, kCGTabletEventPointPressure,
                                 (int64_t)(pressure * 65535.0));
     CGEventPost(kCGHIDEventTap, ev);

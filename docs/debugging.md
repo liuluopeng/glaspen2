@@ -196,17 +196,22 @@ GLASPEN2_VIRTUAL_PEN=1 GLASPEN2_PERF_LOG=1 GLASPEN2_DB_PATH=/tmp/x.db cargo run
 
 | 项 | 成本 | 备注 |
 | --- | --- | --- |
-| `pen_move` | **114 µs/事件** | 模型器仅 1.4µs(debug)/0.15µs(release), 其余是 NSEvent 构造 + cairo 一段 + setNeedsDisplay |
-| `pen_down` | **969 µs/笔** | 落笔时的**阻塞 DB INSERT**(`db::begin_stroke` 的 `block_on`) |
-| `pen_hover`(+tick) | 23 µs/事件 | |
-| `drawrect` | 133 µs/帧(网格+minimap) / 45 µs(裸) | 目前**每个事件一帧**(≈212Hz), 不是 vsync 合并 |
-| 合计 | ≈ 155 µs/事件 | 200Hz 事件流 ≈ **4% 单核** |
+| `pen_move` | **114-128 µs/事件** | 模型器仅 1.4µs(debug)/0.15µs(release), 其余是 NSEvent 构造 + cairo 一段 + setNeedsDisplay |
+| `pen_down` | ~1 ms/笔 | 落笔的 `db::begin_stroke`(INSERT+UPDATE 两段); UPDATE 已改后台写 |
+| `pen_hover`(+tick) | 20-40 µs/事件 | |
+| `drawrect` | 133→**78 µs/帧**(网格+minimap) / 45 µs(裸) | 网格+minimap 改为按脏区裁剪后 −41% |
+| 帧率 | 0.35 帧/事件(≈86Hz) | 显示**本来就被 vsync 合并**, 不是每事件一帧 |
+| 合计 | ≈ 120 µs/事件 | 200Hz 事件流 ≈ **2.4% 单核** |
 
-已排除: 模型器(µs 级)、全屏拷贝(小 rect, dirty-rect 工作正常)、minimap
-(被 clip, 只体现在那 80µs/帧里)。
+已排除: 模型器(µs 级)、全屏拷贝(rect 实测只有十几像素, dirty-rect 正常)、
+"每事件一帧"(帧数 0.35/事件, 显示本来就合并)。
 
-待优化候选: ① pen_down 的阻塞 INSERT 挪后台(每笔一次的落笔顿); ② drawRect
-合并到 vsync(现在每事件一帧); ③ 网格/minimap 缓存(80µs/帧里占大头)。
+已做: 网格线范围限定到脏区、minimap 与脏区不相交时整段跳过(帧成本 −41%)、
+落笔的 edited 标记改后台写(移出落笔关键路径)。
+
+**虚拟笔的合成事件一律在事件口吞掉**(打 `kCGEventSourceUserData` 标记):
+之前悬停流走放行路径, 会真的移动用户的光标 —— 测试工具绝不抢鼠标;
+且每次测量都应"同一条命令内 测完即杀进程"。
 
 ---
 
