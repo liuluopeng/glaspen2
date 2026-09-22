@@ -2977,6 +2977,79 @@ mod tests {
         }
     }
 
+    /// 虚拟笔迹基准:测"每次拖动事件"在 Rust 侧的真实成本 —— 复刻
+    /// `glaspen2_modeler_begin/move/end/commit_to_strokes` 的调用序列
+    /// (模型器预测 + 逐点缓冲 + pen-up 的 decimate/提交)。
+    ///
+    /// 这是涂鸦热路径里 **Rust 的那一半**;ObjC 绘制 + CA 上屏那一半要靠
+    /// 虚拟 CGEvent 注入测(见 docs/debugging.md 的性能章节)。
+    /// 只测每事件成本, 不含 DB(begin 的那一行 INSERT 是每笔一次, 不在热路径)。
+    ///
+    /// debug 与 release 各跑一次对比 —— debug 的模型器数学慢好几倍,
+    /// 别用 debug 数字下结论:
+    ///   cargo test bench_virtual_stroke -- --ignored --nocapture
+    ///   cargo test --release bench_virtual_stroke -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn bench_virtual_stroke_per_event() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let n_events = 2000usize; // 200Hz × 10 秒
+        let dt = 1.0 / 200.0;
+        // 手写弧线:横向推进 + 纵向正弦起伏 + 压感脉动
+        let curve = |t: f64| -> (f64, f64, f64) {
+            let x = 400.0 + t * 300.0;
+            let y = 600.0 + (t * 4.0).sin() * 120.0;
+            let p = 0.5 + 0.4 * (t * 6.0).sin().abs();
+            (x, y, p)
+        };
+
+        for iter in 0..3 {
+            STROKES.lock().unwrap().clear();
+            let (x0, y0, p0) = curve(0.0);
+
+            // begin 的等价部分(不含 DB 的那一行 INSERT)
+            let t_begin = std::time::Instant::now();
+            crate::modeler::begin_stroke(x0, y0, p0, 0.0, 1.0);
+            crate::state::buffer_point(x0, y0, crate::pressure_to_width(p0, 1.0), 0.0);
+            let begin_cost = t_begin.elapsed();
+
+            let t_in = std::time::Instant::now();
+            for i in 1..=n_events {
+                let t = i as f64 * dt;
+                let (x, y, p) = curve(t);
+                glaspen2_modeler_move(x, y, p, t, 1.0);
+            }
+            let move_cost = t_in.elapsed();
+
+            // pen-up:模型器收敛 + 提交到笔迹(含 decimate)
+            STROKES.lock().unwrap().push(Stroke {
+                id: 0,
+                r: 1.0,
+                g: 0.0,
+                b: 0.0,
+                points: Vec::new(),
+            });
+            let t_up = std::time::Instant::now();
+            let (xe, ye, pe) = curve(n_events as f64 * dt);
+            glaspen2_modeler_end(xe, ye, pe, n_events as f64 * dt, 1.0);
+            glaspen2_modeler_commit_to_strokes(1.0, 0.0, 0.0);
+            let up_cost = t_up.elapsed();
+
+            println!(
+                "iter {}: begin={:?}  {} 个 move = {:?} ({:.1} µs/事件)  pen-up 收敛+提交={:?}",
+                iter,
+                begin_cost,
+                n_events,
+                move_cost,
+                move_cost.as_micros() as f64 / n_events as f64,
+                up_cost,
+            );
+        }
+
+        STROKES.lock().unwrap().clear();
+        let _ = crate::state::take_pending();
+    }
+
     /// Wire format of `glaspen2_page_thumbnails`, parsed exactly the way the
     /// Dart side does (`_parseThumbnailBlob`). Keeps both ends in sync.
     #[test]

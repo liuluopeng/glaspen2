@@ -165,7 +165,52 @@ cd flutter_settings && fvm flutter test test/frb_wire_test.dart
 
 ---
 
-## 9. 相关的其它入口
+## 9. 性能剖析(虚拟笔, 不占你的手)
+
+性能问题分两层量, 都不用真笔:
+
+**Rust 层**(模型器 + 缓冲 + pen-up 提交):
+
+```bash
+cargo test bench_virtual_stroke -- --ignored --nocapture              # debug
+cargo test --release bench_virtual_stroke -- --ignored --nocapture    # release
+```
+
+**全链路**(合成 CGEvent 虚拟笔, 含接触前后的悬停流, 走真事件水龙头):
+
+```bash
+GLASPEN2_VIRTUAL_PEN=1 GLASPEN2_PERF_LOG=1 GLASPEN2_DB_PATH=/tmp/x.db cargo run
+```
+
+每 12 秒画 3 笔(悬停 0.5s + 画 2s + 悬停 0.5s), 屏幕上会真的出现笔迹。
+`GLASPEN2_DB_PATH` 指向临时库, 不会碰真实数据。
+`GLASPEN2_PERF_LOG=1` 写 `~/Library/Logs/glaspen2/perf.log`, 每行是
+`时间戳 / 事件类型 / 微秒 / 备注` —— `drawrect` 行带 rect 尺寸与 `FULL` 标记
+(用于识别全屏拷贝), `pen_move` / `pen_hover` / `pen_down` / `pen_up` 是各
+事件入口的绝对耗时。**绝对值可以直接相加成 CPU 占比**, 不用猜采样率。
+
+真笔的验证(压感手感、近距悬停、笔身按钮、以及真平板的事件流量):
+`GLASPEN2_PERF_LOG=1` 启动后随手画 10 秒, 再看 perf.log 即可。
+
+### 2026-09-22 基线(debug 构建, 3440×1440, 网格 80px + minimap 开)
+
+| 项 | 成本 | 备注 |
+| --- | --- | --- |
+| `pen_move` | **114 µs/事件** | 模型器仅 1.4µs(debug)/0.15µs(release), 其余是 NSEvent 构造 + cairo 一段 + setNeedsDisplay |
+| `pen_down` | **969 µs/笔** | 落笔时的**阻塞 DB INSERT**(`db::begin_stroke` 的 `block_on`) |
+| `pen_hover`(+tick) | 23 µs/事件 | |
+| `drawrect` | 133 µs/帧(网格+minimap) / 45 µs(裸) | 目前**每个事件一帧**(≈212Hz), 不是 vsync 合并 |
+| 合计 | ≈ 155 µs/事件 | 200Hz 事件流 ≈ **4% 单核** |
+
+已排除: 模型器(µs 级)、全屏拷贝(小 rect, dirty-rect 工作正常)、minimap
+(被 clip, 只体现在那 80µs/帧里)。
+
+待优化候选: ① pen_down 的阻塞 INSERT 挪后台(每笔一次的落笔顿); ② drawRect
+合并到 vsync(现在每事件一帧); ③ 网格/minimap 缓存(80µs/帧里占大头)。
+
+---
+
+## 10. 相关的其它入口
 
 | 场景 | 命令 |
 | --- | --- |

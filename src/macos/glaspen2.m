@@ -144,6 +144,10 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds);
 static void page_scroll_apply(void);
 static void canvas_reset_lens(void);
 static void canvas_apply_transform(void);
+// 性能日志(drawRect 用得到, 实现在文件后部)
+static BOOL g_perf_log = NO;
+static void perf_log_event_notes(const char *evtype, uint64_t dur_us, const char *notes);
+static uint64_t elapsed_us(uint64_t start);
 static void event_tap_reinstall(void);
 static NSWindow *g_window = nil;
 static NSVisualEffectView *g_glass_view = nil;
@@ -1836,6 +1840,7 @@ static void rebuild_surface_from_strokes(void) {
 
 - (void)drawRect:(NSRect)rect {
     if (!g_surface) return;
+    uint64_t t0 = mach_absolute_time();
     cairo_surface_flush(g_surface);
     unsigned char *data = cairo_image_surface_get_data(g_surface);
     int w = cairo_image_surface_get_width(g_surface);
@@ -2026,6 +2031,19 @@ static void rebuild_surface_from_strokes(void) {
         CGContextStrokePath(ctx);
     }
     CGContextRestoreGState(ctx);
+
+    // 性能日志:记录每帧被请求重绘的区域。layer-backed 视图可能拿到全屏
+    // rect(FULL)—— 那样笔迹拷贝就是整屏 blit, 是涂鸦 CPU 的头号嫌疑,
+    // 这里把它直接量出来。
+    if (g_perf_log) {
+        char notes[128];
+        snprintf(notes, sizeof notes, "rect=%.0fx%.0f%s%s%s",
+                 rect.size.width, rect.size.height,
+                 NSEqualRects(rect, [self bounds]) ? " FULL" : "",
+                 g_show_grid ? " grid" : "",
+                 (g_minimap_enabled && !g_infinite_canvas) ? " minimap" : "");
+        perf_log_event_notes("drawrect", elapsed_us(t0), notes);
+    }
 }
 
 @end
@@ -2372,7 +2390,6 @@ static void canvas_reset_lens(void) {
 // --- CGEventTap callback ---
 
 // Performance logging (set g_perf_log=YES to enable)
-static BOOL g_perf_log = NO;
 static FILE *g_perf_file = NULL;
 static uint64_t g_perf_total_calls = 0;
 static uint64_t g_perf_slow_calls = 0;
@@ -2404,15 +2421,28 @@ static uint64_t elapsed_us(uint64_t start) {
     return (mach_absolute_time() - start) * g_tb.numer / g_tb.denom / 1000;
 }
 
-static void perf_log_event(const char *evtype, uint64_t dur_us) {
+// GLASPEN2_PERF_LOG=1 打开性能日志(写 ~/Library/Logs/glaspen2/perf.log)
+static void perf_log_init_from_env(void) {
+    const char *v = getenv("GLASPEN2_PERF_LOG");
+    if (v && *v && strcmp(v, "0") != 0) {
+        g_perf_log = YES;
+        if (!g_perf_file) perf_log_begin();
+    }
+}
+
+static void perf_log_event_notes(const char *evtype, uint64_t dur_us, const char *notes) {
     if (!g_perf_log || !g_perf_file) return;
     g_perf_total_calls++;
     if (dur_us > 16000) g_perf_slow_calls++; // >16ms = frame drop
     if (!g_tb_inited) { mach_timebase_info(&g_tb); g_tb_inited = YES; }
     double ts_ms = (double)mach_absolute_time() * g_tb.numer / g_tb.denom / 1e6;
     fprintf(g_perf_file, "%.3f\t%s\t%llu\t%s\n", ts_ms, evtype, dur_us,
-            dur_us > 16000 ? "SLOW" : "");
+            notes ? notes : (dur_us > 16000 ? "SLOW" : ""));
     if (g_perf_total_calls % 100 == 0) fflush(g_perf_file);
+}
+
+static inline void perf_log_event(const char *evtype, uint64_t dur_us) {
+    perf_log_event_notes(evtype, dur_us, NULL);
 }
 
 // Execute a hotkey action by key code. Returns YES if handled.
@@ -2915,6 +2945,9 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         peek_cancel_timer(); // pen interaction overrides a pending page peek
         NSPoint loc = [nsevent locationInWindow];
         BOOL moved = (g_cursor_x != loc.x || g_cursor_y != loc.y);
+        if (etype == NSEventTypeMouseMoved) {
+            perf_log_event("pen_hover", elapsed_us(t0)); // 只算纯悬停, 拖动另记 pen_move
+        }
         if (moved && g_cursor_visible && !g_stroke_active) {
             dirty_include_point(g_cursor_x, g_cursor_y, 14.0); // old position
         }
@@ -3032,6 +3065,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         g_raw_last_x = px;
         g_raw_last_y = py;
         g_raw_has_last = YES;
+        perf_log_event("pen_down", elapsed_us(t0));
         return NULL;
     }
     if (isPen && (etype == NSEventTypeLeftMouseDragged || etype == NSEventTypeRightMouseDragged ||
@@ -3052,6 +3086,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
         // Feed modeler, draw raw segment for responsive real-time feedback
         glaspen2_modeler_move(canvas_input_x(px), canvas_input_y(py), pressure, ts, g_width_scale);
         raw_draw_segment(px, py, raw_w);
+        perf_log_event("pen_move", elapsed_us(t0));
         return NULL;
     }
     if (isPen && (etype == NSEventTypeLeftMouseUp || etype == NSEventTypeRightMouseUp ||
@@ -3075,6 +3110,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
             g_cursor_visible = YES;
             dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
             flush_dirty_to_layer();
+            perf_log_event("pen_up", elapsed_us(t0));
         }
         return NULL;
     }
@@ -3094,6 +3130,73 @@ static void perf_log_summary(void) {
 }
 
 // --- App ---
+
+// ---------------------------------------------------------------------------
+// 虚拟笔(GLASPEN2_VIRTUAL_PEN):合成笔事件驱动完整热路径,用于性能剖析
+// ---------------------------------------------------------------------------
+// 合成 tablet 点事件(含压力)投递到 HID 事件口, 与真笔走同一条事件水龙头,
+// 因此覆盖 模型器 → cairo → CA 上屏 全链路。GLASPEN2_VIRTUAL_PEN=1 启用:
+// 每 12 秒画 3 笔(每笔 2 秒 @ 200Hz, 屏幕上会真的出现笔迹)。
+// 配套 GLASPEN2_DB_PATH 指向临时库即可不碰真实数据。
+// 绘制处于关闭状态(g_enabled=NO)时暂停: 否则合成事件会漏给前台应用当鼠标。
+static void virtual_pen_post(CGEventType type, double x, double y, double pressure) {
+    CGEventRef ev = CGEventCreateMouseEvent(NULL, type, CGPointMake(x, y), kCGMouseButtonLeft);
+    if (!ev) return;
+    // NSEvent.subtype == 1(NSTabletPointEventSubtype) → 被判定为笔事件
+    CGEventSetIntegerValueField(ev, kCGMouseEventSubtype, 1);
+    CGEventSetIntegerValueField(ev, kCGTabletEventPointPressure,
+                                (int64_t)(pressure * 65535.0));
+    CGEventPost(kCGHIDEventTap, ev);
+    CFRelease(ev);
+}
+
+static void virtual_pen_run(void) {
+    for (int batch = 0; ; batch++) {
+        @autoreleasepool {
+            for (int s = 0; s < 3 && g_enabled; s++) {
+                double w = (double)g_screen_w, h = (double)g_screen_h;
+                double x0 = w * 0.22 + s * w * 0.18;
+                double y0 = h * 0.35;
+                const int n = 400; // 2 秒 @ 200Hz
+                NSLog(@"[glaspen2] virtual pen: batch %d stroke %d", batch, s);
+                // 接触前 0.5 秒悬停(真笔接近板面时的 hover 流)
+                for (int i = 0; i < 100 && g_enabled; i++) {
+                    double t = (double)i / 100;
+                    virtual_pen_post(kCGEventMouseMoved,
+                                     x0 + t * w * 0.22, y0, 0.0);
+                    usleep(5000);
+                }
+                for (int i = 0; i <= n && g_enabled; i++) {
+                    double t = (double)i / n;
+                    double x = x0 + t * w * 0.22;
+                    double y = y0 + sin(t * 9.42478) * h * 0.12;
+                    double p = 0.4 + 0.5 * fabs(sin(t * 12.566));
+                    virtual_pen_post(i == 0 ? kCGEventLeftMouseDown : kCGEventLeftMouseDragged,
+                                     x, y, p);
+                    usleep(5000); // ~200Hz
+                }
+                virtual_pen_post(kCGEventLeftMouseUp, x0 + w * 0.22, y0, 0.0);
+                // 抬笔后再悬停 0.5 秒
+                for (int i = 0; i < 100 && g_enabled; i++) {
+                    virtual_pen_post(kCGEventMouseMoved,
+                                     x0 + w * 0.22 - i * 2.0, y0 + i * 1.0, 0.0);
+                    usleep(5000);
+                }
+                usleep(200000);
+            }
+        }
+        sleep(9);
+    }
+}
+
+static void virtual_pen_maybe_start(void) {
+    const char *v = getenv("GLASPEN2_VIRTUAL_PEN");
+    if (!v || !*v || strcmp(v, "0") == 0) return;
+    NSLog(@"[glaspen2] virtual pen enabled (GLASPEN2_VIRTUAL_PEN): 每 12 秒画 3 笔");
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        virtual_pen_run();
+    });
+}
 
 void glaspen2_run(void) {
     @autoreleasepool {
@@ -3404,6 +3507,10 @@ void glaspen2_run(void) {
                 }
             });
         }
+
+        // 调试开关(环境变量):性能日志 / 虚拟笔, 默认都关
+        perf_log_init_from_env();
+        virtual_pen_maybe_start();
 
         [NSApp run];
     }

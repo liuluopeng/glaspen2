@@ -12,6 +12,12 @@ pub struct StrokeData {
 }
 
 pub fn db_path() -> std::path::PathBuf {
+    // 调试/测试用:GLASPEN2_DB_PATH=/tmp/x.db 指定库文件,
+    // 虚拟笔性能剖析、迁移试验等场景就不会写进真实数据。
+    if let Some(p) = std::env::var_os("GLASPEN2_DB_PATH") {
+        return std::path::PathBuf::from(p);
+    }
+
     let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let exe_dir = exe.parent().unwrap_or_else(|| std::path::Path::new("."));
 
