@@ -2690,13 +2690,21 @@ pub extern "C" fn glaspen2_ink_draft_start(canvas_w: c_int, canvas_h: c_int) -> 
     };
     // 端点解析优先级:设置库(chat_grpc_endpoint,面板/Dock 启动没有
     // 环境变量时靠它落地)> 环境变量 GLASPEN_CHAT_ENDPOINT > 默认值
-    let endpoint = runtime().block_on(async {
-        match db::load_setting("chat_grpc_endpoint").await {
-            Some(v) if !v.trim().is_empty() => v,
-            _ => glaspen_chat::endpoint_from_env(),
-        }
-    });
-    let mock = glaspen_chat::mock_enabled();
+    let db_endpoint = runtime().block_on(db::load_setting("chat_grpc_endpoint"))
+        .filter(|v| !v.trim().is_empty());
+    let endpoint = db_endpoint
+        .clone()
+        .unwrap_or_else(glaspen_chat::endpoint_from_env);
+    // mock 判定:显式 GLASPEN_CHAT_MOCK=0 → 真连,=1 → mock;
+    // 未设置时:配置了登录账号或涂鸦端点即默认真连(否则老用户装完
+    // 什么都不配仍走 mock)。此前未设置一律 mock,配置了登录也发不出去
+    let mock_env = std::env::var("GLASPEN_CHAT_MOCK").ok();
+    let auth_ready = glaspen_chat::auth::config().is_configured();
+    let mock = match mock_env.as_deref() {
+        Some("0") => false,
+        Some(_) => true,
+        None => !(auth_ready || db_endpoint.is_some()),
+    };
     let channel = if mock {
         glaspen_chat::draft::DraftChannel::launch_with(endpoint.as_str(), true, begin)
     } else {
