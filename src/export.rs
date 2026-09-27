@@ -512,19 +512,22 @@ pub extern "C" fn glaspen2_modeler_end(
 /// Commit the modeler buffer into STROKES. Call after drawing the buffer.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_modeler_commit_to_strokes(r: c_double, g: c_double, b: c_double) {
-    let smoothed = modeler::take_buffer();
-    let mut strokes = STROKES.lock().unwrap();
-    if let Some(last) = strokes.last_mut() {
-        last.r = r;
-        last.g = g;
-        last.b = b;
+    {
+        let smoothed = modeler::take_buffer();
+        let mut strokes = STROKES.lock().unwrap();
+        if let Some(last) = strokes.last_mut() {
+            last.r = r;
+            last.g = g;
+            last.b = b;
 
-        for (sx, sy, sw, st) in smoothed {
-            last.points.push((sx, sy, sw, st));
+            for (sx, sy, sw, st) in smoothed {
+                last.points.push((sx, sy, sw, st));
+            }
+            // Bound point count for long-running sessions.
+            last.points = decimate(&last.points);
         }
-        // Bound point count for long-running sessions.
-        last.points = decimate(&last.points);
-    }
+    } // 先放掉 STROKES 锁再走草稿钩子(钩子内部要重新拿锁)
+    ink_draft_on_stroke_committed();
 }
 
 /// Eraser: remove strokes overlapped by the just-finished eraser stroke.
@@ -2627,9 +2630,212 @@ pub extern "C" fn glaspen2_chat_send_strokes(start_index: c_int, end_index: c_in
     }
 }
 
+// ---------------------------------------------------------------------------
+// 手写消息草稿通道(⌘⌃2 按住 → ChatStore/DraftInk gRPC 流 → axum 决定是否发送)
+// 与 ⌘⌃3 直发的区别:⌘⌃3 是松开后一次性 AppendMessages;⌘⌃2 按住期间
+// 笔迹实时流给 axum(可预览),松开 half-close 后由 axum 决定发或不发。
+// 语义契约见 docs/ink-draft-grpc.md。
+// ---------------------------------------------------------------------------
+
+struct InkDraftSession {
+    channel: glaspen_chat::draft::DraftChannel,
+    /// 已推送的 STROKES 下标游标(会话开启时的 STROKES.len(),只增不减;
+    /// 会话期间发生撤销导致游标越界时直接跳过,宁漏不重)。
+    pushed_upto: usize,
+    stroke_count: u32,
+    started_at: std::time::SystemTime,
+}
+
+static INK_DRAFT: std::sync::Mutex<Option<InkDraftSession>> = std::sync::Mutex::new(None);
+
+/// 最近一次草稿通道失败的用户可读原因(ObjC 通知用);CString 常驻,
+/// 指针在下次 set 之前一直有效。
+static INK_DRAFT_LAST_ERROR: std::sync::Mutex<Option<CString>> = std::sync::Mutex::new(None);
+
+fn set_ink_draft_error(err: Option<&str>) {
+    *INK_DRAFT_LAST_ERROR.lock().unwrap() =
+        err.map(|s| CString::new(s).unwrap_or_default());
+}
+
+/// 通道失败原因(UTF-8),无失败时返回 NULL。供 ObjC 在 stop 返回 <0 时
+/// 展示具体原因(身份过期 / 未注册路由 / 连接失败等)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_ink_draft_last_error() -> *const c_char {
+    match INK_DRAFT_LAST_ERROR.lock().unwrap().as_ref() {
+        Some(c) => c.as_ptr(),
+        None => std::ptr::null(),
+    }
+}
+
+/// ⌘⌃2 key-down:打开手写草稿通道。ObjC 侧保证先 finish_active_stroke。
+/// 返回 1 = 已开启;0 = 已有会话在进行(忽略本次)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_ink_draft_start(canvas_w: c_int, canvas_h: c_int) -> c_int {
+    let mut g = INK_DRAFT.lock().unwrap();
+    if g.is_some() {
+        return 0;
+    }
+    let started_at_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let begin = glaspen_chat::pb::DraftBegin {
+        session_id: glaspen_chat::draft::new_session_id(),
+        started_at_ms,
+        notebook_id: CHAT_NOTEBOOK.to_owned(),
+        author: String::new(),
+        device: String::new(),
+        canvas_w: canvas_w.max(0) as u32,
+        canvas_h: canvas_h.max(0) as u32,
+    };
+    // 端点解析优先级:设置库(chat_grpc_endpoint,面板/Dock 启动没有
+    // 环境变量时靠它落地)> 环境变量 GLASPEN_CHAT_ENDPOINT > 默认值
+    let endpoint = runtime().block_on(async {
+        match db::load_setting("chat_grpc_endpoint").await {
+            Some(v) if !v.trim().is_empty() => v,
+            _ => glaspen_chat::endpoint_from_env(),
+        }
+    });
+    let mock = glaspen_chat::mock_enabled();
+    let channel = if mock {
+        glaspen_chat::draft::DraftChannel::launch_with(endpoint.as_str(), true, begin)
+    } else {
+        glaspen_chat::draft::DraftChannel::launch_with_auth(endpoint.as_str(), false, begin)
+    };
+    *g = Some(InkDraftSession {
+        channel,
+        pushed_upto: STROKES.lock().unwrap().len(),
+        stroke_count: 0,
+        started_at: std::time::SystemTime::now(),
+    });
+    eprintln!("[ink-draft] session opened (canvas {canvas_w}x{canvas_h}, endpoint {endpoint})");
+    1
+}
+
+/// pen-up 提交笔迹后的钩子:会话进行中时,把本次提交的笔迹实时推进草稿流。
+/// 在主线程调用;push 非阻塞(连接建立前帧在通道里缓冲)。
+pub(crate) fn ink_draft_on_stroke_committed() {
+    let mut g = INK_DRAFT.lock().unwrap();
+    let Some(sess) = g.as_mut() else { return };
+    let strokes = STROKES.lock().unwrap();
+    while sess.pushed_upto < strokes.len() {
+        let s = &strokes[sess.pushed_upto];
+        sess.pushed_upto += 1;
+        if s.points.is_empty() {
+            continue;
+        }
+        sess.stroke_count += 1;
+        let msg = stroke_to_chat_message(sess.stroke_count as u64, s);
+        if !sess.channel.push_stroke(msg) {
+            // 通道已死(连接失败/对端断开)。帧丢弃,结束时的 stop 会拿到
+            // Failed 并通知用户;这里只留日志。
+            eprintln!(
+                "[ink-draft] channel dead at stroke {}, remaining frames dropped",
+                sess.stroke_count
+            );
+            break;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 涂鸦身份设置(设置面板 ↔ chat::auth):DB 里的账号配置推给 auth 模块
+// ---------------------------------------------------------------------------
+
+/// 从 DB 读取涂鸦身份设置(chat_api_base / chat_user / chat_password),
+/// 字段级合并环境变量默认值后注入 chat::auth(配置变化会自动清 token 缓存)。
+pub(crate) fn sync_chat_auth_from_settings() {
+    let (base, user, pass) = runtime().block_on(async {
+        (
+            db::load_setting("chat_api_base").await.unwrap_or_default(),
+            db::load_setting("chat_user").await.unwrap_or_default(),
+            db::load_setting("chat_password").await.unwrap_or_default(),
+        )
+    });
+    let nonempty = |s: String| if s.trim().is_empty() { None } else { Some(s) };
+    let from_db = glaspen_chat::auth::AuthConfig {
+        api_base: nonempty(base),
+        user: nonempty(user),
+        password: nonempty(pass),
+        direct_token: None, // 直接给 token 只走环境变量,不落盘
+    };
+    glaspen_chat::auth::set_config(glaspen_chat::auth::AuthConfig::from_env().merged(from_db));
+}
+
+/// ObjC 入口:设置变化处与启动恢复路径调用。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_chat_auth_reload() {
+    sync_chat_auth_from_settings();
+}
+
+/// 设置面板「测试登录」:强制用当前配置登录一次(成功则缓存 token)。
+/// Ok = 成功;Err = 可读失败原因(给 Flutter 显示)。
+pub(crate) fn chat_auth_test_login_blocking() -> Result<(), String> {
+    runtime()
+        .block_on(glaspen_chat::auth::force_login())
+        .map(|_| ())
+}
+
+/// ⌘⌃2 key-up:补 end 帧 + half-close,阻塞等待 axum 的决定。
+/// 由 ObjC 侧在后台线程调用(主线程先 finish_active_stroke 保证最后一笔
+/// 已经过钩子推进流)。返回:>0 = axum 已发送(接受的笔迹条数);
+/// 0 = axum 丢弃了草稿(含 sent 但接受 0 条);-1 = 通道失败/无会话。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_ink_draft_stop() -> c_int {
+    let Some(sess) = INK_DRAFT.lock().unwrap().take() else {
+        return -1;
+    };
+    let stroke_count = sess.stroke_count;
+    let duration_ms = std::time::SystemTime::now()
+        .duration_since(sess.started_at)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let outcome = runtime().block_on(sess.channel.finish(stroke_count, duration_ms));
+    eprintln!("[ink-draft] session closed after {stroke_count} strokes / {duration_ms}ms: {outcome:?}");
+    match outcome {
+        glaspen_chat::draft::DraftOutcome::Sent { accepted, .. } => {
+            set_ink_draft_error(None);
+            accepted as c_int
+        }
+        glaspen_chat::draft::DraftOutcome::Dropped => {
+            set_ink_draft_error(None);
+            0
+        }
+        glaspen_chat::draft::DraftOutcome::Failed(e) => {
+            set_ink_draft_error(Some(&e));
+            eprintln!("[ink-draft] failed: {e}");
+            -1
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ⌘⌃2 全流程(默认 mock 通道):start → 提交笔迹(钩子实时推帧)→
+    /// stop,回执"已发送 1 笔";重复 start 被拒;关掉后再 stop 报无会话。
+    #[test]
+    fn ink_draft_session_mock_roundtrip() {
+        // 测试依赖默认 mock 模式;显式要求真连的环境下跳过。
+        if std::env::var("GLASPEN_CHAT_MOCK").is_ok_and(|v| v == "0") {
+            return;
+        }
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        assert_eq!(glaspen2_ink_draft_start(1920, 1080), 1);
+        assert_eq!(glaspen2_ink_draft_start(1920, 1080), 0, "会话进行中应拒绝二连开");
+        STROKES.lock().unwrap().push(Stroke {
+            id: 0,
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            points: vec![(1.0, 2.0, 2.5, 0.0), (30.0, 40.0, 3.5, 0.12)],
+        });
+        ink_draft_on_stroke_committed();
+        assert_eq!(glaspen2_ink_draft_stop(), 1, "mock 通道应回执 sent/accepted=1");
+        assert_eq!(glaspen2_ink_draft_stop(), -1, "会话已关,再 stop 报无会话");
+        STROKES.lock().unwrap().pop();
+    }
 
     /// 描边对比色:亮色(黄/白)配黑边,暗色(蓝/黑)配白边。
     #[test]
