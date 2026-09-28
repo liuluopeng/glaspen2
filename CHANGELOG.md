@@ -8,6 +8,12 @@
 
 ### 变更
 
+- **工程结构 workspace 化**:新增 `crates/glaspen-core`(存储/笔迹模型/
+  cairo 渲染/导出/更新/手写消息与共享上行 FFI,平台无关)与
+  `crates/glaspen-windows`(Windows 覆盖层,依赖 core,非 Windows 编译为
+  空壳);根 crate 变薄为"FRB 面板 API + 平台入口 + ObjC 链接"。
+  行为零变化,纯结构调整;FFI 符号与 FRB 生成代码逐一核对无增减。
+
 - **翻页回归整页翻转 + macOS 自带窗口动效(macOS)**:移除活页本模式的
   滑动翻页(连续滚动残留与 ⌥⌘↑/↓ 的"滑一小步"),⌥⌘↑/↓ 现在与 J/K 一样
   都是整页翻页;翻页动效从自绘的"旧页滑出/新页滑入(刹车)"整体换成
