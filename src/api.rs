@@ -217,7 +217,12 @@ impl Settings {
     /// 宽松解析:推送方只发部分字段(旧 sync_settings_panel 只发 12 项)。
     fn from_json(json: &str) -> Option<Settings> {
         let v: serde_json::Value = serde_json::from_str(json).ok()?;
-        let b = |k: &str| v.get(k).and_then(|x| x.as_bool()).unwrap_or(false);
+        // 布尔容忍数字:ObjC 侧个别键历史上以 @(int) 序列化成 1/0
+        let b = |k: &str| {
+            v.get(k)
+                .map(|x| x.as_bool().or_else(|| x.as_i64().map(|n| n != 0)).unwrap_or(false))
+                .unwrap_or(false)
+        };
         let i = |k: &str| v.get(k).and_then(|x| x.as_i64()).unwrap_or(0) as i32;
         let f = |k: &str| v.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
         let s = |k: &str| {
@@ -845,6 +850,20 @@ mod tests {
             "chatPassword": "oops",
         });
         assert!(!Settings::from_json(&j.to_string()).unwrap().chat_has_password);
+    }
+
+    /// ObjC 快照里的布尔可能是 @(int) 序列化出的数字 1/0(历史键),
+    /// 解析必须容忍——否则开关状态永远读成 false(自由涂鸦 tab 消失的根因)。
+    #[test]
+    fn test_settings_from_json_numeric_booleans() {
+        let s = Settings::from_json(
+            r#"{"chatIntegration":1,"showFreeCanvas":1,"shareCanvas":0,"grid":0}"#,
+        )
+        .unwrap();
+        assert!(s.chat_integration);
+        assert!(s.show_free_canvas);
+        assert!(!s.share_canvas);
+        assert!(!s.grid);
     }
 
     #[test]

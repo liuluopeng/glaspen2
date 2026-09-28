@@ -1241,8 +1241,11 @@ char *glaspen2_macos_settings_json(void) {
             @"chatUser":    gl_string_setting("chat_user"),
             @"chatHasPassword": @([gl_string_setting("chat_password") length] > 0),
             @"chatIntegration": @(g_chat_integration),
-            @"showFreeCanvas": @(glaspen2_load_bool_setting("show_free_canvas")),
-            @"shareCanvas": @(glaspen2_load_bool_setting("share_ink")),
+            // 注意:load_bool_setting 返回 c_int,@() 会序列化成 JSON 数字 1/0,
+            // Rust 侧 as_bool() 解析不出 → 永远 false。必须转成 BOOL(YES/NO)
+            // 让 NSJSONSerialization 输出 true/false。
+            @"showFreeCanvas": @(glaspen2_load_bool_setting("show_free_canvas") != 0),
+            @"shareCanvas": @(glaspen2_load_bool_setting("share_ink") != 0),
         };
         NSData *json = [NSJSONSerialization dataWithJSONObject:d options:0 error:nil];
         if (!json) return;
