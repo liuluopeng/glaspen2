@@ -1,9 +1,16 @@
+#[cfg(windows)]
 pub mod overlay;
+
+/// 非 Windows 平台的空实现:让 `cargo check --workspace` 在 macOS CI 上
+/// 也能通过(本 crate 的实质代码全部是 Win32)。
+#[cfg(not(windows))]
+pub fn win_main() {}
 
 /// Entry point for the Windows version of glaspen2 (pure Rust, no C#).
 ///
 /// Launches the Flutter settings UI (non-blocking), then runs the fullscreen
 /// transparent overlay (blocking — when it exits, the app exits).
+#[cfg(windows)]
 pub fn win_main() {
     set_app_user_model_id();
 
@@ -60,6 +67,7 @@ pub fn win_main() {
     println!("[glaspen2] Exited");
 }
 
+#[cfg(windows)]
 fn already_running_message() {
     use windows::Win32::UI::WindowsAndMessaging::{MB_ICONWARNING, MB_OK, MessageBoxW};
     use windows::core::PCWSTR;

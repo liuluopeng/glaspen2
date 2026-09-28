@@ -6,7 +6,7 @@ use super::*;
 /// Renders at the settings panel's size (280) only; pages already cached or
 /// drawn later are filled on demand. Yields between pages to stay out of the
 /// way of live drawing.
-pub(crate) fn warm_thumbnail_cache() {
+pub fn warm_thumbnail_cache() {
     std::thread::Builder::new()
         .name("thumb-warm".into())
         .spawn(|| {
@@ -177,7 +177,7 @@ fn render_strokes_thumbnail(strokes: &[db::StrokeData], max_size: i32) -> Option
 }
 
 /// Magic + per-entry framing for `glaspen2_page_thumbnails` (see there).
-pub(crate) const THUMB_BLOB_MAGIC: u32 = 0x3148_5447; // "GTH1"
+pub const THUMB_BLOB_MAGIC: u32 = 0x3148_5447; // "GTH1"
 
 /// Batched page thumbnails in a single self-describing blob — one FFI call and
 /// one channel round trip for a whole screenful of the 活页本 grid, instead of
@@ -214,7 +214,7 @@ pub extern "C" fn glaspen2_page_thumbnails(
 /// Build the blob described by `glaspen2_page_thumbnails`: one batched version
 /// query, one batched cache read, and a render only for the pages whose cache
 /// entry is missing or stale.
-pub(crate) fn page_thumbnails_blob(ids: &[i64], max_size: i32) -> Vec<u8> {
+pub fn page_thumbnails_blob(ids: &[i64], max_size: i32) -> Vec<u8> {
     let mut seen = std::collections::HashSet::with_capacity(ids.len());
     let ids: Vec<i64> = ids.iter().copied().filter(|id| seen.insert(*id)).collect();
     if ids.is_empty() {
@@ -250,7 +250,7 @@ pub(crate) fn page_thumbnails_blob(ids: &[i64], max_size: i32) -> Vec<u8> {
 
 /// Frame `(id, png)` entries into the blob the settings panel parses.
 /// Kept separate from the DB work so the wire format is unit-testable.
-pub(crate) fn encode_thumb_blob(entries: &[(i64, Vec<u8>)]) -> Vec<u8> {
+pub fn encode_thumb_blob(entries: &[(i64, Vec<u8>)]) -> Vec<u8> {
     let mut out =
         Vec::with_capacity(8 + entries.iter().map(|(_, png)| png.len() + 12).sum::<usize>());
     out.extend_from_slice(&THUMB_BLOB_MAGIC.to_le_bytes());

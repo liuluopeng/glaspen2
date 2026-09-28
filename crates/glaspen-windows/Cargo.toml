@@ -1,0 +1,24 @@
+[package]
+name = "glaspen-windows"
+version = "0.5.1"
+edition = "2024"
+description = "glaspen2 的 Windows 覆盖层:Win32 全屏透明窗口、笔输入、命名管道设置服务"
+
+[dependencies]
+glaspen-core = { path = "../glaspen-core" }
+
+[target.'cfg(windows)'.dependencies]
+# Versions match C:\Users\liulu\Downloads\wAPItry (verified Windows pen-input prototype)
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Devices_HumanInterfaceDevice",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_UI_Input",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_Pointer",
+    "Win32_UI_WindowsAndMessaging",
+] }

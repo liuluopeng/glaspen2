@@ -1,186 +1,22 @@
-#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
-// 本 crate 的核心接口就是 extern "C" 裸指针 FFI(由 ObjC/C#/Windows overlay
-// 调用)。把这些函数标成 unsafe fn 需要改动所有内部调用点, 与"不破坏功能"
-// 原则冲突, 故对以下结构性 lint 做 crate 级豁免:
+// glaspen2 — macOS/Windows 主程序 crate(壳)。
+//
+// 共享核心已拆至 `crates/glaspen-core`(存储/模型器/cairo/导出/更新/
+// 手写消息与共享上行 FFI);Windows 覆盖层在 `crates/glaspen-windows`。
+// 本 crate 保留:FRB 面板 API(api.rs + frb_generated.rs, macos 壳,
+// 以及把 core 的模块与类型原路再导出 —— 让 `crate::db` 等既有路径
+// 在 api.rs 里继续成立, ObjC 链接的 FFI 符号不受影响)。
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 
 mod frb_generated; /* AUTO INJECTED BY flutter_rust_bridge */
 
-use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
-
-/// Tokio runtime for bridging sync FFI → async SQLite.
-/// The runtime is lazily created on first use and lives for the app's lifetime.
-pub fn runtime() -> &'static tokio::runtime::Runtime {
-    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
-    RT.get_or_init(|| tokio::runtime::Runtime::new().expect("Failed to create tokio runtime"))
-}
-
-// ---------------------------------------------------------------------------
-// Module declarations
-// ---------------------------------------------------------------------------
-
-// Cairo 渲染:唯一实现是 cairo_dl(动态加载 libcairo,源自 wAPItry 已验证原型)
-pub mod cairo_dl;
+pub mod api;
 
 #[cfg(target_os = "macos")]
 pub mod macos;
 
-#[cfg(target_os = "windows")]
-pub mod windows;
-
-pub mod api;
-pub mod db;
-pub mod export;
-pub mod modeler;
-pub mod pdf;
-pub mod state;
-pub mod update;
-pub mod updater;
-
-// ---------------------------------------------------------------------------
-// Core types
-// ---------------------------------------------------------------------------
-
-/// Stroke data stored in STROKES — used for rendering, SVG/GIF export, and XOJ save.
-/// `id` is the DB row id (0 when the stroke has no DB row yet).
-#[derive(Clone)]
-pub struct Stroke {
-    pub id: i64,
-    pub r: f64,
-    pub g: f64,
-    pub b: f64,
-    pub points: Vec<(f64, f64, f64, f64)>, // (x, y, width, relative_time)
-}
-
-impl Stroke {
-    pub fn avg_width(&self) -> f64 {
-        if self.points.is_empty() {
-            return 1.0;
-        }
-        self.points.iter().map(|p| p.2).sum::<f64>() / self.points.len() as f64
-    }
-}
-
-/// All strokes in memory — used by rendering, export, and FFI.
-pub static STROKES: Mutex<Vec<Stroke>> = Mutex::new(Vec::new());
-
-/// Tracks the current stroke's start timestamp for the raw (DB) draw path.
-pub(crate) static RAW_STROKE_START: Mutex<Option<f64>> = Mutex::new(None);
-
-// ---------------------------------------------------------------------------
-// Shared helpers (used by export module)
-// ---------------------------------------------------------------------------
-
-pub(crate) fn pressure_to_width(pressure: f64, width_scale: f64) -> f64 {
-    if pressure > 0.01 {
-        (0.3 + pressure * pressure * 7.7) * width_scale
-    } else {
-        1.0 * width_scale
-    }
-}
-
-pub(crate) fn desktop_path() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        PathBuf::from(std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string()))
-            .join("Desktop")
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string())).join("Desktop")
-    }
-}
-
-pub(crate) fn timestamped_path() -> PathBuf {
-    desktop_path().join(timestamped_name("png"))
-}
-
-pub(crate) fn timestamped_name(ext: &str) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
-    let s = secs % 60;
-    let m = (secs / 60) % 60;
-    let h = (secs / 3600 + 8) % 24;
-    let days = secs / 86400;
-    let y = 1970 + days / 365;
-    let d = days % 365;
-    format!(
-        "glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.{}",
-        y, d, h, m, s, ext
-    )
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use crate::*;
-
-    /// Serializes tests that mutate the global STROKES/modeler state.
-    pub(crate) static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    #[test]
-    fn test_build_cropped_svg_empty() {
-        let _g = TEST_LOCK.lock().unwrap();
-        STROKES.lock().unwrap().clear();
-        assert!(crate::export::build_cropped_svg().is_none());
-    }
-
-    #[test]
-    fn test_build_cropped_svg_one_stroke() {
-        let _g = TEST_LOCK.lock().unwrap();
-        STROKES.lock().unwrap().clear();
-        STROKES.lock().unwrap().push(Stroke {
-            id: 0,
-            r: 1.0,
-            g: 0.0,
-            b: 0.0,
-            points: vec![(0.0, 0.0, 2.0, 0.0), (10.0, 10.0, 3.0, 1.0)],
-        });
-        let svg = crate::export::build_cropped_svg().unwrap();
-        assert!(svg.starts_with("<svg"), "SVG should start with <svg tag");
-        assert!(
-            svg.contains("stroke-width"),
-            "should have stroke-width attr"
-        );
-        assert!(svg.contains("</svg>\n"), "should close svg tag");
-        STROKES.lock().unwrap().clear();
-    }
-
-    #[test]
-    fn test_stroke_avg_width() {
-        let s = Stroke {
-            id: 0,
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            points: vec![(0.0, 0.0, 2.0, 0.0), (10.0, 10.0, 4.0, 1.0)],
-        };
-        let avg = s.avg_width();
-        assert!((avg - 3.0).abs() < 0.01);
-    }
-
-    #[test]
-    fn test_empty_stroke_avg_width() {
-        let s = Stroke {
-            id: 0,
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            points: vec![],
-        };
-        assert!((s.avg_width() - 1.0).abs() < 0.01);
-    }
-
-    #[test]
-    fn test_pressure_to_width_zero_pressure() {
-        assert!((pressure_to_width(0.0, 1.0) - 1.0).abs() < 1e-6);
-    }
-}
+// ── core 再导出:api.rs 的 `crate::db` / `crate::export` 等旧路径照旧成立 ──
+pub use glaspen_core::{cairo_dl, db, export, modeler, pdf, state, update, updater};
+pub use glaspen_core::{desktop_path, pressure_to_width, runtime, timestamped_name,
+                       timestamped_path, Stroke, STROKES};

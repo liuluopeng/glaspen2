@@ -39,7 +39,7 @@ use windows::Win32::UI::Input::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::PCWSTR;
 
-use crate::cairo_dl::CairoRenderer;
+use glaspen_core::cairo_dl::CairoRenderer;
 
 const WM_INPUT: u32 = 0x00FF;
 const TIMER_UNBLOCK: usize = 1;
@@ -383,21 +383,21 @@ fn set_gif_settings(fps: i32, resolution: f64, speed: f64, end_mode: i32) {
 
 /// 从 user_settings 恢复(键名与 macOS 一致,设置数据库可互换)
 fn load_gif_settings() {
-    let rt = crate::runtime();
+    let rt = glaspen_core::runtime();
     let fps = rt
-        .block_on(crate::db::load_setting("gif_fps"))
+        .block_on(glaspen_core::db::load_setting("gif_fps"))
         .and_then(|v| v.parse::<i32>().ok())
         .unwrap_or(15);
     let resolution = rt
-        .block_on(crate::db::load_setting("gif_resolution"))
+        .block_on(glaspen_core::db::load_setting("gif_resolution"))
         .and_then(|v| v.parse::<f64>().ok())
         .unwrap_or(0.5);
     let speed = rt
-        .block_on(crate::db::load_setting("gif_speed"))
+        .block_on(glaspen_core::db::load_setting("gif_speed"))
         .and_then(|v| v.parse::<f64>().ok())
         .unwrap_or(2.0);
     let end_mode = rt
-        .block_on(crate::db::load_setting("gif_end_mode"))
+        .block_on(glaspen_core::db::load_setting("gif_end_mode"))
         .and_then(|v| v.parse::<i32>().ok())
         .unwrap_or(1);
     set_gif_settings(fps, resolution, speed, end_mode);
@@ -406,14 +406,14 @@ fn load_gif_settings() {
 fn persist_gif_settings(fps: i32, resolution: f64, speed: f64, end_mode: i32) {
     set_gif_settings(fps, resolution, speed, end_mode);
     let (fps, res, speed, end_mode) = gif_settings();
-    let rt = crate::runtime();
-    rt.block_on(crate::db::save_setting("gif_fps", &fps.to_string()));
-    rt.block_on(crate::db::save_setting(
+    let rt = glaspen_core::runtime();
+    rt.block_on(glaspen_core::db::save_setting("gif_fps", &fps.to_string()));
+    rt.block_on(glaspen_core::db::save_setting(
         "gif_resolution",
         &format!("{res:.4}"),
     ));
-    rt.block_on(crate::db::save_setting("gif_speed", &format!("{speed:.4}")));
-    rt.block_on(crate::db::save_setting(
+    rt.block_on(glaspen_core::db::save_setting("gif_speed", &format!("{speed:.4}")));
+    rt.block_on(glaspen_core::db::save_setting(
         "gif_end_mode",
         &end_mode.to_string(),
     ));
@@ -440,7 +440,7 @@ struct OverlayState {
 static STATE: AtomicPtr<OverlayState> = AtomicPtr::new(std::ptr::null_mut());
 
 // ── 全屏透明 overlay 画布(UpdateLayeredWindowIndirect + 32bit BGRA DIB) ──
-// cairo 渲染统一走 crate::cairo_dl(动态加载 libcairo-2.dll,直接画到 DIB 内存)
+// cairo 渲染统一走 glaspen_core::cairo_dl(动态加载 libcairo-2.dll,直接画到 DIB 内存)
 
 struct OverlayCanvas {
     hwnd: HWND,
@@ -992,7 +992,7 @@ fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) ->
 
     // 记录笔画到 STROKES/DB(用于撤销、导出、XOJ 保存)
     if down && !state.in_stroke {
-        crate::export::glaspen2_begin_stroke(
+        glaspen_core::export::glaspen2_begin_stroke(
             state.draw.pen_r,
             state.draw.pen_g,
             state.draw.pen_b,
@@ -1003,7 +1003,7 @@ fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) ->
         let scale = state.draw.width_scale as f32;
         for r in &results {
             // 相对时间必须带上:GIF 回放时间线按它展开,t=0 会让导出永远为空
-            crate::export::glaspen2_add_point_t(
+            glaspen_core::export::glaspen2_add_point_t(
                 r.pos.0,
                 r.pos.1,
                 (width_r(r.pressure as f32, scale) * 2.0) as f64,
@@ -1029,7 +1029,7 @@ fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) ->
         // 抬起:补最后一段轮廓 + 终点圆帽,清空并重置模型器
         state.in_stroke = false;
         let dirty = redraw_pen(state, &pts);
-        crate::export::glaspen2_end_stroke();
+        glaspen_core::export::glaspen2_end_stroke();
         state.pen_path.clear();
         let params = modeler_params();
         let _ = state.stroke_modeler.reset_w_params(params);
@@ -1317,7 +1317,7 @@ pub fn run() {
         {
             let sw = GetSystemMetrics(SM_CXVIRTUALSCREEN);
             let sh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-            crate::export::glaspen2_init_db(sw, sh);
+            glaspen_core::export::glaspen2_init_db(sw, sh);
         }
 
         let hwnd = create_overlay_window();
@@ -1326,54 +1326,54 @@ pub fn run() {
         let mut pen_g = 0.0;
         let mut pen_b = 0.0;
         let mut width_scale = 0.3;
-        crate::export::glaspen2_load_settings_parts(
+        glaspen_core::export::glaspen2_load_settings_parts(
             &mut pen_r,
             &mut pen_g,
             &mut pen_b,
             &mut width_scale,
         );
         let outline_enabled = OUTLINE_ENABLED.load(std::sync::atomic::Ordering::Relaxed);
-        let frosted = crate::runtime()
-            .block_on(crate::db::load_setting("frostedGlass"))
+        let frosted = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("frostedGlass"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0)
             != 0;
-        let show_grid = crate::runtime()
-            .block_on(crate::db::load_setting("grid"))
+        let show_grid = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("grid"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0)
             != 0;
-        let ethereal = crate::runtime()
-            .block_on(crate::db::load_setting("ethereal"))
+        let ethereal = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("ethereal"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0)
             != 0;
-        let grid_follow_strokes = crate::runtime()
-            .block_on(crate::db::load_setting("gridFollowStrokes"))
+        let grid_follow_strokes = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("gridFollowStrokes"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0)
             != 0;
-        let pressure_monitor = crate::runtime()
-            .block_on(crate::db::load_setting("pressureMonitor"))
+        let pressure_monitor = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("pressureMonitor"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0)
             != 0;
 
         // 恢复画布模式与镜头(与 macOS 一致):两种模式独立存储,
         // 无限画布全局仅一个;重启后回到离开时的镜头位置。
-        let infinite = crate::runtime()
-            .block_on(crate::db::load_setting("infinite_canvas"))
+        let infinite = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("infinite_canvas"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0)
             != 0;
         // 快捷录制 GIF 的质量设置(与 macOS 同键名)
         load_gif_settings();
         INFINITE_CANVAS.store(infinite, std::sync::atomic::Ordering::SeqCst);
-        crate::export::glaspen2_set_canvas_kind(if infinite { 1 } else { 0 });
+        glaspen_core::export::glaspen2_set_canvas_kind(if infinite { 1 } else { 0 });
         if infinite {
-            crate::export::glaspen2_load_infinite_strokes();
+            glaspen_core::export::glaspen2_load_infinite_strokes();
             let (mut px, mut py, mut pz) = (0.0f64, 0.0f64, 0.0f64);
-            crate::export::glaspen2_get_infinite_transform(&mut px, &mut py, &mut pz);
+            glaspen_core::export::glaspen2_get_infinite_transform(&mut px, &mut py, &mut pz);
             set_cam(px, py, if pz > 0.0 { pz } else { 1.0 });
         }
 
@@ -2419,7 +2419,7 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                 (state.draw.pen_g * 255.0) as u8,
                 (state.draw.pen_b * 255.0) as u8,
             );
-            crate::export::glaspen2_save_settings(
+            glaspen_core::export::glaspen2_save_settings(
                 state.draw.pen_r,
                 state.draw.pen_g,
                 state.draw.pen_b,
@@ -2431,7 +2431,7 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
         if idx < WIDTH_PRESETS.len() {
             state.draw.width_scale = WIDTH_PRESETS[idx];
             state.draw.selected_width = idx;
-            crate::export::glaspen2_save_settings(
+            glaspen_core::export::glaspen2_save_settings(
                 state.draw.pen_r,
                 state.draw.pen_g,
                 state.draw.pen_b,
@@ -2449,7 +2449,7 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                 hud_notify("截图成功");
             }
             x if x == CMD_SAVE_XOJ => {
-                crate::export::glaspen2_save_xoj();
+                glaspen_core::export::glaspen2_save_xoj();
                 hud_notify("笔记已保存");
             }
             x if x == CMD_CLEAR_SCREEN => clear_screen(state),
@@ -2470,14 +2470,14 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
             x if x == CMD_TOGGLE_GRID => {
                 let on = param_on(state.draw.show_grid);
                 state.draw.show_grid = on;
-                crate::runtime()
-                    .block_on(crate::db::save_setting("grid", if on { "1" } else { "0" }));
+                glaspen_core::runtime()
+                    .block_on(glaspen_core::db::save_setting("grid", if on { "1" } else { "0" }));
                 redraw_from_strokes(state);
             }
             x if x == CMD_TOGGLE_FROSTED => {
                 let on = param_on(state.draw.frosted);
                 state.draw.frosted = on;
-                crate::runtime().block_on(crate::db::save_setting(
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
                     "frostedGlass",
                     if on { "1" } else { "0" },
                 ));
@@ -2486,7 +2486,7 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
             x if x == CMD_TOGGLE_ETHEREAL => {
                 let on = param_on(state.draw.ethereal);
                 state.draw.ethereal = on;
-                crate::runtime().block_on(crate::db::save_setting(
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
                     "ethereal",
                     if on { "1" } else { "0" },
                 ));
@@ -2501,7 +2501,7 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
             x if x == CMD_TOGGLE_PRESSURE_MONITOR => {
                 let on = param_on(state.draw.pressure_monitor);
                 state.draw.pressure_monitor = on;
-                crate::runtime().block_on(crate::db::save_setting(
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
                     "pressureMonitor",
                     if on { "1" } else { "0" },
                 ));
@@ -2532,7 +2532,7 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
             x if x == CMD_CANVAS_CENTER => {
                 // 居中内容包围盒(设置面板「居中内容」)
                 let (mut bx, mut by, mut bx2, mut by2) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
-                if crate::export::glaspen2_stroke_bbox(&mut bx, &mut by, &mut bx2, &mut by2) != 0 {
+                if glaspen_core::export::glaspen2_stroke_bbox(&mut bx, &mut by, &mut bx2, &mut by2) != 0 {
                     let (_, _, z) = cam();
                     let z = if z > ZOOM_MIN { z } else { 1.0 };
                     let (w, h) = (state.canvas.w as f64, state.canvas.h as f64);
@@ -2548,7 +2548,7 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
             x if x == CMD_CANVAS_NEW => {
                 // 手动新建:清空内容,镜头回原点 + 100%(活页本退化为普通新建)
                 if infinite_on() {
-                    let _ = crate::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
+                    let _ = glaspen_core::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
                     set_cam(0.0, 0.0, 1.0);
                     persist_camera();
                     redraw_from_strokes(state);
@@ -2581,7 +2581,7 @@ fn clear_screen(state: &mut OverlayState) {
         state.canvas.draw_grid();
     }
     state.canvas.set_bg_alpha(BG_BLOCK);
-    let created = crate::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
+    let created = glaspen_core::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
     if state.draw.show_rainbow {
         draw_rainbow_indicator(state);
     }
@@ -2607,7 +2607,7 @@ fn toggle_enabled(state: &mut OverlayState) {
 }
 
 fn undo_last_stroke(state: &mut OverlayState) {
-    let remaining = crate::export::glaspen2_undo_last_stroke();
+    let remaining = glaspen_core::export::glaspen2_undo_last_stroke();
     if remaining < 0 {
         hud_notify("没有可撤销的笔画");
         return;
@@ -2631,7 +2631,7 @@ fn redraw_from_strokes(state: &mut OverlayState) {
     let ol = if state.draw.outline_enabled { 1.0 } else { 0.0 };
     let z = if infinite_on() { cam().2 as f32 } else { 1.0 };
     {
-        let strokes = crate::STROKES.lock().unwrap();
+        let strokes = glaspen_core::STROKES.lock().unwrap();
         for s in strokes.iter() {
             if s.points.is_empty() {
                 continue;
@@ -2663,9 +2663,9 @@ fn redraw_from_strokes(state: &mut OverlayState) {
 /// 上一页/下一页(加载目标页笔画并重绘)
 fn navigate_page(state: &mut OverlayState, next: bool) {
     let target = if next {
-        crate::export::glaspen2_next_screen_id()
+        glaspen_core::export::glaspen2_next_screen_id()
     } else {
-        crate::export::glaspen2_prev_screen_id()
+        glaspen_core::export::glaspen2_prev_screen_id()
     };
     navigate_to(state, target, if next { "下一页" } else { "上一页" });
 }
@@ -2676,7 +2676,7 @@ fn navigate_to(state: &mut OverlayState, target: i64, _label: &str) {
     if infinite_on() {
         apply_infinite_canvas(state, false);
     }
-    let current = crate::export::glaspen2_get_current_screen_id();
+    let current = glaspen_core::export::glaspen2_get_current_screen_id();
     if target <= 0 || target == current {
         eprintln!(
             "[overlay] 没有更多页面 (current={}, target={})",
@@ -2685,7 +2685,7 @@ fn navigate_to(state: &mut OverlayState, target: i64, _label: &str) {
         hud_notify("没有可跳转的页面");
         return;
     }
-    let count = crate::export::glaspen2_load_strokes_for_screen(target);
+    let count = glaspen_core::export::glaspen2_load_strokes_for_screen(target);
     redraw_from_strokes(state);
     eprintln!("[overlay] 已切换到页面 {} ({} 笔)", target, count);
     hud_notify(&page_info_text(target));
@@ -2698,14 +2698,14 @@ fn navigate_to(state: &mut OverlayState, target: i64, _label: &str) {
 
 /// 页数+日期通知文本,如 "今天 第2页  第3/5页"(与 macOS 一致)
 fn page_info_text(screen_id: i64) -> String {
-    let ptr = crate::export::glaspen2_page_info_json(screen_id);
+    let ptr = glaspen_core::export::glaspen2_page_info_json(screen_id);
     if ptr.is_null() {
         return format!("第 {} 页", screen_id);
     }
     let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
         .to_string_lossy()
         .to_string();
-    crate::export::glaspen2_free_c_string(ptr);
+    glaspen_core::export::glaspen2_free_c_string(ptr);
     let v: serde_json::Value = match serde_json::from_str(&s) {
         Ok(v) => v,
         Err(_) => return format!("第 {} 页", screen_id),
@@ -2722,7 +2722,7 @@ fn page_info_text(screen_id: i64) -> String {
 fn hide_strokes(state: &mut OverlayState) {
     // 提交未完成的笔画,避免悬空
     if state.in_stroke {
-        crate::export::glaspen2_end_stroke();
+        glaspen_core::export::glaspen2_end_stroke();
         state.in_stroke = false;
         state.pen_path.clear();
     }
@@ -2749,7 +2749,7 @@ fn show_strokes(state: &mut OverlayState) {
 /// 镜头持久化到 user_settings(仅无限模式有意义)
 fn persist_camera() {
     let (px, py, z) = cam();
-    crate::export::glaspen2_set_infinite_transform(px, py, z);
+    glaspen_core::export::glaspen2_set_infinite_transform(px, py, z);
 }
 
 /// 应用镜头变换到渲染 + 节流持久化(0.5s 一次,与 macOS 一致)
@@ -2814,7 +2814,7 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool) {
     }
     // 先把在写的笔画落库到"旧"存储
     if state.in_stroke {
-        crate::export::glaspen2_end_stroke();
+        glaspen_core::export::glaspen2_end_stroke();
         state.in_stroke = false;
         state.pen_path.clear();
         let params = modeler_params();
@@ -2825,31 +2825,31 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool) {
         persist_camera(); // 离开无限画布前存镜头
     }
     INFINITE_CANVAS.store(on, std::sync::atomic::Ordering::SeqCst);
-    crate::runtime().block_on(crate::db::save_setting(
+    glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
         "infinite_canvas",
         if on { "1" } else { "0" },
     ));
-    crate::export::glaspen2_set_canvas_kind(if on { 1 } else { 0 });
+    glaspen_core::export::glaspen2_set_canvas_kind(if on { 1 } else { 0 });
     if on {
-        crate::export::glaspen2_load_infinite_strokes();
+        glaspen_core::export::glaspen2_load_infinite_strokes();
         let mut px = 0.0f64;
         let mut py = 0.0f64;
         let mut pz = 0.0f64;
-        crate::export::glaspen2_get_infinite_transform(&mut px, &mut py, &mut pz);
+        glaspen_core::export::glaspen2_get_infinite_transform(&mut px, &mut py, &mut pz);
         set_cam(px, py, if pz > 0.0 { pz } else { 1.0 });
     } else {
         // 回到活页本:载入当前页;没有页就建一页;镜头恒为原点 + 100%
-        let cur = crate::export::glaspen2_get_current_screen_id();
+        let cur = glaspen_core::export::glaspen2_get_current_screen_id();
         if cur > 0 {
-            crate::export::glaspen2_load_strokes_for_screen(cur);
+            glaspen_core::export::glaspen2_load_strokes_for_screen(cur);
         } else {
-            crate::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
+            glaspen_core::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
         }
         set_cam(0.0, 0.0, 1.0);
     }
     // 切换后画布从空白开始:上一模式的内容仍在库里(重启/翻页回来还在),
     // 只是切换当下不再显示。清空内存副本,新笔画的 undo/导出只作用于本次。
-    crate::STROKES.lock().unwrap().clear();
+    glaspen_core::STROKES.lock().unwrap().clear();
     redraw_from_strokes(state);
     hud_notify(if on {
         "无限画布已开启 (Ctrl+Alt+滚轮缩放 · Ctrl+Alt+方向键平移)"
@@ -2863,7 +2863,7 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool) {
 /// 提交在写的笔画并复位模型器(录制边界必须落在笔画边界上)
 fn finish_active_stroke(state: &mut OverlayState) {
     if state.in_stroke {
-        crate::export::glaspen2_end_stroke();
+        glaspen_core::export::glaspen2_end_stroke();
         state.in_stroke = false;
         state.pen_path.clear();
         let params = modeler_params();
@@ -2882,7 +2882,7 @@ fn gif_record_start(state: &mut OverlayState) {
         return;
     }
     finish_active_stroke(state);
-    state.gif_record_start = crate::export::glaspen2_stroke_count();
+    state.gif_record_start = glaspen_core::export::glaspen2_stroke_count();
     state.gif_recording = true;
     hud_notify("按住绘制, 松开生成 GIF");
 }
@@ -2896,7 +2896,7 @@ fn gif_record_stop(state: &mut OverlayState) {
     state.gif_recording = false;
     state.gif_record_start = -1;
     finish_active_stroke(state);
-    let end = crate::export::glaspen2_stroke_count();
+    let end = glaspen_core::export::glaspen2_stroke_count();
     let (fps, resolution, speed, end_mode) = gif_settings();
     // HWND 裸指针不能跨线程,转 isize 传递
     let hwnd = state.canvas.hwnd.0 as isize;
@@ -2904,7 +2904,7 @@ fn gif_record_stop(state: &mut OverlayState) {
     // 区间在主线程钉死,新录制不会覆盖尚在编码的这一次
     std::thread::spawn(move || {
         let mut len: i32 = 0;
-        let ptr = crate::export::glaspen2_gif_record_end(
+        let ptr = glaspen_core::export::glaspen2_gif_record_end(
             start, end, fps, resolution, speed, end_mode, &mut len,
         );
         let result = if ptr.is_null() || len <= 0 {
@@ -2912,7 +2912,7 @@ fn gif_record_stop(state: &mut OverlayState) {
         } else {
             let gif = unsafe { std::slice::from_raw_parts(ptr, len as usize) };
             let ok = unsafe { copy_gif_bytes_to_clipboard(gif) };
-            crate::export::glaspen2_free_rust_bytes(ptr, len);
+            glaspen_core::export::glaspen2_free_rust_bytes(ptr, len);
             if ok { 1 } else { 0 }
         };
         unsafe {
@@ -3033,10 +3033,10 @@ unsafe fn handle_keyboard_raw(buf: &[u64], state: &mut OverlayState) {
 
 /// Ctrl+Alt+G:导出 SVG + GIF,并把当前画布复制到系统剪贴板(CF_DIB)
 fn export_svg_gif_clipboard(state: &mut OverlayState) {
-    crate::export::glaspen2_save_svg();
+    glaspen_core::export::glaspen2_save_svg();
     // Default GIF quality/speed (fps, resolution, playback speed); the macOS
     // settings panel exposes these for the Cmd+Ctrl+R recording flow.
-    let ok = crate::export::glaspen2_save_animated_gif(15, 0.5, 2.0, 1);
+    let ok = glaspen_core::export::glaspen2_save_animated_gif(15, 0.5, 2.0, 1);
     eprintln!(
         "[overlay] SVG 已导出;GIF 导出: {}",
         if ok != 0 { "OK" } else { "FAILED" }
@@ -3147,7 +3147,7 @@ fn apply_frosted(hwnd: HWND, on: bool) {
 /// Ctrl+Alt+B:模糊背景(磨砂玻璃)开关
 fn toggle_frosted(state: &mut OverlayState) {
     state.draw.frosted = !state.draw.frosted;
-    crate::runtime().block_on(crate::db::save_setting(
+    glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
         "frostedGlass",
         if state.draw.frosted { "1" } else { "0" },
     ));
@@ -3181,7 +3181,7 @@ fn on_display_change(state: &mut OverlayState) {
             SWP_NOACTIVATE | SWP_SHOWWINDOW,
         );
     }
-    crate::export::glaspen2_on_display_change(w, h);
+    glaspen_core::export::glaspen2_on_display_change(w, h);
     let color = state.canvas.color;
     state.canvas = OverlayCanvas::create(hwnd);
     state.canvas.color = color;
@@ -3219,7 +3219,7 @@ fn hsv_to_rgb(h: f64) -> (f64, f64, f64) {
 
 fn save_drawing(state: &mut OverlayState) {
     let snap = state.canvas.snapshot();
-    crate::export::glaspen2_save_drawing(
+    glaspen_core::export::glaspen2_save_drawing(
         snap.as_ptr(),
         state.canvas.w,
         state.canvas.h,
@@ -3251,7 +3251,7 @@ fn save_with_bg(state: &mut OverlayState) {
         let old = SelectObject(bg_dc, bg_bmp.into());
         let _ = BitBlt(bg_dc, 0, 0, bw, bh, Some(screen_dc), 0, 0, SRCCOPY);
         let snap = state.canvas.snapshot();
-        crate::export::glaspen2_save_with_background(
+        glaspen_core::export::glaspen2_save_with_background(
             snap.as_ptr(),
             state.canvas.w,
             state.canvas.h,
@@ -3461,7 +3461,7 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
 /// 在管道线程调用:只读 STROKES / 镜头原子量,不动 UI 状态。
 fn render_overview_json(ow: i32, oh: i32) -> String {
     let (mut bx, mut by, mut bx2, mut by2) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
-    if crate::export::glaspen2_stroke_bbox(&mut bx, &mut by, &mut bx2, &mut by2) == 0 {
+    if glaspen_core::export::glaspen2_stroke_bbox(&mut bx, &mut by, &mut bx2, &mut by2) == 0 {
         return String::new();
     }
     let (mut bw, mut bh) = (bx2 - bx, by2 - by);
@@ -3480,13 +3480,13 @@ fn render_overview_json(ow: i32, oh: i32) -> String {
     bh += my * 2.0;
 
     let mut out_len: i32 = 0;
-    let ptr = crate::export::glaspen2_render_canvas_overview(bx, by, bw, bh, ow, oh, &mut out_len);
+    let ptr = glaspen_core::export::glaspen2_render_canvas_overview(bx, by, bw, bh, ow, oh, &mut out_len);
     if ptr.is_null() || out_len <= 0 {
         return String::new();
     }
     let bytes = unsafe { std::slice::from_raw_parts(ptr, out_len as usize) };
     let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
-    crate::export::glaspen2_free_rust_bytes(ptr, out_len);
+    glaspen_core::export::glaspen2_free_rust_bytes(ptr, out_len);
 
     // 总览映射(scale/offset 必须与渲染一致),再映射当前视口矩形
     let ov_scale = ((ow as f64) / bw).min((oh as f64) / bh);
@@ -3514,7 +3514,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
     if msg_type == "listPages" {
         // 页面列表(内容 tab)
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        let ptr = crate::export::glaspen2_list_screens_json();
+        let ptr = glaspen_core::export::glaspen2_list_screens_json();
         if ptr.is_null() {
             let _ = writer.write_all(
                 format!(
@@ -3527,7 +3527,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
                 .to_string_lossy()
                 .to_string();
-            crate::export::glaspen2_free_c_string(ptr);
+            glaspen_core::export::glaspen2_free_c_string(ptr);
             let resp = format!(
                 "{{\"type\":\"listPages_response\",\"reqId\":{},\"data\":{}}}\n",
                 req_id, s
@@ -3543,7 +3543,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let max_size = json_get_i64(line, "maxSize").unwrap_or(280) as i32;
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
         let mut out_len: i32 = 0;
-        let ptr = crate::export::glaspen2_render_thumbnail(screen_id, w, h, max_size, &mut out_len);
+        let ptr = glaspen_core::export::glaspen2_render_thumbnail(screen_id, w, h, max_size, &mut out_len);
         if ptr.is_null() || out_len <= 0 {
             let _ = writer.write_all(
                 format!("{{\"type\":\"getPageThumbnail_response\",\"reqId\":{},\"data\":{{\"png\":\"\"}}}}\n", req_id).as_bytes(),
@@ -3551,7 +3551,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         } else {
             let bytes = unsafe { std::slice::from_raw_parts(ptr, out_len as usize) };
             let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
-            crate::export::glaspen2_free_rust_bytes(ptr, out_len);
+            glaspen_core::export::glaspen2_free_rust_bytes(ptr, out_len);
             let resp = format!(
                 "{{\"type\":\"getPageThumbnail_response\",\"reqId\":{},\"data\":{{\"png\":\"{}\"}}}}\n",
                 req_id, b64
@@ -3565,7 +3565,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let ids = json_get_i64_array(line, "ids");
         let max_size = json_get_i64(line, "maxSize").unwrap_or(280) as i32;
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        let blob = crate::export::page_thumbnails_blob(&ids, max_size);
+        let blob = glaspen_core::export::page_thumbnails_blob(&ids, max_size);
         let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &blob);
         let _ = writer.write_all(
             format!(
@@ -3580,11 +3580,11 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         // 这里再切到相邻页并让覆盖层重载。
         let screen_id = json_get_i64(line, "screenId").unwrap_or(0);
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        let ok = crate::export::glaspen2_delete_screen(screen_id);
+        let ok = glaspen_core::export::glaspen2_delete_screen(screen_id);
         if ok != 0 {
-            let mut next = crate::export::glaspen2_next_screen_id();
+            let mut next = glaspen_core::export::glaspen2_next_screen_id();
             if next == 0 {
-                next = crate::export::glaspen2_prev_screen_id();
+                next = glaspen_core::export::glaspen2_prev_screen_id();
             }
             if next > 0 {
                 let _ = unsafe {
@@ -3608,7 +3608,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
     } else if msg_type == "exportPdf" {
         // 导出全部页面为 PDF(纯 Rust,不需要覆盖层配合)
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        let ok = crate::export::glaspen2_export_pdf();
+        let ok = glaspen_core::export::glaspen2_export_pdf();
         let _ = writer.write_all(
             format!(
                 "{{\"type\":\"exportPdf_response\",\"reqId\":{},\"data\":{{\"ok\":{}}}}}\n",
@@ -3693,8 +3693,8 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let _ = writer.flush();
     } else if msg_type == "getSettings" {
         // Respond with current settings from DB
-        let (r, g, b, w) = crate::runtime()
-            .block_on(crate::db::load_settings())
+        let (r, g, b, w) = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_settings())
             .unwrap_or((1.0, 0.0, 0.0, 1.0));
         let color = closest_color_index(r, g, b);
         let width = closest_width_index(w);
@@ -3703,24 +3703,24 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         } else {
             0
         };
-        let grid = crate::runtime()
-            .block_on(crate::db::load_setting("grid"))
+        let grid = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("grid"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0);
-        let frosted = crate::runtime()
-            .block_on(crate::db::load_setting("frostedGlass"))
+        let frosted = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("frostedGlass"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0);
-        let pressure_monitor = crate::runtime()
-            .block_on(crate::db::load_setting("pressureMonitor"))
+        let pressure_monitor = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("pressureMonitor"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0);
-        let grid_follow = crate::runtime()
-            .block_on(crate::db::load_setting("gridFollowStrokes"))
+        let grid_follow = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("gridFollowStrokes"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0);
-        let ethereal = crate::runtime()
-            .block_on(crate::db::load_setting("ethereal"))
+        let ethereal = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("ethereal"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0);
         let infinite_canvas = if infinite_on() { 1 } else { 0 };
@@ -3782,7 +3782,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 )
             };
         } else if key == "export_animated_gif" {
-            let result = crate::export::glaspen2_save_animated_gif(15, 0.5, 2.0, 1);
+            let result = glaspen_core::export::glaspen2_save_animated_gif(15, 0.5, 2.0, 1);
             eprintln!(
                 "[pipe] animated GIF export: {}",
                 if result != 0 { "OK" } else { "FAILED" }
@@ -3793,7 +3793,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 "动画 GIF 导出失败"
             });
         } else if key == "export_pdf" {
-            let result = crate::export::glaspen2_export_pdf();
+            let result = glaspen_core::export::glaspen2_export_pdf();
             eprintln!(
                 "[pipe] PDF export: {}",
                 if result != 0 { "OK" } else { "FAILED" }
@@ -3867,7 +3867,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             }
         } else if key == "gridFollowStrokes" {
             if let Some(on) = json_get_bool(line, "value") {
-                crate::runtime().block_on(crate::db::save_setting(
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
                     "gridFollowStrokes",
                     if on { "1" } else { "0" },
                 ));
@@ -3920,7 +3920,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
     } else if msg_type == "appVersion" {
         // 「关于」区显示的当前版本(与发布物一致,取自 Cargo.toml)
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        let data = serde_json::json!({ "version": crate::update::current_version() });
+        let data = serde_json::json!({ "version": glaspen_core::update::current_version() });
         let _ = writer.write_all(
             format!("{{\"type\":\"appVersion_response\",\"reqId\":{req_id},\"data\":{data}}}\n")
                 .as_bytes(),
@@ -3930,10 +3930,10 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         // 手动「检查更新」:阻塞的网络调用就跑在管道线程上(面板侧 15s 超时,
         // Rust 侧 10s 超时)。期间其它面板请求会排队 —— 按钮是手动触发的,可接受。
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        let current = crate::update::current_version().to_string();
-        let data = match crate::update::fetch_latest() {
+        let current = glaspen_core::update::current_version().to_string();
+        let data = match glaspen_core::update::fetch_latest() {
             Ok(r) => {
-                let has = crate::update::is_newer(&r.tag, &current);
+                let has = glaspen_core::update::is_newer(&r.tag, &current);
                 serde_json::json!({
                     "ok": true,
                     "current": current,
@@ -3959,7 +3959,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let _ = writer.flush();
     } else if msg_type == "openUrl" {
         // 「打开下载页」:http/https 白名单在 open_url_checked 里, 缺 url 会被拒绝
-        crate::api::open_url_checked(json_get_str(line, "url"));
+        open_url_checked(json_get_str(line, "url"));
     }
 }
 
@@ -4025,5 +4025,28 @@ fn json_get_bool(json: &str, key: &str) -> Option<bool> {
         Some(false)
     } else {
         None
+    }
+}
+
+/// http/https 白名单校验(与主 crate api::open_url_checked 同规则):
+/// URL 可能来自网络响应, 只放行 http/https, 其它 scheme 直接拒绝。
+fn open_url_checked(url: &str) {
+    if url.starts_with("https://") || url.starts_with("http://") {
+        // Windows 上用 cmd start 打开默认浏览器;CREATE_NO_WINDOW 防闪黑框
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            let _ = std::process::Command::new("cmd")
+                .args(["/c", "start", "", url])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = url;
+        }
+    } else {
+        eprintln!("[overlay] 拒绝打开非 http(s) URL: {url}");
     }
 }

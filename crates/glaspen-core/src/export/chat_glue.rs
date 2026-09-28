@@ -234,7 +234,7 @@ pub extern "C" fn glaspen2_chat_auth_reload() {
 
 /// 设置面板「测试登录」:强制用当前配置登录一次(成功则缓存 token)。
 /// Ok = 成功;Err = 可读失败原因(给 Flutter 显示)。
-pub(crate) fn chat_auth_test_login_blocking() -> Result<(), String> {
+pub fn chat_auth_test_login_blocking() -> Result<(), String> {
     runtime()
         .block_on(glaspen_chat::auth::force_login())
         .map(|_| ())

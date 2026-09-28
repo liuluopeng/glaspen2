@@ -1,0 +1,152 @@
+// glaspen-core — 平台无关的共享核心:存储、笔迹模型、cairo 渲染、
+// 导出、更新检查,以及手写消息/共享上行的 FFI(供 ObjC / Windows 覆盖层
+// / FRB 面板三方调用)。
+//
+// 历史规则沿用:这些 FFI 是 extern "C" 裸指针接口,不标 unsafe fn;
+// 对结构性 lint 做 crate 级豁免。
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
+
+use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
+
+/// Tokio runtime for bridging sync FFI → async SQLite.
+/// The runtime is lazily created on first use and lives for the app's lifetime.
+pub fn runtime() -> &'static tokio::runtime::Runtime {
+    static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RT.get_or_init(|| tokio::runtime::Runtime::new().expect("Failed to create tokio runtime"))
+}
+
+// ---------------------------------------------------------------------------
+// Module declarations
+// ---------------------------------------------------------------------------
+
+// Cairo 渲染:唯一实现是 cairo_dl(动态加载 libcairo,源自 wAPItry 已验证原型)
+pub mod cairo_dl;
+
+pub mod db;
+pub mod export;
+pub mod modeler;
+pub mod pdf;
+pub mod state;
+pub mod update;
+pub mod updater;
+
+// ---------------------------------------------------------------------------
+// Core types
+// ---------------------------------------------------------------------------
+
+/// Stroke data stored in STROKES — used for rendering, SVG/GIF export, and XOJ save.
+/// `id` is the DB row id (0 when the stroke has no DB row yet).
+#[derive(Clone)]
+pub struct Stroke {
+    pub id: i64,
+    pub r: f64,
+    pub g: f64,
+    pub b: f64,
+    pub points: Vec<(f64, f64, f64, f64)>, // (x, y, width, relative_time)
+}
+
+impl Stroke {
+    pub fn avg_width(&self) -> f64 {
+        if self.points.is_empty() {
+            return 1.0;
+        }
+        self.points.iter().map(|p| p.2).sum::<f64>() / self.points.len() as f64
+    }
+}
+
+/// All strokes in memory — used by rendering, export, and FFI.
+pub static STROKES: Mutex<Vec<Stroke>> = Mutex::new(Vec::new());
+
+/// Tracks the current stroke's start timestamp for the raw (DB) draw path.
+pub(crate) static RAW_STROKE_START: Mutex<Option<f64>> = Mutex::new(None);
+
+// ---------------------------------------------------------------------------
+// Shared helpers (used by export module)
+// ---------------------------------------------------------------------------
+
+pub fn pressure_to_width(pressure: f64, width_scale: f64) -> f64 {
+    if pressure > 0.01 {
+        (0.3 + pressure * pressure * 7.7) * width_scale
+    } else {
+        1.0 * width_scale
+    }
+}
+
+pub fn desktop_path() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        PathBuf::from(std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string()))
+            .join("Desktop")
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string())).join("Desktop")
+    }
+}
+
+pub fn timestamped_path() -> PathBuf {
+    desktop_path().join(timestamped_name("png"))
+}
+
+pub fn timestamped_name(ext: &str) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+    let s = secs % 60;
+    let m = (secs / 60) % 60;
+    let h = (secs / 3600 + 8) % 24;
+    let days = secs / 86400;
+    let y = 1970 + days / 365;
+    let d = days % 365;
+    format!(
+        "glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.{}",
+        y, d, h, m, s, ext
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 串行锁:STROKES/模型器是进程级全局,改它们的测试共用一把锁。
+    /// glaspen2 根 crate 与本 crate 的导出测试都引用 crate::tests::TEST_LOCK。
+    pub(crate) static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn test_stroke_avg_width() {
+        let s = Stroke {
+            id: 0,
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            points: vec![(0.0, 0.0, 2.0, 0.0), (10.0, 10.0, 4.0, 1.0)],
+        };
+        let avg = s.avg_width();
+        assert!((avg - 3.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_empty_stroke_avg_width() {
+        let s = Stroke {
+            id: 0,
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            points: vec![],
+        };
+        assert!((s.avg_width() - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_pressure_to_width_zero_pressure() {
+        assert!((pressure_to_width(0.0, 1.0) - 1.0).abs() < 1e-6);
+    }
+}

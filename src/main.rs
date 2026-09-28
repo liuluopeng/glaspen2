@@ -15,5 +15,5 @@ fn main() {
     glaspen2::macos::macos_run();
 
     #[cfg(target_os = "windows")]
-    glaspen2::windows::win_main();
+    glaspen_windows::win_main();
 }

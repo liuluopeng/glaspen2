@@ -1,5 +1,5 @@
 [workspace]
-members = ["installer", "chat"]
+members = ["installer", "chat", "crates/glaspen-core", "crates/glaspen-windows"]
 
 # flutter_rust_bridge 的 #[frb] 宏会展开出 cfg(frb_expand) 供 codegen 使用,
 # 声明一下, 免得 21 条 unexpected_cfgs 告警淹没真正的问题。
@@ -21,28 +21,17 @@ pkg-config = "0.3"
 winresource = "0.1"
 
 [dependencies]
-image = "0.25"
-gif = "0.13"
-color_quant = "1.1"
-flate2 = "1"
-rayon = "1"
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
-ink-stroke-modeler-rs = "0.1"
-flutter_rust_bridge = "=2.12.0"
-glaspen-chat = { path = "chat" }
+# 根 crate 只剩壳:FRB 面板 API(api.rs)与平台入口。
+# 存储/渲染/导出/更新的依赖(sqlx/tokio/image/gif/ureq/…)都在 glaspen-core。
 serde_json = "1.0.150"
-base64 = "0.22"
-chrono = "0.4"
-libloading = "0.9"
-printpdf = "0.10.0"
-lopdf = "0.39"
-ureq = "3.4.2"
-sha2 = "0.11.0"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+flutter_rust_bridge = "=2.12.0"
+glaspen-core = { path = "crates/glaspen-core" }
+glaspen-windows = { path = "crates/glaspen-windows" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-libc = "0.2.189"
 objc = "0.2"
+libc = "0.2.189"
 
 [target.'cfg(windows)'.dependencies]
 # Versions match C:\Users\liulu\Downloads\wAPItry (verified Windows pen-input prototype)

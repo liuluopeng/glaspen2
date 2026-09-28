@@ -34,9 +34,7 @@ pub(crate) use media::{build_svg_from, encode_animated_gif, GifStroke};
 pub(crate) use chat_glue::{stroke_to_chat_message, CHAT_NOTEBOOK, sync_chat_auth_from_settings};
 #[cfg(test)]
 pub(crate) use pages::plan_new_page;
-pub(crate) use thumbs::{page_thumbnails_blob, warm_thumbnail_cache};
-#[cfg(test)]
-pub(crate) use thumbs::{encode_thumb_blob, THUMB_BLOB_MAGIC};
+pub use thumbs::{page_thumbnails_blob, warm_thumbnail_cache, THUMB_BLOB_MAGIC, encode_thumb_blob};
 
 // ---------------------------------------------------------------------------
 // Drawing FFI (legacy, non-modeler path)
