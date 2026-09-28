@@ -1567,14 +1567,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   Tab(
                     child: _modeTabLabel('活页本', !_infiniteCanvas),
                   ),
-                  Tab(
-                    child: _modeTabLabel('自由涂鸦', _infiniteCanvas),
-                  ),
-                  if (_chatIntegration)
-                    const Tab(
-                        icon: Icon(Icons.draw, size: 18), text: '共享画布'),
-                    ],
-                  ),
+                  if (_showFreeCanvas)
+                    Tab(
+                      child: _modeTabLabel('自由涂鸦', _infiniteCanvas),
+                    ),
+                  ],
+                ),
                 ),
                 if (!_connected)
                   const Padding(
@@ -1614,38 +1612,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             )),
             // ── Content(活页本) tab ──
             _tabBackground('assets/tab_bg_pages.jpg', _buildContentTab()),
-            _tabBackground('assets/tab_bg_infinite.jpg', _buildCanvasTab()),
-            if (_chatIntegration)
-              _tabBackground('assets/tab_bg_settings.jpg', _buildShareTab()),
+            if (_showFreeCanvas)
+              _tabBackground('assets/tab_bg_infinite.jpg', _buildCanvasTab()),
           ],
         ),
           ),
         ],
-      ),
-    );
-  }
-
-  /// 「共享画布」tab:纯说明页。tab 打开期间,画布上的涂鸦实时上行给
-  /// axum(kongde 已打开的接收页);没有任何需要用户操作的连接设置。
-  Widget _buildShareTab() {
-    const faint = TextStyle(fontSize: 13, color: _inkFaint);
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          const Icon(Icons.draw, size: 42, color: _inkFaint),
-          const SizedBox(height: 14),
-          const Text('这个页签打开时,画布上的涂鸦会实时发送',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          const Text(
-            '在对方应用里打开要接收涂鸦的页面,然后切回画布直接书写即可。\n'
-            '笔迹以抬笔为单位实时送达;此页签切走或面板关闭即停止发送。\n'
-            '涂鸦本身照常保存在本机活页本里,发送失败也不会有影响。',
-            textAlign: TextAlign.center,
-            style: faint,
-          ),
-        ]),
       ),
     );
   }
