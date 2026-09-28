@@ -6,6 +6,8 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart'
+    show PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart' as frb;
 
@@ -1622,52 +1624,73 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
+  /// 活页本 tab 上方是固定设置区(不可滚), 下方页面网格自己滚动;
+  /// 把设置区的滚轮事件转发给网格控制器 —— 鼠标悬在设置区也能滚动
+  /// 页面列表(悬在网格上则走网格自己的滚动, 不会重复)。
+  void _forwardWheelToGrid(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent || !_gridScroll.hasClients) return;
+    final pos = _gridScroll.position;
+    if (pos.maxScrollExtent <= 0) return;
+    final target =
+        (pos.pixels + event.scrollDelta.dy).clamp(0.0, pos.maxScrollExtent);
+    if (target != pos.pixels) _gridScroll.jumpTo(target);
+  }
+
   Widget _buildContentTab() {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-          child: _buildSection('页面缩略图', _tile(SwitchListTile(
-            title: const Text('显示附近 10 页', style: TextStyle(fontSize: 14)),
-            subtitle: const Text('屏幕右缘竖向 minimap · 仅活页本(翻页)模式', style: TextStyle(fontSize: 12)),
-            value: _minimapEnabled,
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (v) {
-              setState(() => _minimapEnabled = v);
-              _setSetting('minimap', v);
-            },
-          ))),
-        ),
-        if (_chatIntegration)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-            child: _buildSection('共享画布', _tile(SwitchListTile(
-              title: const Text('实时发送涂鸦', style: TextStyle(fontSize: 14)),
-              subtitle: const Text('抬笔即推给对方应用当前打开的接收页;关闭即停',
-                  style: TextStyle(fontSize: 12)),
-              value: _shareCanvas,
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              onChanged: (v) {
-                setState(() => _shareCanvas = v);
-                _setSetting('shareCanvas', v);
-              },
-            ))),
+        // 上方设置区不参与滚动(网格自己滚): 把这里的滚轮事件转发给
+        // 网格控制器, 鼠标悬在设置区也能滚动页面列表。
+        Listener(
+          onPointerSignal: _forwardWheelToGrid,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                child: _buildSection('页面缩略图', _tile(SwitchListTile(
+                  title: const Text('显示附近 10 页', style: TextStyle(fontSize: 14)),
+                  subtitle: const Text('屏幕右缘竖向 minimap · 仅活页本(翻页)模式', style: TextStyle(fontSize: 12)),
+                  value: _minimapEnabled,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (v) {
+                    setState(() => _minimapEnabled = v);
+                    _setSetting('minimap', v);
+                  },
+                ))),
+              ),
+              if (_chatIntegration)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                  child: _buildSection('共享画布', _tile(SwitchListTile(
+                    title: const Text('实时发送涂鸦', style: TextStyle(fontSize: 14)),
+                    subtitle: const Text('抬笔即推给对方应用当前打开的接收页;关闭即停',
+                        style: TextStyle(fontSize: 12)),
+                    value: _shareCanvas,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: (v) {
+                      setState(() => _shareCanvas = v);
+                      _setSetting('shareCanvas', v);
+                    },
+                  ))),
+                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                child: _buildSection('Export', _buildExportButtons()),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                child: _buildSection('数据备份', _buildBackupButtons()),
+              ),
+              if (!_pagesLoading && _filteredPages.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: _buildGridToolbar(),
+                ),
+            ],
           ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-          child: _buildSection('Export', _buildExportButtons()),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-          child: _buildSection('数据备份', _buildBackupButtons()),
-        ),
-        if (!_pagesLoading && _filteredPages.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: _buildGridToolbar(),
-          ),
         // Page grid
         Expanded(
           child: _pagesLoading
