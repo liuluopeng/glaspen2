@@ -46,6 +46,8 @@ static void gl_glass_apply(void);
 static void gl_settings_set_enabled(BOOL on);
 static void toggle_enabled(void);
 static void update_status_icon_state(void);
+static void ink_draft_stop_async(void); // 定义在 ink draft 区(总开关要用)
+static BOOL g_strokes_visible; // 定义在飘渺模式区(总开关恢复 V 时要用)
 
 // --- Cairo (linked via cargo) ---
 #include <cairo/cairo.h>
@@ -67,6 +69,8 @@ extern void glaspen2_save_bool_setting(const char *key, int val);
 extern int  glaspen2_load_bool_setting(const char *key);
 extern void glaspen2_save_string_setting(const char *key, const char *value);
 extern char* glaspen2_load_string_setting(const char *key);
+extern void glaspen2_chat_auth_reload(void); // 设置/启动时把 DB 账号配置推给 Rust auth
+// (共享画布上行已无 ObjC 入口:生命周期完全由面板 tab 驱动,FRB 直达 Rust)
 
 // Modeler FFI
 extern void glaspen2_modeler_begin(double r, double g, double b, double x, double y, double pressure, double timestamp, double width_scale);
@@ -101,6 +105,10 @@ extern void glaspen2_notify_settings_changed(void);
 extern int glaspen2_delete_screen(long long screen_id);
 extern char* glaspen2_page_info_json(long long screen_id);
 extern int glaspen2_chat_send_strokes(int start_index, int end_index);
+// 手写消息草稿通道(⌘⌃2):开启/关闭 DraftInk gRPC 流,实现见 export.rs
+extern int glaspen2_ink_draft_start(int canvas_w, int canvas_h);
+extern int glaspen2_ink_draft_stop(void);
+extern const char *glaspen2_ink_draft_last_error(void);
 extern void glaspen2_set_stroke_outline(int enabled);
 extern unsigned char* glaspen2_render_canvas_overview(double bx, double by, double bw, double bh, int out_w, int out_h, int *out_len);
 extern void glaspen2_set_view_transform(double pan_x, double pan_y, double zoom);
@@ -135,8 +143,6 @@ static void apply_outline(BOOL on);
 static void apply_infinite_canvas(BOOL on, BOOL notify);
 static void canvas_infinite_load(void);
 static void canvas_infinite_persist(void);
-static void page_flip_animation(BOOL forward);
-static void page_flip_finish(BOOL forward);
 static void event_tap_install(BOOL include_scroll);
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                      CGEventRef event, void *refcon);
@@ -147,7 +153,6 @@ static inline BOOL virtual_pen_is_event(CGEventRef event) {
     return CGEventGetIntegerValueField(event, kCGEventSourceUserData) == kVirtualPenUserData;
 }
 static void draw_minimap(CGContextRef ctx, NSRect bounds);
-static void page_scroll_apply(void);
 static void canvas_reset_lens(void);
 static void canvas_apply_transform(void);
 // 性能日志(drawRect 用得到, 实现在文件后部)
@@ -185,11 +190,17 @@ static BOOL g_stroke_active = NO;
 // g_gif_record_start is the stroke count at key-down, pinning the window.
 static BOOL g_gif_recording = NO;
 static int g_gif_record_start = -1;
-
 // Handwriting message recording (Cmd+Ctrl+3 hold-to-write): the stroke
 // window [start, end) pinned at key-down/key-up is sent as one batch of
 // chat messages when the key is released.
 static int g_msg_record_start = -1;
+// Handwriting DRAFT channel (Cmd+Ctrl+2 hold-to-write): strokes stream live
+// over a gRPC DraftInk session while held; on release the stream closes and
+// the axum side decides whether to send. Mutually exclusive with ⌘⌃3.
+static BOOL g_ink_draft_active = NO;
+// 手写消息集成总开关(设置面板,默认关):关 = ⌘⌃2/⌘⌃3 直通不劫持,
+// 登录与画布共享界面隐藏。聊天/共享始终是增强功能,不影响涂鸦本体。
+static BOOL g_chat_integration = NO;
 
 // GIF quality/speed settings (frame rate, resolution multiplier, playback speed)
 static int g_gif_fps = 15;
@@ -275,10 +286,6 @@ static int g_selected_width_index = 3; // default: 1.0x
 // 网格大小(逻辑 px),设置面板可调,默认 40
 static double g_grid_size = 40.0;
 
-// ── 连续滚动(活页本模式):方向键滑动视图,上下键可停在两页之间 ──
-static BOOL g_continuous_scroll = NO;
-static double g_page_off_x = 0.0, g_page_off_y = 0.0;
-
 // ── 页面缩略图条(minimap,翻页模式) ──
 static BOOL g_minimap_enabled = NO;
 static NSMutableDictionary *g_minimap_thumbs = nil; // screenId(NSNumber) → NSImage
@@ -292,10 +299,13 @@ static long g_minimap_ids_for = -1;                  // 该列表对应的当前
 static BOOL g_infinite_canvas = NO;
 static double g_pan_x = 0.0, g_pan_y = 0.0;
 static double g_zoom = 1.0; // 视图缩放,(0,1],上限 100%
+// 翻页模式的滚动偏移:整页翻页后恒为 0(变量保留,canvas_input/drawRect
+// 的变换式以此为恒等项;不再有任何滑动写入路径)。
+static double g_page_off_x = 0.0, g_page_off_y = 0.0;
 
 // 输入坐标(视图/屏幕逻辑点)→ 画布坐标。
 // 渲染是 view = (canvas − pan) × zoom,所以 canvas = view / zoom + pan。
-// 翻页模式渲染时设的 pan = −page_off(page_scroll_apply),无限画布则是 g_pan。
+// 翻页模式渲染时镜头恒为原点(page_off 恒 0,整页翻页不滚动),无限画布则是 g_pan。
 // 注意:此前输入写成 `+ g_page_off`,符号反了 —— 在两张之间涂鸦后一移动就跳位。
 static inline double canvas_input_x(double view_x) {
     if (g_infinite_canvas) return view_x / g_zoom + g_pan_x;
@@ -633,22 +643,16 @@ static NSStatusItem *g_statusItem = nil;
 static NSMenu *g_menu = nil;
 static int g_selectedColorIndex = 0; // 0=red (default)
 
+static NSAttributedString* gl_color_item_text(NSInteger idx);
+static NSAttributedString* gl_width_item_text(NSInteger idx);
 static void update_menu_texts(void) {
+    // 颜色/粗细条目:重建富文本(内嵌图标 + 名称;setTitle 会清掉它)
     for (int i = 0; i < g_color_preset_count; i++) {
-        NSMenuItem *item = [g_menu itemAtIndex:i];
-        if (g_lang == 0) {
-            NSString *zhNames[] = {@"红", @"橙", @"黄", @"绿", @"青", @"蓝", @"紫", @"粉", @"白", @"黑"};
-            [item setTitle:zhNames[i]];
-        } else {
-            [item setTitle:[NSString stringWithUTF8String:g_color_presets[i].name]];
-        }
+        [[g_menu itemAtIndex:i] setAttributedTitle:gl_color_item_text(i)];
     }
     int wBase = g_color_preset_count + 1;
-    NSString *zhWidthNames[] = {@"极细", @"很细", @"细", @"中", @"粗", @"很粗", @"超粗", @"极粗"};
-    NSString *enWidthNames[] = {@"Hair", @"Very fine", @"Fine", @"Medium", @"Thick", @"Very thick", @"Extra thick", @"Boldest"};
     for (int i = 0; i < g_width_preset_count; i++) {
-        NSMenuItem *item = [g_menu itemAtIndex:wBase + i];
-        [item setTitle:(g_lang == 0) ? zhWidthNames[i] : enWidthNames[i]];
+        [[g_menu itemAtIndex:wBase + i] setAttributedTitle:gl_width_item_text(i)];
     }
     int base = g_color_preset_count + 1 + g_width_preset_count + 1;
     [[g_menu itemAtIndex:base+0] setTitle:L(@"保存(含背景)", @"Save (with bg)")];
@@ -669,61 +673,192 @@ static void update_menu_texts(void) {
     [[g_menu itemAtIndex:base+15] setTitle:L(@"退出", @"Quit")];
 }
 
-static NSImage* colorSwatchImage(NSColor *color, CGFloat size) {
-    NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(size, size)];
+// ── 颜色/粗细菜单条目的富文本:内嵌小图标 + 名称 ──
+// NSMenuItem.image 在新版系统菜单里不渲染(实测菜单全是字), 而正文里
+// 内嵌附件图(attributedTitle + NSTextAttachment)任何系统版本都画。
+// 颜色 = 圆点色块(一眼可见);粗细 = 横线粗细(粗细预设的直观映射)。
+
+static NSImage* gl_color_dot_image(NSColor *color) {
+    const CGFloat s = 13.0;
+    NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(s, s)];
     [image lockFocus];
+    NSBezierPath *dot = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(0.5, 0.5, s - 1, s - 1)];
     [color setFill];
-    NSRectFill(NSMakeRect(0, 0, size, size));
+    [dot fill];
+    // 细描边:白/浅色圆点在白色菜单上也有一圈轮廓
     [[NSColor colorWithWhite:0 alpha:0.3] setStroke];
-    NSFrameRect(NSMakeRect(0, 0, size, size));
+    [dot setLineWidth:1.0];
+    [dot stroke];
     [image unlockFocus];
     return image;
 }
 
-static NSImage* widthIndicatorImage(double scale, CGFloat size) {
-    CGFloat lineW = MAX(1.0, scale * 3.0);
-    NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(size, size)];
+static NSImage* gl_width_line_image(double scale) {
+    const CGFloat w = 16.0, h = 13.0;
+    NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(w, h)];
     [image lockFocus];
-    [[NSColor clearColor] setFill];
-    NSRectFill(NSMakeRect(0, 0, size, size));
+    // 预设 0.15x..3.5x → 线宽 1.5..5.5pt(开方缓增,细档之间也能看出差别)
+    CGFloat lineW = (CGFloat)MIN(5.5, MAX(1.5, 1.3 + sqrt(scale) * 2.2));
     NSBezierPath *path = [NSBezierPath bezierPath];
     [path setLineWidth:lineW];
     [path setLineCapStyle:NSLineCapStyleRound];
-    [path moveToPoint:NSMakePoint(3, size / 2)];
-    [path lineToPoint:NSMakePoint(size - 3, size / 2)];
-    [[NSColor colorWithWhite:1.0 alpha:0.85] setStroke];
+    [path moveToPoint:NSMakePoint(2, h / 2)];
+    [path lineToPoint:NSMakePoint(w - 2, h / 2)];
+    [[[NSColor labelColor] colorWithAlphaComponent:0.9] setStroke];
     [path stroke];
     [image unlockFocus];
     return image;
 }
 
-static void update_status_icon_color(void) {
-    NSColor *color = [NSColor colorWithCalibratedRed:g_pen_r green:g_pen_g blue:g_pen_b alpha:1.0];
-    [g_statusItem.button setImage:colorSwatchImage(color, 18)];
+static NSAttributedString* gl_menu_text(NSImage *icon, NSString *name) {
+    NSTextAttachment *att = [[NSTextAttachment alloc] init];
+    att.image = icon;
+    att.bounds = NSMakeRect(0, -2.5, icon.size.width, icon.size.height);
+    NSMutableAttributedString *s = [[NSMutableAttributedString alloc]
+        initWithAttributedString:[NSAttributedString attributedStringWithAttachment:att]];
+    [s appendAttributedString:[[NSAttributedString alloc]
+        initWithString:[@"   " stringByAppendingString:name]
+            attributes:@{NSFontAttributeName: [NSFont menuFontOfSize:14]}]];
+    return s;
 }
 
-static void update_status_icon_text(void) {
-    [g_statusItem.button setImage:nil];
-    [g_statusItem.button setTitle:@"G"];
+static NSAttributedString* gl_color_item_text(NSInteger idx) {
+    static NSString *zh[] = {@"红", @"橙", @"黄", @"绿", @"青", @"蓝", @"紫", @"粉", @"白", @"黑"};
+    NSString *name = (g_lang == 0)
+        ? zh[idx]
+        : [NSString stringWithUTF8String:g_color_presets[idx].name];
+    NSColor *c = [NSColor colorWithRed:g_color_presets[idx].r
+                                 green:g_color_presets[idx].g
+                                  blue:g_color_presets[idx].b
+                                 alpha:1.0];
+    return gl_menu_text(gl_color_dot_image(c), name);
+}
+
+static NSAttributedString* gl_width_item_text(NSInteger idx) {
+    static NSString *zh[] = {@"极细", @"很细", @"细", @"中", @"粗", @"很粗", @"超粗", @"极粗"};
+    static NSString *en[] = {@"Hair", @"Very fine", @"Fine", @"Medium",
+                             @"Thick", @"Very thick", @"Extra thick", @"Boldest"};
+    NSString *name = (g_lang == 0) ? zh[idx] : en[idx];
+    return gl_menu_text(gl_width_line_image(g_width_presets[idx]), name);
+}
+
+// ── 菜单栏图标: 一支斜放的马克笔, 把当前关键状态画进 18pt 里 ──
+//   笔色      → 笔杆填充色
+//   笔宽      → 笔杆粗细(越粗的笔杆 = 越粗的笔画)
+//   橡皮擦    → 正在用笔尾擦除时, 字形整体换成橡皮块
+//   涂鸦停用  → 字形淡化 + 一条斜杠
+//   飘渺画布  → 左上角小圆环徽标(ghost dot)
+//   无限画布  → 右下角 ∞ 徽标
+// 位图按 4x 渲染保证 Retina 清晰; 白晕 + 深描边双勾线让深/浅色菜单栏都可读
+// (纯白笔杆在浅色栏、纯黑笔杆在深色栏都不会隐形)。
+static BOOL g_ethereal_canvas; // 定义在下方(飘渺画布涂鸦模式), 图标要用
+static NSImage* render_status_icon(void) {
+    const CGFloat size = 18.0;
+    const NSInteger px = 72; // 4x
+    NSBitmapImageRep *rep = [[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:NULL pixelsWide:px pixelsHigh:px
+        bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
+        colorSpaceName:NSCalibratedRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
+    rep.size = NSMakeSize(size, size);
+    [NSGraphicsContext saveGraphicsState];
+    // 注意: rep.size(18pt) ≠ 像素尺寸(72px)时, 该上下文的 CTM 已自带
+    // 点→像素的缩放, 再手动 scale 会双重放大把内容画出界(全透明)。
+    [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithBitmapImageRep:rep]];
+    // 之后一律用 18pt 坐标系画
+
+    NSColor *ink   = [NSColor colorWithWhite:0.0 alpha:0.78]; // 主描边(浅色栏可读)
+    NSColor *halo  = [NSColor colorWithWhite:1.0 alpha:0.88]; // 外圈白晕(深色栏可读)
+    NSColor *pen   = [NSColor colorWithRed:g_pen_r green:g_pen_g blue:g_pen_b alpha:1.0];
+    CGFloat dim    = g_enabled ? 1.0 : 0.35;                  // 停用时字形淡化(斜杠不淡化)
+
+    // 先描 halo 再描 ink: 同一条路径画两遍, 外圈白内圈黑, 任何底色都有对比
+    void (^stroke_inked)(NSBezierPath *, CGFloat) = ^(NSBezierPath *path, CGFloat width) {
+        [path setLineWidth:width + 1.2];
+        [[halo colorWithAlphaComponent:dim] setStroke]; [path stroke];
+        [path setLineWidth:width];
+        [[ink colorWithAlphaComponent:dim] setStroke];  [path stroke];
+    };
+
+    if (g_eraser_mode && g_enabled) {
+        // 橡皮擦进行中: 45° 斜放的橡皮块, 亮身 + 深色擦除带
+        NSBezierPath *body = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(3.5, 6.1, 11.2, 5.8)
+                                                        xRadius:1.5 yRadius:1.5];
+        NSAffineTransform *t = [NSAffineTransform transform];
+        [t translateXBy:9 yBy:9]; [t rotateByDegrees:45]; [t translateXBy:-9 yBy:-9];
+        [body transformUsingAffineTransform:t];
+        NSBezierPath *band = [NSBezierPath bezierPathWithRect:NSMakeRect(10.2, 6.1, 4.5, 5.8)];
+        [band transformUsingAffineTransform:t];
+        // 顺序: 白晕 → 填充 → 黑描边。白晕必须画在填充之前, 否则它内侧的
+        // 一半会盖住小形状的内部(笔尖/擦除带会被洗白)。
+        [body setLineWidth:0.8 + 1.2]; [[halo colorWithAlphaComponent:dim] setStroke]; [body stroke];
+        [[NSColor colorWithWhite:0.92 alpha:dim] setFill]; [body fill];
+        [[NSColor colorWithWhite:0.25 alpha:dim] setFill]; [band fill]; // 擦除带
+        [body setLineWidth:0.8]; [[ink colorWithAlphaComponent:dim] setStroke]; [body stroke];
+    } else {
+        // 马克笔: 笔尖朝左下, 笔杆粗细 = 当前笔宽(0.15x..3.5x → 3.1..6.0pt)
+        CGFloat T = MIN(6.0, MAX(2.6, 2.4 + sqrt(g_width_scale) * 1.9));
+        NSBezierPath *body = [NSBezierPath bezierPathWithRoundedRect:
+            NSMakeRect(5.5, 9 - T / 2, 9.0, T)
+            xRadius:MIN(1.6, T / 2) yRadius:MIN(1.6, T / 2)];
+        NSBezierPath *tip = [NSBezierPath bezierPath]; // 深色笔尖三角
+        [tip moveToPoint:NSMakePoint(5.5, 9 - T / 2)];
+        [tip lineToPoint:NSMakePoint(3.0, 9)];
+        [tip lineToPoint:NSMakePoint(5.5, 9 + T / 2)];
+        [tip closePath];
+        NSBezierPath *sil = [NSBezierPath bezierPath]; // 剪影 = 杆 + 尖
+        [sil appendBezierPath:body];
+        [sil appendBezierPath:tip];
+        NSAffineTransform *t = [NSAffineTransform transform];
+        [t translateXBy:9 yBy:9]; [t rotateByDegrees:45]; [t translateXBy:-9 yBy:-9];
+        [sil transformUsingAffineTransform:t];
+        [tip transformUsingAffineTransform:t];
+        [sil setLineWidth:0.9 + 1.2]; [[halo colorWithAlphaComponent:dim] setStroke]; [sil stroke];
+        [[pen colorWithAlphaComponent:dim] setFill]; [sil fill];
+        [[ink colorWithAlphaComponent:dim] setFill]; [tip fill]; // 笔尖深色, 与杆无缝
+        [sil setLineWidth:0.9]; [[ink colorWithAlphaComponent:dim] setStroke]; [sil stroke];
+    }
+
+    if (!g_enabled) {
+        // 停用斜杠(与笔身垂直)—— 全强度, 这是"停用"的主信号
+        NSBezierPath *slash = [NSBezierPath bezierPath];
+        [slash moveToPoint:NSMakePoint(2.6, 15.4)]; [slash lineToPoint:NSMakePoint(15.4, 2.6)];
+        [slash setLineCapStyle:NSLineCapStyleRound];
+        [slash setLineWidth:2.8]; [halo setStroke]; [slash stroke];
+        [slash setLineWidth:1.6]; [ink setStroke];  [slash stroke];
+    }
+
+    // 模式徽标(模式在停用时依然成立, 不随字形淡化; 放在笔身对角线腾出的
+    // 两个角上, 与笔身零重叠; 全强度描边压在停用斜杠之上, 白晕自然开缝)
+    void (^stroke_mark)(NSBezierPath *) = ^(NSBezierPath *path) {
+        [path setLineWidth:1.0 + 1.2]; [halo setStroke]; [path stroke];
+        [path setLineWidth:1.0];       [ink setStroke];  [path stroke];
+    };
+    if (g_ethereal_canvas) {
+        // 飘渺画布: 左上角 ghost 圆环
+        NSBezierPath *dot = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(1.9, 13.1, 3.0, 3.0)];
+        stroke_mark(dot);
+    }
+    if (g_infinite_canvas) {
+        // 无限画布: 右下角 ∞(两个相切的小圆环)
+        NSBezierPath *inf = [NSBezierPath bezierPath];
+        [inf appendBezierPath:[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(12.9, 1.6, 2.4, 2.4)]];
+        [inf appendBezierPath:[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(15.1, 1.6, 2.4, 2.4)]];
+        stroke_mark(inf);
+    }
+
+    [NSGraphicsContext restoreGraphicsState];
+    NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(size, size)];
+    [image addRepresentation:rep];
+    return image;
+}
+
+static void update_status_icon_color(void) {
+    [g_statusItem.button setImage:render_status_icon()];
+    [g_statusItem.button setTitle:@""]; // 只用图, 不留 "G" 文字
 }
 
 static void update_status_icon_state(void) {
-    if (g_enabled) {
-        update_status_icon_color();
-    } else {
-        // Disabled: show gray outline circle
-        CGFloat size = 18;
-        NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(size, size)];
-        [image lockFocus];
-        [[NSColor clearColor] setFill];
-        NSRectFill(NSMakeRect(0, 0, size, size));
-        NSBezierPath *circle = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(2, 2, size - 4, size - 4)];
-        [[NSColor colorWithWhite:0.5 alpha:0.6] setStroke];
-        [circle setLineWidth:2.0];
-        [circle stroke];
-        [image unlockFocus];
-        [g_statusItem.button setImage:image];
-    }
+    update_status_icon_color();
 }
 
 static void update_menu_checkmarks(void) {
@@ -752,8 +887,14 @@ static void toggle_enabled(void) {
     } else {
         if (g_window) {
             if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
-            [g_window orderFrontRegardless];
-            rebuild_surface_from_strokes();
+            // 飘渺模式的隐藏态:V 重新启用后维持隐藏(窗口不出场)
+            if (g_ethereal_canvas && !g_strokes_visible) {
+                rebuild_surface_from_strokes();
+                [g_window setIsVisible:NO];
+            } else {
+                [g_window orderFrontRegardless];
+                rebuild_surface_from_strokes();
+            }
         }
         if (g_pressure_monitor) pm_show();
     }
@@ -779,6 +920,9 @@ static void toggle_enabled(void) {
 // overlay window itself stays visible, so notifications and the crosshair
 // keep working. Pen passthrough is managed separately by ⌘ + ⌃ + V
 // (g_enabled) — X never touches it.
+// 重现/隐藏的动效:窗口级 `[g_window setIsVisible:]`(macOS 自带、不可
+// 调参的切换动效,同翻页)。注意:窗口隐藏时网格/十字准星也随之不可见
+// (笔一靠近就会立即自动重现,不影响书写)。
 static BOOL g_ethereal_canvas = NO; // YES = 飘渺画布涂鸦模式
 static BOOL g_strokes_visible = YES; // strokes drawn on the overlay?
 
@@ -791,6 +935,7 @@ static BOOL auto_hide_now(void) {
     if (g_glass_view) g_glass_view.hidden = YES;
     if (g_pressure_monitor) pm_hide();
     [g_draw_view setNeedsDisplay:YES];
+    if (g_window) [g_window setIsVisible:NO];
     return YES;
 }
 
@@ -802,6 +947,7 @@ static void auto_show_canvas(void) {
         gl_glass_apply(); // restore the glass per its own toggle
         if (g_pressure_monitor) pm_show();
         [g_draw_view setNeedsDisplay:YES];
+        if (g_window) [g_window setIsVisible:YES];
     }
 }
 
@@ -824,6 +970,7 @@ static void peek_strokes(double seconds) {
         gl_glass_apply();
         if (g_pressure_monitor) pm_show();
         [g_draw_view setNeedsDisplay:YES];
+        if (g_window) [g_window setIsVisible:YES];
     }
     g_peek_timer = [NSTimer scheduledTimerWithTimeInterval:seconds repeats:NO block:^(NSTimer *timer) {
         g_peek_timer = nil;
@@ -844,6 +991,7 @@ static void toggle_canvas_mode(void) {
         if (g_glass_view) g_glass_view.hidden = YES;
         if (g_pressure_monitor) pm_hide();
         [g_draw_view setNeedsDisplay:YES];
+        if (g_window) [g_window setIsVisible:NO];
         show_notification(L(@"飘渺画布涂鸦模式 (悬空/落笔显示)", @"Ethereal canvas mode (hover/down to show)"));
     } else {
         // → 固定画布涂鸦模式: show the strokes and keep them visible
@@ -852,6 +1000,7 @@ static void toggle_canvas_mode(void) {
         gl_glass_apply();
         if (g_pressure_monitor) pm_show();
         [g_draw_view setNeedsDisplay:YES];
+        if (g_window) [g_window setIsVisible:YES];
         show_notification(L(@"固定画布涂鸦模式", @"Fixed canvas mode"));
     }
     // Sync the menu item (title shows the mode you switch TO, like toggleDraw)
@@ -862,6 +1011,7 @@ static void toggle_canvas_mode(void) {
             ? L(@"固定画布涂鸦模式", @"Fixed canvas mode")
             : L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];
     }
+    update_status_icon_state(); // 飘渺画布 = 图标左上角的 ghost 圆环徽标
 }
 
 @implementation GlaspenMenuHandler
@@ -1055,6 +1205,15 @@ static void gl_run_on_main_sync(dispatch_block_t block) {
     }
 }
 
+/// 读一条字符串设置(DB),转成 NSString(未设置为空串)。调用方持有返回值。
+/// 仅用于 settings_json 等非热路径;SQLite 单行读取在主线程也足够快。
+static NSString *gl_string_setting(const char *key) {
+    char *v = glaspen2_load_string_setting(key);
+    NSString *s = v ? [NSString stringWithUTF8String:v] : @"";
+    glaspen2_free_c_string(v);
+    return s;
+}
+
 /// 当前设置的 JSON 快照;调用方用 glaspen2_macos_free_c_string 释放。
 char *glaspen2_macos_settings_json(void) {
     __block char *out = NULL;
@@ -1076,6 +1235,11 @@ char *glaspen2_macos_settings_json(void) {
             @"gifResolution": @(g_gif_resolution),
             @"gifSpeed": @(g_gif_speed),
             @"gifEndMode": @(g_gif_end_mode),
+            // 涂鸦身份:密码本体永不进快照,只回是否已保存
+            @"chatApiBase": gl_string_setting("chat_api_base"),
+            @"chatUser":    gl_string_setting("chat_user"),
+            @"chatHasPassword": @([gl_string_setting("chat_password") length] > 0),
+            @"chatIntegration": @(g_chat_integration),
         };
         NSData *json = [NSJSONSerialization dataWithJSONObject:d options:0 error:nil];
         if (!json) return;
@@ -1099,6 +1263,18 @@ void glaspen2_macos_free_c_string(char *p) {
 /// 不能交给 Rust 的 Vec::from_raw_parts)。
 void glaspen2_macos_free_bytes(unsigned char *p) {
     if (p) free(p);
+}
+
+/// 手写消息集成总开关:关 = 热键直通、面板收起;顺带终止进行中的手写会话。
+/// (共享画布上行的关闭由 Dart 侧随 tab 收起调用 FRB shareInkSetActive(false)。)
+static void gl_settings_set_chat_integration(BOOL on) {
+    g_chat_integration = on;
+    glaspen2_save_bool_setting("chat_integration", on ? 1 : 0);
+    if (!on) {
+        // 静默终止进行中的手写录制/草稿
+        g_msg_record_start = -1;
+        if (g_ink_draft_active) ink_draft_stop_async();
+    }
 }
 
 /// 解析 Dart 传来的 JSON 标量(true / 3 / 2.5)。
@@ -1189,6 +1365,21 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             if (g_gif_end_mode > 2) g_gif_end_mode = 2;
             NSString *s = [NSString stringWithFormat:@"%d", g_gif_end_mode];
             glaspen2_save_string_setting("gif_end_mode", [s UTF8String]);
+        } else if ([key isEqualToString:@"chatApiBase"] || [key isEqualToString:@"chatUser"]) {
+            // 涂鸦身份(手写消息登录):落盘 + 立即推给 Rust auth 模块
+            NSString *s = [NSString stringWithFormat:@"%@", value];
+            const char *dbKey = [key isEqualToString:@"chatApiBase"] ? "chat_api_base" : "chat_user";
+            glaspen2_save_string_setting(dbKey, [s UTF8String]);
+            glaspen2_chat_auth_reload();
+        } else if ([key isEqualToString:@"chatPassword"]) {
+            // 空串 = 保持已存密码不变(面板回显时不发密码)
+            NSString *s = [NSString stringWithFormat:@"%@", value];
+            if (s.length > 0) {
+                glaspen2_save_string_setting("chat_password", [s UTF8String]);
+                glaspen2_chat_auth_reload();
+            }
+        } else if ([key isEqualToString:@"chatIntegration"]) {
+            gl_settings_set_chat_integration([value boolValue]);
         }
     });
 }
@@ -1395,6 +1586,7 @@ static void gl_settings_set_width(int idx) {
     g_selected_width_index = idx;
     glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
     update_menu_checkmarks();
+    update_status_icon_state(); // 笔宽画在图标笔杆粗细里
     sync_settings_panel();
 }
 
@@ -1691,6 +1883,7 @@ static void finish_active_stroke(void) {
     if (g_eraser_mode) {
         glaspen2_modeler_erase_finish();
         g_eraser_mode = NO;
+        update_status_icon_state(); // 橡皮块换回笔尖
     } else {
         glaspen2_modeler_end(canvas_input_x(g_raw_last_x), canvas_input_y(g_raw_last_y), 0.0, ts, g_width_scale);
         glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
@@ -2088,6 +2281,7 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
     glaspen2_save_bool_setting("infinite_canvas", on ? 1 : 0);
     NSMenuItem *item = [g_menu itemWithTag:668];
     if (item) [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
+    update_status_icon_state(); // 无限画布 = 图标右下角的 ∞ 徽标
     glaspen2_set_canvas_kind(on ? 1 : 0);
     if (on) {
         glaspen2_load_infinite_strokes();
@@ -2141,12 +2335,6 @@ static void canvas_apply_transform(void) {
         last_save = now;
         canvas_infinite_persist();
     }
-}
-
-// 翻页模式连续滚动:把滚动偏移应用到渲染(视图 = 画布 + 偏移)。
-static void page_scroll_apply(void) {
-    glaspen2_set_view_transform(-g_page_off_x, -g_page_off_y, 1.0);
-    rebuild_surface_from_strokes();
 }
 
 // 滚轮平移镜头(⌘⌃滚轮,书写中忽略)
@@ -2302,92 +2490,18 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
                      operation:NSCompositingOperationSourceOver fraction:1.0];
 }
 
-// 翻页动效(两段式):翻页前抓旧页快照,重建后旧页加速滑出、
-// 新页减速滑入(ease-out 的入位减速 = 刹车感)。forward = 下一页。
-static CGImageRef g_flip_old = NULL;   // page_flip_animation 抓取的旧页快照
-static BOOL g_flip_forward = YES;
-
-static CGImageRef page_flip_capture(void) {
-    if (!g_surface || !g_surface_cgimage) return NULL;
-    size_t w_px = (size_t)cairo_image_surface_get_width(g_surface);
-    size_t h_px = (size_t)cairo_image_surface_get_height(g_surface);
-    if (w_px == 0 || h_px == 0) return NULL;
-    CGImageRef snap = CGImageCreateWithImageInRect(g_surface_cgimage, CGRectMake(0, 0, w_px, h_px));
-    if (!snap) return NULL;
-    // 深拷贝像素:底层缓冲马上会被新页重绘,共享数据会跟着变
-    CGDataProviderRef prov = CGImageGetDataProvider(snap);
-    CFDataRef data = CGDataProviderCopyData(prov);
-    if (!data) {
-        CGImageRelease(snap);
-        return NULL;
-    }
-    CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-    // 必须用 CreateWithCFData(它会 retain 住 data)。此前用
-    // CreateWithData(..., NULL) 不 retain,随后 CFRelease(data) 就留下悬垂
-    // 像素指针 —— 第一次翻页侥幸,连续翻页时内存被复用即崩溃。
-    CGDataProviderRef frozen_prov = CGDataProviderCreateWithCFData(data);
-    CGImageRef frozen = CGImageCreate(w_px, h_px, 8, 32,
-                                      CGImageGetBytesPerRow(snap), cs,
-                                      CGImageGetBitmapInfo(snap),
-                                      frozen_prov, NULL, false, kCGRenderingIntentDefault);
-    CGDataProviderRelease(frozen_prov);
-    CGColorSpaceRelease(cs);
-    CFRelease(data);
-    CGImageRelease(snap);
-    return frozen;
-}
-
-// 翻页前调用:只抓快照,不动画面
-static void page_flip_animation(BOOL forward) {
-    if (g_flip_old) { CGImageRelease(g_flip_old); g_flip_old = NULL; } // 未播放的残帧丢弃
-    g_flip_forward = forward;
-    g_flip_old = page_flip_capture();
-}
-
-// 翻页重建完成后调用:双层动画 —— 旧页加速滑出,新页减速滑入(刹车)。
-// 两个快照的所有权转移给本函数,动画结束释放。
-static void page_flip_finish(BOOL forward) {
-    if (!g_draw_view || !g_flip_old) {
-        if (g_flip_old) { CGImageRelease(g_flip_old); g_flip_old = NULL; }
-        return;
-    }
-    // 把所有权取到局部变量:完成回调是异步的,期间若再次翻页,全局会被改写
-    // (旧代码在回调里读 g_flip_old,而它已被置 NULL → CGImageRelease(NULL))。
-    CGImageRef old_snap = g_flip_old;
-    g_flip_old = NULL;
-    CGImageRef new_snap = page_flip_capture();
-    if (!new_snap) { CGImageRelease(old_snap); return; }
-
-    NSRect bounds = [g_draw_view bounds];
-    NSImageView *oldView = [[NSImageView alloc] initWithFrame:bounds];
-    oldView.image = [[NSImage alloc] initWithCGImage:old_snap size:NSMakeSize(g_screen_w, g_screen_h)];
-    NSImageView *newView = [[NSImageView alloc] initWithFrame:bounds];
-    newView.image = [[NSImage alloc] initWithCGImage:new_snap size:NSMakeSize(g_screen_w, g_screen_h)];
-    [g_draw_view addSubview:oldView positioned:NSWindowAbove relativeTo:nil];
-    [g_draw_view addSubview:newView positioned:NSWindowAbove relativeTo:oldView];
-
-    NSRect offOld = bounds, offNew = bounds;
-    if (forward) {
-        offOld.origin.y += bounds.size.height;  // 下一页:旧页向上滑出,新页自下滑入
-        offNew.origin.y -= bounds.size.height;
-    } else {
-        offOld.origin.y -= bounds.size.height;  // 上一页:旧页向下滑出,新页自上滑入
-        offNew.origin.y += bounds.size.height;
-    }
-
-    [NSAnimationContext beginGrouping];
-    [NSAnimationContext currentContext].duration = 0.26;
-    [NSAnimationContext currentContext].timingFunction =
-        [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
-    [NSAnimationContext currentContext].completionHandler = ^(void) {
-        [oldView removeFromSuperview];
-        [newView removeFromSuperview];
-        CGImageRelease(old_snap);
-        CGImageRelease(new_snap);
-    };
-    [[oldView animator] setFrame:offOld];
-    [[newView animator] setFrame:bounds];
-    [NSAnimationContext endGrouping];
+// 整页翻页显示:macOS 自带的窗口切换动效。`[g_window setIsVisible:]`
+// 触发 WindowServer 内置的淡入淡出(带轻微位移),参数系统写死、不可调
+// —— 与当初 X 隐藏/显示页面(c80622d)看到的是同一个效果。
+// 渐隐到渐显只隔下一个 runloop tick(换页重建夹在中间,天然的最小时长)。
+// 调用方必须在主线程(event tap / 热键路径均满足)。
+static void page_flip_swap(void (^swap)(void)) {
+    if (!g_window) { swap(); return; }
+    [g_window setIsVisible:NO];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        swap();
+        [g_window setIsVisible:YES];
+    });
 }
 
 static void canvas_infinite_persist(void) {
@@ -2495,13 +2609,11 @@ static BOOL perform_hotkey(unsigned short kc) {
         finish_active_stroke();
         long target = glaspen2_prev_screen_id();
         if (target > 0) {
-            page_flip_animation(NO); // 重建前抓旧页快照
-            g_page_off_x = 0.0;
-            g_page_off_y = 0.0;
-            glaspen2_load_strokes_for_screen(target);
-            glaspen2_smooth_loaded_strokes();
-            replay_strokes_from_memory();
-            page_flip_finish(NO); // 新页减速滑入(刹车)
+            page_flip_swap(^{ // 原生淡入淡出:渐隐 → 换页重建 → 渐显
+                glaspen2_load_strokes_for_screen(target);
+                glaspen2_smooth_loaded_strokes();
+                replay_strokes_from_memory();
+            });
             peek_strokes(1.0); // show the page briefly in ethereal mode
             show_page_info(target);
         } else {
@@ -2516,13 +2628,11 @@ static BOOL perform_hotkey(unsigned short kc) {
         finish_active_stroke();
         long target = glaspen2_next_screen_id();
         if (target > 0) {
-            page_flip_animation(YES); // 重建前抓旧页快照
-            g_page_off_x = 0.0;
-            g_page_off_y = 0.0;
-            glaspen2_load_strokes_for_screen(target);
-            glaspen2_smooth_loaded_strokes();
-            replay_strokes_from_memory();
-            page_flip_finish(YES); // 新页减速滑入(刹车)
+            page_flip_swap(^{
+                glaspen2_load_strokes_for_screen(target);
+                glaspen2_smooth_loaded_strokes();
+                replay_strokes_from_memory();
+            });
             peek_strokes(1.0); // show the page briefly in ethereal mode
             show_page_info(target);
         } else {
@@ -2701,6 +2811,50 @@ static void msg_record_stop_async(void) {
     });
 }
 
+// ── 手写消息草稿通道(⌘⌃2 hold-to-draft)──
+// 按住期间笔迹经 ChatStore/DraftInk gRPC 流实时推给 axum(可预览);
+// 松开 half-close,由 axum 决定是否发送。与 ⌘⌃3(直发)互斥。
+
+static void ink_draft_start(void) {
+    if (g_ink_draft_active) return;
+    finish_active_stroke(); // 把在写的笔画先落定,基线之外的新笔才进通道
+    if (glaspen2_ink_draft_start(g_screen_w, g_screen_h)) {
+        g_ink_draft_active = YES;
+        show_notification(L(@"书写手写消息(草稿)… 松开 ⌘⌃2 交给对方",
+                            @"Writing handwriting draft… release ⌘⌃2 to hand over"));
+    } else {
+        show_notification(L(@"手写通道开启失败", @"Failed to open handwriting draft channel"));
+    }
+}
+
+// Stop the draft session. finish_active_stroke runs on the main thread first
+// so the final stroke goes through the commit hook before the stream closes;
+// the blocking wait for axum's verdict runs on a background queue.
+static void ink_draft_stop_async(void) {
+    if (!g_ink_draft_active) return;
+    g_ink_draft_active = NO;
+    finish_active_stroke();
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        int r = glaspen2_ink_draft_stop();
+        // 失败原因(身份过期/未注册路由/连接失败)在后台线程取好再回主线程,
+        // 避免与下一次会话的写入竞争。
+        const char *err = glaspen2_ink_draft_last_error();
+        NSString *detail = (err && *err) ? [NSString stringWithUTF8String:err] : nil;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (r > 0) {
+                show_notification([NSString stringWithFormat:
+                    L(@"对方已接收手写草稿 (%d 笔)", @"Handwriting draft accepted (%d strokes)"), r]);
+            } else if (r == 0) {
+                show_notification(L(@"对方未采用这份手写草稿", @"Handwriting draft declined"));
+            } else if (detail) {
+                show_notification(detail);
+            } else {
+                show_notification(L(@"手写通道失败(未连接或中断)", @"Handwriting channel failed (not connected or broken)"));
+            }
+        });
+    });
+}
+
 // (重)装 event tap:include_scroll 决定滚轮事件是否进入 tap。
 static void event_tap_install(BOOL include_scroll) {
     if (g_event_tap) {
@@ -2840,34 +2994,22 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy, CGEventType ty
                 msg_record_stop_async();
                 return NULL;
             }
-            if (hasCmdCtrl && kc == kVK_ANSI_3 && type == kCGEventKeyDown) {
+            if (g_chat_integration && hasCmdCtrl && kc == kVK_ANSI_3 && type == kCGEventKeyDown) {
                 // Hold-to-record handwriting message: key-down pins the start.
-                if (g_msg_record_start < 0) msg_record_start();
+                if (g_msg_record_start < 0 && !g_ink_draft_active) msg_record_start();
                 return NULL;
             }
-            // 连续滚动(活页本模式,设置开启后):↑/↓ 滑动视图,
-            // 纵向跨过一整页时自动切换当前页(连续多页滚动)。
-            // 活页本只允许上下移动(不做水平移动);开启期间上下键被全局占用。
-            if (g_continuous_scroll && !g_infinite_canvas && g_enabled && !g_stroke_active
-                && type == kCGEventKeyDown
-                && (kc == kVK_UpArrow || kc == kVK_DownArrow)) {
-                double step = 120.0;
-                if (kc == kVK_UpArrow) g_page_off_y += step;
-                else                   g_page_off_y -= step;
-                g_page_off_x = 0.0; // 活页本不做水平移动
-                while (g_page_off_y >= g_screen_h) {
-                    long prev = glaspen2_prev_screen_id();
-                    if (prev == 0) { g_page_off_y = 0; break; }
-                    glaspen2_load_strokes_for_screen(prev);
-                    g_page_off_y -= g_screen_h;
-                }
-                while (g_page_off_y < 0) {
-                    long next = glaspen2_next_screen_id();
-                    if (next == 0) { g_page_off_y = 0; break; }
-                    glaspen2_load_strokes_for_screen(next);
-                    g_page_off_y += g_screen_h;
-                }
-                page_scroll_apply();
+            // ⌘⌃2 hold-to-draft handwriting: strokes stream live to the axum
+            // side over ChatStore/DraftInk while held; release closes the
+            // stream and axum decides whether to send. '2' key-up ends it
+            // regardless of modifiers (same reasoning as '3' above).
+            // 总开关关闭时整段不匹配 → 事件原样放行(不占用这两个键)。
+            if (type == kCGEventKeyUp && kc == kVK_ANSI_2 && g_ink_draft_active) {
+                ink_draft_stop_async();
+                return NULL;
+            }
+            if (g_chat_integration && hasCmdCtrl && kc == kVK_ANSI_2 && type == kCGEventKeyDown) {
+                if (!g_ink_draft_active && g_msg_record_start < 0) ink_draft_start();
                 return NULL;
             }
             BOOL kHasOptCmd = (mods & NSEventModifierFlagOption) && (mods & NSEventModifierFlagCommand);
@@ -2880,30 +3022,26 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy, CGEventType ty
                                (double)g_screen_w * 0.5, (double)g_screen_h * 0.5);
                 return NULL;
             }
-            // 活页本模式:⌥⌘↑/↓ = 视图上下滑动一小步(≈浏览器方向键一次滚动),
-            // 滑过一页边界时自动切换当前页。不再整页翻转(J/K 仍整页翻)。
-            // 活页本只允许上下移动:⌥⌘←/→ 不处理,交给系统。
+            // 活页本模式:⌥⌘↑/↓ = 整页翻页(↑ 上一页 / ↓ 下一页),
+            // 带窗口级原生淡入淡出;无限画布模式则由下方分支做镜头平移。
             if (!g_infinite_canvas && kHasOptCmd && !g_stroke_active
                 && type == kCGEventKeyDown
                 && (kc == kVK_UpArrow || kc == kVK_DownArrow)) {
                 finish_active_stroke();
-                const double step = 40.0; // 浏览器方向键一次约 40px
-                if (kc == kVK_UpArrow) g_page_off_y += step;
-                else                   g_page_off_y -= step;
-                g_page_off_x = 0.0; // 活页本只上下移动
-                while (g_page_off_y >= g_screen_h) {
-                    long prev = glaspen2_prev_screen_id();
-                    if (prev == 0) { g_page_off_y = 0; break; }
-                    glaspen2_load_strokes_for_screen(prev);
-                    g_page_off_y -= g_screen_h;
+                BOOL up = (kc == kVK_UpArrow);
+                long target = up ? glaspen2_prev_screen_id() : glaspen2_next_screen_id();
+                if (target > 0) {
+                    page_flip_swap(^{
+                        glaspen2_load_strokes_for_screen(target);
+                        glaspen2_smooth_loaded_strokes();
+                        replay_strokes_from_memory();
+                    });
+                    peek_strokes(1.0); // show the page briefly in ethereal mode
+                    show_page_info(target);
+                } else {
+                    show_notification(up ? L(@"没有上一页", @"No previous page")
+                                         : L(@"没有下一页", @"No next page"));
                 }
-                while (g_page_off_y < 0) {
-                    long next = glaspen2_next_screen_id();
-                    if (next == 0) { g_page_off_y = 0; break; }
-                    glaspen2_load_strokes_for_screen(next);
-                    g_page_off_y += g_screen_h;
-                }
-                page_scroll_apply();
                 return NULL;
             }
             // 自由画布(无限画布)模式:⌥⌘上下左右 = 镜头四向平移。
@@ -3083,7 +3221,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy, CGEventType ty
         if (g_stroke_active) {
             finish_active_stroke();
         }
-        g_eraser_mode = (devType == NSEraserPointingDevice);
+        BOOL eraser = (devType == NSEraserPointingDevice);
+        if (eraser != g_eraser_mode) { g_eraser_mode = eraser; update_status_icon_state(); } // 图标换橡皮块
         NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f", px, py, pressure, ts);
         glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(px), canvas_input_y(py), pressure, ts, g_width_scale);
         g_stroke_active = YES;
@@ -3100,7 +3239,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy, CGEventType ty
                   etype == NSEventTypeOtherMouseDragged)) {
         // If no DOWN event was seen (pen detection lag), auto-initialize
         if (!g_stroke_active) {
-            g_eraser_mode = (devType == NSEraserPointingDevice);
+            BOOL eraser = (devType == NSEraserPointingDevice);
+            if (eraser != g_eraser_mode) { g_eraser_mode = eraser; update_status_icon_state(); }
             glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(px), canvas_input_y(py), pressure, ts, g_width_scale);
             g_stroke_active = YES;
             g_cursor_visible = NO;
@@ -3124,6 +3264,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy, CGEventType ty
             if (g_eraser_mode) {
                 glaspen2_modeler_erase_finish();
                 g_eraser_mode = NO;
+                update_status_icon_state(); // 橡皮块换回笔尖
             } else {
                 glaspen2_modeler_end(canvas_input_x(px), canvas_input_y(py), pressure, ts, g_width_scale);
                 glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
@@ -3249,7 +3390,7 @@ void glaspen2_run(void) {
 
         // Create status bar menu
         g_statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
-        [g_statusItem.button setTitle:@"G"];
+        [g_statusItem.button setTitle:@""]; // 纯图标, 不带文字(状态都画在图里)
 
         g_menuHandler = [[GlaspenMenuHandler alloc] init];
         [NSApp setDelegate:g_menuHandler];
@@ -3259,25 +3400,20 @@ void glaspen2_run(void) {
         [g_menu setAutoenablesItems:NO];
 
         // Color items with swatch images and names
-        NSString *zhColorNames[] = {@"红", @"橙", @"黄", @"绿", @"青", @"蓝", @"紫", @"粉", @"白", @"黑"};
+        // Color items: inline color dot + name (attributed — see gl_color_item_text)
         for (int i = 0; i < g_color_preset_count; i++) {
-            NSString *title = (g_lang == 0) ? zhColorNames[i] : [NSString stringWithUTF8String:g_color_presets[i].name];
-            NSColor *c = [NSColor colorWithRed:g_color_presets[i].r green:g_color_presets[i].g blue:g_color_presets[i].b alpha:1.0];
-            NSMenuItem *item = [g_menu addItemWithTitle:title action:@selector(selectColor:) keyEquivalent:@""];
-            item.image = colorSwatchImage(c, 18);
+            NSMenuItem *item = [g_menu addItemWithTitle:@"" action:@selector(selectColor:) keyEquivalent:@""];
+            item.attributedTitle = gl_color_item_text(i);
             item.target = g_menuHandler;
             item.tag = i;
         }
 
         [g_menu addItem:[NSMenuItem separatorItem]];
 
-        // Width items with line indicator images
-        NSString *zhWidthNames[] = {@"极细", @"很细", @"细", @"中", @"粗", @"很粗", @"超粗", @"极粗"};
-        NSString *enWidthNames[] = {@"Hair", @"Very fine", @"Fine", @"Medium", @"Thick", @"Very thick", @"Extra thick", @"Boldest"};
+        // Width items: inline line-thickness icon + name
         for (int i = 0; i < g_width_preset_count; i++) {
-            NSString *title = (g_lang == 0) ? zhWidthNames[i] : enWidthNames[i];
-            NSMenuItem *item = [g_menu addItemWithTitle:title action:@selector(selectWidth:) keyEquivalent:@""];
-            item.image = widthIndicatorImage(g_width_presets[i], 18);
+            NSMenuItem *item = [g_menu addItemWithTitle:@"" action:@selector(selectWidth:) keyEquivalent:@""];
+            item.attributedTitle = gl_width_item_text(i);
             item.target = g_menuHandler;
             item.tag = i;
         }
@@ -3436,6 +3572,16 @@ void glaspen2_run(void) {
         if (g_gif_speed > 20.0) g_gif_speed = 20.0;
         if (g_gif_end_mode < 0) g_gif_end_mode = 0;
         if (g_gif_end_mode > 2) g_gif_end_mode = 2;
+
+        // 图标反映的状态(颜色/宽度/无限画布)到这里才全部恢复完, 补刷一次
+        // (恢复流程更早处的刷新发生在 infinite_canvas 恢复之前, ∞ 徽标会丢)
+        update_status_icon_state();
+
+        // 涂鸦身份:DB 里的账号配置(若用户在面板配过)推给 Rust auth 模块
+        glaspen2_chat_auth_reload();
+
+        // 手写消息集成总开关(默认关;关 = 热键直通、面板收起)
+        g_chat_integration = glaspen2_load_bool_setting("chat_integration") != 0;
 
         // Apply glass visual on startup (skip if the user already started drawing)
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
