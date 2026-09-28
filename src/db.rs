@@ -432,6 +432,29 @@ mod platform {
             .ok()
     }
 
+    /// 软删活页本的所有空白页(没有任何未删除笔迹的页)。返回清理的页数。
+    /// 启动时调用一次:配合"末页空白不能再建空白页"守卫,空白页只在
+    /// 当前会话内瞬时存在,不会跨启动积累。
+    pub async fn purge_blank_screens() -> u64 {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return 0,
+        };
+        match sqlx::query(
+            "UPDATE screens SET deleted_at = ?1 \
+             WHERE deleted_at IS NULL \
+             AND NOT EXISTS (SELECT 1 FROM strokes \
+                             WHERE strokes.screen_id = screens.id AND strokes.deleted_at IS NULL)",
+        )
+        .bind(now_f64())
+        .execute(pool)
+        .await
+        {
+            Ok(r) => r.rows_affected(),
+            Err(_) => 0,
+        }
+    }
+
     pub async fn screen_has_strokes(screen_id: i64) -> bool {
         let pool = match DB.get() {
             Some(p) => p,

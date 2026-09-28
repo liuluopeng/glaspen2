@@ -407,10 +407,14 @@ pub extern "C" fn glaspen2_undo_last_stroke() -> c_int {
 
 /// Initialize the database and create the first screen record. Call once at app start.
 /// 沿用活页本末页作为当前页(不再每次启动新建一页——那会积累大量空白页);
-/// 只有空库才创建第一页。
+/// 只有空库才创建第一页。启动时顺带软删所有历史空白页。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
     runtime().block_on(db::init());
+    let purged = runtime().block_on(db::purge_blank_screens());
+    if purged > 0 {
+        eprintln!("[init] 清理空白页 {purged} 页");
+    }
     match runtime().block_on(db::last_screen_id()) {
         Some(id) => state::set_current_screen_id(id),
         None => runtime().block_on(db::new_screen(screen_w, screen_h)),
