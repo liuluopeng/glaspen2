@@ -967,6 +967,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   List<_PageInfo> _pages = [];
   List<_PageInfo> _filteredPages = [];
   bool _pagesLoading = false;
+  // 批量多选删除
+  bool _multiSelect = false;
+  final Set<int> _selectedPageIds = {};
+  bool _batchDeleting = false;
   final _thumbnailCache = <int, Uint8List>{};
   final _loadingThumbnails = <int>{};
   /// 待批量请求的页 id:同屏多次触发会合并成一次通道往返
@@ -1687,6 +1691,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
           child: _buildSection('数据备份', _buildBackupButtons()),
         ),
+        if (!_pagesLoading && _filteredPages.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: _buildGridToolbar(),
+          ),
         // Page grid
         Expanded(
           child: _pagesLoading
@@ -1715,63 +1724,190 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
+  /// 活页本网格工具条:常态 = 页数 + 「多选」入口;
+  /// 多选态 = 已选计数 + 全选 / 删除所选 / 取消。
+  Widget _buildGridToolbar() {
+    const faint = TextStyle(fontSize: 12, color: _inkFaint);
+    if (!_multiSelect) {
+      return Row(children: [
+        Text('${_filteredPages.length} 页', style: faint),
+        const Spacer(),
+        TextButton.icon(
+          onPressed: () => setState(() {
+            _multiSelect = true;
+            _selectedPageIds.clear();
+          }),
+          icon: const Icon(Icons.checklist, size: 16),
+          label: const Text('多选', style: TextStyle(fontSize: 13)),
+        ),
+      ]);
+    }
+    return Row(children: [
+      Text('已选 ${_selectedPageIds.length} 页', style: faint),
+      const Spacer(),
+      TextButton(
+        onPressed: () => setState(() {
+          if (_selectedPageIds.length == _filteredPages.length) {
+            _selectedPageIds.clear();
+          } else {
+            _selectedPageIds.addAll(_filteredPages.map((p) => p.id));
+          }
+        }),
+        child: Text(_selectedPageIds.length == _filteredPages.length && _filteredPages.isNotEmpty
+            ? '取消全选' : '全选', style: const TextStyle(fontSize: 13)),
+      ),
+      TextButton(
+        onPressed: (_batchDeleting || _selectedPageIds.isEmpty) ? null : _confirmBatchDelete,
+        style: TextButton.styleFrom(foregroundColor: Colors.red),
+        child: Text(_batchDeleting ? '删除中…' : '删除所选(${_selectedPageIds.length})',
+            style: const TextStyle(fontSize: 13)),
+      ),
+      TextButton(
+        onPressed: () => setState(() {
+          _multiSelect = false;
+          _selectedPageIds.clear();
+        }),
+        child: const Text('取消', style: TextStyle(fontSize: 13)),
+      ),
+    ]);
+  }
+
+  /// 批量删除确认 + 逐页调用既有删除通道;完成后重载页面列表。
+  Future<void> _confirmBatchDelete() async {
+    final ids = _selectedPageIds.toSet();
+    if (ids.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('批量删除'),
+        content: Text('确定删除所选 ${ids.length} 页及其所有笔迹吗?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: Text('删除 $ids.length 页'.replaceFirst(r'$ids.length', '${ids.length}')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _batchDeleting = true);
+    int ok = 0;
+    for (final id in ids) {
+      try {
+        if (await _bridge.deletePage(id)) {
+          ok++;
+          _thumbnailCache.remove(id);
+          _pages.removeWhere((p) => p.id == id);
+          _filteredPages.removeWhere((p) => p.id == id);
+        }
+      } catch (e) {
+        debugPrint('[Pages] delete $id failed: $e');
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _multiSelect = false;
+      _selectedPageIds.clear();
+      _batchDeleting = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已删除 $ok 页'), duration: const Duration(seconds: 2)),
+    );
+    unawaited(_loadPages()); // 重载列表,页码/缩略图与服务端状态对齐
+  }
+
   Widget _buildPageCard(_PageInfo page) {
     if (page.thumbnail == null && _thumbnailCache.containsKey(page.id)) {
       page.thumbnail = _thumbnailCache[page.id];
     }
+    final selected = _selectedPageIds.contains(page.id);
 
     return GestureDetector(
-      onSecondaryTapUp: (details) {
-        final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-        showMenu<String>(
-          context: context,
-          position: RelativeRect.fromLTRB(
-            details.globalPosition.dx,
-            details.globalPosition.dy,
-            overlay.size.width - details.globalPosition.dx,
-            overlay.size.height - details.globalPosition.dy,
-          ),
-          items: [
-            const PopupMenuItem(
-                value: 'delete', height: 36,
-                child: Row(children: [
-                  Icon(Icons.delete_outline, size: 16, color: Colors.red),
-                  SizedBox(width: 8),
-                  Text('删除此页面', style: TextStyle(fontSize: 13)),
-                ])),
-          ],
-        ).then((v) {
-          if (v == 'delete') _confirmDeletePage(page);
-        });
-      },
+      // 多选态:右键删除菜单禁用(统一走批量删除)
+      onSecondaryTapUp: _multiSelect
+          ? null
+          : (details) {
+              final overlay =
+                  Overlay.of(context).context.findRenderObject() as RenderBox;
+              showMenu<String>(
+                context: context,
+                position: RelativeRect.fromLTRB(
+                  details.globalPosition.dx,
+                  details.globalPosition.dy,
+                  overlay.size.width - details.globalPosition.dx,
+                  overlay.size.height - details.globalPosition.dy,
+                ),
+                items: [
+                  const PopupMenuItem(
+                      value: 'delete', height: 36,
+                      child: Row(children: [
+                        Icon(Icons.delete_outline, size: 16, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('删除此页面', style: TextStyle(fontSize: 13)),
+                      ])),
+                ],
+              ).then((v) {
+                if (v == 'delete') _confirmDeletePage(page);
+              });
+            },
       child: Card(
         clipBehavior: Clip.antiAlias,
+        shape: _multiSelect && selected
+            ? RoundedRectangleBorder(
+                side: const BorderSide(color: _penRed, width: 2),
+                borderRadius: BorderRadius.circular(10))
+            : null,
         child: InkWell(
           onTap: () {
+            if (_multiSelect) {
+              setState(() => selected
+                  ? _selectedPageIds.remove(page.id)
+                  : _selectedPageIds.add(page.id));
+              return;
+            }
             _bridge.navigateToPage(page.id);
           },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Thumbnail
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: page.thumbnail != null
-                  ? Image.memory(page.thumbnail!,
-                      fit: BoxFit.cover, gaplessPlayback: true)
-                  : const _ThumbSkeleton(),
-            ),
-            // Page info
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
-              child: Text('页面 ${page.id}',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-            ),
-          ],
+          child: Stack(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Thumbnail
+                  AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: page.thumbnail != null
+                        ? Image.memory(page.thumbnail!,
+                            fit: BoxFit.cover, gaplessPlayback: true)
+                        : const _ThumbSkeleton(),
+                  ),
+                  // Page info
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
+                    child: Text('页面 ${page.id}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 13)),
+                  ),
+                ],
+              ),
+              // 多选角标
+              if (_multiSelect)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Icon(
+                    selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                    size: 22,
+                    color: selected ? _penRed : Colors.white,
+                    shadows: const [Shadow(blurRadius: 4, color: Colors.black38)],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
   }
 
   void _confirmDeletePage(_PageInfo page) {
