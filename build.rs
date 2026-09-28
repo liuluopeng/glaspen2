@@ -8,6 +8,16 @@ fn main() {
         println!("cargo:rerun-if-changed=src/macos/glaspen2.m");
         println!("cargo:rerun-if-changed=flutter_settings/lib/main.dart");
         println!("cargo:rerun-if-changed=flutter_settings/pubspec.yaml");
+        // flutter_rust_bridge 生成的 Dart 绑定:codegen 只改这里而不动
+        // main.dart 时,不监听会导致 App.framework 里打进旧 Dart(与 Rust
+        // 侧 frb_generated.rs 的 content hash 不一致,面板初始化即报
+        // "Content hash ... different from Rust side")。
+        for e in std::fs::read_dir("flutter_settings/lib/src/rust")
+            .unwrap()
+            .flatten()
+        {
+            println!("cargo:rerun-if-changed={}", e.path().display());
+        }
         for e in std::fs::read_dir("flutter_settings/assets")
             .unwrap()
             .flatten()

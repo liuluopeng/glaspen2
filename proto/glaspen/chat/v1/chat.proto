@@ -8,6 +8,13 @@
 //   * 只追加不修改:撤销/删除通过 Tombstone(10000/2)表达。
 //   * 媒体按内容寻址(sha256),与消息分开上传/下载。
 //   * 服务端(本地 axum + tonic)负责分配 msg_id 与落库;客户端只持有 seq。
+//
+// 变更记录:
+//   2026-09-27 新增 DraftInk 草稿通道(⌘⌃2 按住录制,实时流,
+//              axum 决定是否发送),见 docs/ink-draft-grpc.md。
+//   2026-09-28 新增 ShareInk 共享画布上行(面板「共享画布」tab 打开
+//              期间上行笔迹, axum 转给 kongde 接收页),
+//              见 docs/canvas-share-grpc.md。
 
 syntax = "proto3";
 
@@ -204,6 +211,19 @@ service ChatStore {
   // 为每条分配全局递增的 msg_id。
   rpc AppendMessages(stream ChatMessage) returns (AppendReply);
 
+  // 手写消息草稿通道(⌘⌃2 按住录制):客户端在按住期间打开一条流,
+  // 每次抬笔实时推一帧笔迹,松开快捷键补 end 帧并 half-close;
+  // 服务端边收边缓冲(可用于实时预览),流结束后**由服务端决定**
+  // 是否把这份草稿作为消息发送/落库,并以 DraftReply 回告决定。
+  // 语义详见 docs/ink-draft-grpc.md。
+  rpc DraftInk(stream DraftFrame) returns (DraftReply);
+
+  // 共享画布上行(设置面板「共享画布」tab 打开期间):glaspen2 只作为
+  // 手写工具, 抬笔即把笔迹实时推给服务端;axum 把笔迹转给该用户在
+  // kongde 打开的接收页。tab 关闭即 half-close,连接管理不在客户端语义里。
+  // 语义详见 docs/canvas-share-grpc.md。
+  rpc ShareInk(stream InkFrame) returns (ShareInkReply);
+
   // 回放一个笔记本的消息,按 seq 升序。
   rpc FetchMessages(FetchRequest) returns (stream ChatMessage);
 
@@ -254,4 +274,101 @@ message MediaAck {
 
 message MediaQuery {
   string media_id = 1;
+}
+
+// ---------------------------------------------------------------------------
+// 手写消息草稿通道(⌘⌃2 按住录制 → DraftInk)
+// ---------------------------------------------------------------------------
+
+// DraftInk 的流内帧。帧序固定:begin → stroke×N(每抬笔一帧)→ end。
+message DraftFrame {
+  oneof frame {
+    // 首帧:会话上下文。
+    DraftBegin begin = 1;
+    // 中间帧:一条笔迹 = 一条 STROKE 消息(一次落笔 = 一条消息)。
+    ChatMessage stroke = 2;
+    // 末帧:松开快捷键,通道即将 half-close。
+    DraftEnd end = 3;
+  }
+}
+
+message DraftBegin {
+  // 会话标识(客户端生成,日志/幂等用)。
+  string session_id = 1;
+  // 会话开始时间(UTC 毫秒)。
+  int64 started_at_ms = 2;
+  // 若草稿被接受,消息应归属的消息流。
+  string notebook_id = 3;
+  // 身份(与 ChatMessage 同义;涂鸦工具当前发空串)。
+  string author = 4;
+  string device = 5;
+  // 笔迹点坐标空间的页面宽高(逻辑点 @1x),渲染提示。
+  uint32 canvas_w = 6;
+  uint32 canvas_h = 7;
+}
+
+message DraftEnd {
+  // 本会话实际推送的笔迹条数(与 stroke 帧数一致)。
+  uint32 stroke_count = 1;
+  // begin → end 的墙钟时长(毫秒)。
+  uint64 duration_ms = 2;
+  // 预留:非正常终止。当前客户端只会发 false。
+  bool cancelled = 3;
+}
+
+// DraftInk 的回执:axum 对这份草稿的决定。
+message DraftReply {
+  // true = 已作为消息发送/落库;false = 丢弃(接收方自行决定,如用户点了取消)。
+  bool sent = 1;
+  // sent = true 时:接受的笔迹条数与分配的首个 msg_id(后续依次 +1)。
+  // sent = false 时两者为 0。
+  uint64 accepted = 2;
+  uint64 first_msg_id = 3;
+}
+
+// ---------------------------------------------------------------------------
+// 共享画布上行(面板「共享画布」tab 打开期间 → ShareInk)
+// ---------------------------------------------------------------------------
+
+// ShareInk 的流内帧。帧序固定:begin → stroke×N(每抬笔一帧)→ end。
+message InkFrame {
+  oneof frame {
+    ShareBegin begin = 1;   // 首帧:会话上下文
+    ShareStroke stroke = 2; // 中间帧:一条抬笔提交的笔迹
+    ShareEnd end = 3;       // 末帧:tab 关闭/面板退出,通道即将 half-close
+  }
+}
+
+message ShareBegin {
+  // 会话标识(客户端生成,日志/幂等用)。
+  string session_id = 1;
+  // 会话开始时间(UTC 毫秒)。
+  int64 started_at_ms = 2;
+  // 身份(与 ChatMessage 同义;涂鸦工具当前发空串,作者以 token 为准)。
+  string author = 3;
+  string device = 4;
+}
+
+// 一条抬笔提交的笔迹。points 与 ChatMessage 的 StrokePoint 同构;
+// 坐标 = 画布页坐标(页模式)或无限画布绝对坐标,原点左上,y 向下。
+// 不携带页概念:去向由 axum/kongde 侧决定。
+message ShareStroke {
+  // 0xRRGGBB。
+  uint32 color_rgb = 2;
+  double width_scale = 3;
+  repeated StrokePoint points = 4;
+}
+
+message ShareEnd {
+  // 本会话实际推送的笔迹条数(与 stroke 帧数一致)。
+  uint32 stroke_count = 1;
+  // begin → end 的墙钟时长(毫秒)。
+  uint64 duration_ms = 2;
+}
+
+// ShareInk 的回执(仅用于日志/调试;客户端不依赖任何字段)。
+message ShareInkReply {
+  bool ok = 1;
+  string message = 2;
+  uint64 stroke_count = 3;
 }

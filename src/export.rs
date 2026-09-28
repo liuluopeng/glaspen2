@@ -5,6 +5,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_double, c_int, c_uchar};
 use std::path::PathBuf;
 use std::slice;
+use std::sync::Arc;
 
 use crate::{
     RAW_STROKE_START, STROKES, Stroke, db, desktop_path, modeler, pressure_to_width, runtime,
@@ -528,6 +529,7 @@ pub extern "C" fn glaspen2_modeler_commit_to_strokes(r: c_double, g: c_double, b
         }
     } // 先放掉 STROKES 锁再走草稿钩子(钩子内部要重新拿锁)
     ink_draft_on_stroke_committed();
+    ink_share_on_stroke_committed();
 }
 
 /// Eraser: remove strokes overlapped by the just-finished eraser stroke.
@@ -2782,6 +2784,82 @@ pub(crate) fn chat_auth_test_login_blocking() -> Result<(), String> {
     runtime()
         .block_on(glaspen_chat::auth::force_login())
         .map(|_| ())
+}
+
+// ---------------------------------------------------------------------------
+// 共享画布上行(面板「共享画布」tab 打开期间 → ChatStore/ShareInk):
+// glaspen2 只作为手写工具 —— tab 开 = 建流,抬笔即推,tab 关 = half-close。
+// 接收页在 kongde(经 axum 转给该用户的 ink-route);连接成败静默,
+// 不进用户界面。语义与 axum 侧实现见 docs/canvas-share-grpc.md。
+// ---------------------------------------------------------------------------
+
+struct InkShareState {
+    channel: glaspen_chat::canvas::InkShareChannel,
+    stroke_count: u32,
+    started_at: std::time::SystemTime,
+}
+
+static INK_SHARE: std::sync::Mutex<Option<InkShareState>> = std::sync::Mutex::new(None);
+
+/// 面板切到「共享画布」tab(active=true)/切走或面板关闭(false)。
+/// 幂等:重复开是 no-op,重复关也是 no-op。
+pub(crate) fn share_ink_set_active_impl(active: bool) {
+    if active {
+        let mut g = INK_SHARE.lock().unwrap();
+        if g.is_some() {
+            return;
+        }
+        *g = Some(InkShareState {
+            channel: glaspen_chat::canvas::InkShareChannel::launch(),
+            stroke_count: 0,
+            started_at: std::time::SystemTime::now(),
+        });
+        eprintln!("[share-ink] session opened");
+        return;
+    }
+    let Some(sess) = INK_SHARE.lock().unwrap().take() else {
+        return;
+    };
+    let stroke_count = sess.stroke_count;
+    let duration_ms = std::time::SystemTime::now()
+        .duration_since(sess.started_at)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    // end 帧 + half-close 放后台;结果只进 stderr,用户无感
+    runtime().spawn(async move {
+        sess.channel.finish(stroke_count, duration_ms).await;
+    });
+}
+
+/// pen-up 提交笔迹后的共享钩子:tab 打开期间把本笔实时推给 axum。
+/// 活页本/无限画布模式都发(坐标各自成系,去向由 kongde 决定);
+/// 通道未连上时帧被丢弃(静默,不打扰)。
+pub(crate) fn ink_share_on_stroke_committed() {
+    let mut g = INK_SHARE.lock().unwrap();
+    let Some(st) = g.as_mut() else { return };
+    let Some(s) = STROKES.lock().unwrap().last().cloned() else {
+        return;
+    };
+    let to8 = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u32;
+    let msg = glaspen_chat::pb::ShareStroke {
+        color_rgb: (to8(s.r) << 16) | (to8(s.g) << 8) | to8(s.b),
+        width_scale: 1.0,
+        points: s
+            .points
+            .iter()
+            .map(|(x, y, w, t)| glaspen_chat::pb::StrokePoint {
+                x: *x,
+                y: *y,
+                width: *w,
+                t_rel: *t,
+            })
+            .collect(),
+    };
+    if st.channel.push_stroke(msg) {
+        st.stroke_count += 1;
+    } else {
+        eprintln!("[share-ink] 通道未连接,本笔未发送");
+    }
 }
 
 /// ⌘⌃2 key-up:补 end 帧 + half-close,阻塞等待 axum 的决定。

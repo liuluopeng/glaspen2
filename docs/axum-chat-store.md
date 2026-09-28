@@ -116,7 +116,11 @@ axum::serve(listener, app).await?;
 
 ---
 
-## 2. 四个 RPC 的实现语义
+## 2. RPC 的实现语义
+
+> 本文覆盖最初四个 RPC。第五个 `DraftInk`(⌘⌃2 手写消息草稿通道,
+> 实时流 + 服务端决定是否发送)的语义单独成文:
+> [ink-draft-grpc.md](ink-draft-grpc.md)。
 
 ### 2.1 AppendMessages(客户端流)
 

@@ -13,6 +13,17 @@ pub mod pb {
     tonic::include_proto!("glaspen.chat.v1");
 }
 
+pub mod auth;
+pub mod canvas;
+pub mod draft;
+
+/// 草稿通道的 tokio 运行时(懒创建,进程存活期常驻)。
+/// 独立于调用方的运行时,单测本 crate 时也能直接跑。
+pub(crate) fn runtime() -> &'static tokio::runtime::Runtime {
+    static RT: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
+    RT.get_or_init(|| tokio::runtime::Runtime::new().expect("failed to create tokio runtime"))
+}
+
 use std::sync::Mutex;
 
 use pb::ChatMessage;
@@ -75,12 +86,23 @@ impl Sink {
     pub async fn append(&mut self, msgs: &[ChatMessage]) -> Result<AppendSummary, String> {
         match self {
             Sink::Grpc(client) => {
-                // tonic 0.13 的客户端流直接产出消息本体。
-                let req = tokio_stream::iter(msgs.to_vec());
+                // 请求附带登录身份(docs/grpc-auth.md):未配置账号时
+                // token() 返回 None,请求不带 metadata(向后兼容)。
+                let mut req = tonic::Request::new(tokio_stream::iter(msgs.to_vec()));
+                if let Some(t) = crate::auth::token().await {
+                    if let Some(v) = crate::auth::bearer_metadata(&t) {
+                        req.metadata_mut().insert("authorization", v);
+                    }
+                }
                 let resp = client
                     .append_messages(req)
                     .await
-                    .map_err(|s| format!("gRPC AppendMessages failed: {s}"))?;
+                    .map_err(|s| {
+                        if s.code() == tonic::Code::Unauthenticated {
+                            crate::auth::invalidate(); // 下次直发前重新登录
+                        }
+                        format!("gRPC AppendMessages failed: {s}")
+                    })?;
                 let reply = resp.into_inner();
                 Ok(AppendSummary {
                     first_msg_id: reply.first_msg_id,

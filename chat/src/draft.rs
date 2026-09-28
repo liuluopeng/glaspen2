@@ -315,6 +315,13 @@ mod tests {
         type DownloadMediaStream =
             std::pin::Pin<Box<dyn tokio_stream::Stream<Item = Result<crate::pb::MediaChunk, Status>> + Send>>;
 
+        async fn share_ink(
+            &self,
+            _request: Request<Streaming<crate::pb::InkFrame>>,
+        ) -> Result<Response<crate::pb::ShareInkReply>, Status> {
+            Err(Status::unimplemented("not needed here"))
+        }
+
         async fn append_messages(
             &self,
             _request: Request<Streaming<ChatMessage>>,

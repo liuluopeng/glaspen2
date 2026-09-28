@@ -201,6 +201,12 @@ pub struct Settings {
     pub gif_resolution: f64,
     pub gif_speed: f64,
     pub gif_end_mode: i32,
+    // 涂鸦身份(手写消息登录)—— 密码不进快照,只回是否已保存
+    pub chat_api_base: String,
+    pub chat_user: String,
+    pub chat_has_password: bool,
+    // 手写消息集成总开关(默认关):关 = 隐藏登录/共享界面,⌘⌃2/⌘⌃3 直通
+    pub chat_integration: bool,
 }
 
 impl Settings {
@@ -210,6 +216,12 @@ impl Settings {
         let b = |k: &str| v.get(k).and_then(|x| x.as_bool()).unwrap_or(false);
         let i = |k: &str| v.get(k).and_then(|x| x.as_i64()).unwrap_or(0) as i32;
         let f = |k: &str| v.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
+        let s = |k: &str| {
+            v.get(k)
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string()
+        };
         Some(Settings {
             color: i("color"),
             width: i("width"),
@@ -227,6 +239,10 @@ impl Settings {
             gif_resolution: f("gifResolution"),
             gif_speed: f("gifSpeed"),
             gif_end_mode: i("gifEndMode"),
+            chat_api_base: s("chatApiBase"),
+            chat_user: s("chatUser"),
+            chat_has_password: b("chatHasPassword"),
+            chat_integration: b("chatIntegration"),
         })
     }
 }
@@ -246,6 +262,28 @@ pub async fn get_settings() -> Option<Settings> {
 #[frb]
 pub async fn set_setting(key: String, value_json: String) {
     run_blocking(move || shim::set_setting(&key, &value_json));
+}
+
+/// 设置面板「测试登录」:用当前已保存的涂鸦身份配置强制登录一次
+/// (成功则缓存 token,后续 DraftInk/AppendMessages 立即携带身份)。
+/// 返回空串 = 成功,否则为可读失败原因。
+#[frb]
+pub async fn test_chat_login() -> String {
+    run_blocking(|| match crate::export::chat_auth_test_login_blocking() {
+        Ok(()) => String::new(),
+        Err(e) => e,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// 共享画布上行(面板「共享画布」tab 的开/关;转发语义见 docs/canvas-share-grpc.md)
+// ---------------------------------------------------------------------------
+
+/// tab 切到「共享画布」(active=true)建流开始上行,切走/面板关闭(false)
+/// 补 end 帧 + half-close。幂等;连接成败不进 UI(静默,只留 stderr)。
+#[frb]
+pub async fn share_ink_set_active(active: bool) {
+    run_blocking(move || crate::export::share_ink_set_active_impl(active));
 }
 
 /// 设置变化推送流:面板订阅它,菜单/快捷键的改动能实时同步到 UI。
@@ -786,6 +824,28 @@ mod tests {
         assert_eq!(s.grid_size, 42.5);
         assert!(!s.outline);
         assert_eq!(s.gif_fps, 0);
+        // 涂鸦身份:缺字段 = 空/未保存
+        assert_eq!(s.chat_api_base, "");
+        assert_eq!(s.chat_user, "");
+        assert!(!s.chat_has_password);
+    }
+
+    /// 涂鸦身份字段:字符串与 has_password 保真;密码本体永不进快照。
+    #[test]
+    fn test_settings_from_json_chat_auth() {
+        let s = Settings::from_json(
+            r#"{"chatApiBase":"https://192.168.31.58:23001","chatUser":"abc","chatHasPassword":true}"#,
+        )
+        .unwrap();
+        assert_eq!(s.chat_api_base, "https://192.168.31.58:23001");
+        assert_eq!(s.chat_user, "abc");
+        assert!(s.chat_has_password);
+        let j = serde_json::json!({
+            "chatApiBase": "x", "chatUser": "u",
+            // 即便推送方误发密码字段,from_json 也不解析它
+            "chatPassword": "oops",
+        });
+        assert!(!Settings::from_json(&j.to_string()).unwrap().chat_has_password);
     }
 
     #[test]
