@@ -58,9 +58,10 @@
            │  同进程直调, 无 MethodChannel)│ │ 127.0.0.1:50051
            ▼                              ▼ │(GLASPEN_CHAT_ENDPOINT)
 ┌─ flutter_settings 设置面板 ─┐   ┌─ axum(kongde 生态, 独立工程)─────┐
-│ 4 tabs(集成关=3 个):       │   │ ChatStore: AppendMessages(⌘⌃3)  │
-│  设置 / 活页本 / 自由涂鸦 / │   │            DraftInk(⌘⌃2 草稿)   │
-│  共享画布(集成开才有)       │   │            ShareInk(共享画布上行)│
+│ 默认 2 tabs: 设置 / 活页本   │   │ ChatStore: AppendMessages(⌘⌃3)  │
+│ + 自由涂鸦 tab(开关,默认关) │   │            DraftInk(⌘⌃2 草稿)   │
+│ + 共享画布开关(活页本内,    │   │            ShareInk(共享画布上行)│
+│   仅集成开时可见)            │   │                                  │
 │  「涂鸦身份」登录 / 总开关   │   │ /api/user/login、/api/chat/ink-route│
 └─────────────────────────────┘   └───────────────────────────────────┘
 

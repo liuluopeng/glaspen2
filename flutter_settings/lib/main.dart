@@ -107,9 +107,6 @@ abstract class _SettingsBridge {
   /// 涂鸦身份「测试登录」:用已保存的配置强制登录一次。
   /// 返回空串 = 成功,否则为可读失败原因。
   Future<String> testChatLogin();
-  /// 共享画布上行开关:tab 切到「共享画布」= true(建流),
-  /// 切走/面板关闭 = false(end + half-close)。连接成败不进 UI。
-  Future<void> shareInkSetActive(bool active);
   void dispose();
 }
 
@@ -154,6 +151,8 @@ class _FrbBridge extends _SettingsBridge {
       'chatUser': s.chatUser,
       'chatHasPassword': s.chatHasPassword,
       'chatIntegration': s.chatIntegration,
+      'showFreeCanvas': s.showFreeCanvas,
+      'shareCanvas': s.shareCanvas,
     };
   }
 
@@ -287,12 +286,6 @@ class _FrbBridge extends _SettingsBridge {
   Future<String> testChatLogin() async {
     await _init();
     return rust.testChatLogin();
-  }
-
-  @override
-  Future<void> shareInkSetActive(bool active) async {
-    await _init();
-    await rust.shareInkSetActive(active: active);
   }
 
   @override
@@ -607,8 +600,6 @@ class _NamedPipeBridge extends _SettingsBridge {
     return 'Windows 版暂不支持在面板里登录,请用环境变量 GLASPEN_CHAT_USER / GLASPEN_CHAT_PASSWORD';
   }
 
-  @override
-  Future<void> shareInkSetActive(bool active) async {}
 
   @override
   Future<Map<dynamic, dynamic>> checkUpdate() async =>
@@ -949,8 +940,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _chatLoginBusy = false;
   // 手写消息集成总开关(默认关;关 = 热键直通、登录/共享界面收起)
   bool _chatIntegration = false;
-  // 共享画布上行是否随本面板的 tab 状态打开(切到第 4 个 tab = 开)
-  bool _shareInkActive = false;
+  // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
+  bool _showFreeCanvas = false;
+  // 共享画布上行开关(活页本 tab;仅集成开启时可见/生效)
+  bool _shareCanvas = false;
 
   // 「立即更新」状态机(检查到新版本、用户点"立即更新"并确认后才启动)
   _UpdPhase _upd = _UpdPhase.idle;
@@ -983,7 +976,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _chatIntegration ? 4 : 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1010,12 +1003,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     _tabController.dispose();
     _reloadTimer?.cancel();
     _updSub?.cancel(); // 还在下载时销毁面板 = 取消下载
-    if (_shareInkActive) {
-      _shareInkActive = false;
-      _bridge
-          .shareInkSetActive(false)
-          .catchError((Object e) => debugPrint('[Share] stop on dispose: $e'));
-    }
     _chatApiBase.dispose();
     _chatUser.dispose();
     _chatPassword.dispose();
@@ -1064,25 +1051,23 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     if (idx == 1 && _infiniteCanvas) {
       setState(() => _infiniteCanvas = false);
       _setSetting('infiniteCanvas', false);
-    } else if (idx == 2 && !_infiniteCanvas) {
+    } else if (idx == 2 && _showFreeCanvas && !_infiniteCanvas) {
       setState(() => _infiniteCanvas = true);
       _setSetting('infiniteCanvas', true);
     }
     if (idx == 1 && _pages.isEmpty && !_pagesLoading) {
       _loadPages();
     }
-    if (idx == 2) {
+    if (idx == 2 && _showFreeCanvas) {
       _loadCanvasOverview();
     }
-    _syncShareInk(idx == 3);
   }
 
-  /// tab 数量跟随集成开关(开 = 4 个,含「共享画布」;关 = 3 个)。
+  /// tab 数量跟随「自由涂鸦」开关(开 = 3 个;默认关 = 2 个:设置+活页本)。
   /// 长度变化必须重建 controller,否则 TabBar/TabBarView 断言崩溃。
   void _syncTabCount() {
-    final want = _chatIntegration ? 4 : 3;
+    final want = _showFreeCanvas ? 3 : 2;
     if (_tabController.length == want) return;
-    if (_shareInkActive && !_chatIntegration) _syncShareInk(false);
     final old = _tabController;
     _tabController = TabController(length: want, vsync: this);
     _tabController.addListener(() {
@@ -1093,17 +1078,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     });
     _tabController.addListener(_onTabChanged);
     old.dispose();
-  }
-
-  /// 共享画布上行随 tab 生命周期开关:切到「共享画布」= 开,
-  /// 切走 = 关。连接成败静默(Rust 侧只留 stderr),不进 UI。
-  void _syncShareInk(bool want) {
-    if (want == _shareInkActive) return;
-    _shareInkActive = want;
-    _bridge
-        .shareInkSetActive(want)
-        .catchError((Object e) =>
-            debugPrint('[Share] setActive($want) failed: $e'));
   }
 
   /// 模式 tab 标签:激活的模式带一颗小圆点
@@ -1290,6 +1264,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _gifResolution = (s['gifResolution'] as num?)?.toDouble() ?? _gifResolution;
         _gifSpeed = (s['gifSpeed'] as num?)?.toDouble() ?? _gifSpeed;
         _gifEndMode = (s['gifEndMode'] as num?)?.toInt() ?? _gifEndMode;
+        _showFreeCanvas = _b(s['showFreeCanvas']);
+        _shareCanvas = _b(s['shareCanvas']);
+        _syncTabCount();
       });
     }
   }
@@ -1314,6 +1291,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _chatUser.text = (settings['chatUser'] as String?) ?? '';
           _chatHasPassword = _b(settings['chatHasPassword']);
           _chatIntegration = _b(settings['chatIntegration']);
+          _showFreeCanvas = _b(settings['showFreeCanvas']);
+          _shareCanvas = _b(settings['shareCanvas']);
           _syncTabCount();
           _connected = true;
         });
@@ -1684,6 +1663,22 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             },
           ))),
         ),
+        if (_chatIntegration)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            child: _buildSection('共享画布', _tile(SwitchListTile(
+              title: const Text('实时发送涂鸦', style: TextStyle(fontSize: 14)),
+              subtitle: const Text('抬笔即推给对方应用当前打开的接收页;关闭即停',
+                  style: TextStyle(fontSize: 12)),
+              value: _shareCanvas,
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              onChanged: (v) {
+                setState(() => _shareCanvas = v);
+                _setSetting('shareCanvas', v);
+              },
+            ))),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
           child: _buildSection('Export', _buildExportButtons()),
@@ -2436,6 +2431,26 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Widget _buildToggles() {
     return Column(
       children: [
+        _tile(SwitchListTile(
+          title: const Text('自由涂鸦模式', style: TextStyle(fontSize: 15)),
+          subtitle: const Text('显示「自由涂鸦」画布:不翻页,镜头自由移动',
+              style: TextStyle(fontSize: 12)),
+          value: _showFreeCanvas,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (v) {
+            setState(() {
+              _showFreeCanvas = v;
+              _syncTabCount();
+              if (!v && _infiniteCanvas) {
+                // tab 移除后只剩活页本:模式同步回翻页
+                _infiniteCanvas = false;
+                _setSetting('infiniteCanvas', false);
+              }
+            });
+            _setSetting('showFreeCanvas', v);
+          },
+        )),
         _tile(SwitchListTile(
           title: const Text('压力监控', style: TextStyle(fontSize: 15)),
           value: _pressureMonitor,

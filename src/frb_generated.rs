@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1660352597;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -993993214;
 
 // Section: executor
 
@@ -740,44 +740,6 @@ fn wire__crate__api__settings_changed_impl(
         },
     )
 }
-fn wire__crate__api__share_ink_set_active_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "share_ink_set_active",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_active = <bool>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| async move {
-                transform_result_sse::<_, ()>(
-                    (move || async move {
-                        let output_ok = Result::<_, ()>::Ok({
-                            crate::api::share_ink_set_active(api_active).await;
-                        })?;
-                        Ok(output_ok)
-                    })()
-                    .await,
-                )
-            }
-        },
-    )
-}
 fn wire__crate__api__stage_update_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1163,6 +1125,8 @@ impl SseDecode for crate::api::Settings {
         let mut var_chatUser = <String>::sse_decode(deserializer);
         let mut var_chatHasPassword = <bool>::sse_decode(deserializer);
         let mut var_chatIntegration = <bool>::sse_decode(deserializer);
+        let mut var_showFreeCanvas = <bool>::sse_decode(deserializer);
+        let mut var_shareCanvas = <bool>::sse_decode(deserializer);
         return crate::api::Settings {
             color: var_color,
             width: var_width,
@@ -1184,6 +1148,8 @@ impl SseDecode for crate::api::Settings {
             chat_user: var_chatUser,
             chat_has_password: var_chatHasPassword,
             chat_integration: var_chatIntegration,
+            show_free_canvas: var_showFreeCanvas,
+            share_canvas: var_shareCanvas,
         };
     }
 }
@@ -1305,10 +1271,9 @@ fn pde_ffi_dispatcher_primary_impl(
         17 => wire__crate__api__restore_latest_backup_impl(port, ptr, rust_vec_len, data_len),
         18 => wire__crate__api__set_setting_impl(port, ptr, rust_vec_len, data_len),
         19 => wire__crate__api__settings_changed_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__share_ink_set_active_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__stage_update_impl(port, ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__test_chat_login_impl(port, ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__trigger_hotkey_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__stage_update_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__test_chat_login_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__trigger_hotkey_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1453,6 +1418,8 @@ impl flutter_rust_bridge::IntoDart for crate::api::Settings {
             self.chat_user.into_into_dart().into_dart(),
             self.chat_has_password.into_into_dart().into_dart(),
             self.chat_integration.into_into_dart().into_dart(),
+            self.show_free_canvas.into_into_dart().into_dart(),
+            self.share_canvas.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -1772,6 +1739,8 @@ impl SseEncode for crate::api::Settings {
         <String>::sse_encode(self.chat_user, serializer);
         <bool>::sse_encode(self.chat_has_password, serializer);
         <bool>::sse_encode(self.chat_integration, serializer);
+        <bool>::sse_encode(self.show_free_canvas, serializer);
+        <bool>::sse_encode(self.share_canvas, serializer);
     }
 }
 

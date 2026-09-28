@@ -23,11 +23,6 @@ Future<void> setSetting({required String key, required String valueJson}) =>
 /// 返回空串 = 成功,否则为可读失败原因。
 Future<String> testChatLogin() => RustLib.instance.api.crateApiTestChatLogin();
 
-/// tab 切到「共享画布」(active=true)建流开始上行,切走/面板关闭(false)
-/// 补 end 帧 + half-close。幂等;连接成败不进 UI(静默,只留 stderr)。
-Future<void> shareInkSetActive({required bool active}) =>
-    RustLib.instance.api.crateApiShareInkSetActive(active: active);
-
 /// 设置变化推送流:面板订阅它,菜单/快捷键的改动能实时同步到 UI。
 Stream<Settings> settingsChanged() =>
     RustLib.instance.api.crateApiSettingsChanged();
@@ -267,6 +262,8 @@ class Settings {
   final String chatUser;
   final bool chatHasPassword;
   final bool chatIntegration;
+  final bool showFreeCanvas;
+  final bool shareCanvas;
 
   const Settings({
     required this.color,
@@ -289,6 +286,8 @@ class Settings {
     required this.chatUser,
     required this.chatHasPassword,
     required this.chatIntegration,
+    required this.showFreeCanvas,
+    required this.shareCanvas,
   });
 
   @override
@@ -312,7 +311,9 @@ class Settings {
       chatApiBase.hashCode ^
       chatUser.hashCode ^
       chatHasPassword.hashCode ^
-      chatIntegration.hashCode;
+      chatIntegration.hashCode ^
+      showFreeCanvas.hashCode ^
+      shareCanvas.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -338,7 +339,9 @@ class Settings {
           chatApiBase == other.chatApiBase &&
           chatUser == other.chatUser &&
           chatHasPassword == other.chatHasPassword &&
-          chatIntegration == other.chatIntegration;
+          chatIntegration == other.chatIntegration &&
+          showFreeCanvas == other.showFreeCanvas &&
+          shareCanvas == other.shareCanvas;
 }
 
 /// release 里的一个安装包(挑包下载用)。

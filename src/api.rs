@@ -207,6 +207,10 @@ pub struct Settings {
     pub chat_has_password: bool,
     // 手写消息集成总开关(默认关):关 = 隐藏登录/共享界面,⌘⌃2/⌘⌃3 直通
     pub chat_integration: bool,
+    // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
+    pub show_free_canvas: bool,
+    // 共享画布上行开关(活页本 tab;仅集成开启时生效)
+    pub share_canvas: bool,
 }
 
 impl Settings {
@@ -243,6 +247,8 @@ impl Settings {
             chat_user: s("chatUser"),
             chat_has_password: b("chatHasPassword"),
             chat_integration: b("chatIntegration"),
+            show_free_canvas: b("showFreeCanvas"),
+            share_canvas: b("shareCanvas"),
         })
     }
 }
@@ -276,15 +282,8 @@ pub async fn test_chat_login() -> String {
 }
 
 // ---------------------------------------------------------------------------
-// 共享画布上行(面板「共享画布」tab 的开/关;转发语义见 docs/canvas-share-grpc.md)
+// 共享画布上行(活页本 tab 的「共享画布」开关;转发语义见 docs/canvas-share-grpc.md)
 // ---------------------------------------------------------------------------
-
-/// tab 切到「共享画布」(active=true)建流开始上行,切走/面板关闭(false)
-/// 补 end 帧 + half-close。幂等;连接成败不进 UI(静默,只留 stderr)。
-#[frb]
-pub async fn share_ink_set_active(active: bool) {
-    run_blocking(move || crate::export::share_ink_set_active_impl(active));
-}
 
 /// 设置变化推送流:面板订阅它,菜单/快捷键的改动能实时同步到 UI。
 #[frb]

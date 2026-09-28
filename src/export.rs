@@ -2840,7 +2840,7 @@ struct InkShareState {
 
 static INK_SHARE: std::sync::Mutex<Option<InkShareState>> = std::sync::Mutex::new(None);
 
-/// 面板切到「共享画布」tab(active=true)/切走或面板关闭(false)。
+/// 共享上行开关(活页本 tab「共享画布」开关;启动恢复 / 开关切换)。
 /// 幂等:重复开是 no-op,重复关也是 no-op。
 pub(crate) fn share_ink_set_active_impl(active: bool) {
     if active {
@@ -2868,6 +2868,12 @@ pub(crate) fn share_ink_set_active_impl(active: bool) {
     runtime().spawn(async move {
         sess.channel.finish(stroke_count, duration_ms).await;
     });
+}
+
+/// ObjC 入口:启动恢复(集成开 + share_ink 设置开)与「共享画布」开关切换。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_share_ink_set_active(active: c_int) {
+    share_ink_set_active_impl(active != 0);
 }
 
 /// pen-up 提交笔迹后的共享钩子:tab 打开期间把本笔实时推给 axum。

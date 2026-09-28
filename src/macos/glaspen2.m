@@ -70,6 +70,7 @@ extern int  glaspen2_load_bool_setting(const char *key);
 extern void glaspen2_save_string_setting(const char *key, const char *value);
 extern char* glaspen2_load_string_setting(const char *key);
 extern void glaspen2_chat_auth_reload(void); // 设置/启动时把 DB 账号配置推给 Rust auth
+extern void glaspen2_share_ink_set_active(int active); // 共享画布上行开关(export.rs)
 // (共享画布上行已无 ObjC 入口:生命周期完全由面板 tab 驱动,FRB 直达 Rust)
 
 // Modeler FFI
@@ -1240,6 +1241,8 @@ char *glaspen2_macos_settings_json(void) {
             @"chatUser":    gl_string_setting("chat_user"),
             @"chatHasPassword": @([gl_string_setting("chat_password") length] > 0),
             @"chatIntegration": @(g_chat_integration),
+            @"showFreeCanvas": @(glaspen2_load_bool_setting("show_free_canvas")),
+            @"shareCanvas": @(glaspen2_load_bool_setting("share_ink")),
         };
         NSData *json = [NSJSONSerialization dataWithJSONObject:d options:0 error:nil];
         if (!json) return;
@@ -1271,9 +1274,13 @@ static void gl_settings_set_chat_integration(BOOL on) {
     g_chat_integration = on;
     glaspen2_save_bool_setting("chat_integration", on ? 1 : 0);
     if (!on) {
-        // 静默终止进行中的手写录制/草稿
+        // 静默终止进行中的手写录制/草稿;共享上行一并停止
         g_msg_record_start = -1;
         if (g_ink_draft_active) ink_draft_stop_async();
+        glaspen2_share_ink_set_active(NO);
+    } else if (glaspen2_load_bool_setting("share_ink")) {
+        // 重新开启集成:共享上行开关若此前是开的,一并恢复
+        glaspen2_share_ink_set_active(YES);
     }
 }
 
@@ -1380,6 +1387,16 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             }
         } else if ([key isEqualToString:@"chatIntegration"]) {
             gl_settings_set_chat_integration([value boolValue]);
+        } else if ([key isEqualToString:@"showFreeCanvas"]) {
+            // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
+            glaspen2_save_bool_setting("show_free_canvas", [value boolValue] ? 1 : 0);
+        } else if ([key isEqualToString:@"shareCanvas"]) {
+            // 共享画布上行开关(活页本 tab):仅集成开启时真正生效
+            BOOL on = [value boolValue];
+            glaspen2_save_bool_setting("share_ink", on ? 1 : 0);
+            if (g_chat_integration || !on) {
+                glaspen2_share_ink_set_active((g_chat_integration && on) ? 1 : 0);
+            }
         }
     });
 }
@@ -3582,6 +3599,10 @@ void glaspen2_run(void) {
 
         // 手写消息集成总开关(默认关;关 = 热键直通、面板收起)
         g_chat_integration = glaspen2_load_bool_setting("chat_integration") != 0;
+        // 共享画布上行:集成开 + 开关此前为开 → 恢复上行
+        if (g_chat_integration && glaspen2_load_bool_setting("share_ink")) {
+            glaspen2_share_ink_set_active(YES);
+        }
 
         // Apply glass visual on startup (skip if the user already started drawing)
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{

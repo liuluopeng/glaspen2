@@ -64,7 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -1660352597;
+  int get rustContentHash => -993993214;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -123,8 +123,6 @@ abstract class RustLibApi extends BaseApi {
   });
 
   Stream<Settings> crateApiSettingsChanged();
-
-  Future<void> crateApiShareInkSetActive({required bool active});
 
   Future<UpdateOutcome> crateApiStageUpdate({required String tag});
 
@@ -693,36 +691,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "settings_changed", argNames: ["sink"]);
 
   @override
-  Future<void> crateApiShareInkSetActive({required bool active}) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_bool(active, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 20,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
-          decodeErrorData: null,
-        ),
-        constMeta: kCrateApiShareInkSetActiveConstMeta,
-        argValues: [active],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiShareInkSetActiveConstMeta => const TaskConstMeta(
-    debugName: "share_ink_set_active",
-    argNames: ["active"],
-  );
-
-  @override
   Future<UpdateOutcome> crateApiStageUpdate({required String tag}) {
     return handler.executeNormal(
       NormalTask(
@@ -732,7 +700,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 20,
             port: port_,
           );
         },
@@ -759,7 +727,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 21,
             port: port_,
           );
         },
@@ -787,7 +755,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 22,
             port: port_,
           );
         },
@@ -995,8 +963,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Settings dco_decode_settings(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 20)
-      throw Exception('unexpected arr length: expect 20 but see ${arr.length}');
+    if (arr.length != 22)
+      throw Exception('unexpected arr length: expect 22 but see ${arr.length}');
     return Settings(
       color: dco_decode_i_32(arr[0]),
       width: dco_decode_i_32(arr[1]),
@@ -1018,6 +986,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       chatUser: dco_decode_String(arr[17]),
       chatHasPassword: dco_decode_bool(arr[18]),
       chatIntegration: dco_decode_bool(arr[19]),
+      showFreeCanvas: dco_decode_bool(arr[20]),
+      shareCanvas: dco_decode_bool(arr[21]),
     );
   }
 
@@ -1342,6 +1312,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_chatUser = sse_decode_String(deserializer);
     var var_chatHasPassword = sse_decode_bool(deserializer);
     var var_chatIntegration = sse_decode_bool(deserializer);
+    var var_showFreeCanvas = sse_decode_bool(deserializer);
+    var var_shareCanvas = sse_decode_bool(deserializer);
     return Settings(
       color: var_color,
       width: var_width,
@@ -1363,6 +1335,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       chatUser: var_chatUser,
       chatHasPassword: var_chatHasPassword,
       chatIntegration: var_chatIntegration,
+      showFreeCanvas: var_showFreeCanvas,
+      shareCanvas: var_shareCanvas,
     );
   }
 
@@ -1707,6 +1681,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.chatUser, serializer);
     sse_encode_bool(self.chatHasPassword, serializer);
     sse_encode_bool(self.chatIntegration, serializer);
+    sse_encode_bool(self.showFreeCanvas, serializer);
+    sse_encode_bool(self.shareCanvas, serializer);
   }
 
   @protected
