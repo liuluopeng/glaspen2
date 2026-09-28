@@ -28,6 +28,7 @@ pub mod cairo_dl;
 pub mod db;
 pub mod export;
 pub mod modeler;
+pub mod ocr;
 pub mod pdf;
 pub mod state;
 pub mod update;

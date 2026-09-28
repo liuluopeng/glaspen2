@@ -215,6 +215,26 @@ mod platform {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             )",
+            // OCR 识别结果(axum PP-OCRv6 服务, docs/ocr-api.md):
+            // 每页一条最新结果, 历史结果软删保留; boxes 表为将来
+            // 带坐标的文本层预留(当前 HTTP API 只返回整页文本)。
+            "CREATE TABLE IF NOT EXISTS ocr_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                screen_id INTEGER NOT NULL REFERENCES screens(id),
+                full_text TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                deleted_at REAL
+            )",
+            "CREATE TABLE IF NOT EXISTS ocr_boxes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                result_id INTEGER NOT NULL REFERENCES ocr_results(id),
+                box_index INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                x REAL NOT NULL, y REAL NOT NULL,
+                w REAL NOT NULL, h REAL NOT NULL,
+                confidence REAL NOT NULL DEFAULT 0.0
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_ocr_results_screen ON ocr_results(screen_id)",
             // 缩略图缓存:渲染结果(PNG)按页存库,内容未变时直接复用,
             // 避免每次打开活页本都全量拉笔迹+渲染。新鲜度由
             // (stroke_count, max_stroke_id, outline, max_size) 四元组判定。
@@ -455,6 +475,77 @@ mod platform {
         }
     }
 
+    /// 保存某页的 OCR 识别结果:软删该页旧结果后插入新结果(axum OCR 服务)。
+    pub async fn save_ocr_result(screen_id: i64, full_text: &str) {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return,
+        };
+        let now = now_f64();
+        if sqlx::query(
+            "UPDATE ocr_results SET deleted_at = ?2 WHERE screen_id = ?1 AND deleted_at IS NULL",
+        )
+        .bind(screen_id)
+        .bind(now)
+        .execute(pool)
+        .await
+        .is_err()
+        {
+            return;
+        }
+        let _ = sqlx::query(
+            "INSERT INTO ocr_results (screen_id, full_text, created_at) VALUES (?1, ?2, ?3)",
+        )
+        .bind(screen_id)
+        .bind(full_text)
+        .bind(now)
+        .execute(pool)
+        .await;
+    }
+
+    /// 某页最新的 OCR 全文(未删除的最新一条);无则 None。
+    pub async fn latest_ocr_text(screen_id: i64) -> Option<String> {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return None,
+        };
+        sqlx::query_scalar::<_, String>(
+            "SELECT full_text FROM ocr_results              WHERE screen_id = ?1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1",
+        )
+        .bind(screen_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or(None)
+    }
+
+    /// 还没有 OCR 结果的页(未删除、有笔迹、无未删除 OCR 行),按 id 升序。
+    /// 供 PDF 导出前的批量补全与启动 backfill 使用。
+    pub async fn pages_missing_ocr() -> Vec<(i64, i32, i32)> {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return Vec::new(),
+        };
+        sqlx::query_as(
+            "SELECT s.id, s.screen_w, s.screen_h FROM screens s              WHERE s.deleted_at IS NULL              AND EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id)              AND NOT EXISTS (SELECT 1 FROM ocr_results WHERE screen_id = s.id AND deleted_at IS NULL)              ORDER BY s.id",
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default()
+    }
+
+    /// 某页的尺寸(补占位页沿用当前页尺寸; OCR 渲染整页用)。
+    pub async fn screen_dims(screen_id: i64) -> Option<(i32, i32)> {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return None,
+        };
+        sqlx::query_as("SELECT screen_w, screen_h FROM screens WHERE id = ?1")
+            .bind(screen_id)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None)
+    }
+
     pub async fn screen_has_strokes(screen_id: i64) -> bool {
         let pool = match DB.get() {
             Some(p) => p,
@@ -538,8 +629,16 @@ mod platform {
             Some(p) => p,
             None => return false,
         };
-        // 软删除:标记 screens + strokes 而非物理删除
+        // 软删除:标记 screens + strokes + ocr_results 而非物理删除
         let now = now_f64();
+        let _ocr_del = sqlx::query(
+            "UPDATE ocr_results SET deleted_at = ?2 WHERE screen_id = ?1 AND deleted_at IS NULL",
+        )
+        .bind(target_id)
+        .bind(now)
+        .execute(pool)
+        .await
+        .ok();
         let screen_del =
             sqlx::query("UPDATE screens SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL")
                 .bind(target_id)

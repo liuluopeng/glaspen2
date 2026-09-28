@@ -7,6 +7,9 @@ use printpdf::*;
 
 use crate::{db, runtime};
 
+/// 内嵌 glyphless 字体:所有字形为空, CID = Unicode 码位 —— 文本可选中/可复制/可搜索但不可见。
+const GLYPHLESS_TTF: &[u8] = include_bytes!("../assets/glyphless.ttf");
+
 /// Export all pages to a vector PDF on the desktop. Returns the file path.
 pub fn export_all_pages() -> Option<String> {
     let rt = runtime();
@@ -78,9 +81,21 @@ pub fn export_all_pages() -> Option<String> {
     // Close DB
     rt.block_on(pool.close());
 
+    // 收集每页 OCR 全文(axum 服务识别, 启动/抬笔自动补全): 有则叠可复制文本层
+    let pages_text: Vec<Option<String>> = {
+        let mut v = Vec::with_capacity(screens.len());
+        for (screen_id, _, _) in &screens {
+            v.push(rt.block_on(db::latest_ocr_text(*screen_id)));
+        }
+        v
+    };
+
     let opts = PdfSaveOptions::default();
     let mut warnings = Vec::new();
     let mut lopdf_doc = doc.to_lopdf_document(&opts, &mut warnings);
+
+    // Post-process: glyphless CID 字体 + 隐形可复制文本层
+    add_glyphless_text_layer(&mut lopdf_doc, &screens, &pages_text);
 
     // Save with lopdf
     let desktop = desktop_path();
@@ -337,6 +352,212 @@ fn timestamped_name(ext: &str) -> String {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+use lopdf::{dictionary, Dictionary, Object, Stream};
+
+const IDENTITY_CMAP: &[u8] = b"/CIDInit /ProcSet findresource begin
+12 dict begin
+begincmap
+/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
+/CMapName /Adobe-Identity-UCS def
+/CMapType 2 def
+1 begincodespacerange
+<0000><FFFF>
+endcodespacerange
+1 beginbfrange
+<0000><FFFF><0000>
+endbfrange
+endcmap
+CMapName currentdict /CMap defineresource pop
+end
+end";
+
+// ---------------------------------------------------------------------------
+// lopdf 后处理: glyphless CID 字体 + 隐形可复制 Unicode 文本层
+// ---------------------------------------------------------------------------
+
+/// 给有 OCR 全文的页叠加隐形文本层:逐行放置, 文本可选中/复制/搜索
+/// 但不可见(渲染模式 3)。OCR 无坐标框, 按行等距排在页面左侧。
+fn add_glyphless_text_layer(
+    doc: &mut lopdf::Document,
+    screens: &[(i64, i32, i32)],
+    pages_text: &[Option<String>],
+) {
+    let type0_font_id = add_glyphless_font_objects(doc);
+    let font_name = b"C1";
+    let page_ids: Vec<lopdf::ObjectId> = doc.get_pages().into_values().collect();
+
+    for (page_num, page_id) in page_ids.iter().enumerate() {
+        if page_num >= pages_text.len() {
+            break;
+        }
+        let Some(full_text) = pages_text[page_num].as_ref() else {
+            continue;
+        };
+        let (_, _, sh) = screens.get(page_num).copied().unwrap_or((0, 0, 1080));
+        let content = build_text_content(sh as f32, full_text);
+        if content.is_empty() {
+            continue;
+        }
+
+        let old_content = get_page_content_bytes(doc, *page_id);
+        let mut new_content = content;
+        new_content.extend_from_slice(&old_content);
+        let new_stream_id = doc.add_object(Stream::new(Dictionary::new(), new_content));
+        add_font_to_page_resources(doc, *page_id, font_name, type0_font_id);
+        if let Ok(page_dict) = doc.get_dictionary_mut(*page_id) {
+            page_dict.set(b"Contents", Object::Reference(new_stream_id));
+        }
+    }
+}
+
+/// glyphless 字体三件套: 字体文件流 → FontDescriptor → CIDFontType2 →
+/// ToUnicode CMap → Type0 根字体。返回 Type0 字体对象 id。
+fn add_glyphless_font_objects(doc: &mut lopdf::Document) -> lopdf::ObjectId {
+    let font_stream_id = doc.add_object(Stream::new(
+        {
+            let mut d = Dictionary::new();
+            d.set("Length", GLYPHLESS_TTF.len() as i64);
+            d
+        },
+        GLYPHLESS_TTF.to_vec(),
+    ));
+
+    let font_desc_id = doc.add_object(dictionary! {
+        b"Type" => Object::Name(b"FontDescriptor".to_vec()),
+        b"FontName" => Object::Name(b"GLYPHLESS+GlyphLessFont".to_vec()),
+        b"Flags" => Object::Integer(4),
+        b"FontBBox" => Object::Array(vec![
+            Object::Integer(0), Object::Integer(0),
+            Object::Integer(0), Object::Integer(0),
+        ]),
+        b"ItalicAngle" => Object::Integer(0),
+        b"Ascent" => Object::Integer(0),
+        b"Descent" => Object::Integer(0),
+        b"CapHeight" => Object::Integer(0),
+        b"StemV" => Object::Integer(0),
+        b"FontFile2" => Object::Reference(font_stream_id),
+    });
+
+    let mut cid_system_info = Dictionary::new();
+    cid_system_info.set(b"Registry", Object::string_literal("Adobe"));
+    cid_system_info.set(b"Ordering", Object::string_literal("Identity"));
+    cid_system_info.set(b"Supplement", Object::Integer(0));
+
+    let cid_font_id = doc.add_object(dictionary! {
+        b"Type" => Object::Name(b"Font".to_vec()),
+        b"Subtype" => Object::Name(b"CIDFontType2".to_vec()),
+        b"BaseFont" => Object::Name(b"GLYPHLESS+GlyphLessFont".to_vec()),
+        b"CIDSystemInfo" => Object::Dictionary(cid_system_info),
+        b"DW" => Object::Integer(1000),
+        b"FontDescriptor" => Object::Reference(font_desc_id),
+    });
+
+    let cmap_stream_id = doc.add_object(Stream::new(Dictionary::new(), IDENTITY_CMAP.to_vec()));
+
+    doc.add_object(dictionary! {
+        b"Type" => Object::Name(b"Font".to_vec()),
+        b"Subtype" => Object::Name(b"Type0".to_vec()),
+        b"BaseFont" => Object::Name(b"GLYPHLESS+GlyphLessFont-Identity-H".to_vec()),
+        b"Encoding" => Object::Name(b"Identity-H".to_vec()),
+        b"DescendantFonts" => Object::Array(vec![Object::Reference(cid_font_id)]),
+        b"ToUnicode" => Object::Reference(cmap_stream_id),
+    })
+}
+
+/// 由整页全文生成隐形文本内容流(UTF-16BE hex CID, 渲染模式 3 不可见)。
+/// 逐行放置:左边距 20pt, 首行基线 = 页高 - 40, 行距 28pt。
+fn build_text_content(sh: f32, full_text: &str) -> Vec<u8> {
+    let mut content = Vec::new();
+    let lines: Vec<&str> = full_text.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.is_empty() {
+        return content;
+    }
+
+    content.extend_from_slice(b"q\nBT\n3 Tr\n");
+    let mut y = sh - 40.0;
+    for line in &lines {
+        let hex_cids: String = line
+            .encode_utf16()
+            .map(|cp| format!("{cp:04X}"))
+            .collect::<Vec<_>>()
+            .join("");
+        use std::io::Write as _;
+        let _ = writeln!(&mut content, "/C1 20.0 Tf");
+        let _ = writeln!(&mut content, "1 0 0 1 20.0 {y:.1} Tm");
+        let _ = writeln!(&mut content, "<{hex_cids}> Tj");
+        y -= 28.0;
+    }
+    content.extend_from_slice(b"ET\nQ\n");
+    content
+}
+
+/// 读取页内容流的解码字节(文本层拼在原内容之前)。
+fn get_page_content_bytes(doc: &lopdf::Document, page_id: lopdf::ObjectId) -> Vec<u8> {
+    let page_dict = match doc.get_dictionary(page_id) {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+    let contents = match page_dict.get(b"Contents") {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    match contents {
+        Object::Reference(stream_id) => get_stream_bytes(doc, *stream_id).unwrap_or_default(),
+        Object::Array(refs) => {
+            let mut result = Vec::new();
+            for obj in refs {
+                if let Ok(stream_id) = obj.as_reference()
+                    && let Ok(content) = get_stream_bytes(doc, stream_id)
+                {
+                    result.extend_from_slice(&content);
+                    result.push(b'\n');
+                }
+            }
+            result
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn get_stream_bytes(doc: &lopdf::Document, stream_id: lopdf::ObjectId) -> lopdf::Result<Vec<u8>> {
+    let obj = doc.get_object(stream_id)?;
+    obj.as_stream()?.get_plain_content()
+}
+
+/// 把 /C1 字体引用挂进页 Resources 的 /Font 字典(字典或引用都兼容)。
+fn add_font_to_page_resources(
+    doc: &mut lopdf::Document,
+    page_id: lopdf::ObjectId,
+    font_name: &[u8],
+    font_id: lopdf::ObjectId,
+) {
+    let res_id = {
+        let page_dict = match doc.get_dictionary(page_id) {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        match page_dict.get(b"Resources") {
+            Ok(Object::Reference(id)) => *id,
+            _ => return,
+        }
+    };
+    let res_dict = match doc.get_dictionary_mut(res_id) {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    match res_dict.get_mut(b"Font") {
+        Ok(Object::Dictionary(font_dict)) => {
+            font_dict.set(font_name, Object::Reference(font_id));
+        }
+        _ => {
+            let mut font_dict = Dictionary::new();
+            font_dict.set(font_name, Object::Reference(font_id));
+            res_dict.set(b"Font", Object::Dictionary(font_dict));
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

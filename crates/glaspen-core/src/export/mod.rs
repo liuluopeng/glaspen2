@@ -21,11 +21,12 @@ pub use crate::{STROKES, db};
 mod chat_glue;
 mod media;
 mod pages;
-mod thumbs;
+pub(crate) mod thumbs;
 pub use chat_glue::*;
 pub use media::*;
 pub use pages::*;
 pub use thumbs::*;
+pub(crate) use thumbs::encode_png_rgba;
 pub(crate) use chat_glue::ink_draft_on_stroke_committed;
 pub(crate) use chat_glue::ink_share_on_stroke_committed;
 #[cfg(test)]
@@ -35,6 +36,13 @@ pub(crate) use chat_glue::{stroke_to_chat_message, CHAT_NOTEBOOK, sync_chat_auth
 #[cfg(test)]
 pub(crate) use pages::plan_new_page;
 pub use thumbs::{page_thumbnails_blob, warm_thumbnail_cache, THUMB_BLOB_MAGIC, encode_thumb_blob};
+
+/// 批量补全所有缺 OCR 结果的页面(阻塞, 逐页调 axum 服务)。
+/// 供面板/菜单后续接入; 无调用方时保持 FFI 导出以便调试。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_ocr_backfill_all() -> c_int {
+    crate::ocr::backfill_missing() as c_int
+}
 
 // ---------------------------------------------------------------------------
 // Drawing FFI (legacy, non-modeler path)
@@ -454,6 +462,7 @@ pub extern "C" fn glaspen2_modeler_commit_to_strokes(r: c_double, g: c_double, b
     } // 先放掉 STROKES 锁再走草稿钩子(钩子内部要重新拿锁)
     ink_draft_on_stroke_committed();
     ink_share_on_stroke_committed();
+    crate::ocr::on_stroke_committed(crate::state::current_screen_id());
 }
 
 /// Eraser: remove strokes overlapped by the just-finished eraser stroke.

@@ -84,6 +84,11 @@ pub fn set_config(cfg: AuthConfig) {
 }
 
 /// 当前生效配置(环境变量 + 宿主注入的合并结果)。
+/// 当前生效配置里的 axum 服务基址(OCR 等功能用)。
+pub fn api_base() -> Option<String> {
+    config().api_base
+}
+
 pub fn config() -> AuthConfig {
     auth_state().lock().unwrap().cfg.clone()
 }

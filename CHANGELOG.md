@@ -51,6 +51,15 @@
   不渲染(菜单全是字),现改为富文本标题内嵌附件图,任何系统版本都
   稳定显示。
 
+- **OCR 文字识别回归(axum 服务版, macOS)**:被移除的本地 ONNX OCR 改为
+  调用 axum 的 PP-OCRv6 服务(`POST /api/ocr/images`, 多图 multipart)。
+  抬笔提交后自动识别当前页(30s/页冷却, 后台线程, 失败静默);识别全文
+  按**页**存入本地库新表 `ocr_results`(带 deleted_at 软删, 历史保留)。
+  **导出 PDF 时恢复可复制的隐形文本层**:glyphless CID 字体内嵌 + 渲染
+  模式 3, 逐行放置识别文本 —— PDF 可搜索、可选中文本复制, 视觉不变。
+  另有 `glaspen2_ocr_backfill_all` FFI 批量补全历史页面(供后续 UI 接入)。
+  未配置 GLASPEN_API_BASE / 服务不可达时整体静默跳过, 涂鸦不受影响。
+
 ### 新增
 
 - **实时共享画布上行(macOS,局域网)**:活页本 tab 新增「共享画布」

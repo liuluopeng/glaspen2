@@ -365,7 +365,7 @@ pub extern "C" fn glaspen2_render_canvas_overview(
 }
 
 /// Encode RGBA pixel data as PNG bytes.
-fn encode_png_rgba(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
+pub(crate) fn encode_png_rgba(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
     use image::ImageEncoder;
     let mut buf = Vec::new();
     image::codecs::png::PngEncoder::new(&mut buf)
