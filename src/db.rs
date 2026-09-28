@@ -419,6 +419,19 @@ mod platform {
         });
     }
 
+    /// 活页本末页 = 未删除页中 id 最大者(含空白页)。空库返回 None。
+    /// "末页空白就不能再建空白页"的守卫与启动沿用末页都用它。
+    pub async fn last_screen_id() -> Option<i64> {
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => return None,
+        };
+        sqlx::query_scalar("SELECT MAX(id) FROM screens WHERE deleted_at IS NULL")
+            .fetch_one(pool)
+            .await
+            .ok()
+    }
+
     pub async fn screen_has_strokes(screen_id: i64) -> bool {
         let pool = match DB.get() {
             Some(p) => p,

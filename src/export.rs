@@ -85,9 +85,10 @@ pub extern "C" fn glaspen2_end_stroke() {
     db::end_stroke_spawned();
 }
 
-/// Start a new canvas: only when the current canvas was ever edited
-/// (a blank canvas cannot spawn another blank canvas). Returns 1 if a new
-/// screen was created, 0 if it was blocked (current canvas never edited).
+/// Start a new canvas: a new page is created only when the notebook's last
+/// page has strokes — 空白页之后不能再造空白页(要画就画在那页空白页上,
+/// 不在末页时自动跳过去复用)。Returns 1 if a new page was created, 0 if
+/// the existing blank tail page was reused (possibly after navigating to it).
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) -> c_int {
     runtime().block_on(db::end_stroke()); // flush before checking — must block
@@ -100,10 +101,22 @@ pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) -> c_
         return if had { 1 } else { 0 };
     }
     let current = state::current_screen_id();
+    let last = runtime().block_on(async {
+        match db::last_screen_id().await {
+            Some(id) => Some((id, db::screen_has_strokes(id).await)),
+            None => None,
+        }
+    });
+    let (create, reuse) = plan_new_page(last);
     let mut created = 0;
-    if runtime().block_on(db::screen_edited(current)) {
+    if create {
         runtime().block_on(db::new_screen(screen_w, screen_h));
         created = 1;
+    } else if let Some(id) = reuse {
+        // 末页已是空白:复用它,不再新建;不在那页就跳过去
+        if id != current {
+            glaspen2_load_strokes_for_screen(id);
+        }
     }
     let mut strokes = STROKES.lock().unwrap();
     strokes.clear();
@@ -393,10 +406,15 @@ pub extern "C" fn glaspen2_undo_last_stroke() -> c_int {
 }
 
 /// Initialize the database and create the first screen record. Call once at app start.
+/// 沿用活页本末页作为当前页(不再每次启动新建一页——那会积累大量空白页);
+/// 只有空库才创建第一页。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
     runtime().block_on(db::init());
-    runtime().block_on(db::new_screen(screen_w, screen_h));
+    match runtime().block_on(db::last_screen_id()) {
+        Some(id) => state::set_current_screen_id(id),
+        None => runtime().block_on(db::new_screen(screen_w, screen_h)),
+    }
     warm_thumbnail_cache();
 }
 
@@ -437,8 +455,29 @@ fn warm_thumbnail_cache() {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_on_display_change(screen_w: c_int, screen_h: c_int) {
     let current = state::current_screen_id();
-    if runtime().block_on(db::screen_has_strokes(current)) {
+    if !runtime().block_on(db::screen_has_strokes(current)) {
+        return;
+    }
+    let last = runtime().block_on(async {
+        match db::last_screen_id().await {
+            Some(id) => Some((id, db::screen_has_strokes(id).await)),
+            None => None,
+        }
+    });
+    let (create, _) = plan_new_page(last);
+    if create {
         runtime().block_on(db::new_screen(screen_w, screen_h));
+    }
+}
+
+/// 新建页守卫的纯决策:活页本末页(未删除页中最新的一页)已有笔迹 →
+/// 允许新建;**末页空白 → 不允许**(空白页之后不能再造空白页,要画就画
+/// 在那页上);空库 → 新建第一页。返回 (是否新建, 可复用的末页 id)。
+fn plan_new_page(last: Option<(i64, bool)>) -> (bool, Option<i64>) {
+    match last {
+        Some((id, true)) => (true, None),
+        Some((id, false)) => (false, Some(id)),
+        None => (true, None),
     }
 }
 
@@ -2898,6 +2937,17 @@ pub extern "C" fn glaspen2_ink_draft_stop() -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 新建页守卫:末页有笔迹才准建;末页空白 → 复用那页;空库 → 建第一页。
+    #[test]
+    fn plan_new_page_guard() {
+        // 末页有笔迹:允许新建
+        assert_eq!(plan_new_page(Some((7, true))), (true, None));
+        // 末页空白:不新建,复用末页(空白页之后不能再造空白页)
+        assert_eq!(plan_new_page(Some((7, false))), (false, Some(7)));
+        // 空库:建第一页
+        assert_eq!(plan_new_page(None), (true, None));
+    }
 
     /// ⌘⌃2 全流程(默认 mock 通道):start → 提交笔迹(钩子实时推帧)→
     /// stop,回执"已发送 1 笔";重复 start 被拒;关掉后再 stop 报无会话。
