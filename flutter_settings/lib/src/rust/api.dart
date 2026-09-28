@@ -18,6 +18,16 @@ Future<Settings?> getSettings() => RustLib.instance.api.crateApiGetSettings();
 Future<void> setSetting({required String key, required String valueJson}) =>
     RustLib.instance.api.crateApiSetSetting(key: key, valueJson: valueJson);
 
+/// 设置面板「测试登录」:用当前已保存的涂鸦身份配置强制登录一次
+/// (成功则缓存 token,后续 DraftInk/AppendMessages 立即携带身份)。
+/// 返回空串 = 成功,否则为可读失败原因。
+Future<String> testChatLogin() => RustLib.instance.api.crateApiTestChatLogin();
+
+/// tab 切到「共享画布」(active=true)建流开始上行,切走/面板关闭(false)
+/// 补 end 帧 + half-close。幂等;连接成败不进 UI(静默,只留 stderr)。
+Future<void> shareInkSetActive({required bool active}) =>
+    RustLib.instance.api.crateApiShareInkSetActive(active: active);
+
 /// 设置变化推送流:面板订阅它,菜单/快捷键的改动能实时同步到 UI。
 Stream<Settings> settingsChanged() =>
     RustLib.instance.api.crateApiSettingsChanged();
@@ -253,6 +263,10 @@ class Settings {
   final double gifResolution;
   final double gifSpeed;
   final int gifEndMode;
+  final String chatApiBase;
+  final String chatUser;
+  final bool chatHasPassword;
+  final bool chatIntegration;
 
   const Settings({
     required this.color,
@@ -271,6 +285,10 @@ class Settings {
     required this.gifResolution,
     required this.gifSpeed,
     required this.gifEndMode,
+    required this.chatApiBase,
+    required this.chatUser,
+    required this.chatHasPassword,
+    required this.chatIntegration,
   });
 
   @override
@@ -290,7 +308,11 @@ class Settings {
       gifFps.hashCode ^
       gifResolution.hashCode ^
       gifSpeed.hashCode ^
-      gifEndMode.hashCode;
+      gifEndMode.hashCode ^
+      chatApiBase.hashCode ^
+      chatUser.hashCode ^
+      chatHasPassword.hashCode ^
+      chatIntegration.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -312,7 +334,11 @@ class Settings {
           gifFps == other.gifFps &&
           gifResolution == other.gifResolution &&
           gifSpeed == other.gifSpeed &&
-          gifEndMode == other.gifEndMode;
+          gifEndMode == other.gifEndMode &&
+          chatApiBase == other.chatApiBase &&
+          chatUser == other.chatUser &&
+          chatHasPassword == other.chatHasPassword &&
+          chatIntegration == other.chatIntegration;
 }
 
 /// release 里的一个安装包(挑包下载用)。

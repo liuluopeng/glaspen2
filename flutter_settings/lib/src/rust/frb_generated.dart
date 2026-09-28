@@ -64,7 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -1835903418;
+  int get rustContentHash => -1660352597;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -124,7 +124,11 @@ abstract class RustLibApi extends BaseApi {
 
   Stream<Settings> crateApiSettingsChanged();
 
+  Future<void> crateApiShareInkSetActive({required bool active});
+
   Future<UpdateOutcome> crateApiStageUpdate({required String tag});
+
+  Future<String> crateApiTestChatLogin();
 
   Future<void> crateApiTriggerHotkey({required String key});
 }
@@ -689,6 +693,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "settings_changed", argNames: ["sink"]);
 
   @override
+  Future<void> crateApiShareInkSetActive({required bool active}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_bool(active, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 20,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiShareInkSetActiveConstMeta,
+        argValues: [active],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiShareInkSetActiveConstMeta => const TaskConstMeta(
+    debugName: "share_ink_set_active",
+    argNames: ["active"],
+  );
+
+  @override
   Future<UpdateOutcome> crateApiStageUpdate({required String tag}) {
     return handler.executeNormal(
       NormalTask(
@@ -698,7 +732,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 21,
             port: port_,
           );
         },
@@ -717,6 +751,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "stage_update", argNames: ["tag"]);
 
   @override
+  Future<String> crateApiTestChatLogin() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 22,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiTestChatLoginConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiTestChatLoginConstMeta =>
+      const TaskConstMeta(debugName: "test_chat_login", argNames: []);
+
+  @override
   Future<void> crateApiTriggerHotkey({required String key}) {
     return handler.executeNormal(
       NormalTask(
@@ -726,7 +787,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 23,
             port: port_,
           );
         },
@@ -934,8 +995,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Settings dco_decode_settings(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 16)
-      throw Exception('unexpected arr length: expect 16 but see ${arr.length}');
+    if (arr.length != 20)
+      throw Exception('unexpected arr length: expect 20 but see ${arr.length}');
     return Settings(
       color: dco_decode_i_32(arr[0]),
       width: dco_decode_i_32(arr[1]),
@@ -953,6 +1014,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       gifResolution: dco_decode_f_64(arr[13]),
       gifSpeed: dco_decode_f_64(arr[14]),
       gifEndMode: dco_decode_i_32(arr[15]),
+      chatApiBase: dco_decode_String(arr[16]),
+      chatUser: dco_decode_String(arr[17]),
+      chatHasPassword: dco_decode_bool(arr[18]),
+      chatIntegration: dco_decode_bool(arr[19]),
     );
   }
 
@@ -1273,6 +1338,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_gifResolution = sse_decode_f_64(deserializer);
     var var_gifSpeed = sse_decode_f_64(deserializer);
     var var_gifEndMode = sse_decode_i_32(deserializer);
+    var var_chatApiBase = sse_decode_String(deserializer);
+    var var_chatUser = sse_decode_String(deserializer);
+    var var_chatHasPassword = sse_decode_bool(deserializer);
+    var var_chatIntegration = sse_decode_bool(deserializer);
     return Settings(
       color: var_color,
       width: var_width,
@@ -1290,6 +1359,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       gifResolution: var_gifResolution,
       gifSpeed: var_gifSpeed,
       gifEndMode: var_gifEndMode,
+      chatApiBase: var_chatApiBase,
+      chatUser: var_chatUser,
+      chatHasPassword: var_chatHasPassword,
+      chatIntegration: var_chatIntegration,
     );
   }
 
@@ -1630,6 +1703,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_f_64(self.gifResolution, serializer);
     sse_encode_f_64(self.gifSpeed, serializer);
     sse_encode_i_32(self.gifEndMode, serializer);
+    sse_encode_String(self.chatApiBase, serializer);
+    sse_encode_String(self.chatUser, serializer);
+    sse_encode_bool(self.chatHasPassword, serializer);
+    sse_encode_bool(self.chatIntegration, serializer);
   }
 
   @protected

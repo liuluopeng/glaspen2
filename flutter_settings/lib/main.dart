@@ -104,6 +104,12 @@ abstract class _SettingsBridge {
   Future<Map<dynamic, dynamic>> stageUpdate(String tag);
   /// 拉起更新帮手并退出本程序(成功**不返回** —— 进程就地结束)
   Future<Map<dynamic, dynamic>> applyUpdate();
+  /// 涂鸦身份「测试登录」:用已保存的配置强制登录一次。
+  /// 返回空串 = 成功,否则为可读失败原因。
+  Future<String> testChatLogin();
+  /// 共享画布上行开关:tab 切到「共享画布」= true(建流),
+  /// 切走/面板关闭 = false(end + half-close)。连接成败不进 UI。
+  Future<void> shareInkSetActive(bool active);
   void dispose();
 }
 
@@ -144,6 +150,10 @@ class _FrbBridge extends _SettingsBridge {
       'gifResolution': s.gifResolution,
       'gifSpeed': s.gifSpeed,
       'gifEndMode': s.gifEndMode,
+      'chatApiBase': s.chatApiBase,
+      'chatUser': s.chatUser,
+      'chatHasPassword': s.chatHasPassword,
+      'chatIntegration': s.chatIntegration,
     };
   }
 
@@ -271,6 +281,18 @@ class _FrbBridge extends _SettingsBridge {
   Future<String> appVersion() async {
     await _init();
     return rust.appVersion();
+  }
+
+  @override
+  Future<String> testChatLogin() async {
+    await _init();
+    return rust.testChatLogin();
+  }
+
+  @override
+  Future<void> shareInkSetActive(bool active) async {
+    await _init();
+    await rust.shareInkSetActive(active: active);
   }
 
   @override
@@ -577,6 +599,16 @@ class _NamedPipeBridge extends _SettingsBridge {
     final r = await _request('appVersion', null);
     return (r['version'] as String?) ?? '';
   }
+
+  @override
+  Future<String> testChatLogin() async {
+    // Windows 面板是独立进程,涂鸦身份配置在覆盖层进程的 DB 里;
+    // 先给降级话术,后续经管道转发时再实现。
+    return 'Windows 版暂不支持在面板里登录,请用环境变量 GLASPEN_CHAT_USER / GLASPEN_CHAT_PASSWORD';
+  }
+
+  @override
+  Future<void> shareInkSetActive(bool active) async {}
 
   @override
   Future<Map<dynamic, dynamic>> checkUpdate() async =>
@@ -908,6 +940,18 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _checkingUpdate = false;
   Map<dynamic, dynamic>? _updateResult;
 
+  // 涂鸦身份(手写消息登录 axum;配置了才会给手写消息带作者)
+  final _chatApiBase = TextEditingController();
+  final _chatUser = TextEditingController();
+  final _chatPassword = TextEditingController(); // 回显不填,留空 = 保持已存
+  bool _chatHasPassword = false;
+  String _chatLoginMsg = ''; // 测试登录的结果文案
+  bool _chatLoginBusy = false;
+  // 手写消息集成总开关(默认关;关 = 热键直通、登录/共享界面收起)
+  bool _chatIntegration = false;
+  // 共享画布上行是否随本面板的 tab 状态打开(切到第 4 个 tab = 开)
+  bool _shareInkActive = false;
+
   // 「立即更新」状态机(检查到新版本、用户点"立即更新"并确认后才启动)
   _UpdPhase _upd = _UpdPhase.idle;
   int _updReceived = 0;
@@ -939,7 +983,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: _chatIntegration ? 4 : 3, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -966,6 +1010,15 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     _tabController.dispose();
     _reloadTimer?.cancel();
     _updSub?.cancel(); // 还在下载时销毁面板 = 取消下载
+    if (_shareInkActive) {
+      _shareInkActive = false;
+      _bridge
+          .shareInkSetActive(false)
+          .catchError((Object e) => debugPrint('[Share] stop on dispose: $e'));
+    }
+    _chatApiBase.dispose();
+    _chatUser.dispose();
+    _chatPassword.dispose();
     _bridge.dispose();
     super.dispose();
   }
@@ -1021,6 +1074,36 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     if (idx == 2) {
       _loadCanvasOverview();
     }
+    _syncShareInk(idx == 3);
+  }
+
+  /// tab 数量跟随集成开关(开 = 4 个,含「共享画布」;关 = 3 个)。
+  /// 长度变化必须重建 controller,否则 TabBar/TabBarView 断言崩溃。
+  void _syncTabCount() {
+    final want = _chatIntegration ? 4 : 3;
+    if (_tabController.length == want) return;
+    if (_shareInkActive && !_chatIntegration) _syncShareInk(false);
+    final old = _tabController;
+    _tabController = TabController(length: want, vsync: this);
+    _tabController.addListener(() {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _updateVisibleRange();
+      });
+    });
+    _tabController.addListener(_onTabChanged);
+    old.dispose();
+  }
+
+  /// 共享画布上行随 tab 生命周期开关:切到「共享画布」= 开,
+  /// 切走 = 关。连接成败静默(Rust 侧只留 stderr),不进 UI。
+  void _syncShareInk(bool want) {
+    if (want == _shareInkActive) return;
+    _shareInkActive = want;
+    _bridge
+        .shareInkSetActive(want)
+        .catchError((Object e) =>
+            debugPrint('[Share] setActive($want) failed: $e'));
   }
 
   /// 模式 tab 标签:激活的模式带一颗小圆点
@@ -1227,6 +1310,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _gifResolution = (settings['gifResolution'] as num?)?.toDouble() ?? 0.5;
           _gifSpeed = (settings['gifSpeed'] as num?)?.toDouble() ?? 2.0;
           _gifEndMode = (settings['gifEndMode'] as num?)?.toInt() ?? 1;
+          _chatApiBase.text = (settings['chatApiBase'] as String?) ?? '';
+          _chatUser.text = (settings['chatUser'] as String?) ?? '';
+          _chatHasPassword = _b(settings['chatHasPassword']);
+          _chatIntegration = _b(settings['chatIntegration']);
+          _syncTabCount();
           _connected = true;
         });
         // 设置就绪后顺手预取活页本首屏缩略图(一次批量往返),
@@ -1250,8 +1338,131 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     });
   }
 
-  // ── Content tab ──
+  // ── 涂鸦身份(手写消息登录 axum)──
 
+  /// 保存三个字段;密码为空 = 保持已存的(面板不回显密码)。
+  Future<void> _saveChatAuth() async {
+    await _bridge.setSetting('chatApiBase', _chatApiBase.text.trim());
+    await _bridge.setSetting('chatUser', _chatUser.text.trim());
+    if (_chatPassword.text.isNotEmpty) {
+      await _bridge.setSetting('chatPassword', _chatPassword.text);
+    }
+  }
+
+  /// 「测试登录」:先保存,再强制登录一次,回显结果。
+  Future<void> _testChatLogin() async {
+    setState(() => _chatLoginBusy = true);
+    try {
+      await _saveChatAuth();
+      final err = await _bridge.testChatLogin();
+      if (!mounted) return;
+      setState(() {
+        _chatHasPassword = _chatHasPassword || _chatPassword.text.isNotEmpty;
+        _chatLoginMsg =
+            err.isEmpty ? '登录成功,手写消息将携带身份' : '登录失败:$err';
+      });
+    } catch (e) {
+      if (mounted) setState(() => _chatLoginMsg = '登录失败:$e');
+    } finally {
+      if (mounted) setState(() => _chatLoginBusy = false);
+    }
+  }
+
+  Widget _buildChatAuthSection() {
+    const faint12 = TextStyle(fontSize: 12, color: _inkFaint);
+    // 总开关:关 = 只剩开关本身;⌘⌃2/⌘⌃3 直通,不显登录与共享。
+    final master = _tile(SwitchListTile(
+      title: const Text('启用手写消息与共享',
+          style: TextStyle(fontSize: 14)),
+      subtitle: const Text('关闭时不占用 ⌘⌃2/⌘⌃3,涂鸦功能不受影响',
+          style: TextStyle(fontSize: 12)),
+      value: _chatIntegration,
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      onChanged: (v) {
+        setState(() => _chatIntegration = v);
+        _setSetting('chatIntegration', v);
+      },
+    ));
+    if (!_chatIntegration) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start,
+          children: [master]);
+    }
+
+    const faint = TextStyle(fontSize: 13, color: _inkFaint);
+    InputDecoration deco(String label, String hint) => InputDecoration(
+          labelText: label,
+          hintText: hint,
+          isDense: true,
+          border: const OutlineInputBorder(),
+        );
+    final Widget status;
+    if (_chatLoginBusy) {
+      status = const Row(children: [
+        SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+        SizedBox(width: 8),
+        Text('正在登录…', style: faint),
+      ]);
+    } else if (_chatLoginMsg.isNotEmpty) {
+      final ok = _chatLoginMsg.startsWith('登录成功');
+      status = Text(_chatLoginMsg,
+          style: TextStyle(
+              fontSize: 12.5, color: ok ? const Color(0xFF00B16E) : _penRed));
+    } else if (_chatHasPassword) {
+      status = const Text('已配置账号(⌘⌃2/⌘⌃3 手写消息将携带身份)',
+          style: faint);
+    } else {
+      status = const Text('未配置:手写消息功能仍可用,只是发送时不带身份',
+          style: faint);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        master,
+        const SizedBox(height: 4),
+        TextField(
+          controller: _chatApiBase,
+          decoration: deco('服务地址', '例如 https://192.168.31.58:23001'),
+          style: const TextStyle(fontSize: 13),
+          autocorrect: false,
+          keyboardType: TextInputType.url,
+          onSubmitted: (_) => _testChatLogin(),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _chatUser,
+          decoration: deco('用户名', ''),
+          style: const TextStyle(fontSize: 13),
+          autocorrect: false,
+          onSubmitted: (_) => _testChatLogin(),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _chatPassword,
+          obscureText: true,
+          decoration: deco('密码', _chatHasPassword ? '已保存(留空保持不变)' : ''),
+          style: const TextStyle(fontSize: 13),
+          onSubmitted: (_) => _testChatLogin(),
+        ),
+        const SizedBox(height: 10),
+        Row(children: [
+          OutlinedButton(
+            onPressed: _chatLoginBusy ? null : _testChatLogin,
+            child: const Text('保存并测试登录', style: TextStyle(fontSize: 13)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: status),
+        ]),
+        const SizedBox(height: 6),
+        const Text(
+          '用于 ⌘⌃2 手写草稿 / ⌘⌃3 直发的作者归属;涂鸦本身不依赖登录。',
+          style: faint12,
+        ),
+      ],
+    );
+  }
+
+  // ── Content tab ──
   Future<void> _loadPages() async {
     if (_pagesLoading) return;
     setState(() => _pagesLoading = true);
@@ -1376,6 +1587,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   Tab(
                     child: _modeTabLabel('自由涂鸦', _infiniteCanvas),
                   ),
+                  if (_chatIntegration)
+                    const Tab(
+                        icon: Icon(Icons.draw, size: 18), text: '共享画布'),
                     ],
                   ),
                 ),
@@ -1409,6 +1623,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   const SizedBox(height: 16),
                   _buildSection('Options', _buildOptionsSection()),
                   const SizedBox(height: 16),
+                  _buildSection('涂鸦身份', _buildChatAuthSection()),
+                  const SizedBox(height: 16),
                   _buildSection('关于', _buildAboutSection()),
                 ],
               ),
@@ -1416,10 +1632,37 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             // ── Content(活页本) tab ──
             _tabBackground('assets/tab_bg_pages.jpg', _buildContentTab()),
             _tabBackground('assets/tab_bg_infinite.jpg', _buildCanvasTab()),
+            if (_chatIntegration)
+              _tabBackground('assets/tab_bg_settings.jpg', _buildShareTab()),
           ],
         ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 「共享画布」tab:纯说明页。tab 打开期间,画布上的涂鸦实时上行给
+  /// axum(kongde 已打开的接收页);没有任何需要用户操作的连接设置。
+  Widget _buildShareTab() {
+    const faint = TextStyle(fontSize: 13, color: _inkFaint);
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.draw, size: 42, color: _inkFaint),
+          const SizedBox(height: 14),
+          const Text('这个页签打开时,画布上的涂鸦会实时发送',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          const Text(
+            '在对方应用里打开要接收涂鸦的页面,然后切回画布直接书写即可。\n'
+            '笔迹以抬笔为单位实时送达;此页签切走或面板关闭即停止发送。\n'
+            '涂鸦本身照常保存在本机活页本里,发送失败也不会有影响。',
+            textAlign: TextAlign.center,
+            style: faint,
+          ),
+        ]),
       ),
     );
   }
