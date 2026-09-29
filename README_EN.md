@@ -21,11 +21,9 @@ Ideal for remote meetings, teaching, screen annotation, and quick notes.
 
 Switch from the tabs at the top of the settings panel, or the "Infinite canvas" menu item. The two modes store strokes **independently**.
 
-- **Notebook (paged) mode** — one page per screen, classic page flipping
-  - `⌥⌘↑` / `⌥⌘↓`: slide the view up/down by a small step (about one browser arrow-key scroll); sliding past a page boundary switches to the neighbouring page automatically. Vertical movement only.
-  - `⌘⌃J` / `⌘⌃K`: flip a whole page to previous / next (with a slide animation).
-  - While scrolling, the neighbouring pages and page numbers are drawn too, with a heavier boundary line between pages.
-  - Settings "Notebook" tab: a vertical minimap along the right edge (thumbnails of ~10 nearby pages).
+- **Notebook (paged) mode** — one page per screen, classic page flipping (whole-page flip with the native window fade)
+  - `⌥⌘↑` / `⌥⌘↓` or `⌘⌃J` / `⌘⌃K`: flip a whole page to previous / next.
+  - Settings "Notebook" tab: a vertical minimap along the right edge (thumbnails of ~10 nearby pages), and the page grid supports **batch multi-select delete**.
 - **Infinite canvas (free doodle) mode** — one canvas with no borders (currently a single global canvas)
   - `⌥⌘↑ / ⌥⌘↓ / ⌥⌘← / ⌥⌘→` pan the lens.
   - `⌘⌃scroll` pans, `⌥⇧scroll` zooms anchored at the pointer (capped at 100%), `⌘⌃PageUp` / `⌘⌃PageDown` zoom from the keyboard.
@@ -42,8 +40,9 @@ Switch from the tabs at the top of the settings panel, or the "Infinite canvas" 
 
 <p align="center"><img src="./introduct/chat.jpg" width="480"></p>
 
-- **Export** with background / without background / Xournal notes / SVG / GIF / PDF
-  The infinite canvas can be exported on its own: a **paged PDF** (split by screen size) or a **whole SVG** (content bounding box, independent of the current lens).
+- **Export** screenshot with background / screenshot without background / Xournal notes / SVG / GIF / PDF
+  The infinite canvas has its own exports: a **paged PDF** sized to the screen, or a **whole-canvas SVG** (content bounding box, unaffected by the current lens).
+  Optional: with a self-hosted OCR service, the PDF embeds a **copyable / searchable text layer** (strokes render as usual, the text is invisible).
 
 - **Grid** adjustable spacing; a heavier boundary line is drawn only at multiples of the screen size (page boundary in Notebook mode, one per screen on the infinite canvas).
 
@@ -58,6 +57,43 @@ Switch from the tabs at the top of the settings panel, or the "Infinite canvas" 
 - **Update check / auto-update** the About section of the settings panel queries the latest release on GitHub in one click; on macOS "Update now" downloads, verifies, quits and replaces the running app — with automatic rollback if the new version fails to start.
 
 - **Bezier smoothing** via ink-stroke-modeler removes hand tremor and supports pressure width.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph native["Native layer"]
+        MAC["macOS shell
+ObjC: global pen/mouse events
+transparent overlay · menu bar"]
+        WIN["Windows overlay
+Win32 window · Raw HID pen input"]
+    end
+    subgraph core["glaspen-core (Rust, platform-neutral)"]
+        ENGINE["stroke smoothing (modeler)
+cairo rendering · export
+PDF / SVG / GIF / XOJ"]
+        DB[("SQLite notebook
+pages / strokes / OCR / settings")]
+    end
+    PANEL["Settings panel (Flutter)
+Settings · Notebook · Free doodle
+Share canvas switch · Ink identity"]
+    AXUM["Optional self-hosted service
+handwriting store · shared canvas · OCR"]
+
+    MAC -- "FFI" --> core
+    WIN -- "FFI" --> core
+    PANEL <-. "FRB" .-> core
+    PANEL -- "HTTP (optional)" --> AXUM
+    CHAT["glaspen-chat (Rust)"] -- "gRPC" --> AXUM
+    CHAT --- core
+```
+
+- **Native layer**: macOS uses ObjC (global events + overlay window), Windows is pure Rust Win32 — the doodling experience lives entirely here.
+- **glaspen-core**: the platform-neutral shared core — storage, smoothing, rendering, export, updates, and the FFI for handwriting messaging / sharing / OCR.
+- **Settings panel**: Flutter, talking to Rust in-process via FRB; by default only "Settings + Notebook" tabs are shown, advanced capabilities opt-in.
+- **Optional self-hosted service**: handwriting messaging / shared canvas / OCR are enhancements backed by your own axum deployment — nothing is required for doodling.
 
 ## Keyboard shortcuts
 
