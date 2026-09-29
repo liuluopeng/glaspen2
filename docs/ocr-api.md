@@ -20,7 +20,10 @@ Content-Type: multipart/form-data; boundary=<boundary>
   字段顺序 = 结果顺序。字段名 `images` 同样接受。
 - 响应壳是 `{code:200,...}` 直出(不是 `{msg,data}` 包装),见 §2。
 
-认证:当前**无鉴权**(仅限局域网使用)。
+认证:当前服务端**无鉴权**(仅限局域网使用)。glaspen2 客户端侧规则:
+**已登录才发起** —— 集成配置了服务且登录成功后才调用本端点(自动携带
+`Authorization: Bearer` 头, 服务端当前忽略); 未登录时 glaspen2 不发起
+OCR, 涂鸦不受影响。
 
 ## 2. 响应
 

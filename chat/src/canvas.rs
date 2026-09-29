@@ -37,15 +37,15 @@ impl InkShareChannel {
     /// 读取环境变量(GLASPEN_CHAT_ENDPOINT / GLASPEN_CHAT_MOCK)并启动会话。
     /// gRPC 模式下自动携带登录身份(docs/grpc-auth.md);未配置账号不带。
     pub fn launch() -> Self {
-        Self::launch_inner(&endpoint_from_env(), mock_enabled())
+        Self::launch_inner(&endpoint_from_env(), mock_enabled(), true)
     }
 
-    /// 显式指定地址与模式(测试用)。
+    /// 显式指定地址与模式(测试用): 不做登录解析。
     pub fn launch_with(endpoint: &str, mock: bool) -> Self {
-        Self::launch_inner(endpoint, mock)
+        Self::launch_inner(endpoint, mock, false)
     }
 
-    fn launch_inner(endpoint: &str, mock: bool) -> Self {
+    fn launch_inner(endpoint: &str, mock: bool, use_auth: bool) -> Self {
         let (tx, rx) = unbounded_channel::<InkFrame>();
         // 首帧固定是 begin;连接完成前它先在缓冲里排着。
         let _ = tx.send(InkFrame {
@@ -56,7 +56,7 @@ impl InkShareChannel {
                 device: String::new(),
             })),
         });
-        let task = crate::runtime().spawn(run_session(endpoint.to_owned(), mock, rx));
+        let task = crate::runtime().spawn(run_session(endpoint.to_owned(), mock, rx, use_auth));
         InkShareChannel {
             tx,
             done: Some(task),
@@ -117,12 +117,20 @@ async fn run_session(
     endpoint: String,
     mock: bool,
     rx: UnboundedReceiver<InkFrame>,
+    use_auth: bool,
 ) -> Result<ShareInkReply, String> {
     if mock {
         return mock_session(rx).await;
     }
-    // 身份会话开始时取一次;未配置账号 → None,请求不带 metadata(向后兼容)。
-    let bearer = crate::auth::token().await;
+    // 未登录(未配置或登录失败)→ 不开启上行, 由调用方静默处理。
+    let bearer = if use_auth {
+        match crate::auth::token().await {
+            Some(t) => Some(t),
+            None => return Err("未登录: 共享画布需先在设置中登录".into()),
+        }
+    } else {
+        None
+    };
     let connect = tokio::time::timeout(CONNECT_TIMEOUT, ChatStoreClient::connect(endpoint));
     let mut client = match connect.await {
         Ok(Ok(c)) => c,

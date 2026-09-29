@@ -94,7 +94,7 @@ fn render_page_png(strokes: &[db::StrokeData], sw: i32, sh: i32) -> Option<Vec<u
 
 /// 调 axum OCR 服务识别一组图片,按顺序返回每张的识别文本。
 /// 单张失败用空串占位(不拖垮整批)。`api_base` 为空 → Err。
-pub fn ocr_images(api_base: &str, images: &[Vec<u8>]) -> Result<Vec<String>, String> {
+pub fn ocr_images(api_base: &str, images: &[Vec<u8>], token: Option<&str>) -> Result<Vec<String>, String> {
     if images.is_empty() {
         return Err("没有图片".into());
     }
@@ -122,12 +122,16 @@ pub fn ocr_images(api_base: &str, images: &[Vec<u8>]) -> Result<Vec<String>, Str
         .timeout_global(Some(REQUEST_TIMEOUT))
         .build();
     let agent = ureq::Agent::new_with_config(config);
-    let resp = agent
+    let mut req = agent
         .post(&format!("{api_base}/api/ocr/images"))
         .header(
             "Content-Type",
             &format!("multipart/form-data; boundary={boundary}"),
-        )
+        );
+    if let Some(t) = token {
+        req = req.header("Authorization", &format!("Bearer {t}"));
+    }
+    let resp = req
         .send(body.as_slice())
         .map_err(|e| format!("OCR 请求失败: {e}"))?;
     let text = resp
@@ -163,7 +167,10 @@ pub fn ocr_screen(screen_id: i64) -> Result<String, String> {
         .unwrap_or((1920, 1080));
     let png = render_page_png(&strokes, sw, sh).ok_or("页面渲染失败")?;
     let base = api_base().ok_or_else(|| "未配置 axum 服务地址".to_string())?;
-    let texts = ocr_images(&base, &[png])?;
+    let token = runtime()
+        .block_on(glaspen_chat::auth::token())
+        .ok_or_else(|| "未登录: OCR 需先在设置中登录".to_string())?;
+    let texts = ocr_images(&base, &[png], Some(&token))?;
     let text = texts.first().cloned().unwrap_or_default();
     if text.trim().is_empty() {
         return Err("未识别出文字".into());
@@ -177,8 +184,8 @@ pub fn ocr_screen(screen_id: i64) -> Result<String, String> {
 /// 抬笔提交后的登记:把当前页放进「待识别」队列并确保常驻 worker
 /// 已启动。不发生任何网络/计算 —— 真正的识别在整机输入空闲时进行。
 pub fn on_stroke_committed(screen_id: i64) {
-    if api_base().is_none() {
-        return;
+    if api_base().is_none() || !glaspen_chat::auth::configured() {
+        return; // 未登录: 不联网, 静默
     }
     {
         let mut q = pending_queue().lock().unwrap();
@@ -240,10 +247,18 @@ fn user_idle_secs() -> f64 {
 /// 批量补全:为所有还没有 OCR 结果的页面识别(阻塞,逐页)。
 /// 返回成功识别的页数。
 pub fn backfill_missing() -> usize {
-    let Some(base) = api_base() else {
-        eprintln!("[ocr] 未配置服务地址,跳过批量补全");
+    if api_base().is_none() || !glaspen_chat::auth::configured() {
+        eprintln!("[ocr] 未配置服务或未登录,跳过批量补全");
         return 0;
+    }
+    let token = match runtime().block_on(glaspen_chat::auth::token()) {
+        Some(t) => t,
+        None => {
+            eprintln!("[ocr] 登录失败,跳过批量补全");
+            return 0;
+        }
     };
+    let base = api_base().unwrap_or_default();
     let pages = runtime().block_on(db::pages_missing_ocr());
     if pages.is_empty() {
         eprintln!("[ocr] 所有页面都已有 OCR 结果");
@@ -259,7 +274,7 @@ pub fn backfill_missing() -> usize {
         let Some(png) = render_page_png(&strokes, *sw, *sh) else {
             continue;
         };
-        let texts = match ocr_images(&base, &[png]) {
+        let texts = match ocr_images(&base, &[png], Some(&token)) {
             Ok(t) => t,
             Err(e) => {
                 eprintln!("[ocr] 页面 {screen_id} 识别失败: {e}");

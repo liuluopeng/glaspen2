@@ -142,9 +142,16 @@ async fn run_session(
     if mock {
         return mock_session(rx).await;
     }
-    // 身份在会话开始时取一次(⌘⌃2 key-down);登录失败降级为无身份发送。
+    // 身份在会话开始时取一次(⌘⌃2 key-down)。
+    // 未登录 → 不开启通道(不发送任何数据), 由 finish 把原因报给用户。
     let bearer = if use_auth {
-        crate::auth::token().await
+        match crate::auth::token().await {
+            Some(t) => Some(t),
+            None => {
+                drop(rx);
+                return Err("未登录: 手写消息需先在设置中登录".into());
+            }
+        }
     } else {
         None
     };

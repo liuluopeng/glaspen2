@@ -86,13 +86,14 @@ impl Sink {
     pub async fn append(&mut self, msgs: &[ChatMessage]) -> Result<AppendSummary, String> {
         match self {
             Sink::Grpc(client) => {
-                // 请求附带登录身份(docs/grpc-auth.md):未配置账号时
-                // token() 返回 None,请求不带 metadata(向后兼容)。
+                // 联网行为统一需登录(docs/grpc-auth.md):
+                // 未配置/未登录 → 不发送任何数据, 直接报错给调用方。
+                let Some(token) = crate::auth::token().await else {
+                    return Err("未登录: 手写消息需先在设置中登录".into());
+                };
                 let mut req = tonic::Request::new(tokio_stream::iter(msgs.to_vec()));
-                if let Some(t) = crate::auth::token().await {
-                    if let Some(v) = crate::auth::bearer_metadata(&t) {
-                        req.metadata_mut().insert("authorization", v);
-                    }
+                if let Some(v) = crate::auth::bearer_metadata(&token) {
+                    req.metadata_mut().insert("authorization", v);
                 }
                 let resp = client
                     .append_messages(req)

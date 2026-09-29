@@ -89,6 +89,12 @@ pub fn api_base() -> Option<String> {
     config().api_base
 }
 
+/// 是否已配置登录身份(登录三件套或直接 token)。
+/// 所有联网增强功能(草稿/直发/共享/OCR)的前置条件; 检查更新除外。
+pub fn configured() -> bool {
+    config().is_configured()
+}
+
 pub fn config() -> AuthConfig {
     auth_state().lock().unwrap().cfg.clone()
 }
