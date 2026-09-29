@@ -41,8 +41,9 @@ pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) -> c_
 }
 
 /// Initialize the database and create the first screen record. Call once at app start.
-/// 沿用活页本末页作为当前页(不再每次启动新建一页——那会积累大量空白页);
-/// 只有空库才创建第一页。启动时顺带软删所有历史空白页。
+/// 启动落在**最后一个有内容的页**:清理空白页 → 软删后仍有笔迹的末页
+/// 直接沿用并载入内存(否则画布看着是空白, 新旧笔迹还会分家);
+/// 空库才创建第一页。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
     runtime().block_on(db::init());
@@ -51,7 +52,12 @@ pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
         eprintln!("[init] 清理空白页 {purged} 页");
     }
     match runtime().block_on(db::last_screen_id()) {
-        Some(id) => state::set_current_screen_id(id),
+        Some(id) => {
+            state::set_current_screen_id(id);
+            // 载入该页笔迹到 STROKES: 启动画布立即可见上次内容,
+            // 新笔迹也与库中该页旧笔迹同处一份内存, 不会分家。
+            glaspen2_load_strokes_for_screen(id);
+        }
         None => runtime().block_on(db::new_screen(screen_w, screen_h)),
     }
     warm_thumbnail_cache();
