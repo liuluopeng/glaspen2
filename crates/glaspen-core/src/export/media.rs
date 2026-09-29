@@ -138,12 +138,14 @@ pub extern "C" fn glaspen2_save_drawing(
         for x in 0..w {
             let offset = y as usize * s + x as usize * 4;
             if offset + 3 < raw.len() {
-                // Cairo ARGB32 on little-endian: [B, G, R, A]
+                // Cairo ARGB32 on little-endian: [B, G, R, A] — 预乘 alpha,
+                // 需反预乘成直线 alpha, 否则半透明边缘在 PNG 里发暗(黑边)。
                 let b = raw[offset];
                 let g = raw[offset + 1];
                 let r = raw[offset + 2];
-                let a = raw[offset + 3];
-                img.put_pixel(x, y, image::Rgba([r, g, b, a]));
+                let a = raw[offset + 3] as u32;
+                let un = |c: u8| ((c as u32 * 255 + a / 2) / a.max(1)) as u8;
+                img.put_pixel(x, y, image::Rgba([un(r), un(g), un(b), a as u8]));
             }
         }
     }
@@ -209,6 +211,8 @@ pub extern "C" fn glaspen2_save_with_background(
         for x in 0..dw.min(bw) {
             let d_offset = y as usize * ds + x as usize * 4;
             if d_offset + 3 < draw_raw.len() {
+                // cairo ARGB32 是预乘值: out = d_premul + bg × (1-α)
+                // (旧代码把预乘值又乘了一次 α, 笔迹边缘发暗)
                 let db = draw_raw[d_offset] as f32;
                 let dg = draw_raw[d_offset + 1] as f32;
                 let dr = draw_raw[d_offset + 2] as f32;
@@ -220,9 +224,9 @@ pub extern "C" fn glaspen2_save_with_background(
                     let bg_g = bg_pixel[1] as f32;
                     let bb = bg_pixel[2] as f32;
 
-                    let r = (dr * da + br * (1.0 - da)) as u8;
-                    let g = (dg * da + bg_g * (1.0 - da)) as u8;
-                    let b = (db * da + bb * (1.0 - da)) as u8;
+                    let r = (dr + br * (1.0 - da)) as u8;
+                    let g = (dg + bg_g * (1.0 - da)) as u8;
+                    let b = (db + bb * (1.0 - da)) as u8;
                     img.put_pixel(x, y, image::Rgba([r, g, b, 255]));
                 }
             }
@@ -1137,10 +1141,19 @@ pub(crate) fn render_gif_frame(
             let row = (y * stride) as usize * 4;
             for x in 0..gw {
                 let off = row + x as usize * 4;
-                flat.push(*bits.add(off + 2)); // R
-                flat.push(*bits.add(off + 1)); // G
-                flat.push(*bits.add(off)); // B
-                flat.push(*bits.add(off + 3)); // A
+                let a = *bits.add(off + 3);
+                if a == 0 {
+                    // 全透明背景: 保持 (0,0,0,0), 编码时映射到保留透明色
+                    flat.extend_from_slice(&[0, 0, 0, 0]);
+                    continue;
+                }
+                // 反预乘: 半透明的抗锯齿边缘像素否则会偏暗(黑边)
+                let a32 = a as u32;
+                let un = |c: u8| ((c as u32 * 255 + a32 / 2) / a32) as u8;
+                flat.push(un(*bits.add(off + 2))); // R
+                flat.push(un(*bits.add(off + 1))); // G
+                flat.push(un(*bits.add(off))); // B
+                flat.push(a); // A
             }
         }
     }
@@ -1157,5 +1170,79 @@ pub extern "C" fn glaspen2_export_pdf() -> c_int {
     match crate::pdf::export_all_pages() {
         Some(_) => 1,
         None => 0,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn red_stroke() -> GifStroke {
+        GifStroke {
+            r: 0.84,
+            g: 0.0,
+            b: 0.23,
+            points: (0..20)
+                .map(|i| {
+                    let t = i as f64;
+                    (t * 4.0, 20.0 + (t * 0.7).sin() * 6.0, 2.5, t * 0.05)
+                })
+                .collect(),
+        }
+    }
+
+    fn padded_bbox(strokes: &[GifStroke]) -> (i32, i32, f64, f64) {
+        let mut x0 = f64::MAX;
+        let mut y0 = f64::MAX;
+        let mut x1 = f64::MIN;
+        let mut y1 = f64::MIN;
+        for s in strokes {
+            for &(x, y, w, _) in &s.points {
+                let h = w * 0.5;
+                x0 = x0.min(x - h);
+                y0 = y0.min(y - h);
+                x1 = x1.max(x + h);
+                y1 = y1.max(y + h);
+            }
+        }
+        let pad = 10.0;
+        (
+            ((x1 - x0) + pad * 2.0).ceil() as i32,
+            ((y1 - y0) + pad * 2.0).ceil() as i32,
+            x0 - pad,
+            y0 - pad,
+        )
+    }
+
+    /// 回归:GIF 帧不得有"黑色描边"。cairo ARGB32 是预乘 alpha, 若不反预乘,
+    /// 半透明的抗锯齿边缘像素会以暗色不透明进入 GIF —— 笔迹四周一圈黑边。
+    #[test]
+    fn gif_frame_edges_not_dark() {
+        let strokes = vec![red_stroke()];
+        let (bw, bh, bx_min, by_min) = padded_bbox(&strokes);
+        let seg_offset = vec![(0usize, 0.0, strokes[0].points.last().unwrap().3)];
+        let (flat, ok) = render_gif_frame(&strokes, &seg_offset, bw, bh, bx_min, by_min, 120, 90, 0, false, f64::MAX, 0);
+        assert!(ok);
+
+        let mut opaque = 0;
+        let mut dark = 0;
+        for px in flat.chunks_exact(4) {
+            let [r, g, b, a] = [px[0], px[1], px[2], px[3]];
+            if a == 0 {
+                continue; // 背景: 透明
+            }
+            opaque += 1;
+            // 未反预乘时, 半透明边缘像素 = 本色×α, 会明显偏暗
+            if r < 190 {
+                dark += 1;
+            }
+            let _ = (g, b);
+        }
+        assert!(opaque > 50, "应渲染出笔迹像素: {opaque}");
+        assert_eq!(dark, 0, "存在暗色描边像素: {dark}");
     }
 }

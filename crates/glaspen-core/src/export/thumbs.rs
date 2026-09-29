@@ -165,7 +165,7 @@ fn render_strokes_thumbnail(strokes: &[db::StrokeData], max_size: i32) -> Option
     let bits = renderer.bits();
     let stride = ow as usize;
     let n = stride * oh as usize * 4;
-    let rgba: Vec<u8> = unsafe {
+    let mut rgba: Vec<u8> = unsafe {
         std::slice::from_raw_parts(bits, n)
             .as_chunks::<4>()
             .0
@@ -173,6 +173,7 @@ fn render_strokes_thumbnail(strokes: &[db::StrokeData], max_size: i32) -> Option
             .flat_map(|px| [px[2], px[1], px[0], px[3]]) // BGRA → RGBA
             .collect()
     };
+    unpremultiply_rgba(&mut rgba); // 预乘 alpha 反解, 避免边缘发暗
     encode_png_rgba(&rgba, ow as u32, oh as u32)
 }
 
@@ -351,7 +352,8 @@ pub extern "C" fn glaspen2_render_canvas_overview(
 
     let bits = r.bits();
     let n = (out_w as usize) * (out_h as usize) * 4;
-    let rgba = unsafe { std::slice::from_raw_parts(bits, n).to_vec() };
+    let mut rgba = unsafe { std::slice::from_raw_parts(bits, n).to_vec() };
+    unpremultiply_rgba(&mut rgba); // 预乘 alpha 反解
     let Some(png) = encode_png_rgba(&rgba, out_w as u32, out_h as u32) else {
         return std::ptr::null_mut();
     };

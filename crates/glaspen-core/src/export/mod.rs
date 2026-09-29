@@ -48,6 +48,20 @@ pub extern "C" fn glaspen2_ocr_backfill_all() -> c_int {
 // Drawing FFI (legacy, non-modeler path)
 // ---------------------------------------------------------------------------
 
+/// cairo ARGB32 是**预乘 alpha**(内存序 BGRA): 半透明的抗锯齿边缘像素
+/// 若直接当不透明色使用会偏暗 —— 表现为笔迹四周一圈"黑色描边"。
+/// 就地反预乘(直线 alpha), 使边缘像素呈现笔迹本色; alpha 本身不变。
+pub(crate) fn unpremultiply_rgba(buf: &mut [u8]) {
+    for px in buf.chunks_exact_mut(4) {
+        let a = px[3] as u32;
+        if (1..255).contains(&a) {
+            for c in &mut px[..3] {
+                *c = ((*c as u32 * 255 + a / 2) / a) as u8;
+            }
+        }
+    }
+}
+
 /// Keep points whose distance from the last kept point exceeds `min_dist`,
 /// or whose width changed by more than `width_ratio` from the last kept width.
 /// Preserves stroke shape while bounding point count in long-running sessions.
