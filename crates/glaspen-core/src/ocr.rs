@@ -5,18 +5,19 @@
 //! 导出叠加可复制的隐形文本层。服务不可达/未配置一律静默跳过,
 //! 绝不影响涂鸦本身。
 //!
-//! 触发:抬笔提交后冷却触发(30s/页)+ `glaspen2_ocr_backfill_all`
-//! 批量补全 + PDF 导出前对缺 OCR 的页现场补识别。
+//! 触发(闲时模式):抬笔提交只做「待识别登记」;常驻 worker 每几秒
+//! 检查一次**整机输入空闲**(macOS CGEventSource, 系统级含笔/鼠标/键盘),
+//! 空闲 ≥10s 才逐页识别 —— 用户一有操作立即让路, 不占正在使用的电脑。
+//! 另有 `glaspen2_ocr_backfill_all` 批量补全历史页面(显式触发)。
 
 use crate::db;
 use crate::runtime;
-use std::collections::HashMap;
-use std::sync::Mutex;
-use std::time::{Duration, SystemTime};
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
-/// 单页 OCR 识别的最小间隔(秒):书写是高频事件,同一页冷却期内
-/// 不重复发请求(网络往返 1–3s,冷却只影响"下一轮"识别时机)。
-const PER_SCREEN_COOLDOWN_SECS: f64 = 30.0;
+/// 整机输入空闲阈值:最后一个键鼠/笔事件距今超过该秒数才开 OCR。
+const IDLE_INPUT_SECS: f64 = 10.0;
 /// 单次 HTTP 超时:OCR 是 CPU 重活(检测+识别两次推理)。
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
 
@@ -149,6 +150,9 @@ pub fn ocr_images(api_base: &str, images: &[Vec<u8>]) -> Result<Vec<String>, Str
 
 /// 识别一页并把结果写入本地库(软删旧结果后插入)。
 /// 返回识别全文或失败原因。
+static PENDING: OnceLock<Mutex<VecDeque<i64>>> = OnceLock::new();
+static WORKER: OnceLock<()> = OnceLock::new();
+
 pub fn ocr_screen(screen_id: i64) -> Result<String, String> {
     let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
     if strokes.is_empty() {
@@ -170,35 +174,67 @@ pub fn ocr_screen(screen_id: i64) -> Result<String, String> {
     Ok(text)
 }
 
-/// 抬笔提交后的自动 OCR:条件满足(集成服务已配置)时,对当前页
-/// 做带冷却的后台识别。在主线程调用,网络请求在独立线程执行。
+/// 抬笔提交后的登记:把当前页放进「待识别」队列并确保常驻 worker
+/// 已启动。不发生任何网络/计算 —— 真正的识别在整机输入空闲时进行。
 pub fn on_stroke_committed(screen_id: i64) {
-    static LAST: std::sync::OnceLock<Mutex<HashMap<i64, f64>>> = std::sync::OnceLock::new();
     if api_base().is_none() {
         return;
     }
-    let now = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64();
     {
-        let mut last = LAST.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap();
-        let prev = last.get(&screen_id).copied().unwrap_or(f64::NEG_INFINITY);
-        if now - prev < PER_SCREEN_COOLDOWN_SECS {
-            return;
+        let mut q = pending_queue().lock().unwrap();
+        if !q.contains(&screen_id) {
+            q.push_back(screen_id);
         }
-        last.insert(screen_id, now);
     }
-    std::thread::Builder::new()
-        .name("ocr-auto".into())
-        .spawn(move || {
-            if let Err(e) = ocr_screen(screen_id) {
-                eprintln!("[ocr] 自动识别跳过({screen_id}): {e}");
-            } else {
-                eprintln!("[ocr] 页面 {screen_id} 识别完成");
-            }
-        })
-        .ok();
+    ensure_worker();
+}
+
+fn pending_queue() -> &'static Mutex<VecDeque<i64>> {
+    PENDING.get_or_init(|| Mutex::new(VecDeque::new()))
+}
+
+fn ensure_worker() {
+    WORKER.get_or_init(|| {
+        let _ = std::thread::Builder::new()
+            .name("ocr-idle".into())
+            .spawn(idle_worker);
+    });
+}
+
+/// 常驻闲时 worker:每 5s 醒一次;整机输入空闲 ≥ IDLE_INPUT_SECS 时
+/// 逐页识别待识别队列(一次一页)。用户一有输入立即让路。
+fn idle_worker() {
+    loop {
+        std::thread::sleep(Duration::from_secs(5));
+        if user_idle_secs() < IDLE_INPUT_SECS {
+            continue;
+        }
+        let Some(screen_id) = pending_queue().lock().unwrap().pop_front() else {
+            continue;
+        };
+        match ocr_screen(screen_id) {
+            Ok(_) => eprintln!("[ocr] 闲时识别完成 页面 {screen_id}"),
+            Err(e) => eprintln!("[ocr] 闲时识别跳过({screen_id}): {e}"),
+        }
+    }
+}
+
+/// 整机输入空闲秒数(键鼠/笔的一切输入都算"在使用电脑")。
+#[cfg(target_os = "macos")]
+fn user_idle_secs() -> f64 {
+    #[link(name = "CoreGraphics", kind = "framework")]
+    unsafe extern "C" {
+        fn CGEventSourceSecondsSinceLastEventType(state: u32, mask: u64) -> f64;
+    }
+    // kCGEventSourceStateCombinedSessionState = 0; kCGAnyInputEventType = u64::MAX
+    unsafe { CGEventSourceSecondsSinceLastEventType(0, u64::MAX) }
+}
+
+/// 非 macOS 平台暂无系统空闲检测:视为一直空闲, 识别节奏退化为
+/// 队列驱动(每 5s 最多一页)。
+#[cfg(not(target_os = "macos"))]
+fn user_idle_secs() -> f64 {
+    f64::INFINITY
 }
 
 /// 批量补全:为所有还没有 OCR 结果的页面识别(阻塞,逐页)。
