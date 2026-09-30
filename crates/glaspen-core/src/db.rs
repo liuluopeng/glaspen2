@@ -25,6 +25,14 @@ pub fn db_path() -> std::path::PathBuf {
         .ancestors()
         .any(|a| a.join("Contents").join("Info.plist").exists());
 
+    // 非 bundled(dev cargo run)也用稳定的库路径: 曾经放在 exe 同目录
+    // (target/debug/), 一次 cargo clean 就把整个开发库连备份清掉了。
+    // dev 库与安装版隔离(glaspen2-dev.db), 但路径不再随构建产物消失。
+    if !is_bundled && let Some(app_support) = app_support_dir() {
+        std::fs::create_dir_all(&app_support).ok();
+        return app_support.join("glaspen2-dev.db");
+    }
+
     if is_bundled && let Some(app_support) = app_support_dir() {
         std::fs::create_dir_all(&app_support).ok();
         return app_support.join("glaspen2.db");
