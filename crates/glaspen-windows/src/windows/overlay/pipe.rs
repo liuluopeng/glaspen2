@@ -259,8 +259,8 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let cmd = match key {
             "Q" => Some(CMD_QUIT),
             "G" => Some(CMD_EXPORT_SVG_GIF),
-            "J" => Some(CMD_PAGE_PREV),
-            "K" => Some(CMD_PAGE_NEXT),
+            "`" => Some(CMD_PAGE_PREV),
+            "1" => Some(CMD_PAGE_NEXT),
             "Z" => Some(CMD_UNDO),
             "X" => Some(CMD_TOGGLE_ETHEREAL),
             "C" => Some(CMD_CLEAR_SCREEN),

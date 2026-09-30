@@ -1718,7 +1718,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         row([key('Q', '退出程序')]),
-        row([key('G', '导出图片'), key('J', '上一页'), key('K', '下一页')], indent: 22),
+        row([key('G', '导出图片'), key('`', '上一页'), key('1', '下一页')], indent: 22),
         row([
           key('Z', '撤销上一笔'),
           key('X', '飘渺画布'),

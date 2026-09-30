@@ -38,7 +38,7 @@ Cargo workspace 多 crate 结构(`crates/` 下为核心与 Windows 两个新 cra
 │  ObjC 层  src/macos/glaspen2.m(唯一 ObjC 文件)                      │
 │   ├ CGEventTap(挂主 runloop):笔/鼠标/键盘/滚轮事件统一入口           │
 │   │   ├ 笔: modeler_begin/move/end → cairo 实时画 → 抬笔 commit      │
-│   │   ├ 热键: J/K、⌥⌘↑/↓ 整页翻页(setIsVisible 系统动效)            │
+│   │   ├ 热键: ⌘⌃` / ⌘⌃1、⌥⌘↑/↓ 整页翻页(setIsVisible 系统动效)      │
 │   │   │       ⌘⌃R GIF、⌘⌃2 草稿、⌘⌃3 直发、⌘⌃X 飘渺、⌘⌃V 直通        │
 │   │   └ 飘渺模式: 隐藏/重现笔迹 = setIsVisible(窗口级系统动效)        │
 │   ├ 覆盖层窗口(笔迹 layer + 网格 + 磨砂玻璃)+ 菜单栏(NSStatusItem)  │

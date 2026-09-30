@@ -22,7 +22,7 @@ Ideal for remote meetings, teaching, screen annotation, and quick notes.
 Switch from the tabs at the top of the settings panel, or the "Infinite canvas" menu item. The two modes store strokes **independently**.
 
 - **Notebook (paged) mode** — one page per screen, classic page flipping (whole-page flip with the native window fade)
-  - `⌥⌘↑` / `⌥⌘↓` or `⌘⌃J` / `⌘⌃K`: flip a whole page to previous / next.
+  - `⌥⌘↑` / `⌥⌘↓` or `⌘⌃~` / `⌘⌃1`: flip a whole page to previous / next.
   - Settings "Notebook" tab: a vertical minimap along the right edge (thumbnails of ~10 nearby pages), and the page grid supports **batch multi-select delete**.
 - **Infinite canvas (free doodle) mode** — one canvas with no borders (currently a single global canvas)
   - `⌥⌘↑ / ⌥⌘↓ / ⌥⌘← / ⌥⌘→` pan the lens.
@@ -103,7 +103,7 @@ handwriting store · shared canvas · OCR"]
 | Undo last stroke | `⌘ + ⌃ + Z` | `Ctrl + Alt + Z` |
 | Toggle drawing | `⌘ + ⌃ + V` | `Ctrl + Alt + V` |
 | Toggle canvas mode (fixed ↔ ethereal) | `⌘ + ⌃ + X` | `Ctrl + Alt + X` |
-| Previous / next page (whole page) | `⌘ + ⌃ + J` / `⌘ + ⌃ + K` | `Ctrl + Alt + J` / `Ctrl + Alt + K` |
+| Previous / next page (whole page) | `⌥ + ⌘ + ↑/↓`, `⌘ + ⌃ + ~ / 1` | `Ctrl + Alt + ↑/↓` |
 | Export SVG + GIF (copies to clipboard) | `⌘ + ⌃ + G` | `Ctrl + Alt + G` |
 | Copy current doodle as SVG | `⌘ + ⌃ + S` | |
 | Frosted glass toggle | `⌘ + ⌃ + B` | `Ctrl + Alt + B` |

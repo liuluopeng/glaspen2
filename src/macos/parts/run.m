@@ -571,7 +571,7 @@ static BOOL perform_hotkey(unsigned short kc) {
         clear_screen();
         return YES;
     } else if (kc == kVK_ANSI_V) { toggle_enabled(); return YES; }
-    else if (kc == 0x26) { // J — previous page
+    else if (kc == 0x32) { // ` — previous page
         if (g_infinite_canvas) {
             show_notification(L(@"无限画布只有一个画布", @"Infinite canvas has a single canvas"));
             return YES;
@@ -590,7 +590,7 @@ static BOOL perform_hotkey(unsigned short kc) {
             show_notification(L(@"没有上一页", @"No previous page"));
         }
         return YES;
-    } else if (kc == 0x28) { // K — next page
+    } else if (kc == 0x12) { // 1 — next page
         if (g_infinite_canvas) {
             show_notification(L(@"无限画布只有一个画布", @"Infinite canvas has a single canvas"));
             return YES;

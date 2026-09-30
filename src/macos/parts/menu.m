@@ -835,8 +835,8 @@ void glaspen2_macos_hotkey(const char *key_c) {
         }
         unsigned short kc = 0;
         if ([key isEqualToString:@"G"]) kc = kVK_ANSI_G;
-        else if ([key isEqualToString:@"J"]) kc = 0x26; // J
-        else if ([key isEqualToString:@"K"]) kc = 0x28; // K
+        else if ([key isEqualToString:@"`"]) kc = 0x32; // ` — 上一页
+        else if ([key isEqualToString:@"1"]) kc = 0x12; // 1 — 下一页
         else if ([key isEqualToString:@"Z"]) kc = kVK_ANSI_Z;
         else if ([key isEqualToString:@"X"]) kc = kVK_ANSI_X;
         else if ([key isEqualToString:@"C"]) kc = kVK_ANSI_C;
