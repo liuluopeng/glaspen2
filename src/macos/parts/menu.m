@@ -314,6 +314,7 @@ static void auto_show_canvas(void) {
         gl_glass_apply(); // restore the glass per its own toggle
         if (g_pressure_monitor) pm_show();
         [g_draw_view setNeedsDisplay:YES];
+        NSLog(@"[ethereal] 笔迹重现");
     }
 }
 

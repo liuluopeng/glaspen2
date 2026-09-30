@@ -899,6 +899,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy, CGEventType ty
         if (isStylus) {
             int64_t proxState =
                 CGEventGetIntegerValueField(event, kCGTabletProximityEventEnterProximity);
+            NSLog(@"[pen] %@ (proximity %@)", proxState == 1 ? @"悬浮进入" : @"悬浮离开",
+                  proxState == 1 ? @"enter" : @"exit");
             if (proxState == 1) {
                 peek_cancel_timer(); // pen is back — the peek stays
                 if (g_ethereal_canvas) auto_show_canvas();
@@ -910,7 +912,10 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy, CGEventType ty
                     g_cursor_visible = NO;
                     flush_dirty_to_layer();
                 }
-                if (g_ethereal_canvas) auto_hide_now();
+                if (g_ethereal_canvas) {
+                    NSLog(@"[pen] 悬浮离开 → 隐藏笔迹");
+                    auto_hide_now();
+                }
             }
         }
         return event;
@@ -1238,6 +1243,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy, CGEventType ty
     if (isPen && (etype == NSEventTypeLeftMouseUp || etype == NSEventTypeRightMouseUp ||
                   etype == NSEventTypeOtherMouseUp)) {
         // Pen up: finalize modeler, commit smoothed points (or erase)
+        NSLog(@"[pen] 抬笔 (pen up)");
         if (g_stroke_active) {
             if (g_eraser_mode) {
                 glaspen2_modeler_erase_finish();
