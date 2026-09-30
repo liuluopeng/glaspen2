@@ -289,25 +289,43 @@ static BOOL g_ethereal_canvas = NO; // YES = 飘渺画布涂鸦模式
 static BOOL g_strokes_visible = YES; // strokes drawn on the overlay?
 
 // Hide the strokes (飘渺 mode). Returns YES if it actually hid them.
-static BOOL auto_hide_now(void) {
-    if (!g_ethereal_canvas) return NO;
-    if (!g_strokes_visible) return NO;
+static NSTimer *g_ethereal_hide_timer = nil;
+
+static void ethereal_hide_now(void) {
+    if (!g_ethereal_canvas || !g_strokes_visible) return;
     finish_active_stroke(); // don't strand an in-flight stroke
     g_strokes_visible = NO;
     if (g_glass_view) g_glass_view.hidden = YES;
     if (g_pressure_monitor) pm_hide();
-    [g_draw_view setNeedsDisplay:YES]; // 即时隐笔迹(无动效, 防边界抖动闪烁)
+    [g_draw_view setNeedsDisplay:YES];
+}
+
+/// 飘渺隐藏(带迟滞): 悬浮边界(0-2cm)笔会反复进出感应范围, 立即隐/显
+/// 会闪烁; 离开后延迟 0.6s 仍在范围外才真正隐藏, 期间回来立即恢复。
+static BOOL auto_hide_now(void) {
+    if (!g_ethereal_canvas) return NO;
+    if (!g_strokes_visible) return NO;
+    if (g_ethereal_hide_timer) return NO; // 已有延迟隐藏在排队
+    g_ethereal_hide_timer = [NSTimer scheduledTimerWithTimeInterval:0.6
+                                                            repeats:NO
+                                                              block:^(NSTimer *t) {
+        g_ethereal_hide_timer = nil;
+        ethereal_hide_now();
+    }];
     return YES;
 }
 
 // Show the strokes because the pen came back (飘渺 mode).
 static void auto_show_canvas(void) {
     if (!g_ethereal_canvas) return;
+    // 笔回到感应范围: 取消延迟隐藏, 立即重现(无动效)
+    [g_ethereal_hide_timer invalidate];
+    g_ethereal_hide_timer = nil;
     if (!g_strokes_visible) {
         g_strokes_visible = YES;
         gl_glass_apply(); // restore the glass per its own toggle
         if (g_pressure_monitor) pm_show();
-        [g_draw_view setNeedsDisplay:YES]; // 即时重现(无动效, 防边界抖动闪烁)
+        [g_draw_view setNeedsDisplay:YES];
     }
 }
 
@@ -342,6 +360,8 @@ static void peek_strokes(double seconds) {
 // Switch between 固定画布涂鸦模式 and 飘渺画布涂鸦模式. Shortcut: ⌘ + ⌃ + X
 static void toggle_canvas_mode(void) {
     peek_cancel_timer(); // a pending page-peek hide must not fire after a mode switch
+    [g_ethereal_hide_timer invalidate]; // 模式切走时同步取消延迟隐藏
+    g_ethereal_hide_timer = nil;
     if (!g_ethereal_canvas) {
         // → 飘渺画布涂鸦模式: hide the strokes, peek rules take over
         g_ethereal_canvas = YES;

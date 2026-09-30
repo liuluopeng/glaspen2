@@ -48,6 +48,7 @@ static void toggle_enabled(void);
 static void update_status_icon_state(void);
 static void ink_draft_stop_async(void); // 定义在 ink draft 区(总开关要用)
 static BOOL g_strokes_visible; // 定义在飘渺模式区(总开关恢复 V 时要用)
+static void ethereal_hide_now(void); // 定义在飘渺模式区
 
 // --- Cairo (linked via cargo) ---
 #include <cairo/cairo.h>
