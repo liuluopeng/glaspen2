@@ -636,9 +636,3 @@ static void draw_rainbow_indicator(void) {
 }
 
 // Forward declaration
-
-// ── 文件拆分: #include 文本包含(同一编译单元, clang 报错行号直指子文件);
-//    拆分为纯移动, 行为零变化。构建仍只编译 glaspen2.m 这一个入口。──
-#include "parts/menu.m"
-#include "parts/panel.m"
-#include "parts/run.m"
