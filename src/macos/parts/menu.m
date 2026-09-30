@@ -283,9 +283,8 @@ static void toggle_enabled(void) {
 // overlay window itself stays visible, so notifications and the crosshair
 // keep working. Pen passthrough is managed separately by ⌘ + ⌃ + V
 // (g_enabled) — X never touches it.
-// 重现/隐藏的动效:窗口级 `[g_window setIsVisible:]`(macOS 自带、不可
-// 调参的切换动效,同翻页)。注意:窗口隐藏时网格/十字准星也随之不可见
-// (笔一靠近就会立即自动重现,不影响书写)。
+// 显隐为**即时**笔迹级切换(无动效): 悬浮边界笔反复进出时, 窗口级
+// 系统动效会反复重启造成闪烁/哆嗦, 故此处绝不做窗口级显隐。
 static BOOL g_ethereal_canvas = NO; // YES = 飘渺画布涂鸦模式
 static BOOL g_strokes_visible = YES; // strokes drawn on the overlay?
 
@@ -297,8 +296,7 @@ static BOOL auto_hide_now(void) {
     g_strokes_visible = NO;
     if (g_glass_view) g_glass_view.hidden = YES;
     if (g_pressure_monitor) pm_hide();
-    [g_draw_view setNeedsDisplay:YES];
-    if (g_window) [g_window setIsVisible:NO];
+    [g_draw_view setNeedsDisplay:YES]; // 即时隐笔迹(无动效, 防边界抖动闪烁)
     return YES;
 }
 
@@ -309,8 +307,7 @@ static void auto_show_canvas(void) {
         g_strokes_visible = YES;
         gl_glass_apply(); // restore the glass per its own toggle
         if (g_pressure_monitor) pm_show();
-        [g_draw_view setNeedsDisplay:YES];
-        if (g_window) [g_window setIsVisible:YES];
+        [g_draw_view setNeedsDisplay:YES]; // 即时重现(无动效, 防边界抖动闪烁)
     }
 }
 
@@ -333,7 +330,6 @@ static void peek_strokes(double seconds) {
         gl_glass_apply();
         if (g_pressure_monitor) pm_show();
         [g_draw_view setNeedsDisplay:YES];
-        if (g_window) [g_window setIsVisible:YES];
     }
     g_peek_timer = [NSTimer scheduledTimerWithTimeInterval:seconds repeats:NO block:^(NSTimer *timer) {
         g_peek_timer = nil;
@@ -354,7 +350,6 @@ static void toggle_canvas_mode(void) {
         if (g_glass_view) g_glass_view.hidden = YES;
         if (g_pressure_monitor) pm_hide();
         [g_draw_view setNeedsDisplay:YES];
-        if (g_window) [g_window setIsVisible:NO];
         show_notification(L(@"飘渺画布涂鸦模式 (悬空/落笔显示)", @"Ethereal canvas mode (hover/down to show)"));
     } else {
         // → 固定画布涂鸦模式: show the strokes and keep them visible
@@ -363,7 +358,6 @@ static void toggle_canvas_mode(void) {
         gl_glass_apply();
         if (g_pressure_monitor) pm_show();
         [g_draw_view setNeedsDisplay:YES];
-        if (g_window) [g_window setIsVisible:YES];
         show_notification(L(@"固定画布涂鸦模式", @"Fixed canvas mode"));
     }
     // Sync the menu item (title shows the mode you switch TO, like toggleDraw)
