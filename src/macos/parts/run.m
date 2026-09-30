@@ -463,14 +463,19 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
 // 整页翻页显示:macOS 自带的窗口切换动效。`[g_window setIsVisible:]`
 // 触发 WindowServer 内置的淡入淡出(带轻微位移),参数系统写死、不可调
 // —— 与当初 X 隐藏/显示页面(c80622d)看到的是同一个效果。
-// 渐隐到渐显只隔下一个 runloop tick(换页重建夹在中间,天然的最小时长)。
-// 调用方必须在主线程(event tap / 热键路径均满足)。
-static void page_flip_swap(void (^swap)(void)) {
-    if (!g_window) { swap(); return; }
+// 整页翻页:渐隐与显之间的隐藏间隙压到最小 —— 重活(载入/平滑)与渐隐
+// 并行执行, 隐藏间隙里只剩最终表面重绘; 之后立即渐显。
+// 两个 transition 的时长由系统固定; 调用方必须在主线程。
+static void page_flip_swap(void (^prepare)(void), void (^commit)(void)) {
+    if (!g_window) { prepare(); commit(); return; }
+    double t0 = [NSDate timeIntervalSinceReferenceDate];
     [g_window setIsVisible:NO];
+    prepare();
     dispatch_async(dispatch_get_main_queue(), ^{
-        swap();
+        commit();
         [g_window setIsVisible:YES];
+        double t1 = [NSDate timeIntervalSinceReferenceDate];
+        NSLog(@"[flip] 隐藏间隙 %.0fms", (t1 - t0) * 1000.0);
     });
 }
 
@@ -579,11 +584,12 @@ static BOOL perform_hotkey(unsigned short kc) {
         finish_active_stroke();
         long target = glaspen2_prev_screen_id();
         if (target > 0) {
-            page_flip_swap(^{ // 原生淡入淡出:渐隐 → 换页重建 → 渐显
-                glaspen2_load_strokes_for_screen(target);
-                glaspen2_smooth_loaded_strokes();
-                replay_strokes_from_memory();
-            });
+            page_flip_swap(
+                ^{ // 渐隐期间并行: 载入 + 平滑
+                    glaspen2_load_strokes_for_screen(target);
+                    glaspen2_smooth_loaded_strokes();
+                },
+                ^{ replay_strokes_from_memory(); });
             peek_strokes(1.0); // show the page briefly in ethereal mode
             show_page_info(target);
         } else {
@@ -598,11 +604,12 @@ static BOOL perform_hotkey(unsigned short kc) {
         finish_active_stroke();
         long target = glaspen2_next_screen_id();
         if (target > 0) {
-            page_flip_swap(^{
-                glaspen2_load_strokes_for_screen(target);
-                glaspen2_smooth_loaded_strokes();
-                replay_strokes_from_memory();
-            });
+            page_flip_swap(
+                ^{ // 渐隐期间并行: 载入 + 平滑
+                    glaspen2_load_strokes_for_screen(target);
+                    glaspen2_smooth_loaded_strokes();
+                },
+                ^{ replay_strokes_from_memory(); });
             peek_strokes(1.0); // show the page briefly in ethereal mode
             show_page_info(target);
         } else {
@@ -1001,11 +1008,12 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy, CGEventType ty
                 BOOL up = (kc == kVK_UpArrow);
                 long target = up ? glaspen2_prev_screen_id() : glaspen2_next_screen_id();
                 if (target > 0) {
-                    page_flip_swap(^{
-                        glaspen2_load_strokes_for_screen(target);
-                        glaspen2_smooth_loaded_strokes();
-                        replay_strokes_from_memory();
-                    });
+                    page_flip_swap(
+                        ^{ // 渐隐期间并行: 载入 + 平滑
+                            glaspen2_load_strokes_for_screen(target);
+                            glaspen2_smooth_loaded_strokes();
+                        },
+                        ^{ replay_strokes_from_memory(); });
                     peek_strokes(1.0); // show the page briefly in ethereal mode
                     show_page_info(target);
                 } else {
