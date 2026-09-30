@@ -65,6 +65,13 @@ fn now_f64() -> f64 {
         .as_secs_f64()
 }
 
+/// 诊断日志:全部 CRUD 一行一条,走 stderr(与 NSLog 的 [pen]/[ethereal]
+/// 同一流,cargo run 终端里按时间顺序交错可见)。只加在公开包装函数上,
+/// 测试用的 `_with` 变体不打,免得 cargo test 输出刷屏。
+macro_rules! dblog {
+    ($($arg:tt)*) => { eprintln!("[db] {}", format_args!($($arg)*)) };
+}
+
 // ---------------------------------------------------------------------------
 // async sqlx (all platforms — the module itself is platform-agnostic;
 // gating it to macOS/Windows broke Linux CI compilation of `pub use platform::*`)
@@ -88,7 +95,7 @@ mod platform {
 
     pub async fn init() {
         let path = db_path();
-        println!("[db] 库文件: {}", path.display());
+        dblog!("库文件: {}", path.display());
         let pool = SqlitePool::connect_with(
             sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(&path)
@@ -118,7 +125,7 @@ mod platform {
         .fetch_one(&pool)
         .await
         .unwrap_or((0, 0));
-        println!("[db] 现有 {screens} 页 / {strokes} 笔");
+        dblog!("现有 {screens} 页 / {strokes} 笔");
 
         DB.set(pool).ok();
         println!("[glaspen2] DB initialized at {}", path.display());
@@ -314,7 +321,7 @@ mod platform {
     pub async fn new_screen(screen_w: i32, screen_h: i32) {
         let pool = DB.get().expect("DB not initialized");
         let now = now_f64();
-        let sid = sqlx::query_scalar::<_, i64>(
+        match sqlx::query_scalar::<_, i64>(
             "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (?1, ?2, ?3) RETURNING id",
         )
         .bind(now)
@@ -322,9 +329,13 @@ mod platform {
         .bind(screen_h)
         .fetch_one(pool)
         .await
-        .unwrap_or(0);
-        state::set_current_screen_id(sid);
-        println!("[db] 新建页 id={}", sid);
+        {
+            Ok(sid) => {
+                state::set_current_screen_id(sid);
+                dblog!("页+ id={sid} ({screen_w}x{screen_h})");
+            }
+            Err(e) => dblog!("ERR 新建页失败: {e}"),
+        }
     }
 
     /// Begin a stroke in the DB. Returns the new stroke id (0 on failure).
@@ -349,9 +360,17 @@ mod platform {
             return match stroke_id {
                 Ok(Some(id)) => {
                     state::begin_pending(id, state::CanvasKind::Infinite);
+                    dblog!("笔迹+ id={id} 画布=无限");
                     id
                 }
-                _ => 0,
+                Ok(None) => {
+                    dblog!("ERR 落笔 INSERT 无返回行 (无限)");
+                    0
+                }
+                Err(e) => {
+                    dblog!("ERR 落笔 INSERT 失败 (无限): {e}");
+                    0
+                }
             };
         }
 
@@ -363,6 +382,7 @@ mod platform {
         match stroke_id {
             Ok(Some(id)) => {
                 state::begin_pending(id, state::CanvasKind::Page);
+                dblog!("笔迹+ id={id} screen={screen_id}");
                 // 标记"这页被编辑过"与笔画行无关, 没人需要它立刻可见 →
                 // 后台写掉。原来紧跟 INSERT 同步跑, 落笔多付一整次 SQL 往返
                 // (实测 pen_down 969µs, 其中约一半是这条 UPDATE)。
@@ -377,7 +397,14 @@ mod platform {
                 });
                 id
             }
-            _ => 0,
+            Ok(None) => {
+                dblog!("ERR 落笔 INSERT 无返回行 screen={screen_id}");
+                0
+            }
+            Err(e) => {
+                dblog!("ERR 落笔 INSERT 失败 screen={screen_id}: {e}");
+                0
+            }
         }
     }
 
@@ -392,12 +419,24 @@ mod platform {
             None => return,
         };
         if points.is_empty() {
+            // 空笔迹:表行已建但一个点都没有 —— "幽灵落笔"(漏 UP、驱动
+            // 抖动)的签名,诊断时必须可见。
+            dblog!("点+ stroke={stroke_id} n=0 (空笔迹,仅表行)");
             return;
         }
-        let pool = DB.get().expect("DB not initialized");
+        let pool = match DB.get() {
+            Some(p) => p,
+            None => {
+                dblog!("ERR flush stroke={stroke_id}: DB 未初始化, {n} 个点丢失", n = points.len());
+                return;
+            }
+        };
         let mut tx = match pool.begin().await {
             Ok(t) => t,
-            Err(_) => return,
+            Err(e) => {
+                dblog!("ERR flush 开事务 stroke={stroke_id}: {e}");
+                return;
+            }
         };
         // Route by the kind recorded at stroke begin (NOT the current kind) so
         // an async pen-up flush can't land in a mode the user just switched to.
@@ -443,10 +482,15 @@ mod platform {
                     .bind(w)
                     .bind(t);
             }
-            q.execute(&mut *tx).await.ok();
+            if let Err(e) = q.execute(&mut *tx).await {
+                dblog!("ERR flush 批量插入 stroke={stroke_id} 行={}: {e}", done);
+            }
             done = end;
         }
-        tx.commit().await.ok();
+        match tx.commit().await {
+            Ok(_) => dblog!("点+ stroke={stroke_id} n={} ({})", points.len(), table),
+            Err(e) => dblog!("ERR flush 提交 stroke={stroke_id}: {e}"),
+        }
     }
 
     pub fn end_stroke_spawned() {
@@ -466,10 +510,14 @@ mod platform {
             Some(p) => p,
             None => return None,
         };
-        sqlx::query_scalar("SELECT MAX(id) FROM screens WHERE deleted_at IS NULL")
-            .fetch_one(pool)
-            .await
-            .ok()
+        let r: Option<i64> =
+            sqlx::query_scalar::<_, Option<i64>>("SELECT MAX(id) FROM screens WHERE deleted_at IS NULL")
+                .fetch_one(pool)
+                .await
+                .ok()
+                .flatten();
+        dblog!("末页 id → {:?}", r);
+        r
     }
 
     /// 软删活页本的所有空白页(没有任何未删除笔迹的页)。返回清理的页数。
@@ -492,11 +540,14 @@ mod platform {
         {
             Ok(r) => {
                 if r.rows_affected() > 0 {
-                    println!("[db] 清理空白页 {} 页", r.rows_affected());
+                    dblog!("清理空白页 {} 页", r.rows_affected());
                 }
                 r.rows_affected()
             }
-            Err(_) => 0,
+            Err(e) => {
+                dblog!("ERR 清理空白页: {e}");
+                0
+            }
         }
     }
 
@@ -507,25 +558,29 @@ mod platform {
             None => return,
         };
         let now = now_f64();
-        if sqlx::query(
+        if let Err(e) = sqlx::query(
             "UPDATE ocr_results SET deleted_at = ?2 WHERE screen_id = ?1 AND deleted_at IS NULL",
         )
         .bind(screen_id)
         .bind(now)
         .execute(pool)
         .await
-        .is_err()
         {
+            dblog!("ERR OCR 旧结果软删 screen={screen_id}: {e}");
             return;
         }
-        let _ = sqlx::query(
+        match sqlx::query(
             "INSERT INTO ocr_results (screen_id, full_text, created_at) VALUES (?1, ?2, ?3)",
         )
         .bind(screen_id)
         .bind(full_text)
         .bind(now)
         .execute(pool)
-        .await;
+        .await
+        {
+            Ok(_) => dblog!("OCR存 screen={screen_id} 字数={}", full_text.len()),
+            Err(e) => dblog!("ERR OCR 存结果 screen={screen_id}: {e}"),
+        }
     }
 
     /// 某页最新的 OCR 全文(未删除的最新一条);无则 None。
@@ -534,13 +589,18 @@ mod platform {
             Some(p) => p,
             None => return None,
         };
-        sqlx::query_scalar::<_, String>(
+        let r = sqlx::query_scalar::<_, String>(
             "SELECT full_text FROM ocr_results              WHERE screen_id = ?1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1",
         )
         .bind(screen_id)
         .fetch_optional(pool)
         .await
-        .unwrap_or(None)
+        .unwrap_or(None);
+        dblog!(
+            "OCR读 screen={screen_id} → {}",
+            r.as_ref().map(|t| t.len()).map_or("无".into(), |n| format!("{n}字"))
+        );
+        r
     }
 
     /// 还没有 OCR 结果的页(未删除、有笔迹、无未删除 OCR 行),按 id 升序。
@@ -550,12 +610,14 @@ mod platform {
             Some(p) => p,
             None => return Vec::new(),
         };
-        sqlx::query_as(
+        let r = sqlx::query_as(
             "SELECT s.id, s.screen_w, s.screen_h FROM screens s              WHERE s.deleted_at IS NULL              AND EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id)              AND NOT EXISTS (SELECT 1 FROM ocr_results WHERE screen_id = s.id AND deleted_at IS NULL)              ORDER BY s.id",
         )
         .fetch_all(pool)
         .await
-        .unwrap_or_default()
+        .unwrap_or_default();
+        dblog!("OCR缺页 → {} 页", r.len());
+        r
     }
 
     /// 某页的尺寸(补占位页沿用当前页尺寸; OCR 渲染整页用)。
@@ -564,11 +626,13 @@ mod platform {
             Some(p) => p,
             None => return None,
         };
-        sqlx::query_as("SELECT screen_w, screen_h FROM screens WHERE id = ?1")
+        let r = sqlx::query_as("SELECT screen_w, screen_h FROM screens WHERE id = ?1")
             .bind(screen_id)
             .fetch_optional(pool)
             .await
-            .unwrap_or(None)
+            .unwrap_or(None);
+        dblog!("页尺寸 {screen_id} → {:?}", r);
+        r
     }
 
     pub async fn screen_has_strokes(screen_id: i64) -> bool {
@@ -576,14 +640,16 @@ mod platform {
             Some(p) => p,
             None => return false,
         };
-        sqlx::query_scalar::<_, i64>(
+        let r = sqlx::query_scalar::<_, i64>(
             "SELECT EXISTS(SELECT 1 FROM strokes WHERE screen_id = ?1 AND deleted_at IS NULL)",
         )
         .bind(screen_id)
         .fetch_one(pool)
         .await
         .unwrap_or(0)
-            != 0
+            != 0;
+        dblog!("页有无笔迹 {screen_id} → {r}");
+        r
     }
 
     /// Whether the canvas was ever edited (a stroke was started on it).
@@ -607,8 +673,12 @@ mod platform {
         .await
         .ok()
         .flatten()
-        .unwrap_or(0)
-            != 0
+        .map(|v| v != 0)
+        .inspect(|r| dblog!("页曾编辑 {screen_id} → {r}"))
+        .unwrap_or_else(|| {
+            dblog!("页曾编辑 {screen_id} → 无此页");
+            false
+        })
     }
 
     /// Delete a stroke by id. Returns true if the stroke existed.
@@ -619,14 +689,24 @@ mod platform {
         };
         // 软删除:标记而非物理删除(数据可恢复)
         let now = now_f64();
-        let deleted =
-            sqlx::query("UPDATE strokes SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL")
-                .bind(stroke_id)
-                .bind(now)
-                .execute(pool)
-                .await
-                .ok();
-        deleted.map(|r| r.rows_affected() > 0).unwrap_or(false)
+        let ok = match sqlx::query(
+            "UPDATE strokes SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL",
+        )
+        .bind(stroke_id)
+        .bind(now)
+        .execute(pool)
+        .await
+        {
+            Ok(r) => {
+                dblog!("笔迹- id={stroke_id} ({})", r.rows_affected());
+                r.rows_affected() > 0
+            }
+            Err(e) => {
+                dblog!("ERR 删笔迹 id={stroke_id}: {e}");
+                false
+            }
+        };
+        ok
     }
 
     pub async fn delete_last_stroke() -> bool {
@@ -644,7 +724,10 @@ mod platform {
         .await
         {
             Ok(Some(id)) => id,
-            _ => return false,
+            _ => {
+                dblog!("撤销末笔 screen={screen_id} → 无笔迹");
+                return false;
+            }
         };
         delete_stroke_by_id(stroke_id).await
     }
@@ -656,53 +739,65 @@ mod platform {
         };
         // 软删除:标记 screens + strokes + ocr_results 而非物理删除
         let now = now_f64();
-        let _ocr_del = sqlx::query(
+        let ocr_del = sqlx::query(
             "UPDATE ocr_results SET deleted_at = ?2 WHERE screen_id = ?1 AND deleted_at IS NULL",
         )
         .bind(target_id)
         .bind(now)
         .execute(pool)
-        .await
-        .ok();
+        .await;
         let screen_del =
             sqlx::query("UPDATE screens SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL")
                 .bind(target_id)
                 .bind(now)
                 .execute(pool)
-                .await
-                .ok();
+                .await;
         let stroke_del = sqlx::query(
             "UPDATE strokes SET deleted_at = ?2 WHERE screen_id = ?1 AND deleted_at IS NULL",
         )
         .bind(target_id)
         .bind(now)
         .execute(pool)
-        .await
-        .ok();
+        .await;
         thumbnails_purge_screen(target_id).await;
-        screen_del.is_some() || stroke_del.is_some()
+        match (&screen_del, &stroke_del) {
+            (Ok(s), Ok(k)) => dblog!(
+                "页- id={target_id} (页{}, 笔迹{}, OCR {})",
+                s.rows_affected(),
+                k.rows_affected(),
+                ocr_del.as_ref().map(|r| r.rows_affected()).unwrap_or(0)
+            ),
+            (Err(e), _) | (_, Err(e)) => dblog!("ERR 删页 id={target_id}: {e}"),
+        }
+        screen_del.is_ok() || stroke_del.is_ok()
     }
 
     pub async fn prev_screen(current: i64) -> Option<i64> {
         let pool = DB.get()?;
-        sqlx::query_scalar::<_, i64>(
+        let r = sqlx::query_scalar::<_, i64>(
             "SELECT id FROM screens WHERE id < ?1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1",
         )
         .bind(current)
         .fetch_optional(pool)
         .await
-        .ok()?
+        .ok()
+        .flatten();
+        dblog!("上一页 cur={current} → {:?}", r);
+        r
     }
 
     pub async fn next_screen(current: i64) -> Option<i64> {
         let pool = DB.get()?;
-        sqlx::query_scalar::<_, i64>(
+        let r = sqlx::query_scalar::<_, i64>(
             "SELECT id FROM screens WHERE id > ?1 AND deleted_at IS NULL ORDER BY id ASC LIMIT 1",
         )
         .bind(current)
         .fetch_optional(pool)
         .await
-        .ok()?
+        .ok()
+        .flatten();
+        dblog!("下一页 cur={current} → {:?}", r);
+        r
     }
 
     /// Group point rows (stroke_id, seq, x, y, width, t) into stroke records.
@@ -759,6 +854,12 @@ mod platform {
                 points: Vec::new(),
             })
             .collect();
+        let total_pts = pts.len();
+        dblog!(
+            "载入页 {screen_id} → {} 笔/{} 点",
+            strokes.len(),
+            total_pts
+        );
         attach_points(strokes, pts)
     }
 
@@ -821,6 +922,7 @@ mod platform {
         let pool = DB.get().ok_or("数据库未初始化")?;
         let path = crate::desktop_path().join(backup_file_name());
         backup_to_with(pool, &path).await?;
+        dblog!("备份 → {}", path.display());
         Ok(path.to_string_lossy().into_owned())
     }
 
@@ -927,8 +1029,16 @@ mod platform {
     pub async fn restore_latest_backup() -> Result<(String, usize), String> {
         let pool = DB.get().ok_or("数据库未初始化")?;
         let path = newest_backup().ok_or("桌面上没有 glaspen2_backup_*.db 备份文件")?;
-        let pages = restore_merge_from_with(pool, &path).await?;
-        Ok((path.to_string_lossy().into_owned(), pages))
+        match restore_merge_from_with(pool, &path).await {
+            Ok(pages) => {
+                dblog!("回导 ← {} ({pages} 页)", path.display());
+                Ok((path.to_string_lossy().into_owned(), pages))
+            }
+            Err(e) => {
+                dblog!("ERR 回导 ← {}: {e}", path.display());
+                Err(e)
+            }
+        }
     }
 
     // ── 缩略图缓存 ────────────────────────────────────────────────
@@ -937,10 +1047,12 @@ mod platform {
 
     /// Per-screen content version for thumbnail freshness checks.
     pub async fn screen_stroke_version(screen_id: i64) -> (i64, i64) {
-        match DB.get() {
+        let r = match DB.get() {
             Some(p) => screen_stroke_version_with(p, screen_id).await,
             None => (0, 0),
-        }
+        };
+        dblog!("内容版本 {screen_id} → ({}笔, max={})", r.0, r.1);
+        r
     }
 
     pub(crate) async fn screen_stroke_version_with(
@@ -964,7 +1076,7 @@ mod platform {
         max_stroke_id: i64,
         outline: bool,
     ) -> Option<Vec<u8>> {
-        thumbnail_lookup_with(
+        let r = thumbnail_lookup_with(
             DB.get()?,
             screen_id,
             max_size,
@@ -972,7 +1084,13 @@ mod platform {
             max_stroke_id,
             outline,
         )
-        .await
+        .await;
+        dblog!(
+            "缩略图查 {screen_id} ({max_size}px{}) → {}",
+            if outline { ",描边" } else { "" },
+            r.as_ref().map_or("未命中", |_| "命中")
+        );
+        r
     }
 
     pub(crate) async fn thumbnail_lookup_with(
@@ -1018,6 +1136,7 @@ mod platform {
                 png,
             )
             .await;
+            dblog!("缩略图存 {screen_id} ({max_size}px) {} 字节", png.len());
         }
     }
 
@@ -1052,10 +1171,12 @@ mod platform {
     /// Batched content versions for many screens in one query.
     /// Screens with no live strokes are absent from the map.
     pub async fn stroke_versions_many(ids: &[i64]) -> HashMap<i64, (i64, i64)> {
-        match DB.get() {
+        let r = match DB.get() {
             Some(pool) => stroke_versions_many_with(pool, ids).await,
             None => HashMap::new(),
-        }
+        };
+        dblog!("版本批量 {} 页 → {} 条", ids.len(), r.len());
+        r
     }
 
     pub(crate) async fn stroke_versions_many_with(
@@ -1092,10 +1213,17 @@ mod platform {
         max_size: i32,
         outline: bool,
     ) -> HashMap<i64, (i64, i64, Vec<u8>)> {
-        match DB.get() {
+        let r = match DB.get() {
             Some(pool) => thumbnails_many_with(pool, ids, max_size, outline).await,
             None => HashMap::new(),
-        }
+        };
+        dblog!(
+            "缩略图批量 {} 页 ({}px) → {} 条缓存",
+            ids.len(),
+            max_size,
+            r.len()
+        );
+        r
     }
 
     pub(crate) async fn thumbnails_many_with(
@@ -1133,16 +1261,23 @@ mod platform {
     /// Drop cached thumbnails for one screen (page deleted).
     pub async fn thumbnails_purge_screen(screen_id: i64) {
         if let Some(pool) = DB.get() {
-            thumbnails_purge_screen_with(pool, screen_id).await;
+            let n = thumbnails_purge_screen_with(pool, screen_id).await;
+            dblog!("缩略图清 {screen_id} → {n} 条");
         }
     }
 
-    pub(crate) async fn thumbnails_purge_screen_with(pool: &SqlitePool, screen_id: i64) {
-        sqlx::query("DELETE FROM screen_thumbnails WHERE screen_id = ?1")
+    pub(crate) async fn thumbnails_purge_screen_with(pool: &SqlitePool, screen_id: i64) -> u64 {
+        match sqlx::query("DELETE FROM screen_thumbnails WHERE screen_id = ?1")
             .bind(screen_id)
             .execute(pool)
             .await
-            .ok();
+        {
+            Ok(r) => r.rows_affected(),
+            Err(e) => {
+                dblog!("ERR 清缩略图 {screen_id}: {e}");
+                0
+            }
+        }
     }
 
     pub async fn list_screens() -> Vec<(i64, i32, i32)> {
@@ -1150,7 +1285,7 @@ mod platform {
             Some(p) => p,
             None => return Vec::new(),
         };
-        sqlx::query_as(
+        let r = sqlx::query_as(
             "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
              WHERE deleted_at IS NULL \
              AND EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
@@ -1158,7 +1293,9 @@ mod platform {
         )
         .fetch_all(pool)
         .await
-        .unwrap_or_default()
+        .unwrap_or_default();
+        dblog!("页列表 → {} 页", r.len());
+        r
     }
 
     /// Page info for the 新建画布/翻页 notification:
@@ -1166,7 +1303,9 @@ mod platform {
     /// Date grouping uses local time (same calendar date = 今天/昨天/…).
     pub async fn page_info(screen_id: i64) -> Option<(i64, i64, i64, i64, f64)> {
         let pool = DB.get()?;
-        page_info_with(pool, screen_id).await
+        let r = page_info_with(pool, screen_id).await;
+        dblog!("页信息 {screen_id} → {:?}", r.as_ref().map(|i| (i.2, i.3)));
+        r
     }
 
     pub(super) async fn page_info_with(
@@ -1233,6 +1372,11 @@ mod platform {
                 points: Vec::new(),
             })
             .collect();
+        dblog!(
+            "载入无限 → {} 笔/{} 点",
+            strokes.len(),
+            pts.len()
+        );
         attach_points(strokes, pts)
     }
 
@@ -1249,8 +1393,11 @@ mod platform {
         .bind(stroke_id)
         .bind(now)
         .execute(pool)
-        .await
-        .ok();
+        .await;
+        match &deleted {
+            Ok(r) => dblog!("无限笔迹- id={stroke_id} ({})", r.rows_affected()),
+            Err(e) => dblog!("ERR 删无限笔迹 id={stroke_id}: {e}"),
+        }
         deleted.map(|r| r.rows_affected() > 0).unwrap_or(false)
     }
 
@@ -1266,7 +1413,10 @@ mod platform {
         .await
         {
             Ok(Some(id)) => id,
-            _ => return false,
+            _ => {
+                dblog!("无限撤销末笔 → 无笔迹");
+                return false;
+            }
         };
         delete_infinite_stroke_by_id(stroke_id).await
     }
@@ -1276,13 +1426,15 @@ mod platform {
             Some(p) => p,
             None => return false,
         };
-        sqlx::query_scalar::<_, i64>(
+        let r = sqlx::query_scalar::<_, i64>(
             "SELECT EXISTS(SELECT 1 FROM infinite_strokes WHERE deleted_at IS NULL)",
         )
         .fetch_one(pool)
         .await
         .unwrap_or(0)
-            != 0
+            != 0;
+        dblog!("无限有无笔迹 → {r}");
+        r
     }
 
     /// 清空无限画布的全部内容(不删画布本身,画布只有一个)。
@@ -1293,22 +1445,27 @@ mod platform {
         };
         // 软删除:标记而非物理删除
         let now = now_f64();
-        sqlx::query("UPDATE infinite_strokes SET deleted_at = ?1 WHERE deleted_at IS NULL")
+        match sqlx::query("UPDATE infinite_strokes SET deleted_at = ?1 WHERE deleted_at IS NULL")
             .bind(now)
             .execute(pool)
             .await
-            .ok();
+        {
+            Ok(r) => dblog!("无限清空 {} 条", r.rows_affected()),
+            Err(e) => dblog!("ERR 无限清空: {e}"),
+        }
     }
 
     /// 当前页高度(逻辑 px)
     pub async fn page_height(screen_id: i64) -> Option<f64> {
         let pool = DB.get()?;
-        sqlx::query_scalar::<_, i32>("SELECT screen_h FROM screens WHERE id = ?1")
+        let r = sqlx::query_scalar::<_, i32>("SELECT screen_h FROM screens WHERE id = ?1")
             .bind(screen_id)
             .fetch_optional(pool)
             .await
             .ok()?
-            .map(|v| v as f64)
+            .map(|v| v as f64);
+        dblog!("页高 {screen_id} → {:?}", r);
+        r
     }
 
     /// 当前页的笔迹数（排除软删除）
@@ -1317,17 +1474,20 @@ mod platform {
             Some(p) => p,
             None => return 0,
         };
-        sqlx::query_scalar::<_, i64>(
+        let r = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM strokes WHERE screen_id = ?1 AND deleted_at IS NULL",
         )
         .bind(screen_id)
         .fetch_one(pool)
         .await
-        .unwrap_or(0) as u64
+        .unwrap_or(0) as u64;
+        dblog!("页笔迹数 {screen_id} → {r}");
+        r
     }
 
     /// 无限画布镜头变换(全局唯一,存 user_settings)。
     pub async fn set_infinite_transform(pan_x: f64, pan_y: f64, zoom: f64) {
+        dblog!("无限镜头存 pan=({pan_x:.1},{pan_y:.1}) zoom={zoom:.3}");
         save_setting("infinite_pan_x", &format!("{pan_x:.6}")).await;
         save_setting("infinite_pan_y", &format!("{pan_y:.6}")).await;
         save_setting("infinite_zoom", &format!("{zoom:.6}")).await;
@@ -1338,35 +1498,48 @@ mod platform {
         let x = load_setting("infinite_pan_x").await?.parse::<f64>().ok()?;
         let y = load_setting("infinite_pan_y").await?.parse::<f64>().ok()?;
         let z = load_setting("infinite_zoom").await?.parse::<f64>().ok()?;
+        dblog!("无限镜头读 pan=({x:.1},{y:.1}) zoom={z:.3}");
         Some((x, y, z))
     }
 
     pub async fn save_setting(key: &str, value: &str) {
         let pool = match DB.get() {
             Some(p) => p,
-            None => return,
+            None => {
+                dblog!("ERR 设置写 {key}: DB 未初始化");
+                return;
+            }
         };
-        sqlx::query("INSERT OR REPLACE INTO user_settings (key, value) VALUES (?1, ?2)")
+        match sqlx::query("INSERT OR REPLACE INTO user_settings (key, value) VALUES (?1, ?2)")
             .bind(key)
             .bind(value)
             .execute(pool)
             .await
-            .ok();
+        {
+            Ok(_) => dblog!("设置写 {key}={value}"),
+            Err(e) => dblog!("ERR 设置写 {key}: {e}"),
+        }
     }
 
     pub async fn load_setting(key: &str) -> Option<String> {
         let pool = DB.get()?;
-        sqlx::query_scalar::<_, String>("SELECT value FROM user_settings WHERE key = ?1")
+        let r = sqlx::query_scalar::<_, String>("SELECT value FROM user_settings WHERE key = ?1")
             .bind(key)
             .fetch_optional(pool)
             .await
-            .ok()?
+            .ok()
+            .flatten();
+        dblog!("设置读 {key} → {:?}", r);
+        r
     }
 
     pub async fn save_settings(pen_r: f64, pen_g: f64, pen_b: f64, width_scale: f64) {
         let pool = match DB.get() {
             Some(p) => p,
-            None => return,
+            None => {
+                dblog!("ERR 设置写画笔: DB 未初始化");
+                return;
+            }
         };
         for &(k, v) in &[
             ("pen_r", pen_r),
@@ -1374,13 +1547,17 @@ mod platform {
             ("pen_b", pen_b),
             ("width_scale", width_scale),
         ] {
-            sqlx::query("INSERT OR REPLACE INTO user_settings (key, value) VALUES (?1, ?2)")
-                .bind(k)
-                .bind(format!("{:.6}", v))
-                .execute(pool)
-                .await
-                .ok();
+            if let Err(e) =
+                sqlx::query("INSERT OR REPLACE INTO user_settings (key, value) VALUES (?1, ?2)")
+                    .bind(k)
+                    .bind(format!("{:.6}", v))
+                    .execute(pool)
+                    .await
+            {
+                dblog!("ERR 设置写 {k}: {e}");
+            }
         }
+        dblog!("设置写画笔 rgb=({pen_r:.2},{pen_g:.2},{pen_b:.2}) w={width_scale:.2}");
     }
 
     pub async fn load_settings() -> Option<(f64, f64, f64, f64)> {
@@ -1414,6 +1591,7 @@ mod platform {
         .ok()??
         .parse()
         .ok()?;
+        dblog!("设置读画笔 rgb=({r:.2},{g:.2},{b:.2}) w={ws:.2}");
         Some((r, g, b, ws))
     }
 }
