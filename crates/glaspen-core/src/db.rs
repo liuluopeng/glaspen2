@@ -88,6 +88,7 @@ mod platform {
 
     pub async fn init() {
         let path = db_path();
+        println!("[db] 库文件: {}", path.display());
         let pool = SqlitePool::connect_with(
             sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(&path)
@@ -108,6 +109,16 @@ mod platform {
         }
 
         apply_defaults(&pool).await;
+
+        // 规模日志: 页数/笔迹数一眼可见, "全新的数据库"一类问题当场暴露
+        let (screens, strokes): (i64, i64) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM screens WHERE deleted_at IS NULL), \
+                    (SELECT COUNT(*) FROM strokes WHERE deleted_at IS NULL)",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap_or((0, 0));
+        println!("[db] 现有 {screens} 页 / {strokes} 笔");
 
         DB.set(pool).ok();
         println!("[glaspen2] DB initialized at {}", path.display());
@@ -313,6 +324,7 @@ mod platform {
         .await
         .unwrap_or(0);
         state::set_current_screen_id(sid);
+        println!("[db] 新建页 id={}", sid);
     }
 
     /// Begin a stroke in the DB. Returns the new stroke id (0 on failure).
@@ -478,7 +490,12 @@ mod platform {
         .execute(pool)
         .await
         {
-            Ok(r) => r.rows_affected(),
+            Ok(r) => {
+                if r.rows_affected() > 0 {
+                    println!("[db] 清理空白页 {} 页", r.rows_affected());
+                }
+                r.rows_affected()
+            }
             Err(_) => 0,
         }
     }
