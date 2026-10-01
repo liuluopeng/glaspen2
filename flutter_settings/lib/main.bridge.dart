@@ -84,6 +84,7 @@ class _FrbBridge extends _SettingsBridge {
       'infiniteCanvas': s.infiniteCanvas,
       'minimap': s.minimap,
       'gridSize': s.gridSize,
+      'gridDivider': s.gridDivider,
       'gifFps': s.gifFps,
       'gifResolution': s.gifResolution,
       'gifSpeed': s.gifSpeed,

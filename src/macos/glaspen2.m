@@ -288,6 +288,10 @@ static int g_selected_width_index = 3; // default: 1.0x
 // 网格大小(逻辑 px),设置面板可调,默认 40
 static double g_grid_size = 40.0;
 
+// 网格分栏参考线(纯视觉,无功能含义):0=无 1=左右两栏 2=上下两栏 3=九宫格。
+// 实现 = 把每屏单位 1/2(两栏)或 1/3、2/3(九宫格)位置上最近的网格线加粗一档。
+static NSInteger g_grid_divider = 0;
+
 // ── 页面缩略图条(minimap,翻页模式) ──
 static BOOL g_minimap_enabled = NO;
 static NSMutableDictionary *g_minimap_thumbs = nil; // screenId(NSNumber) → NSImage

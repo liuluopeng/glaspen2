@@ -1117,6 +1117,7 @@ impl SseDecode for crate::api::Settings {
         let mut var_infiniteCanvas = <bool>::sse_decode(deserializer);
         let mut var_minimap = <bool>::sse_decode(deserializer);
         let mut var_gridSize = <f64>::sse_decode(deserializer);
+        let mut var_gridDivider = <i32>::sse_decode(deserializer);
         let mut var_gifFps = <i32>::sse_decode(deserializer);
         let mut var_gifResolution = <f64>::sse_decode(deserializer);
         let mut var_gifSpeed = <f64>::sse_decode(deserializer);
@@ -1140,6 +1141,7 @@ impl SseDecode for crate::api::Settings {
             infinite_canvas: var_infiniteCanvas,
             minimap: var_minimap,
             grid_size: var_gridSize,
+            grid_divider: var_gridDivider,
             gif_fps: var_gifFps,
             gif_resolution: var_gifResolution,
             gif_speed: var_gifSpeed,
@@ -1410,6 +1412,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::Settings {
             self.infinite_canvas.into_into_dart().into_dart(),
             self.minimap.into_into_dart().into_dart(),
             self.grid_size.into_into_dart().into_dart(),
+            self.grid_divider.into_into_dart().into_dart(),
             self.gif_fps.into_into_dart().into_dart(),
             self.gif_resolution.into_into_dart().into_dart(),
             self.gif_speed.into_into_dart().into_dart(),
@@ -1731,6 +1734,7 @@ impl SseEncode for crate::api::Settings {
         <bool>::sse_encode(self.infinite_canvas, serializer);
         <bool>::sse_encode(self.minimap, serializer);
         <f64>::sse_encode(self.grid_size, serializer);
+        <i32>::sse_encode(self.grid_divider, serializer);
         <i32>::sse_encode(self.gif_fps, serializer);
         <f64>::sse_encode(self.gif_resolution, serializer);
         <f64>::sse_encode(self.gif_speed, serializer);

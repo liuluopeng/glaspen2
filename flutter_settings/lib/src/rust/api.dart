@@ -254,6 +254,7 @@ class Settings {
   final bool infiniteCanvas;
   final bool minimap;
   final double gridSize;
+  final int gridDivider;
   final int gifFps;
   final double gifResolution;
   final double gifSpeed;
@@ -278,6 +279,7 @@ class Settings {
     required this.infiniteCanvas,
     required this.minimap,
     required this.gridSize,
+    required this.gridDivider,
     required this.gifFps,
     required this.gifResolution,
     required this.gifSpeed,
@@ -304,6 +306,7 @@ class Settings {
       infiniteCanvas.hashCode ^
       minimap.hashCode ^
       gridSize.hashCode ^
+      gridDivider.hashCode ^
       gifFps.hashCode ^
       gifResolution.hashCode ^
       gifSpeed.hashCode ^
@@ -332,6 +335,7 @@ class Settings {
           infiniteCanvas == other.infiniteCanvas &&
           minimap == other.minimap &&
           gridSize == other.gridSize &&
+          gridDivider == other.gridDivider &&
           gifFps == other.gifFps &&
           gifResolution == other.gifResolution &&
           gifSpeed == other.gifSpeed &&

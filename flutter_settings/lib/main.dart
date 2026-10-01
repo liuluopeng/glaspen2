@@ -121,6 +121,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _outlineEnabled = false;
   bool _infiniteCanvas = false;
   int _gridSizeValue = 40; // 网格大小(逻辑 px)
+  int _gridDividerValue = 0; // 网格分栏:0=无 1=左右两栏 2=上下两栏 3=九宫格
   bool _minimapEnabled = false;
   // 缩略图按需加载:只加载可视区域的缩略图,滚动时按需补充
   final ScrollController _gridScroll = ScrollController();
@@ -476,6 +477,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _outlineEnabled = _b(s['outline']);
         _infiniteCanvas = _b(s['infiniteCanvas']);
         _minimapEnabled = _b(s['minimap']);
+        _gridSizeValue = (s['gridSize'] as num?)?.toInt() ?? _gridSizeValue;
+        _gridDividerValue = (s['gridDivider'] as num?)?.toInt() ?? _gridDividerValue;
         _gifFps = (s['gifFps'] as num?)?.toInt() ?? _gifFps;
         _gifResolution = (s['gifResolution'] as num?)?.toDouble() ?? _gifResolution;
         _gifSpeed = (s['gifSpeed'] as num?)?.toDouble() ?? _gifSpeed;
@@ -499,6 +502,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _gridFollowStrokes = _b(settings['gridFollowStrokes']);
           _infiniteCanvas = _b(settings['infiniteCanvas']);
           _minimapEnabled = _b(settings['minimap']);
+          _gridSizeValue = (settings['gridSize'] as num?)?.toInt() ?? _gridSizeValue;
+          _gridDividerValue = (settings['gridDivider'] as num?)?.toInt() ?? _gridDividerValue;
           _gifFps = (settings['gifFps'] as num?)?.toInt() ?? 15;
           _gifResolution = (settings['gifResolution'] as num?)?.toDouble() ?? 0.5;
           _gifSpeed = (settings['gifSpeed'] as num?)?.toDouble() ?? 2.0;
@@ -1833,6 +1838,37 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                     setState(() => _gridSizeValue = s.first);
                     _setSetting('gridSize', s.first);
                   },
+                ),
+              ],
+            ),
+          ),
+        if (_showGrid && Platform.isMacOS)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('分栏', style: TextStyle(fontSize: 13, color: _inkFaint)),
+                const SizedBox(height: 4),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<int>(
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity(horizontal: -2, vertical: -2),
+                    ),
+                    segments: const [
+                      ButtonSegment(value: 0, label: Text('无')),
+                      ButtonSegment(value: 1, label: Text('左右两栏')),
+                      ButtonSegment(value: 2, label: Text('上下两栏')),
+                      ButtonSegment(value: 3, label: Text('九宫格')),
+                    ],
+                    selected: {_gridDividerValue},
+                    onSelectionChanged: (s) {
+                      setState(() => _gridDividerValue = s.first);
+                      _setSetting('gridDivider', s.first);
+                    },
+                  ),
                 ),
               ],
             ),

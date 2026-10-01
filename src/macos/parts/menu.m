@@ -595,6 +595,7 @@ char *glaspen2_macos_settings_json(void) {
             @"infiniteCanvas": @(g_infinite_canvas),
             @"minimap": @(g_minimap_enabled),
             @"gridSize": @(g_grid_size),
+            @"gridDivider": @(g_grid_divider),
             @"gifFps": @(g_gif_fps),
             @"gifResolution": @(g_gif_resolution),
             @"gifSpeed": @(g_gif_speed),
@@ -711,6 +712,14 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             g_grid_size = gs;
             NSString *gsStr = [NSString stringWithFormat:@"%.0f", gs];
             glaspen2_save_string_setting("grid_size", [gsStr UTF8String]);
+            if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
+        } else if ([key isEqualToString:@"gridDivider"]) {
+            NSInteger dv = [value integerValue];
+            if (dv < 0) dv = 0;
+            if (dv > 3) dv = 3;
+            g_grid_divider = dv;
+            NSString *dvStr = [NSString stringWithFormat:@"%ld", (long)dv];
+            glaspen2_save_string_setting("grid_divider", [dvStr UTF8String]);
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
         } else if ([key isEqualToString:@"pressureMonitor"]) {
             gl_settings_set_pressure_monitor([value boolValue]);

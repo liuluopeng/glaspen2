@@ -197,6 +197,8 @@ pub struct Settings {
     pub infinite_canvas: bool,
     pub minimap: bool,
     pub grid_size: f64,
+    // 网格分栏参考线(纯视觉):0=无 1=左右两栏 2=上下两栏 3=九宫格
+    pub grid_divider: i32,
     pub gif_fps: i32,
     pub gif_resolution: f64,
     pub gif_speed: f64,
@@ -244,6 +246,7 @@ impl Settings {
             infinite_canvas: b("infiniteCanvas"),
             minimap: b("minimap"),
             grid_size: f("gridSize"),
+            grid_divider: i("gridDivider"),
             gif_fps: i("gifFps"),
             gif_resolution: f("gifResolution"),
             gif_speed: f("gifSpeed"),
@@ -822,10 +825,11 @@ mod tests {
 
     #[test]
     fn test_settings_from_json_tolerates_partial_payload() {
-        let s = Settings::from_json(r#"{"color":3,"grid":true,"gridSize":42.5}"#).unwrap();
+        let s = Settings::from_json(r#"{"color":3,"grid":true,"gridSize":42.5,"gridDivider":2}"#).unwrap();
         assert_eq!(s.color, 3);
         assert!(s.grid);
         assert_eq!(s.grid_size, 42.5);
+        assert_eq!(s.grid_divider, 2);
         assert!(!s.outline);
         assert_eq!(s.gif_fps, 0);
         // 涂鸦身份:缺字段 = 空/未保存

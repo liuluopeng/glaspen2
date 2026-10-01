@@ -101,6 +101,40 @@ static void rebuild_surface_from_strokes(void) {
             CGContextAddLineToPoint(ctx, bounds.size.width, gy);
         }
         CGContextStrokePath(ctx);
+
+        // 分栏参考线(纯视觉):左右两栏/上下两栏 = 每屏单位 1/2 处,
+        // 九宫格 = 1/3、2/3 处。切分点吸附到最近的网格线(保证加粗的
+        // 永远是真实网格线),每屏单位各自吸附,线宽比分界线粗半档。
+        if (g_grid_divider > 0) {
+            static const double kHalf[1] = {0.5};
+            static const double kThirds[2] = {1.0 / 3.0, 2.0 / 3.0};
+            const double *fx = NULL; int nx = 0;
+            const double *fy = NULL; int ny = 0;
+            if (g_grid_divider == 1) { fx = kHalf; nx = 1; }
+            else if (g_grid_divider == 2) { fy = kHalf; ny = 1; }
+            else { fx = kThirds; nx = 2; fy = kThirds; ny = 2; }
+
+            CGContextSetStrokeColorWithColor(ctx, [[NSColor colorWithWhite:0.5 alpha:0.65] CGColor]);
+            CGContextSetLineWidth(ctx, 1.5);
+            CGContextBeginPath(ctx);
+            for (int f = 0; f < nx; f++) {
+                for (long i = jx0; i <= jx1; i++) {
+                    long k = (long)lround((i * bw + bw * fx[f]) / gs);
+                    CGFloat gx = (k * gs - pan_x) * z;
+                    CGContextMoveToPoint(ctx, gx, 0);
+                    CGContextAddLineToPoint(ctx, gx, bounds.size.height);
+                }
+            }
+            for (int f = 0; f < ny; f++) {
+                for (long i = jy0; i <= jy1; i++) {
+                    long k = (long)lround((i * bh + bh * fy[f]) / gs);
+                    CGFloat gy = bounds.size.height - ((k * gs - pan_y) * z);
+                    CGContextMoveToPoint(ctx, 0, gy);
+                    CGContextAddLineToPoint(ctx, bounds.size.width, gy);
+                }
+            }
+            CGContextStrokePath(ctx);
+        }
     }
 
     // Reuse the cached CGImage; it wraps the live cairo buffer, so it is
@@ -1509,6 +1543,14 @@ void glaspen2_run(void) {
             }
         }
         g_grid_follow_strokes = glaspen2_load_bool_setting("grid_follow_strokes") != 0;
+        {
+            char *vdv = glaspen2_load_string_setting("grid_divider");
+            if (vdv) {
+                int dv = atoi(vdv);
+                if (dv >= 0 && dv <= 3) g_grid_divider = dv;
+                glaspen2_free_c_string(vdv);
+            }
+        }
 
         // Restore canvas mode and load the matching independent store.
         // 翻页/无限两套存储互不影响:无限画布全局仅一个。
