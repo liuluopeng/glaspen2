@@ -41,9 +41,12 @@ jobs:
       - name: Install cairo
         run: brew install cairo pkg-config
 
-      # 与 .fvmrc 一致(channel stable)
+      # 钉在本地 fvm 开发的同一版本(3.41.0):不钉的话 CI 会装最新
+      # stable,新 Flutter 对 frb 2.12 生成代码的破坏会让 framework 构建
+      # 只在 CI 上挂。升级 Flutter 时本地 fvm 与这里要同步改。
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: 3.41.0
           channel: stable
           cache: true
 
