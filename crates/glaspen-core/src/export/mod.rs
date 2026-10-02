@@ -136,9 +136,11 @@ pub extern "C" fn glaspen2_end_stroke() {
 static STROKE_OUTLINE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// 描边比笔迹宽出的半径(px)。描边层 = 同路径加宽 2×OUTLINE 后置于笔迹之下。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 渲染/导出路径消费; Windows 用覆盖层自己的实现
 const OUTLINE_PAD: f64 = 1.0;
 
 /// 按笔色亮度选对比描边色(与 Windows contrast_color 同参数:BT.601,阈值 128)。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 渲染/导出路径消费; Windows 用覆盖层自己的实现
 fn outline_contrast_color(r: f64, g: f64, b: f64) -> (u8, u8, u8) {
     let lum = 0.299 * r + 0.587 * g + 0.114 * b;
     if lum > 0.5 {
@@ -162,6 +164,7 @@ static VIEW_PAN_X: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::
 static VIEW_PAN_Y: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static VIEW_ZOOM: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 渲染/导出路径消费; Windows 用覆盖层自己的实现
 fn view_transform() -> (f64, f64, f64) {
     use std::sync::atomic::Ordering;
     (
@@ -323,6 +326,7 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
 }
 
 /// 把一组笔迹画到 renderer 上(支持跨页 y 偏移与描边层)。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 渲染/导出路径消费; Windows 用覆盖层自己的实现
 fn paint_strokes(
     r: &crate::cairo_dl::CairoRenderer,
     strokes: &[Stroke],
@@ -833,6 +837,7 @@ fn launch_agent_program() -> String {
         .unwrap_or_else(|_| "/Applications/glaspen2.app/Contents/MacOS/glaspen2".to_string())
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 渲染/导出路径消费; Windows 用覆盖层自己的实现
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")

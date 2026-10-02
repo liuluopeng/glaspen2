@@ -38,8 +38,9 @@ jobs:
           components: clippy
 
       # cairo: build.rs 用 pkg-config 取头文件, 运行时 cairo_dl 还会 dlopen
-      - name: Install cairo
-        run: brew install cairo pkg-config
+      # protobuf: chat/build.rs 的 tonic_build::compile_protos 需要 protoc
+      - name: Install cairo and protoc
+        run: brew install cairo pkg-config protobuf
 
       # 钉在本地 fvm 开发的同一版本(3.41.0):不钉的话 CI 会装最新
       # stable,新 Flutter 对 frb 2.12 生成代码的破坏会让 framework 构建
