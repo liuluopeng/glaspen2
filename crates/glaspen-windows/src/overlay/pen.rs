@@ -207,6 +207,8 @@ fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) ->
         state.in_stroke = false;
         let dirty = redraw_pen(state, &pts);
         glaspen_core::export::glaspen2_end_stroke();
+        // 抬笔扇出:草稿推送/共享上行/OCR 登记(macOS 在 modeler_commit 里做)
+        glaspen_core::export::glaspen2_notify_stroke_committed();
         state.pen_path.clear();
         let params = modeler_params();
         let _ = state.stroke_modeler.reset_w_params(params);

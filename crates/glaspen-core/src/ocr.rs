@@ -237,9 +237,34 @@ fn user_idle_secs() -> f64 {
     unsafe { CGEventSourceSecondsSinceLastEventType(0, u64::MAX) }
 }
 
-/// 非 macOS 平台暂无系统空闲检测:视为一直空闲, 识别节奏退化为
+/// Windows:GetLastInputInfo 返回最近一次键鼠/笔输入的系统 tick,
+/// 与 macOS 的整机空闲语义一致。数位笔经 HID→注入为系统输入,同样计入。
+#[cfg(target_os = "windows")]
+fn user_idle_secs() -> f64 {
+    #[repr(C)]
+    struct LASTINPUTINFO {
+        cb_size: u32,
+        dw_time: u32,
+    }
+    unsafe extern "system" {
+        fn GetLastInputInfo(plii: *mut LASTINPUTINFO) -> i32;
+        fn GetTickCount() -> u32;
+    }
+    let mut info = LASTINPUTINFO {
+        cb_size: std::mem::size_of::<LASTINPUTINFO>() as u32,
+        dw_time: 0,
+    };
+    if unsafe { GetLastInputInfo(&mut info) } == 0 {
+        return f64::INFINITY; // 查询失败:视为空闲,别把识别卡死
+    }
+    let now = unsafe { GetTickCount() };
+    let delta = now.wrapping_sub(info.dw_time) as f64 / 1000.0;
+    delta.max(0.0)
+}
+
+/// 其余平台暂无系统空闲检测:视为一直空闲, 识别节奏退化为
 /// 队列驱动(每 5s 最多一页)。
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn user_idle_secs() -> f64 {
     f64::INFINITY
 }

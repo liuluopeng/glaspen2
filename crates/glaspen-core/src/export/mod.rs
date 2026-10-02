@@ -479,6 +479,17 @@ pub extern "C" fn glaspen2_modeler_commit_to_strokes(r: c_double, g: c_double, b
     crate::ocr::on_stroke_committed(crate::state::current_screen_id());
 }
 
+/// Windows 直写路径(begin_stroke/add_point_t/end_stroke)的抬笔钩子扇出。
+/// macOS 走 modeler_commit_to_strokes(内含同一组钩子);Windows 的平滑在
+/// 覆盖层自己的 StrokeModeler 实例里完成,核心缓冲为空,故抬笔后单独触发:
+/// 草稿通道推送 / 共享画布上行 / OCR 闲时登记,与 macOS 语义一致。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_notify_stroke_committed() {
+    ink_draft_on_stroke_committed();
+    ink_share_on_stroke_committed();
+    crate::ocr::on_stroke_committed(crate::state::current_screen_id());
+}
+
 /// Eraser: remove strokes overlapped by the just-finished eraser stroke.
 /// The eraser stroke itself produced no DB points; its pending DB row is
 /// deleted here along with any hit strokes (memory + DB).
