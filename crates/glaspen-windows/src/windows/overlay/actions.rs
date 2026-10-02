@@ -887,32 +887,14 @@ fn save_with_bg(state: &mut OverlayState) {
     }
 }
 
-// ── 颜色/线宽匹配(设置管道用) ──
+// ── 颜色/线宽匹配(设置管道用;实现在 core presets,macOS 同一实现) ──
 
 fn closest_color_index(r: f64, g: f64, b: f64) -> usize {
-    let mut best = 0;
-    let mut best_dist = f64::MAX;
-    for (i, &(cr, cg, cb)) in COLOR_PRESETS.iter().enumerate() {
-        let d = (r - cr).powi(2) + (g - cg).powi(2) + (b - cb).powi(2);
-        if d < best_dist {
-            best_dist = d;
-            best = i;
-        }
-    }
-    best
+    glaspen_core::presets::nearest_color_index(r, g, b)
 }
 
 fn closest_width_index(w: f64) -> usize {
-    let mut best = 0;
-    let mut best_dist = f64::MAX;
-    for (i, &ww) in WIDTH_PRESETS.iter().enumerate() {
-        let d = (w - ww).powi(2);
-        if d < best_dist {
-            best_dist = d;
-            best = i;
-        }
-    }
-    best
+    glaspen_core::presets::nearest_width_index(w)
 }
 
 // ── Settings Pipe Server(Flutter UI) ──

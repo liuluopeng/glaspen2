@@ -112,10 +112,16 @@ fn gif_settings() -> (i32, f64, f64, i32) {
 
 fn set_gif_settings(fps: i32, resolution: f64, speed: f64, end_mode: i32) {
     use std::sync::atomic::Ordering;
-    GIF_FPS.store(fps.clamp(1, 50), Ordering::SeqCst);
-    GIF_RESOLUTION.store(resolution.clamp(0.05, 1.0).to_bits(), Ordering::SeqCst);
-    GIF_SPEED.store(speed.clamp(0.5, 20.0).to_bits(), Ordering::SeqCst);
-    GIF_END_MODE.store(end_mode.clamp(0, 2), Ordering::SeqCst);
+    // 区间单源在 core presets(macOS 同一表);此前本侧 0.05/0.5 与
+    // macOS 的 0.1/0.25 漂移,同一库文件两侧读出的合法值不一致。
+    use glaspen_core::presets::{clamp_setting_double, clamp_setting_int};
+    GIF_FPS.store(clamp_setting_int("gifFps", fps), Ordering::SeqCst);
+    GIF_RESOLUTION.store(
+        clamp_setting_double("gifResolution", resolution).to_bits(),
+        Ordering::SeqCst,
+    );
+    GIF_SPEED.store(clamp_setting_double("gifSpeed", speed).to_bits(), Ordering::SeqCst);
+    GIF_END_MODE.store(clamp_setting_int("gifEndMode", end_mode), Ordering::SeqCst);
 }
 
 /// 从 user_settings 恢复(键名与 macOS 一致,设置数据库可互换)

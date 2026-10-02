@@ -29,21 +29,9 @@ pub const CMD_UNDO: usize = 800;
 pub const CMD_QUIT: usize = 999;
 
 // ── 颜色 & 线宽预设 ──
-pub const COLOR_PRESETS: [(f64, f64, f64); 10] = [
-    // 对齐 rnote 实测色板:全部 S=100% 全饱和,鲜艳度优先(浅色场景配描边)
-    (0.839, 0.000, 0.227), // Red    #D6003A
-    (1.000, 0.302, 0.000), // Orange #FF4D00
-    (0.988, 0.718, 0.000), // Yellow #FCB700
-    (0.000, 0.694, 0.431), // Green  #00B16E
-    (0.431, 0.769, 0.957), // Cyan   #6EC4F4
-    (0.000, 0.439, 0.741), // Blue   #0070BD
-    (0.541, 0.000, 0.902), // Purple #8A00E6
-    (1.000, 0.000, 0.502), // Pink   #FF0080
-    (1.0, 1.0, 1.0),       // White
-    (0.0, 0.0, 0.0),       // Black
-];
+// 数值单源在 glaspen-core presets(macOS 同一实现);这里的常量是本平台
+// UI 字符串(中文 HUD/菜单名)。
+pub use glaspen_core::presets::{COLOR_PRESETS, WIDTH_PRESETS};
 pub const COLOR_NAMES_ZH: [&str; 10] = ["红", "橙", "黄", "绿", "青", "蓝", "紫", "粉", "白", "黑"];
-// 8 档线宽倍率,与 Flutter 设置 UI 的 8 档一一对应
-pub const WIDTH_PRESETS: [f64; 8] = [0.15, 0.3, 0.6, 1.0, 1.5, 2.0, 2.5, 3.5];
 pub const WIDTH_NAMES_ZH: [&str; 8] = ["极细", "很细", "细", "中", "粗", "很粗", "超粗", "极粗"];
 
