@@ -65,7 +65,10 @@ jobs:
         run: |
           grep -E "^(error|warning: unused|warning: unreachable)" /tmp/clippy.log | head -40 | \
             while IFS= read -r line; do echo "::error::$line"; done
-          tail -30 /tmp/clippy.log >> "$GITHUB_STEP_SUMMARY"
+          # grep 没命中也要能看到失败现场: 日志尾部整段打进注解
+          tail -25 /tmp/clippy.log | while IFS= read -r line; do
+            echo "::error::TAIL ${line:0:300}"
+          done
           exit 1
 
       - name: test
@@ -88,6 +91,15 @@ jobs:
         with:
           components: clippy
 
+      # chat/build.rs 用 tonic_build::compile_protos, 需要 protoc;
+      # runner 镜像不一定自带(本机开发是自装的)
+      - name: Ensure protoc
+        run: |
+          if (-not (Get-Command protoc -ErrorAction SilentlyContinue)) {
+            choco install protoc -y
+            echo "$env:CHOCOLATEYINSTALL\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+
       # 只编译不链接, 因此不需要 cairo DLL
       - name: cargo check (Windows)
         run: |
@@ -97,6 +109,9 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          grep -E "^error" check.log | head -40 | \
-            while IFS= read -r line; do echo "::error::$line"; done
+          grep -E -A6 "^error" check.log | head -80 | \
+            while IFS= read -r line; do echo "::error::${line:0:300}"; done
+          tail -15 check.log | while IFS= read -r line; do
+            echo "::error::TAIL ${line:0:300}"
+          done
           exit 1
