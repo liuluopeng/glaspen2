@@ -714,6 +714,91 @@ pub extern "C" fn glaspen2_load_string_setting(key: *const c_char) -> *mut c_cha
 }
 
 // ---------------------------------------------------------------------------
+// 笔预设与设置数值约束(presets 模块的 FFI 面;macOS/Windows 共用单一事实源)
+// ---------------------------------------------------------------------------
+
+/// 落笔即时反馈的原始笔宽(与 modeler 平滑宽度同公式)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_pressure_raw_width(pressure: c_double, width_scale: c_double) -> c_double {
+    crate::presets::pressure_raw_width(pressure, width_scale)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_color_preset_count() -> c_int {
+    crate::presets::COLOR_PRESETS.len() as c_int
+}
+
+/// 取第 i 个颜色预设的 RGB(越界时不写目标,安全返回)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_color_preset_rgb(
+    i: c_int,
+    r: *mut c_double,
+    g: *mut c_double,
+    b: *mut c_double,
+) {
+    let idx = i as usize;
+    if idx >= crate::presets::COLOR_PRESETS.len() {
+        return;
+    }
+    let (cr, cg, cb) = crate::presets::COLOR_PRESETS[idx];
+    unsafe {
+        if !r.is_null() {
+            *r = cr;
+        }
+        if !g.is_null() {
+            *g = cg;
+        }
+        if !b.is_null() {
+            *b = cb;
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_width_preset_count() -> c_int {
+    crate::presets::WIDTH_PRESETS.len() as c_int
+}
+
+/// 取第 i 档粗细倍率(越界返回 -1)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_width_preset_value(i: c_int) -> c_double {
+    crate::presets::WIDTH_PRESETS
+        .get(i as usize)
+        .copied()
+        .unwrap_or(-1.0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_nearest_color_index(r: c_double, g: c_double, b: c_double) -> c_int {
+    crate::presets::nearest_color_index(r, g, b) as c_int
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_nearest_width_index(w: c_double) -> c_int {
+    crate::presets::nearest_width_index(w) as c_int
+}
+
+/// 钳制 double 型设置值(键名用面板/FFI 的驼峰键;未知键原样返回)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_clamp_setting_double(key: *const c_char, v: c_double) -> c_double {
+    if key.is_null() {
+        return v;
+    }
+    let k = unsafe { CStr::from_ptr(key) }.to_str().unwrap_or("");
+    crate::presets::clamp_setting_double(k, v)
+}
+
+/// 钳制 int 型设置值(未知键原样返回)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_clamp_setting_int(key: *const c_char, v: c_int) -> c_int {
+    if key.is_null() {
+        return v;
+    }
+    let k = unsafe { CStr::from_ptr(key) }.to_str().unwrap_or("");
+    crate::presets::clamp_setting_int(k, v)
+}
+
+// ---------------------------------------------------------------------------
 // Launch at login (macOS LaunchAgent)
 // ---------------------------------------------------------------------------
 

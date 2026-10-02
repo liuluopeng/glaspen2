@@ -213,7 +213,9 @@ pub fn smooth_points(points: &[(f64, f64, f64)]) -> Vec<(f64, f64, f64, f64)> {
     result
 }
 
-fn pressure_to_width(pressure: f64, width_scale: f64) -> f64 {
+/// 压感→笔宽的唯一实现;presets::pressure_raw_width 与根 crate re-export
+/// 都指向这里,平台层(ObjC 落笔即时反馈点)经 FFI 复用,不再留公式拷贝。
+pub fn pressure_to_width(pressure: f64, width_scale: f64) -> f64 {
     if pressure > 0.01 {
         (0.3 + pressure * pressure * 7.7) * width_scale
     } else {

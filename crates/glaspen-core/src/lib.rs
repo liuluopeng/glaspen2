@@ -30,6 +30,7 @@ pub mod export;
 pub mod modeler;
 pub mod ocr;
 pub mod pdf;
+pub mod presets;
 pub mod state;
 pub mod update;
 pub mod updater;
@@ -68,13 +69,9 @@ pub(crate) static RAW_STROKE_START: Mutex<Option<f64>> = Mutex::new(None);
 // Shared helpers (used by export module)
 // ---------------------------------------------------------------------------
 
-pub fn pressure_to_width(pressure: f64, width_scale: f64) -> f64 {
-    if pressure > 0.01 {
-        (0.3 + pressure * pressure * 7.7) * width_scale
-    } else {
-        1.0 * width_scale
-    }
-}
+// 压感→笔宽唯一实现在 modeler;这里 re-export 保持既有 `crate::pressure_to_width`
+// 路径(export 模块与本文件测试)不动。
+pub use modeler::pressure_to_width;
 
 pub fn desktop_path() -> PathBuf {
     #[cfg(target_os = "windows")]
