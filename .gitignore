@@ -26,3 +26,4 @@ installer/target/
 .fvm/
 # Local dev tooling (protoc, pipe probes)
 .tools/
+.zcodeignore
