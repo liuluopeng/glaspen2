@@ -382,16 +382,32 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let chat_user = glaspen_core::runtime()
             .block_on(glaspen_core::db::load_setting("chat_user"))
             .unwrap_or_default();
+        let grid_size_v = grid_size();
+        let minimap = if MINIMAP_ENABLED.load(std::sync::atomic::Ordering::SeqCst) {
+            1
+        } else {
+            0
+        };
+        let show_free_canvas = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("show_free_canvas"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
+        let chat_has_password = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("chat_password"))
+            .map(|v| !v.is_empty())
+            .unwrap_or(false);
         let infinite_canvas = if infinite_on() { 1 } else { 0 };
         let (gfps, gres, gspd, gem) = gif_settings();
-        // 密码不回读(macOS 同款):面板只在输入时发送
+        // 密码本体不回读,只回是否已保存(macOS 同款)
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false,\"chatIntegration\":{},\"shareCanvas\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\"}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false,\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\"}}}}\n",
             color,
             width,
             outline,
             grid,
             grid_divider.clamp(0, 3),
+            grid_size_v,
+            minimap,
             grid_follow,
             frosted,
             pressure_monitor,
@@ -403,6 +419,8 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             gem,
             chat_integration,
             share_canvas,
+            show_free_canvas,
+            if chat_has_password { "true" } else { "false" },
             json_escape(&chat_api_base),
             json_escape(&chat_user),
         );
@@ -568,6 +586,38 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             };
             glaspen_core::runtime().block_on(glaspen_core::db::save_setting(db_key, &value));
             glaspen_core::export::glaspen2_chat_auth_reload();
+        } else if key == "gridSize" {
+            // 网格尺寸:20/40/80,core presets 钳制后经消息循环改状态+落库+重绘
+            if let Some(v) = json_get_f64(line, "value") {
+                let _ = unsafe {
+                    PostMessageW(
+                        Some(HWND(hwnd as *mut _)),
+                        WM_TRAY_COMMAND,
+                        WPARAM(CMD_SET_GRID_SIZE),
+                        LPARAM(v as isize),
+                    )
+                };
+            }
+        } else if key == "minimap" {
+            // 页面缩略图条开关(仅活页本模式绘制)
+            if let Some(on) = json_get_bool(line, "value") {
+                let _ = unsafe {
+                    PostMessageW(
+                        Some(HWND(hwnd as *mut _)),
+                        WM_TRAY_COMMAND,
+                        WPARAM(CMD_TOGGLE_MINIMAP),
+                        LPARAM(if on { 1 } else { 0 }),
+                    )
+                };
+            }
+        } else if key == "showFreeCanvas" {
+            // 「自由涂鸦」tab 开关:纯面板可见性设置,落库即可(macOS 同键)
+            if let Some(on) = json_get_bool(line, "value") {
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "show_free_canvas",
+                    if on { "1" } else { "0" },
+                ));
+            }
         } else if key == "frostedGlass" {
             if let Some(on) = json_get_bool(line, "value") {
                 let cmd = CMD_TOGGLE_FROSTED;

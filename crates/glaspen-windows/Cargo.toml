@@ -8,11 +8,12 @@ description = "glaspen2 的 Windows 覆盖层:Win32 全屏透明窗口、笔输�
 glaspen-core = { path = "../glaspen-core" }
 # 覆盖层直用本进程 StrokeModeler 实例做位置/压力平滑(core 的全局缓冲是 macOS 路径用的)
 ink-stroke-modeler-rs = "0.1"
-# 管道 JSON/缩略图 base64、HUD 时钟、cairo 动态加载(与 glaspen-core 版本一致)
+# 管道 JSON/缩略图 base64、HUD 时钟、cairo 动态加载、minimap PNG 解码
 base64 = "0.22"
 chrono = "0.4"
 libloading = "0.9"
 serde_json = "1.0"
+image = "0.25"
 
 [target.'cfg(windows)'.dependencies]
 # Versions match C:\Users\liulu\Downloads\wAPItry (verified Windows pen-input prototype)

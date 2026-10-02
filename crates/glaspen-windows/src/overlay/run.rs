@@ -66,6 +66,14 @@ pub fn run() {
                 glaspen_core::export::glaspen2_share_ink_set_active(1);
             }
         }
+        // 网格尺寸(面板「网格大小」)与页面缩略图条(macOS 同库键)
+        load_grid_size();
+        let minimap = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("minimap"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
+        MINIMAP_ENABLED.store(minimap, std::sync::atomic::Ordering::SeqCst);
 
         // 恢复画布模式与镜头(与 macOS 一致):两种模式独立存储,
         // 无限画布全局仅一个;重启后回到离开时的镜头位置。

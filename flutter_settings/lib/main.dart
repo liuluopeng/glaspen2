@@ -1818,7 +1818,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             _setSetting('grid', v);
           },
         )),
-        if (_showGrid && Platform.isMacOS)
+        if (_showGrid)
           Padding(
             padding: const EdgeInsets.only(left: 16, bottom: 4),
             child: Row(
@@ -1842,7 +1842,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               ],
             ),
           ),
-        if (_showGrid && Platform.isMacOS)
+        if (_showGrid)
           Padding(
             padding: const EdgeInsets.only(left: 16, right: 16, bottom: 4),
             child: Column(

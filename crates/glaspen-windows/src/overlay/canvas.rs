@@ -255,7 +255,8 @@ impl OverlayCanvas {
     /// `divider`:分栏参考线(macOS 同款)——0=无 1=左右两栏 2=上下两栏
     /// 3=九宫格;切分点吸附到最近的网格线,线宽 1.5px(主列全 alpha + 邻列半 alpha)。
     fn draw_grid(&mut self, divider: i32) {
-        const GAP: f64 = 40.0;
+        // 网格尺寸:面板「网格大小」20/40/80,10..200 钳制(macOS 同键)
+        let GAP: f64 = grid_size();
         const GA: u8 = 38; // 0.15 * 255
         const GR: u8 = 19; // 0.5 * 0.15 * 255 (50% 灰,premultiplied)
         // 加粗参考线(仅无限画布):colorWithWhite:0.5 alpha:0.55

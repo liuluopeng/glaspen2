@@ -101,6 +101,31 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                     .block_on(glaspen_core::db::save_setting("grid_divider", &v.to_string()));
                 redraw_from_strokes(state);
             }
+            x if x == CMD_SET_GRID_SIZE => {
+                // 网格尺寸:core presets 单源钳制(10..200),落库后重绘
+                set_grid_size(param as f64);
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "grid_size",
+                    &format!("{:.1}", grid_size()),
+                ));
+                redraw_from_strokes(state);
+            }
+            x if x == CMD_TOGGLE_MINIMAP => {
+                // 页面缩略图条:面板开关,状态 + 落库 + 重绘(仅活页本模式绘制)
+                let on = param_on(MINIMAP_ENABLED.load(std::sync::atomic::Ordering::SeqCst));
+                MINIMAP_ENABLED.store(on, std::sync::atomic::Ordering::SeqCst);
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "minimap",
+                    if on { "1" } else { "0" },
+                ));
+                redraw_from_strokes(state);
+            }
+            x if x == CMD_MINIMAP_REFRESH => {
+                // 后台工人渲染完一张缩略图:重绘让新图上屏
+                if MINIMAP_ENABLED.load(std::sync::atomic::Ordering::SeqCst) {
+                    redraw_from_strokes(state);
+                }
+            }
             x if x == CMD_TOGGLE_CHAT_INTEGRATION => {
                 // 手写消息集成总开关(macOS gl_settings_set_chat_integration 同语义):
                 // 关 = 静默终止进行中的录制/草稿 + 停共享上行;
@@ -310,6 +335,7 @@ fn redraw_from_strokes(state: &mut OverlayState) {
             fill_stroke_path(&mut state.canvas, &path, ol);
         }
     }
+    draw_minimap(state);
     state.canvas.set_bg_alpha(BG_BLOCK);
     state.canvas.present_all();
     if state.draw.show_rainbow {
@@ -1095,5 +1121,267 @@ struct WindowCompositionAttributeData {
     attribute: i32,
     data: *mut std::ffi::c_void,
     size: usize,
+}
+
+// ── 页面缩略图条(minimap,仅活页本模式;macOS d67f838 对齐)──
+// 屏幕右缘竖向展示附近 10 页(VS Code 风):缺失的缩略图由单个后台线程
+// 串行渲染(不与书写落笔抢锁、不并发打爆 CPU,macOS 同策略),每完成
+// 一张 PostMessage 触发一次重绘;当前页高亮描边。首版不带页号文本
+// (分层窗口画文本需另建 GDI DC,页号看面板网格)。
+
+struct MinimapThumb {
+    /// 预乘 RGBA(与目标 BGRA 缓冲同布局交换通道即可)
+    rgba: Vec<u8>,
+    w: i32,
+    h: i32,
+}
+
+static MINIMAP_THUMBS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<i64, MinimapThumb>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+static MINIMAP_INFLIGHT: std::sync::Mutex<Vec<i64>> = std::sync::Mutex::new(Vec::new());
+static MINIMAP_IDS: std::sync::Mutex<Vec<i64>> = std::sync::Mutex::new(Vec::new());
+static MINIMAP_IDS_FOR: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+/// 单渲染工人的 CAS 门(同一时刻至多一个后台线程在逐张渲染)
+static MINIMAP_PUMPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+const MM_TW: i32 = 64;
+const MM_TH: i32 = 40;
+const MM_GAP: i32 = 4;
+
+/// 页序缓存(当前页变化时重新解析 list_screens_json,与 macOS 同策略)
+fn minimap_page_ids(cur: i64) -> Option<Vec<i64>> {
+    if MINIMAP_IDS_FOR.load(std::sync::atomic::Ordering::SeqCst) == cur {
+        let g = MINIMAP_IDS.lock().unwrap();
+        if !g.is_empty() {
+            return Some(g.clone());
+        }
+    }
+    let ptr = glaspen_core::export::glaspen2_list_screens_json();
+    if ptr.is_null() {
+        return None;
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
+        .to_string_lossy()
+        .to_string();
+    glaspen_core::export::glaspen2_free_c_string(ptr);
+    let ids: Vec<i64> = serde_json::from_str::<serde_json::Value>(&s)
+        .ok()
+        .and_then(|v| Some(v.as_array()?.clone()))
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|o| o.get("id").and_then(|x| x.as_i64()))
+        .collect();
+    if ids.is_empty() {
+        return None;
+    }
+    *MINIMAP_IDS.lock().unwrap() = ids.clone();
+    MINIMAP_IDS_FOR.store(cur, std::sync::atomic::Ordering::SeqCst);
+    Some(ids)
+}
+
+/// 单后台工人:逐张渲染 [start,end) 里缺失的页,每张完成即投递刷新。
+fn minimap_pump(ids: &[i64], start: usize, end: usize) {
+    use std::sync::atomic::Ordering;
+    let want: Vec<i64> = ids[start..end]
+        .iter()
+        .copied()
+        .filter(|id| {
+            !MINIMAP_THUMBS.lock().unwrap().contains_key(id)
+                && !MINIMAP_INFLIGHT.lock().unwrap().contains(id)
+        })
+        .collect();
+    if want.is_empty() {
+        return;
+    }
+    if MINIMAP_PUMPING.swap(true, Ordering::SeqCst) {
+        return; // 已有工人在跑:它会按最新列表继续,这里不重复起
+    }
+    let hwnd = *OVERLAY_HWND.lock().unwrap();
+    std::thread::spawn(move || {
+        let mut inflight = MINIMAP_INFLIGHT.lock().unwrap();
+        inflight.extend_from_slice(&want);
+        drop(inflight);
+        for id in want {
+            unsafe {
+                let mut len: i32 = 0;
+                let ptr =
+                    glaspen_core::export::glaspen2_render_thumbnail(id, 0, 0, 128, &mut len);
+                if !ptr.is_null() && len > 0 {
+                    let png = std::slice::from_raw_parts(ptr, len as usize);
+                    if let Ok(img) = image::load_from_memory(png) {
+                        let rgba = img.to_rgba8();
+                        let (w, h) = rgba.dimensions();
+                        let mut buf = rgba.into_raw();
+                        // 预乘 alpha(目标 BGRA 缓冲是预乘的)
+                        for px in buf.chunks_exact_mut(4) {
+                            let a = px[3] as u32;
+                            px[0] = ((px[0] as u32 * a + 127) / 255) as u8;
+                            px[1] = ((px[1] as u32 * a + 127) / 255) as u8;
+                            px[2] = ((px[2] as u32 * a + 127) / 255) as u8;
+                        }
+                        MINIMAP_THUMBS.lock().unwrap().insert(
+                            id,
+                            MinimapThumb {
+                                rgba: buf,
+                                w: w as i32,
+                                h: h as i32,
+                            },
+                        );
+                    }
+                    glaspen_core::export::glaspen2_free_rust_bytes(ptr, len);
+                }
+                MINIMAP_INFLIGHT.lock().unwrap().retain(|&x| x != id);
+                let _ = PostMessageW(
+                    Some(HWND(hwnd as *mut core::ffi::c_void)),
+                    WM_TRAY_COMMAND,
+                    WPARAM(CMD_MINIMAP_REFRESH),
+                    LPARAM(0),
+                );
+            }
+        }
+        MINIMAP_PUMPING.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+}
+
+/// 画右缘缩略图条(redraw_from_strokes 里、set_bg_alpha 之前调用:
+/// 不透明卡片不会被背景 alpha 扫描改动)
+fn draw_minimap(state: &mut OverlayState) {
+    use std::sync::atomic::Ordering;
+    if !MINIMAP_ENABLED.load(Ordering::SeqCst) || infinite_on() {
+        return;
+    }
+    let cur = glaspen_core::export::glaspen2_get_current_screen_id();
+    if cur <= 0 {
+        return;
+    }
+    let Some(ids) = minimap_page_ids(cur) else {
+        return;
+    };
+    let Some(idx) = ids.iter().position(|&x| x == cur) else {
+        return;
+    };
+    let start = idx.saturating_sub(5);
+    let end = (start + 10).min(ids.len());
+    if end <= start {
+        return;
+    }
+    let total_h = (end - start) as i32 * MM_TH + (end - start - 1) as i32 * MM_GAP;
+
+    let canvas = &mut state.canvas;
+    let (w, h) = (canvas.w, canvas.h);
+    let bits = canvas.bits;
+    let accent = canvas.color; // 当前页描边用当前笔色
+    unsafe {
+        let y0 = ((h - total_h) / 2).max(4);
+        let tx = w - MM_TW - 8;
+        for (k, &pid) in ids[start..end].iter().enumerate() {
+            let ty = y0 + k as i32 * (MM_TH + MM_GAP);
+            if ty < 0 || ty + MM_TH > h || tx < 0 {
+                continue;
+            }
+            // 白底卡片(不透明)
+            minimap_fill(bits, w, h, tx, ty, MM_TW, MM_TH, 252, 252, 252, 255);
+            // 内容:等比缩放居中(最近邻,缩略图够清晰)
+            let thumb = MINIMAP_THUMBS.lock().unwrap().get(&pid).map(|t| {
+                (t.rgba.clone(), t.w, t.h)
+            });
+            if let Some((src, sw, sh)) = thumb {
+                let scale = (MM_TW as f32 / sw as f32).min(MM_TH as f32 / sh as f32);
+                let dw = (sw as f32 * scale) as i32;
+                let dh = (sh as f32 * scale) as i32;
+                let ox = tx + (MM_TW - dw) / 2;
+                let oy = ty + (MM_TH - dh) / 2;
+                for dy in 0..dh {
+                    let py = oy + dy;
+                    if py < 0 || py >= h {
+                        continue;
+                    }
+                    let sy = ((dy as f32 / scale) as i32).clamp(0, sh - 1);
+                    for dx in 0..dw {
+                        let px = ox + dx;
+                        if px < 0 || px >= w {
+                            continue;
+                        }
+                        let sx = ((dx as f32 / scale) as i32).clamp(0, sw - 1);
+                        let so = ((sy * sw + sx) * 4) as usize;
+                        let di = ((py as usize) * (w as usize) + px as usize) * 4;
+                        *bits.add(di) = src[so + 2]; // B
+                        *bits.add(di + 1) = src[so + 1]; // G
+                        *bits.add(di + 2) = src[so]; // R
+                        *bits.add(di + 3) = src[so + 3]; // A
+                    }
+                }
+            }
+            // 边框:当前页 2px 笔色,其余 1px 浅灰
+            let (bc, bg_, bb, thick) = if pid == cur {
+                (accent.0, accent.1, accent.2, 2)
+            } else {
+                (200u8, 200u8, 200u8, 1)
+            };
+            for t in 0..thick {
+                // 上下
+                minimap_fill(bits, w, h, tx - t, ty - t, MM_TW + 2 * t + 1, 1, bc, bg_, bb, 255);
+                minimap_fill(
+                    bits,
+                    w,
+                    h,
+                    tx - t,
+                    ty + MM_TH + t,
+                    MM_TW + 2 * t + 1,
+                    1,
+                    bc,
+                    bg_,
+                    bb,
+                    255,
+                );
+                // 左右
+                minimap_fill(bits, w, h, tx - t, ty, 1, MM_TH, bc, bg_, bb, 255);
+                minimap_fill(
+                    bits,
+                    w,
+                    h,
+                    tx + MM_TW + t,
+                    ty,
+                    1,
+                    MM_TH,
+                    bc,
+                    bg_,
+                    bb,
+                    255,
+                );
+            }
+        }
+    }
+    minimap_pump(&ids, start, end);
+}
+
+/// 矩形填色(预乘 BGRA,带边界裁剪)
+unsafe fn minimap_fill(
+    bits: *mut u8,
+    w: i32,
+    h: i32,
+    x: i32,
+    y: i32,
+    rw: i32,
+    rh: i32,
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+) {
+    let x0 = x.max(0);
+    let y0 = y.max(0);
+    let x1 = (x + rw).min(w);
+    let y1 = (y + rh).min(h);
+    for py in y0..y1 {
+        for px in x0..x1 {
+            let i = ((py as usize) * (w as usize) + px as usize) * 4;
+            *bits.add(i) = b;
+            *bits.add(i + 1) = g;
+            *bits.add(i + 2) = r;
+            *bits.add(i + 3) = a;
+        }
+    }
 }
 

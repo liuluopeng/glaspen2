@@ -166,6 +166,38 @@ fn persist_gif_settings(fps: i32, resolution: f64, speed: f64, end_mode: i32) {
     ));
 }
 
+// ── 网格尺寸(macOS 同键 gridSize,库键 grid_size,10..200 钳制) ──
+// 消息循环线程独占改写,管道线程(getSettings)只读。
+static GRID_SIZE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn grid_size() -> f64 {
+    let v = f64::from_bits(GRID_SIZE.load(std::sync::atomic::Ordering::SeqCst));
+    if v > 0.0 {
+        v
+    } else {
+        40.0
+    }
+}
+
+fn set_grid_size(v: f64) {
+    use std::sync::atomic::Ordering;
+    let v = glaspen_core::presets::clamp_setting_double("gridSize", v);
+    let v = if v > 0.0 { v } else { 40.0 };
+    GRID_SIZE.store(v.to_bits(), Ordering::SeqCst);
+}
+
+fn load_grid_size() {
+    let v = glaspen_core::runtime()
+        .block_on(glaspen_core::db::load_setting("grid_size"))
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(40.0);
+    set_grid_size(v);
+}
+
+// ── 页面缩略图条(minimap,仅活页本模式;macOS 同键,库键 minimap) ──
+pub static MINIMAP_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 struct OverlayState {
     canvas: OverlayCanvas,
     draw: DrawState,
