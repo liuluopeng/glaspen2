@@ -17,6 +17,7 @@ pub const CMD_TOGGLE_GRID: usize = 652;
 pub const CMD_TOGGLE_FROSTED: usize = 653;
 pub const CMD_TOGGLE_ETHEREAL: usize = 654;
 pub const CMD_TOGGLE_PRESSURE_MONITOR: usize = 655;
+pub const CMD_SET_GRID_DIVIDER: usize = 656; // 网格分栏 0..3(面板「分栏」设置)
 pub const CMD_NAVIGATE_TO_PAGE: usize = 810;
 pub const CMD_PAGE_PREV: usize = 720;
 pub const CMD_PAGE_NEXT: usize = 721;

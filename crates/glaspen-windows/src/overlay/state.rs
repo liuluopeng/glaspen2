@@ -9,6 +9,8 @@ pub struct DrawState {
     pub show_rainbow: bool,
     pub outline_enabled: bool,
     pub show_grid: bool,
+    /// 网格分栏(纯视觉):0=无 1=左右两栏 2=上下两栏 3=九宫格(macOS 同键)
+    pub grid_divider: i32,
     pub frosted: bool,
     /// 飘渺画布涂鸦模式:悬空/落笔显示笔迹,笔离开后隐藏
     pub ethereal: bool,
@@ -165,3 +167,17 @@ fn persist_gif_settings(fps: i32, resolution: f64, speed: f64, end_mode: i32) {
 struct OverlayState {
     canvas: OverlayCanvas,
     draw: DrawState,
+    /// 当前笔的曲线点列(像素坐标 + 半径),用于轮廓填充
+    pen_path: Vec<(f32, f32, f32)>,
+    /// ink-stroke-modeler(位置/压力平滑 + 120Hz 重采样)
+    stroke_modeler: StrokeModeler,
+    start_time: Instant,
+    /// 当前是否处于笔画中(首事件必须发 Down)
+    in_stroke: bool,
+    /// 笔迹当前是否可见(飘渺模式)
+    strokes_visible: bool,
+    /// 快捷录制 GIF 进行中(Ctrl+Alt+R 按住)
+    gif_recording: bool,
+    /// 录制起点笔画序号(-1 = 未在录制)
+    gif_record_start: i32,
+}

@@ -359,14 +359,19 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .block_on(glaspen_core::db::load_setting("ethereal"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0);
+        let grid_divider = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("grid_divider"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
         let infinite_canvas = if infinite_on() { 1 } else { 0 };
         let (gfps, gres, gspd, gem) = gif_settings();
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false}}}}\n",
             color,
             width,
             outline,
             grid,
+            grid_divider.clamp(0, 3),
             grid_follow,
             frosted,
             pressure_monitor,
@@ -486,6 +491,18 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                         WM_TRAY_COMMAND,
                         WPARAM(cmd),
                         LPARAM(if on { 1 } else { 0 }),
+                    )
+                };
+            }
+        } else if key == "gridDivider" {
+            // 分栏:0..3,经消息循环改状态 + 落库 + 重绘(与 macOS 同键)
+            if let Some(v) = json_get_i64(line, "value") {
+                let _ = unsafe {
+                    PostMessageW(
+                        Some(HWND(hwnd as *mut _)),
+                        WM_TRAY_COMMAND,
+                        WPARAM(CMD_SET_GRID_DIVIDER),
+                        LPARAM(v.clamp(0, 3) as isize),
                     )
                 };
             }

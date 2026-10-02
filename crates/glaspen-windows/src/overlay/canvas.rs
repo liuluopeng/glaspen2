@@ -1,18 +1,3 @@
-    /// 当前笔的曲线点列(像素坐标 + 半径),用于轮廓填充
-    pen_path: Vec<(f32, f32, f32)>,
-    /// ink-stroke-modeler(位置/压力平滑 + 120Hz 重采样)
-    stroke_modeler: StrokeModeler,
-    start_time: Instant,
-    /// 当前是否处于笔画中(首事件必须发 Down)
-    in_stroke: bool,
-    /// 笔迹当前是否可见(飘渺模式)
-    strokes_visible: bool,
-    /// 快捷录制 GIF 进行中(Ctrl+Alt+R 按住)
-    gif_recording: bool,
-    /// 录制起点笔画序号(-1 = 未在录制)
-    gif_record_start: i32,
-}
-
 static STATE: AtomicPtr<OverlayState> = AtomicPtr::new(std::ptr::null_mut());
 
 // ── 全屏透明 overlay 画布(UpdateLayeredWindowIndirect + 32bit BGRA DIB) ──
@@ -267,13 +252,20 @@ impl OverlayCanvas {
     /// RGB = 128*0.15 ≈ 19,alpha = 38。
     /// 网格画在画布坐标系:无限画布下跟随镜头平移/缩放,并在「屏幕尺寸」
     /// 整数倍处加粗(每屏一条参考线);翻页模式 pan=0、zoom=1,与从前一致。
-    fn draw_grid(&mut self) {
+    /// `divider`:分栏参考线(macOS 同款)——0=无 1=左右两栏 2=上下两栏
+    /// 3=九宫格;切分点吸附到最近的网格线,线宽 1.5px(主列全 alpha + 邻列半 alpha)。
+    fn draw_grid(&mut self, divider: i32) {
         const GAP: f64 = 40.0;
         const GA: u8 = 38; // 0.15 * 255
         const GR: u8 = 19; // 0.5 * 0.15 * 255 (50% 灰,premultiplied)
         // 加粗参考线(仅无限画布):colorWithWhite:0.5 alpha:0.55
         const BOLD_GA: u8 = 140; // 0.55 * 255
         const BOLD_GR: u8 = 70; // 0.5 * 0.55 * 255
+        // 分栏参考线:colorWithWhite:0.5 alpha:0.65,宽 1.5px
+        const DIV_GA: u8 = 166; // 0.65 * 255
+        const DIV_GR: u8 = 83; // 0.5 * 0.65 * 255
+        const DIV_HALF_GA: u8 = 83; // 邻列 ~半覆盖
+        const DIV_HALF_GR: u8 = 41;
 
         let infinite = infinite_on();
         let (pan_x, pan_y, zoom) = if infinite { cam() } else { (0.0, 0.0, 1.0) };
@@ -355,6 +347,81 @@ impl OverlayCanvas {
                     k += 1;
                 }
             }
+
+            // 分栏参考线(纯视觉,macOS 同款):左右两栏/上下两栏 = 每屏单位
+            // 1/2 处,九宫格 = 1/3、2/3 处。切分点吸附到最近的网格线(保证
+            // 加粗的永远是真实网格线),每屏单位各自吸附;两种画布模式都画。
+            if divider > 0 {
+                let halves: [f64; 1] = [0.5];
+                let thirds: [f64; 2] = [1.0 / 3.0, 2.0 / 3.0];
+                let (fx, fy): (&[f64], &[f64]) = match divider {
+                    1 => (&halves[..], &[][..]),
+                    2 => (&[][..], &halves[..]),
+                    _ => (&thirds[..], &thirds[..]),
+                };
+                let bw = w as f64;
+                let bh = h as f64;
+                let draw_col = |bits: *mut u8, gx: i32, main_ga: u8, main_gr: u8, half_ga: u8, half_gr: u8| {
+                    if gx >= 0 && gx < w {
+                        for y in 0..h {
+                            let i = ((y as usize) * (w as usize) + gx as usize) * 4;
+                            *bits.add(i) = main_gr;
+                            *bits.add(i + 1) = main_gr;
+                            *bits.add(i + 2) = main_gr;
+                            *bits.add(i + 3) = main_ga;
+                        }
+                    }
+                    // 1.5px 线宽:邻列 ~半覆盖
+                    if gx + 1 >= 0 && gx + 1 < w {
+                        for y in 0..h {
+                            let i = ((y as usize) * (w as usize) + (gx + 1) as usize) * 4;
+                            *bits.add(i) = half_gr;
+                            *bits.add(i + 1) = half_gr;
+                            *bits.add(i + 2) = half_gr;
+                            *bits.add(i + 3) = half_ga;
+                        }
+                    }
+                };
+                let draw_row = |bits: *mut u8, gy: i32, main_ga: u8, main_gr: u8, half_ga: u8, half_gr: u8| {
+                    if gy >= 0 && gy < h {
+                        for x in 0..w {
+                            let i = ((gy as usize) * (w as usize) + x as usize) * 4;
+                            *bits.add(i) = main_gr;
+                            *bits.add(i + 1) = main_gr;
+                            *bits.add(i + 2) = main_gr;
+                            *bits.add(i + 3) = main_ga;
+                        }
+                    }
+                    if gy + 1 >= 0 && gy + 1 < h {
+                        for x in 0..w {
+                            let i = (((gy + 1) as usize) * (w as usize) + x as usize) * 4;
+                            *bits.add(i) = half_gr;
+                            *bits.add(i + 1) = half_gr;
+                            *bits.add(i + 2) = half_gr;
+                            *bits.add(i + 3) = half_ga;
+                        }
+                    }
+                };
+                for frac in fx {
+                    let mut i = ((cx0 / bw).floor() as i64) - 1;
+                    while i <= ((cx1 / bw).floor() as i64) + 1 {
+                        // 吸附到最近的网格线(macOS lround 同款)
+                        let k = ((i as f64 * bw + bw * frac) / GAP).round() as i64;
+                        let gx = ((k as f64 * GAP - pan_x) * zoom).round() as i32;
+                        draw_col(bits, gx, DIV_GA, DIV_GR, DIV_HALF_GA, DIV_HALF_GR);
+                        i += 1;
+                    }
+                }
+                for frac in fy {
+                    let mut i = ((cy0 / bh).floor() as i64) - 1;
+                    while i <= ((cy1 / bh).floor() as i64) + 1 {
+                        let k = ((i as f64 * bh + bh * frac) / GAP).round() as i64;
+                        let gy = ((k as f64 * GAP - pan_y) * zoom).round() as i32;
+                        draw_row(bits, gy, DIV_GA, DIV_GR, DIV_HALF_GA, DIV_HALF_GR);
+                        i += 1;
+                    }
+                }
+            }
         }
     }
 
@@ -397,4 +464,3 @@ impl Drop for OverlayCanvas {
 
 // ── 绘制核心(源自已验证原型) ──
 
-/// 线宽半径(线性压力映射 × 线宽倍率):(0.75 + p*1.75) * scale(直径 1.5..5px × scale)

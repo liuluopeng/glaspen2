@@ -1,3 +1,5 @@
+/// 从 GetRawInputData 原始 buffer 手工解析 HID 报告
+/// 布局: [RAWINPUTHEADER 24B][dwSizeHid 4B][dwCount 4B][报告 dwSizeHid*dwCount 字节]
 unsafe fn process_raw_hid(buf: &[u64]) -> Option<RECT> {
     let raw = buf.as_ptr() as *const u8;
     let dw_type = u32::from_le_bytes(std::slice::from_raw_parts(raw, 4).try_into().unwrap());

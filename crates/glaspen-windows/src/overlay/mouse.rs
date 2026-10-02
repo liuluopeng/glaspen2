@@ -1,3 +1,5 @@
+/// 处理鼠标 Raw Input:仅 Ctrl+Alt+滚轮 → 镜头缩放;其余鼠标输入忽略。
+/// 返回 true 表示吞掉了滚轮(已应用缩放)。
 unsafe fn handle_mouse_raw(buf: &[u64], state: &mut OverlayState) -> bool {
     let raw = buf.as_ptr() as *const RAWINPUT;
     if (*raw).header.dwType != RIM_TYPEMOUSE.0 {

@@ -30,6 +30,11 @@ pub fn run() {
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0)
             != 0;
+        let grid_divider = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("grid_divider"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            .clamp(0, 3);
         let ethereal = glaspen_core::runtime()
             .block_on(glaspen_core::db::load_setting("ethereal"))
             .and_then(|v| v.parse::<i32>().ok())
@@ -91,6 +96,7 @@ pub fn run() {
             show_rainbow: false,
             outline_enabled,
             show_grid,
+            grid_divider,
             frosted,
             ethereal,
             grid_follow_strokes,
@@ -280,5 +286,3 @@ fn set_input_blocking(hwnd: HWND, blocking: bool) {
 // 鼠标同样走 Raw Input(RIDEV_INPUTSINK 排队通知,不阻塞 RIT),
 // 与数位笔同一条 WM_INPUT 通道,只取滚轮,其余忽略。
 
-/// 处理鼠标 Raw Input:仅 Ctrl+Alt+滚轮 → 镜头缩放;其余鼠标输入忽略。
-/// 返回 true 表示吞掉了滚轮(已应用缩放)。

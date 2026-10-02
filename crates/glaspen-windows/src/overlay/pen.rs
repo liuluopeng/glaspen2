@@ -1,3 +1,4 @@
+/// 线宽半径(线性压力映射 × 线宽倍率):(0.75 + p*1.75) * scale(直径 1.5..5px × scale)
 fn width_r(p: f32, scale: f32) -> f32 {
     (0.75 + p.clamp(0.0, 1.0) * 1.75) * scale.max(0.05)
 }
@@ -228,5 +229,3 @@ fn modeler_params() -> ModelerParams {
     }
 }
 
-/// 从 GetRawInputData 原始 buffer 手工解析 HID 报告
-/// 布局: [RAWINPUTHEADER 24B][dwSizeHid 4B][dwCount 4B][报告 dwSizeHid*dwCount 字节]

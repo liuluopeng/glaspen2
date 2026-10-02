@@ -93,6 +93,14 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                     .block_on(glaspen_core::db::save_setting("grid", if on { "1" } else { "0" }));
                 redraw_from_strokes(state);
             }
+            x if x == CMD_SET_GRID_DIVIDER => {
+                // 分栏:0=无 1=左右两栏 2=上下两栏 3=九宫格(与 macOS 同键同钳制)
+                let v = (param as i64).clamp(0, 3) as i32;
+                state.draw.grid_divider = v;
+                glaspen_core::runtime()
+                    .block_on(glaspen_core::db::save_setting("grid_divider", &v.to_string()));
+                redraw_from_strokes(state);
+            }
             x if x == CMD_TOGGLE_FROSTED => {
                 let on = param_on(state.draw.frosted);
                 state.draw.frosted = on;
@@ -197,7 +205,7 @@ fn clear_screen(state: &mut OverlayState) {
     state.start_time = Instant::now();
     state.canvas.clear();
     if state.draw.show_grid {
-        state.canvas.draw_grid();
+        state.canvas.draw_grid(state.draw.grid_divider);
     }
     state.canvas.set_bg_alpha(BG_BLOCK);
     let created = glaspen_core::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
@@ -245,7 +253,7 @@ fn redraw_from_strokes(state: &mut OverlayState) {
     state.start_time = Instant::now();
     state.canvas.clear();
     if state.draw.show_grid {
-        state.canvas.draw_grid();
+        state.canvas.draw_grid(state.draw.grid_divider);
     }
     let ol = if state.draw.outline_enabled { 1.0 } else { 0.0 };
     let z = if infinite_on() { cam().2 as f32 } else { 1.0 };
@@ -349,7 +357,7 @@ fn hide_strokes(state: &mut OverlayState) {
     state.canvas.clear();
     // 网格跟随涂鸦 → 一起隐藏;否则网格保持可见
     if state.draw.show_grid && !state.draw.grid_follow_strokes {
-        state.canvas.draw_grid();
+        state.canvas.draw_grid(state.draw.grid_divider);
     }
     state.canvas.set_bg_alpha(BG_BLOCK);
     state.canvas.present_all();

@@ -889,7 +889,6 @@ pub extern "C" fn glaspen2_is_launch_at_login() -> c_int {
     }
 }
 
-#[cfg(target_os = "macos")]
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_free_c_string(ptr: *mut c_char) {
     if !ptr.is_null() {
