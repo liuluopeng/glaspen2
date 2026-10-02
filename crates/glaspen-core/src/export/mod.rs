@@ -28,7 +28,7 @@ pub(crate) use chat_glue::ink_draft_on_stroke_committed;
 pub(crate) use chat_glue::ink_share_on_stroke_committed;
 pub use chat_glue::*;
 #[cfg(test)]
-pub(crate) use chat_glue::{CHAT_NOTEBOOK, stroke_to_chat_message, sync_chat_auth_from_settings};
+pub(crate) use chat_glue::{CHAT_NOTEBOOK, stroke_to_chat_message};
 pub use media::*;
 #[cfg(test)]
 pub(crate) use media::{GifStroke, build_svg_from, encode_animated_gif};
@@ -941,9 +941,6 @@ pub extern "C" fn glaspen2_get_stroke_point_time(idx: c_int, pidx: c_int) -> c_d
         .map_or(0.0, |p| p.3)
 }
 
-/// Void undo — legacy callers (returns nothing).
-/// The macOS equivalent glaspen2_undo_last_stroke returns remaining count.
-#[unsafe(no_mangle)]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1242,8 +1242,8 @@ mod tests {
 
         let mut opaque = 0;
         let mut dark = 0;
-        for px in flat.chunks_exact(4) {
-            let [r, g, b, a] = [px[0], px[1], px[2], px[3]];
+        for px in flat.as_chunks::<4>().0 {
+            let [r, g, b, a] = *px;
             if a == 0 {
                 continue; // 背景: 透明
             }
