@@ -112,6 +112,16 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
 
 ## 踩坑记录(都是真踩过的,别再踩)
 
+- **显示器重开会先报默认分辨率再协商**(2026-10: monitors 上电瞬间
+  NSScreen 报 1920x1080,协商完才回 3440x1440):重配置通知成串到达,
+  **必须防抖**(2.5s,稳定后才处理),否则每个瞬态分辨率都凭空建一页
+  ——库里曾积累 71 页 1920x1080。同时,**core 建页/切页只切
+  current_screen_id,STROKES 内存是 shell 的责任**:切页后必须
+  `load_strokes_for_screen(当前页)` 再 rebuild,否则旧页内容被画到
+  新页上(表现为"相邻两页内容重复/翻页像只翻了一部分")。
+- **build.rs 必须监视 parts/*.m**:子文件是 #include 文本包含,
+  cargo 只认 rerun-if-changed——漏监视时改子文件不会重编,ObjC 改动
+  静默失效(排查了半天的"灵异现象")。
 - **FRB content hash 不一致**(面板初始化全挂):Dart 与 Rust 两侧生成
   代码不同步。codegen 后必须 `cargo build`;build.rs 已监视
   `flutter_settings/lib/src/rust/`,别删那几行 rerun-if-changed
