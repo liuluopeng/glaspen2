@@ -171,13 +171,8 @@ static void finish_active_stroke(void) {
 }
 
 // Handle display configuration changes (resolution, arrangement, etc.)
-static void on_display_changed(void) {
-    NSScreen *screen = [NSScreen mainScreen];
-    NSRect newFrame = [screen frame];
-    int new_w = (int)newFrame.size.width;
-    int new_h = (int)newFrame.size.height;
-    if (new_w == g_screen_w && new_h == g_screen_h) return;
-
+// 分辨率变化的实际处理(经 2.5s 防抖后调用, 分辨率已稳定)。
+static void display_change_apply(int new_w, int new_h) {
     NSLog(@"[glaspen2] display changed: %dx%d -> %dx%d", g_screen_w, g_screen_h, new_w, new_h);
     g_screen_w = new_w;
     g_screen_h = new_h;
@@ -189,6 +184,7 @@ static void on_display_changed(void) {
     glaspen2_load_strokes_for_screen(glaspen2_get_current_screen_id());
     glaspen2_smooth_loaded_strokes();
 
+    NSRect newFrame = NSMakeRect(0, 0, new_w, new_h);
     if (g_window) {
         [g_window setFrame:newFrame display:YES];
         NSView *cv = [g_window contentView];
@@ -201,6 +197,39 @@ static void on_display_changed(void) {
         rebuild_surface_from_strokes();
         [g_draw_view setNeedsDisplay:YES];
     }
+}
+
+// 源静态持有(局部变量会被 ARC 释放, 定时器永远不触发)
+static dispatch_source_t s_display_debounce;
+static int s_pending_w = 0, s_pending_h = 0;
+
+static void on_display_changed(void) {
+    NSScreen *screen = [NSScreen mainScreen];
+    NSRect newFrame = [screen frame];
+    int new_w = (int)newFrame.size.width;
+    int new_h = (int)newFrame.size.height;
+    if (new_w == g_screen_w && new_h == g_screen_h) return;
+
+    // 显示器上电/唤醒时 macOS 会先报默认分辨率(如 1920x1080)再协商出
+    // 真实分辨率, 重配置事件成串到达。防抖 2.5s: 期间的新事件只重置
+    // 计时器, 稳定后才处理 —— 协商回原分辨率则什么都不发生, 不再为
+    // 瞬态模式凭空建页(库里曾有 71 页 1920x1080 由此而来)。
+    NSLog(@"[glaspen2] display reconfig: %dx%d -> %dx%d (防抖 2.5s)", g_screen_w, g_screen_h, new_w, new_h);
+    s_pending_w = new_w;
+    s_pending_h = new_h;
+    if (!s_display_debounce) {
+        s_display_debounce = dispatch_source_create(
+            DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+        dispatch_source_set_event_handler(s_display_debounce, ^{
+            if (s_pending_w == g_screen_w && s_pending_h == g_screen_h) return;
+            display_change_apply(s_pending_w, s_pending_h);
+        });
+        dispatch_resume(s_display_debounce);
+    }
+    dispatch_source_set_timer(
+        s_display_debounce,
+        dispatch_time(DISPATCH_TIME_NOW, (int64_t)2.5 * NSEC_PER_SEC),
+        DISPATCH_TIME_FOREVER, (int64_t)0.2 * NSEC_PER_SEC);
 }
 
 static void pen_draw(double x, double y, double width) {
