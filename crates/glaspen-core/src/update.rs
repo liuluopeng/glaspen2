@@ -438,6 +438,40 @@ pub fn newest_dmg(dir: &std::path::Path) -> Option<std::path::PathBuf> {
         .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok())
 }
 
+/// 缓存目录里最新的 Windows 安装包(`glaspen2-*-setup.exe`;按修改时间取最新)。
+/// apply 兜底用:优先取本次下载记录的路径。
+#[cfg(target_os = "windows")]
+pub fn newest_installer(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            let n = p.file_name().map(|n| n.to_string_lossy().to_lowercase());
+            n.is_some_and(|n| n.ends_with(".exe") && n.contains("glaspen2"))
+        })
+        .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok())
+}
+
+/// 查最新 release → 挑当前平台的安装包 → 下载(或复用缓存里校验通过的)。
+/// 返回 (安装包路径, received, total)。macOS FRB(api.rs)与 Windows 管道共用。
+pub fn download_to_cache(
+    mut on_progress: impl FnMut(u64, u64) -> bool,
+) -> Result<(std::path::PathBuf, u64, u64), String> {
+    let rel = fetch_latest()?;
+    let asset =
+        pick_asset(&rel.assets).ok_or("当前平台没有对应的安装包,请打开下载页手动更新")?;
+    let dest = update_dir().join(&asset.name);
+    if cached_asset_is_valid(&dest, asset.sha256.as_deref()) {
+        let total = dest.metadata().map(|m| m.len()).unwrap_or(asset.size);
+        on_progress(total, total);
+        return Ok((dest, total, total));
+    }
+    download(&asset.url, &dest, asset.sha256.as_deref(), on_progress).map_err(|e| e.to_string())?;
+    let total = dest.metadata().map(|m| m.len()).unwrap_or(asset.size);
+    Ok((dest, total, total))
+}
+
 /// 缓存目录里已解包的暂存 `.app`([`stage_dmg`] 的产物,`Glaspen2-*.app`)。
 pub fn staged_app(dir: &std::path::Path) -> Option<std::path::PathBuf> {
     std::fs::read_dir(dir)

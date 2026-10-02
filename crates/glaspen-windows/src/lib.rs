@@ -1,6 +1,16 @@
 #[cfg(windows)]
 pub mod overlay;
 
+/// 「立即更新」待安装的安装包路径(管道 applyUpdate 记录,进程收尾时消费)
+#[cfg(windows)]
+static PENDING_INSTALLER: std::sync::Mutex<Option<std::path::PathBuf>> =
+    std::sync::Mutex::new(None);
+
+#[cfg(windows)]
+pub(crate) fn set_pending_installer(path: std::path::PathBuf) {
+    *PENDING_INSTALLER.lock().unwrap() = Some(path);
+}
+
 /// 非 Windows 平台的空实现:让 `cargo check --workspace` 在 macOS CI 上
 /// 也能通过(本 crate 的实质代码全部是 Win32)。
 #[cfg(not(windows))]
@@ -62,6 +72,22 @@ pub fn win_main() {
     if let Some(child) = settings_child.as_mut() {
         let _ = child.kill();
         let _ = child.wait();
+    }
+
+    // 自动更新收尾:applyUpdate 已记下安装包路径。cmd 延迟 2 秒再启动,
+    // 确保本进程(含设置面板)完全退出、文件锁释放;安装器解压到
+    // %LOCALAPPDATA%\glaspen2 后自动拉起新版。
+    if let Some(installer) = PENDING_INSTALLER.lock().unwrap().take() {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        // DETACHED_PROCESS:不随本控制台/进程消亡
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        let path = installer.to_string_lossy().to_string();
+        eprintln!("[glaspen2] 2 秒后启动更新安装器: {path}");
+        let _ = std::process::Command::new("cmd")
+            .args(["/c", "timeout", "/t", "2", "/nobreak", ">nul", "&", "start", "", &path])
+            .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+            .spawn();
     }
 
     println!("[glaspen2] Exited");

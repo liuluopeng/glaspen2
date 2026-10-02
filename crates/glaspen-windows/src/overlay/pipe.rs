@@ -5,6 +5,11 @@ fn pipe_wide_name() -> Vec<u16> {
         .collect()
 }
 
+/// 「立即更新」已下载(校验通过)的安装包;applyUpdate 优先用它,
+/// 兜底 newest_installer(update_dir)。
+static DOWNLOADED_INSTALLER: std::sync::Mutex<Option<std::path::PathBuf>> =
+    std::sync::Mutex::new(None);
+
 fn run_settings_pipe_server(hwnd: isize) {
     let name = pipe_wide_name();
 
@@ -650,6 +655,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                     "latest": r.tag,
                     "hasUpdate": has,
                     "url": r.url,
+                    "notes": r.notes,
                     "error": "",
                 })
             }
@@ -719,6 +725,117 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .as_bytes(),
         );
         let _ = writer.flush();
+    } else if msg_type == "downloadUpdate" {
+        // 「立即更新」下载:fetch → 挑当前平台安装包 → 流式下载。
+        // 进度帧(~100ms 一帧)直接写回管道;取消 = 面板发 cancelDownload,
+        // on_progress 里偷看管道输入(单写者:此期间没有其它帧会发出)。
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        use std::io::{Read as _, Write as _};
+        use std::os::windows::io::AsRawHandle;
+        let handle = HANDLE(writer.as_raw_handle());
+        let mut frame_at = std::time::Instant::now() - std::time::Duration::from_millis(200);
+        let result = glaspen_core::update::download_to_cache(|received, total| {
+            if total == 0 || received == total || frame_at.elapsed() >= std::time::Duration::from_millis(100) {
+                frame_at = std::time::Instant::now();
+                let _ = writer.write_all(
+                    format!(
+                        "{{\"type\":\"downloadUpdate_frame\",\"reqId\":{req_id},\"data\":{{\"received\":{received},\"total\":{total},\"done\":false,\"error\":\"\",\"path\":\"\"}}}}\n",
+                    )
+                    .as_bytes(),
+                );
+                let _ = writer.flush();
+            }
+            // 偷看取消请求:有 cancelDownload 就停(消费掉这行,core 会删 .part)
+            let mut avail: u32 = 0;
+            if unsafe {
+                PeekNamedPipe(handle, None, 0, None, Some(&mut avail), None)
+            }
+            .is_ok()
+                && avail > 0
+            {
+                let mut buf = vec![0u8; avail as usize];
+                let mut read: u32 = 0;
+                if unsafe { ReadFile(handle, Some(&mut buf), Some(&mut read), None) }.is_ok() {
+                    let s = String::from_utf8_lossy(&buf[..read as usize]);
+                    if s.contains("cancelDownload") {
+                        return false;
+                    }
+                }
+            }
+            true
+        });
+        match result {
+            Ok((path, received, total)) => {
+                eprintln!("[pipe] 更新包已下载: {}", path.display());
+                *DOWNLOADED_INSTALLER.lock().unwrap() = Some(path.clone());
+                let p = path.to_string_lossy().replace('\\', "/");
+                let _ = writer.write_all(
+                    format!(
+                        "{{\"type\":\"downloadUpdate_frame\",\"reqId\":{req_id},\"data\":{{\"received\":{received},\"total\":{total},\"done\":true,\"error\":\"\",\"path\":\"{p}\"}}}}\n",
+                    )
+                    .as_bytes(),
+                );
+            }
+            Err(e) => {
+                // Cancelled 的 Display 就是「已取消」,Failed 直接带原因
+                let _ = writer.write_all(
+                    format!(
+                        "{{\"type\":\"downloadUpdate_frame\",\"reqId\":{req_id},\"data\":{{\"received\":0,\"total\":0,\"done\":true,\"error\":\"{}\",\"path\":\"\"}}}}\n",
+                        json_escape(&e.to_string())
+                    )
+                    .as_bytes(),
+                );
+            }
+        }
+        let _ = writer.flush();
+    } else if msg_type == "stageUpdate" {
+        // Windows 无 DMG 解包:安装包下载(校验)完即就绪
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let _ = writer.write_all(
+            format!(
+                "{{\"type\":\"stageUpdate_response\",\"reqId\":{req_id},\"data\":{{\"ok\":1,\"message\":\"安装包已就绪\"}}}}\n"
+            )
+            .as_bytes(),
+        );
+        let _ = writer.flush();
+    } else if msg_type == "applyUpdate" {
+        // 拉起安装包并退出本程序:安装器解压到 %LOCALAPPDATA%\glaspen2 并
+        // 自动启动新版。先记下路径 + 回包,再走正常退出(管道断开时设置
+        // 面板也会被带走);win_main 在进程收尾时用 cmd 延迟 2 秒启动安装器,
+        // 确保文件锁全部释放。
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let installer = DOWNLOADED_INSTALLER
+            .lock()
+            .unwrap()
+            .clone()
+            .or_else(|| glaspen_core::update::newest_installer(&glaspen_core::update::update_dir()));
+        let Some(installer) = installer else {
+            let _ = writer.write_all(
+                format!(
+                    "{{\"type\":\"applyUpdate_response\",\"reqId\":{req_id},\"data\":{{\"ok\":0,\"message\":\"找不到已下载的安装包,请重新下载\"}}}}\n"
+                )
+                .as_bytes(),
+            );
+            let _ = writer.flush();
+            return;
+        };
+        crate::set_pending_installer(installer);
+        eprintln!("[pipe] 退出并启动更新安装器");
+        let _ = writer.write_all(
+            format!(
+                "{{\"type\":\"applyUpdate_response\",\"reqId\":{req_id},\"data\":{{\"ok\":1,\"message\":\"\"}}}}\n"
+            )
+            .as_bytes(),
+        );
+        let _ = writer.flush();
+        let _ = unsafe {
+            PostMessageW(
+                Some(HWND(hwnd as *mut _)),
+                WM_TRAY_COMMAND,
+                WPARAM(CMD_QUIT),
+                LPARAM(0),
+            )
+        };
     }
 }
 

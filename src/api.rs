@@ -622,22 +622,11 @@ pub fn download_update(sink: StreamSink<UpdateProgress>) {
 }
 
 /// 查最新 release → 挑包 → 下载(或复用已下载的)。返回 (路径, received, total)。
+/// 实现已下沉 core(Windows 管道的「立即更新」共用同一份)。
 fn download_to_cache(
-    mut on_progress: impl FnMut(u64, u64) -> bool,
+    on_progress: impl FnMut(u64, u64) -> bool,
 ) -> Result<(std::path::PathBuf, u64, u64), String> {
-    let rel = crate::update::fetch_latest()?;
-    let asset = crate::update::pick_asset(&rel.assets)
-        .ok_or("当前平台没有对应的安装包,请打开下载页手动更新")?;
-    let dest = crate::update::update_dir().join(&asset.name);
-    if crate::update::cached_asset_is_valid(&dest, asset.sha256.as_deref()) {
-        let total = dest.metadata().map(|m| m.len()).unwrap_or(asset.size);
-        on_progress(total, total);
-        return Ok((dest, total, total));
-    }
-    crate::update::download(&asset.url, &dest, asset.sha256.as_deref(), on_progress)
-        .map_err(|e| e.to_string())?;
-    let total = dest.metadata().map(|m| m.len()).unwrap_or(asset.size);
-    Ok((dest, total, total))
+    crate::update::download_to_cache(on_progress)
 }
 
 /// 解包缓存里最新的 DMG(挂载 → ditto → 卸载 → 验签 → 剥 quarantine)。

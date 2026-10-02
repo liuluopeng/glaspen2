@@ -432,6 +432,19 @@ class _NamedPipeBridge extends _SettingsBridge {
       final type = msg['type'] as String?;
       if (type == 'onSettingsChanged' && _onChanged != null) {
         _onChanged!(msg['data'] as Map<dynamic, dynamic>);
+      } else if (type == 'downloadUpdate_frame') {
+        // 自动更新进度帧 → 下载流;done 帧后关流
+        final id = (msg['reqId'] as num?)?.toInt() ?? 0;
+        final ctl = _downloadCtl;
+        if (ctl != null && id == _downloadReqId && !ctl.isClosed) {
+          final d = msg['data'];
+          ctl.add(d is Map<dynamic, dynamic> ? d : const {});
+          if (d is Map<dynamic, dynamic> && d['done'] == true) {
+            ctl.close();
+            _downloadCtl = null;
+            _downloadReqId = null;
+          }
+        }
       } else if (type == 'getSettings_response' && _settingsCompleter != null) {
         _settingsCompleter!.complete(msg['data'] as Map<dynamic, dynamic>);
         _settingsCompleter = null;
@@ -556,20 +569,37 @@ class _NamedPipeBridge extends _SettingsBridge {
     _writeData(jsonEncode({'type': 'openUrl', 'url': url}) + '\n');
   }
 
-  // Windows 的自动更新(P1.5:命名管道 + 安装桩静默参数)还没接;
-  // 先给出与"备份"一致的降级话术, 让 UI 走"打开下载页"这条路。
+  // 自动更新:进度帧经 downloadUpdate_frame 推送;取消订阅 = 发
+  // cancelDownload(Rust 侧 on_progress 偷看管道输入后停下载并删 .part)。
+  StreamController<Map<dynamic, dynamic>>? _downloadCtl;
+  int? _downloadReqId;
+
   @override
-  Stream<Map<dynamic, dynamic>> downloadUpdate() async* {
-    yield const {'done': true, 'error': 'Windows 版暂不支持自动更新,请打开下载页手动更新'};
+  Stream<Map<dynamic, dynamic>> downloadUpdate() {
+    final ctl = StreamController<Map<dynamic, dynamic>>(onCancel: () {
+      _writeData(jsonEncode({'type': 'cancelDownload'}) + '\n');
+      _downloadCtl = null;
+      _downloadReqId = null;
+    });
+    _downloadCtl = ctl;
+    final id = ++_reqSeq;
+    _downloadReqId = id;
+    _writeData(jsonEncode({'type': 'downloadUpdate', 'reqId': id}) + '\n');
+    return ctl.stream;
   }
 
   @override
-  Future<Map<dynamic, dynamic>> stageUpdate(String tag) async =>
-      {'ok': false, 'message': 'Windows 版暂不支持自动更新,请打开下载页手动更新'};
+  Future<Map<dynamic, dynamic>> stageUpdate(String tag) async {
+    // Windows 无 DMG 解包:安装包下载(校验)完即就绪
+    return const {'ok': true, 'message': '安装包已就绪'};
+  }
 
   @override
-  Future<Map<dynamic, dynamic>> applyUpdate() async =>
-      {'ok': false, 'message': 'Windows 版暂不支持自动更新,请打开下载页手动更新'};
+  Future<Map<dynamic, dynamic>> applyUpdate() async {
+    // 成功路径:覆盖层进程退出、安装器延迟启动 —— 面板随后被一起带走,
+    // 这里的 Future 大概率因管道断开返回空 map(与 macOS「成功不返回」一致)
+    return _request('applyUpdate', null);
+  }
 
   @override
   Future<void> navigateToPage(int screenId) async {
