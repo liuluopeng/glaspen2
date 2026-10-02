@@ -2,21 +2,21 @@ part of 'main.dart';
 
 // ── 桥接层:macOS FRB 直调 / Windows 命名管道 ──
 
-abstract class _SettingsBridge {
+abstract class SettingsBridge {
   Future<Map<dynamic, dynamic>> getSettings();
   Future<void> setSetting(String key, dynamic value);
   void onSettingsChanged(void Function(Map<dynamic, dynamic> s) callback);
   /// 连接建立后回调(Windows 管道异步连接;用于连接后重新拉取设置)
   void Function()? onConnected;
   /// Content tab: 页面列表
-  Future<List<_PageInfo>> listPages();
+  Future<List<PageInfo>> listPages();
   /// Content tab: 一次取多页缩略图(id → PNG);无内容的页不会出现在结果里
   Future<Map<int, Uint8List>> getPageThumbnails(List<int> ids, int maxSize);
   /// 删除一页及其笔迹
   Future<bool> deletePage(int screenId);
   /// 跳转到指定页面并恢复笔迹(继续绘画)
   Future<void> navigateToPage(int screenId);
-  /// 触发一个快捷键动作(与 Ctrl+Alt+<key> 等价)
+  /// 触发一个快捷键动作(与设置面板热键按钮等价)
   Future<void> triggerHotkey(String key);
   /// 无限画布总览:返回 {png: Uint8List, rect: [x,y,w,h]};空画布返回 {}
   Future<Map<dynamic, dynamic>> canvasOverview({int w = 1024, int h = 768});
@@ -56,7 +56,7 @@ abstract class _SettingsBridge {
 /// 设置面板是嵌在 glaspen2 主程序里的 Flutter 视图,Rust 代码就在主可执行
 /// 文件内,所以用 `DynamicLibrary.process()` 解析符号即可 —— 不再有
 /// Flutter MethodChannel,也没有 JSON 中转和逐次平台线程往返。
-class _FrbBridge extends _SettingsBridge {
+class _FrbBridge extends SettingsBridge {
   void Function(Map<dynamic, dynamic>)? _onChanged;
   Future<void>? _ready;
   StreamSubscription<rust.Settings>? _settingsSub;
@@ -133,11 +133,11 @@ class _FrbBridge extends _SettingsBridge {
   }
 
   @override
-  Future<List<_PageInfo>> listPages() async {
+  Future<List<PageInfo>> listPages() async {
     await _init();
     final pages = await rust.listPages();
     return pages
-        .map((p) => _PageInfo(id: p.id, w: p.width, h: p.height))
+        .map((p) => PageInfo(id: p.id, w: p.width, h: p.height))
         .toList();
   }
 
@@ -309,7 +309,7 @@ typedef _PeekNamedPipeDart = int Function(
 /// Windows: uses Named Pipe for IPC with the main overlay process.
 /// Opens pipe with GENERIC_READ|GENERIC_WRITE via CreateFileW.
 /// Uses ReadFile/WriteFile directly for I/O.
-class _NamedPipeBridge extends _SettingsBridge {
+class _NamedPipeBridge extends SettingsBridge {
   int _handle = -1; // Windows HANDLE
   final _buffer = <int>[];
   void Function(Map<dynamic, dynamic>)? _onChanged;
@@ -478,7 +478,7 @@ class _NamedPipeBridge extends _SettingsBridge {
     final c = Completer<Map<dynamic, dynamic>>();
     _pendingReqs[id] = c;
     final msg = <String, dynamic>{'type': type, 'reqId': id, ...?params};
-    _writeData(jsonEncode(msg) + '\n');
+    _writeData('${jsonEncode(msg)}\n');
     try {
       final r = await c.future.timeout(
         const Duration(seconds: 15),
@@ -495,12 +495,12 @@ class _NamedPipeBridge extends _SettingsBridge {
   }
 
   @override
-  Future<List<_PageInfo>> listPages() async {
+  Future<List<PageInfo>> listPages() async {
     final r = await _request('listPages', null);
     final data = r['data'];
     if (data is! List) return const [];
     return data
-        .map((e) => _PageInfo.fromJson(e as Map<String, dynamic>))
+        .map((e) => PageInfo.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
@@ -566,7 +566,7 @@ class _NamedPipeBridge extends _SettingsBridge {
   @override
   Future<void> openUrl(String url) async {
     if (!_connected) return;
-    _writeData(jsonEncode({'type': 'openUrl', 'url': url}) + '\n');
+    _writeData('${jsonEncode({'type': 'openUrl', 'url': url})}\n');
   }
 
   // 自动更新:进度帧经 downloadUpdate_frame 推送;取消订阅 = 发
@@ -577,14 +577,14 @@ class _NamedPipeBridge extends _SettingsBridge {
   @override
   Stream<Map<dynamic, dynamic>> downloadUpdate() {
     final ctl = StreamController<Map<dynamic, dynamic>>(onCancel: () {
-      _writeData(jsonEncode({'type': 'cancelDownload'}) + '\n');
+      _writeData('${jsonEncode({'type': 'cancelDownload'})}\n');
       _downloadCtl = null;
       _downloadReqId = null;
     });
     _downloadCtl = ctl;
     final id = ++_reqSeq;
     _downloadReqId = id;
-    _writeData(jsonEncode({'type': 'downloadUpdate', 'reqId': id}) + '\n');
+    _writeData('${jsonEncode({'type': 'downloadUpdate', 'reqId': id})}\n');
     return ctl.stream;
   }
 
@@ -604,13 +604,13 @@ class _NamedPipeBridge extends _SettingsBridge {
   @override
   Future<void> navigateToPage(int screenId) async {
     if (!_connected) return;
-    _writeData(jsonEncode({'type': 'navigateToPage', 'screenId': screenId}) + '\n');
+    _writeData('${jsonEncode({'type': 'navigateToPage', 'screenId': screenId})}\n');
   }
 
   @override
   Future<void> triggerHotkey(String key) async {
     if (!_connected) return;
-    _writeData(jsonEncode({'type': 'hotkey', 'key': key}) + '\n');
+    _writeData('${jsonEncode({'type': 'hotkey', 'key': key})}\n');
   }
 
   @override
@@ -647,7 +647,7 @@ class _NamedPipeBridge extends _SettingsBridge {
     if (!_connected) return {};
     try {
       _settingsCompleter = Completer<Map<dynamic, dynamic>>();
-      _writeData(jsonEncode({'type': 'getSettings'}) + '\n');
+      _writeData('${jsonEncode({'type': 'getSettings'})}\n');
       final r = await _settingsCompleter!.future.timeout(
         const Duration(seconds: 3),
         onTimeout: () {
@@ -667,7 +667,7 @@ class _NamedPipeBridge extends _SettingsBridge {
   Future<void> setSetting(String key, dynamic value) async {
     if (!_connected) return;
     try {
-      _writeData(jsonEncode({'type': 'setSetting', 'key': key, 'value': value}) + '\n');
+      _writeData('${jsonEncode({'type': 'setSetting', 'key': key, 'value': value})}\n');
     } catch (e) {
       debugPrint('[Settings] setSetting error: $e');
     }
@@ -691,7 +691,7 @@ class _NamedPipeBridge extends _SettingsBridge {
 }
 
 /// Create the appropriate bridge for the current platform.
-_SettingsBridge createBridge() {
+SettingsBridge createBridge() {
   if (Platform.isWindows) {
     // Windows 面板是独立进程,Rust 在覆盖层进程里 → 只能走命名管道
     return _NamedPipeBridge();

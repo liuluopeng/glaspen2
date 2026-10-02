@@ -161,7 +161,10 @@ async fn mock_session(mut rx: UnboundedReceiver<InkFrame>) -> Result<ShareInkRep
     while let Some(frame) = rx.recv().await {
         match frame.frame {
             Some(crate::pb::ink_frame::Frame::Begin(b)) => {
-                eprintln!("[mock]   begin session={} started={}", b.session_id, b.started_at_ms);
+                eprintln!(
+                    "[mock]   begin session={} started={}",
+                    b.session_id, b.started_at_ms
+                );
             }
             Some(crate::pb::ink_frame::Frame::Stroke(s)) => {
                 strokes += 1;
@@ -172,7 +175,10 @@ async fn mock_session(mut rx: UnboundedReceiver<InkFrame>) -> Result<ShareInkRep
                 );
             }
             Some(crate::pb::ink_frame::Frame::End(e)) => {
-                eprintln!("[mock]   end strokes={} duration={}ms", e.stroke_count, e.duration_ms);
+                eprintln!(
+                    "[mock]   end strokes={} duration={}ms",
+                    e.stroke_count, e.duration_ms
+                );
             }
             None => {}
         }
@@ -286,9 +292,7 @@ mod tests {
         }
     }
 
-    async fn spawn_store(
-        strokes: Arc<std::sync::Mutex<Vec<ShareStroke>>>,
-    ) -> String {
+    async fn spawn_store(strokes: Arc<std::sync::Mutex<Vec<ShareStroke>>>) -> String {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {

@@ -17,6 +17,7 @@ pub mod api;
 pub mod macos;
 
 // ── core 再导出:api.rs 的 `crate::db` / `crate::export` 等旧路径照旧成立 ──
+pub use glaspen_core::{
+    STROKES, Stroke, desktop_path, pressure_to_width, runtime, timestamped_name, timestamped_path,
+};
 pub use glaspen_core::{cairo_dl, db, export, modeler, pdf, state, update, updater};
-pub use glaspen_core::{desktop_path, pressure_to_width, runtime, timestamped_name,
-                       timestamped_path, Stroke, STROKES};

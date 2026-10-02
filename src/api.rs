@@ -222,17 +222,16 @@ impl Settings {
         // 布尔容忍数字:ObjC 侧个别键历史上以 @(int) 序列化成 1/0
         let b = |k: &str| {
             v.get(k)
-                .map(|x| x.as_bool().or_else(|| x.as_i64().map(|n| n != 0)).unwrap_or(false))
+                .map(|x| {
+                    x.as_bool()
+                        .or_else(|| x.as_i64().map(|n| n != 0))
+                        .unwrap_or(false)
+                })
                 .unwrap_or(false)
         };
         let i = |k: &str| v.get(k).and_then(|x| x.as_i64()).unwrap_or(0) as i32;
         let f = |k: &str| v.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
-        let s = |k: &str| {
-            v.get(k)
-                .and_then(|x| x.as_str())
-                .unwrap_or("")
-                .to_string()
-        };
+        let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
         Some(Settings {
             color: i("color"),
             width: i("width"),
@@ -814,7 +813,8 @@ mod tests {
 
     #[test]
     fn test_settings_from_json_tolerates_partial_payload() {
-        let s = Settings::from_json(r#"{"color":3,"grid":true,"gridSize":42.5,"gridDivider":2}"#).unwrap();
+        let s = Settings::from_json(r#"{"color":3,"grid":true,"gridSize":42.5,"gridDivider":2}"#)
+            .unwrap();
         assert_eq!(s.color, 3);
         assert!(s.grid);
         assert_eq!(s.grid_size, 42.5);
@@ -842,7 +842,11 @@ mod tests {
             // 即便推送方误发密码字段,from_json 也不解析它
             "chatPassword": "oops",
         });
-        assert!(!Settings::from_json(&j.to_string()).unwrap().chat_has_password);
+        assert!(
+            !Settings::from_json(&j.to_string())
+                .unwrap()
+                .chat_has_password
+        );
     }
 
     /// ObjC 快照里的布尔可能是 @(int) 序列化出的数字 1/0(历史键),

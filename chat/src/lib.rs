@@ -95,15 +95,12 @@ impl Sink {
                 if let Some(v) = crate::auth::bearer_metadata(&token) {
                     req.metadata_mut().insert("authorization", v);
                 }
-                let resp = client
-                    .append_messages(req)
-                    .await
-                    .map_err(|s| {
-                        if s.code() == tonic::Code::Unauthenticated {
-                            crate::auth::invalidate(); // 下次直发前重新登录
-                        }
-                        format!("gRPC AppendMessages failed: {s}")
-                    })?;
+                let resp = client.append_messages(req).await.map_err(|s| {
+                    if s.code() == tonic::Code::Unauthenticated {
+                        crate::auth::invalidate(); // 下次直发前重新登录
+                    }
+                    format!("gRPC AppendMessages failed: {s}")
+                })?;
                 let reply = resp.into_inner();
                 Ok(AppendSummary {
                     first_msg_id: reply.first_msg_id,

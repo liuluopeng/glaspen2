@@ -478,7 +478,10 @@ mod platform {
         let pool = match DB.get() {
             Some(p) => p,
             None => {
-                dblog!("ERR flush stroke={stroke_id}: DB 未初始化, {n} 个点丢失", n = points.len());
+                dblog!(
+                    "ERR flush stroke={stroke_id}: DB 未初始化, {n} 个点丢失",
+                    n = points.len()
+                );
                 return;
             }
         };
@@ -561,12 +564,13 @@ mod platform {
             Some(p) => p,
             None => return None,
         };
-        let r: Option<i64> =
-            sqlx::query_scalar::<_, Option<i64>>("SELECT MAX(id) FROM screens WHERE deleted_at IS NULL")
-                .fetch_one(pool)
-                .await
-                .ok()
-                .flatten();
+        let r: Option<i64> = sqlx::query_scalar::<_, Option<i64>>(
+            "SELECT MAX(id) FROM screens WHERE deleted_at IS NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .ok()
+        .flatten();
         dblog!("末页 id → {:?}", r);
         r
     }
@@ -649,7 +653,9 @@ mod platform {
         .unwrap_or(None);
         dblog!(
             "OCR读 screen={screen_id} → {}",
-            r.as_ref().map(|t| t.len()).map_or("无".into(), |n| format!("{n}字"))
+            r.as_ref()
+                .map(|t| t.len())
+                .map_or("无".into(), |n| format!("{n}字"))
         );
         r
     }
@@ -740,13 +746,11 @@ mod platform {
         };
         // 软删除:标记而非物理删除(数据可恢复)
         let now = now_f64();
-        let ok = match sqlx::query(
-            "UPDATE strokes SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL",
-        )
-        .bind(stroke_id)
-        .bind(now)
-        .execute(pool)
-        .await
+        match sqlx::query("UPDATE strokes SET deleted_at = ?2 WHERE id = ?1 AND deleted_at IS NULL")
+            .bind(stroke_id)
+            .bind(now)
+            .execute(pool)
+            .await
         {
             Ok(r) => {
                 dblog!("笔迹- id={stroke_id} ({})", r.rows_affected());
@@ -756,8 +760,7 @@ mod platform {
                 dblog!("ERR 删笔迹 id={stroke_id}: {e}");
                 false
             }
-        };
-        ok
+        }
     }
 
     pub async fn delete_last_stroke() -> bool {
@@ -906,11 +909,7 @@ mod platform {
             })
             .collect();
         let total_pts = pts.len();
-        dblog!(
-            "载入页 {screen_id} → {} 笔/{} 点",
-            strokes.len(),
-            total_pts
-        );
+        dblog!("载入页 {screen_id} → {} 笔/{} 点", strokes.len(), total_pts);
         attach_points(strokes, pts)
     }
 
@@ -1423,11 +1422,7 @@ mod platform {
                 points: Vec::new(),
             })
             .collect();
-        dblog!(
-            "载入无限 → {} 笔/{} 点",
-            strokes.len(),
-            pts.len()
-        );
+        dblog!("载入无限 → {} 笔/{} 点", strokes.len(), pts.len());
         attach_points(strokes, pts)
     }
 

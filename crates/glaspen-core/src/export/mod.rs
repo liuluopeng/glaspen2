@@ -9,33 +9,34 @@
 //! 本文件保留:绘图与模型器 FFI、描边/镜头状态、设置持久化 FFI、
 //! 开机自启、公共小工具(free_c_string / leak_png 等)。
 
+pub(crate) use crate::{
+    RAW_STROKE_START, Stroke, desktop_path, modeler, pressure_to_width, runtime, state,
+    timestamped_name, timestamped_path,
+};
+pub use crate::{STROKES, db};
 pub use std::ffi::{CStr, CString};
 pub use std::os::raw::{c_char, c_double, c_int, c_uchar};
 pub(crate) use std::path::PathBuf;
 pub use std::slice;
 pub use std::sync::Arc;
-pub(crate) use crate::{RAW_STROKE_START, Stroke, desktop_path, modeler,
-                       pressure_to_width, runtime, state, timestamped_name, timestamped_path};
-pub use crate::{STROKES, db};
 
 mod chat_glue;
 mod media;
 mod pages;
 pub(crate) mod thumbs;
-pub use chat_glue::*;
-pub use media::*;
-pub use pages::*;
-pub use thumbs::*;
-pub(crate) use thumbs::encode_png_rgba;
 pub(crate) use chat_glue::ink_draft_on_stroke_committed;
 pub(crate) use chat_glue::ink_share_on_stroke_committed;
+pub use chat_glue::*;
 #[cfg(test)]
-pub(crate) use media::{build_svg_from, encode_animated_gif, GifStroke};
+pub(crate) use chat_glue::{CHAT_NOTEBOOK, stroke_to_chat_message, sync_chat_auth_from_settings};
+pub use media::*;
 #[cfg(test)]
-pub(crate) use chat_glue::{stroke_to_chat_message, CHAT_NOTEBOOK, sync_chat_auth_from_settings};
+pub(crate) use media::{GifStroke, build_svg_from, encode_animated_gif};
 #[cfg(test)]
 pub(crate) use pages::plan_new_page;
-pub use thumbs::{page_thumbnails_blob, warm_thumbnail_cache, THUMB_BLOB_MAGIC, encode_thumb_blob};
+pub use pages::*;
+pub use thumbs::*;
+pub use thumbs::{THUMB_BLOB_MAGIC, encode_thumb_blob, page_thumbnails_blob, warm_thumbnail_cache};
 
 /// 批量补全所有缺 OCR 结果的页面(阻塞, 逐页调 axum 服务)。
 /// 供面板/菜单后续接入; 无调用方时保持 FFI 导出以便调试。
@@ -52,7 +53,7 @@ pub extern "C" fn glaspen2_ocr_backfill_all() -> c_int {
 /// 若直接当不透明色使用会偏暗 —— 表现为笔迹四周一圈"黑色描边"。
 /// 就地反预乘(直线 alpha), 使边缘像素呈现笔迹本色; alpha 本身不变。
 pub(crate) fn unpremultiply_rgba(buf: &mut [u8]) {
-    for px in buf.chunks_exact_mut(4) {
+    for px in buf.as_chunks_mut::<4>().0 {
         let a = px[3] as u32;
         if (1..255).contains(&a) {
             for c in &mut px[..3] {
@@ -730,7 +731,10 @@ pub extern "C" fn glaspen2_load_string_setting(key: *const c_char) -> *mut c_cha
 
 /// 落笔即时反馈的原始笔宽(与 modeler 平滑宽度同公式)。
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_pressure_raw_width(pressure: c_double, width_scale: c_double) -> c_double {
+pub extern "C" fn glaspen2_pressure_raw_width(
+    pressure: c_double,
+    width_scale: c_double,
+) -> c_double {
     crate::presets::pressure_raw_width(pressure, width_scale)
 }
 
@@ -828,7 +832,6 @@ fn launch_agent_program() -> String {
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| "/Applications/glaspen2.app/Contents/MacOS/glaspen2".to_string())
 }
-
 
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -961,7 +964,11 @@ mod tests {
         }
         let _g = crate::tests::TEST_LOCK.lock().unwrap();
         assert_eq!(glaspen2_ink_draft_start(1920, 1080), 1);
-        assert_eq!(glaspen2_ink_draft_start(1920, 1080), 0, "会话进行中应拒绝二连开");
+        assert_eq!(
+            glaspen2_ink_draft_start(1920, 1080),
+            0,
+            "会话进行中应拒绝二连开"
+        );
         STROKES.lock().unwrap().push(Stroke {
             id: 0,
             r: 1.0,
@@ -970,7 +977,11 @@ mod tests {
             points: vec![(1.0, 2.0, 2.5, 0.0), (30.0, 40.0, 3.5, 0.12)],
         });
         ink_draft_on_stroke_committed();
-        assert_eq!(glaspen2_ink_draft_stop(), 1, "mock 通道应回执 sent/accepted=1");
+        assert_eq!(
+            glaspen2_ink_draft_stop(),
+            1,
+            "mock 通道应回执 sent/accepted=1"
+        );
         assert_eq!(glaspen2_ink_draft_stop(), -1, "会话已关,再 stop 报无会话");
         STROKES.lock().unwrap().pop();
     }

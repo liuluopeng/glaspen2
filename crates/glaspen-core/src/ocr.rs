@@ -12,7 +12,7 @@
 
 use crate::db;
 use crate::runtime;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
@@ -74,7 +74,7 @@ fn render_page_png(strokes: &[db::StrokeData], sw: i32, sh: i32) -> Option<Vec<u
     unsafe {
         let n = (rw as usize) * (rh as usize) * 4;
         let bits = std::slice::from_raw_parts_mut(renderer.bits(), n);
-        for px in bits.chunks_exact_mut(4) {
+        for px in bits.as_chunks_mut::<4>().0 {
             let a = px[3] as u16;
             if a < 255 {
                 px[0] = (px[0] as u16 + (255 - a) * 255 / 255) as u8; // B + (1-a)*白
@@ -94,7 +94,11 @@ fn render_page_png(strokes: &[db::StrokeData], sw: i32, sh: i32) -> Option<Vec<u
 
 /// 调 axum OCR 服务识别一组图片,按顺序返回每张的识别文本。
 /// 单张失败用空串占位(不拖垮整批)。`api_base` 为空 → Err。
-pub fn ocr_images(api_base: &str, images: &[Vec<u8>], token: Option<&str>) -> Result<Vec<String>, String> {
+pub fn ocr_images(
+    api_base: &str,
+    images: &[Vec<u8>],
+    token: Option<&str>,
+) -> Result<Vec<String>, String> {
     if images.is_empty() {
         return Err("没有图片".into());
     }
@@ -122,12 +126,10 @@ pub fn ocr_images(api_base: &str, images: &[Vec<u8>], token: Option<&str>) -> Re
         .timeout_global(Some(REQUEST_TIMEOUT))
         .build();
     let agent = ureq::Agent::new_with_config(config);
-    let mut req = agent
-        .post(&format!("{api_base}/api/ocr/images"))
-        .header(
-            "Content-Type",
-            &format!("multipart/form-data; boundary={boundary}"),
-        );
+    let mut req = agent.post(&format!("{api_base}/api/ocr/images")).header(
+        "Content-Type",
+        &format!("multipart/form-data; boundary={boundary}"),
+    );
     if let Some(t) = token {
         req = req.header("Authorization", &format!("Bearer {t}"));
     }
@@ -146,7 +148,12 @@ pub fn ocr_images(api_base: &str, images: &[Vec<u8>], token: Option<&str>) -> Re
     let mut texts = Vec::new();
     if let Some(arr) = v.get("results").and_then(|r| r.as_array()) {
         for r in arr {
-            texts.push(r.get("text").and_then(|t| t.as_str()).unwrap_or("").to_string());
+            texts.push(
+                r.get("text")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            );
         }
     }
     Ok(texts)

@@ -68,11 +68,36 @@ struct Limit {
 }
 
 const LIMITS: [Limit; 5] = [
-    Limit { key: "gridSize", min: 10.0, max: 200.0, int: false },
-    Limit { key: "gifFps", min: 1.0, max: 50.0, int: true },
-    Limit { key: "gifResolution", min: 0.1, max: 1.0, int: false },
-    Limit { key: "gifSpeed", min: 0.25, max: 20.0, int: false },
-    Limit { key: "gifEndMode", min: 0.0, max: 2.0, int: true },
+    Limit {
+        key: "gridSize",
+        min: 10.0,
+        max: 200.0,
+        int: false,
+    },
+    Limit {
+        key: "gifFps",
+        min: 1.0,
+        max: 50.0,
+        int: true,
+    },
+    Limit {
+        key: "gifResolution",
+        min: 0.1,
+        max: 1.0,
+        int: false,
+    },
+    Limit {
+        key: "gifSpeed",
+        min: 0.25,
+        max: 20.0,
+        int: false,
+    },
+    Limit {
+        key: "gifEndMode",
+        min: 0.0,
+        max: 2.0,
+        int: true,
+    },
 ];
 
 fn limit_for(key: &str) -> Option<&'static Limit> {

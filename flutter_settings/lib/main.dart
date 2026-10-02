@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' hide Size;
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
@@ -111,7 +110,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderStateMixin {
   final _columnKey = GlobalKey();
-  late _SettingsBridge _bridge;
+  late SettingsBridge _bridge;
   late TabController _tabController;
   int _selectedColor = 0;
   int _selectedWidth = 2;
@@ -177,8 +176,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   static const _widthNames = ['极细', '很细', '细', '中', '粗', '很粗', '超粗', '极粗'];
 
   // Content tab state
-  List<_PageInfo> _pages = [];
-  List<_PageInfo> _filteredPages = [];
+  List<PageInfo> _pages = [];
+  List<PageInfo> _filteredPages = [];
   bool _pagesLoading = false;
   // 批量多选删除
   bool _multiSelect = false;
@@ -1028,7 +1027,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     unawaited(_loadPages()); // 重载列表,页码/缩略图与服务端状态对齐
   }
 
-  Widget _buildPageCard(_PageInfo page) {
+  Widget _buildPageCard(PageInfo page) {
     if (page.thumbnail == null && _thumbnailCache.containsKey(page.id)) {
       page.thumbnail = _thumbnailCache[page.id];
     }
@@ -1120,7 +1119,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
-  void _confirmDeletePage(_PageInfo page) {
+  void _confirmDeletePage(PageInfo page) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1141,7 +1140,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
-  Future<void> _deletePage(_PageInfo page) async {
+  Future<void> _deletePage(PageInfo page) async {
     try {
       final ok = await _bridge.deletePage(page.id);
       if (mounted) {

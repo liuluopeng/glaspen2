@@ -459,8 +459,7 @@ pub fn download_to_cache(
     mut on_progress: impl FnMut(u64, u64) -> bool,
 ) -> Result<(std::path::PathBuf, u64, u64), String> {
     let rel = fetch_latest()?;
-    let asset =
-        pick_asset(&rel.assets).ok_or("当前平台没有对应的安装包,请打开下载页手动更新")?;
+    let asset = pick_asset(&rel.assets).ok_or("当前平台没有对应的安装包,请打开下载页手动更新")?;
     let dest = update_dir().join(&asset.name);
     if cached_asset_is_valid(&dest, asset.sha256.as_deref()) {
         let total = dest.metadata().map(|m| m.len()).unwrap_or(asset.size);

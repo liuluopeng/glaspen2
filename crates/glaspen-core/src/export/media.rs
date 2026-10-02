@@ -112,7 +112,6 @@ pub extern "C" fn glaspen2_save_xoj() {
 // Settings
 // ---------------------------------------------------------------------------
 
-
 // ---------------------------------------------------------------------------
 // Drawing save (PNG — transparent)
 // ---------------------------------------------------------------------------
@@ -1225,7 +1224,20 @@ mod tests {
         let strokes = vec![red_stroke()];
         let (bw, bh, bx_min, by_min) = padded_bbox(&strokes);
         let seg_offset = vec![(0usize, 0.0, strokes[0].points.last().unwrap().3)];
-        let (flat, ok) = render_gif_frame(&strokes, &seg_offset, bw, bh, bx_min, by_min, 120, 90, 0, false, f64::MAX, 0);
+        let (flat, ok) = render_gif_frame(
+            &strokes,
+            &seg_offset,
+            bw,
+            bh,
+            bx_min,
+            by_min,
+            120,
+            90,
+            0,
+            false,
+            f64::MAX,
+            0,
+        );
         assert!(ok);
 
         let mut opaque = 0;

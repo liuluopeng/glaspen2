@@ -39,8 +39,10 @@ impl AuthConfig {
     /// 缺任何一个 = 不鉴权(静默降级,不打扰用户)。
     pub fn is_configured(&self) -> bool {
         self.direct_token.is_some()
-            || matches!((&self.api_base, &self.user, &self.password),
-                        (Some(_), Some(_), Some(_)))
+            || matches!(
+                (&self.api_base, &self.user, &self.password),
+                (Some(_), Some(_), Some(_))
+            )
     }
 
     /// 字段级合并:`other` 里的非空值覆盖 `self`(DB/面板设置优先于环境变量)。
@@ -67,10 +69,12 @@ struct AuthState {
 static AUTH: OnceLock<Mutex<AuthState>> = OnceLock::new();
 
 fn auth_state() -> &'static Mutex<AuthState> {
-    AUTH.get_or_init(|| Mutex::new(AuthState {
-        cfg: AuthConfig::from_env(),
-        cached: None,
-    }))
+    AUTH.get_or_init(|| {
+        Mutex::new(AuthState {
+            cfg: AuthConfig::from_env(),
+            cached: None,
+        })
+    })
 }
 
 /// 宿主(glaspen2 设置面板)注入的运行时配置,字段级覆盖环境变量默认值。
@@ -200,7 +204,10 @@ fn parse_login_json(body: &str) -> Result<String, String> {
     let v: serde_json::Value =
         serde_json::from_str(body).map_err(|_| "登录响应不是合法 JSON".to_string())?;
     if v.get("msg").and_then(|m| m.as_str()) != Some("ok") {
-        let msg = v.get("msg").and_then(|m| m.as_str()).unwrap_or("(无 msg 字段)");
+        let msg = v
+            .get("msg")
+            .and_then(|m| m.as_str())
+            .unwrap_or("(无 msg 字段)");
         return Err(format!("登录被拒绝: {msg}"));
     }
     v.pointer("/data/token")
@@ -247,10 +254,30 @@ mod tests {
             direct_token: None,
         };
         assert!(full.is_configured());
-        assert!(AuthConfig { direct_token: Some("t".into()), ..Default::default() }.is_configured());
+        assert!(
+            AuthConfig {
+                direct_token: Some("t".into()),
+                ..Default::default()
+            }
+            .is_configured()
+        );
         // 缺 api_base / 缺密码 → 无法登录,视为未配置。
-        assert!(!AuthConfig { user: Some("u".into()), password: Some("p".into()), ..Default::default() }.is_configured());
-        assert!(!AuthConfig { api_base: Some("https://x".into()), password: Some("p".into()), ..Default::default() }.is_configured());
+        assert!(
+            !AuthConfig {
+                user: Some("u".into()),
+                password: Some("p".into()),
+                ..Default::default()
+            }
+            .is_configured()
+        );
+        assert!(
+            !AuthConfig {
+                api_base: Some("https://x".into()),
+                password: Some("p".into()),
+                ..Default::default()
+            }
+            .is_configured()
+        );
         assert!(!AuthConfig::default().is_configured());
     }
 

@@ -82,22 +82,28 @@ impl DraftChannel {
     /// 返回 false 表示通道已死(连接失败或对端提前断开),本帧及后续帧
     /// 都不会被送达 —— 调用方应尽快 finish 并向用户报告失败。
     pub fn push_stroke(&self, msg: crate::pb::ChatMessage) -> bool {
-        send_frame(&self.tx, DraftFrame {
-            frame: Some(crate::pb::draft_frame::Frame::Stroke(msg)),
-        })
+        send_frame(
+            &self.tx,
+            DraftFrame {
+                frame: Some(crate::pb::draft_frame::Frame::Stroke(msg)),
+            },
+        )
     }
 
     /// 结束会话:补 end 帧 → half-close → 等待 axum 的决定(直至回执或超时)。
     /// async 以便测试直接 await;FFI 侧用 `runtime().block_on(...)` 包一层,
     /// 在松开快捷键后的后台线程上阻塞。
     pub async fn finish(mut self, stroke_count: u32, duration_ms: u64) -> DraftOutcome {
-        let _ = send_frame(&self.tx, DraftFrame {
-            frame: Some(crate::pb::draft_frame::Frame::End(crate::pb::DraftEnd {
-                stroke_count,
-                duration_ms,
-                cancelled: false,
-            })),
-        });
+        let _ = send_frame(
+            &self.tx,
+            DraftFrame {
+                frame: Some(crate::pb::draft_frame::Frame::End(crate::pb::DraftEnd {
+                    stroke_count,
+                    duration_ms,
+                    cancelled: false,
+                })),
+            },
+        );
         drop(self.tx); // 关闭请求流 = half-close,服务端随即处理并回执
         let reply: Result<DraftReply, String> = match self.done.take() {
             Some(h) => h
@@ -117,10 +123,7 @@ impl DraftChannel {
     }
 }
 
-fn send_frame(
-    tx: &tokio::sync::mpsc::UnboundedSender<DraftFrame>,
-    frame: DraftFrame,
-) -> bool {
+fn send_frame(tx: &tokio::sync::mpsc::UnboundedSender<DraftFrame>, frame: DraftFrame) -> bool {
     tx.send(frame).is_ok()
 }
 
@@ -190,9 +193,7 @@ pub(crate) async fn run_grpc(
                 "涂鸦身份已过期,请重新书写一次".into()
             }
             // 身份有效但 axum 里没有该用户的 ink-route。
-            tonic::Code::FailedPrecondition => {
-                "先在 kongde 打开一次要发送目标者的会话页".into()
-            }
+            tonic::Code::FailedPrecondition => "先在 kongde 打开一次要发送目标者的会话页".into(),
             _ => format!("服务端报错: {status}"),
         }),
         Err(_) => {
@@ -319,8 +320,9 @@ mod tests {
     impl chat_store_server::ChatStore for ProbeStore {
         type FetchMessagesStream =
             std::pin::Pin<Box<dyn tokio_stream::Stream<Item = Result<ChatMessage, Status>> + Send>>;
-        type DownloadMediaStream =
-            std::pin::Pin<Box<dyn tokio_stream::Stream<Item = Result<crate::pb::MediaChunk, Status>> + Send>>;
+        type DownloadMediaStream = std::pin::Pin<
+            Box<dyn tokio_stream::Stream<Item = Result<crate::pb::MediaChunk, Status>> + Send>,
+        >;
 
         async fn share_ink(
             &self,
@@ -346,9 +348,11 @@ mod tests {
                 .and_then(|v| v.to_str().ok())
                 .map(str::to_owned);
             let mut stream = request.into_inner();
-            while let Some(f) = stream.message().await.map_err(|s| {
-                Status::internal(format!("bad frame: {s}"))
-            })? {
+            while let Some(f) = stream
+                .message()
+                .await
+                .map_err(|s| Status::internal(format!("bad frame: {s}")))?
+            {
                 if let Some(frame) = f.frame {
                     self.frames.lock().unwrap().push(frame);
                 }
@@ -472,9 +476,7 @@ mod tests {
         assert!(matches!(got[0], Frame::Begin(_)));
         assert!(matches!(got[1], Frame::Stroke(_)));
         assert!(matches!(got[2], Frame::Stroke(_)));
-        assert!(
-            matches!(got[3], Frame::End(ref e) if e.stroke_count == 2 && e.duration_ms == 800)
-        );
+        assert!(matches!(got[3], Frame::End(ref e) if e.stroke_count == 2 && e.duration_ms == 800));
     }
 
     /// 连不上的地址:push 变 false(通道已死),finish 返回 Failed。
@@ -499,7 +501,14 @@ mod tests {
         let mut refused = false;
         for _ in 0..70 {
             if !channel.push_stroke(stroke_message(
-                "glaspen2-doodle", 1, "", "", 0xFF0000, 1.0, &[(0.0, 0.0, 1.0, 0.0)], None,
+                "glaspen2-doodle",
+                1,
+                "",
+                "",
+                0xFF0000,
+                1.0,
+                &[(0.0, 0.0, 1.0, 0.0)],
+                None,
             )) {
                 refused = true;
                 break;
@@ -507,7 +516,10 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(refused, "连接失败后 push_stroke 应变为 false");
-        assert!(matches!(channel.finish(0, 0).await, DraftOutcome::Failed(_)));
+        assert!(matches!(
+            channel.finish(0, 0).await,
+            DraftOutcome::Failed(_)
+        ));
     }
 
     /// 模拟会话:逐帧打印并伪造回执,outcome 与真实形状一致。
@@ -527,7 +539,14 @@ mod tests {
             },
         );
         assert!(channel.push_stroke(stroke_message(
-            "glaspen2-doodle", 1, "", "", 0xFF0000, 1.0, &[(0.0, 0.0, 1.0, 0.0)], None,
+            "glaspen2-doodle",
+            1,
+            "",
+            "",
+            0xFF0000,
+            1.0,
+            &[(0.0, 0.0, 1.0, 0.0)],
+            None,
         )));
         assert_eq!(
             channel.finish(1, 500).await,
@@ -575,22 +594,36 @@ mod tests {
             .await
             .unwrap();
         let (tx, rx) = unbounded_channel();
-        send_frame(&tx, begin_frame(DraftBegin {
-            session_id: "auth-1".into(),
-            started_at_ms: 0,
-            notebook_id: "glaspen2-doodle".into(),
-            author: String::new(),
-            device: String::new(),
-            canvas_w: 0,
-            canvas_h: 0,
-        }));
-        assert!(send_frame(&tx, DraftFrame {
-            frame: Some(Frame::Stroke(stroke_message(
-                "glaspen2-doodle", 1, "", "", 0xFF0000, 1.0, &[(0.0, 0.0, 1.0, 0.0)], None,
-            ))),
-        }));
+        send_frame(
+            &tx,
+            begin_frame(DraftBegin {
+                session_id: "auth-1".into(),
+                started_at_ms: 0,
+                notebook_id: "glaspen2-doodle".into(),
+                author: String::new(),
+                device: String::new(),
+                canvas_w: 0,
+                canvas_h: 0,
+            }),
+        );
+        assert!(send_frame(
+            &tx,
+            DraftFrame {
+                frame: Some(Frame::Stroke(stroke_message(
+                    "glaspen2-doodle",
+                    1,
+                    "",
+                    "",
+                    0xFF0000,
+                    1.0,
+                    &[(0.0, 0.0, 1.0, 0.0)],
+                    None,
+                ))),
+            }
+        ));
         drop(tx); // half-close
-        let reply = super::run_grpc(endpoint, rx, Some("jwt-live".into())).await
+        let reply = super::run_grpc(endpoint, rx, Some("jwt-live".into()))
+            .await
             .expect("session should succeed");
         assert!(reply.sent && reply.accepted == 1);
         assert_eq!(auth.lock().unwrap().as_deref(), Some("Bearer jwt-live"));
@@ -606,7 +639,9 @@ mod tests {
             .unwrap();
         let (tx, rx) = unbounded_channel();
         drop(tx); // 空会话:begin 都不发也允许,直接 half-close
-        let reply = super::run_grpc(endpoint, rx, None).await.expect("should succeed");
+        let reply = super::run_grpc(endpoint, rx, None)
+            .await
+            .expect("should succeed");
         assert!(reply.sent);
         assert_eq!(auth.lock().unwrap().as_deref(), None);
     }

@@ -109,8 +109,7 @@ static INK_DRAFT: std::sync::Mutex<Option<InkDraftSession>> = std::sync::Mutex::
 static INK_DRAFT_LAST_ERROR: std::sync::Mutex<Option<CString>> = std::sync::Mutex::new(None);
 
 fn set_ink_draft_error(err: Option<&str>) {
-    *INK_DRAFT_LAST_ERROR.lock().unwrap() =
-        err.map(|s| CString::new(s).unwrap_or_default());
+    *INK_DRAFT_LAST_ERROR.lock().unwrap() = err.map(|s| CString::new(s).unwrap_or_default());
 }
 
 /// 通道失败原因(UTF-8),无失败时返回 NULL。供 ObjC 在 stop 返回 <0 时
@@ -146,7 +145,8 @@ pub extern "C" fn glaspen2_ink_draft_start(canvas_w: c_int, canvas_h: c_int) -> 
     };
     // 端点解析优先级:设置库(chat_grpc_endpoint,面板/Dock 启动没有
     // 环境变量时靠它落地)> 环境变量 GLASPEN_CHAT_ENDPOINT > 默认值
-    let db_endpoint = runtime().block_on(db::load_setting("chat_grpc_endpoint"))
+    let db_endpoint = runtime()
+        .block_on(db::load_setting("chat_grpc_endpoint"))
         .filter(|v| !v.trim().is_empty());
     let endpoint = db_endpoint
         .clone()
@@ -337,7 +337,9 @@ pub extern "C" fn glaspen2_ink_draft_stop() -> c_int {
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
     let outcome = runtime().block_on(sess.channel.finish(stroke_count, duration_ms));
-    eprintln!("[ink-draft] session closed after {stroke_count} strokes / {duration_ms}ms: {outcome:?}");
+    eprintln!(
+        "[ink-draft] session closed after {stroke_count} strokes / {duration_ms}ms: {outcome:?}"
+    );
     match outcome {
         glaspen_chat::draft::DraftOutcome::Sent { accepted, .. } => {
             set_ink_draft_error(None);
@@ -354,4 +356,3 @@ pub extern "C" fn glaspen2_ink_draft_stop() -> c_int {
         }
     }
 }
-

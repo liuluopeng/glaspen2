@@ -9,20 +9,20 @@ class _ThumbSkeleton extends StatelessWidget {
   Widget build(BuildContext context) => const ColoredBox(color: Color(0x1AF3EEE3));
 }
 
-class _PageInfo {
+class PageInfo {
   final int id;
   final int w;
   final int h;
   Uint8List? thumbnail;
 
-  _PageInfo({
+  PageInfo({
     required this.id,
     required this.w,
     required this.h,
   });
 
-  factory _PageInfo.fromJson(Map<String, dynamic> json) {
-    return _PageInfo(
+  factory PageInfo.fromJson(Map<String, dynamic> json) {
+    return PageInfo(
       id: json['id'] as int,
       w: json['w'] as int,
       h: json['h'] as int,

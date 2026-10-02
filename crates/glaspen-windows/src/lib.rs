@@ -88,7 +88,9 @@ pub fn win_main() {
         let path = installer.to_string_lossy().to_string();
         eprintln!("[glaspen2] 2 秒后启动更新安装器: {path}");
         let _ = std::process::Command::new("cmd")
-            .args(["/c", "timeout", "/t", "2", "/nobreak", ">nul", "&", "start", "", &path])
+            .args([
+                "/c", "timeout", "/t", "2", "/nobreak", ">nul", "&", "start", "", &path,
+            ])
             .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
             .spawn();
     }
@@ -120,6 +122,9 @@ fn already_running_message() {
 
 /// 与 Flutter 设置进程共用同一个 AppUserModelID:任务栏把两个进程的
 /// 窗口归组为同一个 glaspen2 图标,而不是各占一格。
+// 非 Windows 编译为空壳,这两个函数只在 Windows 主流程被调用 ——
+// macOS 侧的 clippy -D warnings 会扫到 dead code,这里显式豁免。
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 fn set_app_user_model_id() {
     #[link(name = "shell32")]
     unsafe extern "system" {
@@ -134,6 +139,7 @@ fn set_app_user_model_id() {
     }
 }
 
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 fn find_settings_exe() -> Option<std::path::PathBuf> {
     let name = "glaspen2_settings.exe";
 

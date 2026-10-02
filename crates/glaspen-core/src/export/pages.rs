@@ -218,7 +218,6 @@ pub extern "C" fn glaspen2_undo_last_stroke() -> c_int {
     STROKES.lock().unwrap().len() as c_int
 }
 
-
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_delete_last_stroke() {
     if state::canvas_kind() == state::CanvasKind::Infinite {
@@ -274,4 +273,3 @@ pub extern "C" fn glaspen2_page_info_json(screen_id: i64) -> *mut c_char {
 // ---------------------------------------------------------------------------
 // Thumbnail rendering (cairo_dl → scaled PNG)
 // ---------------------------------------------------------------------------
-

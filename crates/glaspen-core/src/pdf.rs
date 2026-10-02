@@ -353,7 +353,7 @@ fn timestamped_name(ext: &str) -> String {
 // Tests
 // ---------------------------------------------------------------------------
 
-use lopdf::{dictionary, Dictionary, Object, Stream};
+use lopdf::{Dictionary, Object, Stream, dictionary};
 
 const IDENTITY_CMAP: &[u8] = b"/CIDInit /ProcSet findresource begin
 12 dict begin
@@ -557,7 +557,6 @@ fn add_font_to_page_resources(
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
