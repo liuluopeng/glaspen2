@@ -1441,8 +1441,49 @@ static void gl_load_pen_presets(void) {
     }
 }
 
+// 单实例守卫: 两个实例 = 两套全屏窗口叠加显示 + 同一全局热键同时翻
+// 两套页, 表现为"笔迹重复/翻页只翻了一部分"。flock 随进程生死自动
+// 释放, 崩溃也不会留下死锁。GLASPEN2_ALLOW_MULTI=1 可并行调试。
+// 返回锁 fd(保持打开, 不 close); 已有实例时返回 -1。
+static int instance_lock_acquire(void) {
+    if (getenv("GLASPEN2_ALLOW_MULTI")) return -2; // 显式旁路
+    NSString *path = [NSTemporaryDirectory()
+                      stringByAppendingPathComponent:@"glaspen2.instance.lock"];
+    int fd = open([path fileSystemRepresentation], O_CREAT | O_RDWR, 0666);
+    if (fd < 0) return -1;
+    if (flock(fd, LOCK_EX | LOCK_NB) == 0) return fd; // 拿到锁, 故意不 close
+    close(fd);
+    return -1;
+}
+
+// 旧版实例(没有 flock 逻辑的安装版)不会去抢锁 —— 用运行应用列表兜底:
+// 排除自己之外还有叫 glaspen2 的进程就算已运行。自动更新的 --updater
+// 帮手与主程序同名, 更新窗口期内手动启动会误报, 属可接受的罕见边角。
+static BOOL another_glaspen2_running(void) {
+    for (NSRunningApplication *app in [NSWorkspace.sharedWorkspace runningApplications]) {
+        if (app.processIdentifier == getpid()) continue;
+        NSString *name = app.localizedName ?: app.executableURL.lastPathComponent;
+        if ([name isEqualToString:@"glaspen2"]) return YES;
+    }
+    return NO;
+}
+
 void glaspen2_run(void) {
     @autoreleasepool {
+        // 单实例守卫先于一切初始化: 第二个实例直接弹窗退出
+        int lock_fd = instance_lock_acquire();
+        if (lock_fd == -1 || another_glaspen2_running()) {
+            [NSApplication sharedApplication];
+            [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+            NSAlert *a = [[NSAlert alloc] init];
+            a.messageText = L(@"glaspen2 已在运行", @"glaspen2 is already running");
+            a.informativeText = L(@"检测到另一个 glaspen2 实例(菜单栏图标)。两个实例的笔迹窗口会叠加显示, 全局热键会同时翻两套页 —— 看起来像“笔迹重复/只翻了一部分”。本次启动退出; 开发时如需并行调试, 设 GLASPEN2_ALLOW_MULTI=1。",
+                                  @"Another glaspen2 instance is running (menu bar icon). Two overlays stack and global hotkeys flip both — it looks like duplicated strokes or a partial page flip. This launch exits; set GLASPEN2_ALLOW_MULTI=1 to debug in parallel.");
+            [a addButtonWithTitle:L(@"好", @"OK")];
+            [a runModal];
+            return;
+        }
+
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 

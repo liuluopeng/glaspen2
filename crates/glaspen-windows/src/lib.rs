@@ -28,7 +28,8 @@ pub fn win_main() {
     // 设置管道 \\.\pipe\glaspen2_settings 是全局名字:两个 overlay 并存时,
     // 设置面板的开关/切 tab 消息会被另一个实例抢走,表现为"模式切不动"。
     // 命名互斥量随进程存活,持有期间第二个实例弹窗提示并退出。
-    {
+    // GLASPEN2_ALLOW_MULTI=1 旁路(与 macOS 同款,并行调试用)。
+    if std::env::var("GLASPEN2_ALLOW_MULTI").is_err() {
         use windows::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError};
         use windows::Win32::System::Threading::CreateMutexW;
         use windows::core::PCWSTR;

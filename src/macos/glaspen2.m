@@ -10,6 +10,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <mach/mach_time.h>
+#include <fcntl.h>     // open/O_CREAT —— 单实例 flock 锁
+#include <sys/file.h>  // flock
 
 // App enabled state
 static BOOL g_enabled = YES;
