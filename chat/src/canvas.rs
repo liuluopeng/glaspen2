@@ -326,8 +326,17 @@ mod tests {
     #[tokio::test]
     async fn ink_share_unreachable_is_silent() {
         let ch = InkShareChannel::launch_with("http://127.0.0.1:1", false);
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        assert!(!ch.push_stroke(stroke(&[(0.0, 0.0)])));
+        // 拒绝在 macOS 上毫秒级,在 Windows 上可能被环境拖过 300ms ——
+        // 轮询兜底,上限盖过 CONNECT_TIMEOUT(draft 同款)。
+        let mut refused = false;
+        for _ in 0..70 {
+            if !ch.push_stroke(stroke(&[(0.0, 0.0)])) {
+                refused = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(refused, "连接失败后 push_stroke 应变为 false");
         ch.finish(0, 0).await; // 不抛错:共享上行失败对用户完全无感
     }
 

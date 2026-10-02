@@ -494,11 +494,19 @@ mod tests {
                 canvas_h: 0,
             },
         );
-        // 等任务跑到连接失败并丢弃 rx。
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        assert!(!channel.push_stroke(stroke_message(
-            "glaspen2-doodle", 1, "", "", 0xFF0000, 1.0, &[(0.0, 0.0, 1.0, 0.0)], None,
-        )));
+        // 等任务跑到连接失败并丢弃 rx。拒绝在 macOS 上毫秒级,在 Windows
+        // 上可能被环境拖过 300ms —— 轮询兜底,上限盖过 CONNECT_TIMEOUT。
+        let mut refused = false;
+        for _ in 0..70 {
+            if !channel.push_stroke(stroke_message(
+                "glaspen2-doodle", 1, "", "", 0xFF0000, 1.0, &[(0.0, 0.0, 1.0, 0.0)], None,
+            )) {
+                refused = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(refused, "连接失败后 push_stroke 应变为 false");
         assert!(matches!(channel.finish(0, 0).await, DraftOutcome::Failed(_)));
     }
 
