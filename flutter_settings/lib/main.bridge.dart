@@ -520,13 +520,15 @@ class _NamedPipeBridge extends _SettingsBridge {
 
   @override
   Future<(bool, String)> backupNow() async {
-    // 数据在覆盖层进程里, 面板进程无法直接备份库文件
-    return (false, 'Windows 版暂不支持在设置面板里备份, 请直接复制 glaspen2.db');
+    // 库在覆盖层进程里,备份经管道在那边执行(与 macOS FRB 同一核心函数)
+    final r = await _request('backupNow', null);
+    return (r['ok'] == 1 || r['ok'] == true, (r['message'] as String?) ?? '');
   }
 
   @override
   Future<(bool, String)> restoreLatestBackup() async {
-    return (false, 'Windows 版暂不支持在设置面板里回导');
+    final r = await _request('restoreLatestBackup', null);
+    return (r['ok'] == 1 || r['ok'] == true, (r['message'] as String?) ?? '');
   }
 
   @override
@@ -537,9 +539,10 @@ class _NamedPipeBridge extends _SettingsBridge {
 
   @override
   Future<String> testChatLogin() async {
-    // Windows 面板是独立进程,涂鸦身份配置在覆盖层进程的 DB 里;
-    // 先给降级话术,后续经管道转发时再实现。
-    return 'Windows 版暂不支持在面板里登录,请用环境变量 GLASPEN_CHAT_USER / GLASPEN_CHAT_PASSWORD';
+    // 经管道在覆盖层进程里强制登录一次;配置已先经 setSetting 保存
+    final r = await _request('testChatLogin', null);
+    if (r['ok'] == 1 || r['ok'] == true) return '';
+    return (r['message'] as String?) ?? '登录失败';
   }
 
 

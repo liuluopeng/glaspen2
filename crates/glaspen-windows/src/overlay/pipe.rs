@@ -670,6 +670,55 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
     } else if msg_type == "openUrl" {
         // 「打开下载页」:http/https 白名单在 open_url_checked 里, 缺 url 会被拒绝
         open_url_checked(json_get_str(line, "url"));
+    } else if msg_type == "testChatLogin" {
+        // 涂鸦身份「测试登录」:面板已先经 setSetting 保存最新配置,
+        // 这里强制登录一次(阻塞网络调用跑在管道线程,与 checkUpdate 同理)
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let (ok, message) = match glaspen_core::export::chat_auth_test_login_blocking() {
+            Ok(()) => (1, String::new()),
+            Err(e) => (0, e),
+        };
+        let _ = writer.write_all(
+            format!(
+                "{{\"type\":\"testChatLogin_response\",\"reqId\":{req_id},\"data\":{{\"ok\":{ok},\"message\":\"{}\"}}}}\n",
+                json_escape(&message)
+            )
+            .as_bytes(),
+        );
+        let _ = writer.flush();
+    } else if msg_type == "backupNow" {
+        // 一键全量备份到桌面(库在覆盖层进程里,必须在这边执行 —— macOS 走 FRB 同进程)
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let (ok, message) = match glaspen_core::runtime().block_on(glaspen_core::db::backup_now())
+        {
+            Ok(path) => (1, path),
+            Err(e) => (0, e),
+        };
+        let _ = writer.write_all(
+            format!(
+                "{{\"type\":\"backupNow_response\",\"reqId\":{req_id},\"data\":{{\"ok\":{ok},\"message\":\"{}\"}}}}\n",
+                json_escape(&message)
+            )
+            .as_bytes(),
+        );
+        let _ = writer.flush();
+    } else if msg_type == "restoreLatestBackup" {
+        // 从桌面最新备份合并恢复(不删新增页,同名 id 以备份为准)
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let (ok, message) = match glaspen_core::runtime()
+            .block_on(glaspen_core::db::restore_latest_backup())
+        {
+            Ok((path, pages)) => (1, format!("{path}(当前共 {pages} 页)")),
+            Err(e) => (0, e),
+        };
+        let _ = writer.write_all(
+            format!(
+                "{{\"type\":\"restoreLatestBackup_response\",\"reqId\":{req_id},\"data\":{{\"ok\":{ok},\"message\":\"{}\"}}}}\n",
+                json_escape(&message)
+            )
+            .as_bytes(),
+        );
+        let _ = writer.flush();
     }
 }
 
