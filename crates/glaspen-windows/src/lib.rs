@@ -38,7 +38,10 @@ pub fn win_main() {
             .collect();
         let mutex = unsafe { CreateMutexW(None, false, PCWSTR(name.as_ptr())) };
         if let Ok(mutex) = mutex {
-            // 故意不释放:互斥量随进程生命周期持有
+            // 故意不释放:互斥量随进程生命周期持有。
+            // 不能按 clippy 建议改成 `let _ = mutex` —— 那会立刻 Drop 关掉
+            // 句柄,守卫随进程存活的前提就不成立了。
+            #[allow(clippy::mem_forget)]
             std::mem::forget(mutex);
             if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
                 already_running_message();

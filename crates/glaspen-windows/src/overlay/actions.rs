@@ -504,9 +504,10 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool) {
         }
         set_cam(0.0, 0.0, 1.0);
     }
-    // 切换后画布从空白开始:上一模式的内容仍在库里(重启/翻页回来还在),
-    // 只是切换当下不再显示。清空内存副本,新笔画的 undo/导出只作用于本次。
-    glaspen_core::STROKES.lock().unwrap().clear();
+    // 载入什么就显示什么(与 macOS 一致):load_strokes_for_screen /
+    // load_infinite_strokes 都是"清空再填充"的替换语义,内存与库天然一致,
+    // undo/导出所见即所得。此前的"切换后清空内存副本"会把刚载入的内容
+    // 抹成空白,看起来像切换失败,且让 undo/导出与页面数据脱节。
     redraw_from_strokes(state);
     hud_notify(if on {
         "无限画布已开启 (Ctrl+Alt+滚轮缩放 · Ctrl+Alt+方向键平移)"
