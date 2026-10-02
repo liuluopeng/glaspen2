@@ -1525,6 +1525,9 @@ void glaspen2_run(void) {
             // 最近预设匹配(core 单源,Windows 同一实现)
             g_selectedColorIndex = glaspen2_nearest_color_index(sr, sg, sb);
             g_selected_width_index = glaspen2_nearest_width_index(sw);
+            // 存档色吸附到最近预设: 色板调亮这类更新后, 旧存档值自动迁移
+            // (本来就是预设值时为恒等, 自定义场景不存在——色板是唯一入口)
+            glaspen2_color_preset_rgb(g_selectedColorIndex, &g_pen_r, &g_pen_g, &g_pen_b);
         }
         update_status_icon_state();
         update_menu_checkmarks();

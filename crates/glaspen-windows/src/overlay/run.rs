@@ -107,6 +107,12 @@ pub fn run() {
         }
 
         let mut canvas = OverlayCanvas::create(hwnd);
+
+        // 存档色吸附到最近预设(与 macOS 同策略): 色板调亮这类更新后,
+        // 旧存档值自动迁移; DB 无存档时默认纯红也会归到当前红预设。
+        use glaspen_core::presets::COLOR_PRESETS;
+        let selected_color = closest_color_index(pen_r, pen_g, pen_b);
+        let (pen_r, pen_g, pen_b) = COLOR_PRESETS[selected_color];
         canvas.color = (pen_r as u8, pen_g as u8, pen_b as u8);
 
         let draw = DrawState {
@@ -114,7 +120,7 @@ pub fn run() {
             pen_g,
             pen_b,
             width_scale,
-            selected_color: closest_color_index(pen_r, pen_g, pen_b),
+            selected_color,
             selected_width: closest_width_index(width_scale),
             enabled: true,
             show_rainbow: false,
