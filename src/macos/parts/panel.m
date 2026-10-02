@@ -183,6 +183,11 @@ static void on_display_changed(void) {
     g_screen_h = new_h;
     // Only start a new page when the current one has strokes (no silent page switch).
     glaspen2_on_display_change(g_screen_w, g_screen_h);
+    // 关键: 建页/切页后必须重载当前页笔迹 —— core 只建页并切 current id,
+    // 不动 STROKES 内存; 不重载的话下面的 rebuild_surface 会把旧页内容
+    // 画到新页上, 表现为"相邻两页内容重复/翻页像只翻了一部分"。
+    glaspen2_load_strokes_for_screen(glaspen2_get_current_screen_id());
+    glaspen2_smooth_loaded_strokes();
 
     if (g_window) {
         [g_window setFrame:newFrame display:YES];
