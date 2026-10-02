@@ -130,6 +130,16 @@ extern int  glaspen2_set_launch_at_login(int enable);
 extern int  glaspen2_is_launch_at_login(void);
 extern int glaspen2_stroke_count(void);
 extern int glaspen2_get_stroke_point_count(int idx);
+// 笔预设/设置钳制(glaspen-core presets 单一事实源)
+extern double glaspen2_pressure_raw_width(double pressure, double width_scale);
+extern int glaspen2_color_preset_count(void);
+extern void glaspen2_color_preset_rgb(int i, double *r, double *g, double *b);
+extern int glaspen2_width_preset_count(void);
+extern double glaspen2_width_preset_value(int i);
+extern int glaspen2_nearest_color_index(double r, double g, double b);
+extern int glaspen2_nearest_width_index(double w);
+extern double glaspen2_clamp_setting_double(const char *key, double v);
+extern int glaspen2_clamp_setting_int(const char *key, int v);
 extern void glaspen2_get_stroke_color(int idx, double *r, double *g, double *b);
 extern double glaspen2_get_stroke_avg_width(int idx);
 extern void glaspen2_get_stroke_point(int idx, int pidx, double *x, double *y);
@@ -280,8 +290,9 @@ static double g_pen_r = 1.0, g_pen_g = 0.0, g_pen_b = 0.0;
 
 // Width scale presets
 static double g_width_scale = 1.0;
-// 8 档线宽倍率,与 Flutter 设置面板 / Windows WIDTH_PRESETS 一一对应
-static const double g_width_presets[] = { 0.15, 0.3, 0.6, 1.0, 1.5, 2.0, 2.5, 3.5 };
+// 8 档线宽倍率:数值单源在 glaspen-core presets,启动时经 FFI 填充
+// (g_width_preset_count 须与 core WIDTH_PRESETS 一致,core 测试守着)。
+static double g_width_presets[8];
 static const int g_width_preset_count = 8;
 static int g_selected_width_index = 3; // default: 1.0x
 
@@ -344,18 +355,11 @@ static double g_glass_opacity = 0.45; // opacity level (used only when enabled)
 
 // Color presets
 typedef struct { const char *name; double r, g, b; } ColorPreset;
-static const ColorPreset g_color_presets[] = {
-    // 对齐 rnote 实测色板:全部 S=100% 全饱和,鲜艳度优先(浅色场景配描边)
-    {"Red",     0.839, 0.000, 0.227},  // #D6003A
-    {"Orange",  1.000, 0.302, 0.000},  // #FF4D00
-    {"Yellow",  0.988, 0.718, 0.000},  // #FCB700
-    {"Green",   0.000, 0.694, 0.431},  // #00B16E
-    {"Cyan",    0.431, 0.769, 0.957},  // #6EC4F4
-    {"Blue",    0.000, 0.439, 0.741},  // #0070BD
-    {"Purple",  0.541, 0.000, 0.902},  // #8A00E6
-    {"Pink",    1.000, 0.000, 0.502},  // #FF0080
-    {"White",   1.0,   1.0,   1.0},
-    {"Black",   0.0,   0.0,   0.0},
+// RGB 单源在 glaspen-core presets;name 是菜单英文显示(平台 UI 字符串),
+// RGB 启动时经 FFI 填充。core 测试守着色值与数量一致。
+static ColorPreset g_color_presets[10] = {
+    {"Red"}, {"Orange"}, {"Yellow"}, {"Green"}, {"Cyan"},
+    {"Blue"}, {"Purple"}, {"Pink"}, {"White"}, {"Black"},
 };
 static const int g_color_preset_count = 10;
 

@@ -706,9 +706,7 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             glaspen2_save_bool_setting("minimap", g_minimap_enabled ? 1 : 0);
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
         } else if ([key isEqualToString:@"gridSize"]) {
-            double gs = [value doubleValue];
-            if (gs < 10) gs = 10;
-            if (gs > 200) gs = 200;
+            double gs = glaspen2_clamp_setting_double("gridSize", [value doubleValue]);
             g_grid_size = gs;
             NSString *gsStr = [NSString stringWithFormat:@"%.0f", gs];
             glaspen2_save_string_setting("grid_size", [gsStr UTF8String]);
@@ -724,27 +722,19 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
         } else if ([key isEqualToString:@"pressureMonitor"]) {
             gl_settings_set_pressure_monitor([value boolValue]);
         } else if ([key isEqualToString:@"gifFps"]) {
-            g_gif_fps = [value intValue];
-            if (g_gif_fps < 1) g_gif_fps = 1;
-            if (g_gif_fps > 50) g_gif_fps = 50;
+            g_gif_fps = glaspen2_clamp_setting_int("gifFps", [value intValue]);
             NSString *s = [NSString stringWithFormat:@"%d", g_gif_fps];
             glaspen2_save_string_setting("gif_fps", [s UTF8String]);
         } else if ([key isEqualToString:@"gifResolution"]) {
-            g_gif_resolution = [value doubleValue];
-            if (g_gif_resolution < 0.1) g_gif_resolution = 0.1;
-            if (g_gif_resolution > 1.0) g_gif_resolution = 1.0;
+            g_gif_resolution = glaspen2_clamp_setting_double("gifResolution", [value doubleValue]);
             NSString *s = [NSString stringWithFormat:@"%.4f", g_gif_resolution];
             glaspen2_save_string_setting("gif_resolution", [s UTF8String]);
         } else if ([key isEqualToString:@"gifSpeed"]) {
-            g_gif_speed = [value doubleValue];
-            if (g_gif_speed < 0.25) g_gif_speed = 0.25;
-            if (g_gif_speed > 20.0) g_gif_speed = 20.0;
+            g_gif_speed = glaspen2_clamp_setting_double("gifSpeed", [value doubleValue]);
             NSString *s = [NSString stringWithFormat:@"%.4f", g_gif_speed];
             glaspen2_save_string_setting("gif_speed", [s UTF8String]);
         } else if ([key isEqualToString:@"gifEndMode"]) {
-            g_gif_end_mode = [value intValue];
-            if (g_gif_end_mode < 0) g_gif_end_mode = 0;
-            if (g_gif_end_mode > 2) g_gif_end_mode = 2;
+            g_gif_end_mode = glaspen2_clamp_setting_int("gifEndMode", [value intValue]);
             NSString *s = [NSString stringWithFormat:@"%d", g_gif_end_mode];
             glaspen2_save_string_setting("gif_end_mode", [s UTF8String]);
         } else if ([key isEqualToString:@"chatApiBase"] || [key isEqualToString:@"chatUser"]) {

@@ -1186,9 +1186,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy, CGEventType ty
 
     // Track if a stroke is active (modeler has been initialized)
 
-    // Width from pressure (same formula as Rust modeler::pressure_to_width)
-    double raw_w = (pressure > 0.01) ? (0.3 + pressure * pressure * 7.7) * g_width_scale
-                                     : 1.0 * g_width_scale;
+    // Width from pressure (公式单源在 core modeler::pressure_to_width)
+    double raw_w = glaspen2_pressure_raw_width(pressure, g_width_scale);
     raw_w *= g_zoom; // 屏幕呈现宽度随缩放
 
     // Pressure monitor: update on pen event before early returns
@@ -1395,10 +1394,30 @@ static void virtual_pen_maybe_start(void) {
     });
 }
 
+// 颜色/粗细预设表从 glaspen-core presets 填充(RGB 单源;名字是本平台
+// UI 字符串)。须在任何读表代码(建菜单/恢复设置)之前调用。
+static void gl_load_pen_presets(void) {
+    if (glaspen2_color_preset_count() != g_color_preset_count
+        || glaspen2_width_preset_count() != g_width_preset_count) {
+        NSLog(@"[glaspen2] WARN: core 预设数量与 ObjC 表不一致 (color %d/%d, width %d/%d)",
+              glaspen2_color_preset_count(), g_color_preset_count,
+              glaspen2_width_preset_count(), g_width_preset_count);
+    }
+    for (int i = 0; i < g_color_preset_count; i++) {
+        glaspen2_color_preset_rgb(i, &g_color_presets[i].r, &g_color_presets[i].g, &g_color_presets[i].b);
+    }
+    for (int i = 0; i < g_width_preset_count; i++) {
+        g_width_presets[i] = glaspen2_width_preset_value(i);
+    }
+}
+
 void glaspen2_run(void) {
     @autoreleasepool {
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+
+        // 预设表先于建菜单/恢复设置填充(单一事实源在 core)
+        gl_load_pen_presets();
 
         // Request accessibility permission (needed for CGEventTap)
         NSDictionary *opts = @{(__bridge id)kAXTrustedCheckOptionPrompt: @YES};
@@ -1503,25 +1522,9 @@ void glaspen2_run(void) {
         double sr, sg, sb, sw;
         if (glaspen2_load_settings_parts(&sr, &sg, &sb, &sw)) {
             g_pen_r = sr; g_pen_g = sg; g_pen_b = sb; g_width_scale = sw;
-            // Find closest matching color preset
-            int bestColor = 0;
-            double bestDist = 1e9;
-            for (int i = 0; i < g_color_preset_count; i++) {
-                double dr = g_color_presets[i].r - sr;
-                double dg = g_color_presets[i].g - sg;
-                double db = g_color_presets[i].b - sb;
-                double dist = dr*dr + dg*dg + db*db;
-                if (dist < bestDist) { bestDist = dist; bestColor = i; }
-            }
-            g_selectedColorIndex = bestColor;
-            // Find closest matching width preset
-            int bestWidth = 3;
-            bestDist = 1e9;
-            for (int i = 0; i < g_width_preset_count; i++) {
-                double d = g_width_presets[i] - sw;
-                if (d*d < bestDist) { bestDist = d*d; bestWidth = i; }
-            }
-            g_selected_width_index = bestWidth;
+            // 最近预设匹配(core 单源,Windows 同一实现)
+            g_selectedColorIndex = glaspen2_nearest_color_index(sr, sg, sb);
+            g_selected_width_index = glaspen2_nearest_width_index(sw);
         }
         update_status_icon_state();
         update_menu_checkmarks();
@@ -1590,14 +1593,11 @@ void glaspen2_run(void) {
         if (vspeed) { g_gif_speed = atof(vspeed); glaspen2_free_c_string(vspeed); }
         char *vend = glaspen2_load_string_setting("gif_end_mode");
         if (vend) { g_gif_end_mode = atoi(vend); glaspen2_free_c_string(vend); }
-        if (g_gif_fps < 1) g_gif_fps = 1;
-        if (g_gif_fps > 50) g_gif_fps = 50;
-        if (g_gif_resolution < 0.1) g_gif_resolution = 0.1;
-        if (g_gif_resolution > 1.0) g_gif_resolution = 1.0;
-        if (g_gif_speed < 0.25) g_gif_speed = 0.25;
-        if (g_gif_speed > 20.0) g_gif_speed = 20.0;
-        if (g_gif_end_mode < 0) g_gif_end_mode = 0;
-        if (g_gif_end_mode > 2) g_gif_end_mode = 2;
+        // 区间单源在 core(与 Windows 同表)
+        g_gif_fps = glaspen2_clamp_setting_int("gifFps", g_gif_fps);
+        g_gif_resolution = glaspen2_clamp_setting_double("gifResolution", g_gif_resolution);
+        g_gif_speed = glaspen2_clamp_setting_double("gifSpeed", g_gif_speed);
+        g_gif_end_mode = glaspen2_clamp_setting_int("gifEndMode", g_gif_end_mode);
 
         // 图标反映的状态(颜色/宽度/无限画布)到这里才全部恢复完, 补刷一次
         // (恢复流程更早处的刷新发生在 infinite_canvas 恢复之前, ∞ 徽标会丢)
