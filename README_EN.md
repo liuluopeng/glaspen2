@@ -45,6 +45,7 @@ Switch from the tabs at the top of the settings panel, or the "Infinite canvas" 
   Optional: with a self-hosted OCR service, the PDF embeds a **copyable / searchable text layer** (strokes render as usual, the text is invisible).
 
 - **Grid** adjustable spacing; a heavier boundary line is drawn only at multiples of the screen size (page boundary in Notebook mode, one per screen on the infinite canvas).
+  Optional **column guides** — vertical halves, horizontal halves, or a 3×3 grid — thicken the nearest grid line at each split position (1/2 or 1/3 & 2/3); purely visual, handy when using half a screen as one writing column.
 
 - **Stroke outline** a contrast outline around strokes so they read on light or dark backgrounds (render-only switch).
 
@@ -111,7 +112,6 @@ handwriting store · shared canvas · OCR"]
 | Quit | | `Ctrl + Alt + Q` |
 | Quick GIF recording (hold) | `⌘ + ⌃ + R` | `Ctrl + Alt + R` (hold) |
 | Record handwritten message (hold) | `⌘ + ⌃ + 3` | |
-| Notebook: slide up/down (auto page switch) | `⌥ + ⌘ + ↑` / `⌥ + ⌘ + ↓` | |
 | Infinite canvas: pan (four directions) | `⌥ + ⌘ + arrows` | `Ctrl + Alt + arrows` |
 | Infinite canvas: zoom (cursor anchored) | `⌥ + ⇧ + scroll` | `Ctrl + Alt + scroll` |
 | Infinite canvas: keyboard zoom | `⌘ + ⌃ + PageUp` / `⌘ + ⌃ + PageDown` | `Ctrl + Alt + PageUp` / `Ctrl + Alt + PageDown` |
