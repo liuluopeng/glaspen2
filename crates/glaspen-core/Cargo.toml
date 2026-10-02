@@ -29,5 +29,12 @@ sha2 = "0.11.0"
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2.189"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+# cairo_dl 的 SetDllDirectoryW 用(版本与 glaspen-windows 对齐,避免重复编译)
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+] }
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
