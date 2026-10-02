@@ -93,6 +93,8 @@ extern int glaspen2_save_gif_cropped(const unsigned char *surface_data, int w, i
 extern int glaspen2_save_animated_gif(int fps, double resolution, double speed, int end_mode);
 extern unsigned char * glaspen2_gif_record_end(int start_index, int end_index, int fps, double resolution, double speed, int end_mode, int *out_len);
 extern void glaspen2_draw_rebuild(void *surface_ptr, double scale);
+extern void glaspen2_page_dims(long screen_id, int *w, int *h);
+extern void glaspen2_draw_rebuild_view(void *surface_ptr, double scale, double ox, double oy, double pscale);
 extern int glaspen2_export_pdf(void);
 // 无限画布导出(独立存储):分页 PDF / 整幅 SVG
 extern int glaspen2_export_infinite_pdf_paged(int page_w, int page_h);
@@ -180,12 +182,24 @@ static NSVisualEffectView *g_glass_view = nil;
 // --- Drawing state ---
 static cairo_surface_t *g_surface = NULL;
 
+// 页视图变换(scale-to-fit): 当前页几何 ≠ 屏幕时, 等比缩放居中观看该页
+// (页 = 某时刻玻璃的几何快照); 同几何时恒为恒等 —— 纯玻璃, 严格 1:1。
+// pageview_update() 定义在 parts/run.m, 每次载入某页后调用。
+static double g_pageview_scale = 1.0, g_pageview_ox = 0.0, g_pageview_oy = 0.0;
+static int g_pageview_pw = 0, g_pageview_ph = 0;
+static BOOL g_pageview_fit = NO;
+static void pageview_update(void);
+
 // Create a cairo context with the backing scale factor applied.
 // All drawing coordinates remain in logical points; Cairo renders
 // at physical pixel resolution.
 static inline cairo_t *cairo_create_scaled(void) {
     cairo_t *cr = cairo_create(g_surface);
     cairo_scale(cr, g_scale, g_scale);
+    if (g_pageview_fit) { // pageview_update 保证无限画布时恒为 NO
+        cairo_translate(cr, g_pageview_ox * g_scale, g_pageview_oy * g_scale);
+        cairo_scale(cr, g_pageview_scale, g_pageview_scale);
+    }
     return cr;
 }
 
@@ -322,16 +336,22 @@ static double g_zoom = 1.0; // 视图缩放,(0,1],上限 100%
 // 的变换式以此为恒等项;不再有任何滑动写入路径)。
 static double g_page_off_x = 0.0, g_page_off_y = 0.0;
 
+// 页视图变换(scale-to-fit): 当前页几何 ≠ 屏幕时, 等比缩放居中观看该页
+// (页 = 某时刻玻璃的几何快照); 同几何时恒为恒等 —— 纯玻璃, 严格 1:1。
+
+
 // 输入坐标(视图/屏幕逻辑点)→ 画布坐标。
 // 渲染是 view = (canvas − pan) × zoom,所以 canvas = view / zoom + pan。
 // 翻页模式渲染时镜头恒为原点(page_off 恒 0,整页翻页不滚动),无限画布则是 g_pan。
 // 注意:此前输入写成 `+ g_page_off`,符号反了 —— 在两张之间涂鸦后一移动就跳位。
 static inline double canvas_input_x(double view_x) {
     if (g_infinite_canvas) return view_x / g_zoom + g_pan_x;
+    if (g_pageview_fit) return (view_x - g_page_off_x - g_pageview_ox) / g_pageview_scale;
     return view_x - g_page_off_x; // 翻页模式 zoom 恒为 1
 }
 static inline double canvas_input_y(double view_y) {
     if (g_infinite_canvas) return view_y / g_zoom + g_pan_y;
+    if (g_pageview_fit) return (view_y - g_page_off_y - g_pageview_oy) / g_pageview_scale;
     return view_y - g_page_off_y; // 翻页模式 zoom 恒为 1
 }
 
@@ -575,6 +595,7 @@ static void clear_screen(void) {
     cairo_destroy(cr);
     g_has_last = NO;
     int created = glaspen2_clear_strokes(g_screen_w, g_screen_h);
+    pageview_update(); // 新建/复用页可能切换了当前页
     if (g_infinite_canvas) {
         // 无限画布只有一个画布:清空内容 + 复位镜头,不新建页。
         if (created) {
@@ -598,10 +619,34 @@ static void clear_screen(void) {
     }
 }
 
+static void pageview_frame_draw(void);
+// 快照观看的页框: 页外区域压暗 + 页边界细线(物理像素坐标, 不吃变换)。
+static void pageview_frame_draw(void) {
+    if (!g_pageview_fit || !g_surface) return;
+    cairo_t *cr = cairo_create(g_surface);
+    double x = g_pageview_ox * g_scale, y = g_pageview_oy * g_scale;
+    double w = g_pageview_pw * g_pageview_scale * g_scale;
+    double h = g_pageview_ph * g_pageview_scale * g_scale;
+    cairo_set_source_rgba(cr, 0, 0, 0, 0.42);
+    cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD);
+    cairo_rectangle(cr, 0, 0,
+                    cairo_image_surface_get_width(g_surface),
+                    cairo_image_surface_get_height(g_surface));
+    cairo_rectangle(cr, x, y, w, h);
+    cairo_fill(cr);
+    cairo_set_source_rgba(cr, 1, 1, 1, 0.55);
+    cairo_set_line_width(cr, 1.0);
+    cairo_rectangle(cr, x + 0.5, y + 0.5, w - 1, h - 1);
+    cairo_stroke(cr);
+    cairo_destroy(cr);
+}
+
 static void replay_strokes_from_memory(void) {
     if (!g_surface) return;
-    // Same as rebuild: clear + redraw all strokes via Rust
-    glaspen2_draw_rebuild((void *)g_surface, g_scale);
+    // Same as rebuild: clear + redraw all strokes via Rust (带页视图变换)
+    glaspen2_draw_rebuild_view((void *)g_surface, g_scale,
+                               g_pageview_ox, g_pageview_oy, g_pageview_scale);
+    pageview_frame_draw();
 
     cairo_surface_flush(g_surface);
     if (g_show_rainbow) draw_rainbow_indicator();
@@ -618,7 +663,8 @@ static void save_and_exit(int sig) {
 
 static void draw_rainbow_indicator(void) {
     if (!g_surface) return;
-    cairo_t *cr = cairo_create_scaled();
+    cairo_t *cr = cairo_create(g_surface);
+    cairo_scale(cr, g_scale, g_scale); // 屏幕空间 UI: 不吃页视图变换
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
     // HSV rainbow with full saturation

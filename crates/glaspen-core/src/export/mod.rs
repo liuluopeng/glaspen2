@@ -252,21 +252,58 @@ pub extern "C" fn glaspen2_get_infinite_transform(
 #[cfg(target_os = "macos")]
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scale: c_double) {
+    draw_rebuild_impl(surface_ptr, scale, 0.0, 0.0, 1.0);
+}
+
+/// scale-to-fit 观看:页几何 ≠ 当前屏幕时, 壳层按等比缩放+居中把页画进
+/// 视口。`page_scale/ox/oy` 是"页像素 → 屏幕逻辑点"的变换; fit 模式下
+/// (pscale ≠ 1)跨页邻接与页号标注停用 —— 那是滑动翻页时代的视觉,
+/// 快照观看时一页就是一页。
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_draw_rebuild_view(
+    surface_ptr: *mut std::ffi::c_void,
+    scale: c_double,
+    page_ox: c_double,
+    page_oy: c_double,
+    page_scale: c_double,
+) {
+    draw_rebuild_impl(surface_ptr, scale, page_ox, page_oy, page_scale);
+}
+
+#[cfg(target_os = "macos")]
+fn draw_rebuild_impl(
+    surface_ptr: *mut std::ffi::c_void,
+    scale: c_double,
+    page_ox: c_double,
+    page_oy: c_double,
+    page_scale: c_double,
+) {
     let Some(r) = crate::cairo_dl::CairoRenderer::from_surface(surface_ptr) else {
         return;
     };
     r.clear();
     let (pan_x, pan_y, zoom) = view_transform();
+    // 页视图变换折叠进既有 pan/zoom 管线:
+    //   目标 screen = (canvas - pan)*zoom*pscale + off
+    //   paint 给出  = (canvas - pan_eff)*zoom_eff*scale
+    //   → zoom_eff = zoom*pscale, pan_eff = pan - off/(zoom*pscale)
+    let fit = page_scale != 1.0;
+    let zoom_eff = zoom * page_scale;
+    let pan_x_eff = pan_x - page_ox / (zoom * page_scale);
+    let pan_y_eff = pan_y - page_oy / (zoom * page_scale);
     let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
     let strokes = STROKES.lock().unwrap();
 
     // 主页笔迹
-    paint_strokes(&r, &strokes, pan_x, pan_y, zoom, scale, 0.0, outline);
+    paint_strokes(
+        &r, &strokes, pan_x_eff, pan_y_eff, zoom_eff, scale, 0.0, outline,
+    );
 
     // 活页本跨页显示:相邻两页的笔迹画在本页上下(视口滑出页界时可见)。
-    // 仅翻页模式(无限画布全局只有一张,无邻页)。
+    // 仅翻页模式(无限画布全局只有一张,无邻页);fit 观看时停用。
     let cur = crate::state::current_screen_id();
-    if cur > 0 && crate::state::canvas_kind() != crate::state::CanvasKind::Infinite {
+    if !fit && cur > 0 && crate::state::canvas_kind() != crate::state::CanvasKind::Infinite {
         let neighbors = runtime().block_on(async {
             let mut out: Vec<(f64, Vec<Stroke>)> = Vec::new();
             for (dy, id) in [
@@ -295,16 +332,25 @@ pub extern "C" fn glaspen2_draw_rebuild(surface_ptr: *mut std::ffi::c_void, scal
         });
         let stride = runtime().block_on(db::page_height(cur)).unwrap_or(0.0);
         for (dy, group) in &neighbors {
-            paint_strokes(&r, group, pan_x, pan_y, zoom, scale, *dy * stride, outline);
+            paint_strokes(
+                &r,
+                group,
+                pan_x_eff,
+                pan_y_eff,
+                zoom_eff,
+                scale,
+                *dy * stride,
+                outline,
+            );
         }
         // 页号跟随:各页区域顶部标注页号(滑动跨页时知道自己在哪)
         if let Some(info) = runtime().block_on(db::page_info(cur)) {
             let cur_ord = info.2; // 全局位置(1 起)
             let label = |shift: f64, text: String| {
                 r.draw_text(
-                    (20.0 - pan_x) * zoom * scale,
-                    (44.0 + shift - pan_y) * zoom * scale,
-                    22.0 * zoom * scale,
+                    (20.0 - pan_x_eff) * zoom_eff * scale,
+                    (44.0 + shift - pan_y_eff) * zoom_eff * scale,
+                    22.0 * zoom_eff * scale,
                     (150, 146, 138),
                     &text,
                 );

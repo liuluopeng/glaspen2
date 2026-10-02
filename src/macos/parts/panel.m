@@ -183,6 +183,7 @@ static void display_change_apply(int new_w, int new_h) {
     // 画到新页上, 表现为"相邻两页内容重复/翻页像只翻了一部分"。
     glaspen2_load_strokes_for_screen(glaspen2_get_current_screen_id());
     glaspen2_smooth_loaded_strokes();
+    pageview_update(); // 新页几何可能 ≠ 屏幕
 
     NSRect newFrame = NSMakeRect(0, 0, new_w, new_h);
     if (g_window) {

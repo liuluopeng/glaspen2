@@ -177,6 +177,21 @@ pub extern "C" fn glaspen2_get_current_screen_id() -> i64 {
     state::current_screen_id()
 }
 
+/// 当前页的几何(创建时的屏幕尺寸)。壳层用它做 scale-to-fit 观看:
+/// 页几何 ≠ 当前屏幕时, 等比缩放居中显示而非 1:1 裁在角落。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_page_dims(screen_id: i64, w: *mut c_int, h: *mut c_int) {
+    if w.is_null() || h.is_null() {
+        return;
+    }
+    if let Some((sw, sh)) = runtime().block_on(db::screen_dims(screen_id)) {
+        unsafe {
+            *w = sw;
+            *h = sh;
+        }
+    }
+}
+
 /// Delete a screen (page) and all its data (strokes, points).
 /// Returns 1 on success, 0 on failure.
 #[unsafe(no_mangle)]

@@ -803,6 +803,7 @@ void glaspen2_macos_navigate_to_page(long long screen_id) {
     }
     dispatch_sync(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         glaspen2_load_strokes_for_screen(screen_id);
+        pageview_update();
         gl_run_on_main_sync(^{
             rebuild_surface_from_strokes();
         });

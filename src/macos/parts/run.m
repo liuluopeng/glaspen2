@@ -1,9 +1,12 @@
 }
 
+static void pageview_frame_draw(void);
 static void rebuild_surface_from_strokes(void) {
     if (!g_surface) return;
     // Delegate the actual Cairo rendering to Rust (avoids per-point FFI overhead)
-    glaspen2_draw_rebuild((void *)g_surface, g_scale);
+    glaspen2_draw_rebuild_view((void *)g_surface, g_scale,
+                               g_pageview_ox, g_pageview_oy, g_pageview_scale);
+    pageview_frame_draw();
 
     // Rainbow is drawn by ObjC (g_show_rainbow is a host-side boolean)
     cairo_surface_flush(g_surface);
@@ -298,6 +301,7 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
         } else {
             glaspen2_clear_strokes(g_screen_w, g_screen_h);
         }
+        pageview_update();
         canvas_reset_lens();
     }
     rebuild_surface_from_strokes();
@@ -622,6 +626,7 @@ static BOOL perform_hotkey(unsigned short kc) {
                 ^{ // 渐隐期间并行: 载入 + 平滑
                     glaspen2_load_strokes_for_screen(target);
                     glaspen2_smooth_loaded_strokes();
+                    pageview_update();
                 },
                 ^{ replay_strokes_from_memory(); });
             peek_strokes(1.0); // show the page briefly in ethereal mode
@@ -642,6 +647,7 @@ static BOOL perform_hotkey(unsigned short kc) {
                 ^{ // 渐隐期间并行: 载入 + 平滑
                     glaspen2_load_strokes_for_screen(target);
                     glaspen2_smooth_loaded_strokes();
+                    pageview_update();
                 },
                 ^{ replay_strokes_from_memory(); });
             peek_strokes(1.0); // show the page briefly in ethereal mode
@@ -1394,6 +1400,35 @@ static void virtual_pen_maybe_start(void) {
     });
 }
 
+// 每次载入某页(翻页/启动/显示变化/新建复用)后调用: 依据该页几何
+// 设置页视图变换。页 = 某时刻玻璃的几何快照; 同几何 = 恒等(纯玻璃)。
+static void pageview_update(void) {
+    g_pageview_pw = 0;
+    g_pageview_ph = 0;
+    if (g_infinite_canvas) {
+        g_pageview_fit = NO;
+        g_pageview_scale = 1.0;
+        g_pageview_ox = g_pageview_oy = 0.0;
+        return;
+    }
+    glaspen2_page_dims(glaspen2_get_current_screen_id(), &g_pageview_pw, &g_pageview_ph);
+    if (g_pageview_pw <= 0 || g_pageview_ph <= 0 ||
+        (g_pageview_pw == g_screen_w && g_pageview_ph == g_screen_h)) {
+        g_pageview_fit = NO;
+        g_pageview_scale = 1.0;
+        g_pageview_ox = g_pageview_oy = 0.0;
+        return;
+    }
+    g_pageview_scale = MIN((double)g_screen_w / g_pageview_pw,
+                           (double)g_screen_h / g_pageview_ph);
+    g_pageview_ox = ((double)g_screen_w - g_pageview_pw * g_pageview_scale) / 2.0;
+    g_pageview_oy = ((double)g_screen_h - g_pageview_ph * g_pageview_scale) / 2.0;
+    g_pageview_fit = YES;
+    NSLog(@"[glaspen2] pageview fit: 页 %dx%d → 屏 %dx%d scale=%.3f off=(%.0f,%.0f)",
+          g_pageview_pw, g_pageview_ph, g_screen_w, g_screen_h,
+          g_pageview_scale, g_pageview_ox, g_pageview_oy);
+}
+
 // 诊断钩子: GLASPEN2_FLIP_EVERY=<秒> 周期性触发翻页(走 perform_hotkey
 // 与真实热键同一条路)。第一跳先建第二页, 之后往返翻页供连拍/录屏实验。
 static void flip_probe_maybe_start(void) {
@@ -1588,6 +1623,7 @@ void glaspen2_run(void) {
         g_screen_w = (int)screenFrame.size.width;
         g_screen_h = (int)screenFrame.size.height;
         glaspen2_init_db(g_screen_w, g_screen_h);
+        pageview_update(); // 启动落在末页, 页几何可能 ≠ 屏幕
 
         // Restore saved pen color and width
         double sr, sg, sb, sw;
