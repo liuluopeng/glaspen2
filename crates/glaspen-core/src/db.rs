@@ -21,6 +21,22 @@ pub fn db_path() -> std::path::PathBuf {
     let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let exe_dir = exe.parent().unwrap_or_else(|| std::path::Path::new("."));
 
+    // Windows: cargo 构建产物(target/debug、target/release)里的数据库会被
+    // cargo clean 连锅端掉。dev/本地构建改用固定的 %LOCALAPPDATA%\glaspen2\
+    // glaspen2-dev.db(与 macOS dev 的隔离原则一致),首次运行把 target 里的
+    // 旧库整体搬过去。安装版 exe 不在 target 下,维持 exe 同目录不变。
+    #[cfg(target_os = "windows")]
+    if exe_dir
+        .ancestors()
+        .any(|a| a.file_name() == Some(std::ffi::OsStr::new("target")))
+        && let Some(app_data) = windows_app_data_dir()
+    {
+        let new_path = app_data.join("glaspen2-dev.db");
+        let legacy = exe_dir.join("glaspen2.db");
+        migrate_legacy_db(&legacy, &new_path);
+        return new_path;
+    }
+
     let is_bundled = exe_dir
         .ancestors()
         .any(|a| a.join("Contents").join("Info.plist").exists());
@@ -55,6 +71,41 @@ fn app_support_dir() -> Option<std::path::PathBuf> {
     #[cfg(not(target_os = "macos"))]
     {
         None
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_app_data_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("LOCALAPPDATA").map(|base| {
+        let dir = std::path::PathBuf::from(base).join("glaspen2");
+        std::fs::create_dir_all(&dir).ok();
+        dir
+    })
+}
+
+/// target 里的旧库首次遇到持久位置时整体搬过去(.db + -wal + -shm)。
+/// 持久位置已存在则一律以它为准,不用 target 里的旧数据覆盖。
+#[cfg(target_os = "windows")]
+fn migrate_legacy_db(legacy: &std::path::Path, new_path: &std::path::Path) {
+    if !legacy.exists() || new_path.exists() {
+        return;
+    }
+    if std::fs::copy(legacy, new_path).is_ok() {
+        for suffix in ["-wal", "-shm"] {
+            let mut src_name = legacy.as_os_str().to_os_string();
+            src_name.push(suffix);
+            let src = std::path::PathBuf::from(src_name);
+            if src.exists() {
+                let mut dst_name = new_path.as_os_str().to_os_string();
+                dst_name.push(suffix);
+                let _ = std::fs::copy(&src, std::path::PathBuf::from(dst_name));
+            }
+        }
+        eprintln!(
+            "[db] 已迁移开发库 {} -> {}",
+            legacy.display(),
+            new_path.display()
+        );
     }
 }
 
@@ -2130,5 +2181,36 @@ mod tests {
                 let _ = std::fs::remove_file(f);
             }
         });
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn migrate_legacy_db_copies_once_and_never_clobbers() {
+        let dir = std::env::temp_dir().join(format!("glaspen2_migrate_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = dir.join("legacy.db");
+        let new_path = dir.join("persistent.db");
+
+        // 无旧库:什么都不做
+        super::migrate_legacy_db(&legacy, &new_path);
+        assert!(!new_path.exists());
+
+        // 有旧库(含 -wal):整体搬过去
+        std::fs::write(&legacy, b"db-bytes").unwrap();
+        std::fs::write(dir.join("legacy.db-wal"), b"wal-bytes").unwrap();
+        super::migrate_legacy_db(&legacy, &new_path);
+        assert_eq!(std::fs::read(&new_path).unwrap(), b"db-bytes");
+        assert_eq!(
+            std::fs::read(dir.join("persistent.db-wal")).unwrap(),
+            b"wal-bytes"
+        );
+
+        // 持久库已存在:旧库不得覆盖它
+        std::fs::write(&legacy, b"stale").unwrap();
+        super::migrate_legacy_db(&legacy, &new_path);
+        assert_eq!(std::fs::read(&new_path).unwrap(), b"db-bytes");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
