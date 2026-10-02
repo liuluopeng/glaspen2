@@ -101,6 +101,36 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                     .block_on(glaspen_core::db::save_setting("grid_divider", &v.to_string()));
                 redraw_from_strokes(state);
             }
+            x if x == CMD_TOGGLE_CHAT_INTEGRATION => {
+                // 手写消息集成总开关(macOS gl_settings_set_chat_integration 同语义):
+                // 关 = 静默终止进行中的录制/草稿 + 停共享上行;
+                // 重开 = share_ink 若此前开着则一并恢复
+                let on = param_on(state.draw.chat_integration);
+                state.draw.chat_integration = on;
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "chat_integration",
+                    if on { "1" } else { "0" },
+                ));
+                if on {
+                    let share_on = glaspen_core::runtime()
+                        .block_on(glaspen_core::db::load_setting("share_ink"))
+                        .and_then(|v| v.parse::<i32>().ok())
+                        .unwrap_or(0)
+                        != 0;
+                    if share_on {
+                        glaspen_core::export::glaspen2_share_ink_set_active(1);
+                    }
+                } else {
+                    state.msg_record_start = -1;
+                    if state.ink_draft_active {
+                        state.ink_draft_active = false;
+                        std::thread::spawn(|| {
+                            let _ = glaspen_core::export::glaspen2_ink_draft_stop();
+                        });
+                    }
+                    glaspen_core::export::glaspen2_share_ink_set_active(0);
+                }
+            }
             x if x == CMD_TOGGLE_FROSTED => {
                 let on = param_on(state.draw.frosted);
                 state.draw.frosted = on;
@@ -491,6 +521,8 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool) {
 fn finish_active_stroke(state: &mut OverlayState) {
     if state.in_stroke {
         glaspen_core::export::glaspen2_end_stroke();
+        // 抬笔扇出(草稿/共享/OCR):与 pen.rs 的正常抬笔路径一致
+        glaspen_core::export::glaspen2_notify_stroke_committed();
         state.in_stroke = false;
         state.pen_path.clear();
         let params = modeler_params();
@@ -549,6 +581,89 @@ fn gif_record_stop(state: &mut OverlayState) {
                 WPARAM(result as usize),
                 LPARAM(0),
             );
+        }
+    });
+}
+
+// ── 手写消息集成(macOS ⌘⌃2/⌘⌃3 同款语义,Windows = Ctrl+Alt+2/3)──
+// ⌘⌃3 直发:按住钉住起点,松开把 [start,end) 一次性发送;
+// ⌘⌃2 草稿:按住经 DraftInk 流实时推送,松开 half-close 由 axum 决定。
+// 总开关 chat_integration 关闭时热键不劫持;两者互斥。
+
+/// Ctrl+Alt+3 按下:钉住录制起点(先把手写中的笔画落定)
+fn chat_record_start(state: &mut OverlayState) {
+    if state.msg_record_start >= 0 || state.ink_draft_active {
+        return;
+    }
+    finish_active_stroke(state);
+    state.msg_record_start = glaspen_core::export::glaspen2_stroke_count();
+    hud_notify("书写手写消息… 松开 Ctrl+Alt+3 发送");
+}
+
+/// Ctrl+Alt+3 松开:后台线程发送,gRPC 阻塞不进消息循环
+fn chat_record_stop(state: &mut OverlayState) {
+    let start = state.msg_record_start;
+    state.msg_record_start = -1;
+    if start < 0 {
+        return;
+    }
+    finish_active_stroke(state);
+    let end = glaspen_core::export::glaspen2_stroke_count();
+    if end <= start {
+        hud_notify("没有新手写内容");
+        return;
+    }
+    std::thread::spawn(move || {
+        let sent = glaspen_core::export::glaspen2_chat_send_strokes(start, end);
+        if sent >= 0 {
+            hud_notify(&format!("手写消息已发送 ({sent} 笔)"));
+        } else {
+            hud_notify("手写消息发送失败");
+        }
+    });
+}
+
+/// Ctrl+Alt+2 按下:打开草稿通道(失败原因经 FFI 取回)
+fn ink_draft_start(state: &mut OverlayState) {
+    if state.ink_draft_active || state.msg_record_start >= 0 {
+        return;
+    }
+    finish_active_stroke(state);
+    let (w, h) = (state.canvas.w, state.canvas.h);
+    if glaspen_core::export::glaspen2_ink_draft_start(w, h) != 0 {
+        state.ink_draft_active = true;
+        hud_notify("书写手写消息(草稿)… 松开 Ctrl+Alt+2 交给对方");
+    } else {
+        hud_notify("手写通道开启失败");
+    }
+}
+
+/// Ctrl+Alt+2 松开:后台线程 half-close 并等 axum 的决定(阻塞 FFI)
+fn ink_draft_stop(state: &mut OverlayState) {
+    if !state.ink_draft_active {
+        return;
+    }
+    state.ink_draft_active = false;
+    finish_active_stroke(state);
+    std::thread::spawn(|| {
+        let r = glaspen_core::export::glaspen2_ink_draft_stop();
+        // 失败原因在后台线程取好再通知,避免与下一次会话竞争(macOS 同款)
+        let ptr = glaspen_core::export::glaspen2_ink_draft_last_error();
+        let detail = if ptr.is_null() {
+            String::new()
+        } else {
+            unsafe { std::ffi::CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .to_string()
+        };
+        if r > 0 {
+            hud_notify(&format!("对方已接收手写草稿 ({r} 笔)"));
+        } else if r == 0 {
+            hud_notify("对方未采用这份手写草稿");
+        } else if !detail.is_empty() {
+            hud_notify(&detail);
+        } else {
+            hud_notify("手写通道失败(未连接或中断)");
         }
     });
 }
@@ -655,6 +770,16 @@ unsafe fn handle_keyboard_raw(buf: &[u64], state: &mut OverlayState) {
     if state.gif_recording && kb.VKey == 0x52 && kb.Message == WM_KEYUP {
         // R 松开(无需再验修饰键:录制只在热键按下时开启)
         gif_record_stop(state);
+        return;
+    }
+    // 手写消息:'2'/'3' 松开结束草稿/直发 —— 与 GIF 的 R 同机制,
+    // 不验修饰键,防止先松 Ctrl/Alt 把会话卡死(macOS 同款容错)
+    if kb.Message == WM_KEYUP {
+        if kb.VKey == 0x32 && state.ink_draft_active {
+            ink_draft_stop(state);
+        } else if kb.VKey == 0x33 && state.msg_record_start >= 0 {
+            chat_record_stop(state);
+        }
     }
 }
 

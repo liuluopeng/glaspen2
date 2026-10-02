@@ -153,6 +153,18 @@ unsafe extern "system" fn wnd_proc(
                 }
                 // Ctrl+Alt+R 按住录制手写 GIF(松开由键盘 Raw Input 检测)
                 16 => gif_record_start(state),
+                // Ctrl+Alt+2 按住:手写草稿通道(集成开关守门,松开由 Raw Input 检测)
+                17 => {
+                    if state.draw.chat_integration {
+                        ink_draft_start(state);
+                    }
+                }
+                // Ctrl+Alt+3 按住:录制手写消息,松开直发(松开由 Raw Input 检测)
+                18 => {
+                    if state.draw.chat_integration {
+                        chat_record_start(state);
+                    }
+                }
                 _ => {}
             }
             LRESULT(0)

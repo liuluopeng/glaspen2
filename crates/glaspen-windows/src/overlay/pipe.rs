@@ -363,10 +363,25 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .block_on(glaspen_core::db::load_setting("grid_divider"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0);
+        let chat_integration = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("chat_integration"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
+        let share_canvas = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("share_ink"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
+        let chat_api_base = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("chat_api_base"))
+            .unwrap_or_default();
+        let chat_user = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("chat_user"))
+            .unwrap_or_default();
         let infinite_canvas = if infinite_on() { 1 } else { 0 };
         let (gfps, gres, gspd, gem) = gif_settings();
+        // 密码不回读(macOS 同款):面板只在输入时发送
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false,\"chatIntegration\":{},\"shareCanvas\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\"}}}}\n",
             color,
             width,
             outline,
@@ -380,7 +395,11 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             gfps,
             gres,
             gspd,
-            gem
+            gem,
+            chat_integration,
+            share_canvas,
+            json_escape(&chat_api_base),
+            json_escape(&chat_user),
         );
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
@@ -506,6 +525,44 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                     )
                 };
             }
+        } else if key == "chatIntegration" {
+            // 手写消息集成总开关:经消息循环改状态(终止进行中会话/恢复共享上行)
+            if let Some(on) = json_get_bool(line, "value") {
+                let _ = unsafe {
+                    PostMessageW(
+                        Some(HWND(hwnd as *mut _)),
+                        WM_TRAY_COMMAND,
+                        WPARAM(CMD_TOGGLE_CHAT_INTEGRATION),
+                        LPARAM(if on { 1 } else { 0 }),
+                    )
+                };
+            }
+        } else if key == "shareCanvas" {
+            // 共享画布上行开关:落库 + 仅在集成开启时生效(与 macOS 同规则)
+            if let Some(on) = json_get_bool(line, "value") {
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "share_ink",
+                    if on { "1" } else { "0" },
+                ));
+                let integration_on = glaspen_core::runtime()
+                    .block_on(glaspen_core::db::load_setting("chat_integration"))
+                    .and_then(|v| v.parse::<i32>().ok())
+                    .unwrap_or(0)
+                    != 0;
+                if integration_on {
+                    glaspen_core::export::glaspen2_share_ink_set_active(if on { 1 } else { 0 });
+                }
+            }
+        } else if key == "chatApiBase" || key == "chatUser" || key == "chatPassword" {
+            // 涂鸦身份配置:落库(键名与 macOS 一致)+ 重载 auth 缓存
+            let value = json_get_str(line, "value").to_string();
+            let db_key = match key {
+                "chatApiBase" => "chat_api_base",
+                "chatUser" => "chat_user",
+                _ => "chat_password",
+            };
+            glaspen_core::runtime().block_on(glaspen_core::db::save_setting(db_key, &value));
+            glaspen_core::export::glaspen2_chat_auth_reload();
         } else if key == "frostedGlass" {
             if let Some(on) = json_get_bool(line, "value") {
                 let cmd = CMD_TOGGLE_FROSTED;
@@ -617,6 +674,23 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
 }
 
 // ── Minimal JSON helpers ──
+
+/// JSON 字符串转义(getSettings 回读 chatApiBase/chatUser 等用户输入)
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
 
 fn json_get_str<'a>(json: &'a str, key: &str) -> &'a str {
     let pattern = format!("\"{}\":\"", key);

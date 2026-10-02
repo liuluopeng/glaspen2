@@ -50,6 +50,22 @@ pub fn run() {
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0)
             != 0;
+        // 手写消息集成(与 macOS 同库键):总开关 + 共享上行恢复
+        let chat_integration = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("chat_integration"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
+        if chat_integration {
+            let share_on = glaspen_core::runtime()
+                .block_on(glaspen_core::db::load_setting("share_ink"))
+                .and_then(|v| v.parse::<i32>().ok())
+                .unwrap_or(0)
+                != 0;
+            if share_on {
+                glaspen_core::export::glaspen2_share_ink_set_active(1);
+            }
+        }
 
         // 恢复画布模式与镜头(与 macOS 一致):两种模式独立存储,
         // 无限画布全局仅一个;重启后回到离开时的镜头位置。
@@ -101,6 +117,7 @@ pub fn run() {
             ethereal,
             grid_follow_strokes,
             pressure_monitor,
+            chat_integration,
         };
 
         let mut state = OverlayState {
@@ -113,6 +130,8 @@ pub fn run() {
             strokes_visible: true,
             gif_recording: false,
             gif_record_start: -1,
+            msg_record_start: -1,
+            ink_draft_active: false,
         };
         let _ = state.stroke_modeler.reset_w_params(modeler_params());
         // 按当前画布模式绘制网格与笔迹(无限画布重启后恢复镜头与内容)
@@ -172,6 +191,8 @@ pub fn run() {
         RegisterHotKey(Some(hwnd), 14, mods, VK_PRIOR.0 as u32).ok(); // PageUp
         RegisterHotKey(Some(hwnd), 15, mods, VK_NEXT.0 as u32).ok(); // PageDown
         RegisterHotKey(Some(hwnd), 16, mods, 'R' as u32).ok(); // 按住录 GIF
+        RegisterHotKey(Some(hwnd), 17, mods, '2' as u32).ok(); // 按住手写草稿(集成开)
+        RegisterHotKey(Some(hwnd), 18, mods, '3' as u32).ok(); // 按住手写消息直发(集成开)
 
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         let _ = UpdateWindow(hwnd);
@@ -189,7 +210,7 @@ pub fn run() {
 
         println!("[overlay] 全屏透明涂鸦已启动(WM_INPUT + ink-stroke-modeler + cairo)。");
         println!(
-            "[overlay] 快捷键: Ctrl+Alt+C 新建 / V 开关 / Z 撤销 / J/K 翻页 / G 导出 / B 模糊 / X 固定↔飘渺 / Q 退出;无限画布: 方向键平移 / PageUp·Down 缩放 / Ctrl+Alt+滚轮缩放"
+            "[overlay] 快捷键: Ctrl+Alt+C 新建 / V 开关 / Z 撤销 / J/K 翻页 / G 导出 / B 模糊 / X 固定↔飘渺 / Q 退出 / 2 按住手写草稿 / 3 按住手写直发(集成开时);无限画布: 方向键平移 / PageUp·Down 缩放 / Ctrl+Alt+滚轮缩放"
         );
         run_loop();
 

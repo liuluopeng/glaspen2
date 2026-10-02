@@ -18,6 +18,8 @@ pub struct DrawState {
     pub grid_follow_strokes: bool,
     /// 压力监控 HUD 是否开启
     pub pressure_monitor: bool,
+    /// 手写消息集成总开关(⌘⌃2/⌘⌃3 → Ctrl+Alt+2/3 的守门;面板同键)
+    pub chat_integration: bool,
 }
 
 // ── 共享状态(仅消息循环线程访问) ──
@@ -180,4 +182,8 @@ struct OverlayState {
     gif_recording: bool,
     /// 录制起点笔画序号(-1 = 未在录制)
     gif_record_start: i32,
+    /// ⌘⌃3 直发:按住录制的起点笔画序号(-1 = 未在录制)
+    msg_record_start: i32,
+    /// ⌘⌃2 草稿通道进行中(按住期间实时推送)
+    ink_draft_active: bool,
 }
