@@ -108,7 +108,7 @@ unsafe extern "system" fn wnd_proc(
                 1 => clear_screen(state),
                 2 => toggle_enabled(state),
                 3 => undo_last_stroke(state),
-                // Ctrl+Alt+J/K 上一页/下一页
+                // Ctrl+Alt+`/1 上一页/下一页(b7cb22d 同改)
                 4 => navigate_page(state, false),
                 5 => navigate_page(state, true),
                 // Ctrl+Alt+G 导出 SVG + GIF 并复制到剪贴板

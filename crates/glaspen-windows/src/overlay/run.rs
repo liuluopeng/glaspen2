@@ -172,14 +172,15 @@ pub fn run() {
         println!("[overlay] RegisterRawInputDevices: {:?}", r);
 
         // 热键(README 快捷键表):Ctrl+Alt+C 新建画布 / V 开关 / Z 撤销 /
-        // J/K 翻页 / G 导出 / B 模糊背景 / Q 退出 / X 固定↔飘渺;
+        // ` / 1 翻页(与 macOS b7cb22d 同改:J/K → 左手单手可及的 ~/1) /
+        // G 导出 / B 模糊背景 / Q 退出 / X 固定↔飘渺;
         // 无限画布:方向键平移 / PageUp·PageDown 键盘缩放
         let mods = HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0);
         RegisterHotKey(Some(hwnd), 1, mods, 'C' as u32).ok();
         RegisterHotKey(Some(hwnd), 2, mods, 'V' as u32).ok();
         RegisterHotKey(Some(hwnd), 3, mods, 'Z' as u32).ok();
-        RegisterHotKey(Some(hwnd), 4, mods, 'J' as u32).ok();
-        RegisterHotKey(Some(hwnd), 5, mods, 'K' as u32).ok();
+        RegisterHotKey(Some(hwnd), 4, mods, VK_OEM_3.0 as u32).ok(); // ` 上一页
+        RegisterHotKey(Some(hwnd), 5, mods, '1' as u32).ok(); // 1 下一页
         RegisterHotKey(Some(hwnd), 6, mods, 'G' as u32).ok();
         RegisterHotKey(Some(hwnd), 7, mods, 'B' as u32).ok();
         RegisterHotKey(Some(hwnd), 8, mods, 'Q' as u32).ok();
@@ -210,7 +211,7 @@ pub fn run() {
 
         println!("[overlay] 全屏透明涂鸦已启动(WM_INPUT + ink-stroke-modeler + cairo)。");
         println!(
-            "[overlay] 快捷键: Ctrl+Alt+C 新建 / V 开关 / Z 撤销 / J/K 翻页 / G 导出 / B 模糊 / X 固定↔飘渺 / Q 退出 / 2 按住手写草稿 / 3 按住手写直发(集成开时);无限画布: 方向键平移 / PageUp·Down 缩放 / Ctrl+Alt+滚轮缩放"
+            "[overlay] 快捷键: Ctrl+Alt+C 新建 / V 开关 / Z 撤销 / `·1 翻页 / G 导出 / B 模糊 / X 固定↔飘渺 / Q 退出 / 2 按住手写草稿 / 3 按住手写直发(集成开时);无限画布: 方向键平移 / PageUp·Down 缩放 / Ctrl+Alt+滚轮缩放"
         );
         run_loop();
 

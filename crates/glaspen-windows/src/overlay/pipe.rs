@@ -747,16 +747,13 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             }
             // 偷看取消请求:有 cancelDownload 就停(消费掉这行,core 会删 .part)
             let mut avail: u32 = 0;
-            if unsafe {
-                PeekNamedPipe(handle, None, 0, None, Some(&mut avail), None)
-            }
-            .is_ok()
+            if unsafe { PeekNamedPipe(handle, None, 0, None, Some(&mut avail), None) }.is_ok()
                 && avail > 0
             {
                 let mut buf = vec![0u8; avail as usize];
-                let mut read: u32 = 0;
-                if unsafe { ReadFile(handle, Some(&mut buf), Some(&mut read), None) }.is_ok() {
-                    let s = String::from_utf8_lossy(&buf[..read as usize]);
+                // PeekNamedPipe 已确认有数据,同步读立即返回
+                if let Ok(n) = writer.read(&mut buf) {
+                    let s = String::from_utf8_lossy(&buf[..n]);
                     if s.contains("cancelDownload") {
                         return false;
                     }
