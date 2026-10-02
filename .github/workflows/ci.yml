@@ -55,7 +55,18 @@ jobs:
         run: flutter build macos-framework --release
 
       - name: clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: |
+          cargo clippy --all-targets -- -D warnings 2>&1 | tee /tmp/clippy.log
+          exit ${PIPESTATUS[0]}
+      # 失败时把错误行转成 ::error:: 注解 —— 匿名 API 只能读到注解读不到
+      # 日志, 没有这一步远程排查只能靠猜。
+      - name: clippy errors → annotations
+        if: failure()
+        run: |
+          grep -E "^(error|warning: unused|warning: unreachable)" /tmp/clippy.log | head -40 | \
+            while IFS= read -r line; do echo "::error::$line"; done
+          tail -30 /tmp/clippy.log >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
       - name: test
         run: cargo test
@@ -79,4 +90,13 @@ jobs:
 
       # 只编译不链接, 因此不需要 cairo DLL
       - name: cargo check (Windows)
-        run: cargo check --all-targets
+        run: |
+          cargo check --all-targets 2>&1 | Tee-Object -FilePath check.log
+          exit $LASTEXITCODE
+      - name: check errors → annotations
+        if: failure()
+        shell: bash
+        run: |
+          grep -E "^error" check.log | head -40 | \
+            while IFS= read -r line; do echo "::error::$line"; done
+          exit 1
