@@ -524,8 +524,8 @@ static double s_tun_t0 = 0;
 
 static inline double tunnel_scale_at(double d) { return pow(0.62, d); }
 static inline double tunnel_dim_at(double d) {
-    double a = 0.30 * d;
-    return a > 0.62 ? 0.62 : a;
+    double a = 0.22 * d;
+    return a > 0.5 ? 0.5 : a;
 }
 
 static void tunnel_free_surfaces(void) {
@@ -545,14 +545,35 @@ static cairo_surface_t *tunnel_page_surface(long screen_id, int full_res) {
     return surf;
 }
 
-// 把页快照表面画到深度 d(可带小数): 居中, scale=pow(0.62,d), 压暗
+// 把页快照表面画到深度 d(可带小数): 居中, scale=pow(0.62,d)。
+// 深色主题的页快照是透明底 —— 先垫白纸 + 投影, 页才有"纸卡"的立体感;
+// 否则压暗后页会和黑背景融为一体。
 static void tunnel_draw_slot(cairo_t *cr, cairo_surface_t *surf, double d) {
     if (!surf || d < 0.0 || d > 3.0) return;
     double slot_w = (double)s_tun_surf_w * tunnel_scale_at(d);
+    double slot_h = (double)s_tun_surf_h * tunnel_scale_at(d);
     double k = slot_w / (double)s_tun_surf_w;
     cairo_save(cr);
     cairo_translate(cr, s_tun_surf_w / 2.0, s_tun_surf_h / 2.0);
     cairo_scale(cr, k, k);
+
+    // 投影: 页矩形外扩多层半透明黑(近似 blur), 随深度越远越淡
+    double shadow_a = 0.5 * (1.0 - tunnel_dim_at(d));
+    for (int i = 6; i >= 1; i--) {
+        double grow = i * 3.0;
+        cairo_set_source_rgba(cr, 0, 0, 0, shadow_a * (1.0 - i / 7.0) / 2.0);
+        cairo_rectangle(cr,
+                        -s_tun_surf_w / 2.0 - grow, -s_tun_surf_h / 2.0 - grow,
+                        s_tun_surf_w + grow * 2, s_tun_surf_h + grow * 2);
+        cairo_fill(cr);
+    }
+
+    // 白纸底(快照是透明底)
+    cairo_set_source_rgba(cr, 1, 1, 1, 1);
+    cairo_rectangle(cr, -s_tun_surf_w / 2.0, -s_tun_surf_h / 2.0,
+                    s_tun_surf_w, s_tun_surf_h);
+    cairo_fill(cr);
+
     cairo_set_source_surface(cr, surf, -s_tun_surf_w / 2.0, -s_tun_surf_h / 2.0);
     cairo_paint(cr);
     cairo_set_source_rgba(cr, 0, 0, 0, tunnel_dim_at(d));
