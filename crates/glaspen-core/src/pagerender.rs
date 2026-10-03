@@ -108,6 +108,28 @@ impl PageSurface<'_> {
         }
     }
 
+    /// 页外压暗(scale-to-fit 观看/快照卡片):页外区域叠一层黑,
+    /// 页边界一圈细白线 —— 与画布上的 pageview_frame_draw 同一视觉。
+    pub fn dim_outside(&mut self, x: f64, y: f64, w: f64, h: f64, dim: f64) {
+        let (x1, y1) = (x + w, y + h);
+        let x0i = x.floor() as i32 - 1;
+        let x1i = x1.ceil() as i32 + 1;
+        let y0i = y.floor() as i32 - 1;
+        let y1i = y1.ceil() as i32 + 1;
+        for py in y0i..=y1i {
+            for px in x0i..=x1i {
+                let cx = px as f64 + 0.5;
+                let cy = py as f64 + 0.5;
+                let inside = cx >= x && cx <= x1 && cy >= y && cy <= y1;
+                if !inside {
+                    self.blend_px(px, py, (0, 0, 0), dim);
+                } else if (cx - x < 1.0) || (x1 - cx < 1.0) || (cy - y < 1.0) || (y1 - cy < 1.0) {
+                    self.blend_px(px, py, (255, 255, 255), 0.55);
+                }
+            }
+        }
+    }
+
     /// 圆头线段(alpha 合成, 距离场覆盖)。
     fn stroke_seg(
         &mut self,

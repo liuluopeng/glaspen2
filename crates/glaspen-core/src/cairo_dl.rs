@@ -637,6 +637,31 @@ mod tests {
         assert!(at(32, 32) > 0, "line midpoint should be opaque");
     }
 
+    // blit_bgra: 外部缓冲必须逐像素落到 surface 上(整体不透明度合成的通路)
+    #[test]
+    fn test_blit_bgra_overwrites_pixels() {
+        let Some(r) = CairoRenderer::create_owned(16, 16) else {
+            panic!("cairo must load");
+        };
+        r.clear();
+        r.fill_rect(0.0, 0.0, 16.0, 16.0, (255, 0, 0));
+        let stride = r.stride();
+        assert!(stride >= 16 * 4);
+        let mut data = vec![0u8; stride * 16];
+        // 半透明蓝色(预乘): B=128, A=128
+        for y in 0..16 {
+            for x in 0..16 {
+                let off = y * stride + x * 4;
+                data[off..off + 4].copy_from_slice(&[128, 0, 0, 128]);
+            }
+        }
+        r.blit_bgra(&data, 16, 16, stride);
+        r.flush();
+        let bits = unsafe { std::slice::from_raw_parts(r.bits(), stride * 16) };
+        let off = 8 * stride + 8 * 4;
+        assert_eq!(&bits[off..off + 4], &[128, 0, 0, 128], "blit 应逐像素覆盖");
+    }
+
     // 颜色精确性: 填充实心色块, 中心像素的 RGB 必须完全等于输入 (无偏移)
     #[test]
     fn test_color_precision() {

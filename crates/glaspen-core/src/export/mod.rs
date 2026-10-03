@@ -392,6 +392,8 @@ pub(crate) fn render_page_into(
     ox: f64,
     oy: f64,
     pscale: f64,
+    page_w: f64,
+    page_h: f64,
     alpha: f64,
     white_bg: bool,
 ) -> c_int {
@@ -427,6 +429,18 @@ pub(crate) fn render_page_into(
             h: r.h,
             stride,
         };
+        // scale-to-fit 时页外压暗(与 pageview_frame_draw 同一视觉):
+        // 快照卡片看着就是"贴在深色卡纸上的一页纸"。页几何(点)× pscale
+        // = 页在视口里的尺寸, 与壳层 pageview_update 的定义一致。
+        if pscale != 1.0 && page_w > 0.0 && page_h > 0.0 {
+            surf.dim_outside(
+                ox * scale,
+                oy * scale,
+                page_w * pscale * scale,
+                page_h * pscale * scale,
+                0.42,
+            );
+        }
         crate::pagerender::render_strokes_with_outline(
             &mut surf,
             &lay,

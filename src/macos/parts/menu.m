@@ -300,6 +300,9 @@ static void ethereal_hide_now(void) {
 
 /// 飘渺隐藏: 笔离开数位板立即隐藏(无动效, 无延迟)。
 static BOOL auto_hide_now(void) {
+    // 翻页动效(时光隧道)期间绝不能藏笔迹: hideNow 会把玻璃一起隐藏,
+    // 整个隧道画面就"消失"了(表现为动画期间屏幕一片空白)。
+    if (s_tun_active) return NO;
     if (!g_ethereal_canvas) return NO;
     if (!g_strokes_visible) return NO;
     ethereal_hide_now();

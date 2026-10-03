@@ -25,6 +25,8 @@ static CGFloat g_scale = 1.0;
 
 // Forward declarations
 static void flush_to_layer(void);
+// 翻页动效(时光隧道)进行中(drawRect 抑制网格; 飘渺模式禁止隐藏笔迹)
+static BOOL s_tun_active = NO;
 static void clear_screen(void);
 static void draw_rainbow_indicator(void);
 static void rebuild_surface_from_strokes(void);
@@ -62,6 +64,7 @@ extern void glaspen2_save_with_background(
     const unsigned char *bg_data, int bg_width, int bg_height, int bg_stride);
 extern void glaspen2_begin_stroke(double r, double g, double b, double width_scale);
 extern void glaspen2_add_point(double x, double y, double width);
+extern void glaspen2_add_point_t(double x, double y, double width, double t);
 extern void glaspen2_end_stroke(void);
 extern void glaspen2_save_xoj(void);
 extern int glaspen2_clear_strokes(int screen_w, int screen_h);
@@ -125,10 +128,24 @@ extern int glaspen2_load_infinite_strokes(void);
 extern void glaspen2_set_infinite_transform(double pan_x, double pan_y, double zoom);
 extern void glaspen2_get_infinite_transform(double *pan_x, double *pan_y, double *zoom);
 
+// ── 翻页动效(时光隧道)的页快照 ──
+// 预热缓存: 从 center 起前后若干页一次载入+平滑(不切当前页、不动 STROKES),
+// 逐帧渲染走缓存而不是每帧查库。返回载入的页数。
+extern int glaspen2_preload_flip_pages(long center, int going_next, int before, int after);
+// 把缓存里第 slot 页画进 cairo 表面(透明底)。scale = 视口 backing scale;
+// ox/oy/pscale = scale-to-fit 的"页像素→逻辑点"变换(不 fit 传 0,0,1);
+// alpha = 整页不透明度(渐显/渐隐); white_bg = 白底(导出用)。返回 1 成功。
+extern int glaspen2_paint_preview_into_surface(void *surface_ptr, int slot, double scale,
+                                               double ox, double oy, double pscale,
+                                               double alpha, int white_bg);
+
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
 extern long glaspen2_next_screen_id(void);
 extern long glaspen2_get_current_screen_id(void);
+// 某页相邻的第 n 页(n>0 向后/较新, n<0 向前/较旧; 0 = 自身)。
+// 页按分辨率分组, 与 prev/next 同一邻接语义。找不到返回 0。
+extern long glaspen2_page_neighbor(long screen_id, int n);
 extern int glaspen2_load_strokes_for_screen(long screen_id);
 extern void glaspen2_smooth_loaded_strokes(void);
 extern int  glaspen2_set_launch_at_login(int enable);

@@ -1,7 +1,6 @@
 }
 
 static void pageview_frame_draw(void);
-static BOOL s_tun_active = NO; // 时光隧道动画进行中(drawRect 据此抑制网格)
 static void rebuild_surface_from_strokes(void) {
     if (!g_surface) return;
     // Delegate the actual Cairo rendering to Rust (avoids per-point FFI overhead)
@@ -507,161 +506,258 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
 // 整页翻页:渐隐与显之间的隐藏间隙压到最小 —— 重活(载入/平滑)与渐隐
 // 并行执行, 隐藏间隙里只剩最终表面重绘; 之后立即渐显。
 // 两个 transition 的时长由系统固定; 调用方必须在主线程。
-// ── 时光隧道翻页动效 ──
-// 页 = 对应几何玻璃的快照。翻页时: 当前页缩进隧道深处, 更旧/目标页从
-// 隧道深处飞出, 屏幕中心 = 透视消失点(用户手绘示意, 类 Time Machine)。
-// 实现: 各槽 = 预渲染的页快照表面, 每帧按深度 scale=pow(0.62,d) 居中
-// 绘制并压暗; 主窗口全程可见, 不走系统隐藏动效。
+// ── 时光隧道翻页动效 ─────────────────────────────────────────────────
+// 翻页 = 沿活页本的页序列**向深处推进**:页卡片按透视缩进隧道
+// (Time Machine 式),目标页从隧道尽头飞出、渐实落到满屏,落定瞬间
+// 无缝换成真实页内容。主窗口全程可见, 不走系统隐藏动效。
+//
+// 每张卡片 = 该页的快照(预热缓存渲染到独立缓冲, 见 export/pages.rs 的
+// glaspen2_preload_flip_pages);当前页直接拷贝玻璃表面 —— 第 0 帧与翻页
+// 前一模一样(无跳变)。
+//
+// 透视约定(tunnel_place):缩放 s(z) = 1/(1+K·z), 画面位置随缩放向消失点
+// 收拢 —— 越深的页越小、越靠上、越淡;卡片之间轻微错位, 露出层叠的边
+// (同屏 3-5 层)。相机 z 沿真实页距推进:相邻页恒为 1 个隧道单位, 跨多页
+// 翻页时一次跨过多个单位 —— 页序即隧道深度, "翻多远走多深"。
+//
+// 实验参数:GLASPEN2_FLIP_DUR=<秒>(时长, 默认 0.62)、
+// GLASPEN2_FLIP_K=<f>(透视强度, 默认 0.45, 越大隧道越深)。
 
-#define TUNNEL_SLOTS 4
-static cairo_surface_t *s_tun_surf[TUNNEL_SLOTS]; // 0=当前页 1=深处页 3=目标页
-static double s_tun_inv[TUNNEL_SLOTS];            // 各槽表面分辨率因子(半分辨率=2)
+#define TUNNEL_MAX_CARDS 5
+#define TUNNEL_SPAN 2.0   // 相机后方可见深度(再远就飞出画面)
+#define TUNNEL_FRONT 2.0  // 相机前方可见深度(页从这里飞近)
+
+// 玻璃表面像素尺寸(卡片的坐标空间: 全屏卡片 = 整个表面)
 static int s_tun_surf_w = 0, s_tun_surf_h = 0;
-static BOOL s_tun_going_next = YES;
+
+// 卡片:页距(相对当前页, 整数)+ 该页的快照
+static cairo_surface_t *s_tun_card[TUNNEL_MAX_CARDS];
+static int s_tun_depth[TUNNEL_MAX_CARDS]; // 页距(0 = 当前页)
+static int s_tun_cards = 0;
+static double s_tun_travel = 1.0; // 相机推进的隧道单位(= 本次翻页跨过的页数)
+static BOOL s_tun_back = NO;      // 向前翻(上一页): 相机后退
+static double s_tun_dur = 0.62;
+static double s_tun_k = 0.45;
 static void (^s_tun_prepare)(void);
 static void (^s_tun_commit)(void);
 static dispatch_source_t s_tun_timer;
 static double s_tun_t0 = 0;
-static double s_tun_dur = 0.62;
 
-static inline double tunnel_scale_at(double d) { return pow(0.62, d); }
-static inline double tunnel_dim_at(double d) {
-    double a = 0.22 * d;
-    return a > 0.5 ? 0.5 : a;
+static inline double tunnel_now(void) {
+    return [NSDate timeIntervalSinceReferenceDate];
 }
 
-static void tunnel_free_surfaces(void) {
-    for (int i = 0; i < TUNNEL_SLOTS; i++) {
-        if (s_tun_surf[i]) { cairo_surface_destroy(s_tun_surf[i]); s_tun_surf[i] = NULL; }
+
+static void tunnel_free_cards(void) {
+    for (int i = 0; i < TUNNEL_MAX_CARDS; i++) {
+        if (s_tun_card[i]) {
+            cairo_surface_destroy(s_tun_card[i]);
+            s_tun_card[i] = NULL;
+        }
+        s_tun_depth[i] = 0;
     }
+    s_tun_cards = 0;
 }
 
-// 渲染某页进新表面。full_res: 目标页要放大到全屏, 用全分辨率;
-// 深处页被缩小+压暗, 半分辨率足够。
-static cairo_surface_t *tunnel_page_surface(long screen_id, int full_res) {
-    double k = full_res ? 1.0 : 0.5;
-    int pw = (int)(g_screen_w * g_scale * k);
-    int ph = (int)(g_screen_h * g_scale * k);
-    cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pw, ph);
-    glaspen2_paint_page_into_surface(surf, screen_id, g_scale * k, 0);
-    return surf;
+// 卡片在画面里的位置与缩放。返回 NO = 飞出画面外。
+// zc = 页距 − 相机位置(负 = 已越过镜头, 正 = 在隧道里)。
+//
+// 关键观感:后一页不是"居中缩小", 而是**向上抬出、带页框的白纸卡**
+// (Time Machine 的层叠感) —— 从前页的顶边上方露出一条, 一眼看得出
+// "后面还有一页";卡片上下错开, 谁压谁一眼可辨(旧实现全部居中重叠,
+// 三页透明墨迹糊成一团, 完全看不出纵深 —— 这就是观感翻车的根因)。
+static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
+                         double *out_w, double *out_h, double *out_alpha) {
+    if (zc < -TUNNEL_SPAN - 0.4 || zc > TUNNEL_FRONT + 0.4) return NO;
+    double s = 1.0 / (1.0 + s_tun_k * zc);
+    if (s <= 0.06 || s > 2.5) return NO;
+    double W = (double)s_tun_surf_w, H = (double)s_tun_surf_h;
+    double w = W * s * 0.92;              // 卡纸比满屏略小, 看得出是一张纸
+    double h = H * s * 0.92;
+    // 向消失点(屏幕中上部)收拢:越深越小、越靠上
+    double cy = H * 0.5 + (H * 0.5) * (1.0 - s) * 0.62;
+    double cx = W * 0.5;
+    double a;
+    if (zc < 0.0) {
+        a = 1.0 + zc / TUNNEL_SPAN; // 飞过镜头时渐隐
+        if (a < 0.0) a = 0.0;
+    } else {
+        a = 1.0 - zc / (TUNNEL_FRONT + 0.4) * 0.72; // 尽头先虚后实
+    }
+    if (a > 1.0) a = 1.0;
+    *out_cx = cx;
+    *out_cy = cy;
+    *out_w = w;
+    *out_h = h;
+    *out_alpha = a;
+    return YES;
 }
 
-// 把页快照画到深度 d: 等比缩小, 底边沿"地面线"向消失点(屏幕中上部)
-// 收缩 —— 越深的页越小、越靠上、越透明, 多层墨迹悬浮在玻璃上。
-// alpha_base: 该槽的基础不透明度(目标页落定时趋近 1, 无缝落地)。
-// 把页快照画到深度 d: 尺寸 = 满屏×0.94×0.72^d, 顶部每深一槽上移——
-// 后面的页从前一页的顶边上方露出(Time Machine 的层叠感)。
-static void tunnel_draw_slot(cairo_t *cr, cairo_surface_t *surf,
-                             double cx, double cy, double w, double h,
-                             double alpha) {
-    if (!surf || alpha <= 0.03) return;
-    int native_w = cairo_image_surface_get_width(surf);
-    int native_h = cairo_image_surface_get_height(surf);
+// 把卡片快照画到给定位置:快照画进**带白边的卡纸**里(白色卡纸底 + 快照
+// + 页框), 下缘投影 —— 看着就是"一张张纸"而不是几层墨迹叠在一起。
+// alpha 走逐像素合成(paint_with_alpha 不累积), 卡片间才能互相淡出。
+static void tunnel_draw_card(cairo_t *cr, int slot,
+                             double cx, double cy, double w, double h, double alpha) {
+    cairo_surface_t *surf = s_tun_card[slot];
+    if (!surf || alpha <= 0.02 || w < 1.0 || h < 1.0) return;
+    int nw = cairo_image_surface_get_width(surf);
+    int nh = cairo_image_surface_get_height(surf);
+    if (nw <= 0 || nh <= 0) return;
+
+    // 卡纸:快照四周各留 0.8% 白边(视觉上就是纸的留白)
+    double pad = 0.008;
+    double card_x = cx - w / 2.0, card_y = cy - h / 2.0;
+
     cairo_save(cr);
-    cairo_translate(cr, cx - w / 2.0, cy - h / 2.0);
-    cairo_scale(cr, w / (double)native_w, h / (double)native_h);
+    // 下缘投影(卡片压卡片的层次感)
+    cairo_set_source_rgba(cr, 0, 0, 0, 0.28 * alpha);
+    cairo_rectangle(cr, card_x + w * 0.012, card_y - h * 0.012, w, h);
+    cairo_fill(cr);
+    // 白色卡纸
+    cairo_set_source_rgba(cr, 1, 1, 1, 0.94 * alpha);
+    cairo_rectangle(cr, card_x, card_y, w, h);
+    cairo_fill(cr);
+    // 快照贴进卡纸(留白边)
+    cairo_translate(cr, card_x + w * pad, card_y + h * pad);
+    cairo_scale(cr, w * (1.0 - 2.0 * pad) / (double)nw,
+                h * (1.0 - 2.0 * pad) / (double)nh);
     cairo_set_source_surface(cr, surf, 0, 0);
     cairo_paint_with_alpha(cr, alpha);
-    // 细页框
-    cairo_set_source_rgba(cr, 0, 0, 0, 0.25 * alpha);
-    cairo_set_line_width(cr, 1.5 * (double)native_w / w);
-    cairo_rectangle(cr, 0, 0, (double)native_w, (double)native_h);
+    cairo_restore(cr);
+    // 卡纸边
+    cairo_save(cr);
+    cairo_set_source_rgba(cr, 0, 0, 0, 0.22 * alpha);
+    cairo_set_line_width(cr, MAX(1.0, w * 0.0015));
+    cairo_rectangle(cr, card_x, card_y, w, h);
     cairo_stroke(cr);
     cairo_restore(cr);
 }
 
-// 一帧: 白纸卡层叠(透明玻璃, 桌面从卡外透出)。
-// 目标页: 尺寸 0.72H → 1.02H 渐大渐实, 落定即满屏无缝; 其余页在其上方
-// 依次缩小上移, 顶边阶梯露出 —— Time Machine 的纵深书堆。
+// 一帧:相机沿页距推进(缓入缓出), 卡片按隧道坐标摆位;
+// 深处的先画、近处的后画 —— 层叠顺序即页序。
 static void tunnel_frame(double p) {
-    if (!g_surface) return;
+    if (!g_surface || s_tun_cards == 0) return;
+    double e = p < 0.5 ? 4.0 * p * p * p : 1.0 - pow(-2.0 * p + 2.0, 3.0) / 2.0;
+    double cam = e * s_tun_travel * (s_tun_back ? -1.0 : 1.0);
+
     cairo_t *cr = cairo_create(g_surface);
-    double e = 1.0 - pow(1.0 - p, 3.0);
-    double G = 0.72 + 0.34 * e; // 全局镜头推进系数: 0.72 → 1.06
+    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+    cairo_set_source_rgba(cr, 0, 0, 0, 0); // 清成透明(玻璃上叠卡片, 卡外是桌面)
+    cairo_paint(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
-    double depths[TUNNEL_SLOTS] = {-1, -1, -1, -1};
-    double alphas[TUNNEL_SLOTS] = {0, 0, 0, 0};
-    if (s_tun_going_next) {
-        depths[0] = e;             // 当前页: 0 → 1
-        depths[1] = 1.0 + e * 0.7; // 上一页: 1 → 1.7
-        depths[3] = 1.0 - e;       // 目标页: 1 → 0
-        alphas[0] = 0.95 * (1.0 - 0.45 * e); // 当前页渐隐(落定即消失)
-        alphas[1] = 0.85;
-        alphas[3] = 0.45 + 0.55 * e;         // 目标页渐实
-    } else {
-        depths[0] = e;             // 当前页: 0 → 1
-        depths[1] = 1.0 - e;       // 上一页(目标): 1 → 0
-        depths[2] = 1.0 + e * 0.7; // 更旧页: 1 → 1.7
-        alphas[0] = 0.95 * (1.0 - 0.45 * e);
-        alphas[1] = 0.45 + 0.55 * e;
-        alphas[2] = 0.85;
+    // 按隧道坐标从深到浅排序画(卡片数 ≤ 5, 插入排序足够)
+    int order[TUNNEL_MAX_CARDS];
+    for (int i = 0; i < s_tun_cards; i++) order[i] = i;
+    for (int i = 1; i < s_tun_cards; i++) {
+        int key = order[i];
+        int j = i - 1;
+        while (j >= 0 && s_tun_depth[order[j]] < s_tun_depth[key]) {
+            order[j + 1] = order[j];
+            j--;
+        }
+        order[j + 1] = key;
     }
-
-    double Wd = (double)s_tun_surf_w, Hd = (double)s_tun_surf_h;
-    int native_w, native_h;
-    for (int pass = 3; pass >= 0; pass--) {
-        cairo_surface_t *surf = s_tun_surf[pass];
-        double d = depths[pass];
-        if (!surf || d < -0.2) continue;
-        native_w = cairo_image_surface_get_width(surf);
-        native_h = cairo_image_surface_get_height(surf);
-        double h = Hd * 0.92 * pow(0.75, d) * G;
-        double w = h * (Wd / Hd);
-        double cx = Wd / 2.0;
-        double cy = Hd * (0.52 + 0.13 * d) - (G - 1.0) * Hd * 0.48 * pow(0.75, d);
-        double alpha = alphas[pass] * (1.0 - 0.10 * d);
-        tunnel_draw_slot(cr, surf, cx, cy, w, h, alpha);
+    for (int i = 0; i < s_tun_cards; i++) {
+        int slot = order[i];
+        double zc = (double)s_tun_depth[slot] - cam;
+        double cx, cy, w, h, a;
+        if (!tunnel_place(zc, &cx, &cy, &w, &h, &a)) continue;
+        // 卡纸满屏化:当前页深度为 0 时正好铺满(落定无缝), 深处的页
+        // 按透视缩小并上移 —— 露出的边就是层叠的"阶梯"。
+        tunnel_draw_card(cr, slot, cx, cy, w, h, a);
     }
     cairo_destroy(cr);
     flush_to_layer();
 }
 
 static void tunnel_finish(void) {
-    if (s_tun_timer) { dispatch_source_cancel(s_tun_timer); s_tun_timer = NULL; }
-    tunnel_free_surfaces();
+    if (s_tun_timer) {
+        dispatch_source_cancel(s_tun_timer);
+        s_tun_timer = NULL;
+    }
+    tunnel_frame(1.0); // 最后一帧: 目标页满屏, 与真实页一模一样
+    tunnel_free_cards();
     s_tun_active = NO;
-    if (s_tun_prepare) { s_tun_prepare(); s_tun_prepare = NULL; }
+    if (s_tun_prepare) { s_tun_prepare(); s_tun_prepare = NULL; } // 可为 NULL
     if (s_tun_commit) { s_tun_commit(); s_tun_commit = NULL; }
 }
 
-// 返回 YES = 隧道动画已接管; NO = 无目标页/资源失败, 走系统动效
+// 造一张卡片:某页的快照渲染到独立缓冲(与画布一致的 scale-to-fit 变换);
+// 当前页直接拷贝玻璃表面, 保证第 0 帧无跳变。cache_slot = 预热缓存里的序号。
+static BOOL tunnel_make_card(int slot, int cache_slot, long screen_id, int is_current) {
+    // scale-to-fit 变换必须与画布一致(见 pageview_update): 页几何 ≠ 屏幕
+    // 时等比缩放居中, 页外压暗 —— 快照几何来自该页的 screen_w/h。
+    double pscale = 1.0, ox = 0.0, oy = 0.0;
+    int pw = g_screen_w, ph = g_screen_h;
+    if (!is_current) {
+        glaspen2_page_dims(screen_id, &pw, &ph);
+        if (pw <= 0 || ph <= 0) { pw = g_screen_w; ph = g_screen_h; }
+        if (pw != g_screen_w || ph != g_screen_h) {
+            pscale = MIN((double)g_screen_w / (double)pw, (double)g_screen_h / (double)ph);
+            ox = ((double)g_screen_w - (double)pw * pscale) / 2.0;
+            oy = ((double)g_screen_h - (double)ph * pscale) / 2.0;
+        }
+    }
+    int sw = (int)(g_screen_w * g_scale), sh = (int)(g_screen_h * g_scale);
+    if (sw <= 0 || sh <= 0) return NO;
+    cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, sw, sh);
+    if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+        cairo_surface_destroy(surf);
+        return NO;
+    }
+    if (is_current) {
+        cairo_t *cr = cairo_create(surf);
+        cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+        cairo_set_source_surface(cr, g_surface, 0, 0);
+        cairo_paint(cr);
+        cairo_destroy(cr);
+    } else {
+        glaspen2_paint_preview_into_surface((void *)surf, cache_slot, g_scale,
+                                            ox, oy, pscale, 1.0, 0);
+    }
+    s_tun_card[slot] = surf;
+    return YES;
+}
+
+// 返回 YES = 隧道动画已接管; NO = 无目标页/资源失败, 走系统动效。
+// going_next: 向后翻(下一页) = 相机推进 1 个隧道单位; 向前翻(上一页) =
+// 相机后退 —— 前一页从镜头后方飞出、当前页缩进隧道深处。
 static BOOL page_flip_tunnel(BOOL going_next, void (^prepare)(void), void (^commit)(void)) {
+    if (!g_surface || g_screen_w <= 0 || g_screen_h <= 0) return NO;
+
     long cur = glaspen2_get_current_screen_id();
     long target = going_next ? glaspen2_next_screen_id() : glaspen2_prev_screen_id();
-    long older = glaspen2_prev_screen_id();
-    (void)cur;
-    tunnel_free_surfaces();
+    if (target <= 0) return NO;
+
+    tunnel_free_cards();
     s_tun_surf_w = (int)(g_screen_w * g_scale);
     s_tun_surf_h = (int)(g_screen_h * g_scale);
-    for (int i = 0; i < TUNNEL_SLOTS; i++) s_tun_inv[i] = 1.0;
+    if (s_tun_surf_w <= 0 || s_tun_surf_h <= 0) return NO;
 
-    // 槽 0: 当前玻璃内容(原样拷贝, 透明底 —— 玻璃上本来就是墨迹悬浮)
-    s_tun_surf[0] = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, s_tun_surf_w, s_tun_surf_h);
-    cairo_t *cr = cairo_create(s_tun_surf[0]);
-    cairo_set_source_surface(cr, g_surface, 0, 0);
-    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-    cairo_paint(cr);
-    cairo_destroy(cr);
+    // 预热缓存: [前 2 页…, 当前页, 后 2 页…](页序排列, 见 export/pages.rs)
+    const int before = 2, after = 2;
+    int n = glaspen2_preload_flip_pages(cur, going_next ? 1 : 0, before, after);
+    if (n <= 0) return NO;
+    if (n > TUNNEL_MAX_CARDS) n = TUNNEL_MAX_CARDS;
 
-    int ok = 0;
-    if (target > 0) {
-        s_tun_surf[3] = tunnel_page_surface(target, 1);
-        s_tun_inv[3] = g_scale;    // 全分辨率: native = 屏幕物理像素×g_scale
-        ok = 1;
+    for (int i = 0; i < n; i++) {
+        int depth = i - before;
+        s_tun_depth[i] = depth;
+        if (!tunnel_make_card(i, i, depth == 0 ? cur : 0, depth == 0)) {
+            tunnel_free_cards();
+            return NO;
+        }
     }
-    if (older > 0 && older != target) {
-        s_tun_surf[1] = tunnel_page_surface(older, 0);
-        s_tun_inv[1] = g_scale / 2.0; // 半分辨率
-    }
-    if (!ok) { tunnel_free_surfaces(); return NO; }
+    s_tun_cards = n;
+    NSLog(@"[flip] 时光隧道接管: %d 张卡片(cur=%ld → %ld)", n, cur, target);
+    s_tun_back = !going_next;
+    s_tun_travel = 1.0; // 相邻页之间恒为 1 个隧道单位
 
-    s_tun_going_next = going_next;
     s_tun_prepare = prepare;
     s_tun_commit = commit;
     s_tun_active = YES;
-    s_tun_t0 = [NSDate timeIntervalSinceReferenceDate];
-    // 实验可调时长: GLASPEN2_FLIP_DUR=<秒>(默认 0.62)
+
     double dur = 0.62;
     const char *vd = getenv("GLASPEN2_FLIP_DUR");
     if (vd) {
@@ -669,14 +765,24 @@ static BOOL page_flip_tunnel(BOOL going_next, void (^prepare)(void), void (^comm
         if (v > 0.05) dur = v;
     }
     s_tun_dur = dur;
+    const char *vk = getenv("GLASPEN2_FLIP_K");
+    if (vk) {
+        double v = atof(vk);
+        if (v > 0.05 && v < 3.0) s_tun_k = v;
+    }
 
+    s_tun_t0 = tunnel_now();
+    // 先同步画一帧并立刻上屏:动画第一帧就是"翻页前的画面", 无跳变。
+    tunnel_frame(0.0);
+    if (g_draw_view) [g_draw_view displayIfNeeded];
     s_tun_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
                                          dispatch_get_main_queue());
     dispatch_source_set_timer(s_tun_timer, dispatch_time(DISPATCH_TIME_NOW, 0),
                               (uint64_t)(1.0 / 60.0 * NSEC_PER_SEC),
                               (uint64_t)(2.0 / 1000.0 * NSEC_PER_SEC));
     dispatch_source_set_event_handler(s_tun_timer, ^{
-        double t = [NSDate timeIntervalSinceReferenceDate] - s_tun_t0;
+        if (s_tun_active && g_draw_view) [g_draw_view displayIfNeeded];
+        double t = tunnel_now() - s_tun_t0;
         double p = t / s_tun_dur;
         if (p >= 1.0) {
             tunnel_finish(); // prepare+commit: 真实页内容无缝落地
@@ -691,12 +797,15 @@ static BOOL page_flip_tunnel(BOOL going_next, void (^prepare)(void), void (^comm
 static void page_flip_swap(BOOL going_next, void (^prepare)(void), void (^commit)(void)) {
     if (!g_window) { prepare(); commit(); return; }
 
-    // 时光隧道(自定义动效): 玻璃窗口不隐藏, 在自己的表面上逐帧绘制
-    // "同心矩形隧道" —— 页快照按深度缩放/压暗, 屏幕中心为透视消失处;
-    // 动画落定瞬间无缝换成真实页内容。
-    if (g_flip_effect == 1 && !g_infinite_canvas && g_surface
-        && page_flip_tunnel(going_next, prepare, commit)) {
-        return;
+    // 时光隧道(自定义动效): 玻璃窗口不隐藏, 在自己的表面上逐帧绘制隧道
+    // —— 页卡片按透视缩进深处, 目标页从尽头飞出落到满屏, 落定瞬间无缝
+    // 换成真实页内容。快照建卡在主线程做(几百 ms 内), 期间先把目标页
+    // 载入 STROKES 并平滑好 —— 落定那一下只是重绘, 不会卡。
+    if (g_flip_effect == 1 && !g_infinite_canvas && g_surface && !g_stroke_active) {
+        prepare(); // 载入 + 平滑(目标页), 与建卡共用一次 DB 访问
+        if (page_flip_tunnel(going_next, NULL, commit)) {
+            return;
+        }
     }
 
     double t0 = [NSDate timeIntervalSinceReferenceDate];
@@ -1642,8 +1751,23 @@ static void flip_probe_maybe_start(void) {
     dispatch_source_set_event_handler(s_probe_src, ^{
         if (first) {
             first = NO;
-            int created = glaspen2_clear_strokes(g_screen_w, g_screen_h);
-            NSLog(@"[glaspen2] probe 建页 → %d", created);
+            // 诊断环境: GLASPEN2_PROBE_PAGES=n 先铺 n 页带内容的页,
+            // 之后的往返翻页才有"隧道"可翻(空页守卫不会新建空白页)。
+            int want = 0;
+            const char *vpn = getenv("GLASPEN2_PROBE_PAGES");
+            if (vpn) want = atoi(vpn);
+            for (int i = 0; i < want; i++) {
+                glaspen2_clear_strokes(g_screen_w, g_screen_h);
+                glaspen2_begin_stroke(0.15 + 0.2 * (i % 4), 0.45, 0.9 - 0.2 * (i % 3), 1.0);
+                for (int k = 0; k <= 20; k++) {
+                    double t = k / 20.0;
+                    glaspen2_add_point_t(g_screen_w * (0.2 + 0.6 * t),
+                                         g_screen_h * (0.3 + 0.25 * sin(t * 6.0 + i)),
+                                         8.0 + 4.0 * sin(t * 9.0), t);
+                }
+                glaspen2_end_stroke();
+            }
+            NSLog(@"[glaspen2] probe 建页 %d 页(带内容)", want);
             return;
         }
         NSLog(@"[glaspen2] probe 翻页 back=%d", back);
@@ -1857,6 +1981,12 @@ void glaspen2_run(void) {
                 if (fe >= 0 && fe <= 1) g_flip_effect = fe;
                 glaspen2_free_c_string(vfe);
             }
+        }
+        // 调试: GLASPEN2_FLIP_EFFECT=1 强制时光隧道(不动用户存档设置,
+        // 环境变量优先级最高 —— 评估动效时不用先去面板里改选项)
+        {
+            const char *vfe_env = getenv("GLASPEN2_FLIP_EFFECT");
+            if (vfe_env) g_flip_effect = atoi(vfe_env) == 1 ? 1 : 0;
         }
         {
             char *vdv = glaspen2_load_string_setting("grid_divider");

@@ -200,51 +200,114 @@ pub extern "C" fn glaspen2_page_dims(screen_id: i64, w: *mut c_int, h: *mut c_in
     }
 }
 
-/// 载入后的页缓冲(翻页动效逐帧合成用)。只在
-/// `glaspen2_load_page_preview` 与渲染调用之间有效, 两者都在主线程。
-pub(crate) static PAGE_PREVIEW: std::sync::Mutex<Vec<db::StrokeData>> =
+/// ── 翻页动效(时光隧道)的页缓存 ─────────────────────────────────────
+///
+/// 动画开始时壳层把要用到的页(目标页 + 前后各几张)一次性预热进来,
+/// 逐帧渲染走缓存 —— 每帧去 SQLite 拉点列既卡又会和书写落库抢锁。
+/// 只读缓存:动画期间用户仍在旧页上, STROKES / 当前页 id 都不动。
+pub(crate) static PAGE_PREVIEW: std::sync::Mutex<Vec<PreviewPage>> =
     std::sync::Mutex::new(Vec::new());
 
-/// 把某页的笔迹载入内存缓冲(与 `glaspen2_load_strokes_for_screen` 相同的
-/// 平滑管线),但**不切当前页、不动 STROKES** —— 翻页动效(时光隧道)在动画
-/// 进行中预热目标页时用它: 期间用户仍停在旧页, STROKES 绝不能被换掉。
-/// 返回载入的笔迹数;`out_dims`(可空)拿到该页几何(创建时的屏幕尺寸)。
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_load_page_preview(
-    screen_id: i64,
-    out_w: *mut c_int,
-    out_h: *mut c_int,
-) -> c_int {
-    // 抬笔还在排队时先把点冲刷掉, 否则快照会缺最后一笔。
-    runtime().block_on(db::end_stroke());
-    let mut data = runtime().block_on(db::strokes_for_screen(screen_id));
-    for s in data.iter_mut() {
-        let raw: Vec<(f64, f64, f64)> = s.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect();
-        let smoothed = modeler::smooth_points(&raw);
-        if !smoothed.is_empty() {
-            s.points = decimate(&smoothed);
-        }
-    }
-    let count = data.len() as c_int;
-    *PAGE_PREVIEW.lock().unwrap() = data;
-    if !out_w.is_null() && !out_h.is_null() {
-        let dims = runtime().block_on(db::screen_dims(screen_id)).unwrap_or((0, 0));
-        unsafe {
-            *out_w = dims.0;
-            *out_h = dims.1;
-        }
-    }
-    count
+/// 缓存里的一页(笔迹 + 该页几何)。
+pub(crate) struct PreviewPage {
+    pub(crate) screen_id: i64,
+    pub(crate) w: i32,
+    pub(crate) h: i32,
+    pub(crate) strokes: Vec<db::StrokeData>,
 }
 
-/// 把 `glaspen2_load_page_preview` 载入的页画进外部 cairo 表面(透明底)。
+/// 某页相邻的第 n 页(n 沿 id 顺序, 页按分辨率分组 —— 与
+/// `glaspen2_prev_screen_id` / `glaspen2_next_screen_id` 同一邻接语义)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_page_neighbor(screen_id: i64, n: c_int) -> i64 {
+    if screen_id <= 0 || n == 0 {
+        return 0;
+    }
+    let mut id = screen_id;
+    let steps = n.unsigned_abs();
+    for _ in 0..steps {
+        let next = if n > 0 {
+            runtime().block_on(db::next_screen(id))
+        } else {
+            runtime().block_on(db::prev_screen(id))
+        };
+        match next {
+            Some(v) => id = v,
+            None => return 0,
+        }
+    }
+    id
+}
+
+/// 预热翻页动效的页缓存:从 `center` 起向前 `after` 页、向后 `before` 页
+/// (含 center 本身), 一次载入并平滑。返回载入的页数。
 ///
-/// 与画布渲染同一条管线: 笔迹坐标 = 页几何像素, 经 `pan/zoom` 与
-/// scale-to-fit(`ox/oy/pscale`)折算到表面像素(像素 = 点 × scale)。
-/// `alpha` 是整页不透明度(动效的渐显/渐隐), `white_bg` 供导出用。
+/// 载入顺序 = 动画里的叠放顺序(隧道向后翻时前页在上), 壳层按序取用。
+/// 期间**不切当前页、不动 STROKES**。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_preload_flip_pages(
+    center: i64,
+    going_next: c_int,
+    before: c_int,
+    after: c_int,
+) -> c_int {
+    if center <= 0 {
+        return 0;
+    }
+    // 抬笔还在排队时先把点冲刷掉, 否则快照会缺最后一笔。
+    runtime().block_on(db::end_stroke());
+
+    // 采集链:叠放顺序从上到下 = [before 页…, center, after 页…]
+    let mut ids: Vec<i64> = Vec::new();
+    for k in (1..=before.max(0)).rev() {
+        let id = glaspen2_page_neighbor(center, -k);
+        if id > 0 {
+            ids.push(id);
+        }
+    }
+    ids.push(center);
+    for k in 1..=after.max(0) {
+        let id = glaspen2_page_neighbor(center, k);
+        if id > 0 {
+            ids.push(id);
+        }
+    }
+    let _ = going_next; // 叠放顺序恒为"近的在上", 方向只影响动画, 不影响缓存
+
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        let mut strokes = runtime().block_on(db::strokes_for_screen(id));
+        for s in strokes.iter_mut() {
+            let raw: Vec<(f64, f64, f64)> =
+                s.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect();
+            let smoothed = modeler::smooth_points(&raw);
+            if !smoothed.is_empty() {
+                s.points = decimate(&smoothed);
+            }
+        }
+        let (w, h) = runtime().block_on(db::screen_dims(id)).unwrap_or((0, 0));
+        out.push(PreviewPage {
+            screen_id: id,
+            w,
+            h,
+            strokes,
+        });
+    }
+    let n = out.len() as c_int;
+    *PAGE_PREVIEW.lock().unwrap() = out;
+    n
+}
+
+/// 把预热缓存里第 `slot` 页(0 起)画进外部 cairo 表面(透明底)。
+///
+/// 与画布渲染同一条坐标管线:`scale` 是视口 backing scale(点 → 像素),
+/// `ox/oy/pscale` 是 scale-to-fit 的"页像素 → 逻辑点"变换(不 fit 时 0/0/1),
+/// `alpha` 是整页不透明度(隧道卡片的渐显/渐隐),`white_bg` 供导出用。
+/// 返回 1 成功, 0 = 槽位不存在 / 表面绑定失败。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_paint_preview_into_surface(
     surface_ptr: *mut std::ffi::c_void,
+    slot: c_int,
     scale: c_double,
     ox: c_double,
     oy: c_double,
@@ -256,10 +319,24 @@ pub extern "C" fn glaspen2_paint_preview_into_surface(
         return 0;
     };
     let buf = PAGE_PREVIEW.lock().unwrap();
-    render_page_into(&r, &buf, scale, ox, oy, pscale, alpha, white_bg != 0)
+    let Some(page) = buf.get(slot.max(0) as usize) else {
+        return 0;
+    };
+    render_page_into(
+        &r,
+        &page.strokes,
+        scale,
+        ox,
+        oy,
+        pscale,
+        page.w as f64,
+        page.h as f64,
+        alpha,
+        white_bg != 0,
+    )
 }
 
-/// Delete a screen (page) and all its data (strokes, points).
+/// Delete a screen (page) and all of its data (strokes, points).
 /// Returns 1 on success, 0 on failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_delete_screen(screen_id: i64) -> c_int {
