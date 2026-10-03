@@ -596,6 +596,7 @@ char *glaspen2_macos_settings_json(void) {
             @"minimap": @(g_minimap_enabled),
             @"gridSize": @(g_grid_size),
             @"gridDivider": @(g_grid_divider),
+            @"flipEffect": @(g_flip_effect),
             @"gifFps": @(g_gif_fps),
             @"gifResolution": @(g_gif_resolution),
             @"gifSpeed": @(g_gif_speed),
@@ -719,6 +720,13 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             NSString *dvStr = [NSString stringWithFormat:@"%ld", (long)dv];
             glaspen2_save_string_setting("grid_divider", [dvStr UTF8String]);
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
+        } else if ([key isEqualToString:@"flipEffect"]) {
+            NSInteger fe = [value integerValue];
+            if (fe < 0) fe = 0;
+            if (fe > 1) fe = 1;
+            g_flip_effect = fe;
+            NSString *feStr = [NSString stringWithFormat:@"%ld", (long)fe];
+            glaspen2_save_string_setting("flip_effect", [feStr UTF8String]);
         } else if ([key isEqualToString:@"pressureMonitor"]) {
             gl_settings_set_pressure_monitor([value boolValue]);
         } else if ([key isEqualToString:@"gifFps"]) {

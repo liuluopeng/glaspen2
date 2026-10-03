@@ -1083,8 +1083,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Settings dco_decode_settings(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 23)
-      throw Exception('unexpected arr length: expect 23 but see ${arr.length}');
+    if (arr.length != 24)
+      throw Exception('unexpected arr length: expect 24 but see ${arr.length}');
     return Settings(
       color: dco_decode_i_32(arr[0]),
       width: dco_decode_i_32(arr[1]),
@@ -1099,16 +1099,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       minimap: dco_decode_bool(arr[10]),
       gridSize: dco_decode_f_64(arr[11]),
       gridDivider: dco_decode_i_32(arr[12]),
-      gifFps: dco_decode_i_32(arr[13]),
-      gifResolution: dco_decode_f_64(arr[14]),
-      gifSpeed: dco_decode_f_64(arr[15]),
-      gifEndMode: dco_decode_i_32(arr[16]),
-      chatApiBase: dco_decode_String(arr[17]),
-      chatUser: dco_decode_String(arr[18]),
-      chatHasPassword: dco_decode_bool(arr[19]),
-      chatIntegration: dco_decode_bool(arr[20]),
-      showFreeCanvas: dco_decode_bool(arr[21]),
-      shareCanvas: dco_decode_bool(arr[22]),
+      flipEffect: dco_decode_i_32(arr[13]),
+      gifFps: dco_decode_i_32(arr[14]),
+      gifResolution: dco_decode_f_64(arr[15]),
+      gifSpeed: dco_decode_f_64(arr[16]),
+      gifEndMode: dco_decode_i_32(arr[17]),
+      chatApiBase: dco_decode_String(arr[18]),
+      chatUser: dco_decode_String(arr[19]),
+      chatHasPassword: dco_decode_bool(arr[20]),
+      chatIntegration: dco_decode_bool(arr[21]),
+      showFreeCanvas: dco_decode_bool(arr[22]),
+      shareCanvas: dco_decode_bool(arr[23]),
     );
   }
 
@@ -1426,6 +1427,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_minimap = sse_decode_bool(deserializer);
     var var_gridSize = sse_decode_f_64(deserializer);
     var var_gridDivider = sse_decode_i_32(deserializer);
+    var var_flipEffect = sse_decode_i_32(deserializer);
     var var_gifFps = sse_decode_i_32(deserializer);
     var var_gifResolution = sse_decode_f_64(deserializer);
     var var_gifSpeed = sse_decode_f_64(deserializer);
@@ -1450,6 +1452,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       minimap: var_minimap,
       gridSize: var_gridSize,
       gridDivider: var_gridDivider,
+      flipEffect: var_flipEffect,
       gifFps: var_gifFps,
       gifResolution: var_gifResolution,
       gifSpeed: var_gifSpeed,
@@ -1797,6 +1800,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.minimap, serializer);
     sse_encode_f_64(self.gridSize, serializer);
     sse_encode_i_32(self.gridDivider, serializer);
+    sse_encode_i_32(self.flipEffect, serializer);
     sse_encode_i_32(self.gifFps, serializer);
     sse_encode_f_64(self.gifResolution, serializer);
     sse_encode_f_64(self.gifSpeed, serializer);

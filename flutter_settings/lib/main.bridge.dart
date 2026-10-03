@@ -93,6 +93,7 @@ class _FrbBridge extends SettingsBridge {
       'minimap': s.minimap,
       'gridSize': s.gridSize,
       'gridDivider': s.gridDivider,
+      'flipEffect': s.flipEffect,
       'gifFps': s.gifFps,
       'gifResolution': s.gifResolution,
       'gifSpeed': s.gifSpeed,

@@ -447,26 +447,24 @@ pub extern "C" fn glaspen2_export_infinite_pdf_paged(page_w: c_int, page_h: c_in
 }
 
 /// 导出单页 PNG(白底, 页原生分辨率 ×2 采样)到桌面。返回 1 成功。
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_export_page_png(screen_id: i64) -> c_int {
+/// 把某页笔迹画进外部 cairo 表面(scale = 采样倍率)。白底可选。
+/// 单页 PNG 导出与翻页"时光隧道"动画的页快照共用。
+pub(crate) fn paint_page_into_surface(
+    r: &crate::cairo_dl::CairoRenderer,
+    screen_id: i64,
+    scale: f64,
+    white_bg: bool,
+) -> c_int {
     let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
-    if strokes.is_empty() {
-        return 0;
-    }
-    let Some((w, h)) = runtime().block_on(db::screen_dims(screen_id)) else {
-        return 0;
-    };
-    let scale: f64 = 2.0; // 2x 采样: 观感与玻璃上的 retina 渲染一致
-    let pw = (w as f64 * scale) as usize;
-    let ph = (h as f64 * scale) as usize;
-
-    let r = match crate::cairo_dl::CairoRenderer::create_owned(pw as i32, ph as i32) {
-        Some(r) => r,
-        None => return 0,
-    };
     r.clear();
-    // 白底(分享/归档场景透明底几乎没用)
-    r.fill_rect(0.0, 0.0, pw as f32, ph as f32, (255, 255, 255));
+    if white_bg {
+        // 白底尺寸给足(覆盖任意表面): fill_rect 不做越界裁剪也安全
+        r.fill_rect(-1e5, -1e5, 2e5, 2e5, (255, 255, 255));
+    }
+    if strokes.is_empty() {
+        r.flush();
+        return 1; // 空页 = 纯白/纯透明, 仍算成功
+    }
     let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
     let views: Vec<crate::Stroke> = strokes
         .into_iter()
@@ -478,9 +476,41 @@ pub extern "C" fn glaspen2_export_page_png(screen_id: i64) -> c_int {
             points: sd.points,
         })
         .collect();
-    // 与玻璃渲染同一条管线: pan=0, zoom=1, scale=2x
+    // 与玻璃渲染同一条管线: pan=0, zoom=1
     super::paint_strokes(&r, &views, 0.0, 0.0, 1.0, scale, 0.0, outline);
     r.flush();
+    1
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_paint_page_into_surface(
+    surface_ptr: *mut std::ffi::c_void,
+    screen_id: i64,
+    scale: c_double,
+    white_bg: c_int,
+) -> c_int {
+    let Some(r) = crate::cairo_dl::CairoRenderer::from_surface(surface_ptr) else {
+        return 0;
+    };
+    paint_page_into_surface(&r, screen_id, scale, white_bg != 0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_export_page_png(screen_id: i64) -> c_int {
+    let Some((w, h)) = runtime().block_on(db::screen_dims(screen_id)) else {
+        return 0;
+    };
+    let scale: f64 = 2.0; // 2x 采样: 观感与玻璃上的 retina 渲染一致
+    let pw = (w as f64 * scale) as usize;
+    let ph = (h as f64 * scale) as usize;
+
+    let r = match crate::cairo_dl::CairoRenderer::create_owned(pw as i32, ph as i32) {
+        Some(r) => r,
+        None => return 0,
+    };
+    if paint_page_into_surface(&r, screen_id, scale, true) == 0 {
+        return 0;
+    }
 
     let data = unsafe { std::slice::from_raw_parts(r.bits(), pw * ph * 4) };
     let Some(png) = encode_png_rgba(data, pw as u32, ph as u32) else {

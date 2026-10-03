@@ -271,6 +271,7 @@ class Settings {
   final bool minimap;
   final double gridSize;
   final int gridDivider;
+  final int flipEffect;
   final int gifFps;
   final double gifResolution;
   final double gifSpeed;
@@ -296,6 +297,7 @@ class Settings {
     required this.minimap,
     required this.gridSize,
     required this.gridDivider,
+    required this.flipEffect,
     required this.gifFps,
     required this.gifResolution,
     required this.gifSpeed,
@@ -323,6 +325,7 @@ class Settings {
       minimap.hashCode ^
       gridSize.hashCode ^
       gridDivider.hashCode ^
+      flipEffect.hashCode ^
       gifFps.hashCode ^
       gifResolution.hashCode ^
       gifSpeed.hashCode ^
@@ -352,6 +355,7 @@ class Settings {
           minimap == other.minimap &&
           gridSize == other.gridSize &&
           gridDivider == other.gridDivider &&
+          flipEffect == other.flipEffect &&
           gifFps == other.gifFps &&
           gifResolution == other.gifResolution &&
           gifSpeed == other.gifSpeed &&

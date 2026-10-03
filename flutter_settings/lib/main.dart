@@ -185,6 +185,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _searchMode = false;
   bool _searchFieldVisible = false;
   String _searchText = '';
+  int _flipEffect = 0; // 翻页动效: 0=macOS 系统 1=时光隧道
   bool _pagesLoading = false;
   // 批量多选删除
   bool _multiSelect = false;
@@ -489,6 +490,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _gifResolution = (s['gifResolution'] as num?)?.toDouble() ?? _gifResolution;
         _gifSpeed = (s['gifSpeed'] as num?)?.toDouble() ?? _gifSpeed;
         _gifEndMode = (s['gifEndMode'] as num?)?.toInt() ?? _gifEndMode;
+        _flipEffect = (s['flipEffect'] as num?)?.toInt() ?? _flipEffect;
         _showFreeCanvas = _b(s['showFreeCanvas']);
         _shareCanvas = _b(s['shareCanvas']);
         _syncTabCount();
@@ -514,6 +516,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _gifResolution = (settings['gifResolution'] as num?)?.toDouble() ?? 0.5;
           _gifSpeed = (settings['gifSpeed'] as num?)?.toDouble() ?? 2.0;
           _gifEndMode = (settings['gifEndMode'] as num?)?.toInt() ?? 1;
+          _flipEffect = (settings['flipEffect'] as num?)?.toInt() ?? _flipEffect;
           _chatApiBase.text = (settings['chatApiBase'] as String?) ?? '';
           _chatUser.text = (settings['chatUser'] as String?) ?? '';
           _chatHasPassword = _b(settings['chatHasPassword']);
@@ -2110,6 +2113,31 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         const SizedBox(height: 10),
         _buildGifSettings(),
         const Divider(height: 24),
+        if (Platform.isMacOS) ...[
+          Row(
+            children: [
+              Text('翻页动效',
+                  style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              SegmentedButton<int>(
+                showSelectedIcon: false,
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity(horizontal: -2, vertical: -2),
+                ),
+                segments: const [
+                  ButtonSegment(value: 0, label: Text('系统动效')),
+                  ButtonSegment(value: 1, label: Text('时光隧道')),
+                ],
+                selected: {_flipEffect},
+                onSelectionChanged: (sel) {
+                  setState(() => _flipEffect = sel.first);
+                  _setSetting('flipEffect', sel.first);
+                },
+              ),
+            ],
+          ),
+          const Divider(height: 24),
+        ],
         _buildToggles(),
       ],
     );

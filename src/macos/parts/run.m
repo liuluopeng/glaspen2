@@ -1,6 +1,7 @@
 }
 
 static void pageview_frame_draw(void);
+static BOOL s_tun_active = NO; // 时光隧道动画进行中(drawRect 据此抑制网格)
 static void rebuild_surface_from_strokes(void) {
     if (!g_surface) return;
     // Delegate the actual Cairo rendering to Rust (avoids per-point FFI overhead)
@@ -46,7 +47,7 @@ static void rebuild_surface_from_strokes(void) {
     // Grid — drawn directly in the view, gated by its own toggle (显示网格).
     // When 网格跟随涂鸦 is on, it hides with the strokes in 飘渺画布涂鸦模式;
     // otherwise it stays visible regardless. Always sits behind the strokes.
-    if (g_show_grid && (g_strokes_visible || !g_grid_follow_strokes)) {
+    if (g_show_grid && !s_tun_active && (g_strokes_visible || !g_grid_follow_strokes)) {
         NSRect bounds = [self bounds];
         // 两种模式统一:视图 = (画布 − 镜头偏移) × 缩放。
         // 无限画布:偏移=pan、缩放=zoom;活页本:偏移=−滚动偏移、缩放=1。
@@ -506,8 +507,160 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
 // 整页翻页:渐隐与显之间的隐藏间隙压到最小 —— 重活(载入/平滑)与渐隐
 // 并行执行, 隐藏间隙里只剩最终表面重绘; 之后立即渐显。
 // 两个 transition 的时长由系统固定; 调用方必须在主线程。
-static void page_flip_swap(void (^prepare)(void), void (^commit)(void)) {
+// ── 时光隧道翻页动效 ──
+// 页 = 对应几何玻璃的快照。翻页时: 当前页缩进隧道深处, 更旧/目标页从
+// 隧道深处飞出, 屏幕中心 = 透视消失点(用户手绘示意, 类 Time Machine)。
+// 实现: 各槽 = 预渲染的页快照表面, 每帧按深度 scale=pow(0.62,d) 居中
+// 绘制并压暗; 主窗口全程可见, 不走系统隐藏动效。
+
+#define TUNNEL_SLOTS 4
+static cairo_surface_t *s_tun_surf[TUNNEL_SLOTS]; // 0=当前页 1=深处页 3=目标页
+static int s_tun_surf_w = 0, s_tun_surf_h = 0;
+static BOOL s_tun_going_next = YES;
+static void (^s_tun_prepare)(void);
+static void (^s_tun_commit)(void);
+static dispatch_source_t s_tun_timer;
+static double s_tun_t0 = 0;
+
+static inline double tunnel_scale_at(double d) { return pow(0.62, d); }
+static inline double tunnel_dim_at(double d) {
+    double a = 0.30 * d;
+    return a > 0.62 ? 0.62 : a;
+}
+
+static void tunnel_free_surfaces(void) {
+    for (int i = 0; i < TUNNEL_SLOTS; i++) {
+        if (s_tun_surf[i]) { cairo_surface_destroy(s_tun_surf[i]); s_tun_surf[i] = NULL; }
+    }
+}
+
+// 渲染某页进新表面。full_res: 目标页要放大到全屏, 用全分辨率;
+// 深处页被缩小+压暗, 半分辨率足够。
+static cairo_surface_t *tunnel_page_surface(long screen_id, int full_res) {
+    double k = full_res ? 1.0 : 0.5;
+    int pw = (int)(g_screen_w * g_scale * k);
+    int ph = (int)(g_screen_h * g_scale * k);
+    cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pw, ph);
+    glaspen2_paint_page_into_surface(surf, screen_id, g_scale * k, 1);
+    return surf;
+}
+
+// 把页快照表面画到深度 d(可带小数): 居中, scale=pow(0.62,d), 压暗
+static void tunnel_draw_slot(cairo_t *cr, cairo_surface_t *surf, double d) {
+    if (!surf || d < 0.0 || d > 3.0) return;
+    double slot_w = (double)s_tun_surf_w * tunnel_scale_at(d);
+    double k = slot_w / (double)s_tun_surf_w;
+    cairo_save(cr);
+    cairo_translate(cr, s_tun_surf_w / 2.0, s_tun_surf_h / 2.0);
+    cairo_scale(cr, k, k);
+    cairo_set_source_surface(cr, surf, -s_tun_surf_w / 2.0, -s_tun_surf_h / 2.0);
+    cairo_paint(cr);
+    cairo_set_source_rgba(cr, 0, 0, 0, tunnel_dim_at(d));
+    cairo_paint(cr);
+    cairo_restore(cr);
+}
+
+// 一帧: 背景压暗 + 各槽深→浅绘制; 收尾 15% 背景淡出, 落回玻璃无跳变
+static void tunnel_frame(double p) {
+    if (!g_surface) return;
+    cairo_t *cr = cairo_create(g_surface);
+    double e = 1.0 - pow(1.0 - p, 3.0); // ease-out cubic
+    double backdrop = 0.94;
+    if (p > 0.85) backdrop *= 1.0 - (p - 0.85) / 0.15;
+
+    cairo_set_source_rgba(cr, 0.03, 0.03, 0.04, backdrop);
+    cairo_paint(cr);
+
+    double depths[TUNNEL_SLOTS] = {-1, -1, -1, -1};
+    if (s_tun_going_next) {
+        depths[0] = e;           // 当前页: 0 → 1(缩进隧道)
+        depths[1] = 1.0 + e;     // 上一页: 1 → 2(继续后退)
+        depths[3] = 1.3 * (1.0 - e); // 目标页: 1.3 → 0(飞出放大)
+    } else {
+        depths[0] = e;           // 当前页: 0 → 1
+        depths[1] = 1.0 - e;     // 上一页(目标): 1 → 0(飞出放大)
+    }
+    tunnel_draw_slot(cr, s_tun_surf[3], depths[3]);
+    tunnel_draw_slot(cr, s_tun_surf[2], depths[2]);
+    tunnel_draw_slot(cr, s_tun_surf[1], depths[1]);
+    tunnel_draw_slot(cr, s_tun_surf[0], depths[0]);
+    cairo_destroy(cr);
+    flush_to_layer();
+}
+
+static void tunnel_finish(void) {
+    if (s_tun_timer) { dispatch_source_cancel(s_tun_timer); s_tun_timer = NULL; }
+    tunnel_free_surfaces();
+    s_tun_active = NO;
+    if (s_tun_prepare) { s_tun_prepare(); s_tun_prepare = NULL; }
+    if (s_tun_commit) { s_tun_commit(); s_tun_commit = NULL; }
+}
+
+// 返回 YES = 隧道动画已接管; NO = 无目标页/资源失败, 走系统动效
+static BOOL page_flip_tunnel(BOOL going_next, void (^prepare)(void), void (^commit)(void)) {
+    long cur = glaspen2_get_current_screen_id();
+    long target = going_next ? glaspen2_next_screen_id() : glaspen2_prev_screen_id();
+    long older = glaspen2_prev_screen_id();
+    (void)cur;
+    tunnel_free_surfaces();
+    s_tun_surf_w = (int)(g_screen_w * g_scale);
+    s_tun_surf_h = (int)(g_screen_h * g_scale);
+
+    // 槽 0: 当前玻璃内容(白底垫 + 原样拷贝)
+    s_tun_surf[0] = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, s_tun_surf_w, s_tun_surf_h);
+    cairo_t *cr = cairo_create(s_tun_surf[0]);
+    cairo_set_source_rgba(cr, 1, 1, 1, 1);
+    cairo_paint(cr);
+    cairo_set_source_surface(cr, g_surface, 0, 0);
+    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+
+    int ok = 0;
+    if (target > 0) {
+        s_tun_surf[3] = tunnel_page_surface(target, 1);
+        ok = 1;
+    }
+    if (older > 0 && older != target) {
+        s_tun_surf[1] = tunnel_page_surface(older, 0);
+    }
+    if (!ok) { tunnel_free_surfaces(); return NO; }
+
+    s_tun_going_next = going_next;
+    s_tun_prepare = prepare;
+    s_tun_commit = commit;
+    s_tun_active = YES;
+    s_tun_t0 = [NSDate timeIntervalSinceReferenceDate];
+
+    s_tun_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
+                                         dispatch_get_main_queue());
+    dispatch_source_set_timer(s_tun_timer, dispatch_time(DISPATCH_TIME_NOW, 0),
+                              (uint64_t)(1.0 / 60.0 * NSEC_PER_SEC),
+                              (uint64_t)(2.0 / 1000.0 * NSEC_PER_SEC));
+    dispatch_source_set_event_handler(s_tun_timer, ^{
+        double t = [NSDate timeIntervalSinceReferenceDate] - s_tun_t0;
+        double p = t / 0.62;
+        if (p >= 1.0) {
+            tunnel_finish(); // prepare+commit: 真实页内容无缝落地
+            return;
+        }
+        tunnel_frame(p);
+    });
+    dispatch_resume(s_tun_timer);
+    return YES;
+}
+
+static void page_flip_swap(BOOL going_next, void (^prepare)(void), void (^commit)(void)) {
     if (!g_window) { prepare(); commit(); return; }
+
+    // 时光隧道(自定义动效): 玻璃窗口不隐藏, 在自己的表面上逐帧绘制
+    // "同心矩形隧道" —— 页快照按深度缩放/压暗, 屏幕中心为透视消失处;
+    // 动画落定瞬间无缝换成真实页内容。
+    if (g_flip_effect == 1 && !g_infinite_canvas && g_surface
+        && page_flip_tunnel(going_next, prepare, commit)) {
+        return;
+    }
+
     double t0 = [NSDate timeIntervalSinceReferenceDate];
     [g_window setIsVisible:NO];
     prepare();
@@ -624,7 +777,7 @@ static BOOL perform_hotkey(unsigned short kc) {
         finish_active_stroke();
         long target = glaspen2_prev_screen_id();
         if (target > 0) {
-            page_flip_swap(
+            page_flip_swap(NO,
                 ^{ // 渐隐期间并行: 载入 + 平滑
                     glaspen2_load_strokes_for_screen(target);
                     glaspen2_smooth_loaded_strokes();
@@ -645,7 +798,7 @@ static BOOL perform_hotkey(unsigned short kc) {
         finish_active_stroke();
         long target = glaspen2_next_screen_id();
         if (target > 0) {
-            page_flip_swap(
+            page_flip_swap(YES,
                 ^{ // 渐隐期间并行: 载入 + 平滑
                     glaspen2_load_strokes_for_screen(target);
                     glaspen2_smooth_loaded_strokes();
@@ -1055,10 +1208,11 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy, CGEventType ty
                 BOOL up = (kc == kVK_UpArrow);
                 long target = up ? glaspen2_prev_screen_id() : glaspen2_next_screen_id();
                 if (target > 0) {
-                    page_flip_swap(
+                    page_flip_swap(up ? NO : YES,
                         ^{ // 渐隐期间并行: 载入 + 平滑
                             glaspen2_load_strokes_for_screen(target);
                             glaspen2_smooth_loaded_strokes();
+                            pageview_update();
                         },
                         ^{ replay_strokes_from_memory(); });
                     peek_strokes(1.0); // show the page briefly in ethereal mode
@@ -1658,6 +1812,14 @@ void glaspen2_run(void) {
             }
         }
         g_grid_follow_strokes = glaspen2_load_bool_setting("grid_follow_strokes") != 0;
+        {
+            char *vfe = glaspen2_load_string_setting("flip_effect");
+            if (vfe) {
+                int fe = atoi(vfe);
+                if (fe >= 0 && fe <= 1) g_flip_effect = fe;
+                glaspen2_free_c_string(vfe);
+            }
+        }
         {
             char *vdv = glaspen2_load_string_setting("grid_divider");
             if (vdv) {
