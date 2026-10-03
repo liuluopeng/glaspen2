@@ -178,6 +178,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   // Content tab state
   List<PageInfo> _pages = [];
   List<PageInfo> _filteredPages = [];
+  /// 当前打开的笔记本("WxH"); null = 笔记本网格(本子列表)
+  String? _openNotebook;
   bool _pagesLoading = false;
   // 批量多选删除
   bool _multiSelect = false;
@@ -686,7 +688,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       if (mounted) {
         setState(() {
           _pages = pages;
-          _filteredPages = _groupSorted(pages);
+          _applyPageList();
           _pagesLoading = false;
           for (final p in _pages) {
             p.thumbnail = _thumbnailCache[p.id];
@@ -897,7 +899,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
                 child: _buildSection('数据备份', _buildBackupButtons()),
               ),
-              if (!_pagesLoading && _filteredPages.isNotEmpty)
+              if (!_pagesLoading && _openNotebook != null && _filteredPages.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: _buildGridToolbar(),
@@ -905,29 +907,170 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             ],
           ),
         ),
-        // Page grid
+        // Page grid: 两级 —— 未开本子 = 笔记本卡片; 开了 = 该本子的页
         Expanded(
           child: _pagesLoading
               ? const Center(child: CircularProgressIndicator())
-              : _filteredPages.isEmpty
-                  ? const Center(
-                      child: Text('暂无页面', style: TextStyle(fontSize: 14, color: Colors.grey)),
-                    )
-                  : GridView.builder(
-                      controller: _gridScroll,
-                      itemCount: _filteredPages.length,
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 300,
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        childAspectRatio: 1.2,
+              : _openNotebook == null
+                  ? _buildNotebookGrid()
+                  : _buildNotebookPages(),
+        ),
+      ],
+    );
+  }
+
+  /// 批量取缩略图进缓存(笔记本封面用); 失败静默退占位。
+  Future<void> _fetchThumbnails(List<int> ids) async {
+    try {
+      final thumbs = await _bridge
+          .getPageThumbnails(ids, _thumbMaxSize)
+          .timeout(const Duration(seconds: 5), onTimeout: () => const {});
+      _thumbnailCache.addAll(thumbs);
+    } catch (e) {
+      debugPrint('[Content] notebook covers error: $e');
+    }
+  }
+
+  /// 笔记本网格: 每个分辨率组一张卡 —— 名字 = 分辨率尺寸, 副标题 =
+  /// 页数与最近活动日期, 封面 = 组内最新页的缩略图(懒取一次)。
+  Widget _buildNotebookGrid() {
+    final notebooks = _notebooks;
+    if (notebooks.isEmpty) {
+      return const Center(
+          child: Text('暂无页面', style: TextStyle(fontSize: 14, color: Colors.grey)));
+    }
+    // 每个本子最新页的缩略图作封面(不在缓存里的批量取一次)
+    final missing = <int>[];
+    for (final pages in notebooks.values) {
+      final latest = pages.last;
+      if (!_thumbnailCache.containsKey(latest.id)) missing.add(latest.id);
+    }
+    if (missing.isNotEmpty) {
+      _fetchThumbnails(missing).then((_) {
+        if (mounted) setState(() {});
+      });
+    }
+    return GridView.builder(
+      controller: _gridScroll,
+      itemCount: notebooks.length,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 300,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 1.2,
+      ),
+      itemBuilder: (context, i) {
+        final key = notebooks.keys.elementAt(i);
+        final pages = notebooks[key]!;
+        final latest = pages.last;
+        final w = int.parse(key.split('x')[0]);
+        final h = int.parse(key.split('x')[1]);
+        return GestureDetector(
+          onTap: () => setState(() {
+            _openNotebook = key;
+            _multiSelect = false;
+            _selectedPageIds.clear();
+            _applyPageList();
+          }),
+          child: Card(
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: _thumbnailCache[latest.id] != null
+                        ? Image.memory(_thumbnailCache[latest.id]!,
+                            fit: BoxFit.cover, gaplessPlayback: true)
+                        : const _ThumbSkeleton(),
+                  ),
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withValues(alpha: 0.0),
+                            Colors.black.withValues(alpha: 0.55),
+                          ],
+                        ),
                       ),
-                      itemBuilder: (context, i) {
-                        final page = _filteredPages[i];
-                        return _buildPageCard(page);
-                      },
                     ),
+                  ),
+                  Positioned(
+                    left: 10, right: 10, bottom: 8,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('$w × $h',
+                            style: const TextStyle(
+                                fontSize: 15, fontWeight: FontWeight.w600,
+                                color: Colors.white)),
+                        Text('${pages.length} 页',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.white.withValues(alpha: 0.85))),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 打开的笔记本: 顶部返回行 + 该本子的页网格(工具条/多选/懒加载复用)。
+  Widget _buildNotebookPages() {
+    final key = _openNotebook!;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+          child: Row(
+            children: [
+              TextButton.icon(
+                onPressed: () => setState(() {
+                  _openNotebook = null;
+                  _multiSelect = false;
+                  _selectedPageIds.clear();
+                  _applyPageList();
+                }),
+                icon: const Icon(Icons.arrow_back, size: 16),
+                label: const Text('本子', style: TextStyle(fontSize: 13)),
+              ),
+              const SizedBox(width: 4),
+              Text(key.replaceAll('x', ' × '),
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600)),
+              const SizedBox(width: 8),
+              Text('${_filteredPages.length} 页',
+                  style: const TextStyle(fontSize: 12, color: _inkFaint)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _filteredPages.isEmpty
+              ? const Center(
+                  child: Text('本子是空的', style: TextStyle(fontSize: 14, color: Colors.grey)))
+              : GridView.builder(
+                  controller: _gridScroll,
+                  itemCount: _filteredPages.length,
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 300,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: 1.2,
+                  ),
+                  itemBuilder: (context, i) {
+                    final page = _filteredPages[i];
+                    return _buildPageCard(page);
+                  },
+                ),
         ),
       ],
     );
@@ -1025,6 +1168,37 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       SnackBar(content: Text('已删除 $ok 页'), duration: const Duration(seconds: 2)),
     );
     unawaited(_loadPages()); // 重载列表,页码/缩略图与服务端状态对齐
+  }
+
+  /// 页列表装配: 未开本子 = 全部页按组排序(本子列表的顺序);
+  /// 已开本子 = 只保留该组的页。删页/刷新统一走这里。
+  void _applyPageList() {
+    if (_openNotebook == null) {
+      _filteredPages = _groupSorted(_pages);
+      return;
+    }
+    _filteredPages = _groupSorted(_pages)
+        .where((p) => '${p.w}x${p.h}' == _openNotebook)
+        .toList();
+  }
+
+  /// 笔记本(分辨率组)列表: key "WxH" → 该组的页(组内 id 升序)。
+  /// 顺序与 _groupSorted 一致: 最近活跃的组在前。
+  Map<String, List<PageInfo>> get _notebooks {
+    final groups = <String, List<PageInfo>>{};
+    for (final p in _pages) {
+      groups.putIfAbsent('${p.w}x${p.h}', () => []).add(p);
+    }
+    for (final g in groups.values) {
+      g.sort((a, b) => a.id.compareTo(b.id));
+    }
+    final keys = groups.keys.toList()
+      ..sort((a, b) {
+        int mx(String k) =>
+            groups[k]!.map((p) => p.id).reduce((x, y) => x > y ? x : y);
+        return mx(b).compareTo(mx(a));
+      });
+    return {for (final k in keys) k: groups[k]!};
   }
 
   /// 页按分辨率分组(页 = 对应尺寸玻璃的快照): 最近活跃的组排最前,
