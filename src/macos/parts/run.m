@@ -549,10 +549,10 @@ static cairo_surface_t *tunnel_page_surface(long screen_id, int full_res) {
 // 把页快照画到深度 d: 等比缩小, 底边沿"地面线"向消失点(屏幕中上部)
 // 收缩 —— 越深的页越小、越靠上、越透明, 多层墨迹悬浮在玻璃上。
 // alpha_base: 该槽的基础不透明度(目标页落定时趋近 1, 无缝落地)。
-static void tunnel_draw_slot(cairo_t *cr, cairo_surface_t *surf, int slot,
+static void tunnel_draw_slot(cairo_t *cr, cairo_surface_t *surf,
                              double d, double alpha_base) {
     if (!surf || d < -0.2 || d > 3.2) return;
-    double inv = s_tun_inv[slot]; // native = 屏幕物理像素 × inv
+ // native = 屏幕物理像素 × inv
     double sc = pow(0.66, d);
     double Wd = (double)s_tun_surf_w, Hd = (double)s_tun_surf_h;
     int native_w = cairo_image_surface_get_width(surf);
@@ -603,11 +603,25 @@ static void tunnel_frame(double p) {
         alphas[2] = 0.45 - 0.15 * e;
     }
 
-    // 深 → 浅
-    tunnel_draw_slot(cr, s_tun_surf[2], 2, depths[2], alphas[2]);
-    tunnel_draw_slot(cr, s_tun_surf[1], 1, depths[1], alphas[1]);
-    tunnel_draw_slot(cr, s_tun_surf[3], 3, depths[3], alphas[3]);
-    tunnel_draw_slot(cr, s_tun_surf[0], 0, depths[0], alphas[0]);
+    // 画家算法: 按**深度动态排序**, 最深先画。动画中段当前页与目标页
+    // 深度交叉(浅者在前)—— 目标页浮到上层飞出, 正是 Time Machine 的交接。
+    struct SlotRef { double d; cairo_surface_t *surf; double a; };
+    struct SlotRef refs[TUNNEL_SLOTS] = {
+        {depths[0], s_tun_surf[0], alphas[0]},
+        {depths[1], s_tun_surf[1], alphas[1]},
+        {depths[2], s_tun_surf[2], alphas[2]},
+        {depths[3], s_tun_surf[3], alphas[3]},
+    };
+    for (int i = 1; i < TUNNEL_SLOTS; i++) { // 插入排序: 深的在前
+        struct SlotRef t = refs[i];
+        int j = i - 1;
+        while (j >= 0 && refs[j].d < t.d) { refs[j + 1] = refs[j]; j--; }
+        refs[j + 1] = t;
+    }
+    for (int i = 0; i < TUNNEL_SLOTS; i++) {
+        if (!refs[i].surf || refs[i].d < 0.0) continue;
+        tunnel_draw_slot(cr, refs[i].surf, refs[i].d, refs[i].a);
+    }
     cairo_destroy(cr);
     flush_to_layer();
 }
