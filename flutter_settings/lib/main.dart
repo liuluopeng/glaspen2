@@ -931,9 +931,31 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     }
   }
 
+  /// 笔记本封面色: 由尺寸 key 决定(确定性"随机") —— 生成一次终生不变,
+  /// 任何机器/重装都得到同一本色。色板手工挑的"本子皮"色, 压得住白字。
+  static const _coverPalette = [
+    Color(0xFF2F5D50), // 墨绿
+    Color(0xFF2C4770), // 藏蓝
+    Color(0xFF8C3B3B), // 绛红
+    Color(0xFFA66A2E), // 赭石
+    Color(0xFF5D4A78), // 黛紫
+    Color(0xFF3E6B6B), // 青灰
+    Color(0xFF7E4458), // 梅子
+    Color(0xFF5E6B3C), // 苔绿
+  ];
+  static Color _coverColor(String key) {
+    var hv = 0;
+    for (final c in key.codeUnits) {
+      hv = (hv * 31 + c) & 0x7FFFFFFF;
+    }
+    return _coverPalette[hv % _coverPalette.length];
+  }
+
   /// 笔记本网格: 每个分辨率组一本 —— **卡片比例 = 该本子的真实比例**
-  /// (3440×1440 是胖扁的本子, 竖屏分辨率是瘦高的本子), 封面按纸墨风
-  /// 设计: 纸面 + 内嵌最新页缩略图(毛边白框) + 标签条 + 红书签带。
+  /// (3440×1440 是胖扁的本子, 竖屏分辨率是瘦高的本子); 封面为稳定的
+  /// 随机皮色 + 内嵌最新页缩略图(白框样张) + 白书签带。
+  /// 布局: 列数随窗口宽度自适应、卡片铺满不留缝, 同排卡片**底边对齐**
+  /// (书架比喻: 胖瘦本子立在架上)。
   Widget _buildNotebookGrid() {
     final notebooks = _notebooks;
     if (notebooks.isEmpty) {
@@ -951,107 +973,120 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         if (mounted) setState(() {});
       });
     }
-    const cardW = 280.0;
-    final cards = <Widget>[];
-    notebooks.forEach((key, pages) {
-      final parts = key.split('x');
-      final w = double.parse(parts[0]), h = double.parse(parts[1]);
-      final cardH = (cardW * h / w).clamp(110.0, 420.0);
-      final latest = pages.last;
-      final thumb = _thumbnailCache[latest.id];
-      cards.add(SizedBox(
-        width: cardW,
-        height: cardH,
-        child: GestureDetector(
-          onTap: () => setState(() {
-            _openNotebook = key;
-            _multiSelect = false;
-            _selectedPageIds.clear();
-            _applyPageList();
-          }),
-          child: Card(
-            clipBehavior: Clip.antiAlias,
-            elevation: 2,
-            child: Stack(
-              children: [
-                // 纸面封面
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(5),
-                            border: Border.all(color: _paperLine, width: 1),
-                            boxShadow: const [
-                              BoxShadow(
-                                  color: Color(0x143C362A),
-                                  blurRadius: 3, offset: Offset(0, 1)),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: thumb != null
-                                ? Image.memory(thumb,
-                                    fit: BoxFit.cover,
-                                    gaplessPlayback: true,
-                                    alignment: Alignment.topCenter)
-                                : const _ThumbSkeleton(),
+    const spacing = 10.0, targetW = 300.0, maxCardW = 360.0;
+    return LayoutBuilder(builder: (context, box) {
+      final availW = box.maxWidth;
+      // 列数: 目标宽 ~300, 且不超过本子数(不排空行)
+      final cols = ((availW + spacing) / (targetW + spacing))
+          .floor()
+          .clamp(1, notebooks.length);
+      final cardW = ((availW - spacing * (cols - 1)) / cols).clamp(0.0, maxCardW);
+      final cards = <Widget>[];
+      notebooks.forEach((key, pages) {
+        final parts = key.split('x');
+        final w = double.parse(parts[0]), h = double.parse(parts[1]);
+        final cardH = (cardW * h / w).clamp(110.0, 420.0);
+        final latest = pages.last;
+        final thumb = _thumbnailCache[latest.id];
+        final cover = _coverColor(key);
+        cards.add(SizedBox(
+          width: cardW,
+          height: cardH,
+          child: GestureDetector(
+            onTap: () => setState(() {
+              _openNotebook = key;
+              _multiSelect = false;
+              _selectedPageIds.clear();
+              _applyPageList();
+            }),
+            child: Card(
+              clipBehavior: Clip.antiAlias,
+              elevation: 2,
+              color: cover, // 皮色铺满: 标签条黑罩后成深一档同色
+              child: Stack(
+                children: [
+                  // 皮色封面
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(5),
+                              border:
+                                  Border.all(color: Colors.white, width: 2),
+                              boxShadow: const [
+                                BoxShadow(
+                                    color: Color(0x33000000),
+                                    blurRadius: 4, offset: Offset(0, 2)),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(3),
+                              child: thumb != null
+                                  ? Image.memory(thumb,
+                                      fit: BoxFit.cover,
+                                      gaplessPlayback: true,
+                                      alignment: Alignment.topCenter)
+                                  : const _ThumbSkeleton(),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    // 标签条
-                    Container(
-                      color: const Color(0xFFEDE7D8),
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      child: Row(
-                        children: [
-                          Text('$w × $h',
-                              style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: _ink)),
-                          const Spacer(),
-                          Text('${pages.length} 页',
-                              style: const TextStyle(
-                                  fontSize: 11, color: _inkFaint)),
-                        ],
+                      // 标签条(皮色加深)
+                      Container(
+                        color: Colors.black.withValues(alpha: 0.22),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        child: Row(
+                          children: [
+                            Text('$w × $h',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white)),
+                            const Spacer(),
+                            Text('${pages.length} 页',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white.withValues(alpha: 0.8))),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                // 红书签带
-                Positioned(
-                  top: 0, right: 16,
-                  child: Container(
-                    width: 9, height: 24, color: _penRed,
+                    ],
                   ),
-                ),
-              ],
+                  // 白书签带(任何皮色都干净)
+                  Positioned(
+                    top: 0, right: 16,
+                    child: Container(
+                      width: 9, height: 24,
+                      color: Colors.white.withValues(alpha: 0.85),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
+        ));
+      });
+      return SingleChildScrollView(
+        controller: _gridScroll,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          child: Wrap(
+            alignment: WrapAlignment.start,
+            runAlignment: WrapAlignment.start,
+            crossAxisAlignment: WrapCrossAlignment.end, // 书架: 底边对齐
+            spacing: spacing,
+            runSpacing: spacing,
+            children: cards,
+          ),
         ),
-      ));
+      );
     });
-    return SingleChildScrollView(
-      controller: _gridScroll,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-        child: Wrap(
-          alignment: WrapAlignment.start,
-          runAlignment: WrapAlignment.start,
-          crossAxisAlignment: WrapCrossAlignment.start,
-          spacing: 10,
-          runSpacing: 10,
-          children: cards,
-        ),
-      ),
-    );
   }
 
   /// 打开的笔记本: 顶部返回行 + 该本子的页网格(工具条/多选/懒加载复用)。
