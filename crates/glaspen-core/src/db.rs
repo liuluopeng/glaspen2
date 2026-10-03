@@ -882,6 +882,7 @@ mod platform {
             "SELECT id, color_r, color_g, color_b, width_scale FROM strokes WHERE screen_id = ?1 AND deleted_at IS NULL ORDER BY id"
         ).bind(screen_id).fetch_all(pool).await.unwrap_or_default();
         if rows.is_empty() {
+            dblog!("载入页 {screen_id} → 0 笔/0 点");
             return Vec::new();
         }
 
