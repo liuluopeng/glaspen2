@@ -931,15 +931,16 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     }
   }
 
-  /// 笔记本网格: 每个分辨率组一张卡 —— 名字 = 分辨率尺寸, 副标题 =
-  /// 页数与最近活动日期, 封面 = 组内最新页的缩略图(懒取一次)。
+  /// 笔记本网格: 每个分辨率组一本 —— **卡片比例 = 该本子的真实比例**
+  /// (3440×1440 是胖扁的本子, 竖屏分辨率是瘦高的本子), 封面按纸墨风
+  /// 设计: 纸面 + 内嵌最新页缩略图(毛边白框) + 标签条 + 红书签带。
   Widget _buildNotebookGrid() {
     final notebooks = _notebooks;
     if (notebooks.isEmpty) {
       return const Center(
           child: Text('暂无页面', style: TextStyle(fontSize: 14, color: Colors.grey)));
     }
-    // 每个本子最新页的缩略图作封面(不在缓存里的批量取一次)
+    // 每个本子最新页的缩略图作封面内容(不在缓存里的批量取一次)
     final missing = <int>[];
     for (final pages in notebooks.values) {
       final latest = pages.last;
@@ -950,23 +951,18 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         if (mounted) setState(() {});
       });
     }
-    return GridView.builder(
-      controller: _gridScroll,
-      itemCount: notebooks.length,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 300,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 1.2,
-      ),
-      itemBuilder: (context, i) {
-        final key = notebooks.keys.elementAt(i);
-        final pages = notebooks[key]!;
-        final latest = pages.last;
-        final w = int.parse(key.split('x')[0]);
-        final h = int.parse(key.split('x')[1]);
-        return GestureDetector(
+    const cardW = 280.0;
+    final cards = <Widget>[];
+    notebooks.forEach((key, pages) {
+      final parts = key.split('x');
+      final w = double.parse(parts[0]), h = double.parse(parts[1]);
+      final cardH = (cardW * h / w).clamp(110.0, 420.0);
+      final latest = pages.last;
+      final thumb = _thumbnailCache[latest.id];
+      cards.add(SizedBox(
+        width: cardW,
+        height: cardH,
+        child: GestureDetector(
           onTap: () => setState(() {
             _openNotebook = key;
             _multiSelect = false;
@@ -975,51 +971,86 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           }),
           child: Card(
             clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: _thumbnailCache[latest.id] != null
-                        ? Image.memory(_thumbnailCache[latest.id]!,
-                            fit: BoxFit.cover, gaplessPlayback: true)
-                        : const _ThumbSkeleton(),
-                  ),
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withValues(alpha: 0.0),
-                            Colors.black.withValues(alpha: 0.55),
-                          ],
+            elevation: 2,
+            child: Stack(
+              children: [
+                // 纸面封面
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(color: _paperLine, width: 1),
+                            boxShadow: const [
+                              BoxShadow(
+                                  color: Color(0x143C362A),
+                                  blurRadius: 3, offset: Offset(0, 1)),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: thumb != null
+                                ? Image.memory(thumb,
+                                    fit: BoxFit.cover,
+                                    gaplessPlayback: true,
+                                    alignment: Alignment.topCenter)
+                                : const _ThumbSkeleton(),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  Positioned(
-                    left: 10, right: 10, bottom: 8,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('$w × $h',
-                            style: const TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w600,
-                                color: Colors.white)),
-                        Text('${pages.length} 页',
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.white.withValues(alpha: 0.85))),
-                      ],
+                    // 标签条
+                    Container(
+                      color: const Color(0xFFEDE7D8),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      child: Row(
+                        children: [
+                          Text('$w × $h',
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: _ink)),
+                          const Spacer(),
+                          Text('${pages.length} 页',
+                              style: const TextStyle(
+                                  fontSize: 11, color: _inkFaint)),
+                        ],
+                      ),
                     ),
+                  ],
+                ),
+                // 红书签带
+                Positioned(
+                  top: 0, right: 16,
+                  child: Container(
+                    width: 9, height: 24, color: _penRed,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ));
+    });
+    return SingleChildScrollView(
+      controller: _gridScroll,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: Wrap(
+          alignment: WrapAlignment.start,
+          runAlignment: WrapAlignment.start,
+          crossAxisAlignment: WrapCrossAlignment.start,
+          spacing: 10,
+          runSpacing: 10,
+          children: cards,
+        ),
+      ),
     );
   }
 
