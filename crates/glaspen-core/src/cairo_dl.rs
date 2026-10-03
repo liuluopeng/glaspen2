@@ -39,6 +39,8 @@ pub struct CairoRenderer {
     new_path: unsafe extern "C" fn(*mut std::ffi::c_void),
     fill: unsafe extern "C" fn(*mut std::ffi::c_void),
     arc: unsafe extern "C" fn(*mut std::ffi::c_void, f64, f64, f64, f64, f64),
+    get_stride: unsafe extern "C" fn(*mut std::ffi::c_void) -> i32,
+    mark_dirty: unsafe extern "C" fn(*mut std::ffi::c_void),
 }
 
 /// SAFETY: 每个 CairoRenderer 实例只能被单线程使用;Send 用于多线程导出场景,
@@ -80,6 +82,10 @@ impl CairoRenderer {
             let stroke: unsafe extern "C" fn(*mut std::ffi::c_void) = sym(lib, b"cairo_stroke")?;
             let flush: unsafe extern "C" fn(*mut std::ffi::c_void) =
                 sym(lib, b"cairo_surface_flush")?;
+            let get_stride: unsafe extern "C" fn(*mut std::ffi::c_void) -> i32 =
+                sym(lib, b"cairo_image_surface_get_stride")?;
+            let mark_dirty: unsafe extern "C" fn(*mut std::ffi::c_void) =
+                sym(lib, b"cairo_surface_mark_dirty")?;
             let new_path: unsafe extern "C" fn(*mut std::ffi::c_void) =
                 sym(lib, b"cairo_new_path")?;
             let fill: unsafe extern "C" fn(*mut std::ffi::c_void) = sym(lib, b"cairo_fill")?;
@@ -118,6 +124,8 @@ impl CairoRenderer {
                 new_path,
                 fill,
                 arc,
+                get_stride,
+                mark_dirty,
             })
         }
     }
@@ -153,6 +161,10 @@ impl CairoRenderer {
             let stroke: unsafe extern "C" fn(*mut std::ffi::c_void) = sym(lib, b"cairo_stroke")?;
             let flush: unsafe extern "C" fn(*mut std::ffi::c_void) =
                 sym(lib, b"cairo_surface_flush")?;
+            let get_stride: unsafe extern "C" fn(*mut std::ffi::c_void) -> i32 =
+                sym(lib, b"cairo_image_surface_get_stride")?;
+            let mark_dirty: unsafe extern "C" fn(*mut std::ffi::c_void) =
+                sym(lib, b"cairo_surface_mark_dirty")?;
             let new_path: unsafe extern "C" fn(*mut std::ffi::c_void) =
                 sym(lib, b"cairo_new_path")?;
             let fill: unsafe extern "C" fn(*mut std::ffi::c_void) = sym(lib, b"cairo_fill")?;
@@ -201,6 +213,8 @@ impl CairoRenderer {
                 new_path,
                 fill,
                 arc,
+                get_stride,
+                mark_dirty,
             })
         }
     }
@@ -242,6 +256,10 @@ impl CairoRenderer {
             let stroke: unsafe extern "C" fn(*mut std::ffi::c_void) = sym(lib, b"cairo_stroke")?;
             let flush: unsafe extern "C" fn(*mut std::ffi::c_void) =
                 sym(lib, b"cairo_surface_flush")?;
+            let get_stride: unsafe extern "C" fn(*mut std::ffi::c_void) -> i32 =
+                sym(lib, b"cairo_image_surface_get_stride")?;
+            let mark_dirty: unsafe extern "C" fn(*mut std::ffi::c_void) =
+                sym(lib, b"cairo_surface_mark_dirty")?;
             let new_path: unsafe extern "C" fn(*mut std::ffi::c_void) =
                 sym(lib, b"cairo_new_path")?;
             let fill: unsafe extern "C" fn(*mut std::ffi::c_void) = sym(lib, b"cairo_fill")?;
@@ -283,6 +301,8 @@ impl CairoRenderer {
                 new_path,
                 fill,
                 arc,
+                get_stride,
+                mark_dirty,
             })
         }
     }
@@ -290,6 +310,42 @@ impl CairoRenderer {
     /// 像素缓冲(BGRA 预乘)
     pub fn bits(&self) -> *mut u8 {
         self.bits
+    }
+
+    /// 把外部 BGRA(预乘)缓冲直接覆盖到本 surface 的像素上。
+    ///
+    /// 整体不透明度、白底合成这类"逐像素"效果走软件合成后再 blit ——
+    /// cairo 的 set_source_rgba 在同一表面的多次绘制间不累积 alpha,
+    /// 做不了整页渐显/渐隐。要求同为 CAIRO_FORMAT_ARGB32 且尺寸一致;
+    /// stride 以字节计, 调用方保证 `data.len() >= stride × h`。
+    pub fn blit_bgra(&self, data: &[u8], w: i32, h: i32, stride: usize) {
+        if w <= 0 || h <= 0 {
+            return;
+        }
+        let dst_stride = self.stride();
+        let src_need = stride * h as usize;
+        let dst_need = dst_stride * h as usize;
+        if data.len() < src_need {
+            return;
+        }
+        unsafe {
+            // 先把 cairo 的绘制结果写回像素缓冲, 再覆盖, 最后通知 cairo
+            // 像素已被外部修改(caller 内容要重新读取)。
+            (self.flush)(self.surface);
+            let dst = std::slice::from_raw_parts_mut(self.bits, dst_need);
+            let row = (w as usize) * 4;
+            for y in 0..h as usize {
+                let src = &data[y * stride..y * stride + row];
+                let off = y * dst_stride;
+                dst[off..off + row].copy_from_slice(src);
+            }
+            (self.mark_dirty)(self.surface);
+        }
+    }
+
+    /// surface 的字节 stride(CAIRO_FORMAT_ARGB32 下通常 = w × 4)。
+    pub fn stride(&self) -> usize {
+        unsafe { (self.get_stride)(self.surface).max(0) as usize }
     }
 
     /// 画一条抗锯齿线段(圆头),颜色为 (R,G,B) 0..255

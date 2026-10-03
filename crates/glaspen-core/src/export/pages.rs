@@ -200,6 +200,65 @@ pub extern "C" fn glaspen2_page_dims(screen_id: i64, w: *mut c_int, h: *mut c_in
     }
 }
 
+/// 载入后的页缓冲(翻页动效逐帧合成用)。只在
+/// `glaspen2_load_page_preview` 与渲染调用之间有效, 两者都在主线程。
+pub(crate) static PAGE_PREVIEW: std::sync::Mutex<Vec<db::StrokeData>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// 把某页的笔迹载入内存缓冲(与 `glaspen2_load_strokes_for_screen` 相同的
+/// 平滑管线),但**不切当前页、不动 STROKES** —— 翻页动效(时光隧道)在动画
+/// 进行中预热目标页时用它: 期间用户仍停在旧页, STROKES 绝不能被换掉。
+/// 返回载入的笔迹数;`out_dims`(可空)拿到该页几何(创建时的屏幕尺寸)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_load_page_preview(
+    screen_id: i64,
+    out_w: *mut c_int,
+    out_h: *mut c_int,
+) -> c_int {
+    // 抬笔还在排队时先把点冲刷掉, 否则快照会缺最后一笔。
+    runtime().block_on(db::end_stroke());
+    let mut data = runtime().block_on(db::strokes_for_screen(screen_id));
+    for s in data.iter_mut() {
+        let raw: Vec<(f64, f64, f64)> = s.points.iter().map(|&(x, y, w, _)| (x, y, w)).collect();
+        let smoothed = modeler::smooth_points(&raw);
+        if !smoothed.is_empty() {
+            s.points = decimate(&smoothed);
+        }
+    }
+    let count = data.len() as c_int;
+    *PAGE_PREVIEW.lock().unwrap() = data;
+    if !out_w.is_null() && !out_h.is_null() {
+        let dims = runtime().block_on(db::screen_dims(screen_id)).unwrap_or((0, 0));
+        unsafe {
+            *out_w = dims.0;
+            *out_h = dims.1;
+        }
+    }
+    count
+}
+
+/// 把 `glaspen2_load_page_preview` 载入的页画进外部 cairo 表面(透明底)。
+///
+/// 与画布渲染同一条管线: 笔迹坐标 = 页几何像素, 经 `pan/zoom` 与
+/// scale-to-fit(`ox/oy/pscale`)折算到表面像素(像素 = 点 × scale)。
+/// `alpha` 是整页不透明度(动效的渐显/渐隐), `white_bg` 供导出用。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_paint_preview_into_surface(
+    surface_ptr: *mut std::ffi::c_void,
+    scale: c_double,
+    ox: c_double,
+    oy: c_double,
+    pscale: c_double,
+    alpha: c_double,
+    white_bg: c_int,
+) -> c_int {
+    let Some(r) = crate::cairo_dl::CairoRenderer::from_surface(surface_ptr) else {
+        return 0;
+    };
+    let buf = PAGE_PREVIEW.lock().unwrap();
+    render_page_into(&r, &buf, scale, ox, oy, pscale, alpha, white_bg != 0)
+}
+
 /// Delete a screen (page) and all its data (strokes, points).
 /// Returns 1 on success, 0 on failure.
 #[unsafe(no_mangle)]

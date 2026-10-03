@@ -29,6 +29,7 @@ pub mod db;
 pub mod export;
 pub mod modeler;
 pub mod ocr;
+pub mod pagerender;
 pub mod pdf;
 pub mod presets;
 pub mod state;

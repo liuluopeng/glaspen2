@@ -466,18 +466,47 @@ pub(crate) fn paint_page_into_surface(
         return 1; // 空页 = 纯白/纯透明, 仍算成功
     }
     let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
-    let views: Vec<crate::Stroke> = strokes
-        .into_iter()
-        .map(|sd| crate::Stroke {
-            id: sd.id,
-            r: sd.r,
-            g: sd.g,
-            b: sd.b,
-            points: sd.points,
+    let views: Vec<crate::pagerender::PageStroke<'_>> = strokes
+        .iter()
+        .map(|s| crate::pagerender::PageStroke {
+            r: s.r,
+            g: s.g,
+            b: s.b,
+            points: &s.points,
         })
         .collect();
     // 与玻璃渲染同一条管线: pan=0, zoom=1
-    super::paint_strokes(r, &views, 0.0, 0.0, 1.0, scale, 0.0, outline);
+    let mut data = vec![0u8; (r.w.max(0) as usize) * (r.h.max(0) as usize) * 4];
+    let stride = r.w.max(0) as usize * 4;
+    {
+        let mut surf = crate::pagerender::PageSurface {
+            data: &mut data,
+            w: r.w,
+            h: r.h,
+            stride,
+        };
+        let lay = crate::pagerender::PageLayout {
+            scale,
+            ox: 0.0,
+            oy: 0.0,
+            w: 0.0,
+            h: 0.0,
+        };
+        crate::pagerender::render_strokes_with_outline(
+            &mut surf,
+            &lay,
+            &views,
+            0.0,
+            0.0,
+            1.0,
+            &crate::pagerender::RenderOpts {
+                alpha: 1.0,
+                white_bg,
+            },
+            outline,
+        );
+    }
+    r.blit_bgra(&data, r.w, r.h, stride);
     r.flush();
     1
 }

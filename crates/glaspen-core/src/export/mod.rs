@@ -296,8 +296,16 @@ fn draw_rebuild_impl(
     let strokes = STROKES.lock().unwrap();
 
     // 主页笔迹
-    paint_strokes(
-        &r, &strokes, pan_x_eff, pan_y_eff, zoom_eff, scale, 0.0, outline,
+    paint_strokes_into(
+        &r,
+        &strokes.iter().map(stroke_points).collect::<Vec<_>>(),
+        pan_x_eff,
+        pan_y_eff,
+        zoom_eff,
+        scale,
+        0.0,
+        outline,
+        1.0,
     );
 
     // 活页本跨页显示:相邻两页的笔迹画在本页上下(视口滑出页界时可见)。
@@ -332,15 +340,16 @@ fn draw_rebuild_impl(
         });
         let stride = runtime().block_on(db::page_height(cur)).unwrap_or(0.0);
         for (dy, group) in &neighbors {
-            paint_strokes(
+            paint_strokes_into(
                 &r,
-                group,
+                &group.iter().map(stroke_points).collect::<Vec<_>>(),
                 pan_x_eff,
                 pan_y_eff,
                 zoom_eff,
                 scale,
                 *dy * stride,
                 outline,
+                1.0,
             );
         }
         // 页号跟随:各页区域顶部标注页号(滑动跨页时知道自己在哪)
@@ -371,20 +380,119 @@ fn draw_rebuild_impl(
     r.flush();
 }
 
-/// 把一组笔迹画到 renderer 上(支持跨页 y 偏移与描边层)。
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 渲染/导出路径消费; Windows 用覆盖层自己的实现
-fn paint_strokes(
+/// 把 `glaspen2_load_page_preview` 载入的页画进外部 cairo 表面。
+///
+/// 与画布渲染同一条坐标管线:笔迹(页几何像素)→ `pan/zoom` → scale-to-fit
+/// (`ox/oy/pscale`)→ 表面像素(× `scale`)。`alpha` 是整页不透明度
+/// (隧道卡片的渐显/渐隐),`white_bg` 供导出用。返回 1 成功, 0 = 绑定失败。
+pub(crate) fn render_page_into(
     r: &crate::cairo_dl::CairoRenderer,
-    strokes: &[Stroke],
+    strokes: &[db::StrokeData],
+    scale: f64,
+    ox: f64,
+    oy: f64,
+    pscale: f64,
+    alpha: f64,
+    white_bg: bool,
+) -> c_int {
+    if scale <= 0.0 {
+        return 0;
+    }
+    let alpha = alpha.clamp(0.0, 1.0);
+    let views: Vec<crate::pagerender::PageStroke<'_>> = strokes
+        .iter()
+        .map(|s| crate::pagerender::PageStroke {
+            r: s.r,
+            g: s.g,
+            b: s.b,
+            points: &s.points,
+        })
+        .collect();
+    let (pan_x, pan_y, zoom) = view_transform();
+    // 目标像素 = (页像素 × pscale + off) × scale;折叠成布局:
+    // 缩放 = zoom×pscale×scale, 平移 = (−pan×zoom×pscale + off)×scale。
+    let lay = crate::pagerender::PageLayout {
+        scale: zoom * pscale * scale,
+        ox: (-pan_x * zoom * pscale + ox) * scale,
+        oy: (-pan_y * zoom * pscale + oy) * scale,
+        w: 0.0,
+        h: 0.0,
+    };
+    let mut data = vec![0u8; (r.w.max(0) as usize) * (r.h.max(0) as usize) * 4];
+    let stride = r.w.max(0) as usize * 4;
+    {
+        let mut surf = crate::pagerender::PageSurface {
+            data: &mut data,
+            w: r.w,
+            h: r.h,
+            stride,
+        };
+        crate::pagerender::render_strokes_with_outline(
+            &mut surf,
+            &lay,
+            &views,
+            0.0,
+            0.0,
+            1.0,
+            &crate::pagerender::RenderOpts {
+                alpha,
+                white_bg,
+            },
+            STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst),
+        );
+    }
+    r.blit_bgra(&data, r.w, r.h, stride);
+    1
+}
+
+/// 一条笔迹的可渲染视图:(颜色, 点列)。点列 = (x, y, width, t)。
+/// 用 &[(f64,f64,f64,f64)] 切片做统一源 —— STROKES / 邻页 / 页预览缓冲
+/// 三种来源都能零拷贝或一次收集后走同一条绘制管线。
+pub(crate) struct StrokeView<'a> {
+    pub(crate) r: f64,
+    pub(crate) g: f64,
+    pub(crate) b: f64,
+    pub(crate) points: &'a [(f64, f64, f64, f64)],
+}
+
+/// `Stroke` → [`StrokeView`](零拷贝)。
+pub(crate) fn stroke_points(s: &Stroke) -> StrokeView<'_> {
+    StrokeView {
+        r: s.r,
+        g: s.g,
+        b: s.b,
+        points: &s.points,
+    }
+}
+
+/// 把一组笔迹画到 renderer 上(支持跨页 y 偏移、描边层与整体不透明度)。
+///
+/// 坐标管线:像素 = (画布坐标 − pan) × zoom × scale + y_shift。
+/// `alpha < 1` 时逐段软件合成(cairo 的 set_source_rgba 在同一表面的多次
+/// 绘制间不累积 alpha, 隧道卡片的渐显/渐隐只能在像素上做)。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 渲染/导出路径消费; Windows 用覆盖层自己的实现
+pub(crate) fn paint_strokes_into(
+    r: &crate::cairo_dl::CairoRenderer,
+    strokes: &[StrokeView<'_>],
     pan_x: f64,
     pan_y: f64,
     zoom: f64,
     scale: f64,
     y_shift: f64,
     outline: bool,
+    alpha: f64,
 ) {
+    let alpha = alpha.clamp(0.0, 1.0);
+    if alpha <= 0.0 {
+        return;
+    }
+    // 整体不透明度 ≠ 1: 走软件合成(独立缓冲 + blit), 保证渐显/渐隐均匀。
+    if alpha < 1.0 {
+        paint_strokes_soft(r, strokes, pan_x, pan_y, zoom, scale, y_shift, outline, alpha);
+        return;
+    }
     for s in strokes {
-        let pts = &s.points;
+        let pts = s.points;
         if pts.len() < 2 {
             continue;
         }
@@ -429,10 +537,10 @@ fn paint_strokes(
                     color,
                 );
             } else {
-                let (px, py, _pw, _pt) = pts[i - 1];
+                let (px, _py, _pw, _pt) = pts[i - 1];
                 r.stroke_line(
                     ((px - pan_x) * zoom * scale) as f32,
-                    ((py + y_shift - pan_y) * zoom * scale) as f32,
+                    ((y + y_shift - pan_y) * zoom * scale) as f32,
                     ((x - pan_x) * zoom * scale) as f32,
                     ((y + y_shift - pan_y) * zoom * scale) as f32,
                     (w * zoom * scale) as f32,
@@ -441,6 +549,65 @@ fn paint_strokes(
             }
         }
     }
+}
+
+/// 整体不透明度合成:笔迹画进独立缓冲(逐段软件 alpha 混合), 再 blit 到
+/// 目标表面。描边层同样按 alpha 合成, 保持与不透明渲染一致的层次。
+fn paint_strokes_soft(
+    r: &crate::cairo_dl::CairoRenderer,
+    strokes: &[StrokeView<'_>],
+    pan_x: f64,
+    pan_y: f64,
+    zoom: f64,
+    scale: f64,
+    y_shift: f64,
+    outline: bool,
+    alpha: f64,
+) {
+    let w = r.w.max(0) as usize;
+    let h = r.h.max(0) as usize;
+    let stride = w * 4;
+    let mut data = vec![0u8; stride * h];
+    let views: Vec<crate::pagerender::PageStroke<'_>> = strokes
+        .iter()
+        .map(|s| crate::pagerender::PageStroke {
+            r: s.r,
+            g: s.g,
+            b: s.b,
+            points: s.points,
+        })
+        .collect();
+    {
+        let mut surf = crate::pagerender::PageSurface {
+            data: &mut data,
+            w: r.w,
+            h: r.h,
+            stride,
+        };
+        // 布局把"页坐标 → 表面像素"整条管线折叠进来: 缩放量 = zoom×scale,
+        // 平移量 = −pan×zoom×scale + y_shift×scale。
+        let lay = crate::pagerender::PageLayout {
+            scale: zoom * scale,
+            ox: -pan_x * zoom * scale,
+            oy: (-pan_y + y_shift) * zoom * scale,
+            w: 0.0,
+            h: 0.0,
+        };
+        crate::pagerender::render_strokes_with_outline(
+            &mut surf,
+            &lay,
+            &views,
+            0.0,
+            0.0,
+            1.0,
+            &crate::pagerender::RenderOpts {
+                alpha,
+                white_bg: false,
+            },
+            outline,
+        );
+    }
+    r.blit_bgra(&data, r.w, r.h, stride);
 }
 
 #[unsafe(no_mangle)]
