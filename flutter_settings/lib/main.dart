@@ -919,18 +919,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
-  /// 批量取缩略图进缓存(笔记本封面用); 失败静默退占位。
-  Future<void> _fetchThumbnails(List<int> ids) async {
-    try {
-      final thumbs = await _bridge
-          .getPageThumbnails(ids, _thumbMaxSize)
-          .timeout(const Duration(seconds: 5), onTimeout: () => const {});
-      _thumbnailCache.addAll(thumbs);
-    } catch (e) {
-      debugPrint('[Content] notebook covers error: $e');
-    }
-  }
-
   /// 笔记本封面色: 由尺寸 key 决定(确定性"随机") —— 生成一次终生不变,
   /// 任何机器/重装都得到同一本色。平涂色板, GoodNotes 式干净。
   static const _coverPalette = [
