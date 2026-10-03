@@ -403,6 +403,8 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
         if (![arr isKindOfClass:[NSArray class]]) return;
         NSMutableArray *ids = [NSMutableArray array];
         for (NSDictionary *o in arr) {
+            // 页按分辨率分组, minimap 只显示当前几何组的页
+            if (g_pageview_pw > 0 && [o[@"w"] intValue] != g_pageview_pw) continue;
             NSNumber *pid = o[@"id"];
             if (pid) [ids addObject:pid];
         }

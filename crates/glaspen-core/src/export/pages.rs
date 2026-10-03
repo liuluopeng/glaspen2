@@ -18,8 +18,9 @@ pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) -> c_
         return if had { 1 } else { 0 };
     }
     let current = state::current_screen_id();
+    // 守卫按**当前几何组**判定: 组末页有笔迹才新建, 空白则复用组末页
     let last = runtime().block_on(async {
-        match db::last_screen_id().await {
+        match db::last_screen_with_geometry(screen_w, screen_h).await {
             Some(id) => Some((id, db::screen_has_strokes(id).await)),
             None => None,
         }
@@ -51,7 +52,9 @@ pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
     if purged > 0 {
         eprintln!("[init] 清理空白页 {purged} 页");
     }
-    match runtime().block_on(db::last_screen_id()) {
+    // 启动落在**当前几何组**的末页: 页按分辨率分组, 玻璃什么尺寸就翻
+    // 哪一本; 该几何从没出现过才建第一页。
+    match runtime().block_on(db::last_screen_with_geometry(screen_w, screen_h)) {
         Some(id) => {
             state::set_current_screen_id(id);
             // 载入该页笔迹到 STROKES: 启动画布立即可见上次内容,
@@ -63,25 +66,30 @@ pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
     warm_thumbnail_cache();
 }
 
-/// Called when the display size/arrangement changed. Only starts a new page
-/// when the current page already has strokes; otherwise the current page is
-/// kept (avoiding silent page switches from resolution changes).
+/// Called when the display size/arrangement changed (防抖后的稳定值).
+/// 页按分辨率分组: 分辨率切换 = **换一本** —— 落到目标几何组的末页
+/// (回到离开时的那页, 游戏开关一个来回零垃圾页); 该几何从没出现过
+/// 才建第一页。几何没变则什么都不做。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_on_display_change(screen_w: c_int, screen_h: c_int) {
     let current = state::current_screen_id();
-    if !runtime().block_on(db::screen_has_strokes(current)) {
-        return;
+    if let Some((cw, ch)) = runtime().block_on(db::screen_dims(current))
+        && cw == screen_w
+        && ch == screen_h
+    {
+        return; // 几何没变(防抖后协商回原分辨率等)
     }
-    let last = runtime().block_on(async {
-        match db::last_screen_id().await {
-            Some(id) => Some((id, db::screen_has_strokes(id).await)),
-            None => None,
+    match runtime().block_on(db::last_screen_with_geometry(screen_w, screen_h)) {
+        Some(id) => {
+            dblog_display_enter(id, screen_w, screen_h);
+            state::set_current_screen_id(id);
         }
-    });
-    let (create, _) = plan_new_page(last);
-    if create {
-        runtime().block_on(db::new_screen(screen_w, screen_h));
+        None => runtime().block_on(db::new_screen(screen_w, screen_h)),
     }
+}
+
+fn dblog_display_enter(id: i64, w: c_int, h: c_int) {
+    eprintln!("[db] 切换分辨率 → 进入 {w}x{h} 组末页 id={id}");
 }
 
 /// 新建页守卫的纯决策:活页本末页(未删除页中最新的一页)已有笔迹 →

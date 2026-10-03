@@ -826,10 +826,21 @@ mod platform {
         screen_del.is_ok() || stroke_del.is_ok()
     }
 
+    /// 上一页/下一页: **只在同几何组内翻**(页 = 某块玻璃的快照, 不同
+    /// 分辨率是不同的本子; 翻页不跨玻璃)。组 = 当前页的 screen_w×screen_h。
     pub async fn prev_screen(current: i64) -> Option<i64> {
-        let pool = DB.get()?;
+        match DB.get() {
+            Some(p) => prev_screen_with(p, current).await,
+            None => None,
+        }
+    }
+
+    pub(crate) async fn prev_screen_with(pool: &SqlitePool, current: i64) -> Option<i64> {
         let r = sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM screens WHERE id < ?1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1",
+            "SELECT id FROM screens WHERE id < ?1 AND deleted_at IS NULL \
+             AND screen_w = (SELECT screen_w FROM screens WHERE id = ?1) \
+             AND screen_h = (SELECT screen_h FROM screens WHERE id = ?1) \
+             ORDER BY id DESC LIMIT 1",
         )
         .bind(current)
         .fetch_optional(pool)
@@ -841,9 +852,18 @@ mod platform {
     }
 
     pub async fn next_screen(current: i64) -> Option<i64> {
-        let pool = DB.get()?;
+        match DB.get() {
+            Some(p) => next_screen_with(p, current).await,
+            None => None,
+        }
+    }
+
+    pub(crate) async fn next_screen_with(pool: &SqlitePool, current: i64) -> Option<i64> {
         let r = sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM screens WHERE id > ?1 AND deleted_at IS NULL ORDER BY id ASC LIMIT 1",
+            "SELECT id FROM screens WHERE id > ?1 AND deleted_at IS NULL \
+             AND screen_w = (SELECT screen_w FROM screens WHERE id = ?1) \
+             AND screen_h = (SELECT screen_h FROM screens WHERE id = ?1) \
+             ORDER BY id ASC LIMIT 1",
         )
         .bind(current)
         .fetch_optional(pool)
@@ -851,6 +871,32 @@ mod platform {
         .ok()
         .flatten();
         dblog!("下一页 cur={current} → {:?}", r);
+        r
+    }
+
+    /// 指定几何组的末页(没有则 None)。分辨率切换"进入对应本子"用。
+    pub async fn last_screen_with_geometry(w: i32, h: i32) -> Option<i64> {
+        match DB.get() {
+            Some(p) => last_screen_with_geometry_with(p, w, h).await,
+            None => None,
+        }
+    }
+
+    pub(crate) async fn last_screen_with_geometry_with(
+        pool: &SqlitePool,
+        w: i32,
+        h: i32,
+    ) -> Option<i64> {
+        let r = sqlx::query_scalar::<_, Option<i64>>(
+            "SELECT MAX(id) FROM screens WHERE deleted_at IS NULL AND screen_w = ?1 AND screen_h = ?2",
+        )
+        .bind(w)
+        .bind(h)
+        .fetch_one(pool)
+        .await
+        .ok()
+        .flatten();
+        dblog!("组末页 {w}x{h} → {:?}", r);
         r
     }
 
@@ -1649,7 +1695,8 @@ pub use platform::*;
 mod tests {
     use super::StrokeData;
     use super::platform::{
-        SCHEMA_VERSION, attach_points, backup_to_with, migrate_with, page_info_with,
+        SCHEMA_VERSION, attach_points, backup_to_with, last_screen_with_geometry_with,
+        migrate_with, next_screen_with, page_info_with, prev_screen_with,
         restore_merge_from_with, screen_stroke_version_with, stroke_versions_many_with,
         thumbnail_lookup_with, thumbnail_store_with, thumbnails_many_with,
         thumbnails_purge_screen_with,
@@ -1714,6 +1761,52 @@ mod tests {
         .fetch_one(pool)
         .await
         .unwrap()
+    }
+
+    async fn add_screen_at(pool: &SqlitePool, ts: f64, w: i32, h: i32) -> i64 {
+        sqlx::query_scalar::<_, i64>(
+            "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (?1, ?2, ?3) RETURNING id",
+        )
+        .bind(ts)
+        .bind(w)
+        .bind(h)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+    }
+
+    #[test]
+    fn test_page_nav_grouped_by_geometry() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        runtime().block_on(async {
+            let (pool, path) = temp_pool().await;
+            // temp_pool 刻意建旧 schema(给迁移测试用); 本测试需要
+            // deleted_at → 先迁移到当前版本
+            migrate_with(&pool).await.unwrap();
+            // 页序列: 1(1920) 2(3440) 3(1920) 4(3440) —— 交错, 组内 id 不连续
+            let p1 = add_screen_at(&pool, 1.0, 1920, 1080).await;
+            let p2 = add_screen_at(&pool, 2.0, 3440, 1440).await;
+            let p3 = add_screen_at(&pool, 3.0, 1920, 1080).await;
+            let p4 = add_screen_at(&pool, 4.0, 3440, 1440).await;
+
+            // 1920 组内: 1 ↔ 3 互为前后, 不串到 3440
+            assert_eq!(prev_screen_with(&pool, p3).await, Some(p1));
+            assert_eq!(next_screen_with(&pool, p1).await, Some(p3));
+            assert_eq!(prev_screen_with(&pool, p1).await, None);
+            // 3440 组内: 2 ↔ 4
+            assert_eq!(prev_screen_with(&pool, p4).await, Some(p2));
+            assert_eq!(next_screen_with(&pool, p4).await, None);
+
+            // 组末页查询
+            assert_eq!(last_screen_with_geometry_with(&pool, 1920, 1080).await, Some(p3));
+            assert_eq!(last_screen_with_geometry_with(&pool, 3440, 1440).await, Some(p4));
+            assert_eq!(last_screen_with_geometry_with(&pool, 1280, 1024).await, None);
+
+            let _ = sqlx::query(&format!("DELETE FROM screens WHERE id = {}", p1))
+                .execute(&pool)
+                .await;
+            let _ = std::fs::remove_file(&path);
+        });
     }
 
     #[test]

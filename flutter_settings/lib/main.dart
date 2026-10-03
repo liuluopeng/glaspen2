@@ -686,7 +686,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       if (mounted) {
         setState(() {
           _pages = pages;
-          _filteredPages = List.from(pages);
+          _filteredPages = _groupSorted(pages);
           _pagesLoading = false;
           for (final p in _pages) {
             p.thumbnail = _thumbnailCache[p.id];
@@ -1027,6 +1027,34 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     unawaited(_loadPages()); // 重载列表,页码/缩略图与服务端状态对齐
   }
 
+  /// 页按分辨率分组(页 = 对应尺寸玻璃的快照): 最近活跃的组排最前,
+  /// 组内按页 id(时间)序。当前屏几何几乎总是最新组 → 开箱即当前本子。
+  List<PageInfo> _groupSorted(List<PageInfo> pages) {
+    if (pages.isEmpty) return pages;
+    final groups = <String, List<PageInfo>>{};
+    for (final p in pages) {
+      groups.putIfAbsent('${p.w}x${p.h}', () => []).add(p);
+    }
+    final keys = groups.keys.toList()
+      ..sort((a, b) {
+        int mx(String k) => groups[k]!.map((p) => p.id).reduce((x, y) => x > y ? x : y);
+        return mx(b).compareTo(mx(a)); // 最近活跃的组在前
+      });
+    final out = <PageInfo>[];
+    for (final k in keys) {
+      final g = groups[k]!..sort((a, b) => a.id.compareTo(b.id));
+      out.addAll(g);
+    }
+    return out;
+  }
+
+  /// 该页是否属于"第一个(最近活跃)组" —— 异组卡片显示分辨率徽标。
+  bool _isPrimaryGroup(PageInfo page) {
+    if (_filteredPages.isEmpty) return true;
+    final first = _filteredPages.first;
+    return page.w == first.w && page.h == first.h;
+  }
+
   Widget _buildPageCard(PageInfo page) {
     if (page.thumbnail == null && _thumbnailCache.containsKey(page.id)) {
       page.thumbnail = _thumbnailCache[page.id];
@@ -1080,6 +1108,19 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           },
           child: Stack(
             children: [
+              if (!_isPrimaryGroup(page))
+                Positioned(
+                  top: 4, left: 4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text('${page.w}×${page.h}',
+                        style: const TextStyle(fontSize: 9, color: Colors.white)),
+                  ),
+                ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
