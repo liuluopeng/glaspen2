@@ -542,7 +542,7 @@ static cairo_surface_t *tunnel_page_surface(long screen_id, int full_res) {
     int pw = (int)(g_screen_w * g_scale * k);
     int ph = (int)(g_screen_h * g_scale * k);
     cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pw, ph);
-    glaspen2_paint_page_into_surface(surf, screen_id, g_scale * k, 1);
+    glaspen2_paint_page_into_surface(surf, screen_id, g_scale * k, 0);
     return surf;
 }
 
@@ -552,26 +552,29 @@ static cairo_surface_t *tunnel_page_surface(long screen_id, int full_res) {
 static void tunnel_draw_slot(cairo_t *cr, cairo_surface_t *surf, int slot,
                              double d, double alpha_base) {
     if (!surf || d < -0.2 || d > 3.2) return;
-    double inv = s_tun_inv[slot];
+    double inv = s_tun_inv[slot]; // native = 屏幕物理像素 × inv
     double sc = pow(0.66, d);
-    double W = (double)s_tun_surf_w, H = (double)s_tun_surf_h;
-    double w = W * sc, h = H * sc;
-    // 底边线: d=0 → 0.92H(近满屏), d 越大底边越高、向消失点收缩
-    double bottom = H * 0.92 - (H * 0.92 - H * 0.42) * (1.0 - sc);
-    double x0 = W / 2.0 - w / 2.0;
-    double y0 = bottom - h;
+    double Wd = (double)s_tun_surf_w, Hd = (double)s_tun_surf_h;
+    int native_w = cairo_image_surface_get_width(surf);
+    int native_h = cairo_image_surface_get_height(surf);
+    double k = (Wd * sc) / (double)native_w; // 表面原生 → 设备目标
+    double w_dev = Wd * sc;
+    // 底边线: sc=1 → 满屏(无缝落点), sc 越小底边越高、向消失点(0.42H)收缩
+    double bottom = Hd - (Hd - Hd * 0.42) * (1.0 - sc);
+    double x0 = Wd / 2.0 - w_dev / 2.0;
+    double y0 = bottom - Hd * sc;
     double alpha = alpha_base * (1.0 - 0.20 * d);
     if (alpha <= 0.03) return;
 
     cairo_save(cr);
     cairo_translate(cr, x0, y0);
-    cairo_scale(cr, sc * inv, sc * inv);
+    cairo_scale(cr, k, k);
     cairo_set_source_surface(cr, surf, 0, 0);
     cairo_paint_with_alpha(cr, alpha);
     // 页框: 细白线标出每层的边(透明玻璃上分辨"层"的唯一线索)
     cairo_set_source_rgba(cr, 1, 1, 1, 0.30 * alpha);
-    cairo_set_line_width(cr, 1.2 / (sc * inv));
-    cairo_rectangle(cr, 0, 0, W, H);
+    cairo_set_line_width(cr, 1.2 / k);
+    cairo_rectangle(cr, 0, 0, (double)native_w, (double)native_h);
     cairo_stroke(cr);
     cairo_restore(cr);
 }
@@ -639,12 +642,12 @@ static BOOL page_flip_tunnel(BOOL going_next, void (^prepare)(void), void (^comm
     int ok = 0;
     if (target > 0) {
         s_tun_surf[3] = tunnel_page_surface(target, 1);
-        s_tun_inv[3] = 1.0;
+        s_tun_inv[3] = g_scale;    // 全分辨率: native = 屏幕物理像素×g_scale
         ok = 1;
     }
     if (older > 0 && older != target) {
         s_tun_surf[1] = tunnel_page_surface(older, 0);
-        s_tun_inv[1] = 2.0; // 半分辨率表面: 绘制时补 2 倍
+        s_tun_inv[1] = g_scale / 2.0; // 半分辨率
     }
     if (!ok) { tunnel_free_surfaces(); return NO; }
 
