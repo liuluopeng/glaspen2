@@ -515,6 +515,7 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
 
 #define TUNNEL_SLOTS 4
 static cairo_surface_t *s_tun_surf[TUNNEL_SLOTS]; // 0=当前页 1=深处页 3=目标页
+static double s_tun_inv[TUNNEL_SLOTS];            // 各槽表面分辨率因子(半分辨率=2)
 static int s_tun_surf_w = 0, s_tun_surf_h = 0;
 static BOOL s_tun_going_next = YES;
 static void (^s_tun_prepare)(void);
@@ -545,66 +546,65 @@ static cairo_surface_t *tunnel_page_surface(long screen_id, int full_res) {
     return surf;
 }
 
-// 把页快照表面画到深度 d(可带小数): 居中, scale=pow(0.62,d)。
-// 深色主题的页快照是透明底 —— 先垫白纸 + 投影, 页才有"纸卡"的立体感;
-// 否则压暗后页会和黑背景融为一体。
-static void tunnel_draw_slot(cairo_t *cr, cairo_surface_t *surf, double d) {
-    if (!surf || d < 0.0 || d > 3.0) return;
-    double slot_w = (double)s_tun_surf_w * tunnel_scale_at(d);
-    double slot_h = (double)s_tun_surf_h * tunnel_scale_at(d);
-    double k = slot_w / (double)s_tun_surf_w;
+// 把页快照画到深度 d: 等比缩小, 底边沿"地面线"向消失点(屏幕中上部)
+// 收缩 —— 越深的页越小、越靠上、越透明, 多层墨迹悬浮在玻璃上。
+// alpha_base: 该槽的基础不透明度(目标页落定时趋近 1, 无缝落地)。
+static void tunnel_draw_slot(cairo_t *cr, cairo_surface_t *surf, int slot,
+                             double d, double alpha_base) {
+    if (!surf || d < -0.2 || d > 3.2) return;
+    double inv = s_tun_inv[slot];
+    double sc = pow(0.66, d);
+    double W = (double)s_tun_surf_w, H = (double)s_tun_surf_h;
+    double w = W * sc, h = H * sc;
+    // 底边线: d=0 → 0.92H(近满屏), d 越大底边越高、向消失点收缩
+    double bottom = H * 0.92 - (H * 0.92 - H * 0.42) * (1.0 - sc);
+    double x0 = W / 2.0 - w / 2.0;
+    double y0 = bottom - h;
+    double alpha = alpha_base * (1.0 - 0.20 * d);
+    if (alpha <= 0.03) return;
+
     cairo_save(cr);
-    cairo_translate(cr, s_tun_surf_w / 2.0, s_tun_surf_h / 2.0);
-    cairo_scale(cr, k, k);
-
-    // 投影: 页矩形外扩多层半透明黑(近似 blur), 随深度越远越淡
-    double shadow_a = 0.5 * (1.0 - tunnel_dim_at(d));
-    for (int i = 6; i >= 1; i--) {
-        double grow = i * 3.0;
-        cairo_set_source_rgba(cr, 0, 0, 0, shadow_a * (1.0 - i / 7.0) / 2.0);
-        cairo_rectangle(cr,
-                        -s_tun_surf_w / 2.0 - grow, -s_tun_surf_h / 2.0 - grow,
-                        s_tun_surf_w + grow * 2, s_tun_surf_h + grow * 2);
-        cairo_fill(cr);
-    }
-
-    // 白纸底(快照是透明底)
-    cairo_set_source_rgba(cr, 1, 1, 1, 1);
-    cairo_rectangle(cr, -s_tun_surf_w / 2.0, -s_tun_surf_h / 2.0,
-                    s_tun_surf_w, s_tun_surf_h);
-    cairo_fill(cr);
-
-    cairo_set_source_surface(cr, surf, -s_tun_surf_w / 2.0, -s_tun_surf_h / 2.0);
-    cairo_paint(cr);
-    cairo_set_source_rgba(cr, 0, 0, 0, tunnel_dim_at(d));
-    cairo_paint(cr);
+    cairo_translate(cr, x0, y0);
+    cairo_scale(cr, sc * inv, sc * inv);
+    cairo_set_source_surface(cr, surf, 0, 0);
+    cairo_paint_with_alpha(cr, alpha);
+    // 页框: 细白线标出每层的边(透明玻璃上分辨"层"的唯一线索)
+    cairo_set_source_rgba(cr, 1, 1, 1, 0.30 * alpha);
+    cairo_set_line_width(cr, 1.2 / (sc * inv));
+    cairo_rectangle(cr, 0, 0, W, H);
+    cairo_stroke(cr);
     cairo_restore(cr);
 }
 
-// 一帧: 背景压暗 + 各槽深→浅绘制; 收尾 15% 背景淡出, 落回玻璃无跳变
+// 一帧: 完全透明(不铺背景, 桌面透出), 各层墨迹按深度排布
 static void tunnel_frame(double p) {
     if (!g_surface) return;
     cairo_t *cr = cairo_create(g_surface);
     double e = 1.0 - pow(1.0 - p, 3.0); // ease-out cubic
-    double backdrop = 0.94;
-    if (p > 0.85) backdrop *= 1.0 - (p - 0.85) / 0.15;
-
-    cairo_set_source_rgba(cr, 0.03, 0.03, 0.04, backdrop);
-    cairo_paint(cr);
 
     double depths[TUNNEL_SLOTS] = {-1, -1, -1, -1};
+    double alphas[TUNNEL_SLOTS] = {0, 0, 0, 0};
     if (s_tun_going_next) {
-        depths[0] = e;           // 当前页: 0 → 1(缩进隧道)
-        depths[1] = 1.0 + e;     // 上一页: 1 → 2(继续后退)
-        depths[3] = 1.3 * (1.0 - e); // 目标页: 1.3 → 0(飞出放大)
+        depths[0] = e;               // 当前页: 0 → 1(缩进)
+        depths[1] = 1.0 + e;         // 上一页: 1 → 2
+        depths[3] = (1.0 - e) * 1.2; // 目标页: 1.2 → 0(飞出)
+        alphas[0] = 0.60 * (1.0 - 0.55 * e); // 当前页渐隐(落定即消失)
+        alphas[1] = 0.45 - 0.15 * e;
+        alphas[3] = 0.35 + 0.65 * e;         // 目标页落地渐实
     } else {
-        depths[0] = e;           // 当前页: 0 → 1
-        depths[1] = 1.0 - e;     // 上一页(目标): 1 → 0(飞出放大)
+        depths[0] = e;               // 当前页: 0 → 1
+        depths[1] = (1.0 - e) * 1.2; // 上一页(目标): 1.2 → 0
+        depths[2] = 1.0 + e;         // 更旧页: 1 → 2
+        alphas[0] = 0.60 * (1.0 - 0.55 * e);
+        alphas[1] = 0.35 + 0.65 * e;
+        alphas[2] = 0.45 - 0.15 * e;
     }
-    tunnel_draw_slot(cr, s_tun_surf[3], depths[3]);
-    tunnel_draw_slot(cr, s_tun_surf[2], depths[2]);
-    tunnel_draw_slot(cr, s_tun_surf[1], depths[1]);
-    tunnel_draw_slot(cr, s_tun_surf[0], depths[0]);
+
+    // 深 → 浅
+    tunnel_draw_slot(cr, s_tun_surf[2], 2, depths[2], alphas[2]);
+    tunnel_draw_slot(cr, s_tun_surf[1], 1, depths[1], alphas[1]);
+    tunnel_draw_slot(cr, s_tun_surf[3], 3, depths[3], alphas[3]);
+    tunnel_draw_slot(cr, s_tun_surf[0], 0, depths[0], alphas[0]);
     cairo_destroy(cr);
     flush_to_layer();
 }
@@ -626,12 +626,11 @@ static BOOL page_flip_tunnel(BOOL going_next, void (^prepare)(void), void (^comm
     tunnel_free_surfaces();
     s_tun_surf_w = (int)(g_screen_w * g_scale);
     s_tun_surf_h = (int)(g_screen_h * g_scale);
+    for (int i = 0; i < TUNNEL_SLOTS; i++) s_tun_inv[i] = 1.0;
 
-    // 槽 0: 当前玻璃内容(白底垫 + 原样拷贝)
+    // 槽 0: 当前玻璃内容(原样拷贝, 透明底 —— 玻璃上本来就是墨迹悬浮)
     s_tun_surf[0] = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, s_tun_surf_w, s_tun_surf_h);
     cairo_t *cr = cairo_create(s_tun_surf[0]);
-    cairo_set_source_rgba(cr, 1, 1, 1, 1);
-    cairo_paint(cr);
     cairo_set_source_surface(cr, g_surface, 0, 0);
     cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
     cairo_paint(cr);
@@ -640,10 +639,12 @@ static BOOL page_flip_tunnel(BOOL going_next, void (^prepare)(void), void (^comm
     int ok = 0;
     if (target > 0) {
         s_tun_surf[3] = tunnel_page_surface(target, 1);
+        s_tun_inv[3] = 1.0;
         ok = 1;
     }
     if (older > 0 && older != target) {
         s_tun_surf[1] = tunnel_page_surface(older, 0);
+        s_tun_inv[1] = 2.0; // 半分辨率表面: 绘制时补 2 倍
     }
     if (!ok) { tunnel_free_surfaces(); return NO; }
 
