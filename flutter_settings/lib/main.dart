@@ -1137,11 +1137,16 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   controller: _gridScroll,
                   itemCount: _filteredPages.length,
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 300,
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: _filteredPages.first.w >=
+                            _filteredPages.first.h
+                        ? 340
+                        : 300,
                     mainAxisSpacing: 8,
                     crossAxisSpacing: 8,
-                    childAspectRatio: 1.2,
+                    // cell 比例 = 本子的真实比例(宽页是宽卡, 竖页是高卡)
+                    childAspectRatio: _filteredPages.first.w /
+                        _filteredPages.first.h,
                   ),
                   itemBuilder: (context, i) {
                     final page = _filteredPages[i];
@@ -1427,9 +1432,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Thumbnail
-                  AspectRatio(
-                    aspectRatio: 16 / 9,
+                  // Thumbnail(格子比例 = 页比例, 填满即可)
+                  Expanded(
                     child: page.thumbnail != null
                         ? Image.memory(page.thumbnail!,
                             fit: BoxFit.cover, gaplessPlayback: true)
