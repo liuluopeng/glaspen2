@@ -2354,6 +2354,22 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
     setState(() => _backupBusy = true);
     try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('从最新备份恢复', style: TextStyle(fontSize: 16)),
+          content: const Text('备份中的页将合并进当前库(不会删除备份之后\n新画的内容)。继续吗?', style: TextStyle(fontSize: 13)),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('恢复')),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
       final (ok, message) = await _bridge.restoreLatestBackup();
       if (!mounted) return;
       _toast(ok ? '已从备份恢复: $message(重启后生效)' : '恢复失败: $message');
@@ -2374,6 +2390,23 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _pdfExporting = false;
 
   Future<void> _exportPdf() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('导出全部页面', style: TextStyle(fontSize: 16)),
+        content: const Text('全部页将合成一个 PDF 保存到桌面。',
+            style: TextStyle(fontSize: 13)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('导出')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
     setState(() => _pdfExporting = true);
     try {
       final ok = await _bridge.exportPdf();

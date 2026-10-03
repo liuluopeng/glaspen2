@@ -90,19 +90,12 @@ pub fn timestamped_path() -> PathBuf {
 }
 
 pub fn timestamped_name(ext: &str) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
-    let s = secs % 60;
-    let m = (secs / 60) % 60;
-    let h = (secs / 3600 + 8) % 24;
-    let days = secs / 86400;
-    let y = 1970 + days / 365;
-    let d = days % 365;
+    // chrono::Local: 闰年/时区正确(旧手写版没算闰年, 文件名里的"天"
+    // 会比真实日期漂移约两周)
     format!(
-        "glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.{}",
-        y, d, h, m, s, ext
+        "glaspen2_{}_{}",
+        chrono::Local::now().format("%Y-%j_%H-%M-%S"),
+        ext
     )
 }
 
