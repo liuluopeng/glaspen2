@@ -522,6 +522,7 @@ static void (^s_tun_prepare)(void);
 static void (^s_tun_commit)(void);
 static dispatch_source_t s_tun_timer;
 static double s_tun_t0 = 0;
+static double s_tun_dur = 0.62;
 
 static inline double tunnel_scale_at(double d) { return pow(0.62, d); }
 static inline double tunnel_dim_at(double d) {
@@ -551,94 +552,66 @@ static cairo_surface_t *tunnel_page_surface(long screen_id, int full_res) {
 // alpha_base: 该槽的基础不透明度(目标页落定时趋近 1, 无缝落地)。
 // 把页快照画到深度 d: 尺寸 = 满屏×0.94×0.72^d, 顶部每深一槽上移——
 // 后面的页从前一页的顶边上方露出(Time Machine 的层叠感)。
-static void tunnel_draw_slot(cairo_t *cr, cairo_surface_t *surf, double d,
-                             double alpha_base) {
-    if (!surf || d < -0.2 || d > 3.2) return;
+static void tunnel_draw_slot(cairo_t *cr, cairo_surface_t *surf,
+                             double cx, double cy, double w, double h,
+                             double alpha) {
+    if (!surf || alpha <= 0.03) return;
     int native_w = cairo_image_surface_get_width(surf);
     int native_h = cairo_image_surface_get_height(surf);
-    double sc = pow(0.72, d);
-    double Wd = (double)s_tun_surf_w, Hd = (double)s_tun_surf_h;
-    double h = Hd * 0.96 * sc;
-    double w = h * (Wd / Hd); // 保持屏宽高比
-    double top = Hd * (0.13 + 0.085 * d);
-    double x0 = Wd / 2.0 - w / 2.0;
-    double y0 = top;
-    double alpha = alpha_base * (1.0 - 0.18 * d);
-    if (alpha <= 0.03) return;
-
     cairo_save(cr);
-    cairo_translate(cr, x0, y0);
+    cairo_translate(cr, cx - w / 2.0, cy - h / 2.0);
     cairo_scale(cr, w / (double)native_w, h / (double)native_h);
     cairo_set_source_surface(cr, surf, 0, 0);
     cairo_paint_with_alpha(cr, alpha);
-    cairo_set_source_rgba(cr, 1, 1, 1, 0.28 * alpha);
+    // 细页框
+    cairo_set_source_rgba(cr, 0, 0, 0, 0.25 * alpha);
     cairo_set_line_width(cr, 1.5 * (double)native_w / w);
     cairo_rectangle(cr, 0, 0, (double)native_w, (double)native_h);
     cairo_stroke(cr);
     cairo_restore(cr);
 }
 
-// 一帧: 完全透明(桌面透出)。两段式: 前 70% 页栈整体前移一格;
-// 后 30% 镜头向目标页推近(目标页放大到满屏, 其余层滑出屏幕)。
+// 一帧: 白纸卡层叠(透明玻璃, 桌面从卡外透出)。
+// 目标页: 尺寸 0.72H → 1.02H 渐大渐实, 落定即满屏无缝; 其余页在其上方
+// 依次缩小上移, 顶边阶梯露出 —— Time Machine 的纵深书堆。
 static void tunnel_frame(double p) {
     if (!g_surface) return;
     cairo_t *cr = cairo_create(g_surface);
-    double e = 1.0 - pow(1.0 - p, 3.0); // ease-out cubic
+    double e = 1.0 - pow(1.0 - p, 3.0);
+    double G = 0.72 + 0.34 * e; // 全局镜头推进系数: 0.72 → 1.06
 
-    // 各槽深度: NEXT 当前页 0→1, 目标页 1→0; PREV 反向
     double depths[TUNNEL_SLOTS] = {-1, -1, -1, -1};
     double alphas[TUNNEL_SLOTS] = {0, 0, 0, 0};
     if (s_tun_going_next) {
-        depths[0] = e;             // 当前页 → 深 1
-        depths[1] = 1.0 + e * 0.6; // 上一页 → 深 1.6
-        depths[3] = 1.0 - e;       // 目标页: 深 1 → 0(飞出)
-        alphas[0] = 0.9;
-        alphas[1] = 0.8;
-        alphas[3] = 0.35 + 0.65 * e; // 目标页落地渐实
+        depths[0] = e;             // 当前页: 0 → 1
+        depths[1] = 1.0 + e * 0.7; // 上一页: 1 → 1.7
+        depths[3] = 1.0 - e;       // 目标页: 1 → 0
+        alphas[0] = 0.95 * (1.0 - 0.45 * e); // 当前页渐隐(落定即消失)
+        alphas[1] = 0.85;
+        alphas[3] = 0.45 + 0.55 * e;         // 目标页渐实
     } else {
-        depths[0] = e;             // 当前页 → 深 1
-        depths[1] = 1.0 - e;       // 上一页(目标): 深 1 → 0
-        depths[2] = 1.0 + e * 0.6;
-        alphas[0] = 0.9;
-        alphas[1] = 0.35 + 0.65 * e;
-        alphas[2] = 0.8;
-    }
-
-    // 镜头推近: p>0.7 后整体放大, 目标页在 p=1 时恰好满屏
-    double G = 1.0;
-    if (p > 0.7) {
-        double q = (p - 0.7) / 0.3;
-        G = 1.0 + q * q * (1.0 / 0.92 - 1.0);
+        depths[0] = e;             // 当前页: 0 → 1
+        depths[1] = 1.0 - e;       // 上一页(目标): 1 → 0
+        depths[2] = 1.0 + e * 0.7; // 更旧页: 1 → 1.7
+        alphas[0] = 0.95 * (1.0 - 0.45 * e);
+        alphas[1] = 0.45 + 0.55 * e;
+        alphas[2] = 0.85;
     }
 
     double Wd = (double)s_tun_surf_w, Hd = (double)s_tun_surf_h;
     int native_w, native_h;
-    // 深 → 浅
     for (int pass = 3; pass >= 0; pass--) {
         cairo_surface_t *surf = s_tun_surf[pass];
         double d = depths[pass];
         if (!surf || d < -0.2) continue;
         native_w = cairo_image_surface_get_width(surf);
         native_h = cairo_image_surface_get_height(surf);
-        double sc = pow(0.72, d) * G;
-        double h = Hd * 0.96 * sc;
+        double h = Hd * 0.92 * pow(0.75, d) * G;
         double w = h * (Wd / Hd);
-        double top = Hd * (0.13 + 0.085 * d) - (G - 1.0) * Hd * 0.13 / 0.92;
-        double x0 = Wd / 2.0 - w / 2.0;
-        double y0 = top - (G - 1.0) * Hd * 0.04;
-        double alpha = alphas[pass] * (1.0 - 0.18 * d);
-        if (alpha <= 0.03) continue;
-
-        cairo_save(cr);
-        cairo_translate(cr, x0, y0);
-        cairo_scale(cr, w / (double)native_w, h / (double)native_h);
-        cairo_set_source_surface(cr, surf, 0, 0);
-        cairo_paint_with_alpha(cr, alpha);
-        cairo_set_source_rgba(cr, 1, 1, 1, 0.28 * alpha);
-        cairo_set_line_width(cr, 1.5 * (double)native_w / w);
-        cairo_rectangle(cr, 0, 0, (double)native_w, (double)native_h);
-        cairo_stroke(cr);
-        cairo_restore(cr);
+        double cx = Wd / 2.0;
+        double cy = Hd * (0.52 + 0.13 * d) - (G - 1.0) * Hd * 0.48 * pow(0.75, d);
+        double alpha = alphas[pass] * (1.0 - 0.10 * d);
+        tunnel_draw_slot(cr, surf, cx, cy, w, h, alpha);
     }
     cairo_destroy(cr);
     flush_to_layer();
@@ -688,6 +661,14 @@ static BOOL page_flip_tunnel(BOOL going_next, void (^prepare)(void), void (^comm
     s_tun_commit = commit;
     s_tun_active = YES;
     s_tun_t0 = [NSDate timeIntervalSinceReferenceDate];
+    // 实验可调时长: GLASPEN2_FLIP_DUR=<秒>(默认 0.62)
+    double dur = 0.62;
+    const char *vd = getenv("GLASPEN2_FLIP_DUR");
+    if (vd) {
+        double v = atof(vd);
+        if (v > 0.05) dur = v;
+    }
+    s_tun_dur = dur;
 
     s_tun_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
                                          dispatch_get_main_queue());
@@ -696,7 +677,7 @@ static BOOL page_flip_tunnel(BOOL going_next, void (^prepare)(void), void (^comm
                               (uint64_t)(2.0 / 1000.0 * NSEC_PER_SEC));
     dispatch_source_set_event_handler(s_tun_timer, ^{
         double t = [NSDate timeIntervalSinceReferenceDate] - s_tun_t0;
-        double p = t / 0.62;
+        double p = t / s_tun_dur;
         if (p >= 1.0) {
             tunnel_finish(); // prepare+commit: 真实页内容无缝落地
             return;
