@@ -477,7 +477,7 @@ pub(crate) fn paint_page_into_surface(
         })
         .collect();
     // 与玻璃渲染同一条管线: pan=0, zoom=1
-    super::paint_strokes(&r, &views, 0.0, 0.0, 1.0, scale, 0.0, outline);
+    super::paint_strokes(r, &views, 0.0, 0.0, 1.0, scale, 0.0, outline);
     r.flush();
     1
 }
