@@ -446,7 +446,118 @@ pub extern "C" fn glaspen2_export_infinite_pdf_paged(page_w: c_int, page_h: c_in
     }
 }
 
-/// Save strokes as SVG to desktop (cropped to bbox).
+/// 导出单页 PNG(白底, 页原生分辨率 ×2 采样)到桌面。返回 1 成功。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_export_page_png(screen_id: i64) -> c_int {
+    let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
+    if strokes.is_empty() {
+        return 0;
+    }
+    let Some((w, h)) = runtime().block_on(db::screen_dims(screen_id)) else {
+        return 0;
+    };
+    let scale: f64 = 2.0; // 2x 采样: 观感与玻璃上的 retina 渲染一致
+    let pw = (w as f64 * scale) as usize;
+    let ph = (h as f64 * scale) as usize;
+
+    let r = match crate::cairo_dl::CairoRenderer::create_owned(pw as i32, ph as i32) {
+        Some(r) => r,
+        None => return 0,
+    };
+    r.clear();
+    // 白底(分享/归档场景透明底几乎没用)
+    r.fill_rect(0.0, 0.0, pw as f32, ph as f32, (255, 255, 255));
+    let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
+    let views: Vec<crate::Stroke> = strokes
+        .into_iter()
+        .map(|sd| crate::Stroke {
+            id: sd.id,
+            r: sd.r,
+            g: sd.g,
+            b: sd.b,
+            points: sd.points,
+        })
+        .collect();
+    // 与玻璃渲染同一条管线: pan=0, zoom=1, scale=2x
+    super::paint_strokes(&r, &views, 0.0, 0.0, 1.0, scale, 0.0, outline);
+    r.flush();
+
+    let data = unsafe { std::slice::from_raw_parts(r.bits(), pw * ph * 4) };
+    let Some(png) = encode_png_rgba(data, pw as u32, ph as u32) else {
+        return 0;
+    };
+    let path = desktop_path().join(format!(
+        "glaspen2_p{}_{}",
+        screen_id,
+        timestamped_name("png")
+    ));
+    match std::fs::write(&path, &png) {
+        Ok(()) => {
+            eprintln!("[export] 页 {screen_id} PNG → {}", path.display());
+            1
+        }
+        Err(e) => {
+            eprintln!("[export] 页 PNG 写入失败: {e}");
+            0
+        }
+    }
+}
+
+/// 导出单页 SVG(按内容包围盒裁剪)到桌面。返回 1 成功。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_export_page_svg(screen_id: i64) -> c_int {
+    let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
+    if strokes.is_empty() {
+        return 0;
+    }
+    let snap = snapshot_from_stroke_data(&strokes);
+    let Some(svg) = build_svg_from(&snap) else {
+        return 0;
+    };
+    let path = desktop_path().join(format!(
+        "glaspen2_p{}_{}",
+        screen_id,
+        timestamped_name("svg")
+    ));
+    match std::fs::write(&path, &svg) {
+        Ok(()) => {
+            eprintln!("[export] 页 {screen_id} SVG → {}", path.display());
+            1
+        }
+        Err(e) => {
+            eprintln!("[export] 页 SVG 写入失败: {e}");
+            0
+        }
+    }
+}
+
+/// 导出勾选的页为单个 PDF(ids_json = "[3,7,9]"; 空数组 = 全部页)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_export_pages_pdf_json(ids_json: *const c_char) -> c_int {
+    let ids: Vec<i64> = if ids_json.is_null() {
+        Vec::new()
+    } else {
+        let Ok(js) = unsafe { CStr::from_ptr(ids_json) }.to_str() else {
+            return 0;
+        };
+        serde_json::from_str::<Vec<i64>>(js).unwrap_or_default()
+    };
+    match crate::pdf::export_pages_by_ids(&ids) {
+        Some(p) => {
+            eprintln!(
+                "[export] {} 页 PDF → {p}",
+                if ids.is_empty() {
+                    "全部".to_string()
+                } else {
+                    ids.len().to_string()
+                }
+            );
+            1
+        }
+        None => 0,
+    }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_save_svg() {
     if let Some(svg) = build_cropped_svg() {

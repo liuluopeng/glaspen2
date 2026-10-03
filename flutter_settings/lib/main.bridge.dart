@@ -14,6 +14,14 @@ abstract class SettingsBridge {
   Future<Map<int, Uint8List>> getPageThumbnails(List<int> ids, int maxSize);
   /// 删除一页及其笔迹
   Future<bool> deletePage(int screenId);
+  /// 导出单页 PNG(白底 2x)到桌面
+  Future<bool> exportPagePng(int screenId);
+  /// 导出单页 SVG(内容包围盒)到桌面
+  Future<bool> exportPageSvg(int screenId);
+  /// 勾选的页合成单个 PDF 到桌面
+  Future<bool> exportSelectedPdf(List<int> ids);
+  /// OCR 全文搜索 → 匹配页 id
+  Future<List<int>> ocrSearch(String query);
   /// 跳转到指定页面并恢复笔迹(继续绘画)
   Future<void> navigateToPage(int screenId);
   /// 触发一个快捷键动作(与设置面板热键按钮等价)
@@ -137,7 +145,7 @@ class _FrbBridge extends SettingsBridge {
     await _init();
     final pages = await rust.listPages();
     return pages
-        .map((p) => PageInfo(id: p.id, w: p.width, h: p.height))
+        .map((p) => PageInfo(id: p.id.toInt(), w: p.width, h: p.height, strokeCount: p.strokeCount.toInt()))
         .toList();
   }
 
@@ -156,6 +164,30 @@ class _FrbBridge extends SettingsBridge {
   Future<bool> deletePage(int screenId) async {
     await _init();
     return rust.deletePage(screenId: screenId);
+  }
+
+  @override
+  Future<bool> exportPagePng(int screenId) async {
+    await _init();
+    return rust.exportPagePng(screenId: screenId);
+  }
+
+  @override
+  Future<bool> exportPageSvg(int screenId) async {
+    await _init();
+    return rust.exportPageSvg(screenId: screenId);
+  }
+
+  @override
+  Future<bool> exportSelectedPdf(List<int> ids) async {
+    await _init();
+    return rust.exportSelectedPdf(ids: frb.Int64List.fromList(ids));
+  }
+
+  @override
+  Future<List<int>> ocrSearch(String query) async {
+    await _init();
+    return (await rust.ocrSearch(query: query)).map((e) => e.toInt()).toList();
   }
 
   @override
@@ -523,6 +555,30 @@ class _NamedPipeBridge extends SettingsBridge {
   Future<bool> deletePage(int screenId) async {
     final r = await _request('deletePage', {'screenId': screenId});
     return r['ok'] == 1 || r['ok'] == true;
+  }
+
+  @override
+  Future<bool> exportPagePng(int screenId) async {
+    debugPrint('[Pipe] exportPagePng: Windows 管道未接入, 忽略');
+    return false;
+  }
+
+  @override
+  Future<bool> exportPageSvg(int screenId) async {
+    debugPrint('[Pipe] exportPageSvg: Windows 管道未接入, 忽略');
+    return false;
+  }
+
+  @override
+  Future<bool> exportSelectedPdf(List<int> ids) async {
+    debugPrint('[Pipe] exportSelectedPdf: Windows 管道未接入, 忽略');
+    return false;
+  }
+
+  @override
+  Future<List<int>> ocrSearch(String query) async {
+    debugPrint('[Pipe] ocrSearch: Windows 管道未接入, 忽略');
+    return const [];
   }
 
   @override

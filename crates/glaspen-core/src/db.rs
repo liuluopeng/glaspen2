@@ -638,6 +638,27 @@ mod platform {
         }
     }
 
+    /// OCR 全文搜索: 返回匹配页 id(升序)。查询按子串匹配(LIKE)。
+    pub async fn ocr_search_ids(query: &str) -> Vec<i64> {
+        let Some(pool) = DB.get() else {
+            return Vec::new();
+        };
+        if query.trim().is_empty() {
+            return Vec::new();
+        }
+        let r = sqlx::query_scalar::<_, i64>(
+            "SELECT DISTINCT screen_id FROM ocr_results \
+             WHERE deleted_at IS NULL AND full_text LIKE '%' || ?1 || '%' \
+             ORDER BY screen_id",
+        )
+        .bind(query.trim())
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+        dblog!("OCR搜索 {:?} → {} 页", query, r.len());
+        r
+    }
+
     /// 某页最新的 OCR 全文(未删除的最新一条);无则 None。
     pub async fn latest_ocr_text(screen_id: i64) -> Option<String> {
         let pool = match DB.get() {
@@ -1696,10 +1717,9 @@ mod tests {
     use super::StrokeData;
     use super::platform::{
         SCHEMA_VERSION, attach_points, backup_to_with, last_screen_with_geometry_with,
-        migrate_with, next_screen_with, page_info_with, prev_screen_with,
-        restore_merge_from_with, screen_stroke_version_with, stroke_versions_many_with,
-        thumbnail_lookup_with, thumbnail_store_with, thumbnails_many_with,
-        thumbnails_purge_screen_with,
+        migrate_with, next_screen_with, page_info_with, prev_screen_with, restore_merge_from_with,
+        screen_stroke_version_with, stroke_versions_many_with, thumbnail_lookup_with,
+        thumbnail_store_with, thumbnails_many_with, thumbnails_purge_screen_with,
     };
     use crate::runtime;
     use sqlx::SqlitePool;
@@ -1798,9 +1818,18 @@ mod tests {
             assert_eq!(next_screen_with(&pool, p4).await, None);
 
             // 组末页查询
-            assert_eq!(last_screen_with_geometry_with(&pool, 1920, 1080).await, Some(p3));
-            assert_eq!(last_screen_with_geometry_with(&pool, 3440, 1440).await, Some(p4));
-            assert_eq!(last_screen_with_geometry_with(&pool, 1280, 1024).await, None);
+            assert_eq!(
+                last_screen_with_geometry_with(&pool, 1920, 1080).await,
+                Some(p3)
+            );
+            assert_eq!(
+                last_screen_with_geometry_with(&pool, 3440, 1440).await,
+                Some(p4)
+            );
+            assert_eq!(
+                last_screen_with_geometry_with(&pool, 1280, 1024).await,
+                None
+            );
 
             let _ = sqlx::query(&format!("DELETE FROM screens WHERE id = {}", p1))
                 .execute(&pool)

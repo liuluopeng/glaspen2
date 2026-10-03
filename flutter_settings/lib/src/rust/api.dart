@@ -42,6 +42,22 @@ Future<List<PageThumb>> pageThumbnails({
 Future<bool> deletePage({required PlatformInt64 screenId}) =>
     RustLib.instance.api.crateApiDeletePage(screenId: screenId);
 
+/// 导出单页 PNG(白底, 2x 采样)到桌面。
+Future<bool> exportPagePng({required PlatformInt64 screenId}) =>
+    RustLib.instance.api.crateApiExportPagePng(screenId: screenId);
+
+/// 导出单页 SVG(内容包围盒)到桌面。
+Future<bool> exportPageSvg({required PlatformInt64 screenId}) =>
+    RustLib.instance.api.crateApiExportPageSvg(screenId: screenId);
+
+/// 勾选的页合成单个 PDF(空列表 = 全部页)到桌面。
+Future<bool> exportSelectedPdf({required Int64List ids}) =>
+    RustLib.instance.api.crateApiExportSelectedPdf(ids: ids);
+
+/// OCR 全文搜索: 返回匹配的页 id(升序)。查不到/无 OCR 结果为空。
+Future<Int64List> ocrSearch({required String query}) =>
+    RustLib.instance.api.crateApiOcrSearch(query: query);
+
 /// 跳转到指定页继续绘画。
 Future<void> navigateToPage({required PlatformInt64 screenId}) =>
     RustLib.instance.api.crateApiNavigateToPage(screenId: screenId);

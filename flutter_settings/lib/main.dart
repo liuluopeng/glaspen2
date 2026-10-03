@@ -4,6 +4,7 @@ import 'dart:ffi' hide Size;
 import 'dart:io';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
     show PointerScrollEvent, PointerSignalEvent;
@@ -180,6 +181,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   List<PageInfo> _filteredPages = [];
   /// 当前打开的笔记本("WxH"); null = 笔记本网格(本子列表)
   String? _openNotebook;
+  /// OCR 搜索(本子页视图内): 激活后网格 = 全库匹配页(跨组)
+  bool _searchMode = false;
+  bool _searchFieldVisible = false;
+  String _searchText = '';
   bool _pagesLoading = false;
   // 批量多选删除
   bool _multiSelect = false;
@@ -1029,6 +1034,30 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     });
   }
 
+  /// 执行 OCR 搜索: 全库匹配, 结果跨组展示
+  Future<void> _runSearch(String q) async {
+    q = q.trim();
+    if (q.isEmpty) return;
+    final ids = await _bridge.ocrSearch(q);
+    if (!mounted) return;
+    final set = ids.toSet();
+    setState(() {
+      _searchMode = true;
+      _searchText = q;
+      _searchFieldVisible = false;
+      _filteredPages =
+          _groupSorted(_pages).where((p) => set.contains(p.id)).toList();
+    });
+  }
+
+  void _clearSearch() {
+    setState(() {
+      _searchMode = false;
+      _searchFieldVisible = false;
+      _applyPageList();
+    });
+  }
+
   /// 打开的笔记本: 顶部返回行 + 该本子的页网格(工具条/多选/懒加载复用)。
   Widget _buildNotebookPages() {
     final key = _openNotebook!;
@@ -1043,25 +1072,67 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   _openNotebook = null;
                   _multiSelect = false;
                   _selectedPageIds.clear();
+                  _searchMode = false;
+                  _searchFieldVisible = false;
                   _applyPageList();
                 }),
                 icon: const Icon(Icons.arrow_back, size: 16),
                 label: const Text('本子', style: TextStyle(fontSize: 13)),
               ),
               const SizedBox(width: 4),
-              Text(key.replaceAll('x', ' × '),
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600)),
-              const SizedBox(width: 8),
+              if (_searchMode) ...[
+                Text('搜索 “$_searchText”',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 6),
+                IconButton(
+                  tooltip: '清除搜索',
+                  onPressed: _clearSearch,
+                  icon: const Icon(Icons.close, size: 16),
+                ),
+              ] else ...[
+                Text(key.replaceAll('x', ' × '),
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 8),
+              ],
               Text('${_filteredPages.length} 页',
                   style: const TextStyle(fontSize: 12, color: _inkFaint)),
+              const Spacer(),
+              if (_searchFieldVisible)
+                SizedBox(
+                  width: 200,
+                  height: 30,
+                  child: TextField(
+                    autofocus: true,
+                    style: const TextStyle(fontSize: 13),
+                    decoration: const InputDecoration(
+                      hintText: '搜索页内文字(OCR)',
+                      isDense: true,
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      border: OutlineInputBorder(),
+                    ),
+                    onSubmitted: _runSearch,
+                  ),
+                )
+              else
+                IconButton(
+                  tooltip: 'OCR 搜索',
+                  onPressed: () => setState(() => _searchFieldVisible = true),
+                  icon: const Icon(Icons.search, size: 18),
+                ),
             ],
           ),
         ),
         Expanded(
           child: _filteredPages.isEmpty
-              ? const Center(
-                  child: Text('本子是空的', style: TextStyle(fontSize: 14, color: Colors.grey)))
+              ? Center(
+                  child: Text(
+                      _searchMode
+                          ? '没有匹配的页(该文字未被 OCR 识别?)'
+                          : '本子是空的',
+                      style:
+                          const TextStyle(fontSize: 14, color: Colors.grey)))
               : GridView.builder(
                   controller: _gridScroll,
                   itemCount: _filteredPages.length,
@@ -1103,6 +1174,22 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     return Row(children: [
       Text('已选 ${_selectedPageIds.length} 页', style: faint),
       const Spacer(),
+      TextButton.icon(
+        onPressed: (_batchDeleting || _selectedPageIds.isEmpty) ? null : () async {
+          setState(() => _batchDeleting = true);
+          try {
+            final ok = await _bridge.exportSelectedPdf(_selectedPageIds.toList());
+            if (mounted) {
+              _toast(ok ? '已导出 ${_selectedPageIds.length} 页 PDF 到桌面' : '导出失败');
+            }
+          } finally {
+            if (mounted) setState(() => _batchDeleting = false);
+          }
+        },
+        style: TextButton.styleFrom(foregroundColor: _ink),
+        icon: const Icon(Icons.picture_as_pdf, size: 16),
+        label: const Text('导出 PDF', style: TextStyle(fontSize: 13)),
+      ),
       TextButton(
         onPressed: () => setState(() {
           if (_selectedPageIds.length == _filteredPages.length) {
@@ -1258,6 +1345,28 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 ),
                 items: [
                   const PopupMenuItem(
+                      value: 'png', height: 36,
+                      child: Row(children: [
+                        Icon(Icons.image_outlined, size: 16),
+                        SizedBox(width: 8),
+                        Text('导出此页 PNG', style: TextStyle(fontSize: 13)),
+                      ])),
+                  const PopupMenuItem(
+                      value: 'svg', height: 36,
+                      child: Row(children: [
+                        Icon(Icons.polyline_outlined, size: 16),
+                        SizedBox(width: 8),
+                        Text('导出此页 SVG', style: TextStyle(fontSize: 13)),
+                      ])),
+                  const PopupMenuItem(
+                      value: 'info', height: 36,
+                      child: Row(children: [
+                        Icon(Icons.info_outline, size: 16),
+                        SizedBox(width: 8),
+                        Text('复制页信息', style: TextStyle(fontSize: 13)),
+                      ])),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
                       value: 'delete', height: 36,
                       child: Row(children: [
                         Icon(Icons.delete_outline, size: 16, color: Colors.red),
@@ -1265,8 +1374,22 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                         Text('删除此页面', style: TextStyle(fontSize: 13)),
                       ])),
                 ],
-              ).then((v) {
-                if (v == 'delete') _confirmDeletePage(page);
+              ).then((v) async {
+                if (v == 'delete') {
+                  _confirmDeletePage(page);
+                } else if (v == 'png') {
+                  final ok = await _bridge.exportPagePng(page.id);
+                  _toast(ok ? '已导出 PNG 到桌面' : '导出失败(页为空?)');
+                } else if (v == 'svg') {
+                  final ok = await _bridge.exportPageSvg(page.id);
+                  _toast(ok ? '已导出 SVG 到桌面' : '导出失败(页为空?)');
+                } else if (v == 'info') {
+                  final t = DateTime.fromMillisecondsSinceEpoch(page.id * 1000);
+                  Clipboard.setData(ClipboardData(text:
+                      '页 ${page.id}\n尺寸 ${page.w}×${page.h}\n笔迹 ${page.strokeCount}\n'
+                      '创建 ${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}'));
+                  _toast('页信息已复制');
+                }
               });
             },
       child: Card(

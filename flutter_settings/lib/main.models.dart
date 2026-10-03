@@ -13,12 +13,14 @@ class PageInfo {
   final int id;
   final int w;
   final int h;
+  final int strokeCount;
   Uint8List? thumbnail;
 
   PageInfo({
     required this.id,
     required this.w,
     required this.h,
+    this.strokeCount = 0,
   });
 
   factory PageInfo.fromJson(Map<String, dynamic> json) {
@@ -26,6 +28,7 @@ class PageInfo {
       id: json['id'] as int,
       w: json['w'] as int,
       h: json['h'] as int,
+      strokeCount: (json['strokes'] as num?)?.toInt() ?? 0,
     );
   }
 }

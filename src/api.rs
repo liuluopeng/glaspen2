@@ -365,6 +365,38 @@ pub async fn delete_page(screen_id: i64) -> bool {
     run_blocking(move || shim::delete_page(screen_id))
 }
 
+/// 导出单页 PNG(白底, 2x 采样)到桌面。
+#[frb]
+pub async fn export_page_png(screen_id: i64) -> bool {
+    run_blocking(move || crate::export::glaspen2_export_page_png(screen_id) != 0)
+}
+
+/// 导出单页 SVG(内容包围盒)到桌面。
+#[frb]
+pub async fn export_page_svg(screen_id: i64) -> bool {
+    run_blocking(move || crate::export::glaspen2_export_page_svg(screen_id) != 0)
+}
+
+/// 勾选的页合成单个 PDF(空列表 = 全部页)到桌面。
+#[frb]
+pub async fn export_selected_pdf(ids: Vec<i64>) -> bool {
+    run_blocking(move || {
+        let Ok(js) = serde_json::to_string(&ids) else {
+            return false;
+        };
+        let Ok(c) = std::ffi::CString::new(js) else {
+            return false;
+        };
+        crate::export::glaspen2_export_pages_pdf_json(c.as_ptr()) != 0
+    })
+}
+
+/// OCR 全文搜索: 返回匹配的页 id(升序)。查不到/无 OCR 结果为空。
+#[frb]
+pub async fn ocr_search(query: String) -> Vec<i64> {
+    db::ocr_search_ids(&query).await
+}
+
 /// 跳转到指定页继续绘画。
 #[frb]
 pub async fn navigate_to_page(screen_id: i64) {

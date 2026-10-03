@@ -12,6 +12,11 @@ const GLYPHLESS_TTF: &[u8] = include_bytes!("../assets/glyphless.ttf");
 
 /// Export all pages to a vector PDF on the desktop. Returns the file path.
 pub fn export_all_pages() -> Option<String> {
+    export_pages_by_ids(&[])
+}
+
+/// 导出指定页(空切片 = 全部页)。勾选页合成 PDF 用。
+pub fn export_pages_by_ids(ids: &[i64]) -> Option<String> {
     let rt = runtime();
 
     let db_path = std::env::var("GLASPEN2_DB")
@@ -47,6 +52,15 @@ pub fn export_all_pages() -> Option<String> {
         .unwrap_or_default()
     });
 
+    let screens: Vec<(i64, i32, i32)> = if ids.is_empty() {
+        screens
+    } else {
+        let set: std::collections::HashSet<i64> = ids.iter().copied().collect();
+        screens
+            .into_iter()
+            .filter(|(id, _, _)| set.contains(id))
+            .collect()
+    };
     if screens.is_empty() {
         eprintln!("[pdf] No pages");
         return None;
