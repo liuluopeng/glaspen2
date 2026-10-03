@@ -932,16 +932,16 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   /// 笔记本封面色: 由尺寸 key 决定(确定性"随机") —— 生成一次终生不变,
-  /// 任何机器/重装都得到同一本色。色板手工挑的"本子皮"色, 压得住白字。
+  /// 任何机器/重装都得到同一本色。平涂色板, GoodNotes 式干净。
   static const _coverPalette = [
-    Color(0xFF2F5D50), // 墨绿
-    Color(0xFF2C4770), // 藏蓝
-    Color(0xFF8C3B3B), // 绛红
-    Color(0xFFA66A2E), // 赭石
-    Color(0xFF5D4A78), // 黛紫
-    Color(0xFF3E6B6B), // 青灰
-    Color(0xFF7E4458), // 梅子
-    Color(0xFF5E6B3C), // 苔绿
+    Color(0xFF4E7DC4), // 钴蓝
+    Color(0xFFE06A5E), // 珊瑚红
+    Color(0xFF4CA88E), // 青玉
+    Color(0xFFE0954E), // 杏橙
+    Color(0xFF7B68C4), // 长春花
+    Color(0xFFC4588A), // 玫红
+    Color(0xFF55A8C4), // 青蓝
+    Color(0xFF8FAE4E), // 苔绿
   ];
   static Color _coverColor(String key) {
     var hv = 0;
@@ -951,9 +951,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     return _coverPalette[hv % _coverPalette.length];
   }
 
-  /// 笔记本网格: 每个分辨率组一本 —— **卡片比例 = 该本子的真实比例**
-  /// (3440×1440 是胖扁的本子, 竖屏分辨率是瘦高的本子); 封面为稳定的
-  /// 随机皮色 + 内嵌最新页缩略图(白框样张) + 白书签带。
+  /// 笔记本网格: GoodNotes 式平涂封面 —— 纯色 + 右侧**松紧带**(黑色竖带,
+  /// 本子的签名元素) + 居中白字标题。**卡片比例 = 该本子的真实比例**
+  /// (3440×1440 是胖扁的本子, 竖屏分辨率是瘦高的本子)。
   /// 布局: 列数随窗口宽度自适应、卡片铺满不留缝, 同排卡片**底边对齐**
   /// (书架比喻: 胖瘦本子立在架上)。
   Widget _buildNotebookGrid() {
@@ -961,17 +961,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     if (notebooks.isEmpty) {
       return const Center(
           child: Text('暂无页面', style: TextStyle(fontSize: 14, color: Colors.grey)));
-    }
-    // 每个本子最新页的缩略图作封面内容(不在缓存里的批量取一次)
-    final missing = <int>[];
-    for (final pages in notebooks.values) {
-      final latest = pages.last;
-      if (!_thumbnailCache.containsKey(latest.id)) missing.add(latest.id);
-    }
-    if (missing.isNotEmpty) {
-      _fetchThumbnails(missing).then((_) {
-        if (mounted) setState(() {});
-      });
     }
     const spacing = 10.0, targetW = 300.0, maxCardW = 360.0;
     return LayoutBuilder(builder: (context, box) {
@@ -986,8 +975,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         final parts = key.split('x');
         final w = double.parse(parts[0]), h = double.parse(parts[1]);
         final cardH = (cardW * h / w).clamp(110.0, 420.0);
-        final latest = pages.last;
-        final thumb = _thumbnailCache[latest.id];
         final cover = _coverColor(key);
         cards.add(SizedBox(
           width: cardW,
@@ -1001,69 +988,34 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             }),
             child: Card(
               clipBehavior: Clip.antiAlias,
-              elevation: 2,
-              color: cover, // 皮色铺满: 标签条黑罩后成深一档同色
+              elevation: 3,
+              color: cover,
               child: Stack(
                 children: [
-                  // 皮色封面
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(5),
-                              border:
-                                  Border.all(color: Colors.white, width: 2),
-                              boxShadow: const [
-                                BoxShadow(
-                                    color: Color(0x33000000),
-                                    blurRadius: 4, offset: Offset(0, 2)),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(3),
-                              child: thumb != null
-                                  ? Image.memory(thumb,
-                                      fit: BoxFit.cover,
-                                      gaplessPlayback: true,
-                                      alignment: Alignment.topCenter)
-                                  : const _ThumbSkeleton(),
-                            ),
-                          ),
-                        ),
-                      ),
-                      // 标签条(皮色加深)
-                      Container(
-                        color: Colors.black.withValues(alpha: 0.22),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
-                        child: Row(
-                          children: [
-                            Text('$w × $h',
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white)),
-                            const Spacer(),
-                            Text('${pages.length} 页',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.white.withValues(alpha: 0.8))),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  // 白书签带(任何皮色都干净)
+                  // 松紧带(本子的签名元素): 右侧竖向, 深一档的同色偏黑
                   Positioned(
-                    top: 0, right: 16,
-                    child: Container(
-                      width: 9, height: 24,
-                      color: Colors.white.withValues(alpha: 0.85),
+                    top: 0, bottom: 0,
+                    right: cardW * 0.12,
+                    width: (cardW * 0.035).clamp(5.0, 9.0),
+                    child: ColoredBox(
+                        color: Colors.black.withValues(alpha: 0.38)),
+                  ),
+                  // 居中标题
+                  Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('$w × $h',
+                            style: TextStyle(
+                                fontSize: (cardW * 0.055).clamp(13.0, 17.0),
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white)),
+                        const SizedBox(height: 2),
+                        Text('${pages.length} 页',
+                            style: TextStyle(
+                                fontSize: (cardW * 0.042).clamp(10.0, 12.0),
+                                color: Colors.white.withValues(alpha: 0.85))),
+                      ],
                     ),
                   ),
                 ],
