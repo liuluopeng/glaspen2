@@ -458,10 +458,15 @@ static void invert_cache_teardown(void) {
     s_inv_w = s_inv_h = 0;
 }
 
-// 分辨率变化: 停流 + 弃 filter/缓存, 监督循环按新几何重建
+// 分辨率变化: 停流 + 弃 filter/缓存, 监督循环按新几何重建。
+// 共享必须先恢复: sharingType=None 时自家窗口不出现在枚举里,
+// 重建的过滤器排除列表会变空(自激闪烁的根因)。
 static void invert_stream_invalidate(void) {
     invert_stream_stop();
     s_inv_filter = nil;
+    [g_window setSharingType:NSWindowSharingReadOnly];
+    if (g_settings_window)
+        [g_settings_window setSharingType:NSWindowSharingReadOnly];
     if (s_inv_w > 0) invert_cache_teardown();
 }
 
@@ -531,13 +536,9 @@ static void invert_stream_start(void) {
 void invert_ink_apply(int on) {
     if (on) {
         glaspen2_set_stroke_invert(1);
-        // 窗口设为不可共享: WindowServer 拒绝把自家窗口像素交给任何捕获,
-        // 从源头掐断"捕获包含自己上一帧墨迹"的反馈循环(整屏笔迹颜色
-        // 每帧漂移/闪烁的根因)。副作用: 反色开启期间, 其他录屏软件也
-        // 录不到涂鸦层(实验功能, 可接受)。
-        [g_window setSharingType:NSWindowSharingNone];
-        if (g_settings_window)
-            [g_settings_window setSharingType:NSWindowSharingNone];
+        // 注意: sharingType=None 必须等过滤器建好之后再设——它会让自家
+        // 窗口从 SCShareableContent 枚举里消失, 排除列表变空, 捕获反而
+        // 连墨迹一起收进去(自激闪烁)。见下方 filter 构建完成处。
         invert_tick_schedule(0.05); // 监督循环快速首轮
     } else {
         invert_cache_teardown();
@@ -599,6 +600,13 @@ static void invert_capture_tick(void) {
             s_inv_filter = [[SCContentFilter alloc]
                 initWithDisplay:content.displays.firstObject
                excludingWindows:excl];
+            // 过滤器已显式排除自家窗口, 现在才关共享(双保险: 截图/其他
+            // 录屏也拿不到这层)。顺序反了枚举不到自家窗口, 排除变空。
+            [g_window setSharingType:NSWindowSharingNone];
+            if (g_settings_window)
+                [g_settings_window setSharingType:NSWindowSharingNone];
+            NSLog(@"[invert] 过滤器就绪(排除 %lu 个自家窗口), 共享已关闭",
+                  (unsigned long)excl.count);
             invert_capture_tick(); // 立即重试(这次有 filter)
           });
         }];
