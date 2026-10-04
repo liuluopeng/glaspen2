@@ -315,10 +315,13 @@ static void invert_consume_pending(void);
             const UInt32 *sr = (const UInt32 *)(sp + y * cstride);
             UInt32 *dr = (UInt32 *)(dp + y * row);
             for (size_t x = 0; x < (size_t)s_inv_w; x++) {
-                UInt32 v = sr[x] ^ 0x00FFFFFFU;
+                // 反相 RGB 并强制 alpha=FF: SCK 的 BGRA 帧 alpha 可能是 0
+                // (premultiplied 语义下 = 全透明 → pattern 墨迹隐身),
+                // 屏幕帧本就不透明, 无条件按不透明处理。
+                UInt32 v = (sr[x] ^ 0x00FFFFFFU) | 0xFF000000U;
                 dr[x] = v;
                 sum += v;
-                if (pv && v != pv[x]) {
+                if (pv && (v ^ pv[x]) & 0x00FFFFFFu) { // 只比 RGB
                     diff++;
                     if ((long)x < bx0) bx0 = (long)x;
                     if ((long)x > bx1) bx1 = (long)x;
@@ -357,8 +360,16 @@ static void invert_consume_pending(void);
     CVPixelBufferUnlockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
     if (ok) {
         static int logged;
-        if ((++logged & 63) == 1)
+        if ((++logged & 63) == 1) {
             NSLog(@"[invert] 帧到达 #%d (%dx%d)", logged, s_inv_w, s_inv_h);
+            const UInt32 *sr2 = (const UInt32 *)CVPixelBufferGetBaseAddress(pb);
+            const UInt32 *pv2 = (const UInt32 *)s_inv_buf[s_inv_present];
+            size_t mx = (size_t)s_inv_w / 2, my = (size_t)s_inv_h / 2;
+            NSLog(@"[invert] 采样(中心): 原始=%08X 反相后=%08X 呈现=%08X",
+                  sr2[my * (CVPixelBufferGetBytesPerRow(pb) / 4) + mx],
+                  s_inv_buf[slot] ? ((const UInt32 *)s_inv_buf[slot])[my * (size_t)s_inv_w + mx] : 0,
+                  pv2 ? pv2[my * (size_t)s_inv_w + mx] : 0);
+        }
         __atomic_store_n(&s_inv_pending, slot, __ATOMIC_RELEASE);
         dispatch_async(dispatch_get_main_queue(), ^{ invert_consume_pending(); });
     } else {
