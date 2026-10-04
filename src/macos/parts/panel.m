@@ -278,10 +278,20 @@ static void invert_cache_teardown(void) {
 void invert_ink_apply(int on) {
     if (on) {
         glaspen2_set_stroke_invert(1);
+        // 窗口设为不可共享: WindowServer 拒绝把自家窗口像素交给任何捕获,
+        // 从源头掐断"捕获包含自己上一帧墨迹"的反馈循环(整屏笔迹颜色
+        // 每帧漂移/闪烁的根因)。副作用: 反色开启期间, 其他录屏软件也
+        // 录不到涂鸦层(实验功能, 可接受)。
+        [g_window setSharingType:NSWindowSharingNone];
+        if (g_settings_window)
+            [g_settings_window setSharingType:NSWindowSharingNone];
         invert_tick_schedule(0.05); // 快速首轮捕获
     } else {
         invert_cache_teardown();
         glaspen2_set_stroke_invert(0);
+        [g_window setSharingType:NSWindowSharingReadOnly];
+        if (g_settings_window)
+            [g_settings_window setSharingType:NSWindowSharingReadOnly];
         rebuild_surface_from_strokes(); // 墨迹回笔色
         flush_to_layer();
     }
@@ -374,8 +384,13 @@ static void invert_capture_tick(void) {
             size_t n = (size_t)s_inv_w * (size_t)s_inv_h;
             for (size_t i = 0; i < n; i++) p[i] ^= 0x00FFFFFFU;
             cairo_surface_mark_dirty(s_inv_surf);
-            rebuild_surface_from_strokes(); // 整笔以新背景重绘(含 pattern)
-            flush_to_layer();
+            if (!g_stroke_active) {
+                // 整笔以新背景重绘(含 pattern)。书写中跳过: rebuild 只画
+                // 已提交的 STROKES, 会把在飞的原始笔迹段擦掉(15fps 规律
+                // 闪烁); 新背景在飞段下一笔自然用上, 收笔后下一轮补齐。
+                rebuild_surface_from_strokes();
+                flush_to_layer();
+            }
             invert_tick_schedule(1.0 / 15.0); // ~15fps 追踪
           });
         }];
