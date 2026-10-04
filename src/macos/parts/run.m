@@ -585,9 +585,11 @@ static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
     double W = (double)s_tun_surf_w, H = (double)s_tun_surf_h;
     double w = W * s * 0.92;
     double h = H * s * 0.92;
-    // 中心透视:卡片中心 = 屏幕中心 + (s-1) 的收敛(纵深越深越贴中心)
+    // 中心透视:卡片中心**恒在屏幕中心**, 只有尺寸随深度变 —— 嵌套框的
+    // 公共中心即消失点。(旧公式的 (1-1/s) 项会把深处卡片往下推,
+    // 消失点掉到屏幕外, 表现为"页在屏幕下侧消失"。)
     double cx = W * 0.5;
-    double cy = H * 0.5 - (H * 0.5) * (1.0 - 1.0 / s) * 0.5;
+    double cy = H * 0.5;
     double a;
     if (zc < 0.0) {
         a = 1.0 + zc / (TUNNEL_SPAN + 0.15); // 飞越镜头时渐隐
