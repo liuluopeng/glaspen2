@@ -275,7 +275,9 @@ static void invert_consume_pending(void);
 // 流回调(后台队列): 拿一帧 BGRA, 反相写进当前写槽; 主线程没消化上一帧
 // 就直接丢帧(保最新, 天然限速)。槽翻转由主线程消费时做, 读写永不相交。
 - (void)stream:(SCStream *)stream
-    didCaptureSample:(CMSampleBufferRef)sampleBuffer {
+    didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
+                   ofType:(SCStreamOutputType)type {
+    if (type != SCStreamOutputTypeScreen) return;
     if (!g_invert_ink || !CMSampleBufferIsValid(sampleBuffer)) return;
     CVPixelBufferRef pb = CMSampleBufferGetImageBuffer(sampleBuffer);
     if (!pb) return;
@@ -299,9 +301,15 @@ static void invert_consume_pending(void);
     }
     CVPixelBufferUnlockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
     if (ok) {
+        static int logged;
+        if ((++logged & 63) == 1)
+            NSLog(@"[invert] 帧到达 #%d (%dx%d)", logged, s_inv_w, s_inv_h);
         __atomic_store_n(&s_inv_pending, slot, __ATOMIC_RELEASE);
         dispatch_async(dispatch_get_main_queue(), ^{ invert_consume_pending(); });
     } else {
+        static int dropped;
+        if ((++dropped & 1) == 1)
+            NSLog(@"[invert] 帧被丢(格式/尺寸不匹配) #%d", dropped);
         __atomic_store_n(&s_inv_pending, INV_IDLE, __ATOMIC_RELEASE);
     }
 }
@@ -455,7 +463,13 @@ void invert_stream_restart(void) {
 // 监督循环(0.5s): 确保 filter/缓存/流就绪; 无笔迹时停流省电。
 // 真正的帧流由 SCStream 驱动(只在画面变化时送帧), 本循环本身近零开销。
 static void invert_capture_tick(void) {
-    if (!g_invert_ink || !g_surface || s_tun_active) return;
+    if (!g_invert_ink) return; // 总开关关: 循环结束(重开时 apply 会再拉起)
+    // 未就绪(启动早期表面未建/翻页动效中): 等待并保持循环——绝不能
+    // 直接 return 杀死循环, 否则本轮会话反色永久失效。
+    if (!g_surface || s_tun_active) {
+        invert_tick_schedule(0.5);
+        return;
+    }
     if (!glaspen2_has_strokes() && !g_stroke_active) {
         invert_stream_stop(); // 空闲: 流也停(SCK 不送帧, 但会话本身有底噪)
         invert_tick_schedule(0.5);
