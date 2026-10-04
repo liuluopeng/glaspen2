@@ -538,7 +538,7 @@ static cairo_surface_t *s_tun_card_mip[TUNNEL_MAX_CARDS];
 static int s_tun_depth[TUNNEL_MAX_CARDS]; // 页距(0 = 当前页)
 static int s_tun_cards = 0;
 static double s_tun_travel = 1.0; // 相机推进的隧道单位(= 本次翻页跨过的页数)
-static BOOL s_tun_back = NO;      // 向前翻(上一页): 相机后退
+static BOOL s_tun_back = NO;      // 向前翻(上一页/回溯旧页): 相机**推进**页列深处
 static double s_tun_dur = 0.62;
 static double s_tun_k = 0.45;
 static void (^s_tun_prepare)(void);
@@ -661,7 +661,11 @@ static void tunnel_draw_card(cairo_t *cr, int slot,
 static void tunnel_frame(double p) {
     if (!g_surface || s_tun_cards == 0) return;
     double e = p < 0.5 ? 4.0 * p * p * p : 1.0 - pow(-2.0 * p + 2.0, 3.0) / 2.0;
-    double cam = e * s_tun_travel * (s_tun_back ? -1.0 : 1.0);
+    // 相机沿深度轴移动:回溯旧页(向前翻, s_tun_back) = cam 0→+1 深入页列,
+    // 旧页从深处迎面而来, 目标页(prev, 深度+1)落定 zc=0 满屏;
+    // 去往新页(向后翻) = cam 0→−1 退出, 新页(next, 深度−1)从镜头前方
+    // 罩下来落定 zc=0。深度轴语义:正=旧(深处), 负=新(镜头前方)。
+    double cam = e * s_tun_travel * (s_tun_back ? 1.0 : -1.0);
 
     cairo_t *cr = cairo_create(g_surface);
     // 背景:深色磨砂玻璃(隧道的"洞")—— 让卡片的半透明玻璃有参照,
@@ -748,14 +752,16 @@ static BOOL tunnel_make_card(int slot, int cache_slot, long screen_id, int is_cu
     } else {
         glaspen2_paint_preview_into_surface((void *)surf, cache_slot, card_scale,
                                             ox * 0.5, oy * 0.5, pscale, 1.0, 0,
-                                            (double)s_tun_depth[slot]);
+                                            fabs((double)s_tun_depth[slot]));
     }
     // 预缩:动画里这张卡最大就到"全屏×0.92"(tunnel_place), 与其在
     // 每帧里做全分辨率缩放合成(实测 30ms/帧), 不如建卡时一次性缩好。
     // 用 cairo 自己缩(双线性), 尺寸 = 该卡深度档的最大可能 s。
     double d = (double)s_tun_depth[slot];
-    double smax = 1.0 / (1.0 + s_tun_k * (d - 1.0)); // 该卡在动画中的最大 s
-    if (smax > 1.05) smax = 1.05; // 当前页落定 s=1.0×0.92, 留 5% 余量
+    // 相机可能朝该卡推进 1 单位(它是目标时), 该卡动画最大 s:
+    // zc_min = |d| - 1 → s_max = 1/(1 + k·(|d|-1)); 落定卡留 5% 余量封顶
+    double smax = 1.0 / (1.0 + s_tun_k * (fabs(d) - 1.0));
+    if (smax > 1.05) smax = 1.05;
     int tw = (int)((double)s_tun_surf_w * smax);
     int th = (int)((double)s_tun_surf_h * smax);
     int nw2 = cairo_image_surface_get_width(surf), nh2 = cairo_image_surface_get_height(surf);
@@ -815,7 +821,9 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
     if (n > TUNNEL_MAX_CARDS) n = TUNNEL_MAX_CARDS;
 
     for (int i = 0; i < n; i++) {
-        int depth = i - before;
+        // 深度轴:旧页(prev)= 正(页列深处), 新页(next)= 负(镜头前方)。
+        // 回溯旧页 = 相机深入页列(cam↑), 去往新页 = 相机退出(cam↓)。
+        int depth = before - i;
         s_tun_depth[i] = depth;
         if (!tunnel_make_card(i, i, depth == 0 ? cur : 0, depth == 0)) {
             tunnel_free_cards();
@@ -827,7 +835,7 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
     NSLog(@"[flip] 时光隧道接管: %d 张卡片(cur=%ld → %ld, 方向=%@) 预载%.0fms 建卡%.0fms",
           n, cur, target, going_next ? @"后" : @"前",
           (tc1 - tc0) * 1000.0, (tc2 - tc1) * 1000.0);
-    s_tun_back = !going_next;
+    s_tun_back = !going_next; // 向前翻(回溯) → 相机推进
     s_tun_travel = 1.0; // 相邻页之间恒为 1 个隧道单位
 
     s_tun_prepare = prepare;
