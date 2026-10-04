@@ -269,6 +269,7 @@ static unsigned long long inv_diff_min(void) {
     return (unsigned long long)s_inv_w * (unsigned long long)s_inv_h / 500ULL + 1;
 }
 static int s_inv_pending = INV_IDLE;            // INV_IDLE/INV_GRAB/待消费槽号(__atomic 原语访问)
+static UInt32 s_samp_raw, s_samp_new, s_samp_pres; // 诊断采样(回调锁定区内取)
 static SCContentFilter *s_inv_filter = nil;     // 缓存(排除自身窗口; 分辨率变化时置空重建)
 static SCStream *s_inv_stream = nil;
 static dispatch_queue_t s_inv_queue;
@@ -332,6 +333,12 @@ static void invert_consume_pending(void);
         }
         s_inv_sum[slot] = sum;
         s_inv_diff[slot] = diff;
+        { // 诊断采样(必须趁锁定: IOSurface 解锁后 base 地址即失效)
+            size_t mx = (size_t)s_inv_w / 2, my = (size_t)s_inv_h / 2;
+            s_samp_raw = ((const UInt32 *)(sp + my * cstride))[mx];
+            s_samp_new = ((const UInt32 *)dp)[my * (size_t)s_inv_w + mx];
+            s_samp_pres = pv ? pv[my * (size_t)s_inv_w + mx] : 0;
+        }
         if (bx1 < 0) {
             s_inv_dbox[slot][0] = s_inv_dbox[slot][1] = 0;
             s_inv_dbox[slot][2] = s_inv_dbox[slot][3] = 0;
@@ -362,13 +369,8 @@ static void invert_consume_pending(void);
         static int logged;
         if ((++logged & 63) == 1) {
             NSLog(@"[invert] 帧到达 #%d (%dx%d)", logged, s_inv_w, s_inv_h);
-            const UInt32 *sr2 = (const UInt32 *)CVPixelBufferGetBaseAddress(pb);
-            const UInt32 *pv2 = (const UInt32 *)s_inv_buf[s_inv_present];
-            size_t mx = (size_t)s_inv_w / 2, my = (size_t)s_inv_h / 2;
             NSLog(@"[invert] 采样(中心): 原始=%08X 反相后=%08X 呈现=%08X",
-                  sr2[my * (CVPixelBufferGetBytesPerRow(pb) / 4) + mx],
-                  s_inv_buf[slot] ? ((const UInt32 *)s_inv_buf[slot])[my * (size_t)s_inv_w + mx] : 0,
-                  pv2 ? pv2[my * (size_t)s_inv_w + mx] : 0);
+                  s_samp_raw, s_samp_new, s_samp_pres);
         }
         __atomic_store_n(&s_inv_pending, slot, __ATOMIC_RELEASE);
         dispatch_async(dispatch_get_main_queue(), ^{ invert_consume_pending(); });
