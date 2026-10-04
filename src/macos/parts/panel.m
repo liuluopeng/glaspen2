@@ -302,10 +302,11 @@ static void invert_capture_tick(void) {
         s_inv_buf = malloc((size_t)dw * dh * 4);
         if (!s_inv_buf) return;
         memset(s_inv_buf, 0, (size_t)dw * dh * 4);
+        CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
         s_inv_ctx = CGBitmapContextCreate(
-            s_inv_buf, dw, dh, 8, dw * 4,
-            CGColorSpaceCreateWithName(kCGColorSpaceSRGB),
+            s_inv_buf, dw, dh, 8, dw * 4, srgb,
             kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
+        CGColorSpaceRelease(srgb); // context 已 retain
         if (!s_inv_ctx) {
             invert_cache_teardown();
             return;
@@ -354,15 +355,20 @@ static void invert_capture_tick(void) {
     [SCScreenshotManager captureImageWithFilter:s_inv_filter
                                    configuration:config
                                completionHandler:^(CGImageRef image, NSError *error) {
+          // handler 给的 CGImageRef 不保证跨出本作用域存活(带背景截图
+          // 是在 handler 内同步用掉所以没踩过)—— 跨队列前必须自持。
+          CGImageRef grabbed = (error || !image) ? NULL : CGImageRetain(image);
           dispatch_async(dispatch_get_main_queue(), ^{
             s_inv_busy = NO;
-            if (error || !image || !g_invert_ink || !s_inv_ctx) {
+            if (!grabbed || !g_invert_ink || !s_inv_ctx) {
+              if (grabbed) CGImageRelease(grabbed);
               invert_tick_schedule(1.0);
               return;
             }
             CGRect rect = CGRectMake(0, 0, (CGFloat)s_inv_w, (CGFloat)s_inv_h);
             CGContextClearRect(s_inv_ctx, rect);
-            CGContextDrawImage(s_inv_ctx, rect, image);
+            CGContextDrawImage(s_inv_ctx, rect, grabbed);
+            CGImageRelease(grabbed);
             // 反相 RGB(每像素低三字节 = B,G,R; alpha FF 不动)
             UInt32 *p = (UInt32 *)s_inv_buf;
             size_t n = (size_t)s_inv_w * (size_t)s_inv_h;
