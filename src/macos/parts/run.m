@@ -748,7 +748,7 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   // 截面), 正面矩形向右上挤出厚度 T —— 板的立体感来自这两个侧面。
   // 透视不变: 正面仍同心嵌套消失于屏幕中心, 侧面随正面同缩。
   cairo_save(cr);
-  double T = w * 0.018; // 板厚(挤出量, 随卡片宽等比)
+  double T = w * 0.006; // 板厚(挤出量, 随卡片宽等比)—— 原厚度的 1/3
 
   // 1) 右侧面(挤出): 平行四边形 card 右边 → 向右上偏移 T
   cairo_set_source_rgba(cr, 0.36, 0.55, 0.72, 0.85 * alpha); // 蓝(受光侧)
