@@ -224,7 +224,10 @@ impl PageSurface<'_> {
         let depth_d = depth.max(0.0);
         let shade = (1.0 - 0.16 * depth_d).clamp(0.45, 1.0);
         let (tr, tg, tb) = (216.0 * shade, 227.0 * shade, 240.0 * shade);
-        let ta = 234.0f32; // 玻璃不透明度(再乘卡片整体 alpha, 整页渐隐依然有效)
+        // 玻璃底**低不透明度**(≈0.5, 随深度略增): 多片 OVER 叠加时
+        // 1-(1-a1)(1-a2)… 自然累积, 中心几片一叠逐渐变实 ——
+        // "几片透明玻璃叠起来"的观感靠这里, 单片绝不能近不透明。
+        let ta = (150.0 - 20.0 * depth_d).clamp(90.0, 150.0);
         for y in 0..hu {
             let row = y * stride;
             for x in 0..wu {
@@ -611,7 +614,7 @@ mod tests {
         }
         // 空玻璃: BGRA = 冷灰蓝 + 不透明
         let corner = &data[0..4];
-        assert_eq!(corner[3], 234, "磨砂玻璃应不透明(能遮住下面的卡片)");
+        assert_eq!(corner[3], 130, "磨砂玻璃应为半透明(alpha≈0.51)");
         assert!(corner[0] > corner[2], "玻璃应偏冷蓝(B > R)");
         // 墨迹: 蓝墨水应让 B 相对玻璃抬升、R 压低(没被磨砂磨掉)
         let mid = (12 * w as usize + 12) * 4;
