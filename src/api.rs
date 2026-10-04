@@ -198,6 +198,8 @@ pub struct Settings {
     pub soft_shadow: bool,
     // 反色突出(实验): 墨迹逐像素取背景反色(macOS; 背景由 SCK 持续捕获)
     pub invert_ink: bool,
+    // 反色追踪帧率上限(10/30/60/100); 流只在画面变化时送帧, 此值仅封顶
+    pub invert_fps: i32,
     pub pressure_monitor: bool,
     pub outline: bool,
     pub infinite_canvas: bool,
@@ -251,6 +253,7 @@ impl Settings {
             glass_follow_strokes: b("glassFollowStrokes"),
             soft_shadow: b("softShadow"),
             invert_ink: b("invertInk"),
+            invert_fps: i("invertFps"),
             pressure_monitor: b("pressureMonitor"),
             outline: b("outline"),
             infinite_canvas: b("infiniteCanvas"),

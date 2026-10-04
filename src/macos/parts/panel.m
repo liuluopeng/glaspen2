@@ -174,20 +174,14 @@ static void finish_active_stroke(void) {
     g_raw_path_len = 0;
 }
 
-// ── 反色突出: 状态与前置声明(定义在下方"反色突出"区) ──
-static unsigned char *s_inv_buf = NULL;     // BGRA(premul) = cairo ARGB32 布局
-static CGContextRef s_inv_ctx = NULL;       // 包住 s_inv_buf(32Little+ARGB premul first)
-static cairo_surface_t *s_inv_surf = NULL;  // cairo 包装同一 buf
-static int s_inv_w = 0, s_inv_h = 0;
-static BOOL s_inv_busy = NO;                // 仅主线程访问
-static SCContentFilter *s_inv_filter = nil; // 缓存(排除自身窗口; 分辨率变化时置空重建)
-static void invert_capture_tick(void);
+// ── 反色突出: 前置声明(状态与实现都在下方"反色突出"区) ──
+static void invert_stream_invalidate(void); // 分辨率变化: 停流弃缓存, 下轮重建
 
 // Handle display configuration changes (resolution, arrangement, etc.)
 // 分辨率变化的实际处理(经 2.5s 防抖后调用, 分辨率已稳定)。
 static void display_change_apply(int new_w, int new_h) {
     NSLog(@"[glaspen2] display changed: %dx%d -> %dx%d", g_screen_w, g_screen_h, new_w, new_h);
-    s_inv_filter = nil; // 反色捕获的 display/filter 缓存失效, 下一轮重建
+    invert_stream_invalidate(); // 反色捕获: 停流+弃缓存, 下轮按新几何重建
     g_screen_w = new_w;
     g_screen_h = new_h;
     // Only start a new page when the current one has strokes (no silent page switch).
@@ -248,31 +242,186 @@ static void on_display_changed(void) {
 }
 
 // ── 反色突出(实验) ──
-// SCScreenshotManager 持续捕获"自身窗口以下的屏幕"(排除本 app 全部窗口,
-// 防反馈), 反相 RGB 后经 cairo pattern 作为墨迹 source —— 每个墨迹像素
-// 显示的是其正下方背景的反色, 视频等动态背景以 ~15fps 追踪(整笔重绘)。
+// SCStream 连续捕获"自身窗口以下的屏幕"(自家窗口 sharingType=None 拒绝
+// 共享像素, 从源头排除反馈), 帧到后逐像素反相写入双缓冲之一, 主线程
+// 消费时把该缓冲作为墨迹 pattern —— 每个墨迹像素显示其正下方背景的反色。
+// SCStream 只在画面变化时送帧: 静态背景 = 零开销, 完全符合"只在背景动
+// 的时候调整颜色"的预期。帧快于主线程消费时丢帧保最新。
+// 帧率上限由设置 invertFps(10/30/60/100)经 minimumFrameInterval 控制。
 // 注意: 捕获不含磨砂玻璃效果, 反色开启时建议关闭/调低玻璃。
-static void invert_tick_schedule(double delay) {
-    dispatch_after(
-        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
-        dispatch_get_main_queue(), ^{ invert_capture_tick(); });
+#define INV_SLOTS 2
+#define INV_IDLE (-1)
+#define INV_GRAB (-2)
+static unsigned char *s_inv_buf[INV_SLOTS];     // BGRA(premul) = cairo ARGB32 布局
+static CGContextRef s_inv_ctx[INV_SLOTS];       // 包住对应 buf(32Little+ARGB premul first)
+static cairo_surface_t *s_inv_surf[INV_SLOTS];  // cairo 包装同一 buf
+static int s_inv_w = 0, s_inv_h = 0;
+static int s_inv_write = 0;                     // 流回调下一步写入的槽
+static int s_inv_present = 0;                   // pattern/主线程正在读的槽
+static int s_inv_pending = INV_IDLE;            // INV_IDLE/INV_GRAB/待消费槽号(__atomic 原语访问)
+static SCContentFilter *s_inv_filter = nil;     // 缓存(排除自身窗口; 分辨率变化时置空重建)
+static SCStream *s_inv_stream = nil;
+static dispatch_queue_t s_inv_queue;
+
+@interface InvertStreamOutput : NSObject <SCStreamOutput>
+@end
+
+static InvertStreamOutput *s_inv_output = nil;
+static void invert_tick_schedule(double delay);
+static void invert_stream_start(void);
+static void invert_consume_pending(void);
+
+@implementation InvertStreamOutput
+// 流回调(后台队列): 拿一帧 BGRA, 反相写进当前写槽; 主线程没消化上一帧
+// 就直接丢帧(保最新, 天然限速)。槽翻转由主线程消费时做, 读写永不相交。
+- (void)stream:(SCStream *)stream
+    didCaptureSample:(CMSampleBufferRef)sampleBuffer {
+    if (!g_invert_ink || !CMSampleBufferIsValid(sampleBuffer)) return;
+    CVPixelBufferRef pb = CMSampleBufferGetImageBuffer(sampleBuffer);
+    if (!pb) return;
+    int expected = INV_IDLE;
+    if (!__atomic_compare_exchange_n(&s_inv_pending, &expected, INV_GRAB, false,
+                                     __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+        return; // 丢帧: 主线程还没消费上一帧
+    int slot = s_inv_write;
+    BOOL ok = NO;
+    CVPixelBufferLockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
+    if (CVPixelBufferGetPixelFormatType(pb) == kCVPixelFormatType_32BGRA &&
+        CVPixelBufferGetWidth(pb) == (size_t)s_inv_w &&
+        CVPixelBufferGetHeight(pb) == (size_t)s_inv_h &&
+        CVPixelBufferGetBytesPerRow(pb) == (size_t)s_inv_w * 4) {
+        const UInt32 *sp = (const UInt32 *)CVPixelBufferGetBaseAddress(pb);
+        UInt32 *dp = (UInt32 *)s_inv_buf[slot];
+        size_t n = (size_t)s_inv_w * (size_t)s_inv_h;
+        for (size_t i = 0; i < n; i++)
+            dp[i] = sp[i] ^ 0x00FFFFFFU; // 反相 RGB, alpha FF 不动
+        ok = YES;
+    }
+    CVPixelBufferUnlockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
+    if (ok) {
+        __atomic_store_n(&s_inv_pending, slot, __ATOMIC_RELEASE);
+        dispatch_async(dispatch_get_main_queue(), ^{ invert_consume_pending(); });
+    } else {
+        __atomic_store_n(&s_inv_pending, INV_IDLE, __ATOMIC_RELEASE);
+    }
+}
+@end
+
+// 主线程消费: 翻转呈现槽, pattern 指向新背景, 整笔重绘(书写中跳过)
+static void invert_consume_pending(void) {
+    int slot = __atomic_exchange_n(&s_inv_pending, INV_IDLE, __ATOMIC_ACQ_REL);
+    if (slot < 0 || slot >= INV_SLOTS || !s_inv_surf[slot]) return;
+    s_inv_present = slot;
+    s_inv_write = slot ^ 1;
+    glaspen2_set_invert_background(s_inv_surf[slot]);
+    cairo_surface_mark_dirty(s_inv_surf[slot]);
+    if (!g_stroke_active) {
+        // 整笔以新背景重绘(含 pattern)。书写中跳过: rebuild 只画已提交
+        // 的 STROKES, 会把在飞的原始笔迹段擦掉; 新背景在飞段下一笔自然
+        // 用上, 收笔后下一帧补齐。
+        rebuild_surface_from_strokes();
+        flush_to_layer();
+    }
+}
+
+static void invert_stream_stop(void) {
+    if (!s_inv_stream) return;
+    SCStream *st = s_inv_stream;
+    s_inv_stream = nil;
+    [st stopCaptureWithCompletionHandler:^(NSError *error) {
+      if (error) NSLog(@"[invert] stream stop: %@", error);
+    }];
+    [st removeStreamOutput:s_inv_output type:SCStreamOutputTypeScreen error:nil];
 }
 
 static void invert_cache_teardown(void) {
+    invert_stream_stop();
     glaspen2_set_invert_background(NULL); // 先摘 Rust 侧引用
-    if (s_inv_surf) {
-        cairo_surface_destroy(s_inv_surf);
-        s_inv_surf = NULL;
-    }
-    if (s_inv_ctx) {
-        CGContextRelease(s_inv_ctx);
-        s_inv_ctx = NULL;
-    }
-    if (s_inv_buf) {
-        free(s_inv_buf);
-        s_inv_buf = NULL;
+    for (int i = 0; i < INV_SLOTS; i++) {
+        if (s_inv_surf[i]) {
+            cairo_surface_destroy(s_inv_surf[i]);
+            s_inv_surf[i] = NULL;
+        }
+        if (s_inv_ctx[i]) {
+            CGContextRelease(s_inv_ctx[i]);
+            s_inv_ctx[i] = NULL;
+        }
+        if (s_inv_buf[i]) {
+            free(s_inv_buf[i]);
+            s_inv_buf[i] = NULL;
+        }
     }
     s_inv_w = s_inv_h = 0;
+}
+
+// 分辨率变化: 停流 + 弃 filter/缓存, 监督循环按新几何重建
+static void invert_stream_invalidate(void) {
+    invert_stream_stop();
+    s_inv_filter = nil;
+    if (s_inv_w > 0) invert_cache_teardown();
+}
+
+// 确保双缓冲与表面同尺寸; 返回 NO = 建不起来
+static BOOL invert_ensure_cache(int dw, int dh) {
+    if (s_inv_buf[0] && s_inv_w == dw && s_inv_h == dh) return YES;
+    invert_cache_teardown();
+    size_t bytes = (size_t)dw * dh * 4;
+    CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    for (int i = 0; i < INV_SLOTS; i++) {
+        s_inv_buf[i] = malloc(bytes);
+        if (!s_inv_buf[i]) break;
+        memset(s_inv_buf[i], 0, bytes);
+        s_inv_ctx[i] = CGBitmapContextCreate(
+            s_inv_buf[i], dw, dh, 8, dw * 4, srgb,
+            kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
+        if (!s_inv_ctx[i]) break;
+        s_inv_surf[i] = cairo_image_surface_create_for_data(
+            s_inv_buf[i], CAIRO_FORMAT_ARGB32, dw, dh, dw * 4);
+        if (!s_inv_surf[i]) break;
+    }
+    CGColorSpaceRelease(srgb); // context 已 retain
+    for (int i = 0; i < INV_SLOTS; i++)
+        if (!s_inv_buf[i] || !s_inv_ctx[i] || !s_inv_surf[i]) {
+            invert_cache_teardown();
+            return NO;
+        }
+    s_inv_w = dw;
+    s_inv_h = dh;
+    s_inv_write = 0;
+    s_inv_present = 0;
+    __atomic_store_n(&s_inv_pending, INV_IDLE, __ATOMIC_RELEASE);
+    glaspen2_set_invert_background(s_inv_surf[s_inv_present]);
+    glaspen2_set_stroke_invert(1);
+    return YES;
+}
+
+static void invert_stream_start(void) {
+    if (s_inv_stream || !s_inv_filter || s_inv_w <= 0) return;
+    if (!s_inv_output) s_inv_output = [InvertStreamOutput new];
+    if (!s_inv_queue) s_inv_queue = dispatch_queue_create("glaspen.invert", NULL);
+    SCStreamConfiguration *config = [SCStreamConfiguration new];
+    config.width = (size_t)s_inv_w;
+    config.height = (size_t)s_inv_h;
+    config.showsCursor = NO;
+    config.pixelFormat = kCVPixelFormatType_32BGRA; // 与 cairo ARGB32 内存布局一致
+    config.queueDepth = 3;
+    config.minimumFrameInterval = CMTimeMake(1, (int32_t)g_invert_fps);
+    s_inv_stream = [[SCStream alloc] initWithFilter:s_inv_filter
+                                       configuration:config
+                                            delegate:nil];
+    NSError *err = nil;
+    if (!s_inv_stream ||
+        ![s_inv_stream addStreamOutput:s_inv_output
+                                  type:SCStreamOutputTypeScreen
+                    sampleHandlerQueue:s_inv_queue
+                                 error:&err]) {
+        NSLog(@"[invert] addStreamOutput failed: %@", err);
+        s_inv_stream = nil;
+        return;
+    }
+    [s_inv_stream startCaptureWithCompletionHandler:^(NSError *error) {
+      if (error) NSLog(@"[invert] startCapture failed: %@", error);
+    }];
 }
 
 void invert_ink_apply(int on) {
@@ -285,7 +434,7 @@ void invert_ink_apply(int on) {
         [g_window setSharingType:NSWindowSharingNone];
         if (g_settings_window)
             [g_settings_window setSharingType:NSWindowSharingNone];
-        invert_tick_schedule(0.05); // 快速首轮捕获
+        invert_tick_schedule(0.05); // 监督循环快速首轮
     } else {
         invert_cache_teardown();
         glaspen2_set_stroke_invert(0);
@@ -297,48 +446,35 @@ void invert_ink_apply(int on) {
     }
 }
 
+// 帧率设置变更: 停流即可, 监督循环用新 minimumFrameInterval 重启
+void invert_stream_restart(void) {
+    invert_stream_stop();
+    invert_tick_schedule(0.05);
+}
+
+// 监督循环(0.5s): 确保 filter/缓存/流就绪; 无笔迹时停流省电。
+// 真正的帧流由 SCStream 驱动(只在画面变化时送帧), 本循环本身近零开销。
 static void invert_capture_tick(void) {
-    if (!g_invert_ink || !g_surface || s_tun_active || s_inv_busy) return;
+    if (!g_invert_ink || !g_surface || s_tun_active) return;
     if (!glaspen2_has_strokes() && !g_stroke_active) {
-        invert_tick_schedule(0.5); // 无笔迹: 慢轮询
+        invert_stream_stop(); // 空闲: 流也停(SCK 不送帧, 但会话本身有底噪)
+        invert_tick_schedule(0.5);
         return;
     }
     cairo_surface_flush(g_surface);
     int dw = cairo_image_surface_get_width(g_surface);
     int dh = cairo_image_surface_get_height(g_surface);
     if (dw <= 0 || dh <= 0) return;
-    if (!s_inv_buf || s_inv_w != dw || s_inv_h != dh) {
-        invert_cache_teardown();
-        s_inv_buf = malloc((size_t)dw * dh * 4);
-        if (!s_inv_buf) return;
-        memset(s_inv_buf, 0, (size_t)dw * dh * 4);
-        CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-        s_inv_ctx = CGBitmapContextCreate(
-            s_inv_buf, dw, dh, 8, dw * 4, srgb,
-            kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
-        CGColorSpaceRelease(srgb); // context 已 retain
-        if (!s_inv_ctx) {
-            invert_cache_teardown();
-            return;
-        }
-        s_inv_surf = cairo_image_surface_create_for_data(
-            s_inv_buf, CAIRO_FORMAT_ARGB32, dw, dh, dw * 4);
-        if (!s_inv_surf) {
-            invert_cache_teardown();
-            return;
-        }
-        s_inv_w = dw;
-        s_inv_h = dh;
-        glaspen2_set_invert_background(s_inv_surf);
-        glaspen2_set_stroke_invert(1);
+    if (s_inv_w != dw || s_inv_h != dh) {
+        invert_stream_stop();
+        s_inv_filter = nil;
     }
-    s_inv_busy = YES;
+    if (!invert_ensure_cache(dw, dh)) return;
     if (!s_inv_filter) {
         // 首次: 缓存 display + 排除本 app 全部窗口的 filter
         [SCShareableContent getShareableContentWithCompletionHandler:^(
             SCShareableContent *content, NSError *error) {
           dispatch_async(dispatch_get_main_queue(), ^{
-            s_inv_busy = NO;
             if (error || !content.displays.count || !g_invert_ink) {
               invert_tick_schedule(1.0);
               return;
@@ -358,49 +494,20 @@ static void invert_capture_tick(void) {
         }];
         return;
     }
-    SCStreamConfiguration *config = [SCStreamConfiguration new];
-    config.width = (size_t)s_inv_w;
-    config.height = (size_t)s_inv_h;
-    config.showsCursor = NO;
-    [SCScreenshotManager captureImageWithFilter:s_inv_filter
-                                   configuration:config
-                               completionHandler:^(CGImageRef image, NSError *error) {
-          // handler 给的 CGImageRef 不保证跨出本作用域存活(带背景截图
-          // 是在 handler 内同步用掉所以没踩过)—— 跨队列前必须自持。
-          CGImageRef grabbed = (error || !image) ? NULL : CGImageRetain(image);
-          dispatch_async(dispatch_get_main_queue(), ^{
-            s_inv_busy = NO;
-            if (!grabbed || !g_invert_ink || !s_inv_ctx) {
-              if (grabbed) CGImageRelease(grabbed);
-              invert_tick_schedule(1.0);
-              return;
-            }
-            CGRect rect = CGRectMake(0, 0, (CGFloat)s_inv_w, (CGFloat)s_inv_h);
-            CGContextClearRect(s_inv_ctx, rect);
-            CGContextDrawImage(s_inv_ctx, rect, grabbed);
-            CGImageRelease(grabbed);
-            // 反相 RGB(每像素低三字节 = B,G,R; alpha FF 不动)
-            UInt32 *p = (UInt32 *)s_inv_buf;
-            size_t n = (size_t)s_inv_w * (size_t)s_inv_h;
-            for (size_t i = 0; i < n; i++) p[i] ^= 0x00FFFFFFU;
-            cairo_surface_mark_dirty(s_inv_surf);
-            if (!g_stroke_active) {
-                // 整笔以新背景重绘(含 pattern)。书写中跳过: rebuild 只画
-                // 已提交的 STROKES, 会把在飞的原始笔迹段擦掉(15fps 规律
-                // 闪烁); 新背景在飞段下一笔自然用上, 收笔后下一轮补齐。
-                rebuild_surface_from_strokes();
-                flush_to_layer();
-            }
-            invert_tick_schedule(1.0 / 15.0); // ~15fps 追踪
-          });
-        }];
+    invert_stream_start();
+}
+
+static void invert_tick_schedule(double delay) {
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{ invert_capture_tick(); });
 }
 
 // 反色模式给 cr 挂背景 pattern(cr 有 g_scale 缩放, pattern 矩阵补偿);
 // 返回需 cairo_pattern_destroy 的 pattern, NULL = 用笔色。
 static cairo_pattern_t *invert_ink_source(cairo_t *cr) {
-    if (!g_invert_ink || !s_inv_surf) return NULL;
-    cairo_pattern_t *pat = cairo_pattern_create_for_surface(s_inv_surf);
+    if (!g_invert_ink || !s_inv_surf[s_inv_present]) return NULL;
+    cairo_pattern_t *pat = cairo_pattern_create_for_surface(s_inv_surf[s_inv_present]);
     if (!pat) return NULL;
     cairo_matrix_t m;
     double sc = (g_scale > 0.0) ? g_scale : 1.0;

@@ -364,6 +364,10 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .block_on(glaspen_core::db::load_setting("glassFollowStrokes"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(1); // 缺省 = 跟随(macOS 历史行为)
+        let invert_fps = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("invertFps"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(30);
         let invert_ink = glaspen_core::runtime()
             .block_on(glaspen_core::db::load_setting("invertInk"))
             .and_then(|v| v.parse::<i32>().ok())
@@ -412,7 +416,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let (gfps, gres, gspd, gem) = gif_settings();
         // 密码本体不回读,只回是否已保存(macOS 同款)
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false,\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\"}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false,\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\"}}}}\n",
             color,
             width,
             outline,
@@ -424,6 +428,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             glass_follow,
             soft_shadow,
             invert_ink,
+            invert_fps,
             frosted,
             pressure_monitor,
             ethereal,
@@ -664,6 +669,14 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
                     "invertInk",
                     if on { "1" } else { "0" },
+                ));
+            }
+        } else if key == "invertFps" {
+            let fps = json_get_int(line, "value").unwrap_or(30);
+            if matches!(fps, 10 | 30 | 60 | 100) {
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "invertFps",
+                    &fps.to_string(),
                 ));
             }
         } else if key == "glassFollowStrokes" {
@@ -988,6 +1001,10 @@ fn json_get_f64(json: &str, key: &str) -> Option<f64> {
         return rest[..end].parse::<f64>().ok();
     }
     None
+}
+
+fn json_get_int(json: &str, key: &str) -> Option<i32> {
+    json_get_f64(json, key).map(|v| v as i32)
 }
 
 /// 解析 JSON bool 值(Flutter 发送的开关为 true/false)

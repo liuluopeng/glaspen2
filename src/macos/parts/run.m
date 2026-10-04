@@ -2499,6 +2499,15 @@ void glaspen2_run(void) {
         [oi setState:g_outline_enabled ? NSControlStateValueOn
                                        : NSControlStateValueOff];
     }
+    {
+      char *vif = glaspen2_load_string_setting("invert_fps");
+      if (vif) {
+        int fps = atoi(vif);
+        if (fps == 10 || fps == 30 || fps == 60 || fps == 100)
+          g_invert_fps = fps;
+        glaspen2_free_c_string(vif);
+      }
+    }
     g_invert_ink = glaspen2_load_bool_setting("invert_ink") != 0;
     if (g_invert_ink) invert_ink_apply(1);
     {

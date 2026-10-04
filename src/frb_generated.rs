@@ -1263,6 +1263,7 @@ impl SseDecode for crate::api::Settings {
         let mut var_glassFollowStrokes = <bool>::sse_decode(deserializer);
         let mut var_softShadow = <bool>::sse_decode(deserializer);
         let mut var_invertInk = <bool>::sse_decode(deserializer);
+        let mut var_invertFps = <i32>::sse_decode(deserializer);
         let mut var_pressureMonitor = <bool>::sse_decode(deserializer);
         let mut var_outline = <bool>::sse_decode(deserializer);
         let mut var_infiniteCanvas = <bool>::sse_decode(deserializer);
@@ -1291,6 +1292,7 @@ impl SseDecode for crate::api::Settings {
             glass_follow_strokes: var_glassFollowStrokes,
             soft_shadow: var_softShadow,
             invert_ink: var_invertInk,
+            invert_fps: var_invertFps,
             pressure_monitor: var_pressureMonitor,
             outline: var_outline,
             infinite_canvas: var_infiniteCanvas,
@@ -1570,6 +1572,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::Settings {
             self.glass_follow_strokes.into_into_dart().into_dart(),
             self.soft_shadow.into_into_dart().into_dart(),
             self.invert_ink.into_into_dart().into_dart(),
+            self.invert_fps.into_into_dart().into_dart(),
             self.pressure_monitor.into_into_dart().into_dart(),
             self.outline.into_into_dart().into_dart(),
             self.infinite_canvas.into_into_dart().into_dart(),
@@ -1896,6 +1899,7 @@ impl SseEncode for crate::api::Settings {
         <bool>::sse_encode(self.glass_follow_strokes, serializer);
         <bool>::sse_encode(self.soft_shadow, serializer);
         <bool>::sse_encode(self.invert_ink, serializer);
+        <i32>::sse_encode(self.invert_fps, serializer);
         <bool>::sse_encode(self.pressure_monitor, serializer);
         <bool>::sse_encode(self.outline, serializer);
         <bool>::sse_encode(self.infinite_canvas, serializer);

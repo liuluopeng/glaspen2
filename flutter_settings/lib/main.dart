@@ -121,6 +121,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _glassFollowStrokes = true;
   bool _softShadow = false;
   bool _invertInk = false;
+  int _invertFps = 30;
   bool _outlineEnabled = false;
   bool _infiniteCanvas = false;
   int _gridSizeValue = 40; // 网格大小(逻辑 px)
@@ -487,6 +488,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _glassFollowStrokes = s['glassFollowStrokes'] as bool? ?? _glassFollowStrokes;
         _softShadow = _b(s['softShadow']);
         _invertInk = _b(s['invertInk']);
+        _invertFps = (s['invertFps'] as num?)?.toInt() ?? _invertFps;
         _outlineEnabled = _b(s['outline']);
         _infiniteCanvas = _b(s['infiniteCanvas']);
         _minimapEnabled = _b(s['minimap']);
@@ -518,6 +520,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               settings['glassFollowStrokes'] as bool? ?? _glassFollowStrokes;
           _softShadow = _b(settings['softShadow']);
           _invertInk = _b(settings['invertInk']);
+          _invertFps = (settings['invertFps'] as num?)?.toInt() ?? _invertFps;
           _infiniteCanvas = _b(settings['infiniteCanvas']);
           _minimapEnabled = _b(settings['minimap']);
           _gridSizeValue = (settings['gridSize'] as num?)?.toInt() ?? _gridSizeValue;
@@ -2312,6 +2315,24 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             setState(() => _invertInk = v);
             _setSetting('invertInk', v);
           },
+        )),
+        _tile(SegmentedButton<int>(
+          segments: const [
+            ButtonSegment(value: 10, label: Text('10Hz')),
+            ButtonSegment(value: 30, label: Text('30Hz')),
+            ButtonSegment(value: 60, label: Text('60Hz')),
+            ButtonSegment(value: 100, label: Text('100Hz')),
+          ],
+          selected: {_invertFps},
+          showSelectedIcon: false,
+          onSelectionChanged: (s2) {
+            setState(() => _invertFps = s2.first);
+            _setSetting('invertFps', s2.first);
+          },
+        )),
+        _tile(const Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 8),
+          child: Text('反色追踪帧率上限 · 静态背景不送帧零开销', style: TextStyle(fontSize: 11, color: Colors.grey)),
         )),
         // 页面缩略图(minimap)开关已移到「活页本」tab
         // 无限画布模式由 tab 承载:活页本=翻页模式,自由涂鸦=无限画布

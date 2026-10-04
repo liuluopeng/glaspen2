@@ -22,6 +22,8 @@ pub struct DrawState {
     pub soft_shadow: bool,
     /// 反色突出(实验):设置同键持久化,覆盖层行为 macOS v1 独有,Windows 暂不消费
     pub invert_ink: bool,
+    /// 反色追踪帧率上限(10/30/60/100),同键持久化(macOS 消费)
+    pub invert_fps: i32,
     /// 压力监控 HUD 是否开启
     pub pressure_monitor: bool,
     /// 手写消息集成总开关(⌘⌃2/⌘⌃3 → Ctrl+Alt+2/3 的守门;面板同键)

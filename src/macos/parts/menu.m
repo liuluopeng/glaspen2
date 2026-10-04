@@ -596,6 +596,7 @@ char *glaspen2_macos_settings_json(void) {
             @"glassFollowStrokes": @(g_glass_follow_strokes),
             @"softShadow": @(g_soft_shadow),
             @"invertInk": @(g_invert_ink),
+            @"invertFps": @(g_invert_fps),
             @"pressureMonitor": @(g_pressure_monitor),
             @"outline": @(g_outline_enabled),
             @"infiniteCanvas": @(g_infinite_canvas),
@@ -717,6 +718,15 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             g_invert_ink = [value boolValue];
             glaspen2_save_bool_setting("invert_ink", g_invert_ink ? 1 : 0);
             invert_ink_apply(g_invert_ink ? 1 : 0);
+        } else if ([key isEqualToString:@"invertFps"]) {
+            int fps = [value intValue];
+            if (fps == 10 || fps == 30 || fps == 60 || fps == 100) {
+                g_invert_fps = fps;
+                char fpsStr[16];
+                snprintf(fpsStr, sizeof(fpsStr), "%d", g_invert_fps);
+                glaspen2_save_string_setting("invert_fps", fpsStr);
+                if (g_invert_ink) invert_stream_restart(); // 用新帧率重启捕获流
+            }
         } else if ([key isEqualToString:@"outline"]) {
             apply_outline([value boolValue]);
         } else if ([key isEqualToString:@"infiniteCanvas"]) {
