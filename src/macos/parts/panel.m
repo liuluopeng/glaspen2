@@ -260,6 +260,13 @@ static int s_inv_write = 0;                     // 流回调下一步写入的�
 static int s_inv_present = 0;                   // pattern/主线程正在读的槽
 static unsigned long long s_inv_sum[INV_SLOTS]; // 帧校验和(内容没变就跳过消费)
 static unsigned long long s_inv_present_sum;    // 当前呈现帧的校验和
+static unsigned long long s_inv_diff[INV_SLOTS]; // 与呈现帧不同的像素数
+// 重绘阈值: 变化像素占比低于此(≈0.2%)视为噪声(spinner/光标微动画),
+// 照常更新背景缓冲(新笔迹用新色)但不重绘已有笔迹——微变化不再让
+// 全屏笔迹陪着重绘闪烁; 大变化(视频切画面)才触发。
+static unsigned long long inv_diff_min(void) {
+    return (unsigned long long)s_inv_w * (unsigned long long)s_inv_h / 500ULL + 1;
+}
 static int s_inv_pending = INV_IDLE;            // INV_IDLE/INV_GRAB/待消费槽号(__atomic 原语访问)
 static SCContentFilter *s_inv_filter = nil;     // 缓存(排除自身窗口; 分辨率变化时置空重建)
 static SCStream *s_inv_stream = nil;
@@ -299,8 +306,9 @@ static void invert_consume_pending(void);
         // 内容与呈现帧相同则主线程整帧跳过(不重绘不闪烁)
         const unsigned char *sp = CVPixelBufferGetBaseAddress(pb);
         unsigned char *dp = s_inv_buf[slot];
+        const UInt32 *pv = (const UInt32 *)s_inv_buf[s_inv_present]; // 呈现帧(只读)
         size_t row = (size_t)s_inv_w * 4;
-        unsigned long long sum = 0;
+        unsigned long long sum = 0, diff = 0;
         for (size_t y = 0; y < (size_t)s_inv_h; y++) {
             const UInt32 *sr = (const UInt32 *)(sp + y * cstride);
             UInt32 *dr = (UInt32 *)(dp + y * row);
@@ -308,9 +316,11 @@ static void invert_consume_pending(void);
                 UInt32 v = sr[x] ^ 0x00FFFFFFU;
                 dr[x] = v;
                 sum += v;
+                if (pv && v != pv[x]) diff++;
             }
         }
         s_inv_sum[slot] = sum;
+        s_inv_diff[slot] = diff;
         ok = YES;
     } else {
         static int mismatch_logged = 0;
@@ -347,8 +357,9 @@ static void invert_consume_pending(void) {
     int slot = __atomic_load_n(&s_inv_pending, __ATOMIC_ACQUIRE);
     if (slot < 0 || slot >= INV_SLOTS || !s_inv_surf[slot]) return;
     s_inv_write = slot ^ 1;                                // 先翻写槽
-    BOOL changed = s_inv_sum[slot] != s_inv_present_sum;   // 内容真变了才动
-    if (changed) {
+    BOOL content_changed = s_inv_sum[slot] != s_inv_present_sum;
+    BOOL significant = content_changed && s_inv_diff[slot] > inv_diff_min();
+    if (content_changed) {
         s_inv_present = slot;
         s_inv_present_sum = s_inv_sum[slot];
         __atomic_store_n(&s_inv_pending, INV_IDLE, __ATOMIC_RELEASE); // 放行
@@ -357,7 +368,7 @@ static void invert_consume_pending(void) {
     } else {
         __atomic_store_n(&s_inv_pending, INV_IDLE, __ATOMIC_RELEASE);
     }
-    if (changed && !g_stroke_active) {
+    if (significant && !g_stroke_active) {
         // 整笔以新背景重绘(含 pattern)。书写中跳过: rebuild 只画已提交
         // 的 STROKES, 会把在飞的原始笔迹段擦掉; 新背景在飞段下一笔自然
         // 用上, 收笔后下一帧补齐。
