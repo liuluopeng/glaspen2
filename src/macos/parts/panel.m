@@ -258,6 +258,8 @@ static cairo_surface_t *s_inv_surf[INV_SLOTS];  // cairo 包装同一 buf
 static int s_inv_w = 0, s_inv_h = 0;
 static int s_inv_write = 0;                     // 流回调下一步写入的槽
 static int s_inv_present = 0;                   // pattern/主线程正在读的槽
+static unsigned long long s_inv_sum[INV_SLOTS]; // 帧校验和(内容没变就跳过消费)
+static unsigned long long s_inv_present_sum;    // 当前呈现帧的校验和
 static int s_inv_pending = INV_IDLE;            // INV_IDLE/INV_GRAB/待消费槽号(__atomic 原语访问)
 static SCContentFilter *s_inv_filter = nil;     // 缓存(排除自身窗口; 分辨率变化时置空重建)
 static SCStream *s_inv_stream = nil;
@@ -293,16 +295,22 @@ static void invert_consume_pending(void);
     size_t cstride = CVPixelBufferGetBytesPerRow(pb);
     if (pf == kCVPixelFormatType_32BGRA && cw == (size_t)s_inv_w &&
         ch == (size_t)s_inv_h) {
-        // 逐行拷贝+反相(容忍行尾 padding), alpha FF 不动
+        // 逐行拷贝+反相(容忍行尾 padding), alpha FF 不动; 顺带算校验和,
+        // 内容与呈现帧相同则主线程整帧跳过(不重绘不闪烁)
         const unsigned char *sp = CVPixelBufferGetBaseAddress(pb);
         unsigned char *dp = s_inv_buf[slot];
         size_t row = (size_t)s_inv_w * 4;
+        unsigned long long sum = 0;
         for (size_t y = 0; y < (size_t)s_inv_h; y++) {
             const UInt32 *sr = (const UInt32 *)(sp + y * cstride);
             UInt32 *dr = (UInt32 *)(dp + y * row);
-            for (size_t x = 0; x < (size_t)s_inv_w; x++)
-                dr[x] = sr[x] ^ 0x00FFFFFFU;
+            for (size_t x = 0; x < (size_t)s_inv_w; x++) {
+                UInt32 v = sr[x] ^ 0x00FFFFFFU;
+                dr[x] = v;
+                sum += v;
+            }
         }
+        s_inv_sum[slot] = sum;
         ok = YES;
     } else {
         static int mismatch_logged = 0;
@@ -338,12 +346,18 @@ static void invert_consume_pending(void);
 static void invert_consume_pending(void) {
     int slot = __atomic_load_n(&s_inv_pending, __ATOMIC_ACQUIRE);
     if (slot < 0 || slot >= INV_SLOTS || !s_inv_surf[slot]) return;
-    s_inv_present = slot;
     s_inv_write = slot ^ 1;                                // 先翻写槽
-    __atomic_store_n(&s_inv_pending, INV_IDLE, __ATOMIC_RELEASE); // 再放行
-    glaspen2_set_invert_background(s_inv_surf[slot]);
-    cairo_surface_mark_dirty(s_inv_surf[slot]);
-    if (!g_stroke_active) {
+    BOOL changed = s_inv_sum[slot] != s_inv_present_sum;   // 内容真变了才动
+    if (changed) {
+        s_inv_present = slot;
+        s_inv_present_sum = s_inv_sum[slot];
+        __atomic_store_n(&s_inv_pending, INV_IDLE, __ATOMIC_RELEASE); // 放行
+        glaspen2_set_invert_background(s_inv_surf[slot]);
+        cairo_surface_mark_dirty(s_inv_surf[slot]);
+    } else {
+        __atomic_store_n(&s_inv_pending, INV_IDLE, __ATOMIC_RELEASE);
+    }
+    if (changed && !g_stroke_active) {
         // 整笔以新背景重绘(含 pattern)。书写中跳过: rebuild 只画已提交
         // 的 STROKES, 会把在飞的原始笔迹段擦掉; 新背景在飞段下一笔自然
         // 用上, 收笔后下一帧补齐。

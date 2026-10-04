@@ -120,7 +120,15 @@ fn now_f64() -> f64 {
 /// 同一流,cargo run 终端里按时间顺序交错可见)。只加在公开包装函数上,
 /// 测试用的 `_with` 变体不打,免得 cargo test 输出刷屏。
 macro_rules! dblog {
-    ($($arg:tt)*) => { eprintln!("[db] {}", format_args!($($arg)*)) };
+    ($($arg:tt)*) => {{
+        // 默认静默: 反色模式下每次整笔重绘都会查相邻页, 日志会滚进屏幕上
+        // 可见的终端 → SCStream 检测到"画面变化"再送帧 → 自激循环(日志
+        // 自己制造自己的触发源)。需要排查时设 GLASPEN2_DB_LOG=1 恢复。
+        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *ON.get_or_init(|| std::env::var("GLASPEN2_DB_LOG").is_ok()) {
+            eprintln!("[db] {}", format_args!($($arg)*));
+        }
+    }};
 }
 
 // ---------------------------------------------------------------------------
