@@ -330,12 +330,17 @@ static void invert_consume_pending(void);
 }
 @end
 
-// 主线程消费: 翻转呈现槽, pattern 指向新背景, 整笔重绘(书写中跳过)
+// 主线程消费: 翻转呈现槽, pattern 指向新背景, 整笔重绘(书写中跳过)。
+// 顺序关键: 必须先翻转写槽、最后才放行流回调(pending=IDLE)——否则回调
+// 在放行后、翻转前 CAS 成功, 会拿到尚未翻转的旧写槽(= pattern 正在
+// 采样的呈现槽)并发写入, cairo 撕裂读 = 闪烁。release 放行保证回调
+// 一定能看到翻转后的写槽, 双槽读写从此永不相交。
 static void invert_consume_pending(void) {
-    int slot = __atomic_exchange_n(&s_inv_pending, INV_IDLE, __ATOMIC_ACQ_REL);
+    int slot = __atomic_load_n(&s_inv_pending, __ATOMIC_ACQUIRE);
     if (slot < 0 || slot >= INV_SLOTS || !s_inv_surf[slot]) return;
     s_inv_present = slot;
-    s_inv_write = slot ^ 1;
+    s_inv_write = slot ^ 1;                                // 先翻写槽
+    __atomic_store_n(&s_inv_pending, INV_IDLE, __ATOMIC_RELEASE); // 再放行
     glaspen2_set_invert_background(s_inv_surf[slot]);
     cairo_surface_mark_dirty(s_inv_surf[slot]);
     if (!g_stroke_active) {
