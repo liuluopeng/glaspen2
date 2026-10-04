@@ -332,7 +332,7 @@ fn redraw_from_strokes(state: &mut OverlayState) {
                     (vx as f32, vy as f32, ((w as f32 * 0.5) * z).max(0.5))
                 })
                 .collect();
-            fill_stroke_path(&mut state.canvas, &path, ol);
+            fill_stroke_path(&mut state.canvas, &path, state.draw.soft_shadow, ol);
         }
     }
     draw_minimap(state);

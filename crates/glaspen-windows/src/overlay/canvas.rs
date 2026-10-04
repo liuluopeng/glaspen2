@@ -66,6 +66,40 @@ impl OverlayCanvas {
         }
     }
 
+    /// 软阴影 pass: 整条折线加宽 spread×2 的半透明黑(cairo alpha 合成;
+    /// 无 cairo 的回退自绘不支持半透明, 直接跳过)。返回脏矩形。
+    fn stroke_shadow_pass(
+        &mut self,
+        path: &[(f32, f32, f32)],
+        spread: f64,
+        alpha: f64,
+    ) -> Option<RECT> {
+        let c = self.cairo.as_ref()?;
+        let mut half = 0.0f32;
+        for &(x, y, r) in path {
+            let _ = (x, y);
+            half = half.max(r);
+        }
+        half += spread as f32 + 1.0;
+        let (mut l, mut t, mut rr, mut b) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for &(x, y, _) in path {
+            l = l.min(x - half);
+            t = t.min(y - half);
+            rr = rr.max(x + half);
+            b = b.max(y + half);
+        }
+        for w in path.windows(2) {
+            let width = (w[0].2.max(w[1].2)) * 2.0 + (spread * 2.0) as f32;
+            c.stroke_line_alpha(w[0].0, w[0].1, w[1].0, w[1].1, width, (0, 0, 0), alpha);
+        }
+        Some(RECT {
+            left: (l.max(0.0)) as i32,
+            top: (t.max(0.0)) as i32,
+            right: (rr.min(self.w as f32)) as i32,
+            bottom: (b.min(self.h as f32)) as i32,
+        })
+    }
+
     /// 黑白相间虚线段(marching ants 描边, macOS 同款): 黑偶相位白奇相位
     /// 各描一遍, 平头(圆帽会把相邻 1px 黑白段互相吞掉);
     /// offset = 段起点处整笔累计弧长(cairo 每次 stroke 重置相位, 逐段拨)。

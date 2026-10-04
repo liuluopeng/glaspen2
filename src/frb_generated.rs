@@ -27,7 +27,7 @@
 // Section: imports
 
 use flutter_rust_bridge::for_generated::byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
-use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
 use flutter_rust_bridge::{Handler, IntoIntoDart};
 
 // Section: boilerplate
@@ -1261,6 +1261,7 @@ impl SseDecode for crate::api::Settings {
         let mut var_grid = <bool>::sse_decode(deserializer);
         let mut var_gridFollowStrokes = <bool>::sse_decode(deserializer);
         let mut var_glassFollowStrokes = <bool>::sse_decode(deserializer);
+        let mut var_softShadow = <bool>::sse_decode(deserializer);
         let mut var_pressureMonitor = <bool>::sse_decode(deserializer);
         let mut var_outline = <bool>::sse_decode(deserializer);
         let mut var_infiniteCanvas = <bool>::sse_decode(deserializer);
@@ -1287,6 +1288,7 @@ impl SseDecode for crate::api::Settings {
             grid: var_grid,
             grid_follow_strokes: var_gridFollowStrokes,
             glass_follow_strokes: var_glassFollowStrokes,
+            soft_shadow: var_softShadow,
             pressure_monitor: var_pressureMonitor,
             outline: var_outline,
             infinite_canvas: var_infiniteCanvas,
@@ -1564,6 +1566,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::Settings {
             self.grid.into_into_dart().into_dart(),
             self.grid_follow_strokes.into_into_dart().into_dart(),
             self.glass_follow_strokes.into_into_dart().into_dart(),
+            self.soft_shadow.into_into_dart().into_dart(),
             self.pressure_monitor.into_into_dart().into_dart(),
             self.outline.into_into_dart().into_dart(),
             self.infinite_canvas.into_into_dart().into_dart(),
@@ -1888,6 +1891,7 @@ impl SseEncode for crate::api::Settings {
         <bool>::sse_encode(self.grid, serializer);
         <bool>::sse_encode(self.grid_follow_strokes, serializer);
         <bool>::sse_encode(self.glass_follow_strokes, serializer);
+        <bool>::sse_encode(self.soft_shadow, serializer);
         <bool>::sse_encode(self.pressure_monitor, serializer);
         <bool>::sse_encode(self.outline, serializer);
         <bool>::sse_encode(self.infinite_canvas, serializer);
@@ -1981,7 +1985,7 @@ mod io {
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
     };
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate
@@ -2005,7 +2009,7 @@ mod web {
     };
     use flutter_rust_bridge::for_generated::wasm_bindgen;
     use flutter_rust_bridge::for_generated::wasm_bindgen::prelude::*;
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate

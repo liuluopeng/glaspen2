@@ -503,6 +503,7 @@ pub(crate) fn paint_page_into_surface(
                 alpha: 1.0,
                 white_bg,
             },
+            false, // 导出(白底)不带阴影
             outline,
         );
     }

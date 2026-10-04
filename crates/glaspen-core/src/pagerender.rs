@@ -401,8 +401,43 @@ pub fn render_strokes_with_outline(
     pan_y: f64,
     zoom: f64,
     opts: &RenderOpts,
+    shadow: bool,
     outline: bool,
 ) {
+    if shadow {
+        // 软阴影: 黑色 shim 逐档加宽、递减 alpha(与 cairo 快路径同参数)
+        const STEPS: [(f64, f64); 3] = [(1.5, 0.20), (3.0, 0.13), (5.0, 0.07)];
+        for (spread, sa) in STEPS {
+            for s in strokes {
+                if s.points.len() < 2 {
+                    continue;
+                }
+                let pts: Vec<(f64, f64, f64, f64)> = s
+                    .points
+                    .iter()
+                    .map(|&(x, y, w, t)| (x, y, w + spread * 2.0, t))
+                    .collect();
+                let shim = PageStroke {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    points: &pts,
+                };
+                render_strokes(
+                    surf,
+                    lay,
+                    &[shim],
+                    pan_x,
+                    pan_y,
+                    zoom,
+                    &RenderOpts {
+                        alpha: opts.alpha * sa,
+                        white_bg: false,
+                    },
+                );
+            }
+        }
+    }
     if outline {
         // 黑白相间 1px 虚线(marching ants):按整笔累计弧长切 1px 平头
         // 小段, 奇偶相位交替着黑/白 —— 任何背景上恒有一半可见。
@@ -586,6 +621,7 @@ mod tests {
             0.0,
             1.0,
             &RenderOpts::default(),
+            false,
             true,
         );
         // 墨迹半径 2、描边半径 3 → y=13 行是纯描边带

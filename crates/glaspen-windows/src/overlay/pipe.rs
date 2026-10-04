@@ -364,6 +364,10 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .block_on(glaspen_core::db::load_setting("glassFollowStrokes"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(1); // 缺省 = 跟随(macOS 历史行为)
+        let soft_shadow = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("softShadow"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
         let ethereal = glaspen_core::runtime()
             .block_on(glaspen_core::db::load_setting("ethereal"))
             .and_then(|v| v.parse::<i32>().ok())
@@ -404,7 +408,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let (gfps, gres, gspd, gem) = gif_settings();
         // 密码本体不回读,只回是否已保存(macOS 同款)
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false,\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\"}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false,\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\"}}}}\n",
             color,
             width,
             outline,
@@ -414,6 +418,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             minimap,
             grid_follow,
             glass_follow,
+            soft_shadow,
             frosted,
             pressure_monitor,
             ethereal,
@@ -639,6 +644,13 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             if let Some(on) = json_get_bool(line, "value") {
                 glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
                     "gridFollowStrokes",
+                    if on { "1" } else { "0" },
+                ));
+            }
+        } else if key == "softShadow" {
+            if let Some(on) = json_get_bool(line, "value") {
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "softShadow",
                     if on { "1" } else { "0" },
                 ));
             }

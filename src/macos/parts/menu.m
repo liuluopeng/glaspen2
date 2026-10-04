@@ -594,6 +594,7 @@ char *glaspen2_macos_settings_json(void) {
             @"grid": @(g_show_grid),
             @"gridFollowStrokes": @(g_grid_follow_strokes),
             @"glassFollowStrokes": @(g_glass_follow_strokes),
+            @"softShadow": @(g_soft_shadow),
             @"pressureMonitor": @(g_pressure_monitor),
             @"outline": @(g_outline_enabled),
             @"infiniteCanvas": @(g_infinite_canvas),
@@ -706,6 +707,11 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             g_glass_follow_strokes = [value boolValue];
             glaspen2_save_bool_setting("glass_follow_strokes", g_glass_follow_strokes ? 1 : 0);
             gl_glass_apply(); // 立即按新规则重估玻璃可见性(含飘渺隐藏态)
+        } else if ([key isEqualToString:@"softShadow"]) {
+            g_soft_shadow = [value boolValue];
+            glaspen2_save_bool_setting("soft_shadow", g_soft_shadow ? 1 : 0);
+            glaspen2_set_soft_shadow(g_soft_shadow ? 1 : 0);
+            if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
         } else if ([key isEqualToString:@"outline"]) {
             apply_outline([value boolValue]);
         } else if ([key isEqualToString:@"infiniteCanvas"]) {

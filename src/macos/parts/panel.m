@@ -277,6 +277,17 @@ static void raw_draw_dot(double x, double y, double width) {
     if (g_eraser_mode) cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     else cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
+    // 软阴影层(最底): 三档加宽递减 alpha 的圆头黑影
+    if (g_soft_shadow && !g_eraser_mode) {
+        static const double kSteps[3][2] = {{1.5, 0.20}, {3.0, 0.13}, {5.0, 0.07}};
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        for (int si = 0; si < 3; si++) {
+            cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, kSteps[si][1]);
+            cairo_arc(cr, x, y, width * 0.5 + kSteps[si][0], 0, 2 * M_PI);
+            cairo_fill(cr);
+        }
+    }
+
     // 描边层(垫底): 起笔圆头垫一圈黑(相位 0 = 黑虚段起点)
     if (g_outline_enabled && !g_eraser_mode) {
         cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
@@ -288,7 +299,7 @@ static void raw_draw_dot(double x, double y, double width) {
     cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
     cairo_fill(cr);
     if (!g_active_cr) cairo_destroy(cr);
-    double pad = width * 0.5 + 1.5; // AA padding
+    double pad = width * 0.5 + 1.5 + (g_soft_shadow ? 5.0 : 0.0); // AA+shadow
     dirty_include_surface_point(x, y, pad);
     flush_dirty_to_layer();
 }
@@ -300,6 +311,24 @@ static void raw_draw_segment(double x, double y, double width) {
     else cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
     cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+    // 软阴影层(最底): 三档加宽递减 alpha 的圆头黑影
+    if (g_soft_shadow && !g_eraser_mode) {
+        static const double kSteps[3][2] = {{1.5, 0.20}, {3.0, 0.13}, {5.0, 0.07}};
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        for (int si = 0; si < 3; si++) {
+            cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, kSteps[si][1]);
+            cairo_set_line_width(cr, width + 2.0 * kSteps[si][0]);
+            if (g_raw_has_last) {
+                cairo_move_to(cr, g_raw_last_x, g_raw_last_y);
+                cairo_line_to(cr, x, y);
+                cairo_stroke(cr);
+            } else {
+                cairo_arc(cr, x, y, width * 0.5 + kSteps[si][0], 0, 2 * M_PI);
+                cairo_fill(cr);
+            }
+        }
+    }
 
     // 描边层(垫底): 黑白相间虚线, 平头(圆帽半径超过 1px 段长会把相邻
     // 黑白段互相吞掉)。黑偶相位、白奇相位; 相位 = 累计弧长 mod 周期。
@@ -353,7 +382,7 @@ static void raw_draw_segment(double x, double y, double width) {
     }
     if (!g_active_cr) cairo_destroy(cr);
 
-    double pad = width * 0.5 + 1.5; // AA padding
+    double pad = width * 0.5 + 1.5 + (g_soft_shadow ? 5.0 : 0.0); // AA+shadow
     if (g_raw_has_last) {
         dirty_include_surface_point(g_raw_last_x, g_raw_last_y, pad);
     }

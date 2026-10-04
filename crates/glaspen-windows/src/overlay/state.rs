@@ -18,6 +18,8 @@ pub struct DrawState {
     pub grid_follow_strokes: bool,
     /// 磨砂玻璃跟随涂鸦:飘渺模式下隐藏笔迹时磨砂背景一起关(默认开=macOS 同款)
     pub glass_follow_strokes: bool,
+    /// 软阴影(独立于描边可叠加):笔迹下方柔和黑影,同色背景保底可见
+    pub soft_shadow: bool,
     /// 压力监控 HUD 是否开启
     pub pressure_monitor: bool,
     /// 手写消息集成总开关(⌘⌃2/⌘⌃3 → Ctrl+Alt+2/3 的守门;面板同键)

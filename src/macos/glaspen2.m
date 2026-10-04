@@ -120,6 +120,7 @@ extern int glaspen2_ink_draft_start(int canvas_w, int canvas_h);
 extern int glaspen2_ink_draft_stop(void);
 extern const char *glaspen2_ink_draft_last_error(void);
 extern void glaspen2_set_stroke_outline(int enabled);
+extern void glaspen2_set_soft_shadow(int enabled);
 extern unsigned char* glaspen2_render_canvas_overview(double bx, double by, double bw, double bh, int out_w, int out_h, int *out_len);
 extern void glaspen2_set_view_transform(double pan_x, double pan_y, double zoom);
 // 画布存储切换 + 无限画布(独立存储,全局仅一个画布)
@@ -404,6 +405,9 @@ static BOOL g_glass_follow_strokes = YES;
 
 // 笔迹描边(渲染设置):仅在内存,不落库,重启恢复关闭。
 static BOOL g_outline_enabled = NO;
+// 软阴影(独立于描边可叠加): 笔迹下方三档加宽递减 alpha 的黑影,
+// 同色背景上靠亮度分离保底可见。Controlled by the Flutter settings panel.
+static BOOL g_soft_shadow = NO;
 // 描边比笔迹宽出的半径(逻辑 px),与 Rust OUTLINE_PAD 保持一致。
 static const double kOutlinePad = 1.0;
 

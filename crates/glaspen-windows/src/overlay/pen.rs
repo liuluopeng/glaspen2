@@ -53,11 +53,25 @@ fn merge_rect(dirty: &mut Option<RECT>, r: &RECT) {
 }
 
 /// 用给定点列填充整笔轮廓 + 端点圆帽(带可选描边),返回脏矩形
-fn fill_stroke_path(canvas: &mut OverlayCanvas, path: &[(f32, f32, f32)], ol: f32) -> Option<RECT> {
+fn fill_stroke_path(
+    canvas: &mut OverlayCanvas,
+    path: &[(f32, f32, f32)],
+    shadow: bool,
+    ol: f32,
+) -> Option<RECT> {
     if path.len() < 2 {
         return None;
     }
     let mut dirty: Option<RECT> = None;
+
+    // 软阴影层(最底, macOS 同参数): 三档加宽递减 alpha 的黑影
+    if shadow {
+        const STEPS: [(f64, f64); 3] = [(1.5, 0.20), (3.0, 0.13), (5.0, 0.07)];
+        for (spread, sa) in STEPS {
+            let rect = canvas.stroke_shadow_pass(path, spread, sa);
+            merge_rect(&mut dirty, &rect);
+        }
+    }
 
     // 描边层: 黑白相间 1px 虚线(marching ants, macOS 同款)。
     // 相位沿整笔累计弧长连续 —— 任何背景上恒有一半虚线可见。
@@ -104,7 +118,8 @@ fn redraw_pen(state: &mut OverlayState, new_pts: &[(f32, f32, f32)]) -> Option<R
     let new_end = state.pen_path.len();
 
     // 整笔轮廓填充(单轮廓,非零环绕)+ 可选描边层
-    fill_stroke_path(&mut state.canvas, &state.pen_path, ol);
+    let sh = state.draw.soft_shadow;
+    fill_stroke_path(&mut state.canvas, &state.pen_path, sh, ol);
 
     // dirty 只保留新增段区域(旧区域内容未变)
     let mut new_dirty: Option<RECT> = None;

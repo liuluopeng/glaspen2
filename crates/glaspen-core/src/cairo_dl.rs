@@ -395,13 +395,27 @@ impl CairoRenderer {
 
     /// 画一条抗锯齿线段(圆头),颜色为 (R,G,B) 0..255
     pub fn stroke_line(&self, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, color: (u8, u8, u8)) {
+        self.stroke_line_alpha(x0, y0, x1, y1, width, color, 1.0);
+    }
+
+    /// 画一条带透明度的抗锯齿线段(软阴影层用: 逐 spread 递减 alpha 叠加)
+    pub fn stroke_line_alpha(
+        &self,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        width: f32,
+        color: (u8, u8, u8),
+        alpha: f64,
+    ) {
         unsafe {
             (self.set_source_rgba)(
                 self.cr,
                 color.0 as f64 / 255.0,
                 color.1 as f64 / 255.0,
                 color.2 as f64 / 255.0,
-                1.0,
+                alpha.clamp(0.0, 1.0),
             );
             (self.set_line_width)(self.cr, width.max(0.5) as f64);
             (self.move_to)(self.cr, x0 as f64, y0 as f64);

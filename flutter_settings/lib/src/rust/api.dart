@@ -266,6 +266,7 @@ class Settings {
   final bool grid;
   final bool gridFollowStrokes;
   final bool glassFollowStrokes;
+  final bool softShadow;
   final bool pressureMonitor;
   final bool outline;
   final bool infiniteCanvas;
@@ -293,6 +294,7 @@ class Settings {
     required this.grid,
     required this.gridFollowStrokes,
     required this.glassFollowStrokes,
+    required this.softShadow,
     required this.pressureMonitor,
     required this.outline,
     required this.infiniteCanvas,
@@ -322,6 +324,7 @@ class Settings {
       grid.hashCode ^
       gridFollowStrokes.hashCode ^
       glassFollowStrokes.hashCode ^
+      softShadow.hashCode ^
       pressureMonitor.hashCode ^
       outline.hashCode ^
       infiniteCanvas.hashCode ^
@@ -353,6 +356,7 @@ class Settings {
           grid == other.grid &&
           gridFollowStrokes == other.gridFollowStrokes &&
           glassFollowStrokes == other.glassFollowStrokes &&
+          softShadow == other.softShadow &&
           pressureMonitor == other.pressureMonitor &&
           outline == other.outline &&
           infiniteCanvas == other.infiniteCanvas &&

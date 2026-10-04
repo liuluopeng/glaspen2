@@ -119,6 +119,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _showGrid = false;
   bool _gridFollowStrokes = false;
   bool _glassFollowStrokes = true;
+  bool _softShadow = false;
   bool _outlineEnabled = false;
   bool _infiniteCanvas = false;
   int _gridSizeValue = 40; // 网格大小(逻辑 px)
@@ -483,6 +484,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _showGrid = _b(s['grid']);
         _gridFollowStrokes = _b(s['gridFollowStrokes']);
         _glassFollowStrokes = s['glassFollowStrokes'] as bool? ?? _glassFollowStrokes;
+        _softShadow = _b(s['softShadow']);
         _outlineEnabled = _b(s['outline']);
         _infiniteCanvas = _b(s['infiniteCanvas']);
         _minimapEnabled = _b(s['minimap']);
@@ -512,6 +514,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _gridFollowStrokes = _b(settings['gridFollowStrokes']);
           _glassFollowStrokes =
               settings['glassFollowStrokes'] as bool? ?? _glassFollowStrokes;
+          _softShadow = _b(settings['softShadow']);
           _infiniteCanvas = _b(settings['infiniteCanvas']);
           _minimapEnabled = _b(settings['minimap']);
           _gridSizeValue = (settings['gridSize'] as num?)?.toInt() ?? _gridSizeValue;
@@ -2283,6 +2286,17 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           onChanged: (v) {
             setState(() => _outlineEnabled = v);
             _setSetting('outline', v);
+          },
+        )),
+        _tile(SwitchListTile(
+          title: const Text('软阴影', style: TextStyle(fontSize: 15)),
+          subtitle: const Text('笔迹下方柔和黑影，同色背景保底可见 · 可与描边叠加', style: TextStyle(fontSize: 12)),
+          value: _softShadow,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (v) {
+            setState(() => _softShadow = v);
+            _setSetting('softShadow', v);
           },
         )),
         // 页面缩略图(minimap)开关已移到「活页本」tab

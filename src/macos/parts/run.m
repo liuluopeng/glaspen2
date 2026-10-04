@@ -2487,6 +2487,8 @@ void glaspen2_run(void) {
         glaspen2_free_c_string(vgf);
       }
     }
+    g_soft_shadow = glaspen2_load_bool_setting("soft_shadow") != 0;
+    glaspen2_set_soft_shadow(g_soft_shadow ? 1 : 0);
     {
       char *vfe = glaspen2_load_string_setting("flip_effect");
       if (vfe) {

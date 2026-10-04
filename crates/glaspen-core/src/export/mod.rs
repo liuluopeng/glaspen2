@@ -157,6 +157,14 @@ pub extern "C" fn glaspen2_set_stroke_outline(enabled: c_int) {
     STROKE_OUTLINE.store(enabled != 0, std::sync::atomic::Ordering::SeqCst);
 }
 
+/// 软阴影开关(独立于描边, 可叠加): 笔迹下方三档加宽递减 alpha 的黑影。
+static STROKE_SHADOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_set_soft_shadow(enabled: c_int) {
+    STROKE_SHADOW.store(enabled != 0, std::sync::atomic::Ordering::SeqCst);
+}
+
 // ── 无限画布:视口变换 ──
 // 视图 = (画布坐标 − pan) × zoom。笔迹以画布坐标存储(可为负/超界),
 // 渲染时减 pan 乘 zoom。zoom ∈ (0,1],上限 100% 防蚂蚁大小涂鸦。
@@ -305,6 +313,7 @@ fn draw_rebuild_impl(
         zoom_eff,
         scale,
         0.0,
+        STROKE_SHADOW.load(std::sync::atomic::Ordering::SeqCst),
         outline,
         1.0,
     );
@@ -349,6 +358,7 @@ fn draw_rebuild_impl(
                 zoom_eff,
                 scale,
                 *dy * stride,
+                STROKE_SHADOW.load(std::sync::atomic::Ordering::SeqCst),
                 outline,
                 1.0,
             );
@@ -451,6 +461,7 @@ pub(crate) fn render_page_into(
             0.0,
             1.0,
             &crate::pagerender::RenderOpts { alpha, white_bg },
+            false, // 导出(白底/缩略)不带阴影
             STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst),
         );
         // 磨砂玻璃化(depth >= 0): 页快照变成"磨砂玻璃上的墨迹",
@@ -497,6 +508,7 @@ pub(crate) fn paint_strokes_into(
     zoom: f64,
     scale: f64,
     y_shift: f64,
+    shadow: bool,
     outline: bool,
     alpha: f64,
 ) {
@@ -507,9 +519,36 @@ pub(crate) fn paint_strokes_into(
     // 整体不透明度 ≠ 1: 走软件合成(独立缓冲 + blit), 保证渐显/渐隐均匀。
     if alpha < 1.0 {
         paint_strokes_soft(
-            r, strokes, pan_x, pan_y, zoom, scale, y_shift, outline, alpha,
+            r, strokes, pan_x, pan_y, zoom, scale, y_shift, shadow, outline, alpha,
         );
         return;
+    }
+    // 软阴影层: 全部笔迹的阴影先画(压在网格上、不压任何墨迹), 三档
+    // 加宽递减透明度模拟柔边。这是"同色背景保底可见"的结构解: 亮度
+    // 分离不依赖笔色与背景的对比。
+    if shadow {
+        const STEPS: [(f64, f64); 3] = [(1.5, 0.20), (3.0, 0.13), (5.0, 0.07)];
+        for (spread, sa) in STEPS {
+            for s in strokes {
+                let pts = s.points;
+                if pts.len() < 2 {
+                    continue;
+                }
+                for i in 1..pts.len() {
+                    let (x, y, w, _t) = pts[i];
+                    let (px, py, _pw, _pt) = pts[i - 1];
+                    r.stroke_line_alpha(
+                        ((px - pan_x) * zoom * scale) as f32,
+                        ((py + y_shift - pan_y) * zoom * scale) as f32,
+                        ((x - pan_x) * zoom * scale) as f32,
+                        ((y + y_shift - pan_y) * zoom * scale) as f32,
+                        ((w + spread * 2.0) * zoom * scale) as f32,
+                        (0, 0, 0),
+                        alpha * sa,
+                    );
+                }
+            }
+        }
     }
     for s in strokes {
         let pts = s.points;
@@ -585,6 +624,7 @@ fn paint_strokes_soft(
     zoom: f64,
     scale: f64,
     y_shift: f64,
+    shadow: bool,
     outline: bool,
     alpha: f64,
 ) {
@@ -628,6 +668,7 @@ fn paint_strokes_soft(
                 alpha,
                 white_bg: false,
             },
+            shadow,
             outline,
         );
     }

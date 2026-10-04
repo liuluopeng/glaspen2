@@ -194,6 +194,8 @@ pub struct Settings {
     pub grid_follow_strokes: bool,
     // 磨砂玻璃背景跟随飘渺模式(⌘⌃X 隐藏笔迹时玻璃一起藏;默认开=历史行为)
     pub glass_follow_strokes: bool,
+    // 软阴影(独立于描边可叠加): 笔迹下方柔和黑影, 同色背景保底可见
+    pub soft_shadow: bool,
     pub pressure_monitor: bool,
     pub outline: bool,
     pub infinite_canvas: bool,
@@ -245,6 +247,7 @@ impl Settings {
             grid: b("grid"),
             grid_follow_strokes: b("gridFollowStrokes"),
             glass_follow_strokes: b("glassFollowStrokes"),
+            soft_shadow: b("softShadow"),
             pressure_monitor: b("pressureMonitor"),
             outline: b("outline"),
             infinite_canvas: b("infiniteCanvas"),
