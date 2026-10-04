@@ -600,7 +600,7 @@ static int s_tun_depth[TUNNEL_MAX_CARDS]; // 页距(0 = 当前页)
 static int s_tun_cards = 0;
 static double s_tun_travel = 1.0; // 相机推进的隧道单位(= 本次翻页跨过的页数)
 static BOOL s_tun_back = NO; // 向前翻(上一页/回溯旧页): 相机**推进**页列深处
-static double s_tun_dur = 0.62;
+static double s_tun_dur = 0.38; // 短促: 隧道动效在感知内"一闪而过"
 // 两片玻璃之间的距离 = 相邻玻璃片的尺寸比(0.60-0.90)。所有玻璃同心
 // 嵌套, 消失点恒在屏幕中心;层与层的"空隙宽度"由本值决定。
 static double s_tun_gap = 0.78; // 两片玻璃的距离 = 相邻玻璃尺寸比(0.60-0.90); 小=密, 大=疏
