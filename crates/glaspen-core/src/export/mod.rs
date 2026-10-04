@@ -556,10 +556,10 @@ pub(crate) fn paint_strokes_into(
                     color,
                 );
             } else {
-                let (px, _py, _pw, _pt) = pts[i - 1];
+                let (px, py, _pw, _pt) = pts[i - 1];
                 r.stroke_line(
                     ((px - pan_x) * zoom * scale) as f32,
-                    ((y + y_shift - pan_y) * zoom * scale) as f32,
+                    ((py + y_shift - pan_y) * zoom * scale) as f32,
                     ((x - pan_x) * zoom * scale) as f32,
                     ((y + y_shift - pan_y) * zoom * scale) as f32,
                     (w * zoom * scale) as f32,

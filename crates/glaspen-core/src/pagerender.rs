@@ -502,6 +502,39 @@ mod tests {
     }
 
     #[test]
+    fn render_connects_samples_along_path() {
+        // 回归: 整页重绘路径曾把线段起点 y 误写成当前点 y, 每段退化成
+        // 水平短划, 保存后回看笔迹呈"散点"。两采样点连线的中点必须被覆盖。
+        let w = 32;
+        let h = 32;
+        let mut data = vec![0u8; w as usize * h as usize * 4];
+        let lay = layout(w, h, w, h);
+        let stroke = PageStroke {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            points: &[(4.0, 4.0, 4.0, 0.0), (26.0, 26.0, 4.0, 0.1)],
+        };
+        let mut surf = surface(&mut data, w, h);
+        render_strokes(
+            &mut surf,
+            &lay,
+            &[stroke],
+            0.0,
+            0.0,
+            1.0,
+            &RenderOpts::default(),
+        );
+        let red_at = |x: usize, y: usize| {
+            let i = (y * w as usize + x) * 4;
+            data[i + 2] > 0
+        };
+        // (4,4)→(26,26) 的中点 (15,15): 水平短划 bug 下此处必为空白
+        let mid_covered = (14..=16).any(|yy| (14..=16).any(|xx| red_at(xx, yy)));
+        assert!(mid_covered, "采样点之间的线段中点应被着色");
+    }
+
+    #[test]
     fn render_alpha_fades_everything() {
         let w = 32;
         let h = 32;
