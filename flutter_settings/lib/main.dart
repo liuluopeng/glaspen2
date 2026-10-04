@@ -2282,7 +2282,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         )),
         _tile(SwitchListTile(
           title: const Text('笔迹描边', style: TextStyle(fontSize: 15)),
-          subtitle: const Text('按笔色亮度自动加反色描边 · 渲染设置,不持久化', style: TextStyle(fontSize: 12)),
+          subtitle: const Text('黑白相间虚线描边，任意背景恒可见 · 已持久化', style: TextStyle(fontSize: 12)),
           value: _outlineEnabled,
           dense: true,
           contentPadding: EdgeInsets.zero,

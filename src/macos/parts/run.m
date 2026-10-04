@@ -357,6 +357,7 @@ static void apply_outline(BOOL on) {
     return;
   g_outline_enabled = on;
   glaspen2_set_stroke_outline(on ? 1 : 0);
+  glaspen2_save_bool_setting("outline", on ? 1 : 0);
   NSMenuItem *item = [g_menu itemWithTag:667];
   if (item)
     [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
@@ -2489,6 +2490,15 @@ void glaspen2_run(void) {
     }
     g_soft_shadow = glaspen2_load_bool_setting("soft_shadow") != 0;
     glaspen2_set_soft_shadow(g_soft_shadow ? 1 : 0);
+    // 描边(蚂蚁线)持久化: 恢复开关并同步菜单项状态
+    g_outline_enabled = glaspen2_load_bool_setting("outline") != 0;
+    glaspen2_set_stroke_outline(g_outline_enabled ? 1 : 0);
+    {
+      NSMenuItem *oi = [g_menu itemWithTag:667];
+      if (oi)
+        [oi setState:g_outline_enabled ? NSControlStateValueOn
+                                       : NSControlStateValueOff];
+    }
     g_invert_ink = glaspen2_load_bool_setting("invert_ink") != 0;
     if (g_invert_ink) invert_ink_apply(1);
     {
