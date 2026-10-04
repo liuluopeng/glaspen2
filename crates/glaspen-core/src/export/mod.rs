@@ -139,8 +139,9 @@ static STROKE_OUTLINE: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 渲染/导出路径消费; Windows 用覆盖层自己的实现
 const OUTLINE_PAD: f64 = 1.0;
 
-/// 按笔色亮度选对比描边色(与 Windows contrast_color 同参数:BT.601,阈值 128)。
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 渲染/导出路径消费; Windows 用覆盖层自己的实现
+/// 按笔色亮度选对比描边色(BT.601, 阈值 0.5)。marching ants 虚线描边
+/// 实验期间未接线, 保留备用(若回退"自适应对比色实线描边"直接接回)。
+#[allow(dead_code)]
 fn outline_contrast_color(r: f64, g: f64, b: f64) -> (u8, u8, u8) {
     let lum = 0.299 * r + 0.587 * g + 0.114 * b;
     if lum > 0.5 {
@@ -520,30 +521,34 @@ pub(crate) fn paint_strokes_into(
             (s.g.clamp(0.0, 1.0) * 255.0) as u8,
             (s.b.clamp(0.0, 1.0) * 255.0) as u8,
         );
-        // 描边层:同路径加宽 + 对比色,先画(垫在笔迹之下)
+        // 描边层:黑白相间 1px 虚线(marching ants),先画(垫在笔迹之下)。
+        // 黑偶相位、白奇相位各描一遍,相位按累计弧长连续(每次 stroke()
+        // 都会重置虚线相位,逐段用 set_dash 拨回去);平头避免 1px 虚段
+        // 被圆帽互相吞掉。任何背景上恒有一半虚线可见。
         if outline {
-            let ol = outline_contrast_color(s.r, s.g, s.b);
-            for i in 0..pts.len() {
+            const OL_BLACK: (u8, u8, u8) = (0, 0, 0);
+            const OL_WHITE: (u8, u8, u8) = (255, 255, 255);
+            let d = (zoom * scale).max(1.0);
+            r.set_line_cap_butt();
+            let mut cum = 0.0f64;
+            for i in 1..pts.len() {
                 let (x, y, w, _t) = pts[i];
-                if i == 0 {
-                    r.fill_circle(
-                        ((x - pan_x) * zoom * scale) as f32,
-                        ((y + y_shift - pan_y) * zoom * scale) as f32,
-                        ((w * 0.5 + OUTLINE_PAD) * zoom * scale) as f32,
-                        ol,
-                    );
-                } else {
-                    let (px, py, _pw, _pt) = pts[i - 1];
-                    r.stroke_line(
-                        ((px - pan_x) * zoom * scale) as f32,
-                        ((py + y_shift - pan_y) * zoom * scale) as f32,
-                        ((x - pan_x) * zoom * scale) as f32,
-                        ((y + y_shift - pan_y) * zoom * scale) as f32,
-                        ((w + OUTLINE_PAD * 2.0) * zoom * scale) as f32,
-                        ol,
-                    );
-                }
+                let (px, py, _pw, _pt) = pts[i - 1];
+                let x0 = ((px - pan_x) * zoom * scale) as f32;
+                let y0 = ((py + y_shift - pan_y) * zoom * scale) as f32;
+                let x1 = ((x - pan_x) * zoom * scale) as f32;
+                let y1 = ((y + y_shift - pan_y) * zoom * scale) as f32;
+                let segw = ((w + OUTLINE_PAD * 2.0) * zoom * scale) as f32;
+                let off = cum.rem_euclid(2.0 * d);
+                r.set_dash(d, off);
+                r.stroke_line(x0, y0, x1, y1, segw, OL_BLACK);
+                r.set_dash(d, (off + d).rem_euclid(2.0 * d));
+                r.stroke_line(x0, y0, x1, y1, segw, OL_WHITE);
+                let (dx, dy) = (x1 - x0, y1 - y0);
+                cum += ((dx * dx + dy * dy) as f64).sqrt();
             }
+            r.set_dash(0.0, 0.0);
+            r.set_line_cap_round();
         }
         for i in 0..pts.len() {
             let (x, y, w, _t) = pts[i];

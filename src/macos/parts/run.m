@@ -1971,6 +1971,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     g_raw_last_y = py;
     g_raw_last_w = raw_w;
     g_raw_has_last = YES;
+    g_raw_path_len = 0;
     perf_log_event("pen_down", elapsed_us(t0));
     return NULL;
   }
@@ -1994,6 +1995,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       g_raw_last_y = py;
       g_raw_last_w = raw_w;
       g_raw_has_last = YES;
+      g_raw_path_len = 0;
       return NULL; // begin already recorded this point, don't feed duplicate to
                    // modeler
     }
@@ -2027,6 +2029,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       g_stroke_active = NO;
       g_raw_has_last = NO;
       g_raw_has_prev = NO;
+      g_raw_path_len = 0;
       // Pen is back to hovering — restore the crosshair.
       g_cursor_visible = YES;
       dirty_include_point(g_cursor_x, g_cursor_y, 14.0);

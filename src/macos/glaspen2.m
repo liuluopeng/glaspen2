@@ -239,6 +239,8 @@ static BOOL g_raw_has_last = NO;
 static double g_raw_prev_x = 0, g_raw_prev_y = 0;
 static double g_raw_last_w = 0;
 static BOOL g_raw_has_prev = NO;
+// 整笔累计弧长(逻辑 px): 黑白虚线描边的相位接续用, 起笔清零
+static double g_raw_path_len = 0;
 
 // Track if a stroke is active (modeler has been initialized)
 static BOOL g_stroke_active = NO;

@@ -19,6 +19,8 @@ const CAIRO_FORMAT_ARGB32: i32 = 0;
 const CAIRO_LINE_CAP_ROUND: i32 = 1;
 /// CAIRO_LINE_JOIN_ROUND = 1
 const CAIRO_LINE_JOIN_ROUND: i32 = 1;
+/// CAIRO_LINE_CAP_BUTT = 0
+const CAIRO_LINE_CAP_BUTT: i32 = 0;
 
 pub struct CairoRenderer {
     _lib: &'static Library,
@@ -32,6 +34,8 @@ pub struct CairoRenderer {
     owns_surface: bool,
     set_source_rgba: unsafe extern "C" fn(*mut std::ffi::c_void, f64, f64, f64, f64),
     set_line_width: unsafe extern "C" fn(*mut std::ffi::c_void, f64),
+    set_line_cap: unsafe extern "C" fn(*mut std::ffi::c_void, i32),
+    set_dash: unsafe extern "C" fn(*mut std::ffi::c_void, *const f64, i32, f64),
     move_to: unsafe extern "C" fn(*mut std::ffi::c_void, f64, f64),
     line_to: unsafe extern "C" fn(*mut std::ffi::c_void, f64, f64),
     stroke: unsafe extern "C" fn(*mut std::ffi::c_void),
@@ -73,6 +77,8 @@ impl CairoRenderer {
                 sym(lib, b"cairo_set_line_width")?;
             let set_line_cap: unsafe extern "C" fn(*mut std::ffi::c_void, i32) =
                 sym(lib, b"cairo_set_line_cap")?;
+            let set_dash: unsafe extern "C" fn(*mut std::ffi::c_void, *const f64, i32, f64) =
+                sym(lib, b"cairo_set_dash")?;
             let set_line_join: unsafe extern "C" fn(*mut std::ffi::c_void, i32) =
                 sym(lib, b"cairo_set_line_join")?;
             let move_to: unsafe extern "C" fn(*mut std::ffi::c_void, f64, f64) =
@@ -117,6 +123,8 @@ impl CairoRenderer {
                 owns_surface: true,
                 set_source_rgba,
                 set_line_width,
+                set_line_cap,
+                set_dash,
                 move_to,
                 line_to,
                 stroke,
@@ -152,6 +160,8 @@ impl CairoRenderer {
                 sym(lib, b"cairo_set_line_width")?;
             let set_line_cap: unsafe extern "C" fn(*mut std::ffi::c_void, i32) =
                 sym(lib, b"cairo_set_line_cap")?;
+            let set_dash: unsafe extern "C" fn(*mut std::ffi::c_void, *const f64, i32, f64) =
+                sym(lib, b"cairo_set_dash")?;
             let set_line_join: unsafe extern "C" fn(*mut std::ffi::c_void, i32) =
                 sym(lib, b"cairo_set_line_join")?;
             let move_to: unsafe extern "C" fn(*mut std::ffi::c_void, f64, f64) =
@@ -206,6 +216,8 @@ impl CairoRenderer {
                 owns_surface: true,
                 set_source_rgba,
                 set_line_width,
+                set_line_cap,
+                set_dash,
                 move_to,
                 line_to,
                 stroke,
@@ -247,6 +259,8 @@ impl CairoRenderer {
                 sym(lib, b"cairo_set_line_width")?;
             let set_line_cap: unsafe extern "C" fn(*mut std::ffi::c_void, i32) =
                 sym(lib, b"cairo_set_line_cap")?;
+            let set_dash: unsafe extern "C" fn(*mut std::ffi::c_void, *const f64, i32, f64) =
+                sym(lib, b"cairo_set_dash")?;
             let set_line_join: unsafe extern "C" fn(*mut std::ffi::c_void, i32) =
                 sym(lib, b"cairo_set_line_join")?;
             let move_to: unsafe extern "C" fn(*mut std::ffi::c_void, f64, f64) =
@@ -294,6 +308,8 @@ impl CairoRenderer {
                 owns_surface: false, // 外部 surface — 析构时绝不销毁
                 set_source_rgba,
                 set_line_width,
+                set_line_cap,
+                set_dash,
                 move_to,
                 line_to,
                 stroke,
@@ -346,6 +362,35 @@ impl CairoRenderer {
     /// surface 的字节 stride(CAIRO_FORMAT_ARGB32 下通常 = w × 4)。
     pub fn stride(&self) -> usize {
         unsafe { (self.get_stride)(self.surface).max(0) as usize }
+    }
+
+    /// 虚线状态(marching ants 描边用):dash>0 时按 [dash,dash] 相间开孔,
+    /// offset 是相位起点;dash<=0 恢复实线。注意:每次 stroke() 后相位
+    /// 不会自动续接, 分段描边要由调用方按累计弧长拨 offset。
+    pub fn set_dash(&self, dash: f64, offset: f64) {
+        unsafe {
+            if dash > 0.0 {
+                let dashes = [dash, dash];
+                (self.set_dash)(self.cr, dashes.as_ptr(), 2, offset);
+            } else {
+                (self.set_dash)(self.cr, std::ptr::null(), 0, 0.0);
+            }
+        }
+    }
+
+    /// 平头线帽(1px 相间虚线必须平头: 圆帽半径超过段长会把相邻
+    /// 黑白段互相吞掉)。描边完务必调 [`Self::set_line_cap_round`] 还原。
+    pub fn set_line_cap_butt(&self) {
+        unsafe {
+            (self.set_line_cap)(self.cr, CAIRO_LINE_CAP_BUTT);
+        }
+    }
+
+    /// 恢复圆头线帽(墨迹的默认状态)。
+    pub fn set_line_cap_round(&self) {
+        unsafe {
+            (self.set_line_cap)(self.cr, CAIRO_LINE_CAP_ROUND);
+        }
     }
 
     /// 画一条抗锯齿线段(圆头),颜色为 (R,G,B) 0..255

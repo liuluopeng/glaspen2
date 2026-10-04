@@ -143,6 +143,7 @@ static void stroke_begin(void) {
     g_active_cr = cairo_create(g_surface);
     cairo_scale(g_active_cr, g_scale, g_scale);
     g_raw_has_prev = NO; // 新笔没有"上一段"可重画
+    g_raw_path_len = 0;  // 虚线相位从黑段起
 }
 
 /// Tear down the shared cairo context at end of stroke.
@@ -170,6 +171,7 @@ static void finish_active_stroke(void) {
     g_stroke_active = NO;
     g_raw_has_last = NO;
     g_raw_has_prev = NO;
+    g_raw_path_len = 0;
 }
 
 // Handle display configuration changes (resolution, arrangement, etc.)
@@ -261,12 +263,10 @@ static void pen_draw(double x, double y, double width) {
 }
 
 
-// 按笔色亮度选描边对比色(与 Rust outline_contrast_color 同参数:BT.601,阈值 0.5)
-static void outline_color_for_pen(double *r, double *g, double *b) {
-    double lum = 0.299 * g_pen_r + 0.587 * g_pen_g + 0.114 * g_pen_b;
-    if (lum > 0.5) { *r = 0.0; *g = 0.0; *b = 0.0; }
-    else           { *r = 1.0; *g = 1.0; *b = 1.0; }
-}
+// 描边 = 黑白相间 1px 虚线(marching ants): 黑偶相位、白奇相位各描一遍,
+// 任何背景上恒有一半可见。相位按整笔累计弧长连续 —— cairo 每次 stroke()
+// 都会把虚线相位重置到路径起点, 分段增量绘制时用 offset 拨回接续点。
+static const double kOutlineDash = 1.0; // 虚线段长(逻辑 px, 黑白各一段)
 
 // Raw drawing — surface only, no STROKES/DB side effects.
 // Uses g_active_cr (set up by stroke_begin) for the duration of the stroke.
@@ -277,11 +277,9 @@ static void raw_draw_dot(double x, double y, double width) {
     if (g_eraser_mode) cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
     else cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
-    // 描边层(垫底):同圆放大一圈对比色
+    // 描边层(垫底): 起笔圆头垫一圈黑(相位 0 = 黑虚段起点)
     if (g_outline_enabled && !g_eraser_mode) {
-        double ol_r, ol_g, ol_b;
-        outline_color_for_pen(&ol_r, &ol_g, &ol_b);
-        cairo_set_source_rgba(cr, ol_r, ol_g, ol_b, 1.0);
+        cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
         cairo_arc(cr, x, y, width * 0.5 + kOutlinePad, 0, 2 * M_PI);
         cairo_fill(cr);
     }
@@ -303,21 +301,33 @@ static void raw_draw_segment(double x, double y, double width) {
     cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
     cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
 
-    // 描边层(垫底):同线段加宽一圈对比色。每段"先描边后上墨",
-    // 接缝处墨迹圆帽覆盖描边,与整笔轮廓重绘的视觉效果一致。
+    // 描边层(垫底): 黑白相间虚线, 平头(圆帽半径超过 1px 段长会把相邻
+    // 黑白段互相吞掉)。黑偶相位、白奇相位; 相位 = 累计弧长 mod 周期。
     if (g_outline_enabled && !g_eraser_mode) {
-        double ol_r, ol_g, ol_b;
-        outline_color_for_pen(&ol_r, &ol_g, &ol_b);
-        cairo_set_source_rgba(cr, ol_r, ol_g, ol_b, 1.0);
+        double dashes[2] = {kOutlineDash, kOutlineDash};
+        double off = fmod(g_raw_path_len, 2.0 * kOutlineDash);
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT);
         cairo_set_line_width(cr, width + 2.0 * kOutlinePad);
         if (g_raw_has_last) {
+            cairo_set_dash(cr, dashes, 2, off);
+            cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
             cairo_move_to(cr, g_raw_last_x, g_raw_last_y);
             cairo_line_to(cr, x, y);
             cairo_stroke(cr);
+            cairo_set_dash(cr, dashes, 2, fmod(off + kOutlineDash, 2.0 * kOutlineDash));
+            cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
+            cairo_move_to(cr, g_raw_last_x, g_raw_last_y);
+            cairo_line_to(cr, x, y);
+            cairo_stroke(cr);
+            cairo_set_dash(cr, NULL, 0, 0); // 墨迹绝不能被虚线化
         } else {
+            // 起笔圆头垫底(相位 0 = 黑)
+            cairo_set_dash(cr, NULL, 0, 0);
+            cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
             cairo_arc(cr, x, y, width * 0.5 + kOutlinePad, 0, 2 * M_PI);
             cairo_fill(cr);
         }
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
     }
 
     cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
@@ -331,8 +341,7 @@ static void raw_draw_segment(double x, double y, double width) {
         cairo_fill(cr);
     }
 
-    // 接缝重画: 上面描边段的起点圆帽(r_i+pad)画在了已干的第 i-1 段
-    // 墨迹上, 压力比上一段细时就在笔迹里蚀出一圈对比色(竹节虫)。
+    // 接缝重画: 描边带画在了已干的第 i-1 段墨迹边缘上(弯道内侧尤甚),
     // 墨迹不透明、重画幂等 —— 整段重画第 i-1 段墨迹, 接缝恢复
     // "描边垫底、墨迹在上"的层级, 与整页重绘视觉效果一致。
     if (g_outline_enabled && !g_eraser_mode && g_raw_has_prev) {
@@ -350,6 +359,10 @@ static void raw_draw_segment(double x, double y, double width) {
     }
     dirty_include_surface_point(x, y, pad);
 
+    if (g_raw_has_last) {
+        double ddx = x - g_raw_last_x, ddy = y - g_raw_last_y;
+        g_raw_path_len += sqrt(ddx * ddx + ddy * ddy); // 虚线相位接续用
+    }
     g_raw_prev_x = g_raw_last_x;
     g_raw_prev_y = g_raw_last_y;
     g_raw_has_prev = YES;

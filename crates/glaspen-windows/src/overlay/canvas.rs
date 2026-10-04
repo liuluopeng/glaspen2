@@ -66,6 +66,41 @@ impl OverlayCanvas {
         }
     }
 
+    /// 黑白相间虚线段(marching ants 描边, macOS 同款): 黑偶相位白奇相位
+    /// 各描一遍, 平头(圆帽会把相邻 1px 黑白段互相吞掉);
+    /// offset = 段起点处整笔累计弧长(cairo 每次 stroke 重置相位, 逐段拨)。
+    fn stroke_outline_seg(
+        &mut self,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        width: f64,
+        offset: f64,
+    ) -> RECT {
+        let half = (width * 0.5) as f32;
+        let rect = RECT {
+            left: (x0.min(x1) - half - 1.0).max(0.0) as i32,
+            top: (y0.min(y1) - half - 1.0).max(0.0) as i32,
+            right: (x0.max(x1) + half + 2.0).min(self.w as f32) as i32,
+            bottom: (y0.max(y1) + half + 2.0).min(self.h as f32) as i32,
+        };
+        if let Some(c) = &self.cairo {
+            const DASH: f64 = 1.0;
+            c.set_line_cap_butt();
+            c.set_dash(DASH, offset.rem_euclid(2.0 * DASH));
+            c.stroke_line(x0, y0, x1, y1, width as f32, (0, 0, 0));
+            c.set_dash(DASH, (offset + DASH).rem_euclid(2.0 * DASH));
+            c.stroke_line(x0, y0, x1, y1, width as f32, (255, 255, 255));
+            c.set_dash(0.0, 0.0); // 墨迹本体绝不能被虚线化
+            c.set_line_cap_round();
+        } else {
+            // 无 cairo 回退: 实心单段(近似)
+            let _ = self.draw_soft_line(x0, y0, x1, y1, half);
+        }
+        rect
+    }
+
     /// 填充闭合轮廓多边形(cairo 抗锯齿,可变宽度笔迹),返回脏矩形
     fn fill_outline(&mut self, outline: &[(f32, f32)]) -> RECT {
         let mut left = f32::MAX;

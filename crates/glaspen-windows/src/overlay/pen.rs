@@ -52,16 +52,6 @@ fn merge_rect(dirty: &mut Option<RECT>, r: &RECT) {
     }
 }
 
-/// 轮廓色(黑/白,根据笔迹亮度取对比色,用于描边增强)
-fn contrast_color(r: u8, g: u8, b: u8) -> (u8, u8, u8) {
-    let lum = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
-    if lum > 128.0 {
-        (0, 0, 0)
-    } else {
-        (255, 255, 255)
-    }
-}
-
 /// 用给定点列填充整笔轮廓 + 端点圆帽(带可选描边),返回脏矩形
 fn fill_stroke_path(canvas: &mut OverlayCanvas, path: &[(f32, f32, f32)], ol: f32) -> Option<RECT> {
     if path.len() < 2 {
@@ -69,26 +59,19 @@ fn fill_stroke_path(canvas: &mut OverlayCanvas, path: &[(f32, f32, f32)], ol: f3
     }
     let mut dirty: Option<RECT> = None;
 
-    // 描边层:整笔轮廓放大 ol 后用对比色填充
+    // 描边层: 黑白相间 1px 虚线(marching ants, macOS 同款)。
+    // 相位沿整笔累计弧长连续 —— 任何背景上恒有一半虚线可见。
     if ol > 0.0 {
-        let ol_color = contrast_color(canvas.color.0, canvas.color.1, canvas.color.2);
-        let saved = canvas.color;
-        canvas.color = ol_color;
-        let wide: Vec<(f32, f32, f32)> = path.iter().map(|&(x, y, r)| (x, y, r + ol)).collect();
-        let outline = build_outline(&wide);
-        if outline.len() >= 3 {
-            let rect = canvas.fill_outline(&outline);
+        let mut cum = 0.0f64;
+        for w in path.windows(2) {
+            let (x0, y0, r0) = w[0];
+            let (x1, y1, r1) = w[1];
+            // 描边直径 = 墨迹直径 + 2·ol(取相邻两点较粗者, 避免细段露墨)
+            let segw = (r0.max(r1) + ol) * 2.0;
+            let rect = canvas.stroke_outline_seg(x0, y0, x1, y1, segw as f64, cum);
             merge_rect(&mut dirty, &rect);
+            cum += (((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) as f64).sqrt();
         }
-        if let Some(&(cx, cy, r)) = path.first() {
-            let rect = canvas.fill_dot(cx, cy, r + ol);
-            merge_rect(&mut dirty, &rect);
-        }
-        if let Some(&(cx, cy, r)) = path.last() {
-            let rect = canvas.fill_dot(cx, cy, r + ol);
-            merge_rect(&mut dirty, &rect);
-        }
-        canvas.color = saved;
     }
 
     // 主体

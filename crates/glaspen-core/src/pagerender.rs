@@ -257,7 +257,9 @@ impl PageSurface<'_> {
         }
     }
 
-    /// 圆头线段(alpha 合成, 距离场覆盖)。
+    /// 线段(alpha 合成, 距离场覆盖)。`butt=false` 圆头(笔迹本体),
+    /// `butt=true` 平头矩形(1px 相间虚线的分段:圆帽半径超过段长会把
+    /// 相邻黑白段互相吞掉, 平头各画各的)。
     fn stroke_seg(
         &mut self,
         x0: f64,
@@ -267,6 +269,7 @@ impl PageSurface<'_> {
         width: f64,
         rgb: (u8, u8, u8),
         alpha: f64,
+        butt: bool,
     ) {
         let r = (width * 0.5).max(0.5);
         let minx = x0.min(x1) - r - 1.0;
@@ -282,11 +285,15 @@ impl PageSurface<'_> {
             for x in x0i..=x1i {
                 let px = x as f64 + 0.5;
                 let py = y as f64 + 0.5;
-                let t = if len2 > 0.0 {
-                    (((px - x0) * dx + (py - y0) * dy) / len2).clamp(0.0, 1.0)
+                let t_raw = if len2 > 0.0 {
+                    ((px - x0) * dx + (py - y0) * dy) / len2
                 } else {
                     0.0
                 };
+                if butt && !(0.0..=1.0).contains(&t_raw) {
+                    continue; // 平头: 投影出界的像素不归这段管
+                }
+                let t = t_raw.clamp(0.0, 1.0);
                 let qx = x0 + dx * t;
                 let qy = y0 + dy * t;
                 let d = ((px - qx).powi(2) + (py - qy).powi(2)).sqrt();
@@ -375,19 +382,9 @@ pub fn render_strokes(
             } else {
                 let (px, py, _pw, _pt) = pts[i - 1];
                 let (pxx, pyy) = map(px, py);
-                surf.stroke_seg(pxx, pyy, sx, sy, sw, rgb, alpha);
+                surf.stroke_seg(pxx, pyy, sx, sy, sw, rgb, alpha, false);
             }
         }
-    }
-}
-
-/// 按笔色亮度选对比描边色(BT.601, 阈值 128), 与画布渲染同参数。
-fn outline_contrast_color(r: f64, g: f64, b: f64) -> (u8, u8, u8) {
-    let lum = 0.299 * r + 0.587 * g + 0.114 * b;
-    if lum > 0.5 {
-        (0, 0, 0)
-    } else {
-        (255, 255, 255)
     }
 }
 
@@ -407,23 +404,55 @@ pub fn render_strokes_with_outline(
     outline: bool,
 ) {
     if outline {
-        for s in strokes {
-            if s.points.len() < 2 {
-                continue;
-            }
-            let ol = outline_contrast_color(s.r, s.g, s.b);
-            let widened: Vec<(f64, f64, f64, f64)> = s
-                .points
-                .iter()
-                .map(|&(x, y, w, t)| (x, y, w + OUTLINE_PAD * 2.0, t))
-                .collect();
-            let shim = PageStroke {
-                r: ol.0 as f64 / 255.0,
-                g: ol.1 as f64 / 255.0,
-                b: ol.2 as f64 / 255.0,
-                points: &widened,
+        // 黑白相间 1px 虚线(marching ants):按整笔累计弧长切 1px 平头
+        // 小段, 奇偶相位交替着黑/白 —— 任何背景上恒有一半可见。
+        // 与 cairo 路径的 set_dash 黑白两遍描边同一观感。
+        let alpha = opts.alpha.clamp(0.0, 1.0);
+        if alpha > 0.0 {
+            let k = (zoom * lay.scale).max(1.0); // 虚线段长(表面像素)
+            let map = |x: f64, y: f64| -> (f64, f64) {
+                (
+                    (x - pan_x) * zoom * lay.scale + lay.ox,
+                    (y - pan_y) * zoom * lay.scale + lay.oy,
+                )
             };
-            render_strokes(surf, lay, &[shim], pan_x, pan_y, zoom, opts);
+            for s in strokes {
+                if s.points.len() < 2 {
+                    continue;
+                }
+                let (mut qx, mut qy) = map(s.points[0].0, s.points[0].1);
+                let mut cum = 0.0f64;
+                for &(x, y, w, _t) in s.points.iter().skip(1) {
+                    let (sx, sy) = map(x, y);
+                    let segw = (w + OUTLINE_PAD * 2.0) * zoom * lay.scale;
+                    let seg_len = ((sx - qx).powi(2) + (sy - qy).powi(2)).sqrt();
+                    let mut pos = 0.0f64;
+                    while pos < seg_len - 1e-9 {
+                        let piece = k.min(seg_len - pos);
+                        let t0 = pos / seg_len;
+                        let t1 = (pos + piece) / seg_len;
+                        let rgb = if ((cum + pos) / k) as i64 % 2 == 0 {
+                            (0, 0, 0)
+                        } else {
+                            (255, 255, 255)
+                        };
+                        surf.stroke_seg(
+                            qx + (sx - qx) * t0,
+                            qy + (sy - qy) * t0,
+                            qx + (sx - qx) * t1,
+                            qy + (sy - qy) * t1,
+                            segw,
+                            rgb,
+                            alpha,
+                            true,
+                        );
+                        pos += piece;
+                    }
+                    cum += seg_len;
+                    qx = sx;
+                    qy = sy;
+                }
+            }
         }
     }
     render_strokes(surf, lay, strokes, pan_x, pan_y, zoom, opts);
@@ -532,6 +561,50 @@ mod tests {
         // (4,4)→(26,26) 的中点 (15,15): 水平短划 bug 下此处必为空白
         let mid_covered = (14..=16).any(|yy| (14..=16).any(|xx| red_at(xx, yy)));
         assert!(mid_covered, "采样点之间的线段中点应被着色");
+    }
+
+    #[test]
+    fn dashed_outline_alternates_black_white() {
+        // marching ants 描边: 同一行描边带内必须黑白虚段交替,
+        // 任何背景上恒有一半可见。
+        let w = 64;
+        let h = 32;
+        let mut data = vec![0u8; w as usize * h as usize * 4];
+        let lay = layout(w, h, w, h);
+        let stroke = PageStroke {
+            r: 0.0,
+            g: 0.0,
+            b: 1.0,
+            points: &[(4.0, 16.0, 4.0, 0.0), (60.0, 16.0, 4.0, 0.1)],
+        };
+        let mut surf = surface(&mut data, w, h);
+        render_strokes_with_outline(
+            &mut surf,
+            &lay,
+            &[stroke],
+            0.0,
+            0.0,
+            1.0,
+            &RenderOpts::default(),
+            true,
+        );
+        // 墨迹半径 2、描边半径 3 → y=13 行是纯描边带
+        let mut black = 0;
+        let mut white = 0;
+        for x in 0..w as usize {
+            let off = (13 * w as usize + x) * 4;
+            let (b, g, r, a) = (data[off], data[off + 1], data[off + 2], data[off + 3]);
+            if a > 200 {
+                if r < 50 && g < 50 && b < 50 {
+                    black += 1;
+                }
+                if r > 200 && g > 200 && b > 200 {
+                    white += 1;
+                }
+            }
+        }
+        assert!(black > 3, "应有一串黑色虚段");
+        assert!(white > 3, "应有一串白色虚段");
     }
 
     #[test]
