@@ -184,6 +184,35 @@ pub extern "C" fn glaspen2_set_invert_background(surface: *mut std::ffi::c_void)
     INVERT_BG_SURFACE.store(surface, std::sync::atomic::Ordering::SeqCst);
 }
 
+/// 反色局部重绘的脏区(表面像素坐标)。ObjC 在触发重绘前设置; 取用即清
+/// (w<0 = 全量)。让只有背景真正变化的区域被清空+重画, 其余笔迹像素
+/// 一字不动 —— 微动画不再让全屏涂鸦陪闪。
+static INVERT_DIRTY: [std::sync::atomic::AtomicI32; 4] = [
+    std::sync::atomic::AtomicI32::new(-1),
+    std::sync::atomic::AtomicI32::new(-1),
+    std::sync::atomic::AtomicI32::new(-1),
+    std::sync::atomic::AtomicI32::new(-1),
+];
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_set_invert_dirty(x: c_int, y: c_int, w: c_int, h: c_int) {
+    INVERT_DIRTY[0].store(x, std::sync::atomic::Ordering::SeqCst);
+    INVERT_DIRTY[1].store(y, std::sync::atomic::Ordering::SeqCst);
+    INVERT_DIRTY[2].store(w, std::sync::atomic::Ordering::SeqCst);
+    INVERT_DIRTY[3].store(h, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn take_invert_dirty() -> Option<(c_double, c_double, c_double, c_double)> {
+    let dw = INVERT_DIRTY[2].swap(-1, std::sync::atomic::Ordering::SeqCst);
+    if dw <= 0 {
+        return None;
+    }
+    let dx = INVERT_DIRTY[0].load(std::sync::atomic::Ordering::SeqCst);
+    let dy = INVERT_DIRTY[1].load(std::sync::atomic::Ordering::SeqCst);
+    let dh = INVERT_DIRTY[3].load(std::sync::atomic::Ordering::SeqCst);
+    Some((dx as c_double, dy as c_double, dw as c_double, dh as c_double))
+}
+
 /// 当前是否有笔迹(反色捕获循环的空转判断用)
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_has_strokes() -> c_int {
@@ -317,7 +346,15 @@ fn draw_rebuild_impl(
     let Some(r) = crate::cairo_dl::CairoRenderer::from_surface(surface_ptr) else {
         return;
     };
-    r.clear();
+    // 反色局部重绘: 有脏区则只清+只画该区域(裁剪), 其余像素保持原样
+    let clip = take_invert_dirty();
+    match clip {
+        Some((cx, cy, cw, ch)) => {
+            r.clear_rect(cx as f32, cy as f32, cw as f32, ch as f32);
+            r.clip_rect(cx as f32, cy as f32, cw as f32, ch as f32);
+        }
+        None => r.clear(),
+    }
     let (pan_x, pan_y, zoom) = view_transform();
     // 页视图变换折叠进既有 pan/zoom 管线:
     //   目标 screen = (canvas - pan)*zoom*pscale + off
@@ -423,6 +460,7 @@ fn draw_rebuild_impl(
     }
 
     drop(strokes);
+    r.reset_clip(); // 反色局部重绘收尾(每次调用都是新 context, 双保险)
     r.flush();
 }
 

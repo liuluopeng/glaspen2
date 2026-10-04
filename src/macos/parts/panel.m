@@ -261,6 +261,7 @@ static int s_inv_present = 0;                   // pattern/主线程正在读的
 static unsigned long long s_inv_sum[INV_SLOTS]; // 帧校验和(内容没变就跳过消费)
 static unsigned long long s_inv_present_sum;    // 当前呈现帧的校验和
 static unsigned long long s_inv_diff[INV_SLOTS]; // 与呈现帧不同的像素数
+static int s_inv_dbox[INV_SLOTS][4];             // 变化包围盒 x,y,w,h(表面像素)
 // 重绘阈值: 变化像素占比低于此(≈0.2%)视为噪声(spinner/光标微动画),
 // 照常更新背景缓冲(新笔迹用新色)但不重绘已有笔迹——微变化不再让
 // 全屏笔迹陪着重绘闪烁; 大变化(视频切画面)才触发。
@@ -309,6 +310,7 @@ static void invert_consume_pending(void);
         const UInt32 *pv = (const UInt32 *)s_inv_buf[s_inv_present]; // 呈现帧(只读)
         size_t row = (size_t)s_inv_w * 4;
         unsigned long long sum = 0, diff = 0;
+        long bx0 = LONG_MAX, by0 = LONG_MAX, bx1 = -1, by1 = -1;
         for (size_t y = 0; y < (size_t)s_inv_h; y++) {
             const UInt32 *sr = (const UInt32 *)(sp + y * cstride);
             UInt32 *dr = (UInt32 *)(dp + y * row);
@@ -316,11 +318,31 @@ static void invert_consume_pending(void);
                 UInt32 v = sr[x] ^ 0x00FFFFFFU;
                 dr[x] = v;
                 sum += v;
-                if (pv && v != pv[x]) diff++;
+                if (pv && v != pv[x]) {
+                    diff++;
+                    if ((long)x < bx0) bx0 = (long)x;
+                    if ((long)x > bx1) bx1 = (long)x;
+                    if ((long)y < by0) by0 = (long)y;
+                    if ((long)y > by1) by1 = (long)y;
+                }
             }
         }
         s_inv_sum[slot] = sum;
         s_inv_diff[slot] = diff;
+        if (bx1 < 0) {
+            s_inv_dbox[slot][0] = s_inv_dbox[slot][1] = 0;
+            s_inv_dbox[slot][2] = s_inv_dbox[slot][3] = 0;
+        } else {
+            // 外扩 2px 盖住 AA 软边, 截到表面范围
+            long x0 = (bx0 - 2 < 0) ? 0 : bx0 - 2;
+            long y0 = (by0 - 2 < 0) ? 0 : by0 - 2;
+            long x1 = (bx1 + 2 >= (long)s_inv_w) ? (long)s_inv_w - 1 : bx1 + 2;
+            long y1 = (by1 + 2 >= (long)s_inv_h) ? (long)s_inv_h - 1 : by1 + 2;
+            s_inv_dbox[slot][0] = (int)x0;
+            s_inv_dbox[slot][1] = (int)y0;
+            s_inv_dbox[slot][2] = (int)(x1 - x0 + 1);
+            s_inv_dbox[slot][3] = (int)(y1 - y0 + 1);
+        }
         ok = YES;
     } else {
         static int mismatch_logged = 0;
@@ -369,11 +391,16 @@ static void invert_consume_pending(void) {
         __atomic_store_n(&s_inv_pending, INV_IDLE, __ATOMIC_RELEASE);
     }
     if (significant && !g_stroke_active) {
-        // 整笔以新背景重绘(含 pattern)。书写中跳过: rebuild 只画已提交
-        // 的 STROKES, 会把在飞的原始笔迹段擦掉; 新背景在飞段下一笔自然
-        // 用上, 收笔后下一帧补齐。
+        // 局部重绘: 只清+只画背景真正变化的包围盒, 其余笔迹像素一字不动
+        // (spinner/光标微动画只刷它自己头顶那几笔, 全屏涂鸦不再陪闪)。
+        // 书写中跳过整笔重建(rebuild 只画已提交 STROKES, 会擦掉在飞段),
+        // 非显著帧给全量脏区, 收笔后的下一帧自然全量补齐。
+        glaspen2_set_invert_dirty(s_inv_dbox[slot][0], s_inv_dbox[slot][1],
+                                  s_inv_dbox[slot][2], s_inv_dbox[slot][3]);
         rebuild_surface_from_strokes();
         flush_to_layer();
+    } else {
+        glaspen2_set_invert_dirty(-1, -1, -1, -1);
     }
 }
 

@@ -476,6 +476,63 @@ impl CairoRenderer {
         self.stroke_line_opt(x0, y0, x1, y1, width, None);
     }
 
+    /// 只清空矩形区域(反色局部重绘: 其余像素保持原样)
+    pub fn clear_rect(&self, x: f32, y: f32, w: f32, h: f32) {
+        unsafe {
+            let Some(lib) = load_library() else { return };
+            let Ok(set_op) =
+                lib.get::<unsafe extern "C" fn(*mut std::ffi::c_void, i32)>(b"cairo_set_operator")
+            else {
+                return;
+            };
+            set_op(self.cr, 0); // CAIRO_OPERATOR_CLEAR
+            (self.new_path)(self.cr);
+            (self.move_to)(self.cr, x as f64, y as f64);
+            (self.line_to)(self.cr, (x + w) as f64, y as f64);
+            (self.line_to)(self.cr, (x + w) as f64, (y + h) as f64);
+            (self.line_to)(self.cr, x as f64, (y + h) as f64);
+            (self.fill)(self.cr);
+            set_op(self.cr, 2); // CAIRO_OPERATOR_OVER 恢复
+        }
+    }
+
+    /// 把后续绘制裁剪到矩形(反色局部重绘; context 每次重建, 无需恢复)
+    pub fn clip_rect(&self, x: f32, y: f32, w: f32, h: f32) {
+        unsafe {
+            let Some(lib) = load_library() else { return };
+            let Ok(clip) = lib.get::<unsafe extern "C" fn(*mut std::ffi::c_void)>(
+                b"cairo_clip",
+            ) else {
+                return;
+            };
+            let Ok(reset) = lib.get::<unsafe extern "C" fn(*mut std::ffi::c_void)>(
+                b"cairo_reset_clip",
+            ) else {
+                return;
+            };
+            reset(self.cr);
+            (self.new_path)(self.cr);
+            (self.move_to)(self.cr, x as f64, y as f64);
+            (self.line_to)(self.cr, (x + w) as f64, y as f64);
+            (self.line_to)(self.cr, (x + w) as f64, (y + h) as f64);
+            (self.line_to)(self.cr, x as f64, (y + h) as f64);
+            clip(self.cr);
+        }
+    }
+
+    /// 复位裁剪(每次重建收尾调用, 双保险)
+    pub fn reset_clip(&self) {
+        unsafe {
+            if let Some(lib) = load_library()
+                && let Ok(reset) = lib.get::<unsafe extern "C" fn(*mut std::ffi::c_void)>(
+                    b"cairo_reset_clip",
+                )
+            {
+                reset(self.cr);
+            }
+        }
+    }
+
     /// 把 source 设为 pattern(反色墨迹)
     pub fn set_source_pattern(&self, p: &CairoPattern) {
         unsafe {
