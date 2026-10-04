@@ -720,8 +720,12 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   // 极淡的板边), 邻页(±1)= 0.30, 次邻页(±2)= 0.55。
   // 多片 OVER 叠加时 1-(1-a1)(1-a2)… 自然累积:中心区域几层一叠
   // 就逐渐不透明(≈0.9), 透出"玻璃叠玻璃越叠越实"的物理观感。
-  static double s_glass_a1 = 0.01; // 邻页(prev1/back1)玻璃板不透明度
-  static double s_glass_a2 = 0.01; // 次邻页(prev2/back2)玻璃板不透明度
+  // 最小可感知玻璃不透明度: 单片几乎全透(95% 透光), 但每多叠一片
+  // 合成亮度衰减 ≥4.8%(人眼检出阈 ≈2%, 韦伯定律) —— 叠 2/3/4 片的
+  // 合成不透明度 9.8%/14.3%/18.5%, 衰减肉眼明确可见。再低(≤0.03)
+  // 衰减贴近阈值, 快速扫视时不可辨。
+  static double s_glass_a1 = 0.05; // 每片玻璃的不透明度(所有非 cur 片同值)
+  static double s_glass_a2 = 0.05;
   double d_abs = fabs((double)s_tun_depth[slot]);
   double glass_a = (d_abs < 0.5)   ? 0.04
                    : (d_abs < 1.5) ? s_glass_a1
