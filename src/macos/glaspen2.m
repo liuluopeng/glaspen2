@@ -306,6 +306,12 @@ static inline void dirty_include_surface_point(double x, double y, double r) {
     double view_h = g_draw_view ? [g_draw_view bounds].size.height : y;
     dirty_include_point(x, view_h - y, r);
 }
+// 表面像素坐标的矩形 → view 坐标脏区(反色局部重绘的 blit 用)
+static inline void dirty_include_surface_rect(double x, double y, double w, double h) {
+    double view_h = g_draw_view ? [g_draw_view bounds].size.height : y;
+    dirty_include_point(x, view_h - (y + h), 0);
+    dirty_include_point(x + w, view_h - y, 0);
+}
 
 // Cursor state
 static double g_cursor_x = -100, g_cursor_y = -100;

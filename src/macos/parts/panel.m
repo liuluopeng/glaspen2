@@ -390,18 +390,29 @@ static void invert_consume_pending(void) {
     } else {
         __atomic_store_n(&s_inv_pending, INV_IDLE, __ATOMIC_RELEASE);
     }
+    int rx = 0, ry = 0, rw = 0, rh = 0;
     if (significant && !g_stroke_active) {
         // 局部重绘: 只清+只画背景真正变化的包围盒, 其余笔迹像素一字不动
         // (spinner/光标微动画只刷它自己头顶那几笔, 全屏涂鸦不再陪闪)。
-        // 书写中跳过整笔重建(rebuild 只画已提交 STROKES, 会擦掉在飞段),
-        // 非显著帧给全量脏区, 收笔后的下一帧自然全量补齐。
-        glaspen2_set_invert_dirty(s_inv_dbox[slot][0], s_inv_dbox[slot][1],
-                                  s_inv_dbox[slot][2], s_inv_dbox[slot][3]);
+        // blit 同步裁剪到同一矩形(setNeedsDisplayInRect): 全屏 blit 是
+        // 79MB 内存搬运, 14fps 就能把主线程压到事件 tap 超时。
+        rx = s_inv_dbox[slot][0];
+        ry = s_inv_dbox[slot][1];
+        rw = s_inv_dbox[slot][2];
+        rh = s_inv_dbox[slot][3];
+        glaspen2_set_invert_dirty(rx, ry, rw, rh);
         rebuild_surface_from_strokes();
-        flush_to_layer();
+        dirty_include_surface_rect(rx, ry, rw, rh);
+        flush_dirty_to_layer();
     } else {
         glaspen2_set_invert_dirty(-1, -1, -1, -1);
     }
+    static int consumed;
+    if ((++consumed & 63) == 1)
+        NSLog(@"[invert] 消费 #%d: 变化=%d 显著=%d 差异像素=%llu 脏区=(%d,%d,%d,%d) 书写中=%d",
+              consumed, content_changed, significant,
+              content_changed ? s_inv_diff[slot] : 0ULL,
+              rx, ry, rw, rh, g_stroke_active);
 }
 
 static void invert_stream_stop(void) {
