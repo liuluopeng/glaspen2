@@ -131,6 +131,7 @@ extern void glaspen2_get_infinite_transform(double *pan_x, double *pan_y, double
 // ── 翻页动效(时光隧道)的页快照 ──
 // 预热缓存: 从 center 起前后若干页一次载入+平滑(不切当前页、不动 STROKES),
 // 逐帧渲染走缓存而不是每帧查库。返回载入的页数。
+extern int glaspen2_debug_insert_pages(int n, int w, int h);
 extern int glaspen2_preload_flip_pages(long center, int going_next, int before, int after);
 // 把缓存里第 slot 页画进 cairo 表面(透明底)。scale = 视口 backing scale;
 // ox/oy/pscale = scale-to-fit 的"页像素→逻辑点"变换(不 fit 传 0,0,1);

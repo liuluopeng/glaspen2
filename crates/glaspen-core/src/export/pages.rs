@@ -246,6 +246,18 @@ pub extern "C" fn glaspen2_page_neighbor(screen_id: i64, n: c_int) -> i64 {
 ///
 /// 载入顺序 = 动画里的叠放顺序(隧道向后翻时前页在上), 壳层按序取用。
 /// 期间**不切当前页、不动 STROKES**。
+/// 诊断用:直接插入 n 页(绕过新建守卫与空白页清理 —— probe 翻页测试
+/// 只需要页存在)。正常功能**永不**调用。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_debug_insert_pages(n: c_int, w: c_int, h: c_int) -> c_int {
+    let mut made = 0;
+    for _ in 0..n.max(0) {
+        runtime().block_on(db::new_screen(w, h));
+        made += 1;
+    }
+    made
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_preload_flip_pages(
     center: i64,

@@ -720,12 +720,11 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   // 极淡的板边), 邻页(±1)= 0.30, 次邻页(±2)= 0.55。
   // 多片 OVER 叠加时 1-(1-a1)(1-a2)… 自然累积:中心区域几层一叠
   // 就逐渐不透明(≈0.9), 透出"玻璃叠玻璃越叠越实"的物理观感。
-  // 最小可感知玻璃不透明度: 单片几乎全透(95% 透光), 但每多叠一片
-  // 合成亮度衰减 ≥4.8%(人眼检出阈 ≈2%, 韦伯定律) —— 叠 2/3/4 片的
-  // 合成不透明度 9.8%/14.3%/18.5%, 衰减肉眼明确可见。再低(≤0.03)
-  // 衰减贴近阈值, 快速扫视时不可辨。
-  static double s_glass_a1 = 0.05; // 每片玻璃的不透明度(所有非 cur 片同值)
-  static double s_glass_a2 = 0.05;
+  // 单片 99% 透光(近全透): 叠 3 片合成 2.97%、6 片 5.85% —— 衰减从
+  // 第 3 片起进入可感知区(阈 ≈2%), 配合拟物玻璃框的边缘线索,
+  // 中心的"叠得越多数沉"仍然可辨。
+  static double s_glass_a1 = 0.01;
+  static double s_glass_a2 = 0.01;
   double d_abs = fabs((double)s_tun_depth[slot]);
   double glass_a = (d_abs < 0.5)   ? 0.04
                    : (d_abs < 1.5) ? s_glass_a1
@@ -744,16 +743,36 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   cairo_paint_with_alpha(cr, 0.92 * alpha);
   cairo_pattern_destroy(pt);
   cairo_restore(cr);
-  // 玻璃板边(高光+暗边, 让每块玻璃边界可辨)
+  // 拟物网格玻璃框(磨砂窗格风): 双线外框(外暗内亮, 玻璃厚度感)+
+  // 十字窗棂(把整片分成 2×2 格, 玻璃"面积感"的拟物线索)。仅动效期间
+  // 存在(tunnel_draw_card 只在隧道帧里被调), 平时的玻璃保持素面。
   cairo_save(cr);
-  cairo_set_source_rgba(cr, 1, 1, 1, 0.55 * alpha);
-  cairo_set_line_width(cr, MAX(1.0, w * 0.0018));
+  double bw_out = MAX(1.5, w * 0.0022); // 外框线宽
+  double bw_in = MAX(1.0, w * 0.0012);  // 内框高光线宽
+  // 外框(暗, 玻璃边)
+  cairo_set_source_rgba(cr, 0.16, 0.20, 0.26, 0.55 * alpha);
+  cairo_set_line_width(cr, bw_out);
   cairo_rectangle(cr, card_x, card_y, w, h);
   cairo_stroke(cr);
-  cairo_set_source_rgba(cr, 0.1, 0.15, 0.2, 0.30 * alpha);
-  cairo_set_line_width(cr, MAX(1.0, w * 0.0009));
-  cairo_rectangle(cr, card_x, card_y, w, h);
+  // 内框(亮, 入射高光) —— 偏移半线宽, 框有"厚度"
+  double inset = bw_out * 0.75;
+  cairo_set_source_rgba(cr, 1, 1, 1, 0.40 * alpha);
+  cairo_set_line_width(cr, bw_in);
+  cairo_rectangle(cr, card_x + inset, card_y + inset, w - inset * 2, h - inset * 2);
   cairo_stroke(cr);
+  // 窗棂(十字): 竖横中线, 半透明 —— 拟物玻璃的分格
+  cairo_set_source_rgba(cr, 1, 1, 1, 0.16 * alpha);
+  cairo_set_line_width(cr, MAX(1.0, w * 0.0010));
+  cairo_move_to(cr, card_x + w * 0.5, card_y);
+  cairo_line_to(cr, card_x + w * 0.5, card_y + h);
+  cairo_move_to(cr, card_x, card_y + h * 0.5);
+  cairo_line_to(cr, card_x + w, card_y + h * 0.5);
+  cairo_stroke(cr);
+  // 棂交点小高光(玻璃卡扣的拟物点)
+  cairo_set_source_rgba(cr, 1, 1, 1, 0.35 * alpha);
+  double r_dot = MAX(1.5, w * 0.0016);
+  cairo_arc(cr, card_x + w * 0.5, card_y + h * 0.5, r_dot, 0, 2 * M_PI);
+  cairo_fill(cr);
   cairo_restore(cr);
 }
 
@@ -2133,25 +2152,14 @@ static void flip_probe_maybe_start(void) {
   dispatch_source_set_event_handler(s_probe_src, ^{
     if (first) {
       first = NO;
-      // 诊断环境: GLASPEN2_PROBE_PAGES=n 先铺 n 页带内容的页,
-      // 之后的往返翻页才有"隧道"可翻(空页守卫不会新建空白页)。
+      // 诊断环境: GLASPEN2_PROBE_PAGES=n 直接铺 n 页空白页(不涂鸦,
+      // 翻页测试只需要页存在; 玻璃框本身提供视觉内容)。
       int want = 0;
       const char *vpn = getenv("GLASPEN2_PROBE_PAGES");
       if (vpn)
         want = atoi(vpn);
-      for (int i = 0; i < want; i++) {
-        glaspen2_clear_strokes(g_screen_w, g_screen_h);
-        glaspen2_begin_stroke(0.15 + 0.2 * (i % 4), 0.45, 0.9 - 0.2 * (i % 3),
-                              1.0);
-        for (int k = 0; k <= 20; k++) {
-          double t = k / 20.0;
-          glaspen2_add_point_t(g_screen_w * (0.2 + 0.6 * t),
-                               g_screen_h * (0.3 + 0.25 * sin(t * 6.0 + i)),
-                               8.0 + 4.0 * sin(t * 9.0), t);
-        }
-        glaspen2_end_stroke();
-      }
-      NSLog(@"[glaspen2] probe 建页 %d 页(带内容)", want);
+      glaspen2_debug_insert_pages(want, g_screen_w, g_screen_h);
+      NSLog(@"[glaspen2] probe 建页 %d 页(空白, 直插)", want);
       return;
     }
     NSLog(@"[glaspen2] probe 翻页 back=%d", back);
