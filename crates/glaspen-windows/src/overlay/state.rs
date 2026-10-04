@@ -16,6 +16,8 @@ pub struct DrawState {
     pub ethereal: bool,
     /// 网格跟随涂鸦:飘渺模式下隐藏笔迹时网格也隐藏
     pub grid_follow_strokes: bool,
+    /// 磨砂玻璃跟随涂鸦:飘渺模式下隐藏笔迹时磨砂背景一起关(默认开=macOS 同款)
+    pub glass_follow_strokes: bool,
     /// 压力监控 HUD 是否开启
     pub pressure_monitor: bool,
     /// 手写消息集成总开关(⌘⌃2/⌘⌃3 → Ctrl+Alt+2/3 的守门;面板同键)

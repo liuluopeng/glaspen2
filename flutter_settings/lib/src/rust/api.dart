@@ -265,6 +265,7 @@ class Settings {
   final bool frostedGlass;
   final bool grid;
   final bool gridFollowStrokes;
+  final bool glassFollowStrokes;
   final bool pressureMonitor;
   final bool outline;
   final bool infiniteCanvas;
@@ -291,6 +292,7 @@ class Settings {
     required this.frostedGlass,
     required this.grid,
     required this.gridFollowStrokes,
+    required this.glassFollowStrokes,
     required this.pressureMonitor,
     required this.outline,
     required this.infiniteCanvas,
@@ -319,6 +321,7 @@ class Settings {
       frostedGlass.hashCode ^
       grid.hashCode ^
       gridFollowStrokes.hashCode ^
+      glassFollowStrokes.hashCode ^
       pressureMonitor.hashCode ^
       outline.hashCode ^
       infiniteCanvas.hashCode ^
@@ -349,6 +352,7 @@ class Settings {
           frostedGlass == other.frostedGlass &&
           grid == other.grid &&
           gridFollowStrokes == other.gridFollowStrokes &&
+          glassFollowStrokes == other.glassFollowStrokes &&
           pressureMonitor == other.pressureMonitor &&
           outline == other.outline &&
           infiniteCanvas == other.infiniteCanvas &&

@@ -293,7 +293,7 @@ static void ethereal_hide_now(void) {
     if (!g_ethereal_canvas || !g_strokes_visible) return;
     finish_active_stroke(); // don't strand an in-flight stroke
     g_strokes_visible = NO;
-    if (g_glass_view) g_glass_view.hidden = YES;
+    if (g_glass_follow_strokes && g_glass_view) g_glass_view.hidden = YES;
     if (g_pressure_monitor) pm_hide();
     [g_draw_view setNeedsDisplay:YES]; // 笔离开数位板: 立即隐藏(无动效)
 }
@@ -357,7 +357,7 @@ static void toggle_canvas_mode(void) {
         g_ethereal_canvas = YES;
         finish_active_stroke(); // commit any in-flight stroke before hiding
         g_strokes_visible = NO;
-        if (g_glass_view) g_glass_view.hidden = YES;
+        if (g_glass_follow_strokes && g_glass_view) g_glass_view.hidden = YES;
         if (g_pressure_monitor) pm_hide();
         [g_draw_view setNeedsDisplay:YES];
         show_notification(L(@"飘渺画布涂鸦模式 (悬空/落笔显示)", @"Ethereal canvas mode (hover/down to show)"));
@@ -593,6 +593,7 @@ char *glaspen2_macos_settings_json(void) {
             @"frostedGlass": @(g_glass_enabled),
             @"grid": @(g_show_grid),
             @"gridFollowStrokes": @(g_grid_follow_strokes),
+            @"glassFollowStrokes": @(g_glass_follow_strokes),
             @"pressureMonitor": @(g_pressure_monitor),
             @"outline": @(g_outline_enabled),
             @"infiniteCanvas": @(g_infinite_canvas),
@@ -701,6 +702,10 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             g_grid_follow_strokes = [value boolValue];
             glaspen2_save_bool_setting("grid_follow_strokes", g_grid_follow_strokes ? 1 : 0);
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
+        } else if ([key isEqualToString:@"glassFollowStrokes"]) {
+            g_glass_follow_strokes = [value boolValue];
+            glaspen2_save_bool_setting("glass_follow_strokes", g_glass_follow_strokes ? 1 : 0);
+            gl_glass_apply(); // 立即按新规则重估玻璃可见性(含飘渺隐藏态)
         } else if ([key isEqualToString:@"outline"]) {
             apply_outline([value boolValue]);
         } else if ([key isEqualToString:@"infiniteCanvas"]) {
@@ -1010,10 +1015,14 @@ static void gl_settings_set_launch(BOOL on) {
 
 static void gl_glass_apply(void) {
     // Combine enabled + opacity into visual effect
+    // 飘渺模式且「玻璃跟随涂鸦」开: 笔迹隐藏时玻璃一起藏(历史行为);
+    // 关则玻璃只听自己的开关, 常驻背景。
+    BOOL hidden_by_ethereal =
+        g_ethereal_canvas && g_glass_follow_strokes && !g_strokes_visible;
     double visual = g_glass_enabled ? g_glass_opacity : 0.0;
     if (g_glass_view) {
         g_glass_view.alphaValue = visual * 2.0; // map to visible range
-        g_glass_view.hidden = !g_glass_enabled;
+        g_glass_view.hidden = !g_glass_enabled || hidden_by_ethereal;
     }
     NSMenuItem *gi = [g_menu itemWithTag:444];
     [gi setState:g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff];

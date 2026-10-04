@@ -2474,6 +2474,14 @@ void glaspen2_run(void) {
     g_grid_follow_strokes =
         glaspen2_load_bool_setting("grid_follow_strokes") != 0;
     {
+      // 玻璃跟随涂鸦: 缺省 = 跟随(历史行为), 只有存过关才改
+      char *vgf = glaspen2_load_string_setting("glass_follow_strokes");
+      if (vgf) {
+        g_glass_follow_strokes = atoi(vgf) != 0;
+        glaspen2_free_c_string(vgf);
+      }
+    }
+    {
       char *vfe = glaspen2_load_string_setting("flip_effect");
       if (vfe) {
         int fe = atoi(vfe);

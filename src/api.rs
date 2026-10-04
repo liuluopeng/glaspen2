@@ -192,6 +192,8 @@ pub struct Settings {
     pub frosted_glass: bool,
     pub grid: bool,
     pub grid_follow_strokes: bool,
+    // 磨砂玻璃背景跟随飘渺模式(⌘⌃X 隐藏笔迹时玻璃一起藏;默认开=历史行为)
+    pub glass_follow_strokes: bool,
     pub pressure_monitor: bool,
     pub outline: bool,
     pub infinite_canvas: bool,
@@ -242,6 +244,7 @@ impl Settings {
             frosted_glass: b("frostedGlass"),
             grid: b("grid"),
             grid_follow_strokes: b("gridFollowStrokes"),
+            glass_follow_strokes: b("glassFollowStrokes"),
             pressure_monitor: b("pressureMonitor"),
             outline: b("outline"),
             infinite_canvas: b("infiniteCanvas"),

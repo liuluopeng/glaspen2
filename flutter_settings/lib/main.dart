@@ -118,6 +118,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _pressureMonitor = false;
   bool _showGrid = false;
   bool _gridFollowStrokes = false;
+  bool _glassFollowStrokes = true;
   bool _outlineEnabled = false;
   bool _infiniteCanvas = false;
   int _gridSizeValue = 40; // 网格大小(逻辑 px)
@@ -481,6 +482,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _pressureMonitor = _b(s['pressureMonitor']);
         _showGrid = _b(s['grid']);
         _gridFollowStrokes = _b(s['gridFollowStrokes']);
+        _glassFollowStrokes = s['glassFollowStrokes'] as bool? ?? _glassFollowStrokes;
         _outlineEnabled = _b(s['outline']);
         _infiniteCanvas = _b(s['infiniteCanvas']);
         _minimapEnabled = _b(s['minimap']);
@@ -508,6 +510,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _pressureMonitor = _b(settings['pressureMonitor']);
           _showGrid = _b(settings['grid']);
           _gridFollowStrokes = _b(settings['gridFollowStrokes']);
+          _glassFollowStrokes =
+              settings['glassFollowStrokes'] as bool? ?? _glassFollowStrokes;
           _infiniteCanvas = _b(settings['infiniteCanvas']);
           _minimapEnabled = _b(settings['minimap']);
           _gridSizeValue = (settings['gridSize'] as num?)?.toInt() ?? _gridSizeValue;
@@ -2257,6 +2261,17 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           onChanged: (v) {
             setState(() => _gridFollowStrokes = v);
             _setSetting('gridFollowStrokes', v);
+          },
+        )),
+        _tile(SwitchListTile(
+          title: const Text('磨砂玻璃跟随涂鸦', style: TextStyle(fontSize: 15)),
+          subtitle: const Text('开启后磨砂玻璃随涂鸦一起受 ⌘⌃X 控制；关闭则常驻', style: TextStyle(fontSize: 12)),
+          value: _glassFollowStrokes,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (v) {
+            setState(() => _glassFollowStrokes = v);
+            _setSetting('glassFollowStrokes', v);
           },
         )),
         _tile(SwitchListTile(

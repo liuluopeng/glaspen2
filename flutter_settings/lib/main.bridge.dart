@@ -87,6 +87,7 @@ class _FrbBridge extends SettingsBridge {
       'frostedGlass': s.frostedGlass,
       'grid': s.grid,
       'gridFollowStrokes': s.gridFollowStrokes,
+      'glassFollowStrokes': s.glassFollowStrokes,
       'pressureMonitor': s.pressureMonitor,
       'outline': s.outline,
       'infiniteCanvas': s.infiniteCanvas,

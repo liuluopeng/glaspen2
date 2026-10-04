@@ -415,6 +415,10 @@ fn hide_strokes(state: &mut OverlayState) {
     if state.draw.show_grid && !state.draw.grid_follow_strokes {
         state.canvas.draw_grid(state.draw.grid_divider);
     }
+    // 玻璃跟随涂鸦 → 磨砂背景一起关;否则保持
+    if state.draw.glass_follow_strokes && state.draw.frosted {
+        apply_frosted(state.canvas.hwnd, false);
+    }
     state.canvas.set_bg_alpha(BG_BLOCK);
     state.canvas.present_all();
 }
@@ -424,6 +428,10 @@ fn show_strokes(state: &mut OverlayState) {
     if !state.strokes_visible {
         state.strokes_visible = true;
         redraw_from_strokes(state);
+        // 重现时把跟随隐藏的磨砂背景按自身开关恢复
+        if state.draw.glass_follow_strokes && state.draw.frosted {
+            apply_frosted(state.canvas.hwnd, true);
+        }
     }
 }
 

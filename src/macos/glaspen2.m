@@ -389,6 +389,11 @@ static BOOL g_show_grid = NO;
 // Flutter switch is on. Controlled by the Flutter settings panel.
 static BOOL g_grid_follow_strokes = NO;
 
+// When YES the frosted-glass backdrop is hidden with the strokes by
+// 飘渺画布涂鸦模式 (X) — the historical behavior. When NO the glass stays
+// visible regardless of stroke visibility. Controlled by the Flutter panel.
+static BOOL g_glass_follow_strokes = YES;
+
 // 笔迹描边(渲染设置):仅在内存,不落库,重启恢复关闭。
 static BOOL g_outline_enabled = NO;
 // 描边比笔迹宽出的半径(逻辑 px),与 Rust OUTLINE_PAD 保持一致。

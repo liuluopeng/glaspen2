@@ -45,6 +45,11 @@ pub fn run() {
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0)
             != 0;
+        let glass_follow_strokes = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("glassFollowStrokes"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(1) // 缺省 = 跟随(macOS 历史行为)
+            != 0;
         let pressure_monitor = glaspen_core::runtime()
             .block_on(glaspen_core::db::load_setting("pressureMonitor"))
             .and_then(|v| v.parse::<i32>().ok())
@@ -130,6 +135,7 @@ pub fn run() {
             frosted,
             ethereal,
             grid_follow_strokes,
+            glass_follow_strokes,
             pressure_monitor,
             chat_integration,
         };
