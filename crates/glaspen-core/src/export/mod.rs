@@ -454,10 +454,9 @@ pub(crate) fn render_page_into(
         );
         // 磨砂玻璃化(depth >= 0): 页快照变成"磨砂玻璃上的墨迹",
         // 越深越暗 → 隧道卡片的层次/透视一眼可读。depth < 0 = 不磨砂。
-        if depth >= 0.0 {
-            let radius = (4.0 + 3.0 * depth).round() as i32;
-            surf.frost_and_tint(radius, depth);
-        }
+        // 磨砂已按用户要求停用: prev/next 玻璃片 = 纯半透明玻璃底
+        // (无模糊), 墨迹原样浮在其上。frost_and_tint 保留备用。
+        let _ = depth;
     }
     r.blit_bgra(&data, r.w, r.h, stride);
     1
