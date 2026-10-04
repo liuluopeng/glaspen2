@@ -634,8 +634,18 @@ static void tunnel_draw_card(cairo_t *cr, int slot,
     // 极淡的板边), 邻页(±1)= 0.30, 次邻页(±2)= 0.55。
     // 多片 OVER 叠加时 1-(1-a1)(1-a2)… 自然累积:中心区域几层一叠
     // 就逐渐不透明(≈0.9), 透出"玻璃叠玻璃越叠越实"的物理观感。
+    // 调参:GLASPEN2_GLASS_A1 / GLASPEN2_GLASS_A2 覆盖邻页/次邻页档位。
+    static double s_glass_a1 = -1.0, s_glass_a2 = -1.0;
+    if (s_glass_a1 < 0) {
+        s_glass_a1 = 0.30;
+        s_glass_a2 = 0.55;
+        const char *v1 = getenv("GLASPEN2_GLASS_A1");
+        const char *v2 = getenv("GLASPEN2_GLASS_A2");
+        if (v1) { double t = atof(v1); if (t >= 0.0 && t <= 1.0) s_glass_a1 = t; }
+        if (v2) { double t = atof(v2); if (t >= 0.0 && t <= 1.0) s_glass_a2 = t; }
+    }
     double d_abs = fabs((double)s_tun_depth[slot]);
-    double glass_a = (d_abs < 0.5) ? 0.04 : (d_abs < 1.5) ? 0.30 : 0.55;
+    double glass_a = (d_abs < 0.5) ? 0.04 : (d_abs < 1.5) ? s_glass_a1 : s_glass_a2;
     cairo_set_source_rgba(cr, 0.84, 0.89, 0.95, glass_a * alpha);
     cairo_rectangle(cr, card_x, card_y, w, h);
     cairo_fill(cr);
