@@ -573,33 +573,24 @@ static void tunnel_free_cards(void) {
 // (Time Machine 的层叠感) —— 从前页的顶边上方露出一条, 一眼看得出
 // "后面还有一页";卡片上下错开, 谁压谁一眼可辨(旧实现全部居中重叠,
 // 三页透明墨迹糊成一团, 完全看不出纵深 —— 这就是观感翻车的根因)。
-// 卡片摆放(含方向语义)。多米诺模型:页沿时间轴排开, 向后翻(更新的一页)
-// = 相机**向深处推进** —— 当前页飞越镜头边缘掠过, 目标页从深处迎面
-// 放大;向前翻(更旧的一页)= 相机**后退** —— 当前页远去缩小, 目标页
-// 从镜头后方罩下来。两个方向的消失点一上一下, 运动轨迹交叉 ——
-// 肉眼一看方向就分明, 不会"两个方向一个感觉"。
+// 卡片摆放:页列沿屏幕中轴排向**中心消失点**(镜头恒在屏幕中心)。
+// s = 1/(1+k·zc) 同时决定尺寸与位置 —— 卡片中心始终在屏轴上, 越深
+// 越小并向中心收拢;翻页 = 页列沿轴整体平移一格, 前端卡片飞越镜头
+// 渐隐, 深端新卡浮现 —— 方向感由"哪端进哪端出"自然产生。
 static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
                          double *out_w, double *out_h, double *out_alpha) {
-    if (zc < -TUNNEL_SPAN - 0.4 || zc > TUNNEL_FRONT + 0.4) return NO;
+    if (zc < -TUNNEL_SPAN - 0.35 || zc > TUNNEL_FRONT + 0.4) return NO;
     double s = 1.0 / (1.0 + s_tun_k * zc);
     if (s <= 0.06 || s > 2.6) return NO;
     double W = (double)s_tun_surf_w, H = (double)s_tun_surf_h;
     double w = W * s * 0.92;
     double h = H * s * 0.92;
-    // 消失点:向后翻在屏幕中上(隧道向"未来"延伸), 向前翻在中下
-    double vpy = s_tun_back ? 0.34 : 0.66;
-    double cy = H * vpy + (H - H * vpy) * (1.0 - s) * (s < 1.0 ? 0.92 : 1.0);
-    // 飞越镜头的卡(s>1.1)额外向屏幕外滑(上/下随方向), 而不是原地放大:
-    // "掠过边缘"的方向感比"原地膨胀再消失"强得多
-    if (s > 1.1) {
-        double over = (s - 1.1) / 1.5; // 0→1 越过程度
-        double slide = H * 0.9 * over;
-        cy += s_tun_back ? slide : -slide;
-    }
+    // 中心透视:卡片中心 = 屏幕中心 + (s-1) 的收敛(纵深越深越贴中心)
     double cx = W * 0.5;
+    double cy = H * 0.5 - (H * 0.5) * (1.0 - 1.0 / s) * 0.5;
     double a;
     if (zc < 0.0) {
-        a = 1.0 + zc / (TUNNEL_SPAN + 0.15); // 飞越时渐隐(比旧版慢, 掠过可见)
+        a = 1.0 + zc / (TUNNEL_SPAN + 0.15); // 飞越镜头时渐隐
         if (a < 0.0) a = 0.0;
     } else {
         a = 1.0 - zc / (TUNNEL_FRONT + 0.4) * 0.72;
@@ -613,9 +604,6 @@ static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
     return YES;
 }
 
-// 把卡片快照画到给定位置:快照画进**带白边的卡纸**里(白色卡纸底 + 快照
-// + 页框), 下缘投影 —— 看着就是"一张张纸"而不是几层墨迹叠在一起。
-// alpha 走逐像素合成(paint_with_alpha 不累积), 卡片间才能互相淡出。
 static void tunnel_draw_card(cairo_t *cr, int slot,
                              double cx, double cy, double w, double h, double alpha) {
     cairo_surface_t *surf = s_tun_card[slot];
