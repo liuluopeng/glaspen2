@@ -288,16 +288,31 @@ static void invert_consume_pending(void);
     int slot = s_inv_write;
     BOOL ok = NO;
     CVPixelBufferLockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
-    if (CVPixelBufferGetPixelFormatType(pb) == kCVPixelFormatType_32BGRA &&
-        CVPixelBufferGetWidth(pb) == (size_t)s_inv_w &&
-        CVPixelBufferGetHeight(pb) == (size_t)s_inv_h &&
-        CVPixelBufferGetBytesPerRow(pb) == (size_t)s_inv_w * 4) {
-        const UInt32 *sp = (const UInt32 *)CVPixelBufferGetBaseAddress(pb);
-        UInt32 *dp = (UInt32 *)s_inv_buf[slot];
-        size_t n = (size_t)s_inv_w * (size_t)s_inv_h;
-        for (size_t i = 0; i < n; i++)
-            dp[i] = sp[i] ^ 0x00FFFFFFU; // 反相 RGB, alpha FF 不动
+    FourCharCode pf = CVPixelBufferGetPixelFormatType(pb);
+    size_t cw = CVPixelBufferGetWidth(pb), ch = CVPixelBufferGetHeight(pb);
+    size_t cstride = CVPixelBufferGetBytesPerRow(pb);
+    if (pf == kCVPixelFormatType_32BGRA && cw == (size_t)s_inv_w &&
+        ch == (size_t)s_inv_h) {
+        // 逐行拷贝+反相(容忍行尾 padding), alpha FF 不动
+        const unsigned char *sp = CVPixelBufferGetBaseAddress(pb);
+        unsigned char *dp = s_inv_buf[slot];
+        size_t row = (size_t)s_inv_w * 4;
+        for (size_t y = 0; y < (size_t)s_inv_h; y++) {
+            const UInt32 *sr = (const UInt32 *)(sp + y * cstride);
+            UInt32 *dr = (UInt32 *)(dp + y * row);
+            for (size_t x = 0; x < (size_t)s_inv_w; x++)
+                dr[x] = sr[x] ^ 0x00FFFFFFU;
+        }
         ok = YES;
+    } else {
+        static int mismatch_logged = 0;
+        if ((mismatch_logged++) == 0) {
+            char fcc[5] = {(char)(pf >> 24), (char)(pf >> 16), (char)(pf >> 8),
+                           (char)pf, 0};
+            NSLog(@"[invert] 帧不匹配: fmt=%s(%u) %zux%zu stride=%zu | 期望 "
+                  @"BGRA %dx%d stride=%d",
+                  fcc, pf, cw, ch, cstride, s_inv_w, s_inv_h, s_inv_w * 4);
+        }
     }
     CVPixelBufferUnlockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
     if (ok) {
