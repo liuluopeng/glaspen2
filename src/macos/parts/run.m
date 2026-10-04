@@ -729,7 +729,7 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   double glass_a = (d_abs < 0.5)   ? 0.04
                    : (d_abs < 1.5) ? s_glass_a1
                                    : s_glass_a2;
-  cairo_set_source_rgba(cr, 0.84, 0.89, 0.95, glass_a * alpha);
+  cairo_set_source_rgba(cr, 0.80, 0.80, 0.80, glass_a * alpha); // 中性灰: 蓝只留在拟物侧面
   cairo_rectangle(cr, card_x, card_y, w, h);
   cairo_fill(cr);
   // 快照(已磨砂)贴进玻璃板。磨砂玻璃本来就是糊的 → FAST 插值
@@ -743,65 +743,44 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   cairo_paint_with_alpha(cr, 0.92 * alpha);
   cairo_pattern_destroy(pt);
   cairo_restore(cr);
-  // 拟物玻璃框(按真实玻璃照片定色):
-  // - 玻璃本体 = 冷青绿半透明(B>R 约 +40), 中心最亮、四边渐沉的
-  //   径向光感(玻璃中央看透最多);
-  // - 边框条带 = 更冷更深(B>R 约 +60~70), 顶边受光亮、底边背光暗的
-  //   垂直渐变(光从上方来);
-  // - 内缘 1 条细高光线(玻璃截面的反光);
-  // - 对角环境映照: 左上角一小片斜向亮带(窗外景物的映像, 45°)。
+  // 拟物玻璃框——**侧高视图**(能看到玻璃右侧与上侧的三维板):
+  // 正面 = 透明玻璃(无色, 只留墨迹); 右/上两个侧面 = 蓝色拟物(玻璃
+  // 截面), 正面矩形向右上挤出厚度 T —— 板的立体感来自这两个侧面。
+  // 透视不变: 正面仍同心嵌套消失于屏幕中心, 侧面随正面同缩。
   cairo_save(cr);
-  double bw = MAX(2.0, w * 0.012); // 边框条带宽(拟物比例)
+  double T = w * 0.018; // 板厚(挤出量, 随卡片宽等比)
 
-  // 1) 玻璃本体: 径向渐变(中心透亮 → 边缘沉), 冷青绿
-  cairo_pattern_t *body = cairo_pattern_create_radial(
-      card_x + w * 0.5, card_y + h * 0.42, 0,
-      card_x + w * 0.5, card_y + h * 0.5, w * 0.62);
-  cairo_pattern_add_color_stop_rgba(body, 0.0, 0.79, 0.86, 0.89, 0.16 * alpha);
-  cairo_pattern_add_color_stop_rgba(body, 1.0, 0.46, 0.66, 0.66, 0.34 * alpha);
-  cairo_set_source(cr, body);
-  cairo_rectangle(cr, card_x, card_y, w, h);
+  // 1) 右侧面(挤出): 平行四边形 card 右边 → 向右上偏移 T
+  cairo_set_source_rgba(cr, 0.36, 0.55, 0.72, 0.85 * alpha); // 蓝(受光侧)
+  cairo_move_to(cr, card_x + w, card_y);
+  cairo_line_to(cr, card_x + w + T, card_y - T);
+  cairo_line_to(cr, card_x + w + T, card_y + h - T);
+  cairo_line_to(cr, card_x + w, card_y + h);
+  cairo_close_path(cr);
   cairo_fill(cr);
-  cairo_pattern_destroy(body);
 
-  // 2) 对角映照: 左上斜向亮带(模拟窗外景物反射, 一次大圆渐变)
-  cairo_pattern_t *refl = cairo_pattern_create_radial(
-      card_x + w * 0.26, card_y + h * 0.18, 0,
-      card_x + w * 0.26, card_y + h * 0.18, w * 0.55);
-  cairo_pattern_add_color_stop_rgba(refl, 0.0, 0.95, 0.98, 1.0, 0.22 * alpha);
-  cairo_pattern_add_color_stop_rgba(refl, 1.0, 0.95, 0.98, 1.0, 0.0);
-  cairo_set_source(cr, refl);
-  cairo_rectangle(cr, card_x, card_y, w, h);
+  // 2) 顶侧面(挤出): 顶边 → 向右上偏移 T, 比右侧亮(顶面受光)
+  cairo_set_source_rgba(cr, 0.55, 0.72, 0.86, 0.85 * alpha);
+  cairo_move_to(cr, card_x, card_y);
+  cairo_line_to(cr, card_x + T, card_y - T);
+  cairo_line_to(cr, card_x + w + T, card_y - T);
+  cairo_line_to(cr, card_x + w, card_y);
+  cairo_close_path(cr);
   cairo_fill(cr);
-  cairo_pattern_destroy(refl);
 
-  // 3) 边框条带: 垂直渐变(顶亮底暗, 更冷更深) — 挖空内部只画四边
-  cairo_pattern_t *bevel = cairo_pattern_create_linear(
-      card_x, card_y, card_x, card_y + h);
-  cairo_pattern_add_color_stop_rgba(bevel, 0.0, 0.62, 0.75, 0.78, 0.85 * alpha);
-  cairo_pattern_add_color_stop_rgba(bevel, 0.5, 0.38, 0.63, 0.61, 0.80 * alpha);
-  cairo_pattern_add_color_stop_rgba(bevel, 1.0, 0.26, 0.55, 0.53, 0.88 * alpha);
-  cairo_set_source(cr, bevel);
-  // 外圈(填满后挖内圈 → 只剩四边条带)
-  cairo_rectangle(cr, card_x, card_y, w, h);
-  cairo_rectangle(cr, card_x + bw, card_y + bw, w - bw * 2, h - bw * 2);
-  cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD);
-  cairo_fill(cr);
-  cairo_set_fill_rule(cr, CAIRO_FILL_RULE_WINDING);
-  cairo_pattern_destroy(bevel);
-
-  // 4) 内缘高光线(玻璃截面反光): 顶/左受光侧亮线
-  cairo_set_source_rgba(cr, 1, 1, 1, 0.45 * alpha);
+  // 3) 侧面的棱线: 右/上侧面的外缘描一道更亮的线(截面高光)
+  cairo_set_source_rgba(cr, 0.78, 0.88, 0.96, 0.9 * alpha);
   cairo_set_line_width(cr, MAX(1.0, w * 0.0008));
-  cairo_move_to(cr, card_x + bw, card_y + h - bw);
-  cairo_line_to(cr, card_x + bw, card_y + bw);
-  cairo_line_to(cr, card_x + w - bw, card_y + bw);
+  cairo_move_to(cr, card_x + T, card_y - T);
+  cairo_line_to(cr, card_x + w + T, card_y - T);
+  cairo_line_to(cr, card_x + w + T, card_y + h - T);
   cairo_stroke(cr);
-  // 底/右背光侧暗线(立体感的另一半)
-  cairo_set_source_rgba(cr, 0.05, 0.15, 0.15, 0.35 * alpha);
-  cairo_move_to(cr, card_x + w - bw, card_y + bw);
-  cairo_line_to(cr, card_x + w - bw, card_y + h - bw);
-  cairo_line_to(cr, card_x + bw, card_y + h - bw);
+
+  // 4) 正面: 无色透明 —— 只描一圈极淡的中性边(玻璃正面的存在感,
+  //    不带任何蓝色; 深度感全部交给右/上侧面)
+  cairo_set_source_rgba(cr, 0.95, 0.95, 0.95, 0.30 * alpha);
+  cairo_set_line_width(cr, MAX(1.0, w * 0.0008));
+  cairo_rectangle(cr, card_x, card_y, w, h);
   cairo_stroke(cr);
   cairo_restore(cr);
 }
