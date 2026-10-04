@@ -604,30 +604,37 @@ static void tunnel_draw_card(cairo_t *cr, int slot,
     int nh = cairo_image_surface_get_height(surf);
     if (nw <= 0 || nh <= 0) return;
 
-    // 卡纸:快照四周各留 0.8% 白边(视觉上就是纸的留白)
+    // 磨砂玻璃板:页快照已被 Rust 侧磨砂化(冷灰蓝底 + 与背景混合),
+    // 这里用 source-atop 把它合成到整块玻璃上 —— 玻璃半透明, 能透出
+    // 下一层卡片/桌面, 但因磨砂底已不透明, 层次关系清晰可读。
+    // 快照四周各留 0.8% 玻璃边(视觉上就是板的留白)。
     double pad = 0.008;
     double card_x = cx - w / 2.0, card_y = cy - h / 2.0;
 
     cairo_save(cr);
-    // 下缘投影(卡片压卡片的层次感)
-    cairo_set_source_rgba(cr, 0, 0, 0, 0.28 * alpha);
-    cairo_rectangle(cr, card_x + w * 0.012, card_y - h * 0.012, w, h);
+    // 下缘投影(玻璃板压玻璃板的层次感)
+    cairo_set_source_rgba(cr, 0, 0, 0, 0.30 * alpha);
+    cairo_rectangle(cr, card_x + w * 0.014, card_y - h * 0.014, w, h);
     cairo_fill(cr);
-    // 白色卡纸
-    cairo_set_source_rgba(cr, 1, 1, 1, 0.94 * alpha);
+    // 玻璃板底(半透明磨砂玻璃, 越深越沉)
+    cairo_set_source_rgba(cr, 0.84, 0.89, 0.95, 0.55 * alpha);
     cairo_rectangle(cr, card_x, card_y, w, h);
     cairo_fill(cr);
-    // 快照贴进卡纸(留白边)
+    // 快照(已磨砂)贴进玻璃板:source-atop 让墨迹只落在板内, 不溢出
     cairo_translate(cr, card_x + w * pad, card_y + h * pad);
     cairo_scale(cr, w * (1.0 - 2.0 * pad) / (double)nw,
                 h * (1.0 - 2.0 * pad) / (double)nh);
     cairo_set_source_surface(cr, surf, 0, 0);
-    cairo_paint_with_alpha(cr, alpha);
+    cairo_paint_with_alpha(cr, 0.92 * alpha);
     cairo_restore(cr);
-    // 卡纸边
+    // 玻璃板边(高光+暗边, 让每块玻璃边界可辨)
     cairo_save(cr);
-    cairo_set_source_rgba(cr, 0, 0, 0, 0.22 * alpha);
-    cairo_set_line_width(cr, MAX(1.0, w * 0.0015));
+    cairo_set_source_rgba(cr, 1, 1, 1, 0.55 * alpha);
+    cairo_set_line_width(cr, MAX(1.0, w * 0.0018));
+    cairo_rectangle(cr, card_x, card_y, w, h);
+    cairo_stroke(cr);
+    cairo_set_source_rgba(cr, 0.1, 0.15, 0.2, 0.30 * alpha);
+    cairo_set_line_width(cr, MAX(1.0, w * 0.0009));
     cairo_rectangle(cr, card_x, card_y, w, h);
     cairo_stroke(cr);
     cairo_restore(cr);
@@ -641,8 +648,10 @@ static void tunnel_frame(double p) {
     double cam = e * s_tun_travel * (s_tun_back ? -1.0 : 1.0);
 
     cairo_t *cr = cairo_create(g_surface);
+    // 背景:深色磨砂玻璃(隧道的"洞")—— 让卡片的半透明玻璃有参照,
+    // 同时遮住桌面, 层次/透视一眼可读。动效结束即恢复普通透明玻璃。
     cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-    cairo_set_source_rgba(cr, 0, 0, 0, 0); // 清成透明(玻璃上叠卡片, 卡外是桌面)
+    cairo_set_source_rgba(cr, 0.10, 0.13, 0.18, 0.62);
     cairo_paint(cr);
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
@@ -679,6 +688,9 @@ static void tunnel_finish(void) {
     tunnel_frame(1.0); // 最后一帧: 目标页满屏, 与真实页一模一样
     tunnel_free_cards();
     s_tun_active = NO;
+    // 动效结束:回到普通工作态 —— 表面重绘真实页 + 磨砂玻璃恢复自身开关
+    // (透明玻璃或用户设定的磨砂), 由 commit 的 replay 重画表面。
+    gl_glass_apply();
     if (s_tun_prepare) { s_tun_prepare(); s_tun_prepare = NULL; } // 可为 NULL
     if (s_tun_commit) { s_tun_commit(); s_tun_commit = NULL; }
 }
@@ -714,7 +726,8 @@ static BOOL tunnel_make_card(int slot, int cache_slot, long screen_id, int is_cu
         cairo_destroy(cr);
     } else {
         glaspen2_paint_preview_into_surface((void *)surf, cache_slot, g_scale,
-                                            ox, oy, pscale, 1.0, 0);
+                                            ox, oy, pscale, 1.0, 0,
+                                            (double)s_tun_depth[slot]);
     }
     s_tun_card[slot] = surf;
     return YES;

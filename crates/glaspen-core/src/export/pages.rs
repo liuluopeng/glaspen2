@@ -210,6 +210,8 @@ pub(crate) static PAGE_PREVIEW: std::sync::Mutex<Vec<PreviewPage>> =
 
 /// 缓存里的一页(笔迹 + 该页几何)。
 pub(crate) struct PreviewPage {
+    // 页 id: 预载时写入, 供日志/调试对照缓存槽与真实页
+    #[allow(dead_code)]
     pub(crate) screen_id: i64,
     pub(crate) w: i32,
     pub(crate) h: i32,
@@ -314,6 +316,7 @@ pub extern "C" fn glaspen2_paint_preview_into_surface(
     pscale: c_double,
     alpha: c_double,
     white_bg: c_int,
+    depth: c_double,
 ) -> c_int {
     let Some(r) = crate::cairo_dl::CairoRenderer::from_surface(surface_ptr) else {
         return 0;
@@ -333,6 +336,7 @@ pub extern "C" fn glaspen2_paint_preview_into_surface(
         page.h as f64,
         alpha,
         white_bg != 0,
+        depth,
     )
 }
 

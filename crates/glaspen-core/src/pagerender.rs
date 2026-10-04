@@ -130,6 +130,130 @@ impl PageSurface<'_> {
         }
     }
 
+    /// 磨砂玻璃化:两遍可分离盒式模糊(半径 r, 近似高斯) + 与冷灰蓝底色
+    /// 混合(不透明) + 按深度压暗。
+    ///
+    /// 隧道卡片要一眼看出"哪一页在前、哪一页在后":每张卡片都铺一层
+    /// 不透明的磨砂玻璃(类似系统磨砂窗口), 页快照的墨迹浮在这层玻璃上 ——
+    /// 越深的页玻璃越暗、模糊越重, 层次与透视关系就清楚了。
+    ///
+    /// 实现要点:
+    /// - 盒式模糊**加权求和累积在 f32**, 不做逐次 u8 四舍五入, 避免重模糊发灰;
+    /// - 透明像素按 premultiplied 处理(blur 完再归一), 边缘不产生"黑晕";
+    /// - 一遍 O(N·r), 两遍 O(N·r) —— 3440×1440 r=8 约 2.4 亿次加法, 1~2ms。
+    pub fn frost_and_tint(&mut self, radius: i32, depth: f64) {
+        let (w, h) = (self.w, self.h);
+        if w <= 0 || h <= 0 {
+            return;
+        }
+        let r = radius.clamp(1, 32);
+        let wu = w as usize;
+        let hu = h as usize;
+        let stride = self.stride;
+
+        // 读出 BGRA → 4 个以 f32 累积的通道(仅有一个通道非零时可跳过)
+        let mut ch: Vec<[f32; 4]> = vec![[0.0; 4]; wu * hu];
+        for y in 0..hu {
+            let row = y * stride;
+            for x in 0..wu {
+                let o = row + x * 4;
+                let px = &self.data[o..o + 4];
+                let a = px[3];
+                let (ir, ig, ib) = if a > 0 {
+                    // 反预乘: v = ink×a/255 → ink = v×255/a(读出阶段归一,
+                    // 模糊后各通道始终是"墨水颜色"的面积平均, 不会因 alpha
+                    // 稀释把白色描边洗成灰)。
+                    (
+                        px[2] as f32 * 255.0 / a as f32,
+                        px[1] as f32 * 255.0 / a as f32,
+                        px[0] as f32 * 255.0 / a as f32,
+                    )
+                } else {
+                    (0.0, 0.0, 0.0)
+                };
+                ch[y * wu + x] = [ir, ig, ib, a as f32];
+            }
+        }
+
+        // 可分离盒式模糊:横扫 + 竖扫, 各通道独立累加
+        let mut tmp = vec![[0.0f32; 4]; wu * hu];
+        let inv = 1.0 / (r as f32 * 2.0 + 1.0);
+        for y in 0..hu {
+            let base = y * wu;
+            let mut acc = [0.0f32; 4];
+            for k in -r..=r {
+                let x = (k + r).min(w - 1) as usize;
+                let v = ch[base + x];
+                for c in 0..4 {
+                    acc[c] += v[c];
+                }
+            }
+            for x in 0..wu {
+                let lo = (x as i32 - r).max(0) as usize;
+                let hi = (x as i32 + r).min(w - 1) as usize;
+                tmp[base + x] = [acc[0] * inv, acc[1] * inv, acc[2] * inv, acc[3] * inv];
+                let vin = ch[base + hi];
+                let vout = ch[base + lo];
+                for c in 0..4 {
+                    acc[c] += vin[c] - vout[c];
+                }
+            }
+        }
+        for x in 0..wu {
+            let mut acc = [0.0f32; 4];
+            for k in -r..=r {
+                let y = (k + r).min(h - 1) as usize;
+                let v = tmp[y * wu + x];
+                for c in 0..4 {
+                    acc[c] += v[c];
+                }
+            }
+            for y in 0..hu {
+                let lo = (y as i32 - r).max(0) as usize;
+                let hi = (y as i32 + r).min(h - 1) as usize;
+                ch[y * wu + x] = [acc[0] * inv, acc[1] * inv, acc[2] * inv, acc[3] * inv];
+                let vin = tmp[hi * wu + x];
+                let vout = tmp[lo * wu + x];
+                for c in 0..4 {
+                    acc[c] += vin[c] - vout[c];
+                }
+            }
+        }
+
+        // 磨砂玻璃底色(冷灰蓝)与深度压暗: 墨迹 = 归一后的 rgb, 玻璃 = tint
+        let depth_d = depth.max(0.0);
+        let shade = (1.0 - 0.16 * depth_d).clamp(0.45, 1.0);
+        let (tr, tg, tb) = (216.0 * shade, 227.0 * shade, 240.0 * shade);
+        let ta = 234.0f32; // 玻璃不透明度(再乘卡片整体 alpha, 整页渐隐依然有效)
+        for y in 0..hu {
+            let row = y * stride;
+            for x in 0..wu {
+                let v = ch[y * wu + x];
+                let a = v[3];
+                let o = row + x * 4;
+                let out = &mut self.data[o..o + 4];
+                if a <= 0.5 {
+                    // 空玻璃
+                    out[0] = (tb as f32).round().clamp(0.0, 255.0) as u8;
+                    out[1] = (tg as f32).round().clamp(0.0, 255.0) as u8;
+                    out[2] = (tr as f32).round().clamp(0.0, 255.0) as u8;
+                    out[3] = ta.round().clamp(0.0, 255.0) as u8;
+                } else {
+                    // 读出阶段已反预乘, 模糊后 v 即墨水颜色
+                    let ir = v[0].clamp(0.0, 255.0);
+                    let ig = v[1].clamp(0.0, 255.0);
+                    let ib = v[2].clamp(0.0, 255.0);
+                    let k = a / 255.0; // 墨迹覆盖度(模糊后的边缘羽化)
+                    let (trf, tgf, tbf) = (tr as f32, tg as f32, tb as f32);
+                    out[0] = (ib + (tbf - ib) * (1.0 - k)).round().clamp(0.0, 255.0) as u8;
+                    out[1] = (ig + (tgf - ig) * (1.0 - k)).round().clamp(0.0, 255.0) as u8;
+                    out[2] = (ir + (trf - ir) * (1.0 - k)).round().clamp(0.0, 255.0) as u8;
+                    out[3] = ta.round().clamp(0.0, 255.0) as u8;
+                }
+            }
+        }
+    }
+
     /// 圆头线段(alpha 合成, 距离场覆盖)。
     fn stroke_seg(
         &mut self,
@@ -361,7 +485,15 @@ mod tests {
             ],
         };
         let mut surf = surface(&mut data, w, h);
-        render_strokes(&mut surf, &lay, &[stroke], 0.0, 0.0, 1.0, &RenderOpts::default());
+        render_strokes(
+            &mut surf,
+            &lay,
+            &[stroke],
+            0.0,
+            0.0,
+            1.0,
+            &RenderOpts::default(),
+        );
         // 画到了缓冲里(角落与中心都有像素), 且没有越界写(跑不崩即证明)
         assert!(data.chunks(4).any(|px| px[2] > 0), "应有红色像素");
     }
@@ -401,7 +533,15 @@ mod tests {
             b: 1.0,
             points: &[(4.0, 16.0, 8.0, 0.0), (28.0, 16.0, 8.0, 0.1)],
         };
-        render_strokes(&mut surf2, &lay, &[stroke2], 0.0, 0.0, 1.0, &RenderOpts::default());
+        render_strokes(
+            &mut surf2,
+            &lay,
+            &[stroke2],
+            0.0,
+            0.0,
+            1.0,
+            &RenderOpts::default(),
+        );
         let max_a = data.chunks(4).map(|px| px[3]).max().unwrap();
         let full_a = full.chunks(4).map(|px| px[3]).max().unwrap();
         assert!(max_a > 0, "应有像素");
@@ -419,11 +559,97 @@ mod tests {
         let mut data = vec![0u8; w as usize * h as usize * 4];
         let lay = layout(8, 8, w, h);
         let mut surf = surface(&mut data, w, h);
-        render_strokes(&mut surf, &lay, &[], 0.0, 0.0, 1.0, &RenderOpts {
-            alpha: 1.0,
-            white_bg: true,
-        });
+        render_strokes(
+            &mut surf,
+            &lay,
+            &[],
+            0.0,
+            0.0,
+            1.0,
+            &RenderOpts {
+                alpha: 1.0,
+                white_bg: true,
+            },
+        );
         assert!(data.chunks(4).all(|px| px == [255, 255, 255, 255]));
+    }
+
+    #[test]
+    fn frost_tints_glass_and_keeps_ink() {
+        // 空像素 → 冷灰蓝玻璃底; 墨迹 → 仍可见的前景
+        let w = 24;
+        let h = 24;
+        let mut data = vec![0u8; w as usize * h as usize * 4];
+        let lay = layout(w, h, w, h);
+        // 粗一点的墨迹:磨砂(r=2)才不会把细节抹掉
+        let stroke = PageStroke {
+            r: 0.0,
+            g: 0.0,
+            b: 1.0,
+            points: &[(4.0, 12.0, 16.0, 0.0), (20.0, 12.0, 16.0, 0.1)],
+        };
+        let mut r_only = vec![0u8; w as usize * h as usize * 4];
+        {
+            let mut surf = surface(&mut r_only, w, h);
+            render_strokes(
+                &mut surf,
+                &lay,
+                &[stroke],
+                0.0,
+                0.0,
+                1.0,
+                &RenderOpts::default(),
+            );
+        }
+        {
+            let surf = surface(&mut data, w, h);
+            surf.data.copy_from_slice(&r_only);
+        }
+        {
+            let mut surf = surface(&mut data, w, h);
+            surf.frost_and_tint(2, 1.0);
+        }
+        // 空玻璃: BGRA = 冷灰蓝 + 不透明
+        let corner = &data[0..4];
+        assert_eq!(corner[3], 234, "磨砂玻璃应不透明(能遮住下面的卡片)");
+        assert!(corner[0] > corner[2], "玻璃应偏冷蓝(B > R)");
+        // 墨迹: 蓝墨水应让 B 相对玻璃抬升、R 压低(没被磨砂磨掉)
+        let mid = (12 * w as usize + 12) * 4;
+        let ink = &data[mid..mid + 4];
+        assert!(
+            ink[0] as i32 > corner[0] as i32 + 10,
+            "蓝墨迹应抬高 B, got {} vs 玻璃 {}",
+            ink[0],
+            corner[0]
+        );
+        assert!(
+            ink[2] < corner[2],
+            "蓝墨迹应压低 R, got {} vs 玻璃 {}",
+            ink[2],
+            corner[2]
+        );
+    }
+
+    #[test]
+    fn frost_depth_darkens_glass() {
+        let w = 8;
+        let h = 8;
+        let mut near = vec![0u8; w as usize * h as usize * 4];
+        let mut far = vec![0u8; w as usize * h as usize * 4];
+        {
+            let mut s1 = surface(&mut near, w, h);
+            s1.frost_and_tint(1, 0.0);
+        }
+        {
+            let mut s2 = surface(&mut far, w, h);
+            s2.frost_and_tint(1, 3.0);
+        }
+        assert!(
+            far[0] < near[0],
+            "深处的玻璃应更暗(深度压暗), {} vs {}",
+            far[0],
+            near[0]
+        );
     }
 
     #[test]
@@ -440,7 +666,15 @@ mod tests {
             points: &[(0.0, 0.0, 10.0, 0.0), (400.0, 400.0, 10.0, 0.1)],
         };
         let mut surf = surface(&mut data, w, h);
-        render_strokes(&mut surf, &lay, &[stroke], 100.0, 100.0, 0.5, &RenderOpts::default());
+        render_strokes(
+            &mut surf,
+            &lay,
+            &[stroke],
+            100.0,
+            100.0,
+            0.5,
+            &RenderOpts::default(),
+        );
         assert!(data.chunks(4).any(|px| px[1] > 0), "应有绿色像素");
     }
 }

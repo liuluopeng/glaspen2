@@ -135,9 +135,11 @@ extern int glaspen2_preload_flip_pages(long center, int going_next, int before, 
 // 把缓存里第 slot 页画进 cairo 表面(透明底)。scale = 视口 backing scale;
 // ox/oy/pscale = scale-to-fit 的"页像素→逻辑点"变换(不 fit 传 0,0,1);
 // alpha = 整页不透明度(渐显/渐隐); white_bg = 白底(导出用)。返回 1 成功。
+// depth = 该页在隧道里的页距(0=当前页); >=0 时快照被磨砂玻璃化
+// (越深越暗/越模糊, 层次一眼可读), <0 = 不磨砂(原样)。
 extern int glaspen2_paint_preview_into_surface(void *surface_ptr, int slot, double scale,
                                                double ox, double oy, double pscale,
-                                               double alpha, int white_bg);
+                                               double alpha, int white_bg, double depth);
 
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);

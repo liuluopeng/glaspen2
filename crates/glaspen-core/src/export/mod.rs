@@ -396,6 +396,7 @@ pub(crate) fn render_page_into(
     page_h: f64,
     alpha: f64,
     white_bg: bool,
+    depth: f64,
 ) -> c_int {
     if scale <= 0.0 {
         return 0;
@@ -448,12 +449,15 @@ pub(crate) fn render_page_into(
             0.0,
             0.0,
             1.0,
-            &crate::pagerender::RenderOpts {
-                alpha,
-                white_bg,
-            },
+            &crate::pagerender::RenderOpts { alpha, white_bg },
             STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst),
         );
+        // 磨砂玻璃化(depth >= 0): 页快照变成"磨砂玻璃上的墨迹",
+        // 越深越暗 → 隧道卡片的层次/透视一眼可读。depth < 0 = 不磨砂。
+        if depth >= 0.0 {
+            let radius = (4.0 + 3.0 * depth).round() as i32;
+            surf.frost_and_tint(radius, depth);
+        }
     }
     r.blit_bgra(&data, r.w, r.h, stride);
     1
@@ -502,7 +506,9 @@ pub(crate) fn paint_strokes_into(
     }
     // 整体不透明度 ≠ 1: 走软件合成(独立缓冲 + blit), 保证渐显/渐隐均匀。
     if alpha < 1.0 {
-        paint_strokes_soft(r, strokes, pan_x, pan_y, zoom, scale, y_shift, outline, alpha);
+        paint_strokes_soft(
+            r, strokes, pan_x, pan_y, zoom, scale, y_shift, outline, alpha,
+        );
         return;
     }
     for s in strokes {
