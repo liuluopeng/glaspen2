@@ -584,7 +584,7 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
 // 实验参数:GLASPEN2_FLIP_DUR=<秒>(时长, 默认 0.62)、
 // GLASPEN2_FLIP_K=<f>(透视强度, 默认 0.45, 越大隧道越深)。
 
-#define TUNNEL_MAX_CARDS 5
+#define TUNNEL_MAX_CARDS 512
 #define TUNNEL_SPAN 2.0  // 相机后方可见深度(再远就飞出画面)
 #define TUNNEL_FRONT 2.0 // 相机前方可见深度(页从这里飞近)
 
@@ -601,6 +601,9 @@ static int s_tun_cards = 0;
 static double s_tun_travel = 1.0; // 相机推进的隧道单位(= 本次翻页跨过的页数)
 static BOOL s_tun_back = NO; // 向前翻(上一页/回溯旧页): 相机**推进**页列深处
 static double s_tun_dur = 0.62;
+// 两片玻璃之间的距离 = 相邻玻璃片的尺寸比(0.60-0.90)。所有玻璃同心
+// 嵌套, 消失点恒在屏幕中心;层与层的"空隙宽度"由本值决定。
+static double s_tun_gap = 0.78; // 两片玻璃的距离 = 相邻玻璃尺寸比(0.60-0.90); 小=密, 大=疏
 static double s_tun_k = 0.45;
 static void (^s_tun_prepare)(void);
 static void (^s_tun_commit)(void);
@@ -641,7 +644,12 @@ static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
                          double *out_w, double *out_h, double *out_alpha) {
   if (zc < -TUNNEL_SPAN - 0.35 || zc > TUNNEL_FRONT + 0.4)
     return NO;
-  double s = 1.0 / (1.0 + s_tun_k * zc);
+  // 每槽缩放率由玻璃间距决定: gap 0.30→0.70, 0.17→0.82, 0.10→0.88
+  // (线性映射, 可调)。zc<0(镜头前方)的放大同样用此率。
+  double shrink = 1.0 - (s_tun_gap - 0.10) * (1.0 / 0.20) * 0.18;
+  if (shrink < 0.45) shrink = 0.45;
+  if (shrink > 0.92) shrink = 0.92;
+  double s = pow(shrink, zc);
   if (s <= 0.06 || s > 2.6)
     return NO;
   double W = (double)s_tun_surf_w, H = (double)s_tun_surf_h;
@@ -650,6 +658,10 @@ static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
   // 中心透视:卡片中心**恒在屏幕中心**, 只有尺寸随深度变 —— 嵌套框的
   // 公共中心即消失点。(旧公式的 (1-1/s) 项会把深处卡片往下推,
   // 消失点掉到屏幕外, 表现为"页在屏幕下侧消失"。)
+  // 中心透视(恒定):所有卡片同心嵌套, 公共中心 = 屏幕中心 = 消失点。
+  // "两片玻璃之间的距离"以**尺寸衰减率**表达: 每深一槽按 gap 缩小,
+  // 后页边框与前页边框之间的环形空隙 = 间距的视觉化身 —— gap 大 =
+  // 空隙宽(疏), gap 小 = 层层紧贴(密)。中心绝不做任何偏移。
   double cx = W * 0.5;
   double cy = H * 0.5;
   double a;
@@ -659,6 +671,14 @@ static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
       a = 0.0;
   } else {
     a = 1.0 - zc / (TUNNEL_FRONT + 0.4) * 0.72;
+    // 深处玻璃渐远渐淡: 淡出与缩小同一曲线(shrink^zc), 越远越小越淡,
+    // 到可见上限(6% 屏高)恰好趋近透明 —— 一条指数曲线管尺寸与透明度。
+    if (zc > 1.0) {
+      double fade = pow(shrink, zc - 1.0);
+      if (fade < 0.05)
+        fade = 0.05;
+      a *= fade;
+    }
   }
   if (a > 1.0)
     a = 1.0;
@@ -915,8 +935,9 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
   if (s_tun_surf_w <= 0 || s_tun_surf_h <= 0)
     return NO;
 
-  // 预热缓存: [前 2 页…, 当前页, 后 2 页…](页序排列, 见 export/pages.rs)
-  const int before = 2, after = 2;
+  // 预热缓存: [最旧…, prev1, cur, next1]("透视展示 cur 到最旧的所有玻璃";
+  // after 恒 1 = 目标页)。页多时受 TUNNEL_MAX_CARDS 与建卡预算保护。
+  const int before = 400, after = 1;
   double tc0 = [NSDate timeIntervalSinceReferenceDate];
   int n = glaspen2_preload_flip_pages(cur, going_next ? 1 : 0, before, after);
   double tc1 = [NSDate timeIntervalSinceReferenceDate];
@@ -925,16 +946,30 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
   if (n > TUNNEL_MAX_CARDS)
     n = TUNNEL_MAX_CARDS;
 
+  // 可见纵深由玻璃间距决定:淡出尽头(zc 处 alpha≈0.05)之外的页
+  // 画了也不可见, 不建卡 —— "透视展示 cur 到最旧"在可见意义上成立,
+  // 且库有几百页时不会为主线程塞进几百次软渲染。
+  double zc_visible_max = log(0.06) / log(s_tun_gap); // 缩到 6% 屏高即不可见
+  double tb0 = [NSDate timeIntervalSinceReferenceDate];
+  int built = 0;
+  // 缓存布局 [最旧…, prev1, cur, next1](after=1): cur 恒在倒数第二,
+  // 深度 = (n-2) - i —— cur 为 0, 越靠前(越旧)越深, next1 为 -1。
+  int cur_idx = n - 2;
   for (int i = 0; i < n; i++) {
     // 深度轴:旧页(prev)= 正(页列深处), 新页(next)= 负(镜头前方)。
-    // 回溯旧页 = 相机深入页列(cam↑), 去往新页 = 相机退出(cam↓)。
-    int depth = before - i;
+    int depth = cur_idx - i;
+    if ((double)depth > zc_visible_max)
+      continue; // 缓存从最旧(最深)开始: 超深页跳过, 浅页继续建
+    if ([NSDate timeIntervalSinceReferenceDate] - tb0 > 0.30)
+      break; // 建卡预算 300ms: 超时停下, 宁可少一层也不卡死
     s_tun_depth[i] = depth;
     if (!tunnel_make_card(i, i, depth == 0 ? cur : 0, depth == 0)) {
       tunnel_free_cards();
       return NO;
     }
+    built++;
   }
+  n = built;
   s_tun_cards = n;
   double tc2 = [NSDate timeIntervalSinceReferenceDate];
   NSLog(@"[flip] 时光隧道接管: %d 张卡片(cur=%ld → %ld, 方向=%@) 预载%.0fms "
