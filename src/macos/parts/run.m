@@ -573,23 +573,36 @@ static void tunnel_free_cards(void) {
 // (Time Machine 的层叠感) —— 从前页的顶边上方露出一条, 一眼看得出
 // "后面还有一页";卡片上下错开, 谁压谁一眼可辨(旧实现全部居中重叠,
 // 三页透明墨迹糊成一团, 完全看不出纵深 —— 这就是观感翻车的根因)。
+// 卡片摆放(含方向语义)。多米诺模型:页沿时间轴排开, 向后翻(更新的一页)
+// = 相机**向深处推进** —— 当前页飞越镜头边缘掠过, 目标页从深处迎面
+// 放大;向前翻(更旧的一页)= 相机**后退** —— 当前页远去缩小, 目标页
+// 从镜头后方罩下来。两个方向的消失点一上一下, 运动轨迹交叉 ——
+// 肉眼一看方向就分明, 不会"两个方向一个感觉"。
 static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
                          double *out_w, double *out_h, double *out_alpha) {
     if (zc < -TUNNEL_SPAN - 0.4 || zc > TUNNEL_FRONT + 0.4) return NO;
     double s = 1.0 / (1.0 + s_tun_k * zc);
-    if (s <= 0.06 || s > 2.5) return NO;
+    if (s <= 0.06 || s > 2.6) return NO;
     double W = (double)s_tun_surf_w, H = (double)s_tun_surf_h;
-    double w = W * s * 0.92;              // 卡纸比满屏略小, 看得出是一张纸
+    double w = W * s * 0.92;
     double h = H * s * 0.92;
-    // 向消失点(屏幕中上部)收拢:越深越小、越靠上
-    double cy = H * 0.5 + (H * 0.5) * (1.0 - s) * 0.62;
+    // 消失点:向后翻在屏幕中上(隧道向"未来"延伸), 向前翻在中下
+    double vpy = s_tun_back ? 0.34 : 0.66;
+    double cy = H * vpy + (H - H * vpy) * (1.0 - s) * (s < 1.0 ? 0.92 : 1.0);
+    // 飞越镜头的卡(s>1.1)额外向屏幕外滑(上/下随方向), 而不是原地放大:
+    // "掠过边缘"的方向感比"原地膨胀再消失"强得多
+    if (s > 1.1) {
+        double over = (s - 1.1) / 1.5; // 0→1 越过程度
+        double slide = H * 0.9 * over;
+        cy += s_tun_back ? slide : -slide;
+    }
     double cx = W * 0.5;
     double a;
     if (zc < 0.0) {
-        a = 1.0 + zc / TUNNEL_SPAN; // 飞过镜头时渐隐
+        a = 1.0 + zc / (TUNNEL_SPAN + 0.15); // 飞越时渐隐(比旧版慢, 掠过可见)
         if (a < 0.0) a = 0.0;
     } else {
-        a = 1.0 - zc / (TUNNEL_FRONT + 0.4) * 0.72; // 尽头先虚后实
+        a = 1.0 - zc / (TUNNEL_FRONT + 0.4) * 0.72;
     }
     if (a > 1.0) a = 1.0;
     *out_cx = cx;
