@@ -749,7 +749,7 @@ static void tunnel_frame(double p) {
   // 背景:深色磨砂玻璃(隧道的"洞")—— 让卡片的半透明玻璃有参照,
   // 同时遮住桌面, 层次/透视一眼可读。动效结束即恢复普通透明玻璃。
   cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-  cairo_set_source_rgba(cr, 0.10, 0.13, 0.18, 0.45); // 减淡: 玻璃叠加靠片数累积, 背景别抢
+  cairo_set_source_rgba(cr, 0, 0, 0, 0); // 全透明: 只留玻璃片与其叠加
   cairo_paint(cr);
   cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
@@ -768,6 +768,7 @@ static void tunnel_frame(double p) {
   }
   for (int i = 0; i < s_tun_cards; i++) {
     int slot = order[i];
+    if (fabs((double)s_tun_depth[slot]) > 1.0) continue; // ±2 及更远: 全透明
     double zc = (double)s_tun_depth[slot] - cam;
     double cx, cy, w, h, a;
     if (!tunnel_place(zc, &cx, &cy, &w, &h, &a))
