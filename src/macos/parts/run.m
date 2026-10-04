@@ -630,8 +630,13 @@ static void tunnel_draw_card(cairo_t *cr, int slot,
     cairo_set_source_rgba(cr, 0, 0, 0, 0.30 * alpha);
     cairo_rectangle(cr, card_x + w * 0.014, card_y - h * 0.014, w, h);
     cairo_fill(cr);
-    // 玻璃板底(半透明磨砂玻璃, 越深越沉)
-    cairo_set_source_rgba(cr, 0.84, 0.89, 0.95, 0.55 * alpha);
+    // 玻璃板底:不透明度按页距分档 —— cur(depth 0)= 纯透明玻璃(只留
+    // 极淡的板边), 邻页(±1)= 0.30, 次邻页(±2)= 0.55。
+    // 多片 OVER 叠加时 1-(1-a1)(1-a2)… 自然累积:中心区域几层一叠
+    // 就逐渐不透明(≈0.9), 透出"玻璃叠玻璃越叠越实"的物理观感。
+    double d_abs = fabs((double)s_tun_depth[slot]);
+    double glass_a = (d_abs < 0.5) ? 0.04 : (d_abs < 1.5) ? 0.30 : 0.55;
+    cairo_set_source_rgba(cr, 0.84, 0.89, 0.95, glass_a * alpha);
     cairo_rectangle(cr, card_x, card_y, w, h);
     cairo_fill(cr);
     // 快照(已磨砂)贴进玻璃板。磨砂玻璃本来就是糊的 → FAST 插值
@@ -754,7 +759,9 @@ static BOOL tunnel_make_card(int slot, int cache_slot, long screen_id, int is_cu
     } else {
         glaspen2_paint_preview_into_surface((void *)surf, cache_slot, card_scale,
                                             ox * 0.5, oy * 0.5, pscale, 1.0, 0,
-                                            fabs((double)s_tun_depth[slot]));
+                                            s_tun_depth[slot] == 0
+                                                ? -1.0  // cur 页:不磨砂, 保持透明玻璃
+                                                : fabs((double)s_tun_depth[slot]));
     }
     // 预缩:动画里这张卡最大就到"全屏×0.92"(tunnel_place), 与其在
     // 每帧里做全分辨率缩放合成(实测 30ms/帧), 不如建卡时一次性缩好。
