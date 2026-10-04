@@ -605,6 +605,14 @@ static double s_tun_dur = 0.38; // 短促: 隧道动效在感知内"一闪而过
 // 嵌套, 消失点恒在屏幕中心;层与层的"空隙宽度"由本值决定。
 static double s_tun_gap = 0.92; // 0.92 → 同屏约 34 层(0.78≈11) // 两片玻璃的距离 = 相邻玻璃尺寸比(0.60-0.90); 小=密, 大=疏
 static double s_tun_k = 0.45;
+// **单片玻璃的浓度**(动效期间唯一的浓度旋钮, 面/边/侧面/投影都由它派生)。
+// n 片交叠的合成浓度 = 1-∏(1-a_i)(a_i 再乘各片的页距淡出):
+// p=0.08 时 单片≈0.00-0.05(几乎看不出)、2 片 0.045、3 片 0.12、
+// **4 片 0.17、5 片 0.195(肉眼明显)** —— 验收标准就是这一条:
+// 单片不该"看得出不透明", 要 4 片叠起来才显出不透明。
+// (实测校验: p=0.10 时最内 4-5 片区 = 0.235, 与模型一致。)
+// GLASPEN2_FLIP_GLASS 可覆盖(评估用)。
+static double s_tun_pane_a = 0.08;
 static void (^s_tun_prepare)(void);
 static void (^s_tun_commit)(void);
 static dispatch_source_t s_tun_timer;
@@ -705,33 +713,31 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   if (nw <= 0 || nh <= 0)
     return;
 
-  // 磨砂玻璃板:页快照已被 Rust 侧磨砂化(冷灰蓝底 + 与背景混合),
-  // 这里用 source-atop 把它合成到整块玻璃上 —— 玻璃半透明, 能透出
-  // 下一层卡片/桌面, 但因磨砂底已不透明, 层次关系清晰可读。
+  // 单片玻璃的全部浓度都由**一个旋钮** s_tun_pane_a 派生: 面/边/侧面/
+  // 投影按固定比例取值, 改一处即整片玻璃一起变淡。
+  // 交叠合成 = 1-∏(1-a_i) (a_i 含各片的页距淡出): 单片几乎看不出,
+  // 4 片叠起来才明显 —— "几片叠起来才显出不透明"是唯一的浓度来源。
+  double pa = s_tun_pane_a;
   // 快照贴满正面(无留白): 玻璃平面边缘 = 正面矩形, 拟物侧面与它齐平。
   double pad = 0.0;
   double card_x = cx - w / 2.0, card_y = cy - h / 2.0;
 
   cairo_save(cr);
   // 投影:向**左下**偏移(背离右/上拟物侧面的挤出方向)—— 否则暗带会
-  // 从蓝色侧面外侧探出, 看起来像厚度和玻璃面错位
-  cairo_set_source_rgba(cr, 0, 0, 0, 0.30 * alpha);
-  cairo_rectangle(cr, card_x - w * 0.010, card_y + h * 0.010, w, h);
-  cairo_fill(cr);
-  // 玻璃板底:不透明度按页距分档 —— cur(depth 0)= 纯透明玻璃(只留
-  // 极淡的板边), 邻页(±1)= 0.30, 次邻页(±2)= 0.55。
-  // 多片 OVER 叠加时 1-(1-a1)(1-a2)… 自然累积:中心区域几层一叠
-  // 就逐渐不透明(≈0.9), 透出"玻璃叠玻璃越叠越实"的物理观感。
-  // 单片 99% 透光(近全透): 叠 3 片合成 2.97%、6 片 5.85% —— 衰减从
-  // 第 3 片起进入可感知区(阈 ≈2%), 配合拟物玻璃框的边缘线索,
-  // 中心的"叠得越多数沉"仍然可辨。
-  static double s_glass_a1 = 0.01;
-  static double s_glass_a2 = 0.01;
-  double d_abs = fabs((double)s_tun_depth[slot]);
-  double glass_a = (d_abs < 0.5)   ? 0.04
-                   : (d_abs < 1.5) ? s_glass_a1
-                                   : s_glass_a2;
-  cairo_set_source_rgba(cr, 0.80, 0.80, 0.80, glass_a * alpha); // 中性灰: 蓝只留在拟物侧面
+  // 从蓝色侧面外侧探出, 看起来像厚度和玻璃面错位。
+  // 只画**露在正面之外的那条 L 带**(左带 + 下带), 正面内部不落影:
+  // 早先是整块偏移矩形直接 fill, 而正面玻璃近乎全透(面 a≈0.01),
+  // 0.30 的黑影就透满整片 → 单片看上去是一整块不透明板(用户反馈的
+  // "单片玻璃不透明度太高")。挖空后每片只贡献一条极淡的边影。
+  {
+    double dx = w * 0.010, dy = h * 0.010;
+    cairo_set_source_rgba(cr, 0, 0, 0, pa * 2.2 * alpha);
+    cairo_rectangle(cr, card_x - dx, card_y + dy, dx, h); // 左带
+    cairo_rectangle(cr, card_x, card_y + h, w, dy);       // 下带
+    cairo_fill(cr);
+  }
+  // 玻璃正面(面): 极淡的中性灰 —— 单片几乎看不出, 靠多片 OVER 累积
+  cairo_set_source_rgba(cr, 0.80, 0.80, 0.80, pa * alpha);
   cairo_rectangle(cr, card_x, card_y, w, h);
   cairo_fill(cr);
   // 快照(已磨砂)贴进玻璃板。磨砂玻璃本来就是糊的 → FAST 插值
@@ -751,9 +757,15 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   // 透视不变: 正面仍同心嵌套消失于屏幕中心, 侧面随正面同缩。
   cairo_save(cr);
   double T = w * 0.006; // 板厚(挤出量, 随卡片宽等比)—— 原厚度的 1/3
+  // 侧面/棱线/正面的边: 全部由 pa 派生(结构性边缘, 给足倍数让单片
+  // 仍能看清"这是一片玻璃", 但整体随 pa 一起变淡)。
+  double a_side = pa * 4.2;
+  double a_top = pa * 4.6;
+  double a_rim = pa * 5.2;
+  double a_edge = pa * 2.2;
 
   // 1) 右侧面(挤出): 平行四边形 card 右边 → 向右上偏移 T
-  cairo_set_source_rgba(cr, 0.36, 0.55, 0.72, 0.85 * alpha); // 蓝(受光侧)
+  cairo_set_source_rgba(cr, 0.36, 0.55, 0.72, a_side * alpha); // 蓝(受光侧)
   cairo_move_to(cr, card_x + w, card_y);
   cairo_line_to(cr, card_x + w + T, card_y - T);
   cairo_line_to(cr, card_x + w + T, card_y + h - T);
@@ -762,7 +774,7 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   cairo_fill(cr);
 
   // 2) 顶侧面(挤出): 顶边 → 向右上偏移 T, 比右侧亮(顶面受光)
-  cairo_set_source_rgba(cr, 0.55, 0.72, 0.86, 0.85 * alpha);
+  cairo_set_source_rgba(cr, 0.55, 0.72, 0.86, a_top * alpha);
   cairo_move_to(cr, card_x, card_y);
   cairo_line_to(cr, card_x + T, card_y - T);
   cairo_line_to(cr, card_x + w + T, card_y - T);
@@ -771,7 +783,7 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   cairo_fill(cr);
 
   // 3) 侧面的棱线: 右/上侧面的外缘描一道更亮的线(截面高光)
-  cairo_set_source_rgba(cr, 0.78, 0.88, 0.96, 0.9 * alpha);
+  cairo_set_source_rgba(cr, 0.78, 0.88, 0.96, a_rim * alpha);
   cairo_set_line_width(cr, MAX(1.0, w * 0.0008));
   cairo_move_to(cr, card_x + T, card_y - T);
   cairo_line_to(cr, card_x + w + T, card_y - T);
@@ -780,7 +792,7 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
 
   // 4) 正面: 无色透明 —— 只描一圈极淡的中性边(玻璃正面的存在感,
   //    不带任何蓝色; 深度感全部交给右/上侧面)
-  cairo_set_source_rgba(cr, 0.95, 0.95, 0.95, 0.30 * alpha);
+  cairo_set_source_rgba(cr, 0.95, 0.95, 0.95, a_edge * alpha);
   cairo_set_line_width(cr, MAX(1.0, w * 0.0008));
   cairo_rectangle(cr, card_x, card_y, w, h);
   cairo_stroke(cr);
@@ -822,13 +834,17 @@ static void tunnel_frame(double p) {
   }
   for (int i = 0; i < s_tun_cards; i++) {
     int slot = order[i];
-    if (fabs((double)s_tun_depth[slot]) > 1.0) continue; // ±2 及更远: 全透明
     double zc = (double)s_tun_depth[slot] - cam;
     double cx, cy, w, h, a;
     if (!tunnel_place(zc, &cx, &cy, &w, &h, &a))
       continue;
-    // 卡纸满屏化:当前页深度为 0 时正好铺满(落定无缝), 深处的页
-    // 按透视缩小并上移 —— 露出的边就是层叠的"阶梯"。
+    // 每层都参与交叠(浓度靠 1-(1-a)^n 累积, 4 片才肉眼可见)。
+    // 浓度不足 0.4% 的层画了也看不出 —— 跳过, 省掉几十次小面积合成。
+    // 可见纵深已由 tunnel_place 的 zc 窗口(±2.4)天然封顶。
+    if (a * s_tun_pane_a < 0.004)
+      continue;
+    // 玻璃满屏化:当前页深度为 0 时正好铺满(落定无缝), 深处的页
+    // 按透视缩小 —— 同心嵌套的环形区域就是"几片玻璃叠在一起"的读法。
     tunnel_draw_card(cr, slot, cx, cy, w, h, a);
   }
   cairo_destroy(cr);
@@ -1030,6 +1046,13 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
     double v = atof(vk);
     if (v > 0.05 && v < 3.0)
       s_tun_k = v;
+  }
+  // 单片玻璃浓度(评估用): 0 = 全透(只剩墨迹与棱线), 0.3 = 单片就明显
+  const char *vga = getenv("GLASPEN2_FLIP_GLASS");
+  if (vga) {
+    double v = atof(vga);
+    if (v >= 0.0 && v <= 0.9)
+      s_tun_pane_a = v;
   }
 
   s_tun_t0 = tunnel_now();
