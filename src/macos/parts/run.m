@@ -707,14 +707,15 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   // 磨砂玻璃板:页快照已被 Rust 侧磨砂化(冷灰蓝底 + 与背景混合),
   // 这里用 source-atop 把它合成到整块玻璃上 —— 玻璃半透明, 能透出
   // 下一层卡片/桌面, 但因磨砂底已不透明, 层次关系清晰可读。
-  // 快照四周各留 0.8% 玻璃边(视觉上就是板的留白)。
-  double pad = 0.008;
+  // 快照贴满正面(无留白): 玻璃平面边缘 = 正面矩形, 拟物侧面与它齐平。
+  double pad = 0.0;
   double card_x = cx - w / 2.0, card_y = cy - h / 2.0;
 
   cairo_save(cr);
-  // 下缘投影(玻璃板压玻璃板的层次感)
+  // 投影:向**左下**偏移(背离右/上拟物侧面的挤出方向)—— 否则暗带会
+  // 从蓝色侧面外侧探出, 看起来像厚度和玻璃面错位
   cairo_set_source_rgba(cr, 0, 0, 0, 0.30 * alpha);
-  cairo_rectangle(cr, card_x + w * 0.014, card_y - h * 0.014, w, h);
+  cairo_rectangle(cr, card_x - w * 0.010, card_y + h * 0.010, w, h);
   cairo_fill(cr);
   // 玻璃板底:不透明度按页距分档 —— cur(depth 0)= 纯透明玻璃(只留
   // 极淡的板边), 邻页(±1)= 0.30, 次邻页(±2)= 0.55。
