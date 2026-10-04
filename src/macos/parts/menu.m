@@ -595,6 +595,7 @@ char *glaspen2_macos_settings_json(void) {
             @"gridFollowStrokes": @(g_grid_follow_strokes),
             @"glassFollowStrokes": @(g_glass_follow_strokes),
             @"softShadow": @(g_soft_shadow),
+            @"invertInk": @(g_invert_ink),
             @"pressureMonitor": @(g_pressure_monitor),
             @"outline": @(g_outline_enabled),
             @"infiniteCanvas": @(g_infinite_canvas),
@@ -712,6 +713,10 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             glaspen2_save_bool_setting("soft_shadow", g_soft_shadow ? 1 : 0);
             glaspen2_set_soft_shadow(g_soft_shadow ? 1 : 0);
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
+        } else if ([key isEqualToString:@"invertInk"]) {
+            g_invert_ink = [value boolValue];
+            glaspen2_save_bool_setting("invert_ink", g_invert_ink ? 1 : 0);
+            invert_ink_apply(g_invert_ink ? 1 : 0);
         } else if ([key isEqualToString:@"outline"]) {
             apply_outline([value boolValue]);
         } else if ([key isEqualToString:@"infiniteCanvas"]) {

@@ -45,6 +45,11 @@ pub fn run() {
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0)
             != 0;
+        let invert_ink = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("invertInk"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
         let soft_shadow = glaspen_core::runtime()
             .block_on(glaspen_core::db::load_setting("softShadow"))
             .and_then(|v| v.parse::<i32>().ok())
@@ -142,6 +147,7 @@ pub fn run() {
             grid_follow_strokes,
             glass_follow_strokes,
             soft_shadow,
+            invert_ink,
             pressure_monitor,
             chat_integration,
         };

@@ -51,6 +51,51 @@ pub struct CairoRenderer {
 /// 调用方需保证同一实例不同时被多线程写入。
 unsafe impl Send for CairoRenderer {}
 
+/// cairo pattern(surface 来源)。反色墨迹用: 把捕获的背景反相位图作为
+/// 画笔 source, 笔迹逐像素取"下方背景的反色"。surface 由调用方保活。
+pub struct CairoPattern {
+    ptr: *mut std::ffi::c_void,
+}
+
+impl CairoPattern {
+    pub fn from_surface(surface: *mut std::ffi::c_void) -> Option<Self> {
+        if surface.is_null() {
+            return None;
+        }
+        unsafe {
+            let lib = load_library()?;
+            let f: libloading::Symbol<
+                unsafe extern "C" fn(*mut std::ffi::c_void) -> *mut std::ffi::c_void,
+            > = lib.get(b"cairo_pattern_create_for_surface").ok()?;
+            let ptr = f(surface);
+            if ptr.is_null() {
+                return None;
+            }
+            Some(Self { ptr })
+        }
+    }
+
+    pub fn ptr(&self) -> *mut std::ffi::c_void {
+        self.ptr
+    }
+}
+
+impl Drop for CairoPattern {
+    fn drop(&mut self) {
+        unsafe {
+            if let Some(lib) = load_library()
+                && let Ok(f) =
+                    lib.get::<unsafe extern "C" fn(*mut std::ffi::c_void)>(b"cairo_pattern_destroy")
+            {
+                f(self.ptr);
+            }
+        }
+    }
+}
+
+// pattern 无跨线程共享(每次渲染现建), 与 CairoRenderer 同约束
+unsafe impl Send for CairoPattern {}
+
 impl CairoRenderer {
     /// 加载 cairo DLL 并绑定到外部像素缓冲(失败返回 None,调用方回退自绘)
     pub fn load(bits: *mut u8, w: i32, h: i32) -> Option<Self> {
@@ -395,7 +440,54 @@ impl CairoRenderer {
 
     /// 画一条抗锯齿线段(圆头),颜色为 (R,G,B) 0..255
     pub fn stroke_line(&self, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, color: (u8, u8, u8)) {
-        self.stroke_line_alpha(x0, y0, x1, y1, width, color, 1.0);
+        self.stroke_line_opt(x0, y0, x1, y1, width, Some(color));
+    }
+
+    /// color=None 时沿用当前 source(反色模式: pattern 已设好, 逐段不能
+    /// 被 stroke_line 内部的 set_source_rgba 覆盖)。
+    pub fn stroke_line_opt(
+        &self,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        width: f32,
+        color: Option<(u8, u8, u8)>,
+    ) {
+        unsafe {
+            if let Some(color) = color {
+                (self.set_source_rgba)(
+                    self.cr,
+                    color.0 as f64 / 255.0,
+                    color.1 as f64 / 255.0,
+                    color.2 as f64 / 255.0,
+                    1.0,
+                );
+            }
+            (self.set_line_width)(self.cr, width.max(0.5) as f64);
+            (self.move_to)(self.cr, x0 as f64, y0 as f64);
+            (self.line_to)(self.cr, x1 as f64, y1 as f64);
+            (self.stroke)(self.cr);
+        }
+    }
+
+    /// 用当前 source 画圆点/线段(反色 pattern 墨迹)
+    pub fn stroke_line_src(&self, x0: f32, y0: f32, x1: f32, y1: f32, width: f32) {
+        self.stroke_line_opt(x0, y0, x1, y1, width, None);
+    }
+
+    /// 把 source 设为 pattern(反色墨迹)
+    pub fn set_source_pattern(&self, p: &CairoPattern) {
+        unsafe {
+            if let Some(lib) = load_library()
+                && let Ok(f) = lib
+                    .get::<unsafe extern "C" fn(*mut std::ffi::c_void, *mut std::ffi::c_void)>(
+                        b"cairo_set_source",
+                    )
+            {
+                f(self.cr, p.ptr());
+            }
+        }
     }
 
     /// 画一条带透明度的抗锯齿线段(软阴影层用: 逐 spread 递减 alpha 叠加)
@@ -448,14 +540,21 @@ impl CairoRenderer {
 
     /// 填充实心圆(笔迹端点圆帽)
     pub fn fill_circle(&self, cx: f32, cy: f32, radius: f32, color: (u8, u8, u8)) {
+        self.fill_circle_opt(cx, cy, radius, Some(color));
+    }
+
+    /// color=None 沿用当前 source(反色 pattern 墨迹)
+    pub fn fill_circle_opt(&self, cx: f32, cy: f32, radius: f32, color: Option<(u8, u8, u8)>) {
         unsafe {
-            (self.set_source_rgba)(
-                self.cr,
-                color.0 as f64 / 255.0,
-                color.1 as f64 / 255.0,
-                color.2 as f64 / 255.0,
-                1.0,
-            );
+            if let Some(color) = color {
+                (self.set_source_rgba)(
+                    self.cr,
+                    color.0 as f64 / 255.0,
+                    color.1 as f64 / 255.0,
+                    color.2 as f64 / 255.0,
+                    1.0,
+                );
+            }
             (self.new_path)(self.cr);
             (self.arc)(
                 self.cr,

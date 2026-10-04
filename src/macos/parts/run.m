@@ -2489,6 +2489,8 @@ void glaspen2_run(void) {
     }
     g_soft_shadow = glaspen2_load_bool_setting("soft_shadow") != 0;
     glaspen2_set_soft_shadow(g_soft_shadow ? 1 : 0);
+    g_invert_ink = glaspen2_load_bool_setting("invert_ink") != 0;
+    if (g_invert_ink) invert_ink_apply(1);
     {
       char *vfe = glaspen2_load_string_setting("flip_effect");
       if (vfe) {

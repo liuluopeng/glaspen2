@@ -121,6 +121,10 @@ extern int glaspen2_ink_draft_stop(void);
 extern const char *glaspen2_ink_draft_last_error(void);
 extern void glaspen2_set_stroke_outline(int enabled);
 extern void glaspen2_set_soft_shadow(int enabled);
+extern void glaspen2_set_stroke_invert(int enabled);      // 反色突出开关
+extern void glaspen2_set_invert_background(void *surface); // 反相背景 cairo surface
+extern int  glaspen2_has_strokes(void);                    // 捕获循环空转判断
+void invert_ink_apply(int on);                             // 定义在 parts/panel.m
 extern unsigned char* glaspen2_render_canvas_overview(double bx, double by, double bw, double bh, int out_w, int out_h, int *out_len);
 extern void glaspen2_set_view_transform(double pan_x, double pan_y, double zoom);
 // 画布存储切换 + 无限画布(独立存储,全局仅一个画布)
@@ -408,6 +412,9 @@ static BOOL g_outline_enabled = NO;
 // 软阴影(独立于描边可叠加): 笔迹下方三档加宽递减 alpha 的黑影,
 // 同色背景上靠亮度分离保底可见。Controlled by the Flutter settings panel.
 static BOOL g_soft_shadow = NO;
+// 反色突出(实验): 墨迹逐像素取背景反色。背景由 SCScreenshotManager 持续
+// 捕获(排除自身窗口)并反相, 经 cairo pattern 作为墨迹 source。
+static BOOL g_invert_ink = NO;
 // 描边比笔迹宽出的半径(逻辑 px),与 Rust OUTLINE_PAD 保持一致。
 static const double kOutlinePad = 1.0;
 

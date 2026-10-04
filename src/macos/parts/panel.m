@@ -174,10 +174,20 @@ static void finish_active_stroke(void) {
     g_raw_path_len = 0;
 }
 
+// ── 反色突出: 状态与前置声明(定义在下方"反色突出"区) ──
+static unsigned char *s_inv_buf = NULL;     // BGRA(premul) = cairo ARGB32 布局
+static CGContextRef s_inv_ctx = NULL;       // 包住 s_inv_buf(32Little+ARGB premul first)
+static cairo_surface_t *s_inv_surf = NULL;  // cairo 包装同一 buf
+static int s_inv_w = 0, s_inv_h = 0;
+static BOOL s_inv_busy = NO;                // 仅主线程访问
+static SCContentFilter *s_inv_filter = nil; // 缓存(排除自身窗口; 分辨率变化时置空重建)
+static void invert_capture_tick(void);
+
 // Handle display configuration changes (resolution, arrangement, etc.)
 // 分辨率变化的实际处理(经 2.5s 防抖后调用, 分辨率已稳定)。
 static void display_change_apply(int new_w, int new_h) {
     NSLog(@"[glaspen2] display changed: %dx%d -> %dx%d", g_screen_w, g_screen_h, new_w, new_h);
+    s_inv_filter = nil; // 反色捕获的 display/filter 缓存失效, 下一轮重建
     g_screen_w = new_w;
     g_screen_h = new_h;
     // Only start a new page when the current one has strokes (no silent page switch).
@@ -235,6 +245,148 @@ static void on_display_changed(void) {
         s_display_debounce,
         dispatch_time(DISPATCH_TIME_NOW, (int64_t)2.5 * NSEC_PER_SEC),
         DISPATCH_TIME_FOREVER, (int64_t)0.2 * NSEC_PER_SEC);
+}
+
+// ── 反色突出(实验) ──
+// SCScreenshotManager 持续捕获"自身窗口以下的屏幕"(排除本 app 全部窗口,
+// 防反馈), 反相 RGB 后经 cairo pattern 作为墨迹 source —— 每个墨迹像素
+// 显示的是其正下方背景的反色, 视频等动态背景以 ~15fps 追踪(整笔重绘)。
+// 注意: 捕获不含磨砂玻璃效果, 反色开启时建议关闭/调低玻璃。
+static void invert_tick_schedule(double delay) {
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{ invert_capture_tick(); });
+}
+
+static void invert_cache_teardown(void) {
+    glaspen2_set_invert_background(NULL); // 先摘 Rust 侧引用
+    if (s_inv_surf) {
+        cairo_surface_destroy(s_inv_surf);
+        s_inv_surf = NULL;
+    }
+    if (s_inv_ctx) {
+        CGContextRelease(s_inv_ctx);
+        s_inv_ctx = NULL;
+    }
+    if (s_inv_buf) {
+        free(s_inv_buf);
+        s_inv_buf = NULL;
+    }
+    s_inv_w = s_inv_h = 0;
+}
+
+void invert_ink_apply(int on) {
+    if (on) {
+        glaspen2_set_stroke_invert(1);
+        invert_tick_schedule(0.05); // 快速首轮捕获
+    } else {
+        invert_cache_teardown();
+        glaspen2_set_stroke_invert(0);
+        rebuild_surface_from_strokes(); // 墨迹回笔色
+        flush_to_layer();
+    }
+}
+
+static void invert_capture_tick(void) {
+    if (!g_invert_ink || !g_surface || s_tun_active || s_inv_busy) return;
+    if (!glaspen2_has_strokes() && !g_stroke_active) {
+        invert_tick_schedule(0.5); // 无笔迹: 慢轮询
+        return;
+    }
+    cairo_surface_flush(g_surface);
+    int dw = cairo_image_surface_get_width(g_surface);
+    int dh = cairo_image_surface_get_height(g_surface);
+    if (dw <= 0 || dh <= 0) return;
+    if (!s_inv_buf || s_inv_w != dw || s_inv_h != dh) {
+        invert_cache_teardown();
+        s_inv_buf = malloc((size_t)dw * dh * 4);
+        if (!s_inv_buf) return;
+        memset(s_inv_buf, 0, (size_t)dw * dh * 4);
+        s_inv_ctx = CGBitmapContextCreate(
+            s_inv_buf, dw, dh, 8, dw * 4,
+            CGColorSpaceCreateWithName(kCGColorSpaceSRGB),
+            kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst);
+        if (!s_inv_ctx) {
+            invert_cache_teardown();
+            return;
+        }
+        s_inv_surf = cairo_image_surface_create_for_data(
+            s_inv_buf, CAIRO_FORMAT_ARGB32, dw, dh, dw * 4);
+        if (!s_inv_surf) {
+            invert_cache_teardown();
+            return;
+        }
+        s_inv_w = dw;
+        s_inv_h = dh;
+        glaspen2_set_invert_background(s_inv_surf);
+        glaspen2_set_stroke_invert(1);
+    }
+    s_inv_busy = YES;
+    if (!s_inv_filter) {
+        // 首次: 缓存 display + 排除本 app 全部窗口的 filter
+        [SCShareableContent getShareableContentWithCompletionHandler:^(
+            SCShareableContent *content, NSError *error) {
+          dispatch_async(dispatch_get_main_queue(), ^{
+            s_inv_busy = NO;
+            if (error || !content.displays.count || !g_invert_ink) {
+              invert_tick_schedule(1.0);
+              return;
+            }
+            NSMutableArray<SCWindow *> *excl = [NSMutableArray array];
+            NSString *mine = [[NSBundle mainBundle] bundleIdentifier];
+            for (SCWindow *w in content.windows) {
+              if (w.owningApplication.bundleIdentifier &&
+                  [w.owningApplication.bundleIdentifier isEqualToString:mine])
+                [excl addObject:w];
+            }
+            s_inv_filter = [[SCContentFilter alloc]
+                initWithDisplay:content.displays.firstObject
+               excludingWindows:excl];
+            invert_capture_tick(); // 立即重试(这次有 filter)
+          });
+        }];
+        return;
+    }
+    SCStreamConfiguration *config = [SCStreamConfiguration new];
+    config.width = (size_t)s_inv_w;
+    config.height = (size_t)s_inv_h;
+    config.showsCursor = NO;
+    [SCScreenshotManager captureImageWithFilter:s_inv_filter
+                                   configuration:config
+                               completionHandler:^(CGImageRef image, NSError *error) {
+          dispatch_async(dispatch_get_main_queue(), ^{
+            s_inv_busy = NO;
+            if (error || !image || !g_invert_ink || !s_inv_ctx) {
+              invert_tick_schedule(1.0);
+              return;
+            }
+            CGRect rect = CGRectMake(0, 0, (CGFloat)s_inv_w, (CGFloat)s_inv_h);
+            CGContextClearRect(s_inv_ctx, rect);
+            CGContextDrawImage(s_inv_ctx, rect, image);
+            // 反相 RGB(每像素低三字节 = B,G,R; alpha FF 不动)
+            UInt32 *p = (UInt32 *)s_inv_buf;
+            size_t n = (size_t)s_inv_w * (size_t)s_inv_h;
+            for (size_t i = 0; i < n; i++) p[i] ^= 0x00FFFFFFU;
+            cairo_surface_mark_dirty(s_inv_surf);
+            rebuild_surface_from_strokes(); // 整笔以新背景重绘(含 pattern)
+            flush_to_layer();
+            invert_tick_schedule(1.0 / 15.0); // ~15fps 追踪
+          });
+        }];
+}
+
+// 反色模式给 cr 挂背景 pattern(cr 有 g_scale 缩放, pattern 矩阵补偿);
+// 返回需 cairo_pattern_destroy 的 pattern, NULL = 用笔色。
+static cairo_pattern_t *invert_ink_source(cairo_t *cr) {
+    if (!g_invert_ink || !s_inv_surf) return NULL;
+    cairo_pattern_t *pat = cairo_pattern_create_for_surface(s_inv_surf);
+    if (!pat) return NULL;
+    cairo_matrix_t m;
+    double sc = (g_scale > 0.0) ? g_scale : 1.0;
+    cairo_matrix_init_scale(&m, 1.0 / sc, 1.0 / sc);
+    cairo_pattern_set_matrix(pat, &m);
+    cairo_set_source(cr, pat);
+    return pat;
 }
 
 static void pen_draw(double x, double y, double width) {
@@ -295,9 +447,11 @@ static void raw_draw_dot(double x, double y, double width) {
         cairo_fill(cr);
     }
 
-    cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
+    cairo_pattern_t *ipat = invert_ink_source(cr);
+    if (!ipat) cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
     cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
     cairo_fill(cr);
+    if (ipat) cairo_pattern_destroy(ipat);
     if (!g_active_cr) cairo_destroy(cr);
     double pad = width * 0.5 + 1.5 + (g_soft_shadow ? 5.0 : 0.0); // AA+shadow
     dirty_include_surface_point(x, y, pad);
@@ -359,7 +513,8 @@ static void raw_draw_segment(double x, double y, double width) {
         cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
     }
 
-    cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
+    cairo_pattern_t *ipat = invert_ink_source(cr);
+    if (!ipat) cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
     cairo_set_line_width(cr, width);
     if (g_raw_has_last) {
         cairo_move_to(cr, g_raw_last_x, g_raw_last_y);
@@ -369,6 +524,7 @@ static void raw_draw_segment(double x, double y, double width) {
         cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
         cairo_fill(cr);
     }
+    if (ipat) cairo_pattern_destroy(ipat);
 
     // 接缝重画: 描边带画在了已干的第 i-1 段墨迹边缘上(弯道内侧尤甚),
     // 墨迹不透明、重画幂等 —— 整段重画第 i-1 段墨迹, 接缝恢复

@@ -196,6 +196,8 @@ pub struct Settings {
     pub glass_follow_strokes: bool,
     // 软阴影(独立于描边可叠加): 笔迹下方柔和黑影, 同色背景保底可见
     pub soft_shadow: bool,
+    // 反色突出(实验): 墨迹逐像素取背景反色(macOS; 背景由 SCK 持续捕获)
+    pub invert_ink: bool,
     pub pressure_monitor: bool,
     pub outline: bool,
     pub infinite_canvas: bool,
@@ -248,6 +250,7 @@ impl Settings {
             grid_follow_strokes: b("gridFollowStrokes"),
             glass_follow_strokes: b("glassFollowStrokes"),
             soft_shadow: b("softShadow"),
+            invert_ink: b("invertInk"),
             pressure_monitor: b("pressureMonitor"),
             outline: b("outline"),
             infinite_canvas: b("infiniteCanvas"),

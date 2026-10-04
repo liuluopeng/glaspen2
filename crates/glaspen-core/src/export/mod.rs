@@ -165,6 +165,32 @@ pub extern "C" fn glaspen2_set_soft_shadow(enabled: c_int) {
     STROKE_SHADOW.store(enabled != 0, std::sync::atomic::Ordering::SeqCst);
 }
 
+/// 反色突出(实验): 墨迹主体以捕获的背景反相位图为 source, 逐像素取
+/// "下方背景的反色"。背景位图由 ObjC 侧经 SCScreenshotManager 持续刷新
+/// (排除自身窗口), 以 cairo image surface 指针传入。
+static STROKE_INVERT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static INVERT_BG_SURFACE: std::sync::atomic::AtomicPtr<std::ffi::c_void> =
+    std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_set_stroke_invert(enabled: c_int) {
+    STROKE_INVERT.store(enabled != 0, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// 传入反色背景的 cairo image surface(与 g_surface 同尺寸同坐标, 1:1);
+/// None 传空指针。ObjC 侧保活该 surface, 清除前必须先置空这边。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_set_invert_background(surface: *mut std::ffi::c_void) {
+    INVERT_BG_SURFACE.store(surface, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// 当前是否有笔迹(反色捕获循环的空转判断用)
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_has_strokes() -> c_int {
+    let n = STROKES.lock().map(|s| s.len()).unwrap_or(0);
+    (n > 0) as c_int
+}
+
 // ── 无限画布:视口变换 ──
 // 视图 = (画布坐标 − pan) × zoom。笔迹以画布坐标存储(可为负/超界),
 // 渲染时减 pan 乘 zoom。zoom ∈ (0,1],上限 100% 防蚂蚁大小涂鸦。
@@ -302,6 +328,13 @@ fn draw_rebuild_impl(
     let pan_x_eff = pan_x - page_ox / (zoom * page_scale);
     let pan_y_eff = pan_y - page_oy / (zoom * page_scale);
     let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
+    let invert = if STROKE_INVERT.load(std::sync::atomic::Ordering::SeqCst) {
+        crate::cairo_dl::CairoPattern::from_surface(
+            INVERT_BG_SURFACE.load(std::sync::atomic::Ordering::SeqCst),
+        )
+    } else {
+        None
+    };
     let strokes = STROKES.lock().unwrap();
 
     // 主页笔迹
@@ -316,6 +349,7 @@ fn draw_rebuild_impl(
         STROKE_SHADOW.load(std::sync::atomic::Ordering::SeqCst),
         outline,
         1.0,
+        invert.as_ref(),
     );
 
     // 活页本跨页显示:相邻两页的笔迹画在本页上下(视口滑出页界时可见)。
@@ -361,6 +395,7 @@ fn draw_rebuild_impl(
                 STROKE_SHADOW.load(std::sync::atomic::Ordering::SeqCst),
                 outline,
                 1.0,
+                invert.as_ref(),
             );
         }
         // 页号跟随:各页区域顶部标注页号(滑动跨页时知道自己在哪)
@@ -511,12 +546,14 @@ pub(crate) fn paint_strokes_into(
     shadow: bool,
     outline: bool,
     alpha: f64,
+    invert: Option<&crate::cairo_dl::CairoPattern>,
 ) {
     let alpha = alpha.clamp(0.0, 1.0);
     if alpha <= 0.0 {
         return;
     }
     // 整体不透明度 ≠ 1: 走软件合成(独立缓冲 + blit), 保证渐显/渐隐均匀。
+    // (软路径不支持 pattern source, 反色在渐显帧回落笔色)
     if alpha < 1.0 {
         paint_strokes_soft(
             r, strokes, pan_x, pan_y, zoom, scale, y_shift, shadow, outline, alpha,
@@ -560,6 +597,11 @@ pub(crate) fn paint_strokes_into(
             (s.g.clamp(0.0, 1.0) * 255.0) as u8,
             (s.b.clamp(0.0, 1.0) * 255.0) as u8,
         );
+        // 反色模式: 墨迹主体用 pattern source(描边/阴影仍是实体色),
+        // 描边层的 stroke_line 会重设 source, 故每笔在墨迹前重新挂上。
+        if let Some(p) = invert {
+            r.set_source_pattern(p);
+        }
         // 描边层:黑白相间 1px 虚线(marching ants),先画(垫在笔迹之下)。
         // 黑偶相位、白奇相位各描一遍,相位按累计弧长连续(每次 stroke()
         // 都会重置虚线相位,逐段用 set_dash 拨回去);平头避免 1px 虚段
@@ -593,21 +635,21 @@ pub(crate) fn paint_strokes_into(
             let (x, y, w, _t) = pts[i];
             if i == 0 {
                 // 起点实心圆点(圆帽)
-                r.fill_circle(
+                r.fill_circle_opt(
                     ((x - pan_x) * zoom * scale) as f32,
                     ((y + y_shift - pan_y) * zoom * scale) as f32,
                     (w * 0.5 * zoom * scale) as f32,
-                    color,
+                    invert.is_none().then_some(color),
                 );
             } else {
                 let (px, py, _pw, _pt) = pts[i - 1];
-                r.stroke_line(
+                r.stroke_line_opt(
                     ((px - pan_x) * zoom * scale) as f32,
                     ((py + y_shift - pan_y) * zoom * scale) as f32,
                     ((x - pan_x) * zoom * scale) as f32,
                     ((y + y_shift - pan_y) * zoom * scale) as f32,
                     (w * zoom * scale) as f32,
-                    color,
+                    invert.is_none().then_some(color),
                 );
             }
         }

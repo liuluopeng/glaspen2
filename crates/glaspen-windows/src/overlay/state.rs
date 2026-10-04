@@ -20,6 +20,8 @@ pub struct DrawState {
     pub glass_follow_strokes: bool,
     /// 软阴影(独立于描边可叠加):笔迹下方柔和黑影,同色背景保底可见
     pub soft_shadow: bool,
+    /// 反色突出(实验):设置同键持久化,覆盖层行为 macOS v1 独有,Windows 暂不消费
+    pub invert_ink: bool,
     /// 压力监控 HUD 是否开启
     pub pressure_monitor: bool,
     /// 手写消息集成总开关(⌘⌃2/⌘⌃3 → Ctrl+Alt+2/3 的守门;面板同键)

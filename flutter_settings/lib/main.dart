@@ -120,6 +120,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _gridFollowStrokes = false;
   bool _glassFollowStrokes = true;
   bool _softShadow = false;
+  bool _invertInk = false;
   bool _outlineEnabled = false;
   bool _infiniteCanvas = false;
   int _gridSizeValue = 40; // 网格大小(逻辑 px)
@@ -485,6 +486,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _gridFollowStrokes = _b(s['gridFollowStrokes']);
         _glassFollowStrokes = s['glassFollowStrokes'] as bool? ?? _glassFollowStrokes;
         _softShadow = _b(s['softShadow']);
+        _invertInk = _b(s['invertInk']);
         _outlineEnabled = _b(s['outline']);
         _infiniteCanvas = _b(s['infiniteCanvas']);
         _minimapEnabled = _b(s['minimap']);
@@ -515,6 +517,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _glassFollowStrokes =
               settings['glassFollowStrokes'] as bool? ?? _glassFollowStrokes;
           _softShadow = _b(settings['softShadow']);
+          _invertInk = _b(settings['invertInk']);
           _infiniteCanvas = _b(settings['infiniteCanvas']);
           _minimapEnabled = _b(settings['minimap']);
           _gridSizeValue = (settings['gridSize'] as num?)?.toInt() ?? _gridSizeValue;
@@ -2297,6 +2300,17 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           onChanged: (v) {
             setState(() => _softShadow = v);
             _setSetting('softShadow', v);
+          },
+        )),
+        _tile(SwitchListTile(
+          title: const Text('反色突出', style: TextStyle(fontSize: 15)),
+          subtitle: const Text('笔迹逐像素取背景反色 · 实验:视频背景持续追踪，建议关闭磨砂玻璃', style: TextStyle(fontSize: 12)),
+          value: _invertInk,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (v) {
+            setState(() => _invertInk = v);
+            _setSetting('invertInk', v);
           },
         )),
         // 页面缩略图(minimap)开关已移到「活页本」tab
