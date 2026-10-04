@@ -8,7 +8,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
 
 [package]
 name = "glaspen2"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 
 [lib]
