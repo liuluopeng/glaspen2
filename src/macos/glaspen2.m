@@ -233,6 +233,12 @@ static NSView *g_draw_view = nil;
 // Raw drawing state (for responsive real-time feedback during stroke)
 static double g_raw_last_x = 0, g_raw_last_y = 0;
 static BOOL g_raw_has_last = NO;
+// 描边接缝重画用: 上上点(P_{i-2})与上一段墨迹宽(w_{i-1})。第 i 段的
+// 描边圆帽(r_i+pad)会压在已画的第 i-1 段墨迹上, 压力变细时在笔迹里
+// 蚀出对比色环(竹节虫)—— 重画第 i-1 段墨迹盖回去。
+static double g_raw_prev_x = 0, g_raw_prev_y = 0;
+static double g_raw_last_w = 0;
+static BOOL g_raw_has_prev = NO;
 
 // Track if a stroke is active (modeler has been initialized)
 static BOOL g_stroke_active = NO;

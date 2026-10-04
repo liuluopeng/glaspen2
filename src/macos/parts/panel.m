@@ -142,6 +142,7 @@ static void stroke_begin(void) {
     if (!g_surface) return;
     g_active_cr = cairo_create(g_surface);
     cairo_scale(g_active_cr, g_scale, g_scale);
+    g_raw_has_prev = NO; // 新笔没有"上一段"可重画
 }
 
 /// Tear down the shared cairo context at end of stroke.
@@ -168,6 +169,7 @@ static void finish_active_stroke(void) {
     stroke_end();
     g_stroke_active = NO;
     g_raw_has_last = NO;
+    g_raw_has_prev = NO;
 }
 
 // Handle display configuration changes (resolution, arrangement, etc.)
@@ -328,6 +330,18 @@ static void raw_draw_segment(double x, double y, double width) {
         cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
         cairo_fill(cr);
     }
+
+    // 接缝重画: 上面描边段的起点圆帽(r_i+pad)画在了已干的第 i-1 段
+    // 墨迹上, 压力比上一段细时就在笔迹里蚀出一圈对比色(竹节虫)。
+    // 墨迹不透明、重画幂等 —— 整段重画第 i-1 段墨迹, 接缝恢复
+    // "描边垫底、墨迹在上"的层级, 与整页重绘视觉效果一致。
+    if (g_outline_enabled && !g_eraser_mode && g_raw_has_prev) {
+        cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
+        cairo_set_line_width(cr, g_raw_last_w);
+        cairo_move_to(cr, g_raw_prev_x, g_raw_prev_y);
+        cairo_line_to(cr, g_raw_last_x, g_raw_last_y);
+        cairo_stroke(cr);
+    }
     if (!g_active_cr) cairo_destroy(cr);
 
     double pad = width * 0.5 + 1.5; // AA padding
@@ -336,7 +350,11 @@ static void raw_draw_segment(double x, double y, double width) {
     }
     dirty_include_surface_point(x, y, pad);
 
+    g_raw_prev_x = g_raw_last_x;
+    g_raw_prev_y = g_raw_last_y;
+    g_raw_has_prev = YES;
     g_raw_last_x = x;
     g_raw_last_y = y;
+    g_raw_last_w = width;
     g_raw_has_last = YES;
     flush_dirty_to_layer();
