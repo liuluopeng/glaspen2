@@ -603,7 +603,7 @@ static BOOL s_tun_back = NO; // 向前翻(上一页/回溯旧页): 相机**推�
 static double s_tun_dur = 0.38; // 短促: 隧道动效在感知内"一闪而过"
 // 两片玻璃之间的距离 = 相邻玻璃片的尺寸比(0.60-0.90)。所有玻璃同心
 // 嵌套, 消失点恒在屏幕中心;层与层的"空隙宽度"由本值决定。
-static double s_tun_gap = 0.78; // 两片玻璃的距离 = 相邻玻璃尺寸比(0.60-0.90); 小=密, 大=疏
+static double s_tun_gap = 0.92; // 0.92 → 同屏约 34 层(0.78≈11) // 两片玻璃的距离 = 相邻玻璃尺寸比(0.60-0.90); 小=密, 大=疏
 static double s_tun_k = 0.45;
 static void (^s_tun_prepare)(void);
 static void (^s_tun_commit)(void);
@@ -644,11 +644,12 @@ static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
                          double *out_w, double *out_h, double *out_alpha) {
   if (zc < -TUNNEL_SPAN - 0.35 || zc > TUNNEL_FRONT + 0.4)
     return NO;
-  // 每槽缩放率由玻璃间距决定: gap 0.30→0.70, 0.17→0.82, 0.10→0.88
-  // (线性映射, 可调)。zc<0(镜头前方)的放大同样用此率。
-  double shrink = 1.0 - (s_tun_gap - 0.10) * (1.0 / 0.20) * 0.18;
-  if (shrink < 0.45) shrink = 0.45;
-  if (shrink > 0.92) shrink = 0.92;
+  // 每槽缩放率 = 玻璃间距本身(0.60-0.95): 相邻两片玻璃的尺寸比即
+  // "距离"。**该值同时决定同屏容纳的页数**: 比值越接近 1 缩得越慢、
+  // 隧道越深 —— 0.78≈11 层, 0.92≈34 层。zc<0(镜头前方)同率放大。
+  double shrink = s_tun_gap;
+  if (shrink < 0.60) shrink = 0.60;
+  if (shrink > 0.95) shrink = 0.95;
   double s = pow(shrink, zc);
   if (s <= 0.06 || s > 2.6)
     return NO;
