@@ -205,6 +205,7 @@ static void perf_log_event_notes(const char *evtype, uint64_t dur_us, const char
 static uint64_t elapsed_us(uint64_t start);
 static void event_tap_reinstall(void);
 static NSWindow *g_window = nil;
+static NSWindow *g_settings_window; // 定义在 parts/menu.m(设置面板窗口)
 static NSVisualEffectView *g_glass_view = nil;
 
 // --- Drawing state ---
@@ -550,10 +551,28 @@ static void save_with_background(void) {
     }
     memcpy(drawingCopy, dptr, (size_t)dstride * dh);
 
+    // 反色模式开启时窗口不可共享(sharingType=None 防捕获反馈), SCK 截图
+    // 会缺墨迹。临时恢复共享让本次捕获像五月一样带墨迹, 捕获完成的回调
+    // 里立即还原。反色捕获流的过滤器显式排除了自家窗口, 不受影响。
+    BOOL sharing_was_none = [g_window sharingType] == NSWindowSharingNone;
+    if (sharing_was_none) {
+        [g_window setSharingType:NSWindowSharingReadOnly];
+        if (g_settings_window)
+            [g_settings_window setSharingType:NSWindowSharingReadOnly];
+    }
+    void (^sharing_restore)(void) = ^{
+        if (sharing_was_none) {
+            [g_window setSharingType:NSWindowSharingNone];
+            if (g_settings_window)
+                [g_settings_window setSharingType:NSWindowSharingNone];
+        }
+    };
+
     // Use ScreenCaptureKit to capture screen
     [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent *content, NSError *error) {
         if (error || !content.displays.count) {
             NSLog(@"[glaspen2] Screen capture failed: %@", error);
+            sharing_restore();
             free(drawingCopy);
             dispatch_async(dispatch_get_main_queue(), ^{ save_drawing_only(); });
             return;
@@ -566,6 +585,7 @@ static void save_with_background(void) {
         config.height = display.height;
 
         [SCScreenshotManager captureImageWithFilter:filter configuration:config completionHandler:^(CGImageRef image, NSError *error) {
+            sharing_restore(); // 捕获已定型, 立即恢复防反馈
             if (error || !image) {
                 NSLog(@"[glaspen2] Screenshot failed: %@", error);
                 free(drawingCopy);
