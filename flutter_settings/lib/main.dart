@@ -1334,16 +1334,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     if (img == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    return LayoutBuilder(builder: (context, c) {
-      final sw = _detailImgW <= 0 ? 1.0 : c.maxWidth / _detailImgW;
-      final sh = _detailImgH <= 0 ? 1.0 : c.maxHeight / _detailImgH;
-      _detailScale = sw < sh ? sw : sh;
-      _detailOffset = Offset(
-        (c.maxWidth - _detailImgW * _detailScale) / 2,
-        (c.maxHeight - _detailImgH * _detailScale) / 2,
-      );
-      return Column(children: [
-        Padding(
+    return Column(children: [
+      Padding(
           padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
           child: Row(children: [
             TextButton.icon(
@@ -1381,7 +1373,20 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           ),
         ),
         Expanded(
-          child: GestureDetector(
+          // fit 在画布层算(与 CustomPaint 同一约束): 此前按整个详情列的
+          // 高度算, 工具条+提示行吃掉的部分导致位图溢出被裁(页面只露
+          // 顶部一条, 粘贴/移动的内容大量落进裁掉区 = "没反应/N-1 错觉")
+          child: LayoutBuilder(builder: (context, cc) {
+            final sw2 =
+                _detailImgW <= 0 ? 1.0 : cc.maxWidth / _detailImgW;
+            final sh2 =
+                _detailImgH <= 0 ? 1.0 : cc.maxHeight / _detailImgH;
+            _detailScale = sw2 < sh2 ? sw2 : sh2;
+            _detailOffset = Offset(
+              (cc.maxWidth - _detailImgW * _detailScale) / 2,
+              (cc.maxHeight - _detailImgH * _detailScale) / 2,
+            );
+            return GestureDetector(
             behavior: HitTestBehavior.deferToChild,
             onPanStart: (d) {
               if (_selectedStrokes.isNotEmpty) {
@@ -1420,10 +1425,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               ),
               child: const SizedBox.expand(),
             ),
-          ),
+            );
+          }),
         ),
       ]);
-    });
   }
 
   Widget _buildNotebookPages() {
