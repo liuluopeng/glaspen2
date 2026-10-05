@@ -873,7 +873,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
               ),
             )),
             // ── Content(活页本) tab ──
-            _tabBackground('assets/tab_bg_pages.jpg', _buildContentTab()),
+            // 真穿透: 不画底图, 卡片窟窿透出面板后的桌面
+            (_panelTransparent && _notebookGlass
+                ? _buildContentTab()
+                : _tabBackground('assets/tab_bg_pages.jpg', _buildContentTab())),
             if (_showFreeCanvas)
               _tabBackground('assets/tab_bg_infinite.jpg', _buildCanvasTab()),
           ],
