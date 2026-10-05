@@ -23,8 +23,9 @@ abstract class SettingsBridge {
   Future<int> pasteStrokes(int screenId, String payload, double cx, double cy);
   /// Content tab: 一次取多页缩略图(id → PNG);无内容的页不会出现在结果里
   Future<Map<int, Uint8List>> getPageThumbnails(List<int> ids, int maxSize);
-  /// 页面详情: 整页 PNG 字节(白底 1x, 不落盘); highlight = 选中笔迹描蓝
-  Future<Uint8List?> exportPagePngBytes(int screenId, {List<int> highlight = const []});
+  /// 页面详情: 页+边距 PNG 字节(透明底, 不落盘); highlight = 选中描蓝
+  Future<Uint8List?> exportPagePngBytes(int screenId,
+      {List<int> highlight = const [], double margin = 0});
   /// 删除一页及其笔迹
   Future<bool> deletePage(int screenId);
   /// 导出单页 PNG(白底 2x)到桌面
@@ -165,10 +166,13 @@ class _FrbBridge extends SettingsBridge {
   }
 
   @override
-  Future<Uint8List?> exportPagePngBytes(int screenId, {List<int> highlight = const []}) async {
+  Future<Uint8List?> exportPagePngBytes(int screenId,
+      {List<int> highlight = const [], double margin = 0}) async {
     await _init();
     final bytes = await rust.pagePngBytes(
-        screenId: screenId, highlight: frb.Int64List.fromList(highlight));
+        screenId: screenId,
+        highlight: frb.Int64List.fromList(highlight),
+        margin: margin);
     return bytes.isEmpty ? null : Uint8List.fromList(bytes);
   }
 
@@ -619,7 +623,8 @@ class _NamedPipeBridge extends SettingsBridge {
   }
 
   @override
-  Future<Uint8List?> exportPagePngBytes(int screenId, {List<int> highlight = const []}) async {
+  Future<Uint8List?> exportPagePngBytes(int screenId,
+      {List<int> highlight = const [], double margin = 0}) async {
     debugPrint('[Pipe] exportPagePngBytes: Windows 管道未接入, 忽略');
     return null;
   }

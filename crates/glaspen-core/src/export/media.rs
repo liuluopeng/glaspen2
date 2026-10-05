@@ -454,6 +454,8 @@ pub(crate) fn paint_page_into_surface(
     screen_id: i64,
     scale: f64,
     white_bg: bool,
+    ox: f64,
+    oy: f64,
 ) -> c_int {
     let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
     r.clear();
@@ -487,8 +489,8 @@ pub(crate) fn paint_page_into_surface(
         };
         let lay = crate::pagerender::PageLayout {
             scale,
-            ox: 0.0,
-            oy: 0.0,
+            ox,
+            oy,
             w: 0.0,
             h: 0.0,
         };
@@ -522,32 +524,42 @@ pub extern "C" fn glaspen2_paint_page_into_surface(
     let Some(r) = crate::cairo_dl::CairoRenderer::from_surface(surface_ptr) else {
         return 0;
     };
-    paint_page_into_surface(&r, screen_id, scale, white_bg != 0)
+    paint_page_into_surface(&r, screen_id, scale, white_bg != 0, 0.0, 0.0)
 }
 
-/// 某页渲染为 PNG 字节(白底, 1x 页面分辨率; 面板页面详情用, 不落盘)。
-/// hl_ids_csv 非空时, 入选笔迹整笔重画成不透明蓝(选中高亮 —— 圈选的
-/// 唯一可靠视觉反馈, 蓝色与任何墨色都可区分)。
+/// 某页渲染为 PNG 字节(面板页面详情用, 不落盘)。
+/// margin_px: 页四周留白(页面坐标单位)—— 页外内容可见、可圈选(方案 A),
+/// 页面矩形之外为透明(由 Flutter 画白色页底+页框)。
+/// 位图长边 ≤ 2200px(整页 3440 的 1x 渲染+编码在 debug 构建下是秒级卡顿
+/// 的主因; 详情视图不需要满分辨率)。hl_ids_csv 非空 = 入选笔迹整笔描蓝。
 /// 返回缓冲指针, out_len 写长度; 失败返回空。调用方 free。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_page_png_bytes(
     screen_id: i64,
     hl_ids_csv: *const c_char,
+    margin_px: c_double,
     out_len: *mut c_int,
 ) -> *mut u8 {
     unsafe { *out_len = 0 };
     let Some((w, h)) = runtime().block_on(db::screen_dims(screen_id)) else {
         return std::ptr::null_mut();
     };
-    let pw = w.max(1) as usize;
-    let ph = h.max(1) as usize;
-    let Some(r) = crate::cairo_dl::CairoRenderer::create_owned(pw as i32, ph as i32) else {
+    let pw = w.max(1) as f64;
+    let ph = h.max(1) as f64;
+    let m = margin_px.clamp(0.0, pw.max(ph) * 0.4);
+    let total_w = pw + 2.0 * m;
+    let total_h = ph + 2.0 * m;
+    let k = (2200.0 / total_w.max(total_h)).min(1.0);
+    let bw = (total_w * k).ceil() as usize;
+    let bh = (total_h * k).ceil() as usize;
+    let Some(r) = crate::cairo_dl::CairoRenderer::create_owned(bw as i32, bh as i32) else {
         return std::ptr::null_mut();
     };
-    if paint_page_into_surface(&r, screen_id, 1.0, true) == 0 {
+    // 透明底 + ox/oy = 留白(页外不画白底, 页框由 Flutter 画)
+    if paint_page_into_surface(&r, screen_id, k, false, m * k, m * k) == 0 {
         return std::ptr::null_mut();
     }
-    // 选中高亮: 入选笔迹整笔描成蓝(宽 +3px), 简单且醒目
+    // 选中高亮: 入选笔迹整笔描蓝(宽 +3px, 随 k 缩放)
     let hl_ids = (unsafe { hl_ids_csv.as_ref() }).and_then(|p| {
         let s = unsafe { std::ffi::CStr::from_ptr(p) }.to_str().ok()?;
         Some(
@@ -568,30 +580,29 @@ pub extern "C" fn glaspen2_page_png_bytes(
                 let (x, y, wd, _) = st.points[i];
                 let (qx, qy, _qw, _qt) = st.points[i - 1];
                 r.stroke_line(
-                    x as f32,
-                    y as f32,
-                    qx as f32,
-                    qy as f32,
-                    (wd + 3.0) as f32,
-                    (66, 133, 244), // Google blue: 任何墨色上都醒目
+                    ((x + m) * k) as f32,
+                    ((y + m) * k) as f32,
+                    ((qx + m) * k) as f32,
+                    ((qy + m) * k) as f32,
+                    ((wd + 3.0) * k) as f32,
+                    (66, 133, 244),
                 );
             }
         }
         r.flush();
     }
-    let data = unsafe { std::slice::from_raw_parts(r.bits(), pw * ph * 4) };
-    let Some(png) = encode_png_bgra(data, pw as u32, ph as u32) else {
+    let data = unsafe { std::slice::from_raw_parts(r.bits(), bw * bh * 4) };
+    let Some(png) = encode_png_bgra(data, bw as u32, bh as u32) else {
         return std::ptr::null_mut();
     };
     let mut boxed = png.into_boxed_slice();
     let ptr = boxed.as_mut_ptr();
     let len = boxed.len();
-    std::mem::forget(boxed); // 所有权交给调用方(free_bytes / Vec::from_raw_parts)
+    std::mem::forget(boxed);
     unsafe { *out_len = len as c_int };
     ptr
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_export_page_png(screen_id: i64) -> c_int {
     let Some((w, h)) = runtime().block_on(db::screen_dims(screen_id)) else {
         return 0;
@@ -604,7 +615,7 @@ pub extern "C" fn glaspen2_export_page_png(screen_id: i64) -> c_int {
         Some(r) => r,
         None => return 0,
     };
-    if paint_page_into_surface(&r, screen_id, scale, true) == 0 {
+    if paint_page_into_surface(&r, screen_id, scale, true, 0.0, 0.0) == 0 {
         return 0;
     }
 

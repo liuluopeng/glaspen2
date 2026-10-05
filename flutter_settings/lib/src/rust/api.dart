@@ -58,9 +58,11 @@ Future<bool> deletePage({required PlatformInt64 screenId}) =>
 Future<Uint8List> pagePngBytes({
   required PlatformInt64 screenId,
   required Int64List highlight,
+  required double margin,
 }) => RustLib.instance.api.crateApiPagePngBytes(
   screenId: screenId,
   highlight: highlight,
+  margin: margin,
 );
 
 /// 圈选命中: 返回圈内笔迹 id 列表(整笔为单位)。

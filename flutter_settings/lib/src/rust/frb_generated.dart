@@ -151,6 +151,7 @@ abstract class RustLibApi extends BaseApi {
   Future<Uint8List> crateApiPagePngBytes({
     required PlatformInt64 screenId,
     required Int64List highlight,
+    required double margin,
   });
 
   Future<List<PageThumb>> crateApiPageThumbnails({
@@ -915,6 +916,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Future<Uint8List> crateApiPagePngBytes({
     required PlatformInt64 screenId,
     required Int64List highlight,
+    required double margin,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -922,6 +924,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_i_64(screenId, serializer);
           sse_encode_list_prim_i_64_strict(highlight, serializer);
+          sse_encode_f_64(margin, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -934,7 +937,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: null,
         ),
         constMeta: kCrateApiPagePngBytesConstMeta,
-        argValues: [screenId, highlight],
+        argValues: [screenId, highlight, margin],
         apiImpl: this,
       ),
     );
@@ -942,7 +945,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiPagePngBytesConstMeta => const TaskConstMeta(
     debugName: "page_png_bytes",
-    argNames: ["screenId", "highlight"],
+    argNames: ["screenId", "highlight", "margin"],
   );
 
   @override

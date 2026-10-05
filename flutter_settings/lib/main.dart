@@ -190,6 +190,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   int? _detailPageId;
   ui.Image? _detailImage;
   double _detailImgW = 0, _detailImgH = 0;
+  double _detailMargin = 0; // 页边距(页面坐标单位, 渲染时的留白)
   final List<Offset> _lassoPts = [];
   List<int> _selectedStrokes = [];
   Offset? _dragStart;
@@ -1092,8 +1093,16 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   /// 打开的笔记本: 顶部返回行 + 该本子的页网格(工具条/多选/懒加载复用)。
   // ── 页面详情(圈选/移动/复制粘贴/删除): 治理动作归面板 ──
 
+  double _detailMarginFor(int screenId) {
+    for (final p in _pages) {
+      if (p.id == screenId) return p.w > p.h ? p.w * 0.15 : p.h * 0.15;
+    }
+    return 200;
+  }
+
   Future<void> _openPageDetail(int screenId) async {
-    final png = await _bridge.exportPagePngBytes(screenId);
+    final margin = _detailMarginFor(screenId);
+    final png = await _bridge.exportPagePngBytes(screenId, margin: margin);
     if (!mounted) return;
     if (png == null || png.isEmpty) {
       _toast('页面为空, 没有可编辑的内容');
@@ -1108,6 +1117,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       _detailImage = img;
       _detailImgW = img.width.toDouble();
       _detailImgH = img.height.toDouble();
+      _detailMargin = margin;
       _selectedStrokes = [];
       _lassoPts.clear();
       _dragStart = null;
@@ -1125,7 +1135,24 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     unawaited(_loadPages());
   }
 
-  Offset _viewToPage(Offset v) => (v - _detailOffset) / _detailScale;
+  /// 页面矩形在位图内的位置(位图像素): margin × 位图/页面 比例
+  Rect _detailPageRect(ui.Image img) {
+    PageInfo? page;
+    for (final p in _pages) {
+      if (p.id == _detailPageId) {
+        page = p;
+        break;
+      }
+    }
+    final pw = page?.w.toDouble() ?? 0;
+    final ph = page?.h.toDouble() ?? 0;
+    if (pw <= 0 || ph <= 0 || _detailImgW <= 0) return Rect.zero;
+    final kx = _detailImgW / (pw + 2 * _detailMargin);
+    return Rect.fromLTWH(_detailMargin * kx, _detailMargin * kx, pw * kx, ph * kx);
+  }
+
+  Offset _viewToPage(Offset v) =>
+      (v - _detailOffset) / _detailScale - Offset(_detailMargin, _detailMargin);
 
   Future<void> _finishLasso() async {
     if (_lassoPts.length < 3 || _detailPageId == null) {
@@ -1181,7 +1208,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   Future<void> _reloadDetailImage(int screenId, {List<int> highlight = const []}) async {
-    final png = await _bridge.exportPagePngBytes(screenId, highlight: highlight);
+    final png = await _bridge.exportPagePngBytes(screenId,
+        highlight: highlight, margin: _detailMargin);
     if (!mounted || png == null || png.isEmpty) return;
     final codec = await ui.instantiateImageCodec(png);
     final frame = await codec.getNextFrame();
@@ -1388,6 +1416,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 lasso: _lassoPts,
                 dragFrom: _dragStart,
                 dragTo: _dragStart != null ? _dragNow : null,
+                pageRect: _detailPageRect(img),
               ),
               child: const SizedBox.expand(),
             ),
@@ -2910,6 +2939,7 @@ class _DetailPainter extends CustomPainter {
     required this.lasso,
     required this.dragFrom,
     required this.dragTo,
+    required this.pageRect,
   });
 
   final ui.Image image;
@@ -2918,11 +2948,23 @@ class _DetailPainter extends CustomPainter {
   final List<Offset> lasso;
   final Offset? dragFrom;
   final Offset? dragTo;
+  final Rect pageRect; // 页面矩形(位图像素): 白底 + 页框
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFF2F1EC));
     final dst = Offset.zero & Size(image.width * scale, image.height * scale);
+    // 页底白 + 页框(位图透明底): 页外内容落在灰底上, 一眼区分页内外
+    if (!pageRect.isEmpty) {
+      canvas.drawRect(pageRect, Paint()..color = const Color(0xFFFFFFFF));
+      canvas.drawRect(
+        pageRect,
+        Paint()
+          ..color = const Color(0x33000000)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0,
+      );
+    }
     canvas.drawImageRect(
       image,
       Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
@@ -2966,5 +3008,6 @@ class _DetailPainter extends CustomPainter {
       old.offset != offset ||
       old.dragFrom != dragFrom ||
       old.dragTo != dragTo ||
+      old.pageRect != pageRect ||
       old.lasso.length != lasso.length;
 }

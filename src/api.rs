@@ -391,14 +391,15 @@ pub async fn delete_page(screen_id: i64) -> bool {
 /// 某页渲染为 PNG 字节(白底 1x; 页面详情视图用, 不落盘)。
 /// highlight 非空 = 入选笔迹整笔描蓝(选中反馈)。
 #[frb]
-pub async fn page_png_bytes(screen_id: i64, highlight: Vec<i64>) -> Vec<u8> {
+pub async fn page_png_bytes(screen_id: i64, highlight: Vec<i64>, margin: f64) -> Vec<u8> {
     run_blocking(move || unsafe {
         let csv = std::ffi::CString::new(
             highlight.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
         )
         .unwrap_or_default();
         let mut len: i32 = 0;
-        let ptr = crate::export::glaspen2_page_png_bytes(screen_id, csv.as_ptr(), &mut len);
+        let ptr =
+            crate::export::glaspen2_page_png_bytes(screen_id, csv.as_ptr(), margin, &mut len);
         if ptr.is_null() || len <= 0 {
             return Vec::new();
         }

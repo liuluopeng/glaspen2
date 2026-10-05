@@ -967,12 +967,14 @@ fn wire__crate__api__page_png_bytes_impl(
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_screen_id = <i64>::sse_decode(&mut deserializer);
             let api_highlight = <Vec<i64>>::sse_decode(&mut deserializer);
+            let api_margin = <f64>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, ()>(
                     (move || async move {
                         let output_ok = Result::<_, ()>::Ok(
-                            crate::api::page_png_bytes(api_screen_id, api_highlight).await,
+                            crate::api::page_png_bytes(api_screen_id, api_highlight, api_margin)
+                                .await,
                         )?;
                         Ok(output_ok)
                     })()

@@ -358,9 +358,11 @@ pub extern "C" fn glaspen2_render_canvas_overview(
 
 /// Encode RGBA pixel data as PNG bytes.
 pub(crate) fn encode_png_rgba(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
-    use image::ImageEncoder;
+    use image::{ImageEncoder, codecs::png::{PngEncoder, CompressionType, FilterType}};
     let mut buf = Vec::new();
-    image::codecs::png::PngEncoder::new(&mut buf)
+    // Fast 压缩: debug 构建下 Default 档能把大图编码拖到秒级; 缩略图/
+    // 详情位图对压缩率不敏感(尺寸本就不大), Fast 档全路径提速。
+    PngEncoder::new_with_quality(&mut buf, CompressionType::Fast, FilterType::Adaptive)
         .write_image(rgba, width, height, image::ExtendedColorType::Rgba8)
         .ok()?;
     Some(buf)
