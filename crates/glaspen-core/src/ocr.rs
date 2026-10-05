@@ -85,7 +85,7 @@ fn render_page_png(strokes: &[db::StrokeData], sw: i32, sh: i32) -> Option<Vec<u
         }
     }
 
-    crate::export::thumbs::encode_png_rgba(
+    crate::export::thumbs::encode_png_bgra(
         unsafe { std::slice::from_raw_parts(renderer.bits(), (rw as usize) * (rh as usize) * 4) },
         rw as u32,
         rh as u32,

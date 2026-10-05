@@ -342,9 +342,9 @@ pub extern "C" fn glaspen2_render_canvas_overview(
 
     let bits = r.bits();
     let n = (out_w as usize) * (out_h as usize) * 4;
-    let mut rgba = unsafe { std::slice::from_raw_parts(bits, n).to_vec() };
-    unpremultiply_rgba(&mut rgba); // 预乘 alpha 反解
-    let Some(png) = encode_png_rgba(&rgba, out_w as u32, out_h as u32) else {
+    let mut bgra = unsafe { std::slice::from_raw_parts(bits, n).to_vec() };
+    unpremultiply_rgba(&mut bgra); // 预乘 alpha 反解
+    let Some(png) = encode_png_bgra(&bgra, out_w as u32, out_h as u32) else {
         return std::ptr::null_mut();
     };
     let len = png.len() as c_int;
@@ -364,6 +364,19 @@ pub(crate) fn encode_png_rgba(rgba: &[u8], width: u32, height: u32) -> Option<Ve
         .write_image(rgba, width, height, image::ExtendedColorType::Rgba8)
         .ok()?;
     Some(buf)
+}
+
+/// cairo 表面(BGRA 预乘)直接出 PNG: 换通道后编码。
+/// 此前多个调用点把 BGRA 原样喂给 encode_png_rgba, R/B 互换
+/// (红色笔迹导出/展示成蓝色), 统一收口到这里。
+pub(crate) fn encode_png_bgra(bgra: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
+    let swapped: Vec<u8> = bgra
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .flat_map(|px| [px[2], px[1], px[0], px[3]])
+        .collect();
+    encode_png_rgba(&swapped, width, height)
 }
 
 // ---------------------------------------------------------------------------

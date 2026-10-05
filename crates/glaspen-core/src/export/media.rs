@@ -580,7 +580,7 @@ pub extern "C" fn glaspen2_page_png_bytes(
         r.flush();
     }
     let data = unsafe { std::slice::from_raw_parts(r.bits(), pw * ph * 4) };
-    let Some(png) = encode_png_rgba(data, pw as u32, ph as u32) else {
+    let Some(png) = encode_png_bgra(data, pw as u32, ph as u32) else {
         return std::ptr::null_mut();
     };
     let mut boxed = png.into_boxed_slice();
@@ -609,7 +609,7 @@ pub extern "C" fn glaspen2_export_page_png(screen_id: i64) -> c_int {
     }
 
     let data = unsafe { std::slice::from_raw_parts(r.bits(), pw * ph * 4) };
-    let Some(png) = encode_png_rgba(data, pw as u32, ph as u32) else {
+    let Some(png) = encode_png_bgra(data, pw as u32, ph as u32) else {
         return 0;
     };
     let path = desktop_path().join(format!(
