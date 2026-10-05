@@ -422,6 +422,19 @@ pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
     CString::new(json).unwrap_or_default().into_raw()
 }
 
+/// 活页本重排: 把某页移到锚点页前/后(面板内前后移/拖拽)。
+/// 返回 1 成功, 0 失败(页不存在/锚点不存在)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_page_reorder(screen_id: i64, anchor_id: i64, before: c_int) -> c_int {
+    match runtime().block_on(db::reorder_screen(screen_id, anchor_id, before != 0)) {
+        Ok(()) => 1,
+        Err(e) => {
+            eprintln!("[pages] 重排失败: {e}");
+            0
+        }
+    }
+}
+
 /// Page info JSON for the 新建画布/翻页 notification:
 /// {"nth":n,"date_total":m,"pos":x,"total":y,"created":unix_ts}
 /// Caller frees with glaspen2_free_c_string. NULL when the page is unknown.

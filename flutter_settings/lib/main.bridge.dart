@@ -10,6 +10,8 @@ abstract class SettingsBridge {
   void Function()? onConnected;
   /// Content tab: 页面列表
   Future<List<PageInfo>> listPages();
+  /// 活页本重排: 把某页移到锚点页前/后(本子内前后移)
+  Future<bool> reorderPage(int screenId, int anchorId, {required bool before});
   /// Content tab: 一次取多页缩略图(id → PNG);无内容的页不会出现在结果里
   Future<Map<int, Uint8List>> getPageThumbnails(List<int> ids, int maxSize);
   /// 删除一页及其笔迹
@@ -143,6 +145,12 @@ class _FrbBridge extends SettingsBridge {
     }).catchError((Object e) {
       debugPrint('[FRB] init failed, settings updates disabled: $e');
     });
+  }
+
+  @override
+  Future<bool> reorderPage(int screenId, int anchorId, {required bool before}) async {
+    await _init();
+    return rust.reorderPage(screenId: screenId, anchorId: anchorId, before: before);
   }
 
   @override
@@ -529,6 +537,14 @@ class _NamedPipeBridge extends SettingsBridge {
       _pendingReqs.remove(id);
       return {};
     }
+  }
+
+  @override
+  Future<bool> reorderPage(int screenId, int anchorId, {required bool before}) async {
+    final r = await _request('reorderPage', {
+      'screenId': screenId, 'anchorId': anchorId, 'before': before,
+    });
+    return r['ok'] == 1 || r['ok'] == true;
   }
 
   @override

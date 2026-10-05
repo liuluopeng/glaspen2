@@ -356,6 +356,12 @@ pub async fn list_pages() -> Vec<PageSummary> {
         .collect()
 }
 
+/// 活页本重排:把某页移到锚点页前/后(面板内前后移)。
+#[frb]
+pub async fn reorder_page(screen_id: i64, anchor_id: i64, before: bool) -> bool {
+    db::reorder_screen(screen_id, anchor_id, before).await.is_ok()
+}
+
 /// 一页的缩略图。
 #[frb]
 #[derive(Debug, Clone)]

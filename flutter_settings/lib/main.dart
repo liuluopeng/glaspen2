@@ -1166,12 +1166,59 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   ),
                   itemBuilder: (context, i) {
                     final page = _filteredPages[i];
-                    return _buildPageCard(page);
+                    return Stack(children: [
+                      _buildPageCard(page, i),
+                      if (!_multiSelect && !_searchMode)
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: Column(children: [
+                            _pageMoveBtn(page, i, -1, Icons.arrow_drop_up),
+                            _pageMoveBtn(page, i, 1, Icons.arrow_drop_down),
+                          ]),
+                        ),
+                    ]);
                   },
                 ),
         ),
       ],
     );
+  }
+
+
+  /// 前后移小按钮(活页本卡片右上角): 微动画零心智负担, 移动动作归面板。
+  Widget _pageMoveBtn(PageInfo page, int index, int delta, IconData icon) {
+    final target = index + delta;
+    final enabled = target >= 0 && target < _filteredPages.length;
+    return GestureDetector(
+      onTap: enabled ? () => _movePage(page, index, delta) : null,
+      child: Container(
+        margin: const EdgeInsets.only(left: 2),
+        padding: const EdgeInsets.all(1),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Icon(icon,
+            size: 22,
+            color: enabled ? Colors.white : Colors.white24),
+      ),
+    );
+  }
+
+  /// 前后移: 锚点 = 本子内相邻页(before = 移到锚点之前), 成功后整表刷新
+  /// (顺序来自 DB 的 order_index, 笔侧翻页/页号自动跟随)。
+  Future<void> _movePage(PageInfo page, int index, int delta) async {
+    final target = index + delta;
+    if (target < 0 || target >= _filteredPages.length) return;
+    final anchor = _filteredPages[target];
+    final ok = await _bridge.reorderPage(page.id, anchor.id, before: delta < 0);
+    if (!mounted) return;
+    if (ok) {
+      await _loadPages();
+    } else {
+      _toast('移动失败');
+    }
   }
 
   /// 活页本网格工具条:常态 = 页数 + 「多选」入口;
@@ -1343,7 +1390,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     return page.w == first.w && page.h == first.h;
   }
 
-  Widget _buildPageCard(PageInfo page) {
+  Widget _buildPageCard(PageInfo page, int index) {
     if (page.thumbnail == null && _thumbnailCache.containsKey(page.id)) {
       page.thumbnail = _thumbnailCache[page.id];
     }

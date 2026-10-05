@@ -176,6 +176,22 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             let _ = writer.write_all(resp.as_bytes());
         }
         let _ = writer.flush();
+    } else if msg_type == "reorderPage" {
+        // 活页本重排(面板前后移)
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let screen_id = json_get_i64(line, "screenId").unwrap_or(0);
+        let anchor_id = json_get_i64(line, "anchorId").unwrap_or(0);
+        let before = json_get_bool(line, "before").unwrap_or(false);
+        let ok = glaspen_core::runtime()
+            .block_on(glaspen_core::db::reorder_screen(screen_id, anchor_id, before))
+            .is_ok();
+        let resp = format!(
+            "{{\"type\":\"reorderPage_response\",\"reqId\":{},\"ok\":{}}}
+",
+            req_id, ok
+        );
+        let _ = writer.write_all(resp.as_bytes());
+        let _ = writer.flush();
     } else if msg_type == "getPageThumbnail" {
         // 页面缩略图(PNG,base64 编码)
         let screen_id = json_get_i64(line, "screenId").unwrap_or(0);

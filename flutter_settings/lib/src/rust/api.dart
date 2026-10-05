@@ -31,6 +31,17 @@ Stream<Settings> settingsChanged() =>
 Future<List<PageSummary>> listPages() =>
     RustLib.instance.api.crateApiListPages();
 
+/// 活页本重排:把某页移到锚点页前/后(面板内前后移)。
+Future<bool> reorderPage({
+  required PlatformInt64 screenId,
+  required PlatformInt64 anchorId,
+  required bool before,
+}) => RustLib.instance.api.crateApiReorderPage(
+  screenId: screenId,
+  anchorId: anchorId,
+  before: before,
+);
+
 /// 批量缩略图:一次调用取回整屏(版本查询、缓存读取、缺失渲染都在 Rust 侧
 /// 批量化)。没有笔迹的页不会出现在结果里。
 Future<List<PageThumb>> pageThumbnails({

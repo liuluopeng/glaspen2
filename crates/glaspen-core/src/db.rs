@@ -150,7 +150,7 @@ mod platform {
     ///
     /// 两个作用: 旧版程序打开新版写过的库时直接拒绝(而不是按旧 schema 读写出
     /// 错、把数据写坏); 迁移失败时定位到底停在哪一版。
-    pub(crate) const SCHEMA_VERSION: i32 = 1;
+    pub(crate) const SCHEMA_VERSION: i32 = 2;
 
     pub async fn init() {
         let path = db_path();
@@ -256,7 +256,8 @@ mod platform {
                 created_at REAL NOT NULL,
                 screen_w INTEGER NOT NULL,
                 screen_h INTEGER NOT NULL,
-                edited INTEGER NOT NULL DEFAULT 0
+                edited INTEGER NOT NULL DEFAULT 0,
+                order_index INTEGER NOT NULL DEFAULT 0
             )",
             "CREATE TABLE IF NOT EXISTS strokes (
                 id INTEGER PRIMARY KEY,
@@ -345,6 +346,13 @@ mod platform {
         add_column_if_missing(pool, "screens", "deleted_at", "REAL").await?;
         add_column_if_missing(pool, "strokes", "deleted_at", "REAL").await?;
         add_column_if_missing(pool, "infinite_strokes", "deleted_at", "REAL").await?;
+        // 页序 v2: 活页本可重排/插页。回填 = id 序(与迁移前完全一致,
+        // 老库行为零变化); 之后新页追加到全局序列末尾, 面板可调序。
+        add_column_if_missing(pool, "screens", "order_index", "INTEGER NOT NULL DEFAULT 0").await?;
+        sqlx::query("UPDATE screens SET order_index = id WHERE order_index = 0")
+            .execute(pool)
+            .await
+            .map_err(|e| format!("回填 order_index 失败: {e}"))?;
 
         // 注:旧版本曾在 screens 上存 per-page 镜头(pan_x/pan_y/zoom)。
         // 现在无限画布独立存储且全局只有一个画布,镜头改存 user_settings,
@@ -381,7 +389,7 @@ mod platform {
         let pool = DB.get().expect("DB not initialized");
         let now = now_f64();
         match sqlx::query_scalar::<_, i64>(
-            "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (?1, ?2, ?3) RETURNING id",
+            "INSERT INTO screens (created_at, screen_w, screen_h, order_index)              VALUES (?1, ?2, ?3,              COALESCE((SELECT MAX(order_index) FROM screens WHERE deleted_at IS NULL), 0) + 1)              RETURNING id",
         )
         .bind(now)
         .bind(screen_w)
@@ -866,10 +874,11 @@ mod platform {
 
     pub(crate) async fn prev_screen_with(pool: &SqlitePool, current: i64) -> Option<i64> {
         let r = sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM screens WHERE id < ?1 AND deleted_at IS NULL \
+            "SELECT id FROM screens WHERE deleted_at IS NULL \
              AND screen_w = (SELECT screen_w FROM screens WHERE id = ?1) \
              AND screen_h = (SELECT screen_h FROM screens WHERE id = ?1) \
-             ORDER BY id DESC LIMIT 1",
+             AND order_index < (SELECT order_index FROM screens WHERE id = ?1) \
+             ORDER BY order_index DESC LIMIT 1",
         )
         .bind(current)
         .fetch_optional(pool)
@@ -889,10 +898,11 @@ mod platform {
 
     pub(crate) async fn next_screen_with(pool: &SqlitePool, current: i64) -> Option<i64> {
         let r = sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM screens WHERE id > ?1 AND deleted_at IS NULL \
+            "SELECT id FROM screens WHERE deleted_at IS NULL \
              AND screen_w = (SELECT screen_w FROM screens WHERE id = ?1) \
              AND screen_h = (SELECT screen_h FROM screens WHERE id = ?1) \
-             ORDER BY id ASC LIMIT 1",
+             AND order_index > (SELECT order_index FROM screens WHERE id = ?1) \
+             ORDER BY order_index ASC LIMIT 1",
         )
         .bind(current)
         .fetch_optional(pool)
@@ -917,7 +927,8 @@ mod platform {
         h: i32,
     ) -> Option<i64> {
         let r = sqlx::query_scalar::<_, Option<i64>>(
-            "SELECT MAX(id) FROM screens WHERE deleted_at IS NULL AND screen_w = ?1 AND screen_h = ?2",
+            "SELECT id FROM screens WHERE deleted_at IS NULL AND screen_w = ?1 AND screen_h = ?2 \
+             ORDER BY order_index DESC LIMIT 1",
         )
         .bind(w)
         .bind(h)
@@ -1415,13 +1426,66 @@ mod platform {
             "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
              WHERE deleted_at IS NULL \
              AND EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
-             ORDER BY s.id",
+             ORDER BY s.order_index, s.id",
         )
         .fetch_all(pool)
         .await
         .unwrap_or_default();
         dblog!("页列表 → {} 页", r.len());
         r
+    }
+
+    /// 活页本重排: 把某页移到锚点页前/后(面板内前后移)。全库活页序列
+    /// 重编号为 1..N。锚点不存在时报错(跨笔记本误传的调用拦在这里)。
+    pub async fn reorder_screen(
+        screen_id: i64,
+        anchor_id: i64,
+        before: bool,
+    ) -> Result<(), String> {
+        match DB.get() {
+            Some(p) => reorder_screen_with(p, screen_id, anchor_id, before).await,
+            None => Err("DB not initialized".into()),
+        }
+    }
+
+    pub(crate) async fn reorder_screen_with(
+        pool: &SqlitePool,
+        screen_id: i64,
+        anchor_id: i64,
+        before: bool,
+    ) -> Result<(), String> {
+        if screen_id == anchor_id {
+            return Ok(());
+        }
+        let mut tx = pool.begin().await.map_err(|e| format!("开启事务失败: {e}"))?;
+        let ids: Vec<i64> = sqlx::query_scalar(
+            "SELECT id FROM screens WHERE deleted_at IS NULL ORDER BY order_index, id",
+        )
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(|e| format!("读取页序失败: {e}"))?;
+        let Some(from) = ids.iter().position(|&id| id == screen_id) else {
+            return Err(format!("页 {screen_id} 不存在或已删除"));
+        };
+        let mut ordered = ids;
+        ordered.remove(from);
+        match ordered.iter().position(|&id| id == anchor_id) {
+            Some(pos) => {
+                ordered.insert(if before { pos } else { pos + 1 }, screen_id);
+            }
+            None => return Err(format!("锚点页 {anchor_id} 不存在或已删除")),
+        }
+        for (i, &id) in ordered.iter().enumerate() {
+            sqlx::query("UPDATE screens SET order_index = ?1 WHERE id = ?2")
+                .bind(i as i64 + 1)
+                .bind(id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| format!("写入页序失败: {e}"))?;
+        }
+        tx.commit().await.map_err(|e| format!("提交事务失败: {e}"))?;
+        dblog!("页重排 {screen_id} → 锚点 {anchor_id} {}", if before { "前" } else { "后" });
+        Ok(())
     }
 
     /// Page info for the 新建画布/翻页 notification:
@@ -1448,12 +1512,13 @@ mod platform {
                (SELECT COUNT(*) FROM screens s WHERE \
                    date(datetime(s.created_at,'unixepoch','localtime')) = \
                    (SELECT date(datetime(created_at,'unixepoch','localtime')) FROM screens WHERE id = ?1) \
-                   AND s.id <= ?1) AS nth, \
+                   AND s.order_index <= (SELECT order_index FROM screens WHERE id = ?1)) AS nth, \
                (SELECT COUNT(*) FROM screens s WHERE \
                    date(datetime(s.created_at,'unixepoch','localtime')) = \
                    (SELECT date(datetime(created_at,'unixepoch','localtime')) FROM screens WHERE id = ?1)) AS date_total, \
-               (SELECT COUNT(*) FROM screens WHERE id <= ?1) AS pos, \
-               (SELECT COUNT(*) FROM screens) AS total, \
+               (SELECT COUNT(*) FROM screens WHERE order_index <= \
+                   (SELECT order_index FROM screens WHERE id = ?1) AND deleted_at IS NULL) AS pos, \
+               (SELECT COUNT(*) FROM screens WHERE deleted_at IS NULL) AS total, \
                (SELECT created_at FROM screens WHERE id = ?1) AS created \
              FROM screens WHERE id = ?1"
         ).bind(screen_id).fetch_optional(pool).await.ok()?
@@ -1725,9 +1790,10 @@ mod tests {
     use super::StrokeData;
     use super::platform::{
         SCHEMA_VERSION, attach_points, backup_to_with, last_screen_with_geometry_with,
-        migrate_with, next_screen_with, page_info_with, prev_screen_with, restore_merge_from_with,
-        screen_stroke_version_with, stroke_versions_many_with, thumbnail_lookup_with,
-        thumbnail_store_with, thumbnails_many_with, thumbnails_purge_screen_with,
+        migrate_with, next_screen_with, page_info_with, prev_screen_with,
+        reorder_screen_with, restore_merge_from_with, screen_stroke_version_with,
+        stroke_versions_many_with, thumbnail_lookup_with, thumbnail_store_with,
+        thumbnails_many_with, thumbnails_purge_screen_with,
     };
     use crate::runtime;
     use sqlx::SqlitePool;
@@ -1772,7 +1838,8 @@ mod tests {
                 created_at REAL NOT NULL,
                 screen_w INTEGER NOT NULL,
                 screen_h INTEGER NOT NULL,
-                edited INTEGER NOT NULL DEFAULT 0
+                edited INTEGER NOT NULL DEFAULT 0,
+                order_index INTEGER NOT NULL DEFAULT 0
             )",
         )
         .execute(&pool)
@@ -1783,7 +1850,9 @@ mod tests {
 
     async fn add_screen(pool: &SqlitePool, ts: f64) -> i64 {
         sqlx::query_scalar::<_, i64>(
-            "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (?1, 1920, 1080) RETURNING id",
+            "INSERT INTO screens (created_at, screen_w, screen_h, order_index) \
+             VALUES (?1, 1920, 1080, COALESCE((SELECT MAX(order_index) FROM screens), 0) + 1) \
+             RETURNING id",
         )
         .bind(ts)
         .fetch_one(pool)
@@ -1793,7 +1862,9 @@ mod tests {
 
     async fn add_screen_at(pool: &SqlitePool, ts: f64, w: i32, h: i32) -> i64 {
         sqlx::query_scalar::<_, i64>(
-            "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (?1, ?2, ?3) RETURNING id",
+            "INSERT INTO screens (created_at, screen_w, screen_h, order_index) \
+             VALUES (?1, ?2, ?3, COALESCE((SELECT MAX(order_index) FROM screens), 0) + 1) \
+             RETURNING id",
         )
         .bind(ts)
         .bind(w)
@@ -1851,6 +1922,9 @@ mod tests {
         let _g = crate::tests::TEST_LOCK.lock().unwrap();
         runtime().block_on(async {
             let (pool, path) = temp_pool().await;
+            // temp_pool 建旧 schema; page_info 的 SQL 引用 deleted_at /
+            // order_index → 先迁移到当前版本
+            migrate_with(&pool).await.unwrap();
             // Fixed reference (2025-01-01 08:00 local): grouping is relative
             // to the stored rows, never to the wall clock.
             let a = 1735689600.0; // 2025-01-01 08:00 (UTC+8)
@@ -2165,6 +2239,7 @@ mod tests {
             for (table, column) in [
                 ("screens", "edited"),
                 ("screens", "deleted_at"),
+                ("screens", "order_index"),
                 ("strokes", "deleted_at"),
                 ("infinite_strokes", "deleted_at"),
                 ("points", "t"),
@@ -2194,6 +2269,66 @@ mod tests {
             let _ = std::fs::remove_file(&path);
         });
     }
+    #[test]
+    fn test_reorder_screen_and_navigation() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        runtime().block_on(async {
+            let (pool, path) = temp_pool().await;
+            migrate_with(&pool).await.unwrap();
+            let p1 = add_screen(&pool, 1000.0).await;
+            let p2 = add_screen(&pool, 2000.0).await;
+            let p3 = add_screen(&pool, 3000.0).await;
+
+            // 初始序 [1,2,3]: p3 移到 p1 前 → [3,1,2]
+            reorder_screen_with(&pool, p3, p1, true).await.unwrap();
+            let order: Vec<i64> = sqlx::query_scalar(
+                "SELECT id FROM screens WHERE deleted_at IS NULL ORDER BY order_index",
+            )
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+            assert_eq!(order, vec![p3, p1, p2], "重排后顺序");
+
+            // 翻页跟随新序: p1 的上一页 = p3, 下一页 = p2
+            assert_eq!(prev_screen_with(&pool, p1).await, Some(p3));
+            assert_eq!(next_screen_with(&pool, p1).await, Some(p2));
+            assert_eq!(prev_screen_with(&pool, p3).await, None, "p3 已是首页");
+
+            // 移到末尾: p3 移到 p2 后 → [1,2,3]
+            reorder_screen_with(&pool, p3, p2, false).await.unwrap();
+            let order: Vec<i64> = sqlx::query_scalar(
+                "SELECT id FROM screens WHERE deleted_at IS NULL ORDER BY order_index",
+            )
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+            assert_eq!(order, vec![p1, p2, p3]);
+
+            // 序号密集重编号(1..N, 无空洞)
+            let ois: Vec<i64> = sqlx::query_scalar(
+                "SELECT order_index FROM screens WHERE deleted_at IS NULL ORDER BY order_index",
+            )
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+            assert_eq!(ois, vec![1, 2, 3]);
+
+            // 软删页不参与: 删 p2 → [1,3], p1 的下一页 = p3
+            sqlx::query("UPDATE screens SET deleted_at = 1 WHERE id = ?1")
+                .bind(p2)
+                .execute(&pool)
+                .await
+                .unwrap();
+            assert_eq!(next_screen_with(&pool, p1).await, Some(p3));
+
+            // 锚点不存在 → 报错(跨笔记本误传拦截)
+            assert!(reorder_screen_with(&pool, p1, 9999, true).await.is_err());
+
+            pool.close().await;
+            let _ = std::fs::remove_file(&path);
+        });
+    }
+
     /// 备份 → 继续画 → 从备份合并恢复: 现有数据不丢, 备份里的内容回来。
     /// 这是"库损坏/换机不丢笔迹史"那条承诺的具体形式。
     #[test]
