@@ -4,7 +4,7 @@ import 'dart:ffi' hide Size;
 import 'dart:io';
 
 import 'package:ffi/ffi.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData, rootBundle;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
     show PointerScrollEvent, PointerSignalEvent;
@@ -203,6 +203,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   double _detailScale = 1.0;
   Offset _detailOffset = Offset.zero;
   bool _notebookGlass = true; // 活页本外观: true=拟物玻璃 false=笔记纸
+  ui.Image? _tabBgImage; // 插画位图(真穿透时铺在网格底层, 卡片挖洞)
   bool _panelTransparent = false; // 真穿透(实验): 面板窗口可透明, 卡片窟窿透出桌面
   /// OCR 搜索(本子页视图内): 激活后网格 = 全库匹配页(跨组)
   bool _searchMode = false;
@@ -1216,6 +1217,16 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     return Rect.fromLTWH(_detailMargin * kx, _detailMargin * kx, pw * kx, ph * kx);
   }
 
+  ui.Image? _tabBgImageCache;
+  Future<void> _ensureTabBgImage() async {
+    if (_tabBgImageCache != null) return;
+    final data = await rootBundle.load('assets/tab_bg_pages.jpg');
+    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+    final frame = await codec.getNextFrame();
+    if (!mounted) return;
+    setState(() => _tabBgImageCache = frame.image);
+  }
+
   Offset _viewToPage(Offset v) =>
       (v - _detailOffset) / _detailScale - Offset(_detailMargin, _detailMargin);
 
@@ -1499,6 +1510,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   Widget _buildNotebookPages() {
+    // 真穿透+拟物: 确保插画位图已加载(加载完成经 setState 刷新)
+    if (_notebookGlass && _panelTransparent) unawaited(_ensureTabBgImage());
     final key = _openNotebook!;
     return Column(
       children: [
@@ -1572,7 +1585,17 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                           : '本子是空的',
                       style:
                           const TextStyle(fontSize: 14, color: Colors.grey)))
-              : GridView.builder(
+              : Stack(children: [
+                  // 真穿透+拟物: 插画铺满网格底层, 页卡位置挖洞透桌面
+                  if (_notebookGlass &&
+                      _panelTransparent &&
+                      _tabBgImage != null)
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: _TabIllustrationPainter(_tabBgImage!),
+                      ),
+                    ),
+                  GridView.builder(
                   controller: _gridScroll,
                   itemCount: _filteredPages.length,
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -1591,10 +1614,19 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                     final page = _filteredPages[i];
                     final card = _buildPageCard(page, i);
                     if (_multiSelect || _searchMode) return card;
+                    // 真穿透+拟物: 卡片自带抠洞层(BlendMode.clear 擦掉
+                    // 底层插画), 洞内透出面板后的真实桌面。
+                    final hole = _notebookGlass &&
+                        _panelTransparent &&
+                        _tabBgImage != null;
                     // 长按拖动换位置(iOS 弹簧桌式): 悬停别的卡片时本地
                     // 列表实时移位(其他页让出), 松手一次性提交 DB。
                     // ValueKey 保活手势元素: 列表移位时拖拽不中断。
-                    return LongPressDraggable<int>(
+                    return Stack(children: [
+                      if (hole)
+                        const Positioned.fill(
+                            child: CustomPaint(painter: _HolePainter())),
+                      LongPressDraggable<int>(
                       key: ValueKey('page-${page.id}'),
                       data: page.id,
                       delay: const Duration(milliseconds: 300),
@@ -1617,9 +1649,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                         onAcceptWithDetails: (d) => _livePageShift(d.data),
                         builder: (context, _, _) => card,
                       ),
-                    );
-                  },
+                      ), // LongPressDraggable 收尾
+                    ]);
+                  }
                 ),
+          ],
+        ),
         ),
       ],
     );
@@ -3262,4 +3297,50 @@ class _DetailPainter extends CustomPainter {
       old.dragTo != dragTo ||
       old.pageRect != pageRect ||
       old.lasso.length != lasso.length;
+}
+
+
+/// 真穿透插画面层: tab_bg_pages 铺满网格区域(slice cover, 85% 白纱调和)。
+class _TabIllustrationPainter extends CustomPainter {
+  _TabIllustrationPainter(this.image);
+  final ui.Image image;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final kx = size.width / image.width;
+    final ky = size.height / image.height;
+    final k = kx > ky ? kx : ky; // cover
+    final w = image.width * k, h = image.height * k;
+    final dst = Rect.fromLTWH(
+        (size.width - w) / 2, (size.height - h) / 2, w, h);
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      dst,
+      Paint()
+        ..filterQuality = FilterQuality.medium
+        ..color = const Color(0xD9FFFFFF),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_TabIllustrationPainter old) => old.image != image;
+}
+
+/// 卡片挖洞层(isBackground: 画在卡片内容之前): BlendMode.clear 把插画
+/// 在卡片矩形内擦成透明 —— 洞里透出面板后的真实桌面。须与插画同一
+/// 画布层级(无 RepaintBoundary 隔离)才能擦到。
+class _HolePainter extends CustomPainter {
+  const _HolePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(12)),
+      Paint()..blendMode = BlendMode.clear,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_HolePainter old) => false;
 }
