@@ -28,6 +28,10 @@
 - **FRB 改了 Rust API 后**:`cd flutter_settings && flutter_rust_bridge_codegen generate`,
   然后**必须 `cargo build`**(build.rs 监视生成的 Dart,会重建 framework;
   不重建就会运行时报 "Content hash … different from Rust side",面板全挂)
+- **frb_generated.rs 编不过时直接删掉它再 codegen**(改 api.rs 加/改参数后
+  旧生成文件引用旧签名, cargo check 必挂——这是鸡生蛋, 不要手补生成文件:
+  `rm src/frb_generated.rs && cd flutter_settings && flutter_rust_bridge_codegen generate`,
+  codegen 从 api.rs 现算一份全新无错的, 省掉手工对齐 SSE 编解码的功夫)
 - **lint**:`sh scripts/lint.sh`;打包:`sh scripts/build-dmg.sh`
 
 ## 架构总览(当前状态)
