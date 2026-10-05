@@ -1231,9 +1231,16 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
   void _showDetailMenu(Offset pos) {
     final sel = _selectedStrokes.isNotEmpty;
+    // showMenu 的 position 相对当前 Overlay; 传入的 pos 是画布局部坐标,
+    // 先换成全局再相对 Overlay 反算, 否则菜单飞到错误位置且被边缘裁剪。
+    final box = context.findRenderObject() as RenderBox;
+    final global = box.localToGlobal(pos);
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final rel = overlay.globalToLocal(global);
     showMenu<String>(
       context: context,
-      position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 1, pos.dy + 1),
+      position: RelativeRect.fromLTRB(rel.dx, rel.dy, rel.dx + 1, rel.dy + 1),
       items: [
         if (sel)
           const PopupMenuItem(
