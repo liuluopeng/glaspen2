@@ -148,7 +148,10 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiOpenUrl({required String url});
 
-  Future<Uint8List> crateApiPagePngBytes({required PlatformInt64 screenId});
+  Future<Uint8List> crateApiPagePngBytes({
+    required PlatformInt64 screenId,
+    required Int64List highlight,
+  });
 
   Future<List<PageThumb>> crateApiPageThumbnails({
     required Int64List ids,
@@ -909,12 +912,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "open_url", argNames: ["url"]);
 
   @override
-  Future<Uint8List> crateApiPagePngBytes({required PlatformInt64 screenId}) {
+  Future<Uint8List> crateApiPagePngBytes({
+    required PlatformInt64 screenId,
+    required Int64List highlight,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_i_64(screenId, serializer);
+          sse_encode_list_prim_i_64_strict(highlight, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -927,14 +934,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: null,
         ),
         constMeta: kCrateApiPagePngBytesConstMeta,
-        argValues: [screenId],
+        argValues: [screenId, highlight],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiPagePngBytesConstMeta =>
-      const TaskConstMeta(debugName: "page_png_bytes", argNames: ["screenId"]);
+  TaskConstMeta get kCrateApiPagePngBytesConstMeta => const TaskConstMeta(
+    debugName: "page_png_bytes",
+    argNames: ["screenId", "highlight"],
+  );
 
   @override
   Future<List<PageThumb>> crateApiPageThumbnails({

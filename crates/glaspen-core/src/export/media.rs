@@ -526,11 +526,13 @@ pub extern "C" fn glaspen2_paint_page_into_surface(
 }
 
 /// 某页渲染为 PNG 字节(白底, 1x 页面分辨率; 面板页面详情用, 不落盘)。
-/// 返回缓冲指针, out_len 写长度; 失败返回空。调用方用
-/// glaspen2_free_bytes 释放。
+/// hl_ids_csv 非空时, 入选笔迹整笔重画成不透明蓝(选中高亮 —— 圈选的
+/// 唯一可靠视觉反馈, 蓝色与任何墨色都可区分)。
+/// 返回缓冲指针, out_len 写长度; 失败返回空。调用方 free。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_page_png_bytes(
     screen_id: i64,
+    hl_ids_csv: *const c_char,
     out_len: *mut c_int,
 ) -> *mut u8 {
     unsafe { *out_len = 0 };
@@ -544,6 +546,38 @@ pub extern "C" fn glaspen2_page_png_bytes(
     };
     if paint_page_into_surface(&r, screen_id, 1.0, true) == 0 {
         return std::ptr::null_mut();
+    }
+    // 选中高亮: 入选笔迹整笔描成蓝(宽 +3px), 简单且醒目
+    let hl_ids = (unsafe { hl_ids_csv.as_ref() }).and_then(|p| {
+        let s = unsafe { std::ffi::CStr::from_ptr(p) }.to_str().ok()?;
+        Some(
+            s.split(',')
+                .filter_map(|t| t.trim().parse::<i64>().ok())
+                .collect::<Vec<i64>>(),
+        )
+    });
+    if let Some(ids) = hl_ids
+        && !ids.is_empty()
+    {
+        let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
+        for st in &strokes {
+            if !ids.contains(&st.id) || st.points.len() < 2 {
+                continue;
+            }
+            for i in 1..st.points.len() {
+                let (x, y, wd, _) = st.points[i];
+                let (qx, qy, _qw, _qt) = st.points[i - 1];
+                r.stroke_line(
+                    x as f32,
+                    y as f32,
+                    qx as f32,
+                    qy as f32,
+                    (wd + 3.0) as f32,
+                    (66, 133, 244), // Google blue: 任何墨色上都醒目
+                );
+            }
+        }
+        r.flush();
     }
     let data = unsafe { std::slice::from_raw_parts(r.bits(), pw * ph * 4) };
     let Some(png) = encode_png_rgba(data, pw as u32, ph as u32) else {

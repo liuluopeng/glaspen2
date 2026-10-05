@@ -54,8 +54,14 @@ Future<bool> deletePage({required PlatformInt64 screenId}) =>
     RustLib.instance.api.crateApiDeletePage(screenId: screenId);
 
 /// 某页渲染为 PNG 字节(白底 1x; 页面详情视图用, 不落盘)。
-Future<Uint8List> pagePngBytes({required PlatformInt64 screenId}) =>
-    RustLib.instance.api.crateApiPagePngBytes(screenId: screenId);
+/// highlight 非空 = 入选笔迹整笔描蓝(选中反馈)。
+Future<Uint8List> pagePngBytes({
+  required PlatformInt64 screenId,
+  required Int64List highlight,
+}) => RustLib.instance.api.crateApiPagePngBytes(
+  screenId: screenId,
+  highlight: highlight,
+);
 
 /// 圈选命中: 返回圈内笔迹 id 列表(整笔为单位)。
 Future<Int64List> lassoSelect({

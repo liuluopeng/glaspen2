@@ -1139,6 +1139,13 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       _selectedStrokes = ids;
       _lassoPts.clear();
     });
+    if (ids.isEmpty) {
+      _toast('圈内没有笔迹');
+      unawaited(_reloadDetailImage(_detailPageId!));
+    } else {
+      _toast('已选 ${ids.length} 笔(蓝色高亮) · 拖拽移动 / 右键复制或删除');
+      unawaited(_reloadDetailImage(_detailPageId!, highlight: ids));
+    }
   }
 
   Future<void> _finishDrag() async {
@@ -1161,15 +1168,15 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _undoMoves.add((pageId, ids, -d.dx, -d.dy));
         _dragStart = null;
       });
-      unawaited(_reloadDetailImage(pageId));
+      unawaited(_reloadDetailImage(pageId, highlight: _selectedStrokes));
     } else {
       setState(() => _dragStart = null);
       _toast('移动失败');
     }
   }
 
-  Future<void> _reloadDetailImage(int screenId) async {
-    final png = await _bridge.exportPagePngBytes(screenId);
+  Future<void> _reloadDetailImage(int screenId, {List<int> highlight = const []}) async {
+    final png = await _bridge.exportPagePngBytes(screenId, highlight: highlight);
     if (!mounted || png == null || png.isEmpty) return;
     final codec = await ui.instantiateImageCodec(png);
     final frame = await codec.getNextFrame();
@@ -1211,6 +1218,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     if (ok) {
       setState(() => _selectedStrokes = []);
       unawaited(_reloadDetailImage(pageId));
+      _toast('已删除 ${ids.length} 笔');
     } else {
       _toast('删除失败');
     }
@@ -1238,9 +1246,22 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     final overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
     final rel = overlay.globalToLocal(global);
+    // RelativeRect.fromLTRB 的 right/bottom = 距 Overlay 右/下边缘的距离
+    // (不是坐标!): 给一个以点击点为锚的小矩形, 并夹紧到 Overlay 内缘,
+    // 保证菜单完整弹出(此前把坐标当 right 传, 点靠右时矩形退化残缺)。
+    const menuW = 220.0, menuH = 170.0;
+    final dx = rel.dx
+        .clamp(8.0, (overlay.size.width - menuW).clamp(8.0, double.infinity));
+    final dy = rel.dy
+        .clamp(8.0, (overlay.size.height - menuH).clamp(8.0, double.infinity));
     showMenu<String>(
       context: context,
-      position: RelativeRect.fromLTRB(rel.dx, rel.dy, rel.dx + 1, rel.dy + 1),
+      position: RelativeRect.fromLTRB(
+        dx,
+        dy,
+        (overlay.size.width - dx - 1).clamp(0.0, double.infinity),
+        (overlay.size.height - dy - 1).clamp(0.0, double.infinity),
+      ),
       items: [
         if (sel)
           const PopupMenuItem(
@@ -2905,7 +2926,6 @@ class _DetailPainter extends CustomPainter {
     if (dragFrom != null && dragTo != null) {
       final d = dragTo! - dragFrom!;
       final rect = dst.shift(offset).inflate(2).translate(d.dx, d.dy);
-      canvas.drawRect(rect, Paint()..color = Colors.blue.withValues(alpha: 0.18));
       canvas.drawRect(
         rect,
         Paint()
