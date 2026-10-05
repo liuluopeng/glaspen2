@@ -1242,15 +1242,16 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     }
   }
 
-  void _showDetailMenu(Offset pos) {
+  void _showDetailMenu(Offset globalPos) {
     final sel = _selectedStrokes.isNotEmpty;
-    // showMenu 的 position 相对当前 Overlay; 传入的 pos 是画布局部坐标,
-    // 先换成全局再相对 Overlay 反算, 否则菜单飞到错误位置且被边缘裁剪。
+    // showMenu 的 position 相对当前 Overlay。pos 已是全局坐标
+    // (TapUpDetails.globalPosition), 只需相对 Overlay 反算; 不要用
+    // State 的 context 找 RenderBox(那是整面板, 原点错 → 菜单偏移)。
     final box = context.findRenderObject() as RenderBox;
-    final global = box.localToGlobal(pos);
+    final canvasPos = box.globalToLocal(globalPos); // 画布局部(粘贴锚点用)
     final overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
-    final rel = overlay.globalToLocal(global);
+    final rel = overlay.globalToLocal(globalPos);
     // RelativeRect.fromLTRB 的 right/bottom = 距 Overlay 右/下边缘的距离
     // (不是坐标!): 给一个以点击点为锚的小矩形, 并夹紧到 Overlay 内缘,
     // 保证菜单完整弹出(此前把坐标当 right 传, 点靠右时矩形退化残缺)。
@@ -1295,7 +1296,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       ],
     ).then((v) {
       if (v == 'copy') unawaited(_copySelection());
-      if (v == 'paste') unawaited(_pasteAt(pos));
+      if (v == 'paste') unawaited(_pasteAt(canvasPos));
       if (v == 'delete') unawaited(_deleteSelection());
     });
   }
@@ -1378,7 +1379,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 unawaited(_finishLasso());
               }
             },
-            onSecondaryTapUp: (d) => _showDetailMenu(d.localPosition),
+            onSecondaryTapUp: (d) => _showDetailMenu(d.globalPosition),
             child: CustomPaint(
               painter: _DetailPainter(
                 image: img,
