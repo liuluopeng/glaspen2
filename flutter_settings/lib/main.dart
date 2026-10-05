@@ -1531,7 +1531,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   itemBuilder: (context, i) {
                     final page = _filteredPages[i];
                     return Stack(children: [
-                      _buildPageCard(page, i),
+                      Positioned.fill(child: _buildPageCard(page, i)),
                       if (!_multiSelect && !_searchMode)
                         Positioned(
                           top: 4,
@@ -1714,9 +1714,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     for (final p in _pages) {
       groups.putIfAbsent('${p.w}x${p.h}', () => []).add(p);
     }
-    for (final g in groups.values) {
-      g.sort((a, b) => a.id.compareTo(b.id));
-    }
+    // 组内保持 _pages 传入顺序(order_index);组的先后仍按最近活跃
     final keys = groups.keys.toList()
       ..sort((a, b) {
         int mx(String k) =>
@@ -1741,8 +1739,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       });
     final out = <PageInfo>[];
     for (final k in keys) {
-      final g = groups[k]!..sort((a, b) => a.id.compareTo(b.id));
-      out.addAll(g);
+      // 组内保持传入顺序(list_screens 已按 order_index 排)——此前按 id
+      // 重排把页重排的结果整个吞掉(按钮"按了没反应"的根因)
+      out.addAll(groups[k]!);
     }
     return out;
   }
