@@ -12,8 +12,19 @@ abstract class SettingsBridge {
   Future<List<PageInfo>> listPages();
   /// 活页本重排: 把某页移到锚点页前/后(本子内前后移)
   Future<bool> reorderPage(int screenId, int anchorId, {required bool before});
+
+  // ── 页面详情: 圈选 / 移动 / 复制粘贴 / 删除所选 ──
+  Future<List<int>> lassoSelect(int screenId, List<(double, double)> poly);
+  Future<bool> moveStrokes(int screenId, List<int> ids, double dx, double dy);
+  Future<bool> moveStrokesToPage(
+      int screenId, List<int> ids, int targetScreenId, double dx, double dy);
+  Future<bool> deleteStrokes(int screenId, List<int> ids);
+  Future<String> copyStrokes(int screenId, List<int> ids);
+  Future<int> pasteStrokes(int screenId, String payload, double cx, double cy);
   /// Content tab: 一次取多页缩略图(id → PNG);无内容的页不会出现在结果里
   Future<Map<int, Uint8List>> getPageThumbnails(List<int> ids, int maxSize);
+  /// 页面详情: 整页 PNG 字节(白底 1x, 不落盘); 空页返回 null
+  Future<Uint8List?> exportPagePngBytes(int screenId);
   /// 删除一页及其笔迹
   Future<bool> deletePage(int screenId);
   /// 导出单页 PNG(白底 2x)到桌面
@@ -151,6 +162,65 @@ class _FrbBridge extends SettingsBridge {
   Future<bool> reorderPage(int screenId, int anchorId, {required bool before}) async {
     await _init();
     return rust.reorderPage(screenId: screenId, anchorId: anchorId, before: before);
+  }
+
+  @override
+  Future<Uint8List?> exportPagePngBytes(int screenId) async {
+    await _init();
+    final bytes = await rust.pagePngBytes(screenId: screenId);
+    return bytes.isEmpty ? null : Uint8List.fromList(bytes);
+  }
+
+  @override
+  Future<List<int>> lassoSelect(int screenId, List<(double, double)> poly) async {
+    await _init();
+    final ids = await rust.lassoSelect(
+        screenId: screenId,
+        poly: poly.map((p) => (p.$1, p.$2)).toList());
+    return ids.toList().map((e) => e.toInt()).toList();
+  }
+
+  @override
+  Future<bool> moveStrokes(int screenId, List<int> ids, double dx, double dy) async {
+    await _init();
+    return rust.moveStrokes(
+        screenId: screenId,
+        ids: frb.Int64List.fromList(ids),
+        dx: dx,
+        dy: dy);
+  }
+
+  @override
+  Future<bool> moveStrokesToPage(
+      int screenId, List<int> ids, int targetScreenId, double dx, double dy) async {
+    await _init();
+    return rust.moveStrokesToPage(
+        screenId: screenId,
+        ids: frb.Int64List.fromList(ids),
+        targetScreenId: targetScreenId,
+        dx: dx,
+        dy: dy);
+  }
+
+  @override
+  Future<bool> deleteStrokes(int screenId, List<int> ids) async {
+    await _init();
+    return rust.deleteStrokes(
+        screenId: screenId, ids: frb.Int64List.fromList(ids));
+  }
+
+  @override
+  Future<String> copyStrokes(int screenId, List<int> ids) async {
+    await _init();
+    return rust.copyStrokesPayload(
+        screenId: screenId, ids: frb.Int64List.fromList(ids));
+  }
+
+  @override
+  Future<int> pasteStrokes(int screenId, String payload, double cx, double cy) async {
+    await _init();
+    return rust.pasteStrokes(
+        screenId: screenId, payload: payload, cx: cx, cy: cy);
   }
 
   @override
@@ -545,6 +615,64 @@ class _NamedPipeBridge extends SettingsBridge {
       'screenId': screenId, 'anchorId': anchorId, 'before': before,
     });
     return r['ok'] == 1 || r['ok'] == true;
+  }
+
+  @override
+  Future<Uint8List?> exportPagePngBytes(int screenId) async {
+    debugPrint('[Pipe] exportPagePngBytes: Windows 管道未接入, 忽略');
+    return null;
+  }
+
+  @override
+  Future<List<int>> lassoSelect(int screenId, List<(double, double)> poly) async {
+    final r = await _request('lassoSelect', {
+      'screenId': screenId,
+      'value': poly.map((p) => [p.$1, p.$2]).toList(),
+    });
+    return (r['ids'] as List?)?.map((e) => (e as num).toInt()).toList() ?? const [];
+  }
+
+  @override
+  Future<bool> moveStrokes(int screenId, List<int> ids, double dx, double dy) async {
+    final r = await _request('moveStrokes', {
+      'screenId': screenId, 'value': {'ids': ids, 'dx': dx, 'dy': dy},
+    });
+    return r['ok'] == 1 || r['ok'] == true;
+  }
+
+  @override
+  Future<bool> moveStrokesToPage(
+      int screenId, List<int> ids, int targetScreenId, double dx, double dy) async {
+    final r = await _request('moveStrokesToPage', {
+      'screenId': screenId,
+      'value': {'ids': ids, 'targetScreenId': targetScreenId, 'dx': dx, 'dy': dy},
+    });
+    return r['ok'] == 1 || r['ok'] == true;
+  }
+
+  @override
+  Future<bool> deleteStrokes(int screenId, List<int> ids) async {
+    final r = await _request('deleteStrokes', {
+      'screenId': screenId, 'value': {'ids': ids},
+    });
+    return r['ok'] == 1 || r['ok'] == true;
+  }
+
+  @override
+  Future<String> copyStrokes(int screenId, List<int> ids) async {
+    final r = await _request('copyStrokes', {
+      'screenId': screenId, 'value': {'ids': ids},
+    });
+    return r['payload'] as String? ?? '';
+  }
+
+  @override
+  Future<int> pasteStrokes(int screenId, String payload, double cx, double cy) async {
+    // 管道版: 平移在 Dart 侧做完再发(payload 已含 cx/cy 时由调用方保证)
+    final r = await _request('pasteStrokes', {
+      'screenId': screenId, 'value': {'payload': payload},
+    });
+    return (r['count'] as num?)?.toInt() ?? 0;
   }
 
   @override

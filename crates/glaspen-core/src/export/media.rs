@@ -525,6 +525,38 @@ pub extern "C" fn glaspen2_paint_page_into_surface(
     paint_page_into_surface(&r, screen_id, scale, white_bg != 0)
 }
 
+/// 某页渲染为 PNG 字节(白底, 1x 页面分辨率; 面板页面详情用, 不落盘)。
+/// 返回缓冲指针, out_len 写长度; 失败返回空。调用方用
+/// glaspen2_free_bytes 释放。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_page_png_bytes(
+    screen_id: i64,
+    out_len: *mut c_int,
+) -> *mut u8 {
+    unsafe { *out_len = 0 };
+    let Some((w, h)) = runtime().block_on(db::screen_dims(screen_id)) else {
+        return std::ptr::null_mut();
+    };
+    let pw = w.max(1) as usize;
+    let ph = h.max(1) as usize;
+    let Some(r) = crate::cairo_dl::CairoRenderer::create_owned(pw as i32, ph as i32) else {
+        return std::ptr::null_mut();
+    };
+    if paint_page_into_surface(&r, screen_id, 1.0, true) == 0 {
+        return std::ptr::null_mut();
+    }
+    let data = unsafe { std::slice::from_raw_parts(r.bits(), pw * ph * 4) };
+    let Some(png) = encode_png_rgba(data, pw as u32, ph as u32) else {
+        return std::ptr::null_mut();
+    };
+    let mut boxed = png.into_boxed_slice();
+    let ptr = boxed.as_mut_ptr();
+    let len = boxed.len();
+    std::mem::forget(boxed); // 所有权交给调用方(free_bytes / Vec::from_raw_parts)
+    unsafe { *out_len = len as c_int };
+    ptr
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_export_page_png(screen_id: i64) -> c_int {
     let Some((w, h)) = runtime().block_on(db::screen_dims(screen_id)) else {

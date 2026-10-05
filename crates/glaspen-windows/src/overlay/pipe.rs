@@ -262,6 +262,136 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .as_bytes(),
         );
         let _ = writer.flush();
+    } else if msg_type == "lassoSelect"
+        || msg_type == "moveStrokes"
+        || msg_type == "moveStrokesToPage"
+        || msg_type == "deleteStrokes"
+        || msg_type == "copyStrokes"
+        || msg_type == "pasteStrokes"
+    {
+        // 页面详情: 圈选/移动/复制粘贴/删除所选(纯 DB 数据操作, 同 macOS)
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let screen_id = json_get_i64(line, "screenId").unwrap_or(0);
+        let nums = |v: &serde_json::Value| -> Vec<(f64, f64)> {
+            v.as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|p| {
+                            let arr = p.as_array()?;
+                            Some((arr.first()?.as_f64()?, arr.get(1)?.as_f64()?))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let ids_json = |v: &serde_json::Value| -> Vec<i64> {
+            v.as_array()
+                .map(|a| a.iter().filter_map(|x| x.as_i64()).collect())
+                .unwrap_or_default()
+        };
+        let val = json_get_str(line, "value");
+        let parsed: Option<serde_json::Value> = serde_json::from_str(val).ok();
+        let resp_val = match msg_type {
+            "lassoSelect" => {
+                let poly = parsed.as_ref().map(|v| nums(&v["poly"])).unwrap_or_default();
+                let payload = poly
+                    .iter()
+                    .map(|(x, y)| format!("{x},{y}"))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let c = std::ffi::CString::new(payload).unwrap_or_default();
+                let ptr = glaspen_core::export::glaspen2_lasso_select(screen_id, c.as_ptr());
+                let s = if ptr.is_null() {
+                    String::new()
+                } else {
+                    unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy().into_owned()
+                };
+                if !ptr.is_null() {
+                    glaspen_core::export::glaspen2_free_c_string(ptr);
+                }
+                let ids: Vec<i64> = s.split(',').filter_map(|t| t.trim().parse().ok()).collect();
+                serde_json::json!({ "ids": ids })
+            }
+            "moveStrokes" => {
+                let ids = parsed.as_ref().map(|v| ids_json(&v["ids"])).unwrap_or_default();
+                let (dx, dy) = parsed
+                    .as_ref()
+                    .map(|v| (v["dx"].as_f64().unwrap_or(0.0), v["dy"].as_f64().unwrap_or(0.0)))
+                    .unwrap_or((0.0, 0.0));
+                let csv = std::ffi::CString::new(
+                    ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+                )
+                .unwrap_or_default();
+                let ok = glaspen_core::export::glaspen2_move_strokes(
+                    screen_id, csv.as_ptr(), dx, dy,
+                ) != 0;
+                serde_json::json!({ "ok": ok })
+            }
+            "moveStrokesToPage" => {
+                let ids = parsed.as_ref().map(|v| ids_json(&v["ids"])).unwrap_or_default();
+                let target = parsed
+                    .as_ref()
+                    .and_then(|v| v["targetScreenId"].as_i64())
+                    .unwrap_or(0);
+                let (dx, dy) = parsed
+                    .as_ref()
+                    .map(|v| (v["dx"].as_f64().unwrap_or(0.0), v["dy"].as_f64().unwrap_or(0.0)))
+                    .unwrap_or((0.0, 0.0));
+                let csv = std::ffi::CString::new(
+                    ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+                )
+                .unwrap_or_default();
+                let ok = glaspen_core::export::glaspen2_move_strokes_to_page(
+                    screen_id, csv.as_ptr(), target, dx, dy,
+                ) != 0;
+                serde_json::json!({ "ok": ok })
+            }
+            "deleteStrokes" => {
+                let ids = parsed.as_ref().map(|v| ids_json(&v["ids"])).unwrap_or_default();
+                let csv = std::ffi::CString::new(
+                    ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+                )
+                .unwrap_or_default();
+                let ok =
+                    glaspen_core::export::glaspen2_delete_strokes(screen_id, csv.as_ptr()) != 0;
+                serde_json::json!({ "ok": ok })
+            }
+            "copyStrokes" => {
+                let ids = parsed.as_ref().map(|v| ids_json(&v["ids"])).unwrap_or_default();
+                let csv = std::ffi::CString::new(
+                    ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+                )
+                .unwrap_or_default();
+                let ptr =
+                    glaspen_core::export::glaspen2_copy_strokes_payload(screen_id, csv.as_ptr());
+                let s = if ptr.is_null() {
+                    String::new()
+                } else {
+                    unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy().into_owned()
+                };
+                if !ptr.is_null() {
+                    glaspen_core::export::glaspen2_free_c_string(ptr);
+                }
+                serde_json::json!({ "payload": s })
+            }
+            _ => {
+                // pasteStrokes: 载荷由 Dart 侧已平移好(简单起见管道版不做 shift)
+                let payload = parsed
+                    .as_ref()
+                    .and_then(|v| v["payload"].as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let c = std::ffi::CString::new(payload).unwrap_or_default();
+                let n = glaspen_core::export::glaspen2_paste_strokes(screen_id, c.as_ptr());
+                serde_json::json!({ "count": n })
+            }
+        };
+        let resp = format!(
+            "{{\"type\":\"{}_response\",\"reqId\":{},\"data\":{}}}\n",
+            msg_type, req_id, resp_val
+        );
+        let _ = writer.write_all(resp.as_bytes());
+        let _ = writer.flush();
     } else if msg_type == "exportPdf" {
         // 导出全部页面为 PDF(纯 Rust,不需要覆盖层配合)
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);

@@ -6,7 +6,7 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `current_settings`, `decode_thumb_blob`, `download_to_cache`, `from_json`, `open_url_checked`, `run_blocking`
+// These functions are ignored because they are not marked as `pub`: `current_settings`, `decode_thumb_blob`, `download_to_cache`, `from_json`, `open_url_checked`, `run_blocking`, `shift_payload`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `glaspen2_notify_settings_changed`
 
@@ -52,6 +52,73 @@ Future<List<PageThumb>> pageThumbnails({
 /// 删除一页及其笔迹。
 Future<bool> deletePage({required PlatformInt64 screenId}) =>
     RustLib.instance.api.crateApiDeletePage(screenId: screenId);
+
+/// 某页渲染为 PNG 字节(白底 1x; 页面详情视图用, 不落盘)。
+Future<Uint8List> pagePngBytes({required PlatformInt64 screenId}) =>
+    RustLib.instance.api.crateApiPagePngBytes(screenId: screenId);
+
+/// 圈选命中: 返回圈内笔迹 id 列表(整笔为单位)。
+Future<Int64List> lassoSelect({
+  required PlatformInt64 screenId,
+  required List<(double, double)> poly,
+}) => RustLib.instance.api.crateApiLassoSelect(screenId: screenId, poly: poly);
+
+/// 同页平移所选笔迹。
+Future<bool> moveStrokes({
+  required PlatformInt64 screenId,
+  required Int64List ids,
+  required double dx,
+  required double dy,
+}) => RustLib.instance.api.crateApiMoveStrokes(
+  screenId: screenId,
+  ids: ids,
+  dx: dx,
+  dy: dy,
+);
+
+/// 跨页搬移所选笔迹(保 id 保时间)。
+Future<bool> moveStrokesToPage({
+  required PlatformInt64 screenId,
+  required Int64List ids,
+  required PlatformInt64 targetScreenId,
+  required double dx,
+  required double dy,
+}) => RustLib.instance.api.crateApiMoveStrokesToPage(
+  screenId: screenId,
+  ids: ids,
+  targetScreenId: targetScreenId,
+  dx: dx,
+  dy: dy,
+);
+
+/// 删除所选笔迹(软删)。
+Future<bool> deleteStrokes({
+  required PlatformInt64 screenId,
+  required Int64List ids,
+}) => RustLib.instance.api.crateApiDeleteStrokes(screenId: screenId, ids: ids);
+
+/// 复制所选笔迹进面板剪贴板载荷(中心在原点, 带颜色)。
+Future<String> copyStrokesPayload({
+  required PlatformInt64 screenId,
+  required Int64List ids,
+}) => RustLib.instance.api.crateApiCopyStrokesPayload(
+  screenId: screenId,
+  ids: ids,
+);
+
+/// 粘贴笔迹载荷到某页(新 id 新时间; 载荷坐标 = 中心在原点, 由调用方
+/// 按粘贴点平移)。返回新笔数。
+Future<int> pasteStrokes({
+  required PlatformInt64 screenId,
+  required String payload,
+  required double cx,
+  required double cy,
+}) => RustLib.instance.api.crateApiPasteStrokes(
+  screenId: screenId,
+  payload: payload,
+  cx: cx,
+  cy: cy,
+);
 
 /// 导出单页 PNG(白底, 2x 采样)到桌面。
 Future<bool> exportPagePng({required PlatformInt64 screenId}) =>

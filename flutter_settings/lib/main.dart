@@ -8,6 +8,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
     show PointerScrollEvent, PointerSignalEvent;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart' as frb;
 
@@ -185,6 +186,18 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   List<PageInfo> _filteredPages = [];
   /// 当前打开的笔记本("WxH"); null = 笔记本网格(本子列表)
   String? _openNotebook;
+  // 页面详情(面板圈选/移动/复制粘贴/删除): 打开的页 id + 页面位图
+  int? _detailPageId;
+  ui.Image? _detailImage;
+  double _detailImgW = 0, _detailImgH = 0;
+  final List<Offset> _lassoPts = [];
+  List<int> _selectedStrokes = [];
+  Offset? _dragStart;
+  Offset _dragNow = Offset.zero;
+  String _clipPayload = '';
+  final List<(int, List<int>, double, double)> _undoMoves = [];
+  double _detailScale = 1.0;
+  Offset _detailOffset = Offset.zero;
   /// OCR 搜索(本子页视图内): 激活后网格 = 全库匹配页(跨组)
   bool _searchMode = false;
   bool _searchFieldVisible = false;
@@ -932,9 +945,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         Expanded(
           child: _pagesLoading
               ? const Center(child: CircularProgressIndicator())
-              : _openNotebook == null
-                  ? _buildNotebookGrid()
-                  : _buildNotebookPages(),
+              : _detailPageId != null
+                  ? _buildPageDetail()
+                  : _openNotebook == null
+                      ? _buildNotebookGrid()
+                      : _buildNotebookPages(),
         ),
       ],
     );
@@ -1075,6 +1090,279 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   /// 打开的笔记本: 顶部返回行 + 该本子的页网格(工具条/多选/懒加载复用)。
+  // ── 页面详情(圈选/移动/复制粘贴/删除): 治理动作归面板 ──
+
+  Future<void> _openPageDetail(int screenId) async {
+    final png = await _bridge.exportPagePngBytes(screenId);
+    if (!mounted) return;
+    if (png == null || png.isEmpty) {
+      _toast('页面为空, 没有可编辑的内容');
+      return;
+    }
+    final codec = await ui.instantiateImageCodec(png);
+    final frame = await codec.getNextFrame();
+    final img = frame.image;
+    if (!mounted) return;
+    setState(() {
+      _detailPageId = screenId;
+      _detailImage = img;
+      _detailImgW = img.width.toDouble();
+      _detailImgH = img.height.toDouble();
+      _selectedStrokes = [];
+      _lassoPts.clear();
+      _dragStart = null;
+    });
+  }
+
+  void _closePageDetail() {
+    setState(() {
+      _detailPageId = null;
+      _detailImage = null;
+      _selectedStrokes = [];
+      _lassoPts.clear();
+      _dragStart = null;
+    });
+    unawaited(_loadPages());
+  }
+
+  Offset _viewToPage(Offset v) => (v - _detailOffset) / _detailScale;
+
+  Future<void> _finishLasso() async {
+    if (_lassoPts.length < 3 || _detailPageId == null) {
+      setState(() => _lassoPts.clear());
+      return;
+    }
+    final poly = _lassoPts.map(_viewToPage).map((p) => (p.dx, p.dy)).toList();
+    final ids = await _bridge.lassoSelect(_detailPageId!, poly);
+    if (!mounted) return;
+    setState(() {
+      _selectedStrokes = ids;
+      _lassoPts.clear();
+    });
+  }
+
+  Future<void> _finishDrag() async {
+    final start = _dragStart;
+    if (start == null || _detailPageId == null || _selectedStrokes.isEmpty) {
+      setState(() => _dragStart = null);
+      return;
+    }
+    final d = (_dragNow - start) / _detailScale;
+    if (d.distance < 1.0) {
+      setState(() => _dragStart = null);
+      return;
+    }
+    final pageId = _detailPageId!;
+    final ids = List<int>.from(_selectedStrokes);
+    final ok = await _bridge.moveStrokes(pageId, ids, d.dx, d.dy);
+    if (!mounted) return;
+    if (ok) {
+      setState(() {
+        _undoMoves.add((pageId, ids, -d.dx, -d.dy));
+        _dragStart = null;
+      });
+      unawaited(_reloadDetailImage(pageId));
+    } else {
+      setState(() => _dragStart = null);
+      _toast('移动失败');
+    }
+  }
+
+  Future<void> _reloadDetailImage(int screenId) async {
+    final png = await _bridge.exportPagePngBytes(screenId);
+    if (!mounted || png == null || png.isEmpty) return;
+    final codec = await ui.instantiateImageCodec(png);
+    final frame = await codec.getNextFrame();
+    final img = frame.image;
+    if (!mounted) return;
+    setState(() => _detailImage = img);
+  }
+
+  Future<void> _copySelection() async {
+    if (_detailPageId == null || _selectedStrokes.isEmpty) return;
+    final payload = await _bridge.copyStrokes(_detailPageId!, _selectedStrokes);
+    if (!mounted) return;
+    _clipPayload = payload;
+    _toast(payload.isEmpty ? '没有可复制的内容' : '已复制 ${_selectedStrokes.length} 笔');
+  }
+
+  Future<void> _pasteAt(Offset viewPos) async {
+    if (_clipPayload.isEmpty || _detailPageId == null) {
+      _toast('剪贴板是空的');
+      return;
+    }
+    final p = _viewToPage(viewPos);
+    final n = await _bridge.pasteStrokes(_detailPageId!, _clipPayload, p.dx, p.dy);
+    if (!mounted) return;
+    if (n > 0) {
+      _toast('已粘贴 $n 笔');
+      unawaited(_reloadDetailImage(_detailPageId!));
+    } else {
+      _toast('粘贴失败');
+    }
+  }
+
+  Future<void> _deleteSelection() async {
+    if (_detailPageId == null || _selectedStrokes.isEmpty) return;
+    final pageId = _detailPageId!;
+    final ids = List<int>.from(_selectedStrokes);
+    final ok = await _bridge.deleteStrokes(pageId, ids);
+    if (!mounted) return;
+    if (ok) {
+      setState(() => _selectedStrokes = []);
+      unawaited(_reloadDetailImage(pageId));
+    } else {
+      _toast('删除失败');
+    }
+  }
+
+  Future<void> _undoLastMove() async {
+    if (_undoMoves.isEmpty) {
+      _toast('没有可撤销的移动');
+      return;
+    }
+    final (pageId, ids, dx, dy) = _undoMoves.removeLast();
+    final ok = await _bridge.moveStrokes(pageId, ids, dx, dy);
+    if (!mounted) return;
+    if (ok && _detailPageId == pageId) {
+      unawaited(_reloadDetailImage(pageId));
+    }
+  }
+
+  void _showDetailMenu(Offset pos) {
+    final sel = _selectedStrokes.isNotEmpty;
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 1, pos.dy + 1),
+      items: [
+        if (sel)
+          const PopupMenuItem(
+              value: 'copy', height: 36,
+              child: Row(children: [
+                Icon(Icons.copy, size: 16),
+                SizedBox(width: 8),
+                Text('复制所选', style: TextStyle(fontSize: 13)),
+              ])),
+        if (_clipPayload.isNotEmpty)
+          const PopupMenuItem(
+              value: 'paste', height: 36,
+              child: Row(children: [
+                Icon(Icons.paste, size: 16),
+                SizedBox(width: 8),
+                Text('粘贴到这里', style: TextStyle(fontSize: 13)),
+              ])),
+        if (sel)
+          const PopupMenuItem(
+              value: 'delete', height: 36,
+              child: Row(children: [
+                Icon(Icons.delete_outline, size: 16, color: Colors.red),
+                SizedBox(width: 8),
+                Text('删除所选', style: TextStyle(fontSize: 13)),
+              ])),
+      ],
+    ).then((v) {
+      if (v == 'copy') unawaited(_copySelection());
+      if (v == 'paste') unawaited(_pasteAt(pos));
+      if (v == 'delete') unawaited(_deleteSelection());
+    });
+  }
+
+  Widget _buildPageDetail() {
+    final img = _detailImage;
+    if (img == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return LayoutBuilder(builder: (context, c) {
+      final sw = _detailImgW <= 0 ? 1.0 : c.maxWidth / _detailImgW;
+      final sh = _detailImgH <= 0 ? 1.0 : c.maxHeight / _detailImgH;
+      _detailScale = sw < sh ? sw : sh;
+      _detailOffset = Offset(
+        (c.maxWidth - _detailImgW * _detailScale) / 2,
+        (c.maxHeight - _detailImgH * _detailScale) / 2,
+      );
+      return Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+          child: Row(children: [
+            TextButton.icon(
+              onPressed: _closePageDetail,
+              icon: const Icon(Icons.arrow_back, size: 16),
+              label: const Text('本子', style: TextStyle(fontSize: 13)),
+            ),
+            const SizedBox(width: 8),
+            Text('第 $_detailPageId 页 · ${_selectedStrokes.length} 笔已选',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: _copySelection,
+              icon: const Icon(Icons.copy, size: 16),
+              label: const Text('复制', style: TextStyle(fontSize: 13)),
+            ),
+            TextButton.icon(
+              onPressed: _deleteSelection,
+              icon: const Icon(Icons.delete_outline, size: 16),
+              label: const Text('删除所选', style: TextStyle(fontSize: 13)),
+            ),
+            TextButton.icon(
+              onPressed: _undoLastMove,
+              icon: const Icon(Icons.undo, size: 16),
+              label: const Text('撤销移动', style: TextStyle(fontSize: 13)),
+            ),
+          ]),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text('左键拖圈 = 选择 · 拖拽已选 = 移动 · 右键 = 复制/粘贴 · 点空白 = 取消选择',
+                style: TextStyle(fontSize: 11, color: Colors.grey)),
+          ),
+        ),
+        Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.deferToChild,
+            onPanStart: (d) {
+              if (_selectedStrokes.isNotEmpty) {
+                _dragStart = d.localPosition;
+                _dragNow = d.localPosition;
+              } else {
+                _lassoPts
+                  ..clear()
+                  ..add(d.localPosition);
+              }
+            },
+            onPanUpdate: (d) {
+              if (_dragStart != null) {
+                _dragNow = d.localPosition;
+              } else if (_lassoPts.isNotEmpty) {
+                setState(() => _lassoPts.add(d.localPosition));
+              }
+            },
+            onPanEnd: (_) {
+              if (_dragStart != null) {
+                unawaited(_finishDrag());
+              } else {
+                unawaited(_finishLasso());
+              }
+            },
+            onSecondaryTapUp: (d) => _showDetailMenu(d.localPosition),
+            child: CustomPaint(
+              painter: _DetailPainter(
+                image: img,
+                scale: _detailScale,
+                offset: _detailOffset,
+                lasso: _lassoPts,
+                dragFrom: _dragStart,
+                dragTo: _dragStart != null ? _dragNow : null,
+              ),
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
+      ]);
+    });
+  }
+
   Widget _buildNotebookPages() {
     final key = _openNotebook!;
     return Column(
@@ -1413,6 +1701,13 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 ),
                 items: [
                   const PopupMenuItem(
+                      value: 'detail', height: 36,
+                      child: Row(children: [
+                        Icon(Icons.draw_outlined, size: 16),
+                        SizedBox(width: 8),
+                        Text('编辑内容(圈选/移动/复制)', style: TextStyle(fontSize: 13)),
+                      ])),
+                  const PopupMenuItem(
                       value: 'png', height: 36,
                       child: Row(children: [
                         Icon(Icons.image_outlined, size: 16),
@@ -1443,7 +1738,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                       ])),
                 ],
               ).then((v) async {
-                if (v == 'delete') {
+                if (v == 'detail') {
+                  await _openPageDetail(page.id);
+                } else if (v == 'delete') {
                   _confirmDeletePage(page);
                 } else if (v == 'png') {
                   final ok = await _bridge.exportPagePng(page.id);
@@ -2569,3 +2866,72 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 }
 
+
+/// 页面详情画布: 位图(fit) + 圈选路径 + 拖拽幽灵(选区包围盒位移)
+class _DetailPainter extends CustomPainter {
+  _DetailPainter({
+    required this.image,
+    required this.scale,
+    required this.offset,
+    required this.lasso,
+    required this.dragFrom,
+    required this.dragTo,
+  });
+
+  final ui.Image image;
+  final double scale;
+  final Offset offset;
+  final List<Offset> lasso;
+  final Offset? dragFrom;
+  final Offset? dragTo;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFF2F1EC));
+    final dst = Offset.zero & Size(image.width * scale, image.height * scale);
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      dst.shift(offset),
+      Paint()..filterQuality = FilterQuality.medium,
+    );
+    if (dragFrom != null && dragTo != null) {
+      final d = dragTo! - dragFrom!;
+      final rect = dst.shift(offset).inflate(2).translate(d.dx, d.dy);
+      canvas.drawRect(rect, Paint()..color = Colors.blue.withValues(alpha: 0.18));
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..color = Colors.blue
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5,
+      );
+    }
+    if (lasso.length >= 2) {
+      final path = Path()..moveTo(lasso.first.dx, lasso.first.dy);
+      for (final p in lasso.skip(1)) {
+        path.lineTo(p.dx, p.dy);
+      }
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = const Color(0xCC1A73E8)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6,
+      );
+      canvas.drawPath(
+        path,
+        Paint()..color = const Color(0x221A73E8)..style = PaintingStyle.fill,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DetailPainter old) =>
+      old.image != image ||
+      old.scale != scale ||
+      old.offset != offset ||
+      old.dragFrom != dragFrom ||
+      old.dragTo != dragTo ||
+      old.lasso.length != lasso.length;
+}

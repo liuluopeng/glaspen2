@@ -829,6 +829,19 @@ int glaspen2_macos_delete_page(long long screen_id) {
     return ok;
 }
 
+/// 面板页面详情改动了当前页的数据(圈选移动/粘贴/删除) → 重建玻璃。
+/// core 的 refresh hook 在后台线程调用; surface 操作必须回主线程。
+void glaspen2_macos_refresh_page(long long screen_id) {
+    if (screen_id <= 0) return;
+    gl_run_on_main_sync(^{
+        if (g_infinite_canvas) return; // 无限画布不受页数据操作影响
+        if (screen_id != glaspen2_get_current_screen_id()) return;
+        glaspen2_load_strokes_for_screen(screen_id);
+        rebuild_surface_from_strokes();
+        flush_to_layer();
+    });
+}
+
 /// 跳转到指定页继续绘画。
 void glaspen2_macos_navigate_to_page(long long screen_id) {
     if (screen_id <= 0) return;

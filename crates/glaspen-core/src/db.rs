@@ -1488,6 +1488,151 @@ mod platform {
         Ok(())
     }
 
+    /// 同页平移所选笔迹(面板圈选移动)。points 行内 x/y 直接加偏移。
+    pub async fn move_strokes_translate(
+        screen_id: i64,
+        ids: &[i64],
+        dx: f64,
+        dy: f64,
+    ) -> u64 {
+        let Some(pool) = DB.get() else { return 0 };
+        let n = ids.len();
+        if n == 0 {
+            return 0;
+        }
+        // 动态占位符: ids 是面板圈选结果, 数量小且受信
+        let in_clause = ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "UPDATE points SET x = x + ?1, y = y + ?2 \
+             WHERE stroke_id IN ({in_clause}) AND EXISTS (SELECT 1 FROM strokes \
+             WHERE strokes.id = points.stroke_id AND strokes.screen_id = ?3 AND strokes.deleted_at IS NULL)"
+        );
+        match sqlx::query(&sql).bind(dx).bind(dy).bind(screen_id).execute(pool).await {
+            Ok(r) => {
+                dblog!("笔迹平移 {} 笔 (页 {screen_id}, dx={dx:.1} dy={dy:.1})", n);
+                r.rows_affected()
+            }
+            Err(e) => {
+                dblog!("ERR 笔迹平移: {e}");
+                0
+            }
+        }
+    }
+
+    /// 跨页搬移所选笔迹: 改 screen_id + 平移。保 id 保时间(移动 = 保实体)。
+    pub async fn move_strokes_to_screen(
+        screen_id: i64,
+        ids: &[i64],
+        target_screen_id: i64,
+        dx: f64,
+        dy: f64,
+    ) -> u64 {
+        let Some(pool) = DB.get() else { return 0 };
+        if ids.is_empty() || screen_id == target_screen_id {
+            return 0;
+        }
+        let in_clause = ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let sql = format!("UPDATE strokes SET screen_id = ?1 WHERE id IN ({in_clause}) \
+             AND screen_id = ?2 AND deleted_at IS NULL");
+        let Ok(r) = sqlx::query(&sql)
+            .bind(target_screen_id)
+            .bind(screen_id)
+            .execute(pool)
+            .await
+        else {
+            dblog!("ERR 笔迹搬页失败");
+            return 0;
+        };
+        let moved = r.rows_affected();
+        if moved > 0 {
+            // 平移只作用于真正搬过去的笔迹
+            let sql2 = format!(
+                "UPDATE points SET x = x + ?1, y = y + ?2 WHERE stroke_id IN ({in_clause})"
+            );
+            if let Err(e) = sqlx::query(&sql2).bind(dx).bind(dy).execute(pool).await {
+                dblog!("ERR 笔迹搬页平移: {e}");
+            }
+            dblog!("笔迹搬页 {} 笔 ({} → {})", moved, screen_id, target_screen_id);
+        }
+        moved
+    }
+
+    /// 软删所选笔迹(面板圈选删除)。返回软删笔数。
+    pub async fn delete_strokes(screen_id: i64, ids: &[i64]) -> u64 {
+        let Some(pool) = DB.get() else { return 0 };
+        if ids.is_empty() {
+            return 0;
+        }
+        let in_clause = ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let sql = format!("UPDATE strokes SET deleted_at = ?1 \
+             WHERE id IN ({in_clause}) AND screen_id = ?2 AND deleted_at IS NULL");
+        match sqlx::query(&sql)
+            .bind(now_f64())
+            .bind(screen_id)
+            .execute(pool)
+            .await
+        {
+            Ok(r) => {
+                dblog!("笔迹软删 {} 笔 (页 {screen_id})", r.rows_affected());
+                r.rows_affected()
+            }
+            Err(e) => {
+                dblog!("ERR 笔迹软删: {e}");
+                0
+            }
+        }
+    }
+
+    /// 粘贴笔迹(新 id 新时间 = 新实体; 点内相对 t 重算起点为 0)。
+    /// strokes = (颜色 r,g,b, 点列)。颜色随载荷保留 —— 复制红块粘出来
+    /// 还是红色; 呈现宽度逐点随载荷(width_scale 档位存 1.0)。
+    pub async fn paste_strokes(
+        screen_id: i64,
+        strokes: &[(f64, f64, f64, Vec<(f64, f64, f64)>)],
+    ) -> usize {
+        let Some(pool) = DB.get() else { return 0 };
+        let now = now_f64();
+        let mut created = 0usize;
+        for &(r, g, b, ref pts) in strokes {
+            let Ok(id) = sqlx::query_scalar::<_, i64>(
+                "INSERT INTO strokes (screen_id, color_r, color_g, color_b, width_scale, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, 1.0, ?5) RETURNING id",
+            )
+            .bind(screen_id)
+            .bind(r)
+            .bind(g)
+            .bind(b)
+            .bind(now)
+            .fetch_one(pool)
+            .await
+            else {
+                dblog!("ERR 粘贴 INSERT 失败");
+                continue;
+            };
+            let mut seq = 0i64;
+            for &(x, y, w) in pts {
+                if sqlx::query("INSERT INTO points (stroke_id, seq, x, y, width, t) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
+                    .bind(id)
+                    .bind(seq)
+                    .bind(x)
+                    .bind(y)
+                    .bind(w)
+                    .bind(0.0)
+                    .execute(pool)
+                    .await
+                    .is_err()
+                {
+                    dblog!("ERR 粘贴点写入失败 stroke={id}");
+                }
+                seq += 1;
+            }
+            created += 1;
+            dblog!("笔迹+ id={id} screen={screen_id} (粘贴, {} 点)", pts.len());
+        }
+        created
+    }
+
     /// Page info for the 新建画布/翻页 notification:
     /// (nth-of-date, date_total, position, total, created_at).
     /// Date grouping uses local time (same calendar date = 今天/昨天/…).

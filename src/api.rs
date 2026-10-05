@@ -82,7 +82,7 @@ pub(crate) mod shim {
     /// 画布总览:返回 (PNG, 视口矩形)。空画布返回 None。
     pub fn canvas_payload(w: i32, h: i32, action: i32) -> Option<(Vec<u8>, Vec<f64>)> {
         let mut rect = [0.0f64; 4];
-        let mut len: c_int = 0;
+        let mut len: i32 = 0;
         unsafe {
             let png = glaspen2_macos_canvas_payload(w, h, action, rect.as_mut_ptr(), &mut len);
             if png.is_null() || len <= 0 {
@@ -384,6 +384,148 @@ pub async fn page_thumbnails(ids: Vec<i64>, max_size: i32) -> Vec<PageThumb> {
 #[frb]
 pub async fn delete_page(screen_id: i64) -> bool {
     run_blocking(move || shim::delete_page(screen_id))
+}
+
+// ── 页面详情: 圈选 / 移动 / 复制粘贴 / 删除所选(面板内鼠标操作) ──
+
+/// 某页渲染为 PNG 字节(白底 1x; 页面详情视图用, 不落盘)。
+#[frb]
+pub async fn page_png_bytes(screen_id: i64) -> Vec<u8> {
+    run_blocking(move || unsafe {
+        let mut len: i32 = 0;
+        let ptr = crate::export::glaspen2_page_png_bytes(screen_id, &mut len);
+        if ptr.is_null() || len <= 0 {
+            return Vec::new();
+        }
+        let bytes = Vec::from_raw_parts(ptr, len as usize, len as usize);
+        bytes
+    })
+}
+
+/// 圈选命中: 返回圈内笔迹 id 列表(整笔为单位)。
+#[frb]
+pub async fn lasso_select(screen_id: i64, poly: Vec<(f64, f64)>) -> Vec<i64> {
+    run_blocking(move || {
+        let payload = poly
+            .iter()
+            .map(|(x, y)| format!("{x},{y}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let c = std::ffi::CString::new(payload).unwrap_or_default();
+        let ptr = crate::export::glaspen2_lasso_select(screen_id, c.as_ptr());
+        if ptr.is_null() {
+            return Vec::new();
+        }
+        let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        unsafe { crate::export::glaspen2_free_c_string(ptr) };
+        s.split(',')
+            .filter_map(|t| t.trim().parse::<i64>().ok())
+            .collect()
+    })
+}
+
+/// 同页平移所选笔迹。
+#[frb]
+pub async fn move_strokes(screen_id: i64, ids: Vec<i64>, dx: f64, dy: f64) -> bool {
+    run_blocking(move || {
+        let csv = std::ffi::CString::new(
+            ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+        )
+        .unwrap_or_default();
+        crate::export::glaspen2_move_strokes(screen_id, csv.as_ptr(), dx, dy) != 0
+    })
+}
+
+/// 跨页搬移所选笔迹(保 id 保时间)。
+#[frb]
+pub async fn move_strokes_to_page(
+    screen_id: i64,
+    ids: Vec<i64>,
+    target_screen_id: i64,
+    dx: f64,
+    dy: f64,
+) -> bool {
+    run_blocking(move || {
+        let csv = std::ffi::CString::new(
+            ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+        )
+        .unwrap_or_default();
+        crate::export::glaspen2_move_strokes_to_page(
+            screen_id, csv.as_ptr(), target_screen_id, dx, dy,
+        ) != 0
+    })
+}
+
+/// 删除所选笔迹(软删)。
+#[frb]
+pub async fn delete_strokes(screen_id: i64, ids: Vec<i64>) -> bool {
+    run_blocking(move || {
+        let csv = std::ffi::CString::new(
+            ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+        )
+        .unwrap_or_default();
+        crate::export::glaspen2_delete_strokes(screen_id, csv.as_ptr()) != 0
+    })
+}
+
+/// 复制所选笔迹进面板剪贴板载荷(中心在原点, 带颜色)。
+#[frb]
+pub async fn copy_strokes_payload(screen_id: i64, ids: Vec<i64>) -> String {
+    run_blocking(move || {
+        let csv = std::ffi::CString::new(
+            ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+        )
+        .unwrap_or_default();
+        let ptr = crate::export::glaspen2_copy_strokes_payload(screen_id, csv.as_ptr());
+        if ptr.is_null() {
+            return String::new();
+        }
+        let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        unsafe { crate::export::glaspen2_free_c_string(ptr) };
+        s
+    })
+}
+
+/// 粘贴笔迹载荷到某页(新 id 新时间; 载荷坐标 = 中心在原点, 由调用方
+/// 按粘贴点平移)。返回新笔数。
+#[frb]
+pub async fn paste_strokes(screen_id: i64, payload: String, cx: f64, cy: f64) -> i32 {
+    run_blocking(move || {
+        // 把"中心在原点"的载荷平移到 (cx, cy)
+        let shifted = shift_payload(payload, cx, cy);
+        let c = std::ffi::CString::new(shifted).unwrap_or_default();
+        crate::export::glaspen2_paste_strokes(screen_id, c.as_ptr())
+    })
+}
+
+fn shift_payload(payload: String, cx: f64, cy: f64) -> String {
+    let mut out: Vec<String> = Vec::new();
+    for seg in payload.split(';') {
+        let Some((head, body)) = seg.split_once('|') else {
+            continue;
+        };
+        let mut pts: Vec<String> = Vec::new();
+        for (i, trip) in body.split(',').enumerate() {
+            let v: f64 = match trip.trim().parse() {
+                Ok(v) => v,
+                Err(_) => break,
+            };
+            // 三元组内: i%3==0 → x, 1 → y, 2 → 宽
+            if i % 3 == 0 {
+                pts.push(format!("{:.3}", v + cx));
+            } else if i % 3 == 1 {
+                pts.push(format!("{:.3}", v + cy));
+            } else {
+                pts.push(format!("{:.3}", v));
+            }
+        }
+        out.push(format!("{head}|{}", pts.join(",")));
+    }
+    out.join(";")
 }
 
 /// 导出单页 PNG(白底, 2x 采样)到桌面。

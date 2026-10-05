@@ -435,6 +435,260 @@ pub extern "C" fn glaspen2_page_reorder(screen_id: i64, anchor_id: i64, before: 
     }
 }
 
+// ── 页面详情: 圈选 / 移动 / 复制粘贴 / 删除所选(面板内鼠标操作) ──
+// 设计原则: 玻璃上的笔只做生成动作, 一切治理动作归面板。本组 FFI 全是
+// 纯 DB 数据操作; 涉及当前页时由 ObjC 壳刷新玻璃(rebuild)。
+
+/// 圈选命中: 多边形任一点在内部的笔迹(整笔为单位)。
+/// poly = 逗号分隔的 "x,y" 对(页面坐标)。返回入选 stroke id 列表
+/// (逗号分隔字符串, 空串 = 无), 调用方负责 free。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_lasso_select(screen_id: i64, poly: *const c_char) -> *mut c_char {
+    let Some(poly) = (unsafe { poly.as_ref() }).and_then(|p| {
+        unsafe { CStr::from_ptr(p) }.to_str().ok().map(|s| s.to_string())
+    }) else {
+        return CString::new("").unwrap_or_default().into_raw();
+    };
+    let pts: Vec<(f64, f64)> = poly
+        .split(',')
+        .filter_map(|pair| {
+            let mut it = pair.split_whitespace();
+            let x: f64 = it.next()?.parse().ok()?;
+            let y: f64 = it.next()?.parse().ok()?;
+            Some((x, y))
+        })
+        .collect();
+    if pts.len() < 3 {
+        return CString::new("").unwrap_or_default().into_raw();
+    }
+    let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
+    let ids: Vec<String> = strokes
+        .iter()
+        .filter(|s| s.points.iter().any(|&(x, y, _, _)| point_in_polygon(x, y, &pts)))
+        .map(|s| s.id.to_string())
+        .collect();
+    CString::new(ids.join(",")).unwrap_or_default().into_raw()
+}
+
+/// 射线法: 点是否在多边形内(边界不算内部, 圈选容差由外扩处理)
+fn point_in_polygon(px: f64, py: f64, poly: &[(f64, f64)]) -> bool {
+    let n = poly.len();
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let (xi, yi) = poly[i];
+        let (xj, yj) = poly[j];
+        if ((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
+/// 刷新当前页玻璃(若 screen_id 是当前页且在翻页模式)。
+/// 由壳注入回调(ObjC 侧 load+rebuild 必须在主线程做 surface 操作);
+/// 未注入(测试/Windows 管道场景自己刷新)则退化为仅载入 STROKES。
+static REFRESH_HOOK: std::sync::Mutex<Option<fn(i64)>> = std::sync::Mutex::new(None);
+
+pub fn set_glass_refresh_hook(f: fn(i64)) {
+    *REFRESH_HOOK.lock().unwrap() = Some(f);
+}
+
+fn refresh_glass_if_current(screen_id: i64) {
+    if state::current_screen_id() != screen_id {
+        return;
+    }
+    if state::canvas_kind() == state::CanvasKind::Infinite {
+        return;
+    }
+    match REFRESH_HOOK.lock().unwrap().as_ref() {
+        Some(f) => f(screen_id),
+        None => {
+            glaspen2_load_strokes_for_screen(screen_id);
+        }
+    }
+}
+
+/// 平移所选笔迹(同页)。返回 1 成功。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_move_strokes(
+    screen_id: i64,
+    ids_csv: *const c_char,
+    dx: c_double,
+    dy: c_double,
+) -> c_int {
+    let Some(ids) = parse_ids_csv(ids_csv) else {
+        return 0;
+    };
+    if ids.is_empty() || (dx == 0.0 && dy == 0.0) {
+        return 1; // 空操作视为成功
+    }
+    let n = runtime().block_on(db::move_strokes_translate(screen_id, &ids, dx, dy));
+    if n > 0 {
+        runtime().block_on(db::thumbnails_purge_screen(screen_id));
+        refresh_glass_if_current(screen_id);
+    }
+    (n > 0) as c_int
+}
+
+/// 把所选笔迹搬到目标页并平移(跨页复制语义的"移动"变体: 保 id 保时间)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_move_strokes_to_page(
+    screen_id: i64,
+    ids_csv: *const c_char,
+    target_screen_id: i64,
+    dx: c_double,
+    dy: c_double,
+) -> c_int {
+    let Some(ids) = parse_ids_csv(ids_csv) else {
+        return 0;
+    };
+    if ids.is_empty() || target_screen_id == screen_id {
+        return if target_screen_id == screen_id {
+            glaspen2_move_strokes(screen_id, ids_csv, dx, dy)
+        } else {
+            0
+        };
+    }
+    let n = runtime().block_on(db::move_strokes_to_screen(screen_id, &ids, target_screen_id, dx, dy));
+    if n > 0 {
+        runtime().block_on(db::thumbnails_purge_screen(screen_id));
+        runtime().block_on(db::thumbnails_purge_screen(target_screen_id));
+        refresh_glass_if_current(screen_id);
+        refresh_glass_if_current(target_screen_id);
+    }
+    (n > 0) as c_int
+}
+
+/// 删除所选笔迹(软删)。返回 1 成功。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_delete_strokes(screen_id: i64, ids_csv: *const c_char) -> c_int {
+    let Some(ids) = parse_ids_csv(ids_csv) else {
+        return 0;
+    };
+    if ids.is_empty() {
+        return 1;
+    }
+    let n = runtime().block_on(db::delete_strokes(screen_id, &ids));
+    if n > 0 {
+        runtime().block_on(db::thumbnails_purge_screen(screen_id));
+        refresh_glass_if_current(screen_id);
+    }
+    (n > 0) as c_int
+}
+
+/// 把剪贴板笔迹粘到某页(新 id 新时间 = 新实体; 点内相对 t 保速度曲线)。
+/// payload = 手写消息同款墨迹序列化(逗号三元组 "x,y,w" 分号连接)。
+/// 返回新 stroke 数。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_paste_strokes(
+    screen_id: i64,
+    payload: *const c_char,
+) -> c_int {
+    let Some(payload) = (unsafe { payload.as_ref() }).and_then(|p| {
+        unsafe { CStr::from_ptr(p) }.to_str().ok().map(|s| s.to_string())
+    }) else {
+        return 0;
+    };
+    // payload: "r,g,b|x,y,w,x,y,w,...;..."(段前缀颜色, 坐标中心在原点)
+    let mut strokes: Vec<(f64, f64, f64, Vec<(f64, f64, f64)>)> = Vec::new();
+    for seg in payload.split(';') {
+        let (head, body) = match seg.split_once('|') {
+            Some((h, b)) => (h, b),
+            None => continue,
+        };
+        let mut hc = head.split(',');
+        let cr: f64 = hc.next().unwrap_or("1").parse().unwrap_or(1.0);
+        let cg: f64 = hc.next().unwrap_or("0").parse().unwrap_or(0.0);
+        let cb: f64 = hc.next().unwrap_or("0").parse().unwrap_or(0.0);
+        let mut pts = Vec::new();
+        for trip in body.split(',') {
+            let mut it = trip.split_whitespace();
+            let (Some(x), Some(y), Some(w)) = (
+                it.next().and_then(|v| v.parse().ok()),
+                it.next().and_then(|v| v.parse().ok()),
+                it.next().and_then(|v| v.parse().ok()),
+            ) else {
+                break; // 段尾残缺: 截断该笔(容忍)
+            };
+            pts.push((x, y, w));
+        }
+        if pts.len() >= 2 {
+            strokes.push((cr, cg, cb, pts));
+        }
+    }
+    if strokes.is_empty() {
+        return 0;
+    }
+    let n = runtime().block_on(db::paste_strokes(screen_id, &strokes));
+    if n > 0 {
+        runtime().block_on(db::thumbnails_purge_screen(screen_id));
+        refresh_glass_if_current(screen_id);
+    }
+    n as c_int
+}
+
+/// 取所选笔迹的剪贴板载荷(手写消息同款): "x,y,w;x,y,w;..."。
+/// 坐标已平移为包围盒中心在原点(粘贴时按中心对齐鼠标)。
+/// 返回 C 字符串(调用方 free), 空串 = 无。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_copy_strokes_payload(
+    screen_id: i64,
+    ids_csv: *const c_char,
+) -> *mut c_char {
+    let Some(ids) = parse_ids_csv(ids_csv) else {
+        return CString::new("").unwrap_or_default().into_raw();
+    };
+    let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
+    let sel: Vec<&crate::db::StrokeData> =
+        strokes.iter().filter(|s| ids.contains(&s.id)).collect();
+    if sel.is_empty() {
+        return CString::new("").unwrap_or_default().into_raw();
+    }
+    let mut minx = f64::MAX;
+    let mut miny = f64::MAX;
+    let mut maxx = f64::MIN;
+    let mut maxy = f64::MIN;
+    for s in &sel {
+        for &(x, y, _, _) in &s.points {
+            minx = minx.min(x);
+            miny = miny.min(y);
+            maxx = maxx.max(x);
+            maxy = maxy.max(y);
+        }
+    }
+    let cx = (minx + maxx) / 2.0;
+    let cy = (miny + maxy) / 2.0;
+    let mut segs: Vec<String> = Vec::new();
+    for s in &sel {
+        // 段前缀颜色(粘贴保原色 —— 复制红色块粘出来还是红色)
+        let head = format!(
+            "{:.3},{:.3},{:.3}|",
+            s.r.clamp(0.0, 1.0),
+            s.g.clamp(0.0, 1.0),
+            s.b.clamp(0.0, 1.0)
+        );
+        let pts: Vec<String> = s
+            .points
+            .iter()
+            .map(|&(x, y, w, _)| format!("{:.3},{:.3},{:.3}", x - cx, y - cy, w))
+            .collect();
+        segs.push(format!("{}{}", head, pts.join(",")));
+    }
+    CString::new(segs.join(";")).unwrap_or_default().into_raw()
+}
+
+fn parse_ids_csv(csv: *const c_char) -> Option<Vec<i64>> {
+    let s = unsafe { csv.as_ref()? };
+    let s = unsafe { CStr::from_ptr(s) }.to_str().ok()?;
+    Some(
+        s.split(',')
+            .filter_map(|t| t.trim().parse::<i64>().ok())
+            .collect(),
+    )
+}
+
 /// Page info JSON for the 新建画布/翻页 notification:
 /// {"nth":n,"date_total":m,"pos":x,"total":y,"created":unix_ts}
 /// Caller frees with glaspen2_free_c_string. NULL when the page is unknown.

@@ -35,6 +35,8 @@ pub(crate) use media::{GifStroke, build_svg_from, encode_animated_gif};
 #[cfg(test)]
 pub(crate) use pages::plan_new_page;
 pub use pages::*;
+// hook 注入器单独导出(pages 模块私有, 函数经 * 已可用但路径更明确)
+pub use pages::set_glass_refresh_hook;
 pub use thumbs::*;
 pub use thumbs::{THUMB_BLOB_MAGIC, encode_thumb_blob, page_thumbnails_blob, warm_thumbnail_cache};
 

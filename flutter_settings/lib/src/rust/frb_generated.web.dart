@@ -80,6 +80,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  List<(double, double)> dco_decode_list_record_f_64_f_64(dynamic raw);
+
+  @protected
   List<UpdateAsset> dco_decode_list_update_asset(dynamic raw);
 
   @protected
@@ -96,6 +99,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PageThumb dco_decode_page_thumb(dynamic raw);
+
+  @protected
+  (double, double) dco_decode_record_f_64_f_64(dynamic raw);
 
   @protected
   Settings dco_decode_settings(dynamic raw);
@@ -185,6 +191,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
+  List<(double, double)> sse_decode_list_record_f_64_f_64(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<UpdateAsset> sse_decode_list_update_asset(SseDeserializer deserializer);
 
   @protected
@@ -203,6 +214,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PageThumb sse_decode_page_thumb(SseDeserializer deserializer);
+
+  @protected
+  (double, double) sse_decode_record_f_64_f_64(SseDeserializer deserializer);
 
   @protected
   Settings sse_decode_settings(SseDeserializer deserializer);
@@ -313,6 +327,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_record_f_64_f_64(
+    List<(double, double)> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_update_asset(
     List<UpdateAsset> self,
     SseSerializer serializer,
@@ -338,6 +358,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_page_thumb(PageThumb self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_record_f_64_f_64(
+    (double, double) self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_settings(Settings self, SseSerializer serializer);
