@@ -358,6 +358,30 @@ mod platform {
         // 现在无限画布独立存储且全局只有一个画布,镜头改存 user_settings,
         // 这几列不再读写(旧库中残留的列保持不动,无副作用)。
 
+        // 缩略图形态 v2:内容包围盒裁剪 → 整页等比(与统一卡片尺寸冲突,
+        // 已放弃裁剪)。一次性清掉旧裁剪缓存, 标记防重跑(每次启动都走
+        // 本函数, 不能无条件 DELETE 白费缓存)。
+        let purged: Option<String> = sqlx::query_scalar(
+            "SELECT value FROM user_settings WHERE key = 'thumbs_purged_v2'",
+        )
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten();
+        if purged.is_none() {
+            sqlx::query("DELETE FROM screen_thumbnails")
+                .execute(pool)
+                .await
+                .map_err(|e| format!("清理旧缩略图失败: {e}"))?;
+            sqlx::query(
+                "INSERT OR REPLACE INTO user_settings (key, value) VALUES ('thumbs_purged_v2', '1')",
+            )
+            .execute(pool)
+            .await
+            .map_err(|e| format!("写缩略图清理标记失败: {e}"))?;
+            dblog!("缩略图缓存已一次性清理(裁剪 → 整页形态)");
+        }
+
         // 迁移全部成功才写版本号:中途失败时下次启动会整套重跑(语句都幂等)
         sqlx::query(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
             .execute(pool)

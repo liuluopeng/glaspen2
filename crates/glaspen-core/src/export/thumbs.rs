@@ -89,45 +89,35 @@ fn render_and_store_thumbnail(
     if strokes.is_empty() {
         return None;
     }
-    let png = render_strokes_thumbnail(&strokes, max_size)?;
+    let (pw, ph) = match runtime().block_on(db::screen_dims(screen_id)) {
+        Some(d) => d,
+        None => return None,
+    };
+    let png = render_strokes_thumbnail(&strokes, max_size, pw, ph)?;
     runtime().block_on(db::thumbnail_store(
         screen_id, max_size, version.0, version.1, outline, &png,
     ));
     Some(png)
 }
 
-/// Crop to the content bounding box (padded by line width radius + margin) and
-/// render directly at thumbnail resolution, transparent background.
-fn render_strokes_thumbnail(strokes: &[db::StrokeData], max_size: i32) -> Option<Vec<u8>> {
-    // ── 1. 内容包围盒(含线宽半径) ──
-    let mut bx0 = f64::MAX;
-    let mut by0 = f64::MAX;
-    let mut bx1 = f64::MIN;
-    let mut by1 = f64::MIN;
-    for s in strokes {
-        for &(x, y, wd, _) in &s.points {
-            let half = wd * 0.5;
-            bx0 = bx0.min(x - half);
-            by0 = by0.min(y - half);
-            bx1 = bx1.max(x + half);
-            by1 = by1.max(y + half);
-        }
-    }
-    // 外扩留白(不低于 16pt,防止贴边)
-    let margin = (bx1 - bx0).max(by1 - by0) * 0.06 + 12.0;
-    bx0 -= margin;
-    by0 -= margin;
-    bx1 += margin;
-    by1 += margin;
-    let bw = (bx1 - bx0).max(1.0);
-    let bh = (by1 - by0).max(1.0);
+/// 整页等比缩略图(不裁剪): 页原生尺寸 → 最长边 = max_size, 透明底。
+/// 同一几何组的所有页输出同尺寸卡片(按屏幕尺寸展示每页), 页内内容
+/// 位置真实保留 —— 不再做内容包围盒裁剪(裁剪与统一卡片尺寸冲突,
+/// 同本子缩略图大小不一, 已放弃该形态)。
+fn render_strokes_thumbnail(
+    strokes: &[db::StrokeData],
+    max_size: i32,
+    page_w: i32,
+    page_h: i32,
+) -> Option<Vec<u8>> {
+    let pw = page_w.max(1) as f64;
+    let ph = page_h.max(1) as f64;
+    // 整页 fit: 最长边 = max_size(纵横比 = 页的真实比例)
+    let fit = (max_size as f64 / pw.max(ph)).min(1.0);
+    let ow = ((pw * fit).ceil() as i32).max(1);
+    let oh = ((ph * fit).ceil() as i32).max(1);
 
-    // 2. 适配 max_size(最长边 = max_size,保持纵横比)
-    let fit = (max_size as f64 / bw.max(bh)).min(1.0);
-    let ow = ((bw * fit).ceil() as i32).max(1);
-    let oh = ((bh * fit).ceil() as i32).max(1);
-
-    // 3. 渲染(坐标偏移到 bbox 起点,缩放到 fit,透明底)
+    // 渲染(整页坐标直接缩放, 透明底)
     let renderer = crate::cairo_dl::CairoRenderer::create_owned(ow, oh)?;
     renderer.clear();
     for s in strokes {
@@ -141,19 +131,19 @@ fn render_strokes_thumbnail(strokes: &[db::StrokeData], max_size: i32) -> Option
         );
         for i in 0..s.points.len() {
             let (x, y, wd, _t) = s.points[i];
-            let px = ((x - bx0) * fit) as f32;
-            let py = ((y - by0) * fit) as f32;
-            let pw = (wd * fit) as f32;
+            let px = (x * fit) as f32;
+            let py = (y * fit) as f32;
+            let pw_pt = (wd * fit) as f32;
             if i == 0 {
-                renderer.fill_circle(px, py, pw * 0.5, color);
+                renderer.fill_circle(px, py, pw_pt * 0.5, color);
             } else {
                 let (qx, qy, _qw, _qt) = s.points[i - 1];
                 renderer.stroke_line(
-                    ((qx - bx0) * fit) as f32,
-                    ((qy - by0) * fit) as f32,
+                    (qx * fit) as f32,
+                    (qy * fit) as f32,
                     px,
                     py,
-                    pw,
+                    pw_pt,
                     color,
                 );
             }
@@ -161,7 +151,7 @@ fn render_strokes_thumbnail(strokes: &[db::StrokeData], max_size: i32) -> Option
     }
     renderer.flush();
 
-    // 4. BGRA → RGBA + PNG 编码(已是目标尺寸,无需降采样)
+// 4. BGRA → RGBA + PNG 编码(已是目标尺寸,无需降采样)
     let bits = renderer.bits();
     let stride = ow as usize;
     let n = stride * oh as usize * 4;
