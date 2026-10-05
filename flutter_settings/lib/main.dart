@@ -198,6 +198,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Offset _dragNow = Offset.zero;
   String _clipPayload = '';
   final List<(int, List<int>, double, double)> _undoMoves = [];
+  int? _draggingPageId; // 活页本拖拽重排: 拖动中的页 id
+  List<PageInfo> _dragOrderBackup = const []; // 拖拽开始时的顺序快照(失败回滚)
   double _detailScale = 1.0;
   Offset _detailOffset = Offset.zero;
   /// OCR 搜索(本子页视图内): 激活后网格 = 全库匹配页(跨组)
@@ -1530,18 +1532,35 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   ),
                   itemBuilder: (context, i) {
                     final page = _filteredPages[i];
-                    return Stack(children: [
-                      Positioned.fill(child: _buildPageCard(page, i)),
-                      if (!_multiSelect && !_searchMode)
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: Column(children: [
-                            _pageMoveBtn(page, i, -1, Icons.arrow_drop_up),
-                            _pageMoveBtn(page, i, 1, Icons.arrow_drop_down),
-                          ]),
-                        ),
-                    ]);
+                    final card = _buildPageCard(page, i);
+                    if (_multiSelect || _searchMode) return card;
+                    // 长按拖动换位置(iOS 弹簧桌式): 悬停别的卡片时本地
+                    // 列表实时移位(其他页让出), 松手一次性提交 DB。
+                    // ValueKey 保活手势元素: 列表移位时拖拽不中断。
+                    return LongPressDraggable<int>(
+                      key: ValueKey('page-${page.id}'),
+                      data: page.id,
+                      delay: const Duration(milliseconds: 300),
+                      onDragStarted: () {
+                        _dragOrderBackup = List<PageInfo>.from(_filteredPages);
+                        _draggingPageId = page.id;
+                      },
+                      onDragEnd: (_) => unawaited(_commitPageDrag()),
+                      feedback: Material(
+                        elevation: 8,
+                        borderRadius: BorderRadius.circular(10),
+                        child: SizedBox(
+                            width: 260, child: _buildPageCard(page, i)),
+                      ),
+                      childWhenDragging: Opacity(
+                          opacity: 0.35, child: card),
+                      child: DragTarget<int>(
+                        onWillAcceptWithDetails: (d) => d.data != page.id,
+                        onMove: (d) => _livePageShift(d.data),
+                        onAcceptWithDetails: (d) => _livePageShift(d.data),
+                        builder: (context, _, _) => card,
+                      ),
+                    );
                   },
                 ),
         ),
@@ -1551,39 +1570,56 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
 
   /// 前后移小按钮(活页本卡片右上角): 微动画零心智负担, 移动动作归面板。
-  Widget _pageMoveBtn(PageInfo page, int index, int delta, IconData icon) {
-    final target = index + delta;
-    final enabled = target >= 0 && target < _filteredPages.length;
-    return GestureDetector(
-      onTap: enabled ? () => _movePage(page, index, delta) : null,
-      child: Container(
-        margin: const EdgeInsets.only(left: 2),
-        padding: const EdgeInsets.all(1),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Icon(icon,
-            size: 22,
-            color: enabled ? Colors.white : Colors.white24),
-      ),
-    );
+  /// 拖拽中: 把拖动的页移到目标页位置, 其余页实时让出(纯本地列表,
+  /// 松手才提交 DB)。拖动项保留在列表内(只换位), 配合 ValueKey 元素
+  /// 匹配, 拖拽手势跨移位存活。
+  void _livePageShift(int targetPageId) {
+    final dragged = _draggingPageId;
+    if (dragged == null || dragged == targetPageId) return;
+    final from = _filteredPages.indexWhere((p) => p.id == dragged);
+    final to = _filteredPages.indexWhere((p) => p.id == targetPageId);
+    if (from < 0 || to < 0 || from == to) return;
+    setState(() {
+      final item = _filteredPages.removeAt(from);
+      _filteredPages.insert(to, item);
+    });
   }
 
-  /// 前后移: 锚点 = 本子内相邻页(before = 移到锚点之前), 成功后整表刷新
-  /// (顺序来自 DB 的 order_index, 笔侧翻页/页号自动跟随)。
-  Future<void> _movePage(PageInfo page, int index, int delta) async {
-    final target = index + delta;
-    if (target < 0 || target >= _filteredPages.length) return;
-    final anchor = _filteredPages[target];
-    final ok = await _bridge.reorderPage(page.id, anchor.id, before: delta < 0);
+  /// 拖拽结束: 顺序变了才提交 —— 锚点 = 落点处相邻页(有后邻就"移到它
+  /// 之前", 否则"移到前邻之后"), 一次 reorder_page 落库; 失败回滚本地。
+  Future<void> _commitPageDrag() async {
+    final dragged = _draggingPageId;
+    _draggingPageId = null;
+    if (dragged == null) return;
+    final backupIds = _dragOrderBackup.map((p) => p.id).toList();
+    final nowIds = _filteredPages.map((p) => p.id).toList();
+    if (backupIds.length == nowIds.length && 
+        List.generate(nowIds.length, (i) => nowIds[i] == backupIds[i]).every((v) => v)) {
+      return; // 没挪窝(拿起又放回)
+    }
+    final idx = _filteredPages.indexWhere((p) => p.id == dragged);
+    if (idx < 0 || _filteredPages.length < 2) return;
+    int anchorId;
+    bool before;
+    if (idx + 1 < _filteredPages.length) {
+      anchorId = _filteredPages[idx + 1].id;
+      before = true;
+    } else {
+      anchorId = _filteredPages[idx - 1].id;
+      before = false;
+    }
+    final ok = await _bridge.reorderPage(dragged, anchorId, before: before);
     if (!mounted) return;
     if (ok) {
-      await _loadPages();
+      unawaited(_loadPages()); // 以 DB 为准刷新(缩略图缓存未失效, 很快)
     } else {
-      _toast('移动失败');
+      setState(() {
+        _filteredPages = List<PageInfo>.from(_dragOrderBackup);
+      });
+      _toast('移动失败, 已还原');
     }
   }
+
 
   /// 活页本网格工具条:常态 = 页数 + 「多选」入口;
   /// 多选态 = 已选计数 + 全选 / 删除所选 / 取消。
