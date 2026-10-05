@@ -191,6 +191,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   ui.Image? _detailImage;
   double _detailImgW = 0, _detailImgH = 0;
   double _detailMargin = 0; // 页边距(页面坐标单位, 渲染时的留白)
+  int _detailGen = 0; // 详情会话代数: 迟到的取图响应一律丢弃(防串页)
   final List<Offset> _lassoPts = [];
   List<int> _selectedStrokes = [];
   Offset? _dragStart;
@@ -1101,9 +1102,13 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   Future<void> _openPageDetail(int screenId) async {
+    final gen = ++_detailGen;
     final margin = _detailMarginFor(screenId);
     final png = await _bridge.exportPagePngBytes(screenId, margin: margin);
-    if (!mounted) return;
+    // 取图 1-2s(debug), 期间用户可能已关详情/打开另一页: 迟到响应若
+    // 落地, 位图与 _detailPageId 错位 → 对着 A 页画面粘贴进 B 页
+    // (用户实测"在 -2 页粘贴的东西出现在 -1 页"的根因)。
+    if (!mounted || gen != _detailGen) return;
     if (png == null || png.isEmpty) {
       _toast('页面为空, 没有可编辑的内容');
       return;
@@ -1111,7 +1116,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     final codec = await ui.instantiateImageCodec(png);
     final frame = await codec.getNextFrame();
     final img = frame.image;
-    if (!mounted) return;
+    if (!mounted || gen != _detailGen) return;
     setState(() {
       _detailPageId = screenId;
       _detailImage = img;
@@ -1125,6 +1130,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   void _closePageDetail() {
+    _detailGen++; // 作废在途的取图响应
     setState(() {
       _detailPageId = null;
       _detailImage = null;
@@ -1208,13 +1214,15 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   Future<void> _reloadDetailImage(int screenId, {List<int> highlight = const []}) async {
+    final gen = _detailGen;
     final png = await _bridge.exportPagePngBytes(screenId,
         highlight: highlight, margin: _detailMargin);
     if (!mounted || png == null || png.isEmpty) return;
     final codec = await ui.instantiateImageCodec(png);
     final frame = await codec.getNextFrame();
     final img = frame.image;
-    if (!mounted) return;
+    // 详情已关闭/切到别的页: 这张图作废(代数不对 = 迟到响应)
+    if (!mounted || gen != _detailGen || _detailPageId != screenId) return;
     setState(() => _detailImage = img);
   }
 
