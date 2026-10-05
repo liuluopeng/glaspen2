@@ -1156,7 +1156,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     }
     final d = (_dragNow - start) / _detailScale;
     if (d.distance < 1.0) {
-      setState(() => _dragStart = null);
+      // 有选中时的原地点击 = 取消选择(否则再也无法重新圈选)
+      setState(() {
+        _dragStart = null;
+        _selectedStrokes = [];
+      });
+      unawaited(_reloadDetailImage(_detailPageId!));
       return;
     }
     final pageId = _detailPageId!;

@@ -449,14 +449,16 @@ pub extern "C" fn glaspen2_lasso_select(screen_id: i64, poly: *const c_char) -> 
     }) else {
         return CString::new("").unwrap_or_default().into_raw();
     };
-    let pts: Vec<(f64, f64)> = poly
+    // 线格式 "x1,y1,x2,y2,...": 数值流两两成对(此前按对取, 全部滤空
+    // → 圈选恒返回"圈内没有笔迹")
+    let vals: Vec<f64> = poly
         .split(',')
-        .filter_map(|pair| {
-            let mut it = pair.split_whitespace();
-            let x: f64 = it.next()?.parse().ok()?;
-            let y: f64 = it.next()?.parse().ok()?;
-            Some((x, y))
-        })
+        .filter_map(|t| t.trim().parse::<f64>().ok())
+        .collect();
+    let pts: Vec<(f64, f64)> = vals
+        .chunks(2)
+        .filter(|c| c.len() == 2)
+        .map(|c| (c[0], c[1]))
         .collect();
     if pts.len() < 3 {
         return CString::new("").unwrap_or_default().into_raw();
@@ -602,17 +604,13 @@ pub extern "C" fn glaspen2_paste_strokes(
         let cr: f64 = hc.next().unwrap_or("1").parse().unwrap_or(1.0);
         let cg: f64 = hc.next().unwrap_or("0").parse().unwrap_or(0.0);
         let cb: f64 = hc.next().unwrap_or("0").parse().unwrap_or(0.0);
+        // body = "x,y,w,x,y,w,...": 数值流三个一组(此前按组取, 全部 break 空)
+        let vals: Vec<f64> = body.split(',').filter_map(|t| t.trim().parse().ok()).collect();
         let mut pts = Vec::new();
-        for trip in body.split(',') {
-            let mut it = trip.split_whitespace();
-            let (Some(x), Some(y), Some(w)) = (
-                it.next().and_then(|v| v.parse().ok()),
-                it.next().and_then(|v| v.parse().ok()),
-                it.next().and_then(|v| v.parse().ok()),
-            ) else {
-                break; // 段尾残缺: 截断该笔(容忍)
-            };
-            pts.push((x, y, w));
+        for c in vals.chunks(3) {
+            if c.len() == 3 {
+                pts.push((c[0], c[1], c[2]));
+            }
         }
         if pts.len() >= 2 {
             strokes.push((cr, cg, cb, pts));
