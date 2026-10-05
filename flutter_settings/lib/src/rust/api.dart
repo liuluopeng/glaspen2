@@ -354,6 +354,7 @@ class Settings {
   final bool glassFollowStrokes;
   final bool softShadow;
   final bool invertInk;
+  final bool notebookStyle;
   final int invertFps;
   final bool pressureMonitor;
   final bool outline;
@@ -384,6 +385,7 @@ class Settings {
     required this.glassFollowStrokes,
     required this.softShadow,
     required this.invertInk,
+    required this.notebookStyle,
     required this.invertFps,
     required this.pressureMonitor,
     required this.outline,
@@ -416,6 +418,7 @@ class Settings {
       glassFollowStrokes.hashCode ^
       softShadow.hashCode ^
       invertInk.hashCode ^
+      notebookStyle.hashCode ^
       invertFps.hashCode ^
       pressureMonitor.hashCode ^
       outline.hashCode ^
@@ -450,6 +453,7 @@ class Settings {
           glassFollowStrokes == other.glassFollowStrokes &&
           softShadow == other.softShadow &&
           invertInk == other.invertInk &&
+          notebookStyle == other.notebookStyle &&
           invertFps == other.invertFps &&
           pressureMonitor == other.pressureMonitor &&
           outline == other.outline &&

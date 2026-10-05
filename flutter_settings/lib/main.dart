@@ -202,6 +202,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   List<PageInfo> _dragOrderBackup = const []; // 拖拽开始时的顺序快照(失败回滚)
   double _detailScale = 1.0;
   Offset _detailOffset = Offset.zero;
+  bool _notebookGlass = true; // 活页本外观: true=拟物玻璃 false=笔记纸
   /// OCR 搜索(本子页视图内): 激活后网格 = 全库匹配页(跨组)
   bool _searchMode = false;
   bool _searchFieldVisible = false;
@@ -518,6 +519,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _flipEffect = (s['flipEffect'] as num?)?.toInt() ?? _flipEffect;
         _showFreeCanvas = _b(s['showFreeCanvas']);
         _shareCanvas = _b(s['shareCanvas']);
+        _notebookGlass = s['notebookStyle'] as bool? ?? _notebookGlass;
         _syncTabCount();
       });
     }
@@ -553,6 +555,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _chatIntegration = _b(settings['chatIntegration']);
           _showFreeCanvas = _b(settings['showFreeCanvas']);
           _shareCanvas = _b(settings['shareCanvas']);
+          _notebookGlass = _b(settings['notebookStyle']);
           _syncTabCount();
           _connected = true;
         });
@@ -900,6 +903,25 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           child: Column(
             children: [
               Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                child: _buildSection('活页本外观', Row(children: [
+                  const Text('风格', style: TextStyle(fontSize: 13)),
+                  const Spacer(),
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(value: true, label: Text('拟物玻璃')),
+                      ButtonSegment(value: false, label: Text('笔记纸')),
+                    ],
+                    selected: {_notebookGlass},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (s2) {
+                      setState(() => _notebookGlass = s2.first);
+                      _setSetting('notebookStyle', s2.first);
+                    },
+                  ),
+                ])),
+              ),
+              Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
                 child: _buildSection('页面缩略图', _tile(SwitchListTile(
                   title: const Text('显示附近 10 页', style: TextStyle(fontSize: 14)),
@@ -1004,16 +1026,29 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         final w = double.parse(parts[0]), h = double.parse(parts[1]);
         final cardH = (cardW * h / w).clamp(110.0, 420.0);
         final cover = _coverColor(key);
-        cards.add(SizedBox(
-          width: cardW,
-          height: cardH,
-          child: GestureDetector(
-            onTap: () => setState(() {
+        void openBook() => setState(() {
               _openNotebook = key;
               _multiSelect = false;
               _selectedPageIds.clear();
               _applyPageList();
-            }),
+            });
+        if (_notebookGlass) {
+          cards.add(SizedBox(
+            width: cardW,
+            height: cardH,
+            child: GestureDetector(
+              onTap: openBook,
+              child: _glassNotebookCover(
+                  key, cardW, cardH, pages.length, cover),
+            ),
+          ));
+          return;
+        }
+        cards.add(SizedBox(
+          width: cardW,
+          height: cardH,
+          child: GestureDetector(
+            onTap: openBook,
             child: Card(
               clipBehavior: Clip.antiAlias,
               elevation: 3,
@@ -1795,7 +1830,53 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     }
     final selected = _selectedPageIds.contains(page.id);
 
-    return GestureDetector(
+    final inner = Stack(children: [
+      if (!_isPrimaryGroup(page))
+        Positioned(
+          top: 4, left: 4,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text('${page.w}×${page.h}',
+                style: const TextStyle(fontSize: 9, color: Colors.white)),
+          ),
+        ),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Thumbnail(格子比例 = 页比例, 填满即可)
+          Expanded(
+            child: page.thumbnail != null
+                ? Image.memory(page.thumbnail!,
+                    fit: BoxFit.cover, gaplessPlayback: true)
+                : const _ThumbSkeleton(),
+          ),
+          // Page info
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
+            child: Text('页面 ${page.id}',
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 13)),
+          ),
+        ],
+      ),
+      // 多选角标
+      if (_multiSelect)
+        Positioned(
+          top: 6, right: 6,
+          child: Icon(
+            selected ? Icons.check_circle : Icons.radio_button_unchecked,
+            size: 22,
+            color: selected ? _penRed : Colors.white,
+            shadows: const [Shadow(blurRadius: 4, color: Colors.black38)],
+          ),
+        ),
+    ]);
+
+    final ink = InkWell(
       // 多选态:右键删除菜单禁用(统一走批量删除)
       onSecondaryTapUp: _multiSelect
           ? null
@@ -1868,76 +1949,158 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 }
               });
             },
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        shape: _multiSelect && selected
-            ? RoundedRectangleBorder(
-                side: const BorderSide(color: _penRed, width: 2),
-                borderRadius: BorderRadius.circular(10))
-            : null,
-        child: InkWell(
-          onTap: () {
-            if (_multiSelect) {
-              setState(() => selected
-                  ? _selectedPageIds.remove(page.id)
-                  : _selectedPageIds.add(page.id));
-              return;
-            }
-            _bridge.navigateToPage(page.id);
-          },
-          child: Stack(
-            children: [
-              if (!_isPrimaryGroup(page))
-                Positioned(
-                  top: 4, left: 4,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text('${page.w}×${page.h}',
-                        style: const TextStyle(fontSize: 9, color: Colors.white)),
-                  ),
-                ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Thumbnail(格子比例 = 页比例, 填满即可)
-                  Expanded(
-                    child: page.thumbnail != null
-                        ? Image.memory(page.thumbnail!,
-                            fit: BoxFit.cover, gaplessPlayback: true)
-                        : const _ThumbSkeleton(),
-                  ),
-                  // Page info
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
-                    child: Text('页面 ${page.id}',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 13)),
-                  ),
-                ],
+      onTap: () {
+        if (_multiSelect) {
+          setState(() => selected
+              ? _selectedPageIds.remove(page.id)
+              : _selectedPageIds.add(page.id));
+          return;
+        }
+        _bridge.navigateToPage(page.id);
+      },
+      child: inner,
+    );
+
+    return GestureDetector(
+      // 拟物玻璃: 磨砂卡(BackdropFilter 模糊背后桌布 + 斜向高光 + 玻璃边);
+      // 笔记纸: 原 Card。
+      child: _notebookGlass
+          ? _glassPageWrap(ink, selected: selected)
+          : Card(
+              clipBehavior: Clip.antiAlias,
+              shape: _multiSelect && selected
+                  ? RoundedRectangleBorder(
+                      side: const BorderSide(color: _penRed, width: 2),
+                      borderRadius: BorderRadius.circular(10))
+                  : null,
+              child: ink,
+            ),
+    );
+  }
+
+  /// 磨砂玻璃卡装饰: ClipRRect + BackdropFilter(模糊背后桌布) + 斜向
+  /// 高光渐变 + 玻璃白边; 选中 = 红边加粗。child 铺满。
+  Widget _glassPageWrap(Widget child, {required bool selected}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 7, sigmaY: 7),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withValues(alpha: 0.50),
+                Colors.white.withValues(alpha: 0.20),
+              ],
+            ),
+            border: Border.all(
+              color: selected
+                  ? _penRed
+                  : Colors.white.withValues(alpha: 0.65),
+              width: selected ? 2 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 12,
+                offset: const Offset(3, 5),
               ),
-              // 多选角标
-              if (_multiSelect)
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: Icon(
-                    selected ? Icons.check_circle : Icons.radio_button_unchecked,
-                    size: 22,
-                    color: selected ? _penRed : Colors.white,
-                    shadows: const [Shadow(blurRadius: 4, color: Colors.black38)],
-                  ),
-                ),
             ],
           ),
+          child: Stack(children: [
+            child,
+            // 斜向高光(玻璃反光)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      stops: const [0, 0.12, 0.45],
+                      colors: [
+                        Colors.white.withValues(alpha: 0.30),
+                        Colors.white.withValues(alpha: 0.05),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ]),
         ),
       ),
     );
   }
 
+  /// 拟物本子封面: 同尺寸玻璃叠层 —— 层数示意页数(封顶 6 层),
+  /// 纵横比 = 本子分辨率, 角标给精确页数。
+  Widget _glassNotebookCover(String key, double cardW, double cardH,
+      int pageCount, Color coverFallback) {
+    final parts = key.split('x');
+    final w = parts[0], h = parts[1];
+    final layers = (pageCount - 1).clamp(0, 6);
+    return Stack(children: [
+      for (int i = layers; i >= 1; i--)
+        Positioned(
+          left: 0, top: 0,
+          right: i * 5.0, bottom: i * 5.0,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.34),
+                      Colors.white.withValues(alpha: 0.14),
+                    ],
+                  ),
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.45)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      Positioned.fill(
+        child: _glassPageWrap(
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('$w × $h',
+                    style: TextStyle(
+                        fontSize: (cardW * 0.055).clamp(13.0, 17.0),
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black87)),
+                const SizedBox(height: 4),
+                Text('$pageCount 页',
+                    style: TextStyle(
+                        fontSize: (cardW * 0.05).clamp(12.0, 15.0),
+                        color: Colors.black54)),
+                const Spacer(),
+                Align(
+                  alignment: Alignment.bottomRight,
+                  child: Icon(Icons.layers,
+                      size: (cardW * 0.05).clamp(14.0, 20.0),
+                      color: Colors.black26),
+                ),
+              ],
+            ),
+          ),
+          selected: false,
+        ),
+      ),
+    ]);
+  }
   void _confirmDeletePage(PageInfo page) {
     showDialog(
       context: context,

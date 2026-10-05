@@ -27,7 +27,7 @@
 // Section: imports
 
 use flutter_rust_bridge::for_generated::byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
-use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
 use flutter_rust_bridge::{Handler, IntoIntoDart};
 
 // Section: boilerplate
@@ -1615,6 +1615,7 @@ impl SseDecode for crate::api::Settings {
         let mut var_glassFollowStrokes = <bool>::sse_decode(deserializer);
         let mut var_softShadow = <bool>::sse_decode(deserializer);
         let mut var_invertInk = <bool>::sse_decode(deserializer);
+        let mut var_notebookStyle = <bool>::sse_decode(deserializer);
         let mut var_invertFps = <i32>::sse_decode(deserializer);
         let mut var_pressureMonitor = <bool>::sse_decode(deserializer);
         let mut var_outline = <bool>::sse_decode(deserializer);
@@ -1644,6 +1645,7 @@ impl SseDecode for crate::api::Settings {
             glass_follow_strokes: var_glassFollowStrokes,
             soft_shadow: var_softShadow,
             invert_ink: var_invertInk,
+            notebook_style: var_notebookStyle,
             invert_fps: var_invertFps,
             pressure_monitor: var_pressureMonitor,
             outline: var_outline,
@@ -1932,6 +1934,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::Settings {
             self.glass_follow_strokes.into_into_dart().into_dart(),
             self.soft_shadow.into_into_dart().into_dart(),
             self.invert_ink.into_into_dart().into_dart(),
+            self.notebook_style.into_into_dart().into_dart(),
             self.invert_fps.into_into_dart().into_dart(),
             self.pressure_monitor.into_into_dart().into_dart(),
             self.outline.into_into_dart().into_dart(),
@@ -2277,6 +2280,7 @@ impl SseEncode for crate::api::Settings {
         <bool>::sse_encode(self.glass_follow_strokes, serializer);
         <bool>::sse_encode(self.soft_shadow, serializer);
         <bool>::sse_encode(self.invert_ink, serializer);
+        <bool>::sse_encode(self.notebook_style, serializer);
         <i32>::sse_encode(self.invert_fps, serializer);
         <bool>::sse_encode(self.pressure_monitor, serializer);
         <bool>::sse_encode(self.outline, serializer);
@@ -2371,7 +2375,7 @@ mod io {
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
     };
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate
@@ -2395,7 +2399,7 @@ mod web {
     };
     use flutter_rust_bridge::for_generated::wasm_bindgen;
     use flutter_rust_bridge::for_generated::wasm_bindgen::prelude::*;
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate

@@ -104,6 +104,7 @@ class _FrbBridge extends SettingsBridge {
       'glassFollowStrokes': s.glassFollowStrokes,
       'softShadow': s.softShadow,
       'invertInk': s.invertInk,
+      'notebookStyle': s.notebookStyle,
       'invertFps': s.invertFps,
       'pressureMonitor': s.pressureMonitor,
       'outline': s.outline,

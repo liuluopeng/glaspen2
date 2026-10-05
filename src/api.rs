@@ -198,6 +198,8 @@ pub struct Settings {
     pub soft_shadow: bool,
     // 反色突出(实验): 墨迹逐像素取背景反色(macOS; 背景由 SCK 持续捕获)
     pub invert_ink: bool,
+    // 活页本外观: true = 拟物玻璃(本子玻璃叠层/页=磨砂玻璃卡), false = 笔记纸
+    pub notebook_style: bool,
     // 反色追踪帧率上限(10/30/60/100); 流只在画面变化时送帧, 此值仅封顶
     pub invert_fps: i32,
     pub pressure_monitor: bool,
@@ -253,6 +255,7 @@ impl Settings {
             glass_follow_strokes: b("glassFollowStrokes"),
             soft_shadow: b("softShadow"),
             invert_ink: b("invertInk"),
+            notebook_style: b("notebookStyle"),
             invert_fps: i("invertFps"),
             pressure_monitor: b("pressureMonitor"),
             outline: b("outline"),

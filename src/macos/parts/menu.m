@@ -594,6 +594,7 @@ char *glaspen2_macos_settings_json(void) {
             @"grid": @(g_show_grid),
             @"gridFollowStrokes": @(g_grid_follow_strokes),
             @"glassFollowStrokes": @(g_glass_follow_strokes),
+            @"notebookStyle": @(glaspen2_load_bool_setting("notebook_style") != 0),
             @"softShadow": @(g_soft_shadow),
             @"invertInk": @(g_invert_ink),
             @"invertFps": @(g_invert_fps),
@@ -727,6 +728,8 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
                 glaspen2_save_string_setting("invert_fps", fpsStr);
                 if (g_invert_ink) invert_stream_restart(); // 用新帧率重启捕获流
             }
+        } else if ([key isEqualToString:@"notebookStyle"]) {
+            glaspen2_save_bool_setting("notebook_style", [value boolValue] ? 1 : 0);
         } else if ([key isEqualToString:@"outline"]) {
             apply_outline([value boolValue]);
         } else if ([key isEqualToString:@"infiniteCanvas"]) {

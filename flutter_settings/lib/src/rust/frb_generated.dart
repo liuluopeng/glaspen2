@@ -1438,8 +1438,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Settings dco_decode_settings(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 28)
-      throw Exception('unexpected arr length: expect 28 but see ${arr.length}');
+    if (arr.length != 29)
+      throw Exception('unexpected arr length: expect 29 but see ${arr.length}');
     return Settings(
       color: dco_decode_i_32(arr[0]),
       width: dco_decode_i_32(arr[1]),
@@ -1451,24 +1451,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       glassFollowStrokes: dco_decode_bool(arr[7]),
       softShadow: dco_decode_bool(arr[8]),
       invertInk: dco_decode_bool(arr[9]),
-      invertFps: dco_decode_i_32(arr[10]),
-      pressureMonitor: dco_decode_bool(arr[11]),
-      outline: dco_decode_bool(arr[12]),
-      infiniteCanvas: dco_decode_bool(arr[13]),
-      minimap: dco_decode_bool(arr[14]),
-      gridSize: dco_decode_f_64(arr[15]),
-      gridDivider: dco_decode_i_32(arr[16]),
-      flipEffect: dco_decode_i_32(arr[17]),
-      gifFps: dco_decode_i_32(arr[18]),
-      gifResolution: dco_decode_f_64(arr[19]),
-      gifSpeed: dco_decode_f_64(arr[20]),
-      gifEndMode: dco_decode_i_32(arr[21]),
-      chatApiBase: dco_decode_String(arr[22]),
-      chatUser: dco_decode_String(arr[23]),
-      chatHasPassword: dco_decode_bool(arr[24]),
-      chatIntegration: dco_decode_bool(arr[25]),
-      showFreeCanvas: dco_decode_bool(arr[26]),
-      shareCanvas: dco_decode_bool(arr[27]),
+      notebookStyle: dco_decode_bool(arr[10]),
+      invertFps: dco_decode_i_32(arr[11]),
+      pressureMonitor: dco_decode_bool(arr[12]),
+      outline: dco_decode_bool(arr[13]),
+      infiniteCanvas: dco_decode_bool(arr[14]),
+      minimap: dco_decode_bool(arr[15]),
+      gridSize: dco_decode_f_64(arr[16]),
+      gridDivider: dco_decode_i_32(arr[17]),
+      flipEffect: dco_decode_i_32(arr[18]),
+      gifFps: dco_decode_i_32(arr[19]),
+      gifResolution: dco_decode_f_64(arr[20]),
+      gifSpeed: dco_decode_f_64(arr[21]),
+      gifEndMode: dco_decode_i_32(arr[22]),
+      chatApiBase: dco_decode_String(arr[23]),
+      chatUser: dco_decode_String(arr[24]),
+      chatHasPassword: dco_decode_bool(arr[25]),
+      chatIntegration: dco_decode_bool(arr[26]),
+      showFreeCanvas: dco_decode_bool(arr[27]),
+      shareCanvas: dco_decode_bool(arr[28]),
     );
   }
 
@@ -1805,6 +1806,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_glassFollowStrokes = sse_decode_bool(deserializer);
     var var_softShadow = sse_decode_bool(deserializer);
     var var_invertInk = sse_decode_bool(deserializer);
+    var var_notebookStyle = sse_decode_bool(deserializer);
     var var_invertFps = sse_decode_i_32(deserializer);
     var var_pressureMonitor = sse_decode_bool(deserializer);
     var var_outline = sse_decode_bool(deserializer);
@@ -1834,6 +1836,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       glassFollowStrokes: var_glassFollowStrokes,
       softShadow: var_softShadow,
       invertInk: var_invertInk,
+      notebookStyle: var_notebookStyle,
       invertFps: var_invertFps,
       pressureMonitor: var_pressureMonitor,
       outline: var_outline,
@@ -2208,6 +2211,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.glassFollowStrokes, serializer);
     sse_encode_bool(self.softShadow, serializer);
     sse_encode_bool(self.invertInk, serializer);
+    sse_encode_bool(self.notebookStyle, serializer);
     sse_encode_i_32(self.invertFps, serializer);
     sse_encode_bool(self.pressureMonitor, serializer);
     sse_encode_bool(self.outline, serializer);
