@@ -212,7 +212,12 @@ fn take_invert_dirty() -> Option<(c_double, c_double, c_double, c_double)> {
     let dx = INVERT_DIRTY[0].load(std::sync::atomic::Ordering::SeqCst);
     let dy = INVERT_DIRTY[1].load(std::sync::atomic::Ordering::SeqCst);
     let dh = INVERT_DIRTY[3].load(std::sync::atomic::Ordering::SeqCst);
-    Some((dx as c_double, dy as c_double, dw as c_double, dh as c_double))
+    Some((
+        dx as c_double,
+        dy as c_double,
+        dw as c_double,
+        dh as c_double,
+    ))
 }
 
 /// 当前是否有笔迹(反色捕获循环的空转判断用)
@@ -1236,7 +1241,7 @@ pub extern "C" fn glaspen2_set_launch_at_login(enable: c_int) -> c_int {
             match std::fs::write(&plist_path, &plist) {
                 Ok(_) => 1,
                 Err(e) => {
-                    eprintln!("[glaspen2] launch agent write failed: {}", e);
+                    tracing::error!("launch agent write failed: {}", e);
                     0
                 }
             }
@@ -1244,7 +1249,7 @@ pub extern "C" fn glaspen2_set_launch_at_login(enable: c_int) -> c_int {
             match std::fs::remove_file(&plist_path) {
                 Ok(_) => 1,
                 Err(e) => {
-                    eprintln!("[glaspen2] launch agent remove failed: {}", e);
+                    tracing::error!("launch agent remove failed: {}", e);
                     0
                 }
             }
@@ -1593,7 +1598,7 @@ mod tests {
         let strokes = make_strokes();
         let bbox_w = 10.0 * 150.0;
         let bbox_h = 2.0 * 200.0;
-        eprintln!(
+        tracing::info!(
             "strokes={}, points≈{}, bbox≈{}x{}",
             strokes.len(),
             strokes.iter().map(|s| s.points.len()).sum::<usize>(),
@@ -1609,7 +1614,7 @@ mod tests {
             let start = std::time::Instant::now();
             let bytes = encode_animated_gif(&strokes, fps, res, speed, 1);
             let el = start.elapsed();
-            eprintln!(
+            tracing::info!(
                 "fps={} res={} speed={} -> {:?} ({} bytes)",
                 fps,
                 res,
@@ -1680,7 +1685,7 @@ mod tests {
             let total_pts = n_strokes * pts_per;
             for (label, snap) in [("smooth", &smooth), ("noisy", &noisy)] {
                 let svg = build_svg_from(snap).expect("svg");
-                eprintln!(
+                tracing::info!(
                     "strokes={} pts={} ({label}): elements={} bytes={} (~{} B/point, old per-point <line> would be ~{} elements, ~{} MB)",
                     n_strokes,
                     total_pts,
@@ -1752,7 +1757,7 @@ mod tests {
             glaspen2_modeler_commit_to_strokes(1.0, 0.0, 0.0);
             let up_cost = t_up.elapsed();
 
-            println!(
+            tracing::info!(
                 "iter {}: begin={:?}  {} 个 move = {:?} ({:.1} µs/事件)  pen-up 收敛+提交={:?}",
                 iter,
                 begin_cost,

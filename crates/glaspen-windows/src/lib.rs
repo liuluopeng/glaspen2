@@ -66,7 +66,7 @@ pub fn win_main() {
     // Launch Flutter settings UI (non-blocking); keep the handle so quitting
     // the overlay takes the settings window down with it.
     let mut settings_child = find_settings_exe().and_then(|p| {
-        eprintln!("[glaspen2] Launching Flutter settings: {}", p.display());
+        tracing::info!("Launching Flutter settings: {}", p.display());
         std::process::Command::new(p).spawn().ok()
     });
 
@@ -87,7 +87,7 @@ pub fn win_main() {
         // DETACHED_PROCESS:不随本控制台/进程消亡
         const DETACHED_PROCESS: u32 = 0x0000_0008;
         let path = installer.to_string_lossy().to_string();
-        eprintln!("[glaspen2] 2 秒后启动更新安装器: {path}");
+        tracing::info!("2 秒后启动更新安装器: {path}");
         let _ = std::process::Command::new("cmd")
             .args([
                 "/c", "timeout", "/t", "2", "/nobreak", ">nul", "&", "start", "", &path,
@@ -96,7 +96,7 @@ pub fn win_main() {
             .spawn();
     }
 
-    println!("[glaspen2] Exited");
+    tracing::info!("Exited");
 }
 
 #[cfg(windows)]

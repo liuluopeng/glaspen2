@@ -372,7 +372,7 @@ fn download_with_agent(
                 "校验失败(期望 {want},实际 {got}),已删除下载文件"
             )));
         }
-        None => eprintln!("[update] 资产没有 sha256,跳过校验:{url}"),
+        None => tracing::warn!("资产没有 sha256,跳过校验:{url}"),
         _ => {}
     }
     if total > 0 && received != total {

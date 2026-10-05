@@ -138,20 +138,13 @@ fn render_strokes_thumbnail(
                 renderer.fill_circle(px, py, pw_pt * 0.5, color);
             } else {
                 let (qx, qy, _qw, _qt) = s.points[i - 1];
-                renderer.stroke_line(
-                    (qx * fit) as f32,
-                    (qy * fit) as f32,
-                    px,
-                    py,
-                    pw_pt,
-                    color,
-                );
+                renderer.stroke_line((qx * fit) as f32, (qy * fit) as f32, px, py, pw_pt, color);
             }
         }
     }
     renderer.flush();
 
-// 4. BGRA → RGBA + PNG 编码(已是目标尺寸,无需降采样)
+    // 4. BGRA → RGBA + PNG 编码(已是目标尺寸,无需降采样)
     let bits = renderer.bits();
     let stride = ow as usize;
     let n = stride * oh as usize * 4;
@@ -358,7 +351,10 @@ pub extern "C" fn glaspen2_render_canvas_overview(
 
 /// Encode RGBA pixel data as PNG bytes.
 pub(crate) fn encode_png_rgba(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
-    use image::{ImageEncoder, codecs::png::{PngEncoder, CompressionType, FilterType}};
+    use image::{
+        ImageEncoder,
+        codecs::png::{CompressionType, FilterType, PngEncoder},
+    };
     let mut buf = Vec::new();
     // Fast 压缩: debug 构建下 Default 档能把大图编码拖到秒级; 缩略图/
     // 详情位图对压缩率不敏感(尺寸本就不大), Fast 档全路径提速。

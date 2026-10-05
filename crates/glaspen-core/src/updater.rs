@@ -362,13 +362,13 @@ pub fn updater_main(args: &[String]) -> i32 {
         val(args, "--staging"),
         val(args, "--pid"),
     ) else {
-        eprintln!("用法: --updater --target <app> --staging <app> --pid <n>");
+        tracing::info!("用法: --updater --target <app> --staging <app> --pid <n>");
         return 2;
     };
     let pid: u32 = match pid.parse() {
         Ok(p) => p,
         Err(_) => {
-            eprintln!("--pid 不是数字: {pid}");
+            tracing::info!("--pid 不是数字: {pid}");
             return 2;
         }
     };
@@ -408,7 +408,7 @@ pub fn updater_main(args: &[String]) -> i32 {
         Ok(Outcome::RolledBack) => 2,
         Err(e) => {
             log_line(&job.cache, &format!("FAILED: {e}"));
-            eprintln!("[updater] {e}");
+            tracing::info!("{e}");
             1
         }
     }
@@ -416,7 +416,7 @@ pub fn updater_main(args: &[String]) -> i32 {
 
 #[cfg(not(target_os = "macos"))]
 pub fn updater_main(_args: &[String]) -> i32 {
-    eprintln!("[updater] 当前平台暂不支持自动更新");
+    tracing::warn!("当前平台暂不支持自动更新");
     2
 }
 

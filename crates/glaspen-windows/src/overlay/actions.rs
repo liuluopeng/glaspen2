@@ -361,8 +361,8 @@ fn navigate_to(state: &mut OverlayState, target: i64, _label: &str) {
     }
     let current = glaspen_core::export::glaspen2_get_current_screen_id();
     if target <= 0 || target == current {
-        eprintln!(
-            "[overlay] 没有更多页面 (current={}, target={})",
+        tracing::info!(
+            "没有更多页面 (current={}, target={})",
             current, target
         );
         hud_notify("没有可跳转的页面");
@@ -370,7 +370,7 @@ fn navigate_to(state: &mut OverlayState, target: i64, _label: &str) {
     }
     let count = glaspen_core::export::glaspen2_load_strokes_for_screen(target);
     redraw_from_strokes(state);
-    eprintln!("[overlay] 已切换到页面 {} ({} 笔)", target, count);
+    tracing::info!("已切换到页面 {} ({} 笔)", target, count);
     hud_notify(&page_info_text(target));
     // 飘渺模式:短暂显示目标页,随后自动隐藏(除非笔在活动)
     if state.draw.ethereal {
@@ -824,8 +824,8 @@ fn export_svg_gif_clipboard(state: &mut OverlayState) {
     // Default GIF quality/speed (fps, resolution, playback speed); the macOS
     // settings panel exposes these for the Cmd+Ctrl+R recording flow.
     let ok = glaspen_core::export::glaspen2_save_animated_gif(15, 0.5, 2.0, 1);
-    eprintln!(
-        "[overlay] SVG 已导出;GIF 导出: {}",
+    tracing::info!(
+        "SVG 已导出;GIF 导出: {}",
         if ok != 0 { "OK" } else { "FAILED" }
     );
     copy_canvas_to_clipboard(state);
@@ -880,13 +880,13 @@ fn copy_canvas_to_clipboard(state: &mut OverlayState) {
             if h.0.is_null() {
                 let _ = GlobalFree(mem);
             }
-            eprintln!(
-                "[overlay] 画布已复制到剪贴板 ({}x{})",
+            tracing::info!(
+                "画布已复制到剪贴板 ({}x{})",
                 state.canvas.w, state.canvas.h
             );
         } else {
             let _ = GlobalFree(mem);
-            eprintln!("[overlay] 剪贴板打开失败,未复制");
+            tracing::error!("剪贴板打开失败,未复制");
         }
     }
 }
@@ -900,12 +900,12 @@ fn apply_frosted(hwnd: HWND, on: bool) {
     let lib = match unsafe { libloading::Library::new("user32.dll") } {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("[overlay] user32.dll 加载失败: {}", e);
+            tracing::error!("user32.dll 加载失败: {}", e);
             return;
         }
     };
     let Ok(f) = (unsafe { lib.get::<FnSetWca>(b"SetWindowCompositionAttribute") }) else {
-        eprintln!("[overlay] 系统不支持 SetWindowCompositionAttribute");
+        tracing::info!("系统不支持 SetWindowCompositionAttribute");
         return;
     };
     let f: FnSetWca = *f;
@@ -925,8 +925,8 @@ fn apply_frosted(hwnd: HWND, on: bool) {
         size: std::mem::size_of::<AccentPolicy>(),
     };
     let ret = unsafe { f(hwnd, &mut data) };
-    eprintln!(
-        "[overlay] SetWindowCompositionAttribute(blur={}) -> {}",
+    tracing::info!(
+        "SetWindowCompositionAttribute(blur={}) -> {}",
         on, ret
     );
 }
@@ -939,8 +939,8 @@ fn toggle_frosted(state: &mut OverlayState) {
         if state.draw.frosted { "1" } else { "0" },
     ));
     apply_frosted(state.canvas.hwnd, state.draw.frosted);
-    eprintln!(
-        "[overlay] 模糊背景: {}",
+    tracing::info!(
+        "模糊背景: {}",
         if state.draw.frosted { "开" } else { "关" }
     );
     hud_notify(if state.draw.frosted {

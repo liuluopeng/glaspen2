@@ -50,7 +50,7 @@ pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
     runtime().block_on(db::init());
     let purged = runtime().block_on(db::purge_blank_screens());
     if purged > 0 {
-        eprintln!("[init] 清理空白页 {purged} 页");
+        tracing::info!("清理空白页 {purged} 页");
     }
     // 启动落在**当前几何组**的末页: 页按分辨率分组, 玻璃什么尺寸就翻
     // 哪一本; 该几何从没出现过才建第一页。
@@ -89,7 +89,7 @@ pub extern "C" fn glaspen2_on_display_change(screen_w: c_int, screen_h: c_int) {
 }
 
 fn dblog_display_enter(id: i64, w: c_int, h: c_int) {
-    eprintln!("[db] 切换分辨率 → 进入 {w}x{h} 组末页 id={id}");
+    tracing::info!("切换分辨率 → 进入 {w}x{h} 组末页 id={id}");
 }
 
 /// 新建页守卫的纯决策:活页本末页(未删除页中最新的一页)已有笔迹 →
@@ -429,7 +429,7 @@ pub extern "C" fn glaspen2_page_reorder(screen_id: i64, anchor_id: i64, before: 
     match runtime().block_on(db::reorder_screen(screen_id, anchor_id, before != 0)) {
         Ok(()) => 1,
         Err(e) => {
-            eprintln!("[pages] 重排失败: {e}");
+            tracing::error!("重排失败: {e}");
             0
         }
     }
@@ -445,7 +445,10 @@ pub extern "C" fn glaspen2_page_reorder(screen_id: i64, anchor_id: i64, before: 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_lasso_select(screen_id: i64, poly: *const c_char) -> *mut c_char {
     let Some(poly) = (unsafe { poly.as_ref() }).and_then(|p| {
-        unsafe { CStr::from_ptr(p) }.to_str().ok().map(|s| s.to_string())
+        unsafe { CStr::from_ptr(p) }
+            .to_str()
+            .ok()
+            .map(|s| s.to_string())
     }) else {
         return CString::new("").unwrap_or_default().into_raw();
     };
@@ -466,7 +469,11 @@ pub extern "C" fn glaspen2_lasso_select(screen_id: i64, poly: *const c_char) -> 
     let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
     let ids: Vec<String> = strokes
         .iter()
-        .filter(|s| s.points.iter().any(|&(x, y, _, _)| point_in_polygon(x, y, &pts)))
+        .filter(|s| {
+            s.points
+                .iter()
+                .any(|&(x, y, _, _)| point_in_polygon(x, y, &pts))
+        })
         .map(|s| s.id.to_string())
         .collect();
     CString::new(ids.join(",")).unwrap_or_default().into_raw()
@@ -553,7 +560,13 @@ pub extern "C" fn glaspen2_move_strokes_to_page(
             0
         };
     }
-    let n = runtime().block_on(db::move_strokes_to_screen(screen_id, &ids, target_screen_id, dx, dy));
+    let n = runtime().block_on(db::move_strokes_to_screen(
+        screen_id,
+        &ids,
+        target_screen_id,
+        dx,
+        dy,
+    ));
     if n > 0 {
         runtime().block_on(db::thumbnails_purge_screen(screen_id));
         runtime().block_on(db::thumbnails_purge_screen(target_screen_id));
@@ -584,12 +597,12 @@ pub extern "C" fn glaspen2_delete_strokes(screen_id: i64, ids_csv: *const c_char
 /// payload = 手写消息同款墨迹序列化(逗号三元组 "x,y,w" 分号连接)。
 /// 返回新 stroke 数。
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_paste_strokes(
-    screen_id: i64,
-    payload: *const c_char,
-) -> c_int {
+pub extern "C" fn glaspen2_paste_strokes(screen_id: i64, payload: *const c_char) -> c_int {
     let Some(payload) = (unsafe { payload.as_ref() }).and_then(|p| {
-        unsafe { CStr::from_ptr(p) }.to_str().ok().map(|s| s.to_string())
+        unsafe { CStr::from_ptr(p) }
+            .to_str()
+            .ok()
+            .map(|s| s.to_string())
     }) else {
         return 0;
     };
@@ -605,7 +618,10 @@ pub extern "C" fn glaspen2_paste_strokes(
         let cg: f64 = hc.next().unwrap_or("0").parse().unwrap_or(0.0);
         let cb: f64 = hc.next().unwrap_or("0").parse().unwrap_or(0.0);
         // body = "x,y,w,x,y,w,...": 数值流三个一组(此前按组取, 全部 break 空)
-        let vals: Vec<f64> = body.split(',').filter_map(|t| t.trim().parse().ok()).collect();
+        let vals: Vec<f64> = body
+            .split(',')
+            .filter_map(|t| t.trim().parse().ok())
+            .collect();
         let mut pts = Vec::new();
         for c in vals.chunks(3) {
             if c.len() == 3 {
@@ -639,8 +655,7 @@ pub extern "C" fn glaspen2_copy_strokes_payload(
         return CString::new("").unwrap_or_default().into_raw();
     };
     let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
-    let sel: Vec<&crate::db::StrokeData> =
-        strokes.iter().filter(|s| ids.contains(&s.id)).collect();
+    let sel: Vec<&crate::db::StrokeData> = strokes.iter().filter(|s| ids.contains(&s.id)).collect();
     if sel.is_empty() {
         return CString::new("").unwrap_or_default().into_raw();
     }

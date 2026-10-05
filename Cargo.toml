@@ -28,6 +28,8 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 flutter_rust_bridge = "=2.12.0"
 glaspen-core = { path = "crates/glaspen-core" }
 glaspen-windows = { path = "crates/glaspen-windows" }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"

@@ -35,7 +35,7 @@ pub fn export_pages_by_ids(ids: &[i64]) -> Option<String> {
     let pool = match pool {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("[pdf] DB: {e}");
+            tracing::info!("DB: {e}");
             return None;
         }
     };
@@ -62,18 +62,18 @@ pub fn export_pages_by_ids(ids: &[i64]) -> Option<String> {
             .collect()
     };
     if screens.is_empty() {
-        eprintln!("[pdf] No pages");
+        tracing::info!("No pages");
         return None;
     }
-    eprintln!("[pdf] Exporting {} pages", screens.len());
+    tracing::info!("Exporting {} pages", screens.len());
 
     let mut doc = PdfDocument::new("glaspen2");
 
     for (screen_id, sw, sh) in &screens {
         // Load strokes directly (single JOIN query, no N+1)
         let strokes: Vec<db::StrokeData> = rt.block_on(db::strokes_for_screen(*screen_id));
-        eprintln!(
-            "[pdf] Page {}: {}x{} ({} strokes)",
+        tracing::info!(
+            "Page {}: {}x{} ({} strokes)",
             screen_id,
             sw,
             sh,
@@ -119,11 +119,11 @@ pub fn export_pages_by_ids(ids: &[i64]) -> Option<String> {
         Ok(()) => {
             std::fs::write(&path, &pdf_bytes).ok();
             if path.exists() {
-                eprintln!("[pdf] Saved vector PDF to {}", path.display());
+                tracing::info!("Saved vector PDF to {}", path.display());
                 return Some(path.to_string_lossy().to_string());
             }
         }
-        Err(e) => eprintln!("[pdf] Save error: {e}"),
+        Err(e) => tracing::error!("Save error: {e}"),
     }
     None
 }
@@ -152,7 +152,7 @@ pub fn export_infinite_paged(page_w: i32, page_h: i32) -> Option<String> {
     let pool = match pool {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("[pdf] DB: {e}");
+            tracing::info!("DB: {e}");
             return None;
         }
     };
@@ -160,7 +160,7 @@ pub fn export_infinite_paged(page_w: i32, page_h: i32) -> Option<String> {
     rt.block_on(pool.close());
 
     if strokes.is_empty() {
-        eprintln!("[pdf] Infinite canvas is empty");
+        tracing::info!("Infinite canvas is empty");
         return None;
     }
 
@@ -190,15 +190,15 @@ pub fn export_infinite_paged(page_w: i32, page_h: i32) -> Option<String> {
     let rows = (((y1 - y0) / ph).ceil() as i64).max(1);
     const MAX_PAGES: i64 = 400;
     if cols * rows > MAX_PAGES {
-        eprintln!(
-            "[pdf] Infinite canvas needs {} pages (> {}) — reduce content or page size",
+        tracing::info!(
+            "Infinite canvas needs {} pages (> {}) — reduce content or page size",
             cols * rows,
             MAX_PAGES
         );
         return None;
     }
-    eprintln!(
-        "[pdf] Infinite canvas: {} strokes, bbox {:.0}x{:.0}, {}x{} = {} pages",
+    tracing::info!(
+        "Infinite canvas: {} strokes, bbox {:.0}x{:.0}, {}x{} = {} pages",
         strokes.len(),
         x1 - x0,
         y1 - y0,
@@ -234,11 +234,11 @@ pub fn export_infinite_paged(page_w: i32, page_h: i32) -> Option<String> {
         Ok(()) => {
             std::fs::write(&path, &pdf_bytes).ok();
             if path.exists() {
-                eprintln!("[pdf] Saved infinite-canvas PDF to {}", path.display());
+                tracing::info!("Saved infinite-canvas PDF to {}", path.display());
                 return Some(path.to_string_lossy().to_string());
             }
         }
-        Err(e) => eprintln!("[pdf] Save error: {e}"),
+        Err(e) => tracing::error!("Save error: {e}"),
     }
     None
 }

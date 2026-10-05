@@ -5,6 +5,7 @@ edition = "2024"
 description = "glaspen2 的 Windows 覆盖层:Win32 全屏透明窗口、笔输入、命名管道设置服务"
 
 [dependencies]
+tracing = "0.1"
 glaspen-core = { path = "../glaspen-core" }
 # 覆盖层直用本进程 StrokeModeler 实例做位置/压力平滑(core 的全局缓冲是 macOS 路径用的)
 ink-stroke-modeler-rs = "0.1"

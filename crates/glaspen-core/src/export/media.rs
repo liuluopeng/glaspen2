@@ -103,8 +103,8 @@ pub extern "C" fn glaspen2_save_xoj() {
     // Write to file
     let path = xoj_timestamped_path();
     match std::fs::write(&path, &compressed) {
-        Ok(_) => println!("[glaspen2] Saved Xournal to {}", path.display()),
-        Err(e) => eprintln!("[glaspen2] Xournal save failed: {}", e),
+        Ok(_) => tracing::info!("Saved Xournal to {}", path.display()),
+        Err(e) => tracing::error!("Xournal save failed: {}", e),
     }
 }
 
@@ -151,8 +151,8 @@ pub extern "C" fn glaspen2_save_drawing(
 
     let path = timestamped_path();
     match img.save(&path) {
-        Ok(_) => println!("[glaspen2] Saved (drawing only) to {}", path.display()),
-        Err(e) => eprintln!("[glaspen2] Save failed: {}", e),
+        Ok(_) => tracing::info!("Saved (drawing only) to {}", path.display()),
+        Err(e) => tracing::error!("Save failed: {}", e),
     }
 }
 
@@ -234,8 +234,8 @@ pub extern "C" fn glaspen2_save_with_background(
 
     let path = timestamped_path();
     match img.save(&path) {
-        Ok(_) => println!("[glaspen2] Saved (with background) to {}", path.display()),
-        Err(e) => eprintln!("[glaspen2] Save failed: {}", e),
+        Ok(_) => tracing::info!("Saved (with background) to {}", path.display()),
+        Err(e) => tracing::error!("Save failed: {}", e),
     }
 }
 
@@ -419,15 +419,15 @@ pub extern "C" fn glaspen2_export_infinite_svg() -> c_int {
             let path = desktop_path().join(timestamped_name("svg"));
             match std::fs::write(&path, &svg) {
                 Ok(_) => {
-                    println!(
-                        "[glaspen2] Saved infinite-canvas SVG to {} ({} bytes)",
+                    tracing::info!(
+                        "Saved infinite-canvas SVG to {} ({} bytes)",
                         path.display(),
                         svg.len()
                     );
                     1
                 }
                 Err(e) => {
-                    eprintln!("[glaspen2] SVG save failed: {}", e);
+                    tracing::error!("SVG save failed: {}", e);
                     0
                 }
             }
@@ -630,11 +630,11 @@ pub extern "C" fn glaspen2_export_page_png(screen_id: i64) -> c_int {
     ));
     match std::fs::write(&path, &png) {
         Ok(()) => {
-            eprintln!("[export] 页 {screen_id} PNG → {}", path.display());
+            tracing::info!("页 {screen_id} PNG → {}", path.display());
             1
         }
         Err(e) => {
-            eprintln!("[export] 页 PNG 写入失败: {e}");
+            tracing::error!("页 PNG 写入失败: {e}");
             0
         }
     }
@@ -658,11 +658,11 @@ pub extern "C" fn glaspen2_export_page_svg(screen_id: i64) -> c_int {
     ));
     match std::fs::write(&path, &svg) {
         Ok(()) => {
-            eprintln!("[export] 页 {screen_id} SVG → {}", path.display());
+            tracing::info!("页 {screen_id} SVG → {}", path.display());
             1
         }
         Err(e) => {
-            eprintln!("[export] 页 SVG 写入失败: {e}");
+            tracing::error!("页 SVG 写入失败: {e}");
             0
         }
     }
@@ -681,8 +681,8 @@ pub extern "C" fn glaspen2_export_pages_pdf_json(ids_json: *const c_char) -> c_i
     };
     match crate::pdf::export_pages_by_ids(&ids) {
         Some(p) => {
-            eprintln!(
-                "[export] {} 页 PDF → {p}",
+            tracing::info!(
+                "{} 页 PDF → {p}",
                 if ids.is_empty() {
                     "全部".to_string()
                 } else {
@@ -700,9 +700,9 @@ pub extern "C" fn glaspen2_save_svg() {
     if let Some(svg) = build_cropped_svg() {
         let path = desktop_path().join(timestamped_name("svg"));
         if let Err(e) = std::fs::write(&path, &svg) {
-            eprintln!("[glaspen2] SVG save failed: {}", e);
+            tracing::error!("SVG save failed: {}", e);
         } else {
-            println!("[glaspen2] Saved SVG to {}", path.display());
+            tracing::info!("Saved SVG to {}", path.display());
         }
     }
 }
@@ -886,18 +886,18 @@ pub extern "C" fn glaspen2_save_gif_cropped(
             ..gif::Frame::default()
         };
         if let Err(e) = enc.write_frame(&frame) {
-            eprintln!("[glaspen2] GIF encode failed: {}", e);
+            tracing::error!("GIF encode failed: {}", e);
             return 0;
         }
     }
     let path = desktop_path().join(timestamped_name("gif"));
     match std::fs::write(&path, &gif_data) {
         Ok(_) => {
-            println!("[glaspen2] Saved GIF to {}", path.display());
+            tracing::info!("Saved GIF to {}", path.display());
             1
         }
         Err(e) => {
-            eprintln!("[glaspen2] GIF write failed: {}", e);
+            tracing::error!("GIF write failed: {}", e);
             0
         }
     }
@@ -1058,9 +1058,10 @@ pub(crate) fn encode_animated_gif(
     use rayon::prelude::*;
 
     let n_threads = rayon::current_num_threads();
-    eprintln!(
-        "[glaspen2] animated GIF: rayon threads={}, n_frames={}",
-        n_threads, n_frames
+    tracing::info!(
+        "animated GIF: rayon threads={}, n_frames={}",
+        n_threads,
+        n_frames
     );
 
     let mut frame_results: Vec<(usize, Vec<u8>, u16)> = (0..n_frames)
@@ -1217,15 +1218,15 @@ pub extern "C" fn glaspen2_save_animated_gif(
     let path = desktop_path().join(timestamped_name("gif"));
     match std::fs::write(&path, &gif_data) {
         Ok(_) => {
-            println!(
-                "[glaspen2] Saved animated GIF to {} ({} bytes)",
+            tracing::info!(
+                "Saved animated GIF to {} ({} bytes)",
                 path.display(),
                 gif_data.len()
             );
             1
         }
         Err(e) => {
-            eprintln!("[glaspen2] Animated GIF write failed: {}", e);
+            tracing::error!("Animated GIF write failed: {}", e);
             0
         }
     }

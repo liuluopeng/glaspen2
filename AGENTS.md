@@ -34,6 +34,17 @@
   codegen 从 api.rs 现算一份全新无错的, 省掉手工对齐 SSE 编解码的功夫)
 - **lint**:`sh scripts/lint.sh`;打包:`sh scripts/build-dmg.sh`
 
+## 日志(tracing, 全仓统一)
+
+- **Rust 侧一律 `tracing::info!/warn!/error!/debug!`**,别再写 eprintln/println
+  (ObjC 侧 NSLog 保留,不桥接)。输出走 stderr,格式 = 时间 级别 目标 消息
+  (target = 模块路径,消息里不用再带 `[db]` `[pdf]` 这类前缀)
+- 过滤优先级:`RUST_LOG`(标准 EnvFilter 语法,如 `RUST_LOG=glaspen_core=debug`)>
+  `GLASPEN2_DB_LOG=1`(兼容旧开关,映射到 debug)>
+  默认 `info` —— **db 的 CRUD 日志是 debug 级,默认静默**(反色模式下
+  日志滚进可见终端会自激送帧,见 dblog! 宏注释)
+- subscriber 初始化在 `src/main.rs`(updater 子进程之前)
+
 ## 架构总览(当前状态)
 
 Cargo workspace 多 crate 结构(`crates/` 下为核心与 Windows 两个新 crate):

@@ -101,8 +101,8 @@ fn migrate_legacy_db(legacy: &std::path::Path, new_path: &std::path::Path) {
                 let _ = std::fs::copy(&src, std::path::PathBuf::from(dst_name));
             }
         }
-        eprintln!(
-            "[db] 已迁移开发库 {} -> {}",
+        tracing::info!(
+            "已迁移开发库 {} -> {}",
             legacy.display(),
             new_path.display()
         );
@@ -120,15 +120,12 @@ fn now_f64() -> f64 {
 /// 同一流,cargo run 终端里按时间顺序交错可见)。只加在公开包装函数上,
 /// 测试用的 `_with` 变体不打,免得 cargo test 输出刷屏。
 macro_rules! dblog {
-    ($($arg:tt)*) => {{
-        // 默认静默: 反色模式下每次整笔重绘都会查相邻页, 日志会滚进屏幕上
-        // 可见的终端 → SCStream 检测到"画面变化"再送帧 → 自激循环(日志
-        // 自己制造自己的触发源)。需要排查时设 GLASPEN2_DB_LOG=1 恢复。
-        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        if *ON.get_or_init(|| std::env::var("GLASPEN2_DB_LOG").is_ok()) {
-            eprintln!("[db] {}", format_args!($($arg)*));
-        }
-    }};
+    ($($arg:tt)*) => {
+        // debug 级: 默认静默(反色模式下 DB 日志滚进可见终端会自激送帧)。
+        // 排查时 GLASPEN2_DB_LOG=1(subscriber 映射到 debug)或 RUST_LOG=debug。
+        // 无分号: 宏常用于 match 臂的表达位置。
+        tracing::debug!($($arg)*)
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -187,7 +184,7 @@ mod platform {
         dblog!("现有 {screens} 页 / {strokes} 笔");
 
         DB.set(pool).ok();
-        println!("[glaspen2] DB initialized at {}", path.display());
+        tracing::info!("DB initialized at {}", path.display());
     }
 
     async fn exec(pool: &SqlitePool, sql: &str) -> Result<(), String> {
@@ -361,13 +358,12 @@ mod platform {
         // 缩略图形态 v2:内容包围盒裁剪 → 整页等比(与统一卡片尺寸冲突,
         // 已放弃裁剪)。一次性清掉旧裁剪缓存, 标记防重跑(每次启动都走
         // 本函数, 不能无条件 DELETE 白费缓存)。
-        let purged: Option<String> = sqlx::query_scalar(
-            "SELECT value FROM user_settings WHERE key = 'thumbs_purged_v2'",
-        )
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten();
+        let purged: Option<String> =
+            sqlx::query_scalar("SELECT value FROM user_settings WHERE key = 'thumbs_purged_v2'")
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten();
         if purged.is_none() {
             sqlx::query("DELETE FROM screen_thumbnails")
                 .execute(pool)
@@ -1481,7 +1477,10 @@ mod platform {
         if screen_id == anchor_id {
             return Ok(());
         }
-        let mut tx = pool.begin().await.map_err(|e| format!("开启事务失败: {e}"))?;
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|e| format!("开启事务失败: {e}"))?;
         let ids: Vec<i64> = sqlx::query_scalar(
             "SELECT id FROM screens WHERE deleted_at IS NULL ORDER BY order_index, id",
         )
@@ -1507,31 +1506,41 @@ mod platform {
                 .await
                 .map_err(|e| format!("写入页序失败: {e}"))?;
         }
-        tx.commit().await.map_err(|e| format!("提交事务失败: {e}"))?;
-        dblog!("页重排 {screen_id} → 锚点 {anchor_id} {}", if before { "前" } else { "后" });
+        tx.commit()
+            .await
+            .map_err(|e| format!("提交事务失败: {e}"))?;
+        dblog!(
+            "页重排 {screen_id} → 锚点 {anchor_id} {}",
+            if before { "前" } else { "后" }
+        );
         Ok(())
     }
 
     /// 同页平移所选笔迹(面板圈选移动)。points 行内 x/y 直接加偏移。
-    pub async fn move_strokes_translate(
-        screen_id: i64,
-        ids: &[i64],
-        dx: f64,
-        dy: f64,
-    ) -> u64 {
+    pub async fn move_strokes_translate(screen_id: i64, ids: &[i64], dx: f64, dy: f64) -> u64 {
         let Some(pool) = DB.get() else { return 0 };
         let n = ids.len();
         if n == 0 {
             return 0;
         }
         // 动态占位符: ids 是面板圈选结果, 数量小且受信
-        let in_clause = ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let in_clause = ids
+            .iter()
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
         let sql = format!(
             "UPDATE points SET x = x + ?1, y = y + ?2 \
              WHERE stroke_id IN ({in_clause}) AND EXISTS (SELECT 1 FROM strokes \
              WHERE strokes.id = points.stroke_id AND strokes.screen_id = ?3 AND strokes.deleted_at IS NULL)"
         );
-        match sqlx::query(&sql).bind(dx).bind(dy).bind(screen_id).execute(pool).await {
+        match sqlx::query(&sql)
+            .bind(dx)
+            .bind(dy)
+            .bind(screen_id)
+            .execute(pool)
+            .await
+        {
             Ok(r) => {
                 dblog!("笔迹平移 {} 笔 (页 {screen_id}, dx={dx:.1} dy={dy:.1})", n);
                 r.rows_affected()
@@ -1555,9 +1564,15 @@ mod platform {
         if ids.is_empty() || screen_id == target_screen_id {
             return 0;
         }
-        let in_clause = ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
-        let sql = format!("UPDATE strokes SET screen_id = ?1 WHERE id IN ({in_clause}) \
-             AND screen_id = ?2 AND deleted_at IS NULL");
+        let in_clause = ids
+            .iter()
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "UPDATE strokes SET screen_id = ?1 WHERE id IN ({in_clause}) \
+             AND screen_id = ?2 AND deleted_at IS NULL"
+        );
         let Ok(r) = sqlx::query(&sql)
             .bind(target_screen_id)
             .bind(screen_id)
@@ -1576,7 +1591,12 @@ mod platform {
             if let Err(e) = sqlx::query(&sql2).bind(dx).bind(dy).execute(pool).await {
                 dblog!("ERR 笔迹搬页平移: {e}");
             }
-            dblog!("笔迹搬页 {} 笔 ({} → {})", moved, screen_id, target_screen_id);
+            dblog!(
+                "笔迹搬页 {} 笔 ({} → {})",
+                moved,
+                screen_id,
+                target_screen_id
+            );
         }
         moved
     }
@@ -1587,9 +1607,15 @@ mod platform {
         if ids.is_empty() {
             return 0;
         }
-        let in_clause = ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
-        let sql = format!("UPDATE strokes SET deleted_at = ?1 \
-             WHERE id IN ({in_clause}) AND screen_id = ?2 AND deleted_at IS NULL");
+        let in_clause = ids
+            .iter()
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "UPDATE strokes SET deleted_at = ?1 \
+             WHERE id IN ({in_clause}) AND screen_id = ?2 AND deleted_at IS NULL"
+        );
         match sqlx::query(&sql)
             .bind(now_f64())
             .bind(screen_id)
@@ -1635,17 +1661,19 @@ mod platform {
             };
             let mut seq = 0i64;
             for &(x, y, w) in pts {
-                if sqlx::query("INSERT INTO points (stroke_id, seq, x, y, width, t) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
-                    .bind(id)
-                    .bind(seq)
-                    .bind(x)
-                    .bind(y)
-                    .bind(w)
-                    .bind(0.0)
-                    .execute(pool)
-                    .await
-                    .is_err()
+                if sqlx::query(
+                    "INSERT INTO points (stroke_id, seq, x, y, width, t) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                )
+                .bind(id)
+                .bind(seq)
+                .bind(x)
+                .bind(y)
+                .bind(w)
+                .bind(0.0)
+                .execute(pool)
+                .await
+                .is_err()
                 {
                     dblog!("ERR 粘贴点写入失败 stroke={id}");
                 }
@@ -1959,10 +1987,10 @@ mod tests {
     use super::StrokeData;
     use super::platform::{
         SCHEMA_VERSION, attach_points, backup_to_with, last_screen_with_geometry_with,
-        migrate_with, next_screen_with, page_info_with, prev_screen_with,
-        reorder_screen_with, restore_merge_from_with, screen_stroke_version_with,
-        stroke_versions_many_with, thumbnail_lookup_with, thumbnail_store_with,
-        thumbnails_many_with, thumbnails_purge_screen_with,
+        migrate_with, next_screen_with, page_info_with, prev_screen_with, reorder_screen_with,
+        restore_merge_from_with, screen_stroke_version_with, stroke_versions_many_with,
+        thumbnail_lookup_with, thumbnail_store_with, thumbnails_many_with,
+        thumbnails_purge_screen_with,
     };
     use crate::runtime;
     use sqlx::SqlitePool;

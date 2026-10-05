@@ -157,7 +157,7 @@ pub(crate) fn open_url_checked(url: &str) {
     if url.starts_with("https://") || url.starts_with("http://") {
         shim::open_url(url);
     } else {
-        eprintln!("[api] 拒绝打开非 http(s) URL: {url}");
+        tracing::info!("拒绝打开非 http(s) URL: {url}");
     }
 }
 
@@ -359,7 +359,9 @@ pub async fn list_pages() -> Vec<PageSummary> {
 /// 活页本重排:把某页移到锚点页前/后(面板内前后移)。
 #[frb]
 pub async fn reorder_page(screen_id: i64, anchor_id: i64, before: bool) -> bool {
-    db::reorder_screen(screen_id, anchor_id, before).await.is_ok()
+    db::reorder_screen(screen_id, anchor_id, before)
+        .await
+        .is_ok()
 }
 
 /// 一页的缩略图。
@@ -394,12 +396,15 @@ pub async fn delete_page(screen_id: i64) -> bool {
 pub async fn page_png_bytes(screen_id: i64, highlight: Vec<i64>, margin: f64) -> Vec<u8> {
     run_blocking(move || unsafe {
         let csv = std::ffi::CString::new(
-            highlight.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+            highlight
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
         )
         .unwrap_or_default();
         let mut len: i32 = 0;
-        let ptr =
-            crate::export::glaspen2_page_png_bytes(screen_id, csv.as_ptr(), margin, &mut len);
+        let ptr = crate::export::glaspen2_page_png_bytes(screen_id, csv.as_ptr(), margin, &mut len);
         if ptr.is_null() || len <= 0 {
             return Vec::new();
         }
@@ -437,7 +442,10 @@ pub async fn lasso_select(screen_id: i64, poly: Vec<(f64, f64)>) -> Vec<i64> {
 pub async fn move_strokes(screen_id: i64, ids: Vec<i64>, dx: f64, dy: f64) -> bool {
     run_blocking(move || {
         let csv = std::ffi::CString::new(
-            ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+            ids.iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
         )
         .unwrap_or_default();
         crate::export::glaspen2_move_strokes(screen_id, csv.as_ptr(), dx, dy) != 0
@@ -455,11 +463,18 @@ pub async fn move_strokes_to_page(
 ) -> bool {
     run_blocking(move || {
         let csv = std::ffi::CString::new(
-            ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+            ids.iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
         )
         .unwrap_or_default();
         crate::export::glaspen2_move_strokes_to_page(
-            screen_id, csv.as_ptr(), target_screen_id, dx, dy,
+            screen_id,
+            csv.as_ptr(),
+            target_screen_id,
+            dx,
+            dy,
         ) != 0
     })
 }
@@ -469,7 +484,10 @@ pub async fn move_strokes_to_page(
 pub async fn delete_strokes(screen_id: i64, ids: Vec<i64>) -> bool {
     run_blocking(move || {
         let csv = std::ffi::CString::new(
-            ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+            ids.iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
         )
         .unwrap_or_default();
         crate::export::glaspen2_delete_strokes(screen_id, csv.as_ptr()) != 0
@@ -481,7 +499,10 @@ pub async fn delete_strokes(screen_id: i64, ids: Vec<i64>) -> bool {
 pub async fn copy_strokes_payload(screen_id: i64, ids: Vec<i64>) -> String {
     run_blocking(move || {
         let csv = std::ffi::CString::new(
-            ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+            ids.iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
         )
         .unwrap_or_default();
         let ptr = crate::export::glaspen2_copy_strokes_payload(screen_id, csv.as_ptr());
@@ -920,7 +941,7 @@ pub async fn apply_update() -> UpdateOutcome {
         if let Err(e) = cmd.spawn() {
             return fail(format!("启动更新进程失败:{e}"));
         }
-        eprintln!("[update] helper spawned, quitting…");
+        tracing::info!("helper spawned, quitting…");
 
         // 给在途的后台写(落笔 edited 标记等)一点时间落地, 再走正常退出
         std::thread::sleep(std::time::Duration::from_millis(300));

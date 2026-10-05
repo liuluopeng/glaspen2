@@ -500,14 +500,13 @@ impl CairoRenderer {
     pub fn clip_rect(&self, x: f32, y: f32, w: f32, h: f32) {
         unsafe {
             let Some(lib) = load_library() else { return };
-            let Ok(clip) = lib.get::<unsafe extern "C" fn(*mut std::ffi::c_void)>(
-                b"cairo_clip",
-            ) else {
+            let Ok(clip) = lib.get::<unsafe extern "C" fn(*mut std::ffi::c_void)>(b"cairo_clip")
+            else {
                 return;
             };
-            let Ok(reset) = lib.get::<unsafe extern "C" fn(*mut std::ffi::c_void)>(
-                b"cairo_reset_clip",
-            ) else {
+            let Ok(reset) =
+                lib.get::<unsafe extern "C" fn(*mut std::ffi::c_void)>(b"cairo_reset_clip")
+            else {
                 return;
             };
             reset(self.cr);
@@ -524,9 +523,8 @@ impl CairoRenderer {
     pub fn reset_clip(&self) {
         unsafe {
             if let Some(lib) = load_library()
-                && let Ok(reset) = lib.get::<unsafe extern "C" fn(*mut std::ffi::c_void)>(
-                    b"cairo_reset_clip",
-                )
+                && let Ok(reset) =
+                    lib.get::<unsafe extern "C" fn(*mut std::ffi::c_void)>(b"cairo_reset_clip")
             {
                 reset(self.cr);
             }
@@ -760,7 +758,7 @@ fn load_library() -> Option<&'static Library> {
         .get_or_init(|| {
             let l = load_library_uncached();
             if l.is_some() {
-                eprintln!("[cairo_dl] cairo 已加载并缓存");
+                tracing::info!("cairo 已加载并缓存");
             }
             l
         })

@@ -232,7 +232,7 @@ unsafe fn gdiplus_load_font_file() -> bool {
     let st = (gp.private_add_font_file)(col, wide.as_ptr());
     if st == STATUS_OK {
         GP_FONT_COLLECTION = col;
-        eprintln!("[overlay] GDI+ 私人字体已加载: {}", path.display());
+        tracing::info!("GDI+ 私人字体已加载: {}", path.display());
         true
     } else {
         false
@@ -420,9 +420,9 @@ unsafe fn hud_create_window(
 fn hud_create() -> (HWND, HWND) {
     unsafe {
         if gdiplus().is_some() {
-            eprintln!("[overlay] GDI+ 已初始化");
+            tracing::info!("GDI+ 已初始化");
         } else {
-            eprintln!("[overlay] GDI+ 初始化失败!");
+            tracing::error!("GDI+ 初始化失败!");
         }
         let class_name = wide_string("Glaspen2Hud");
         let hinst: HINSTANCE = GetModuleHandleW(None).unwrap_or_default().into();
@@ -484,20 +484,20 @@ unsafe fn hud_render_notif_text(hwnd: HWND, text: &str) {
         let gp = match gdiplus() {
             Some(g) => g,
             None => {
-                eprintln!("[overlay] GDI+ 不可用,通知渲染失败");
+                tracing::error!("GDI+ 不可用,通知渲染失败");
                 return;
             }
         };
         let (font, _family) = (gdiplus_get_notif_font(gp), GP_NOTIF_FAMILY);
         if font.is_null() {
-            eprintln!("[overlay] GDI+ 字体创建失败");
+            tracing::error!("GDI+ 字体创建失败");
             return;
         }
         let screen_dc = GetDC(None);
         let mut graphics: *mut std::ffi::c_void = std::ptr::null_mut();
         let st1 = (gp.create_from_hdc)(screen_dc, &mut graphics);
         if st1 != STATUS_OK || graphics.is_null() {
-            eprintln!("[overlay] GDI+ create_from_hdc 失败: st={}", st1);
+            tracing::error!("GDI+ create_from_hdc 失败: st={}", st1);
             let _ = ReleaseDC(None, screen_dc);
             return;
         }

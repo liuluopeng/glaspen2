@@ -31,7 +31,7 @@ pub fn begin_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: 
     });
 
     if let Err(e) = state.modeler.reset_w_params(modeler_params()) {
-        eprintln!("[modeler] reset failed: {:?}", e);
+        tracing::error!("reset failed: {:?}", e);
     }
     state.start_time = timestamp;
     state.buffer.clear();
@@ -54,7 +54,7 @@ pub fn begin_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: 
                     .push((r.pos.0, r.pos.1, w, state.start_time + r.time));
             }
         }
-        Err(e) => eprintln!("[modeler] Down error: {:?}", e),
+        Err(e) => tracing::error!("Down error: {:?}", e),
     }
 }
 
@@ -79,10 +79,10 @@ pub fn pen_move(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f64)
                         .push((r.pos.0, r.pos.1, w, state.start_time + r.time));
                 }
             }
-            Err(e) => eprintln!("[modeler] Move error: {:?}", e),
+            Err(e) => tracing::error!("Move error: {:?}", e),
         }
     } else {
-        eprintln!("[modeler] Move: no state!");
+        tracing::info!("Move: no state!");
     }
 }
 
@@ -107,7 +107,7 @@ pub fn end_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f6
                         .push((r.pos.0, r.pos.1, w, state.start_time + r.time));
                 }
             }
-            Err(e) => eprintln!("[modeler] Up error: {:?}", e),
+            Err(e) => tracing::error!("Up error: {:?}", e),
         }
     }
 }

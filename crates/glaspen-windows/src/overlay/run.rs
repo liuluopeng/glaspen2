@@ -206,7 +206,7 @@ pub fn run() {
             },
         ];
         let r = RegisterRawInputDevices(&mut devices, std::mem::size_of::<RAWINPUTDEVICE>() as u32);
-        println!("[overlay] RegisterRawInputDevices: {:?}", r);
+        tracing::info!("RegisterRawInputDevices: {:?}", r);
 
         // 热键(README 快捷键表):Ctrl+Alt+C 新建画布 / V 开关 / Z 撤销 /
         // ` / 1 翻页(与 macOS b7cb22d 同改:J/K → 左手单手可及的 ~/1) /
@@ -246,9 +246,9 @@ pub fn run() {
             });
         }
 
-        println!("[overlay] 全屏透明涂鸦已启动(WM_INPUT + ink-stroke-modeler + cairo)。");
-        println!(
-            "[overlay] 快捷键: Ctrl+Alt+C 新建 / V 开关 / Z 撤销 / `·1 翻页 / G 导出 / B 模糊 / X 固定↔飘渺 / Q 退出 / 2 按住手写草稿 / 3 按住手写直发(集成开时);无限画布: 方向键平移 / PageUp·Down 缩放 / Ctrl+Alt+滚轮缩放"
+        tracing::info!("全屏透明涂鸦已启动(WM_INPUT + ink-stroke-modeler + cairo)。");
+        tracing::info!(
+            "快捷键: Ctrl+Alt+C 新建 / V 开关 / Z 撤销 / `·1 翻页 / G 导出 / B 模糊 / X 固定↔飘渺 / Q 退出 / 2 按住手写草稿 / 3 按住手写直发(集成开时);无限画布: 方向键平移 / PageUp·Down 缩放 / Ctrl+Alt+滚轮缩放"
         );
         run_loop();
 

@@ -153,8 +153,8 @@ fn ctx_for(hdev: isize) -> &'static mut DevCtx {
         } else {
             "⚠ preparsed 不可用,回退常量"
         };
-        eprintln!(
-            "[overlay] [新输入设备 hDev=0x{:X}] 量程({}): X 0..{:.0} Y 0..{:.0} P 0..{:.0}",
+        tracing::info!(
+            "[新输入设备 hDev=0x{:X}] 量程({}): X 0..{:.0} Y 0..{:.0} P 0..{:.0}",
             hdev, src, x_max, y_max, p_max
         );
         map.insert(

@@ -27,7 +27,7 @@ fn run_settings_pipe_server(hwnd: isize) {
             )
         };
         if pipe == -1 || pipe == 0 {
-            eprintln!("[pipe] CreateNamedPipeW failed");
+            tracing::error!("CreateNamedPipeW failed");
             std::thread::sleep(std::time::Duration::from_secs(2));
             continue;
         }
@@ -38,16 +38,16 @@ fn run_settings_pipe_server(hwnd: isize) {
             let err = std::io::Error::last_os_error();
             // ERROR_PIPE_CONNECTED (535) means client connected before ConnectNamedPipe
             if err.raw_os_error() != Some(535) {
-                eprintln!("[pipe] ConnectNamedPipe error: {}", err);
+                tracing::error!("ConnectNamedPipe error: {}", err);
                 close_pipe(pipe);
                 continue;
             }
         }
-        eprintln!("[pipe] Flutter settings client connected");
+        tracing::info!("Flutter settings client connected");
 
         handle_pipe_client(pipe, hwnd);
 
-        eprintln!("[pipe] Flutter settings client disconnected");
+        tracing::info!("Flutter settings client disconnected");
     }
 }
 
@@ -73,7 +73,7 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
             Ok(0) => break,
             Ok(n) => n,
             Err(e) => {
-                eprintln!("[pipe] client read error: {}", e);
+                tracing::error!("client read error: {}", e);
                 break;
             }
         };
@@ -632,8 +632,8 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             };
         } else if key == "export_animated_gif" {
             let result = glaspen_core::export::glaspen2_save_animated_gif(15, 0.5, 2.0, 1);
-            eprintln!(
-                "[pipe] animated GIF export: {}",
+            tracing::info!(
+                "animated GIF export: {}",
                 if result != 0 { "OK" } else { "FAILED" }
             );
             hud_notify(if result != 0 {
@@ -643,8 +643,8 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             });
         } else if key == "export_pdf" {
             let result = glaspen_core::export::glaspen2_export_pdf();
-            eprintln!(
-                "[pipe] PDF export: {}",
+            tracing::info!(
+                "PDF export: {}",
                 if result != 0 { "OK" } else { "FAILED" }
             );
             hud_notify(if result != 0 {
@@ -1008,7 +1008,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         });
         match result {
             Ok((path, received, total)) => {
-                eprintln!("[pipe] 更新包已下载: {}", path.display());
+                tracing::info!("更新包已下载: {}", path.display());
                 *DOWNLOADED_INSTALLER.lock().unwrap() = Some(path.clone());
                 let p = path.to_string_lossy().replace('\\', "/");
                 let _ = writer.write_all(
@@ -1062,7 +1062,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             return;
         };
         crate::set_pending_installer(installer);
-        eprintln!("[pipe] 退出并启动更新安装器");
+        tracing::info!("退出并启动更新安装器");
         let _ = writer.write_all(
             format!(
                 "{{\"type\":\"applyUpdate_response\",\"reqId\":{req_id},\"data\":{{\"ok\":1,\"message\":\"\"}}}}\n"
@@ -1186,6 +1186,6 @@ fn open_url_checked(url: &str) {
             let _ = url;
         }
     } else {
-        eprintln!("[overlay] 拒绝打开非 http(s) URL: {url}");
+        tracing::info!("拒绝打开非 http(s) URL: {url}");
     }
 }

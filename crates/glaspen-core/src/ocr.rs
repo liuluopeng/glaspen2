@@ -227,8 +227,8 @@ fn idle_worker() {
             continue;
         };
         match ocr_screen(screen_id) {
-            Ok(_) => eprintln!("[ocr] 闲时识别完成 页面 {screen_id}"),
-            Err(e) => eprintln!("[ocr] 闲时识别跳过({screen_id}): {e}"),
+            Ok(_) => tracing::info!("闲时识别完成 页面 {screen_id}"),
+            Err(e) => tracing::warn!("闲时识别跳过({screen_id}): {e}"),
         }
     }
 }
@@ -280,23 +280,23 @@ fn user_idle_secs() -> f64 {
 /// 返回成功识别的页数。
 pub fn backfill_missing() -> usize {
     if api_base().is_none() || !glaspen_chat::auth::configured() {
-        eprintln!("[ocr] 未配置服务或未登录,跳过批量补全");
+        tracing::warn!("未配置服务或未登录,跳过批量补全");
         return 0;
     }
     let token = match runtime().block_on(glaspen_chat::auth::token()) {
         Some(t) => t,
         None => {
-            eprintln!("[ocr] 登录失败,跳过批量补全");
+            tracing::error!("登录失败,跳过批量补全");
             return 0;
         }
     };
     let base = api_base().unwrap_or_default();
     let pages = runtime().block_on(db::pages_missing_ocr());
     if pages.is_empty() {
-        eprintln!("[ocr] 所有页面都已有 OCR 结果");
+        tracing::info!("所有页面都已有 OCR 结果");
         return 0;
     }
-    eprintln!("[ocr] 批量补全 {} 页", pages.len());
+    tracing::info!("批量补全 {} 页", pages.len());
     let mut ok = 0;
     for (screen_id, sw, sh) in &pages {
         let strokes = runtime().block_on(db::strokes_for_screen(*screen_id));
@@ -309,7 +309,7 @@ pub fn backfill_missing() -> usize {
         let texts = match ocr_images(&base, &[png], Some(&token)) {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("[ocr] 页面 {screen_id} 识别失败: {e}");
+                tracing::error!("页面 {screen_id} 识别失败: {e}");
                 continue;
             }
         };
@@ -318,7 +318,7 @@ pub fn backfill_missing() -> usize {
             db::save_ocr_result(*screen_id, &text).await;
         });
         ok += 1;
-        eprintln!("[ocr] 页面 {screen_id} 完成({} 字)", text.chars().count());
+        tracing::info!("页面 {screen_id} 完成({} 字)", text.chars().count());
     }
     ok
 }

@@ -76,11 +76,11 @@ pub extern "C" fn glaspen2_chat_send_strokes(start_index: c_int, end_index: c_in
     };
     match runtime().block_on(send) {
         Ok(summary) => {
-            eprintln!("[chat] sent {} strokes (seq {}..)", summary.accepted, first);
+            tracing::info!("sent {} strokes (seq {}..)", summary.accepted, first);
             summary.accepted as c_int
         }
         Err(e) => {
-            eprintln!("[chat] send failed: {e}");
+            tracing::error!("send failed: {e}");
             -1
         }
     }
@@ -172,7 +172,7 @@ pub extern "C" fn glaspen2_ink_draft_start(canvas_w: c_int, canvas_h: c_int) -> 
         stroke_count: 0,
         started_at: std::time::SystemTime::now(),
     });
-    eprintln!("[ink-draft] session opened (canvas {canvas_w}x{canvas_h}, endpoint {endpoint})");
+    tracing::info!("session opened (canvas {canvas_w}x{canvas_h}, endpoint {endpoint})");
     1
 }
 
@@ -193,8 +193,8 @@ pub(crate) fn ink_draft_on_stroke_committed() {
         if !sess.channel.push_stroke(msg) {
             // 通道已死(连接失败/对端断开)。帧丢弃,结束时的 stop 会拿到
             // Failed 并通知用户;这里只留日志。
-            eprintln!(
-                "[ink-draft] channel dead at stroke {}, remaining frames dropped",
+            tracing::info!(
+                "channel dead at stroke {}, remaining frames dropped",
                 sess.stroke_count
             );
             break;
@@ -268,7 +268,7 @@ pub(crate) fn share_ink_set_active_impl(active: bool) {
             stroke_count: 0,
             started_at: std::time::SystemTime::now(),
         });
-        eprintln!("[share-ink] session opened");
+        tracing::info!("session opened");
         return;
     }
     let Some(sess) = INK_SHARE.lock().unwrap().take() else {
@@ -318,7 +318,7 @@ pub(crate) fn ink_share_on_stroke_committed() {
     if st.channel.push_stroke(msg) {
         st.stroke_count += 1;
     } else {
-        eprintln!("[share-ink] 通道未连接,本笔未发送");
+        tracing::info!("通道未连接,本笔未发送");
     }
 }
 
@@ -337,9 +337,7 @@ pub extern "C" fn glaspen2_ink_draft_stop() -> c_int {
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
     let outcome = runtime().block_on(sess.channel.finish(stroke_count, duration_ms));
-    eprintln!(
-        "[ink-draft] session closed after {stroke_count} strokes / {duration_ms}ms: {outcome:?}"
-    );
+    tracing::info!("session closed after {stroke_count} strokes / {duration_ms}ms: {outcome:?}");
     match outcome {
         glaspen_chat::draft::DraftOutcome::Sent { accepted, .. } => {
             set_ink_draft_error(None);
@@ -351,7 +349,7 @@ pub extern "C" fn glaspen2_ink_draft_stop() -> c_int {
         }
         glaspen_chat::draft::DraftOutcome::Failed(e) => {
             set_ink_draft_error(Some(&e));
-            eprintln!("[ink-draft] failed: {e}");
+            tracing::error!("failed: {e}");
             -1
         }
     }
