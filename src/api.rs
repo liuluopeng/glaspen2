@@ -200,6 +200,8 @@ pub struct Settings {
     pub invert_ink: bool,
     // 活页本外观: true = 拟物玻璃(本子玻璃叠层/页=磨砂玻璃卡), false = 笔记纸
     pub notebook_style: bool,
+    // 面板窗口真穿透(实验): 拟物玻璃卡片的透明窟窿透出面板后的桌面
+    pub panel_transparent: bool,
     // 反色追踪帧率上限(10/30/60/100); 流只在画面变化时送帧, 此值仅封顶
     pub invert_fps: i32,
     pub pressure_monitor: bool,
@@ -256,6 +258,7 @@ impl Settings {
             soft_shadow: b("softShadow"),
             invert_ink: b("invertInk"),
             notebook_style: b("notebookStyle"),
+            panel_transparent: b("panelTransparent"),
             invert_fps: i("invertFps"),
             pressure_monitor: b("pressureMonitor"),
             outline: b("outline"),

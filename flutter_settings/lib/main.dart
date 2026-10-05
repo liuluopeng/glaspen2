@@ -203,6 +203,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   double _detailScale = 1.0;
   Offset _detailOffset = Offset.zero;
   bool _notebookGlass = true; // 活页本外观: true=拟物玻璃 false=笔记纸
+  bool _panelTransparent = false; // 真穿透(实验): 面板窗口可透明, 卡片窟窿透出桌面
   /// OCR 搜索(本子页视图内): 激活后网格 = 全库匹配页(跨组)
   bool _searchMode = false;
   bool _searchFieldVisible = false;
@@ -520,6 +521,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         _showFreeCanvas = _b(s['showFreeCanvas']);
         _shareCanvas = _b(s['shareCanvas']);
         _notebookGlass = s['notebookStyle'] as bool? ?? _notebookGlass;
+        _panelTransparent = _b(s['panelTransparent']);
         _syncTabCount();
       });
     }
@@ -556,6 +558,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           _showFreeCanvas = _b(settings['showFreeCanvas']);
           _shareCanvas = _b(settings['shareCanvas']);
           _notebookGlass = _b(settings['notebookStyle']);
+          _panelTransparent = _b(settings['panelTransparent']);
           _syncTabCount();
           _connected = true;
         });
@@ -920,6 +923,22 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                     },
                   ),
                 ])),
+              ), // 外观 Padding 收尾
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                child: _buildSection('真穿透(实验)', _tile(SwitchListTile(
+                  title: const Text('卡片透出面板后的桌面', style: TextStyle(fontSize: 14)),
+                  subtitle: const Text('清玻璃形态: 需拟物玻璃; 关闭恢复模糊+底图', style: TextStyle(fontSize: 12)),
+                  value: _panelTransparent && _notebookGlass,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: _notebookGlass
+                      ? (v) {
+                          setState(() => _panelTransparent = v);
+                          _setSetting('panelTransparent', v);
+                        }
+                      : null,
+                ))),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
@@ -1981,60 +2000,79 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   /// 磨砂玻璃卡装饰: ClipRRect + BackdropFilter(模糊背后桌布) + 斜向
   /// 高光渐变 + 玻璃白边; 选中 = 红边加粗。child 铺满。
   Widget _glassPageWrap(Widget child, {required bool selected}) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 7, sigmaY: 7),
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withValues(alpha: 0.50),
-                Colors.white.withValues(alpha: 0.20),
+    // 真穿透(实验): 面板窗口可透明时卡片体不画任何填充/模糊
+    // (alpha=0 = 透出面板后的桌面), 只留玻璃边 —— 清玻璃形态。
+    if (!_panelTransparent) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 7, sigmaY: 7),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.50),
+                  Colors.white.withValues(alpha: 0.20),
+                ],
+              ),
+              border: Border.all(
+                color: selected
+                    ? _penRed
+                    : Colors.white.withValues(alpha: 0.65),
+                width: selected ? 2 : 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 12,
+                  offset: const Offset(3, 5),
+                ),
               ],
             ),
-            border: Border.all(
-              color: selected
-                  ? _penRed
-                  : Colors.white.withValues(alpha: 0.65),
-              width: selected ? 2 : 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.25),
-                blurRadius: 12,
-                offset: const Offset(3, 5),
-              ),
-            ],
-          ),
-          child: Stack(children: [
-            child,
-            // 斜向高光(玻璃反光)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      stops: const [0, 0.12, 0.45],
-                      colors: [
-                        Colors.white.withValues(alpha: 0.30),
-                        Colors.white.withValues(alpha: 0.05),
-                        Colors.transparent,
-                      ],
+            child: Stack(children: [
+              child,
+              // 斜向高光(玻璃反光)—— 仅模糊形态
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        stops: const [0, 0.12, 0.45],
+                        colors: [
+                          Colors.white.withValues(alpha: 0.30),
+                          Colors.white.withValues(alpha: 0.05),
+                          Colors.transparent,
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ]),
+            ]),
+          ),
         ),
+      );
+    }
+    // 清玻璃: 无填充无高光(0.30 白高光在透窗形态下就是白雾),
+    // 只留玻璃边 —— 墨迹直接浮在真实桌面上。
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: selected ? _penRed : Colors.white.withValues(alpha: 0.55),
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: child,
       ),
     );
   }
+
 
   /// 拟物本子封面: 同尺寸玻璃叠层 —— 层数示意页数(封顶 6 层),
   /// 纵横比 = 本子分辨率, 角标给精确页数。

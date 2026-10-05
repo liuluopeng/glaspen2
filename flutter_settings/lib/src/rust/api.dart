@@ -355,6 +355,7 @@ class Settings {
   final bool softShadow;
   final bool invertInk;
   final bool notebookStyle;
+  final bool panelTransparent;
   final int invertFps;
   final bool pressureMonitor;
   final bool outline;
@@ -386,6 +387,7 @@ class Settings {
     required this.softShadow,
     required this.invertInk,
     required this.notebookStyle,
+    required this.panelTransparent,
     required this.invertFps,
     required this.pressureMonitor,
     required this.outline,
@@ -419,6 +421,7 @@ class Settings {
       softShadow.hashCode ^
       invertInk.hashCode ^
       notebookStyle.hashCode ^
+      panelTransparent.hashCode ^
       invertFps.hashCode ^
       pressureMonitor.hashCode ^
       outline.hashCode ^
@@ -454,6 +457,7 @@ class Settings {
           softShadow == other.softShadow &&
           invertInk == other.invertInk &&
           notebookStyle == other.notebookStyle &&
+          panelTransparent == other.panelTransparent &&
           invertFps == other.invertFps &&
           pressureMonitor == other.pressureMonitor &&
           outline == other.outline &&

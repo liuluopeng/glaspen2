@@ -105,6 +105,7 @@ class _FrbBridge extends SettingsBridge {
       'softShadow': s.softShadow,
       'invertInk': s.invertInk,
       'notebookStyle': s.notebookStyle,
+      'panelTransparent': s.panelTransparent,
       'invertFps': s.invertFps,
       'pressureMonitor': s.pressureMonitor,
       'outline': s.outline,

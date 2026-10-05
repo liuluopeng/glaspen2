@@ -595,6 +595,7 @@ char *glaspen2_macos_settings_json(void) {
             @"gridFollowStrokes": @(g_grid_follow_strokes),
             @"glassFollowStrokes": @(g_glass_follow_strokes),
             @"notebookStyle": @(glaspen2_load_bool_setting("notebook_style") != 0),
+            @"panelTransparent": @(glaspen2_load_bool_setting("panel_transparent") != 0),
             @"softShadow": @(g_soft_shadow),
             @"invertInk": @(g_invert_ink),
             @"invertFps": @(g_invert_fps),
@@ -728,6 +729,9 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
                 glaspen2_save_string_setting("invert_fps", fpsStr);
                 if (g_invert_ink) invert_stream_restart(); // 用新帧率重启捕获流
             }
+        } else if ([key isEqualToString:@"panelTransparent"]) {
+            glaspen2_save_bool_setting("panel_transparent", [value boolValue] ? 1 : 0);
+            gl_panel_transparent_apply_full([value boolValue] ? YES : NO);
         } else if ([key isEqualToString:@"notebookStyle"]) {
             glaspen2_save_bool_setting("notebook_style", [value boolValue] ? 1 : 0);
         } else if ([key isEqualToString:@"outline"]) {
@@ -830,6 +834,17 @@ int glaspen2_macos_delete_page(long long screen_id) {
         });
     });
     return ok;
+}
+
+/// 面板窗口真穿透(实验): 拟物玻璃卡片的"透明窟窿"需要窗口本身可透明。
+/// 只动 NSWindow(不透明→透明+清底); Flutter view 的 layer 部分在 panel.m。
+void gl_panel_transparent_apply(BOOL on) {
+    if (!g_settings_window) return;
+    gl_run_on_main_sync(^{
+        [g_settings_window setOpaque: !on];
+        [g_settings_window setBackgroundColor: on ? [NSColor clearColor]
+                                                  : [NSColor windowBackgroundColor]];
+    });
 }
 
 /// 面板页面详情改动了当前页的数据(圈选移动/粘贴/删除) → 重建玻璃。

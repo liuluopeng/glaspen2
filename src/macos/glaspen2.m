@@ -126,6 +126,7 @@ extern void glaspen2_set_invert_background(void *surface); // 反相背景 cairo
 extern int  glaspen2_has_strokes(void);                    // 捕获循环空转判断
 void invert_ink_apply(int on);                             // 定义在 parts/panel.m
 void invert_stream_restart(void);                          // 帧率变更后重启捕获流
+void gl_panel_transparent_apply_full(BOOL on);             // 面板真穿透开关(定义在 parts/panel.m)
 extern void glaspen2_set_invert_dirty(int x, int y, int w, int h); // 局部重绘脏区
 extern unsigned char* glaspen2_render_canvas_overview(double bx, double by, double bw, double bh, int out_w, int out_h, int *out_len);
 extern void glaspen2_set_view_transform(double pan_x, double pan_y, double zoom);

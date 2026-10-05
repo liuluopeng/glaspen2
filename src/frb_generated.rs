@@ -1616,6 +1616,7 @@ impl SseDecode for crate::api::Settings {
         let mut var_softShadow = <bool>::sse_decode(deserializer);
         let mut var_invertInk = <bool>::sse_decode(deserializer);
         let mut var_notebookStyle = <bool>::sse_decode(deserializer);
+        let mut var_panelTransparent = <bool>::sse_decode(deserializer);
         let mut var_invertFps = <i32>::sse_decode(deserializer);
         let mut var_pressureMonitor = <bool>::sse_decode(deserializer);
         let mut var_outline = <bool>::sse_decode(deserializer);
@@ -1646,6 +1647,7 @@ impl SseDecode for crate::api::Settings {
             soft_shadow: var_softShadow,
             invert_ink: var_invertInk,
             notebook_style: var_notebookStyle,
+            panel_transparent: var_panelTransparent,
             invert_fps: var_invertFps,
             pressure_monitor: var_pressureMonitor,
             outline: var_outline,
@@ -1935,6 +1937,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::Settings {
             self.soft_shadow.into_into_dart().into_dart(),
             self.invert_ink.into_into_dart().into_dart(),
             self.notebook_style.into_into_dart().into_dart(),
+            self.panel_transparent.into_into_dart().into_dart(),
             self.invert_fps.into_into_dart().into_dart(),
             self.pressure_monitor.into_into_dart().into_dart(),
             self.outline.into_into_dart().into_dart(),
@@ -2281,6 +2284,7 @@ impl SseEncode for crate::api::Settings {
         <bool>::sse_encode(self.soft_shadow, serializer);
         <bool>::sse_encode(self.invert_ink, serializer);
         <bool>::sse_encode(self.notebook_style, serializer);
+        <bool>::sse_encode(self.panel_transparent, serializer);
         <i32>::sse_encode(self.invert_fps, serializer);
         <bool>::sse_encode(self.pressure_monitor, serializer);
         <bool>::sse_encode(self.outline, serializer);

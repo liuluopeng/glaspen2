@@ -510,6 +510,10 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .block_on(glaspen_core::db::load_setting("glassFollowStrokes"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(1); // 缺省 = 跟随(macOS 历史行为)
+        let panel_transparent = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("panelTransparent"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
         let notebook_style = glaspen_core::runtime()
             .block_on(glaspen_core::db::load_setting("notebookStyle"))
             .and_then(|v| v.parse::<i32>().ok())
@@ -566,7 +570,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let (gfps, gres, gspd, gem) = gif_settings();
         // 密码本体不回读,只回是否已保存(macOS 同款)
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false,\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\"}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false,\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\"}}}}\n",
             color,
             width,
             outline,
@@ -580,6 +584,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             invert_ink,
             invert_fps,
             notebook_style,
+            panel_transparent,
             frosted,
             pressure_monitor,
             ethereal,
@@ -826,6 +831,13 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             if let Some(on) = json_get_bool(line, "value") {
                 glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
                     "notebookStyle",
+                    if on { "1" } else { "0" },
+                ));
+            }
+        } else if key == "panelTransparent" {
+            if let Some(on) = json_get_bool(line, "value") {
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "panelTransparent",
                     if on { "1" } else { "0" },
                 ));
             }

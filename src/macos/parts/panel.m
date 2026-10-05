@@ -59,6 +59,12 @@ static void show_settings_panel(void) {
     [window center];
     [window makeKeyAndOrderFront:nil];
     g_settings_window = window;
+    // 真穿透(实验): 拟物玻璃卡片的透明窟窿需要窗口可透明。
+    // Flutter view 的 layer 默认不透明, 透窗必须一并关掉。
+    if (glaspen2_load_bool_setting("panel_transparent")) {
+        gl_panel_transparent_apply(YES);
+        if (g_flutter_vc.view.layer) g_flutter_vc.view.layer.opaque = NO;
+    }
 }
 
 // Cached full-surface CGImage for drawRect (rebuilt only when the surface
@@ -531,6 +537,12 @@ static void invert_stream_start(void) {
     [s_inv_stream startCaptureWithCompletionHandler:^(NSError *error) {
       if (error) NSLog(@"[invert] startCapture failed: %@", error);
     }];
+}
+
+/// 真穿透完整应用(窗口 + Flutter view layer)。菜单分发经 prelude 声明调用。
+void gl_panel_transparent_apply_full(BOOL on) {
+    gl_panel_transparent_apply(on);
+    if (g_flutter_vc.view) g_flutter_vc.view.layer.opaque = !on;
 }
 
 void invert_ink_apply(int on) {
