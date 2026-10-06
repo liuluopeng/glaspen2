@@ -162,3 +162,15 @@ jobs:
             echo "::error::TAIL ${line:0:300}"
           done
           exit 1
+
+      # 运行时验证: core 的 cairo 链接只在 macOS build.rs 生效, Windows 上
+      # 照常编译; db:: 模块的测试是纯 SQLite(渲染类测试才需要 cairo DLL,
+      # runner 上没有, 故只跑 db 层)。chat 协议层无平台依赖, 全量跑。
+      - name: cargo test (chat 协议层)
+        run: |
+          cargo test -p glaspen-chat 2>&1 | Tee-Object -FilePath wtest-chat.log
+          exit $LASTEXITCODE
+      - name: cargo test (core 存储层)
+        run: |
+          cargo test -p glaspen-core db:: 2>&1 | Tee-Object -FilePath wtest-db.log
+          exit $LASTEXITCODE
