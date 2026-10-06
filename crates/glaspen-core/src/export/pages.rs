@@ -422,6 +422,33 @@ pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
     CString::new(json).unwrap_or_default().into_raw()
 }
 
+/// 活页本: 在当前页之后新建一页(同几何), 返回页 id。
+/// 守卫与新建画布同款 —— 当前(组)末页为空白时不新建, 返回当前页 id
+/// (调用方以"返回 id == 当前页"识别复用)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_create_next_page(current_id: i64) -> i64 {
+    let Some((w, h)) = runtime().block_on(db::screen_dims(current_id)) else {
+        return 0;
+    };
+    let last = runtime().block_on(async {
+        match db::last_screen_with_geometry(w, h).await {
+            Some(id) => Some((id, db::screen_has_strokes(id).await)),
+            None => None,
+        }
+    });
+    let (create, reuse) = plan_new_page(last);
+    if create {
+        runtime().block_on(db::new_screen(w, h));
+        let new_id = state::current_screen_id();
+        tracing::debug!("翻页新建页 id={new_id} (前一页 {current_id})");
+        new_id
+    } else if let Some(id) = reuse {
+        id
+    } else {
+        0
+    }
+}
+
 /// 活页本重排: 把某页移到锚点页前/后(面板内前后移/拖拽)。
 /// 返回 1 成功, 0 失败(页不存在/锚点不存在)。
 #[unsafe(no_mangle)]
@@ -729,7 +756,6 @@ pub extern "C" fn glaspen2_page_info_json(screen_id: i64) -> *mut c_char {
 // Thumbnail rendering (cairo_dl → scaled PNG)
 // ---------------------------------------------------------------------------
 
-
 // ---------------------------------------------------------------------------
 // Tests(圈选几何 + 载荷往返 + 笔迹数据操作)
 // ---------------------------------------------------------------------------
@@ -749,7 +775,14 @@ mod lasso_tests {
         assert!(!point_in_polygon(-1.0, -1.0, &square));
 
         // L 形(凹): (9,9) 在缺口外
-        let l_shape = [(0.0, 0.0), (10.0, 0.0), (10.0, 5.0), (5.0, 5.0), (5.0, 10.0), (0.0, 10.0)];
+        let l_shape = [
+            (0.0, 0.0),
+            (10.0, 0.0),
+            (10.0, 5.0),
+            (5.0, 5.0),
+            (5.0, 10.0),
+            (0.0, 10.0),
+        ];
         assert!(point_in_polygon(2.0, 7.0, &l_shape));
         assert!(!point_in_polygon(8.0, 8.0, &l_shape), "缺口内不算内部");
 
@@ -764,8 +797,7 @@ mod lasso_tests {
     fn paste_copy_paste_roundtrip() {
         let _g = crate::tests::TEST_LOCK.lock().unwrap();
         if !crate::db::is_init() {
-            let path = std::env::temp_dir()
-                .join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
             // SAFETY: 测试单线程初始化(TEST_LOCK 串行化), 无并发读
             unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
@@ -818,7 +850,11 @@ mod lasso_tests {
         assert_eq!(strokes2.len(), 4);
         let ids1: Vec<i64> = strokes.iter().map(|s| s.id).collect();
         let ids2: Vec<i64> = strokes2.iter().map(|s| s.id).collect();
-        let new_ids: Vec<i64> = ids2.iter().filter(|id| !ids1.contains(id)).copied().collect();
+        let new_ids: Vec<i64> = ids2
+            .iter()
+            .filter(|id| !ids1.contains(id))
+            .copied()
+            .collect();
         assert_eq!(new_ids.len(), 2, "第二次粘贴产生 2 个全新 id");
     }
 
@@ -827,8 +863,7 @@ mod lasso_tests {
     fn move_and_delete_ops() {
         let _g = crate::tests::TEST_LOCK.lock().unwrap();
         if !crate::db::is_init() {
-            let path = std::env::temp_dir()
-                .join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
             // SAFETY: 测试单线程初始化(TEST_LOCK 串行化), 无并发读
             unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
@@ -859,9 +894,11 @@ mod lasso_tests {
             glaspen2_move_strokes_to_page(screen, csv.as_ptr(), target, 5.0, 5.0),
             0
         );
-        assert!(runtime()
-            .block_on(crate::db::strokes_for_screen(screen))
-            .is_empty());
+        assert!(
+            runtime()
+                .block_on(crate::db::strokes_for_screen(screen))
+                .is_empty()
+        );
         let moved = runtime().block_on(crate::db::strokes_for_screen(target));
         assert_eq!(moved.len(), 1);
         assert_eq!(moved[0].id, id, "搬移保 id(与粘贴的新 id 区分)");
@@ -870,9 +907,11 @@ mod lasso_tests {
         // 软删
         let csv = std::ffi::CString::new(id.to_string()).unwrap();
         assert_ne!(glaspen2_delete_strokes(target, csv.as_ptr()), 0);
-        assert!(runtime()
-            .block_on(crate::db::strokes_for_screen(target))
-            .is_empty());
+        assert!(
+            runtime()
+                .block_on(crate::db::strokes_for_screen(target))
+                .is_empty()
+        );
     }
 
     /// lasso FFI 端到端: 多边形字符串解析("x,y" 成对) + 命中判定。
@@ -881,8 +920,7 @@ mod lasso_tests {
     fn lasso_select_ffi_parse_and_hit() {
         let _g = crate::tests::TEST_LOCK.lock().unwrap();
         if !crate::db::is_init() {
-            let path = std::env::temp_dir()
-                .join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
             // SAFETY: 测试单线程初始化(TEST_LOCK 串行化)
             unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
@@ -897,22 +935,22 @@ mod lasso_tests {
         assert_eq!(glaspen2_paste_strokes(screen, c.as_ptr()), 1);
 
         // 圈住它(多边形字符串 = 4 点 8 个数)
-        let poly =
-            std::ffi::CString::new("50.0,50.0,300.0,50.0,300.0,300.0,50.0,300.0").unwrap();
+        let poly = std::ffi::CString::new("50.0,50.0,300.0,50.0,300.0,300.0,50.0,300.0").unwrap();
         let ptr = glaspen2_lasso_select(screen, poly.as_ptr());
         assert!(!ptr.is_null());
         let hit = unsafe { std::ffi::CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
         unsafe { crate::export::glaspen2_free_c_string(ptr) };
-        let ids: Vec<i64> = hit.split(',').filter_map(|t| t.trim().parse().ok()).collect();
+        let ids: Vec<i64> = hit
+            .split(',')
+            .filter_map(|t| t.trim().parse().ok())
+            .collect();
         assert_eq!(ids.len(), 1, "圈中恰好一笔");
 
         // 圈远处 → 空(解析不空、命中空)
-        let far = std::ffi::CString::new(
-            "1000.0,1000.0,1100.0,1000.0,1100.0,1100.0,1000.0,1100.0",
-        )
-        .unwrap();
+        let far = std::ffi::CString::new("1000.0,1000.0,1100.0,1000.0,1100.0,1100.0,1000.0,1100.0")
+            .unwrap();
         let ptr = glaspen2_lasso_select(screen, far.as_ptr());
         let hit2 = unsafe { std::ffi::CStr::from_ptr(ptr) }
             .to_string_lossy()
@@ -921,13 +959,41 @@ mod lasso_tests {
         assert!(hit2.trim().is_empty(), "远处圈不应命中, 实际: {hit2}");
     }
 
+    /// 翻页新建: 末页有笔迹 → 新建并返回新 id; 末页空白 → 复用不新建(0)。
+    #[test]
+    fn create_next_page_guard_and_nav() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        if !crate::db::is_init() {
+            let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            // SAFETY: 测试单线程初始化(TEST_LOCK 串行化)
+            unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
+            runtime().block_on(crate::db::init());
+        }
+        runtime().block_on(crate::db::new_screen(3440, 1440));
+        let first = crate::state::current_screen_id();
+
+        // 空白末页: 不新建(复用当前页), 返回当前页 id
+        assert_eq!(glaspen2_create_next_page(first), first);
+
+        // 末页有笔迹 → 新建, 返回新 id, 且新页是当前页
+        let payload = "0.0,0.0,1.0|0.0,0.0,2.0,10.0,10.0,2.0";
+        let c = std::ffi::CString::new(payload).unwrap();
+        assert_eq!(glaspen2_paste_strokes(first, c.as_ptr()), 1);
+        let created = glaspen2_create_next_page(first);
+        assert!(created > 0 && created != first, "应新建一页");
+        assert_eq!(crate::state::current_screen_id(), created);
+
+        // 新页无笔迹(刚建): 再次调用 → 不新建, 返回同一页
+        assert_eq!(glaspen2_create_next_page(created), created);
+    }
+
     /// page_png_bytes 尺寸数学: (page + 2·margin) × k, k = min(1, 2200/最长边)。
     #[test]
     fn page_png_bytes_size_math() {
         let _g = crate::tests::TEST_LOCK.lock().unwrap();
         if !crate::db::is_init() {
-            let path = std::env::temp_dir()
-                .join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
             // SAFETY: 测试单线程初始化(TEST_LOCK 串行化)
             unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };

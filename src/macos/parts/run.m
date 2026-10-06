@@ -1286,7 +1286,35 @@ static BOOL perform_hotkey(unsigned short kc) {
       peek_strokes(1.0); // show the page briefly in ethereal mode
       show_page_info(target);
     } else {
-      show_notification(L(@"没有下一页", @"No next page"));
+      // 没有下一页: 5 秒内再按一次 = 新建一页并翻过去(写完接着写)
+      static NSTimeInterval lastNoNextAt = 0;
+      NSTimeInterval nowTs = [[NSProcessInfo processInfo] systemUptime];
+      BOOL secondPress = (nowTs - lastNoNextAt) < 5.0;
+      lastNoNextAt = nowTs;
+      if (!secondPress) {
+        show_notification(
+            L(@"没有下一页(再按一次新建)", @"No next page (press again to create)"));
+        return YES;
+      }
+      long pageId =
+          glaspen2_create_next_page(glaspen2_get_current_screen_id());
+      if (pageId > 0 && pageId != glaspen2_get_current_screen_id()) {
+        page_flip_swap(
+            YES,
+            ^{ // 渐隐期间并行: 载入 + 平滑
+              glaspen2_load_strokes_for_screen(pageId);
+              glaspen2_smooth_loaded_strokes();
+              pageview_update();
+            },
+            ^{
+              replay_strokes_from_memory();
+            });
+        peek_strokes(1.0);
+        show_page_info(pageId);
+        show_notification(L(@"已新建了一页", @"A new page was created"));
+      } else if (pageId == 0) {
+        show_notification(L(@"已是空白末页", @"Last page is already blank"));
+      }
     }
     return YES;
   } else if (kc == kVK_ANSI_G) {
@@ -1744,9 +1772,36 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
               });
           peek_strokes(1.0); // show the page briefly in ethereal mode
           show_page_info(target);
-        } else {
-          show_notification(up ? L(@"没有上一页", @"No previous page")
-                               : L(@"没有下一页", @"No next page"));
+        } else if (!up) {
+          // 没有下一页: 5 秒内再按一次 = 新建一页并翻过去(同 ⌘⌃1 路径)
+          static NSTimeInterval lastNoNextAt = 0;
+          NSTimeInterval nowTs = [[NSProcessInfo processInfo] systemUptime];
+          BOOL secondPress = (nowTs - lastNoNextAt) < 5.0;
+          lastNoNextAt = nowTs;
+          if (secondPress) {
+            long pageId =
+                glaspen2_create_next_page(glaspen2_get_current_screen_id());
+            if (pageId > 0 && pageId != glaspen2_get_current_screen_id()) {
+              page_flip_swap(
+                  YES,
+                  ^{ // 渐隐期间并行: 载入 + 平滑
+                    glaspen2_load_strokes_for_screen(pageId);
+                    glaspen2_smooth_loaded_strokes();
+                    pageview_update();
+                  },
+                  ^{
+                    replay_strokes_from_memory();
+                  });
+              peek_strokes(1.0);
+              show_notification(
+                  L(@"已新建了一页", @"A new page was created"));
+              return NULL;
+            }
+            show_notification(L(@"已是空白末页", @"Last page is already blank"));
+            return NULL;
+          }
+          show_notification(L(@"没有下一页(再按一次新建)",
+                              @"No next page (press again to create)"));
         }
         return NULL;
       }

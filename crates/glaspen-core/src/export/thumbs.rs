@@ -381,7 +381,6 @@ pub(crate) fn encode_png_bgra(bgra: &[u8], width: u32, height: u32) -> Option<Ve
 // 聊天流(⌘⌃3 录制的手写消息 → 本地 axum 存储)
 // ---------------------------------------------------------------------------
 
-
 #[cfg(test)]
 mod png_channel_tests {
     use super::*;
@@ -417,7 +416,11 @@ mod png_channel_tests {
         let b = render_strokes_thumbnail(&strokes, 280, 3440, 1440).unwrap();
         assert_eq!(a.len(), b.len());
         let da = image::load_from_memory(&a).unwrap();
-        assert_eq!((da.width(), da.height()), (280, 118), "3440x1440 等比 → 280x118");
+        assert_eq!(
+            (da.width(), da.height()),
+            (280, 118),
+            "3440x1440 等比 → 280x118"
+        );
         // 不同页尺寸 → 比例各自正确(不再裁剪)
         let c = render_strokes_thumbnail(&strokes, 280, 1920, 1080).unwrap();
         let dc = image::load_from_memory(&c).unwrap();

@@ -153,6 +153,7 @@ extern int glaspen2_paint_preview_into_surface(void *surface_ptr, int slot, doub
 // Page navigation FFI
 extern long glaspen2_prev_screen_id(void);
 extern long glaspen2_next_screen_id(void);
+extern long glaspen2_create_next_page(long current_id); // 末页后新建一页(守卫同新建画布)
 extern long glaspen2_get_current_screen_id(void);
 // 某页相邻的第 n 页(n>0 向后/较新, n<0 向前/较旧; 0 = 自身)。
 // 页按分辨率分组, 与 prev/next 同一邻接语义。找不到返回 0。

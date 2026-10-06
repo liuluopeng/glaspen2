@@ -5,7 +5,6 @@ use super::*;
 fn xoj_timestamped_path() -> PathBuf {
     let desktop = desktop_path();
     desktop.join(crate::pdf::timestamped_name("xoj"))
-
 }
 
 #[unsafe(no_mangle)]

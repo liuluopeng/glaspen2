@@ -586,7 +586,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod timestamp_tests {
     use super::*;
@@ -603,12 +602,21 @@ mod timestamp_tests {
         );
         // 闰日当天: 2024-02-29 = 年内 60
         let leap = Local.with_ymd_and_hms(2024, 2, 29, 0, 0, 1).unwrap();
-        assert_eq!(timestamped_name_at("png", leap), "glaspen2_2024-060_00-00-01.png");
+        assert_eq!(
+            timestamped_name_at("png", leap),
+            "glaspen2_2024-060_00-00-01.png"
+        );
         // 闰年年末: 2024-12-31 = 366(平年手算会给出 365 之外的天号漂移)
         let yend = Local.with_ymd_and_hms(2024, 12, 31, 23, 59, 59).unwrap();
-        assert_eq!(timestamped_name_at("pdf", yend), "glaspen2_2024-366_23-59-59.pdf");
+        assert_eq!(
+            timestamped_name_at("pdf", yend),
+            "glaspen2_2024-366_23-59-59.pdf"
+        );
         // 平年年末: 2023-12-31 = 365
         let pend = Local.with_ymd_and_hms(2023, 12, 31, 12, 0, 0).unwrap();
-        assert_eq!(timestamped_name_at("xoj", pend), "glaspen2_2023-365_12-00-00.xoj");
+        assert_eq!(
+            timestamped_name_at("xoj", pend),
+            "glaspen2_2023-365_12-00-00.xoj"
+        );
     }
 }
