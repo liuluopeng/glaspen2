@@ -159,6 +159,11 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
   提交钩子在放掉 STROKES 锁之后才调扇出钩子
 - **ObjC 函数定义顺序**:C99 隐式声明是错误——被后文引用的 static 函数
   需要前向声明(文件头有 decl 区)
+- **测试零副作用**(2026-10: 桌面 62 份诡异 PDF):无断言的冒烟测试直调
+  真实导出函数, 每次 cargo test 都把开发库整本导出到桌面(Dart wire
+  测试经 FRB 同样泄漏过, 两路齐发)。手动冒烟一律 `#[ignore]` +
+  `-- --ignored`;取证靠 mtime × git commit 秒级对齐。复盘见
+  `docs/pdf-mystery.md`
 
 ## 开发一个新功能的流程
 
