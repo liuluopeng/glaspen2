@@ -1602,6 +1602,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
                 : @"悬浮离开",
             proxState == 1 ? @"enter" : @"exit");
       if (proxState == 1) {
+        g_prox_dev = [proxEvent pointingDeviceType]; // 笔键 Pen/Eraser 切换的证据链
         peek_cancel_timer(); // pen is back — the peek stays
         if (g_ethereal_canvas)
           auto_show_canvas();
@@ -1959,16 +1960,20 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     if (g_stroke_active) {
       finish_active_stroke();
     }
-    BOOL eraser = (devType == NSEraserPointingDevice);
+    BOOL eraser = (devType == NSEraserPointingDevice) ||
+                  (g_prox_dev == NSEraserPointingDevice);
     if (eraser != g_eraser_mode) {
       g_eraser_mode = eraser;
       update_status_icon_state();
     } // 图标换橡皮块
-    NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f tool=%@",
+    NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f tool=%@/%@",
           px, py, pressure, ts,
           devType == NSEraserPointingDevice   ? @"ERASER"
           : devType == NSPenPointingDevice    ? @"pen"
-                                              : @"other");
+                                              : @"other",
+          g_prox_dev == NSEraserPointingDevice ? @"eraser-prox"
+          : g_prox_dev == NSPenPointingDevice  ? @"pen-prox"
+                                               : @"other-prox");
     glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(px),
                            canvas_input_y(py), pressure, ts, g_width_scale);
     g_stroke_active = YES;
@@ -1988,7 +1993,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
                 etype == NSEventTypeOtherMouseDragged)) {
     // If no DOWN event was seen (pen detection lag), auto-initialize
     if (!g_stroke_active) {
-      BOOL eraser = (devType == NSEraserPointingDevice);
+      BOOL eraser = (devType == NSEraserPointingDevice) ||
+                    (g_prox_dev == NSEraserPointingDevice);
       if (eraser != g_eraser_mode) {
         g_eraser_mode = eraser;
         update_status_icon_state();

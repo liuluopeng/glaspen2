@@ -280,6 +280,11 @@ static int g_gif_end_mode = 1;
 // Eraser (back end of pen) mode — clears pixels instead of drawing ink
 static BOOL g_eraser_mode = NO;
 
+// 最近一次 proximity 进入时的设备身份。M808 类驱动把落笔包在鼠标事件里
+// (pointingDeviceType 恒为 other), 笔键 "Pen/Eraser" 切换只体现在
+// proximity 事件的设备类型上 —— 落笔时用它判橡皮。
+static NSInteger g_prox_dev = 0; // NSPointingDeviceType(全局处枚举不可见, 用数值)
+
 // Active cairo context (reused across pen events during a stroke).
 // Created on pen-down, destroyed on pen-up. Avoids per-event malloc/free
 // of cairo_t and avoids the CTM scale setup cost.
