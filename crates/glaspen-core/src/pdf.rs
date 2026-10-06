@@ -119,6 +119,9 @@ pub fn export_pages_by_ids(ids: &[i64]) -> Option<String> {
         Ok(()) => {
             std::fs::write(&path, &pdf_bytes).ok();
             if path.exists() {
+                // 临时诊断: 桌面"莫名 PDF"排查 —— 时间/路径/调用栈落文件,
+                // 定位自动触发链后移除。
+                trace_pdf_write(&path, screens.len());
                 tracing::info!("Saved vector PDF to {}", path.display());
                 return Some(path.to_string_lossy().to_string());
             }
@@ -126,6 +129,27 @@ pub fn export_pages_by_ids(ids: &[i64]) -> Option<String> {
         Err(e) => tracing::error!("Save error: {e}"),
     }
     None
+}
+
+/// 临时诊断: 桌面"莫名 PDF"排查 —— 每次写 PDF 记录时间/路径/调用栈到
+/// /tmp/glaspen_pdf_trace.log(追加)。定位触发链后整体移除。
+pub(crate) fn trace_pdf_write(path: &std::path::Path, pages: usize) {
+    let bt = std::backtrace::Backtrace::force_capture();
+    let line = format!(
+        "[{}] pages={} -> {}\n调用栈:\n{}\n----\n",
+        chrono::Local::now().format("%m-%d %H:%M:%S"),
+        pages,
+        path.display(),
+        bt
+    );
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/glaspen_pdf_trace.log")
+    {
+        use std::io::Write as _;
+        let _ = f.write_all(line.as_bytes());
+    }
 }
 
 /// Export the single infinite canvas to a PDF, split into screen-sized pages.
@@ -234,6 +258,7 @@ pub fn export_infinite_paged(page_w: i32, page_h: i32) -> Option<String> {
         Ok(()) => {
             std::fs::write(&path, &pdf_bytes).ok();
             if path.exists() {
+                trace_pdf_write(&path, 0);
                 tracing::info!("Saved infinite-canvas PDF to {}", path.display());
                 return Some(path.to_string_lossy().to_string());
             }
@@ -572,17 +597,6 @@ fn add_font_to_page_resources(
             font_dict.set(font_name, Object::Reference(font_id));
             res_dict.set(b"Font", Object::Dictionary(font_dict));
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Generate PDF (alias for export_all_pages)
-    #[test]
-    fn test_export_pdf() {
-        export_all_pages();
     }
 }
 
