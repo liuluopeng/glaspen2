@@ -119,6 +119,14 @@ pub fn export_pages_by_ids(ids: &[i64]) -> Option<String> {
         Ok(()) => {
             std::fs::write(&path, &pdf_bytes).ok();
             if path.exists() {
+                // 临时诊断: 桌面 PDF 莫名出现。调用栈 + 库路径, 定位触发链后移除。
+                tracing::error!(
+                    "PDF 写入(活页本全导, {} 页) → {} | 库: {} | 调用栈:\n{}",
+                    screens.len(),
+                    path.display(),
+                    crate::db::db_path().display(),
+                    std::backtrace::Backtrace::force_capture()
+                );
                 tracing::info!("Saved vector PDF to {}", path.display());
                 return Some(path.to_string_lossy().to_string());
             }
@@ -234,6 +242,13 @@ pub fn export_infinite_paged(page_w: i32, page_h: i32) -> Option<String> {
         Ok(()) => {
             std::fs::write(&path, &pdf_bytes).ok();
             if path.exists() {
+                // 临时诊断: 桌面 PDF 莫名出现。调用栈 + 库路径, 定位触发链后移除。
+                tracing::error!(
+                    "PDF 写入(无限画布分页) → {} | 库: {} | 调用栈:\n{}",
+                    path.display(),
+                    crate::db::db_path().display(),
+                    std::backtrace::Backtrace::force_capture()
+                );
                 tracing::info!("Saved infinite-canvas PDF to {}", path.display());
                 return Some(path.to_string_lossy().to_string());
             }
