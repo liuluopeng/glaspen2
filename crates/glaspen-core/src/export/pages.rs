@@ -442,10 +442,8 @@ pub extern "C" fn glaspen2_create_next_page(current_id: i64) -> i64 {
         let new_id = state::current_screen_id();
         tracing::debug!("翻页新建页 id={new_id} (前一页 {current_id})");
         new_id
-    } else if let Some(id) = reuse {
-        id
     } else {
-        0
+        reuse.unwrap_or_default()
     }
 }
 

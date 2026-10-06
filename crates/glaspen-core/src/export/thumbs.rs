@@ -89,10 +89,7 @@ fn render_and_store_thumbnail(
     if strokes.is_empty() {
         return None;
     }
-    let (pw, ph) = match runtime().block_on(db::screen_dims(screen_id)) {
-        Some(d) => d,
-        None => return None,
-    };
+    let (pw, ph) = runtime().block_on(db::screen_dims(screen_id))?;
     let png = render_strokes_thumbnail(&strokes, max_size, pw, ph)?;
     runtime().block_on(db::thumbnail_store(
         screen_id, max_size, version.0, version.1, outline, &png,

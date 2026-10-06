@@ -1665,8 +1665,8 @@ mod platform {
                 dblog!("ERR 粘贴 INSERT 失败");
                 continue;
             };
-            let mut seq = 0i64;
-            for &(x, y, w) in pts {
+            for (i, &(x, y, w)) in pts.iter().enumerate() {
+                let seq = i as i64;
                 if sqlx::query(
                     "INSERT INTO points (stroke_id, seq, x, y, width, t) \
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -1683,7 +1683,6 @@ mod platform {
                 {
                     dblog!("ERR 粘贴点写入失败 stroke={id}");
                 }
-                seq += 1;
             }
             created += 1;
             dblog!("笔迹+ id={id} screen={screen_id} (粘贴, {} 点)", pts.len());
