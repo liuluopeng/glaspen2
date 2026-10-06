@@ -1364,7 +1364,9 @@ static BOOL perform_hotkey(unsigned short kc) {
     // Switch canvas mode: 固定 ↔ 飘渺 (⌘ + ⌃ + X)
     toggle_canvas_mode();
     return YES;
-  } else if (kc == kVK_ANSI_Comma) {
+  } else if (kc == kVK_ANSI_D) {
+    // 打开设置面板。⌘⌃D 在 macOS 是文本场景的"查词典"快捷键 ——
+    // 涂鸦开启时被 tap 消费不冲突; 关闭涂鸦后词典功能照常。
     show_settings_panel();
     return YES;
   }

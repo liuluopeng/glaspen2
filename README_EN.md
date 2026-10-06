@@ -101,7 +101,7 @@ Settings · Notebook · Free doodle"]
 | Export SVG + GIF (copies to clipboard) | `⌘ + ⌃ + G` | `Ctrl + Alt + G` |
 | Copy current doodle as SVG | `⌘ + ⌃ + S` | |
 | Frosted glass toggle | `⌘ + ⌃ + B` | `Ctrl + Alt + B` |
-| Open settings | `⌘ + ⌃ + ,` | |
+| Open settings | `⌘ + ⌃ + D` | | |
 | Quit | | `Ctrl + Alt + Q` |
 | Quick GIF recording (hold) | `⌘ + ⌃ + R` | `Ctrl + Alt + R` (hold) |
 | Infinite canvas: pan (four directions) | `⌥ + ⌘ + arrows` | `Ctrl + Alt + arrows` |
