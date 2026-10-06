@@ -150,6 +150,7 @@ mod platform {
     pub(crate) const SCHEMA_VERSION: i32 = 2;
 
     /// 全局库是否已初始化(测试:FFI 层测试需要一次性初始化全局 DB)
+    #[cfg(test)]
     pub(crate) fn is_init() -> bool {
         DB.get().is_some()
     }

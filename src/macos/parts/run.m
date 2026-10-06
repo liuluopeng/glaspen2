@@ -1595,7 +1595,11 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       int64_t proxState = CGEventGetIntegerValueField(
           event, kCGTabletProximityEventEnterProximity);
       NSLog(@"[pen] %@ (proximity %@)",
-            proxState == 1 ? @"悬浮进入" : @"悬浮离开",
+            proxState == 1
+                ? ([proxEvent pointingDeviceType] == NSEraserPointingDevice
+                       ? @"橡皮进入"
+                       : @"悬浮进入")
+                : @"悬浮离开",
             proxState == 1 ? @"enter" : @"exit");
       if (proxState == 1) {
         peek_cancel_timer(); // pen is back — the peek stays
@@ -1960,8 +1964,11 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       g_eraser_mode = eraser;
       update_status_icon_state();
     } // 图标换橡皮块
-    NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f", px, py,
-          pressure, ts);
+    NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f tool=%@",
+          px, py, pressure, ts,
+          devType == NSEraserPointingDevice   ? @"ERASER"
+          : devType == NSPenPointingDevice    ? @"pen"
+                                              : @"other");
     glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(px),
                            canvas_input_y(py), pressure, ts, g_width_scale);
     g_stroke_active = YES;
