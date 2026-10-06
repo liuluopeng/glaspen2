@@ -480,7 +480,7 @@ pub extern "C" fn glaspen2_lasso_select(screen_id: i64, poly: *const c_char) -> 
 }
 
 /// 射线法: 点是否在多边形内(边界不算内部, 圈选容差由外扩处理)
-fn point_in_polygon(px: f64, py: f64, poly: &[(f64, f64)]) -> bool {
+pub(crate) fn point_in_polygon(px: f64, py: f64, poly: &[(f64, f64)]) -> bool {
     let n = poly.len();
     let mut inside = false;
     let mut j = n - 1;
@@ -728,3 +728,150 @@ pub extern "C" fn glaspen2_page_info_json(screen_id: i64) -> *mut c_char {
 // ---------------------------------------------------------------------------
 // Thumbnail rendering (cairo_dl → scaled PNG)
 // ---------------------------------------------------------------------------
+
+
+// ---------------------------------------------------------------------------
+// Tests(圈选几何 + 载荷往返 + 笔迹数据操作)
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod lasso_tests {
+    use super::*;
+
+    /// 射线法几何: 凸/凹多边形、边界外点、洞内点
+    #[test]
+    fn point_in_polygon_geometry() {
+        // 正方形(凸)
+        let square = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
+        assert!(point_in_polygon(5.0, 5.0, &square));
+        assert!(point_in_polygon(0.5, 0.5, &square));
+        assert!(!point_in_polygon(11.0, 5.0, &square));
+        assert!(!point_in_polygon(-1.0, -1.0, &square));
+
+        // L 形(凹): (9,9) 在缺口外
+        let l_shape = [(0.0, 0.0), (10.0, 0.0), (10.0, 5.0), (5.0, 5.0), (5.0, 10.0), (0.0, 10.0)];
+        assert!(point_in_polygon(2.0, 7.0, &l_shape));
+        assert!(!point_in_polygon(8.0, 8.0, &l_shape), "缺口内不算内部");
+
+        // 三角形
+        let tri = [(0.0, 0.0), (10.0, 0.0), (5.0, 8.0)];
+        assert!(point_in_polygon(5.0, 2.0, &tri));
+        assert!(!point_in_polygon(9.9, 7.9, &tri));
+    }
+
+    /// FFI 级往返: paste → copy payload → 再 paste。颜色/点数/坐标完整。
+    #[test]
+    fn paste_copy_paste_roundtrip() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        if !crate::db::is_init() {
+            let path = std::env::temp_dir()
+                .join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            // SAFETY: 测试单线程初始化(TEST_LOCK 串行化), 无并发读
+            unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
+            runtime().block_on(crate::db::init());
+        }
+        runtime().block_on(crate::db::new_screen(3440, 1440));
+        let screen = crate::state::current_screen_id();
+
+        // 粘贴 2 笔(载荷 = 中心原点坐标 + 段前缀颜色)
+        let payload = "1.000,0.000,0.220|-5.0,-5.0,2.0,0.0,0.0,2.0,5.0,5.0,2.0;0.000,0.588,1.000|0.0,0.0,3.0,10.0,10.0,3.0";
+        let c = std::ffi::CString::new(payload).unwrap();
+        let n = glaspen2_paste_strokes(screen, c.as_ptr());
+        assert_eq!(n, 2, "粘贴应产生 2 笔");
+
+        let strokes = runtime().block_on(crate::db::strokes_for_screen(screen));
+        assert_eq!(strokes.len(), 2);
+        assert!((strokes[0].r - 1.0).abs() < 1e-6, "红笔颜色保留");
+        assert!((strokes[1].b - 1.0).abs() < 1e-6, "蓝笔颜色保留");
+        assert_eq!(strokes[0].points.len(), 3);
+
+        // copy 载荷: 中心原点 + 颜色前缀 + 点数完整
+        let ids = strokes
+            .iter()
+            .map(|s| s.id.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let ids_c = std::ffi::CString::new(ids).unwrap();
+        let ptr = glaspen2_copy_strokes_payload(screen, ids_c.as_ptr());
+        assert!(!ptr.is_null());
+        let payload2 = unsafe { std::ffi::CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        unsafe { crate::export::glaspen2_free_c_string(ptr) };
+        let segs: Vec<&str> = payload2.split(';').collect();
+        assert_eq!(segs.len(), 2, "两笔 = 两个段");
+        for seg in &segs {
+            let head = seg.split('|').next().unwrap();
+            let rgb: Vec<f64> = head.split(',').map(|v| v.parse().unwrap()).collect();
+            assert_eq!(rgb.len(), 3);
+            let pts: Vec<&str> = seg.split('|').nth(1).unwrap().split(',').collect();
+            assert_eq!(pts.len() % 3, 0, "点载荷必为三元组");
+            assert!(!pts.is_empty());
+        }
+
+        // 再粘贴同一载荷 → 总 4 笔, id 全新(粘贴 = 新实体)
+        let c2 = std::ffi::CString::new(payload2.clone()).unwrap();
+        let n2 = glaspen2_paste_strokes(screen, c2.as_ptr());
+        assert_eq!(n2, 2);
+        let strokes2 = runtime().block_on(crate::db::strokes_for_screen(screen));
+        assert_eq!(strokes2.len(), 4);
+        let ids1: Vec<i64> = strokes.iter().map(|s| s.id).collect();
+        let ids2: Vec<i64> = strokes2.iter().map(|s| s.id).collect();
+        let new_ids: Vec<i64> = ids2.iter().filter(|id| !ids1.contains(id)).copied().collect();
+        assert_eq!(new_ids.len(), 2, "第二次粘贴产生 2 个全新 id");
+    }
+
+    /// 平移/跨页搬移/软删 三个数据操作
+    #[test]
+    fn move_and_delete_ops() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        if !crate::db::is_init() {
+            let path = std::env::temp_dir()
+                .join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            // SAFETY: 测试单线程初始化(TEST_LOCK 串行化), 无并发读
+            unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
+            runtime().block_on(crate::db::init());
+        }
+        runtime().block_on(crate::db::new_screen(3440, 1440));
+        let screen = crate::state::current_screen_id();
+        runtime().block_on(crate::db::new_screen(1920, 1080));
+        let target = crate::state::current_screen_id();
+
+        let payload = "0.0,0.0,1.0|0.0,0.0,2.0,10.0,10.0,2.0";
+        let c = std::ffi::CString::new(payload).unwrap();
+        let n = glaspen2_paste_strokes(screen, c.as_ptr());
+        assert_eq!(n, 1);
+        let strokes = runtime().block_on(crate::db::strokes_for_screen(screen));
+        let id = strokes[0].id;
+
+        // 平移
+        let csv = std::ffi::CString::new(id.to_string()).unwrap();
+        assert_ne!(glaspen2_move_strokes(screen, csv.as_ptr(), 50.0, -25.0), 0);
+        let after = runtime().block_on(crate::db::strokes_for_screen(screen));
+        assert!((after[0].points[0].0 - 50.0).abs() < 1e-6);
+        assert!((after[0].points[0].1 + 25.0).abs() < 1e-6);
+
+        // 跨页搬移(保 id)
+        let csv = std::ffi::CString::new(id.to_string()).unwrap();
+        assert_ne!(
+            glaspen2_move_strokes_to_page(screen, csv.as_ptr(), target, 5.0, 5.0),
+            0
+        );
+        assert!(runtime()
+            .block_on(crate::db::strokes_for_screen(screen))
+            .is_empty());
+        let moved = runtime().block_on(crate::db::strokes_for_screen(target));
+        assert_eq!(moved.len(), 1);
+        assert_eq!(moved[0].id, id, "搬移保 id(与粘贴的新 id 区分)");
+        assert!((moved[0].points[0].0 - 55.0).abs() < 1e-6);
+
+        // 软删
+        let csv = std::ffi::CString::new(id.to_string()).unwrap();
+        assert_ne!(glaspen2_delete_strokes(target, csv.as_ptr()), 0);
+        assert!(runtime()
+            .block_on(crate::db::strokes_for_screen(target))
+            .is_empty());
+    }
+}

@@ -126,3 +126,26 @@ class _PaperDotsPainter extends CustomPainter {
 
 // ── App ──
 
+
+/// 页分组排序(纯函数, 可单测):
+/// - 按分辨率 key(WxH)分组;
+/// - 组内**保持传入顺序**(list_screens 已按 order_index 排 —— 页重排
+///   的可见性全靠这里不再二次排序, 此前按 id 重排曾把重排结果整个吞掉);
+/// - 组间按最近活跃(组内最大 id)排前。
+List<PageInfo> groupSortedPages(List<PageInfo> pages) {
+  if (pages.isEmpty) return pages;
+  final groups = <String, List<PageInfo>>{};
+  for (final p in pages) {
+    groups.putIfAbsent('${p.w}x${p.h}', () => []).add(p);
+  }
+  final keys = groups.keys.toList()
+    ..sort((a, b) {
+      int mx(String k) => groups[k]!.map((p) => p.id).reduce((x, y) => x > y ? x : y);
+      return mx(b).compareTo(mx(a));
+    });
+  final out = <PageInfo>[];
+  for (final k in keys) {
+    out.addAll(groups[k]!);
+  }
+  return out;
+}

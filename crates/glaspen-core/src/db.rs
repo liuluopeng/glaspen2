@@ -149,6 +149,11 @@ mod platform {
     /// 错、把数据写坏); 迁移失败时定位到底停在哪一版。
     pub(crate) const SCHEMA_VERSION: i32 = 2;
 
+    /// 全局库是否已初始化(测试:FFI 层测试需要一次性初始化全局 DB)
+    pub(crate) fn is_init() -> bool {
+        DB.get().is_some()
+    }
+
     pub async fn init() {
         let path = db_path();
         dblog!("库文件: {}", path.display());

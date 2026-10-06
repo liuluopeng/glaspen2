@@ -1820,25 +1820,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
   /// 页按分辨率分组(页 = 对应尺寸玻璃的快照): 最近活跃的组排最前,
   /// 组内按页 id(时间)序。当前屏几何几乎总是最新组 → 开箱即当前本子。
-  List<PageInfo> _groupSorted(List<PageInfo> pages) {
-    if (pages.isEmpty) return pages;
-    final groups = <String, List<PageInfo>>{};
-    for (final p in pages) {
-      groups.putIfAbsent('${p.w}x${p.h}', () => []).add(p);
-    }
-    final keys = groups.keys.toList()
-      ..sort((a, b) {
-        int mx(String k) => groups[k]!.map((p) => p.id).reduce((x, y) => x > y ? x : y);
-        return mx(b).compareTo(mx(a)); // 最近活跃的组在前
-      });
-    final out = <PageInfo>[];
-    for (final k in keys) {
-      // 组内保持传入顺序(list_screens 已按 order_index 排)——此前按 id
-      // 重排把页重排的结果整个吞掉(按钮"按了没反应"的根因)
-      out.addAll(groups[k]!);
-    }
-    return out;
-  }
+  List<PageInfo> _groupSorted(List<PageInfo> pages) =>
+      groupSortedPages(pages); // 纯函数在 main.models.dart(可单测)
 
   /// 该页是否属于"第一个(最近活跃)组" —— 异组卡片显示分辨率徽标。
   bool _isPrimaryGroup(PageInfo page) {

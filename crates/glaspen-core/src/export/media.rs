@@ -4,18 +4,8 @@ use super::*;
 
 fn xoj_timestamped_path() -> PathBuf {
     let desktop = desktop_path();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
-    let s = secs % 60;
-    let m = (secs / 60) % 60;
-    let h = (secs / 3600 + 8) % 24;
-    let days = secs / 86400;
-    let y = 1970 + days / 365;
-    let d = days % 365;
-    let filename = format!("glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.xoj", y, d, h, m, s);
-    desktop.join(filename)
+    desktop.join(crate::pdf::timestamped_name("xoj"))
+
 }
 
 #[unsafe(no_mangle)]

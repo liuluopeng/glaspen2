@@ -380,3 +380,47 @@ pub(crate) fn encode_png_bgra(bgra: &[u8], width: u32, height: u32) -> Option<Ve
 // ---------------------------------------------------------------------------
 // 聊天流(⌘⌃3 录制的手写消息 → 本地 axum 存储)
 // ---------------------------------------------------------------------------
+
+
+#[cfg(test)]
+mod png_channel_tests {
+    use super::*;
+
+    /// 红蓝互换回归: cairo BGRA 缓冲经 encode_png_bgra 出来的 PNG,
+    /// 红像素必须是红(R=255, B=0)。此前四条路径直接喂 BGRA 给
+    /// RGBA 编码器, 红笔显示成蓝笔。
+    #[test]
+    fn encode_png_bgra_channel_order() {
+        // 1×2: 纯红 (B=0,G=0,R=255,A=255), 纯蓝 (B=255,G=0,R=0,A=255)
+        let bgra = [0u8, 0, 255, 255, 255, 0, 0, 255];
+        let png = encode_png_bgra(&bgra, 2, 1).expect("编码成功");
+        let decoded = image::load_from_memory(&png).unwrap().to_rgba8();
+        let px = decoded.get_pixel(0, 0); // 输入红
+        assert_eq!((px[0], px[1], px[2]), (255, 0, 0), "红必须还是红");
+        let px = decoded.get_pixel(1, 0); // 输入蓝
+        assert_eq!((px[0], px[1], px[2]), (0, 0, 255), "蓝必须还是蓝");
+    }
+
+    /// 整页等比缩略图: 同组页输出同尺寸, 纵横比 = 页真实比例。
+    #[test]
+    fn thumbnail_full_page_uniform_size() {
+        let strokes = vec![crate::db::StrokeData {
+            id: 1,
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            width_scale: 1.0,
+            points: vec![(100.0, 100.0, 2.0, 0.0), (300.0, 200.0, 2.0, 0.1)],
+        }];
+        // 同一页尺寸, 两次渲染 → 同尺寸
+        let a = render_strokes_thumbnail(&strokes, 280, 3440, 1440).unwrap();
+        let b = render_strokes_thumbnail(&strokes, 280, 3440, 1440).unwrap();
+        assert_eq!(a.len(), b.len());
+        let da = image::load_from_memory(&a).unwrap();
+        assert_eq!((da.width(), da.height()), (280, 118), "3440x1440 等比 → 280x118");
+        // 不同页尺寸 → 比例各自正确(不再裁剪)
+        let c = render_strokes_thumbnail(&strokes, 280, 1920, 1080).unwrap();
+        let dc = image::load_from_memory(&c).unwrap();
+        assert_eq!((dc.width(), dc.height()), (280, 158), "1920x1080 → 280x158");
+    }
+}

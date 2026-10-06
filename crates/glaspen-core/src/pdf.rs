@@ -361,20 +361,23 @@ fn desktop_path() -> PathBuf {
     }
 }
 
-fn timestamped_name(ext: &str) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now.as_secs();
-    let s = secs % 60;
-    let m = (secs / 60) % 60;
-    let h = (secs / 3600 + 8) % 24;
-    let days = secs / 86400;
-    let y = 1970 + days / 365;
-    let d = days % 365;
+pub(crate) fn timestamped_name(ext: &str) -> String {
+    timestamped_name_at(ext, chrono::Local::now())
+}
+
+/// 参数化版本(测试注入固定时间)。chrono Local: 手算(days/365)有闰日
+/// 累计漂移 —— 实测 2026-10-05 被算成年内 291 天(真实 278), PDF 与
+/// Xournal 命名同时中招, 统一收口在这里。
+pub(crate) fn timestamped_name_at(ext: &str, t: chrono::DateTime<chrono::Local>) -> String {
+    use chrono::{Datelike, Timelike};
     format!(
         "glaspen2_{:04}-{:03}_{:02}-{:02}-{:02}.{}",
-        y, d, h, m, s, ext
+        t.year(),
+        t.ordinal(),
+        t.hour(),
+        t.minute(),
+        t.second(),
+        ext
     )
 }
 
@@ -595,5 +598,32 @@ mod tests {
     #[test]
     fn test_export_pdf() {
         export_all_pages();
+    }
+}
+
+
+#[cfg(test)]
+mod timestamp_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn timestamped_name_no_leap_drift() {
+        use chrono::Local;
+        // 2026-10-05 真实年内天号 = 278(此前手算版给出 291, 桌面文件实证)
+        let t = Local.with_ymd_and_hms(2026, 10, 5, 22, 13, 49).unwrap();
+        assert_eq!(
+            timestamped_name_at("pdf", t),
+            "glaspen2_2026-278_22-13-49.pdf"
+        );
+        // 闰日当天: 2024-02-29 = 年内 60
+        let leap = Local.with_ymd_and_hms(2024, 2, 29, 0, 0, 1).unwrap();
+        assert_eq!(timestamped_name_at("png", leap), "glaspen2_2024-060_00-00-01.png");
+        // 闰年年末: 2024-12-31 = 366(平年手算会给出 365 之外的天号漂移)
+        let yend = Local.with_ymd_and_hms(2024, 12, 31, 23, 59, 59).unwrap();
+        assert_eq!(timestamped_name_at("pdf", yend), "glaspen2_2024-366_23-59-59.pdf");
+        // 平年年末: 2023-12-31 = 365
+        let pend = Local.with_ymd_and_hms(2023, 12, 31, 12, 0, 0).unwrap();
+        assert_eq!(timestamped_name_at("xoj", pend), "glaspen2_2023-365_12-00-00.xoj");
     }
 }
