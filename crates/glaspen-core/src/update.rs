@@ -486,7 +486,8 @@ pub fn staged_app(dir: &std::path::Path) -> Option<std::path::PathBuf> {
         .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok())
 }
 
-/// 挂载 dmg → 把 `.app` ditto 到 [`update_dir`] → 卸载 → 验签 → 剥 quarantine。
+/// 挂载 dmg → 把 `.app` ditto 到 [`update_dir`] → 卸载 → 剥 quarantine →
+/// 签名完整性与发布者身份校验([`verify_staged_signature`])。
 ///
 /// 在**主程序退出之前**调用(错误能直接显示在面板上);返回暂存的 `.app` 路径,
 /// 后续换 bundle 由 `--updater` 帮手完成。
@@ -545,17 +546,70 @@ fn stage_from_mount(mnt: &std::path::Path, tag: &str) -> Result<std::path::PathB
         .args(["-dr", "com.apple.quarantine"])
         .arg(&staged)
         .status();
-    // 拷出来的包必须签名完好 —— 半截拷贝在这里就暴露,而不是替换之后
+    verify_staged_signature(&staged)?;
+    Ok(staged)
+}
+
+/// 预期发布者签名(codesign 的 Authority CN)。build-dmg.sh 用同一张稳定
+/// 自签证书「Glaspen2 Development」签名(TCC 授权跨版本存活的前提)。
+/// 自动更新必须确认新包**是我们签的**, 而不只是「签名完好」—— 否则
+/// 发布渠道被劫持后, 对方换一个自己签的包照样过完整性校验。冒烟/特殊
+/// 构建可用 `GLASPEN2_EXPECT_SIGNER` 覆盖。
+pub const EXPECTED_SIGNER: &str = "Glaspen2 Development";
+
+/// 从 `codesign --display` 输出提取全部 Authority(CN)。纯函数, 单测覆盖。
+fn signer_authorities(output: &str) -> Vec<&str> {
+    output
+        .lines()
+        .filter_map(|l| l.strip_prefix("Authority="))
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != "(unavailable)")
+        .collect()
+}
+
+/// 两道签名检查, 任一不过即删暂存包:
+/// 1. 完整性(`--verify --deep --strict`)—— 半截拷贝/磁盘损坏在这里暴露;
+/// 2. 发布者(Authority 必须命中预期签名者)—— 防「换包不换签名」的供应链劫持。
+#[cfg(target_os = "macos")]
+fn verify_staged_signature(staged: &std::path::Path) -> Result<(), String> {
+    use std::process::Command;
+
     let verify = Command::new("/usr/bin/codesign")
         .args(["--verify", "--deep", "--strict"])
-        .arg(&staged)
+        .arg(staged)
         .status()
         .map_err(|e| format!("调用 codesign 失败:{e}"))?;
     if !verify.success() {
-        let _ = std::fs::remove_dir_all(&staged);
+        let _ = std::fs::remove_dir_all(staged);
         return Err("解包后的应用签名校验失败,已放弃".into());
     }
-    Ok(staged)
+
+    // codesign --display 走 stderr, 两路都收
+    let out = Command::new("/usr/bin/codesign")
+        .args(["--display", "--verbose=4"])
+        .arg(staged)
+        .output()
+        .map_err(|e| format!("调用 codesign 失败:{e}"))?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let expected = std::env::var("GLASPEN2_EXPECT_SIGNER")
+        .unwrap_or_else(|_| EXPECTED_SIGNER.to_string());
+    let auths = signer_authorities(&text);
+    if !auths.iter().any(|a| a.contains(&expected)) {
+        let _ = std::fs::remove_dir_all(staged);
+        let got = if auths.is_empty() {
+            "未知(没有 Authority)".to_string()
+        } else {
+            auths.join(", ")
+        };
+        return Err(format!(
+            "新版本签名者({got})不是预期的「{expected}」, 已放弃替换"
+        ));
+    }
+    Ok(())
 }
 
 /// 在挂载目录里找唯一的 `.app`。
@@ -861,5 +915,33 @@ mod tests {
         );
         // 当前版本是开发版时"有更新"可真可假,但 same-version 必须是 false
         assert!(!is_newer(current_version(), current_version()));
+    }
+
+    /// 签名身份解析: 自签证书 / Developer ID 证书链 / ad-hoc。
+    #[test]
+    fn test_signer_authorities_parse() {
+        // 自签(本项目的发布形态)
+        let self_signed = "Executable=/tmp/Glaspen2.app/Contents/MacOS/glaspen2\n\
+                           Identifier=com.glaspen2\n\
+                           Authority=Glaspen2 Development\n\
+                           Hash Type=sha256\n";
+        assert_eq!(signer_authorities(self_signed), vec!["Glaspen2 Development"]);
+
+        // Developer ID 证书链(将来公证后走这条): 两条 Authority 都要取到
+        let dev_id = "Authority=Developer ID Application: liuluopeng (ABCDE12345)\n\
+                      Authority=Apple Worldwide Developer Relations Certification Authority\n";
+        assert_eq!(
+            signer_authorities(dev_id),
+            vec![
+                "Developer ID Application: liuluopeng (ABCDE12345)",
+                "Apple Worldwide Developer Relations Certification Authority"
+            ]
+        );
+
+        // ad-hoc(构建脚本找不到证书时的兜底): 必须解析为空 → 身份校验会拒绝
+        assert!(signer_authorities("Authority=(unavailable)\n").is_empty());
+
+        // 缩进/空格与空值容错
+        assert_eq!(signer_authorities("Authority=  X  \nAuthority=\n"), vec!["X"]);
     }
 }

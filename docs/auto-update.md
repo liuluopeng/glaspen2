@@ -25,7 +25,11 @@
 ```text
 用户点「检查更新」→ 结果有新版本 → 点「立即更新」→ 确认对话框(release notes)
   → 下载(进度条/可取消;.part 转正前先 sha256 校验,GitHub 资产自带 digest)
-  → 解包 stage:hdiutil 挂载 → ditto → 卸载 → codesign --verify → 剥 quarantine
+  → 解包 stage:hdiutil 挂载 → ditto → 卸载 → 剥 quarantine
+      → codesign --verify --deep --strict(完整性: 半截拷贝在这里暴露)
+      → Authority 身份钉扎: 签名者必须是「Glaspen2 Development」
+        (EXPECTED_SIGNER; GLASPEN2_EXPECT_SIGNER 可覆盖)—— 只验完整性
+        不验身份, 发布渠道被劫持时对方换一个自签包也能过
   → 点「立即重启更新」
       主程序: spawn `--updater`(setsid detach)→ 300ms 落盘 → ⌘⌃Q 同路退出
       帮手:   写 helper.pid → 等主程序退出 → DB 快照
