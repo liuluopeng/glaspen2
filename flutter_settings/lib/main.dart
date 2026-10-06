@@ -8,6 +8,8 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData, rootBundle
 import 'package:flutter/foundation.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'l10n/app_localizations.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart' as frb;
 
 import 'src/rust/api.dart' as rust;
@@ -100,7 +102,14 @@ class GlaspenSettingsApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '玻璃涂鸦',
+      onGenerateTitle: (context) => AppLocalizations.of(context)!.glaspen2,
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: AppLocalizations.supportedLocales,
       debugShowCheckedModeBanner: false,
       // macOS runs at native 1x (no display scaling), so the whole UI looks
       // small vs Windows — scale the entire UI up to match. Windows keeps 1.0

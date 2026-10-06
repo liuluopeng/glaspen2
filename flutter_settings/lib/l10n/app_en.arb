@@ -1,0 +1,476 @@
+{
+  "canvasIsEmptyGo": "Canvas is empty — go doodle something!",
+  "backToOrigin": "Back to origin",
+  "centerContent": "Center content",
+  "newCanvas": "New canvas",
+  "refresh": "Refresh",
+  "redBoxCurrentMain": "Red box = current main-screen viewport · doodle, then refresh",
+  "cRed": "Red",
+  "cOrange": "Orange",
+  "cYellow": "Yellow",
+  "cGreen": "Green",
+  "cCyan": "Cyan",
+  "cBlue": "Blue",
+  "cPurple": "Purple",
+  "cPink": "Pink",
+  "cWhite": "White",
+  "cBlack": "Black",
+  "wUltraFine": "Ultra-fine",
+  "wVeryFine": "Very fine",
+  "wFine": "Fine",
+  "wMedium": "Medium",
+  "wThick": "Thick",
+  "wVeryThick": "Very thick",
+  "wExtraThick": "Extra thick",
+  "wUltraThick": "Ultra thick",
+  "glaspen2": "Glaspen2",
+  "updateNow": "Update now",
+  "settings": "Settings",
+  "notebook": "Notebook",
+  "freeDoodle": "Free doodle",
+  "hotkeysCtrlAlt": "Hotkeys (Ctrl+Alt+…)",
+  "hotkeys": "Hotkeys (⌘⌃…)",
+  "pen": "Pen",
+  "notebookLook": "Notebook look",
+  "style": "Style",
+  "skeuoGlass": "Skeuo glass",
+  "notePaper": "Note paper",
+  "truePassThroughExperimental": "True pass-through (experimental)",
+  "cardsRevealTheDesktop": "Cards reveal the desktop behind the panel",
+  "clearGlassModeNeeds": "Clear glass mode: needs skeuo glass; off restores blur + artwork",
+  "pageThumbnails": "Page thumbnails",
+  "show10NearbyPages": "Show 10 nearby pages",
+  "verticalMinimapOnThe": "Vertical minimap on the right edge · paged mode only",
+  "sharedCanvas": "Shared canvas",
+  "streamDoodlesLive": "Stream doodles live",
+  "pushedToThePeer": "Pushed to the peer app on pen-up; switch off to stop",
+  "dataBackup": "Data backup",
+  "doodleIdentity": "Doodle identity",
+  "about": "About",
+  "random": "Random",
+  "noPagesYet": "No pages yet",
+  "p1Pages": "{p1} pages",
+  "pastedOnPage2": "Pasted on page -2 shows up on page -1",
+  "pageIsEmptyNothing": "Page is empty — nothing to edit",
+  "noStrokesInsideThe": "No strokes inside the lasso",
+  "p1StrokesSelectedBlue": "{p1} strokes selected (blue) · drag to move / right-click to copy or delete",
+  "moveFailed": "Move failed",
+  "nothingToCopy": "Nothing to copy",
+  "copiedP1Strokes": "Copied {p1} strokes",
+  "clipboardIsEmpty": "Clipboard is empty",
+  "pastedP1Strokes": "Pasted {p1} strokes",
+  "pasteFailed": "Paste failed",
+  "deletedP1Strokes": "Deleted {p1} strokes",
+  "deleteFailed": "Delete failed",
+  "nothingToUndo": "Nothing to undo",
+  "copySelection": "Copy selection",
+  "pasteHere": "Paste here",
+  "deleteSelection": "Delete selection",
+  "notebooks": "Notebooks",
+  "pageP1P2Strokes": "Page {p1} · {p2} strokes selected",
+  "copy": "Copy",
+  "undoMove": "Undo move",
+  "dragLassoSelectDrag": "Drag lasso = select · drag selection = move · right-click = copy/paste · click blank = deselect",
+  "noResponseOffBy": "No-response / off-by-one paste",
+  "searchP1": "Search \"{p1}\"",
+  "clearSearch": "Clear search",
+  "searchTextInPages": "Search text in pages (OCR)",
+  "ocrSearch": "OCR search",
+  "noMatchingPagesWas": "No matching pages (was that text ever OCR'd?)",
+  "theShelfIsEmpty": "The shelf is empty",
+  "otherwise": ", otherwise",
+  "moveFailedReverted": "Move failed, reverted",
+  "multiSelect": "Multi-select",
+  "p1PagesSelected": "{p1} pages selected",
+  "exportedP1PagesAs": "Exported {p1} pages as PDF to Desktop",
+  "exportFailed": "Export failed",
+  "exportPdf": "Export PDF",
+  "deselectAll": "Deselect all",
+  "selectAll": "Select all",
+  "deleting": "Deleting…",
+  "deleteSelectedP1": "Delete selected ({p1})",
+  "cancel": "Cancel",
+  "batchDelete": "Batch delete",
+  "deleteTheP1Selected": "Delete the {p1} selected pages and all their strokes?",
+  "deleteP1Pages": "Delete {p1} pages",
+  "deletedP1Pages": "Deleted {p1} pages",
+  "firstMostRecentlyActive": "First (most recently active) group",
+  "pageP1": "Page {p1}",
+  "editContentLassoMove": "Edit content (lasso / move / copy)",
+  "exportThisPageAs": "Export this page as PNG",
+  "exportThisPageAs2": "Export this page as SVG",
+  "copyPageInfo": "Copy page info",
+  "deleteThisPage": "Delete this page",
+  "pngExportedToDesktop": "PNG exported to Desktop",
+  "exportFailedEmptyPage": "Export failed (empty page?)",
+  "svgExportedToDesktop": "SVG exported to Desktop",
+  "pageP1SizeP2": "Page {p1}\\nSize {p2}×{p3}\\nStrokes {p4}\\n",
+  "createdP1": "Created {p1}",
+  "pageInfoCopied": "Page info copied",
+  "deletePage": "Delete page",
+  "deletePageP1And": "Delete page {p1} and all its strokes?",
+  "delete": "Delete",
+  "deleteFailedP1": "Delete failed: {p1}",
+  "fireAndForget": "Fire and forget",
+  "signedInHandwrittenMessages": "Signed in — handwritten messages carry your identity",
+  "signInFailedP1": "Sign-in failed: {p1}",
+  "enableHandwrittenMessagesSharing": "Enable handwritten messages & sharing",
+  "whenOff23": "When off, ⌘⌃2/⌘⌃3 stay free; doodling is unaffected",
+  "signingIn": "Signing in…",
+  "signedIn": "Signed in",
+  "accountConfigured23": "Account configured (⌘⌃2/⌘⌃3 messages carry your identity)",
+  "notConfiguredMessagingStill": "Not configured: messaging still works, just without identity",
+  "serverAddress": "Server address",
+  "eGHttps192": "e.g. https://192.168.31.58:23001",
+  "username": "Username",
+  "password": "Password",
+  "savedLeaveBlankTo": "Saved (leave blank to keep unchanged)",
+  "saveTestSignIn": "Save & test sign-in",
+  "authorAttributionFor2": "Author attribution for ⌘⌃2 drafts / ⌘⌃3 direct sends; doodling never requires sign-in.",
+  "frameRate": "Frame rate",
+  "resolution": "Resolution",
+  "speed": "Speed",
+  "ending": "Ending",
+  "stopOnLastFrame": "Stop on last frame",
+  "hold1SThen": "Hold 1 s then loop",
+  "loopImmediately": "Loop immediately",
+  "estimatedSizeP1": "Estimated size {p1}",
+  "quitApp": "Quit app",
+  "exportImage": "Export image",
+  "previousPage": "Previous page",
+  "nextPage": "Next page",
+  "undoLastStroke": "Undo last stroke",
+  "etherealCanvas": "Ethereal canvas",
+  "toggleDoodle": "Toggle doodle",
+  "blurBackground": "Blur background",
+  "color": "Color",
+  "width": "Width",
+  "gifAnimationRTo": "GIF animation (⌘⌃R to record)",
+  "gifAnimationHoldCtrl": "GIF animation (hold Ctrl+Alt+R)",
+  "pageFlipEffect": "Page-flip effect",
+  "systemAnimation": "System animation",
+  "timeTunnel": "Time tunnel",
+  "freeDoodleMode": "Free-doodle mode",
+  "showTheFreeDoodle": "Show the free-doodle canvas: no paging, free camera",
+  "pressureMonitor": "Pressure monitor",
+  "showGrid": "Show grid",
+  "helpsAlignWhileDoodling": "Helps align while doodling",
+  "gridSize": "Grid size",
+  "columns": "Columns",
+  "none": "None",
+  "twoColumnsSideBy": "Two columns side by side",
+  "twoColumnsStacked": "Two columns stacked",
+  "grid3x3": "3×3 grid",
+  "gridFollowsDoodles": "Grid follows doodles",
+  "whenOnTheGrid": "When on, the grid obeys ⌘⌃X together with the ink",
+  "glassFollowsDoodles": "Glass follows doodles",
+  "whenOnTheGlass": "When on, the glass obeys ⌘⌃X with the ink; off keeps it always visible",
+  "inkOutline": "Ink outline",
+  "dashedContrastOutlineVisible": "Dashed contrast outline, visible on any background · persisted",
+  "softShadow": "Soft shadow",
+  "softDarkShadowUnder": "Soft dark shadow under strokes for same-color backgrounds · stacks with outline",
+  "invertedInk": "Inverted ink",
+  "strokesTakeThePer": "Strokes take the per-pixel inverse of the background · experimental: tracks video, best with the glass off",
+  "invertTrackingFpsCap": "Invert tracking FPS cap · zero cost on static backgrounds",
+  "exportAllPagesStrokes": "Export all pages' strokes as one PDF to the Desktop.",
+  "exporting": "Exporting…",
+  "exportAllPagesAs": "Export all pages as PDF",
+  "backupIsOneDb": "Backup is one .db file on the Desktop (consistent snapshot); on a new machine just replace glaspen2.db; ",
+  "restoreMergesItNever": "Restore merges — it never deletes strokes drawn after the backup.",
+  "working": "Working…",
+  "backUpAllData": "Back up all data",
+  "restoreFromLatestBackup": "Restore from latest backup",
+  "backedUpToP1": "Backed up to {p1}",
+  "backupFailedP1": "Backup failed: {p1}",
+  "mergesTheNewestGlaspen2": "Merges the newest glaspen2_backup_*.db from the Desktop into the current data: ",
+  "pagesStrokesAlsoPresent": "Pages/strokes also present follow the backup; strokes drawn after it are kept.",
+  "restore": "Restore",
+  "pagesFromTheBackup": "Pages from the backup merge into the current library (strokes drawn after it are kept).\\nContinue?",
+  "restoredFromBackupP1": "Restored from backup: {p1} (takes effect after restart)",
+  "restoreFailedP1": "Restore failed: {p1}",
+  "exportAllPages": "Export all pages",
+  "allPagesMergeInto": "All pages merge into one PDF saved to the Desktop.",
+  "export": "Export",
+  "pdfSavedToDesktop": "PDF saved to Desktop",
+  "pdfExportFailedP1": "PDF export failed: {p1}",
+  "notConnectedToThe": "Not connected to the main app",
+  "updateToP1": "Update to {p1}?",
+  "downloadsTheNewPackage": "Downloads the new package, then quits and restarts Glaspen2.\\nStrokes are saved in real time — nothing is lost.",
+  "whatSNew": "What's new:",
+  "downloadUpdate": "Download & update",
+  "downloadFailedP1": "Download failed: {p1}",
+  "unpackFailed": "Unpack failed",
+  "unpackFailedP1": "Unpack failed: {p1}",
+  "quitForUpdateFailed": "Quit-for-update failed",
+  "quitForUpdateFailed2": "Quit-for-update failed: {p1}",
+  "downloadingP1P2": "Downloading {p1} / {p2}",
+  "downloading": "Downloading…",
+  "downloadedUnpackingVerifying": "Downloaded — unpacking & verifying…",
+  "downloadedAndUnpackedTakes": "Downloaded and unpacked. Takes effect after restart.",
+  "restartToUpdate": "Restart to update",
+  "quittingAndRestarting": "Quitting and restarting…",
+  "updateFailedP1": "Update failed: {p1}",
+  "retry": "Retry",
+  "checking": "Checking…",
+  "newVersionFoundP1": "New version found: {p1}",
+  "openDownloadPage": "Open download page",
+  "alreadyUpToDate": "Already up to date (v{p1})",
+  "checkFailedP1": "Check failed: {p1}",
+  "unknownError": "Unknown error",
+  "tapToQueryThe": "Tap to query the latest release on GitHub (network required)",
+  "currentVersion": "Current version",
+  "checkForUpdates": "Check for updates",
+  "@p1Pages": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@p1StrokesSelectedBlue": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@copiedP1Strokes": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@pastedP1Strokes": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@deletedP1Strokes": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@pageP1P2Strokes": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      },
+      "p2": {
+        "type": "Object"
+      }
+    }
+  },
+  "@searchP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@p1PagesSelected": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@exportedP1PagesAs": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@deleteSelectedP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@deleteTheP1Selected": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@deleteP1Pages": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@deletedP1Pages": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@pageP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@pageP1SizeP2": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      },
+      "p2": {
+        "type": "Object"
+      },
+      "p3": {
+        "type": "Object"
+      },
+      "p4": {
+        "type": "Object"
+      }
+    }
+  },
+  "@createdP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@deletePageP1And": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@deleteFailedP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@signInFailedP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@estimatedSizeP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@backedUpToP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@backupFailedP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@restoredFromBackupP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@restoreFailedP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@pdfExportFailedP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@updateToP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@downloadFailedP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@unpackFailedP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@quitForUpdateFailed2": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@downloadingP1P2": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      },
+      "p2": {
+        "type": "Object"
+      }
+    }
+  },
+  "@updateFailedP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@newVersionFoundP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@alreadyUpToDate": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  },
+  "@checkFailedP1": {
+    "placeholders": {
+      "p1": {
+        "type": "Object"
+      }
+    }
+  }
+}
