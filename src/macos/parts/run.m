@@ -258,16 +258,22 @@ static void rebuild_surface_from_strokes(void) {
     CGFloat cy = g_cursor_y;
     CGFloat radius = 8.0;
 
-    // Outer circle
-    CGContextSetStrokeColorWithColor(
-        ctx, [[NSColor colorWithWhite:1.0 alpha:0.8] CGColor]);
+    // Outer circle: 橡皮态红圈(与状态栏橡皮块呼应), 书写白圈
+    NSColor *ringColor =
+        g_eraser_mode
+            ? [NSColor colorWithRed:1.0 green:0.25 blue:0.2 alpha:0.95]
+            : [NSColor colorWithWhite:1.0 alpha:0.8];
+    CGContextSetStrokeColorWithColor(ctx, ringColor.CGColor);
     CGContextSetLineWidth(ctx, 1.5);
     CGContextStrokeEllipseInRect(
         ctx, CGRectMake(cx - radius, cy - radius, radius * 2, radius * 2));
 
     // Center dot
-    CGContextSetFillColorWithColor(ctx, [[NSColor colorWithWhite:1.0
-                                                           alpha:0.9] CGColor]);
+    NSColor *dotColor =
+        g_eraser_mode
+            ? [NSColor colorWithRed:1.0 green:0.25 blue:0.2 alpha:0.95]
+            : [NSColor colorWithWhite:1.0 alpha:0.9];
+    CGContextSetFillColorWithColor(ctx, dotColor.CGColor);
     CGContextFillEllipseInRect(ctx, CGRectMake(cx - 1.5, cy - 1.5, 3, 3));
 
     // Crosshair lines
@@ -1823,15 +1829,18 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       perf_log_event("pen_hover",
                      elapsed_us(t0)); // 只算纯悬停, 拖动另记 pen_move
     }
-    if (moved && g_cursor_visible && !g_stroke_active) {
+    if (moved && g_cursor_visible) {
       dirty_include_point(g_cursor_x, g_cursor_y, 14.0); // old position
     }
     g_cursor_x = loc.x;
     g_cursor_y = loc.y;
     if (!g_stroke_active) {
       g_cursor_visible = YES;
+    }
+    if (moved && g_cursor_visible) {
+      // 书写/擦除中也跟随: raw_draw 已把笔尖区域标脏, 十字恰在笔尖
       dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
-      if (moved && elapsed_us(g_last_cursor_flush) >= 16000) {
+      if (!g_stroke_active && elapsed_us(g_last_cursor_flush) >= 16000) {
         g_last_cursor_flush = mach_absolute_time();
         flush_dirty_to_layer();
       }
@@ -1977,7 +1986,11 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(px),
                            canvas_input_y(py), pressure, ts, g_width_scale);
     g_stroke_active = YES;
-    g_cursor_visible = NO; // the ink is the feedback while drawing
+    // 光标全程跟随(此前落笔即隐藏 "ink is the feedback" —— 擦除时无新墨
+    // 可看, 用户实测盲擦)。橡皮态光标变红。
+    g_cursor_visible = YES;
+    g_cursor_x = px;
+    g_cursor_y = py;
     stroke_begin();        // reuse one cairo context for the whole stroke
     raw_draw_dot(px, py, raw_w);
     g_raw_last_x = px;
@@ -2002,7 +2015,9 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(px),
                              canvas_input_y(py), pressure, ts, g_width_scale);
       g_stroke_active = YES;
-      g_cursor_visible = NO;
+      g_cursor_visible = YES;
+      g_cursor_x = px;
+      g_cursor_y = py;
       stroke_begin();
       raw_draw_dot(px, py, raw_w);
       g_raw_last_x = px;
