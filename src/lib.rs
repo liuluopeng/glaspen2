@@ -13,6 +13,9 @@ mod frb_generated; /* AUTO INJECTED BY flutter_rust_bridge */
 
 pub mod api;
 
+/// 日志落盘 + panic 崩溃记录(main.rs 启动最先调用)。
+pub mod logging;
+
 #[cfg(target_os = "macos")]
 pub mod macos;
 

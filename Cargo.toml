@@ -30,6 +30,7 @@ glaspen-core = { path = "crates/glaspen-core" }
 glaspen-windows = { path = "crates/glaspen-windows" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
