@@ -16,6 +16,12 @@ import 'package:glaspen2_settings/src/rust/frb_generated.dart';
 void main() {
   final lib = File('../target/debug/libglaspen2.dylib');
   final skipReason = lib.existsSync() ? null : '先构建 cdylib:cargo build';
+  // dev 库对任何非 bundled 进程可见(db_path 的稳定路径), 写操作会真实
+  // 生效——exportPdf 曾往桌面写真 PDF(桌面莫名 PDF 的元凶之一)。
+  // 存在 dev 库时, 触碰真实数据的用例整组跳过。
+  final devDbExists = File(
+          '${Platform.environment['HOME']}/Library/Application Support/glaspen2/glaspen2-dev.db')
+      .existsSync();
 
   setUpAll(() async {
     if (skipReason != null) return;
@@ -61,7 +67,9 @@ void main() {
       await rust.canvasOverview(w: 1024, h: 768, action: rust.CanvasAction.home),
       isNull,
     );
-  }, skip: skipReason);
+  },
+      skip: skipReason ??
+          (devDbExists ? 'dev 库存在: 写操作会真实生效(桌面 PDF 元凶)' : null));
 
   test('备份/回导接口在无数据库时优雅返回(不 panic/不挂起)', () async {
     // 真正的备份/回导逻辑由 Rust 单测覆盖(见 db::tests::test_backup_then_restore_merge);
@@ -73,7 +81,9 @@ void main() {
     final restore = await rust.restoreLatestBackup();
     expect(restore.ok, isFalse);
     expect(restore.message, isNotEmpty);
-  }, skip: skipReason);
+  },
+      skip: skipReason ??
+          (devDbExists ? 'dev 库存在: 备份会真实写文件' : null));
 
   test('appVersion 往返(「检查更新」显示的当前版本)', () async {
     // 只测版本号这条无网络路径;真正打 GitHub 的部分由 Rust 侧

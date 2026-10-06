@@ -9,9 +9,10 @@ void main() {
     // 管道桥有常驻的连接重试/读取定时器,pumpAndSettle 不会结束,用固定 pump
     await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 1));
-    // 顶部三个模式 tab(设置 / 活页本 / 自由涂鸦)
+    // 顶部模式 tab: 设置/活页本恒在; 自由涂鸦由
+    // 「显示自由涂鸦画布」开关控制(默认关, 测试环境无设置加载 → 关)
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('活页本'), findsOneWidget);
-    expect(find.text('自由涂鸦'), findsOneWidget);
+    expect(find.text('自由涂鸦'), findsNothing);
   });
 }
