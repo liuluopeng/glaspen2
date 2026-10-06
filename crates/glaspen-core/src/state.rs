@@ -102,14 +102,13 @@ mod tests {
 
     #[test]
     fn test_screen_id_default() {
-        assert_eq!(current_screen_id(), 0);
-    }
-
-    #[test]
-    fn test_screen_id_set_and_get() {
+        // 不能假设进程初值 0 —— 同一二进制里建屏类 FFI 测试(lasso/paste/
+        // fuzz)会先改掉全局当前页, 测试并行执行顺序不保证。静态字面量
+        // `AtomicI64::new(0)` 保证初值; 这里只验证 set/get 契约。
         set_current_screen_id(42);
         assert_eq!(current_screen_id(), 42);
         set_current_screen_id(0); // reset for other tests
+        assert_eq!(current_screen_id(), 0);
     }
 
     #[test]
