@@ -478,10 +478,11 @@ pub extern "C" fn glaspen2_lasso_select(screen_id: i64, poly: *const c_char) -> 
         return CString::new("").unwrap_or_default().into_raw();
     };
     // 线格式 "x1,y1,x2,y2,...": 数值流两两成对(此前按对取, 全部滤空
-    // → 圈选恒返回"圈内没有笔迹")
+    // → 圈选恒返回"圈内没有笔迹")。is_finite: "nan"/"inf" 也能 parse 成功,
+    // 不拒会进几何运算(比较恒 false → 圈选静默失灵)。
     let vals: Vec<f64> = poly
         .split(',')
-        .filter_map(|t| t.trim().parse::<f64>().ok())
+        .filter_map(|t| t.trim().parse::<f64>().ok().filter(|v| v.is_finite()))
         .collect();
     let pts: Vec<(f64, f64)> = vals
         .chunks(2)
@@ -639,13 +640,20 @@ pub extern "C" fn glaspen2_paste_strokes(screen_id: i64, payload: *const c_char)
             None => continue,
         };
         let mut hc = head.split(',');
-        let cr: f64 = hc.next().unwrap_or("1").parse().unwrap_or(1.0);
-        let cg: f64 = hc.next().unwrap_or("0").parse().unwrap_or(0.0);
-        let cb: f64 = hc.next().unwrap_or("0").parse().unwrap_or(0.0);
+        // 颜色与坐标都拒非有限值: "nan"/"inf" parse 得成功, 写进 DB 会
+        // 污染渲染端(cairo 吃 NaN)。非法片段退默认色。
+        let fin = |v: Option<&str>, d: f64| -> f64 {
+            v.and_then(|s| s.trim().parse::<f64>().ok())
+                .filter(|v| v.is_finite())
+                .unwrap_or(d)
+        };
+        let cr: f64 = fin(hc.next(), 1.0);
+        let cg: f64 = fin(hc.next(), 0.0);
+        let cb: f64 = fin(hc.next(), 0.0);
         // body = "x,y,w,x,y,w,...": 数值流三个一组(此前按组取, 全部 break 空)
         let vals: Vec<f64> = body
             .split(',')
-            .filter_map(|t| t.trim().parse().ok())
+            .filter_map(|t| t.trim().parse::<f64>().ok().filter(|v| v.is_finite()))
             .collect();
         let mut pts = Vec::new();
         for c in vals.chunks(3) {
@@ -1016,5 +1024,182 @@ mod lasso_tests {
         let bytes2 = unsafe { Vec::from_raw_parts(ptr2, len2 as usize, len2 as usize) };
         let img2 = image::load_from_memory(&bytes2).unwrap();
         assert_eq!((img2.width(), img2.height()), (2200, 921));
+    }
+}
+
+/// FFI 载荷对抗测试(fuzz 风格语料): 所有外部字符串都必须不 panic、
+/// 不把非有限值写进 DB。正式模糊测试(cargo-fuzz, 需 nightly)未引入前,
+/// 这份语料在 CI 常跑 —— 语料来自真实事故形态: "nan" 能 parse 成功、
+/// 段缺失、超长、控制字符与全角混入。
+#[cfg(test)]
+mod fuzz_tests {
+    use super::*;
+
+    fn fresh_screen() -> i64 {
+        runtime().block_on(crate::db::new_screen(3440, 1440));
+        crate::state::current_screen_id()
+    }
+
+    fn paste(screen: i64, payload: &str) -> c_int {
+        let c = std::ffi::CString::new(payload).unwrap();
+        glaspen2_paste_strokes(screen, c.as_ptr())
+    }
+
+    /// paste 侧语料: 畸形/极端/非有限值。任何一条都不该 panic,
+    /// 也不该让 NaN/Inf 落库(渲染端吃 NaN 是未定义行为)。
+    const NASTY_PAYLOADS: &[&str] = &[
+        "",
+        " ",
+        ";",
+        "|",
+        ";;;",
+        "|||",
+        "|;",
+        ",",
+        ",,,,",
+        "a|b",
+        "中文|全角，分号；",
+        "1,0,0|",                              // 有头无体
+        "1,0,0|x,y",                           // 体全非法
+        "1,0,0|1,1,1",                         // 单点(<2 不成笔)
+        "nan,nan,nan|nan,nan,nan,nan,nan,nan", // 非有限颜色+坐标
+        "1,0,0|inf,-inf,nan,1e400,-1e400,5e-324",
+        "-1,2,3|-1e300,1e300,0,42,-42,1e-300", // 大数(有限, 允许)
+        ";;;1,0,0|0,0,1,1,1,1;;;",
+        "1,0,0|0,0,1,1,1,1;;坏段;;0,0,1|0,0,1,1,1,1",
+        "\u{1}\u{2}\u{7}|💥,🎉,🚀|０,１,２", // 控制字符 + emoji + 全角
+    ];
+
+    #[test]
+    fn paste_never_panics_and_never_writes_nonfinite() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        if !crate::db::is_init() {
+            let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            // SAFETY: 测试单线程初始化(TEST_LOCK 串行化), 无并发读
+            unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
+            runtime().block_on(crate::db::init());
+        }
+
+        // 5000 个空段 + 1 个合法段(拒绝服务面)在运行时拼接(const 不能调 repeat)
+        let dos_case = format!("{}1,0,0|0,0,1,1,1,1", ";".repeat(5000));
+        let mut payloads: Vec<&str> = NASTY_PAYLOADS.to_vec();
+        payloads.push(&dos_case);
+        for (i, p) in payloads.iter().enumerate() {
+            let screen = fresh_screen();
+            let _ = paste(screen, p); // 返回值随语义: 0 或成功笔数, 唯独不许 panic
+            let strokes = runtime().block_on(crate::db::strokes_for_screen(screen));
+            for s in &strokes {
+                assert!(
+                    s.r.is_finite() && s.g.is_finite() && s.b.is_finite(),
+                    "语料 #{i}({p:?}) 写入了非有限颜色"
+                );
+                for &(x, y, w, _) in &s.points {
+                    assert!(
+                        x.is_finite() && y.is_finite() && w.is_finite(),
+                        "语料 #{i}({p:?}) 写入了非有限坐标"
+                    );
+                }
+            }
+        }
+    }
+
+    /// 大载荷性能/正确性: 3 万点一次粘贴, 点数不丢。
+    #[test]
+    fn paste_huge_payload_ok() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        if !crate::db::is_init() {
+            let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            // SAFETY: 测试单线程初始化(TEST_LOCK 串行化), 无并发读
+            unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
+            runtime().block_on(crate::db::init());
+        }
+        let screen = fresh_screen();
+        let mut body = String::with_capacity(1 << 20);
+        for i in 0..30_000u32 {
+            body.push_str(&format!("{},{},1.5,", i % 3000, (i * 7) % 2000));
+        }
+        body.push_str("2999,1999,1.5");
+        let n = paste(screen, &format!("0.1,0.9,0.3|{body}"));
+        assert_eq!(n, 1, "3 万点应粘成 1 笔");
+        let strokes = runtime().block_on(crate::db::strokes_for_screen(screen));
+        assert_eq!(strokes[0].points.len(), 30_001);
+    }
+
+    /// lasso 侧语料: 退化多边形/非有限值/超大坐标 —— 不 panic, NaN 拒收。
+    #[test]
+    fn lasso_never_panics() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        if !crate::db::is_init() {
+            let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            // SAFETY: 测试单线程初始化(TEST_LOCK 串行化), 无并发读
+            unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
+            runtime().block_on(crate::db::init());
+        }
+        let screen = fresh_screen();
+        let cases = [
+            "",
+            "1",
+            "1,1",
+            "1,1,1,1,1,1,1,1",         // 8 个相同点(退化多边形)
+            "nan,nan,nan,nan,nan,nan", // 全 NaN → 过滤后 <3 点, 拒收
+            "1e300,1e300,2e300,1e300,1.5e300,3e300",
+            "0,0, 10,0 , 10,10, 0,10", // 带空格
+            "0,0,10,0,10,10,0,10,nan", // 尾部 NaN(过滤后仍 ≥3 点)
+        ];
+        for p in cases {
+            let c = std::ffi::CString::new(p).unwrap();
+            let out = glaspen2_lasso_select(screen, c.as_ptr());
+            assert!(!out.is_null(), "语料 {p:?} 返回了空指针");
+            let s = unsafe { std::ffi::CStr::from_ptr(out) }
+                .to_string_lossy()
+                .into_owned();
+            if p.contains("nan") && p.split(',').all(|t| t.trim() != "0") {
+                // 全 NaN 的语料过滤后不足 3 点 → 必须是空结果
+                let all_nan = p
+                    .split(',')
+                    .all(|t| t.trim().parse::<f64>().map(|v| v.is_nan()).unwrap_or(false));
+                if all_nan {
+                    assert!(s.is_empty(), "全 NaN 多边形应返回空, 实得 {s:?}");
+                }
+            }
+            unsafe { drop(std::ffi::CString::from_raw(out)) };
+        }
+    }
+
+    /// copy 侧 ids 语料: 垃圾 CSV 不 panic、不误选。
+    #[test]
+    fn copy_ids_garbage_csv() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        if !crate::db::is_init() {
+            let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            // SAFETY: 测试单线程初始化(TEST_LOCK 串行化), 无并发读
+            unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
+            runtime().block_on(crate::db::init());
+        }
+        let screen = fresh_screen();
+        let cases = [
+            "",
+            "abc",
+            "1,abc,999999999999999999999999", // i64 溢出项
+            "  -1  ,, -2 ",
+            "0x10,1e3",
+        ];
+        for ids in cases {
+            let c = std::ffi::CString::new(ids).unwrap();
+            let out = glaspen2_copy_strokes_payload(screen, c.as_ptr());
+            assert!(!out.is_null(), "ids {ids:?} 返回空指针");
+            let s = unsafe { std::ffi::CStr::from_ptr(out) }
+                .to_string_lossy()
+                .into_owned();
+            assert!(
+                s.is_empty(),
+                "空页面上 ids {ids:?} 不应选出任何载荷, 实得 {s:?}"
+            );
+            unsafe { drop(std::ffi::CString::from_raw(out)) };
+        }
     }
 }
