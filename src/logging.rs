@@ -71,9 +71,7 @@ pub fn init() {
 
 /// 构建按天滚动的文件 appender;失败返回 None(降级为只有 stderr)。
 /// 此时 subscriber 尚未初始化, 只能 eprintln(引导期特例)。
-fn build_appender(
-    dir: &std::path::Path,
-) -> Option<tracing_appender::rolling::RollingFileAppender> {
+fn build_appender(dir: &std::path::Path) -> Option<tracing_appender::rolling::RollingFileAppender> {
     if let Err(e) = std::fs::create_dir_all(dir) {
         eprintln!("日志目录创建失败({e}), 本次运行不落盘:{}", dir.display());
         return None;
@@ -184,7 +182,10 @@ mod tests {
         // 先铺 12 份"旧"报告(文件名字典序 = 时间序)
         for i in 0..12 {
             std::fs::write(
-                dir.join(format!("glaspen2-crash-glaspen2_2026-200_{:02}-00-00.log", i)),
+                dir.join(format!(
+                    "glaspen2-crash-glaspen2_2026-200_{:02}-00-00.log",
+                    i
+                )),
                 "old",
             )
             .unwrap();
@@ -203,22 +204,51 @@ mod tests {
         // 新写的这份(时间最新)必须还在;
         // 字典序最小的 3 份(200_00..200_02)应被清掉
         assert!(path.exists());
-        assert!(!dir.join("glaspen2-crash-glaspen2_2026-200_00-00-00.log").exists());
-        assert!(!dir.join("glaspen2-crash-glaspen2_2026-200_02-00-00.log").exists());
-        assert!(dir.join("glaspen2-crash-glaspen2_2026-200_03-00-00.log").exists());
+        assert!(
+            !dir.join("glaspen2-crash-glaspen2_2026-200_00-00-00.log")
+                .exists()
+        );
+        assert!(
+            !dir.join("glaspen2-crash-glaspen2_2026-200_02-00-00.log")
+                .exists()
+        );
+        assert!(
+            dir.join("glaspen2-crash-glaspen2_2026-200_03-00-00.log")
+                .exists()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn log_dir_env_override() {
-        // SAFETY: 测试串行依赖 TEST_LOCK 不在本 crate; 本测试是唯一动
-        // GLASPEN2_LOG_DIR 的测试, 与其他测试无共享状态竞争。
-        unsafe { std::env::set_var("GLASPEN2_LOG_DIR", "/tmp/glaspen2-logdir-test") };
-        assert_eq!(
-            log_dir(),
-            PathBuf::from("/tmp/glaspen2-logdir-test"),
-            "GLASPEN2_LOG_DIR 应覆盖默认目录"
+    fn init_writes_file_and_env_override_works() {
+        // 合成一个测试:env 覆盖与 init() 都动全局状态, 分开写会互相竞争。
+        let dir = std::env::temp_dir().join(format!("glaspen2_log_init_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // SAFETY: 本测试是唯一动 GLASPEN2_LOG_DIR、唯一调 init() 的测试。
+        unsafe { std::env::set_var("GLASPEN2_LOG_DIR", &dir) };
+        assert_eq!(log_dir(), dir, "GLASPEN2_LOG_DIR 应覆盖默认目录");
+
+        init();
+        tracing::info!("落盘冒烟: hello file layer");
+        tracing::warn!("落盘冒烟: warn level");
+        // 非阻塞写线程需要一点时间把队列刷进文件
+        std::thread::sleep(std::time::Duration::from_millis(300));
+
+        let files: Vec<PathBuf> = std::fs::read_dir(&dir)
+            .expect("日志目录应已创建")
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        assert!(!files.is_empty(), "应有按天滚动的日志文件");
+        let body = std::fs::read_to_string(&files[0]).unwrap();
+        assert!(
+            body.contains("hello file layer"),
+            "info 应写入文件: {body:?}"
         );
-        unsafe { std::env::remove_var("GLASPEN2_LOG_DIR") };
+        assert!(
+            body.contains("WARN"),
+            "文件层应有级别字段(无 ANSI): {body:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

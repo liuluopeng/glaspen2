@@ -37,12 +37,18 @@
 ## 日志(tracing, 全仓统一)
 
 - **Rust 侧一律 `tracing::info!/warn!/error!/debug!`**,别再写 eprintln/println
-  (ObjC 侧 NSLog 保留,不桥接)。输出走 stderr,格式 = 时间 级别 目标 消息
+  (ObjC 侧 NSLog 保留,不桥接)。输出走 stderr + **按天滚动文件层**
+  `~/Library/Logs/glaspen2/glaspen2.log.<日期>`(Windows 在
+  `%LOCALAPPDATA%/glaspen2/logs/`;Finder 启动看不到 stderr,文件是唯一现场,
+  见 src/logging.rs),格式 = 时间 级别 目标 消息
   (target = 模块路径,消息里不用再带 `[db]` `[pdf]` 这类前缀)
+- panic 崩溃自动写 `glaspen2-crash-*.log` 到同一目录(保留最近 10 份);
+  只覆盖 Rust panic,ObjC NSException/段错误走系统崩溃报告
 - 过滤优先级:`RUST_LOG`(标准 EnvFilter 语法,如 `RUST_LOG=glaspen_core=debug`)>
   `GLASPEN2_DB_LOG=1`(兼容旧开关,映射到 debug)>
   默认 `info` —— **db 的 CRUD 日志是 debug 级,默认静默**(反色模式下
-  日志滚进可见终端会自激送帧,见 dblog! 宏注释)
+  日志滚进可见终端会自激送帧,见 dblog! 宏注释);目录可用
+  `GLASPEN2_LOG_DIR` 覆盖(测试/排障)
 - subscriber 初始化在 `src/main.rs`(updater 子进程之前)
 
 ## 架构总览(当前状态)

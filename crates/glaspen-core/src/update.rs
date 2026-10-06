@@ -595,8 +595,8 @@ fn verify_staged_signature(staged: &std::path::Path) -> Result<(), String> {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let expected = std::env::var("GLASPEN2_EXPECT_SIGNER")
-        .unwrap_or_else(|_| EXPECTED_SIGNER.to_string());
+    let expected =
+        std::env::var("GLASPEN2_EXPECT_SIGNER").unwrap_or_else(|_| EXPECTED_SIGNER.to_string());
     let auths = signer_authorities(&text);
     if !auths.iter().any(|a| a.contains(&expected)) {
         let _ = std::fs::remove_dir_all(staged);
@@ -925,7 +925,10 @@ mod tests {
                            Identifier=com.glaspen2\n\
                            Authority=Glaspen2 Development\n\
                            Hash Type=sha256\n";
-        assert_eq!(signer_authorities(self_signed), vec!["Glaspen2 Development"]);
+        assert_eq!(
+            signer_authorities(self_signed),
+            vec!["Glaspen2 Development"]
+        );
 
         // Developer ID 证书链(将来公证后走这条): 两条 Authority 都要取到
         let dev_id = "Authority=Developer ID Application: liuluopeng (ABCDE12345)\n\
@@ -942,6 +945,9 @@ mod tests {
         assert!(signer_authorities("Authority=(unavailable)\n").is_empty());
 
         // 缩进/空格与空值容错
-        assert_eq!(signer_authorities("Authority=  X  \nAuthority=\n"), vec!["X"]);
+        assert_eq!(
+            signer_authorities("Authority=  X  \nAuthority=\n"),
+            vec!["X"]
+        );
     }
 }
