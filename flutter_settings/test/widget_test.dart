@@ -1,11 +1,18 @@
 // 应用构建冒烟测试:设置页能正常挂载(macOS 通道在本机不可用时走降级桥)。
+// i18n 后测试环境 locale 默认 en_US, 固定 zh 断言中文 tab 文案。
+import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:glaspen2_settings/main.dart';
 
 void main() {
   testWidgets('settings page builds', (WidgetTester tester) async {
-    await tester.pumpWidget(const GlaspenSettingsApp());
+    // 默认 800x600 测试视口经 macOS 1.4 缩放只剩 ~571 逻辑宽, 远窄于真实
+    // 窗口; 给冒烟测试一个桌面级表面, 排除与被测目标无关的溢出断言。
+    tester.view.physicalSize = const Size(1600, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(const GlaspenSettingsApp(locale: Locale('zh')));
     // 管道桥有常驻的连接重试/读取定时器,pumpAndSettle 不会结束,用固定 pump
     await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 1));

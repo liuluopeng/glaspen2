@@ -35,8 +35,8 @@ extension _NotebookUi on _SettingsPageState {
   Widget _buildNotebookGrid() {
     final notebooks = _notebooks;
     if (notebooks.isEmpty) {
-      return const Center(
-          child: Text('暂无页面', style: TextStyle(fontSize: 14, color: Colors.grey)));
+      return Center(
+          child: Text(AppLocalizations.of(context)!.noPagesYet, style: TextStyle(fontSize: 14, color: Colors.grey)));
     }
     const spacing = 10.0, targetW = 300.0, maxCardW = 360.0;
     return LayoutBuilder(builder: (context, box) {
@@ -100,7 +100,7 @@ extension _NotebookUi on _SettingsPageState {
                                 fontWeight: FontWeight.w700,
                                 color: Colors.white)),
                         const SizedBox(height: 2),
-                        Text('${pages.length} 页',
+                        Text(AppLocalizations.of(context)!.p1Pages(pages.length),
                             style: TextStyle(
                                 fontSize: (cardW * 0.042).clamp(10.0, 12.0),
                                 color: Colors.white.withValues(alpha: 0.85))),
@@ -173,7 +173,7 @@ extension _NotebookUi on _SettingsPageState {
     // (用户实测"在 -2 页粘贴的东西出现在 -1 页"的根因)。
     if (!mounted || gen != _detailGen) return;
     if (png == null || png.isEmpty) {
-      _toast('页面为空, 没有可编辑的内容');
+      _toast(AppLocalizations.of(context)!.pageIsEmptyNothing);
       return;
     }
     final codec = await ui.instantiateImageCodec(png);
@@ -244,10 +244,10 @@ extension _NotebookUi on _SettingsPageState {
       _lassoPts.clear();
     });
     if (ids.isEmpty) {
-      _toast('圈内没有笔迹');
+      _toast(AppLocalizations.of(context)!.noStrokesInsideThe);
       unawaited(_reloadDetailImage(_detailPageId!));
     } else {
-      _toast('已选 ${ids.length} 笔(蓝色高亮) · 拖拽移动 / 右键复制或删除');
+      _toast(AppLocalizations.of(context)!.p1StrokesSelectedBlue(ids.length));
       unawaited(_reloadDetailImage(_detailPageId!, highlight: ids));
     }
   }
@@ -280,7 +280,7 @@ extension _NotebookUi on _SettingsPageState {
       unawaited(_reloadDetailImage(pageId, highlight: _selectedStrokes));
     } else {
       setState(() => _dragStart = null);
-      _toast('移动失败');
+      _toast(AppLocalizations.of(context)!.moveFailed);
     }
   }
 
@@ -302,22 +302,22 @@ extension _NotebookUi on _SettingsPageState {
     final payload = await _bridge.copyStrokes(_detailPageId!, _selectedStrokes);
     if (!mounted) return;
     _clipPayload = payload;
-    _toast(payload.isEmpty ? '没有可复制的内容' : '已复制 ${_selectedStrokes.length} 笔');
+    _toast(payload.isEmpty ? AppLocalizations.of(context)!.nothingToCopy : AppLocalizations.of(context)!.copiedP1Strokes(_selectedStrokes.length));
   }
 
   Future<void> _pasteAt(Offset viewPos) async {
     if (_clipPayload.isEmpty || _detailPageId == null) {
-      _toast('剪贴板是空的');
+      _toast(AppLocalizations.of(context)!.clipboardIsEmpty);
       return;
     }
     final p = _viewToPage(viewPos);
     final n = await _bridge.pasteStrokes(_detailPageId!, _clipPayload, p.dx, p.dy);
     if (!mounted) return;
     if (n > 0) {
-      _toast('已粘贴 $n 笔');
+      _toast(AppLocalizations.of(context)!.pastedP1Strokes(n));
       unawaited(_reloadDetailImage(_detailPageId!));
     } else {
-      _toast('粘贴失败');
+      _toast(AppLocalizations.of(context)!.pasteFailed);
     }
   }
 
@@ -330,15 +330,15 @@ extension _NotebookUi on _SettingsPageState {
     if (ok) {
       setState(() => _selectedStrokes = []);
       unawaited(_reloadDetailImage(pageId));
-      _toast('已删除 ${ids.length} 笔');
+      _toast(AppLocalizations.of(context)!.deletedP1Strokes(ids.length));
     } else {
-      _toast('删除失败');
+      _toast(AppLocalizations.of(context)!.deleteFailed);
     }
   }
 
   Future<void> _undoLastMove() async {
     if (_undoMoves.isEmpty) {
-      _toast('没有可撤销的移动');
+      _toast(AppLocalizations.of(context)!.nothingToUndo);
       return;
     }
     final (pageId, ids, dx, dy) = _undoMoves.removeLast();
@@ -377,28 +377,28 @@ extension _NotebookUi on _SettingsPageState {
       ),
       items: [
         if (sel)
-          const PopupMenuItem(
+          PopupMenuItem(
               value: 'copy', height: 36,
               child: Row(children: [
                 Icon(Icons.copy, size: 16),
                 SizedBox(width: 8),
-                Text('复制所选', style: TextStyle(fontSize: 13)),
+                Text(AppLocalizations.of(context)!.copySelection, style: TextStyle(fontSize: 13)),
               ])),
         if (_clipPayload.isNotEmpty)
-          const PopupMenuItem(
+          PopupMenuItem(
               value: 'paste', height: 36,
               child: Row(children: [
                 Icon(Icons.paste, size: 16),
                 SizedBox(width: 8),
-                Text('粘贴到这里', style: TextStyle(fontSize: 13)),
+                Text(AppLocalizations.of(context)!.pasteHere, style: TextStyle(fontSize: 13)),
               ])),
         if (sel)
-          const PopupMenuItem(
+          PopupMenuItem(
               value: 'delete', height: 36,
               child: Row(children: [
                 Icon(Icons.delete_outline, size: 16, color: Colors.red),
                 SizedBox(width: 8),
-                Text('删除所选', style: TextStyle(fontSize: 13)),
+                Text(AppLocalizations.of(context)!.deleteSelection, style: TextStyle(fontSize: 13)),
               ])),
       ],
     ).then((v) {
@@ -420,34 +420,34 @@ extension _NotebookUi on _SettingsPageState {
             TextButton.icon(
               onPressed: _closePageDetail,
               icon: const Icon(Icons.arrow_back, size: 16),
-              label: const Text('本子', style: TextStyle(fontSize: 13)),
+              label: Text(AppLocalizations.of(context)!.notebooks, style: TextStyle(fontSize: 13)),
             ),
             const SizedBox(width: 8),
-            Text('第 $_detailPageId 页 · ${_selectedStrokes.length} 笔已选',
+            Text(AppLocalizations.of(context)!.pageP1P2Strokes(_detailPageId ?? 0, _selectedStrokes.length),
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
             const Spacer(),
             TextButton.icon(
               onPressed: _copySelection,
               icon: const Icon(Icons.copy, size: 16),
-              label: const Text('复制', style: TextStyle(fontSize: 13)),
+              label: Text(AppLocalizations.of(context)!.copy, style: TextStyle(fontSize: 13)),
             ),
             TextButton.icon(
               onPressed: _deleteSelection,
               icon: const Icon(Icons.delete_outline, size: 16),
-              label: const Text('删除所选', style: TextStyle(fontSize: 13)),
+              label: Text(AppLocalizations.of(context)!.deleteSelection, style: TextStyle(fontSize: 13)),
             ),
             TextButton.icon(
               onPressed: _undoLastMove,
               icon: const Icon(Icons.undo, size: 16),
-              label: const Text('撤销移动', style: TextStyle(fontSize: 13)),
+              label: Text(AppLocalizations.of(context)!.undoMove, style: TextStyle(fontSize: 13)),
             ),
           ]),
         ),
-        const Padding(
+        Padding(
           padding: EdgeInsets.symmetric(horizontal: 12),
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Text('左键拖圈 = 选择 · 拖拽已选 = 移动 · 右键 = 复制/粘贴 · 点空白 = 取消选择',
+            child: Text(AppLocalizations.of(context)!.dragLassoSelectDrag,
                 style: TextStyle(fontSize: 11, color: Colors.grey)),
           ),
         ),
@@ -530,15 +530,15 @@ extension _NotebookUi on _SettingsPageState {
                   _applyPageList();
                 }),
                 icon: const Icon(Icons.arrow_back, size: 16),
-                label: const Text('本子', style: TextStyle(fontSize: 13)),
+                label: Text(AppLocalizations.of(context)!.notebooks, style: TextStyle(fontSize: 13)),
               ),
               const SizedBox(width: 4),
               if (_searchMode) ...[
-                Text('搜索 “$_searchText”',
+                Text(AppLocalizations.of(context)!.searchP1(_searchText),
                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                 const SizedBox(width: 6),
                 IconButton(
-                  tooltip: '清除搜索',
+                  tooltip: AppLocalizations.of(context)!.clearSearch,
                   onPressed: _clearSearch,
                   icon: const Icon(Icons.close, size: 16),
                 ),
@@ -548,7 +548,7 @@ extension _NotebookUi on _SettingsPageState {
                         fontSize: 14, fontWeight: FontWeight.w600)),
                 const SizedBox(width: 8),
               ],
-              Text('${_filteredPages.length} 页',
+              Text(AppLocalizations.of(context)!.p1Pages(_filteredPages.length),
                   style: const TextStyle(fontSize: 12, color: _inkFaint)),
               const Spacer(),
               if (_searchFieldVisible)
@@ -558,8 +558,8 @@ extension _NotebookUi on _SettingsPageState {
                   child: TextField(
                     autofocus: true,
                     style: const TextStyle(fontSize: 13),
-                    decoration: const InputDecoration(
-                      hintText: '搜索页内文字(OCR)',
+                    decoration: InputDecoration(
+                      hintText: AppLocalizations.of(context)!.searchTextInPages,
                       isDense: true,
                       contentPadding:
                           EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -570,7 +570,7 @@ extension _NotebookUi on _SettingsPageState {
                 )
               else
                 IconButton(
-                  tooltip: 'OCR 搜索',
+                  tooltip: AppLocalizations.of(context)!.ocrSearch,
                   onPressed: () => setState(() => _searchFieldVisible = true),
                   icon: const Icon(Icons.search, size: 18),
                 ),
@@ -582,8 +582,8 @@ extension _NotebookUi on _SettingsPageState {
               ? Center(
                   child: Text(
                       _searchMode
-                          ? '没有匹配的页(该文字未被 OCR 识别?)'
-                          : '本子是空的',
+                          ? AppLocalizations.of(context)!.noMatchingPagesWas
+                          : AppLocalizations.of(context)!.theShelfIsEmpty,
                       style:
                           const TextStyle(fontSize: 14, color: Colors.grey)))
               : Stack(children: [
@@ -701,7 +701,7 @@ extension _NotebookUi on _SettingsPageState {
       setState(() {
         _filteredPages = List<PageInfo>.from(_dragOrderBackup);
       });
-      _toast('移动失败, 已还原');
+      _toast(AppLocalizations.of(context)!.moveFailedReverted);
     }
   }
 
@@ -712,7 +712,7 @@ extension _NotebookUi on _SettingsPageState {
     const faint = TextStyle(fontSize: 12, color: _inkFaint);
     if (!_multiSelect) {
       return Row(children: [
-        Text('${_filteredPages.length} 页', style: faint),
+        Text(AppLocalizations.of(context)!.p1Pages(_filteredPages.length), style: faint),
         const Spacer(),
         TextButton.icon(
           onPressed: () => setState(() {
@@ -720,12 +720,12 @@ extension _NotebookUi on _SettingsPageState {
             _selectedPageIds.clear();
           }),
           icon: const Icon(Icons.checklist, size: 16),
-          label: const Text('多选', style: TextStyle(fontSize: 13)),
+          label: Text(AppLocalizations.of(context)!.multiSelect, style: TextStyle(fontSize: 13)),
         ),
       ]);
     }
     return Row(children: [
-      Text('已选 ${_selectedPageIds.length} 页', style: faint),
+      Text(AppLocalizations.of(context)!.p1PagesSelected(_selectedPageIds.length), style: faint),
       const Spacer(),
       TextButton.icon(
         onPressed: (_batchDeleting || _selectedPageIds.isEmpty) ? null : () async {
@@ -733,7 +733,7 @@ extension _NotebookUi on _SettingsPageState {
           try {
             final ok = await _bridge.exportSelectedPdf(_selectedPageIds.toList());
             if (mounted) {
-              _toast(ok ? '已导出 ${_selectedPageIds.length} 页 PDF 到桌面' : '导出失败');
+              _toast(ok ? AppLocalizations.of(context)!.exportedP1PagesAs(_selectedPageIds.length) : AppLocalizations.of(context)!.exportFailed);
             }
           } finally {
             if (mounted) setState(() => _batchDeleting = false);
@@ -741,7 +741,7 @@ extension _NotebookUi on _SettingsPageState {
         },
         style: TextButton.styleFrom(foregroundColor: _ink),
         icon: const Icon(Icons.picture_as_pdf, size: 16),
-        label: const Text('导出 PDF', style: TextStyle(fontSize: 13)),
+        label: Text(AppLocalizations.of(context)!.exportPdf, style: TextStyle(fontSize: 13)),
       ),
       TextButton(
         onPressed: () => setState(() {
@@ -752,12 +752,12 @@ extension _NotebookUi on _SettingsPageState {
           }
         }),
         child: Text(_selectedPageIds.length == _filteredPages.length && _filteredPages.isNotEmpty
-            ? '取消全选' : '全选', style: const TextStyle(fontSize: 13)),
+            ? AppLocalizations.of(context)!.deselectAll : AppLocalizations.of(context)!.selectAll, style: TextStyle(fontSize: 13)),
       ),
       TextButton(
         onPressed: (_batchDeleting || _selectedPageIds.isEmpty) ? null : _confirmBatchDelete,
         style: TextButton.styleFrom(foregroundColor: Colors.red),
-        child: Text(_batchDeleting ? '删除中…' : '删除所选(${_selectedPageIds.length})',
+        child: Text(_batchDeleting ? AppLocalizations.of(context)!.deleting : AppLocalizations.of(context)!.deleteSelectedP1(_selectedPageIds.length),
             style: const TextStyle(fontSize: 13)),
       ),
       TextButton(
@@ -765,7 +765,7 @@ extension _NotebookUi on _SettingsPageState {
           _multiSelect = false;
           _selectedPageIds.clear();
         }),
-        child: const Text('取消', style: TextStyle(fontSize: 13)),
+        child: Text(AppLocalizations.of(context)!.cancel, style: TextStyle(fontSize: 13)),
       ),
     ]);
   }
@@ -777,14 +777,14 @@ extension _NotebookUi on _SettingsPageState {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('批量删除'),
-        content: Text('确定删除所选 ${ids.length} 页及其所有笔迹吗?'),
+        title: Text(AppLocalizations.of(context)!.batchDelete),
+        content: Text(AppLocalizations.of(context)!.deleteTheP1Selected(ids.length)),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(AppLocalizations.of(context)!.cancel)),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: Text('删除 $ids.length 页'.replaceFirst(r'$ids.length', '${ids.length}')),
+            child: Text(AppLocalizations.of(context)!.deleteP1Pages(ids.length))
           ),
         ],
       ),
@@ -811,7 +811,7 @@ extension _NotebookUi on _SettingsPageState {
       _batchDeleting = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已删除 $ok 页'), duration: const Duration(seconds: 2)),
+      SnackBar(content: Text(AppLocalizations.of(context)!.deletedP1Pages(ok)), duration: Duration(seconds: 2)),
     );
     unawaited(_loadPages()); // 重载列表,页码/缩略图与服务端状态对齐
   }
@@ -890,7 +890,7 @@ extension _NotebookUi on _SettingsPageState {
           // Page info
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 6, 4, 6),
-            child: Text('页面 ${page.id}',
+            child: Text(AppLocalizations.of(context)!.pageP1(page.id),
                 style: const TextStyle(
                     fontWeight: FontWeight.bold, fontSize: 13)),
           ),
@@ -925,60 +925,64 @@ extension _NotebookUi on _SettingsPageState {
                   overlay.size.height - details.globalPosition.dy,
                 ),
                 items: [
-                  const PopupMenuItem(
+                  PopupMenuItem(
                       value: 'detail', height: 36,
                       child: Row(children: [
                         Icon(Icons.draw_outlined, size: 16),
                         SizedBox(width: 8),
-                        Text('编辑内容(圈选/移动/复制)', style: TextStyle(fontSize: 13)),
+                        Text(AppLocalizations.of(context)!.editContentLassoMove, style: TextStyle(fontSize: 13)),
                       ])),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                       value: 'png', height: 36,
                       child: Row(children: [
                         Icon(Icons.image_outlined, size: 16),
                         SizedBox(width: 8),
-                        Text('导出此页 PNG', style: TextStyle(fontSize: 13)),
+                        Text(AppLocalizations.of(context)!.exportThisPageAs, style: TextStyle(fontSize: 13)),
                       ])),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                       value: 'svg', height: 36,
                       child: Row(children: [
                         Icon(Icons.polyline_outlined, size: 16),
                         SizedBox(width: 8),
-                        Text('导出此页 SVG', style: TextStyle(fontSize: 13)),
+                        Text(AppLocalizations.of(context)!.exportThisPageAs2, style: TextStyle(fontSize: 13)),
                       ])),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                       value: 'info', height: 36,
                       child: Row(children: [
                         Icon(Icons.info_outline, size: 16),
                         SizedBox(width: 8),
-                        Text('复制页信息', style: TextStyle(fontSize: 13)),
+                        Text(AppLocalizations.of(context)!.copyPageInfo, style: TextStyle(fontSize: 13)),
                       ])),
                   const PopupMenuDivider(),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                       value: 'delete', height: 36,
                       child: Row(children: [
                         Icon(Icons.delete_outline, size: 16, color: Colors.red),
                         SizedBox(width: 8),
-                        Text('删除此页面', style: TextStyle(fontSize: 13)),
+                        Text(AppLocalizations.of(context)!.deleteThisPage, style: TextStyle(fontSize: 13)),
                       ])),
                 ],
               ).then((v) async {
+                if (!mounted) return;
                 if (v == 'detail') {
                   await _openPageDetail(page.id);
                 } else if (v == 'delete') {
                   _confirmDeletePage(page);
                 } else if (v == 'png') {
+                  final l = AppLocalizations.of(context)!;
                   final ok = await _bridge.exportPagePng(page.id);
-                  _toast(ok ? '已导出 PNG 到桌面' : '导出失败(页为空?)');
+                  _toast(ok ? l.pngExportedToDesktop : l.exportFailedEmptyPage);
                 } else if (v == 'svg') {
+                  final l = AppLocalizations.of(context)!;
                   final ok = await _bridge.exportPageSvg(page.id);
-                  _toast(ok ? '已导出 SVG 到桌面' : '导出失败(页为空?)');
+                  _toast(ok ? l.svgExportedToDesktop : l.exportFailedEmptyPage);
                 } else if (v == 'info') {
+                  final l = AppLocalizations.of(context)!;
                   final t = DateTime.fromMillisecondsSinceEpoch(page.id * 1000);
                   Clipboard.setData(ClipboardData(text:
-                      '页 ${page.id}\n尺寸 ${page.w}×${page.h}\n笔迹 ${page.strokeCount}\n'
-                      '创建 ${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}'));
-                  _toast('页信息已复制');
+                      l.pageP1SizeP2(page.id, page.w, page.h, page.strokeCount) +
+                      l.createdP1('${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}')));
+                  _toast(AppLocalizations.of(context)!.pageInfoCopied);
                 }
               });
             },
@@ -1134,7 +1138,7 @@ extension _NotebookUi on _SettingsPageState {
                         fontWeight: FontWeight.w700,
                         color: Colors.black87)),
                 const SizedBox(height: 4),
-                Text('$pageCount 页',
+                Text(AppLocalizations.of(context)!.p1Pages(pageCount),
                     style: TextStyle(
                         fontSize: (cardW * 0.05).clamp(12.0, 15.0),
                         color: Colors.black54)),
@@ -1157,17 +1161,17 @@ extension _NotebookUi on _SettingsPageState {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除页面'),
-        content: Text('确定删除页面 ${page.id} 及其所有笔迹吗？'),
+        title: Text(AppLocalizations.of(context)!.deletePage),
+        content: Text(AppLocalizations.of(context)!.deletePageP1And(page.id)),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text(AppLocalizations.of(context)!.cancel)),
           TextButton(
             onPressed: () {
               Navigator.of(ctx).pop();
               _deletePage(page);
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('删除'),
+            child: Text(AppLocalizations.of(context)!.delete),
           ),
         ],
       ),
@@ -1185,14 +1189,14 @@ extension _NotebookUi on _SettingsPageState {
           setState(() {});
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('删除失败'), duration: Duration(seconds: 2)),
+            SnackBar(content: Text(AppLocalizations.of(context)!.deleteFailed), duration: Duration(seconds: 2)),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('删除失败: $e')),
+          SnackBar(content: Text(AppLocalizations.of(context)!.deleteFailedP1(e))),
         );
       }
     }

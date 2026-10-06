@@ -115,10 +115,10 @@ extension _SettingsStateUi on _SettingsPageState {
       setState(() {
         _chatHasPassword = _chatHasPassword || _chatPassword.text.isNotEmpty;
         _chatLoginMsg =
-            err.isEmpty ? '登录成功,手写消息将携带身份' : '登录失败:$err';
+            err.isEmpty ? AppLocalizations.of(context)!.signedInHandwrittenMessages : AppLocalizations.of(context)!.signInFailedP1(err);
       });
     } catch (e) {
-      if (mounted) setState(() => _chatLoginMsg = '登录失败:$e');
+      if (mounted) setState(() => _chatLoginMsg = AppLocalizations.of(context)!.signInFailedP1(e));
     } finally {
       if (mounted) setState(() => _chatLoginBusy = false);
     }
@@ -128,9 +128,9 @@ extension _SettingsStateUi on _SettingsPageState {
     const faint12 = TextStyle(fontSize: 12, color: _inkFaint);
     // 总开关:关 = 只剩开关本身;⌘⌃2/⌘⌃3 直通,不显登录与共享。
     final master = _tile(SwitchListTile(
-      title: const Text('启用手写消息与共享',
+      title: Text(AppLocalizations.of(context)!.enableHandwrittenMessagesSharing,
           style: TextStyle(fontSize: 14)),
-      subtitle: const Text('关闭时不占用 ⌘⌃2/⌘⌃3,涂鸦功能不受影响',
+      subtitle: Text(AppLocalizations.of(context)!.whenOff23,
           style: TextStyle(fontSize: 12)),
       value: _chatIntegration,
       dense: true,
@@ -154,21 +154,21 @@ extension _SettingsStateUi on _SettingsPageState {
         );
     final Widget status;
     if (_chatLoginBusy) {
-      status = const Row(children: [
+      status = Row(children: [
         SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
         SizedBox(width: 8),
-        Text('正在登录…', style: faint),
+        Text(AppLocalizations.of(context)!.signingIn, style: faint),
       ]);
     } else if (_chatLoginMsg.isNotEmpty) {
-      final ok = _chatLoginMsg.startsWith('登录成功');
+      final ok = _chatLoginMsg.startsWith(AppLocalizations.of(context)!.signedIn);
       status = Text(_chatLoginMsg,
           style: TextStyle(
               fontSize: 12.5, color: ok ? const Color(0xFF00B16E) : _penRed));
     } else if (_chatHasPassword) {
-      status = const Text('已配置账号(⌘⌃2/⌘⌃3 手写消息将携带身份)',
+      status = Text(AppLocalizations.of(context)!.accountConfigured23,
           style: faint);
     } else {
-      status = const Text('未配置:手写消息功能仍可用,只是发送时不带身份',
+      status = Text(AppLocalizations.of(context)!.notConfiguredMessagingStill,
           style: faint);
     }
     return Column(
@@ -178,7 +178,7 @@ extension _SettingsStateUi on _SettingsPageState {
         const SizedBox(height: 4),
         TextField(
           controller: _chatApiBase,
-          decoration: deco('服务地址', '例如 https://192.168.31.58:23001'),
+          decoration: deco(AppLocalizations.of(context)!.serverAddress, AppLocalizations.of(context)!.eGHttps192),
           style: const TextStyle(fontSize: 13),
           autocorrect: false,
           keyboardType: TextInputType.url,
@@ -187,7 +187,7 @@ extension _SettingsStateUi on _SettingsPageState {
         const SizedBox(height: 8),
         TextField(
           controller: _chatUser,
-          decoration: deco('用户名', ''),
+          decoration: deco(AppLocalizations.of(context)!.username, ''),
           style: const TextStyle(fontSize: 13),
           autocorrect: false,
           onSubmitted: (_) => _testChatLogin(),
@@ -196,7 +196,7 @@ extension _SettingsStateUi on _SettingsPageState {
         TextField(
           controller: _chatPassword,
           obscureText: true,
-          decoration: deco('密码', _chatHasPassword ? '已保存(留空保持不变)' : ''),
+          decoration: deco(AppLocalizations.of(context)!.password, _chatHasPassword ? AppLocalizations.of(context)!.savedLeaveBlankTo : ''),
           style: const TextStyle(fontSize: 13),
           onSubmitted: (_) => _testChatLogin(),
         ),
@@ -204,14 +204,14 @@ extension _SettingsStateUi on _SettingsPageState {
         Row(children: [
           OutlinedButton(
             onPressed: _chatLoginBusy ? null : _testChatLogin,
-            child: const Text('保存并测试登录', style: TextStyle(fontSize: 13)),
+            child: Text(AppLocalizations.of(context)!.saveTestSignIn, style: TextStyle(fontSize: 13)),
           ),
           const SizedBox(width: 12),
           Expanded(child: status),
         ]),
         const SizedBox(height: 6),
-        const Text(
-          '用于 ⌘⌃2 手写草稿 / ⌘⌃3 直发的作者归属;涂鸦本身不依赖登录。',
+        Text(
+          AppLocalizations.of(context)!.authorAttributionFor2,
           style: faint12,
         ),
       ],

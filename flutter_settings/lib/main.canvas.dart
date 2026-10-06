@@ -92,8 +92,8 @@ extension _CanvasTabUi on _SettingsPageState {
     final body = _canvasLoading
         ? const Center(child: CircularProgressIndicator())
         : (_canvasPng == null
-            ? const Center(
-                child: Text('空画布,先去涂鸦吧', style: TextStyle(fontSize: 14, color: Colors.grey)))
+            ? Center(
+                child: Text(AppLocalizations.of(context)!.canvasIsEmptyGo, style: TextStyle(fontSize: 14, color: Colors.grey)))
             : InteractiveViewer(
                 maxScale: 8,
                 child: Center(
@@ -129,32 +129,32 @@ extension _CanvasTabUi on _SettingsPageState {
               OutlinedButton.icon(
                 onPressed: _canvasLoading ? null : () => _canvasAction('home'),
                 icon: const Icon(Icons.home_outlined, size: 18),
-                label: const Text('回到原点', style: TextStyle(fontSize: 13)),
+                label: Text(AppLocalizations.of(context)!.backToOrigin, style: TextStyle(fontSize: 13)),
               ),
               OutlinedButton.icon(
                 onPressed: _canvasLoading ? null : () => _canvasAction('center'),
                 icon: const Icon(Icons.center_focus_strong, size: 18),
-                label: const Text('居中内容', style: TextStyle(fontSize: 13)),
+                label: Text(AppLocalizations.of(context)!.centerContent, style: TextStyle(fontSize: 13)),
               ),
               if (_infiniteCanvas)
                 OutlinedButton.icon(
                   onPressed: _canvasLoading ? null : () => _canvasAction('new'),
                   icon: const Icon(Icons.note_add_outlined, size: 18),
-                  label: const Text('新建画布', style: TextStyle(fontSize: 13)),
+                  label: Text(AppLocalizations.of(context)!.newCanvas, style: TextStyle(fontSize: 13)),
                 ),
               OutlinedButton.icon(
                 onPressed: _canvasLoading ? null : () => _loadCanvasOverview(),
                 icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('刷新', style: TextStyle(fontSize: 13)),
+                label: Text(AppLocalizations.of(context)!.refresh, style: TextStyle(fontSize: 13)),
               ),
             ],
           ),
         ),
         const Divider(height: 1),
         Expanded(child: body),
-        const Padding(
+        Padding(
           padding: EdgeInsets.all(6),
-          child: Text('红框 = 主屏当前视口 · 涂鸦后点刷新', style: TextStyle(fontSize: 11, color: Colors.grey)),
+          child: Text(AppLocalizations.of(context)!.redBoxCurrentMain, style: TextStyle(fontSize: 11, color: Colors.grey)),
         ),
       ],
     );

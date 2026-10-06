@@ -29,10 +29,11 @@ extension _UpdateUi on _SettingsPageState {
     });
     Map<dynamic, dynamic> result;
     try {
+      final l = AppLocalizations.of(context)!;
       result = await _bridge.checkUpdate();
       // 空 map = 管道没连上(Windows),或对端没实现该消息
       if (result.isEmpty) {
-        result = {'ok': false, 'error': '未连接到主程序'};
+        result = {'ok': false, 'error': l.notConnectedToThe};
       }
     } catch (e) {
       result = {'ok': false, 'error': '$e'};
@@ -53,7 +54,7 @@ extension _UpdateUi on _SettingsPageState {
     final res = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('更新到 $tag ?'),
+        title: Text(AppLocalizations.of(context)!.updateToP1(tag)),
         content: SizedBox(
           width: 440,
           child: SingleChildScrollView(
@@ -61,13 +62,13 @@ extension _UpdateUi on _SettingsPageState {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  '将下载新版安装包、退出并自动重启玻璃涂鸦。\n笔迹已实时存盘,不会丢失。',
+                Text(
+                  AppLocalizations.of(context)!.downloadsTheNewPackage,
                   style: TextStyle(fontSize: 13),
                 ),
                 if (notes.isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  const Text('更新内容:',
+                  Text(AppLocalizations.of(context)!.whatSNew,
                       style: TextStyle(
                           fontSize: 13, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 6),
@@ -82,10 +83,10 @@ extension _UpdateUi on _SettingsPageState {
         actions: [
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('取消')),
+              child: Text(AppLocalizations.of(context)!.cancel)),
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('下载并更新')),
+              child: Text(AppLocalizations.of(context)!.downloadUpdate)),
         ],
       ),
     );
@@ -110,7 +111,7 @@ extension _UpdateUi on _SettingsPageState {
         if (!mounted) return;
         setState(() {
           _upd = _UpdPhase.failed;
-          _updError = '下载失败:$e';
+          _updError = AppLocalizations.of(context)!.downloadFailedP1(e);
         });
       },
       onDone: () => _updSub = null,
@@ -127,7 +128,7 @@ extension _UpdateUi on _SettingsPageState {
       });
       return;
     }
-    _updSub?.cancel();
+    _updSub?.cancel;
     _updSub = null;
     final err = (f['error'] as String?) ?? '';
     if (err.isNotEmpty) {
@@ -151,14 +152,14 @@ extension _UpdateUi on _SettingsPageState {
           _upd = _UpdPhase.ready;
         } else {
           _upd = _UpdPhase.failed;
-          _updError = (s['message'] as String?) ?? '解包失败';
+          _updError = (s['message'] as String?) ?? AppLocalizations.of(context)!.unpackFailed;
         }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _upd = _UpdPhase.failed;
-        _updError = '解包失败:$e';
+        _updError = AppLocalizations.of(context)!.unpackFailedP1(e);
       });
     }
   }
@@ -172,20 +173,20 @@ extension _UpdateUi on _SettingsPageState {
       if (!mounted) return;
       setState(() {
         _upd = _UpdPhase.failed;
-        _updError = (a['message'] as String?) ?? '退出更新失败';
+        _updError = (a['message'] as String?) ?? AppLocalizations.of(context)!.quitForUpdateFailed;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _upd = _UpdPhase.failed;
-        _updError = '退出更新失败:$e';
+        _updError = AppLocalizations.of(context)!.quitForUpdateFailed2(e);
       });
     }
   }
 
   /// 取消下载(解包后的 ready 状态不给取消 —— 文件已就绪,重启才生效)。
   void _cancelUpdate() {
-    _updSub?.cancel();
+    _updSub?.cancel;
     _updSub = null;
     setState(() => _upd = _UpdPhase.idle);
   }
@@ -202,14 +203,14 @@ extension _UpdateUi on _SettingsPageState {
             Expanded(
               child: Text(
                 _updTotal > 0
-                    ? '下载中 ${_fmtMb(_updReceived)} / ${_fmtMb(_updTotal)}'
-                    : '下载中…',
+                    ? AppLocalizations.of(context)!.downloadingP1P2(_fmtMb(_updReceived), _fmtMb(_updTotal))
+                    : AppLocalizations.of(context)!.downloading,
                 style: faint,
               ),
             ),
             TextButton(
                 onPressed: _cancelUpdate,
-                child: const Text('取消',
+                child: Text(AppLocalizations.of(context)!.cancel,
                     style: TextStyle(fontSize: 13))),
           ]),
         ]);
@@ -219,16 +220,16 @@ extension _UpdateUi on _SettingsPageState {
               width: 14, height: 14,
               child: CircularProgressIndicator(strokeWidth: 2)),
           const SizedBox(width: 8),
-          Text('下载完成,正在解包校验…', style: faint),
+          Text(AppLocalizations.of(context)!.downloadedUnpackingVerifying, style: faint),
         ]);
       case _UpdPhase.ready:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('已下载并解包完成。重启后生效。',
+          Text(AppLocalizations.of(context)!.downloadedAndUnpackedTakes,
               style: TextStyle(fontSize: 13, color: _ink)),
           const SizedBox(height: 8),
           OutlinedButton(
             onPressed: _applyUpdate,
-            child: const Text('立即重启更新'),
+            child: Text(AppLocalizations.of(context)!.restartToUpdate),
           ),
         ]);
       case _UpdPhase.applying:
@@ -237,16 +238,16 @@ extension _UpdateUi on _SettingsPageState {
               width: 14, height: 14,
               child: CircularProgressIndicator(strokeWidth: 2)),
           const SizedBox(width: 8),
-          Text('正在退出并重启…', style: faint),
+          Text(AppLocalizations.of(context)!.quittingAndRestarting, style: faint),
         ]);
       case _UpdPhase.failed:
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('更新失败:$_updError',
+          Text(AppLocalizations.of(context)!.updateFailedP1(_updError),
               style: const TextStyle(fontSize: 13, color: _penRed)),
           const SizedBox(height: 8),
           OutlinedButton(
             onPressed: () => setState(() => _upd = _UpdPhase.idle),
-            child: const Text('重试'),
+            child: Text(AppLocalizations.of(context)!.retry),
           ),
         ]);
       case _UpdPhase.idle:
@@ -266,25 +267,25 @@ extension _UpdateUi on _SettingsPageState {
         const SizedBox(
             width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
         const SizedBox(width: 8),
-        const Text('正在检查…', style: faint),
+        Text(AppLocalizations.of(context)!.checking, style: faint),
       ]);
     } else if (_updateResult != null) {
       final r = _updateResult!;
       if (r['ok'] == true && r['hasUpdate'] == true) {
         final url = (r['url'] as String?) ?? '';
         status = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('发现新版本 ${r['latest']}',
+          Text(AppLocalizations.of(context)!.newVersionFoundP1(r['latest']),
               style: const TextStyle(
                   fontSize: 14, fontWeight: FontWeight.bold, color: _penRed)),
           const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 6, children: [
             OutlinedButton(
               onPressed: _startUpdate,
-              child: const Text('立即更新'),
+              child: Text(AppLocalizations.of(context)!.updateNow),
             ),
             OutlinedButton.icon(
               icon: const Icon(Icons.open_in_new, size: 15),
-              label: const Text('打开下载页'),
+              label: Text(AppLocalizations.of(context)!.openDownloadPage),
               onPressed: () async {
                 try {
                   await _bridge.openUrl(url.isEmpty ? _releasesPage : url);
@@ -296,19 +297,19 @@ extension _UpdateUi on _SettingsPageState {
           ]),
         ]);
       } else if (r['ok'] == true) {
-        status = Text('已是最新版本 (v${r['current']})', style: faint);
+        status = Text(AppLocalizations.of(context)!.alreadyUpToDate(r['current']), style: faint);
       } else {
-        status = Text('检查失败:${r['error'] ?? '未知错误'}',
+            status = Text(AppLocalizations.of(context)!.checkFailedP1(r['error'] ?? AppLocalizations.of(context)!.unknownError),
             style: const TextStyle(fontSize: 13, color: _penRed));
       }
     } else {
-      status = const Text('点一下向 GitHub 查询最新正式版(需联网)',
+      status = Text(AppLocalizations.of(context)!.tapToQueryThe,
           style: TextStyle(fontSize: 12, color: _inkFaint));
     }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        const Text('当前版本', style: TextStyle(fontSize: 14, color: _ink)),
+        Text(AppLocalizations.of(context)!.currentVersion, style: TextStyle(fontSize: 14, color: _ink)),
         const Spacer(),
         Text(_appVersion == null ? '—' : 'v$_appVersion',
             style: faint.copyWith(fontSize: 14)),
@@ -316,7 +317,7 @@ extension _UpdateUi on _SettingsPageState {
       const SizedBox(height: 10),
       OutlinedButton(
         onPressed: _checkingUpdate ? null : _checkUpdate,
-        child: const Text('检查更新'),
+        child: Text(AppLocalizations.of(context)!.checkForUpdates),
       ),
       const SizedBox(height: 10),
       status,

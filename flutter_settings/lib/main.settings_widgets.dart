@@ -150,33 +150,33 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        chips<int>('帧率', fpsOptions, _gifFps, (v) => '$v fps', (v) {
+        chips<int>(AppLocalizations.of(context)!.frameRate, fpsOptions, _gifFps, (v) => '$v fps', (v) {
           _gifFps = v;
           _setSetting('gifFps', v);
         }),
         const SizedBox(height: 8),
-        chips<double>('分辨率', resOptions, _gifResolution, (v) => '${(v * 100).round()}%',
+        chips<double>(AppLocalizations.of(context)!.resolution, resOptions, _gifResolution, (v) => '${(v * 100).round()}%',
             (v) {
           _gifResolution = v;
           _setSetting('gifResolution', v);
         }),
         const SizedBox(height: 8),
-        chips<double>('速度', speedOptions, _gifSpeed, (v) => '${v}x', (v) {
+        chips<double>(AppLocalizations.of(context)!.speed, speedOptions, _gifSpeed, (v) => '${v}x', (v) {
           _gifSpeed = v;
           _setSetting('gifSpeed', v);
         }),
         const SizedBox(height: 8),
-        chips<int>('结束时', const [0, 1, 2], _gifEndMode,
+        chips<int>(AppLocalizations.of(context)!.ending, [0, 1, 2], _gifEndMode,
             (v) => v == 0
-                ? '停在最后'
+                ? AppLocalizations.of(context)!.stopOnLastFrame
                 : v == 1
-                    ? '停1秒后循环'
-                    : '立即循环', (v) {
+                    ? AppLocalizations.of(context)!.hold1SThen
+                    : AppLocalizations.of(context)!.loopImmediately, (v) {
           _gifEndMode = v;
           _setSetting('gifEndMode', v);
         }),
         const SizedBox(height: 10),
-        Text('预估大小 ${_estimateGifSize()}',
+        Text(AppLocalizations.of(context)!.estimatedSizeP1(_estimateGifSize()),
             style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
       ],
     );
@@ -248,14 +248,14 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        row([key('Q', '退出程序')]),
-        row([key('G', '导出图片'), key('`', '上一页'), key('1', '下一页')], indent: 22),
+        row([key('Q', AppLocalizations.of(context)!.quitApp)]),
+        row([key('G', AppLocalizations.of(context)!.exportImage), key('`', AppLocalizations.of(context)!.previousPage), key('1', AppLocalizations.of(context)!.nextPage)], indent: 22),
         row([
-          key('Z', '撤销上一笔'),
-          key('X', '飘渺画布'),
-          key('C', '新建画布'),
-          key('V', '开关涂鸦'),
-          key('B', '模糊背景'),
+          key('Z', AppLocalizations.of(context)!.undoLastStroke),
+          key('X', AppLocalizations.of(context)!.etherealCanvas),
+          key('C', AppLocalizations.of(context)!.newCanvas),
+          key('V', AppLocalizations.of(context)!.toggleDoodle),
+          key('B', AppLocalizations.of(context)!.blurBackground),
         ]),
       ],
     );
@@ -266,12 +266,12 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('颜色',
+        Text(AppLocalizations.of(context)!.color,
             style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         _buildColorGrid(),
         const SizedBox(height: 14),
-        const Text('粗细',
+        Text(AppLocalizations.of(context)!.width,
             style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         _buildWidthRow(),
@@ -284,7 +284,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(Platform.isMacOS ? 'GIF 动画 (⌘⌃R 录制)' : 'GIF 动画 (Ctrl+Alt+R 按住录制)',
+        Text(Platform.isMacOS ? AppLocalizations.of(context)!.gifAnimationRTo : AppLocalizations.of(context)!.gifAnimationHoldCtrl,
             style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
         const SizedBox(height: 10),
         _buildGifSettings(),
@@ -292,7 +292,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
         if (Platform.isMacOS) ...[
           Row(
             children: [
-              Text('翻页动效',
+              Text(AppLocalizations.of(context)!.pageFlipEffect,
                   style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
               const Spacer(),
               SegmentedButton<int>(
@@ -300,9 +300,9 @@ extension _SettingsWidgetsUi on _SettingsPageState {
                 style: const ButtonStyle(
                   visualDensity: VisualDensity(horizontal: -2, vertical: -2),
                 ),
-                segments: const [
-                  ButtonSegment(value: 0, label: Text('系统动效')),
-                  ButtonSegment(value: 1, label: Text('时光隧道')),
+                segments: [
+                  ButtonSegment(value: 0, label: Text(AppLocalizations.of(context)!.systemAnimation)),
+                  ButtonSegment(value: 1, label: Text(AppLocalizations.of(context)!.timeTunnel)),
                 ],
                 selected: {_flipEffect},
                 onSelectionChanged: (sel) {
@@ -329,8 +329,8 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     return Column(
       children: [
         _tile(SwitchListTile(
-          title: const Text('自由涂鸦模式', style: TextStyle(fontSize: 15)),
-          subtitle: const Text('显示「自由涂鸦」画布:不翻页,镜头自由移动',
+          title: Text(AppLocalizations.of(context)!.freeDoodleMode, style: TextStyle(fontSize: 15)),
+          subtitle: Text(AppLocalizations.of(context)!.showTheFreeDoodle,
               style: TextStyle(fontSize: 12)),
           value: _showFreeCanvas,
           dense: true,
@@ -349,7 +349,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           },
         )),
         _tile(SwitchListTile(
-          title: const Text('压力监控', style: TextStyle(fontSize: 15)),
+          title: Text(AppLocalizations.of(context)!.pressureMonitor, style: TextStyle(fontSize: 15)),
           value: _pressureMonitor,
           dense: true,
           contentPadding: EdgeInsets.zero,
@@ -359,8 +359,8 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           },
         )),
         _tile(SwitchListTile(
-          title: const Text('显示网格', style: TextStyle(fontSize: 15)),
-          subtitle: const Text('涂鸦时辅助对齐', style: TextStyle(fontSize: 12)),
+          title: Text(AppLocalizations.of(context)!.showGrid, style: TextStyle(fontSize: 15)),
+          subtitle: Text(AppLocalizations.of(context)!.helpsAlignWhileDoodling, style: TextStyle(fontSize: 12)),
           value: _showGrid,
           dense: true,
           contentPadding: EdgeInsets.zero,
@@ -374,7 +374,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
             padding: const EdgeInsets.only(left: 16, bottom: 4),
             child: Row(
               children: [
-                const Text('网格大小', style: TextStyle(fontSize: 13, color: _inkFaint)),
+                Text(AppLocalizations.of(context)!.gridSize, style: TextStyle(fontSize: 13, color: _inkFaint)),
                 const Spacer(),
                 SegmentedButton<int>(
                   showSelectedIcon: false,
@@ -399,7 +399,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('分栏', style: TextStyle(fontSize: 13, color: _inkFaint)),
+                Text(AppLocalizations.of(context)!.columns, style: TextStyle(fontSize: 13, color: _inkFaint)),
                 const SizedBox(height: 4),
                 SizedBox(
                   width: double.infinity,
@@ -408,11 +408,11 @@ extension _SettingsWidgetsUi on _SettingsPageState {
                     style: const ButtonStyle(
                       visualDensity: VisualDensity(horizontal: -2, vertical: -2),
                     ),
-                    segments: const [
-                      ButtonSegment(value: 0, label: Text('无')),
-                      ButtonSegment(value: 1, label: Text('左右两栏')),
-                      ButtonSegment(value: 2, label: Text('上下两栏')),
-                      ButtonSegment(value: 3, label: Text('九宫格')),
+                    segments: [
+                      ButtonSegment(value: 0, label: Text(AppLocalizations.of(context)!.none)),
+                      ButtonSegment(value: 1, label: Text(AppLocalizations.of(context)!.twoColumnsSideBy)),
+                      ButtonSegment(value: 2, label: Text(AppLocalizations.of(context)!.twoColumnsStacked)),
+                      ButtonSegment(value: 3, label: Text(AppLocalizations.of(context)!.grid3x3)),
                     ],
                     selected: {_gridDividerValue},
                     onSelectionChanged: (s) {
@@ -425,8 +425,8 @@ extension _SettingsWidgetsUi on _SettingsPageState {
             ),
           ),
         _tile(SwitchListTile(
-          title: const Text('网格跟随涂鸦', style: TextStyle(fontSize: 15)),
-          subtitle: const Text('开启后网格随涂鸦一起受 ⌘⌃X 控制', style: TextStyle(fontSize: 12)),
+          title: Text(AppLocalizations.of(context)!.gridFollowsDoodles, style: TextStyle(fontSize: 15)),
+          subtitle: Text(AppLocalizations.of(context)!.whenOnTheGrid, style: TextStyle(fontSize: 12)),
           value: _gridFollowStrokes,
           dense: true,
           contentPadding: EdgeInsets.zero,
@@ -436,8 +436,8 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           },
         )),
         _tile(SwitchListTile(
-          title: const Text('磨砂玻璃跟随涂鸦', style: TextStyle(fontSize: 15)),
-          subtitle: const Text('开启后磨砂玻璃随涂鸦一起受 ⌘⌃X 控制；关闭则常驻', style: TextStyle(fontSize: 12)),
+          title: Text(AppLocalizations.of(context)!.glassFollowsDoodles, style: TextStyle(fontSize: 15)),
+          subtitle: Text(AppLocalizations.of(context)!.whenOnTheGlass, style: TextStyle(fontSize: 12)),
           value: _glassFollowStrokes,
           dense: true,
           contentPadding: EdgeInsets.zero,
@@ -447,8 +447,8 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           },
         )),
         _tile(SwitchListTile(
-          title: const Text('笔迹描边', style: TextStyle(fontSize: 15)),
-          subtitle: const Text('黑白相间虚线描边，任意背景恒可见 · 已持久化', style: TextStyle(fontSize: 12)),
+          title: Text(AppLocalizations.of(context)!.inkOutline, style: TextStyle(fontSize: 15)),
+          subtitle: Text(AppLocalizations.of(context)!.dashedContrastOutlineVisible, style: TextStyle(fontSize: 12)),
           value: _outlineEnabled,
           dense: true,
           contentPadding: EdgeInsets.zero,
@@ -458,8 +458,8 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           },
         )),
         _tile(SwitchListTile(
-          title: const Text('软阴影', style: TextStyle(fontSize: 15)),
-          subtitle: const Text('笔迹下方柔和黑影，同色背景保底可见 · 可与描边叠加', style: TextStyle(fontSize: 12)),
+          title: Text(AppLocalizations.of(context)!.softShadow, style: TextStyle(fontSize: 15)),
+          subtitle: Text(AppLocalizations.of(context)!.softDarkShadowUnder, style: TextStyle(fontSize: 12)),
           value: _softShadow,
           dense: true,
           contentPadding: EdgeInsets.zero,
@@ -469,8 +469,8 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           },
         )),
         _tile(SwitchListTile(
-          title: const Text('反色突出', style: TextStyle(fontSize: 15)),
-          subtitle: const Text('笔迹逐像素取背景反色 · 实验:视频背景持续追踪，建议关闭磨砂玻璃', style: TextStyle(fontSize: 12)),
+          title: Text(AppLocalizations.of(context)!.invertedInk, style: TextStyle(fontSize: 15)),
+          subtitle: Text(AppLocalizations.of(context)!.strokesTakeThePer, style: TextStyle(fontSize: 12)),
           value: _invertInk,
           dense: true,
           contentPadding: EdgeInsets.zero,
@@ -493,9 +493,9 @@ extension _SettingsWidgetsUi on _SettingsPageState {
             _setSetting('invertFps', s2.first);
           },
         )),
-        _tile(const Padding(
+        _tile(Padding(
           padding: EdgeInsets.only(left: 4, bottom: 8),
-          child: Text('反色追踪帧率上限 · 静态背景不送帧零开销', style: TextStyle(fontSize: 11, color: Colors.grey)),
+          child: Text(AppLocalizations.of(context)!.invertTrackingFpsCap, style: TextStyle(fontSize: 11, color: Colors.grey)),
         )),
         // 页面缩略图(minimap)开关已移到「活页本」tab
         // 无限画布模式由 tab 承载:活页本=翻页模式,自由涂鸦=无限画布
@@ -509,8 +509,8 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '将全部页面的笔迹导出为 PDF 保存到桌面。',
+        Text(
+          AppLocalizations.of(context)!.exportAllPagesStrokes,
           style: TextStyle(fontSize: 13, color: Colors.grey),
         ),
         const SizedBox(height: 8),
@@ -522,7 +522,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                 )
               : const Icon(Icons.picture_as_pdf, size: 18),
-          label: Text(_pdfExporting ? '导出中…' : '导出全部页面为 PDF'),
+          label: Text(_pdfExporting ? AppLocalizations.of(context)!.exporting : AppLocalizations.of(context)!.exportAllPagesAs),
           onPressed: _pdfExporting ? null : _exportPdf,
         ),
       ],
@@ -534,9 +534,9 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '备份是桌面上的单个 .db 文件(一致快照), 换机时可直接替换 glaspen2.db; '
-          '恢复是合并方式, 不会删除备份之后新画的内容。',
+        Text(
+          AppLocalizations.of(context)!.backupIsOneDb +
+          AppLocalizations.of(context)!.restoreMergesItNever,
           style: TextStyle(fontSize: 12, color: Colors.grey),
         ),
         const SizedBox(height: 8),
@@ -551,13 +551,13 @@ extension _SettingsWidgetsUi on _SettingsPageState {
                           strokeWidth: 2, color: Colors.white),
                     )
                   : const Icon(Icons.save_alt, size: 18),
-              label: Text(_backupBusy ? '处理中…' : '备份全部数据'),
+              label: Text(_backupBusy ? AppLocalizations.of(context)!.working : AppLocalizations.of(context)!.backUpAllData),
               onPressed: _backupBusy ? null : _backupNow,
             ),
             const SizedBox(width: 8),
             OutlinedButton.icon(
               icon: const Icon(Icons.settings_backup_restore, size: 18),
-              label: const Text('从最新备份恢复'),
+              label: Text(AppLocalizations.of(context)!.restoreFromLatestBackup),
               onPressed: _backupBusy ? null : _confirmRestore,
             ),
           ],
@@ -577,9 +577,9 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     try {
       final (ok, message) = await _bridge.backupNow();
       if (!mounted) return;
-      _toast(ok ? '已备份到 $message' : '备份失败: $message');
+      _toast(ok ? AppLocalizations.of(context)!.backedUpToP1(message) : AppLocalizations.of(context)!.backupFailedP1(message));
     } catch (e) {
-      if (mounted) _toast('备份失败: $e');
+      if (mounted) _toast(AppLocalizations.of(context)!.backupFailedP1(e));
     } finally {
       if (mounted) setState(() => _backupBusy = false);
     }
@@ -589,17 +589,17 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('从最新备份恢复'),
-        content: const Text(
-            '将把桌面上最新的 glaspen2_backup_*.db 合并进当前数据: '
-            '同名的页/笔迹以备份为准, 备份之后新画的内容会保留。'),
+        title: Text(AppLocalizations.of(context)!.restoreFromLatestBackup),
+        content: Text(
+            AppLocalizations.of(context)!.mergesTheNewestGlaspen2 +
+            AppLocalizations.of(context)!.pagesStrokesAlsoPresent),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('取消')),
+              child: Text(AppLocalizations.of(context)!.cancel)),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('恢复'),
+            child: Text(AppLocalizations.of(context)!.restore),
           ),
         ],
       ),
@@ -611,22 +611,22 @@ extension _SettingsWidgetsUi on _SettingsPageState {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('从最新备份恢复', style: TextStyle(fontSize: 16)),
-          content: const Text('备份中的页将合并进当前库(不会删除备份之后\n新画的内容)。继续吗?', style: TextStyle(fontSize: 13)),
+          title: Text(AppLocalizations.of(context)!.restoreFromLatestBackup, style: TextStyle(fontSize: 16)),
+          content: Text(AppLocalizations.of(context)!.pagesFromTheBackup, style: TextStyle(fontSize: 13)),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消')),
+                child: Text(AppLocalizations.of(context)!.cancel)),
             TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('恢复')),
+                child: Text(AppLocalizations.of(context)!.restore)),
           ],
         ),
       );
       if (confirmed != true || !mounted) return;
       final (ok, message) = await _bridge.restoreLatestBackup();
       if (!mounted) return;
-      _toast(ok ? '已从备份恢复: $message(重启后生效)' : '恢复失败: $message');
+      _toast(ok ? AppLocalizations.of(context)!.restoredFromBackupP1(message) : AppLocalizations.of(context)!.restoreFailedP1(message));
       if (ok) {
         // 缩略图缓存与列表都可能过期, 清掉重拉
         _thumbnailCache.clear();
@@ -635,7 +635,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
         _loadPages();
       }
     } catch (e) {
-      if (mounted) _toast('恢复失败: $e');
+      if (mounted) _toast(AppLocalizations.of(context)!.restoreFailedP1(e));
     } finally {
       if (mounted) setState(() => _backupBusy = false);
     }
@@ -646,16 +646,16 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('导出全部页面', style: TextStyle(fontSize: 16)),
-        content: const Text('全部页将合成一个 PDF 保存到桌面。',
+        title: Text(AppLocalizations.of(context)!.exportAllPages, style: TextStyle(fontSize: 16)),
+        content: Text(AppLocalizations.of(context)!.allPagesMergeInto,
             style: TextStyle(fontSize: 13)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+              child: Text(AppLocalizations.of(context)!.cancel)),
           TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('导出')),
+              child: Text(AppLocalizations.of(context)!.export)),
         ],
       ),
     );
@@ -666,7 +666,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(ok ? 'PDF 已保存到桌面' : '导出失败'),
+            content: Text(ok ? AppLocalizations.of(context)!.pdfSavedToDesktop : AppLocalizations.of(context)!.exportFailed),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -674,7 +674,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PDF 导出失败: $e')),
+          SnackBar(content: Text(AppLocalizations.of(context)!.pdfExportFailedP1(e))),
         );
       }
     } finally {

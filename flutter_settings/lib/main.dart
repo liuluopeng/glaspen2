@@ -97,11 +97,15 @@ const _colorValues = [
 const _widthNames = ['极细', '很细', '细', '中', '粗', '很粗', '超粗', '极粗'];
 
 class GlaspenSettingsApp extends StatelessWidget {
-  const GlaspenSettingsApp({super.key});
+  const GlaspenSettingsApp({super.key, this.locale});
+
+  /// 固定语言(测试用); null = 跟随系统。
+  final Locale? locale;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      locale: locale,
       onGenerateTitle: (context) => AppLocalizations.of(context)!.glaspen2,
       localizationsDelegates: const [
         AppLocalizations.delegate,
@@ -275,12 +279,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
   @override
   void dispose() {
-    _gridScrollDebounce?.cancel();
+    _gridScrollDebounce?.cancel;
     _gridScroll.removeListener(_onGridScroll);
     _gridScroll.dispose();
     _tabController.dispose();
-    _reloadTimer?.cancel();
-    _updSub?.cancel(); // 还在下载时销毁面板 = 取消下载
+    _reloadTimer?.cancel;
+    _updSub?.cancel; // 还在下载时销毁面板 = 取消下载
     _chatApiBase.dispose();
     _chatUser.dispose();
     _chatPassword.dispose();
@@ -289,7 +293,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   void _onGridScroll() {
-    _gridScrollDebounce?.cancel();
+    _gridScrollDebounce?.cancel;
     _gridScrollDebounce = Timer(const Duration(milliseconds: 80), () {
       if (mounted) _updateVisibleRange();
     });
@@ -374,15 +378,15 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   child: TabBar(
                     controller: _tabController,
                     tabs: [
-                  const Tab(
-                    text: '设置',
+                  Tab(
+                    text: AppLocalizations.of(context)!.settings,
                   ),
                   Tab(
-                    child: _modeTabLabel('活页本', !_infiniteCanvas),
+                    child: _modeTabLabel(AppLocalizations.of(context)!.notebook, !_infiniteCanvas),
                   ),
                   if (_showFreeCanvas)
                     Tab(
-                      child: _modeTabLabel('自由涂鸦', _infiniteCanvas),
+                      child: _modeTabLabel(AppLocalizations.of(context)!.freeDoodle, _infiniteCanvas),
                     ),
                   ],
                 ),
@@ -408,22 +412,22 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 children: [
                   _buildSection(
                     Platform.isWindows
-                        ? '快捷键 (Ctrl+Alt+…)'
-                        : '快捷键 (⌘⌃…)',
+                        ? AppLocalizations.of(context)!.hotkeysCtrlAlt
+                        : AppLocalizations.of(context)!.hotkeys,
                     _buildHotkeyGrid(),
                   ),
                   const SizedBox(height: 16),
-                  _buildSection('笔', _buildPenSection()),
+                  _buildSection(AppLocalizations.of(context)!.pen, _buildPenSection()),
                   const SizedBox(height: 16),
                   _buildSection('Options', _buildOptionsSection()),
                   const SizedBox(height: 16),
-                  _buildSection('活页本外观', Row(children: [
-                    const Text('风格', style: TextStyle(fontSize: 13)),
+                  _buildSection(AppLocalizations.of(context)!.notebookLook, Row(children: [
+                    Text(AppLocalizations.of(context)!.style, style: TextStyle(fontSize: 13)),
                     const Spacer(),
                     SegmentedButton<bool>(
-                      segments: const [
-                        ButtonSegment(value: true, label: Text('拟物玻璃')),
-                        ButtonSegment(value: false, label: Text('笔记纸')),
+                      segments: [
+                        ButtonSegment(value: true, label: Text(AppLocalizations.of(context)!.skeuoGlass)),
+                        ButtonSegment(value: false, label: Text(AppLocalizations.of(context)!.notePaper)),
                       ],
                       selected: {_notebookGlass},
                       showSelectedIcon: false,
@@ -434,9 +438,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                     ),
                   ])),
                   const SizedBox(height: 16),
-                  _buildSection('真穿透(实验)', _tile(SwitchListTile(
-                    title: const Text('卡片透出面板后的桌面', style: TextStyle(fontSize: 14)),
-                    subtitle: const Text('清玻璃形态: 需拟物玻璃; 关闭恢复模糊+底图', style: TextStyle(fontSize: 12)),
+                  _buildSection(AppLocalizations.of(context)!.truePassThroughExperimental, _tile(SwitchListTile(
+                    title: Text(AppLocalizations.of(context)!.cardsRevealTheDesktop, style: TextStyle(fontSize: 14)),
+                    subtitle: Text(AppLocalizations.of(context)!.clearGlassModeNeeds, style: TextStyle(fontSize: 12)),
                     value: _panelTransparent && _notebookGlass,
                     dense: true,
                     contentPadding: EdgeInsets.zero,
@@ -448,9 +452,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                         : null,
                   ))),
                   const SizedBox(height: 16),
-                  _buildSection('页面缩略图', _tile(SwitchListTile(
-                    title: const Text('显示附近 10 页', style: TextStyle(fontSize: 14)),
-                    subtitle: const Text('屏幕右缘竖向 minimap · 仅活页本(翻页)模式', style: TextStyle(fontSize: 12)),
+                  _buildSection(AppLocalizations.of(context)!.pageThumbnails, _tile(SwitchListTile(
+                    title: Text(AppLocalizations.of(context)!.show10NearbyPages, style: TextStyle(fontSize: 14)),
+                    subtitle: Text(AppLocalizations.of(context)!.verticalMinimapOnThe, style: TextStyle(fontSize: 12)),
                     value: _minimapEnabled,
                     dense: true,
                     contentPadding: EdgeInsets.zero,
@@ -461,9 +465,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   ))),
                   const SizedBox(height: 16),
                   if (_chatIntegration)
-                    _buildSection('共享画布', _tile(SwitchListTile(
-                      title: const Text('实时发送涂鸦', style: TextStyle(fontSize: 14)),
-                      subtitle: const Text('抬笔即推给对方应用当前打开的接收页;关闭即停',
+                    _buildSection(AppLocalizations.of(context)!.sharedCanvas, _tile(SwitchListTile(
+                      title: Text(AppLocalizations.of(context)!.streamDoodlesLive, style: TextStyle(fontSize: 14)),
+                      subtitle: Text(AppLocalizations.of(context)!.pushedToThePeer,
                           style: TextStyle(fontSize: 12)),
                       value: _shareCanvas,
                       dense: true,
@@ -476,11 +480,11 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   if (_chatIntegration) const SizedBox(height: 16),
                   _buildSection('Export', _buildExportButtons()),
                   const SizedBox(height: 16),
-                  _buildSection('数据备份', _buildBackupButtons()),
+                  _buildSection(AppLocalizations.of(context)!.dataBackup, _buildBackupButtons()),
                   const SizedBox(height: 16),
-                  _buildSection('涂鸦身份', _buildChatAuthSection()),
+                  _buildSection(AppLocalizations.of(context)!.doodleIdentity, _buildChatAuthSection()),
                   const SizedBox(height: 16),
-                  _buildSection('关于', _buildAboutSection()),
+                  _buildSection(AppLocalizations.of(context)!.about, _buildAboutSection()),
                 ],
               ),
             )),
