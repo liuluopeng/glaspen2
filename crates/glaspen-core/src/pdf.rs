@@ -634,3 +634,20 @@ mod timestamp_tests {
         );
     }
 }
+
+/// 手动冒烟(平时跳过): 真实导出整库 PDF 到桌面, 供人工检查渲染效果。
+/// 跑法: `cargo test -p glaspen-core --lib pdf -- --ignored`
+/// (曾在无标记状态下跟随每次 cargo test 往桌面写文件, b5f6177 始末)
+#[cfg(test)]
+mod manual_smoke_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "有真实副作用: 导出开发库整本 PDF 到桌面; 加 -- --ignored 手动跑"]
+    fn export_pdf_manual_smoke() {
+        let path = export_all_pages().expect("整库导出应返回路径");
+        let bytes = std::fs::read(&path).expect("PDF 文件应已落盘");
+        assert!(bytes.starts_with(b"%PDF"), "应是合法 PDF 头, 实得 {path}");
+        tracing::info!("手动冒烟 PDF: {path} ({} 字节)", bytes.len());
+    }
+}
