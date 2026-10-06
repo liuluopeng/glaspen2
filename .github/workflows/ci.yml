@@ -79,6 +79,52 @@ jobs:
         working-directory: flutter_settings
         run: flutter analyze
 
+  # 覆盖率只在 main push 上跑(PR 上重复整套构建太贵): 产物 lcov.info 存
+  # artifact, 本地可用 `cargo llvm-cov --html --open` 看盲区。
+  coverage:
+    runs-on: macos-14
+    timeout-minutes: 60
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # 新增且尚未在真实 runner 上验证过; 首次跑通后删掉这一行
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+
+      - name: Install cairo and protoc
+        run: brew install cairo pkg-config protobuf
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.0
+          channel: stable
+          cache: true
+
+      - name: Build Flutter framework
+        working-directory: flutter_settings
+        run: flutter build macos-framework --release
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Generate coverage
+        run: |
+          cargo llvm-cov --workspace --no-fail-fast \
+            --lcov --output-path lcov.info
+          # 摘要打进日志, 不开 artifact 也能瞥一眼总覆盖率
+          cargo llvm-cov --workspace --summary-only | tail -30 || true
+
+      - name: Upload lcov
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov.info
+          path: lcov.info
+
   windows-check:
     runs-on: windows-latest
     timeout-minutes: 45
