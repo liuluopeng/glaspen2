@@ -219,6 +219,15 @@ codesign --force "${IDENTITY_ARGS[@]}" "${FW_DIR}/App.framework" 2>/dev/null
 # Sign the whole bundle last (seals executable + Info.plist together)
 codesign --force "${IDENTITY_ARGS[@]}" "${APP_BUNDLE}"
 
+# --- Post-sign self-check: a build that ships with a broken signature would
+# fail codesign verification on the user's machine AND be rejected by the
+# auto-updater's publisher pin (update.rs verify_staged_signature). Fail here.
+echo "=== Verify signature ==="
+if ! codesign --verify --deep --strict "${APP_BUNDLE}"; then
+    echo "ERROR: 签名自检失败 —— 产物签名不完整, 拒绝出货" >&2
+    exit 1
+fi
+
 ln -s /Applications "${APP_DIR}/Applications"
 
 echo "=== Creating DMG ==="
@@ -229,6 +238,31 @@ hdiutil create -volname "${VOLUME_NAME}" \
     -ov -format UDZO \
     "${DMG_PATH}"
 
+# --- Optional notarization --------------------------------------------------
+# 自签证书(Glaspen2 Development)不能提交公证 —— notarytool 需要 Apple
+# Developer ID 证书与开发者账号。两个环境变量都配置后本块自动启用:
+#   GLASPEN2_DEVELOPER_ID    "Developer ID Application: 名字 (TEAMID)"
+#   GLASPEN2_NOTARY_PROFILE  `xcrun notarytool store-credentials` 存的档案名
+# 未配置时跳过(当前发布形态 = 自签未公证, 新机器首启需右键 → 打开)。
+if [ -n "${GLASPEN2_DEVELOPER_ID}" ] && [ -n "${GLASPEN2_NOTARY_PROFILE}" ]; then
+    echo "=== Notarization: re-sign with Developer ID + hardened runtime ==="
+    for f in "${FW_DIR}"/*.dylib; do
+        [ -f "$f" ] && codesign --force --options runtime --sign "${GLASPEN2_DEVELOPER_ID}" "$f"
+    done
+    codesign --force --options runtime --sign "${GLASPEN2_DEVELOPER_ID}" "${FW_DIR}/FlutterMacOS.framework"
+    codesign --force --options runtime --sign "${GLASPEN2_DEVELOPER_ID}" "${FW_DIR}/App.framework"
+    codesign --force --options runtime --sign "${GLASPEN2_DEVELOPER_ID}" "${APP_BUNDLE}"
+    codesign --verify --deep --strict "${APP_BUNDLE}"
+    rm -f "${DMG_PATH}"
+    hdiutil create -volname "${VOLUME_NAME}" -srcfolder "${APP_DIR}" -ov -format UDZO "${DMG_PATH}"
+    echo "=== Notarization: submit DMG(可能要等几分钟) ==="
+    xcrun notarytool submit "${DMG_PATH}" --keychain-profile "${GLASPEN2_NOTARY_PROFILE}" --wait
+    xcrun stapler staple "${DMG_PATH}"
+    xcrun stapler validate "${DMG_PATH}"
+else
+    echo "=== Notarization: skipped(未配置 GLASPEN2_DEVELOPER_ID / GLASPEN2_NOTARY_PROFILE) ==="
+fi
+
 echo ""
 echo "Done: ${DMG_PATH}"
 echo ""
@@ -236,3 +270,4 @@ echo "Bundled frameworks:"
 ls "${FW_DIR}/"
 echo ""
 echo "DMG size: $(du -h "${DMG_PATH}" | cut -f1)"
+echo "DMG sha256: $(shasum -a 256 "${DMG_PATH}" | cut -d' ' -f1)"
