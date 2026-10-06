@@ -149,3 +149,13 @@ List<PageInfo> groupSortedPages(List<PageInfo> pages) {
   }
   return out;
 }
+
+
+/// 活页本拖拽提交锚点(纯函数): 有后邻 → "移到后邻之前";
+/// 已是末位 → "移到前邻之后"。返回 null = 无法提交(页不存在/只有一个元素)。
+(int, bool)? pageDragCommitAnchor(List<PageInfo> ordered, int draggedId) {
+  final idx = ordered.indexWhere((p) => p.id == draggedId);
+  if (idx < 0 || ordered.length < 2) return null;
+  if (idx + 1 < ordered.length) return (ordered[idx + 1].id, true);
+  return (ordered[idx - 1].id, false);
+}

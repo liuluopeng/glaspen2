@@ -1039,6 +1039,26 @@ fn decode_thumb_blob(blob: &[u8]) -> Vec<PageThumb> {
 mod tests {
     use super::*;
 
+    /// 粘贴坐标平移: x/y 加偏移、w 原样、颜色头原样、多段独立。
+    #[test]
+    fn shift_payload_moves_xy_keeps_w_and_head() {
+        let payload = "1.000,0.000,0.220|-5.000,-5.000,2.000,5.000,5.000,2.000;\
+0.000,0.588,1.000|0.000,0.000,3.000,10.000,10.000,3.000";
+        let out = shift_payload(payload.to_string(), 100.0, 50.0);
+        let segs: Vec<&str> = out.split(';').collect();
+        assert_eq!(segs.len(), 2);
+        // 段1: 颜色头原样; x+100 / y+50 / w 不动
+        assert_eq!(
+            segs[0],
+            "1.000,0.000,0.220|95.000,45.000,2.000,105.000,55.000,2.000"
+        );
+        // 段2: 平移不串段(每段 i 从 0 重新计数)
+        assert_eq!(
+            segs[1],
+            "0.000,0.588,1.000|100.000,50.000,3.000,110.000,60.000,3.000"
+        );
+    }
+
     #[test]
     fn test_settings_from_json_tolerates_partial_payload() {
         let s = Settings::from_json(r#"{"color":3,"grid":true,"gridSize":42.5,"gridDivider":2}"#)

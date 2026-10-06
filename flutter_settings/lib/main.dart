@@ -1655,17 +1655,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         List.generate(nowIds.length, (i) => nowIds[i] == backupIds[i]).every((v) => v)) {
       return; // 没挪窝(拿起又放回)
     }
-    final idx = _filteredPages.indexWhere((p) => p.id == dragged);
-    if (idx < 0 || _filteredPages.length < 2) return;
-    int anchorId;
-    bool before;
-    if (idx + 1 < _filteredPages.length) {
-      anchorId = _filteredPages[idx + 1].id;
-      before = true;
-    } else {
-      anchorId = _filteredPages[idx - 1].id;
-      before = false;
-    }
+    final anchor = pageDragCommitAnchor(_filteredPages, dragged);
+    if (anchor == null) return;
+    final (anchorId, before) = anchor;
     final ok = await _bridge.reorderPage(dragged, anchorId, before: before);
     if (!mounted) return;
     if (ok) {

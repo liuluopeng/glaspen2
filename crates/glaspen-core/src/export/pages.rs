@@ -874,4 +874,83 @@ mod lasso_tests {
             .block_on(crate::db::strokes_for_screen(target))
             .is_empty());
     }
+
+    /// lasso FFI 端到端: 多边形字符串解析("x,y" 成对) + 命中判定。
+    /// 成对解析曾整体滤空(圈选链瘫痪), 此为该 bug 的端到端防线。
+    #[test]
+    fn lasso_select_ffi_parse_and_hit() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        if !crate::db::is_init() {
+            let path = std::env::temp_dir()
+                .join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            // SAFETY: 测试单线程初始化(TEST_LOCK 串行化)
+            unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
+            runtime().block_on(crate::db::init());
+        }
+        runtime().block_on(crate::db::new_screen(3440, 1440));
+        let screen = crate::state::current_screen_id();
+
+        // 一笔在 (100,100)-(200,200)
+        let payload = "1.0,0.0,0.0|100.0,100.0,2.0,200.0,200.0,2.0";
+        let c = std::ffi::CString::new(payload).unwrap();
+        assert_eq!(glaspen2_paste_strokes(screen, c.as_ptr()), 1);
+
+        // 圈住它(多边形字符串 = 4 点 8 个数)
+        let poly =
+            std::ffi::CString::new("50.0,50.0,300.0,50.0,300.0,300.0,50.0,300.0").unwrap();
+        let ptr = glaspen2_lasso_select(screen, poly.as_ptr());
+        assert!(!ptr.is_null());
+        let hit = unsafe { std::ffi::CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        unsafe { crate::export::glaspen2_free_c_string(ptr) };
+        let ids: Vec<i64> = hit.split(',').filter_map(|t| t.trim().parse().ok()).collect();
+        assert_eq!(ids.len(), 1, "圈中恰好一笔");
+
+        // 圈远处 → 空(解析不空、命中空)
+        let far = std::ffi::CString::new(
+            "1000.0,1000.0,1100.0,1000.0,1100.0,1100.0,1000.0,1100.0",
+        )
+        .unwrap();
+        let ptr = glaspen2_lasso_select(screen, far.as_ptr());
+        let hit2 = unsafe { std::ffi::CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        unsafe { crate::export::glaspen2_free_c_string(ptr) };
+        assert!(hit2.trim().is_empty(), "远处圈不应命中, 实际: {hit2}");
+    }
+
+    /// page_png_bytes 尺寸数学: (page + 2·margin) × k, k = min(1, 2200/最长边)。
+    #[test]
+    fn page_png_bytes_size_math() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        if !crate::db::is_init() {
+            let path = std::env::temp_dir()
+                .join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            // SAFETY: 测试单线程初始化(TEST_LOCK 串行化)
+            unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
+            runtime().block_on(crate::db::init());
+        }
+        runtime().block_on(crate::db::new_screen(3440, 1440));
+        let screen = crate::state::current_screen_id();
+        let empty = std::ffi::CString::new("").unwrap();
+        let mut len: i32 = 0;
+
+        // margin=516: total 4472x2472, k=2200/4472 → 2200 x ceil(1216.1)=1217
+        let ptr = glaspen2_page_png_bytes(screen, empty.as_ptr(), 516.0, &mut len);
+        assert!(!ptr.is_null() && len > 0);
+        // 所有权归还: 与 api.rs 消费侧同款(Vec::from_raw_parts)
+        let bytes = unsafe { Vec::from_raw_parts(ptr, len as usize, len as usize) };
+        let img = image::load_from_memory(&bytes).unwrap();
+        assert_eq!((img.width(), img.height()), (2200, 1217));
+
+        // margin=0: total = 页面, k = 2200/3440 → 2200 x ceil(920.9)=921
+        let mut len2: i32 = 0;
+        let ptr2 = glaspen2_page_png_bytes(screen, empty.as_ptr(), 0.0, &mut len2);
+        let bytes2 = unsafe { Vec::from_raw_parts(ptr2, len2 as usize, len2 as usize) };
+        let img2 = image::load_from_memory(&bytes2).unwrap();
+        assert_eq!((img2.width(), img2.height()), (2200, 921));
+    }
 }

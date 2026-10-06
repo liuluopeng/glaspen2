@@ -39,4 +39,19 @@ void main() {
   test('空列表原样返回', () {
     expect(groupSortedPages(const []), isEmpty);
   });
+  test('拖拽提交锚点: 中位 → 移到后邻之前', () {
+    final ordered = [p(1, 1, 1), p(2, 1, 1), p(3, 1, 1)];
+    final a = pageDragCommitAnchor(ordered, 1); // 拖动 1, 落点在中间(idx 0 有后邻)
+    expect(a, (2, true));
+  });
+
+  test('拖拽提交锚点: 末位 → 移到前邻之后', () {
+    final ordered = [p(1, 1, 1), p(2, 1, 1), p(3, 1, 1)];
+    expect(pageDragCommitAnchor(ordered, 3), (2, false));
+  });
+
+  test('拖拽提交锚点: 单元素/未知页 → null', () {
+    expect(pageDragCommitAnchor([p(1, 1, 1)], 1), isNull);
+    expect(pageDragCommitAnchor([p(1, 1, 1), p(2, 1, 1)], 99), isNull);
+  });
 }
