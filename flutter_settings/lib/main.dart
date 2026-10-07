@@ -157,6 +157,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   int _selectedColor = 0;
   int _selectedWidth = 2;
   bool _pressureMonitor = false;
+  bool _launchAtLogin = false;
   bool _showGrid = false;
   bool _gridFollowStrokes = false;
   bool _glassFollowStrokes = true;

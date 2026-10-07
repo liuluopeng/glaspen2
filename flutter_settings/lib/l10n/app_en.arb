@@ -153,6 +153,7 @@
   "freeDoodleMode": "Free-doodle mode",
   "showTheFreeDoodle": "Show the free-doodle canvas: no paging, free camera",
   "pressureMonitor": "Pressure monitor",
+  "launchAtLogin": "Launch at login",
   "showGrid": "Show grid",
   "helpsAlignWhileDoodling": "Helps align while doodling",
   "gridSize": "Grid size",

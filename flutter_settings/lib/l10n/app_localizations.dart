@@ -1022,6 +1022,12 @@ abstract class AppLocalizations {
   /// **'压力监控'**
   String get pressureMonitor;
 
+  /// No description provided for @launchAtLogin.
+  ///
+  /// In zh, this message translates to:
+  /// **'开机自启'**
+  String get launchAtLogin;
+
   /// No description provided for @showGrid.
   ///
   /// In zh, this message translates to:

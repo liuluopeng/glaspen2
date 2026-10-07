@@ -13,6 +13,7 @@ extension _SettingsStateUi on _SettingsPageState {
         _selectedColor = (s['color'] as num?)?.toInt() ?? _selectedColor;
         _selectedWidth = (s['width'] as num?)?.toInt() ?? _selectedWidth;
         _pressureMonitor = _b(s['pressureMonitor']);
+        _launchAtLogin = _b(s['launchAtLogin']);
         _showGrid = _b(s['grid']);
         _gridFollowStrokes = _b(s['gridFollowStrokes']);
         _glassFollowStrokes = s['glassFollowStrokes'] as bool? ?? _glassFollowStrokes;

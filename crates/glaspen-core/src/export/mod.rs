@@ -1255,9 +1255,43 @@ pub extern "C" fn glaspen2_set_launch_at_login(enable: c_int) -> c_int {
             }
         }
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        let Some(exe) = std::env::current_exe().ok().map(|p| p.to_string_lossy().to_string())
+        else {
+            tracing::error!("launch-at-login: current_exe 不可用");
+            return 0;
+        };
+        const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+        let ok = if enable != 0 {
+            reg_ok(&[
+                "add", RUN_KEY, "/v", "Glaspen2", "/t", "REG_SZ", "/d", &exe, "/f",
+            ])
+        } else {
+            // 值不存在时 reg delete 返回非零, 也算"已处于关闭态"= 成功
+            reg_ok(&["delete", RUN_KEY, "/v", "Glaspen2", "/f"])
+                || !reg_ok(&["query", RUN_KEY, "/v", "Glaspen2"])
+        };
+        if !ok {
+            tracing::error!("launch-at-login: reg.exe 写注册表失败");
+        }
+        if ok { 1 } else { 0 }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         0
+    }
+}
+
+/// reg.exe 子进程封装(避免为此引 windows crate 依赖; reg 在所有 Windows 上常驻)。
+#[cfg(target_os = "windows")]
+fn reg_ok(args: &[&str]) -> bool {
+    match std::process::Command::new("reg").args(args).output() {
+        Ok(o) => o.status.success(),
+        Err(e) => {
+            tracing::error!("launch-at-login: reg {:?} 失败: {e}", args.first());
+            false
+        }
     }
 }
 
@@ -1267,7 +1301,20 @@ pub extern "C" fn glaspen2_is_launch_at_login() -> c_int {
     {
         if launch_agent_plist().exists() { 1 } else { 0 }
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        if reg_ok(&[
+            "query",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            "/v",
+            "Glaspen2",
+        ]) {
+            1
+        } else {
+            0
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         0
     }

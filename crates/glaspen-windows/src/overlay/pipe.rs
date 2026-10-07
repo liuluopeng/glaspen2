@@ -568,9 +568,12 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .unwrap_or(false);
         let infinite_canvas = if infinite_on() { 1 } else { 0 };
         let (gfps, gres, gspd, gem) = gif_settings();
+        // 注册表即存储(macOS 是 LaunchAgent plist), 回读真实状态
+        let launch =
+            glaspen_core::export::glaspen2_is_launch_at_login() == 1;
         // 密码本体不回读,只回是否已保存(macOS 同款)
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":false,\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\"}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\"}}}}\n",
             color,
             width,
             outline,
@@ -593,6 +596,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             gres,
             gspd,
             gem,
+            if launch { "true" } else { "false" },
             chat_integration,
             share_canvas,
             show_free_canvas,
@@ -785,6 +789,11 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                         LPARAM(if on { 1 } else { 0 }),
                     )
                 };
+            }
+        } else if key == "launchAtLogin" {
+            // 开机自启: HKCU Run 注册表即存储, 不落 DB(macOS 是 LaunchAgent plist)
+            if let Some(on) = json_get_bool(line, "value") {
+                glaspen_core::export::glaspen2_set_launch_at_login(if on { 1 } else { 0 });
             }
         } else if key == "showFreeCanvas" {
             // 「自由涂鸦」tab 开关:纯面板可见性设置,落库即可(macOS 同键)

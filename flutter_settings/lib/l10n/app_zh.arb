@@ -153,6 +153,7 @@
   "freeDoodleMode": "自由涂鸦模式",
   "showTheFreeDoodle": "显示「自由涂鸦」画布:不翻页,镜头自由移动",
   "pressureMonitor": "压力监控",
+  "launchAtLogin": "开机自启",
   "showGrid": "显示网格",
   "helpsAlignWhileDoodling": "涂鸦时辅助对齐",
   "gridSize": "网格大小",

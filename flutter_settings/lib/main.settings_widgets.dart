@@ -359,6 +359,16 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           },
         )),
         _tile(SwitchListTile(
+          title: Text(AppLocalizations.of(context)!.launchAtLogin, style: TextStyle(fontSize: 15)),
+          value: _launchAtLogin,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (v) {
+            setState(() => _launchAtLogin = v);
+            _setSetting('launchAtLogin', v);
+          },
+        )),
+        _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.showGrid, style: TextStyle(fontSize: 15)),
           subtitle: Text(AppLocalizations.of(context)!.helpsAlignWhileDoodling, style: TextStyle(fontSize: 12)),
           value: _showGrid,

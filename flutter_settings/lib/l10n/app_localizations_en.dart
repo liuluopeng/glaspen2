@@ -524,6 +524,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pressureMonitor => 'Pressure monitor';
 
   @override
+  String get launchAtLogin => 'Launch at login';
+
+  @override
   String get showGrid => 'Show grid';
 
   @override
