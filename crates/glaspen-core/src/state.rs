@@ -1,4 +1,29 @@
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+// ---------------------------------------------------------------------------
+// 书写活动时间戳(笔尖落下/抬笔即刷新)。
+// 供 create_next_page 的书写活动锁使用: 最近落笔不久或笔仍在墨水中时拒绝
+// 新建页 —— 2026-10-09 桌面实证: 显示器唤醒后重复翻页信号在 7 秒内建了
+// 9 页, 把一次书写会话劈碎成散落各页的孤儿碎片。
+// ---------------------------------------------------------------------------
+
+static LAST_STROKE_ACTIVITY: Mutex<Option<Instant>> = Mutex::new(None);
+
+pub fn mark_stroke_activity() {
+    *LAST_STROKE_ACTIVITY.lock().unwrap() = Some(Instant::now());
+}
+
+/// 距最近一次书写活动(落笔或抬笔)的时长; 从未写过 = None。
+pub fn since_last_stroke_activity() -> Option<Duration> {
+    LAST_STROKE_ACTIVITY.lock().unwrap().map(|t| t.elapsed())
+}
+
+/// 测试把活动时间戳拨回过去(绕过书写活动锁)。
+#[cfg(test)]
+pub fn backdate_stroke_activity(d: Duration) {
+    *LAST_STROKE_ACTIVITY.lock().unwrap() = Some(Instant::now() - d);
+}
 
 // ---------------------------------------------------------------------------
 // In-memory drawing state — NOT database.

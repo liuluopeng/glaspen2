@@ -425,8 +425,25 @@ pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
 /// 活页本: 在当前页之后新建一页(同几何), 返回页 id。
 /// 守卫与新建画布同款 —— 当前(组)末页为空白时不新建, 返回当前页 id
 /// (调用方以"返回 id == 当前页"识别复用)。
+///
+/// 双闸(2026-10-09 桌面实证: 显示器唤醒后重复翻页信号 7 秒建 9 页, 把一次
+/// 书写会话劈碎成散落各页的孤儿碎片, 重启后恢复到末页只见"凭空笔迹"):
+/// 1. 书写活动锁 —— 笔仍在墨水中 / 距最近抬笔 <1.5s 时拒绝新建(写字时
+///    翻页几乎必是误触; 正常"写完一页翻新页"只需再按一次);
+/// 2. 频率闸 —— 任意 2s 内至多新建一页, 兜住一切重复信号(按键重复等)。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_create_next_page(current_id: i64) -> i64 {
+    if let Some(d) = state::since_last_stroke_activity()
+        && d < WRITE_LOCK
+    {
+        tracing::debug!("翻页新建拒绝: 书写活动中(距上次落笔 {d:?})");
+        return current_id;
+    }
+    if let Some(t) = LAST_PAGE_CREATE.lock().unwrap().as_ref()
+        && t.elapsed() < CREATE_COOLDOWN
+    {
+        return current_id;
+    }
     let Some((w, h)) = runtime().block_on(db::screen_dims(current_id)) else {
         return 0;
     };
@@ -438,6 +455,7 @@ pub extern "C" fn glaspen2_create_next_page(current_id: i64) -> i64 {
     });
     let (create, reuse) = plan_new_page(last);
     if create {
+        *LAST_PAGE_CREATE.lock().unwrap() = Some(std::time::Instant::now());
         runtime().block_on(db::new_screen(w, h));
         let new_id = state::current_screen_id();
         tracing::debug!("翻页新建页 id={new_id} (前一页 {current_id})");
@@ -445,6 +463,20 @@ pub extern "C" fn glaspen2_create_next_page(current_id: i64) -> i64 {
     } else {
         reuse.unwrap_or_default()
     }
+}
+
+/// 书写活动锁窗口: 距最近落笔/抬笔不足此值时拒绝新建页。
+const WRITE_LOCK: std::time::Duration = std::time::Duration::from_millis(1500);
+/// 建页冷却: 任意两次新建的最小间隔。
+const CREATE_COOLDOWN: std::time::Duration = std::time::Duration::from_millis(2000);
+
+static LAST_PAGE_CREATE: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+/// 测试绕过双闸(与 TEST_LOCK 配合, 串行安全)。
+#[cfg(test)]
+pub(crate) fn reset_page_create_gate() {
+    LAST_PAGE_CREATE.lock().unwrap().take();
+    crate::state::backdate_stroke_activity(std::time::Duration::from_secs(3600));
 }
 
 /// 活页本重排: 把某页移到锚点页前/后(面板内前后移/拖拽)。
@@ -978,6 +1010,7 @@ mod lasso_tests {
         }
         runtime().block_on(crate::db::new_screen(3440, 1440));
         let first = crate::state::current_screen_id();
+        reset_page_create_gate();
 
         // 空白末页: 不新建(复用当前页), 返回当前页 id
         assert_eq!(glaspen2_create_next_page(first), first);
@@ -992,6 +1025,75 @@ mod lasso_tests {
 
         // 新页无笔迹(刚建): 再次调用 → 不新建, 返回同一页
         assert_eq!(glaspen2_create_next_page(created), created);
+    }
+
+    /// 书写活动锁: 落笔后 1.5s 内拒绝新建; 拨回时间后恢复。
+    #[test]
+    fn create_next_page_write_lock() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        if !crate::db::is_init() {
+            let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            // SAFETY: 测试单线程初始化(TEST_LOCK 串行化)
+            unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
+            runtime().block_on(crate::db::init());
+        }
+        reset_page_create_gate();
+        runtime().block_on(crate::db::new_screen(3440, 1440));
+        let screen = crate::state::current_screen_id();
+        let payload = "0.0,0.0,1.0|0.0,0.0,2.0,10.0,10.0,2.0";
+        let c = std::ffi::CString::new(payload).unwrap();
+        assert_eq!(glaspen2_paste_strokes(screen, c.as_ptr()), 1);
+
+        // 模拟"刚抬笔": 活动锁窗口内 → 拒绝新建, 返回当前页
+        crate::state::mark_stroke_activity();
+        assert_eq!(
+            glaspen2_create_next_page(screen),
+            screen,
+            "书写活动中应拒绝新建"
+        );
+
+        // 拨回 10s(窗口外)→ 正常新建
+        crate::state::backdate_stroke_activity(std::time::Duration::from_secs(10));
+        let created = glaspen2_create_next_page(screen);
+        assert!(created > screen, "窗口外应允许新建");
+    }
+
+    /// 建页冷却: 任意 2s 内至多新建一页(兜住按键重复), 冷却过后恢复。
+    #[test]
+    fn create_next_page_cooldown() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        if !crate::db::is_init() {
+            let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            // SAFETY: 测试单线程初始化(TEST_LOCK 串行化)
+            unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
+            runtime().block_on(crate::db::init());
+        }
+        reset_page_create_gate();
+        runtime().block_on(crate::db::new_screen(3440, 1440));
+        let screen = crate::state::current_screen_id();
+        let payload = "0.0,0.0,1.0|0.0,0.0,2.0,10.0,10.0,2.0";
+        let c = std::ffi::CString::new(payload).unwrap();
+        assert_eq!(glaspen2_paste_strokes(screen, c.as_ptr()), 1);
+
+        let first_new = glaspen2_create_next_page(screen);
+        assert!(first_new > screen, "第一次应新建");
+
+        // 紧接着再来(模拟按键重复): 冷却期内一律复用, 不再新建
+        let payload2 = "0.0,0.0,1.0|5.0,5.0,2.0,15.0,15.0,2.0";
+        let c2 = std::ffi::CString::new(payload2).unwrap();
+        assert_eq!(glaspen2_paste_strokes(first_new, c2.as_ptr()), 1);
+        assert_eq!(
+            glaspen2_create_next_page(first_new),
+            first_new,
+            "冷却期内不应新建"
+        );
+
+        // 冷却重置(测试拨回)后恢复新建能力
+        reset_page_create_gate();
+        let second_new = glaspen2_create_next_page(first_new);
+        assert!(second_new > first_new, "冷却后应允许新建");
     }
 
     /// page_png_bytes 尺寸数学: (page + 2·margin) × k, k = min(1, 2200/最长边)。

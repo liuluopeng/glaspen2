@@ -99,6 +99,7 @@ pub extern "C" fn glaspen2_begin_stroke(
     b: c_double,
     width_scale: c_double,
 ) {
+    crate::state::mark_stroke_activity();
     let id = runtime().block_on(db::begin_stroke(r, g, b, width_scale));
     let mut strokes = STROKES.lock().unwrap();
     strokes.push(Stroke {
@@ -131,6 +132,7 @@ pub extern "C" fn glaspen2_add_point_t(x: c_double, y: c_double, width: c_double
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_end_stroke() {
+    crate::state::mark_stroke_activity();
     db::end_stroke_spawned();
 }
 
@@ -773,6 +775,7 @@ pub extern "C" fn glaspen2_modeler_begin(
     timestamp: c_double,
     width_scale: c_double,
 ) {
+    state::mark_stroke_activity();
     modeler::begin_stroke(x, y, pressure, timestamp, width_scale);
     *RAW_STROKE_START.lock().unwrap() = Some(timestamp);
     // Start DB stroke with correct color
@@ -829,6 +832,7 @@ pub extern "C" fn glaspen2_modeler_end(
 /// Commit the modeler buffer into STROKES. Call after drawing the buffer.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_modeler_commit_to_strokes(r: c_double, g: c_double, b: c_double) {
+    crate::state::mark_stroke_activity();
     {
         let smoothed = modeler::take_buffer();
         let mut strokes = STROKES.lock().unwrap();
@@ -855,6 +859,7 @@ pub extern "C" fn glaspen2_modeler_commit_to_strokes(r: c_double, g: c_double, b
 /// 草稿通道推送 / 共享画布上行 / OCR 闲时登记,与 macOS 语义一致。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_notify_stroke_committed() {
+    crate::state::mark_stroke_activity();
     ink_draft_on_stroke_committed();
     ink_share_on_stroke_committed();
     crate::ocr::on_stroke_committed(crate::state::current_screen_id());
@@ -1257,7 +1262,9 @@ pub extern "C" fn glaspen2_set_launch_at_login(enable: c_int) -> c_int {
     }
     #[cfg(target_os = "windows")]
     {
-        let Some(exe) = std::env::current_exe().ok().map(|p| p.to_string_lossy().to_string())
+        let Some(exe) = std::env::current_exe()
+            .ok()
+            .map(|p| p.to_string_lossy().to_string())
         else {
             tracing::error!("launch-at-login: current_exe 不可用");
             return 0;
