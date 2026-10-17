@@ -679,8 +679,11 @@ static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
   if (s <= 0.06 || s > 2.6)
     return NO;
   double W = (double)s_tun_surf_w, H = (double)s_tun_surf_h;
-  double w = W * s * 0.92;
-  double h = H * s * 0.92;
+  // 落定卡必须正好满屏: 以前所有卡都乘 0.92, 首帧会把当前页瞬间缩小
+  // 8%, 末帧再跳回 100%, 起止各"啪"一下。侧面的挤出量改为向内收,
+  // 不再需要靠整体缩小留边。
+  double w = W * s;
+  double h = H * s;
   // 中心透视:卡片中心**恒在屏幕中心**, 只有尺寸随深度变 —— 嵌套框的
   // 公共中心即消失点。(旧公式的 (1-1/s) 项会把深处卡片往下推,
   // 消失点掉到屏幕外, 表现为"页在屏幕下侧消失"。)
@@ -692,7 +695,9 @@ static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
   double cy = H * 0.5;
   double a;
   if (zc < 0.0) {
-    a = 1.0 + zc / (TUNNEL_SPAN + 0.15); // 飞越镜头时渐隐
+    // 目标页从镜头前方飞入: 在 zc=-travel 处必须完全不可见, 否则首帧
+    // 会有一张 53% 透明的大页盖在当前页上, 看起来像"先闪一下下一页"。
+    a = 1.0 + zc / s_tun_travel;
     if (a < 0.0)
       a = 0.0;
   } else {
@@ -717,7 +722,7 @@ static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
 }
 
 static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
-                             double w, double h, double alpha) {
+                             double w, double h, double alpha, double zc) {
   cairo_surface_t *surf = s_tun_card[slot];
   // mip 选择:目标宽不足主卡 70% 时用半尺寸 mip(缩放比降一半以上)
   if (s_tun_card_mip[slot] && w < cairo_image_surface_get_width(surf) * 0.70) {
@@ -738,6 +743,27 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   // 快照贴满正面(无留白): 玻璃平面边缘 = 正面矩形, 拟物侧面与它齐平。
   double pad = 0.0;
   double card_x = cx - w / 2.0, card_y = cy - h / 2.0;
+
+  // 落定帧(zc≈0): 只画真实页快照, 不叠玻璃面/侧面/投影。否则落定卡
+  // 的空白区域仍会透出后面几页的笔迹, commit 换真实页时整屏"变干净"。
+  if (fabs(zc) < 0.005) {
+    cairo_save(cr);
+    cairo_rectangle(cr, 0, 0, (double)s_tun_surf_w, (double)s_tun_surf_h);
+    cairo_clip(cr);
+    cairo_translate(cr, card_x, card_y);
+    cairo_scale(cr, w / (double)nw, h / (double)nh);
+    cairo_set_source_surface(cr, surf, 0, 0);
+    cairo_paint_with_alpha(cr, 1.0);
+    cairo_restore(cr);
+    return;
+  }
+
+  // 玻璃材质随页离开落定位渐入, 避免第 0 帧从"真实页"突变成"灰玻璃"。
+  double glass = fabs(zc) / 0.12;
+  if (glass > 1.0)
+    glass = 1.0;
+  pa *= glass;
+  alpha *= (1.0 - 0.08 * glass); // 快照 0.92 只在运动中生效
 
   cairo_save(cr);
   // 投影:向**左下**偏移(背离右/上拟物侧面的挤出方向)—— 否则暗带会
@@ -765,7 +791,7 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   cairo_pattern_t *pt = cairo_pattern_create_for_surface(surf);
   cairo_pattern_set_filter(pt, CAIRO_FILTER_FAST);
   cairo_set_source(cr, pt);
-  cairo_paint_with_alpha(cr, 0.92 * alpha);
+  cairo_paint_with_alpha(cr, alpha);
   cairo_pattern_destroy(pt);
   cairo_restore(cr);
   // 拟物玻璃框——**侧高视图**(能看到玻璃右侧与上侧的三维板):
@@ -849,6 +875,21 @@ static void tunnel_frame(double p) {
     }
     order[j + 1] = key;
   }
+  // 落定帧: 只画当前/目标页, 不叠其余玻璃片 —— 保证与真实页一致。
+  // (zc≈0 的那张卡就是此刻的"真实页")
+  for (int i = 0; i < s_tun_cards; i++) {
+    int slot = order[i];
+    double zc = (double)s_tun_depth[slot] - cam;
+    if (fabs(zc) < 0.005) {
+      double cx, cy, w, h, a;
+      if (tunnel_place(zc, &cx, &cy, &w, &h, &a)) {
+        tunnel_draw_card(cr, slot, cx, cy, w, h, a, zc);
+        cairo_destroy(cr);
+        flush_to_layer();
+        return;
+      }
+    }
+  }
   for (int i = 0; i < s_tun_cards; i++) {
     int slot = order[i];
     double zc = (double)s_tun_depth[slot] - cam;
@@ -860,9 +901,7 @@ static void tunnel_frame(double p) {
     // 可见纵深已由 tunnel_place 的 zc 窗口(±2.4)天然封顶。
     if (a * s_tun_pane_a < 0.004)
       continue;
-    // 玻璃满屏化:当前页深度为 0 时正好铺满(落定无缝), 深处的页
-    // 按透视缩小 —— 同心嵌套的环形区域就是"几片玻璃叠在一起"的读法。
-    tunnel_draw_card(cr, slot, cx, cy, w, h, a);
+    tunnel_draw_card(cr, slot, cx, cy, w, h, a, zc);
   }
   cairo_destroy(cr);
   flush_to_layer();
@@ -1007,7 +1046,9 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
   // 只预载可见纵深附近的一小段。此前 400 页会在事件 tap 线程里逐页
   // 载入 + 平滑 + 软渲染, 大库一次翻页卡数百 ms~数秒, 直接触发
   // kCGEventTapDisabledByTimeout(笔和热键一起哑)。
-  const int before = 12, after = 1;
+  // tunnel_place 只显示 zc<=2.4 的页; 12 页里 8 页建了永远画不到。
+  // 4 页足够覆盖可见纵深(当前/前 2 页/后 1 页), 翻页启动快 3 倍。
+  const int before = 4, after = 1;
   double tc0 = [NSDate timeIntervalSinceReferenceDate];
   int n = glaspen2_preload_flip_pages(cur, going_next ? 1 : 0, before, after);
   double tc1 = [NSDate timeIntervalSinceReferenceDate];
