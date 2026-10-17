@@ -472,8 +472,11 @@ class _NamedPipeBridge extends SettingsBridge {
       const access = 0x80000000 | 0x40000000;
       // OPEN_EXISTING
       const disposition = 3;
-      // FILE_FLAG_OVERLAPPED for async reads
-      const flags = 0x40000000;
+      // 同步句柄: 读取用 PeekNamedPipe + ReadFile(最后一个参数传 NULL)。
+      // 若带 FILE_FLAG_OVERLAPPED 打开而 ReadFile/WriteFile 传 NULL
+      // OVERLAPPED, Win32 会返回 ERROR_INVALID_PARAMETER, 整条设置通道
+      // 都收不到数据。
+      const flags = 0;
 
       final h = createFileW(pathPtr, access, 0, nullptr, disposition, flags, 0);
       calloc.free(pathPtr);

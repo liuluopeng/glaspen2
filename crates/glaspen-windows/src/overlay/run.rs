@@ -231,6 +231,7 @@ pub fn run() {
         RegisterHotKey(Some(hwnd), 16, mods, 'R' as u32).ok(); // 按住录 GIF
         RegisterHotKey(Some(hwnd), 17, mods, '2' as u32).ok(); // 按住手写草稿(集成开)
         RegisterHotKey(Some(hwnd), 18, mods, '3' as u32).ok(); // 按住手写消息直发(集成开)
+        RegisterHotKey(Some(hwnd), 19, mods, 'D' as u32).ok(); // 打开设置面板
 
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         let _ = UpdateWindow(hwnd);
@@ -310,7 +311,7 @@ fn create_overlay_window() -> HWND {
             SWP_NOACTIVATE | SWP_SHOWWINDOW,
         );
         {
-            let mut h = OVERLAY_HWND.lock().unwrap();
+            let mut h = OVERLAY_HWND.lock().unwrap_or_else(|e| e.into_inner());
             *h = hwnd.0 as isize;
         }
         hwnd

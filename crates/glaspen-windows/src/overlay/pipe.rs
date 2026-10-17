@@ -185,10 +185,13 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let ok = glaspen_core::runtime()
             .block_on(glaspen_core::db::reorder_screen(screen_id, anchor_id, before))
             .is_ok();
+        // Dart 侧统一从 data 取结果(pending reqId 通道); 顶层 ok 保留给
+        // 旧客户端。此前只有顶层 ok, 面板永远读不到、回滚并误报失败,
+        // 而数据库其实已经改了。
         let resp = format!(
-            "{{\"type\":\"reorderPage_response\",\"reqId\":{},\"ok\":{}}}
+            "{{\"type\":\"reorderPage_response\",\"reqId\":{},\"ok\":{},\"data\":{{\"ok\":{}}}}}
 ",
-            req_id, ok
+            req_id, ok, ok
         );
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
@@ -1042,7 +1045,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         match result {
             Ok((path, received, total)) => {
                 tracing::info!("更新包已下载: {}", path.display());
-                *DOWNLOADED_INSTALLER.lock().unwrap() = Some(path.clone());
+                *DOWNLOADED_INSTALLER.lock().unwrap_or_else(|e| e.into_inner()) = Some(path.clone());
                 let p = path.to_string_lossy().replace('\\', "/");
                 let _ = writer.write_all(
                     format!(

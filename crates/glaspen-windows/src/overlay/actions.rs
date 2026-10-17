@@ -313,7 +313,7 @@ fn redraw_from_strokes(state: &mut OverlayState) {
     let ol = if state.draw.outline_enabled { 1.0 } else { 0.0 };
     let z = if infinite_on() { cam().2 as f32 } else { 1.0 };
     {
-        let strokes = glaspen_core::STROKES.lock().unwrap();
+        let strokes = glaspen_core::STROKES.lock().unwrap_or_else(|e| e.into_inner());
         for s in strokes.iter() {
             if s.points.is_empty() {
                 continue;
@@ -1160,7 +1160,7 @@ const MM_GAP: i32 = 4;
 /// 页序缓存(当前页变化时重新解析 list_screens_json,与 macOS 同策略)
 fn minimap_page_ids(cur: i64) -> Option<Vec<i64>> {
     if MINIMAP_IDS_FOR.load(std::sync::atomic::Ordering::SeqCst) == cur {
-        let g = MINIMAP_IDS.lock().unwrap();
+        let g = MINIMAP_IDS.lock().unwrap_or_else(|e| e.into_inner());
         if !g.is_empty() {
             return Some(g.clone());
         }
@@ -1183,7 +1183,7 @@ fn minimap_page_ids(cur: i64) -> Option<Vec<i64>> {
     if ids.is_empty() {
         return None;
     }
-    *MINIMAP_IDS.lock().unwrap() = ids.clone();
+    *MINIMAP_IDS.lock().unwrap_or_else(|e| e.into_inner()) = ids.clone();
     MINIMAP_IDS_FOR.store(cur, std::sync::atomic::Ordering::SeqCst);
     Some(ids)
 }
@@ -1195,8 +1195,8 @@ fn minimap_pump(ids: &[i64], start: usize, end: usize) {
         .iter()
         .copied()
         .filter(|id| {
-            !MINIMAP_THUMBS.lock().unwrap().contains_key(id)
-                && !MINIMAP_INFLIGHT.lock().unwrap().contains(id)
+            !MINIMAP_THUMBS.lock().unwrap_or_else(|e| e.into_inner()).contains_key(id)
+                && !MINIMAP_INFLIGHT.lock().unwrap_or_else(|e| e.into_inner()).contains(id)
         })
         .collect();
     if want.is_empty() {
@@ -1205,9 +1205,9 @@ fn minimap_pump(ids: &[i64], start: usize, end: usize) {
     if MINIMAP_PUMPING.swap(true, Ordering::SeqCst) {
         return; // 已有工人在跑:它会按最新列表继续,这里不重复起
     }
-    let hwnd = *OVERLAY_HWND.lock().unwrap();
+    let hwnd = *OVERLAY_HWND.lock().unwrap_or_else(|e| e.into_inner());
     std::thread::spawn(move || {
-        let mut inflight = MINIMAP_INFLIGHT.lock().unwrap();
+        let mut inflight = MINIMAP_INFLIGHT.lock().unwrap_or_else(|e| e.into_inner());
         inflight.extend_from_slice(&want);
         drop(inflight);
         for id in want {
@@ -1228,7 +1228,7 @@ fn minimap_pump(ids: &[i64], start: usize, end: usize) {
                             px[1] = ((px[1] as u32 * a + 127) / 255) as u8;
                             px[2] = ((px[2] as u32 * a + 127) / 255) as u8;
                         }
-                        MINIMAP_THUMBS.lock().unwrap().insert(
+                        MINIMAP_THUMBS.lock().unwrap_or_else(|e| e.into_inner()).insert(
                             id,
                             MinimapThumb {
                                 rgba: buf,
@@ -1239,7 +1239,7 @@ fn minimap_pump(ids: &[i64], start: usize, end: usize) {
                     }
                     glaspen_core::export::glaspen2_free_rust_bytes(ptr, len);
                 }
-                MINIMAP_INFLIGHT.lock().unwrap().retain(|&x| x != id);
+                MINIMAP_INFLIGHT.lock().unwrap_or_else(|e| e.into_inner()).retain(|&x| x != id);
                 let _ = PostMessageW(
                     Some(HWND(hwnd as *mut core::ffi::c_void)),
                     WM_TRAY_COMMAND,
@@ -1291,7 +1291,7 @@ fn draw_minimap(state: &mut OverlayState) {
             // 白底卡片(不透明)
             minimap_fill(bits, w, h, tx, ty, MM_TW, MM_TH, 252, 252, 252, 255);
             // 内容:等比缩放居中(最近邻,缩略图够清晰)
-            let thumb = MINIMAP_THUMBS.lock().unwrap().get(&pid).map(|t| {
+            let thumb = MINIMAP_THUMBS.lock().unwrap_or_else(|e| e.into_inner()).get(&pid).map(|t| {
                 (t.rgba.clone(), t.w, t.h)
             });
             if let Some((src, sw, sh)) = thumb {

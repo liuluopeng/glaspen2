@@ -8,13 +8,27 @@ static PENDING_INSTALLER: std::sync::Mutex<Option<std::path::PathBuf>> =
 
 #[cfg(windows)]
 pub(crate) fn set_pending_installer(path: std::path::PathBuf) {
-    *PENDING_INSTALLER.lock().unwrap() = Some(path);
+    *PENDING_INSTALLER.lock().unwrap_or_else(|e| e.into_inner()) = Some(path);
 }
 
 /// 非 Windows 平台的空实现:让 `cargo check --workspace` 在 macOS CI 上
 /// 也能通过(本 crate 的实质代码全部是 Win32)。
 #[cfg(not(windows))]
 pub fn win_main() {}
+
+/// 重新拉起设置面板。面板是独立进程, 用户关掉后此前无法再打开
+/// (没有托盘菜单, 也没有对应热键), 只能退出整个覆盖层重来。
+#[cfg(windows)]
+pub(crate) fn show_settings_window() {
+    if let Some(p) = find_settings_exe() {
+        match std::process::Command::new(&p).spawn() {
+            Ok(_) => tracing::info!("设置面板已重新拉起: {}", p.display()),
+            Err(e) => tracing::warn!("重新拉起设置面板失败({}): {e}", p.display()),
+        }
+    } else {
+        tracing::warn!("找不到 glaspen2_settings.exe, 无法打开设置面板");
+    }
+}
 
 /// Entry point for the Windows version of glaspen2 (pure Rust, no C#).
 ///
@@ -73,6 +87,9 @@ pub fn win_main() {
     // Run the overlay (blocking — message loop until quit)
     overlay::run();
 
+    // 写完排队点 + checkpoint WAL, 让更新器的数据库快照完整。
+    glaspen_core::export::glaspen2_shutdown();
+
     if let Some(child) = settings_child.as_mut() {
         let _ = child.kill();
         let _ = child.wait();
@@ -81,7 +98,11 @@ pub fn win_main() {
     // 自动更新收尾:applyUpdate 已记下安装包路径。cmd 延迟 2 秒再启动,
     // 确保本进程(含设置面板)完全退出、文件锁释放;安装器解压到
     // %LOCALAPPDATA%\glaspen2 后自动拉起新版。
-    if let Some(installer) = PENDING_INSTALLER.lock().unwrap().take() {
+    if let Some(installer) = PENDING_INSTALLER
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+    {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         // DETACHED_PROCESS:不随本控制台/进程消亡
@@ -123,9 +144,10 @@ fn already_running_message() {
 
 /// 与 Flutter 设置进程共用同一个 AppUserModelID:任务栏把两个进程的
 /// 窗口归组为同一个 glaspen2 图标,而不是各占一格。
-// 非 Windows 编译为空壳,这两个函数只在 Windows 主流程被调用 ——
-// macOS 侧的 clippy -D warnings 会扫到 dead code,这里显式豁免。
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+// 只在 Windows 主流程调用。必须整体 cfg 掉: 函数体里的
+// `#[link(name = "shell32")]` 在 macOS 上也会被链接器看到, 导致
+// `cargo test --workspace` 找不到 shell32。
+#[cfg(windows)]
 fn set_app_user_model_id() {
     #[link(name = "shell32")]
     unsafe extern "system" {
@@ -141,7 +163,7 @@ fn set_app_user_model_id() {
 }
 
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-fn find_settings_exe() -> Option<std::path::PathBuf> {
+pub(crate) fn find_settings_exe() -> Option<std::path::PathBuf> {
     let name = "glaspen2_settings.exe";
 
     // 1) Next to the Rust binary (for distribution)

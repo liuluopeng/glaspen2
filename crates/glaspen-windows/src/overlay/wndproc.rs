@@ -61,8 +61,6 @@ unsafe extern "system" fn wnd_proc(
                 set_input_blocking(hwnd, false);
                 return LRESULT(0);
             }
-            // 笔报告到达 = 笔在范围内:拦截输入(清除 WS_EX_TRANSPARENT),重置离开计时
-            set_input_blocking(hwnd, true);
             let _ = KillTimer(Some(hwnd), TIMER_UNBLOCK);
             let _ = KillTimer(Some(hwnd), TIMER_PEEK);
 
@@ -75,7 +73,15 @@ unsafe extern "system" fn wnd_proc(
                 let state = &mut *STATE.load(Ordering::SeqCst);
                 state.canvas.present_rect(&dirty);
             }
-            let _ = SetTimer(Some(hwnd), TIMER_UNBLOCK, UNBLOCK_DELAY_MS, None);
+
+            // 只有**落笔**才拦截鼠标(清 WS_EX_TRANSPARENT),抬笔 50ms 后恢复。
+            // 以前每份 HID 报告都拦截: 笔搁在板上(悬停/在范围内)时鼠标
+            // 完全点不了下层应用, 直接破坏"键鼠/笔分离"的核心卖点。
+            let state = &mut *STATE.load(Ordering::SeqCst);
+            if state.in_stroke {
+                set_input_blocking(hwnd, true);
+                let _ = SetTimer(Some(hwnd), TIMER_UNBLOCK, UNBLOCK_DELAY_MS, None);
+            }
             LRESULT(0)
         }
         WM_TIMER => {
@@ -165,6 +171,8 @@ unsafe extern "system" fn wnd_proc(
                         chat_record_start(state);
                     }
                 }
+                // Ctrl+Alt+D 打开/重开设置面板(macOS ⌘⌃D 同义)
+                19 => crate::show_settings_window(),
                 _ => {}
             }
             LRESULT(0)
