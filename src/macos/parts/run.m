@@ -440,6 +440,16 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
   if (cur <= 0)
     return;
 
+  // 容器懒初始化。此前两个全局变量恒为 nil: 发消息给 nil 是 no-op,
+  // 于是"已缓存/在飞"判断永远为 false → 每帧重复排队渲染、永不缓存,
+  // minimap 既空白又持续烧 CPU。
+  if (!g_minimap_thumbs)
+    g_minimap_thumbs = [NSMutableDictionary new];
+  if (!g_minimap_inflight)
+    g_minimap_inflight = [NSMutableArray new];
+  if (g_minimap_thumbs.count > 128)
+    [g_minimap_thumbs removeAllObjects]; // 活页本很大时别无限涨
+
   // 附近页 id 列表(当前页变化时重新解析)
   if (g_minimap_ids == nil || g_minimap_ids_for != cur) {
     char *json = glaspen2_list_screens_json();
@@ -994,7 +1004,10 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
 
   // 预热缓存: [最旧…, prev1, cur, next1]("透视展示 cur 到最旧的所有玻璃";
   // after 恒 1 = 目标页)。页多时受 TUNNEL_MAX_CARDS 与建卡预算保护。
-  const int before = 400, after = 1;
+  // 只预载可见纵深附近的一小段。此前 400 页会在事件 tap 线程里逐页
+  // 载入 + 平滑 + 软渲染, 大库一次翻页卡数百 ms~数秒, 直接触发
+  // kCGEventTapDisabledByTimeout(笔和热键一起哑)。
+  const int before = 12, after = 1;
   double tc0 = [NSDate timeIntervalSinceReferenceDate];
   int n = glaspen2_preload_flip_pages(cur, going_next ? 1 : 0, before, after);
   double tc1 = [NSDate timeIntervalSinceReferenceDate];
@@ -1930,7 +1943,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     CGPoint cgLoc = CGEventGetLocation(event);
     if (cgLoc.y < 30) {
       CGEventTapEnable(g_event_tap, false);
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC),
+      // 菜单关闭时 menuDidClose 会立刻恢复; 这里是兜底(菜单未正常关闭)。
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC),
                      dispatch_get_main_queue(), ^{
                        if (g_event_tap)
                          CGEventTapEnable(g_event_tap, true);
@@ -2818,6 +2832,35 @@ void glaspen2_run(void) {
               });
         }
       });
+    }
+
+    // tap 健康看门狗: TCC 被撤销 / tap 被系统禁用 / 意外失效时, 用户看到
+    // 的只是"软件突然不响应笔了"。每 2s 自检, 能恢复就恢复, 不能恢复就
+    // 明确提示一次, 而不是静默装死。
+    {
+      static BOOL s_ax_warned = NO;
+      dispatch_source_t wd = dispatch_source_create(
+          DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+      dispatch_source_set_timer(
+          wd, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC),
+          2 * NSEC_PER_SEC, (uint64_t)0.2 * NSEC_PER_SEC);
+      dispatch_source_set_event_handler(wd, ^{
+        if (!AXIsProcessTrusted()) {
+          if (!s_ax_warned) {
+            s_ax_warned = YES;
+            show_notification(L(@"辅助功能权限已失效, 涂鸦/热键暂停 — 请到系统设置重新勾选",
+                                @"Accessibility permission lost — re-enable it in System Settings"));
+          }
+          return;
+        }
+        s_ax_warned = NO;
+        if (!g_event_tap) {
+          event_tap_reinstall();
+        } else if (!CGEventTapIsEnabled(g_event_tap)) {
+          CGEventTapEnable(g_event_tap, true);
+        }
+      });
+      dispatch_resume(wd);
     }
 
     // 调试开关(环境变量):性能日志 / 虚拟笔, 默认都关

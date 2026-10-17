@@ -1,3 +1,4 @@
+#include <dlfcn.h>
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
 #import <Carbon/Carbon.h>
@@ -70,6 +71,7 @@ extern void glaspen2_save_xoj(void);
 extern int glaspen2_clear_strokes(int screen_w, int screen_h);
 extern void glaspen2_init_db(int screen_w, int screen_h);
 extern void glaspen2_save_settings(double r, double g, double b, double width_scale);
+extern void glaspen2_shutdown(void);
 extern int  glaspen2_load_settings_parts(double *r, double *g, double *b, double *w);
 extern void glaspen2_save_bool_setting(const char *key, int val);
 extern int  glaspen2_load_bool_setting(const char *key);
@@ -537,6 +539,98 @@ static void save_drawing_only(void) {
     show_notification(L(@"截图成功", @"Saved"));
 }
 
+/// 当前覆盖层所在屏幕的 CGDirectDisplayID。
+/// 截图曾经永远取 `content.displays.firstObject` —— 多屏时会把副屏的
+/// 桌面合成进主屏的笔迹里。
+static CGDirectDisplayID window_display_id(void) {
+    NSScreen *screen = g_window.screen ?: [NSScreen mainScreen];
+    NSNumber *n = screen.deviceDescription[@"NSScreenNumber"];
+    return n ? (CGDirectDisplayID)n.unsignedIntValue : CGMainDisplayID();
+}
+
+/// macOS 12/13 的桌面截图回退。
+///
+/// SDK 从 macOS 15 起把 CGWindowListCreateImage 标成 unavailable(运行时
+/// 在 12/13 仍然存在), 所以这里用 dlsym 取符号, 避免编译期被拒。
+/// 取"覆盖层下方的窗口", 不会把当前笔迹再截一遍。
+static CGImageRef capture_below_own_window(void) {
+    typedef CGImageRef (*CaptureFn)(CGRect, CGWindowListOption, CGWindowID,
+                                    CGWindowImageOption);
+    static CaptureFn fn = NULL;
+    if (!fn)
+        fn = (CaptureFn)dlsym(RTLD_DEFAULT, "CGWindowListCreateImage");
+    if (!fn)
+        return NULL;
+    return fn(CGRectNull, kCGWindowListOptionOnScreenBelowWindow,
+              (CGWindowID)g_window.windowNumber, kCGWindowImageDefault);
+}
+
+/// 把"桌面截图 + 当前笔迹"合成到 Display P3 并落盘。
+/// 抽出来是为了 macOS 14 的 SCScreenshotManager 与 12/13 的
+/// CGWindowList 两条路径共用同一套合成/保存逻辑。
+static void composite_and_save(CGImageRef image, unsigned char *drawingCopy,
+                               int dw, int dh, int dstride) {
+    // Use Display P3 color space (matches what user sees on screen)
+    CGColorSpaceRef displayP3 = CGColorSpaceCreateWithName(kCGColorSpaceDisplayP3);
+    size_t bw = CGImageGetWidth(image);
+    size_t bh = CGImageGetHeight(image);
+
+    // Convert screenshot to Display P3
+    CGContextRef bgCtx = CGBitmapContextCreate(NULL, bw, bh, 8, bw * 4, displayP3,
+        kCGImageAlphaPremultipliedLast);
+    CGContextDrawImage(bgCtx, CGRectMake(0, 0, bw, bh), image);
+    CGImageRef p3Image = CGBitmapContextCreateImage(bgCtx);
+    CGContextRelease(bgCtx);
+
+    // Get screenshot pixel data
+    CGDataProviderRef bgProvider = CGImageGetDataProvider(p3Image);
+    CFDataRef bgDataRef = CGDataProviderCopyData(bgProvider);
+    const unsigned char *bgData = CFDataGetBytePtr(bgDataRef);
+    size_t bgStride = CGImageGetBytesPerRow(p3Image);
+
+    // Convert the copied cairo surface (sRGB, BGRA in memory) to Display P3.
+    // Cairo ARGB32 on little-endian is B,G,R,A in memory — matches
+    // kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst.
+    CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    CGDataProviderRef drawProvider = CGDataProviderCreateWithData(NULL,
+        drawingCopy, dstride * dh, NULL);
+    CGImageRef drawImage = CGImageCreate(dw, dh, 8, 32, dstride, srgb,
+        kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst,
+        drawProvider, NULL, false, kCGRenderingIntentDefault);
+    CGDataProviderRelease(drawProvider);
+    CGColorSpaceRelease(srgb);
+
+    // Draw cairo image into Display P3 context
+    CGContextRef drawCtx = CGBitmapContextCreate(NULL, dw, dh, 8, dw * 4, displayP3,
+        kCGImageAlphaPremultipliedLast);
+    CGContextDrawImage(drawCtx, CGRectMake(0, 0, dw, dh), drawImage);
+    CGImageRelease(drawImage);
+    CGImageRef p3DrawImage = CGBitmapContextCreateImage(drawCtx);
+    CGContextRelease(drawCtx);
+
+    // Get drawing pixel data in Display P3
+    CGDataProviderRef p3DrawProvider = CGImageGetDataProvider(p3DrawImage);
+    CFDataRef drawDataRef = CGDataProviderCopyData(p3DrawProvider);
+    const unsigned char *drawData = CFDataGetBytePtr(drawDataRef);
+    size_t drawStride = CGImageGetBytesPerRow(p3DrawImage);
+
+    CGColorSpaceRelease(displayP3);
+    free(drawingCopy);
+
+    // Call Rust to composite and save (both in Display P3)
+    glaspen2_save_with_background(
+        drawData, dw, dh, (int)drawStride,
+        bgData, (int)bw, (int)bh, (int)bgStride);
+
+    CFRelease(bgDataRef);
+    CFRelease(drawDataRef);
+    CGImageRelease(p3Image);
+    CGImageRelease(p3DrawImage);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        show_notification(L(@"截图成功(含背景)", @"Saved (with background)"));
+    });
+}
+
 static void save_with_background(void) {
     if (!g_surface) return;
 
@@ -575,7 +669,10 @@ static void save_with_background(void) {
         }
     };
 
-    // Use ScreenCaptureKit to capture screen
+    // macOS 14+ 用 ScreenCaptureKit 的 SCScreenshotManager; 12/13 上这个
+    // 类根本不存在(class 为 nil, completion 永不回调, 旧代码会静默泄漏并
+    // 什么都不保存)。回退用 CGWindowList 截取覆盖层下方窗口。
+    if (@available(macOS 14.0, *)) {
     [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent *content, NSError *error) {
         if (error || !content.displays.count) {
             NSLog(@"[glaspen2] Screen capture failed: %@", error);
@@ -586,6 +683,13 @@ static void save_with_background(void) {
         }
 
         SCDisplay *display = content.displays.firstObject;
+        CGDirectDisplayID want = window_display_id();
+        for (SCDisplay *d in content.displays) {
+            if (d.displayID == want) {
+                display = d;
+                break;
+            }
+        }
         SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:display excludingWindows:@[]];
         SCStreamConfiguration *config = [SCStreamConfiguration new];
         config.width = display.width;
@@ -603,67 +707,22 @@ static void save_with_background(void) {
                 return;
             }
 
-            // Use Display P3 color space (matches what user sees on screen)
-            CGColorSpaceRef displayP3 = CGColorSpaceCreateWithName(kCGColorSpaceDisplayP3);
-            size_t bw = CGImageGetWidth(image);
-            size_t bh = CGImageGetHeight(image);
-
-            // Convert screenshot to Display P3
-            CGContextRef bgCtx = CGBitmapContextCreate(NULL, bw, bh, 8, bw * 4, displayP3,
-                kCGImageAlphaPremultipliedLast);
-            CGContextDrawImage(bgCtx, CGRectMake(0, 0, bw, bh), image);
-            CGImageRef p3Image = CGBitmapContextCreateImage(bgCtx);
-            CGContextRelease(bgCtx);
-
-            // Get screenshot pixel data
-            CGDataProviderRef bgProvider = CGImageGetDataProvider(p3Image);
-            CFDataRef bgDataRef = CGDataProviderCopyData(bgProvider);
-            const unsigned char *bgData = CFDataGetBytePtr(bgDataRef);
-            size_t bgStride = CGImageGetBytesPerRow(p3Image);
-
-            // Convert the copied cairo surface (sRGB, BGRA in memory) to Display P3.
-            // Cairo ARGB32 on little-endian is B,G,R,A in memory — matches
-            // kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst.
-            CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-            CGDataProviderRef drawProvider = CGDataProviderCreateWithData(NULL,
-                drawingCopy, dstride * dh, NULL);
-            CGImageRef drawImage = CGImageCreate(dw, dh, 8, 32, dstride, srgb,
-                kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst,
-                drawProvider, NULL, false, kCGRenderingIntentDefault);
-            CGDataProviderRelease(drawProvider);
-            CGColorSpaceRelease(srgb);
-
-            // Draw cairo image into Display P3 context
-            CGContextRef drawCtx = CGBitmapContextCreate(NULL, dw, dh, 8, dw * 4, displayP3,
-                kCGImageAlphaPremultipliedLast);
-            CGContextDrawImage(drawCtx, CGRectMake(0, 0, dw, dh), drawImage);
-            CGImageRelease(drawImage);
-            CGImageRef p3DrawImage = CGBitmapContextCreateImage(drawCtx);
-            CGContextRelease(drawCtx);
-
-            // Get drawing pixel data in Display P3
-            CGDataProviderRef p3DrawProvider = CGImageGetDataProvider(p3DrawImage);
-            CFDataRef drawDataRef = CGDataProviderCopyData(p3DrawProvider);
-            const unsigned char *drawData = CFDataGetBytePtr(drawDataRef);
-            size_t drawStride = CGImageGetBytesPerRow(p3DrawImage);
-
-            CGColorSpaceRelease(displayP3);
-            free(drawingCopy);
-
-            // Call Rust to composite and save (both in Display P3)
-            glaspen2_save_with_background(
-                drawData, dw, dh, (int)drawStride,
-                bgData, (int)bw, (int)bh, (int)bgStride);
-
-            CFRelease(bgDataRef);
-            CFRelease(drawDataRef);
-            CGImageRelease(p3Image);
-            CGImageRelease(p3DrawImage);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                show_notification(L(@"截图成功(含背景)", @"Saved (with background)"));
-            });
+            composite_and_save(image, drawingCopy, dw, dh, dstride);
         }];
     }];
+    } else {
+        CGImageRef image = capture_below_own_window();
+        sharing_restore();
+        if (!image) {
+            free(drawingCopy);
+            show_notification(L(@"截图失败(需要屏幕录制权限), 已保存涂鸦",
+                                @"Screenshot failed (screen recording permission?), drawing saved"));
+            save_drawing_only();
+            return;
+        }
+        composite_and_save(image, drawingCopy, dw, dh, dstride);
+        CGImageRelease(image);
+    }
 }
 
 static void clear_screen(void) {
@@ -741,6 +800,7 @@ static void replay_strokes_from_memory(void) {
 
 static void save_and_exit(int sig) {
     (void)sig;
+    glaspen2_shutdown(); // 写完排队点 + WAL checkpoint
     pm_destroy();
     CGDisplayShowCursor(kCGDirectMainDisplay);
     exit(0);

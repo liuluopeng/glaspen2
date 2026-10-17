@@ -148,7 +148,7 @@ fn main() {
 
         let mut clang = std::process::Command::new("clang");
         clang.args(["-c", "src/macos/glaspen2.m", "-o", &obj_path]);
-        clang.args(["-fobjc-arc", "-O2"]);
+        clang.args(["-fobjc-arc", "-O2", "-Wall"]);
         // debug 构建带上调试信息:否则 lldb 只能按符号名下断点,
         // 看不到 glaspen2.m 的行号(backtrace 也只有地址)。
         if std::env::var("PROFILE").as_deref() == Ok("debug") {

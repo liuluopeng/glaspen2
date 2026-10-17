@@ -471,6 +471,9 @@ static void toggle_canvas_mode(void) {
 
 // NSApplicationDelegate
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
+    // NSApp terminate 同样不走 Rust 析构: 退出前写完排队点并 checkpoint WAL,
+    // 否则自动更新的 .db 快照可能缺最后一小段笔迹。
+    glaspen2_shutdown();
     return NSTerminateNow;
 }
 
