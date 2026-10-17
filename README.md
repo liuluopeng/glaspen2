@@ -14,8 +14,8 @@
 
 平台:
 
-- Mac OS
-- Windows (直接读取 Raw HID, 压感可用, 不依赖 Microsoft Ink)
+- Mac OS 12+（当前发布物为 Apple Silicon / arm64）
+- Windows 10/11 x64（直接读取 Raw HID, 压感可用, 不依赖 Microsoft Ink）
 
 ## 两种画布模式
 
@@ -97,11 +97,11 @@ PDF / SVG / GIF / XOJ"]
 | 撤销上一笔                            | `⌘ + ⌃ + Z`              | `Ctrl + Alt + Z`                  |
 | 开启/关闭涂鸦                         | `⌘ + ⌃ + V`              | `Ctrl + Alt + V`                  |
 | 切换画布模式 (固定画布 ↔ 飘渺画布)     | `⌘ + ⌃ + X`              | `Ctrl + Alt + X`                  |
-| 上一页 / 下一页 (整页翻页)            | `⌥ + ⌘ + ↑/↓`、`⌘ + ⌃ + ~ / 1` | `Ctrl + Alt + J` / `Ctrl + Alt + K` |
+| 上一页 / 下一页 (整页翻页)            | `⌥ + ⌘ + ↑/↓`、`⌘ + ⌃ + ~ / 1` | `Ctrl + Alt + ~` / `Ctrl + Alt + 1` |
 | 导出 SVG + GIF 并复制图片到系统剪切板 | `⌘ + ⌃ + G`              | `Ctrl + Alt + G`                  |
 | 复制当前涂鸦为 SVG                    | `⌘ + ⌃ + S`              |                                   |
 | 模糊背景 磨砂玻璃开关                 | `⌘ + ⌃ + B`              | `Ctrl + Alt + B`                  |
-| 打开设置                              | `⌘ + ⌃ + D`              |                                   |
+| 打开设置                              | `⌘ + ⌃ + D`              | `Ctrl + Alt + D`                  |
 | 退出玻璃笔记                          |                          | `Ctrl + Alt + Q`                  |
 | 快捷录制 GIF (按住)                   | `⌘ + ⌃ + R`              | `Ctrl + Alt + R` (按住)           |
 | 无限画布: 镜头四向平移                | `⌥ + ⌘ + 方向键`          | `Ctrl + Alt + 方向键`             |
@@ -116,3 +116,9 @@ PDF / SVG / GIF / XOJ"]
 
 - Mac OS + Rust + Flutter
 - Windows + Rust + Flutter
+
+隐私:
+
+- 涂鸦数据默认全部保存在本机;检查更新只访问 GitHub,不收集遥测。
+- 手写消息 / 共享画布 / OCR 是可选功能,未配置服务地址不会发出任何请求。
+- 详见 [docs/privacy.md](./docs/privacy.md)。

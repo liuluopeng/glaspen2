@@ -97,11 +97,11 @@ Settings · Notebook · Free doodle"]
 | Undo last stroke | `⌘ + ⌃ + Z` | `Ctrl + Alt + Z` |
 | Toggle drawing | `⌘ + ⌃ + V` | `Ctrl + Alt + V` |
 | Toggle canvas mode (fixed ↔ ethereal) | `⌘ + ⌃ + X` | `Ctrl + Alt + X` |
-| Previous / next page (whole page) | `⌥ + ⌘ + ↑/↓`, `⌘ + ⌃ + ~ / 1` | `Ctrl + Alt + ↑/↓` |
+| Previous / next page (whole page) | `⌥ + ⌘ + ↑/↓`, `⌘ + ⌃ + ~ / 1` | `Ctrl + Alt + ~` / `Ctrl + Alt + 1` |
 | Export SVG + GIF (copies to clipboard) | `⌘ + ⌃ + G` | `Ctrl + Alt + G` |
 | Copy current doodle as SVG | `⌘ + ⌃ + S` | |
 | Frosted glass toggle | `⌘ + ⌃ + B` | `Ctrl + Alt + B` |
-| Open settings | `⌘ + ⌃ + D` | | |
+| Open settings | `⌘ + ⌃ + D` | `Ctrl + Alt + D` |
 | Quit | | `Ctrl + Alt + Q` |
 | Quick GIF recording (hold) | `⌘ + ⌃ + R` | `Ctrl + Alt + R` (hold) |
 | Infinite canvas: pan (four directions) | `⌥ + ⌘ + arrows` | `Ctrl + Alt + arrows` |

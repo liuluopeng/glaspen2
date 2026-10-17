@@ -6,7 +6,7 @@
 >
 > **状态更新 (2026-08)**: 历史 C# 实现已全部删除, Windows 版已重写为纯 Rust
 > (单层 WS_EX_LAYERED + WM_INPUT HID 解析 + ink-stroke-modeler + cairo 轮廓),
-> 见 `src/windows/overlay.rs`。下方 C# 路径均为历史分析记录。
+> 见 `crates/glaspen-windows/src/overlay.rs`。下方 C# 路径均为历史分析记录。
 
 ## 1. 三层模型
 

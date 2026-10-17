@@ -4,7 +4,63 @@
 
 ---
 
-## 未发布
+## 0.6.0（未发布）
+
+### 稳定性 / 数据安全
+
+- **不再静默丢笔**: 点列写入改为整笔一个事务, 任一批失败即回滚并把整笔
+  放进重试队列(下次抬笔/载页/退出时补写), 同时以 error 级日志留下现场。
+  之前分块 INSERT 失败仍继续 commit, 用户只看到"这一笔少了一截"。
+- **FFI panic 护栏**: 落笔/抬笔/渲染/缩略图/撤销/载页等 C ABI 入口加
+  `catch_unwind`, 并让全局锁容忍 poison —— 一次越界/DB 抖动不再 abort
+  整个应用。缩略图/GIF 的字节缓冲改为 boxed slice, 修掉按 `len` 释放
+  大于 `len` 的 Vec 容量导致的堆 UB。
+- **撤销/删除先删库后改内存**: DB 失败时不再出现"界面撤了、重开又回来"。
+- **迁移前自动备份**: 打开旧库前 `VACUUM INTO` 生成 `glaspen2.db.before-vN`;
+  自动更新前对 WAL 做 checkpoint, 退出路径统一 `glaspen2_shutdown()`,
+  更新器快照不再漏最近笔迹。
+- **PDF 导出**: 过滤已软删的页与笔迹, 修正 `GLASPEN2_DB_PATH` 环境变量;
+  按页序导出。
+
+### macOS
+
+- **macOS 12/13 截图回退**: `SCScreenshotManager` 是 14.0 API; 12/13 上
+  原先 completion 永不回调、静默泄漏。现回退到 CGWindowList(运行时
+  dlsym), 并始终截取覆盖层所在的那块屏(多屏不再错位)。
+- **minimap 容器初始化**: 两个缓存字典此前恒为 nil, 导致每帧重复渲染、
+  缩略图永远空白; 现在懒初始化并限制缓存规模。
+- **翻页预载 400 → 12 页**: 大幅缩短事件 tap 线程的同步建卡时间, 降低
+  "翻页卡到系统禁用 event tap"的概率。
+- **tap 健康看门狗**: 每 2s 检查辅助功能权限与 tap 状态, 能恢复就恢复,
+  权限失效时明确提示一次。
+- **删除死文件** `src/macos/parts/head.m`(从未被 include); ObjC 编译加
+  `-Wall`。
+
+### Windows
+
+- **命名管道改同步句柄**: 之前用 `FILE_FLAG_OVERLAPPED` 打开却传 NULL
+  OVERLAPPED, 设置通道可能整体不可用; 单次读取上限 1KB → 64KB。
+- **笔悬停不再挡鼠标**: 只有落笔期间才拦截输入, 笔搁在板上时鼠标仍可
+  操作下层应用; `Ctrl+Alt+D` 可重新打开设置面板。
+- **页面详情**: 圈选读对 `value` 字段, 粘贴按 `cx/cy` 平移。
+
+### 设置面板
+
+- 取消下载/关闭面板真正调用 `StreamSubscription.cancel()`(此前是
+  空语句, 下载会继续)。
+- 「真穿透」插画字段接对(`_tabBgImage` 从未赋值)。
+- 色块文字按真实亮度反色; 颜色/粗细名称与「选项/导出」标题接入 zh/en。
+- 首帧设置加载加代数校验, 不再覆盖用户刚点的开关; 加载失败弹 SnackBar。
+- 检查更新 15s 超时, 不会永久转圈。
+
+### 工程
+
+- workspace 版本单源(`0.6.0`); `Cargo.lock` / `pubspec.lock` 入库。
+- `default-members` 排除 Windows-only installer, macOS 上 `cargo test`
+  现在覆盖 core/chat/windows(132 个测试, 此前只跑根壳 12 个)。
+- CI 的 clippy/test 改为全 workspace(排除 installer), 新增 `flutter test`。
+- 新增 `docs/release-checklist.md`、`docs/privacy.md`、
+  `THIRD_PARTY_NOTICES.md`。
 
 - **缩略图功能扩展(全平台)**:页卡片右键新增 **导出此页 PNG**(白底
   2x)/ **导出此页 SVG**(内容包围盒)/ **复制页信息**;活页本 tab 加

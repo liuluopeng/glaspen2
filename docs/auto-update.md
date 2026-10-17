@@ -1,7 +1,7 @@
 # 自动更新(替换正在运行的旧版本)
 
-> 现状:**macOS 已实现**;Windows 待 P1.5(命名管道 + 安装桩静默参数,
-> UI 已带降级话术)。检查更新本身(无替换)见 `src/update.rs` 顶部文档。
+> 现状:**macOS 与 Windows 均已实现**(Windows 走命名管道 + 安装桩静默
+> 参数)。检查更新本身(无替换)见 `crates/glaspen-core/src/update.rs` 顶部文档。
 
 ## 角色与铁律
 
@@ -10,7 +10,7 @@
 | 角色 | 是什么 | 代码 |
 | --- | --- | --- |
 | 主程序 | 正常的 glaspen2(GUI) | `src/macos.rs` / ObjC |
-| 帮手 | `glaspen2 --updater …`,detach 出来的替换执行者 | `src/updater.rs` |
+| 帮手 | `glaspen2 --updater …`,detach 出来的替换执行者 | `crates/glaspen-core/src/updater.rs` |
 | 新版 | 被替换后重新拉起的主程序 | 同上,`finish_pending()` |
 
 **帮手进程正运行在要被替换的 bundle 里**,由此推出两条铁律:
