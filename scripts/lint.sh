@@ -1,17 +1,22 @@
 #!/bin/bash
-# 发布前的本地质量检查 (fmt + clippy + test)。
-# CI 只跑 fmt (macOS CI 无法可靠构建 Flutter framework 做 clippy/test),
-# 所以本脚本负责完整检查。用法: scripts/lint.sh
+# 发布前的本地质量检查 (fmt + clippy + test + 面板 analyze/test)。
+# 用法: scripts/lint.sh
 set -e
 
-echo "=== [1/3] rustfmt ==="
+echo "=== [1/5] rustfmt ==="
 cargo fmt --check
 
-echo "=== [2/3] clippy ==="
-cargo clippy --all-targets -- -D warnings
+echo "=== [2/5] clippy (全部可移植 crate) ==="
+cargo clippy --workspace --exclude glaspen2_installer --all-targets -- -D warnings
 
-echo "=== [3/3] tests ==="
-cargo test
+echo "=== [3/5] tests (全部可移植 crate) ==="
+cargo test --workspace --exclude glaspen2_installer
+
+echo "=== [4/5] flutter analyze ==="
+(cd flutter_settings && fvm flutter analyze)
+
+echo "=== [5/5] flutter test ==="
+(cd flutter_settings && fvm flutter test)
 
 echo
 echo "✓ 全部通过"
