@@ -40,7 +40,10 @@ extension _CanvasTabUi on _SettingsPageState {
       });
     } catch (e) {
       debugPrint('[Canvas] overview error: $e');
-      if (mounted) setState(() => _canvasLoading = false);
+      if (mounted) {
+        setState(() => _canvasLoading = false);
+        _toastError(AppLocalizations.of(context)!.loadFailedP1('$e'));
+      }
     }
   }
 

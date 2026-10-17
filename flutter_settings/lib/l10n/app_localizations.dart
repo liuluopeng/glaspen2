@@ -1429,6 +1429,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'检查更新'**
   String get checkForUpdates;
+
+  /// No description provided for @options.
+  ///
+  /// In zh, this message translates to:
+  /// **'选项'**
+  String get options;
+
+  /// Generic load failure surfaced as a snack bar
+  ///
+  /// In zh, this message translates to:
+  /// **'加载失败: {p1}'**
+  String loadFailedP1(String p1);
 }
 
 class _AppLocalizationsDelegate

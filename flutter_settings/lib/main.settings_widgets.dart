@@ -33,10 +33,11 @@ extension _SettingsWidgetsUi on _SettingsPageState {
   }
 
   Widget _buildColorGrid() {
+    final names = _colorNamesOf(AppLocalizations.of(context)!);
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: List.generate(_colorNames.length, (i) {
+      children: List.generate(names.length, (i) {
         final selected = i == _selectedColor;
         // 用真实亮度决定文字颜色: 此前用"最后一个索引"当白色,
         // 而最后一个预设其实是黑色 —— 黑块黑字、白块白字都看不见。
@@ -60,7 +61,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
                   borderRadius: BorderRadius.circular(4)),
             ),
             child: Text(
-              _colorNames[i],
+              names[i],
               style: TextStyle(
                 fontSize: 13,
                 color: useDarkText ? Colors.black87 : Colors.white,
@@ -74,9 +75,10 @@ extension _SettingsWidgetsUi on _SettingsPageState {
   }
 
   Widget _buildWidthRow() {
+    final names = _widthNamesOf(AppLocalizations.of(context)!);
     return Wrap(
       spacing: 8,
-      children: List.generate(_widthNames.length, (i) {
+      children: List.generate(names.length, (i) {
         final selected = i == _selectedWidth;
         return SizedBox(
           width: 55,
@@ -95,7 +97,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(4)),
             ),
-            child: Text(_widthNames[i],
+            child: Text(names[i],
                 style: const TextStyle(fontSize: 13)),
           ),
         );

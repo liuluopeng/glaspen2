@@ -45,7 +45,10 @@ extension _NotebookDataUi on _SettingsPageState {
       }
     } catch (e) {
       debugPrint('[Content] listPages error: $e');
-      if (mounted) setState(() => _pagesLoading = false);
+      if (mounted) {
+        setState(() => _pagesLoading = false);
+        _toastError(AppLocalizations.of(context)!.loadFailedP1('$e'));
+      }
     }
   }
 

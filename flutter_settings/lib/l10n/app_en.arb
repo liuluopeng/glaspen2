@@ -473,5 +473,15 @@
         "type": "Object"
       }
     }
+  },
+  "options": "Options",
+  "loadFailedP1": "Load failed: {p1}",
+  "@loadFailedP1": {
+    "description": "Generic load failure surfaced as a snack bar",
+    "placeholders": {
+      "p1": {
+        "type": "String"
+      }
+    }
   }
 }

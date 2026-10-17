@@ -743,4 +743,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get checkForUpdates => '检查更新';
+
+  @override
+  String get options => '选项';
+
+  @override
+  String loadFailedP1(String p1) {
+    return '加载失败: $p1';
+  }
 }

@@ -473,5 +473,15 @@
         "type": "Object"
       }
     }
+  },
+  "options": "选项",
+  "loadFailedP1": "加载失败: {p1}",
+  "@loadFailedP1": {
+    "description": "Generic load failure surfaced as a snack bar",
+    "placeholders": {
+      "p1": {
+        "type": "String"
+      }
+    }
   }
 }

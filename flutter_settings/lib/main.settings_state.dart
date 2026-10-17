@@ -8,6 +8,7 @@ part of 'main.dart';
 
 extension _SettingsStateUi on _SettingsPageState {
   void _onSettingsChanged(Map<dynamic, dynamic> s) {
+    _settingsLoadGen++; // 服务端推送视为最新状态, 作废在途的旧加载
     if (mounted) {
       setState(() {
         _selectedColor = (s['color'] as num?)?.toInt() ?? _selectedColor;
@@ -40,8 +41,11 @@ extension _SettingsStateUi on _SettingsPageState {
   }
 
   Future<void> _loadSettings() async {
+    final gen = ++_settingsLoadGen;
     try {
       final settings = await _bridge.getSettings();
+      // 等待期间用户改过设置 / 收到推送 → 丢弃这份过期快照
+      if (gen != _settingsLoadGen) return;
       if (mounted && settings.isNotEmpty) {
         setState(() {
           _selectedColor = (settings['color'] as num?)?.toInt() ?? 0;
@@ -89,6 +93,8 @@ extension _SettingsStateUi on _SettingsPageState {
   }
 
   void _setSetting(String key, dynamic value) {
+    // 用户刚做的选择优先于任何在途的首帧加载
+    _settingsLoadGen++;
     // 这是"发出去就不管"的写入:失败只记日志,不该因为桥异常打断 UI
     _bridge.setSetting(key, value).catchError((Object e) {
       debugPrint('[Settings] set "$key" failed: $e');

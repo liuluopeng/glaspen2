@@ -771,4 +771,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get checkForUpdates => 'Check for updates';
+
+  @override
+  String get options => 'Options';
+
+  @override
+  String loadFailedP1(String p1) {
+    return 'Load failed: $p1';
+  }
 }

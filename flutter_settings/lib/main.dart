@@ -89,12 +89,15 @@ bool _b(dynamic v) => v == true || v == 1 || v == '1';
 ///
 /// macOS 用 flutter_rust_bridge 直接调同进程内的 Rust(`_FrbBridge`),
 /// Windows 的面板是独立进程,只能走命名管道(`_NamedPipeBridge`)。
-const _colorNames = ['红色', '橙色', '黄色', '绿色', '青色', '蓝色', '紫色', '粉色', '白色', '黑色'];
+// 名称走 gen-l10n(zh/en 各一套), 颜色值只在一处。
+List<String> _colorNamesOf(AppLocalizations l) =>
+    [l.cRed, l.cOrange, l.cYellow, l.cGreen, l.cCyan, l.cBlue, l.cPurple, l.cPink, l.cWhite, l.cBlack];
 const _colorValues = [
   0xFFFF0038, 0xFFFF4D00, 0xFFFFCC00, 0xFF00E676, 0xFF00A3FF,
   0xFF0096FF, 0xFFAA00FF, 0xFFFF0080, 0xFFFFFFFF, 0xFF000000,
 ];
-const _widthNames = ['极细', '很细', '细', '中', '粗', '很粗', '超粗', '极粗'];
+List<String> _widthNamesOf(AppLocalizations l) =>
+    [l.wUltraFine, l.wVeryFine, l.wFine, l.wMedium, l.wThick, l.wVeryThick, l.wExtraThick, l.wUltraThick];
 
 class GlaspenSettingsApp extends StatelessWidget {
   const GlaspenSettingsApp({super.key, this.locale});
@@ -246,6 +249,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   String _searchText = '';
   int _flipEffect = 0; // 翻页动效: 0=macOS 系统 1=时光隧道
   bool _pagesLoading = false;
+  // 设置加载代数: 首帧 getSettings 还没回来时用户点了开关, 旧响应不能
+  // 把新选择覆盖回去。
+  int _settingsLoadGen = 0;
   // 批量多选删除
   bool _multiSelect = false;
   final Set<int> _selectedPageIds = {};
@@ -291,6 +297,14 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     _chatPassword.dispose();
     _bridge.dispose();
     super.dispose();
+  }
+
+  /// 统一把"读失败"变成用户看得见的一条提示, 而不是悄悄显示成空列表。
+  void _toastError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 4)),
+    );
   }
 
   void _onGridScroll() {
@@ -420,7 +434,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                   const SizedBox(height: 16),
                   _buildSection(AppLocalizations.of(context)!.pen, _buildPenSection()),
                   const SizedBox(height: 16),
-                  _buildSection('Options', _buildOptionsSection()),
+                  _buildSection(AppLocalizations.of(context)!.options, _buildOptionsSection()),
                   const SizedBox(height: 16),
                   _buildSection(AppLocalizations.of(context)!.notebookLook, Row(children: [
                     Text(AppLocalizations.of(context)!.style, style: TextStyle(fontSize: 13)),
@@ -479,7 +493,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                       },
                     ))),
                   if (_chatIntegration) const SizedBox(height: 16),
-                  _buildSection('Export', _buildExportButtons()),
+                  _buildSection(AppLocalizations.of(context)!.export, _buildExportButtons()),
                   const SizedBox(height: 16),
                   _buildSection(AppLocalizations.of(context)!.dataBackup, _buildBackupButtons()),
                   const SizedBox(height: 16),
