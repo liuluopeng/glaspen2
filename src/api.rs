@@ -319,7 +319,10 @@ pub fn settings_changed(sink: StreamSink<Settings>) {
     if let Some(s) = current_settings() {
         let _ = sink.add(s);
     }
-    SETTINGS_SINKS.lock().unwrap().push(sink);
+    SETTINGS_SINKS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(sink);
 }
 
 /// 由 ObjC 在 `sync_settings_panel()` 里调用(运行在主线程)。
@@ -329,7 +332,7 @@ pub extern "C" fn glaspen2_notify_settings_changed() {
     let Some(settings) = current_settings() else {
         return;
     };
-    let mut sinks = SETTINGS_SINKS.lock().unwrap();
+    let mut sinks = SETTINGS_SINKS.lock().unwrap_or_else(|e| e.into_inner());
     // 订阅端已断开时 add 会失败,顺手清理
     sinks.retain(|s| s.add(settings.clone()).is_ok());
 }
@@ -436,7 +439,7 @@ pub async fn lasso_select(screen_id: i64, poly: Vec<(f64, f64)>) -> Vec<i64> {
         let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
-        unsafe { crate::export::glaspen2_free_c_string(ptr) };
+        crate::export::glaspen2_free_c_string(ptr);
         s.split(',')
             .filter_map(|t| t.trim().parse::<i64>().ok())
             .collect()
@@ -518,7 +521,7 @@ pub async fn copy_strokes_payload(screen_id: i64, ids: Vec<i64>) -> String {
         let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
-        unsafe { crate::export::glaspen2_free_c_string(ptr) };
+        crate::export::glaspen2_free_c_string(ptr);
         s
     })
 }

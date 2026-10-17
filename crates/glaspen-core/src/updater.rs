@@ -159,6 +159,9 @@ pub fn run_job(job: &Job, fx: &impl Effects, t: &Timing) -> Result<Outcome, Stri
     // 2. DB 快照(进程已退,一致);失败不阻断更新,只记录
     if job.db.exists() {
         let snap = cache.join(db_snapshot_name());
+        // 主程序可能没来得及 checkpoint: WAL 里还有最近落笔。先尝试把
+        // WAL 合回主库, 再拷 .db —— 否则回滚快照会缺最后一小段笔迹。
+        checkpoint_db(&job.db);
         match std::fs::copy(&job.db, &snap) {
             Ok(n) => log_line(cache, &format!("db snapshot {n} bytes")),
             Err(e) => log_line(cache, &format!("db snapshot FAILED: {e}")),
@@ -324,6 +327,26 @@ fn finish_pending_with(cache: PathBuf, alive: impl Fn(u32) -> bool) {
     let _ = std::fs::remove_file(&pidf);
     let _ = std::fs::remove_file(&ack);
     log_line(&cache, "update finished, markers cleared");
+}
+
+/// 尽力把 WAL 合并回主库(打开短连接执行 checkpoint)。失败只记日志:
+/// 快照仍然可用, 只是可能少最后几笔。
+fn checkpoint_db(db: &std::path::Path) {
+    let db = db.to_path_buf();
+    let result = crate::runtime().block_on(async move {
+        let opts = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(&db)
+            .create_if_missing(false);
+        let pool = sqlx::SqlitePool::connect_with(opts).await?;
+        sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(&pool)
+            .await?;
+        pool.close().await;
+        Ok::<(), sqlx::Error>(())
+    });
+    if let Err(e) = result {
+        tracing::warn!("更新前 DB checkpoint 失败(快照可能缺最近笔迹): {e}");
+    }
 }
 
 /// 真实的进程存活探测。

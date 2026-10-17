@@ -23,7 +23,7 @@ fn modeler_params() -> ModelerParams {
 
 /// Initialize the modeler for a new stroke. Called on pen down.
 pub fn begin_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f64) {
-    let mut state_lock = STATE.lock().unwrap();
+    let mut state_lock = STATE.lock().unwrap_or_else(|e| e.into_inner());
     let state = state_lock.get_or_insert_with(|| StrokeModelerState {
         modeler: StrokeModeler::default(),
         start_time: timestamp,
@@ -60,7 +60,7 @@ pub fn begin_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: 
 
 /// Feed a pen move event into the modeler. Smoothed output goes into the buffer.
 pub fn pen_move(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f64) {
-    let mut state_lock = STATE.lock().unwrap();
+    let mut state_lock = STATE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(ref mut state) = *state_lock {
         let t = timestamp - state.start_time;
         let input = ModelerInput {
@@ -88,7 +88,7 @@ pub fn pen_move(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f64)
 
 /// Finalize the stroke. Modeler converges to the final position.
 pub fn end_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f64) {
-    let mut state_lock = STATE.lock().unwrap();
+    let mut state_lock = STATE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(ref mut state) = *state_lock {
         let t = timestamp - state.start_time;
         let input = ModelerInput {
@@ -114,7 +114,7 @@ pub fn end_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f6
 
 /// Take the buffered smoothed points. Clears the buffer.
 pub fn take_buffer() -> Vec<(f64, f64, f64, f64)> {
-    let mut state_lock = STATE.lock().unwrap();
+    let mut state_lock = STATE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(ref mut state) = *state_lock {
         std::mem::take(&mut state.buffer)
     } else {
@@ -124,19 +124,19 @@ pub fn take_buffer() -> Vec<(f64, f64, f64, f64)> {
 
 /// Get the current buffer length.
 pub fn buffer_len() -> usize {
-    let state_lock = STATE.lock().unwrap();
+    let state_lock = STATE.lock().unwrap_or_else(|e| e.into_inner());
     state_lock.as_ref().map_or(0, |s| s.buffer.len())
 }
 
 /// Get a single point from the buffer by index.
 pub fn get_buffer_point(idx: usize) -> Option<(f64, f64, f64, f64)> {
-    let state_lock = STATE.lock().unwrap();
+    let state_lock = STATE.lock().unwrap_or_else(|e| e.into_inner());
     state_lock.as_ref().and_then(|s| s.buffer.get(idx).copied())
 }
 
 /// Clear the buffer.
 pub fn clear_buffer() {
-    let mut state_lock = STATE.lock().unwrap();
+    let mut state_lock = STATE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(ref mut state) = *state_lock {
         state.buffer.clear();
     }
@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn test_modeler_begin_end_buffer_cleared() {
-        let _ = STATE.lock().unwrap().take();
+        let _ = STATE.lock().unwrap_or_else(|e| e.into_inner()).take();
         begin_stroke(0.0, 0.0, 0.5, 0.0, 1.0);
         let buf = take_buffer();
         assert!(

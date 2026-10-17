@@ -262,7 +262,7 @@ fn now_ms() -> i64 {
 /// 客户端幂等键。本地模拟期用计数器 + 时间戳,真实接入时可换 uuid。
 fn new_client_msg_id() -> String {
     static COUNTER: Mutex<u64> = Mutex::new(0);
-    let mut n = COUNTER.lock().unwrap();
+    let mut n = COUNTER.lock().unwrap_or_else(|e| e.into_inner());
     *n += 1;
     format!("local-{:x}-{:x}", now_ms(), *n)
 }
@@ -439,7 +439,7 @@ mod tests {
     #[test]
     fn endpoint_resolution() {
         static LOCK: Mutex<()> = Mutex::new(());
-        let _g = LOCK.lock().unwrap();
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
         assert_eq!(endpoint_from_env(), DEFAULT_ENDPOINT);
         unsafe { std::env::set_var("GLASPEN_CHAT_ENDPOINT", "http://127.0.0.1:9999") };
         assert_eq!(endpoint_from_env(), "http://127.0.0.1:9999");

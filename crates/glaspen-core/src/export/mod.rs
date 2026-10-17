@@ -101,7 +101,7 @@ pub extern "C" fn glaspen2_begin_stroke(
 ) {
     crate::state::mark_stroke_activity();
     let id = runtime().block_on(db::begin_stroke(r, g, b, width_scale));
-    let mut strokes = STROKES.lock().unwrap();
+    let mut strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     strokes.push(Stroke {
         id,
         r,
@@ -109,7 +109,7 @@ pub extern "C" fn glaspen2_begin_stroke(
         b,
         points: Vec::new(),
     });
-    *RAW_STROKE_START.lock().unwrap() = None;
+    *RAW_STROKE_START.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 #[unsafe(no_mangle)]
@@ -123,7 +123,7 @@ pub extern "C" fn glaspen2_add_point(x: c_double, y: c_double, width: c_double) 
 /// comes out empty, so drawing paths must use this variant.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_add_point_t(x: c_double, y: c_double, width: c_double, t: c_double) {
-    let mut strokes = STROKES.lock().unwrap();
+    let mut strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(stroke) = strokes.last_mut() {
         stroke.points.push((x, y, width, t));
     }
@@ -277,7 +277,7 @@ pub extern "C" fn glaspen2_load_infinite_strokes() -> c_int {
     runtime().block_on(db::end_stroke());
     let data = runtime().block_on(db::load_infinite_strokes());
     let count = data.len() as c_int;
-    let mut strokes = STROKES.lock().unwrap();
+    let mut strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     strokes.clear();
     for s in data {
         strokes.push(Stroke {
@@ -319,6 +319,32 @@ pub extern "C" fn glaspen2_get_infinite_transform(
 }
 
 /// Re-render every stroke from STROKES onto the ObjC-owned cairo surface.
+/// FFI 边界 panic 护栏。
+///
+/// `extern "C"` 函数里发生 unwind 是未定义行为, 且实战中默认直接 abort。
+/// 输入事件/渲染/导出都从 ObjC、Win32 直接调进来, 一次索引越界不该让
+/// 用户丢掉整个应用。这里把 panic 接住, 返回调用方约定的默认值, 并留下
+/// error 级日志(panic hook 另有 backtrace 落盘)。
+pub(crate) fn ffi_guard<T>(default: T, f: impl FnOnce() -> T) -> T {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(v) => v,
+        Err(_) => {
+            tracing::error!("FFI panic 已拦截, 返回默认值(详见崩溃日志/backtrace)");
+            default
+        }
+    }
+}
+
+/// 退出前收尾: 把排队中的点写完, 并把 WAL 合并回主库。
+///
+/// ObjC 的 `exit(0)` / `NSApp terminate` 不会跑 Rust 析构, 不 checkpoint
+/// 的话更新器拷贝的 `.db` 快照会漏掉 WAL 里的最近笔迹。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_shutdown() {
+    runtime().block_on(db::end_stroke());
+    runtime().block_on(db::checkpoint());
+}
+
 /// Used on undo, page navigation, display changes and the rainbow toggle.
 /// Coordinates are scaled by `scale` (retina factor); the surface is an
 /// external cairo image surface owned by ObjC.
@@ -341,7 +367,9 @@ pub extern "C" fn glaspen2_draw_rebuild_view(
     page_oy: c_double,
     page_scale: c_double,
 ) {
-    draw_rebuild_impl(surface_ptr, scale, page_ox, page_oy, page_scale);
+    ffi_guard((), || {
+        draw_rebuild_impl(surface_ptr, scale, page_ox, page_oy, page_scale);
+    });
 }
 
 #[cfg(target_os = "macos")]
@@ -381,22 +409,24 @@ fn draw_rebuild_impl(
     } else {
         None
     };
-    let strokes = STROKES.lock().unwrap();
-
-    // 主页笔迹
-    paint_strokes_into(
-        &r,
-        &strokes.iter().map(stroke_points).collect::<Vec<_>>(),
-        pan_x_eff,
-        pan_y_eff,
-        zoom_eff,
-        scale,
-        0.0,
-        STROKE_SHADOW.load(std::sync::atomic::Ordering::SeqCst),
-        outline,
-        1.0,
-        invert.as_ref(),
-    );
+    // 主页笔迹: 只在需要绘制时持锁, 画完立刻释放。以前锁会一直持有到
+    // 后面的邻页 DB 查询, 落笔线程抢锁时要等一整轮 SQLite IO。
+    {
+        let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
+        paint_strokes_into(
+            &r,
+            &strokes.iter().map(stroke_points).collect::<Vec<_>>(),
+            pan_x_eff,
+            pan_y_eff,
+            zoom_eff,
+            scale,
+            0.0,
+            STROKE_SHADOW.load(std::sync::atomic::Ordering::SeqCst),
+            outline,
+            1.0,
+            invert.as_ref(),
+        );
+    }
 
     // 活页本跨页显示:相邻两页的笔迹画在本页上下(视口滑出页界时可见)。
     // 仅翻页模式(无限画布全局只有一张,无邻页);fit 观看时停用。
@@ -468,7 +498,6 @@ fn draw_rebuild_impl(
         }
     }
 
-    drop(strokes);
     r.reset_clip(); // 反色局部重绘收尾(每次调用都是新 context, 双保险)
     r.flush();
 }
@@ -775,20 +804,22 @@ pub extern "C" fn glaspen2_modeler_begin(
     timestamp: c_double,
     width_scale: c_double,
 ) {
-    state::mark_stroke_activity();
-    modeler::begin_stroke(x, y, pressure, timestamp, width_scale);
-    *RAW_STROKE_START.lock().unwrap() = Some(timestamp);
-    // Start DB stroke with correct color
-    let id = runtime().block_on(db::begin_stroke(r, g, b, width_scale));
-    state::buffer_point(x, y, pressure_to_width(pressure, width_scale), 0.0); // sync
-    // Start STROKES entry
-    let mut strokes = STROKES.lock().unwrap();
-    strokes.push(Stroke {
-        id,
-        r,
-        g,
-        b,
-        points: Vec::new(),
+    ffi_guard((), || {
+        state::mark_stroke_activity();
+        modeler::begin_stroke(x, y, pressure, timestamp, width_scale);
+        *RAW_STROKE_START.lock().unwrap_or_else(|e| e.into_inner()) = Some(timestamp);
+        // Start DB stroke with correct color
+        let id = runtime().block_on(db::begin_stroke(r, g, b, width_scale));
+        state::buffer_point(x, y, pressure_to_width(pressure, width_scale), 0.0); // sync
+        // Start STROKES entry
+        let mut strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
+        strokes.push(Stroke {
+            id,
+            r,
+            g,
+            b,
+            points: Vec::new(),
+        });
     });
 }
 
@@ -800,14 +831,19 @@ pub extern "C" fn glaspen2_modeler_move(
     timestamp: c_double,
     width_scale: c_double,
 ) {
-    modeler::pen_move(x, y, pressure, timestamp, width_scale);
-    let start = RAW_STROKE_START.lock().unwrap().unwrap_or(timestamp);
-    state::buffer_point(
-        x,
-        y,
-        pressure_to_width(pressure, width_scale),
-        timestamp - start,
-    );
+    ffi_guard((), || {
+        modeler::pen_move(x, y, pressure, timestamp, width_scale);
+        let start = RAW_STROKE_START
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or(timestamp);
+        state::buffer_point(
+            x,
+            y,
+            pressure_to_width(pressure, width_scale),
+            timestamp - start,
+        );
+    });
 }
 
 #[unsafe(no_mangle)]
@@ -818,39 +854,46 @@ pub extern "C" fn glaspen2_modeler_end(
     timestamp: c_double,
     width_scale: c_double,
 ) {
-    modeler::end_stroke(x, y, pressure, timestamp, width_scale);
-    let start = RAW_STROKE_START.lock().unwrap().unwrap_or(timestamp);
-    state::buffer_point(
-        x,
-        y,
-        pressure_to_width(pressure, width_scale),
-        timestamp - start,
-    ); // sync
-    db::end_stroke_spawned();
+    ffi_guard((), || {
+        modeler::end_stroke(x, y, pressure, timestamp, width_scale);
+        let start = RAW_STROKE_START
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or(timestamp);
+        state::buffer_point(
+            x,
+            y,
+            pressure_to_width(pressure, width_scale),
+            timestamp - start,
+        ); // sync
+        db::end_stroke_spawned();
+    });
 }
 
 /// Commit the modeler buffer into STROKES. Call after drawing the buffer.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_modeler_commit_to_strokes(r: c_double, g: c_double, b: c_double) {
-    crate::state::mark_stroke_activity();
-    {
-        let smoothed = modeler::take_buffer();
-        let mut strokes = STROKES.lock().unwrap();
-        if let Some(last) = strokes.last_mut() {
-            last.r = r;
-            last.g = g;
-            last.b = b;
+    ffi_guard((), || {
+        crate::state::mark_stroke_activity();
+        {
+            let smoothed = modeler::take_buffer();
+            let mut strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(last) = strokes.last_mut() {
+                last.r = r;
+                last.g = g;
+                last.b = b;
 
-            for (sx, sy, sw, st) in smoothed {
-                last.points.push((sx, sy, sw, st));
+                for (sx, sy, sw, st) in smoothed {
+                    last.points.push((sx, sy, sw, st));
+                }
+                // Bound point count for long-running sessions.
+                last.points = decimate(&last.points);
             }
-            // Bound point count for long-running sessions.
-            last.points = decimate(&last.points);
-        }
-    } // 先放掉 STROKES 锁再走草稿钩子(钩子内部要重新拿锁)
-    ink_draft_on_stroke_committed();
-    ink_share_on_stroke_committed();
-    crate::ocr::on_stroke_committed(crate::state::current_screen_id());
+        } // 先放掉 STROKES 锁再走草稿钩子(钩子内部要重新拿锁)
+        ink_draft_on_stroke_committed();
+        ink_share_on_stroke_committed();
+        crate::ocr::on_stroke_committed(crate::state::current_screen_id());
+    });
 }
 
 /// Windows 直写路径(begin_stroke/add_point_t/end_stroke)的抬笔钩子扇出。
@@ -873,7 +916,7 @@ pub extern "C" fn glaspen2_modeler_erase_finish() {
     let eraser_pts = modeler::take_buffer();
 
     let removed_ids: Vec<i64> = {
-        let mut strokes = STROKES.lock().unwrap();
+        let mut strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
         let mut removed = Vec::new();
         strokes.retain(|s| {
             let hit = if eraser_pts.is_empty() {
@@ -954,12 +997,12 @@ pub extern "C" fn glaspen2_modeler_clear_buffer() {
 /// Load strokes from DB into STROKES for a given screen. Returns stroke count.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_stroke_count() -> c_int {
-    STROKES.lock().unwrap().len() as c_int
+    STROKES.lock().unwrap_or_else(|e| e.into_inner()).len() as c_int
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_get_stroke_point_count(idx: c_int) -> c_int {
-    let strokes = STROKES.lock().unwrap();
+    let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     strokes
         .get(idx as usize)
         .map_or(0, |s| s.points.len() as c_int)
@@ -972,7 +1015,7 @@ pub extern "C" fn glaspen2_get_stroke_color(
     g: *mut c_double,
     b: *mut c_double,
 ) {
-    let strokes = STROKES.lock().unwrap();
+    let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = strokes.get(idx as usize) {
         unsafe {
             *r = s.r;
@@ -984,7 +1027,7 @@ pub extern "C" fn glaspen2_get_stroke_color(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_get_stroke_avg_width(idx: c_int) -> c_double {
-    let strokes = STROKES.lock().unwrap();
+    let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     strokes.get(idx as usize).map_or(1.0, |s| s.avg_width())
 }
 
@@ -995,7 +1038,7 @@ pub extern "C" fn glaspen2_get_stroke_point(
     x: *mut c_double,
     y: *mut c_double,
 ) {
-    let strokes = STROKES.lock().unwrap();
+    let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(s) = strokes.get(idx as usize)
         && let Some(&(px, py, _, _)) = s.points.get(pidx as usize)
     {
@@ -1008,7 +1051,7 @@ pub extern "C" fn glaspen2_get_stroke_point(
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_get_stroke_point_width(idx: c_int, pidx: c_int) -> c_double {
-    let strokes = STROKES.lock().unwrap();
+    let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     strokes
         .get(idx as usize)
         .and_then(|s| s.points.get(pidx as usize))
@@ -1353,7 +1396,7 @@ pub extern "C" fn glaspen2_now_secs() -> c_double {
 /// Get the time component of a single stroke point. Used by Windows Flutter overlay.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_get_stroke_point_time(idx: c_int, pidx: c_int) -> c_double {
-    let strokes = STROKES.lock().unwrap();
+    let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     strokes
         .get(idx as usize)
         .and_then(|s| s.points.get(pidx as usize))
@@ -1383,20 +1426,25 @@ mod tests {
         if std::env::var("GLASPEN_CHAT_MOCK").is_ok_and(|v| v == "0") {
             return;
         }
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         assert_eq!(glaspen2_ink_draft_start(1920, 1080), 1);
         assert_eq!(
             glaspen2_ink_draft_start(1920, 1080),
             0,
             "会话进行中应拒绝二连开"
         );
-        STROKES.lock().unwrap().push(Stroke {
-            id: 0,
-            r: 1.0,
-            g: 0.0,
-            b: 0.0,
-            points: vec![(1.0, 2.0, 2.5, 0.0), (30.0, 40.0, 3.5, 0.12)],
-        });
+        STROKES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(Stroke {
+                id: 0,
+                r: 1.0,
+                g: 0.0,
+                b: 0.0,
+                points: vec![(1.0, 2.0, 2.5, 0.0), (30.0, 40.0, 3.5, 0.12)],
+            });
         ink_draft_on_stroke_committed();
         assert_eq!(
             glaspen2_ink_draft_stop(),
@@ -1404,7 +1452,7 @@ mod tests {
             "mock 通道应回执 sent/accepted=1"
         );
         assert_eq!(glaspen2_ink_draft_stop(), -1, "会话已关,再 stop 报无会话");
-        STROKES.lock().unwrap().pop();
+        STROKES.lock().unwrap_or_else(|e| e.into_inner()).pop();
     }
 
     /// 描边对比色:亮色(黄/白)配黑边,暗色(蓝/黑)配白边。
@@ -1768,7 +1816,9 @@ mod tests {
     #[test]
     #[ignore]
     fn bench_virtual_stroke_per_event() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let n_events = 2000usize; // 200Hz × 10 秒
         let dt = 1.0 / 200.0;
         // 手写弧线:横向推进 + 纵向正弦起伏 + 压感脉动
@@ -1780,7 +1830,7 @@ mod tests {
         };
 
         for iter in 0..3 {
-            STROKES.lock().unwrap().clear();
+            STROKES.lock().unwrap_or_else(|e| e.into_inner()).clear();
             let (x0, y0, p0) = curve(0.0);
 
             // begin 的等价部分(不含 DB 的那一行 INSERT)
@@ -1798,13 +1848,16 @@ mod tests {
             let move_cost = t_in.elapsed();
 
             // pen-up:模型器收敛 + 提交到笔迹(含 decimate)
-            STROKES.lock().unwrap().push(Stroke {
-                id: 0,
-                r: 1.0,
-                g: 0.0,
-                b: 0.0,
-                points: Vec::new(),
-            });
+            STROKES
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(Stroke {
+                    id: 0,
+                    r: 1.0,
+                    g: 0.0,
+                    b: 0.0,
+                    points: Vec::new(),
+                });
             let t_up = std::time::Instant::now();
             let (xe, ye, pe) = curve(n_events as f64 * dt);
             glaspen2_modeler_end(xe, ye, pe, n_events as f64 * dt, 1.0);
@@ -1822,7 +1875,7 @@ mod tests {
             );
         }
 
-        STROKES.lock().unwrap().clear();
+        STROKES.lock().unwrap_or_else(|e| e.into_inner()).clear();
         let _ = crate::state::take_pending();
     }
 

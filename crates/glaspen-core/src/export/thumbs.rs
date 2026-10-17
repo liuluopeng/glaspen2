@@ -47,33 +47,35 @@ pub extern "C" fn glaspen2_render_thumbnail(
     max_size: c_int,
     out_len: *mut c_int,
 ) -> *mut c_uchar {
-    if max_size <= 0 || out_len.is_null() {
-        if !out_len.is_null() {
-            unsafe {
-                *out_len = 0;
+    ffi_guard(std::ptr::null_mut(), || {
+        if max_size <= 0 || out_len.is_null() {
+            if !out_len.is_null() {
+                unsafe {
+                    *out_len = 0;
+                }
             }
+            return std::ptr::null_mut();
         }
-        return std::ptr::null_mut();
-    }
-    unsafe {
-        *out_len = 0;
-    }
+        unsafe {
+            *out_len = 0;
+        }
 
-    // ── 0. 缓存:内容版本(笔迹数,最大笔迹id)+渲染参数未变 → 直接返回存库 PNG ──
-    let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
-    let (count, max_id) = runtime().block_on(db::screen_stroke_version(screen_id));
-    if count > 0
-        && let Some(png) = runtime().block_on(db::thumbnail_lookup(
-            screen_id, max_size, count, max_id, outline,
-        ))
-    {
-        return leak_png(png, out_len);
-    }
+        // ── 0. 缓存:内容版本(笔迹数,最大笔迹id)+渲染参数未变 → 直接返回存库 PNG ──
+        let outline = STROKE_OUTLINE.load(std::sync::atomic::Ordering::SeqCst);
+        let (count, max_id) = runtime().block_on(db::screen_stroke_version(screen_id));
+        if count > 0
+            && let Some(png) = runtime().block_on(db::thumbnail_lookup(
+                screen_id, max_size, count, max_id, outline,
+            ))
+        {
+            return leak_png(png, out_len);
+        }
 
-    match render_and_store_thumbnail(screen_id, max_size, (count, max_id), outline) {
-        Some(png) => leak_png(png, out_len),
-        None => std::ptr::null_mut(),
-    }
+        match render_and_store_thumbnail(screen_id, max_size, (count, max_id), outline) {
+            Some(png) => leak_png(png, out_len),
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 /// Load one page's strokes, render its thumbnail and cache it under
@@ -244,11 +246,16 @@ pub fn encode_thumb_blob(entries: &[(i64, Vec<u8>)]) -> Vec<u8> {
     out
 }
 
-/// Hand ownership of a PNG buffer to the caller via out_len (leak pattern).
+/// Hand ownership of a byte buffer to the caller via out_len (leak pattern).
+///
+/// 必须 `into_boxed_slice()` 后再泄漏: `Vec` 的容量可能大于长度, 而调用方
+/// 按 `(ptr, len)` 用 `Vec::from_raw_parts(ptr, len, len)` 释放。容量不一致
+/// 时 allocator 拿到的 layout 是错的 —— 堆破坏级别的 UB。Box<[u8]> 的
+/// 分配布局恰好等于 `Vec::with_capacity(len)`, 与释放侧一致。
 fn leak_png(png: Vec<u8>, out_len: *mut c_int) -> *mut c_uchar {
-    let len = png.len() as c_int;
-    let ptr = png.as_ptr() as *mut c_uchar;
-    std::mem::forget(png);
+    let boxed = png.into_boxed_slice();
+    let len = boxed.len() as c_int;
+    let ptr = Box::into_raw(boxed) as *mut c_uchar;
     unsafe {
         *out_len = len;
     }
@@ -296,7 +303,7 @@ pub extern "C" fn glaspen2_render_canvas_overview(
         return std::ptr::null_mut();
     };
     r.clear();
-    let strokes = STROKES.lock().unwrap();
+    let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     for s in strokes.iter() {
         let pts = &s.points;
         if pts.len() < 2 {

@@ -51,7 +51,7 @@ pub(crate) fn stroke_to_chat_message(seq: u64, s: &Stroke) -> glaspen_chat::pb::
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_chat_send_strokes(start_index: c_int, end_index: c_int) -> c_int {
     let strokes: Vec<Stroke> = {
-        let all = STROKES.lock().unwrap();
+        let all = STROKES.lock().unwrap_or_else(|e| e.into_inner());
         let start = start_index.clamp(0, all.len() as i32) as usize;
         let end = (end_index.clamp(0, all.len() as i32) as usize).max(start);
         all[start..end].to_vec()
@@ -109,14 +109,20 @@ static INK_DRAFT: std::sync::Mutex<Option<InkDraftSession>> = std::sync::Mutex::
 static INK_DRAFT_LAST_ERROR: std::sync::Mutex<Option<CString>> = std::sync::Mutex::new(None);
 
 fn set_ink_draft_error(err: Option<&str>) {
-    *INK_DRAFT_LAST_ERROR.lock().unwrap() = err.map(|s| CString::new(s).unwrap_or_default());
+    *INK_DRAFT_LAST_ERROR
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = err.map(|s| CString::new(s).unwrap_or_default());
 }
 
 /// 通道失败原因(UTF-8),无失败时返回 NULL。供 ObjC 在 stop 返回 <0 时
 /// 展示具体原因(身份过期 / 未注册路由 / 连接失败等)。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_ink_draft_last_error() -> *const c_char {
-    match INK_DRAFT_LAST_ERROR.lock().unwrap().as_ref() {
+    match INK_DRAFT_LAST_ERROR
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+    {
         Some(c) => c.as_ptr(),
         None => std::ptr::null(),
     }
@@ -126,7 +132,7 @@ pub extern "C" fn glaspen2_ink_draft_last_error() -> *const c_char {
 /// 返回 1 = 已开启;0 = 已有会话在进行(忽略本次)。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_ink_draft_start(canvas_w: c_int, canvas_h: c_int) -> c_int {
-    let mut g = INK_DRAFT.lock().unwrap();
+    let mut g = INK_DRAFT.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_some() {
         return 0;
     }
@@ -168,7 +174,7 @@ pub extern "C" fn glaspen2_ink_draft_start(canvas_w: c_int, canvas_h: c_int) -> 
     };
     *g = Some(InkDraftSession {
         channel,
-        pushed_upto: STROKES.lock().unwrap().len(),
+        pushed_upto: STROKES.lock().unwrap_or_else(|e| e.into_inner()).len(),
         stroke_count: 0,
         started_at: std::time::SystemTime::now(),
     });
@@ -179,9 +185,9 @@ pub extern "C" fn glaspen2_ink_draft_start(canvas_w: c_int, canvas_h: c_int) -> 
 /// pen-up 提交笔迹后的钩子:会话进行中时,把本次提交的笔迹实时推进草稿流。
 /// 在主线程调用;push 非阻塞(连接建立前帧在通道里缓冲)。
 pub(crate) fn ink_draft_on_stroke_committed() {
-    let mut g = INK_DRAFT.lock().unwrap();
+    let mut g = INK_DRAFT.lock().unwrap_or_else(|e| e.into_inner());
     let Some(sess) = g.as_mut() else { return };
-    let strokes = STROKES.lock().unwrap();
+    let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     while sess.pushed_upto < strokes.len() {
         let s = &strokes[sess.pushed_upto];
         sess.pushed_upto += 1;
@@ -259,7 +265,7 @@ static INK_SHARE: std::sync::Mutex<Option<InkShareState>> = std::sync::Mutex::ne
 /// 幂等:重复开是 no-op,重复关也是 no-op。
 pub(crate) fn share_ink_set_active_impl(active: bool) {
     if active {
-        let mut g = INK_SHARE.lock().unwrap();
+        let mut g = INK_SHARE.lock().unwrap_or_else(|e| e.into_inner());
         if g.is_some() {
             return;
         }
@@ -271,7 +277,7 @@ pub(crate) fn share_ink_set_active_impl(active: bool) {
         tracing::info!("session opened");
         return;
     }
-    let Some(sess) = INK_SHARE.lock().unwrap().take() else {
+    let Some(sess) = INK_SHARE.lock().unwrap_or_else(|e| e.into_inner()).take() else {
         return;
     };
     let stroke_count = sess.stroke_count;
@@ -295,9 +301,14 @@ pub extern "C" fn glaspen2_share_ink_set_active(active: c_int) {
 /// 活页本/无限画布模式都发(坐标各自成系,去向由 kongde 决定);
 /// 通道未连上时帧被丢弃(静默,不打扰)。
 pub(crate) fn ink_share_on_stroke_committed() {
-    let mut g = INK_SHARE.lock().unwrap();
+    let mut g = INK_SHARE.lock().unwrap_or_else(|e| e.into_inner());
     let Some(st) = g.as_mut() else { return };
-    let Some(s) = STROKES.lock().unwrap().last().cloned() else {
+    let Some(s) = STROKES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .last()
+        .cloned()
+    else {
         return;
     };
     let to8 = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u32;
@@ -328,7 +339,7 @@ pub(crate) fn ink_share_on_stroke_committed() {
 /// 0 = axum 丢弃了草稿(含 sent 但接受 0 条);-1 = 通道失败/无会话。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_ink_draft_stop() -> c_int {
-    let Some(sess) = INK_DRAFT.lock().unwrap().take() else {
+    let Some(sess) = INK_DRAFT.lock().unwrap_or_else(|e| e.into_inner()).take() else {
         return -1;
     };
     let stroke_count = sess.stroke_count;

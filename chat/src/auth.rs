@@ -80,7 +80,7 @@ fn auth_state() -> &'static Mutex<AuthState> {
 /// 宿主(glaspen2 设置面板)注入的运行时配置,字段级覆盖环境变量默认值。
 /// 配置变化时清掉缓存 token(换账号/换服务,旧 token 不可复用)。
 pub fn set_config(cfg: AuthConfig) {
-    let mut st = auth_state().lock().unwrap();
+    let mut st = auth_state().lock().unwrap_or_else(|e| e.into_inner());
     if st.cfg != cfg {
         st.cached = None;
     }
@@ -100,7 +100,11 @@ pub fn configured() -> bool {
 }
 
 pub fn config() -> AuthConfig {
-    auth_state().lock().unwrap().cfg.clone()
+    auth_state()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .cfg
+        .clone()
 }
 
 /// 取当前请求应携带的 Bearer token。无配置/登录失败返回 None(不带身份)。
@@ -110,14 +114,19 @@ pub async fn token() -> Option<String> {
 
 /// [`token()`] 的可注入形态(测试用,绕开进程级全局)。
 async fn token_with(auth: &Mutex<AuthState>) -> Option<String> {
-    let cfg = auth.lock().unwrap().cfg.clone();
+    let cfg = auth.lock().unwrap_or_else(|e| e.into_inner()).cfg.clone();
     if !cfg.is_configured() {
         return None;
     }
     if let Some(t) = &cfg.direct_token {
         return Some(t.clone());
     }
-    if let Some(t) = auth.lock().unwrap().cached.clone() {
+    if let Some(t) = auth
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .cached
+        .clone()
+    {
         return Some(t);
     }
     login_and_cache(auth).await.ok()
@@ -127,13 +136,13 @@ async fn token_with(auth: &Mutex<AuthState>) -> Option<String> {
 /// 返回 token 或可读失败原因。
 pub async fn force_login() -> Result<String, String> {
     let auth = auth_state();
-    auth.lock().unwrap().cached = None;
+    auth.lock().unwrap_or_else(|e| e.into_inner()).cached = None;
     login_and_cache(auth).await
 }
 
 /// 登录一次并把 token 写进缓存;失败时打降级日志(不阻断涂鸦)并返回原因。
 async fn login_and_cache(auth: &Mutex<AuthState>) -> Result<String, String> {
-    let cfg = auth.lock().unwrap().cfg.clone();
+    let cfg = auth.lock().unwrap_or_else(|e| e.into_inner()).cfg.clone();
     if !cfg.is_configured() {
         return Err("未配置涂鸦身份账号".into());
     }
@@ -143,7 +152,7 @@ async fn login_and_cache(auth: &Mutex<AuthState>) -> Result<String, String> {
     match tokio::task::spawn_blocking(move || login_blocking(&base, &user, &pass)).await {
         Ok(Ok(t)) => {
             eprintln!("[chat-auth] 登录成功,本次会话携带身份");
-            auth.lock().unwrap().cached = Some(t.clone());
+            auth.lock().unwrap_or_else(|e| e.into_inner()).cached = Some(t.clone());
             Ok(t)
         }
         Ok(Err(e)) => {
@@ -160,7 +169,7 @@ async fn login_and_cache(auth: &Mutex<AuthState>) -> Result<String, String> {
 /// token 失效(gRPC `unauthenticated`)后清除缓存,下次重新登录。
 pub fn invalidate() {
     if let Some(auth) = AUTH.get() {
-        auth.lock().unwrap().cached = None;
+        auth.lock().unwrap_or_else(|e| e.into_inner()).cached = None;
     }
 }
 
@@ -348,15 +357,21 @@ mod tests {
             cached: Some("jwt-gone".into()),
         });
         invalidate(); // 全局未初始化,不应 panic
-        auth.lock().unwrap().cached = Some("jwt-gone".into());
-        assert_eq!(auth.lock().unwrap().cached.as_deref(), Some("jwt-gone"));
+        auth.lock().unwrap_or_else(|e| e.into_inner()).cached = Some("jwt-gone".into());
+        assert_eq!(
+            auth.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .cached
+                .as_deref(),
+            Some("jwt-gone")
+        );
         // 直接对局部状态再演一遍 invalidate 的语义
         invalidate_state(&auth);
-        assert_eq!(auth.lock().unwrap().cached, None);
+        assert_eq!(auth.lock().unwrap_or_else(|e| e.into_inner()).cached, None);
     }
 
     fn invalidate_state(auth: &Mutex<AuthState>) {
-        auth.lock().unwrap().cached = None;
+        auth.lock().unwrap_or_else(|e| e.into_inner()).cached = None;
     }
 
     /// Bearer metadata:正常构造,非法字符拒绝。

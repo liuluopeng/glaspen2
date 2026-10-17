@@ -19,7 +19,7 @@ pub fn export_all_pages() -> Option<String> {
 pub fn export_pages_by_ids(ids: &[i64]) -> Option<String> {
     let rt = runtime();
 
-    let db_path = std::env::var("GLASPEN2_DB")
+    let db_path = std::env::var("GLASPEN2_DB_PATH")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| db::db_path());
 
@@ -44,8 +44,10 @@ pub fn export_pages_by_ids(ids: &[i64]) -> Option<String> {
     let screens: Vec<(i64, i32, i32)> = rt.block_on(async {
         sqlx::query_as(
             "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
-             WHERE EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
-             ORDER BY s.id",
+             WHERE s.deleted_at IS NULL \
+               AND EXISTS (SELECT 1 FROM strokes \
+                           WHERE screen_id = s.id AND deleted_at IS NULL) \
+             ORDER BY s.order_index, s.id",
         )
         .fetch_all(&pool)
         .await
@@ -162,7 +164,7 @@ pub(crate) fn trace_pdf_write(path: &std::path::Path, pages: usize) {
 pub fn export_infinite_paged(page_w: i32, page_h: i32) -> Option<String> {
     let rt = runtime();
 
-    let db_path = std::env::var("GLASPEN2_DB")
+    let db_path = std::env::var("GLASPEN2_DB_PATH")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| db::db_path());
     let pool = rt.block_on(async {

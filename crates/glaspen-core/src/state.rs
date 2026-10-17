@@ -10,19 +10,25 @@ use std::time::{Duration, Instant};
 
 static LAST_STROKE_ACTIVITY: Mutex<Option<Instant>> = Mutex::new(None);
 
+/// 取锁时容忍 poison: 一次 panic 不应让后续所有落笔/翻页永久失败。
+/// panic 本身已由 panic hook 落盘, 恢复数据比再次 abort 更有价值。
+pub fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 pub fn mark_stroke_activity() {
-    *LAST_STROKE_ACTIVITY.lock().unwrap() = Some(Instant::now());
+    *lock(&LAST_STROKE_ACTIVITY) = Some(Instant::now());
 }
 
 /// 距最近一次书写活动(落笔或抬笔)的时长; 从未写过 = None。
 pub fn since_last_stroke_activity() -> Option<Duration> {
-    LAST_STROKE_ACTIVITY.lock().unwrap().map(|t| t.elapsed())
+    lock(&LAST_STROKE_ACTIVITY).map(|t| t.elapsed())
 }
 
 /// 测试把活动时间戳拨回过去(绕过书写活动锁)。
 #[cfg(test)]
 pub fn backdate_stroke_activity(d: Duration) {
-    *LAST_STROKE_ACTIVITY.lock().unwrap() = Some(Instant::now() - d);
+    *lock(&LAST_STROKE_ACTIVITY) = Some(Instant::now() - d);
 }
 
 // ---------------------------------------------------------------------------
@@ -49,11 +55,11 @@ pub enum CanvasKind {
 static CANVAS_KIND: Mutex<CanvasKind> = Mutex::new(CanvasKind::Page);
 
 pub fn canvas_kind() -> CanvasKind {
-    *CANVAS_KIND.lock().unwrap()
+    *lock(&CANVAS_KIND)
 }
 
 pub fn set_canvas_kind(kind: CanvasKind) {
-    *CANVAS_KIND.lock().unwrap() = kind;
+    *lock(&CANVAS_KIND) = kind;
 }
 
 struct PendingStroke {
@@ -72,11 +78,11 @@ static PENDING: Mutex<PendingStroke> = Mutex::new(PendingStroke {
 // --- Screen id ---
 
 pub fn current_screen_id() -> i64 {
-    *CURRENT_SCREEN_ID.lock().unwrap()
+    *lock(&CURRENT_SCREEN_ID)
 }
 
 pub fn set_current_screen_id(id: i64) {
-    *CURRENT_SCREEN_ID.lock().unwrap() = id;
+    *lock(&CURRENT_SCREEN_ID) = id;
 }
 
 // --- Pending-point buffer (accumulated during a stroke, flushed at pen-up) ---
@@ -84,12 +90,12 @@ pub fn set_current_screen_id(id: i64) {
 /// Push a point into the in-memory buffer. Called on every pen-move event.
 /// NOT async — just a Mutex<Vec> push.
 pub fn buffer_point(x: f64, y: f64, width: f64, t: f64) {
-    PENDING.lock().unwrap().points.push((x, y, width, t));
+    lock(&PENDING).points.push((x, y, width, t));
 }
 
 /// Take the buffered points and clear the buffer. Used by db::flush_pending.
 pub fn take_pending() -> Vec<(f64, f64, f64, f64)> {
-    let mut p = PENDING.lock().unwrap();
+    let mut p = lock(&PENDING);
     std::mem::take(&mut p.points)
 }
 
@@ -98,7 +104,7 @@ pub fn take_pending() -> Vec<(f64, f64, f64, f64)> {
 /// current kind at flush time) keeps the async pen-up flush from writing a
 /// stroke's points into the table of a mode the user just switched to.
 pub fn begin_pending(stroke_id: i64, kind: CanvasKind) {
-    let mut p = PENDING.lock().unwrap();
+    let mut p = lock(&PENDING);
     p.id = Some(stroke_id);
     p.kind = kind;
     p.points.clear();
@@ -106,7 +112,7 @@ pub fn begin_pending(stroke_id: i64, kind: CanvasKind) {
 
 /// Take the pending stroke id (returns id or None).
 pub fn take_pending_stroke_id() -> Option<i64> {
-    let mut pending = PENDING.lock().unwrap();
+    let mut pending = lock(&PENDING);
     pending.id.take()
 }
 
@@ -114,11 +120,45 @@ pub fn take_pending_stroke_id() -> Option<i64> {
 /// none are: begin_pending/buffer_point/this function share one lock, so a
 /// flush can never pair a stale id with a newer stroke's points.
 pub fn take_pending_bundle() -> Option<(i64, CanvasKind, Vec<(f64, f64, f64, f64)>)> {
-    let mut p = PENDING.lock().unwrap();
+    let mut p = lock(&PENDING);
     let id = p.id.take()?;
     let kind = p.kind;
     let points = std::mem::take(&mut p.points);
     Some((id, kind, points))
+}
+
+// ---------------------------------------------------------------------------
+// Flush 失败重试队列
+// ---------------------------------------------------------------------------
+//
+// SQLite 写失败(磁盘满 / BUSY / IO 错)时, 点已经从 PENDING 取走。此前只打
+// 一条 debug 日志就丢掉, 用户看到的是"这一笔少了一截"。现在整笔放回重试
+// 队列, 下一次抬笔/载页/退出时再写; 队列有上限, 极端情况下丢最旧的并
+// 用 error 级日志留下现场。
+
+type RetryStroke = (i64, CanvasKind, Vec<(f64, f64, f64, f64)>);
+
+static RETRY: Mutex<Vec<RetryStroke>> = Mutex::new(Vec::new());
+const RETRY_MAX: usize = 64;
+
+pub fn push_retry(id: i64, kind: CanvasKind, points: Vec<(f64, f64, f64, f64)>) {
+    let mut q = lock(&RETRY);
+    if q.len() >= RETRY_MAX {
+        let (dropped_id, _, dropped) = q.remove(0);
+        tracing::error!(
+            "待重试笔迹队列已满({RETRY_MAX}), 丢弃最旧 stroke={dropped_id} ({} 点)",
+            dropped.len()
+        );
+    }
+    q.push((id, kind, points));
+}
+
+pub fn pop_retry() -> Option<RetryStroke> {
+    lock(&RETRY).pop()
+}
+
+pub fn retry_len() -> usize {
+    lock(&RETRY).len()
 }
 
 #[cfg(test)]

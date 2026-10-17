@@ -107,7 +107,7 @@ fn now_ms() -> i64 {
 /// 会话 id(时间戳 + 计数器,本地唯一即可)。
 fn new_session_id() -> String {
     static COUNTER: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
-    let mut n = COUNTER.lock().unwrap();
+    let mut n = COUNTER.lock().unwrap_or_else(|e| e.into_inner());
     *n += 1;
     format!("share-{:x}-{:x}", now_ms(), *n)
 }
@@ -252,10 +252,13 @@ mod tests {
                 .map_err(|s| Status::internal(format!("bad frame: {s}")))?
             {
                 if let Some(crate::pb::ink_frame::Frame::Stroke(s)) = f.frame {
-                    self.strokes.lock().unwrap().push(s);
+                    self.strokes
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push(s);
                 }
             }
-            let n = self.strokes.lock().unwrap().len() as u64;
+            let n = self.strokes.lock().unwrap_or_else(|e| e.into_inner()).len() as u64;
             Ok(Response::new(ShareInkReply {
                 ok: true,
                 message: String::new(),
@@ -318,9 +321,15 @@ mod tests {
         // 不等连接:帧先进缓冲
         ch.push_stroke(stroke(&[(3.0, 4.0), (5.0, 6.0)]));
         ch.finish(2, 500).await;
-        assert_eq!(got.lock().unwrap().len(), 2, "服务端应收满 2 笔");
         assert_eq!(
-            got.lock().unwrap()[1].points.len(),
+            got.lock().unwrap_or_else(|e| e.into_inner()).len(),
+            2,
+            "服务端应收满 2 笔"
+        );
+        assert_eq!(
+            got.lock().unwrap_or_else(|e| e.into_inner())[1]
+                .points
+                .len(),
             2,
             "点列保真(第二笔 2 点)"
         );

@@ -14,7 +14,7 @@ pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) -> c_
     if state::canvas_kind() == state::CanvasKind::Infinite {
         let had = runtime().block_on(db::infinite_canvas_has_strokes());
         runtime().block_on(db::clear_infinite_canvas());
-        STROKES.lock().unwrap().clear();
+        STROKES.lock().unwrap_or_else(|e| e.into_inner()).clear();
         return if had { 1 } else { 0 };
     }
     let current = state::current_screen_id();
@@ -36,7 +36,7 @@ pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) -> c_
             glaspen2_load_strokes_for_screen(id);
         }
     }
-    let mut strokes = STROKES.lock().unwrap();
+    let mut strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     strokes.clear();
     created
 }
@@ -112,25 +112,27 @@ pub(crate) fn plan_new_page(last: Option<(i64, bool)>) -> (bool, Option<i64>) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_load_strokes_for_screen(screen_id: i64) -> c_int {
-    // Flush any stroke whose pen-up was still queued, so page navigation
-    // never races the async point flush.
-    runtime().block_on(db::end_stroke());
-    let data = runtime().block_on(db::strokes_for_screen(screen_id));
-    let count = data.len() as c_int;
-    let mut strokes = STROKES.lock().unwrap();
-    strokes.clear();
-    for s in data {
-        strokes.push(Stroke {
-            id: s.id,
-            r: s.r,
-            g: s.g,
-            b: s.b,
-            points: s.points,
-        });
-    }
-    // Update current screen in DB
-    state::set_current_screen_id(screen_id);
-    count
+    ffi_guard(0, || {
+        // Flush any stroke whose pen-up was still queued, so page navigation
+        // never races the async point flush.
+        runtime().block_on(db::end_stroke());
+        let data = runtime().block_on(db::strokes_for_screen(screen_id));
+        let count = data.len() as c_int;
+        let mut strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
+        strokes.clear();
+        for s in data {
+            strokes.push(Stroke {
+                id: s.id,
+                r: s.r,
+                g: s.g,
+                b: s.b,
+                points: s.points,
+            });
+        }
+        // Update current screen in DB
+        state::set_current_screen_id(screen_id);
+        count
+    })
 }
 
 /// Smooth all loaded strokes in STROKES through the modeler. Call after loading.
@@ -138,7 +140,7 @@ pub extern "C" fn glaspen2_load_strokes_for_screen(screen_id: i64) -> c_int {
 pub extern "C" fn glaspen2_smooth_loaded_strokes() {
     // Snapshot under lock; run CPU-heavy smoothing outside the lock.
     let snapshot: Vec<(f64, f64, f64, Vec<(f64, f64, f64)>)> = {
-        let strokes = STROKES.lock().unwrap();
+        let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
         strokes
             .iter()
             .map(|s| {
@@ -158,7 +160,7 @@ pub extern "C" fn glaspen2_smooth_loaded_strokes() {
         smoothed_all.push(smoothed);
     }
 
-    let mut strokes = STROKES.lock().unwrap();
+    let mut strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     for (stroke, smoothed) in strokes.iter_mut().zip(smoothed_all) {
         if !smoothed.is_empty() {
             stroke.points = decimate(&smoothed);
@@ -308,7 +310,7 @@ pub extern "C" fn glaspen2_preload_flip_pages(
         });
     }
     let n = out.len() as c_int;
-    *PAGE_PREVIEW.lock().unwrap() = out;
+    *PAGE_PREVIEW.lock().unwrap_or_else(|e| e.into_inner()) = out;
     n
 }
 
@@ -333,7 +335,7 @@ pub extern "C" fn glaspen2_paint_preview_into_surface(
     let Some(r) = crate::cairo_dl::CairoRenderer::from_surface(surface_ptr) else {
         return 0;
     };
-    let buf = PAGE_PREVIEW.lock().unwrap();
+    let buf = PAGE_PREVIEW.lock().unwrap_or_else(|e| e.into_inner());
     let Some(page) = buf.get(slot.max(0) as usize) else {
         return 0;
     };
@@ -363,7 +365,7 @@ pub extern "C" fn glaspen2_delete_screen(screen_id: i64) -> c_int {
         && screen_id == state::current_screen_id()
     {
         state::set_current_screen_id(0);
-        STROKES.lock().unwrap().clear();
+        STROKES.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
     ok as c_int
 }
@@ -376,31 +378,42 @@ pub extern "C" fn glaspen2_delete_screen(screen_id: i64) -> c_int {
 /// Returns the number of remaining strokes, or -1 if there was nothing to undo.
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_undo_last_stroke() -> c_int {
-    let id = {
-        let mut strokes = STROKES.lock().unwrap();
-        if strokes.is_empty() {
-            return -1;
-        }
-        strokes.pop().map(|s| s.id).unwrap_or(0)
-    };
-    if id > 0 {
-        if state::canvas_kind() == state::CanvasKind::Infinite {
-            runtime().block_on(db::delete_infinite_stroke_by_id(id));
+    ffi_guard(-1, || {
+        // 先看内存末笔, 但**先删库、成功后才从内存 pop**: 以前先 pop 再删库,
+        // DB 一失败内存与库就分叉, 界面显示撤销成功、重开又回来。
+        let id = {
+            let strokes = state::lock(&STROKES);
+            match strokes.last() {
+                Some(s) => s.id,
+                None => return -1,
+            }
+        };
+        let ok = if state::canvas_kind() == state::CanvasKind::Infinite {
+            runtime().block_on(db::delete_infinite_stroke_by_id(id))
         } else {
-            runtime().block_on(db::delete_stroke_by_id(id));
+            runtime().block_on(db::delete_stroke_by_id(id))
+        };
+        if !ok {
+            tracing::warn!("撤销末笔失败: DB 删除 id={id} 未生效, 保留内存笔迹");
+            return state::lock(&STROKES).len() as c_int;
         }
-    }
-    STROKES.lock().unwrap().len() as c_int
+        state::lock(&STROKES).pop();
+        state::lock(&STROKES).len() as c_int
+    })
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_delete_last_stroke() {
-    if state::canvas_kind() == state::CanvasKind::Infinite {
-        runtime().block_on(db::delete_last_infinite_stroke());
+    let ok = if state::canvas_kind() == state::CanvasKind::Infinite {
+        runtime().block_on(db::delete_last_infinite_stroke())
     } else {
-        runtime().block_on(db::delete_last_stroke());
+        runtime().block_on(db::delete_last_stroke())
+    };
+    if ok {
+        state::lock(&STROKES).pop();
+    } else {
+        tracing::warn!("删除末笔失败: DB 未删除, 保留内存笔迹");
     }
-    STROKES.lock().unwrap().pop();
 }
 
 // ---------------------------------------------------------------------------
@@ -439,7 +452,10 @@ pub extern "C" fn glaspen2_create_next_page(current_id: i64) -> i64 {
         tracing::debug!("翻页新建拒绝: 书写活动中(距上次落笔 {d:?})");
         return current_id;
     }
-    if let Some(t) = LAST_PAGE_CREATE.lock().unwrap().as_ref()
+    if let Some(t) = LAST_PAGE_CREATE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
         && t.elapsed() < CREATE_COOLDOWN
     {
         return current_id;
@@ -455,7 +471,8 @@ pub extern "C" fn glaspen2_create_next_page(current_id: i64) -> i64 {
     });
     let (create, reuse) = plan_new_page(last);
     if create {
-        *LAST_PAGE_CREATE.lock().unwrap() = Some(std::time::Instant::now());
+        *LAST_PAGE_CREATE.lock().unwrap_or_else(|e| e.into_inner()) =
+            Some(std::time::Instant::now());
         runtime().block_on(db::new_screen(w, h));
         let new_id = state::current_screen_id();
         tracing::debug!("翻页新建页 id={new_id} (前一页 {current_id})");
@@ -475,7 +492,10 @@ static LAST_PAGE_CREATE: std::sync::Mutex<Option<std::time::Instant>> = std::syn
 /// 测试绕过双闸(与 TEST_LOCK 配合, 串行安全)。
 #[cfg(test)]
 pub(crate) fn reset_page_create_gate() {
-    LAST_PAGE_CREATE.lock().unwrap().take();
+    LAST_PAGE_CREATE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take();
     crate::state::backdate_stroke_activity(std::time::Duration::from_secs(3600));
 }
 
@@ -559,7 +579,7 @@ pub(crate) fn point_in_polygon(px: f64, py: f64, poly: &[(f64, f64)]) -> bool {
 static REFRESH_HOOK: std::sync::Mutex<Option<fn(i64)>> = std::sync::Mutex::new(None);
 
 pub fn set_glass_refresh_hook(f: fn(i64)) {
-    *REFRESH_HOOK.lock().unwrap() = Some(f);
+    *REFRESH_HOOK.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
 }
 
 fn refresh_glass_if_current(screen_id: i64) {
@@ -569,7 +589,11 @@ fn refresh_glass_if_current(screen_id: i64) {
     if state::canvas_kind() == state::CanvasKind::Infinite {
         return;
     }
-    match REFRESH_HOOK.lock().unwrap().as_ref() {
+    match REFRESH_HOOK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+    {
         Some(f) => f(screen_id),
         None => {
             glaspen2_load_strokes_for_screen(screen_id);
@@ -833,7 +857,9 @@ mod lasso_tests {
     /// FFI 级往返: paste → copy payload → 再 paste。颜色/点数/坐标完整。
     #[test]
     fn paste_copy_paste_roundtrip() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if !crate::db::is_init() {
             let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
@@ -868,7 +894,7 @@ mod lasso_tests {
         let payload2 = unsafe { std::ffi::CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
-        unsafe { crate::export::glaspen2_free_c_string(ptr) };
+        crate::export::glaspen2_free_c_string(ptr);
         let segs: Vec<&str> = payload2.split(';').collect();
         assert_eq!(segs.len(), 2, "两笔 = 两个段");
         for seg in &segs {
@@ -899,7 +925,9 @@ mod lasso_tests {
     /// 平移/跨页搬移/软删 三个数据操作
     #[test]
     fn move_and_delete_ops() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if !crate::db::is_init() {
             let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
@@ -956,7 +984,9 @@ mod lasso_tests {
     /// 成对解析曾整体滤空(圈选链瘫痪), 此为该 bug 的端到端防线。
     #[test]
     fn lasso_select_ffi_parse_and_hit() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if !crate::db::is_init() {
             let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
@@ -979,7 +1009,7 @@ mod lasso_tests {
         let hit = unsafe { std::ffi::CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
-        unsafe { crate::export::glaspen2_free_c_string(ptr) };
+        crate::export::glaspen2_free_c_string(ptr);
         let ids: Vec<i64> = hit
             .split(',')
             .filter_map(|t| t.trim().parse().ok())
@@ -993,14 +1023,16 @@ mod lasso_tests {
         let hit2 = unsafe { std::ffi::CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
-        unsafe { crate::export::glaspen2_free_c_string(ptr) };
+        crate::export::glaspen2_free_c_string(ptr);
         assert!(hit2.trim().is_empty(), "远处圈不应命中, 实际: {hit2}");
     }
 
     /// 翻页新建: 末页有笔迹 → 新建并返回新 id; 末页空白 → 复用不新建(0)。
     #[test]
     fn create_next_page_guard_and_nav() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if !crate::db::is_init() {
             let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
@@ -1030,7 +1062,9 @@ mod lasso_tests {
     /// 书写活动锁: 落笔后 1.5s 内拒绝新建; 拨回时间后恢复。
     #[test]
     fn create_next_page_write_lock() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if !crate::db::is_init() {
             let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
@@ -1062,7 +1096,9 @@ mod lasso_tests {
     /// 建页冷却: 任意 2s 内至多新建一页(兜住按键重复), 冷却过后恢复。
     #[test]
     fn create_next_page_cooldown() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if !crate::db::is_init() {
             let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
@@ -1099,7 +1135,9 @@ mod lasso_tests {
     /// page_png_bytes 尺寸数学: (page + 2·margin) × k, k = min(1, 2200/最长边)。
     #[test]
     fn page_png_bytes_size_math() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if !crate::db::is_init() {
             let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
@@ -1174,7 +1212,9 @@ mod fuzz_tests {
 
     #[test]
     fn paste_never_panics_and_never_writes_nonfinite() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if !crate::db::is_init() {
             let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
@@ -1209,7 +1249,9 @@ mod fuzz_tests {
     /// 大载荷性能/正确性: 3 万点一次粘贴, 点数不丢。
     #[test]
     fn paste_huge_payload_ok() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if !crate::db::is_init() {
             let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
@@ -1232,7 +1274,9 @@ mod fuzz_tests {
     /// lasso 侧语料: 退化多边形/非有限值/超大坐标 —— 不 panic, NaN 拒收。
     #[test]
     fn lasso_never_panics() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if !crate::db::is_init() {
             let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);
@@ -1274,7 +1318,9 @@ mod fuzz_tests {
     /// copy 侧 ids 语料: 垃圾 CSV 不 panic、不误选。
     #[test]
     fn copy_ids_garbage_csv() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if !crate::db::is_init() {
             let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
             let _ = std::fs::remove_file(&path);

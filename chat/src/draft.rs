@@ -244,7 +244,7 @@ pub fn new_session_id() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
-    let mut n = COUNTER.lock().unwrap();
+    let mut n = COUNTER.lock().unwrap_or_else(|e| e.into_inner());
     *n += 1;
     format!("draft-{ms:x}-{:x}", *n)
 }
@@ -342,7 +342,7 @@ mod tests {
             &self,
             request: Request<Streaming<DraftFrame>>,
         ) -> Result<Response<DraftReply>, Status> {
-            *self.captured_auth.lock().unwrap() = request
+            *self.captured_auth.lock().unwrap_or_else(|e| e.into_inner()) = request
                 .metadata()
                 .get("authorization")
                 .and_then(|v| v.to_str().ok())
@@ -354,7 +354,10 @@ mod tests {
                 .map_err(|s| Status::internal(format!("bad frame: {s}")))?
             {
                 if let Some(frame) = f.frame {
-                    self.frames.lock().unwrap().push(frame);
+                    self.frames
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push(frame);
                 }
             }
             match &self.behavior {
@@ -471,7 +474,7 @@ mod tests {
                 first_msg_id: 102
             }
         );
-        let got = frames.lock().unwrap();
+        let got = frames.lock().unwrap_or_else(|e| e.into_inner());
         assert_eq!(got.len(), 4, "begin + 2 strokes + end");
         assert!(matches!(got[0], Frame::Begin(_)));
         assert!(matches!(got[1], Frame::Stroke(_)));
@@ -626,7 +629,10 @@ mod tests {
             .await
             .expect("session should succeed");
         assert!(reply.sent && reply.accepted == 1);
-        assert_eq!(auth.lock().unwrap().as_deref(), Some("Bearer jwt-live"));
+        assert_eq!(
+            auth.lock().unwrap_or_else(|e| e.into_inner()).as_deref(),
+            Some("Bearer jwt-live")
+        );
     }
 
     /// 不带身份(bearer=None)时不发 authorization 头 —— axum 过渡回退。
@@ -643,7 +649,10 @@ mod tests {
             .await
             .expect("should succeed");
         assert!(reply.sent);
-        assert_eq!(auth.lock().unwrap().as_deref(), None);
+        assert_eq!(
+            auth.lock().unwrap_or_else(|e| e.into_inner()).as_deref(),
+            None
+        );
     }
 
     /// unauthenticated → 清缓存 + "身份已过期"的用户可读错误。

@@ -195,7 +195,7 @@ pub fn on_stroke_committed(screen_id: i64) {
         return; // 未登录: 不联网, 静默
     }
     {
-        let mut q = pending_queue().lock().unwrap();
+        let mut q = pending_queue().lock().unwrap_or_else(|e| e.into_inner());
         if !q.contains(&screen_id) {
             q.push_back(screen_id);
         }
@@ -223,7 +223,11 @@ fn idle_worker() {
         if user_idle_secs() < IDLE_INPUT_SECS {
             continue;
         }
-        let Some(screen_id) = pending_queue().lock().unwrap().pop_front() else {
+        let Some(screen_id) = pending_queue()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .pop_front()
+        else {
             continue;
         };
         match ocr_screen(screen_id) {

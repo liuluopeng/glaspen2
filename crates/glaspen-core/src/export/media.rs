@@ -16,7 +16,7 @@ pub extern "C" fn glaspen2_save_xoj() {
 
     // Snapshot strokes under lock, then encode/write without holding it.
     let snapshot: Vec<(f64, f64, f64, Vec<(f64, f64, f64)>)> = {
-        let strokes = STROKES.lock().unwrap();
+        let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
         strokes
             .iter()
             .map(|s| {
@@ -240,7 +240,7 @@ pub extern "C" fn glaspen2_stroke_bbox(
     x_max: *mut c_double,
     y_max: *mut c_double,
 ) -> c_int {
-    let strokes = STROKES.lock().unwrap();
+    let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     if strokes.is_empty() {
         return 0;
     }
@@ -278,7 +278,7 @@ pub extern "C" fn glaspen2_stroke_bbox(
 pub(crate) fn build_cropped_svg() -> Option<String> {
     // Snapshot under lock, then build the string without holding it.
     let snapshot: Vec<(f64, f64, f64, Vec<(f64, f64, f64)>)> = {
-        let strokes = STROKES.lock().unwrap();
+        let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
         strokes
             .iter()
             .map(|s| {
@@ -732,7 +732,7 @@ pub extern "C" fn glaspen2_save_gif_cropped(
 
     // Compute bbox under lock (cheap), then drop the lock before encoding.
     let (bx_min_u, by_min_u, bx_max_u, by_max_u) = {
-        let strokes = STROKES.lock().unwrap();
+        let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
         if strokes.is_empty() {
             return 0;
         }
@@ -1195,7 +1195,7 @@ pub extern "C" fn glaspen2_save_animated_gif(
     end_mode: c_int,
 ) -> c_int {
     let gif_strokes = {
-        let strokes = STROKES.lock().unwrap();
+        let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
         gif_strokes_from(&strokes)
     };
 
@@ -1238,43 +1238,47 @@ pub extern "C" fn glaspen2_gif_record_end(
     end_mode: c_int,
     out_len: *mut c_int,
 ) -> *mut c_uchar {
-    if out_len.is_null() || start_index < 0 || end_index < 0 {
-        unsafe {
-            *out_len = 0;
-        }
-        return std::ptr::null_mut();
-    }
-
-    let gif_strokes = {
-        let strokes = STROKES.lock().unwrap();
-        let start = start_index as usize;
-        let end = (end_index as usize).min(strokes.len());
-        if end <= start || start >= strokes.len() {
+    ffi_guard(std::ptr::null_mut(), || {
+        if out_len.is_null() || start_index < 0 || end_index < 0 {
             unsafe {
                 *out_len = 0;
             }
             return std::ptr::null_mut();
         }
-        gif_strokes_from(&strokes[start..end])
-    };
 
-    match encode_animated_gif(&gif_strokes, fps, resolution, speed, end_mode) {
-        Some(gif_data) => {
-            let len = gif_data.len() as c_int;
-            let ptr = gif_data.as_ptr() as *mut c_uchar;
-            std::mem::forget(gif_data);
-            unsafe {
-                *out_len = len;
+        let gif_strokes = {
+            let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
+            let start = start_index as usize;
+            let end = (end_index as usize).min(strokes.len());
+            if end <= start || start >= strokes.len() {
+                unsafe {
+                    *out_len = 0;
+                }
+                return std::ptr::null_mut();
             }
-            ptr
-        }
-        None => {
-            unsafe {
-                *out_len = 0;
+            gif_strokes_from(&strokes[start..end])
+        };
+
+        match encode_animated_gif(&gif_strokes, fps, resolution, speed, end_mode) {
+            Some(gif_data) => {
+                // 与 thumbs::leak_png 同一契约: 调用方按 (ptr,len) 当 Vec 释放,
+                // 因此这里也先收成 boxed slice, 保证容量 == 长度。
+                let boxed = gif_data.into_boxed_slice();
+                let len = boxed.len() as c_int;
+                let ptr = Box::into_raw(boxed) as *mut c_uchar;
+                unsafe {
+                    *out_len = len;
+                }
+                ptr
             }
-            std::ptr::null_mut()
+            None => {
+                unsafe {
+                    *out_len = 0;
+                }
+                std::ptr::null_mut()
+            }
         }
-    }
+    })
 }
 
 /// Render a single frame of the animated GIF.

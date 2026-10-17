@@ -166,10 +166,20 @@ mod platform {
                 // write, so the per-stroke begin INSERT (running on the main
                 // thread via block_on) no longer hitches pen-down.
                 .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-                .synchronous(sqlx::sqlite::SqliteSynchronous::Normal),
+                .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
+                // 缩略图/OCR/备份与落笔共用一把 SQLite 写锁: 没有 busy_timeout
+                // 时并发写会立刻 SQLITE_BUSY, 于是整笔点被静默丢掉。
+                .busy_timeout(std::time::Duration::from_secs(5)),
         )
         .await
         .expect("Failed to open glaspen2.db");
+
+        // 迁移前先留一份完整备份(VACUUM INTO 生成一致的独立库文件)。
+        // 迁移本身是加列/建表, 但一旦中途遇到磁盘/权限问题, 有备份才能
+        // 让用户回去; 旧版程序打开新库会被拒, 备份同时也是降级通道。
+        if let Err(e) = backup_before_migration(&pool, &path).await {
+            panic!("[glaspen2] 数据库迁移前备份失败, 已中止启动:\n{e}");
+        }
 
         if let Err(e) = migrate_with(&pool).await {
             // 迁移失败绝不能带着半个 schema 继续跑: 报清楚原因并中止启动,
@@ -204,6 +214,52 @@ mod platform {
                     sql.split_whitespace().collect::<Vec<_>>().join(" ")
                 )
             })
+    }
+
+    /// 迁移前备份: 仅当库文件已存在且 schema 版本落后于本程序时执行。
+    /// 目标文件已存在则跳过(同一版本只备份一次), 避免每次启动都重写。
+    async fn backup_before_migration(
+        pool: &SqlitePool,
+        path: &std::path::Path,
+    ) -> Result<(), String> {
+        let version: i32 = sqlx::query_scalar("PRAGMA user_version")
+            .fetch_one(pool)
+            .await
+            .map_err(|e| format!("读取 schema 版本失败: {e}"))?;
+        if version >= SCHEMA_VERSION {
+            return Ok(());
+        }
+        let looks_existing = std::fs::metadata(path)
+            .map(|m| m.len() > 0)
+            .unwrap_or(false);
+        if !looks_existing {
+            return Ok(());
+        }
+        let bak = path.with_file_name(format!("glaspen2.db.before-v{version}"));
+        if bak.exists() {
+            return Ok(());
+        }
+        let escaped = bak.to_string_lossy().replace('\'', "''");
+        sqlx::query(&format!("VACUUM INTO '{escaped}'"))
+            .execute(pool)
+            .await
+            .map_err(|e| format!("VACUUM INTO {} 失败: {e}", bak.display()))?;
+        tracing::info!("迁移前备份: {} (schema v{version})", bak.display());
+        Ok(())
+    }
+
+    /// 退出前把 WAL 合并回主库: 更新器的数据库快照只拷 `.db`, 不 checkpoint
+    /// 会漏掉最近落笔(WAL 里的页)。
+    pub async fn checkpoint() {
+        if let Some(pool) = DB.get() {
+            match sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+                .execute(pool)
+                .await
+            {
+                Ok(_) => dblog!("WAL checkpoint(TRUNCATE) 完成"),
+                Err(e) => tracing::warn!("WAL checkpoint 失败: {e}"),
+            }
+        }
     }
 
     /// 加列迁移:先查 PRAGMA 再决定要不要 ALTER。
@@ -506,6 +562,9 @@ mod platform {
     }
 
     async fn flush_pending() {
+        // 先把上次写失败的笔迹补上(如果此时 DB 已恢复可用)。
+        flush_retry_queue().await;
+
         use crate::state;
         let (stroke_id, kind, points) = match state::take_pending_bundle() {
             Some(b) => b,
@@ -517,33 +576,53 @@ mod platform {
             dblog!("点+ stroke={stroke_id} n=0 (空笔迹,仅表行)");
             return;
         }
-        let pool = match DB.get() {
-            Some(p) => p,
-            None => {
-                dblog!(
-                    "ERR flush stroke={stroke_id}: DB 未初始化, {n} 个点丢失",
-                    n = points.len()
-                );
-                return;
+        if DB.get().is_none() {
+            tracing::error!(
+                "flush stroke={stroke_id}: DB 未初始化, {} 个点转入重试队列",
+                points.len()
+            );
+            state::push_retry(stroke_id, kind, points);
+            return;
+        }
+        if let Err(e) = write_points(stroke_id, kind, &points).await {
+            // 关键: 绝不带着半笔数据 commit, 也绝不只打 debug 日志后丢弃。
+            tracing::error!(
+                "flush stroke={stroke_id} 失败({e}), {} 个点转入重试队列",
+                points.len()
+            );
+            state::push_retry(stroke_id, kind, points);
+        }
+    }
+
+    /// 尝试补写重试队列。一次 flush 只重试到第一处失败为止,
+    /// 避免磁盘持续故障时在抬笔路径上反复空转。
+    async fn flush_retry_queue() {
+        use crate::state;
+        while let Some((stroke_id, kind, points)) = state::pop_retry() {
+            if let Err(e) = write_points(stroke_id, kind, &points).await {
+                tracing::error!("重试写 stroke={stroke_id} 仍失败: {e}");
+                state::push_retry(stroke_id, kind, points);
+                break;
             }
-        };
-        let mut tx = match pool.begin().await {
-            Ok(t) => t,
-            Err(e) => {
-                dblog!("ERR flush 开事务 stroke={stroke_id}: {e}");
-                return;
-            }
-        };
+            tracing::info!("重试写 stroke={stroke_id} 成功 ({} 点)", points.len());
+        }
+    }
+
+    /// 单笔点列写入: 分批多行 INSERT, 整笔一个事务。
+    /// 任一批失败 → 回滚 → 返回 Err, 由调用方放入重试队列。
+    async fn write_points(
+        stroke_id: i64,
+        kind: crate::state::CanvasKind,
+        points: &[(f64, f64, f64, f64)],
+    ) -> Result<(), String> {
+        let pool = DB.get().ok_or_else(|| "DB 未初始化".to_string())?;
+        let mut tx = pool.begin().await.map_err(|e| format!("开事务失败: {e}"))?;
         // Route by the kind recorded at stroke begin (NOT the current kind) so
         // an async pen-up flush can't land in a mode the user just switched to.
         let table = match kind {
-            state::CanvasKind::Infinite => "infinite_points",
-            state::CanvasKind::Page => "points",
+            crate::state::CanvasKind::Infinite => "infinite_points",
+            crate::state::CanvasKind::Page => "points",
         };
-        // 批量多行 INSERT(每 100 行一条语句):逐行 INSERT 每行都要 await
-        // 一轮连接池,一整笔几百个点的写事务占用 SQLite 写锁十几~几十毫秒,
-        // 下一笔落笔的同步 INSERT(begin_stroke)在 UI 线程排队等待,
-        // 表现为"每画一笔卡一下"。批量后写事务 ~1-3ms,落笔无感。
         const CHUNK: usize = 100; // 100 行 × 6 参数,远低于 SQLITE_MAX_VARIABLE_NUMBER
         let mut done = 0usize;
         while done < points.len() {
@@ -579,14 +658,14 @@ mod platform {
                     .bind(t);
             }
             if let Err(e) = q.execute(&mut *tx).await {
-                dblog!("ERR flush 批量插入 stroke={stroke_id} 行={}: {e}", done);
+                let _ = tx.rollback().await;
+                return Err(format!("批量插入 行={done}: {e}"));
             }
             done = end;
         }
-        match tx.commit().await {
-            Ok(_) => dblog!("点+ stroke={stroke_id} n={} ({})", points.len(), table),
-            Err(e) => dblog!("ERR flush 提交 stroke={stroke_id}: {e}"),
-        }
+        tx.commit().await.map_err(|e| format!("提交失败: {e}"))?;
+        dblog!("点+ stroke={stroke_id} n={} ({table})", points.len());
+        Ok(())
     }
 
     pub fn end_stroke_spawned() {
@@ -834,7 +913,7 @@ mod platform {
         };
         let screen_id = state::current_screen_id();
         let stroke_id = match sqlx::query_scalar::<_, i64>(
-            "SELECT id FROM strokes WHERE screen_id = ?1 ORDER BY id DESC LIMIT 1",
+            "SELECT id FROM strokes WHERE screen_id = ?1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1",
         )
         .bind(screen_id)
         .fetch_optional(pool)
@@ -2078,7 +2157,9 @@ mod tests {
 
     #[test]
     fn test_page_nav_grouped_by_geometry() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         runtime().block_on(async {
             let (pool, path) = temp_pool().await;
             // temp_pool 刻意建旧 schema(给迁移测试用); 本测试需要
@@ -2121,7 +2202,9 @@ mod tests {
 
     #[test]
     fn test_page_info_grouping_local_dates() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         runtime().block_on(async {
             let (pool, path) = temp_pool().await;
             // temp_pool 建旧 schema; page_info 的 SQL 引用 deleted_at /
@@ -2158,7 +2241,9 @@ mod tests {
 
     #[test]
     fn test_attach_points_groups_and_ignores_orphans() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let strokes = vec![
             StrokeData {
                 id: 2,
@@ -2254,7 +2339,9 @@ mod tests {
 
     #[test]
     fn test_thumbnail_cache_lookup_store_purge() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         runtime().block_on(async {
             let (pool, path) = temp_pool().await;
             add_thumb_tables(&pool).await;
@@ -2335,7 +2422,9 @@ mod tests {
     /// soft-delete handling, size/outline keying and missing screens.
     #[test]
     fn test_thumbnail_batch_helpers() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         runtime().block_on(async {
             let (pool, path) = temp_pool().await;
             add_thumb_tables(&pool).await;
@@ -2416,7 +2505,9 @@ mod tests {
     /// 这是数据安全的地基 —— 迁移失败必须中止, 而不是带着半个 schema 继续跑。
     #[test]
     fn test_schema_version_and_migrations() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         runtime().block_on(async {
             // 1) 全新库: 建表后版本号落到 SCHEMA_VERSION, 且重复执行不报错
             let (pool, path) = raw_temp_pool().await;
@@ -2473,7 +2564,9 @@ mod tests {
     }
     #[test]
     fn test_reorder_screen_and_navigation() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         runtime().block_on(async {
             let (pool, path) = temp_pool().await;
             migrate_with(&pool).await.unwrap();
@@ -2535,7 +2628,9 @@ mod tests {
     /// 这是"库损坏/换机不丢笔迹史"那条承诺的具体形式。
     #[test]
     fn test_backup_then_restore_merge() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         runtime().block_on(async {
             let (pool, path) = raw_temp_pool().await;
             migrate_with(&pool).await.unwrap();
