@@ -296,7 +296,11 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let parsed: Option<serde_json::Value> = serde_json::from_str(val).ok();
         let resp_val = match msg_type {
             "lassoSelect" => {
-                let poly = parsed.as_ref().map(|v| nums(&v["poly"])).unwrap_or_default();
+                // Dart 发的是 value: [[x,y],...]; 早期实现读 poly, 永远为空。
+                let poly = parsed
+                    .as_ref()
+                    .map(|v| nums(v.get("poly").unwrap_or_else(|| &v["value"])))
+                    .unwrap_or_default();
                 let payload = poly
                     .iter()
                     .map(|(x, y)| format!("{x},{y}"))
@@ -378,13 +382,19 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 serde_json::json!({ "payload": s })
             }
             _ => {
-                // pasteStrokes: 载荷由 Dart 侧已平移好(简单起见管道版不做 shift)
-                let payload = parsed
+                // pasteStrokes: 载荷坐标以包围盒中心为原点, 按 (cx, cy) 平移。
+                let (payload, cx, cy) = parsed
                     .as_ref()
-                    .and_then(|v| v["payload"].as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let c = std::ffi::CString::new(payload).unwrap_or_default();
+                    .map(|v| {
+                        (
+                            v["payload"].as_str().unwrap_or("").to_string(),
+                            v["cx"].as_f64().unwrap_or(0.0),
+                            v["cy"].as_f64().unwrap_or(0.0),
+                        )
+                    })
+                    .unwrap_or_default();
+                let shifted = glaspen_core::export::shift_stroke_payload(&payload, cx, cy);
+                let c = std::ffi::CString::new(shifted).unwrap_or_default();
                 let n = glaspen_core::export::glaspen2_paste_strokes(screen_id, c.as_ptr());
                 serde_json::json!({ "count": n })
             }

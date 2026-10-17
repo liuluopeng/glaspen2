@@ -675,6 +675,34 @@ pub extern "C" fn glaspen2_delete_strokes(screen_id: i64, ids_csv: *const c_char
     (n > 0) as c_int
 }
 
+/// 把"包围盒中心在原点"的粘贴载荷平移到 (cx, cy)。
+/// 载荷格式: 段用 `;` 分隔, 每段 `颜色前缀|逗号分隔的三元组(x,y,width)`。
+/// 与 FFI 的粘贴入口共用, Windows 管道版也调它, 避免两套坐标逻辑。
+pub fn shift_stroke_payload(payload: &str, cx: f64, cy: f64) -> String {
+    let mut out: Vec<String> = Vec::new();
+    for seg in payload.split(';') {
+        let Some((head, body)) = seg.split_once('|') else {
+            continue;
+        };
+        let mut pts: Vec<String> = Vec::new();
+        for (i, trip) in body.split(',').enumerate() {
+            let v: f64 = match trip.trim().parse() {
+                Ok(v) => v,
+                Err(_) => break,
+            };
+            if i % 3 == 0 {
+                pts.push(format!("{:.3}", v + cx));
+            } else if i % 3 == 1 {
+                pts.push(format!("{:.3}", v + cy));
+            } else {
+                pts.push(format!("{:.3}", v));
+            }
+        }
+        out.push(format!("{head}|{}", pts.join(",")));
+    }
+    out.join(";")
+}
+
 /// 把剪贴板笔迹粘到某页(新 id 新时间 = 新实体; 点内相对 t 保速度曲线)。
 /// payload = 手写消息同款墨迹序列化(逗号三元组 "x,y,w" 分号连接)。
 /// 返回新 stroke 数。

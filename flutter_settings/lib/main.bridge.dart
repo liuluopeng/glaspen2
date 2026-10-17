@@ -526,7 +526,7 @@ class _NamedPipeBridge extends SettingsBridge {
     if (avail == 0) return; // No data yet
 
     // Read available data
-    final toRead = avail > 1024 ? 1024 : avail;
+    final toRead = avail > 65536 ? 65536 : avail;
     final buf = calloc<Uint8>(toRead);
     final bytesRead = calloc<Uint32>();
     final success = _readFile(_handle, buf, toRead, bytesRead, nullptr);
@@ -681,7 +681,8 @@ class _NamedPipeBridge extends SettingsBridge {
   Future<int> pasteStrokes(int screenId, String payload, double cx, double cy) async {
     // 管道版: 平移在 Dart 侧做完再发(payload 已含 cx/cy 时由调用方保证)
     final r = await _request('pasteStrokes', {
-      'screenId': screenId, 'value': {'payload': payload},
+      'screenId': screenId,
+      'value': {'payload': payload, 'cx': cx, 'cy': cy},
     });
     return (r['count'] as num?)?.toInt() ?? 0;
   }

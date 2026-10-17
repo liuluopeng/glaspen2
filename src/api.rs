@@ -532,36 +532,10 @@ pub async fn copy_strokes_payload(screen_id: i64, ids: Vec<i64>) -> String {
 pub async fn paste_strokes(screen_id: i64, payload: String, cx: f64, cy: f64) -> i32 {
     run_blocking(move || {
         // 把"中心在原点"的载荷平移到 (cx, cy)
-        let shifted = shift_payload(payload, cx, cy);
+        let shifted = crate::export::shift_stroke_payload(&payload, cx, cy);
         let c = std::ffi::CString::new(shifted).unwrap_or_default();
         crate::export::glaspen2_paste_strokes(screen_id, c.as_ptr())
     })
-}
-
-fn shift_payload(payload: String, cx: f64, cy: f64) -> String {
-    let mut out: Vec<String> = Vec::new();
-    for seg in payload.split(';') {
-        let Some((head, body)) = seg.split_once('|') else {
-            continue;
-        };
-        let mut pts: Vec<String> = Vec::new();
-        for (i, trip) in body.split(',').enumerate() {
-            let v: f64 = match trip.trim().parse() {
-                Ok(v) => v,
-                Err(_) => break,
-            };
-            // 三元组内: i%3==0 → x, 1 → y, 2 → 宽
-            if i % 3 == 0 {
-                pts.push(format!("{:.3}", v + cx));
-            } else if i % 3 == 1 {
-                pts.push(format!("{:.3}", v + cy));
-            } else {
-                pts.push(format!("{:.3}", v));
-            }
-        }
-        out.push(format!("{head}|{}", pts.join(",")));
-    }
-    out.join(";")
 }
 
 /// 导出单页 PNG(白底, 2x 采样)到桌面。
@@ -1047,7 +1021,7 @@ mod tests {
     fn shift_payload_moves_xy_keeps_w_and_head() {
         let payload = "1.000,0.000,0.220|-5.000,-5.000,2.000,5.000,5.000,2.000;\
 0.000,0.588,1.000|0.000,0.000,3.000,10.000,10.000,3.000";
-        let out = shift_payload(payload.to_string(), 100.0, 50.0);
+        let out = crate::export::shift_stroke_payload(payload, 100.0, 50.0);
         let segs: Vec<&str> = out.split(';').collect();
         assert_eq!(segs.len(), 2);
         // 段1: 颜色头原样; x+100 / y+50 / w 不动
