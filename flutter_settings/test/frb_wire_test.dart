@@ -19,9 +19,12 @@ void main() {
   // dev 库对任何非 bundled 进程可见(db_path 的稳定路径), 写操作会真实
   // 生效——exportPdf 曾往桌面写真 PDF(桌面莫名 PDF 的元凶之一)。
   // 存在 dev 库时, 触碰真实数据的用例整组跳过。
-  final devDbExists = File(
-          '${Platform.environment['HOME']}/Library/Application Support/glaspen2/glaspen2-dev.db')
-      .existsSync();
+  // lint/CI 会设置 GLASPEN2_DB_PATH 指向临时库, 这时写操作只碰临时文件,
+  // 不需要跳过; 本地裸跑 flutter test 时仍保护真实 dev 库。
+  final isolatedDb = Platform.environment['GLASPEN2_DB_PATH'];
+  final devDbExists = isolatedDb == null &&
+      File('${Platform.environment['HOME']}/Library/Application Support/glaspen2/glaspen2-dev.db')
+          .existsSync();
 
   setUpAll(() async {
     if (skipReason != null) return;

@@ -16,7 +16,9 @@ echo "=== [4/5] flutter analyze ==="
 (cd flutter_settings && fvm flutter analyze)
 
 echo "=== [5/5] flutter test ==="
-(cd flutter_settings && fvm flutter test)
+# 用临时库跑 FRB wire 测试: 写操作不碰真实 dev 库, 也不会因"dev 库存在"被跳过
+TEST_DB="$(mktemp -u)/glaspen2-wire-test.db"
+(cd flutter_settings && GLASPEN2_DB_PATH="$TEST_DB" fvm flutter test)
 
 echo
 echo "✓ 全部通过"

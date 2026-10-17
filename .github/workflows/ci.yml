@@ -83,7 +83,9 @@ jobs:
 
       - name: flutter test
         working-directory: flutter_settings
-        run: flutter test
+        run: |
+          # 隔离数据库: FRB wire 测试里的写操作只碰临时库
+          GLASPEN2_DB_PATH="$(mktemp -u)/glaspen2-wire-test.db" flutter test
 
   # 覆盖率只在 main push 上跑(PR 上重复整套构建太贵): 产物 lcov.info 存
   # artifact, 本地可用 `cargo llvm-cov --html --open` 看盲区。
