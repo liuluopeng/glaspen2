@@ -280,12 +280,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 
   @override
   void dispose() {
-    _gridScrollDebounce?.cancel;
+    _gridScrollDebounce?.cancel();
     _gridScroll.removeListener(_onGridScroll);
     _gridScroll.dispose();
     _tabController.dispose();
-    _reloadTimer?.cancel;
-    _updSub?.cancel; // 还在下载时销毁面板 = 取消下载
+    _reloadTimer?.cancel();
+    _updSub?.cancel(); // 还在下载时销毁面板 = 取消下载
     _chatApiBase.dispose();
     _chatUser.dispose();
     _chatPassword.dispose();
@@ -294,7 +294,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   }
 
   void _onGridScroll() {
-    _gridScrollDebounce?.cancel;
+    _gridScrollDebounce?.cancel();
     _gridScrollDebounce = Timer(const Duration(milliseconds: 80), () {
       if (mounted) _updateVisibleRange();
     });
@@ -527,7 +527,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     );
   }
 
-  ui.Image? _tabBgImageCache;
   bool _backupBusy = false;
   bool _pdfExporting = false;
 }

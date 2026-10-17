@@ -220,12 +220,12 @@ extension _NotebookUi on _SettingsPageState {
     return Rect.fromLTWH(_detailMargin * kx, _detailMargin * kx, pw * kx, ph * kx);
   }
   Future<void> _ensureTabBgImage() async {
-    if (_tabBgImageCache != null) return;
+    if (_tabBgImage != null) return;
     final data = await rootBundle.load('assets/tab_bg_pages.jpg');
     final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
     final frame = await codec.getNextFrame();
     if (!mounted) return;
-    setState(() => _tabBgImageCache = frame.image);
+    setState(() => _tabBgImage = frame.image);
   }
 
   Offset _viewToPage(Offset v) =>

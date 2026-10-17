@@ -38,7 +38,10 @@ extension _SettingsWidgetsUi on _SettingsPageState {
       runSpacing: 8,
       children: List.generate(_colorNames.length, (i) {
         final selected = i == _selectedColor;
-        final isWhite = i == _colorNames.length - 1;
+        // 用真实亮度决定文字颜色: 此前用"最后一个索引"当白色,
+        // 而最后一个预设其实是黑色 —— 黑块黑字、白块白字都看不见。
+        final swatch = Color(_colorValues[i]);
+        final useDarkText = swatch.computeLuminance() > 0.55;
         return SizedBox(
           width: 60,
           height: 30,
@@ -60,7 +63,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
               _colorNames[i],
               style: TextStyle(
                 fontSize: 13,
-                color: isWhite ? Colors.black87 : Color(_colorValues[i]),
+                color: useDarkText ? Colors.black87 : Colors.white,
                 fontWeight: selected ? FontWeight.bold : FontWeight.normal,
               ),
             ),

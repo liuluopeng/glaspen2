@@ -30,7 +30,8 @@ extension _UpdateUi on _SettingsPageState {
     Map<dynamic, dynamic> result;
     try {
       final l = AppLocalizations.of(context)!;
-      result = await _bridge.checkUpdate();
+      // 网络/管道都可能有去无回: 15s 必须给用户一个结果, 不能永久转圈。
+      result = await _bridge.checkUpdate().timeout(const Duration(seconds: 15));
       // 空 map = 管道没连上(Windows),或对端没实现该消息
       if (result.isEmpty) {
         result = {'ok': false, 'error': l.notConnectedToThe};
@@ -128,7 +129,7 @@ extension _UpdateUi on _SettingsPageState {
       });
       return;
     }
-    _updSub?.cancel;
+    _updSub?.cancel();
     _updSub = null;
     final err = (f['error'] as String?) ?? '';
     if (err.isNotEmpty) {
@@ -186,7 +187,7 @@ extension _UpdateUi on _SettingsPageState {
 
   /// 取消下载(解包后的 ready 状态不给取消 —— 文件已就绪,重启才生效)。
   void _cancelUpdate() {
-    _updSub?.cancel;
+    _updSub?.cancel();
     _updSub = null;
     setState(() => _upd = _UpdPhase.idle);
   }
