@@ -1,8 +1,10 @@
 [package]
 name = "glaspen-chat"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "glaspen 手写笔记聊天流消息:gRPC 客户端与本地模拟发送(消息存储在本地 axum 服务)"
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 tonic = "0.13"

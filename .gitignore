@@ -1,5 +1,4 @@
 /target
-Cargo.lock
 .DS_Store
 *.dmg
 *.zip
@@ -14,7 +13,6 @@ zinnia/
 note.md
 
 # Flutter
-flutter_settings/pubspec.lock
 
 flame.txt
 # SQLite database (generated at runtime)

@@ -1,8 +1,10 @@
 [package]
 name = "glaspen-core"
-version = "0.5.1"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "glaspen2 共享核心:SQLite 存储、笔迹模型与平滑、cairo 渲染、导出、更新检查、聊天/草稿/共享上行 glue"
+license.workspace = true
+repository.workspace = true
 
 [build-dependencies]
 pkg-config = "0.3"
