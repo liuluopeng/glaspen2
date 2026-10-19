@@ -19,6 +19,19 @@ static void rebuild_surface_from_strokes(void) {
   flush_to_layer();
 }
 
+// 时光隧道专用半分辨率表面: 卡片快照本来就是 half-res, 直接在 half-res
+// 上合成再放大上屏, 填充量降到 1/4, 是 4K 下把 40fps 拉到 60+ 的关键。
+static cairo_surface_t *s_tun_surface = NULL;
+static CGImageRef s_tun_cgimage = NULL;
+static unsigned char *s_tun_cgimage_data = NULL;
+static int s_tun_cgimage_w = 0, s_tun_cgimage_h = 0, s_tun_cgimage_stride = 0;
+
+/// 隧道帧上屏(半分辨率表面由 drawRect 放大绘制)。
+static void flush_tunnel_to_layer(void) {
+  if (s_tun_surface && g_draw_view)
+    [g_draw_view setNeedsDisplay:YES];
+}
+
 // --- Drawing view ---
 
 @interface GlaspenDrawView : NSView
@@ -47,6 +60,41 @@ static void rebuild_surface_from_strokes(void) {
   CGContextSaveGState(ctx);
   NSRect clipRect = [self isFlipped] ? rect : rect;
   CGContextClipToRect(ctx, NSRectToCGRect(clipRect));
+
+  // 时光隧道期间: 只显示半分辨率隧道表面(放大到视图), 不画网格/笔迹。
+  if (s_tun_active && s_tun_surface) {
+    cairo_surface_flush(s_tun_surface);
+    unsigned char *td = cairo_image_surface_get_data(s_tun_surface);
+    int tw = cairo_image_surface_get_width(s_tun_surface);
+    int th = cairo_image_surface_get_height(s_tun_surface);
+    int ts = cairo_image_surface_get_stride(s_tun_surface);
+    if (td && tw > 0 && th > 0 &&
+        (!s_tun_cgimage || s_tun_cgimage_data != td ||
+         s_tun_cgimage_w != tw || s_tun_cgimage_h != th ||
+         s_tun_cgimage_stride != ts)) {
+      CGImageRelease(s_tun_cgimage);
+      s_tun_cgimage = NULL;
+      CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+      CGDataProviderRef provider =
+          CGDataProviderCreateWithData(NULL, td, ts * th, NULL);
+      s_tun_cgimage = CGImageCreate(
+          tw, th, 8, 32, ts, cs,
+          kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst,
+          provider, NULL, false, kCGRenderingIntentDefault);
+      CGDataProviderRelease(provider);
+      CGColorSpaceRelease(cs);
+      s_tun_cgimage_data = td;
+      s_tun_cgimage_w = tw;
+      s_tun_cgimage_h = th;
+      s_tun_cgimage_stride = ts;
+    }
+    if (s_tun_cgimage) {
+      NSRect b = [self bounds];
+      CGContextDrawImage(ctx, NSRectToCGRect(b), s_tun_cgimage);
+    }
+    CGContextRestoreGState(ctx);
+    return;
+  }
 
   // Grid — drawn directly in the view, gated by its own toggle (显示网格).
   // When 网格跟随涂鸦 is on, it hides with the strokes in 飘渺画布涂鸦模式;
@@ -656,6 +704,16 @@ static void tunnel_free_cards(void) {
     cairo_surface_destroy(s_tun_blur);
     s_tun_blur = NULL;
   }
+  // 先放掉引用表面数据的 CGImage, 再销毁表面。
+  if (s_tun_cgimage) {
+    CGImageRelease(s_tun_cgimage);
+    s_tun_cgimage = NULL;
+    s_tun_cgimage_data = NULL;
+  }
+  if (s_tun_surface) {
+    cairo_surface_destroy(s_tun_surface);
+    s_tun_surface = NULL;
+  }
   s_tun_cards = 0;
 }
 
@@ -878,7 +936,7 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
 // 一帧:相机沿页距推进(缓入缓出), 卡片按隧道坐标摆位;
 // 深处的先画、近处的后画 —— 层叠顺序即页序。
 static void tunnel_frame(double p) {
-  if (!g_surface || s_tun_cards == 0)
+  if (!s_tun_surface || s_tun_cards == 0)
     return;
   s_tun_frames++;
   double e = p < 0.5 ? 4.0 * p * p * p : 1.0 - pow(-2.0 * p + 2.0, 3.0) / 2.0;
@@ -888,7 +946,7 @@ static void tunnel_frame(double p) {
   // 罩下来落定 zc=0。深度轴语义:正=旧(深处), 负=新(镜头前方)。
   double cam = e * s_tun_travel * (s_tun_back ? 1.0 : -1.0);
 
-  cairo_t *cr = cairo_create(g_surface);
+  cairo_t *cr = cairo_create(s_tun_surface);
   // 背景:深色磨砂玻璃(隧道的"洞")—— 让卡片的半透明玻璃有参照,
   // 同时遮住桌面, 层次/透视一眼可读。动效结束即恢复普通透明玻璃。
   cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
@@ -919,7 +977,7 @@ static void tunnel_frame(double p) {
       if (tunnel_place(zc, &cx, &cy, &w, &h, &a)) {
         tunnel_draw_card(cr, slot, cx, cy, w, h, a, zc);
         cairo_destroy(cr);
-        flush_to_layer();
+        flush_tunnel_to_layer();
         return;
       }
     }
@@ -984,7 +1042,7 @@ static void tunnel_frame(double p) {
     tunnel_draw_card(cr, slot, cx, cy, w, h, a, zc);
   }
   cairo_destroy(cr);
-  flush_to_layer();
+  flush_tunnel_to_layer();
 }
 
 static void tunnel_finish(void) {
@@ -1122,10 +1180,18 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
     return NO;
 
   tunnel_free_cards();
-  s_tun_surf_w = (int)(g_screen_w * g_scale);
-  s_tun_surf_h = (int)(g_screen_h * g_scale);
+  // 半分辨率: 卡片快照本身就是这个尺寸, 合成后再由 drawRect 放大 2x。
+  s_tun_surf_w = (int)(g_screen_w * g_scale * 0.5);
+  s_tun_surf_h = (int)(g_screen_h * g_scale * 0.5);
   if (s_tun_surf_w <= 0 || s_tun_surf_h <= 0)
     return NO;
+  s_tun_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
+                                             s_tun_surf_w, s_tun_surf_h);
+  if (cairo_surface_status(s_tun_surface) != CAIRO_STATUS_SUCCESS) {
+    cairo_surface_destroy(s_tun_surface);
+    s_tun_surface = NULL;
+    return NO;
+  }
   // 预热缓存: [最旧…, prev1, cur, next1]("透视展示 cur 到最旧的所有玻璃";
   // after 恒 1 = 目标页)。页多时受 TUNNEL_MAX_CARDS 与建卡预算保护。
   // 只预载可见纵深附近的一小段。此前 400 页会在事件 tap 线程里逐页
