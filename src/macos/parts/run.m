@@ -634,6 +634,7 @@ static void (^s_tun_prepare)(void);
 static void (^s_tun_commit)(void);
 static dispatch_source_t s_tun_timer;
 static double s_tun_t0 = 0;
+static uint64_t s_tun_frames = 0;
 
 static inline double tunnel_now(void) {
   return [NSDate timeIntervalSinceReferenceDate];
@@ -877,6 +878,7 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
 static void tunnel_frame(double p) {
   if (!g_surface || s_tun_cards == 0)
     return;
+  s_tun_frames++;
   double e = p < 0.5 ? 4.0 * p * p * p : 1.0 - pow(-2.0 * p + 2.0, 3.0) / 2.0;
   // 相机沿深度轴移动:回溯旧页(向前翻, s_tun_back) = cam 0→+1 深入页列,
   // 旧页从深处迎面而来, 目标页(prev, 深度+1)落定 zc=0 满屏;
@@ -989,6 +991,12 @@ static void tunnel_finish(void) {
     s_tun_timer = NULL;
   }
   tunnel_frame(1.0); // 最后一帧: 目标页满屏, 与真实页一模一样
+  if (getenv("GLASPEN2_FLIP_FPS")) {
+    double secs = tunnel_now() - s_tun_t0;
+    NSLog(@"[flip] 实测 %.1f fps (%llu 帧 / %.3fs)",
+          secs > 0.001 ? (double)s_tun_frames / secs : 0.0,
+          (unsigned long long)s_tun_frames, secs);
+  }
   tunnel_free_cards();
   s_tun_active = NO;
   // 动效结束:回到普通工作态 —— 表面重绘真实页 + 磨砂玻璃恢复自身开关
@@ -1210,6 +1218,7 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
   }
 
   s_tun_t0 = tunnel_now();
+  s_tun_frames = 0;
   // 先同步画一帧并立刻上屏:动画第一帧就是"翻页前的画面", 无跳变。
   tunnel_frame(0.0);
   if (g_draw_view)
