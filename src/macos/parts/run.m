@@ -755,12 +755,15 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   if (pane > 0.94)
     pane = 0.94;
 
-  // 软阴影(多层矩形, 直角)。
-  for (int i = 5; i >= 1; i--) {
-    double off = i * soff;
-    cairo_set_source_rgba(cr, 0, 0, 0, 0.016 * alpha * glass);
-    cairo_rectangle(cr, card_x + off, card_y + off, w, h);
-    cairo_fill(cr);
+  // 软阴影: 2 层足够(5 层全卡大小填充是 4K 下最大的单帧开销之一)。
+  // 远层已经模糊/很淡, 不再画阴影。
+  if (fabs(zc) < 1.6) {
+    for (int i = 2; i >= 1; i--) {
+      double off = i * soff * 1.6;
+      cairo_set_source_rgba(cr, 0, 0, 0, 0.028 * alpha * glass);
+      cairo_rectangle(cr, card_x + off, card_y + off, w, h);
+      cairo_fill(cr);
+    }
   }
 
   // ── 上侧面: 从前脸顶边向右上挤出 T ──
@@ -819,14 +822,19 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   cairo_paint_with_alpha(cr, alpha);
   cairo_restore(cr);
 
-  cairo_pattern_t *sheen = cairo_pattern_create_linear(
-      card_x, card_y, card_x + w, card_y + h * 0.75);
+  // 扫光只给近处的焦点卡; 远层已经模糊, 不值得再铺一整张渐变。
+  cairo_pattern_t *sheen = NULL;
+  if (fabs(zc) < 1.2)
+    sheen = cairo_pattern_create_linear(card_x, card_y, card_x + w,
+                                        card_y + h * 0.75);
   cairo_pattern_add_color_stop_rgba(sheen, 0.0, 1, 1, 1, 0.10 * alpha * glass);
   cairo_pattern_add_color_stop_rgba(sheen, 0.35, 1, 1, 1, 0.012 * alpha * glass);
   cairo_pattern_add_color_stop_rgba(sheen, 1.0, 1, 1, 1, 0.0);
-  cairo_set_source(cr, sheen);
-  cairo_paint(cr);
-  cairo_pattern_destroy(sheen);
+  if (sheen) {
+    cairo_set_source(cr, sheen);
+    cairo_paint(cr);
+    cairo_pattern_destroy(sheen);
+  }
   cairo_restore(cr);
 
   // ── 侧视图棱线: 背侧顶/右暗边, 前脸顶/右亮边 ──
@@ -1208,12 +1216,12 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
     [g_draw_view displayIfNeeded];
   s_tun_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
                                        dispatch_get_main_queue());
+  // 120Hz 定时器: 60Hz 屏会被 vsync 合并, 120Hz ProMotion 能跑满;
+  // 先画新帧再 display(旧顺序是先 display 上一帧, 每 tick 多画一次旧画面)。
   dispatch_source_set_timer(s_tun_timer, dispatch_time(DISPATCH_TIME_NOW, 0),
-                            (uint64_t)(1.0 / 60.0 * NSEC_PER_SEC),
-                            (uint64_t)(2.0 / 1000.0 * NSEC_PER_SEC));
+                            (uint64_t)(1.0 / 120.0 * NSEC_PER_SEC),
+                            (uint64_t)(1.0 / 1000.0 * NSEC_PER_SEC));
   dispatch_source_set_event_handler(s_tun_timer, ^{
-    if (s_tun_active && g_draw_view)
-      [g_draw_view displayIfNeeded];
     double t = tunnel_now() - s_tun_t0;
     double p = t / s_tun_dur;
     if (p >= 1.0) {
@@ -1221,6 +1229,8 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
       return;
     }
     tunnel_frame(p);
+    if (s_tun_active && g_draw_view)
+      [g_draw_view displayIfNeeded];
   });
   dispatch_resume(s_tun_timer);
   return YES;
