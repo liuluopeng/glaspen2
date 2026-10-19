@@ -17,10 +17,14 @@ void main() {
     await tester.pump();
     expect(find.text('设置'), findsWidgets);
     expect(find.text('Settings'), findsNothing);
+    expect(find.text('界面语言'), findsOneWidget);
+    expect(find.text('中文'), findsOneWidget);
 
     await tester.pumpWidget(_host(const Locale('en')));
     await tester.pump();
     expect(find.text('Settings'), findsWidgets);
     expect(find.text('设置'), findsNothing);
+    expect(find.text('Language'), findsOneWidget);
+    expect(find.text('English'), findsOneWidget);
   });
 }

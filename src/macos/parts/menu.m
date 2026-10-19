@@ -416,7 +416,10 @@ static void toggle_canvas_mode(void) {
 
 - (void)toggleLanguage {
     g_lang = 1 - g_lang;
+    glaspen2_save_string_setting("language", g_lang == 1 ? "en" : "zh");
     update_menu_texts();
+    // 面板若开着, 让 Dart 侧跟着切换(不再跟随系统 locale)
+    glaspen2_notify_settings_changed();
 }
 - (void)showSettingsPanel {
     show_settings_panel();
@@ -633,6 +636,8 @@ char *glaspen2_macos_settings_json(void) {
             // 让 NSJSONSerialization 输出 true/false。
             @"showFreeCanvas": @(glaspen2_load_bool_setting("show_free_canvas") != 0),
             @"shareCanvas": @(glaspen2_load_bool_setting("share_ink") != 0),
+            // 语言由面板选择器决定, 不再跟随系统; 缺省中文
+            @"language": (g_lang == 1 ? @"en" : @"zh"),
         };
         NSData *json = [NSJSONSerialization dataWithJSONObject:d options:0 error:nil];
         if (!json) return;
@@ -819,6 +824,13 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             if (g_chat_integration || !on) {
                 glaspen2_share_ink_set_active((g_chat_integration && on) ? 1 : 0);
             }
+        } else if ([key isEqualToString:@"language"]) {
+            // 面板语言选择器: 同时改 macOS 原生菜单, 并落盘
+            NSString *s = [NSString stringWithFormat:@"%@", value];
+            g_lang = [s isEqualToString:@"en"] ? 1 : 0;
+            glaspen2_save_string_setting("language", g_lang == 1 ? "en" : "zh");
+            update_menu_texts();
+            glaspen2_notify_settings_changed();
         }
     });
 }

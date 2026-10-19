@@ -2655,6 +2655,15 @@ void glaspen2_run(void) {
     g_screen_w = (int)screenFrame.size.width;
     g_screen_h = (int)screenFrame.size.height;
     glaspen2_init_db(g_screen_w, g_screen_h);
+    // 语言不再跟随系统: 读面板上次选择(缺省中文), 菜单在建好后再刷新文案
+    {
+      char *vlang = glaspen2_load_string_setting("language");
+      if (vlang) {
+        g_lang = (strcmp(vlang, "en") == 0) ? 1 : 0;
+        glaspen2_free_c_string(vlang);
+        update_menu_texts();
+      }
+    }
     pageview_update(); // 启动落在末页, 页几何可能 ≠ 屏幕
 
     // Restore saved pen color and width

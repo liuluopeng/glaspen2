@@ -1438,8 +1438,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Settings dco_decode_settings(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 30)
-      throw Exception('unexpected arr length: expect 30 but see ${arr.length}');
+    if (arr.length != 31)
+      throw Exception('unexpected arr length: expect 31 but see ${arr.length}');
     return Settings(
       color: dco_decode_i_32(arr[0]),
       width: dco_decode_i_32(arr[1]),
@@ -1471,6 +1471,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       chatIntegration: dco_decode_bool(arr[27]),
       showFreeCanvas: dco_decode_bool(arr[28]),
       shareCanvas: dco_decode_bool(arr[29]),
+      language: dco_decode_String(arr[30]),
     );
   }
 
@@ -1827,6 +1828,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_chatIntegration = sse_decode_bool(deserializer);
     var var_showFreeCanvas = sse_decode_bool(deserializer);
     var var_shareCanvas = sse_decode_bool(deserializer);
+    var var_language = sse_decode_String(deserializer);
     return Settings(
       color: var_color,
       width: var_width,
@@ -1858,6 +1860,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       chatIntegration: var_chatIntegration,
       showFreeCanvas: var_showFreeCanvas,
       shareCanvas: var_shareCanvas,
+      language: var_language,
     );
   }
 
@@ -2234,6 +2237,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.chatIntegration, serializer);
     sse_encode_bool(self.showFreeCanvas, serializer);
     sse_encode_bool(self.shareCanvas, serializer);
+    sse_encode_String(self.language, serializer);
   }
 
   @protected

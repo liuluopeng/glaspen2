@@ -779,4 +779,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String loadFailedP1(String p1) {
     return 'Load failed: $p1';
   }
+
+  @override
+  String get language => 'Language';
+
+  @override
+  String get chinese => '中文';
+
+  @override
+  String get english => 'English';
 }

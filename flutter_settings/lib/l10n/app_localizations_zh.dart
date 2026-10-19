@@ -751,4 +751,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String loadFailedP1(String p1) {
     return '加载失败: $p1';
   }
+
+  @override
+  String get language => '界面语言';
+
+  @override
+  String get chinese => '中文';
+
+  @override
+  String get english => 'English';
 }

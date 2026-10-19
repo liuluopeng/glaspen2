@@ -30,6 +30,10 @@ void main() {
   runApp(const GlaspenSettingsApp());
 }
 
+/// 面板语言。默认中文, **不跟随系统自动检测** —— 由设置里的选择器决定。
+/// 设置加载/原生菜单切换时更新这个 notifier, MaterialApp 立即重建。
+final ValueNotifier<Locale> appLocale = ValueNotifier(const Locale('zh'));
+
 // ── Platform-specific communication ──
 
 const _pipeName = r'\\.\pipe\glaspen2_settings';
@@ -102,11 +106,19 @@ List<String> _widthNamesOf(AppLocalizations l) =>
 class GlaspenSettingsApp extends StatelessWidget {
   const GlaspenSettingsApp({super.key, this.locale});
 
-  /// 固定语言(测试用); null = 跟随系统。
+  /// 测试用固定语言; null = 跟随 [appLocale](设置里的选择)。
   final Locale? locale;
 
   @override
   Widget build(BuildContext context) {
+    if (locale != null) return _build(context, locale!);
+    return ValueListenableBuilder<Locale>(
+      valueListenable: appLocale,
+      builder: (context, l, _) => _build(context, l),
+    );
+  }
+
+  Widget _build(BuildContext context, Locale locale) {
     return MaterialApp(
       locale: locale,
       onGenerateTitle: (context) => AppLocalizations.of(context)!.glaspen2,
@@ -159,6 +171,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   late TabController _tabController;
   int _selectedColor = 0;
   int _selectedWidth = 2;
+  String _language = 'zh'; // 界面语言: zh | en(不再跟随系统)
   bool _pressureMonitor = false;
   bool _launchAtLogin = false;
   bool _showGrid = false;
@@ -299,6 +312,21 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     super.dispose();
   }
 
+  void _setLanguage(String code) {
+    final lang = code == 'en' ? 'en' : 'zh';
+    setState(() => _language = lang);
+    _applyLanguage(lang);
+    _setSetting('language', lang);
+  }
+
+  /// 只改 UI 语言, 不写库(加载/原生菜单推送时用)。
+  void _applyLanguage(String code) {
+    final lang = code == 'en' ? 'en' : 'zh';
+    if (_language != lang) _language = lang;
+    final loc = Locale(lang);
+    if (appLocale.value != loc) appLocale.value = loc;
+  }
+
   /// 统一把"读失败"变成用户看得见的一条提示, 而不是悄悄显示成空列表。
   void _toastError(String message) {
     if (!mounted) return;
@@ -425,6 +453,23 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 key: _columnKey,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _buildSection(
+                    AppLocalizations.of(context)!.language,
+                    SegmentedButton<String>(
+                      segments: [
+                        ButtonSegment(
+                            value: 'zh',
+                            label: Text(AppLocalizations.of(context)!.chinese)),
+                        ButtonSegment(
+                            value: 'en',
+                            label: Text(AppLocalizations.of(context)!.english)),
+                      ],
+                      selected: {_language},
+                      showSelectedIcon: false,
+                      onSelectionChanged: (sel) => _setLanguage(sel.first),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   _buildSection(
                     Platform.isWindows
                         ? AppLocalizations.of(context)!.hotkeysCtrlAlt

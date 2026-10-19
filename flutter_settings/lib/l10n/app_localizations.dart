@@ -1441,6 +1441,24 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'加载失败: {p1}'**
   String loadFailedP1(String p1);
+
+  /// No description provided for @language.
+  ///
+  /// In zh, this message translates to:
+  /// **'界面语言'**
+  String get language;
+
+  /// No description provided for @chinese.
+  ///
+  /// In zh, this message translates to:
+  /// **'中文'**
+  String get chinese;
+
+  /// No description provided for @english.
+  ///
+  /// In zh, this message translates to:
+  /// **'English'**
+  String get english;
 }
 
 class _AppLocalizationsDelegate

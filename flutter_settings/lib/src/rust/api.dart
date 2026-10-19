@@ -6,7 +6,7 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `current_settings`, `decode_thumb_blob`, `download_to_cache`, `from_json`, `open_url_checked`, `run_blocking`, `shift_payload`
+// These functions are ignored because they are not marked as `pub`: `current_settings`, `decode_thumb_blob`, `download_to_cache`, `from_json`, `open_url_checked`, `run_blocking`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `glaspen2_notify_settings_changed`
 
@@ -375,6 +375,9 @@ class Settings {
   final bool showFreeCanvas;
   final bool shareCanvas;
 
+  /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
+  final String language;
+
   const Settings({
     required this.color,
     required this.width,
@@ -406,6 +409,7 @@ class Settings {
     required this.chatIntegration,
     required this.showFreeCanvas,
     required this.shareCanvas,
+    required this.language,
   });
 
   @override
@@ -439,7 +443,8 @@ class Settings {
       chatHasPassword.hashCode ^
       chatIntegration.hashCode ^
       showFreeCanvas.hashCode ^
-      shareCanvas.hashCode;
+      shareCanvas.hashCode ^
+      language.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -475,7 +480,8 @@ class Settings {
           chatHasPassword == other.chatHasPassword &&
           chatIntegration == other.chatIntegration &&
           showFreeCanvas == other.showFreeCanvas &&
-          shareCanvas == other.shareCanvas;
+          shareCanvas == other.shareCanvas &&
+          language == other.language;
 }
 
 /// release 里的一个安装包(挑包下载用)。

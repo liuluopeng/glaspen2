@@ -3,7 +3,7 @@
 import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:glaspen2_settings/main.dart';
+import 'package:glaspen2_settings/main.dart' show GlaspenSettingsApp, appLocale;
 
 void main() {
   testWidgets('settings page builds', (WidgetTester tester) async {
@@ -21,5 +21,23 @@ void main() {
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('活页本'), findsOneWidget);
     expect(find.text('自由涂鸦'), findsNothing);
+  });
+
+  testWidgets('language selector drives locale (no system auto-detect)',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1600, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    appLocale.value = const Locale('zh');
+    addTearDown(() => appLocale.value = const Locale('zh'));
+
+    await tester.pumpWidget(const GlaspenSettingsApp());
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('界面语言'), findsOneWidget);
+
+    appLocale.value = const Locale('en');
+    await tester.pump();
+    expect(find.text('Language'), findsOneWidget);
+    expect(find.text('Settings'), findsWidgets);
   });
 }

@@ -1635,6 +1635,7 @@ impl SseDecode for crate::api::Settings {
         let mut var_chatIntegration = <bool>::sse_decode(deserializer);
         let mut var_showFreeCanvas = <bool>::sse_decode(deserializer);
         let mut var_shareCanvas = <bool>::sse_decode(deserializer);
+        let mut var_language = <String>::sse_decode(deserializer);
         return crate::api::Settings {
             color: var_color,
             width: var_width,
@@ -1666,6 +1667,7 @@ impl SseDecode for crate::api::Settings {
             chat_integration: var_chatIntegration,
             show_free_canvas: var_showFreeCanvas,
             share_canvas: var_shareCanvas,
+            language: var_language,
         };
     }
 }
@@ -1956,6 +1958,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::Settings {
             self.chat_integration.into_into_dart().into_dart(),
             self.show_free_canvas.into_into_dart().into_dart(),
             self.share_canvas.into_into_dart().into_dart(),
+            self.language.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -2303,6 +2306,7 @@ impl SseEncode for crate::api::Settings {
         <bool>::sse_encode(self.chat_integration, serializer);
         <bool>::sse_encode(self.show_free_canvas, serializer);
         <bool>::sse_encode(self.share_canvas, serializer);
+        <String>::sse_encode(self.language, serializer);
     }
 }
 

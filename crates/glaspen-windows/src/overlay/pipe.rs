@@ -579,6 +579,10 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .block_on(glaspen_core::db::load_setting("chat_password"))
             .map(|v| !v.is_empty())
             .unwrap_or(false);
+        let language = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("language"))
+            .unwrap_or_else(|| "zh".to_string());
+        let language = if language == "en" { "en" } else { "zh" };
         let infinite_canvas = if infinite_on() { 1 } else { 0 };
         let (gfps, gres, gspd, gem) = gif_settings();
         // 注册表即存储(macOS 是 LaunchAgent plist), 回读真实状态
@@ -586,7 +590,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             glaspen_core::export::glaspen2_is_launch_at_login() == 1;
         // 密码本体不回读,只回是否已保存(macOS 同款)
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\"}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"rainbow\":false,\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\"}}}}\n",
             color,
             width,
             outline,
@@ -616,6 +620,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             if chat_has_password { "true" } else { "false" },
             json_escape(&chat_api_base),
             json_escape(&chat_user),
+            language,
         );
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
@@ -828,6 +833,11 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                     )
                 };
             }
+        } else if key == "language" {
+            // 面板语言:落库即可(Windows 面板是独立进程, 自己重读)
+            let value = json_get_str(line, "value").to_string();
+            let lang = if value == "en" { "en" } else { "zh" };
+            glaspen_core::runtime().block_on(glaspen_core::db::save_setting("language", lang));
         } else if key == "gridFollowStrokes" {
             if let Some(on) = json_get_bool(line, "value") {
                 glaspen_core::runtime().block_on(glaspen_core::db::save_setting(

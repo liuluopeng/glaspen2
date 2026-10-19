@@ -483,5 +483,8 @@
         "type": "String"
       }
     }
-  }
+  },
+  "language": "界面语言",
+  "chinese": "中文",
+  "english": "English"
 }

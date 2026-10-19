@@ -227,6 +227,8 @@ pub struct Settings {
     pub show_free_canvas: bool,
     // 共享画布上行开关(活页本 tab;仅集成开启时生效)
     pub share_canvas: bool,
+    /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
+    pub language: String,
 }
 
 impl Settings {
@@ -277,6 +279,14 @@ impl Settings {
             chat_integration: b("chatIntegration"),
             show_free_canvas: b("showFreeCanvas"),
             share_canvas: b("shareCanvas"),
+            language: {
+                let l = s("language");
+                if l == "en" {
+                    "en".to_string()
+                } else {
+                    "zh".to_string()
+                }
+            },
         })
     }
 }
@@ -1050,6 +1060,8 @@ mod tests {
         assert_eq!(s.chat_api_base, "");
         assert_eq!(s.chat_user, "");
         assert!(!s.chat_has_password);
+        // 语言不再跟随系统:缺字段默认中文
+        assert_eq!(s.language, "zh");
     }
 
     /// 涂鸦身份字段:字符串与 has_password 保真;密码本体永不进快照。
@@ -1062,6 +1074,7 @@ mod tests {
         assert_eq!(s.chat_api_base, "https://192.168.31.58:23001");
         assert_eq!(s.chat_user, "abc");
         assert!(s.chat_has_password);
+        assert_eq!(s.language, "zh");
         let j = serde_json::json!({
             "chatApiBase": "x", "chatUser": "u",
             // 即便推送方误发密码字段,from_json 也不解析它
@@ -1094,6 +1107,16 @@ mod tests {
         assert_eq!(s.color, 0);
         assert_eq!(s.width, 0);
         assert!(!s.infinite_canvas);
+        assert_eq!(s.language, "zh");
+    }
+
+    #[test]
+    fn test_settings_language_only_zh_or_en() {
+        let en = Settings::from_json(r#"{"language":"en"}"#).unwrap();
+        assert_eq!(en.language, "en");
+        // 非法/旧值一律回落中文, 避免 MaterialApp 拿到未支持的 locale
+        let bad = Settings::from_json(r#"{"language":"fr"}"#).unwrap();
+        assert_eq!(bad.language, "zh");
     }
 
     #[test]

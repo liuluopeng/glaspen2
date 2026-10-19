@@ -35,8 +35,10 @@ extension _SettingsStateUi on _SettingsPageState {
         _shareCanvas = _b(s['shareCanvas']);
         _notebookGlass = s['notebookStyle'] as bool? ?? _notebookGlass;
         _panelTransparent = _b(s['panelTransparent']);
+        _language = (s['language'] as String?) == 'en' ? 'en' : 'zh';
         _syncTabCount();
       });
+      _applyLanguage(_language);
     }
   }
 
@@ -75,9 +77,11 @@ extension _SettingsStateUi on _SettingsPageState {
           _shareCanvas = _b(settings['shareCanvas']);
           _notebookGlass = _b(settings['notebookStyle']);
           _panelTransparent = _b(settings['panelTransparent']);
+          _language = (settings['language'] as String?) == 'en' ? 'en' : 'zh';
           _syncTabCount();
           _connected = true;
         });
+        _applyLanguage(_language);
         // 设置就绪后顺手预取活页本首屏缩略图(一次批量往返),
         // 等用户切到活页本时直接就有图,连加载态都不用出现。
         if (_pages.isEmpty && !_pagesLoading) unawaited(_loadPages());
