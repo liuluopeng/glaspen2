@@ -623,7 +623,8 @@ static double s_tun_dur = 0.38; // 短促: 隧道动效在感知内"一闪而过
 // GLASPEN2_FLIP_K 可覆盖(0.05-3.0)。
 static double s_tun_k = 0.45;
 // 玻璃厚度(相对卡片宽度的比例)。可调: GLASPEN2_FLIP_THICK。
-static double s_tun_thick = 0.016;
+// 2.8% 是"能一眼分出前后几片玻璃"的默认值; 再薄就退回叠纸片。
+static double s_tun_thick = 0.028;
 // 玻璃面的基准不透明度。真实玻璃需要"面"来遮挡后页; 旧值 0.08 只有
 // 一层灰, 每页的空白都完全透明, 所有笔迹叠在一起(观感发假的主因)。
 // 0.84 是磨砂玻璃: 近页基本挡住后页, 后页只从边缘/模糊里透出一点。
@@ -701,8 +702,8 @@ static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
   double w = W * s;
   double h = H * s;
   // 轻微透视偏移: 越深越靠上/靠右, 层间边缘可读; 落定 zc=0 时正好居中。
-  double cx = W * 0.5 + W * 0.0035 * zc;
-  double cy = H * 0.5 - H * 0.022 * zc;
+  double cx = W * 0.5 + W * 0.0045 * zc;
+  double cy = H * 0.5 - H * 0.027 * zc;
   double a;
   if (zc < 0.0) {
     // 目标页从镜头前方飞入: 在 zc=-travel 处完全不可见, 避免首帧有一张
@@ -764,6 +765,8 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   // 远处薄(自然透视); 旧值 0.0045 在 4K 屏上只有十几像素, 看起来像
   // 一张纸。1.6% 宽 + 最小 4px 让倒角/侧面真正可读。
   double T = MAX(4.0, w * s_tun_thick);
+  // 阴影偏移与厚度解耦: 厚度加大时不能把阴影也拉成一大片黑雾。
+  double soff = MAX(3.0, w * 0.008);
   double zpos = zc > 0.0 ? zc : 0.0;
   if (zpos > 4.0)
     zpos = 4.0;
@@ -777,7 +780,7 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
 
   // 软阴影: 多层圆角矩形叠加(无模糊 API, 但比两条硬边自然得多)。
   for (int i = 5; i >= 1; i--) {
-    double off = i * T * 0.9;
+    double off = i * soff;
     cairo_set_source_rgba(cr, 0, 0, 0, 0.016 * alpha * glass);
     tunnel_rounded_rect(cr, card_x + off, card_y + off, w, h, r);
     cairo_fill(cr);
@@ -792,9 +795,10 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   cairo_save(cr);
   cairo_pattern_t *slab = cairo_pattern_create_linear(
       card_x, card_y, card_x + w, card_y + h);
-  cairo_pattern_add_color_stop_rgba(slab, 0.00, 0.80, 0.90, 1.00, 0.60 * alpha * glass);
-  cairo_pattern_add_color_stop_rgba(slab, 0.45, 0.48, 0.62, 0.80, 0.55 * alpha * glass);
-  cairo_pattern_add_color_stop_rgba(slab, 1.00, 0.16, 0.23, 0.34, 0.68 * alpha * glass);
+  // 中性玻璃: 几乎不加蓝, 只用明度差表达厚度(左上受光/右下背光)。
+  cairo_pattern_add_color_stop_rgba(slab, 0.00, 0.94, 0.95, 0.96, 0.58 * alpha * glass);
+  cairo_pattern_add_color_stop_rgba(slab, 0.45, 0.72, 0.74, 0.76, 0.54 * alpha * glass);
+  cairo_pattern_add_color_stop_rgba(slab, 1.00, 0.34, 0.35, 0.37, 0.66 * alpha * glass);
   cairo_set_source(cr, slab);
   tunnel_rounded_rect(cr, sx, sy, sw, sh, sr);
   cairo_fill(cr);
@@ -809,9 +813,9 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
                                                     card_y + h);
   // 只让颜色渐变, 不透明度保持接近 pane —— 否则中间那一档会把遮挡
   // 降回 50%, 后面几页的笔迹又透出来。
-  cairo_pattern_add_color_stop_rgba(fg, 0.0, 0.96, 0.98, 1.0, pane * 0.99);
-  cairo_pattern_add_color_stop_rgba(fg, 0.55, 0.70, 0.80, 0.92, pane * 0.94);
-  cairo_pattern_add_color_stop_rgba(fg, 1.0, 0.46, 0.58, 0.74, pane * 0.98);
+  cairo_pattern_add_color_stop_rgba(fg, 0.0, 0.985, 0.99, 1.0, pane * 0.99);
+  cairo_pattern_add_color_stop_rgba(fg, 0.55, 0.86, 0.875, 0.89, pane * 0.94);
+  cairo_pattern_add_color_stop_rgba(fg, 1.0, 0.66, 0.675, 0.69, pane * 0.98);
   cairo_set_source(cr, fg);
   cairo_paint(cr);
   cairo_pattern_destroy(fg);
@@ -838,10 +842,10 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   // ── 厚度边缘: 外缘亮线 + 右下暗线, 前脸内缘再压一圈 ──
   cairo_save(cr);
   cairo_set_line_width(cr, MAX(1.0, T * 0.10));
-  cairo_set_source_rgba(cr, 0.92, 0.98, 1.0, 0.42 * alpha * glass);
+  cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.46 * alpha * glass);
   tunnel_rounded_rect(cr, sx, sy, sw, sh, sr);
   cairo_stroke(cr);
-  cairo_set_source_rgba(cr, 0.03, 0.05, 0.09, 0.45 * alpha * glass);
+  cairo_set_source_rgba(cr, 0.035, 0.037, 0.040, 0.48 * alpha * glass);
   cairo_move_to(cr, sx + sr, sy + sh);
   cairo_line_to(cr, sx + sw - sr, sy + sh);
   cairo_move_to(cr, sx + sw, sy + sr);
@@ -856,7 +860,7 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   cairo_move_to(cr, card_x, card_y + r);
   cairo_line_to(cr, card_x, card_y + h - r);
   cairo_stroke(cr);
-  cairo_set_source_rgba(cr, 0.05, 0.08, 0.12, 0.30 * alpha * glass);
+  cairo_set_source_rgba(cr, 0.06, 0.062, 0.065, 0.32 * alpha * glass);
   cairo_move_to(cr, card_x + r, card_y + h);
   cairo_line_to(cr, card_x + w - r, card_y + h);
   cairo_move_to(cr, card_x + w, card_y + r);
@@ -916,7 +920,7 @@ static void tunnel_frame(double p) {
   // 非落定帧: 铺一层深色磨砂底, 给半透明玻璃一个参照(旧代码这里是
   // rgba(0,0,0,0), 注释却写着"深色磨砂玻璃", 玻璃片直接浮在桌面上,
   // 纵深读不出来)。落定帧走上面的早退, 不铺底色, 保证与真实页一致。
-  cairo_set_source_rgba(cr, 0.015, 0.020, 0.030, 0.42);
+  cairo_set_source_rgba(cr, 0.018, 0.018, 0.020, 0.42);
   cairo_paint(cr);
 
   // 焦点 = 最靠前且已经可见的卡片; 它画清晰, 后面的页先画到 1/3
@@ -1195,7 +1199,7 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
   const char *vt = getenv("GLASPEN2_FLIP_THICK");
   if (vt) {
     double v = atof(vt);
-    if (v >= 0.002 && v <= 0.06)
+    if (v >= 0.002 && v <= 0.10)
       s_tun_thick = v;
   }
   const char *vga = getenv("GLASPEN2_FLIP_GLASS");
