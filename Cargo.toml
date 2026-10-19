@@ -1,9 +1,10 @@
 [workspace]
 members = ["installer", "chat", "crates/glaspen-core", "crates/glaspen-windows"]
-# installer 是 Windows-only 的 exe 桩(macOS 上链接不到 user32),
-# 默认成员排除它, 这样在 macOS 上 `cargo test` / `cargo clippy` 会覆盖
-# 全部可移植 crate, 而不是只测根壳。
-default-members = [".", "chat", "crates/glaspen-core", "crates/glaspen-windows"]
+# installer 是 Windows-only 的 exe 桩(macOS 上链接不到 user32), 默认成员
+# 排除它。chat 也排除: 它的 mock-send 是第二个 bin, 留在默认成员里会让
+# 裸 `cargo run` 无法判断该跑哪个 bin(报 "could not determine which
+# binary to run")。chat 测试由 CI / scripts/lint.sh 用 --workspace 覆盖。
+default-members = [".", "crates/glaspen-core", "crates/glaspen-windows"]
 
 [workspace.package]
 version = "0.6.0"
@@ -19,6 +20,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
 [package]
 name = "glaspen2"
 version.workspace = true
+default-run = "glaspen2"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

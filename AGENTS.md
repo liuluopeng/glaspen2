@@ -24,7 +24,9 @@
     可被 flutter attach;默认 Release 是 AOT)
 - **Rust/整体构建**:`cargo build`(build.rs 会自动:编译 `glaspen2.m` →
   fvm 构建 Flutter macos-framework → 链接);运行:`cargo run`
-- **测试**:`cargo test`(全仓)、`cargo test -p glaspen-chat`(聊天协议层)
+- **测试**:`cargo test`(根壳 + core + windows)、
+  `cargo test --workspace --exclude glaspen2_installer`(全可移植仓)、
+  `cargo test -p glaspen-chat`(聊天协议层)
 - **FRB 改了 Rust API 后**:`cd flutter_settings && flutter_rust_bridge_codegen generate`,
   然后**必须 `cargo build`**(build.rs 监视生成的 Dart,会重建 framework;
   不重建就会运行时报 "Content hash … different from Rust side",面板全挂)
