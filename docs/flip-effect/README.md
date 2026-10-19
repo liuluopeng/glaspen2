@@ -34,3 +34,11 @@
 | 透明背景 | `tunnel_frame` 的 `cairo_paint` |
 | 12 张卡只显示 3–4 张 | `page_flip_tunnel` 的 `before=12`（已改 4） |
 | 60Hz 定时器 | `page_flip_tunnel` 的 `dispatch_source_set_timer` |
+
+## 厚度/纯净度（`thickness.png`，单卡示意）
+
+- 厚度 2.8% 卡宽：完整厚板轮廓，右下更厚，四边都有截面；
+- 去掉蓝色滤镜：中性明度渐变（左上受光、右下背光）；
+- 外缘高光 + 右下暗边 + 前脸内缘阴影，用来在透视里区分前后玻璃片；
+- `GLASPEN2_FLIP_THICK` 调厚度（0.002–0.10），
+  `GLASPEN2_FLIP_GLASS` 调面不透明度（0.70 更通透，0.90 更遮挡）。
