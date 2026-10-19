@@ -828,10 +828,12 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   if (fabs(zc) < 1.2)
     sheen = cairo_pattern_create_linear(card_x, card_y, card_x + w,
                                         card_y + h * 0.75);
-  cairo_pattern_add_color_stop_rgba(sheen, 0.0, 1, 1, 1, 0.10 * alpha * glass);
-  cairo_pattern_add_color_stop_rgba(sheen, 0.35, 1, 1, 1, 0.012 * alpha * glass);
-  cairo_pattern_add_color_stop_rgba(sheen, 1.0, 1, 1, 1, 0.0);
   if (sheen) {
+    cairo_pattern_add_color_stop_rgba(sheen, 0.0, 1, 1, 1,
+                                      0.10 * alpha * glass);
+    cairo_pattern_add_color_stop_rgba(sheen, 0.35, 1, 1, 1,
+                                      0.012 * alpha * glass);
+    cairo_pattern_add_color_stop_rgba(sheen, 1.0, 1, 1, 1, 0.0);
     cairo_set_source(cr, sheen);
     cairo_paint(cr);
     cairo_pattern_destroy(sheen);

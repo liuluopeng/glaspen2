@@ -43,6 +43,10 @@
 - **翻页动效帧率**: 定时器 60→120Hz(60Hz 屏由 vsync 合并, ProMotion
   可跑满); 修正每 tick 先 display 上一帧、再画新帧的顺序, 去掉一次多余
   全屏绘制; 阴影 5→2 层且远层跳过, 扫光只画近处焦点卡。
+- **修复时光隧道 SIGSEGV**: 帧率优化时把扫光 pattern 改成"只在近处
+  创建", 但三处 add_color_stop 仍无条件执行; 远层卡片 sheen=NULL 时
+  cairo 解引用空指针(崩溃地址 0x4)。已把 add_color_stop 一并放进
+  `if (sheen)`。
 - **删除死文件** `src/macos/parts/head.m`(从未被 include); ObjC 编译加
   `-Wall`。
 
