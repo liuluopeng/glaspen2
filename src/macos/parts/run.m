@@ -622,6 +622,8 @@ static double s_tun_dur = 0.38; // 短促: 隧道动效在感知内"一闪而过
 // 透视强度 K: s(z)=1/(1+K·z)。K 越大, 层间尺寸差越明显、隧道越"深"。
 // GLASPEN2_FLIP_K 可覆盖(0.05-3.0)。
 static double s_tun_k = 0.45;
+// 玻璃厚度(相对卡片宽度的比例)。可调: GLASPEN2_FLIP_THICK。
+static double s_tun_thick = 0.016;
 // 玻璃面的基准不透明度。真实玻璃需要"面"来遮挡后页; 旧值 0.08 只有
 // 一层灰, 每页的空白都完全透明, 所有笔迹叠在一起(观感发假的主因)。
 // 0.84 是磨砂玻璃: 近页基本挡住后页, 后页只从边缘/模糊里透出一点。
@@ -761,7 +763,7 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
   // **玻璃厚度** = 前脸四周露出的截面宽度。随卡片尺寸等比, 近处厚、
   // 远处薄(自然透视); 旧值 0.0045 在 4K 屏上只有十几像素, 看起来像
   // 一张纸。1.6% 宽 + 最小 4px 让倒角/侧面真正可读。
-  double T = MAX(4.0, w * 0.016);
+  double T = MAX(4.0, w * s_tun_thick);
   double zpos = zc > 0.0 ? zc : 0.0;
   if (zpos > 4.0)
     zpos = 4.0;
@@ -1189,6 +1191,13 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
       s_tun_k = v;
   }
   // 单片玻璃浓度(评估用): 0 = 全透(只剩墨迹与棱线), 0.3 = 单片就明显
+  // 玻璃厚度(评估用): 0.004 = 纸片, 0.04 = 厚砖
+  const char *vt = getenv("GLASPEN2_FLIP_THICK");
+  if (vt) {
+    double v = atof(vt);
+    if (v >= 0.002 && v <= 0.06)
+      s_tun_thick = v;
+  }
   const char *vga = getenv("GLASPEN2_FLIP_GLASS");
   if (vga) {
     double v = atof(vga);
