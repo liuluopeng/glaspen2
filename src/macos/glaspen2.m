@@ -48,6 +48,7 @@ static void pm_hide(void);
 static void pm_destroy(void);
 static void pm_update(void);
 static void gl_glass_apply(void);
+static void gl_ethereal_restore_now(void); // 定义在 parts/menu.m(启动恢复飘渺落位)
 static void gl_settings_set_enabled(BOOL on);
 static void toggle_enabled(void);
 static void update_status_icon_state(void);

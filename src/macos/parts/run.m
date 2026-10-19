@@ -2755,6 +2755,20 @@ void glaspen2_run(void) {
     // 翻页/无限两套存储互不影响:无限画布全局仅一个。
     g_infinite_canvas = glaspen2_load_bool_setting("infinite_canvas") != 0;
     g_minimap_enabled = glaspen2_load_bool_setting("minimap") != 0;
+    // 飘渺画布模式(⌘⌃X): 与 Windows 共用 "ethereal" 键, toggle_canvas_mode 落盘。
+    // 此处只恢复标志 + 同步菜单; 笔迹/玻璃的显隐在视图就绪后由
+    // gl_ethereal_restore_now() 统一落位(下方 window ready 之后)。
+    g_ethereal_canvas = glaspen2_load_bool_setting("ethereal") != 0;
+    {
+      NSMenuItem *ethRestoreItem = [g_menu itemWithTag:778];
+      if (ethRestoreItem) {
+        [ethRestoreItem setState:g_ethereal_canvas ? NSControlStateValueOn
+                                                   : NSControlStateValueOff];
+        [ethRestoreItem setTitle:g_ethereal_canvas
+            ? L(@"固定画布涂鸦模式", @"Fixed canvas mode")
+            : L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];
+      }
+    }
     NSMenuItem *infiniteRestoreItem = [g_menu itemWithTag:668];
     if (infiniteRestoreItem) {
       [infiniteRestoreItem setState:g_infinite_canvas ? NSControlStateValueOn
@@ -2890,6 +2904,10 @@ void glaspen2_run(void) {
 
     g_draw_view = drawView;
     ensure_surface(drawView);
+
+    // 视图就绪: 若恢复到飘渺画布模式, 此处统一落位(笔迹隐藏/玻璃跟随隐藏/
+    // 压强计隐藏), 落位路径与 toggle 进入飘渺完全一致。
+    if (g_ethereal_canvas) gl_ethereal_restore_now();
 
     NSLog(@"[glaspen2] window ready %dx%d, ignoresMouseEvents=%d",
           (int)screenFrame.size.width, (int)screenFrame.size.height,

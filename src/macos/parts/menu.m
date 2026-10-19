@@ -309,6 +309,14 @@ static BOOL auto_hide_now(void) {
     return YES;
 }
 
+/// 启动恢复飘渺模式(run.m 在视图就绪后调用)。hideNow 以"笔迹可见"为前置,
+/// 先归位再落位, 落位路径与 toggle 进入飘渺完全一致(玻璃跟随/压强计一并处理)。
+void gl_ethereal_restore_now(void) {
+    if (!g_ethereal_canvas) return;
+    g_strokes_visible = YES;
+    ethereal_hide_now();
+}
+
 // Show the strokes because the pen came back (飘渺 mode).
 static void auto_show_canvas(void) {
     if (!g_ethereal_canvas) return;
@@ -378,6 +386,8 @@ static void toggle_canvas_mode(void) {
             ? L(@"固定画布涂鸦模式", @"Fixed canvas mode")
             : L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];
     }
+    // 持久化(与 Windows 同键 "ethereal"): 启动恢复在 run.m 设置装载段
+    glaspen2_save_bool_setting("ethereal", g_ethereal_canvas ? 1 : 0);
     update_status_icon_state(); // 飘渺画布 = 图标左上角的 ghost 圆环徽标
 }
 
