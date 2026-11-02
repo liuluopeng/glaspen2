@@ -187,7 +187,6 @@ pub(crate) fn run_blocking<T: Send>(f: impl FnOnce() -> T + Send) -> T {
 pub struct Settings {
     pub color: i32,
     pub width: i32,
-    pub rainbow: bool,
     pub launch_at_login: bool,
     pub frosted_glass: bool,
     pub grid: bool,
@@ -251,7 +250,6 @@ impl Settings {
         Some(Settings {
             color: i("color"),
             width: i("width"),
-            rainbow: b("rainbow"),
             launch_at_login: b("launchAtLogin"),
             frosted_glass: b("frostedGlass"),
             grid: b("grid"),

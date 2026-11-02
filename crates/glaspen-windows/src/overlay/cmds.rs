@@ -10,7 +10,6 @@ pub const CMD_SAVE_WITH_BG: usize = 300;
 pub const CMD_SAVE_DRAWING: usize = 301;
 pub const CMD_SAVE_XOJ: usize = 302;
 pub const CMD_CLEAR_SCREEN: usize = 400;
-pub const CMD_TOGGLE_RAINBOW: usize = 500;
 pub const CMD_TOGGLE_ENABLED: usize = 600;
 pub const CMD_TOGGLE_OUTLINE: usize = 650;
 pub const CMD_TOGGLE_GRID: usize = 652;

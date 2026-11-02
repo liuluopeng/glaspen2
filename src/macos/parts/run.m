@@ -9,11 +9,7 @@ static void rebuild_surface_from_strokes(void) {
                              g_pageview_oy, g_pageview_scale);
   pageview_frame_draw();
 
-  // Rainbow is drawn by ObjC (g_show_rainbow is a host-side boolean)
   cairo_surface_flush(g_surface);
-  if (g_show_rainbow)
-    draw_rainbow_indicator();
-
   // Full-screen refresh — undo/page-nav/resize need it
   dirty_reset();
   flush_to_layer();
@@ -2667,13 +2663,6 @@ void glaspen2_run(void) {
     [g_menu addItemWithTitle:L(@"新建画布", @"New canvas")
                       action:@selector(clearScreen)
                keyEquivalent:@""];
-    NSMenuItem *rainbowItem =
-        [g_menu addItemWithTitle:L(@"彩虹指示器", @"Rainbow indicator")
-                          action:@selector(toggleRainbow)
-                   keyEquivalent:@""];
-    rainbowItem.target = g_menuHandler;
-    rainbowItem.tag = 999;
-    rainbowItem.state = NSControlStateValueOff;
     NSMenuItem *launchItem =
         [g_menu addItemWithTitle:L(@"开机自启", @"Launch at login")
                           action:@selector(toggleLaunch)

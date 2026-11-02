@@ -345,7 +345,7 @@ pub extern "C" fn glaspen2_shutdown() {
     runtime().block_on(db::checkpoint());
 }
 
-/// Used on undo, page navigation, display changes and the rainbow toggle.
+/// Used on undo, page navigation and display changes.
 /// Coordinates are scaled by `scale` (retina factor); the surface is an
 /// external cairo image surface owned by ObjC.
 #[cfg(target_os = "macos")]

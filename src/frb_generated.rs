@@ -27,7 +27,7 @@
 // Section: imports
 
 use flutter_rust_bridge::for_generated::byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
-use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
 use flutter_rust_bridge::{Handler, IntoIntoDart};
 
 // Section: boilerplate
@@ -1607,7 +1607,6 @@ impl SseDecode for crate::api::Settings {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_color = <i32>::sse_decode(deserializer);
         let mut var_width = <i32>::sse_decode(deserializer);
-        let mut var_rainbow = <bool>::sse_decode(deserializer);
         let mut var_launchAtLogin = <bool>::sse_decode(deserializer);
         let mut var_frostedGlass = <bool>::sse_decode(deserializer);
         let mut var_grid = <bool>::sse_decode(deserializer);
@@ -1639,7 +1638,6 @@ impl SseDecode for crate::api::Settings {
         return crate::api::Settings {
             color: var_color,
             width: var_width,
-            rainbow: var_rainbow,
             launch_at_login: var_launchAtLogin,
             frosted_glass: var_frostedGlass,
             grid: var_grid,
@@ -1930,7 +1928,6 @@ impl flutter_rust_bridge::IntoDart for crate::api::Settings {
         [
             self.color.into_into_dart().into_dart(),
             self.width.into_into_dart().into_dart(),
-            self.rainbow.into_into_dart().into_dart(),
             self.launch_at_login.into_into_dart().into_dart(),
             self.frosted_glass.into_into_dart().into_dart(),
             self.grid.into_into_dart().into_dart(),
@@ -2278,7 +2275,6 @@ impl SseEncode for crate::api::Settings {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <i32>::sse_encode(self.color, serializer);
         <i32>::sse_encode(self.width, serializer);
-        <bool>::sse_encode(self.rainbow, serializer);
         <bool>::sse_encode(self.launch_at_login, serializer);
         <bool>::sse_encode(self.frosted_glass, serializer);
         <bool>::sse_encode(self.grid, serializer);
@@ -2383,7 +2379,7 @@ mod io {
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
     };
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate
@@ -2407,7 +2403,7 @@ mod web {
     };
     use flutter_rust_bridge::for_generated::wasm_bindgen;
     use flutter_rust_bridge::for_generated::wasm_bindgen::prelude::*;
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate

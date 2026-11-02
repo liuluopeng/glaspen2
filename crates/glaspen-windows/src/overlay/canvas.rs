@@ -184,7 +184,7 @@ impl OverlayCanvas {
         dirty
     }
 
-    /// 填充实心矩形(彩虹指示器)
+    /// 填充实心矩形
     fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: (u8, u8, u8)) {
         if let Some(c) = &self.cairo {
             c.fill_rect(x, y, w, h, color);

@@ -6,7 +6,6 @@ pub struct DrawState {
     pub selected_color: usize,
     pub selected_width: usize,
     pub enabled: bool,
-    pub show_rainbow: bool,
     pub outline_enabled: bool,
     pub show_grid: bool,
     /// 网格分栏(纯视觉):0=无 1=左右两栏 2=上下两栏 3=九宫格(macOS 同键)

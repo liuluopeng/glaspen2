@@ -1438,40 +1438,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Settings dco_decode_settings(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 31)
-      throw Exception('unexpected arr length: expect 31 but see ${arr.length}');
+    if (arr.length != 30)
+      throw Exception('unexpected arr length: expect 30 but see ${arr.length}');
     return Settings(
       color: dco_decode_i_32(arr[0]),
       width: dco_decode_i_32(arr[1]),
-      rainbow: dco_decode_bool(arr[2]),
-      launchAtLogin: dco_decode_bool(arr[3]),
-      frostedGlass: dco_decode_bool(arr[4]),
-      grid: dco_decode_bool(arr[5]),
-      gridFollowStrokes: dco_decode_bool(arr[6]),
-      glassFollowStrokes: dco_decode_bool(arr[7]),
-      softShadow: dco_decode_bool(arr[8]),
-      invertInk: dco_decode_bool(arr[9]),
-      notebookStyle: dco_decode_bool(arr[10]),
-      panelTransparent: dco_decode_bool(arr[11]),
-      invertFps: dco_decode_i_32(arr[12]),
-      pressureMonitor: dco_decode_bool(arr[13]),
-      outline: dco_decode_bool(arr[14]),
-      infiniteCanvas: dco_decode_bool(arr[15]),
-      minimap: dco_decode_bool(arr[16]),
-      gridSize: dco_decode_f_64(arr[17]),
-      gridDivider: dco_decode_i_32(arr[18]),
-      flipEffect: dco_decode_i_32(arr[19]),
-      gifFps: dco_decode_i_32(arr[20]),
-      gifResolution: dco_decode_f_64(arr[21]),
-      gifSpeed: dco_decode_f_64(arr[22]),
-      gifEndMode: dco_decode_i_32(arr[23]),
-      chatApiBase: dco_decode_String(arr[24]),
-      chatUser: dco_decode_String(arr[25]),
-      chatHasPassword: dco_decode_bool(arr[26]),
-      chatIntegration: dco_decode_bool(arr[27]),
-      showFreeCanvas: dco_decode_bool(arr[28]),
-      shareCanvas: dco_decode_bool(arr[29]),
-      language: dco_decode_String(arr[30]),
+      launchAtLogin: dco_decode_bool(arr[2]),
+      frostedGlass: dco_decode_bool(arr[3]),
+      grid: dco_decode_bool(arr[4]),
+      gridFollowStrokes: dco_decode_bool(arr[5]),
+      glassFollowStrokes: dco_decode_bool(arr[6]),
+      softShadow: dco_decode_bool(arr[7]),
+      invertInk: dco_decode_bool(arr[8]),
+      notebookStyle: dco_decode_bool(arr[9]),
+      panelTransparent: dco_decode_bool(arr[10]),
+      invertFps: dco_decode_i_32(arr[11]),
+      pressureMonitor: dco_decode_bool(arr[12]),
+      outline: dco_decode_bool(arr[13]),
+      infiniteCanvas: dco_decode_bool(arr[14]),
+      minimap: dco_decode_bool(arr[15]),
+      gridSize: dco_decode_f_64(arr[16]),
+      gridDivider: dco_decode_i_32(arr[17]),
+      flipEffect: dco_decode_i_32(arr[18]),
+      gifFps: dco_decode_i_32(arr[19]),
+      gifResolution: dco_decode_f_64(arr[20]),
+      gifSpeed: dco_decode_f_64(arr[21]),
+      gifEndMode: dco_decode_i_32(arr[22]),
+      chatApiBase: dco_decode_String(arr[23]),
+      chatUser: dco_decode_String(arr[24]),
+      chatHasPassword: dco_decode_bool(arr[25]),
+      chatIntegration: dco_decode_bool(arr[26]),
+      showFreeCanvas: dco_decode_bool(arr[27]),
+      shareCanvas: dco_decode_bool(arr[28]),
+      language: dco_decode_String(arr[29]),
     );
   }
 
@@ -1800,7 +1799,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_color = sse_decode_i_32(deserializer);
     var var_width = sse_decode_i_32(deserializer);
-    var var_rainbow = sse_decode_bool(deserializer);
     var var_launchAtLogin = sse_decode_bool(deserializer);
     var var_frostedGlass = sse_decode_bool(deserializer);
     var var_grid = sse_decode_bool(deserializer);
@@ -1832,7 +1830,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return Settings(
       color: var_color,
       width: var_width,
-      rainbow: var_rainbow,
       launchAtLogin: var_launchAtLogin,
       frostedGlass: var_frostedGlass,
       grid: var_grid,
@@ -2209,7 +2206,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.color, serializer);
     sse_encode_i_32(self.width, serializer);
-    sse_encode_bool(self.rainbow, serializer);
     sse_encode_bool(self.launchAtLogin, serializer);
     sse_encode_bool(self.frostedGlass, serializer);
     sse_encode_bool(self.grid, serializer);

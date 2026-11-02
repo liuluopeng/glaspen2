@@ -53,7 +53,7 @@ Switch from the tabs at the top of the settings panel, or the "Infinite canvas" 
 
 - **Pen buttons** with the driver set to Pen/Eraser or Eraser, pressing the pen button turns it into an eraser automatically (no configuration); set to Keyboard Key with a glaspen shortcut to flip pages / undo.
 
-- **Pressure monitor / rainbow indicator / launch at login.**
+- **Pressure monitor / launch at login.**
 
 - **Update check / auto-update** the About section of the settings panel queries the latest release on GitHub in one click; on macOS "Update now" downloads, verifies, quits and replaces the running app — with automatic rollback if the new version fails to start.
 

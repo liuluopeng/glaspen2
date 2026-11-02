@@ -29,13 +29,11 @@ static void flush_to_layer(void);
 // 翻页动效(时光隧道)进行中(drawRect 抑制网格; 飘渺模式禁止隐藏笔迹)
 static BOOL s_tun_active = NO;
 static void clear_screen(void);
-static void draw_rainbow_indicator(void);
 static void rebuild_surface_from_strokes(void);
 static void show_settings_panel(void);
 static void sync_settings_panel(void);
 static void gl_settings_set_color(int idx);
 static void gl_settings_set_width(int idx);
-static void gl_settings_set_rainbow(BOOL on);
 static void perf_log_summary(void);
 static void gl_settings_set_launch(BOOL on);
 static void gl_settings_set_glass_enabled(BOOL on);
@@ -410,9 +408,6 @@ static inline double canvas_input_y(double view_y) {
     return view_y - g_page_off_y; // 翻页模式 zoom 恒为 1
 }
 
-// Rainbow indicator toggle (default off)
-static BOOL g_show_rainbow = NO;
-
 // Grid overlay toggle (default off)
 static BOOL g_show_grid = NO;
 
@@ -747,14 +742,12 @@ static void clear_screen(void) {
             canvas_reset_lens();
             canvas_infinite_persist();
         }
-        if (g_show_rainbow) draw_rainbow_indicator();
         flush_to_layer();
         show_notification(created
             ? L(@"已清空无限画布", @"Infinite canvas cleared")
             : L(@"无限画布本来就是空的", @"Infinite canvas is already empty"));
         return;
     }
-    if (g_show_rainbow) draw_rainbow_indicator();
     flush_to_layer();
     if (created) {
         show_page_info(glaspen2_get_current_screen_id());
@@ -794,7 +787,6 @@ static void replay_strokes_from_memory(void) {
     pageview_frame_draw();
 
     cairo_surface_flush(g_surface);
-    if (g_show_rainbow) draw_rainbow_indicator();
     g_has_last = NO;
     flush_to_layer();
 }
@@ -806,39 +798,6 @@ static void save_and_exit(int sig) {
     CGDisplayShowCursor(kCGDirectMainDisplay);
     exit(0);
 }
-
-static void draw_rainbow_indicator(void) {
-    if (!g_surface) return;
-    cairo_t *cr = cairo_create(g_surface);
-    cairo_scale(cr, g_scale, g_scale); // 屏幕空间 UI: 不吃页视图变换
-    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
-
-    // HSV rainbow with full saturation
-    for (int col = 0; col < 14; col++) {
-        // Convert HSV to RGB (H varies, S=1, V=1)
-        double h = col / 14.0;
-        double r, g, b;
-        int i = (int)(h * 6);
-        double f = h * 6 - i;
-        double q = 1 - f;
-        switch (i % 6) {
-            case 0: r = 1; g = f; b = 0; break;
-            case 1: r = q; g = 1; b = 0; break;
-            case 2: r = 0; g = 1; b = f; break;
-            case 3: r = 0; g = q; b = 1; break;
-            case 4: r = f; g = 0; b = 1; break;
-            case 5: r = 1; g = 0; b = q; break;
-        }
-        cairo_set_source_rgba(cr, r, g, b, 1.0);
-        cairo_rectangle(cr, col * 2, 0, 2, 4);
-        cairo_fill(cr);
-    }
-
-    cairo_destroy(cr);
-    flush_to_layer();
-}
-
-// Forward declaration
 
 // ── 文件拆分: #include 文本包含(同一编译单元, clang 报错行号直指子文件);
 //    拆分为纯移动, 行为零变化。构建仍只编译 glaspen2.m 这一个入口。──

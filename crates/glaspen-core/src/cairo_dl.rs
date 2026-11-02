@@ -623,7 +623,7 @@ impl CairoRenderer {
         }
     }
 
-    /// 填充实心矩形(彩虹指示器等)
+    /// 填充实心矩形
     pub fn fill_rect(&self, x: f32, y: f32, w: f32, h: f32, color: (u8, u8, u8)) {
         unsafe {
             (self.set_source_rgba)(

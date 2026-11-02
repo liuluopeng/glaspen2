@@ -96,7 +96,6 @@ class _FrbBridge extends SettingsBridge {
     return <dynamic, dynamic>{
       'color': s.color,
       'width': s.width,
-      'rainbow': s.rainbow,
       'launchAtLogin': s.launchAtLogin,
       'frostedGlass': s.frostedGlass,
       'grid': s.grid,

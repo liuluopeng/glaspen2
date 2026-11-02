@@ -142,7 +142,6 @@ pub fn run() {
             selected_color,
             selected_width: closest_width_index(width_scale),
             enabled: true,
-            show_rainbow: false,
             outline_enabled,
             show_grid,
             grid_divider,

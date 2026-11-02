@@ -346,7 +346,6 @@ class PageThumb {
 class Settings {
   final int color;
   final int width;
-  final bool rainbow;
   final bool launchAtLogin;
   final bool frostedGlass;
   final bool grid;
@@ -381,7 +380,6 @@ class Settings {
   const Settings({
     required this.color,
     required this.width,
-    required this.rainbow,
     required this.launchAtLogin,
     required this.frostedGlass,
     required this.grid,
@@ -416,7 +414,6 @@ class Settings {
   int get hashCode =>
       color.hashCode ^
       width.hashCode ^
-      rainbow.hashCode ^
       launchAtLogin.hashCode ^
       frostedGlass.hashCode ^
       grid.hashCode ^
@@ -453,7 +450,6 @@ class Settings {
           runtimeType == other.runtimeType &&
           color == other.color &&
           width == other.width &&
-          rainbow == other.rainbow &&
           launchAtLogin == other.launchAtLogin &&
           frostedGlass == other.frostedGlass &&
           grid == other.grid &&

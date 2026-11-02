@@ -24,16 +24,15 @@ static void update_menu_texts(void) {
     [[g_menu itemAtIndex:base+3] setTitle:L(@"导出无限画布 PDF (分页)", @"Export infinite canvas PDF (paged)")];
     [[g_menu itemAtIndex:base+4] setTitle:L(@"导出无限画布 SVG (整幅)", @"Export infinite canvas SVG (whole)")];
     [[g_menu itemAtIndex:base+5] setTitle:L(@"新建画布", @"New canvas")];
-    [[g_menu itemAtIndex:base+6] setTitle:L(@"彩虹指示器", @"Rainbow indicator")];
-    [[g_menu itemAtIndex:base+7] setTitle:L(@"开机自启", @"Launch at login")];
-    [[g_menu itemAtIndex:base+8] setTitle:L(@"磨砂玻璃", @"Frosted Glass")];
-    [[g_menu itemAtIndex:base+9] setTitle:L(@"笔迹描边", @"Stroke outline")];
-    [[g_menu itemAtIndex:base+10] setTitle:L(@"无限画布", @"Infinite canvas")];
+    [[g_menu itemAtIndex:base+6] setTitle:L(@"开机自启", @"Launch at login")];
+    [[g_menu itemAtIndex:base+7] setTitle:L(@"磨砂玻璃", @"Frosted Glass")];
+    [[g_menu itemAtIndex:base+8] setTitle:L(@"笔迹描边", @"Stroke outline")];
+    [[g_menu itemAtIndex:base+9] setTitle:L(@"无限画布", @"Infinite canvas")];
     // Update toggle item title based on state
     NSMenuItem *toggleItem = [g_menu itemWithTag:888];
     if (toggleItem) [toggleItem setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
-    [[g_menu itemAtIndex:base+14] setTitle:L(@"English", @"中文")];
-    [[g_menu itemAtIndex:base+15] setTitle:L(@"退出", @"Quit")];
+    [[g_menu itemAtIndex:base+13] setTitle:L(@"English", @"中文")];
+    [[g_menu itemAtIndex:base+14] setTitle:L(@"退出", @"Quit")];
 }
 
 // ── 颜色/粗细菜单条目的富文本:内嵌小图标 + 名称 ──
@@ -425,10 +424,6 @@ static void toggle_canvas_mode(void) {
     show_settings_panel();
 }
 
-- (void)toggleRainbow {
-    gl_settings_set_rainbow(!g_show_rainbow);
-}
-
 - (void)toggleCanvasMode {
     toggle_canvas_mode();
 }
@@ -523,7 +518,6 @@ static void sync_settings_panel(void);
 // --- Legacy settings panel stubs (no longer used, kept for sync_settings_panel) ---
 static NSButton *g_color_buttons[10];
 static NSButton *g_width_buttons[5];
-static NSButton *g_rainbow_toggle = nil;
 static NSButton *g_launch_toggle = nil;
 static NSButton *g_glass_toggle = nil;
 static NSButton *g_glass_buttons[1];
@@ -604,7 +598,6 @@ char *glaspen2_macos_settings_json(void) {
         NSDictionary *d = @{
             @"color": @(g_selectedColorIndex),
             @"width": @(g_selected_width_index),
-            @"rainbow": @(g_show_rainbow),
             @"launchAtLogin": @(glaspen2_is_launch_at_login()),
             @"frostedGlass": @(g_glass_enabled),
             @"grid": @(g_show_grid),
@@ -710,8 +703,6 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             gl_settings_set_color([value intValue]);
         } else if ([key isEqualToString:@"width"]) {
             gl_settings_set_width([value intValue]);
-        } else if ([key isEqualToString:@"rainbow"]) {
-            gl_settings_set_rainbow([value boolValue]);
         } else if ([key isEqualToString:@"launchAtLogin"]) {
             gl_settings_set_launch([value boolValue]);
         } else if ([key isEqualToString:@"frostedGlass"]) {
@@ -1064,15 +1055,6 @@ static void gl_settings_set_width(int idx) {
     update_menu_checkmarks();
     update_status_icon_state(); // 笔宽画在图标笔杆粗细里
     sync_settings_panel();
-}
-
-static void gl_settings_set_rainbow(BOOL on) {
-    g_show_rainbow = on;
-    NSMenuItem *item = [g_menu itemWithTag:999];
-    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
-    sync_settings_panel();
-    // Redraw the surface without the rainbow — never clear the page.
-    rebuild_surface_from_strokes();
 }
 
 static void gl_settings_set_grid(BOOL on) {

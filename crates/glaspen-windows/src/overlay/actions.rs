@@ -73,14 +73,6 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
             }
             x if x == CMD_CLEAR_SCREEN => clear_screen(state),
             x if x == CMD_UNDO => undo_last_stroke(state),
-            x if x == CMD_TOGGLE_RAINBOW => {
-                state.draw.show_rainbow = !state.draw.show_rainbow;
-                if state.draw.show_rainbow {
-                    draw_rainbow_indicator(state);
-                } else {
-                    clear_screen(state);
-                }
-            }
             x if x == CMD_TOGGLE_OUTLINE => {
                 let on = param_on(state.draw.outline_enabled);
                 state.draw.outline_enabled = on;
@@ -264,9 +256,6 @@ fn clear_screen(state: &mut OverlayState) {
     }
     state.canvas.set_bg_alpha(BG_BLOCK);
     let created = glaspen_core::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
-    if state.draw.show_rainbow {
-        draw_rainbow_indicator(state);
-    }
     if created == 0 {
         // 当前页从未涂鸦:不能连续创建空白画布(macOS 同款提示)
         hud_notify("不能连续创建空白画布,请先涂鸦");
@@ -338,9 +327,6 @@ fn redraw_from_strokes(state: &mut OverlayState) {
     draw_minimap(state);
     state.canvas.set_bg_alpha(BG_BLOCK);
     state.canvas.present_all();
-    if state.draw.show_rainbow {
-        draw_rainbow_indicator(state);
-    }
 }
 
 /// 上一页/下一页(加载目标页笔画并重绘)
@@ -973,33 +959,6 @@ fn on_display_change(state: &mut OverlayState) {
     state.canvas = OverlayCanvas::create(hwnd);
     state.canvas.color = color;
     redraw_from_strokes(state);
-}
-
-fn draw_rainbow_indicator(state: &mut OverlayState) {
-    for col in 0..14 {
-        let h = col as f64 / 14.0;
-        let (r, g, b) = hsv_to_rgb(h);
-        let color = ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8);
-        state
-            .canvas
-            .fill_rect(col as f32 * 2.0, 0.0, 2.0, 4.0, color);
-    }
-    state.canvas.present_all();
-}
-
-fn hsv_to_rgb(h: f64) -> (f64, f64, f64) {
-    let i = (h * 6.0) as i32;
-    let f = h * 6.0 - i as f64;
-    let q = 1.0 - f;
-    match i % 6 {
-        0 => (1.0, f, 0.0),
-        1 => (q, 1.0, 0.0),
-        2 => (0.0, 1.0, f),
-        3 => (0.0, q, 1.0),
-        4 => (f, 0.0, 1.0),
-        5 => (1.0, 0.0, q),
-        _ => (0.0, 0.0, 0.0),
-    }
 }
 
 // ── 保存导出 ──
