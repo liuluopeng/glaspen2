@@ -23,18 +23,16 @@ Switch from the tabs at the top of the settings panel, or the "Infinite canvas" 
 
 - **Notebook (paged) mode** — one page per screen, classic page flipping (whole-page flip with the native window fade)
   - `⌥⌘↑` / `⌥⌘↓` or `⌘⌃~` / `⌘⌃1`: flip a whole page to previous / next.
-  - Page grid: **drag to reorder / nudge** (pen-side page flips follow automatically), **batch multi-select delete**, and a vertical minimap along the right edge (thumbnails of ~10 nearby pages).
-  - **Page detail**: lasso strokes with the mouse, then **move / copy / paste / delete** the selection.
-  - Switchable look: **skeuomorphic glass** (cards as true see-through holes / frosted) or **notepad**.
+  - Page grid: **drag to reorder / batch multi-select delete**, plus lasso **move / copy / paste** in the full-page view.
 - **Infinite canvas (free doodle) mode** — one canvas with no borders (currently a single global canvas)
   - `⌥⌘↑ / ⌥⌘↓ / ⌥⌘← / ⌥⌘→` pan the lens.
-  - `⌘⌃scroll` pans, `⌥⇧scroll` zooms anchored at the pointer (capped at 100%), `⌘⌃PageUp` / `⌘⌃PageDown` zoom from the keyboard.
+  - `⌘⌃scroll` pans, `⌥⇧scroll` zooms anchored at the pointer (capped at 100%).
 
 ## Features
 
 - **Quick GIF recording**
   Hold `⌘⌃R`, doodle, release — the doodle is turned into an animated GIF and copied to the clipboard.
-  Configurable in settings: frame rate (10–50 fps), resolution (25%–100%), speed (0.5×–20×) and ending (stop on the last stroke / hold 1 s then loop / loop immediately), with a grey estimated file size.
+  Frame rate / resolution / playback speed are configurable in settings.
 
 <p align="center"><img src="./introduct/chat.jpg" width="480"></p>
 
@@ -42,7 +40,7 @@ Switch from the tabs at the top of the settings panel, or the "Infinite canvas" 
   The infinite canvas has its own exports: a **paged PDF** sized to the screen, or a **whole-canvas SVG** (content bounding box, unaffected by the current lens).
 
 - **Grid** adjustable spacing; a heavier boundary line is drawn only at multiples of the screen size (page boundary in Notebook mode, one per screen on the infinite canvas).
-  Optional **column guides** — vertical halves, horizontal halves, or a 3×3 grid — thicken the nearest grid line at each split position (1/2 or 1/3 & 2/3); purely visual, handy when using half a screen as one writing column.
+  Optional **column guides**: halves or a 3×3 grid (purely visual).
 
 - **Stroke outline / soft shadow** outline = black-and-white marching-ants dashes so strokes read on light or dark backgrounds; soft shadow = a gentle dark halo under the strokes, keeps them visible on same-color backgrounds. Both can be combined.
 
@@ -55,7 +53,7 @@ Switch from the tabs at the top of the settings panel, or the "Infinite canvas" 
 
 - **Pressure monitor / launch at login.**
 
-- **Update check / auto-update** the About section of the settings panel queries the latest release on GitHub in one click; on macOS "Update now" downloads, verifies, quits and replaces the running app — with automatic rollback if the new version fails to start.
+- **Update check / auto-update** one-click check against GitHub releases; on macOS one-click auto-update (with automatic rollback).
 
 - **Bezier smoothing** via ink-stroke-modeler removes hand tremor and supports pressure width.
 
@@ -99,14 +97,12 @@ Settings · Notebook · Free doodle"]
 | Toggle canvas mode (fixed ↔ ethereal) | `⌘ + ⌃ + X` | `Ctrl + Alt + X` |
 | Previous / next page (whole page) | `⌥ + ⌘ + ↑/↓`, `⌘ + ⌃ + ~ / 1` | `Ctrl + Alt + ~` / `Ctrl + Alt + 1` |
 | Export SVG + GIF (copies to clipboard) | `⌘ + ⌃ + G` | `Ctrl + Alt + G` |
-| Copy current doodle as SVG | `⌘ + ⌃ + S` | |
 | Frosted glass toggle | `⌘ + ⌃ + B` | `Ctrl + Alt + B` |
 | Open settings | `⌘ + ⌃ + D` | `Ctrl + Alt + D` |
 | Quit | | `Ctrl + Alt + Q` |
 | Quick GIF recording (hold) | `⌘ + ⌃ + R` | `Ctrl + Alt + R` (hold) |
 | Infinite canvas: pan (four directions) | `⌥ + ⌘ + arrows` | `Ctrl + Alt + arrows` |
 | Infinite canvas: zoom (cursor anchored) | `⌥ + ⇧ + scroll` | `Ctrl + Alt + scroll` |
-| Infinite canvas: keyboard zoom | `⌘ + ⌃ + PageUp` / `⌘ + ⌃ + PageDown` | `Ctrl + Alt + PageUp` / `Ctrl + Alt + PageDown` |
 
 ## Installation
 
