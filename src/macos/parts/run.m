@@ -165,6 +165,9 @@ static void flush_tunnel_to_layer(void) {
     if (g_grid_divider > 0) {
       static const double kHalf[1] = {0.5};
       static const double kThirds[2] = {1.0 / 3.0, 2.0 / 3.0};
+      // 康奈尔笔记法: 竖线 30% = 线索栏右缘, 横线 75% = 总结栏上缘
+      static const double kCornellX[1] = {0.3};
+      static const double kCornellY[1] = {0.75};
       const double *fx = NULL;
       int nx = 0;
       const double *fy = NULL;
@@ -174,6 +177,11 @@ static void flush_tunnel_to_layer(void) {
         nx = 1;
       } else if (g_grid_divider == 2) {
         fy = kHalf;
+        ny = 1;
+      } else if (g_grid_divider == 4) {
+        fx = kCornellX;
+        nx = 1;
+        fy = kCornellY;
         ny = 1;
       } else {
         fx = kThirds;

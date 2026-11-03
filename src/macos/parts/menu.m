@@ -760,7 +760,7 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
         } else if ([key isEqualToString:@"gridDivider"]) {
             NSInteger dv = [value integerValue];
             if (dv < 0) dv = 0;
-            if (dv > 3) dv = 3;
+            if (dv > 4) dv = 4;
             g_grid_divider = dv;
             NSString *dvStr = [NSString stringWithFormat:@"%ld", (long)dv];
             glaspen2_save_string_setting("grid_divider", [dvStr UTF8String]);

@@ -548,6 +548,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get grid3x3 => '九宫格';
 
   @override
+  String get cornell => '康奈尔';
+
+  @override
   String get gridFollowsDoodles => '网格跟随涂鸦';
 
   @override

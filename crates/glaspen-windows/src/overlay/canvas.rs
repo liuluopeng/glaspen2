@@ -322,7 +322,8 @@ impl OverlayCanvas {
     /// 网格画在画布坐标系:无限画布下跟随镜头平移/缩放,并在「屏幕尺寸」
     /// 整数倍处加粗(每屏一条参考线);翻页模式 pan=0、zoom=1,与从前一致。
     /// `divider`:分栏参考线(macOS 同款)——0=无 1=左右两栏 2=上下两栏
-    /// 3=九宫格;切分点吸附到最近的网格线,线宽 1.5px(主列全 alpha + 邻列半 alpha)。
+    /// 3=九宫格 4=康奈尔(竖线 30% 线索栏 + 横线 75% 总结栏);
+    /// 切分点吸附到最近的网格线,线宽 1.5px(主列全 alpha + 邻列半 alpha)。
     fn draw_grid(&mut self, divider: i32) {
         // 网格尺寸:面板「网格大小」20/40/80,10..200 钳制(macOS 同键)
         let GAP: f64 = grid_size();
@@ -424,9 +425,13 @@ impl OverlayCanvas {
             if divider > 0 {
                 let halves: [f64; 1] = [0.5];
                 let thirds: [f64; 2] = [1.0 / 3.0, 2.0 / 3.0];
+                // 康奈尔笔记法: 竖线 30% = 线索栏右缘, 横线 75% = 总结栏上缘
+                let cornell_x: [f64; 1] = [0.3];
+                let cornell_y: [f64; 1] = [0.75];
                 let (fx, fy): (&[f64], &[f64]) = match divider {
                     1 => (&halves[..], &[][..]),
                     2 => (&[][..], &halves[..]),
+                    4 => (&cornell_x[..], &cornell_y[..]),
                     _ => (&thirds[..], &thirds[..]),
                 };
                 let bw = w as f64;

@@ -165,6 +165,7 @@
   "twoColumnsSideBy": "左右两栏",
   "twoColumnsStacked": "上下两栏",
   "grid3x3": "九宫格",
+  "cornell": "康奈尔",
   "gridFollowsDoodles": "网格跟随涂鸦",
   "whenOnTheGrid": "开启后网格随涂鸦一起受 ⌘⌃X 控制",
   "glassFollowsDoodles": "磨砂玻璃跟随涂鸦",

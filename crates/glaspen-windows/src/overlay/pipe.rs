@@ -735,14 +735,14 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 };
             }
         } else if key == "gridDivider" {
-            // 分栏:0..3,经消息循环改状态 + 落库 + 重绘(与 macOS 同键)
+            // 分栏:0=无 1=左右 2=上下 3=九宫格 4=康奈尔,经消息循环改状态 + 落库 + 重绘(与 macOS 同键)
             if let Some(v) = json_get_i64(line, "value") {
                 let _ = unsafe {
                     PostMessageW(
                         Some(HWND(hwnd as *mut _)),
                         WM_TRAY_COMMAND,
                         WPARAM(CMD_SET_GRID_DIVIDER),
-                        LPARAM(v.clamp(0, 3) as isize),
+                        LPARAM(v.clamp(0, 4) as isize),
                     )
                 };
             }

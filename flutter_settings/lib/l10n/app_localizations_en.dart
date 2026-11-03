@@ -560,6 +560,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get grid3x3 => '3×3 grid';
 
   @override
+  String get cornell => 'Cornell';
+
+  @override
   String get gridFollowsDoodles => 'Grid follows doodles';
 
   @override

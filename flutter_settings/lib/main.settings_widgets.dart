@@ -369,6 +369,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
                       ButtonSegment(value: 1, label: Text(AppLocalizations.of(context)!.twoColumnsSideBy)),
                       ButtonSegment(value: 2, label: Text(AppLocalizations.of(context)!.twoColumnsStacked)),
                       ButtonSegment(value: 3, label: Text(AppLocalizations.of(context)!.grid3x3)),
+                      ButtonSegment(value: 4, label: Text(AppLocalizations.of(context)!.cornell)),
                     ],
                     selected: {_gridDividerValue},
                     onSelectionChanged: (s) {

@@ -1094,6 +1094,12 @@ abstract class AppLocalizations {
   /// **'九宫格'**
   String get grid3x3;
 
+  /// No description provided for @cornell.
+  ///
+  /// In zh, this message translates to:
+  /// **'康奈尔'**
+  String get cornell;
+
   /// No description provided for @gridFollowsDoodles.
   ///
   /// In zh, this message translates to:

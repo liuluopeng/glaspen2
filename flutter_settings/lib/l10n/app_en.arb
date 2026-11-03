@@ -165,6 +165,7 @@
   "twoColumnsSideBy": "Two columns side by side",
   "twoColumnsStacked": "Two columns stacked",
   "grid3x3": "3×3 grid",
+  "cornell": "Cornell",
   "gridFollowsDoodles": "Grid follows doodles",
   "whenOnTheGrid": "When on, the grid obeys ⌘⌃X together with the ink",
   "glassFollowsDoodles": "Glass follows doodles",
