@@ -160,7 +160,7 @@
   "showGrid": "Show grid",
   "bubbleTab": "Bubble messages",
   "showBubbleTabSub": "Show a handwriting review tab",
-  "bubblesEmpty": "Nothing yet. Doodle a bit — a pause turns it into one",
+  "bubblesEmpty": "Nothing yet. Doodle a bit — a pause or a jump elsewhere becomes a new message",
   "refreshBubbles": "Refresh",
   "helpsAlignWhileDoodling": "Helps align while doodling",
   "gridSize": "Grid size",

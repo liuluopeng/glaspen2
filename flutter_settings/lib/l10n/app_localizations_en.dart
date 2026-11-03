@@ -546,7 +546,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get bubblesEmpty =>
-      'Nothing yet. Doodle a bit — a pause turns it into one';
+      'Nothing yet. Doodle a bit — a pause or a jump elsewhere becomes a new message';
 
   @override
   String get refreshBubbles => 'Refresh';

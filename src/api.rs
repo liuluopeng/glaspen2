@@ -301,7 +301,7 @@ pub async fn get_settings() -> Option<Settings> {
     run_blocking(current_settings)
 }
 
-/// 「气泡消息」tab: 全部已完结消息的 JSON(空闲 4s/翻页/清空分段,
+/// 「气泡消息」tab: 全部已完结消息的 JSON(自适应节奏/空间跳变/翻页分段,
 /// 结构对齐 ShareStroke, 见 export/bubbles.rs)。
 pub async fn bubble_messages() -> String {
     run_blocking(|| glaspen_core::export::bubbles::messages_json())
