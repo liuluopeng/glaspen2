@@ -217,6 +217,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _chatIntegration = false;
   // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
   bool _showFreeCanvas = false;
+  bool _showBubbleTab = false;
+  bool _bubblesLoading = false;
+  List<Map<String, dynamic>> _bubbleMsgs = const [];
+  final ScrollController _bubbleScroll = ScrollController();
   // 共享画布上行开关(活页本 tab;仅集成开启时可见/生效)
   bool _shareCanvas = false;
 
@@ -303,6 +307,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     _gridScroll.removeListener(_onGridScroll);
     _gridScroll.dispose();
     _tabController.dispose();
+    _bubbleScroll.dispose();
     _reloadTimer?.cancel();
     _updSub?.cancel(); // 还在下载时销毁面板 = 取消下载
     _chatApiBase.dispose();
@@ -386,12 +391,17 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     if (idx == 2 && _showFreeCanvas) {
       _loadCanvasOverview();
     }
+    // 气泡消息 tab: 位置在自由涂鸦之后(自由涂鸦隐藏时占 index 2)
+    final bubbleIdx = 2 + (_showFreeCanvas ? 1 : 0);
+    if (_showBubbleTab && idx == bubbleIdx) {
+      _loadBubbles();
+    }
   }
 
   /// tab 数量跟随「自由涂鸦」开关(开 = 3 个;默认关 = 2 个:设置+活页本)。
   /// 长度变化必须重建 controller,否则 TabBar/TabBarView 断言崩溃。
   void _syncTabCount() {
-    final want = _showFreeCanvas ? 3 : 2;
+    final want = 2 + (_showFreeCanvas ? 1 : 0) + (_showBubbleTab ? 1 : 0);
     if (_tabController.length == want) return;
     final old = _tabController;
     _tabController = TabController(length: want, vsync: this);
@@ -431,6 +441,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                     Tab(
                       child: _modeTabLabel(AppLocalizations.of(context)!.freeDoodle, _infiniteCanvas),
                     ),
+                  if (_showBubbleTab)
+                    Tab(text: AppLocalizations.of(context)!.bubbleTab),
                   ],
                 ),
                 ),
@@ -587,6 +599,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 : _tabBackground('assets/tab_bg_pages.jpg', _buildContentTab())),
             if (_showFreeCanvas)
               _tabBackground('assets/tab_bg_infinite.jpg', _buildCanvasTab()),
+            if (_showBubbleTab) _buildBubbleTab(),
           ],
         ),
           ),

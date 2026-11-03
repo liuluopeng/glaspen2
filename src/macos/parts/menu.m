@@ -628,6 +628,7 @@ char *glaspen2_macos_settings_json(void) {
             // Rust 侧 as_bool() 解析不出 → 永远 false。必须转成 BOOL(YES/NO)
             // 让 NSJSONSerialization 输出 true/false。
             @"showFreeCanvas": @(glaspen2_load_bool_setting("show_free_canvas") != 0),
+            @"showBubbleTab": @(glaspen2_load_bool_setting("show_bubble_tab") != 0),
             @"shareCanvas": @(glaspen2_load_bool_setting("share_ink") != 0),
             // 语言由面板选择器决定, 不再跟随系统; 缺省中文
             @"language": (g_lang == 1 ? @"en" : @"zh"),
@@ -805,6 +806,9 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             }
         } else if ([key isEqualToString:@"chatIntegration"]) {
             gl_settings_set_chat_integration([value boolValue]);
+        } else if ([key isEqualToString:@"showBubbleTab"]) {
+            // 「气泡消息」tab 显隐(默认关; 与 showFreeCanvas 同款纯面板开关)
+            glaspen2_save_bool_setting("show_bubble_tab", [value boolValue] ? 1 : 0);
         } else if ([key isEqualToString:@"showFreeCanvas"]) {
             // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
             glaspen2_save_bool_setting("show_free_canvas", [value boolValue] ? 1 : 0);

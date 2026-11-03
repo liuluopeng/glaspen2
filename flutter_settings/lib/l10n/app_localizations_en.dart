@@ -539,6 +539,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get showGrid => 'Show grid';
 
   @override
+  String get bubbleTab => 'Bubble messages';
+
+  @override
+  String get showBubbleTabSub => 'Show a handwriting review tab';
+
+  @override
+  String get bubblesEmpty =>
+      'Nothing yet. Doodle a bit — a pause turns it into one';
+
+  @override
+  String get refreshBubbles => 'Refresh';
+
+  @override
   String get helpsAlignWhileDoodling => 'Helps align while doodling';
 
   @override

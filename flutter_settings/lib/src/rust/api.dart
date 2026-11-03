@@ -13,6 +13,14 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 /// 当前设置。
 Future<Settings?> getSettings() => RustLib.instance.api.crateApiGetSettings();
 
+/// 「气泡消息」tab: 全部已完结消息的 JSON(空闲 4s/翻页/清空分段,
+/// 结构对齐 ShareStroke, 见 export/bubbles.rs)。
+Future<String> bubbleMessages() =>
+    RustLib.instance.api.crateApiBubbleMessages();
+
+/// 打开气泡 tab 时调用: 把进行中的段强制结为一条消息。
+Future<void> bubbleFlush() => RustLib.instance.api.crateApiBubbleFlush();
+
 /// 写入一项设置。`value_json` 是 JSON 标量(`true` / `3` / `2.5`),
 /// ObjC 侧按 key 解析,布尔/整数/小数共用一条通道。
 Future<void> setSetting({required String key, required String valueJson}) =>
@@ -372,6 +380,7 @@ class Settings {
   final bool chatHasPassword;
   final bool chatIntegration;
   final bool showFreeCanvas;
+  final bool showBubbleTab;
   final bool shareCanvas;
 
   /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
@@ -406,6 +415,7 @@ class Settings {
     required this.chatHasPassword,
     required this.chatIntegration,
     required this.showFreeCanvas,
+    required this.showBubbleTab,
     required this.shareCanvas,
     required this.language,
   });
@@ -440,6 +450,7 @@ class Settings {
       chatHasPassword.hashCode ^
       chatIntegration.hashCode ^
       showFreeCanvas.hashCode ^
+      showBubbleTab.hashCode ^
       shareCanvas.hashCode ^
       language.hashCode;
 
@@ -476,6 +487,7 @@ class Settings {
           chatHasPassword == other.chatHasPassword &&
           chatIntegration == other.chatIntegration &&
           showFreeCanvas == other.showFreeCanvas &&
+          showBubbleTab == other.showBubbleTab &&
           shareCanvas == other.shareCanvas &&
           language == other.language;
 }

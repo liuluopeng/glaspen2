@@ -32,6 +32,7 @@ extension _SettingsStateUi on _SettingsPageState {
         _gifEndMode = (s['gifEndMode'] as num?)?.toInt() ?? _gifEndMode;
         _flipEffect = (s['flipEffect'] as num?)?.toInt() ?? _flipEffect;
         _showFreeCanvas = _b(s['showFreeCanvas']);
+        _showBubbleTab = _b(s['showBubbleTab']);
         _shareCanvas = _b(s['shareCanvas']);
         _notebookGlass = s['notebookStyle'] as bool? ?? _notebookGlass;
         _panelTransparent = _b(s['panelTransparent']);
@@ -74,6 +75,7 @@ extension _SettingsStateUi on _SettingsPageState {
           _chatHasPassword = _b(settings['chatHasPassword']);
           _chatIntegration = _b(settings['chatIntegration']);
           _showFreeCanvas = _b(settings['showFreeCanvas']);
+          _showBubbleTab = _b(settings['showBubbleTab']);
           _shareCanvas = _b(settings['shareCanvas']);
           _notebookGlass = _b(settings['notebookStyle']);
           _panelTransparent = _b(settings['panelTransparent']);

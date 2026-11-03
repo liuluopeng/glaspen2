@@ -527,6 +527,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get showGrid => '显示网格';
 
   @override
+  String get bubbleTab => '气泡消息';
+
+  @override
+  String get showBubbleTabSub => '在 tab 栏显示手写消息回顾';
+
+  @override
+  String get bubblesEmpty => '还没有消息。去涂几笔, 停笔几秒就是一条';
+
+  @override
+  String get refreshBubbles => '刷新';
+
+  @override
   String get helpsAlignWhileDoodling => '涂鸦时辅助对齐';
 
   @override

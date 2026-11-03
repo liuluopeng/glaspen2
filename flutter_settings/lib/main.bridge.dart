@@ -4,6 +4,10 @@ part of 'main.dart';
 
 abstract class SettingsBridge {
   Future<Map<dynamic, dynamic>> getSettings();
+  /// 「气泡消息」tab: 全部已完结消息的 JSON(分段规则见 core export/bubbles.rs)
+  Future<String> getBubbles();
+  /// 把进行中的段强制结为一条消息(打开气泡 tab 时调用)
+  Future<void> flushBubbles();
   Future<void> setSetting(String key, dynamic value);
   void onSettingsChanged(void Function(Map<dynamic, dynamic> s) callback);
   /// 连接建立后回调(Windows 管道异步连接;用于连接后重新拉取设置)
@@ -122,6 +126,7 @@ class _FrbBridge extends SettingsBridge {
       'chatHasPassword': s.chatHasPassword,
       'chatIntegration': s.chatIntegration,
       'showFreeCanvas': s.showFreeCanvas,
+      'showBubbleTab': s.showBubbleTab,
       'shareCanvas': s.shareCanvas,
       'language': s.language,
     };
@@ -140,6 +145,18 @@ class _FrbBridge extends SettingsBridge {
   Future<Map<dynamic, dynamic>> getSettings() async {
     await _init();
     return _settingsToMap(await rust.getSettings());
+  }
+
+  @override
+  Future<String> getBubbles() async {
+    await _init();
+    return rust.bubbleMessages();
+  }
+
+  @override
+  Future<void> flushBubbles() async {
+    await _init();
+    return rust.bubbleFlush();
   }
 
   @override
@@ -878,6 +895,19 @@ class _NamedPipeBridge extends SettingsBridge {
       _settingsCompleter = null;
       return {};
     }
+  }
+
+  @override
+  Future<String> getBubbles() async {
+    if (!_connected) return '{"messages":[]}';
+    final r = await _request('getBubbles', null);
+    return jsonEncode(r.containsKey('data') ? r['data'] : r);
+  }
+
+  @override
+  Future<void> flushBubbles() async {
+    if (!_connected) return;
+    await _request('flushBubbles', null);
   }
 
   @override

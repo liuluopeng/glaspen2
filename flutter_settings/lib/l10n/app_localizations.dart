@@ -1052,6 +1052,30 @@ abstract class AppLocalizations {
   /// **'显示网格'**
   String get showGrid;
 
+  /// No description provided for @bubbleTab.
+  ///
+  /// In zh, this message translates to:
+  /// **'气泡消息'**
+  String get bubbleTab;
+
+  /// No description provided for @showBubbleTabSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'在 tab 栏显示手写消息回顾'**
+  String get showBubbleTabSub;
+
+  /// No description provided for @bubblesEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有消息。去涂几笔, 停笔几秒就是一条'**
+  String get bubblesEmpty;
+
+  /// No description provided for @refreshBubbles.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新'**
+  String get refreshBubbles;
+
   /// No description provided for @helpsAlignWhileDoodling.
   ///
   /// In zh, this message translates to:

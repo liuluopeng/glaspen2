@@ -457,6 +457,23 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 )
             };
         }
+    } else if msg_type == "getBubbles" {
+        // 气泡消息: 全部已完结消息 JSON(先惰性过期)。体量小(折线点列), 直接内嵌 JSON 回复
+        let json = glaspen_core::export::bubbles::messages_json();
+        let resp = format!(
+            "{{\"type\":\"getBubbles_response\",\"reqId\":{},\"data\":{}}}",
+            req_id, json
+        );
+        let _ = writer.write_all(resp.as_bytes());
+        let _ = writer.flush();
+    } else if msg_type == "flushBubbles" {
+        glaspen_core::export::bubbles::flush_now();
+        let resp = format!(
+            "{{\"type\":\"flushBubbles_response\",\"reqId\":{}}}",
+            req_id
+        );
+        let _ = writer.write_all(resp.as_bytes());
+        let _ = writer.flush();
     } else if msg_type == "canvasOverview" || msg_type == "canvasNew" {
         // 无限画布总览 tab:镜头动作(home/center/new)+ 包围盒总览 PNG。
         // 动作发给消息循环线程应用;总览渲染在管道线程(只读 STROKES/镜头)。

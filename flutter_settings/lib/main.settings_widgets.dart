@@ -315,6 +315,20 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           },
         )),
         _tile(SwitchListTile(
+          title: Text(AppLocalizations.of(context)!.bubbleTab, style: TextStyle(fontSize: 15)),
+          subtitle: Text(AppLocalizations.of(context)!.showBubbleTabSub, style: TextStyle(fontSize: 12)),
+          value: _showBubbleTab,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (v) {
+            setState(() {
+              _showBubbleTab = v;
+              _syncTabCount();
+            });
+            _setSetting('showBubbleTab', v);
+          },
+        )),
+        _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.showGrid, style: TextStyle(fontSize: 15)),
           subtitle: Text(AppLocalizations.of(context)!.helpsAlignWhileDoodling, style: TextStyle(fontSize: 12)),
           value: _showGrid,
@@ -689,4 +703,197 @@ extension _SettingsWidgetsUi on _SettingsPageState {
       if (mounted) setState(() => _pdfExporting = false);
     }
   }
+
+  // ── 气泡消息 tab: 手写涂鸦按停顿分段, 聊天窗样式回顾(右侧 = 用户口吻) ──
+
+  Future<void> _loadBubbles() async {
+    setState(() => _bubblesLoading = true);
+    try {
+      // 先把进行中的段结为消息, 再拉全部
+      await _bridge.flushBubbles();
+      final s = await _bridge.getBubbles();
+      if (!mounted) return;
+      final v = jsonDecode(s) as Map<String, dynamic>;
+      setState(() =>
+          _bubbleMsgs = (v['messages'] as List).cast<Map<String, dynamic>>());
+      // 新内容后滚到最底(最新消息)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_bubbleScroll.hasClients) {
+          _bubbleScroll.jumpTo(_bubbleScroll.position.maxScrollExtent);
+        }
+      });
+    } catch (e) {
+      if (mounted) setState(() => _bubbleMsgs = const []);
+    } finally {
+      if (mounted) setState(() => _bubblesLoading = false);
+    }
+  }
+
+  Widget _buildBubbleTab() {
+    final l = AppLocalizations.of(context)!;
+    return _tabBackground(
+        'assets/tab_bg_settings.jpg',
+        Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              child: Row(children: [
+                Text(l.bubbleTab,
+                    style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: _inkFaint)),
+                const Spacer(),
+                IconButton(
+                  tooltip: l.refreshBubbles,
+                  icon: _bubblesLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child:
+                              CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.refresh, size: 20),
+                  onPressed: _bubblesLoading ? null : _loadBubbles,
+                ),
+              ]),
+            ),
+            Expanded(
+              child: (_bubbleMsgs.isEmpty && !_bubblesLoading)
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(l.bubblesEmpty,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontSize: 13, color: Colors.grey.shade600)),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: _bubbleScroll,
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+                      itemCount: _bubbleMsgs.length,
+                      itemBuilder: (ctx, i) =>
+                          _bubbleMessage(_bubbleMsgs[i]),
+                    ),
+            ),
+          ],
+        ));
+  }
+
+  /// 一条气泡: 右对齐(用户口吻), 内容 = 该段笔迹的矢量重绘 + 完成时刻。
+  Widget _bubbleMessage(Map<String, dynamic> m) {
+    final strokes =
+        (m['strokes'] as List).cast<Map<String, dynamic>>();
+    final tsMs = (m['ts_ms'] as num).toInt();
+    final dt = DateTime.fromMillisecondsSinceEpoch(tsMs);
+    final time = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+
+    // 由笔迹包围盒推气泡内容尺寸(上限内等比, 不放大超过 1.5 倍)
+    double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+    for (final st in strokes) {
+      final pts = (st['pts'] as List).cast<num>();
+      for (var i = 0; i + 2 < pts.length; i += 3) {
+        final x = pts[i].toDouble();
+        final y = pts[i + 1].toDouble();
+        minX = minX < x ? minX : x;
+        maxX = maxX > x ? maxX : x;
+        minY = minY < y ? minY : y;
+        maxY = maxY > y ? maxY : y;
+      }
+    }
+    const maxW = 300.0, maxH = 200.0;
+    final bw = (maxX - minX).clamp(1.0, double.infinity).toDouble();
+    final bh = (maxY - minY).clamp(1.0, double.infinity).toDouble();
+    final k = ((maxW / bw) < (maxH / bh) ? maxW / bw : maxH / bh)
+        .clamp(0.15, 1.5)
+        .toDouble();
+    final size = Size(bw * k + 4, bh * k + 4);
+
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(56, 6, 12, 6),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFFD9F0FF), // 淡蓝 = 用户口吻(发送侧)
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(12),
+            topRight: Radius.circular(12),
+            bottomLeft: Radius.circular(12),
+            bottomRight: Radius.circular(2), // 右下小角 = 发送侧标识
+          ),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CustomPaint(
+              size: size,
+              painter: _BubbleStrokePainter(strokes),
+            ),
+            const SizedBox(height: 2),
+            Text(time,
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 气泡内的笔迹重绘: ShareStroke 形状的点列 → 等比折线(线宽随缩放, 限下限)。
+class _BubbleStrokePainter extends CustomPainter {
+  final List<Map<String, dynamic>> strokes;
+  _BubbleStrokePainter(this.strokes);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+    for (final st in strokes) {
+      final pts = (st['pts'] as List).cast<num>();
+      for (var i = 0; i + 2 < pts.length; i += 3) {
+        final x = pts[i].toDouble();
+        final y = pts[i + 1].toDouble();
+        minX = minX < x ? minX : x;
+        maxX = maxX > x ? maxX : x;
+        minY = minY < y ? minY : y;
+        maxY = maxY > y ? maxY : y;
+      }
+    }
+    if (minX > maxX || minY > maxY) return;
+    const pad = 2.0;
+    final bw = (maxX - minX).clamp(1.0, double.infinity).toDouble();
+    final bh = (maxY - minY).clamp(1.0, double.infinity).toDouble();
+    final k = (((size.width - 2 * pad) / bw) < ((size.height - 2 * pad) / bh)
+            ? (size.width - 2 * pad) / bw
+            : (size.height - 2 * pad) / bh)
+        .clamp(0.01, 10.0)
+        .toDouble();
+    canvas.translate(pad - minX * k, pad - minY * k);
+    canvas.scale(k, k);
+
+    for (final st in strokes) {
+      final rgb = (st['rgb'] as num).toInt() & 0xFFFFFF;
+      final pts = (st['pts'] as List).cast<num>();
+      if (pts.length < 3) continue;
+      final path = Path()
+        ..moveTo(pts[0].toDouble(), pts[1].toDouble());
+      for (var i = 3; i + 2 < pts.length; i += 3) {
+        path.lineTo(pts[i].toDouble(), pts[i + 1].toDouble());
+      }
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = Color(0xFF000000 | rgb)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = (2.0 / k) < 1.0 ? 1.0 : 2.0 / k
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BubbleStrokePainter old) => true;
 }

@@ -20,6 +20,7 @@ pub(crate) use std::path::PathBuf;
 pub use std::slice;
 pub use std::sync::Arc;
 
+pub mod bubbles;
 mod chat_glue;
 mod media;
 mod pages;
@@ -892,6 +893,7 @@ pub extern "C" fn glaspen2_modeler_commit_to_strokes(r: c_double, g: c_double, b
         } // 先放掉 STROKES 锁再走草稿钩子(钩子内部要重新拿锁)
         ink_draft_on_stroke_committed();
         ink_share_on_stroke_committed();
+        bubbles::on_stroke_committed();
         crate::ocr::on_stroke_committed(crate::state::current_screen_id());
     });
 }
@@ -905,6 +907,7 @@ pub extern "C" fn glaspen2_notify_stroke_committed() {
     crate::state::mark_stroke_activity();
     ink_draft_on_stroke_committed();
     ink_share_on_stroke_committed();
+    bubbles::on_stroke_committed();
     crate::ocr::on_stroke_committed(crate::state::current_screen_id());
 }
 

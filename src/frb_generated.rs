@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -487573945;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1110323158;
 
 // Section: executor
 
@@ -143,6 +143,78 @@ fn wire__crate__api__backup_now_impl(
                 transform_result_sse::<_, ()>(
                     (move || async move {
                         let output_ok = Result::<_, ()>::Ok(crate::api::backup_now().await)?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__bubble_flush_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "bubble_flush",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Result::<_, ()>::Ok({
+                            crate::api::bubble_flush().await;
+                        })?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__bubble_messages_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "bubble_messages",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Result::<_, ()>::Ok(crate::api::bubble_messages().await)?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -1633,6 +1705,7 @@ impl SseDecode for crate::api::Settings {
         let mut var_chatHasPassword = <bool>::sse_decode(deserializer);
         let mut var_chatIntegration = <bool>::sse_decode(deserializer);
         let mut var_showFreeCanvas = <bool>::sse_decode(deserializer);
+        let mut var_showBubbleTab = <bool>::sse_decode(deserializer);
         let mut var_shareCanvas = <bool>::sse_decode(deserializer);
         let mut var_language = <String>::sse_decode(deserializer);
         return crate::api::Settings {
@@ -1664,6 +1737,7 @@ impl SseDecode for crate::api::Settings {
             chat_has_password: var_chatHasPassword,
             chat_integration: var_chatIntegration,
             show_free_canvas: var_showFreeCanvas,
+            show_bubble_tab: var_showBubbleTab,
             share_canvas: var_shareCanvas,
             language: var_language,
         };
@@ -1771,37 +1845,39 @@ fn pde_ffi_dispatcher_primary_impl(
         1 => wire__crate__api__app_version_impl(port, ptr, rust_vec_len, data_len),
         2 => wire__crate__api__apply_update_impl(port, ptr, rust_vec_len, data_len),
         3 => wire__crate__api__backup_now_impl(port, ptr, rust_vec_len, data_len),
-        4 => wire__crate__api__canvas_overview_impl(port, ptr, rust_vec_len, data_len),
-        5 => wire__crate__api__check_update_impl(port, ptr, rust_vec_len, data_len),
-        6 => wire__crate__api__copy_strokes_payload_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__crate__api__delete_page_impl(port, ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__delete_strokes_impl(port, ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__download_update_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__export_animated_gif_impl(port, ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__export_page_png_impl(port, ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__export_page_svg_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__export_pdf_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__export_selected_pdf_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__get_lens_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__get_page_ordinal_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__get_settings_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__lasso_select_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__list_pages_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__move_strokes_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__move_strokes_to_page_impl(port, ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__navigate_to_page_impl(port, ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__ocr_search_impl(port, ptr, rust_vec_len, data_len),
-        24 => wire__crate__api__open_url_impl(port, ptr, rust_vec_len, data_len),
-        25 => wire__crate__api__page_png_bytes_impl(port, ptr, rust_vec_len, data_len),
-        26 => wire__crate__api__page_thumbnails_impl(port, ptr, rust_vec_len, data_len),
-        27 => wire__crate__api__paste_strokes_impl(port, ptr, rust_vec_len, data_len),
-        28 => wire__crate__api__reorder_page_impl(port, ptr, rust_vec_len, data_len),
-        29 => wire__crate__api__restore_latest_backup_impl(port, ptr, rust_vec_len, data_len),
-        30 => wire__crate__api__set_setting_impl(port, ptr, rust_vec_len, data_len),
-        31 => wire__crate__api__settings_changed_impl(port, ptr, rust_vec_len, data_len),
-        32 => wire__crate__api__stage_update_impl(port, ptr, rust_vec_len, data_len),
-        33 => wire__crate__api__test_chat_login_impl(port, ptr, rust_vec_len, data_len),
-        34 => wire__crate__api__trigger_hotkey_impl(port, ptr, rust_vec_len, data_len),
+        4 => wire__crate__api__bubble_flush_impl(port, ptr, rust_vec_len, data_len),
+        5 => wire__crate__api__bubble_messages_impl(port, ptr, rust_vec_len, data_len),
+        6 => wire__crate__api__canvas_overview_impl(port, ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__check_update_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__copy_strokes_payload_impl(port, ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__delete_page_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__delete_strokes_impl(port, ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__download_update_impl(port, ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__export_animated_gif_impl(port, ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__export_page_png_impl(port, ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__export_page_svg_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__export_pdf_impl(port, ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__export_selected_pdf_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__get_lens_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__get_page_ordinal_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__get_settings_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__lasso_select_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__list_pages_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__move_strokes_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__move_strokes_to_page_impl(port, ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__navigate_to_page_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__ocr_search_impl(port, ptr, rust_vec_len, data_len),
+        26 => wire__crate__api__open_url_impl(port, ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__page_png_bytes_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__page_thumbnails_impl(port, ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__paste_strokes_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__reorder_page_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__restore_latest_backup_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__set_setting_impl(port, ptr, rust_vec_len, data_len),
+        33 => wire__crate__api__settings_changed_impl(port, ptr, rust_vec_len, data_len),
+        34 => wire__crate__api__stage_update_impl(port, ptr, rust_vec_len, data_len),
+        35 => wire__crate__api__test_chat_login_impl(port, ptr, rust_vec_len, data_len),
+        36 => wire__crate__api__trigger_hotkey_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1954,6 +2030,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::Settings {
             self.chat_has_password.into_into_dart().into_dart(),
             self.chat_integration.into_into_dart().into_dart(),
             self.show_free_canvas.into_into_dart().into_dart(),
+            self.show_bubble_tab.into_into_dart().into_dart(),
             self.share_canvas.into_into_dart().into_dart(),
             self.language.into_into_dart().into_dart(),
         ]
@@ -2301,6 +2378,7 @@ impl SseEncode for crate::api::Settings {
         <bool>::sse_encode(self.chat_has_password, serializer);
         <bool>::sse_encode(self.chat_integration, serializer);
         <bool>::sse_encode(self.show_free_canvas, serializer);
+        <bool>::sse_encode(self.show_bubble_tab, serializer);
         <bool>::sse_encode(self.share_canvas, serializer);
         <String>::sse_encode(self.language, serializer);
     }

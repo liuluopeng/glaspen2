@@ -224,6 +224,7 @@ pub struct Settings {
     pub chat_integration: bool,
     // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
     pub show_free_canvas: bool,
+    pub show_bubble_tab: bool,
     // 共享画布上行开关(活页本 tab;仅集成开启时生效)
     pub share_canvas: bool,
     /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
@@ -276,6 +277,7 @@ impl Settings {
             chat_has_password: b("chatHasPassword"),
             chat_integration: b("chatIntegration"),
             show_free_canvas: b("showFreeCanvas"),
+            show_bubble_tab: b("showBubbleTab"),
             share_canvas: b("shareCanvas"),
             language: {
                 let l = s("language");
@@ -297,6 +299,17 @@ static SETTINGS_SINKS: Mutex<Vec<StreamSink<Settings>>> = Mutex::new(Vec::new())
 #[frb]
 pub async fn get_settings() -> Option<Settings> {
     run_blocking(current_settings)
+}
+
+/// 「气泡消息」tab: 全部已完结消息的 JSON(空闲 4s/翻页/清空分段,
+/// 结构对齐 ShareStroke, 见 export/bubbles.rs)。
+pub async fn bubble_messages() -> String {
+    run_blocking(|| glaspen_core::export::bubbles::messages_json())
+}
+
+/// 打开气泡 tab 时调用: 把进行中的段强制结为一条消息。
+pub async fn bubble_flush() {
+    run_blocking(|| glaspen_core::export::bubbles::flush_now())
 }
 
 /// 写入一项设置。`value_json` 是 JSON 标量(`true` / `3` / `2.5`),
