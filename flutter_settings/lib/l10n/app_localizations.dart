@@ -1022,6 +1022,24 @@ abstract class AppLocalizations {
   /// **'压力监控'**
   String get pressureMonitor;
 
+  /// No description provided for @canvasLook.
+  ///
+  /// In zh, this message translates to:
+  /// **'画布外观'**
+  String get canvasLook;
+
+  /// No description provided for @systemAndAssist.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统与辅助'**
+  String get systemAndAssist;
+
+  /// No description provided for @recordExport.
+  ///
+  /// In zh, this message translates to:
+  /// **'录制与导出'**
+  String get recordExport;
+
   /// No description provided for @launchAtLogin.
   ///
   /// In zh, this message translates to:

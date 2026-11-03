@@ -524,6 +524,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pressureMonitor => 'Pressure monitor';
 
   @override
+  String get canvasLook => 'Canvas look';
+
+  @override
+  String get systemAndAssist => 'System & helpers';
+
+  @override
+  String get recordExport => 'Recording & export';
+
+  @override
   String get launchAtLogin => 'Launch at login';
 
   @override

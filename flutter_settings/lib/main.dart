@@ -453,6 +453,107 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                 key: _columnKey,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ── 书写: 最常用的放最前 ──
+                  _buildSection(AppLocalizations.of(context)!.pen, _buildPenSection()),
+                  const SizedBox(height: 16),
+                  _buildSection(AppLocalizations.of(context)!.canvasLook, _buildAppearanceSection()),
+                  const SizedBox(height: 16),
+                  // ── 活页本: 外观 / 翻页动效 / 缩略图 / 真穿透 ──
+                  _buildSection(AppLocalizations.of(context)!.notebookLook, Column(children: [
+                    Row(children: [
+                      Text(AppLocalizations.of(context)!.style, style: TextStyle(fontSize: 13)),
+                      const Spacer(),
+                      SegmentedButton<bool>(
+                        segments: [
+                          ButtonSegment(value: true, label: Text(AppLocalizations.of(context)!.skeuoGlass)),
+                          ButtonSegment(value: false, label: Text(AppLocalizations.of(context)!.notePaper)),
+                        ],
+                        selected: {_notebookGlass},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (s2) {
+                          setState(() => _notebookGlass = s2.first);
+                          _setSetting('notebookStyle', s2.first);
+                        },
+                      ),
+                    ]),
+                    if (Platform.isMacOS) ...[
+                      const Divider(height: 20),
+                      Row(children: [
+                        Text(AppLocalizations.of(context)!.pageFlipEffect,
+                            style: TextStyle(fontSize: 13, color: _inkFaint)),
+                        const Spacer(),
+                        SegmentedButton<int>(
+                          showSelectedIcon: false,
+                          style: const ButtonStyle(
+                            visualDensity: VisualDensity(horizontal: -2, vertical: -2),
+                          ),
+                          segments: [
+                            ButtonSegment(value: 0, label: Text(AppLocalizations.of(context)!.systemAnimation)),
+                            ButtonSegment(value: 1, label: Text(AppLocalizations.of(context)!.timeTunnel)),
+                          ],
+                          selected: {_flipEffect},
+                          onSelectionChanged: (sel) {
+                            setState(() => _flipEffect = sel.first);
+                            _setSetting('flipEffect', sel.first);
+                          },
+                        ),
+                      ]),
+                    ],
+                    const Divider(height: 20),
+                    _tile(SwitchListTile(
+                      title: Text(AppLocalizations.of(context)!.show10NearbyPages, style: TextStyle(fontSize: 14)),
+                      subtitle: Text(AppLocalizations.of(context)!.verticalMinimapOnThe, style: TextStyle(fontSize: 12)),
+                      value: _minimapEnabled,
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (v) {
+                        setState(() => _minimapEnabled = v);
+                        _setSetting('minimap', v);
+                      },
+                    )),
+                    const Divider(height: 20),
+                    _tile(SwitchListTile(
+                      title: Text(AppLocalizations.of(context)!.truePassThroughExperimental, style: TextStyle(fontSize: 14)),
+                      subtitle: Text(AppLocalizations.of(context)!.cardsRevealTheDesktop, style: TextStyle(fontSize: 12)),
+                      value: _panelTransparent && _notebookGlass,
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: _notebookGlass
+                          ? (v) {
+                              setState(() => _panelTransparent = v);
+                              _setSetting('panelTransparent', v);
+                            }
+                          : null,
+                    )),
+                  ])),
+                  const SizedBox(height: 16),
+                  // ── 录制与导出 ──
+                  _buildSection(AppLocalizations.of(context)!.recordExport, _buildRecordExportSection()),
+                  const SizedBox(height: 16),
+                  _buildSection(AppLocalizations.of(context)!.dataBackup, _buildBackupButtons()),
+                  const SizedBox(height: 16),
+                  if (_chatIntegration)
+                    _buildSection(AppLocalizations.of(context)!.sharedCanvas, _tile(SwitchListTile(
+                      title: Text(AppLocalizations.of(context)!.streamDoodlesLive, style: TextStyle(fontSize: 14)),
+                      subtitle: Text(AppLocalizations.of(context)!.pushedToThePeer,
+                          style: TextStyle(fontSize: 12)),
+                      value: _shareCanvas,
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (v) {
+                        setState(() => _shareCanvas = v);
+                        _setSetting('shareCanvas', v);
+                      },
+                    ))),
+                  if (_chatIntegration) const SizedBox(height: 16),
+                  _buildSection(AppLocalizations.of(context)!.doodleIdentity, _buildChatAuthSection()),
+                  const SizedBox(height: 16),
+                  // ── 系统与辅助 ──
+                  _buildSection(AppLocalizations.of(context)!.systemAndAssist, _buildSystemSection()),
+                  const SizedBox(height: 16),
+                  _buildSection(AppLocalizations.of(context)!.about, _buildAboutSection()),
+                  const SizedBox(height: 16),
+                  // ── 少用的放最后: 语言 / 快捷键 ──
                   _buildSection(
                     AppLocalizations.of(context)!.language,
                     SegmentedButton<String>(
@@ -476,75 +577,6 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
                         : AppLocalizations.of(context)!.hotkeys,
                     _buildHotkeyGrid(),
                   ),
-                  const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.pen, _buildPenSection()),
-                  const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.options, _buildOptionsSection()),
-                  const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.notebookLook, Row(children: [
-                    Text(AppLocalizations.of(context)!.style, style: TextStyle(fontSize: 13)),
-                    const Spacer(),
-                    SegmentedButton<bool>(
-                      segments: [
-                        ButtonSegment(value: true, label: Text(AppLocalizations.of(context)!.skeuoGlass)),
-                        ButtonSegment(value: false, label: Text(AppLocalizations.of(context)!.notePaper)),
-                      ],
-                      selected: {_notebookGlass},
-                      showSelectedIcon: false,
-                      onSelectionChanged: (s2) {
-                        setState(() => _notebookGlass = s2.first);
-                        _setSetting('notebookStyle', s2.first);
-                      },
-                    ),
-                  ])),
-                  const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.truePassThroughExperimental, _tile(SwitchListTile(
-                    title: Text(AppLocalizations.of(context)!.cardsRevealTheDesktop, style: TextStyle(fontSize: 14)),
-                    subtitle: Text(AppLocalizations.of(context)!.clearGlassModeNeeds, style: TextStyle(fontSize: 12)),
-                    value: _panelTransparent && _notebookGlass,
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    onChanged: _notebookGlass
-                        ? (v) {
-                            setState(() => _panelTransparent = v);
-                            _setSetting('panelTransparent', v);
-                          }
-                        : null,
-                  ))),
-                  const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.pageThumbnails, _tile(SwitchListTile(
-                    title: Text(AppLocalizations.of(context)!.show10NearbyPages, style: TextStyle(fontSize: 14)),
-                    subtitle: Text(AppLocalizations.of(context)!.verticalMinimapOnThe, style: TextStyle(fontSize: 12)),
-                    value: _minimapEnabled,
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    onChanged: (v) {
-                      setState(() => _minimapEnabled = v);
-                      _setSetting('minimap', v);
-                    },
-                  ))),
-                  const SizedBox(height: 16),
-                  if (_chatIntegration)
-                    _buildSection(AppLocalizations.of(context)!.sharedCanvas, _tile(SwitchListTile(
-                      title: Text(AppLocalizations.of(context)!.streamDoodlesLive, style: TextStyle(fontSize: 14)),
-                      subtitle: Text(AppLocalizations.of(context)!.pushedToThePeer,
-                          style: TextStyle(fontSize: 12)),
-                      value: _shareCanvas,
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      onChanged: (v) {
-                        setState(() => _shareCanvas = v);
-                        _setSetting('shareCanvas', v);
-                      },
-                    ))),
-                  if (_chatIntegration) const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.export, _buildExportButtons()),
-                  const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.dataBackup, _buildBackupButtons()),
-                  const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.doodleIdentity, _buildChatAuthSection()),
-                  const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.about, _buildAboutSection()),
                 ],
               ),
             )),

@@ -512,6 +512,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get pressureMonitor => '压力监控';
 
   @override
+  String get canvasLook => '画布外观';
+
+  @override
+  String get systemAndAssist => '系统与辅助';
+
+  @override
+  String get recordExport => '录制与导出';
+
+  @override
   String get launchAtLogin => '开机自启';
 
   @override

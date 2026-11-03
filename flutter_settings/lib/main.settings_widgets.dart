@@ -284,53 +284,14 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     );
   }
 
-  // ── Options:GIF 动画 + 开关组 ──
-  Widget _buildOptionsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(Platform.isMacOS ? AppLocalizations.of(context)!.gifAnimationRTo : AppLocalizations.of(context)!.gifAnimationHoldCtrl,
-            style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 10),
-        _buildGifSettings(),
-        const Divider(height: 24),
-        if (Platform.isMacOS) ...[
-          Row(
-            children: [
-              Text(AppLocalizations.of(context)!.pageFlipEffect,
-                  style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
-              const Spacer(),
-              SegmentedButton<int>(
-                showSelectedIcon: false,
-                style: const ButtonStyle(
-                  visualDensity: VisualDensity(horizontal: -2, vertical: -2),
-                ),
-                segments: [
-                  ButtonSegment(value: 0, label: Text(AppLocalizations.of(context)!.systemAnimation)),
-                  ButtonSegment(value: 1, label: Text(AppLocalizations.of(context)!.timeTunnel)),
-                ],
-                selected: {_flipEffect},
-                onSelectionChanged: (sel) {
-                  setState(() => _flipEffect = sel.first);
-                  _setSetting('flipEffect', sel.first);
-                },
-              ),
-            ],
-          ),
-          const Divider(height: 24),
-        ],
-        _buildToggles(),
-      ],
-    );
-  }
-
   /// 卡片(_buildSection 的 DecoratedBox)里直接放 ListTile 会触发框架断言
   /// ("background color or ink splashes may be invisible"),包一层透明 Material。
   Widget _tile(Widget child) {
     return Material(type: MaterialType.transparency, child: child);
   }
 
-  Widget _buildToggles() {
+  // ── 画布外观: 自由涂鸦 tab 显隐 + 网格 + 跟随 + 笔迹风格(描边/阴影/反色) ──
+  Widget _buildAppearanceSection() {
     return Column(
       children: [
         _tile(SwitchListTile(
@@ -351,26 +312,6 @@ extension _SettingsWidgetsUi on _SettingsPageState {
               }
             });
             _setSetting('showFreeCanvas', v);
-          },
-        )),
-        _tile(SwitchListTile(
-          title: Text(AppLocalizations.of(context)!.pressureMonitor, style: TextStyle(fontSize: 15)),
-          value: _pressureMonitor,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            setState(() => _pressureMonitor = v);
-            _setSetting('pressureMonitor', v);
-          },
-        )),
-        _tile(SwitchListTile(
-          title: Text(AppLocalizations.of(context)!.launchAtLogin, style: TextStyle(fontSize: 15)),
-          value: _launchAtLogin,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            setState(() => _launchAtLogin = v);
-            _setSetting('launchAtLogin', v);
           },
         )),
         _tile(SwitchListTile(
@@ -494,28 +435,79 @@ extension _SettingsWidgetsUi on _SettingsPageState {
             _setSetting('invertInk', v);
           },
         )),
-        _tile(SegmentedButton<int>(
-          segments: const [
-            ButtonSegment(value: 10, label: Text('10Hz')),
-            ButtonSegment(value: 30, label: Text('30Hz')),
-            ButtonSegment(value: 60, label: Text('60Hz')),
-            ButtonSegment(value: 100, label: Text('100Hz')),
-          ],
-          selected: {_invertFps},
-          showSelectedIcon: false,
-          onSelectionChanged: (s2) {
-            setState(() => _invertFps = s2.first);
-            _setSetting('invertFps', s2.first);
-          },
-        )),
-        _tile(Padding(
-          padding: EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(AppLocalizations.of(context)!.invertTrackingFpsCap, style: TextStyle(fontSize: 11, color: Colors.grey)),
-        )),
+        // 帧率上限只在反色开启时有意义: 关着时不再占一整行
+        if (_invertInk) ...[
+          _tile(Padding(
+            padding: const EdgeInsets.only(left: 16, top: 4),
+            child: SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<int>(
+                segments: const [
+                  ButtonSegment(value: 10, label: Text('10Hz')),
+                  ButtonSegment(value: 30, label: Text('30Hz')),
+                  ButtonSegment(value: 60, label: Text('60Hz')),
+                  ButtonSegment(value: 100, label: Text('100Hz')),
+                ],
+                selected: {_invertFps},
+                showSelectedIcon: false,
+                onSelectionChanged: (s2) {
+                  setState(() => _invertFps = s2.first);
+                  _setSetting('invertFps', s2.first);
+                },
+              ),
+            ),
+          )),
+          _tile(Padding(
+            padding: EdgeInsets.only(left: 20, bottom: 8),
+            child: Text(AppLocalizations.of(context)!.invertTrackingFpsCap, style: TextStyle(fontSize: 11, color: Colors.grey)),
+          )),
+        ],
         // 页面缩略图(minimap)开关已移到「活页本」tab
         // 无限画布模式由 tab 承载:活页本=翻页模式,自由涂鸦=无限画布
         // (选中 tab 的红线下方,模式 tab 上有一颗小圆点)
+      ],
+    );
+  }
 
+  // ── 系统与辅助: 压力监控 + 开机自启 ──
+  Widget _buildSystemSection() {
+    return Column(
+      children: [
+        _tile(SwitchListTile(
+          title: Text(AppLocalizations.of(context)!.pressureMonitor, style: TextStyle(fontSize: 15)),
+          value: _pressureMonitor,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (v) {
+            setState(() => _pressureMonitor = v);
+            _setSetting('pressureMonitor', v);
+          },
+        )),
+        _tile(SwitchListTile(
+          title: Text(AppLocalizations.of(context)!.launchAtLogin, style: TextStyle(fontSize: 15)),
+          value: _launchAtLogin,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (v) {
+            setState(() => _launchAtLogin = v);
+            _setSetting('launchAtLogin', v);
+          },
+        )),
+      ],
+    );
+  }
+
+  // ── 录制与导出: GIF 参数 + 整库 PDF 导出 ──
+  Widget _buildRecordExportSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(Platform.isMacOS ? AppLocalizations.of(context)!.gifAnimationRTo : AppLocalizations.of(context)!.gifAnimationHoldCtrl,
+            style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 10),
+        _buildGifSettings(),
+        const Divider(height: 24),
+        _buildExportButtons(),
       ],
     );
   }
