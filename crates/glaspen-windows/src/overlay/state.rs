@@ -8,7 +8,7 @@ pub struct DrawState {
     pub enabled: bool,
     pub outline_enabled: bool,
     pub show_grid: bool,
-    /// 网格分栏(纯视觉):0=无 1=左右两栏 2=上下两栏 3=九宫格(macOS 同键)
+    /// 网格分栏(纯视觉):0=无 1=左右两栏 2=上下两栏 3=九宫格 4=康奈尔(macOS 同键)
     pub grid_divider: i32,
     pub frosted: bool,
     /// 飘渺画布涂鸦模式:悬空/落笔显示笔迹,笔离开后隐藏

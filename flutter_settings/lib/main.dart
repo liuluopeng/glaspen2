@@ -183,7 +183,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _outlineEnabled = false;
   bool _infiniteCanvas = false;
   int _gridSizeValue = 40; // 网格大小(逻辑 px)
-  int _gridDividerValue = 0; // 网格分栏:0=无 1=左右两栏 2=上下两栏 3=九宫格
+  int _gridDividerValue = 0; // 网格分栏:0=无 1=左右两栏 2=上下两栏 3=九宫格 4=康奈尔
   bool _minimapEnabled = false;
   // 缩略图按需加载:只加载可视区域的缩略图,滚动时按需补充
   final ScrollController _gridScroll = ScrollController();

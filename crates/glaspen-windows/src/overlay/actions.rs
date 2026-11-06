@@ -86,8 +86,8 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                 redraw_from_strokes(state);
             }
             x if x == CMD_SET_GRID_DIVIDER => {
-                // 分栏:0=无 1=左右两栏 2=上下两栏 3=九宫格(与 macOS 同键同钳制)
-                let v = (param as i64).clamp(0, 3) as i32;
+                // 分栏:0=无 1=左右两栏 2=上下两栏 3=九宫格 4=康奈尔(与 macOS 同键同钳制)
+                let v = (param as i64).clamp(0, 4) as i32;
                 state.draw.grid_divider = v;
                 glaspen_core::runtime()
                     .block_on(glaspen_core::db::save_setting("grid_divider", &v.to_string()));

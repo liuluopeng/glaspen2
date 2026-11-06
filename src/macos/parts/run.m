@@ -2853,7 +2853,7 @@ void glaspen2_run(void) {
       char *vdv = glaspen2_load_string_setting("grid_divider");
       if (vdv) {
         int dv = atoi(vdv);
-        if (dv >= 0 && dv <= 3)
+        if (dv >= 0 && dv <= 4) // 4 = 康奈尔
           g_grid_divider = dv;
         glaspen2_free_c_string(vdv);
       }

@@ -34,7 +34,7 @@ pub fn run() {
             .block_on(glaspen_core::db::load_setting("grid_divider"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(0)
-            .clamp(0, 3);
+            .clamp(0, 4);
         let ethereal = glaspen_core::runtime()
             .block_on(glaspen_core::db::load_setting("ethereal"))
             .and_then(|v| v.parse::<i32>().ok())

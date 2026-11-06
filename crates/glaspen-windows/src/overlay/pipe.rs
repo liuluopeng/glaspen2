@@ -612,7 +612,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             width,
             outline,
             grid,
-            grid_divider.clamp(0, 3),
+            grid_divider.clamp(0, 4),
             grid_size_v,
             minimap,
             grid_follow,

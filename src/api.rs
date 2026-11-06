@@ -208,7 +208,7 @@ pub struct Settings {
     pub infinite_canvas: bool,
     pub minimap: bool,
     pub grid_size: f64,
-    // 网格分栏参考线(纯视觉):0=无 1=左右两栏 2=上下两栏 3=九宫格
+    // 网格分栏参考线(纯视觉):0=无 1=左右两栏 2=上下两栏 3=九宫格 4=康奈尔
     pub grid_divider: i32,
     // 翻页动效: 0=macOS 系统动效 1=时光隧道
     pub flip_effect: i32,
