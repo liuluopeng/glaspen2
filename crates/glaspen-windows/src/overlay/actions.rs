@@ -251,9 +251,9 @@ fn clear_screen(state: &mut OverlayState) {
     let _ = state.stroke_modeler.reset_w_params(params);
     state.start_time = Instant::now();
     state.canvas.clear();
-    if state.draw.show_grid {
-        state.canvas.draw_grid(state.draw.grid_divider);
-    }
+    // 网格与分栏是两个独立开关, draw_grid 内部各画各层(无条件调用)
+    state.canvas
+        .draw_grid(state.draw.show_grid, state.draw.grid_divider);
     state.canvas.set_bg_alpha(BG_BLOCK);
     let created = glaspen_core::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
     if created == 0 {
@@ -296,9 +296,9 @@ fn redraw_from_strokes(state: &mut OverlayState) {
     let _ = state.stroke_modeler.reset_w_params(params);
     state.start_time = Instant::now();
     state.canvas.clear();
-    if state.draw.show_grid {
-        state.canvas.draw_grid(state.draw.grid_divider);
-    }
+    // 网格与分栏是两个独立开关, draw_grid 内部各画各层(无条件调用)
+    state.canvas
+        .draw_grid(state.draw.show_grid, state.draw.grid_divider);
     let ol = if state.draw.outline_enabled { 1.0 } else { 0.0 };
     let z = if infinite_on() { cam().2 as f32 } else { 1.0 };
     {
@@ -397,9 +397,10 @@ fn hide_strokes(state: &mut OverlayState) {
     }
     state.strokes_visible = false;
     state.canvas.clear();
-    // 网格跟随涂鸦 → 一起隐藏;否则网格保持可见
-    if state.draw.show_grid && !state.draw.grid_follow_strokes {
-        state.canvas.draw_grid(state.draw.grid_divider);
+    // 网格跟随涂鸦 → 网格与分栏线一起隐藏;否则按各自开关保持可见
+    if !state.draw.grid_follow_strokes {
+        state.canvas
+            .draw_grid(state.draw.show_grid, state.draw.grid_divider);
     }
     // 玻璃跟随涂鸦 → 磨砂背景一起关;否则保持
     if state.draw.glass_follow_strokes && state.draw.frosted {

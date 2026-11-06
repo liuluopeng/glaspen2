@@ -363,38 +363,38 @@ extension _SettingsWidgetsUi on _SettingsPageState {
               ],
             ),
           ),
-        if (_showGrid)
-          Padding(
-            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(AppLocalizations.of(context)!.columns, style: TextStyle(fontSize: 13, color: _inkFaint)),
-                const SizedBox(height: 4),
-                SizedBox(
-                  width: double.infinity,
-                  child: SegmentedButton<int>(
-                    showSelectedIcon: false,
-                    style: const ButtonStyle(
-                      visualDensity: VisualDensity(horizontal: -2, vertical: -2),
-                    ),
-                    segments: [
-                      ButtonSegment(value: 0, label: Text(AppLocalizations.of(context)!.none)),
-                      ButtonSegment(value: 1, label: Text(AppLocalizations.of(context)!.twoColumnsSideBy)),
-                      ButtonSegment(value: 2, label: Text(AppLocalizations.of(context)!.twoColumnsStacked)),
-                      ButtonSegment(value: 3, label: Text(AppLocalizations.of(context)!.grid3x3)),
-                      ButtonSegment(value: 4, label: Text(AppLocalizations.of(context)!.cornell)),
-                    ],
-                    selected: {_gridDividerValue},
-                    onSelectionChanged: (s) {
-                      setState(() => _gridDividerValue = s.first);
-                      _setSetting('gridDivider', s.first);
-                    },
+        // 分栏独立于「显示网格」: 两者并列, 各自控制(关网格仍可单独分栏)
+        Padding(
+          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(AppLocalizations.of(context)!.columns, style: TextStyle(fontSize: 13, color: _inkFaint)),
+              const SizedBox(height: 4),
+              SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  style: const ButtonStyle(
+                    visualDensity: VisualDensity(horizontal: -2, vertical: -2),
                   ),
+                  segments: [
+                    ButtonSegment(value: 0, label: Text(AppLocalizations.of(context)!.none)),
+                    ButtonSegment(value: 1, label: Text(AppLocalizations.of(context)!.twoColumnsSideBy)),
+                    ButtonSegment(value: 2, label: Text(AppLocalizations.of(context)!.twoColumnsStacked)),
+                    ButtonSegment(value: 3, label: Text(AppLocalizations.of(context)!.grid3x3)),
+                    ButtonSegment(value: 4, label: Text(AppLocalizations.of(context)!.cornell)),
+                  ],
+                  selected: {_gridDividerValue},
+                  onSelectionChanged: (s) {
+                    setState(() => _gridDividerValue = s.first);
+                    _setSetting('gridDivider', s.first);
+                  },
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+        ),
         _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.gridFollowsDoodles, style: TextStyle(fontSize: 15)),
           subtitle: Text(AppLocalizations.of(context)!.whenOnTheGrid, style: TextStyle(fontSize: 12)),

@@ -321,10 +321,12 @@ impl OverlayCanvas {
     /// RGB = 128*0.15 ≈ 19,alpha = 38。
     /// 网格画在画布坐标系:无限画布下跟随镜头平移/缩放,并在「屏幕尺寸」
     /// 整数倍处加粗(每屏一条参考线);翻页模式 pan=0、zoom=1,与从前一致。
-    /// `divider`:分栏参考线(macOS 同款)——0=无 1=左右两栏 2=上下两栏
-    /// 3=九宫格 4=康奈尔(竖线 30% 线索栏 + 横线 75% 总结栏);
-    /// 切分点吸附到最近的网格线,线宽 1.5px(主列全 alpha + 邻列半 alpha)。
-    fn draw_grid(&mut self, divider: i32) {
+    /// `show_grid`:显示网格开关,只门控细网格 + 屏幕分界线两层;
+    /// `divider`:分栏参考线(独立开关, 与 macOS 同款)——0=无 1=左右两栏
+    /// 2=上下两栏 3=九宫格 4=康奈尔(竖线 30% 线索栏 + 横线 75% 总结栏);
+    /// 切分点吸附到最近的网格线(网格关闭时仍按网格大小吸附),线宽 1.5px
+    /// (主列全 alpha + 邻列半 alpha)。两个开关互不依赖, 各画各层。
+    fn draw_grid(&mut self, show_grid: bool, divider: i32) {
         // 网格尺寸:面板「网格大小」20/40/80,10..200 钳制(macOS 同键)
         let GAP: f64 = grid_size();
         const GA: u8 = 38; // 0.15 * 255
@@ -351,71 +353,73 @@ impl OverlayCanvas {
         unsafe {
             let bits = self.bits;
 
-            // 细网格:每 GAP 一格,统一淡细线
-            let kx0 = (cx0 / GAP).floor() as i64 - 1;
-            let kx1 = (cx1 / GAP).floor() as i64 + 1;
-            let mut k = kx0;
-            while k <= kx1 {
-                let gx = ((k as f64 * GAP - pan_x) * zoom).round() as i32;
-                if gx >= 0 && gx < w {
-                    for y in 0..h {
-                        let i = ((y as usize) * (w as usize) + gx as usize) * 4;
-                        *bits.add(i) = GR; // B
-                        *bits.add(i + 1) = GR; // G
-                        *bits.add(i + 2) = GR; // R
-                        *bits.add(i + 3) = GA; // A
-                    }
-                }
-                k += 1;
-            }
-            let ky0 = (cy0 / GAP).floor() as i64 - 1;
-            let ky1 = (cy1 / GAP).floor() as i64 + 1;
-            let mut k = ky0;
-            while k <= ky1 {
-                let gy = ((k as f64 * GAP - pan_y) * zoom).round() as i32;
-                if gy >= 0 && gy < h {
-                    for x in 0..w {
-                        let i = ((gy as usize) * (w as usize) + x as usize) * 4;
-                        *bits.add(i) = GR;
-                        *bits.add(i + 1) = GR;
-                        *bits.add(i + 2) = GR;
-                        *bits.add(i + 3) = GA;
-                    }
-                }
-                k += 1;
-            }
-
-            // 分界线:只在「屏幕尺寸」整数倍处加深加粗(无限画布 = 每屏一条参考线)
-            if infinite {
-                let bw = w as f64;
-                let bh = h as f64;
-                let mut k = ((cx0 / bw).floor() as i64) - 1;
-                while k <= ((cx1 / bw).floor() as i64) + 1 {
-                    let gx = ((k as f64 * bw - pan_x) * zoom).round() as i32;
+            if show_grid {
+                // 细网格:每 GAP 一格,统一淡细线
+                let kx0 = (cx0 / GAP).floor() as i64 - 1;
+                let kx1 = (cx1 / GAP).floor() as i64 + 1;
+                let mut k = kx0;
+                while k <= kx1 {
+                    let gx = ((k as f64 * GAP - pan_x) * zoom).round() as i32;
                     if gx >= 0 && gx < w {
                         for y in 0..h {
                             let i = ((y as usize) * (w as usize) + gx as usize) * 4;
-                            *bits.add(i) = BOLD_GR;
-                            *bits.add(i + 1) = BOLD_GR;
-                            *bits.add(i + 2) = BOLD_GR;
-                            *bits.add(i + 3) = BOLD_GA;
+                            *bits.add(i) = GR; // B
+                            *bits.add(i + 1) = GR; // G
+                            *bits.add(i + 2) = GR; // R
+                            *bits.add(i + 3) = GA; // A
                         }
                     }
                     k += 1;
                 }
-                let mut k = ((cy0 / bh).floor() as i64) - 1;
-                while k <= ((cy1 / bh).floor() as i64) + 1 {
-                    let gy = ((k as f64 * bh - pan_y) * zoom).round() as i32;
+                let ky0 = (cy0 / GAP).floor() as i64 - 1;
+                let ky1 = (cy1 / GAP).floor() as i64 + 1;
+                let mut k = ky0;
+                while k <= ky1 {
+                    let gy = ((k as f64 * GAP - pan_y) * zoom).round() as i32;
                     if gy >= 0 && gy < h {
                         for x in 0..w {
                             let i = ((gy as usize) * (w as usize) + x as usize) * 4;
-                            *bits.add(i) = BOLD_GR;
-                            *bits.add(i + 1) = BOLD_GR;
-                            *bits.add(i + 2) = BOLD_GR;
-                            *bits.add(i + 3) = BOLD_GA;
+                            *bits.add(i) = GR;
+                            *bits.add(i + 1) = GR;
+                            *bits.add(i + 2) = GR;
+                            *bits.add(i + 3) = GA;
                         }
                     }
                     k += 1;
+                }
+
+                // 分界线:只在「屏幕尺寸」整数倍处加深加粗(无限画布 = 每屏一条参考线)
+                if infinite {
+                    let bw = w as f64;
+                    let bh = h as f64;
+                    let mut k = ((cx0 / bw).floor() as i64) - 1;
+                    while k <= ((cx1 / bw).floor() as i64) + 1 {
+                        let gx = ((k as f64 * bw - pan_x) * zoom).round() as i32;
+                        if gx >= 0 && gx < w {
+                            for y in 0..h {
+                                let i = ((y as usize) * (w as usize) + gx as usize) * 4;
+                                *bits.add(i) = BOLD_GR;
+                                *bits.add(i + 1) = BOLD_GR;
+                                *bits.add(i + 2) = BOLD_GR;
+                                *bits.add(i + 3) = BOLD_GA;
+                            }
+                        }
+                        k += 1;
+                    }
+                    let mut k = ((cy0 / bh).floor() as i64) - 1;
+                    while k <= ((cy1 / bh).floor() as i64) + 1 {
+                        let gy = ((k as f64 * bh - pan_y) * zoom).round() as i32;
+                        if gy >= 0 && gy < h {
+                            for x in 0..w {
+                                let i = ((gy as usize) * (w as usize) + x as usize) * 4;
+                                *bits.add(i) = BOLD_GR;
+                                *bits.add(i + 1) = BOLD_GR;
+                                *bits.add(i + 2) = BOLD_GR;
+                                *bits.add(i + 3) = BOLD_GA;
+                            }
+                        }
+                        k += 1;
+                    }
                 }
             }
 

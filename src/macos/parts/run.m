@@ -92,10 +92,10 @@ static void flush_tunnel_to_layer(void) {
     return;
   }
 
-  // Grid — drawn directly in the view, gated by its own toggle (显示网格).
-  // When 网格跟随涂鸦 is on, it hides with the strokes in 飘渺画布涂鸦模式;
-  // otherwise it stays visible regardless. Always sits behind the strokes.
-  if (g_show_grid && !s_tun_active &&
+  // Grid + divider lines — drawn directly in the view behind the strokes.
+  // 显示网格(细网格+屏幕分界线)与分栏参考线是两个独立设置, 各画各层;
+  // 网格跟随涂鸦 on 时两者都随笔迹隐藏(飘渺画布涂鸦模式)。
+  if ((g_show_grid || g_grid_divider > 0) && !s_tun_active &&
       (g_strokes_visible || !g_grid_follow_strokes)) {
     NSRect bounds = [self bounds];
     // 两种模式统一:视图 = (画布 − 镜头偏移) × 缩放。
@@ -120,48 +120,53 @@ static void flush_tunnel_to_layer(void) {
     long ky0 = (long)floor((pan_y + (bounds.size.height - vy1) / z) / gs) - 1;
     long ky1 = (long)floor((pan_y + (bounds.size.height - vy0) / z) / gs) + 1;
 
-    // 细网格:每 gs 一格,统一淡细线(不再每 4 格加粗)。
-    CGContextSetStrokeColorWithColor(
-        ctx, [[NSColor colorWithWhite:0.5 alpha:0.15] CGColor]);
-    CGContextSetLineWidth(ctx, 0.5);
-    for (long k = kx0; k <= kx1; k++) {
-      CGFloat gx = (k * gs - pan_x) * z;
-      CGContextMoveToPoint(ctx, gx, 0);
-      CGContextAddLineToPoint(ctx, gx, bounds.size.height);
-    }
-    for (long k = ky0; k <= ky1; k++) {
-      CGFloat gy = bounds.size.height - ((k * gs - pan_y) * z);
-      CGContextMoveToPoint(ctx, 0, gy);
-      CGContextAddLineToPoint(ctx, bounds.size.width, gy);
-    }
-    CGContextStrokePath(ctx);
-
-    // 分界线:只在"屏幕尺寸"为单位处加深加粗
-    // (活页本 = 页边界;无限画布 = 每屏一条参考线)。
+    // 屏幕单位索引(分界线与分栏吸附共用):
+    // 活页本 = 页边界;无限画布 = 每屏一条参考线。
     double bw = (g_screen_w > 0) ? (double)g_screen_w : gs * 4.0;
     double bh = (g_screen_h > 0) ? (double)g_screen_h : gs * 4.0;
-    CGContextSetStrokeColorWithColor(
-        ctx, [[NSColor colorWithWhite:0.5 alpha:0.55] CGColor]);
-    CGContextSetLineWidth(ctx, 1.0);
     long jx0 = (long)floor((pan_x + vx0 / z) / bw) - 1;
     long jx1 = (long)floor((pan_x + vx1 / z) / bw) + 1;
-    for (long k = jx0; k <= jx1; k++) {
-      CGFloat gx = (k * bw - pan_x) * z;
-      CGContextMoveToPoint(ctx, gx, 0);
-      CGContextAddLineToPoint(ctx, gx, bounds.size.height);
-    }
     long jy0 = (long)floor((pan_y + (bounds.size.height - vy1) / z) / bh) - 1;
     long jy1 = (long)floor((pan_y + (bounds.size.height - vy0) / z) / bh) + 1;
-    for (long k = jy0; k <= jy1; k++) {
-      CGFloat gy = bounds.size.height - ((k * bh - pan_y) * z);
-      CGContextMoveToPoint(ctx, 0, gy);
-      CGContextAddLineToPoint(ctx, bounds.size.width, gy);
-    }
-    CGContextStrokePath(ctx);
 
-    // 分栏参考线(纯视觉):左右两栏/上下两栏 = 每屏单位 1/2 处,
-    // 九宫格 = 1/3、2/3 处。切分点吸附到最近的网格线(保证加粗的
-    // 永远是真实网格线),每屏单位各自吸附,线宽比分界线粗半档。
+    if (g_show_grid) {
+      // 细网格:每 gs 一格,统一淡细线(不再每 4 格加粗)。
+      CGContextSetStrokeColorWithColor(
+          ctx, [[NSColor colorWithWhite:0.5 alpha:0.15] CGColor]);
+      CGContextSetLineWidth(ctx, 0.5);
+      for (long k = kx0; k <= kx1; k++) {
+        CGFloat gx = (k * gs - pan_x) * z;
+        CGContextMoveToPoint(ctx, gx, 0);
+        CGContextAddLineToPoint(ctx, gx, bounds.size.height);
+      }
+      for (long k = ky0; k <= ky1; k++) {
+        CGFloat gy = bounds.size.height - ((k * gs - pan_y) * z);
+        CGContextMoveToPoint(ctx, 0, gy);
+        CGContextAddLineToPoint(ctx, bounds.size.width, gy);
+      }
+      CGContextStrokePath(ctx);
+
+      // 分界线:只在"屏幕尺寸"为单位处加深加粗。
+      CGContextSetStrokeColorWithColor(
+          ctx, [[NSColor colorWithWhite:0.5 alpha:0.55] CGColor]);
+      CGContextSetLineWidth(ctx, 1.0);
+      for (long k = jx0; k <= jx1; k++) {
+        CGFloat gx = (k * bw - pan_x) * z;
+        CGContextMoveToPoint(ctx, gx, 0);
+        CGContextAddLineToPoint(ctx, gx, bounds.size.height);
+      }
+      for (long k = jy0; k <= jy1; k++) {
+        CGFloat gy = bounds.size.height - ((k * bh - pan_y) * z);
+        CGContextMoveToPoint(ctx, 0, gy);
+        CGContextAddLineToPoint(ctx, bounds.size.width, gy);
+      }
+      CGContextStrokePath(ctx);
+    }
+
+    // 分栏参考线(纯视觉, 独立于显示网格开关):左右两栏/上下两栏 =
+    // 每屏单位 1/2 处,九宫格 = 1/3、2/3 处。切分点吸附到最近的网格线
+    // (保证加粗的永远是真实网格线; 网格关闭时仍按网格大小吸附,
+    // 重开网格不会错位),每屏单位各自吸附,线宽比分界线粗半档。
     if (g_grid_divider > 0) {
       static const double kHalf[1] = {0.5};
       static const double kThirds[2] = {1.0 / 3.0, 2.0 / 3.0};
