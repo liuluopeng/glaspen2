@@ -911,6 +911,29 @@ pub extern "C" fn glaspen2_notify_stroke_committed() {
     crate::ocr::on_stroke_committed(crate::state::current_screen_id());
 }
 
+/// 气泡消息「冷启动」分段的笔状态喂入(三个符号, macOS event tap 与
+/// Windows HID 报告共用同一语义):
+/// - `glaspen2_bubble_pen_activity`: 笔活动心跳(悬空移动/落笔/拖动/抬笔),
+///   悬停构思期间持续刷新, 消息不被"静默超时"切断;
+/// - `glaspen2_bubble_pen_back`: 笔回到感应区(macOS proximity enter),
+///   距离开 <300ms 视为笔↔橡皮切换, 撤销冷标记;
+/// - `glaspen2_bubble_pen_gone`: 笔离开感应区(macOS proximity exit /
+///   无 proximity 平板的真鼠标移动回退), 下一次落笔必开新消息。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_bubble_pen_activity() {
+    bubbles::on_pen_activity();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_bubble_pen_back() {
+    bubbles::on_pen_back();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_bubble_pen_gone() {
+    bubbles::on_pen_gone();
+}
+
 /// Eraser: remove strokes overlapped by the just-finished eraser stroke.
 /// The eraser stroke itself produced no DB points; its pending DB row is
 /// deleted here along with any hit strokes (memory + DB).

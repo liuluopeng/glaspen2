@@ -88,6 +88,13 @@ extern int glaspen2_modeler_point_count(void);
 extern void glaspen2_modeler_get_point(int idx, double *x, double *y, double *w);
 extern void glaspen2_modeler_clear_buffer(void);
 extern void glaspen2_modeler_commit_to_strokes(double r, double g, double b);
+
+// 气泡消息「冷启动」分段的笔状态喂入(bubbles.rs):
+// 活动心跳 = 悬空移动/落笔/拖动/抬笔;pen_gone = proximity 离开;
+// pen_back = proximity 进入(极近的退+进 = 笔↔橡皮切换,撤销冷标记)
+extern void glaspen2_bubble_pen_activity(void);
+extern void glaspen2_bubble_pen_back(void);
+extern void glaspen2_bubble_pen_gone(void);
 extern void glaspen2_modeler_erase_finish(void);
 extern int glaspen2_stroke_bbox(double *x_min, double *y_min, double *x_max, double *y_max);
 extern void glaspen2_save_svg(void);

@@ -140,6 +140,9 @@ fn redraw_pen(state: &mut OverlayState, new_pts: &[(f32, f32, f32)]) -> Option<R
 /// x/y 为画布坐标(无限画布下 = 视图坐标经镜头逆变换);笔迹以画布坐标
 /// 入库,绘制时再经镜头变换回视图。
 fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) -> Option<RECT> {
+    // 气泡消息冷启动分段: 每个 HID 报告(含悬空)都算笔活动心跳, 悬停构思
+    // 不拆消息; Windows 无显式"笔离开"信号, 冷启动由"笔静默超阈值"覆盖。
+    glaspen_core::export::glaspen2_bubble_pen_activity();
     // 模型器要求首事件 Down,后续 Move,抬起 Up
     let event_type = if !down {
         ModelerInputEventType::Up
