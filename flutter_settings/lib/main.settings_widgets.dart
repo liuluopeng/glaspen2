@@ -906,46 +906,104 @@ extension _SettingsWidgetsUi on _SettingsPageState {
 
     return Align(
       alignment: Alignment.centerRight,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(56, 6, 12, 6),
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFFD9F0FF), // 淡蓝 = 用户口吻(发送侧)
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(12),
-            topRight: Radius.circular(12),
-            bottomLeft: Radius.circular(12),
-            bottomRight: Radius.circular(2), // 右下小角 = 发送侧标识
+      child: GestureDetector(
+        onSecondaryTapUp: (d) => _showBubbleMenu(d.globalPosition, m),
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(56, 6, 12, 6),
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFD9F0FF), // 淡蓝 = 用户口吻(发送侧)
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(12),
+              topRight: Radius.circular(12),
+              bottomLeft: Radius.circular(12),
+              bottomRight: Radius.circular(2), // 右下小角 = 发送侧标识
+            ),
+            border: Border.all(color: Colors.grey.shade300),
           ),
-          border: Border.all(color: Colors.grey.shade300),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ink,
-            const SizedBox(height: 2),
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              Text(time,
-                  style:
-                      TextStyle(fontSize: 10, color: Colors.grey.shade600)),
-              SizedBox(
-                width: 22,
-                height: 22,
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  iconSize: 15,
-                  visualDensity: VisualDensity.compact,
-                  tooltip: replaying ? l.stopReplay : l.replayBubble,
-                  icon: Icon(replaying ? Icons.stop : Icons.play_arrow),
-                  onPressed: () => _startReplay(m),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ink,
+              const SizedBox(height: 2),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(time,
+                    style:
+                        TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+                SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    iconSize: 15,
+                    visualDensity: VisualDensity.compact,
+                    tooltip: replaying ? l.stopReplay : l.replayBubble,
+                    icon: Icon(replaying ? Icons.stop : Icons.play_arrow),
+                    onPressed: () => _startReplay(m),
+                  ),
                 ),
-              ),
-            ]),
-          ],
+              ]),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  /// 气泡右键菜单: 复制为 SVG 动画(粘贴进浏览器/文档即播放手写显现)。
+  /// 菜单锚点照 _showDetailMenu 同款: 相对 Overlay 反算 + 夹紧内缘
+  /// (RelativeRect 的 right/bottom 是到边缘的距离, 不是坐标)。
+  void _showBubbleMenu(Offset globalPos, Map<String, dynamic> m) {
+    final hasInk = (m['strokes'] as List?)?.isNotEmpty ?? false;
+    if (!hasInk) return;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final rel = overlay.globalToLocal(globalPos);
+    const menuW = 200.0, menuH = 44.0;
+    final dx = rel.dx
+        .clamp(8.0, (overlay.size.width - menuW).clamp(8.0, double.infinity));
+    final dy = rel.dy
+        .clamp(8.0, (overlay.size.height - menuH).clamp(8.0, double.infinity));
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        dx,
+        dy,
+        (overlay.size.width - dx - 1).clamp(0.0, double.infinity),
+        (overlay.size.height - dy - 1).clamp(0.0, double.infinity),
+      ),
+      items: [
+        PopupMenuItem(
+            value: 'svg', height: 36,
+            child: Row(children: [
+              Icon(Icons.copy, size: 16),
+              SizedBox(width: 8),
+              Text(AppLocalizations.of(context)!.bubbleCopySvg,
+                  style: TextStyle(fontSize: 13)),
+            ])),
+      ],
+    ).then((v) {
+      if (v == 'svg') unawaited(_copyBubbleSvg(m));
+    });
+  }
+
+  Future<void> _copyBubbleSvg(Map<String, dynamic> m) async {
+    try {
+      final strokes =
+          (m['strokes'] as List).cast<Map<String, dynamic>>();
+      final svg = _bubbleSvgAnimation(
+          strokes, _BubbleTimeline.revealRate * _bubbleReplaySpeed);
+      if (svg.isEmpty) return;
+      await Clipboard.setData(ClipboardData(text: svg));
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context)!.bubbleSvgCopied),
+        duration: const Duration(seconds: 2),
+      ));
+    } catch (e) {
+      _toastError('$e');
+    }
   }
 }
 
@@ -1049,16 +1107,18 @@ class _BubbleStrokePainter extends CustomPainter {
   bool shouldRepaint(covariant _BubbleStrokePainter old) => true;
 }
 
-/// 重播时间线: 第 i 笔从 starts[i] 秒开始, 画 durs[i] 秒; 笔内按弧长匀速
-/// (基准速率见 revealRate), 笔间停顿用真实 gap(每段钳 2s, 防长思考拖垮
-/// 重播)。静态绘制 = progress 1.0, 与时间线无耦合。
+/// 重播时间线: 第 i 笔从 starts[i] 秒开始, 画 arcs[i]/rate 秒; 笔内按弧长
+/// 匀速, 笔间停顿用真实 gap(每段钳 2s, 防长思考拖垮重播)。静态绘制 =
+/// progress 1.0, 与时间线无耦合。rate 可调(重播 = 默认 1200, SVG 动画 =
+/// 1200 × 速度倍率)。
 class _BubbleTimeline {
   static const revealRate = 1200.0; // px/s
   final List<double> starts = [];
   final List<double> arcs = [];
   double total = 0;
 
-  _BubbleTimeline(List<Map<String, dynamic>> strokes) {
+  _BubbleTimeline(List<Map<String, dynamic>> strokes,
+      {double rate = revealRate}) {
     for (final st in strokes) {
       final gapMs = ((st['g'] as num?)?.toDouble() ?? 0.0).clamp(0.0, 2000.0);
       total += gapMs / 1000.0;
@@ -1071,7 +1131,123 @@ class _BubbleTimeline {
         arc += math.sqrt(dx * dx + dy * dy);
       }
       arcs.add(arc);
-      total += arc / revealRate;
+      total += arc / rate;
     }
   }
+}
+
+/// SVG 数值格式化(2 位小数足够: 坐标已按 0.1px 取整, 宽度按 0.25 分桶)。
+String _svgN(num v) => v.toStringAsFixed(2);
+
+/// SVG SMIL 时间格式化(秒, 3 位小数)。
+String _svgT(double s) => '${s.toStringAsFixed(3)}s';
+
+/// 把一条消息的笔迹烘焙成 SMIL「手写显现」动画 SVG(自包含文本, 粘进
+/// 浏览器/支持 SVG 的文档即播放): 每笔按宽度 0.25px 分桶切成 run
+/// (run 内宽度一致 = 一个 path), 用虚线法逐段显现 —— 初始
+/// dasharray/dashoffset = run 弧长(不可见), animate 到 0(fill freeze)。
+/// 时间线与重播同源(_BubbleTimeline): 笔间真实停顿(g, 钳 2s)+
+/// 笔内按弧长匀速(rate px/s, 复制时 = 1200 × 面板速度倍率)。
+/// 取舍: 忽略 SMIL 的静态渲染器显示首帧 = 空白(观看书写过程的第一帧
+/// 天然为空); 单点笔画用实心圆点淡入。
+String _bubbleSvgAnimation(List<Map<String, dynamic>> strokes, double rate) {
+  if (strokes.isEmpty) return '';
+
+  // 包围盒(与 _BubbleStrokePainter 同源, pad 2)
+  double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+  for (final st in strokes) {
+    final pts = (st['pts'] as List).cast<num>();
+    for (var i = 0; i + 2 < pts.length; i += 3) {
+      final x = pts[i].toDouble();
+      final y = pts[i + 1].toDouble();
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (minX > maxX || minY > maxY) return '';
+  const pad = 2.0;
+  final vx = minX - pad, vy = minY - pad;
+  final vw = maxX - minX + 2 * pad, vh = maxY - minY + 2 * pad;
+
+  final tl = _BubbleTimeline(strokes, rate: rate);
+  final buf = StringBuffer();
+  buf.write('<svg xmlns="http://www.w3.org/2000/svg" '
+      'viewBox="${_svgN(vx)} ${_svgN(vy)} ${_svgN(vw)} ${_svgN(vh)}" '
+      'width="${_svgN(vw)}" height="${_svgN(vh)}">\n');
+
+  for (var si = 0; si < strokes.length; si++) {
+    final st = strokes[si];
+    final pts = (st['pts'] as List).cast<num>();
+    if (pts.length < 3) continue;
+    final rgb =
+        ((st['rgb'] as num).toInt() & 0xFFFFFF).toRadixString(16).padLeft(6, '0');
+    final strokeBegin = tl.starts[si];
+    final strokeArc = tl.arcs[si];
+    final strokeDur = (strokeArc / rate).clamp(0.01, double.infinity).toDouble();
+    int nP(int p) => 3 * p; // 点 p 的 pts 下标基址
+    double px(int p) => pts[nP(p)].toDouble();
+    double py(int p) => pts[nP(p) + 1].toDouble();
+    double pw(int p) => pts[nP(p) + 2].toDouble();
+    double qx(double w) => (w * 4).round() / 4; // 0.25px 宽度分桶
+
+    if (pts.length == 3) {
+      // 单点笔画: 实心圆点半径 = 半宽, 淡入
+      final r = (pw(0) * 0.5).clamp(0.3, double.infinity);
+      buf.write('<circle cx="${_svgN(px(0))}" cy="${_svgN(py(0))}" '
+          'r="${_svgN(r)}" fill="#$rgb" opacity="0">'
+          '<animate attributeName="opacity" from="0" to="1" '
+          'begin="${_svgT(strokeBegin)}" dur="0.01s" fill="freeze"/>'
+          '</circle>\n');
+      continue;
+    }
+    if (strokeArc <= 0) {
+      // 退化(点全部重叠): 整笔立即淡入
+      final d = StringBuffer('M${_svgN(px(0))} ${_svgN(py(0))}');
+      for (var p = 1; 3 * p + 2 < pts.length; p++) {
+        d.write(' L${_svgN(px(p))} ${_svgN(py(p))}');
+      }
+      buf.write('<path d="$d" fill="none" stroke="#$rgb" '
+          'stroke-width="${_svgN(pw(0))}" stroke-linecap="round" '
+          'stroke-linejoin="round" opacity="0">'
+          '<animate attributeName="opacity" from="0" to="1" '
+          'begin="${_svgT(strokeBegin)}" dur="0.01s" fill="freeze"/></path>\n');
+      continue;
+    }
+
+    // 段序列(段 k = 点 k→k+1, 宽度取到达点 w[k+1], 与 painter 同约定)
+    final nSeg = pts.length ~/ 3 - 1;
+    final cum = List<double>.filled(nSeg + 1, 0); // 段起点的累计弧长
+    for (var k = 0; k < nSeg; k++) {
+      final dx = px(k + 1) - px(k), dy = py(k + 1) - py(k);
+      cum[k + 1] = cum[k] + math.sqrt(dx * dx + dy * dy);
+    }
+    // 相邻同宽度段合并为一个 run(一个 path)
+    var a = 0;
+    while (a < nSeg) {
+      var b = a;
+      while (b + 1 < nSeg && qx(pw(b + 2)) == qx(pw(a + 1))) {
+        b++;
+      }
+      final runArc = cum[b + 1] - cum[a];
+      final begin = strokeBegin + strokeDur * (cum[a] / strokeArc);
+      final dur = (strokeDur * (runArc / strokeArc)).clamp(0.01, double.infinity);
+      final dash = runArc + 0.01; // +ε: 零长 run 也能画出一个圆帽点
+      final d = StringBuffer('M${_svgN(px(a))} ${_svgN(py(a))}');
+      for (var p = a + 1; p <= b + 1; p++) {
+        d.write(' L${_svgN(px(p))} ${_svgN(py(p))}');
+      }
+      buf.write('<path d="$d" fill="none" stroke="#$rgb" '
+          'stroke-width="${_svgN(qx(pw(a + 1)))}" stroke-linecap="round" '
+          'stroke-linejoin="round" stroke-dasharray="${_svgN(dash)}" '
+          'stroke-dashoffset="${_svgN(dash)}">'
+          '<animate attributeName="stroke-dashoffset" '
+          'from="${_svgN(dash)}" to="0" begin="${_svgT(begin)}" '
+          'dur="${_svgT(dur)}" fill="freeze"/></path>\n');
+      a = b + 1;
+    }
+  }
+  buf.write('</svg>\n');
+  return buf.toString();
 }

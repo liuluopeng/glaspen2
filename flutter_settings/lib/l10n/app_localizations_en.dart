@@ -552,6 +552,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get refreshBubbles => 'Refresh';
 
   @override
+  String get bubbleCopySvg => 'Copy as animated SVG';
+
+  @override
+  String get bubbleSvgCopied => 'Animated SVG copied to clipboard';
+
+  @override
   String get replayBubble => 'Replay';
 
   @override

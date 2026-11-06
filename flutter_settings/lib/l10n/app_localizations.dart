@@ -1076,6 +1076,18 @@ abstract class AppLocalizations {
   /// **'刷新'**
   String get refreshBubbles;
 
+  /// No description provided for @bubbleCopySvg.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制为 SVG 动画'**
+  String get bubbleCopySvg;
+
+  /// No description provided for @bubbleSvgCopied.
+  ///
+  /// In zh, this message translates to:
+  /// **'SVG 动画已复制到剪贴板'**
+  String get bubbleSvgCopied;
+
   /// No description provided for @replayBubble.
   ///
   /// In zh, this message translates to:

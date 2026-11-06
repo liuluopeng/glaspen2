@@ -539,6 +539,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get refreshBubbles => '刷新';
 
   @override
+  String get bubbleCopySvg => '复制为 SVG 动画';
+
+  @override
+  String get bubbleSvgCopied => 'SVG 动画已复制到剪贴板';
+
+  @override
   String get replayBubble => '重播';
 
   @override

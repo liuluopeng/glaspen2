@@ -162,6 +162,8 @@
   "showBubbleTabSub": "在 tab 栏显示手写消息回顾",
   "bubblesEmpty": "还没有消息。去涂几笔 —— 停顿一下或换个地方写, 就是一条新消息",
   "refreshBubbles": "刷新",
+  "bubbleCopySvg": "复制为 SVG 动画",
+  "bubbleSvgCopied": "SVG 动画已复制到剪贴板",
   "replayBubble": "重播",
   "stopReplay": "停止",
   "bubbleReplaySpeed": "重播速度",

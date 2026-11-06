@@ -162,6 +162,8 @@
   "showBubbleTabSub": "Show a handwriting review tab",
   "bubblesEmpty": "Nothing yet. Doodle a bit — a pause or a jump elsewhere becomes a new message",
   "refreshBubbles": "Refresh",
+  "bubbleCopySvg": "Copy as animated SVG",
+  "bubbleSvgCopied": "Animated SVG copied to clipboard",
   "replayBubble": "Replay",
   "stopReplay": "Stop",
   "bubbleReplaySpeed": "Replay speed",
