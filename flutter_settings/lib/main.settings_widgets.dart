@@ -842,7 +842,9 @@ extension _SettingsWidgetsUi on _SettingsPageState {
   }
 }
 
-/// 气泡内的笔迹重绘: ShareStroke 形状的点列 → 等比折线(线宽随缩放, 限下限)。
+/// 气泡内的笔迹重绘: ShareStroke 形状的点列 → 等比重绘。
+/// 每段按该点自带的压感宽度逐段绘制(与覆盖层 cairo raw_draw_segment
+/// 同款), round cap 让相邻段自然融合; 宽度随缩放 k, 下限 1 屏幕像素。
 class _BubbleStrokePainter extends CustomPainter {
   final List<Map<String, dynamic>> strokes;
   _BubbleStrokePainter(this.strokes);
@@ -873,24 +875,37 @@ class _BubbleStrokePainter extends CustomPainter {
     canvas.translate(pad - minX * k, pad - minY * k);
     canvas.scale(k, k);
 
+    final minW = 1.0 / k; // 下限 = 缩放后仍至少 1 屏幕像素
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
     for (final st in strokes) {
       final rgb = (st['rgb'] as num).toInt() & 0xFFFFFF;
       final pts = (st['pts'] as List).cast<num>();
       if (pts.length < 3) continue;
-      final path = Path()
-        ..moveTo(pts[0].toDouble(), pts[1].toDouble());
-      for (var i = 3; i + 2 < pts.length; i += 3) {
-        path.lineTo(pts[i].toDouble(), pts[i + 1].toDouble());
+      paint.color = Color(0xFF000000 | rgb);
+      final x0 = pts[0].toDouble(), y0 = pts[1].toDouble();
+      final w0 = pts[2].toDouble();
+      if (pts.length == 3) {
+        // 单点笔画: 实心圆点(半径 = 半宽), 与 cairo 起笔圆点一致
+        paint
+          ..style = PaintingStyle.fill
+          ..strokeWidth = 0;
+        canvas.drawCircle(Offset(x0, y0), (w0 < minW ? minW : w0) * 0.5, paint);
+        paint.style = PaintingStyle.stroke;
+        continue;
       }
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = Color(0xFF000000 | rgb)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = (2.0 / k) < 1.0 ? 1.0 : 2.0 / k
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round,
-      );
+      var px = x0, py = y0;
+      for (var i = 3; i + 2 < pts.length; i += 3) {
+        final x = pts[i].toDouble();
+        final y = pts[i + 1].toDouble();
+        final w = pts[i + 2].toDouble(); // 该点压感宽度(绝对线宽)
+        paint.strokeWidth = w < minW ? minW : w;
+        canvas.drawLine(Offset(px, py), Offset(x, y), paint);
+        px = x;
+        py = y;
+      }
     }
   }
 
