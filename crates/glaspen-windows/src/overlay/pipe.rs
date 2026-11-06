@@ -607,7 +607,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             glaspen_core::export::glaspen2_is_launch_at_login() == 1;
         // 密码本体不回读,只回是否已保存(macOS 同款)
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\"}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"showBubbleTab\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\"}}}}\n",
             color,
             width,
             outline,
@@ -634,6 +634,11 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             chat_integration,
             share_canvas,
             show_free_canvas,
+            glaspen_core::runtime()
+                .block_on(glaspen_core::db::load_setting("show_bubble_tab"))
+                .and_then(|v| v.parse::<i32>().ok())
+                .unwrap_or(0)
+                != 0,
             if chat_has_password { "true" } else { "false" },
             json_escape(&chat_api_base),
             json_escape(&chat_user),
@@ -835,6 +840,14 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             if let Some(on) = json_get_bool(line, "value") {
                 glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
                     "show_free_canvas",
+                    if on { "1" } else { "0" },
+                ));
+            }
+        } else if key == "showBubbleTab" {
+            // 「气泡消息」tab 开关:纯面板可见性设置,落库即可(macOS 同键)
+            if let Some(on) = json_get_bool(line, "value") {
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "show_bubble_tab",
                     if on { "1" } else { "0" },
                 ));
             }
