@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' hide Size;
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData, rootBundle;
@@ -165,7 +166,7 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderStateMixin {
+class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMixin {
   final _columnKey = GlobalKey();
   late SettingsBridge _bridge;
   late TabController _tabController;
@@ -221,6 +222,12 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   bool _bubblesLoading = false;
   List<Map<String, dynamic>> _bubbleMsgs = const [];
   final ScrollController _bubbleScroll = ScrollController();
+  // 气泡重播: 速度倍率(1/2/4)/ 播完停在最后一帧(关 = 循环)/ 进 tab 自动重播最新
+  int _bubbleReplaySpeed = 1;
+  bool _bubbleReplayHoldLast = true;
+  bool _bubbleReplayAuto = false;
+  int? _replayMsgId; // 正在重播的消息 id(null = 无)
+  late final AnimationController _replayCtrl;
   // 共享画布上行开关(活页本 tab;仅集成开启时可见/生效)
   bool _shareCanvas = false;
 
@@ -292,6 +299,18 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     });
     _tabController.addListener(_onTabChanged);
     _gridScroll.addListener(_onGridScroll);
+    // 气泡重播: 播完按设置决定停在满帧还是停 600ms 后循环
+    _replayCtrl = AnimationController(vsync: this)
+      ..addStatusListener((status) {
+        if (status != AnimationStatus.completed) return;
+        if (!_bubbleReplayHoldLast && mounted) {
+          Future.delayed(const Duration(milliseconds: 600), () {
+            if (mounted && _replayMsgId != null && !_bubbleReplayHoldLast) {
+              _replayCtrl.forward(from: 0);
+            }
+          });
+        }
+      });
     _bridge = createBridge();
     _bridge.onSettingsChanged(_onSettingsChanged);
     // Windows 管道连接成功后重新拉取设置(macOS 通道立即可用,不影响)
@@ -308,6 +327,7 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     _gridScroll.dispose();
     _tabController.dispose();
     _bubbleScroll.dispose();
+    _replayCtrl.dispose();
     _reloadTimer?.cancel();
     _updSub?.cancel(); // 还在下载时销毁面板 = 取消下载
     _chatApiBase.dispose();
@@ -395,6 +415,8 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
     final bubbleIdx = 2 + (_showFreeCanvas ? 1 : 0);
     if (_showBubbleTab && idx == bubbleIdx) {
       _loadBubbles();
+    } else {
+      _stopReplay(); // 离开气泡 tab = 停止重播(未在播时是无害空操作)
     }
   }
 

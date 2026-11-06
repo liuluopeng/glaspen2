@@ -607,7 +607,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             glaspen_core::export::glaspen2_is_launch_at_login() == 1;
         // 密码本体不回读,只回是否已保存(macOS 同款)
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"showBubbleTab\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\"}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"showBubbleTab\":{},\"bubbleReplaySpeed\":{},\"bubbleReplayHoldLast\":{},\"bubbleReplayAuto\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\"}}}}\n",
             color,
             width,
             outline,
@@ -636,6 +636,25 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             show_free_canvas,
             glaspen_core::runtime()
                 .block_on(glaspen_core::db::load_setting("show_bubble_tab"))
+                .and_then(|v| v.parse::<i32>().ok())
+                .unwrap_or(0)
+                != 0,
+            // 气泡重播: 速度(缺省 1)/ 停在最后一帧(缺省开)/ 自动重播(缺省关)
+            {
+                let sp = glaspen_core::runtime()
+                    .block_on(glaspen_core::db::load_setting("bubble_replay_speed"))
+                    .and_then(|v| v.parse::<i32>().ok())
+                    .unwrap_or(1);
+                sp.clamp(1, 8)
+            },
+            {
+                let h = glaspen_core::runtime()
+                    .block_on(glaspen_core::db::load_setting("bubble_replay_hold_last"))
+                    .and_then(|v| v.parse::<i32>().ok());
+                h.map(|n| n != 0).unwrap_or(true) // 缺省 = 开
+            },
+            glaspen_core::runtime()
+                .block_on(glaspen_core::db::load_setting("bubble_replay_auto"))
                 .and_then(|v| v.parse::<i32>().ok())
                 .unwrap_or(0)
                 != 0,
@@ -848,6 +867,30 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             if let Some(on) = json_get_bool(line, "value") {
                 glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
                     "show_bubble_tab",
+                    if on { "1" } else { "0" },
+                ));
+            }
+        } else if key == "bubbleReplaySpeed" {
+            // 气泡重播速度倍率:落库即可(钳 1..8, macOS 同键)
+            if let Some(v) = json_get_i64(line, "value") {
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "bubble_replay_speed",
+                    &v.clamp(1, 8).to_string(),
+                ));
+            }
+        } else if key == "bubbleReplayHoldLast" {
+            // 播完停在最后一帧(默认开):落库即可
+            if let Some(on) = json_get_bool(line, "value") {
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "bubble_replay_hold_last",
+                    if on { "1" } else { "0" },
+                ));
+            }
+        } else if key == "bubbleReplayAuto" {
+            // 打开 tab 自动重播最新一条(默认关):落库即可
+            if let Some(on) = json_get_bool(line, "value") {
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "bubble_replay_auto",
                     if on { "1" } else { "0" },
                 ));
             }

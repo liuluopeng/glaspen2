@@ -1706,6 +1706,9 @@ impl SseDecode for crate::api::Settings {
         let mut var_chatIntegration = <bool>::sse_decode(deserializer);
         let mut var_showFreeCanvas = <bool>::sse_decode(deserializer);
         let mut var_showBubbleTab = <bool>::sse_decode(deserializer);
+        let mut var_bubbleReplaySpeed = <i32>::sse_decode(deserializer);
+        let mut var_bubbleReplayHoldLast = <bool>::sse_decode(deserializer);
+        let mut var_bubbleReplayAuto = <bool>::sse_decode(deserializer);
         let mut var_shareCanvas = <bool>::sse_decode(deserializer);
         let mut var_language = <String>::sse_decode(deserializer);
         return crate::api::Settings {
@@ -1738,6 +1741,9 @@ impl SseDecode for crate::api::Settings {
             chat_integration: var_chatIntegration,
             show_free_canvas: var_showFreeCanvas,
             show_bubble_tab: var_showBubbleTab,
+            bubble_replay_speed: var_bubbleReplaySpeed,
+            bubble_replay_hold_last: var_bubbleReplayHoldLast,
+            bubble_replay_auto: var_bubbleReplayAuto,
             share_canvas: var_shareCanvas,
             language: var_language,
         };
@@ -2031,6 +2037,9 @@ impl flutter_rust_bridge::IntoDart for crate::api::Settings {
             self.chat_integration.into_into_dart().into_dart(),
             self.show_free_canvas.into_into_dart().into_dart(),
             self.show_bubble_tab.into_into_dart().into_dart(),
+            self.bubble_replay_speed.into_into_dart().into_dart(),
+            self.bubble_replay_hold_last.into_into_dart().into_dart(),
+            self.bubble_replay_auto.into_into_dart().into_dart(),
             self.share_canvas.into_into_dart().into_dart(),
             self.language.into_into_dart().into_dart(),
         ]
@@ -2379,6 +2388,9 @@ impl SseEncode for crate::api::Settings {
         <bool>::sse_encode(self.chat_integration, serializer);
         <bool>::sse_encode(self.show_free_canvas, serializer);
         <bool>::sse_encode(self.show_bubble_tab, serializer);
+        <i32>::sse_encode(self.bubble_replay_speed, serializer);
+        <bool>::sse_encode(self.bubble_replay_hold_last, serializer);
+        <bool>::sse_encode(self.bubble_replay_auto, serializer);
         <bool>::sse_encode(self.share_canvas, serializer);
         <String>::sse_encode(self.language, serializer);
     }

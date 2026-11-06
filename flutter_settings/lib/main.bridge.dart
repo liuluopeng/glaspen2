@@ -127,6 +127,9 @@ class _FrbBridge extends SettingsBridge {
       'chatIntegration': s.chatIntegration,
       'showFreeCanvas': s.showFreeCanvas,
       'showBubbleTab': s.showBubbleTab,
+      'bubbleReplaySpeed': s.bubbleReplaySpeed,
+      'bubbleReplayHoldLast': s.bubbleReplayHoldLast,
+      'bubbleReplayAuto': s.bubbleReplayAuto,
       'shareCanvas': s.shareCanvas,
       'language': s.language,
     };

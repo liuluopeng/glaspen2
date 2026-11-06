@@ -33,6 +33,12 @@ extension _SettingsStateUi on _SettingsPageState {
         _flipEffect = (s['flipEffect'] as num?)?.toInt() ?? _flipEffect;
         _showFreeCanvas = _b(s['showFreeCanvas']);
         _showBubbleTab = _b(s['showBubbleTab']);
+        _bubbleReplaySpeed =
+            ((s['bubbleReplaySpeed'] as num?)?.toInt() ?? _bubbleReplaySpeed)
+                .clamp(1, 8);
+        _bubbleReplayHoldLast =
+            s['bubbleReplayHoldLast'] as bool? ?? _bubbleReplayHoldLast;
+        _bubbleReplayAuto = _b(s['bubbleReplayAuto']);
         _shareCanvas = _b(s['shareCanvas']);
         _notebookGlass = s['notebookStyle'] as bool? ?? _notebookGlass;
         _panelTransparent = _b(s['panelTransparent']);
@@ -76,6 +82,12 @@ extension _SettingsStateUi on _SettingsPageState {
           _chatIntegration = _b(settings['chatIntegration']);
           _showFreeCanvas = _b(settings['showFreeCanvas']);
           _showBubbleTab = _b(settings['showBubbleTab']);
+          _bubbleReplaySpeed =
+              ((settings['bubbleReplaySpeed'] as num?)?.toInt() ?? 1)
+                  .clamp(1, 8);
+          _bubbleReplayHoldLast =
+              settings['bubbleReplayHoldLast'] as bool? ?? true;
+          _bubbleReplayAuto = _b(settings['bubbleReplayAuto']);
           _shareCanvas = _b(settings['shareCanvas']);
           _notebookGlass = _b(settings['notebookStyle']);
           _panelTransparent = _b(settings['panelTransparent']);

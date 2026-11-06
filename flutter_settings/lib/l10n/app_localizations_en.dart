@@ -552,6 +552,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get refreshBubbles => 'Refresh';
 
   @override
+  String get replayBubble => 'Replay';
+
+  @override
+  String get stopReplay => 'Stop';
+
+  @override
+  String get bubbleReplaySpeed => 'Replay speed';
+
+  @override
+  String get bubbleReplayHoldLast => 'Hold last frame when done';
+
+  @override
+  String get bubbleReplayHoldLastSub => 'When off, the replay loops';
+
+  @override
+  String get bubbleReplayAuto => 'Auto-replay newest on open';
+
+  @override
+  String get bubbleReplayAutoSub =>
+      'Plays the newest message when entering the tab';
+
+  @override
   String get helpsAlignWhileDoodling => 'Helps align while doodling';
 
   @override

@@ -539,6 +539,27 @@ class AppLocalizationsZh extends AppLocalizations {
   String get refreshBubbles => '刷新';
 
   @override
+  String get replayBubble => '重播';
+
+  @override
+  String get stopReplay => '停止';
+
+  @override
+  String get bubbleReplaySpeed => '重播速度';
+
+  @override
+  String get bubbleReplayHoldLast => '播完停在最后一帧';
+
+  @override
+  String get bubbleReplayHoldLastSub => '关闭时循环重播';
+
+  @override
+  String get bubbleReplayAuto => '打开时自动重播最新';
+
+  @override
+  String get bubbleReplayAutoSub => '进入气泡 tab 时重播最新一条';
+
+  @override
   String get helpsAlignWhileDoodling => '涂鸦时辅助对齐';
 
   @override

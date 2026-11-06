@@ -328,6 +328,55 @@ extension _SettingsWidgetsUi on _SettingsPageState {
             _setSetting('showBubbleTab', v);
           },
         )),
+        // 气泡重播设置(嵌套在气泡 tab 开关下; 纯面板自用, 三处同步)
+        if (_showBubbleTab)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, bottom: 4),
+            child: Row(
+              children: [
+                Text(AppLocalizations.of(context)!.bubbleReplaySpeed, style: TextStyle(fontSize: 13, color: _inkFaint)),
+                const Spacer(),
+                SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  style: const ButtonStyle(
+                    visualDensity: VisualDensity(horizontal: -2, vertical: -2),
+                  ),
+                  segments: [
+                    ...[1, 2, 4].map((v) => ButtonSegment(value: v, label: Text('$v\u00d7'))),
+                  ],
+                  selected: {_bubbleReplaySpeed},
+                  onSelectionChanged: (s) {
+                    setState(() => _bubbleReplaySpeed = s.first);
+                    _setSetting('bubbleReplaySpeed', s.first);
+                  },
+                ),
+              ],
+            ),
+          ),
+        if (_showBubbleTab)
+          _tile(SwitchListTile(
+            title: Text(AppLocalizations.of(context)!.bubbleReplayHoldLast, style: TextStyle(fontSize: 15)),
+            subtitle: Text(AppLocalizations.of(context)!.bubbleReplayHoldLastSub, style: TextStyle(fontSize: 12)),
+            value: _bubbleReplayHoldLast,
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            onChanged: (v) {
+              setState(() => _bubbleReplayHoldLast = v);
+              _setSetting('bubbleReplayHoldLast', v);
+            },
+          )),
+        if (_showBubbleTab)
+          _tile(SwitchListTile(
+            title: Text(AppLocalizations.of(context)!.bubbleReplayAuto, style: TextStyle(fontSize: 15)),
+            subtitle: Text(AppLocalizations.of(context)!.bubbleReplayAutoSub, style: TextStyle(fontSize: 12)),
+            value: _bubbleReplayAuto,
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            onChanged: (v) {
+              setState(() => _bubbleReplayAuto = v);
+              _setSetting('bubbleReplayAuto', v);
+            },
+          )),
         _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.showGrid, style: TextStyle(fontSize: 15)),
           subtitle: Text(AppLocalizations.of(context)!.helpsAlignWhileDoodling, style: TextStyle(fontSize: 12)),
@@ -707,6 +756,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
   // ── 气泡消息 tab: 手写涂鸦按停顿分段, 聊天窗样式回顾(右侧 = 用户口吻) ──
 
   Future<void> _loadBubbles() async {
+    _stopReplay(); // 数据要换了, 旧重播作废
     setState(() => _bubblesLoading = true);
     try {
       // 先把进行中的段结为消息, 再拉全部
@@ -716,6 +766,10 @@ extension _SettingsWidgetsUi on _SettingsPageState {
       final v = jsonDecode(s) as Map<String, dynamic>;
       setState(() =>
           _bubbleMsgs = (v['messages'] as List).cast<Map<String, dynamic>>());
+      // 自动重播: 进 tab(或手动刷新)后最新一条自动写一遍
+      if (_bubbleReplayAuto && _bubbleMsgs.isNotEmpty) {
+        _startReplay(_bubbleMsgs.last);
+      }
       // 新内容后滚到最底(最新消息)
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_bubbleScroll.hasClients) {
@@ -727,6 +781,30 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     } finally {
       if (mounted) setState(() => _bubblesLoading = false);
     }
+  }
+
+  /// 重播一条消息: 时间线 = 笔内弧长匀速 + 笔间真实停顿(g 字段), 总时长
+  /// 除以速度倍率。再点一次同一条 = 停止。
+  void _startReplay(Map<String, dynamic> m) {
+    final id = (m['id'] as num).toInt();
+    if (_replayMsgId == id) {
+      _stopReplay();
+      return;
+    }
+    final strokes = (m['strokes'] as List).cast<Map<String, dynamic>>();
+    if (strokes.isEmpty) return;
+    final total = _BubbleTimeline(strokes).total /
+        _bubbleReplaySpeed.clamp(1, 8).toDouble();
+    setState(() => _replayMsgId = id);
+    _replayCtrl.duration =
+        Duration(milliseconds: (total.clamp(0.6, 20.0) * 1000).round());
+    _replayCtrl.forward(from: 0);
+  }
+
+  void _stopReplay() {
+    if (_replayMsgId == null) return;
+    _replayCtrl.stop();
+    setState(() => _replayMsgId = null);
   }
 
   Widget _buildBubbleTab() {
@@ -781,12 +859,15 @@ extension _SettingsWidgetsUi on _SettingsPageState {
   }
 
   /// 一条气泡: 右对齐(用户口吻), 内容 = 该段笔迹的矢量重绘 + 完成时刻。
+  /// 点播放键重播(按书写时序逐笔重现); 重播中图标变停止。
   Widget _bubbleMessage(Map<String, dynamic> m) {
     final strokes =
         (m['strokes'] as List).cast<Map<String, dynamic>>();
     final tsMs = (m['ts_ms'] as num).toInt();
     final dt = DateTime.fromMillisecondsSinceEpoch(tsMs);
     final time = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    final l = AppLocalizations.of(context)!;
+    final replaying = _replayMsgId == (m['id'] as num).toInt();
 
     // 由笔迹包围盒推气泡内容尺寸(上限内等比, 不放大超过 1.5 倍)
     double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
@@ -809,6 +890,20 @@ extension _SettingsWidgetsUi on _SettingsPageState {
         .toDouble();
     final size = Size(bw * k + 4, bh * k + 4);
 
+    // 重播中: AnimatedBuilder 逐帧喂进度; 静态 = 满帧(同一画法)
+    Widget ink = replaying
+        ? AnimatedBuilder(
+            animation: _replayCtrl,
+            builder: (_, _) => CustomPaint(
+              size: size,
+              painter: _BubbleStrokePainter(strokes, progress: _replayCtrl.value),
+            ),
+          )
+        : CustomPaint(
+            size: size,
+            painter: _BubbleStrokePainter(strokes),
+          );
+
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
@@ -828,13 +923,25 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
           children: [
-            CustomPaint(
-              size: size,
-              painter: _BubbleStrokePainter(strokes),
-            ),
+            ink,
             const SizedBox(height: 2),
-            Text(time,
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(time,
+                  style:
+                      TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: 15,
+                  visualDensity: VisualDensity.compact,
+                  tooltip: replaying ? l.stopReplay : l.replayBubble,
+                  icon: Icon(replaying ? Icons.stop : Icons.play_arrow),
+                  onPressed: () => _startReplay(m),
+                ),
+              ),
+            ]),
           ],
         ),
       ),
@@ -847,7 +954,10 @@ extension _SettingsWidgetsUi on _SettingsPageState {
 /// 同款), round cap 让相邻段自然融合; 宽度随缩放 k, 下限 1 屏幕像素。
 class _BubbleStrokePainter extends CustomPainter {
   final List<Map<String, dynamic>> strokes;
-  _BubbleStrokePainter(this.strokes);
+  /// 重播进度 0..1(默认 1 = 完整笔迹)。时间线见 _BubbleTimeline:
+  /// 笔内按弧长匀速, 笔间按真实停顿(g 字段), 跨越中的末段线性插值。
+  final double progress;
+  _BubbleStrokePainter(this.strokes, {this.progress = 1.0});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -880,15 +990,18 @@ class _BubbleStrokePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
-    for (final st in strokes) {
-      final rgb = (st['rgb'] as num).toInt() & 0xFFFFFF;
+    final tl = _BubbleTimeline(strokes);
+    final elapsed = progress.clamp(0.0, 1.0) * tl.total;
+    for (var si = 0; si < strokes.length; si++) {
+      if (elapsed <= tl.starts[si]) break; // 时间线单调, 后面的笔还没开始
+      final st = strokes[si];
       final pts = (st['pts'] as List).cast<num>();
       if (pts.length < 3) continue;
-      paint.color = Color(0xFF000000 | rgb);
+      paint.color = Color(0xFF000000 | (st['rgb'] as num).toInt() & 0xFFFFFF);
       final x0 = pts[0].toDouble(), y0 = pts[1].toDouble();
       final w0 = pts[2].toDouble();
       if (pts.length == 3) {
-        // 单点笔画: 实心圆点(半径 = 半宽), 与 cairo 起笔圆点一致
+        // 单点笔画: 出现即整点(实心圆点, 与 cairo 起笔圆点一致)
         paint
           ..style = PaintingStyle.fill
           ..strokeWidth = 0;
@@ -896,19 +1009,69 @@ class _BubbleStrokePainter extends CustomPainter {
         paint.style = PaintingStyle.stroke;
         continue;
       }
-      var px = x0, py = y0;
+      // 该笔已揭示的弧长(笔内匀速 = 揭示秒数 × 基准速率)
+      final revealLen =
+          ((elapsed - tl.starts[si]) * _BubbleTimeline.revealRate)
+              .clamp(0.0, tl.arcs[si])
+              .toDouble();
+      var drawn = 0.0;
+      var px = x0, py = y0, pw = w0;
       for (var i = 3; i + 2 < pts.length; i += 3) {
         final x = pts[i].toDouble();
         final y = pts[i + 1].toDouble();
         final w = pts[i + 2].toDouble(); // 该点压感宽度(绝对线宽)
-        paint.strokeWidth = w < minW ? minW : w;
-        canvas.drawLine(Offset(px, py), Offset(x, y), paint);
-        px = x;
-        py = y;
+        final segLen =
+            math.sqrt((x - px) * (x - px) + (y - py) * (y - py));
+        if (drawn + segLen <= revealLen) {
+          // 整段都在进度内
+          paint.strokeWidth = w < minW ? minW : w;
+          canvas.drawLine(Offset(px, py), Offset(x, y), paint);
+          drawn += segLen;
+          px = x;
+          py = y;
+          pw = w;
+          if (drawn >= revealLen) break;
+        } else {
+          // 进度停在本段中间: 画到插值点为止(端点与宽度同插值)
+          final t = segLen > 0 ? (revealLen - drawn) / segLen : 1.0;
+          final ex = px + (x - px) * t;
+          final ey = py + (y - py) * t;
+          final ew = pw + (w - pw) * t;
+          paint.strokeWidth = ew < minW ? minW : ew;
+          canvas.drawLine(Offset(px, py), Offset(ex, ey), paint);
+          break;
+        }
       }
     }
   }
 
   @override
   bool shouldRepaint(covariant _BubbleStrokePainter old) => true;
+}
+
+/// 重播时间线: 第 i 笔从 starts[i] 秒开始, 画 durs[i] 秒; 笔内按弧长匀速
+/// (基准速率见 revealRate), 笔间停顿用真实 gap(每段钳 2s, 防长思考拖垮
+/// 重播)。静态绘制 = progress 1.0, 与时间线无耦合。
+class _BubbleTimeline {
+  static const revealRate = 1200.0; // px/s
+  final List<double> starts = [];
+  final List<double> arcs = [];
+  double total = 0;
+
+  _BubbleTimeline(List<Map<String, dynamic>> strokes) {
+    for (final st in strokes) {
+      final gapMs = ((st['g'] as num?)?.toDouble() ?? 0.0).clamp(0.0, 2000.0);
+      total += gapMs / 1000.0;
+      starts.add(total);
+      final pts = (st['pts'] as List).cast<num>();
+      var arc = 0.0;
+      for (var i = 3; i + 2 < pts.length; i += 3) {
+        final dx = pts[i].toDouble() - pts[i - 3].toDouble();
+        final dy = pts[i + 1].toDouble() - pts[i - 2].toDouble();
+        arc += math.sqrt(dx * dx + dy * dy);
+      }
+      arcs.add(arc);
+      total += arc / revealRate;
+    }
+  }
 }

@@ -595,6 +595,16 @@ static NSString *gl_string_setting(const char *key) {
 char *glaspen2_macos_settings_json(void) {
     __block char *out = NULL;
     gl_run_on_main_sync(^{
+        // 气泡重播设置(纯面板自用, 落库读取): 速度缺省 1, 停末帧缺省开。
+        // @() 装箱不能包语句块, 先算成局部变量再进字典。
+        char *vsp = glaspen2_load_string_setting("bubble_replay_speed");
+        int replay_speed = vsp ? atoi(vsp) : 1;
+        glaspen2_free_c_string(vsp);
+        if (replay_speed < 1) replay_speed = 1;
+        if (replay_speed > 8) replay_speed = 8;
+        char *vhl = glaspen2_load_string_setting("bubble_replay_hold_last");
+        BOOL replay_hold = vhl ? (atoi(vhl) != 0) : YES;
+        glaspen2_free_c_string(vhl);
         NSDictionary *d = @{
             @"color": @(g_selectedColorIndex),
             @"width": @(g_selected_width_index),
@@ -629,6 +639,10 @@ char *glaspen2_macos_settings_json(void) {
             // 让 NSJSONSerialization 输出 true/false。
             @"showFreeCanvas": @(glaspen2_load_bool_setting("show_free_canvas") != 0),
             @"showBubbleTab": @(glaspen2_load_bool_setting("show_bubble_tab") != 0),
+            // 气泡消息重播: 速度倍率(缺省 1)/ 停在最后一帧(缺省开)/ 自动重播(缺省关)
+            @"bubbleReplaySpeed": @(replay_speed),
+            @"bubbleReplayHoldLast": @(replay_hold),
+            @"bubbleReplayAuto": @(glaspen2_load_bool_setting("bubble_replay_auto") != 0),
             @"shareCanvas": @(glaspen2_load_bool_setting("share_ink") != 0),
             // 语言由面板选择器决定, 不再跟随系统; 缺省中文
             @"language": (g_lang == 1 ? @"en" : @"zh"),
@@ -809,6 +823,19 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
         } else if ([key isEqualToString:@"showBubbleTab"]) {
             // 「气泡消息」tab 显隐(默认关; 与 showFreeCanvas 同款纯面板开关)
             glaspen2_save_bool_setting("show_bubble_tab", [value boolValue] ? 1 : 0);
+        } else if ([key isEqualToString:@"bubbleReplaySpeed"]) {
+            // 气泡重播速度倍率(1/2/4, 钳 1..8; 纯面板自用设置)
+            NSInteger sp = [value integerValue];
+            if (sp < 1) sp = 1;
+            if (sp > 8) sp = 8;
+            glaspen2_save_string_setting("bubble_replay_speed",
+                                         [[NSString stringWithFormat:@"%ld", (long)sp] UTF8String]);
+        } else if ([key isEqualToString:@"bubbleReplayHoldLast"]) {
+            // 气泡重播播完停在最后一帧(默认开; 关 = 循环重播)
+            glaspen2_save_bool_setting("bubble_replay_hold_last", [value boolValue] ? 1 : 0);
+        } else if ([key isEqualToString:@"bubbleReplayAuto"]) {
+            // 打开气泡 tab 自动重播最新一条(默认关)
+            glaspen2_save_bool_setting("bubble_replay_auto", [value boolValue] ? 1 : 0);
         } else if ([key isEqualToString:@"showFreeCanvas"]) {
             // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
             glaspen2_save_bool_setting("show_free_canvas", [value boolValue] ? 1 : 0);

@@ -1496,8 +1496,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Settings dco_decode_settings(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 31)
-      throw Exception('unexpected arr length: expect 31 but see ${arr.length}');
+    if (arr.length != 34)
+      throw Exception('unexpected arr length: expect 34 but see ${arr.length}');
     return Settings(
       color: dco_decode_i_32(arr[0]),
       width: dco_decode_i_32(arr[1]),
@@ -1528,8 +1528,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       chatIntegration: dco_decode_bool(arr[26]),
       showFreeCanvas: dco_decode_bool(arr[27]),
       showBubbleTab: dco_decode_bool(arr[28]),
-      shareCanvas: dco_decode_bool(arr[29]),
-      language: dco_decode_String(arr[30]),
+      bubbleReplaySpeed: dco_decode_i_32(arr[29]),
+      bubbleReplayHoldLast: dco_decode_bool(arr[30]),
+      bubbleReplayAuto: dco_decode_bool(arr[31]),
+      shareCanvas: dco_decode_bool(arr[32]),
+      language: dco_decode_String(arr[33]),
     );
   }
 
@@ -1885,6 +1888,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_chatIntegration = sse_decode_bool(deserializer);
     var var_showFreeCanvas = sse_decode_bool(deserializer);
     var var_showBubbleTab = sse_decode_bool(deserializer);
+    var var_bubbleReplaySpeed = sse_decode_i_32(deserializer);
+    var var_bubbleReplayHoldLast = sse_decode_bool(deserializer);
+    var var_bubbleReplayAuto = sse_decode_bool(deserializer);
     var var_shareCanvas = sse_decode_bool(deserializer);
     var var_language = sse_decode_String(deserializer);
     return Settings(
@@ -1917,6 +1923,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       chatIntegration: var_chatIntegration,
       showFreeCanvas: var_showFreeCanvas,
       showBubbleTab: var_showBubbleTab,
+      bubbleReplaySpeed: var_bubbleReplaySpeed,
+      bubbleReplayHoldLast: var_bubbleReplayHoldLast,
+      bubbleReplayAuto: var_bubbleReplayAuto,
       shareCanvas: var_shareCanvas,
       language: var_language,
     );
@@ -2294,6 +2303,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.chatIntegration, serializer);
     sse_encode_bool(self.showFreeCanvas, serializer);
     sse_encode_bool(self.showBubbleTab, serializer);
+    sse_encode_i_32(self.bubbleReplaySpeed, serializer);
+    sse_encode_bool(self.bubbleReplayHoldLast, serializer);
+    sse_encode_bool(self.bubbleReplayAuto, serializer);
     sse_encode_bool(self.shareCanvas, serializer);
     sse_encode_String(self.language, serializer);
   }

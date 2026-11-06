@@ -225,6 +225,11 @@ pub struct Settings {
     // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
     pub show_free_canvas: bool,
     pub show_bubble_tab: bool,
+    // 气泡消息重播:速度倍率(1/2/4, 面板钳 1..8)/ 播完停在最后一帧(关 =
+    // 循环重播)/ 打开 tab 自动重播最新一条(默认关)。纯面板自用设置。
+    pub bubble_replay_speed: i32,
+    pub bubble_replay_hold_last: bool,
+    pub bubble_replay_auto: bool,
     // 共享画布上行开关(活页本 tab;仅集成开启时生效)
     pub share_canvas: bool,
     /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
@@ -278,6 +283,23 @@ impl Settings {
             chat_integration: b("chatIntegration"),
             show_free_canvas: b("showFreeCanvas"),
             show_bubble_tab: b("showBubbleTab"),
+            bubble_replay_speed: {
+                let sp = i("bubbleReplaySpeed");
+                if sp < 1 {
+                    1
+                } else {
+                    sp.min(8)
+                }
+            },
+            bubble_replay_hold_last: v
+                .get("bubbleReplayHoldLast")
+                .map(|x| {
+                    x.as_bool()
+                        .or_else(|| x.as_i64().map(|n| n != 0))
+                        .unwrap_or(true)
+                })
+                .unwrap_or(true), // 默认 true(播完停在最后一帧)
+            bubble_replay_auto: b("bubbleReplayAuto"),
             share_canvas: b("shareCanvas"),
             language: {
                 let l = s("language");

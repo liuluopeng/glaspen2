@@ -13,7 +13,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 /// 当前设置。
 Future<Settings?> getSettings() => RustLib.instance.api.crateApiGetSettings();
 
-/// 「气泡消息」tab: 全部已完结消息的 JSON(空闲 4s/翻页/清空分段,
+/// 「气泡消息」tab: 全部已完结消息的 JSON(自适应节奏/空间跳变/翻页分段,
 /// 结构对齐 ShareStroke, 见 export/bubbles.rs)。
 Future<String> bubbleMessages() =>
     RustLib.instance.api.crateApiBubbleMessages();
@@ -381,6 +381,9 @@ class Settings {
   final bool chatIntegration;
   final bool showFreeCanvas;
   final bool showBubbleTab;
+  final int bubbleReplaySpeed;
+  final bool bubbleReplayHoldLast;
+  final bool bubbleReplayAuto;
   final bool shareCanvas;
 
   /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
@@ -416,6 +419,9 @@ class Settings {
     required this.chatIntegration,
     required this.showFreeCanvas,
     required this.showBubbleTab,
+    required this.bubbleReplaySpeed,
+    required this.bubbleReplayHoldLast,
+    required this.bubbleReplayAuto,
     required this.shareCanvas,
     required this.language,
   });
@@ -451,6 +457,9 @@ class Settings {
       chatIntegration.hashCode ^
       showFreeCanvas.hashCode ^
       showBubbleTab.hashCode ^
+      bubbleReplaySpeed.hashCode ^
+      bubbleReplayHoldLast.hashCode ^
+      bubbleReplayAuto.hashCode ^
       shareCanvas.hashCode ^
       language.hashCode;
 
@@ -488,6 +497,9 @@ class Settings {
           chatIntegration == other.chatIntegration &&
           showFreeCanvas == other.showFreeCanvas &&
           showBubbleTab == other.showBubbleTab &&
+          bubbleReplaySpeed == other.bubbleReplaySpeed &&
+          bubbleReplayHoldLast == other.bubbleReplayHoldLast &&
+          bubbleReplayAuto == other.bubbleReplayAuto &&
           shareCanvas == other.shareCanvas &&
           language == other.language;
 }

@@ -1076,6 +1076,48 @@ abstract class AppLocalizations {
   /// **'刷新'**
   String get refreshBubbles;
 
+  /// No description provided for @replayBubble.
+  ///
+  /// In zh, this message translates to:
+  /// **'重播'**
+  String get replayBubble;
+
+  /// No description provided for @stopReplay.
+  ///
+  /// In zh, this message translates to:
+  /// **'停止'**
+  String get stopReplay;
+
+  /// No description provided for @bubbleReplaySpeed.
+  ///
+  /// In zh, this message translates to:
+  /// **'重播速度'**
+  String get bubbleReplaySpeed;
+
+  /// No description provided for @bubbleReplayHoldLast.
+  ///
+  /// In zh, this message translates to:
+  /// **'播完停在最后一帧'**
+  String get bubbleReplayHoldLast;
+
+  /// No description provided for @bubbleReplayHoldLastSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭时循环重播'**
+  String get bubbleReplayHoldLastSub;
+
+  /// No description provided for @bubbleReplayAuto.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开时自动重播最新'**
+  String get bubbleReplayAuto;
+
+  /// No description provided for @bubbleReplayAutoSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'进入气泡 tab 时重播最新一条'**
+  String get bubbleReplayAutoSub;
+
   /// No description provided for @helpsAlignWhileDoodling.
   ///
   /// In zh, this message translates to:
