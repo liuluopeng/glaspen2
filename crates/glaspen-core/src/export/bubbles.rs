@@ -56,6 +56,8 @@ struct BubbleStroke {
     width_scale: f64,
     /// 折线 (x, y, w) —— 画布坐标, w = 压感换算后的绝对线宽。
     pts: Vec<(f64, f64, f64)>,
+    /// 与上一笔提交的间隔(ms, 段内首笔 = 0)—— 重播时间线的笔间停顿。
+    gap_ms: u64,
 }
 
 struct BubbleMsg {
@@ -81,6 +83,8 @@ struct Inner {
     pen_cold: bool,
     /// pen_cold 置位时刻 —— 识别笔↔橡皮切换(exit+enter 几乎同时)。
     pen_cold_at: Option<Instant>,
+    /// 段内上一笔的提交时刻(记每笔间隔用); None = 新段的第一笔。
+    last_capture: Option<Instant>,
     msgs: Vec<BubbleMsg>,
     next_id: u64,
 }
@@ -94,6 +98,7 @@ static INNER: Mutex<Inner> = Mutex::new(Inner {
     pen_last_seen: None,
     pen_cold: false,
     pen_cold_at: None,
+    last_capture: None,
     msgs: Vec::new(),
     next_id: 1,
 });
@@ -211,11 +216,18 @@ pub fn on_stroke_committed() {
             .iter()
             .map(|&(x, y, w, _)| ((x * 10.0).round() / 10.0, (y * 10.0).round() / 10.0, w))
             .collect();
+        // 与上一笔提交的间隔(段内首笔 = 0): 重播时间线的笔间停顿。
+        let gap_ms = g
+            .last_capture
+            .map(|t| t.elapsed().as_millis() as u64)
+            .unwrap_or(0);
+        g.last_capture = Some(Instant::now());
         g.pending_points += pts.len();
         g.pending.push(BubbleStroke {
             rgb,
             width_scale: 1.0,
             pts,
+            gap_ms,
         });
         // 容量护栏: 超长段截断, 新笔迹开下一段。
         if g.pending.len() > MAX_PENDING_STROKES || g.pending_points > MAX_PENDING_POINTS {
@@ -256,6 +268,7 @@ fn finish_pending(g: &mut Inner) {
     };
     g.next_id += 1;
     g.pending_points = 0;
+    g.last_capture = None; // 新段第一笔间隔记 0
     g.msgs.push(msg);
     if g.msgs.len() > MAX_MSGS {
         g.msgs.remove(0);
@@ -322,7 +335,7 @@ pub fn on_pen_gone() {
 
 /// 全部消息的 JSON(先惰性过期)。形如:
 /// `{"messages":[{"id":1,"ts_ms":...,"strokes":[{"rgb":16711680,"w":2.0,
-///   "pts":[x,y,w, ...]}]}]}`
+///   "g":0,"pts":[x,y,w, ...]}]}]}`(g = 与上一笔的间隔 ms, 重播时间线用)
 pub fn messages_json() -> String {
     let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
     flush_expired(&mut g);
@@ -336,6 +349,7 @@ pub fn messages_json() -> String {
                 "strokes": m.strokes.iter().map(|s| json!({
                     "rgb": s.rgb,
                     "w": s.width_scale,
+                    "g": s.gap_ms,
                     "pts": s.pts.iter().flat_map(|&(x, y, w)| [x, y, w]).collect::<Vec<f64>>(),
                 })).collect::<Vec<_>>(),
             })
@@ -363,6 +377,7 @@ mod tests {
         g.pen_last_seen = None;
         g.pen_cold = false;
         g.pen_cold_at = None;
+        g.last_capture = None;
     }
 
     /// 翻页/清空(STROKES 重置)强制结段; 空笔不撑爆段。
@@ -435,6 +450,8 @@ mod tests {
         assert_eq!(pts.len(), 3, "pts 平铺为 x,y,w 三元组");
         assert_eq!(pts[0], 1.0);
         assert!(msgs[0]["ts_ms"].as_u64().unwrap() > 0);
+        // g = 与上一笔的间隔(ms): 段内首笔为 0, 重播时间线用
+        assert_eq!(msgs[0]["strokes"][0]["g"], 0, "段内首笔间隔为 0");
     }
 
     /// 时间规则(无笔信号 = 纯鼠标回退路径): 阈值 = clamp(5×EMA, 8s, 90s)。
