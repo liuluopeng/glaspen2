@@ -26,6 +26,7 @@ pub fn runtime() -> &'static tokio::runtime::Runtime {
 pub mod cairo_dl;
 
 pub mod db;
+pub mod device;
 pub mod export;
 pub mod modeler;
 pub mod ocr;

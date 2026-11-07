@@ -32,8 +32,10 @@ async fn hang_message(msg: &BubbleMsg) {
     let Some((png, w, h)) = render_message_png(msg) else {
         return;
     };
+    // 设备前缀: 共享文件夹时多台设备消息 id 各自从 1 起, 防相互覆盖
+    let dev8 = &crate::device::device_uuid()[..8];
     let path = std::path::Path::new(&folder)
-        .join(format!("bubble-{}-{}.png", msg.id, msg.ts_ms));
+        .join(format!("bubble-{dev8}-{}-{}.png", msg.id, msg.ts_ms));
     match std::fs::write(&path, &png) {
         Ok(_) => tracing::info!(?path, w, h, size = png.len(), "气泡已挂上晾衣架"),
         Err(e) => tracing::warn!("晾衣架写盘失败({path:?}): {e}"),

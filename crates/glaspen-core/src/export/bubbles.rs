@@ -403,11 +403,14 @@ fn runtime_block_on_setting(key: &str) -> Option<String> {
 }
 
 /// 全部消息的 JSON(先惰性过期)。形如:
-/// `{"messages":[{"id":1,"ts_ms":...,"strokes":[{"rgb":16711680,"w":2.0,
-///   "g":0,"pts":[x,y,w, ...]}]}]}`(g = 与上一笔的间隔 ms, 重播时间线用)
+/// `{"device":"0192…","messages":[{"id":1,"ts_ms":...,"device":"0192…",
+///   "strokes":[{"rgb":16711680,"w":2.0,"g":0,"pts":[x,y,w, ...]}]}]}`
+/// (g = 与上一笔的间隔 ms, 重播时间线用;device = 作者设备 UUIDv7,
+/// 当前全为本机, 未来他人消息按它分左右栏)
 pub fn messages_json() -> String {
     let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
     flush_expired(&mut g);
+    let device = crate::device::device_uuid();
     let msgs: Vec<serde_json::Value> = g
         .msgs
         .iter()
@@ -415,6 +418,7 @@ pub fn messages_json() -> String {
             json!({
                 "id": m.id,
                 "ts_ms": m.ts_ms,
+                "device": device,
                 "strokes": m.strokes.iter().map(|s| json!({
                     "rgb": s.rgb,
                     "w": s.width_scale,
@@ -424,7 +428,7 @@ pub fn messages_json() -> String {
             })
         })
         .collect();
-    json!({ "messages": msgs }).to_string()
+    json!({ "device": device, "messages": msgs }).to_string()
 }
 
 #[cfg(test)]
@@ -521,6 +525,22 @@ mod tests {
         assert!(msgs[0]["ts_ms"].as_u64().unwrap() > 0);
         // g = 与上一笔的间隔(ms): 段内首笔为 0, 重播时间线用
         assert_eq!(msgs[0]["strokes"][0]["g"], 0, "段内首笔间隔为 0");
+        // device = 作者设备 UUIDv7(根级 + 消息级, 未来他人气泡分左右栏)
+        let dev = v["device"].as_str().expect("根级 device");
+        assert_eq!(dev.len(), 36, "UUID 格式: {dev}");
+        assert_eq!(dev.as_bytes()[14], b'7', "v7 版本位: {dev}");
+        assert_eq!(msgs[0]["device"].as_str(), Some(dev), "消息级 = 根级");
+    }
+
+    /// 设备 UUID: 同进程稳定(OnceLock 缓存; 持久化路径由 device.rs 生成时
+    /// save_setting 保证 —— 测试间 DB 会被重建, 不在此断言 DB 内容)。
+    #[test]
+    fn device_uuid_stable() {
+        let a = crate::device::device_uuid();
+        let b = crate::device::device_uuid();
+        assert_eq!(a, b);
+        assert_eq!(a.len(), 36);
+        assert_eq!(a.as_bytes()[14], b'7');
     }
 
     /// 时间规则(无笔信号 = 纯鼠标回退路径): 阈值 = clamp(5×EMA, 8s, 90s)。
