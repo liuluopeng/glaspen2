@@ -539,6 +539,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get refreshBubbles => '刷新';
 
   @override
+  String get bubbleHangFolder => '晾衣架文件夹';
+
+  @override
+  String get bubbleHangFolderSub =>
+      '填 Tendedero 正在监视的文件夹(收件箱或「同时监视」任一), 每条写完的消息渲染 PNG 自动挂上去; 留空 = 关闭';
+
+  @override
   String get bubbleAutoNewPage => '写完自动新建一页';
 
   @override

@@ -90,6 +90,7 @@ extension _SettingsStateUi on _SettingsPageState {
               settings['bubbleReplayHoldLast'] as bool? ?? true;
           _bubbleReplayAuto = _b(settings['bubbleReplayAuto']);
           _bubbleAutoNewPage = _b(settings['bubbleAutoNewPage']);
+          _bubbleHangFolder.text = (settings['bubbleHangFolder'] as String?) ?? '';
           _shareCanvas = _b(settings['shareCanvas']);
           _notebookGlass = _b(settings['notebookStyle']);
           _panelTransparent = _b(settings['panelTransparent']);

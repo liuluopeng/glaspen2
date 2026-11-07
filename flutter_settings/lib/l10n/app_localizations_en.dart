@@ -552,6 +552,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get refreshBubbles => 'Refresh';
 
   @override
+  String get bubbleHangFolder => 'Clothesline folder';
+
+  @override
+  String get bubbleHangFolderSub =>
+      'A folder Tendedero watches (inbox or any extra folder); each finished message is rendered to PNG and hung. Leave empty to disable';
+
+  @override
   String get bubbleAutoNewPage => 'Auto new page after a message';
 
   @override

@@ -22,6 +22,7 @@ pub use std::sync::Arc;
 
 pub mod bubbles;
 mod chat_glue;
+mod hang;
 mod media;
 mod pages;
 pub(crate) mod thumbs;

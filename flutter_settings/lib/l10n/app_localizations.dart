@@ -1076,6 +1076,18 @@ abstract class AppLocalizations {
   /// **'刷新'**
   String get refreshBubbles;
 
+  /// No description provided for @bubbleHangFolder.
+  ///
+  /// In zh, this message translates to:
+  /// **'晾衣架文件夹'**
+  String get bubbleHangFolder;
+
+  /// No description provided for @bubbleHangFolderSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'填 Tendedero 正在监视的文件夹(收件箱或「同时监视」任一), 每条写完的消息渲染 PNG 自动挂上去; 留空 = 关闭'**
+  String get bubbleHangFolderSub;
+
   /// No description provided for @bubbleAutoNewPage.
   ///
   /// In zh, this message translates to:

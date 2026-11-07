@@ -1496,8 +1496,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Settings dco_decode_settings(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 35)
-      throw Exception('unexpected arr length: expect 35 but see ${arr.length}');
+    if (arr.length != 36)
+      throw Exception('unexpected arr length: expect 36 but see ${arr.length}');
     return Settings(
       color: dco_decode_i_32(arr[0]),
       width: dco_decode_i_32(arr[1]),
@@ -1532,8 +1532,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       bubbleReplayHoldLast: dco_decode_bool(arr[30]),
       bubbleReplayAuto: dco_decode_bool(arr[31]),
       bubbleAutoNewPage: dco_decode_bool(arr[32]),
-      shareCanvas: dco_decode_bool(arr[33]),
-      language: dco_decode_String(arr[34]),
+      bubbleHangFolder: dco_decode_String(arr[33]),
+      shareCanvas: dco_decode_bool(arr[34]),
+      language: dco_decode_String(arr[35]),
     );
   }
 
@@ -1893,6 +1894,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_bubbleReplayHoldLast = sse_decode_bool(deserializer);
     var var_bubbleReplayAuto = sse_decode_bool(deserializer);
     var var_bubbleAutoNewPage = sse_decode_bool(deserializer);
+    var var_bubbleHangFolder = sse_decode_String(deserializer);
     var var_shareCanvas = sse_decode_bool(deserializer);
     var var_language = sse_decode_String(deserializer);
     return Settings(
@@ -1929,6 +1931,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       bubbleReplayHoldLast: var_bubbleReplayHoldLast,
       bubbleReplayAuto: var_bubbleReplayAuto,
       bubbleAutoNewPage: var_bubbleAutoNewPage,
+      bubbleHangFolder: var_bubbleHangFolder,
       shareCanvas: var_shareCanvas,
       language: var_language,
     );
@@ -2310,6 +2313,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.bubbleReplayHoldLast, serializer);
     sse_encode_bool(self.bubbleReplayAuto, serializer);
     sse_encode_bool(self.bubbleAutoNewPage, serializer);
+    sse_encode_String(self.bubbleHangFolder, serializer);
     sse_encode_bool(self.shareCanvas, serializer);
     sse_encode_String(self.language, serializer);
   }

@@ -162,6 +162,8 @@
   "showBubbleTabSub": "Show a handwriting review tab",
   "bubblesEmpty": "Nothing yet. Doodle a bit — a pause or a jump elsewhere becomes a new message",
   "refreshBubbles": "Refresh",
+  "bubbleHangFolder": "Clothesline folder",
+  "bubbleHangFolderSub": "A folder Tendedero watches (inbox or any extra folder); each finished message is rendered to PNG and hung. Leave empty to disable",
   "bubbleAutoNewPage": "Auto new page after a message",
   "bubbleAutoNewPageSub": "When a pause or pen leave starts a new message, flip to a fresh page (needs the bubble tab)",
   "bubbleCopySvg": "Copy as animated SVG",

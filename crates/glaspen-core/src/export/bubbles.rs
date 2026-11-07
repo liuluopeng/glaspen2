@@ -49,22 +49,23 @@ const MAX_PENDING_POINTS: usize = 8000;
 const PEN_SWITCH_GRACE_MS: u64 = 300;
 
 #[derive(Clone)]
-struct BubbleStroke {
+pub(crate) struct BubbleStroke {
     /// 0xRRGGBB。
-    rgb: u32,
+    pub(crate) rgb: u32,
     /// 宽度倍率(面板粗细预设, proto width_scale 同义)。
-    width_scale: f64,
+    pub(crate) width_scale: f64,
     /// 折线 (x, y, w) —— 画布坐标, w = 压感换算后的绝对线宽。
-    pts: Vec<(f64, f64, f64)>,
+    pub(crate) pts: Vec<(f64, f64, f64)>,
     /// 与上一笔提交的间隔(ms, 段内首笔 = 0)—— 重播时间线的笔间停顿。
-    gap_ms: u64,
+    pub(crate) gap_ms: u64,
 }
 
-struct BubbleMsg {
-    id: u64,
+#[derive(Clone)]
+pub(crate) struct BubbleMsg {
+    pub(crate) id: u64,
     /// 完成时刻(unix 毫秒)。
-    ts_ms: u64,
-    strokes: Vec<BubbleStroke>,
+    pub(crate) ts_ms: u64,
+    pub(crate) strokes: Vec<BubbleStroke>,
 }
 
 struct Inner {
@@ -269,6 +270,8 @@ fn finish_pending(g: &mut Inner) {
     g.next_id += 1;
     g.pending_points = 0;
     g.last_capture = None; // 新段第一笔间隔记 0
+    // 挂晾衣架(设置 bubbleHangFolder): 锁内零 IO, 渲染/写盘交给 runtime
+    super::hang::spawn_hang(msg.clone());
     g.msgs.push(msg);
     if g.msgs.len() > MAX_MSGS {
         g.msgs.remove(0);

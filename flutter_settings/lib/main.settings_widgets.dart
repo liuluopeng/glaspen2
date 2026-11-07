@@ -389,6 +389,31 @@ extension _SettingsWidgetsUi on _SettingsPageState {
               _setSetting('bubbleAutoNewPage', v);
             },
           )),
+        if (_showBubbleTab)
+          Padding(
+            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(AppLocalizations.of(context)!.bubbleHangFolder, style: TextStyle(fontSize: 13, color: _inkFaint)),
+                const SizedBox(height: 4),
+                TextField(
+                  controller: _bubbleHangFolder,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: '/Users/…/Tendedero/Screenshots',
+                    border: const OutlineInputBorder(),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  ),
+                  onSubmitted: (v) =>
+                      _setSetting('bubbleHangFolder', v.trim()),
+                ),
+                const SizedBox(height: 2),
+                Text(AppLocalizations.of(context)!.bubbleHangFolderSub, style: TextStyle(fontSize: 11, color: _inkFaint)),
+              ],
+            ),
+          ),
         _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.showGrid, style: TextStyle(fontSize: 15)),
           subtitle: Text(AppLocalizations.of(context)!.helpsAlignWhileDoodling, style: TextStyle(fontSize: 12)),
