@@ -607,7 +607,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             glaspen_core::export::glaspen2_is_launch_at_login() == 1;
         // 密码本体不回读,只回是否已保存(macOS 同款)
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"showBubbleTab\":{},\"bubbleReplaySpeed\":{},\"bubbleReplayHoldLast\":{},\"bubbleReplayAuto\":{},\"bubbleAutoNewPage\":{},\"bubbleHangFolder\":\"{}\",\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\"}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"showBubbleTab\":{},\"bubbleReplaySpeed\":{},\"bubbleReplayHoldLast\":{},\"bubbleReplayAuto\":{},\"bubbleAutoNewPage\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\"}}}}\n",
             color,
             width,
             outline,
@@ -663,11 +663,6 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 .and_then(|v| v.parse::<i32>().ok())
                 .unwrap_or(0)
                 != 0,
-            json_escape(
-                &glaspen_core::runtime()
-                    .block_on(glaspen_core::db::load_setting("bubble_hang_folder"))
-                    .unwrap_or_default(),
-            ),
             if chat_has_password { "true" } else { "false" },
             json_escape(&chat_api_base),
             json_escape(&chat_user),
@@ -912,13 +907,6 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                     if on { "1" } else { "0" },
                 ));
             }
-        } else if key == "bubbleHangFolder" {
-            // 晾衣架文件夹:完结的气泡消息渲染 PNG 写入, 空 = 关闭(macOS 同键)
-            let value = json_get_str(line, "value").to_string();
-            glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                "bubble_hang_folder",
-                &value,
-            ));
         } else if key == "frostedGlass" {
             if let Some(on) = json_get_bool(line, "value") {
                 let cmd = CMD_TOGGLE_FROSTED;

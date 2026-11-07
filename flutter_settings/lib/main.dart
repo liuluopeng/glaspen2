@@ -227,8 +227,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   bool _bubbleReplayHoldLast = true;
   bool _bubbleReplayAuto = false;
   bool _bubbleAutoNewPage = false; // 写完消息自动新建一页(core 落笔时消费)
-  // 晾衣架文件夹(Tendedero 监视目录): 完结的气泡消息渲染 PNG 写入, 空 = 关
-  final _bubbleHangFolder = TextEditingController();
   int? _replayMsgId; // 正在重播的消息 id(null = 无)
   late final AnimationController _replayCtrl;
   // 共享画布上行开关(活页本 tab;仅集成开启时可见/生效)
@@ -336,7 +334,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     _chatApiBase.dispose();
     _chatUser.dispose();
     _chatPassword.dispose();
-    _bubbleHangFolder.dispose();
     _bridge.dispose();
     super.dispose();
   }

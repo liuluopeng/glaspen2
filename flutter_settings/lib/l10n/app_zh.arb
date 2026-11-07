@@ -162,8 +162,6 @@
   "showBubbleTabSub": "在 tab 栏显示手写消息回顾",
   "bubblesEmpty": "还没有消息。去涂几笔 —— 停顿一下或换个地方写, 就是一条新消息",
   "refreshBubbles": "刷新",
-  "bubbleHangFolder": "晾衣架文件夹",
-  "bubbleHangFolderSub": "填 Tendedero 正在监视的文件夹(收件箱或「同时监视」任一), 每条写完的消息渲染 PNG 自动挂上去; 留空 = 关闭",
   "bubbleAutoNewPage": "写完自动新建一页",
   "bubbleAutoNewPageSub": "笔离开后落笔开新消息时, 自动翻到新的一页(需气泡 tab 开启)",
   "bubbleCopySvg": "复制为 SVG 动画",

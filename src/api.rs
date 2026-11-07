@@ -232,9 +232,6 @@ pub struct Settings {
     pub bubble_replay_auto: bool,
     // 写完消息自动新建一页(默认关; core 落笔时消费, × 气泡 tab 开启)
     pub bubble_auto_new_page: bool,
-    // 晾衣架文件夹(Tendedero 监视目录): 每条完结的气泡消息渲染 PNG 写入;
-    // 空 = 关闭
-    pub bubble_hang_folder: String,
     // 共享画布上行开关(活页本 tab;仅集成开启时生效)
     pub share_canvas: bool,
     /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
@@ -306,7 +303,6 @@ impl Settings {
                 .unwrap_or(true), // 默认 true(播完停在最后一帧)
             bubble_replay_auto: b("bubbleReplayAuto"),
             bubble_auto_new_page: b("bubbleAutoNewPage"),
-            bubble_hang_folder: s("bubbleHangFolder"),
             share_canvas: b("shareCanvas"),
             language: {
                 let l = s("language");

@@ -104,6 +104,15 @@ static INNER: Mutex<Inner> = Mutex::new(Inner {
     next_id: 1,
 });
 
+/// 晾衣架钩子(shell 注入, REFRESH_HOOK 同款): 消息完结时通知 shell 挂新卡。
+/// 调用时持有 INNER 锁 —— 实现必须异步回主线程再取数据, 严禁同步回调进 core。
+static LINE_HOOK: Mutex<Option<fn()>> = Mutex::new(None);
+
+/// shell(macOS)启动时注入晾衣架刷新回调;未注入(测试/Windows)为无操作。
+pub fn set_bubble_line_hook(f: fn()) {
+    *LINE_HOOK.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
+}
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -270,8 +279,11 @@ fn finish_pending(g: &mut Inner) {
     g.next_id += 1;
     g.pending_points = 0;
     g.last_capture = None; // 新段第一笔间隔记 0
-    // 挂晾衣架(设置 bubbleHangFolder): 锁内零 IO, 渲染/写盘交给 runtime
-    super::hang::spawn_hang(msg.clone());
+    // 晾衣架钩子: 通知 shell 挂新卡(此刻持 INNER 锁, 实现必须异步回主线程
+    // 再取数据, 严禁同步回调进 core)
+    if let Some(f) = LINE_HOOK.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        f();
+    }
     g.msgs.push(msg);
     if g.msgs.len() > MAX_MSGS {
         g.msgs.remove(0);
