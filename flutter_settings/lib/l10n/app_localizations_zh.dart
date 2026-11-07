@@ -539,6 +539,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get refreshBubbles => '刷新';
 
   @override
+  String get bubbleClothesline => '晾衣架';
+
+  @override
+  String get bubbleClotheslineSub => '写完的消息挂到屏幕顶部的绳子上, 悬停顶部滑下查看, 点击卡片看大图';
+
+  @override
   String get bubbleAutoNewPage => '写完自动新建一页';
 
   @override

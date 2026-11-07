@@ -232,6 +232,8 @@ pub struct Settings {
     pub bubble_replay_auto: bool,
     // 写完消息自动新建一页(默认关; core 落笔时消费, × 气泡 tab 开启)
     pub bubble_auto_new_page: bool,
+    // 晾衣架(默认开): 完结消息挂屏幕顶部绳上, macOS parts/line.m 消费
+    pub bubble_clothesline: bool,
     // 共享画布上行开关(活页本 tab;仅集成开启时生效)
     pub share_canvas: bool,
     /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
@@ -303,6 +305,14 @@ impl Settings {
                 .unwrap_or(true), // 默认 true(播完停在最后一帧)
             bubble_replay_auto: b("bubbleReplayAuto"),
             bubble_auto_new_page: b("bubbleAutoNewPage"),
+            bubble_clothesline: v
+                .get("bubbleClothesline")
+                .map(|x| {
+                    x.as_bool()
+                        .or_else(|| x.as_i64().map(|n| n != 0))
+                        .unwrap_or(true)
+                })
+                .unwrap_or(true), // 缺省开(与 ObjC/管道同缺省)
             share_canvas: b("shareCanvas"),
             language: {
                 let l = s("language");

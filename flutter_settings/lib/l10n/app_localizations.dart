@@ -1076,6 +1076,18 @@ abstract class AppLocalizations {
   /// **'刷新'**
   String get refreshBubbles;
 
+  /// No description provided for @bubbleClothesline.
+  ///
+  /// In zh, this message translates to:
+  /// **'晾衣架'**
+  String get bubbleClothesline;
+
+  /// No description provided for @bubbleClotheslineSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'写完的消息挂到屏幕顶部的绳子上, 悬停顶部滑下查看, 点击卡片看大图'**
+  String get bubbleClotheslineSub;
+
   /// No description provided for @bubbleAutoNewPage.
   ///
   /// In zh, this message translates to:

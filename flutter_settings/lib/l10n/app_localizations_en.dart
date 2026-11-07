@@ -552,6 +552,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get refreshBubbles => 'Refresh';
 
   @override
+  String get bubbleClothesline => 'Clothesline';
+
+  @override
+  String get bubbleClotheslineSub =>
+      'Finished messages hang on a rope at the top of the screen — hover the top edge to slide it down, click a card to enlarge';
+
+  @override
   String get bubbleAutoNewPage => 'Auto new page after a message';
 
   @override

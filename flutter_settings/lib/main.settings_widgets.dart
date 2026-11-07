@@ -389,6 +389,18 @@ extension _SettingsWidgetsUi on _SettingsPageState {
               _setSetting('bubbleAutoNewPage', v);
             },
           )),
+        if (_showBubbleTab)
+          _tile(SwitchListTile(
+            title: Text(AppLocalizations.of(context)!.bubbleClothesline, style: TextStyle(fontSize: 15)),
+            subtitle: Text(AppLocalizations.of(context)!.bubbleClotheslineSub, style: TextStyle(fontSize: 12)),
+            value: _bubbleClothesline,
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            onChanged: (v) {
+              setState(() => _bubbleClothesline = v);
+              _setSetting('bubbleClothesline', v);
+            },
+          )),
         _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.showGrid, style: TextStyle(fontSize: 15)),
           subtitle: Text(AppLocalizations.of(context)!.helpsAlignWhileDoodling, style: TextStyle(fontSize: 12)),

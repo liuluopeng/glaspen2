@@ -2108,6 +2108,11 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       (devType == NSPenPointingDevice || devType == NSEraserPointingDevice ||
        subtype == 1 || subtype == 2);
 
+  // 晾衣架悬停检测(tap 回调在主 runloop): 指针停屏幕顶缘 → 绳子滑下,
+  // 移开 → 收起。取 CG 全局坐标(top-left origin, y=0 = 屏顶)。
+  if (etype == NSEventTypeMouseMoved)
+    clothesline_hover_update(CGEventGetLocation(event).y);
+
   // Non-pen mouse move while no active stroke and cursor visible → hide
   // crosshair. Covers pen-leave-proximity on tablets that don't emit proximity
   // events. The g_stroke_active guard prevents spurious non-pen events
@@ -2885,6 +2890,14 @@ void glaspen2_run(void) {
         glaspen2_free_c_string(vdv);
       }
     }
+    {
+      // 晾衣架开关(默认开; 与面板 bubbleClothesline 同键)
+      char *vcl = glaspen2_load_string_setting("bubble_clothesline");
+      if (vcl) {
+        clothesline_set_enabled(atoi(vcl) != 0);
+        glaspen2_free_c_string(vcl);
+      }
+    }
 
     // Restore canvas mode and load the matching independent store.
     // 翻页/无限两套存储互不影响:无限画布全局仅一个。
@@ -3043,6 +3056,9 @@ void glaspen2_run(void) {
     // 视图就绪: 若恢复到飘渺画布模式, 此处统一落位(笔迹隐藏/玻璃跟随隐藏/
     // 压强计隐藏), 落位路径与 toggle 进入飘渺完全一致。
     if (g_ethereal_canvas) gl_ethereal_restore_now();
+
+    // 晾衣架(设置 bubbleClothesline, 默认开): 建窗收起挂最前, 完结消息挂卡
+    clothesline_startup();
 
     NSLog(@"[glaspen2] window ready %dx%d, ignoresMouseEvents=%d",
           (int)screenFrame.size.width, (int)screenFrame.size.height,

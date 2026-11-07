@@ -53,6 +53,12 @@ static void update_status_icon_state(void);
 static void ink_draft_stop_async(void); // 定义在 ink draft 区(总开关要用)
 static BOOL g_strokes_visible; // 定义在飘渺模式区(总开关恢复 V 时要用)
 static void ethereal_hide_now(void); // 定义在飘渺模式区
+// 晾衣架(定义在 parts/line.m, include 在 menu.m 之后 —— menu.m 调用需先声明)
+void clothesline_set_enabled(BOOL on);
+void clothesline_set_hidden(BOOL hidden);
+BOOL clothesline_enabled(void);
+void clothesline_startup(void);
+void clothesline_hover_update(CGFloat top_y); // run.m event tap 悬停喂入
 
 // --- Cairo (linked via cargo) ---
 #include <cairo/cairo.h>
@@ -98,6 +104,10 @@ extern void glaspen2_bubble_pen_gone(void);
 // 「写完自动新建一页」: 落笔瞬间调用, 若这笔将开新消息则建页并切 current id,
 // 返回新页 id(0 = 无动作); shell 据此翻页载入(见 run.m bubble_auto_page_flip)
 extern long long glaspen2_bubble_auto_page_if_due(void);
+// 晾衣架(见 parts/line.m): 挂卡列表(malloc C 字符串, free_c_string 释放)
+extern char* glaspen2_bubble_cards_json(int max);
+// 单条消息卡片 PNG(Box 泄漏缓冲, free_rust_bytes 释放;空消息/未知 id → NULL)
+extern unsigned char* glaspen2_bubble_card_png(long long msg_id, int max_edge, int *out_len);
 extern void glaspen2_modeler_erase_finish(void);
 extern int glaspen2_stroke_bbox(double *x_min, double *y_min, double *x_max, double *y_max);
 extern void glaspen2_save_svg(void);
@@ -816,3 +826,6 @@ static void save_and_exit(int sig) {
 #include "parts/menu.m"
 #include "parts/panel.m"
 #include "parts/run.m"
+// 晾衣架: 必须在 run.m 之后(panel.m 尾函数由 run.m 首行的 } 闭合,
+// 中间插文件会落进函数体);run.m 用到的 clothesline_* 已在上方声明区声明
+#include "parts/line.m"

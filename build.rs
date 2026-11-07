@@ -8,7 +8,7 @@ fn main() {
         println!("cargo:rerun-if-changed=src/macos/glaspen2.m");
         // 文件拆分的子文件是 #include 文本包含, 不监视的话改 parts/*.m
         // 不会重跑本脚本 → clang 不重编 → ObjC 改动静默失效
-        for part in ["menu.m", "panel.m", "run.m"] {
+        for part in ["menu.m", "panel.m", "line.m", "run.m"] {
             println!("cargo:rerun-if-changed=src/macos/parts/{part}");
         }
         println!("cargo:rerun-if-changed=flutter_settings/lib/main.dart");

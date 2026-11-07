@@ -162,6 +162,8 @@
   "showBubbleTabSub": "Show a handwriting review tab",
   "bubblesEmpty": "Nothing yet. Doodle a bit — a pause or a jump elsewhere becomes a new message",
   "refreshBubbles": "Refresh",
+  "bubbleClothesline": "Clothesline",
+  "bubbleClotheslineSub": "Finished messages hang on a rope at the top of the screen — hover the top edge to slide it down, click a card to enlarge",
   "bubbleAutoNewPage": "Auto new page after a message",
   "bubbleAutoNewPageSub": "When a pause or pen leave starts a new message, flip to a fresh page (needs the bubble tab)",
   "bubbleCopySvg": "Copy as animated SVG",

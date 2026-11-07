@@ -944,6 +944,38 @@ pub extern "C" fn glaspen2_bubble_auto_page_if_due() -> i64 {
     bubbles::auto_page_if_due()
 }
 
+/// 晾衣架挂卡列表(最近 max 条, 旧→新)→ C 字符串
+/// (ObjC 用 glaspen2_macos_free_c_string 释放;CString::into_raw 与
+/// load_string_setting 同款跨界释放约定)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_bubble_cards_json(max: c_int) -> *mut c_char {
+    let s = bubbles::line_cards_json(max);
+    match std::ffi::CString::new(s) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// 单条消息卡片 PNG(按 id)→ Box 泄漏缓冲(out_len 收长度;
+/// ObjC 用 glaspen2_free_rust_bytes 释放)。找不到/空 → NULL。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_bubble_card_png(
+    id: u64,
+    max_edge: c_int,
+    out_len: *mut c_int,
+) -> *mut c_uchar {
+    if out_len.is_null() {
+        return std::ptr::null_mut();
+    }
+    unsafe { *out_len = 0 };
+    bubbles::line_card_png(id, max_edge, out_len)
+}
+
+/// shell(macOS)注入晾衣架刷新回调(REFRESH_HOOK 同款注入模式)。
+pub fn set_clothesline_hook(f: fn()) {
+    bubbles::set_bubble_line_hook(f);
+}
+
 /// Eraser: remove strokes overlapped by the just-finished eraser stroke.
 /// The eraser stroke itself produced no DB points; its pending DB row is
 /// deleted here along with any hit strokes (memory + DB).
