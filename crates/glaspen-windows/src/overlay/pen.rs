@@ -173,6 +173,14 @@ fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) ->
 
     // 记录笔画到 STROKES/DB(用于撤销、导出、XOJ 保存)
     if down && !state.in_stroke {
+        // 气泡「写完自动新建一页」: 这笔若开新消息(冷启动/静默超时), 先建页
+        // 载入再重绘 —— 笔画落在新页, 消息边界 = 页边界(设置 × 气泡 tab 开启)
+        let auto_page = glaspen_core::export::glaspen2_bubble_auto_page_if_due();
+        if auto_page > 0 {
+            glaspen_core::export::glaspen2_load_strokes_for_screen(auto_page);
+            redraw_from_strokes(state);
+            hud_notify("已自动新建一页");
+        }
         glaspen_core::export::glaspen2_begin_stroke(
             state.draw.pen_r,
             state.draw.pen_g,

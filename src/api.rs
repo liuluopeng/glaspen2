@@ -230,6 +230,8 @@ pub struct Settings {
     pub bubble_replay_speed: i32,
     pub bubble_replay_hold_last: bool,
     pub bubble_replay_auto: bool,
+    // 写完消息自动新建一页(默认关; core 落笔时消费, × 气泡 tab 开启)
+    pub bubble_auto_new_page: bool,
     // 共享画布上行开关(活页本 tab;仅集成开启时生效)
     pub share_canvas: bool,
     /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
@@ -300,6 +302,7 @@ impl Settings {
                 })
                 .unwrap_or(true), // 默认 true(播完停在最后一帧)
             bubble_replay_auto: b("bubbleReplayAuto"),
+            bubble_auto_new_page: b("bubbleAutoNewPage"),
             share_canvas: b("shareCanvas"),
             language: {
                 let l = s("language");

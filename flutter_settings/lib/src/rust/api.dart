@@ -384,6 +384,7 @@ class Settings {
   final int bubbleReplaySpeed;
   final bool bubbleReplayHoldLast;
   final bool bubbleReplayAuto;
+  final bool bubbleAutoNewPage;
   final bool shareCanvas;
 
   /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
@@ -422,6 +423,7 @@ class Settings {
     required this.bubbleReplaySpeed,
     required this.bubbleReplayHoldLast,
     required this.bubbleReplayAuto,
+    required this.bubbleAutoNewPage,
     required this.shareCanvas,
     required this.language,
   });
@@ -460,6 +462,7 @@ class Settings {
       bubbleReplaySpeed.hashCode ^
       bubbleReplayHoldLast.hashCode ^
       bubbleReplayAuto.hashCode ^
+      bubbleAutoNewPage.hashCode ^
       shareCanvas.hashCode ^
       language.hashCode;
 
@@ -500,6 +503,7 @@ class Settings {
           bubbleReplaySpeed == other.bubbleReplaySpeed &&
           bubbleReplayHoldLast == other.bubbleReplayHoldLast &&
           bubbleReplayAuto == other.bubbleReplayAuto &&
+          bubbleAutoNewPage == other.bubbleAutoNewPage &&
           shareCanvas == other.shareCanvas &&
           language == other.language;
 }

@@ -934,6 +934,15 @@ pub extern "C" fn glaspen2_bubble_pen_gone() {
     bubbles::on_pen_gone();
 }
 
+/// 「写完自动新建一页」: 落笔瞬间(笔画尚未开始)由 shell 调用。若这一笔
+/// 将开新消息(冷启动/静默超时, 设置 bubbleAutoNewPage × 气泡 tab 开启,
+/// 仅翻页模式), 建新页并切换 current id, 返回新页 id 供 shell 翻页载入;
+/// 0 = 无动作。详见 bubbles::auto_page_if_due。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_bubble_auto_page_if_due() -> i64 {
+    bubbles::auto_page_if_due()
+}
+
 /// Eraser: remove strokes overlapped by the just-finished eraser stroke.
 /// The eraser stroke itself produced no DB points; its pending DB row is
 /// deleted here along with any hit strokes (memory + DB).

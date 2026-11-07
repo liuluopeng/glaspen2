@@ -333,6 +333,72 @@ pub fn on_pen_gone() {
     g.pen_cold_at = Some(Instant::now());
 }
 
+/// 落笔前判定: 这一笔会不会开启新消息?(分段规则的时间类子集 —— 空间
+/// 跳变无法在得知落点前判定, 排除; 空间跳变只切消息不翻页。)
+/// 冷启动(笔离开过感应区)或笔静默超节奏阈值; 纯鼠标用户回退笔迹间隔。
+fn will_split_soon(g: &Inner, stroke_gap_ms: u64) -> bool {
+    if g.pen_cold {
+        return true;
+    }
+    let activity_gap_ms = g.pen_last_seen.map(|t| t.elapsed().as_millis() as u64);
+    match activity_gap_ms {
+        Some(ms) => ms as f64 >= threshold_ms(g.typical_gap_ms),
+        None => stroke_gap_ms as f64 >= threshold_ms(g.typical_gap_ms),
+    }
+}
+
+/// 「写完自动新建一页」(设置 bubbleAutoNewPage × 气泡 tab 开启, 仅翻页
+/// 模式): 落笔瞬间、笔画尚未开始时由 shell 调用。若这一笔将开新消息
+/// (冷启动/静默超时), 先建新页并切换 current id, shell 随后翻页载入,
+/// 笔画即落在新页上 —— 消息边界 = 页边界。
+///
+/// 返回新页 id(>0, shell 据此翻页);0 = 无动作。绕开 WRITE_LOCK(无墨迹
+/// 在飞, 见 create_next_page_inner); 保留 2s 建页频率闸, 末页空白复用
+/// 场景返回 0(与手动路径"已是空白末页"同语义, 不做中途跳页)。
+pub fn auto_page_if_due() -> i64 {
+    // 设置门槛: 开关 + 气泡 tab 显示, 均落笔低频读, 不缓存
+    let enabled = runtime_block_on_setting("bubble_auto_new_page").as_deref() == Some("1")
+        && runtime_block_on_setting("show_bubble_tab").as_deref() == Some("1");
+    if !enabled {
+        return 0;
+    }
+    if crate::state::canvas_kind() != crate::state::CanvasKind::Page {
+        return 0; // 无限画布没有"页"
+    }
+    {
+        // 落笔瞬间无提交扇出在跑, 两把锁都空闲; 借出锁再建页
+        let strokes = crate::STROKES.lock().unwrap_or_else(|e| e.into_inner());
+        let g = INNER.lock().unwrap_or_else(|e| e.into_inner());
+        if strokes.len() < g.captured {
+            return 0; // 手动翻页/清空已发生, 待提交钩子自行重同步
+        }
+        if g.pending.is_empty() {
+            return 0;
+        }
+        let stroke_gap_ms = g
+            .last_activity
+            .map(|t| t.elapsed().as_millis() as u64)
+            .unwrap_or(0);
+        if !will_split_soon(&g, stroke_gap_ms) {
+            return 0;
+        }
+    }
+    let current = crate::state::current_screen_id();
+    let new_id = super::pages::create_next_page_inner(current, false);
+    // 复用(末页空白)返回 current_id: 对自动翻页而言 = 不动, 返回 0
+    if new_id > current {
+        tracing::info!("气泡自动新建一页: {current} → {new_id}");
+        new_id
+    } else {
+        0
+    }
+}
+
+/// db::load_setting 的同步包装(auto_page 落笔路径用)。
+fn runtime_block_on_setting(key: &str) -> Option<String> {
+    crate::runtime().block_on(crate::db::load_setting(key))
+}
+
 /// 全部消息的 JSON(先惰性过期)。形如:
 /// `{"messages":[{"id":1,"ts_ms":...,"strokes":[{"rgb":16711680,"w":2.0,
 ///   "g":0,"pts":[x,y,w, ...]}]}]}`(g = 与上一笔的间隔 ms, 重播时间线用)
@@ -598,5 +664,44 @@ mod tests {
         // 单个长间隔(平滑): 只推高一截, 不会带飞
         ema = next_typical(6_000, ema);
         assert!(ema < 2_500.0, "单个长间隔不应带飞 EMA, 实得 {ema}");
+    }
+
+    /// 自动翻页判定: 冷启动/笔静默超阈值/纯鼠标回退笔迹间隔。
+    #[test]
+    fn will_split_soon_rules() {
+        let base = || Inner {
+            captured: 0,
+            pending: vec![BubbleStroke {
+                rgb: 0xFF0000,
+                width_scale: 1.0,
+                pts: vec![(0.0, 0.0, 2.0), (5.0, 5.0, 2.0)],
+                gap_ms: 0,
+            }],
+            pending_points: 2,
+            last_activity: Some(Instant::now()),
+            typical_gap_ms: INITIAL_TYPICAL_MS, // 阈值 10s
+            pen_last_seen: None,
+            pen_cold: false,
+            pen_cold_at: None,
+            last_capture: None,
+            msgs: Vec::new(),
+            next_id: 1,
+        };
+        // 笔冷 = 必分
+        let mut g = base();
+        g.pen_cold = true;
+        assert!(will_split_soon(&g, 0));
+        // 心跳新鲜(0.5s 前还在悬停) = 不分(悬停构思桥接)
+        let mut g = base();
+        g.pen_last_seen = Some(Instant::now() - std::time::Duration::from_millis(500));
+        assert!(!will_split_soon(&g, 60_000));
+        // 心跳超阈值(11s 没有任何笔事件) = 分
+        let mut g = base();
+        g.pen_last_seen = Some(Instant::now() - std::time::Duration::from_secs(11));
+        assert!(will_split_soon(&g, 0));
+        // 纯鼠标: 回退笔迹间隔(10s 阈值)
+        let g = base();
+        assert!(!will_split_soon(&g, 9_000));
+        assert!(will_split_soon(&g, 10_500));
     }
 }

@@ -1076,6 +1076,18 @@ abstract class AppLocalizations {
   /// **'刷新'**
   String get refreshBubbles;
 
+  /// No description provided for @bubbleAutoNewPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'写完自动新建一页'**
+  String get bubbleAutoNewPage;
+
+  /// No description provided for @bubbleAutoNewPageSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'笔离开后落笔开新消息时, 自动翻到新的一页(需气泡 tab 开启)'**
+  String get bubbleAutoNewPageSub;
+
   /// No description provided for @bubbleCopySvg.
   ///
   /// In zh, this message translates to:

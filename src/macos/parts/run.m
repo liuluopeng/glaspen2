@@ -1357,6 +1357,24 @@ static void page_flip_swap(BOOL going_next, void (^prepare)(void),
   });
 }
 
+/// 气泡「写完自动新建一页」: 落笔瞬间(笔画尚未开始)若这一笔将开新消息
+/// (冷启动/静默超时, 设置 bubbleAutoNewPage × 气泡 tab 开启, 仅翻页模式),
+/// 先建页并按 ⌥⌘↓ 新建同款动效翻过去 —— 笔画落在新页, 消息边界 = 页边界。
+/// 返回是否翻了页。
+static BOOL bubble_auto_page_flip(void) {
+  long long page = glaspen2_bubble_auto_page_if_due();
+  if (page <= 0)
+    return NO;
+  page_flip_swap(YES,
+                 ^{ glaspen2_load_strokes_for_screen(page);
+                    glaspen2_smooth_loaded_strokes();
+                    pageview_update(); },
+                 ^{ replay_strokes_from_memory(); });
+  show_page_info(page);
+  show_notification(L(@"已自动新建一页", @"Auto-created a new page"));
+  return YES;
+}
+
 static void canvas_infinite_persist(void) {
   if (!g_infinite_canvas)
     return;
@@ -2283,6 +2301,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
           g_prox_dev == NSEraserPointingDevice ? @"eraser-prox"
           : g_prox_dev == NSPenPointingDevice  ? @"pen-prox"
                                                : @"other-prox");
+    bubble_auto_page_flip(); // 气泡写完自动翻页: 这笔若开新消息, 先翻到新页
     glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(px),
                            canvas_input_y(py), pressure, ts, g_width_scale);
     g_stroke_active = YES;
@@ -2312,6 +2331,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
         g_eraser_mode = eraser;
         update_status_icon_state();
       }
+      bubble_auto_page_flip(); // 同落笔分支: 补 begin 前先翻页
       glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(px),
                              canvas_input_y(py), pressure, ts, g_width_scale);
       g_stroke_active = YES;

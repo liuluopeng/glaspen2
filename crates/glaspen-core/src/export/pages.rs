@@ -446,7 +446,16 @@ pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
 /// 2. 频率闸 —— 任意 2s 内至多新建一页, 兜住一切重复信号(按键重复等)。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_create_next_page(current_id: i64) -> i64 {
-    if let Some(d) = state::since_last_stroke_activity()
+    create_next_page_inner(current_id, true)
+}
+
+/// 建页实现。`respect_write_lock = false` 仅供气泡"落笔自动翻页"使用:
+/// 调用点在落笔瞬间、笔画尚未开始, 无墨迹在飞, 写锁的意图本已满足
+/// (气泡自动翻页由此绕开"距上次抬笔 <1.5s 拒绝"——恰恰是写完一页马上
+/// 写下一条的正常节奏)。
+pub(crate) fn create_next_page_inner(current_id: i64, respect_write_lock: bool) -> i64 {
+    if respect_write_lock
+        && let Some(d) = state::since_last_stroke_activity()
         && d < WRITE_LOCK
     {
         tracing::debug!("翻页新建拒绝: 书写活动中(距上次落笔 {d:?})");

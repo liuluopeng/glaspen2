@@ -607,7 +607,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             glaspen_core::export::glaspen2_is_launch_at_login() == 1;
         // 密码本体不回读,只回是否已保存(macOS 同款)
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"showBubbleTab\":{},\"bubbleReplaySpeed\":{},\"bubbleReplayHoldLast\":{},\"bubbleReplayAuto\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\"}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"showBubbleTab\":{},\"bubbleReplaySpeed\":{},\"bubbleReplayHoldLast\":{},\"bubbleReplayAuto\":{},\"bubbleAutoNewPage\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\"}}}}\n",
             color,
             width,
             outline,
@@ -655,6 +655,11 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             },
             glaspen_core::runtime()
                 .block_on(glaspen_core::db::load_setting("bubble_replay_auto"))
+                .and_then(|v| v.parse::<i32>().ok())
+                .unwrap_or(0)
+                != 0,
+            glaspen_core::runtime()
+                .block_on(glaspen_core::db::load_setting("bubble_auto_new_page"))
                 .and_then(|v| v.parse::<i32>().ok())
                 .unwrap_or(0)
                 != 0,
@@ -891,6 +896,14 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             if let Some(on) = json_get_bool(line, "value") {
                 glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
                     "bubble_replay_auto",
+                    if on { "1" } else { "0" },
+                ));
+            }
+        } else if key == "bubbleAutoNewPage" {
+            // 写完消息自动新建一页(默认关):落库即可, core 落笔时消费
+            if let Some(on) = json_get_bool(line, "value") {
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "bubble_auto_new_page",
                     if on { "1" } else { "0" },
                 ));
             }

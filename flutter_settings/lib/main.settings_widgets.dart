@@ -377,6 +377,18 @@ extension _SettingsWidgetsUi on _SettingsPageState {
               _setSetting('bubbleReplayAuto', v);
             },
           )),
+        if (_showBubbleTab)
+          _tile(SwitchListTile(
+            title: Text(AppLocalizations.of(context)!.bubbleAutoNewPage, style: TextStyle(fontSize: 15)),
+            subtitle: Text(AppLocalizations.of(context)!.bubbleAutoNewPageSub, style: TextStyle(fontSize: 12)),
+            value: _bubbleAutoNewPage,
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            onChanged: (v) {
+              setState(() => _bubbleAutoNewPage = v);
+              _setSetting('bubbleAutoNewPage', v);
+            },
+          )),
         _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.showGrid, style: TextStyle(fontSize: 15)),
           subtitle: Text(AppLocalizations.of(context)!.helpsAlignWhileDoodling, style: TextStyle(fontSize: 12)),

@@ -39,6 +39,7 @@ extension _SettingsStateUi on _SettingsPageState {
         _bubbleReplayHoldLast =
             s['bubbleReplayHoldLast'] as bool? ?? _bubbleReplayHoldLast;
         _bubbleReplayAuto = _b(s['bubbleReplayAuto']);
+        _bubbleAutoNewPage = _b(s['bubbleAutoNewPage']);
         _shareCanvas = _b(s['shareCanvas']);
         _notebookGlass = s['notebookStyle'] as bool? ?? _notebookGlass;
         _panelTransparent = _b(s['panelTransparent']);
@@ -88,6 +89,7 @@ extension _SettingsStateUi on _SettingsPageState {
           _bubbleReplayHoldLast =
               settings['bubbleReplayHoldLast'] as bool? ?? true;
           _bubbleReplayAuto = _b(settings['bubbleReplayAuto']);
+          _bubbleAutoNewPage = _b(settings['bubbleAutoNewPage']);
           _shareCanvas = _b(settings['shareCanvas']);
           _notebookGlass = _b(settings['notebookStyle']);
           _panelTransparent = _b(settings['panelTransparent']);

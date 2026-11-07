@@ -226,6 +226,7 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   int _bubbleReplaySpeed = 1;
   bool _bubbleReplayHoldLast = true;
   bool _bubbleReplayAuto = false;
+  bool _bubbleAutoNewPage = false; // 写完消息自动新建一页(core 落笔时消费)
   int? _replayMsgId; // 正在重播的消息 id(null = 无)
   late final AnimationController _replayCtrl;
   // 共享画布上行开关(活页本 tab;仅集成开启时可见/生效)

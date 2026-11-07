@@ -539,6 +539,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get refreshBubbles => '刷新';
 
   @override
+  String get bubbleAutoNewPage => '写完自动新建一页';
+
+  @override
+  String get bubbleAutoNewPageSub => '笔离开后落笔开新消息时, 自动翻到新的一页(需气泡 tab 开启)';
+
+  @override
   String get bubbleCopySvg => '复制为 SVG 动画';
 
   @override

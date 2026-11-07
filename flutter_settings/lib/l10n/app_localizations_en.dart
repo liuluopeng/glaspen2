@@ -552,6 +552,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get refreshBubbles => 'Refresh';
 
   @override
+  String get bubbleAutoNewPage => 'Auto new page after a message';
+
+  @override
+  String get bubbleAutoNewPageSub =>
+      'When a pause or pen leave starts a new message, flip to a fresh page (needs the bubble tab)';
+
+  @override
   String get bubbleCopySvg => 'Copy as animated SVG';
 
   @override

@@ -95,6 +95,9 @@ extern void glaspen2_modeler_commit_to_strokes(double r, double g, double b);
 extern void glaspen2_bubble_pen_activity(void);
 extern void glaspen2_bubble_pen_back(void);
 extern void glaspen2_bubble_pen_gone(void);
+// 「写完自动新建一页」: 落笔瞬间调用, 若这笔将开新消息则建页并切 current id,
+// 返回新页 id(0 = 无动作); shell 据此翻页载入(见 run.m bubble_auto_page_flip)
+extern long long glaspen2_bubble_auto_page_if_due(void);
 extern void glaspen2_modeler_erase_finish(void);
 extern int glaspen2_stroke_bbox(double *x_min, double *y_min, double *x_max, double *y_max);
 extern void glaspen2_save_svg(void);
