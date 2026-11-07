@@ -3,9 +3,12 @@
 // 移开 → 收起;卡片带木夹微幅摇摆;点击卡片 → 大图预览(再点关闭)。
 //
 // 与主覆盖层的关系:独立 borderless 透明窗口(kCGMaximumWindowLevel,
-// 全屏大小), 内容图层整体平移实现滑落/收起;穿透用自定义 hitTest ——
-// 预览打开时全窗可点(点哪都关), 否则仅卡片矩形可点, 其余返回 nil
-// 让点击落到下层(涂鸦不受影响)。
+// 全屏大小), 内容图层整体平移实现滑落/收起。
+// ⚠️ 窗口永远 setIgnoresMouseEvents:YES(纯像素, 不参与 WindowServer
+// 的点击路由)—— v0 曾用 hitTest:nil 做局部穿透, 实测在最高层全屏窗上
+// 会劫持整只鼠标(点击全面失灵)。交互全部改走 event tap:
+// 悬停 = clothesline_hover_update(mouseMoved 喂入), 卡片点击/预览关闭 =
+// clothesline_click(LeftMouseDown 喂入, 命中时返回 NULL 消费事件)。
 //
 // 数据: 卡片位图来自 core(line.rs, glaspen2_bubble_card_png → PNG →
 // NSImage, minimap 同款后台串行队列);消息完结经 LINE_HOOK
@@ -14,8 +17,6 @@
 // 开关: 设置 bubbleClothesline(默认开), g_clothesline_enabled。
 // 注意: hook 触发时 core 侧正持 bubbles 锁 —— 本文件所有取数都发生在
 // dispatch_async 之后的独立时机, 严禁同步回调进 core。
-// (本文件被 include 在 menu.m 之后 run.m 之前;函数顺序遵守 C99
-// "先声明后用", 不隐式声明。)
 
 #import <QuartzCore/QuartzCore.h>
 
@@ -322,6 +323,29 @@ void clothesline_hover_update(CGFloat top_y) {
   line_apply_slide(wantShown);
 }
 
+/// event tap 点击路由(tap 回调在主 runloop;坐标 = CG 全局, 顶部原点):
+/// 预览打开 → 点哪都关;线展开 → 命中卡片 = 开预览。命中返回 YES(tap 消费
+/// 该事件), 未命中 NO = 事件原样放行(涂鸦/下层应用不受任何影响)。
+BOOL clothesline_click(CGFloat gx, CGFloat gy) {
+  if (!g_line_window || !g_clothesline_enabled)
+    return NO;
+  if (g_line_preview_id != 0) {
+    line_dismiss_preview();
+    return YES; // 预览中点哪都关, 消费掉防止误触下层
+  }
+  if (!g_line_shown)
+    return NO;
+  CGFloat viewH = g_line_window.frame.size.height;
+  NSPoint p = CGPointMake(gx, viewH - gy); // CG 顶原点 → 视图底原点
+  for (NSDictionary *card in g_line_cards) {
+    if (NSPointInRect(p, line_card_rect(card, viewH))) {
+      line_show_preview([card[@"id"] longLongValue]);
+      return YES;
+    }
+  }
+  return NO;
+}
+
 // ── 预览 ──
 
 static void line_show_preview(long long msg_id) {
@@ -392,38 +416,6 @@ static void line_dismiss_preview(void) {
 
 // ── 窗口与视图 ──
 
-@interface GlaspenLineView : NSView
-@end
-@implementation GlaspenLineView
-// 穿透: 预览打开 → 全窗可点(点哪都关);否则仅卡片矩形可点,
-// 其余返回 nil → 点击落到下层(涂鸦/系统不受影响)。
-- (NSView *)hitTest:(NSPoint)p {
-  if (g_line_preview_id != 0)
-    return self;
-  CGFloat viewH = NSHeight(self.bounds);
-  for (NSDictionary *card in g_line_cards) {
-    if (NSPointInRect(p, line_card_rect(card, viewH)))
-      return self;
-  }
-  return nil;
-}
-
-- (void)mouseDown:(NSEvent *)event {
-  NSPoint p = [event locationInWindow];
-  if (g_line_preview_id != 0) {
-    line_dismiss_preview();
-    return;
-  }
-  CGFloat viewH = NSHeight(self.bounds);
-  for (NSDictionary *card in g_line_cards) {
-    if (NSPointInRect(p, line_card_rect(card, viewH))) {
-      line_show_preview([card[@"id"] longLongValue]);
-      return;
-    }
-  }
-}
-@end
-
 static void line_ensure_window(void) {
   if (g_line_window)
     return;
@@ -444,12 +436,14 @@ static void line_ensure_window(void) {
   [g_line_window setLevel:kCGMaximumWindowLevel];
   [g_line_window setOpaque:NO];
   [g_line_window setBackgroundColor:[NSColor clearColor]];
-  [g_line_window setIgnoresMouseEvents:NO];
+  // 纯像素窗口: 永不参与点击路由(v0 的 hitTest 局部穿透实测会劫持整只
+  // 鼠标)。卡片点击/预览关闭由 event tap 经 clothesline_click 驱动。
+  [g_line_window setIgnoresMouseEvents:YES];
   [g_line_window setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces |
                                        NSWindowCollectionBehaviorStationary];
   [g_line_window setReleasedWhenClosed:NO];
 
-  GlaspenLineView *view = [[GlaspenLineView alloc] initWithFrame:screenFrame];
+  NSView *view = [[NSView alloc] initWithFrame:screenFrame];
   [view setWantsLayer:YES];
   g_line_root = [view layer];
   g_line_root.backgroundColor = [NSColor clearColor].CGColor;

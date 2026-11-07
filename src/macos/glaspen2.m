@@ -59,6 +59,7 @@ void clothesline_set_hidden(BOOL hidden);
 BOOL clothesline_enabled(void);
 void clothesline_startup(void);
 void clothesline_hover_update(CGFloat top_y); // run.m event tap 悬停喂入
+BOOL clothesline_click(CGFloat gx, CGFloat gy); // run.m event tap 点击路由(YES=已消费)
 
 // --- Cairo (linked via cargo) ---
 #include <cairo/cairo.h>

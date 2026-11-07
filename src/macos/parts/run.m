@@ -2094,6 +2094,14 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     return event;
   }
 
+  // 晾衣架卡片点击(tap 消费): 预览开 = 点哪都关; 展开时命中卡片 = 预览。
+  // 未命中原样放行 —— 窗口本身 ignoresMouseEvents, 不参与点击路由。
+  if (type == kCGEventLeftMouseDown) {
+    CGPoint lineLoc = CGEventGetLocation(event);
+    if (clothesline_click(lineLoc.x, lineLoc.y))
+      return NULL; // 消费, 防止误触下层
+  }
+
   // Convert to NSEvent to check pen properties
   NSEvent *nsevent = [NSEvent eventWithCGEvent:event];
   if (!nsevent)

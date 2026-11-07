@@ -161,6 +161,10 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
 - **窗口动效只能用 setIsVisible**(`[g_window setIsVisible:NO/YES]`,
   系统内置不可调参);别用 NSAnimationContext 手写 alpha——用户已明确
   否掉过一次。渐隐到渐显的间隔保持最小(dispatch_async 一个 tick)
+- **最高层全屏窗口必须 setIgnoresMouseEvents:YES**(晾衣架 v0 血泪:
+  hitTest:nil 做局部穿透实测劫持整只鼠标, 点击全面失灵)——这类窗口
+  当纯像素用, 点击/悬停交互一律走 event tap(全局可见, 返回 NULL 消费、
+  返回 event 放行), 不依赖 WindowServer 的点击路由
 - **位图上下文**:设过 `rep.size` 后 CTM 已自带点→像素缩放,再手动
   `CGContextScaleCTM` 会双重放大画出界(全透明);小形状先描 halo 再
   fill 会被 halo 洗白——顺序:halo → fill → 细描边
