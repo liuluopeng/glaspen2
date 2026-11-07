@@ -131,7 +131,6 @@ class _FrbBridge extends SettingsBridge {
       'bubbleReplayHoldLast': s.bubbleReplayHoldLast,
       'bubbleReplayAuto': s.bubbleReplayAuto,
       'bubbleAutoNewPage': s.bubbleAutoNewPage,
-      'bubbleClothesline': s.bubbleClothesline,
       'shareCanvas': s.shareCanvas,
       'language': s.language,
     };

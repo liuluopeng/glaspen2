@@ -246,7 +246,6 @@ static void toggle_enabled(void) {
         finish_active_stroke();
         if (g_window) [g_window orderOut:nil];
         if (g_pressure_monitor) pm_hide();
-        clothesline_set_hidden(YES);
     } else {
         if (g_window) {
             if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
@@ -260,7 +259,6 @@ static void toggle_enabled(void) {
             }
         }
         if (g_pressure_monitor) pm_show();
-        clothesline_set_hidden(NO);
     }
     update_status_icon_state();
     show_notification(g_enabled
@@ -296,7 +294,6 @@ static void ethereal_hide_now(void) {
     g_strokes_visible = NO;
     if (g_glass_follow_strokes && g_glass_view) g_glass_view.hidden = YES;
     if (g_pressure_monitor) pm_hide();
-    clothesline_set_hidden(YES);
     [g_draw_view setNeedsDisplay:YES]; // 笔离开数位板: 立即隐藏(无动效)
 }
 
@@ -326,7 +323,6 @@ static void auto_show_canvas(void) {
         g_strokes_visible = YES;
         gl_glass_apply(); // restore the glass per its own toggle
         if (g_pressure_monitor) pm_show();
-        clothesline_set_hidden(NO);
         [g_draw_view setNeedsDisplay:YES];
         NSLog(@"[ethereal] 笔迹重现");
     }
@@ -350,7 +346,6 @@ static void peek_strokes(double seconds) {
         g_strokes_visible = YES;
         gl_glass_apply();
         if (g_pressure_monitor) pm_show();
-        clothesline_set_hidden(NO);
         [g_draw_view setNeedsDisplay:YES];
     }
     g_peek_timer = [NSTimer scheduledTimerWithTimeInterval:seconds repeats:NO block:^(NSTimer *timer) {
@@ -371,7 +366,6 @@ static void toggle_canvas_mode(void) {
         g_strokes_visible = NO;
         if (g_glass_follow_strokes && g_glass_view) g_glass_view.hidden = YES;
         if (g_pressure_monitor) pm_hide();
-        clothesline_set_hidden(YES);
         [g_draw_view setNeedsDisplay:YES];
         show_notification(L(@"飘渺画布涂鸦模式 (悬空/落笔显示)", @"Ethereal canvas mode (hover/down to show)"));
     } else {
@@ -380,7 +374,6 @@ static void toggle_canvas_mode(void) {
         g_strokes_visible = YES;
         gl_glass_apply();
         if (g_pressure_monitor) pm_show();
-        clothesline_set_hidden(NO);
         [g_draw_view setNeedsDisplay:YES];
         show_notification(L(@"固定画布涂鸦模式", @"Fixed canvas mode"));
     }
@@ -612,10 +605,6 @@ char *glaspen2_macos_settings_json(void) {
         char *vhl = glaspen2_load_string_setting("bubble_replay_hold_last");
         BOOL replay_hold = vhl ? (atoi(vhl) != 0) : YES;
         glaspen2_free_c_string(vhl);
-        // 晾衣架开关: 缺省开(bool 落库即 "1"/"0" 字符串, 读不到 = 未设置)
-        char *vcl = glaspen2_load_string_setting("bubble_clothesline");
-        BOOL clothesline_default_on = vcl ? (atoi(vcl) != 0) : YES;
-        glaspen2_free_c_string(vcl);
         NSDictionary *d = @{
             @"color": @(g_selectedColorIndex),
             @"width": @(g_selected_width_index),
@@ -655,7 +644,6 @@ char *glaspen2_macos_settings_json(void) {
             @"bubbleReplayHoldLast": @(replay_hold),
             @"bubbleReplayAuto": @(glaspen2_load_bool_setting("bubble_replay_auto") != 0),
             @"bubbleAutoNewPage": @(glaspen2_load_bool_setting("bubble_auto_new_page") != 0),
-            @"bubbleClothesline": @(clothesline_default_on),
             @"shareCanvas": @(glaspen2_load_bool_setting("share_ink") != 0),
             // 语言由面板选择器决定, 不再跟随系统; 缺省中文
             @"language": (g_lang == 1 ? @"en" : @"zh"),
@@ -852,10 +840,6 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
         } else if ([key isEqualToString:@"bubbleAutoNewPage"]) {
             // 写完消息自动新建一页(默认关; core 落笔时消费, 见 bubbles.rs)
             glaspen2_save_bool_setting("bubble_auto_new_page", [value boolValue] ? 1 : 0);
-        } else if ([key isEqualToString:@"bubbleClothesline"]) {
-            // 晾衣架开关(默认开): 完结消息挂屏幕顶部绳上, 见 parts/line.m
-            clothesline_set_enabled([value boolValue]);
-            glaspen2_save_bool_setting("bubble_clothesline", [value boolValue] ? 1 : 0);
         } else if ([key isEqualToString:@"showFreeCanvas"]) {
             // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
             glaspen2_save_bool_setting("show_free_canvas", [value boolValue] ? 1 : 0);

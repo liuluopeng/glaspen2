@@ -1710,7 +1710,6 @@ impl SseDecode for crate::api::Settings {
         let mut var_bubbleReplayHoldLast = <bool>::sse_decode(deserializer);
         let mut var_bubbleReplayAuto = <bool>::sse_decode(deserializer);
         let mut var_bubbleAutoNewPage = <bool>::sse_decode(deserializer);
-        let mut var_bubbleClothesline = <bool>::sse_decode(deserializer);
         let mut var_shareCanvas = <bool>::sse_decode(deserializer);
         let mut var_language = <String>::sse_decode(deserializer);
         return crate::api::Settings {
@@ -1747,7 +1746,6 @@ impl SseDecode for crate::api::Settings {
             bubble_replay_hold_last: var_bubbleReplayHoldLast,
             bubble_replay_auto: var_bubbleReplayAuto,
             bubble_auto_new_page: var_bubbleAutoNewPage,
-            bubble_clothesline: var_bubbleClothesline,
             share_canvas: var_shareCanvas,
             language: var_language,
         };
@@ -2045,7 +2043,6 @@ impl flutter_rust_bridge::IntoDart for crate::api::Settings {
             self.bubble_replay_hold_last.into_into_dart().into_dart(),
             self.bubble_replay_auto.into_into_dart().into_dart(),
             self.bubble_auto_new_page.into_into_dart().into_dart(),
-            self.bubble_clothesline.into_into_dart().into_dart(),
             self.share_canvas.into_into_dart().into_dart(),
             self.language.into_into_dart().into_dart(),
         ]
@@ -2398,7 +2395,6 @@ impl SseEncode for crate::api::Settings {
         <bool>::sse_encode(self.bubble_replay_hold_last, serializer);
         <bool>::sse_encode(self.bubble_replay_auto, serializer);
         <bool>::sse_encode(self.bubble_auto_new_page, serializer);
-        <bool>::sse_encode(self.bubble_clothesline, serializer);
         <bool>::sse_encode(self.share_canvas, serializer);
         <String>::sse_encode(self.language, serializer);
     }

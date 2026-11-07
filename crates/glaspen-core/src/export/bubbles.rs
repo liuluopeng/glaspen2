@@ -49,23 +49,22 @@ const MAX_PENDING_POINTS: usize = 8000;
 const PEN_SWITCH_GRACE_MS: u64 = 300;
 
 #[derive(Clone)]
-pub(crate) struct BubbleStroke {
+struct BubbleStroke {
     /// 0xRRGGBB。
-    pub(crate) rgb: u32,
+    rgb: u32,
     /// 宽度倍率(面板粗细预设, proto width_scale 同义)。
-    pub(crate) width_scale: f64,
+    width_scale: f64,
     /// 折线 (x, y, w) —— 画布坐标, w = 压感换算后的绝对线宽。
-    pub(crate) pts: Vec<(f64, f64, f64)>,
+    pts: Vec<(f64, f64, f64)>,
     /// 与上一笔提交的间隔(ms, 段内首笔 = 0)—— 重播时间线的笔间停顿。
-    pub(crate) gap_ms: u64,
+    gap_ms: u64,
 }
 
-#[derive(Clone)]
-pub(crate) struct BubbleMsg {
-    pub(crate) id: u64,
+struct BubbleMsg {
+    id: u64,
     /// 完成时刻(unix 毫秒)。
-    pub(crate) ts_ms: u64,
-    pub(crate) strokes: Vec<BubbleStroke>,
+    ts_ms: u64,
+    strokes: Vec<BubbleStroke>,
 }
 
 struct Inner {
@@ -103,53 +102,6 @@ static INNER: Mutex<Inner> = Mutex::new(Inner {
     msgs: Vec::new(),
     next_id: 1,
 });
-
-/// 晾衣架钩子(shell 注入, REFRESH_HOOK 同款): 消息完结时通知 shell 挂新卡。
-/// 调用时持有 INNER 锁 —— 实现必须异步回主线程再取数据, 严禁同步回调进 core。
-static LINE_HOOK: Mutex<Option<fn()>> = Mutex::new(None);
-
-/// shell(macOS)启动时注入晾衣架刷新回调;未注入(测试/Windows)为无操作。
-pub fn set_bubble_line_hook(f: fn()) {
-    *LINE_HOOK.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
-}
-
-/// 晾衣架挂卡列表(最近 `max` 条已完结消息, 旧→新):
-/// `{"cards":[{"id":7,"ts_ms":...}, ...]}`。空笔消息跳过(渲染必为 None)。
-pub fn line_cards_json(max: i32) -> String {
-    let g = INNER.lock().unwrap_or_else(|e| e.into_inner());
-    let max = max.clamp(1, 64) as usize;
-    // 先从新往旧取 max 条, 再反回旧→新(晾衣架从左往右按时间挂)
-    let mut picked: Vec<&BubbleMsg> = g
-        .msgs
-        .iter()
-        .rev()
-        .filter(|m| m.strokes.iter().any(|s| !s.pts.is_empty()))
-        .take(max)
-        .collect();
-    picked.reverse();
-    let cards: Vec<serde_json::Value> = picked
-        .iter()
-        .map(|m| json!({ "id": m.id, "ts_ms": m.ts_ms }))
-        .collect();
-    json!({ "cards": cards }).to_string()
-}
-
-/// 单条消息的卡片 PNG(按 id;ObjC 用 glaspen2_free_rust_bytes 释放)。
-/// 找不到 / 消息为空 / out_len 为空 → NULL。
-pub fn line_card_png(id: u64, max_edge: i32, out_len: *mut std::os::raw::c_int) -> *mut u8 {
-    if out_len.is_null() {
-        return std::ptr::null_mut();
-    }
-    let g = INNER.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(msg) = g.msgs.iter().find(|m| m.id == id) else {
-        return std::ptr::null_mut();
-    };
-    let Some(png) = super::line::render_message_png(msg, max_edge.max(64) as f64) else {
-        return std::ptr::null_mut();
-    };
-    drop(g);
-    super::thumbs::leak_png(png.0, out_len)
-}
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -317,11 +269,6 @@ fn finish_pending(g: &mut Inner) {
     g.next_id += 1;
     g.pending_points = 0;
     g.last_capture = None; // 新段第一笔间隔记 0
-    // 晾衣架钩子: 通知 shell 挂新卡(此刻持 INNER 锁, 实现必须异步回主线程
-    // 再取数据, 严禁同步回调进 core)
-    if let Some(f) = LINE_HOOK.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
-        f();
-    }
     g.msgs.push(msg);
     if g.msgs.len() > MAX_MSGS {
         g.msgs.remove(0);
@@ -591,59 +538,6 @@ mod tests {
         assert_eq!(a, b);
         assert_eq!(a.len(), 36);
         assert_eq!(a.as_bytes()[14], b'7');
-    }
-
-    /// 晾衣架挂卡列表: 最近 N 条、旧→新、空笔消息跳过;卡片 PNG 按 id 取。
-    #[test]
-    fn line_cards_and_png() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
-        reset_fixture();
-        // 消息 1: 两笔(可渲染)
-        {
-            let mut strokes = crate::STROKES.lock().unwrap();
-            strokes.push(crate::Stroke {
-                id: 1,
-                r: 1.0,
-                g: 0.0,
-                b: 0.0,
-                points: vec![(0.0, 0.0, 2.0, 0.0), (30.0, 20.0, 2.0, 0.1)],
-            });
-        }
-        on_stroke_committed();
-        // 冷标记强制分段: 笔 2 开新消息(否则两笔并作一条)
-        INNER.lock().unwrap().pen_cold = true;
-        // 消息 2: 一笔(可渲染)
-        {
-            let mut strokes = crate::STROKES.lock().unwrap();
-            strokes.push(crate::Stroke {
-                id: 2,
-                r: 0.0,
-                g: 0.0,
-                b: 1.0,
-                points: vec![(5.0, 5.0, 2.0, 0.0)],
-            });
-        }
-        on_stroke_committed();
-        crate::STROKES.lock().unwrap().clear();
-        on_stroke_committed(); // 重置结出两条消息
-        {
-            let v: serde_json::Value =
-                serde_json::from_str(&line_cards_json(8)).unwrap();
-            let cards = v["cards"].as_array().unwrap();
-            assert_eq!(cards.len(), 2, "两条消息两张卡");
-            assert_eq!(cards[0]["id"], 1, "旧→新");
-            assert_eq!(cards[1]["id"], 2);
-        }
-        // 卡片 PNG: 有效 id → PNG 魔数;未知 id → NULL
-        let mut len: std::os::raw::c_int = 0;
-        let png = line_card_png(1, 320, &mut len);
-        assert!(!png.is_null() && len > 4);
-        let magic = unsafe { std::slice::from_raw_parts(png, 4) };
-        assert_eq!(magic, &[0x89, b'P', b'N', b'G']);
-        unsafe { crate::export::thumbs::glaspen2_free_rust_bytes(png, len) };
-        assert!(line_card_png(999, 320, &mut len).is_null(), "未知 id → NULL");
-        assert!(line_card_png(1, 320, std::ptr::null_mut()).is_null(), "out_len NULL 防御");
-        reset_fixture();
     }
 
     /// 时间规则(无笔信号 = 纯鼠标回退路径): 阈值 = clamp(5×EMA, 8s, 90s)。

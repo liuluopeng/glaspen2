@@ -14,14 +14,6 @@ pub fn macos_run() {
         glaspen2_macos_refresh_page(screen_id);
     });
 
-    // 晾衣架: 气泡消息完结 → core 经此回调异步刷新挂卡(定义在 parts/line.m,
-    // 内部 dispatch_async 回主线程再取数 —— 回调触发时 core 正持 bubbles 锁)。
-    unsafe extern "C" {
-        fn glaspen2_bubble_line_changed();
-    }
-    glaspen_core::export::set_clothesline_hook(|| unsafe {
-        glaspen2_bubble_line_changed();
-    });
 
     unsafe extern "C" {
         fn glaspen2_run();

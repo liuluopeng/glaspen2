@@ -252,7 +252,7 @@ pub fn encode_thumb_blob(entries: &[(i64, Vec<u8>)]) -> Vec<u8> {
 /// 按 `(ptr, len)` 用 `Vec::from_raw_parts(ptr, len, len)` 释放。容量不一致
 /// 时 allocator 拿到的 layout 是错的 —— 堆破坏级别的 UB。Box<[u8]> 的
 /// 分配布局恰好等于 `Vec::with_capacity(len)`, 与释放侧一致。
-pub(crate) fn leak_png(png: Vec<u8>, out_len: *mut c_int) -> *mut c_uchar {
+fn leak_png(png: Vec<u8>, out_len: *mut c_int) -> *mut c_uchar {
     let boxed = png.into_boxed_slice();
     let len = boxed.len() as c_int;
     let ptr = Box::into_raw(boxed) as *mut c_uchar;
