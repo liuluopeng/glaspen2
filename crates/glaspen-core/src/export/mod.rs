@@ -23,6 +23,7 @@ pub use std::sync::Arc;
 pub mod bubbles;
 mod chat_glue;
 mod media;
+pub mod nas_backup;
 mod pages;
 pub(crate) mod thumbs;
 pub(crate) use chat_glue::ink_draft_on_stroke_committed;

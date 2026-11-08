@@ -1168,6 +1168,33 @@ mod platform {
         Ok(path.to_string_lossy().into_owned())
     }
 
+    /// 整库一致性快照到指定路径(NAS 备份用): VACUUM INTO 对活跃库安全,
+    /// 产出紧凑且含全部表(笔迹/无限画布/设置/缩略图)。
+    pub async fn snapshot_to(path: &std::path::Path) -> Result<(), String> {
+        let pool = DB.get().ok_or("数据库未初始化")?;
+        backup_to_with(pool, path).await
+    }
+
+    /// 笔迹总数(活页本 + 无限画布, 不含软删)—— NAS 备份登记用。
+    pub async fn stroke_count() -> i64 {
+        let Some(pool) = DB.get() else {
+            return 0;
+        };
+        let paged: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM strokes WHERE deleted_at IS NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+        let infinite: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM infinite_strokes WHERE deleted_at IS NULL",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+        paged + infinite
+    }
+
     /// 桌面上最新的备份文件(没有则 None)。
     pub fn newest_backup() -> Option<std::path::PathBuf> {
         let mut best: Option<(std::time::SystemTime, std::path::PathBuf)> = None;

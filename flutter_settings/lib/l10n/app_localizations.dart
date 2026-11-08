@@ -1076,6 +1076,42 @@ abstract class AppLocalizations {
   /// **'刷新'**
   String get refreshBubbles;
 
+  /// No description provided for @nasBackup.
+  ///
+  /// In zh, this message translates to:
+  /// **'NAS 备份'**
+  String get nasBackup;
+
+  /// No description provided for @nasBackupUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'NAS 地址'**
+  String get nasBackupUrl;
+
+  /// No description provided for @nasBackupNow.
+  ///
+  /// In zh, this message translates to:
+  /// **'立即备份到 NAS'**
+  String get nasBackupNow;
+
+  /// No description provided for @nasBackupSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'整库快照推送到 NAS 的 axum 服务(文件落盘 + Postgres 登记);留空 = 关闭'**
+  String get nasBackupSub;
+
+  /// No description provided for @nasBackupDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已备份到 NAS'**
+  String get nasBackupDone;
+
+  /// No description provided for @nasBackupFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'NAS 备份失败'**
+  String get nasBackupFailed;
+
   /// No description provided for @bubbleAutoNewPage.
   ///
   /// In zh, this message translates to:

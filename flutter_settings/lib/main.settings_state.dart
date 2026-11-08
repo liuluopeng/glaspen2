@@ -77,6 +77,7 @@ extension _SettingsStateUi on _SettingsPageState {
           _gifSpeed = (settings['gifSpeed'] as num?)?.toDouble() ?? 2.0;
           _gifEndMode = (settings['gifEndMode'] as num?)?.toInt() ?? 1;
           _flipEffect = (settings['flipEffect'] as num?)?.toInt() ?? _flipEffect;
+          _nasUrl.text = (settings['nasUrl'] as String?) ?? '';
           _chatApiBase.text = (settings['chatApiBase'] as String?) ?? '';
           _chatUser.text = (settings['chatUser'] as String?) ?? '';
           _chatHasPassword = _b(settings['chatHasPassword']);

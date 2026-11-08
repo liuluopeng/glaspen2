@@ -232,6 +232,8 @@ pub struct Settings {
     pub bubble_replay_auto: bool,
     // 写完消息自动新建一页(默认关; core 落笔时消费, × 气泡 tab 开启)
     pub bubble_auto_new_page: bool,
+    // NAS 备份: axum 服务地址(如 http://192.168.1.10:8080); 空 = 未启用
+    pub nas_url: String,
     // 共享画布上行开关(活页本 tab;仅集成开启时生效)
     pub share_canvas: bool,
     /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
@@ -303,6 +305,7 @@ impl Settings {
                 .unwrap_or(true), // 默认 true(播完停在最后一帧)
             bubble_replay_auto: b("bubbleReplayAuto"),
             bubble_auto_new_page: b("bubbleAutoNewPage"),
+            nas_url: s("nasUrl"),
             share_canvas: b("shareCanvas"),
             language: {
                 let l = s("language");
@@ -335,6 +338,13 @@ pub async fn bubble_messages() -> String {
 /// 打开气泡 tab 时调用: 把进行中的段强制结为一条消息。
 pub async fn bubble_flush() {
     run_blocking(|| glaspen_core::export::bubbles::flush_now())
+}
+
+/// NAS 备份(设置 → 数据 → 立即备份): 整库一致性快照 → POST 到 NAS 的
+/// axum 服务(文件落盘 + Postgres 登记)。返回结果 JSON, 见
+/// export/nas_backup.rs 与 docs/nas-backup.md。
+pub async fn nas_backup_now() -> String {
+    run_blocking(glaspen_core::export::nas_backup::backup_now)
 }
 
 /// 写入一项设置。`value_json` 是 JSON 标量(`true` / `3` / `2.5`),

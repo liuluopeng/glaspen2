@@ -539,6 +539,25 @@ class AppLocalizationsZh extends AppLocalizations {
   String get refreshBubbles => '刷新';
 
   @override
+  String get nasBackup => 'NAS 备份';
+
+  @override
+  String get nasBackupUrl => 'NAS 地址';
+
+  @override
+  String get nasBackupNow => '立即备份到 NAS';
+
+  @override
+  String get nasBackupSub =>
+      '整库快照推送到 NAS 的 axum 服务(文件落盘 + Postgres 登记);留空 = 关闭';
+
+  @override
+  String get nasBackupDone => '已备份到 NAS';
+
+  @override
+  String get nasBackupFailed => 'NAS 备份失败';
+
+  @override
   String get bubbleAutoNewPage => '写完自动新建一页';
 
   @override

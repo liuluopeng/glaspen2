@@ -334,6 +334,7 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     _chatApiBase.dispose();
     _chatUser.dispose();
     _chatPassword.dispose();
+    _nasUrl.dispose();
     _bridge.dispose();
     super.dispose();
   }
@@ -655,5 +656,7 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   }
 
   bool _backupBusy = false;
+  bool _nasBusy = false; // NAS 备份进行中
+  final _nasUrl = TextEditingController(); // NAS 上 axum 服务地址
   bool _pdfExporting = false;
 }

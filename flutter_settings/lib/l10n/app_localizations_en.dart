@@ -552,6 +552,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get refreshBubbles => 'Refresh';
 
   @override
+  String get nasBackup => 'NAS backup';
+
+  @override
+  String get nasBackupUrl => 'NAS address';
+
+  @override
+  String get nasBackupNow => 'Back up to NAS now';
+
+  @override
+  String get nasBackupSub =>
+      'Pushes a whole-database snapshot to the axum service on your NAS (file on disk + Postgres registry). Leave empty to disable';
+
+  @override
+  String get nasBackupDone => 'Backed up to NAS';
+
+  @override
+  String get nasBackupFailed => 'NAS backup failed';
+
+  @override
   String get bubbleAutoNewPage => 'Auto new page after a message';
 
   @override

@@ -474,6 +474,16 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         );
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
+    } else if msg_type == "nasBackup" {
+        // NAS 备份: 整库快照 + 上传(耗时数秒~分钟, 管道线程同步执行;
+        // 失败原因在返回 JSON 里, 面板直接展示)
+        let json = glaspen_core::export::nas_backup::backup_now();
+        let resp = format!(
+            "{{\"type\":\"nasBackup_response\",\"reqId\":{},\"data\":{}}}",
+            req_id, json
+        );
+        let _ = writer.write_all(resp.as_bytes());
+        let _ = writer.flush();
     } else if msg_type == "canvasOverview" || msg_type == "canvasNew" {
         // 无限画布总览 tab:镜头动作(home/center/new)+ 包围盒总览 PNG。
         // 动作发给消息循环线程应用;总览渲染在管道线程(只读 STROKES/镜头)。
@@ -607,7 +617,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             glaspen_core::export::glaspen2_is_launch_at_login() == 1;
         // 密码本体不回读,只回是否已保存(macOS 同款)
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"showBubbleTab\":{},\"bubbleReplaySpeed\":{},\"bubbleReplayHoldLast\":{},\"bubbleReplayAuto\":{},\"bubbleAutoNewPage\":{},\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\"}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"showBubbleTab\":{},\"bubbleReplaySpeed\":{},\"bubbleReplayHoldLast\":{},\"bubbleReplayAuto\":{},\"bubbleAutoNewPage\":{},\"nasUrl\":\"{}\",\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\"}}}}\n",
             color,
             width,
             outline,
@@ -663,6 +673,11 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 .and_then(|v| v.parse::<i32>().ok())
                 .unwrap_or(0)
                 != 0,
+            json_escape(
+                &glaspen_core::runtime()
+                    .block_on(glaspen_core::db::load_setting("nas_url"))
+                    .unwrap_or_default(),
+            ),
             if chat_has_password { "true" } else { "false" },
             json_escape(&chat_api_base),
             json_escape(&chat_user),
@@ -907,6 +922,13 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                     if on { "1" } else { "0" },
                 ));
             }
+        } else if key == "nasUrl" {
+            // NAS 备份: axum 服务地址, 空 = 未启用(macOS 同键)
+            let value = json_get_str(line, "value").to_string();
+            glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                "nas_url",
+                &value,
+            ));
         } else if key == "frostedGlass" {
             if let Some(on) = json_get_bool(line, "value") {
                 let cmd = CMD_TOGGLE_FROSTED;

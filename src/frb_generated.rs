@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1110323158;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1379404633;
 
 // Section: executor
 
@@ -902,6 +902,41 @@ fn wire__crate__api__move_strokes_to_page_impl(
         },
     )
 }
+fn wire__crate__api__nas_backup_now_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "nas_backup_now",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Result::<_, ()>::Ok(crate::api::nas_backup_now().await)?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__navigate_to_page_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1710,6 +1745,7 @@ impl SseDecode for crate::api::Settings {
         let mut var_bubbleReplayHoldLast = <bool>::sse_decode(deserializer);
         let mut var_bubbleReplayAuto = <bool>::sse_decode(deserializer);
         let mut var_bubbleAutoNewPage = <bool>::sse_decode(deserializer);
+        let mut var_nasUrl = <String>::sse_decode(deserializer);
         let mut var_shareCanvas = <bool>::sse_decode(deserializer);
         let mut var_language = <String>::sse_decode(deserializer);
         return crate::api::Settings {
@@ -1746,6 +1782,7 @@ impl SseDecode for crate::api::Settings {
             bubble_replay_hold_last: var_bubbleReplayHoldLast,
             bubble_replay_auto: var_bubbleReplayAuto,
             bubble_auto_new_page: var_bubbleAutoNewPage,
+            nas_url: var_nasUrl,
             share_canvas: var_shareCanvas,
             language: var_language,
         };
@@ -1873,19 +1910,20 @@ fn pde_ffi_dispatcher_primary_impl(
         21 => wire__crate__api__list_pages_impl(port, ptr, rust_vec_len, data_len),
         22 => wire__crate__api__move_strokes_impl(port, ptr, rust_vec_len, data_len),
         23 => wire__crate__api__move_strokes_to_page_impl(port, ptr, rust_vec_len, data_len),
-        24 => wire__crate__api__navigate_to_page_impl(port, ptr, rust_vec_len, data_len),
-        25 => wire__crate__api__ocr_search_impl(port, ptr, rust_vec_len, data_len),
-        26 => wire__crate__api__open_url_impl(port, ptr, rust_vec_len, data_len),
-        27 => wire__crate__api__page_png_bytes_impl(port, ptr, rust_vec_len, data_len),
-        28 => wire__crate__api__page_thumbnails_impl(port, ptr, rust_vec_len, data_len),
-        29 => wire__crate__api__paste_strokes_impl(port, ptr, rust_vec_len, data_len),
-        30 => wire__crate__api__reorder_page_impl(port, ptr, rust_vec_len, data_len),
-        31 => wire__crate__api__restore_latest_backup_impl(port, ptr, rust_vec_len, data_len),
-        32 => wire__crate__api__set_setting_impl(port, ptr, rust_vec_len, data_len),
-        33 => wire__crate__api__settings_changed_impl(port, ptr, rust_vec_len, data_len),
-        34 => wire__crate__api__stage_update_impl(port, ptr, rust_vec_len, data_len),
-        35 => wire__crate__api__test_chat_login_impl(port, ptr, rust_vec_len, data_len),
-        36 => wire__crate__api__trigger_hotkey_impl(port, ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__nas_backup_now_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__navigate_to_page_impl(port, ptr, rust_vec_len, data_len),
+        26 => wire__crate__api__ocr_search_impl(port, ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__open_url_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__page_png_bytes_impl(port, ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__page_thumbnails_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__paste_strokes_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__reorder_page_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__restore_latest_backup_impl(port, ptr, rust_vec_len, data_len),
+        33 => wire__crate__api__set_setting_impl(port, ptr, rust_vec_len, data_len),
+        34 => wire__crate__api__settings_changed_impl(port, ptr, rust_vec_len, data_len),
+        35 => wire__crate__api__stage_update_impl(port, ptr, rust_vec_len, data_len),
+        36 => wire__crate__api__test_chat_login_impl(port, ptr, rust_vec_len, data_len),
+        37 => wire__crate__api__trigger_hotkey_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2043,6 +2081,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::Settings {
             self.bubble_replay_hold_last.into_into_dart().into_dart(),
             self.bubble_replay_auto.into_into_dart().into_dart(),
             self.bubble_auto_new_page.into_into_dart().into_dart(),
+            self.nas_url.into_into_dart().into_dart(),
             self.share_canvas.into_into_dart().into_dart(),
             self.language.into_into_dart().into_dart(),
         ]
@@ -2395,6 +2434,7 @@ impl SseEncode for crate::api::Settings {
         <bool>::sse_encode(self.bubble_replay_hold_last, serializer);
         <bool>::sse_encode(self.bubble_replay_auto, serializer);
         <bool>::sse_encode(self.bubble_auto_new_page, serializer);
+        <String>::sse_encode(self.nas_url, serializer);
         <bool>::sse_encode(self.share_canvas, serializer);
         <String>::sse_encode(self.language, serializer);
     }

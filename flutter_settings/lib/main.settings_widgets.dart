@@ -645,8 +645,66 @@ extension _SettingsWidgetsUi on _SettingsPageState {
             ),
           ],
         ),
+        const SizedBox(height: 14),
+        // NAS 备份: 整库快照推送到 NAS 的 axum(文件落盘 + Postgres 登记)
+        Text(
+          AppLocalizations.of(context)!.nasBackup,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          AppLocalizations.of(context)!.nasBackupSub,
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _nasUrl,
+          style: const TextStyle(fontSize: 13),
+          keyboardType: TextInputType.url,
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: 'http://192.168.1.10:8080',
+            border: const OutlineInputBorder(),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            labelText: AppLocalizations.of(context)!.nasBackupUrl,
+          ),
+          onSubmitted: (v) => _setSetting('nasUrl', v.trim()),
+        ),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          icon: _nasBusy
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.cloud_upload, size: 18),
+          label: Text(AppLocalizations.of(context)!.nasBackupNow),
+          onPressed: _nasBusy ? null : _nasBackupNow,
+        ),
       ],
     );
+  }
+
+  /// NAS 备份: 先落地址(输入框可能还没提交), 再跑整库快照 + 上传。
+  Future<void> _nasBackupNow() async {
+    _setSetting('nasUrl', _nasUrl.text.trim());
+    setState(() => _nasBusy = true);
+    try {
+      final (ok, message) = await _bridge.nasBackupNow();
+      if (!mounted) return;
+      _toast(ok
+          ? '${AppLocalizations.of(context)!.nasBackupDone}: $message'
+          : '${AppLocalizations.of(context)!.nasBackupFailed}: $message');
+    } catch (e) {
+      if (mounted) {
+        _toast('${AppLocalizations.of(context)!.nasBackupFailed}: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _nasBusy = false);
+    }
   }
 
   void _toast(String text) {

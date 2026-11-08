@@ -21,6 +21,11 @@ Future<String> bubbleMessages() =>
 /// 打开气泡 tab 时调用: 把进行中的段强制结为一条消息。
 Future<void> bubbleFlush() => RustLib.instance.api.crateApiBubbleFlush();
 
+/// NAS 备份(设置 → 数据 → 立即备份): 整库一致性快照 → POST 到 NAS 的
+/// axum 服务(文件落盘 + Postgres 登记)。返回结果 JSON, 见
+/// export/nas_backup.rs 与 docs/nas-backup.md。
+Future<String> nasBackupNow() => RustLib.instance.api.crateApiNasBackupNow();
+
 /// 写入一项设置。`value_json` 是 JSON 标量(`true` / `3` / `2.5`),
 /// ObjC 侧按 key 解析,布尔/整数/小数共用一条通道。
 Future<void> setSetting({required String key, required String valueJson}) =>
@@ -385,6 +390,7 @@ class Settings {
   final bool bubbleReplayHoldLast;
   final bool bubbleReplayAuto;
   final bool bubbleAutoNewPage;
+  final String nasUrl;
   final bool shareCanvas;
 
   /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
@@ -424,6 +430,7 @@ class Settings {
     required this.bubbleReplayHoldLast,
     required this.bubbleReplayAuto,
     required this.bubbleAutoNewPage,
+    required this.nasUrl,
     required this.shareCanvas,
     required this.language,
   });
@@ -463,6 +470,7 @@ class Settings {
       bubbleReplayHoldLast.hashCode ^
       bubbleReplayAuto.hashCode ^
       bubbleAutoNewPage.hashCode ^
+      nasUrl.hashCode ^
       shareCanvas.hashCode ^
       language.hashCode;
 
@@ -504,6 +512,7 @@ class Settings {
           bubbleReplayHoldLast == other.bubbleReplayHoldLast &&
           bubbleReplayAuto == other.bubbleReplayAuto &&
           bubbleAutoNewPage == other.bubbleAutoNewPage &&
+          nasUrl == other.nasUrl &&
           shareCanvas == other.shareCanvas &&
           language == other.language;
 }

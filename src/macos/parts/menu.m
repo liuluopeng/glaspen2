@@ -644,6 +644,7 @@ char *glaspen2_macos_settings_json(void) {
             @"bubbleReplayHoldLast": @(replay_hold),
             @"bubbleReplayAuto": @(glaspen2_load_bool_setting("bubble_replay_auto") != 0),
             @"bubbleAutoNewPage": @(glaspen2_load_bool_setting("bubble_auto_new_page") != 0),
+            @"nasUrl": gl_string_setting("nas_url"),
             @"shareCanvas": @(glaspen2_load_bool_setting("share_ink") != 0),
             // 语言由面板选择器决定, 不再跟随系统; 缺省中文
             @"language": (g_lang == 1 ? @"en" : @"zh"),
@@ -840,6 +841,10 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
         } else if ([key isEqualToString:@"bubbleAutoNewPage"]) {
             // 写完消息自动新建一页(默认关; core 落笔时消费, 见 bubbles.rs)
             glaspen2_save_bool_setting("bubble_auto_new_page", [value boolValue] ? 1 : 0);
+        } else if ([key isEqualToString:@"nasUrl"]) {
+            // NAS 备份: axum 服务地址, 空 = 未启用(见 export/nas_backup.rs)
+            NSString *s = [NSString stringWithFormat:@"%@", value];
+            glaspen2_save_string_setting("nas_url", [s UTF8String]);
         } else if ([key isEqualToString:@"showFreeCanvas"]) {
             // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
             glaspen2_save_bool_setting("show_free_canvas", [value boolValue] ? 1 : 0);

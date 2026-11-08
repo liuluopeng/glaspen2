@@ -56,6 +56,8 @@ abstract class SettingsBridge {
   Future<bool> exportPdf();
   /// 把全部数据备份到桌面;返回 (是否成功, 给用户看的信息)
   Future<(bool, String)> backupNow();
+  /// 整库快照推送到 NAS(axum);返回 (是否成功, 给用户看的信息)
+  Future<(bool, String)> nasBackupNow();
   /// 从桌面上最新的备份合并恢复;返回 (是否成功, 给用户看的信息)
   Future<(bool, String)> restoreLatestBackup();
   /// 当前版本号(编译进二进制);取不到时返回空串
@@ -352,6 +354,17 @@ class _FrbBridge extends SettingsBridge {
     await _init();
     final r = await rust.backupNow();
     return (r.ok, r.message);
+  }
+
+  @override
+  Future<(bool, String)> nasBackupNow() async {
+    await _init();
+    final v = jsonDecode(await rust.nasBackupNow()) as Map<String, dynamic>;
+    final ok = v['ok'] == true;
+    final msg = ok
+        ? '${(v['size_bytes'] as num? ?? 0) ~/ 1024} KB · ${(v['stroke_count'] as num? ?? 0)} 笔'
+        : '${v['error'] ?? ''}${(v['hint'] as String?)?.isNotEmpty == true ? '(${v['hint']})' : ''}';
+    return (ok, msg);
   }
 
   @override
@@ -774,6 +787,18 @@ class _NamedPipeBridge extends SettingsBridge {
     // 库在覆盖层进程里,备份经管道在那边执行(与 macOS FRB 同一核心函数)
     final r = await _request('backupNow', null);
     return (r['ok'] == 1 || r['ok'] == true, (r['message'] as String?) ?? '');
+  }
+
+  @override
+  Future<(bool, String)> nasBackupNow() async {
+    // 库在覆盖层进程里,NAS 备份经管道在那边执行(同一核心函数)
+    final r = await _request('nasBackup', null);
+    final v = (r.containsKey('data') ? r['data'] : r) as Map<dynamic, dynamic>;
+    final ok = v['ok'] == true;
+    final msg = ok
+        ? '${((v['size_bytes'] as num? ?? 0) ~/ 1024)} KB · ${(v['stroke_count'] as num? ?? 0)} 笔'
+        : '${v['error'] ?? ''}${(v['hint'] as String?)?.isNotEmpty == true ? '(${v['hint']})' : ''}';
+    return (ok, msg);
   }
 
   @override
