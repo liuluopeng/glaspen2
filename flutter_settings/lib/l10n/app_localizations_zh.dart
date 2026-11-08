@@ -533,7 +533,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get showBubbleTabSub => '在 tab 栏显示手写消息回顾';
 
   @override
-  String get bubblesEmpty => '还没有消息。去涂几笔 —— 停顿一下或换个地方写, 就是一条新消息';
+  String get bubblesEmpty => '还没有消息。去涂几笔 —— 停顿约一分钟、或把笔拿开再写, 就是一条新消息';
 
   @override
   String get refreshBubbles => '刷新';

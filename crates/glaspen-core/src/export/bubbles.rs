@@ -6,12 +6,12 @@
 //!   proximity exit; 无 proximity 平板用真鼠标移动回退)。悬停在空中构思
 //!   (笔还热)再久也不拆 —— 事件层经 on_pen_activity/_pen_back/_pen_gone
 //!   喂笔状态(FFI: glaspen2_bubble_pen_*);
-//! - **笔静默超时**: 距最近一次笔事件 >= 节奏阈值(EMA 自适应
-//!   clamp(5×EMA, 8s, 90s))时兜底分段 —— 悬停完全不动(无事件)与"平台
+//! - **静默超时**: 距最近一次笔事件 >= 节奏阈值(EMA 自适应
+//!   clamp(5×EMA, 60s, 90s))时兜底分段 —— 一分钟之内换区域写/短思考都
+//!   算同一条(空间跳变规则已废: dev DB 实证它把连续书写拦腰拆开,
+//!   边界只认时间与冷启动, 不认位置); 悬停完全不动(无事件)与"平台
 //!   无显式离开信号"只能靠它区分; 纯鼠标用户(从无笔信号)沿用旧的
 //!   笔迹间隔规则;
-//! - **空间跳变**: 新笔起点距当前段包围盒的间隙 > max(2×对角线, 400px)
-//!   时立即分段 —— "写完一个主题移到别处"不需要干等计时器;
 //! - **上下文切换**: 翻页/清空/载入(检测到 STROKES 被重置)时, 未完成的段
 //!   先结为一条消息;
 //! - **容量护栏**: 单段 > MAX_PENDING_STROKES 笔或 > MAX_PENDING_POINTS
@@ -25,8 +25,10 @@ use serde_json::json;
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-/// 分段阈值下限: 再快的人, 8 秒停顿也算一条。
-const THRESHOLD_MIN_MS: f64 = 8_000.0;
+/// 分段阈值下限: 一分钟之内的连续书写(换区域/短思考)都是同一条
+/// (2026-11-08 dev DB 实证: 105s 内 15 笔最大间隔 4.2s 被拆成 5 条,
+/// 元凶是 8s 下限 + 空间跳变 —— 两者均已废)。
+const THRESHOLD_MIN_MS: f64 = 60_000.0;
 /// 上限: 边想边写的人也不会超过 90 秒。
 const THRESHOLD_MAX_MS: f64 = 90_000.0;
 /// 阈值 = EMA × 此系数。
@@ -35,10 +37,6 @@ const THRESHOLD_FACTOR: f64 = 5.0;
 const EMA_ALPHA: f64 = 0.3;
 /// EMA 初值(2s ≈ 连贯书写的典型间隔)。
 const INITIAL_TYPICAL_MS: f64 = 2_000.0;
-/// 空间跳变最小间隙(px): 防止第一笔很小导致到处都算"跳变"。
-const SPATIAL_MIN_GAP: f64 = 400.0;
-/// 空间跳变相对项: 间隙 > 2×当前段对角线。
-const SPATIAL_DIAG_FACTOR: f64 = 2.0;
 /// 保留的消息条数上限(最旧的丢弃)。
 const MAX_MSGS: usize = 50;
 /// 单段笔数上限。
@@ -120,41 +118,23 @@ fn next_typical(gap_ms: u64, typical: f64) -> f64 {
     typical * (1.0 - EMA_ALPHA) + (gap_ms as f64) * EMA_ALPHA
 }
 
-/// 点到轴对齐矩形的间隙(内部为 0)。
-fn gap_to_rect(px: f64, py: f64, x0: f64, y0: f64, x1: f64, y1: f64) -> f64 {
-    let dx = (x0 - px).max(px - x1).max(0.0);
-    let dy = (y0 - py).max(py - y1).max(0.0);
-    (dx * dx + dy * dy).sqrt()
-}
-
 /// 分段判定(纯函数, 可测):
 /// 1. **冷启动**: pen_cold(笔离开过感应区) → 必分, 新消息从"笔回来"开始;
 /// 2. **笔静默超时**: 距最近一次笔事件(悬空移动/落笔/抬笔) >= 节奏阈值 → 分。
 ///    悬空移动持续刷新心跳, 所以"悬停构思"再久也不断; 无笔信号(纯鼠标,
-///    activity_gap_ms = None)回退旧的笔迹间隔规则;
-/// 3. 空间跳变: 新笔起点距当前段包围盒间隙 > max(2×对角线, 400px) → 分。
-/// bbox = None(段空)时只看时间。
+///    activity_gap_ms = None)回退旧的笔迹间隔规则。
+/// (空间跳变规则已废 —— 位置不构成消息边界, 见 THRESHOLD_MIN_MS 注释。)
 fn should_split(
     pen_cold: bool,
     activity_gap_ms: Option<u64>,
     stroke_gap_ms: u64,
     typical_gap_ms: f64,
-    start: (f64, f64),
-    bbox: Option<((f64, f64), (f64, f64))>,
 ) -> bool {
     if pen_cold {
         return true;
     }
     let gap_ms = activity_gap_ms.unwrap_or(stroke_gap_ms);
-    if gap_ms as f64 >= threshold_ms(typical_gap_ms) {
-        return true;
-    }
-    if let Some(((x0, y0), (x1, y1))) = bbox {
-        let gap = gap_to_rect(start.0, start.1, x0, y0, x1, y1);
-        let diag = ((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)).sqrt();
-        return gap > (SPATIAL_DIAG_FACTOR * diag).max(SPATIAL_MIN_GAP);
-    }
-    false
+    gap_ms as f64 >= threshold_ms(typical_gap_ms)
 }
 
 /// 提交钩子(抬笔扇出, STROKES 锁已释放): 捕获新笔迹 + 维护分段。
@@ -179,21 +159,8 @@ pub fn on_stroke_committed() {
     // (STROKES 未增长提前返回), 不能在那儿把标记白吃掉。
     let pen_cold = std::mem::take(&mut g.pen_cold);
     let activity_gap_ms = g.pen_last_seen.map(|t| t.elapsed().as_millis() as u64);
-    let new_start = strokes[g.captured]
-        .points
-        .first()
-        .map(|&(x, y, _, _)| (x, y))
-        .unwrap_or((0.0, 0.0));
-    let bbox = pending_bbox(g.pending.as_slice());
     if !g.pending.is_empty()
-        && should_split(
-            pen_cold,
-            activity_gap_ms,
-            gap_ms,
-            g.typical_gap_ms,
-            new_start,
-            bbox,
-        )
+        && should_split(pen_cold, activity_gap_ms, gap_ms, g.typical_gap_ms)
     {
         finish_pending(&mut g);
     } else if !g.pending.is_empty() && (gap_ms as f64) < threshold_ms(g.typical_gap_ms) {
@@ -235,25 +202,6 @@ pub fn on_stroke_committed() {
         }
     }
     g.last_activity = Some(Instant::now());
-}
-
-/// 当前进行中段的包围盒(空段 = None)。
-fn pending_bbox(pending: &[BubbleStroke]) -> Option<((f64, f64), (f64, f64))> {
-    let mut it = pending.iter().flat_map(|s| s.pts.iter());
-    let Some(&(x, y, _)) = it.next() else {
-        return None;
-    };
-    let mut x0 = x;
-    let mut y0 = y;
-    let mut x1 = x;
-    let mut y1 = y;
-    for &(x, y, _) in it {
-        x0 = x0.min(x);
-        y0 = y0.min(y);
-        x1 = x1.max(x);
-        y1 = y1.max(y);
-    }
-    Some(((x0, y0), (x1, y1)))
 }
 
 /// 把进行中的段结为一条消息(容量护栏路径)。
@@ -540,44 +488,22 @@ mod tests {
         assert_eq!(a.as_bytes()[14], b'7');
     }
 
-    /// 时间规则(无笔信号 = 纯鼠标回退路径): 阈值 = clamp(5×EMA, 8s, 90s)。
+    /// 时间规则(无笔信号 = 纯鼠标回退路径): 阈值 = clamp(5×EMA, 60s, 90s)。
     #[test]
     fn split_time_adaptive() {
-        // 快手: EMA=2s → 阈值 10s; 9.5s 不分, 10.5s 分
-        assert_eq!(threshold_ms(2_000.0), 10_000.0);
-        assert!(!should_split(false, None, 9_500, 2_000.0, (0.0, 0.0), None));
-        assert!(should_split(false, None, 10_500, 2_000.0, (0.0, 0.0), None));
+        // 快手: EMA=2s → 阈值顶到下限 60s; 一分钟之内连续 = 同一条
+        assert_eq!(threshold_ms(2_000.0), THRESHOLD_MIN_MS);
+        assert!(!should_split(false, None, 59_500, 2_000.0));
+        assert!(should_split(false, None, 60_500, 2_000.0));
 
         // 慢思考: EMA=25s → 阈值 90s(顶到上限); 50s 不分
         assert_eq!(threshold_ms(25_000.0), THRESHOLD_MAX_MS);
-        assert!(!should_split(false, None, 50_000, 25_000.0, (0.0, 0.0), None));
+        assert!(!should_split(false, None, 50_000, 25_000.0));
 
-        // 快到极致: EMA=0.1s → 阈值 8s(下限兜底)
+        // 快到极致: EMA=0.1s → 阈值 60s(下限兜底)
         assert_eq!(threshold_ms(100.0), THRESHOLD_MIN_MS);
-        assert!(!should_split(false, None, 7_900, 100.0, (0.0, 0.0), None));
-        assert!(should_split(false, None, 8_100, 100.0, (0.0, 0.0), None));
-    }
-
-    /// 空间规则: 间隙 > max(2×对角线, 400px) 即分, 与时间无关。
-    #[test]
-    fn split_space_jump() {
-        let bbox = Some(((0.0, 0.0), (100.0, 100.0))); // 对角线 ≈141 → 限额 400px
-        assert!(
-            !should_split(false, None, 0, 2_000.0, (300.0, 50.0), bbox),
-            "近处落笔不因空间分段"
-        );
-        assert!(
-            should_split(false, None, 0, 2_000.0, (550.0, 50.0), bbox),
-            "移到远处 = 新的一条"
-        );
-
-        // 大段(对角线 2154 → 限额 4308): 半屏外不分, 更远才分
-        let big = Some(((0.0, 0.0), (2000.0, 800.0)));
-        assert!(!should_split(false, None, 0, 2_000.0, (5000.0, 400.0), big));
-        assert!(should_split(false, None, 0, 2_000.0, (7000.0, 400.0), big));
-
-        // 段空时无空间信号, 只看时间
-        assert!(!should_split(false, None, 0, 2_000.0, (99999.0, 99999.0), None));
+        assert!(!should_split(false, None, 59_900, 100.0));
+        assert!(should_split(false, None, 60_100, 100.0));
     }
 
     /// 冷启动规则: 悬停桥接(心跳新鲜)再长的笔迹间隔也不拆;
@@ -650,12 +576,12 @@ mod tests {
         let _g = crate::tests::TEST_LOCK.lock().unwrap();
         // 纯函数层:
         // 心跳 0.5s 前 + 笔迹间隔 60s → 悬停桥接, 不分
-        assert!(!should_split(false, Some(500), 60_000, 2_000.0, (0.0, 0.0), None));
-        // 心跳 60s 前(悬停完全不动) → 静默超阈值(10s) → 分
-        assert!(should_split(false, Some(60_000), 500, 2_000.0, (0.0, 0.0), None));
+        assert!(!should_split(false, Some(500), 60_000, 2_000.0));
+        // 心跳 60s 前(悬停完全不动) → 静默超阈值(60s 下限) → 分
+        assert!(should_split(false, Some(60_500), 500, 2_000.0));
         // 无笔信号 → 回退笔迹间隔规则(与 split_time_adaptive 同判)
-        assert!(!should_split(false, None, 7_000, 2_000.0, (0.0, 0.0), None));
-        assert!(should_split(false, None, 10_500, 2_000.0, (0.0, 0.0), None));
+        assert!(!should_split(false, None, 59_000, 2_000.0));
+        assert!(should_split(false, None, 60_500, 2_000.0));
 
         // pen_back 宽限: 刚离开就回 = 切橡皮, 撤销冷标记
         reset_fixture();
@@ -715,13 +641,13 @@ mod tests {
         let mut g = base();
         g.pen_last_seen = Some(Instant::now() - std::time::Duration::from_millis(500));
         assert!(!will_split_soon(&g, 60_000));
-        // 心跳超阈值(11s 没有任何笔事件) = 分
+        // 心跳超阈值(61s 没有任何笔事件) = 分
         let mut g = base();
-        g.pen_last_seen = Some(Instant::now() - std::time::Duration::from_secs(11));
+        g.pen_last_seen = Some(Instant::now() - std::time::Duration::from_secs(61));
         assert!(will_split_soon(&g, 0));
-        // 纯鼠标: 回退笔迹间隔(10s 阈值)
+        // 纯鼠标: 回退笔迹间隔(60s 阈值)
         let g = base();
-        assert!(!will_split_soon(&g, 9_000));
-        assert!(will_split_soon(&g, 10_500));
+        assert!(!will_split_soon(&g, 59_000));
+        assert!(will_split_soon(&g, 60_500));
     }
 }

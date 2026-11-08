@@ -160,7 +160,7 @@
   "showGrid": "显示网格",
   "bubbleTab": "气泡消息",
   "showBubbleTabSub": "在 tab 栏显示手写消息回顾",
-  "bubblesEmpty": "还没有消息。去涂几笔 —— 停顿一下或换个地方写, 就是一条新消息",
+  "bubblesEmpty": "还没有消息。去涂几笔 —— 停顿约一分钟、或把笔拿开再写, 就是一条新消息",
   "refreshBubbles": "刷新",
   "bubbleAutoNewPage": "写完自动新建一页",
   "bubbleAutoNewPageSub": "笔离开后落笔开新消息时, 自动翻到新的一页(需气泡 tab 开启)",

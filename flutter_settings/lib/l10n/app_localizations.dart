@@ -1067,7 +1067,7 @@ abstract class AppLocalizations {
   /// No description provided for @bubblesEmpty.
   ///
   /// In zh, this message translates to:
-  /// **'还没有消息。去涂几笔 —— 停顿一下或换个地方写, 就是一条新消息'**
+  /// **'还没有消息。去涂几笔 —— 停顿约一分钟、或把笔拿开再写, 就是一条新消息'**
   String get bubblesEmpty;
 
   /// No description provided for @refreshBubbles.

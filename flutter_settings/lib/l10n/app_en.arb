@@ -160,7 +160,7 @@
   "showGrid": "Show grid",
   "bubbleTab": "Bubble messages",
   "showBubbleTabSub": "Show a handwriting review tab",
-  "bubblesEmpty": "Nothing yet. Doodle a bit — a pause or a jump elsewhere becomes a new message",
+  "bubblesEmpty": "Nothing yet. Doodle a bit — a pause of about a minute, or putting the pen down, becomes a new message",
   "refreshBubbles": "Refresh",
   "bubbleAutoNewPage": "Auto new page after a message",
   "bubbleAutoNewPageSub": "When a pause or pen leave starts a new message, flip to a fresh page (needs the bubble tab)",
