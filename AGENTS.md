@@ -17,6 +17,10 @@
 
 ## 构建与调试命令(FVM)
 
+- **日常命令用 justfile**(`just` / `just --list`):`just build` / `run` /
+  `run-debug`(Debug JIT)/ `test` / `test-chat` / `analyze` / `codegen`
+  (FRB 生成+自动 build)/ `codegen-rescue`(frb_generated 编不过的自救)/
+  `lint`(全量自检)/ `dmg`。下文的裸命令是 justfile 背后的细节。
 - **Flutter 一律用 `fvm flutter ...`**(本机 Flutter 由 fvm 管理,裸 `flutter` 版本可能不对):
   - `fvm flutter analyze`(在 `flutter_settings/` 下跑,查 Dart 错误)
   - `fvm flutter run -d macos` 不用于主程序;调试 Dart 侧用
