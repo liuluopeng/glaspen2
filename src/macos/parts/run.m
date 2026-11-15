@@ -1904,6 +1904,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
         proxEvent && ([proxEvent pointingDeviceType] == NSPenPointingDevice ||
                       [proxEvent pointingDeviceType] == NSEraserPointingDevice);
     if (isStylus) {
+      g_has_tablet_proximity = YES; // 平台有显式离开信号, 关掉鼠标回退
       int64_t proxState = CGEventGetIntegerValueField(
           event, kCGTabletProximityEventEnterProximity);
       NSLog(@"[pen] %@ (proximity %@)",
@@ -2161,8 +2162,10 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     // tablet) — hide as a fallback.
     if (g_ethereal_canvas)
       auto_hide_now();
-    // 气泡冷启动回退(同款推断): 无 proximity 平板上真鼠标移动 = 笔已离开
-    glaspen2_bubble_pen_gone();
+    // 气泡冷启动回退(同款推断): 只有完全没见过 proximity 的平板才把
+    // 真鼠标移动当成笔离开; 有 proximity 的板子笔可能还悬着, 不能设冷。
+    if (!g_has_tablet_proximity)
+      glaspen2_bubble_pen_gone();
     flush_dirty_to_layer();
   }
 
@@ -2171,9 +2174,16 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
   // re-shown on pen-up; during hover its redraws are throttled to ~16 ms
   // to cut per-event work at high hover rates.
   if (isPen) {
-    // 气泡消息冷启动分段: 任何笔事件(悬空移动/落笔/拖动/抬笔)都算活动
-    // 心跳 —— 悬停构思再久也不拆消息(纯 Mutex 写, 开销可忽略)。
-    glaspen2_bubble_pen_activity();
+    // 气泡消息冷启动分段: 悬空移动/落笔/拖动 = 笔在感应区(回来 + 心跳);
+    // 抬笔只刷心跳 —— proximity exit 常紧跟在抬笔后, 若把抬笔当回来,
+    // 离开计时会被撤销, 冷启动永远不生效。
+    if (etype != NSEventTypeLeftMouseUp &&
+        etype != NSEventTypeRightMouseUp &&
+        etype != NSEventTypeOtherMouseUp) {
+      glaspen2_bubble_pen_back();
+    } else {
+      glaspen2_bubble_pen_activity();
+    }
     // Tablets without proximity events: hover moves are the only signal —
     // treat them like a hover to show the strokes in 飘渺画布涂鸦模式.
     if (!g_strokes_visible)

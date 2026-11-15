@@ -2,10 +2,13 @@
 //! 「气泡消息」tab 以聊天窗样式回顾(右侧 = 用户口吻)。
 //!
 //! 分段规则(消息边界, 以"冷启动"为主):
-//! - **冷启动**: 笔离开感应区后下一次落笔必开新消息(放笔/离开 = macOS
-//!   proximity exit; 无 proximity 平板用真鼠标移动回退)。悬停在空中构思
-//!   (笔还热)再久也不拆 —— 事件层经 on_pen_activity/_pen_back/_pen_gone
-//!   喂笔状态(FFI: glaspen2_bubble_pen_*);
+//! - **冷启动**: 笔离开感应区且**持续 >= COLD_START_MIN_MS(3s)** 后, 下一次
+//!   落笔开新消息(放笔/离开 = macOS proximity exit; 无 proximity 平板用真
+//!   鼠标移动回退)。抬笔换气、字与字之间、笔↔橡皮切换、proximity 抖动都在
+//!   秒级以内, 不拆 —— 旧实现一离开就置冷, 把 hello 拆成 h/e/l/l/o。
+//!   笔回到感应区时按离开时长结算: 短离开撤销, 长离开置 pen_cold, 在下一次
+//!   落笔提交时消费; 面板刷新(flush_expired)也只认"已离开 3s", 不会在
+//!   字间抬笔时提前结段;
 //! - **静默超时**: 距最近一次笔事件 >= 节奏阈值(EMA 自适应
 //!   clamp(5×EMA, 60s, 90s))时兜底分段 —— 一分钟之内换区域写/短思考都
 //!   算同一条(空间跳变规则已废: dev DB 实证它把连续书写拦腰拆开,
@@ -43,8 +46,11 @@ const MAX_MSGS: usize = 50;
 const MAX_PENDING_STROKES: usize = 60;
 /// 单段点数上限。
 const MAX_PENDING_POINTS: usize = 8000;
-/// 笔↔橡皮切换宽限(ms): proximity exit+enter 在此之内 = 切换笔尖, 不算离开。
-const PEN_SWITCH_GRACE_MS: u64 = 300;
+/// 冷启动最小离开时长: 笔离开感应区 >= 3s 才算"放下笔", 下一次落笔开新
+/// 消息。手写时抬笔/字间/换笔尖的 proximity 中断都在 1-2s 内; 3s 是
+/// "停笔思考"的保守分界。短于它的离开一律并入当前消息(面板刷新也不会
+/// 提前结段)。
+const COLD_START_MIN_MS: u64 = 3_000;
 
 #[derive(Clone)]
 struct BubbleStroke {
@@ -75,12 +81,12 @@ struct Inner {
     typical_gap_ms: f64,
     /// 最近一次笔事件(悬空移动/落笔/抬笔); None = 本会话无笔信号(纯鼠标)。
     pen_last_seen: Option<Instant>,
-    /// 笔已离开感应区(macOS proximity exit / 无 proximity 平板的鼠标回退)。
-    /// 下一次落笔提交时消费(清掉并分段); 悬停不清它 —— 冷标记必须活到
-    /// 下一次真正的落笔才生效, "笔回到感应区"只由 on_pen_back 依切换宽限撤销。
+    /// 笔离开感应区的时刻(macOS proximity exit / 无 proximity 平板的鼠标
+    /// 回退); None = 笔在感应区或未知。离开满 COLD_START_MIN_MS 才升级为
+    /// pen_cold, 短离开在笔回来时直接丢弃 —— 字与字之间的抬笔不拆消息。
+    pen_away_since: Option<Instant>,
+    /// 离开已满冷启动阈值, 下一次真正落笔提交时开新消息(提交时消费)。
     pen_cold: bool,
-    /// pen_cold 置位时刻 —— 识别笔↔橡皮切换(exit+enter 几乎同时)。
-    pen_cold_at: Option<Instant>,
     /// 段内上一笔的提交时刻(记每笔间隔用); None = 新段的第一笔。
     last_capture: Option<Instant>,
     msgs: Vec<BubbleMsg>,
@@ -94,8 +100,8 @@ static INNER: Mutex<Inner> = Mutex::new(Inner {
     last_activity: None,
     typical_gap_ms: INITIAL_TYPICAL_MS,
     pen_last_seen: None,
+    pen_away_since: None,
     pen_cold: false,
-    pen_cold_at: None,
     last_capture: None,
     msgs: Vec::new(),
     next_id: 1,
@@ -155,13 +161,24 @@ pub fn on_stroke_committed() {
         .last_activity
         .map(|t| t.elapsed().as_millis() as u64)
         .unwrap_or(0);
+    // 平台没发回 enter(或事件层没补 pen_back)时, 用离开时长兜底结算:
+    // 离开满阈值 = 这一笔属于新消息; 短离开保留 pen_away_since 继续计时
+    // (可能刚抬笔, 面板刷新要能等到满 3s 再结段)。
+    if let Some(since) = g.pen_away_since
+        && since.elapsed().as_millis() as u64 >= COLD_START_MIN_MS
+    {
+        g.pen_cold = true;
+        g.pen_away_since = None;
+    }
     // 冷启动标记在此消费(只认真落笔): Windows 悬空报告也会扇出空提交
     // (STROKES 未增长提前返回), 不能在那儿把标记白吃掉。
     let pen_cold = std::mem::take(&mut g.pen_cold);
     let activity_gap_ms = g.pen_last_seen.map(|t| t.elapsed().as_millis() as u64);
-    if !g.pending.is_empty()
-        && should_split(pen_cold, activity_gap_ms, gap_ms, g.typical_gap_ms)
-    {
+    if !g.pending.is_empty() && should_split(pen_cold, activity_gap_ms, gap_ms, g.typical_gap_ms) {
+        tracing::debug!(
+            "气泡分段: cold={pen_cold} activity_gap={activity_gap_ms:?}ms stroke_gap={gap_ms}ms pending={}",
+            g.pending.len()
+        );
         finish_pending(&mut g);
     } else if !g.pending.is_empty() && (gap_ms as f64) < threshold_ms(g.typical_gap_ms) {
         // 段内间隔: 喂节奏 EMA(未触发分段且间隔没超阈值才配叫"节奏";
@@ -223,14 +240,17 @@ fn finish_pending(g: &mut Inner) {
     }
 }
 
-/// 惰性过期: 取数据前调用。冷启动(笔离开)或笔静默超节奏阈值的未完结段
-/// 结为消息; 笔还热(悬停构思中)时保持 pending = "未发送"语义, 打开
-/// 气泡 tab 的 flush_now 会立即结。
+/// 惰性过期: 取数据前调用。笔已离开满冷启动阈值, 或笔静默超节奏阈值的
+/// 未完结段结为消息; 笔还热(悬停构思中)或只是短促抬笔时保持 pending =
+/// "未发送"语义, 打开气泡 tab 的 flush_now 会立即结。
 fn flush_expired(g: &mut Inner) {
     if g.pending.is_empty() {
         return;
     }
-    if g.pen_cold {
+    let away_long = g
+        .pen_away_since
+        .is_some_and(|t| t.elapsed().as_millis() as u64 >= COLD_START_MIN_MS);
+    if g.pen_cold || away_long {
         finish_pending(g);
         return;
     }
@@ -251,41 +271,62 @@ pub fn flush_now() {
     finish_pending(&mut g);
 }
 
-/// 笔活动心跳(事件层喂入: 悬空移动/落笔/拖动/抬笔, macOS 与 Windows 同
-/// 语义)。悬停构思期间持续刷新, "笔静默超时"永远追不上, 消息不被切断。
+/// 笔回到感应区/有活动: 按离开时长结算 pen_away_since。
+/// 短离开(< COLD_START_MIN_MS)直接丢弃 —— 字间抬笔、笔↔橡皮切换、
+/// proximity 抖动都不拆; 长离开置 pen_cold, 下一笔提交时开新消息。
+fn resolve_pen_back(g: &mut Inner) {
+    if let Some(since) = g.pen_away_since.take()
+        && since.elapsed().as_millis() as u64 >= COLD_START_MIN_MS
+    {
+        g.pen_cold = true;
+    }
+}
+
+/// 笔活动心跳(只刷新"最近笔事件"): 抬笔事件也可能跟在 proximity exit 后面
+/// 到达, 不能把它当成"笔回来了"; 回来信号由 on_pen_back(proximity enter,
+/// 或平台不发 enter 时的悬停/落笔回退)负责。Windows 没有 proximity, 所有
+/// 笔事件都走这里, 由静默阈值兜底。
 pub fn on_pen_activity() {
     let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
     g.pen_last_seen = Some(Instant::now());
 }
 
-/// 笔回到感应区(macOS proximity enter)。距离开不足 PEN_SWITCH_GRACE_MS =
-/// 笔↔橡皮切换, 撤销冷标记(擦改不该把消息拦腰拆开); 真离开后再回(间隔
-/// 远大于宽限)不撤销, 冷启动照常在下一次落笔生效。
+/// 笔回到感应区(macOS proximity enter; 平台不发 enter 时由悬停/落笔事件
+/// 补发)。按离开时长结算: 不足 COLD_START_MIN_MS 撤销, 超阈值置冷; 不再
+/// 需要单独的笔↔橡皮切换宽限。
 pub fn on_pen_back() {
     let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
-    if g.pen_cold
-        && g.pen_cold_at
-            .is_some_and(|t| t.elapsed().as_millis() < PEN_SWITCH_GRACE_MS as u128)
-    {
-        g.pen_cold = false;
-    }
+    resolve_pen_back(&mut g);
     g.pen_last_seen = Some(Instant::now());
 }
 
 /// 笔离开感应区(macOS proximity exit / 无 proximity 平板上的真鼠标移动
-/// 回退)。只置冷标记不立即结段: 结段交给下一次落笔提交(提交时消费)或
-/// 惰性过期, 避免误拆。
+/// 回退)。**不立即置冷** —— 只记下离开时刻; 是否算冷启动要等笔回来
+/// (或面板刷新时)按离开时长结算, 否则字与字之间的抬笔会把 hello 拆成
+/// 五个消息。
 pub fn on_pen_gone() {
     let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
-    g.pen_cold = true;
-    g.pen_cold_at = Some(Instant::now());
+    // 纯鼠标(本会话从无笔信号)没有"笔离开感应区"语义; 鼠标移动回退
+    // 不能给纯鼠标用户设冷, 否则每一笔都被拆开。纯鼠标走静默阈值。
+    if g.pen_last_seen.is_none() {
+        return;
+    }
+    if g.pen_away_since.is_none() {
+        g.pen_away_since = Some(Instant::now());
+    }
 }
 
 /// 落笔前判定: 这一笔会不会开启新消息?(分段规则的时间类子集 —— 空间
 /// 跳变无法在得知落点前判定, 排除; 空间跳变只切消息不翻页。)
-/// 冷启动(笔离开过感应区)或笔静默超节奏阈值; 纯鼠标用户回退笔迹间隔。
+/// 冷启动(离开满 COLD_START_MIN_MS)或笔静默超节奏阈值; 纯鼠标用户回退
+/// 笔迹间隔。
 fn will_split_soon(g: &Inner, stroke_gap_ms: u64) -> bool {
     if g.pen_cold {
+        return true;
+    }
+    if let Some(since) = g.pen_away_since
+        && since.elapsed().as_millis() as u64 >= COLD_START_MIN_MS
+    {
         return true;
     }
     let activity_gap_ms = g.pen_last_seen.map(|t| t.elapsed().as_millis() as u64);
@@ -393,9 +434,24 @@ mod tests {
         g.last_activity = None;
         g.typical_gap_ms = INITIAL_TYPICAL_MS;
         g.pen_last_seen = None;
+        g.pen_away_since = None;
         g.pen_cold = false;
-        g.pen_cold_at = None;
         g.last_capture = None;
+    }
+
+    /// 追加一笔并走提交钩子(测试用)。
+    fn commit_stroke(id: i64) {
+        {
+            let mut strokes = crate::STROKES.lock().unwrap();
+            strokes.push(crate::Stroke {
+                id,
+                r: 1.0,
+                g: 0.0,
+                b: 0.0,
+                points: vec![(id as f64, id as f64, 2.0, 0.0)],
+            });
+        }
+        on_stroke_committed();
     }
 
     /// 翻页/清空(STROKES 重置)强制结段; 空笔不撑爆段。
@@ -506,23 +562,15 @@ mod tests {
         assert!(should_split(false, None, 60_100, 100.0));
     }
 
-    /// 冷启动规则: 悬停桥接(心跳新鲜)再长的笔迹间隔也不拆;
-    /// 笔离开感应区(pen_cold)后下一次提交必分段。
+    /// 冷启动规则: 悬停桥接再长的笔迹间隔也不拆; 短促抬笔(proximity exit
+    /// 后很快又回来)不拆; 只有离开满 COLD_START_MIN_MS 才在新一笔开消息。
     #[test]
     fn split_cold_start() {
         let _g = crate::tests::TEST_LOCK.lock().unwrap();
         reset_fixture();
-        {
-            let mut strokes = crate::STROKES.lock().unwrap();
-            strokes.push(crate::Stroke {
-                id: 1,
-                r: 1.0,
-                g: 0.0,
-                b: 0.0,
-                points: vec![(0.0, 0.0, 2.0, 0.0), (10.0, 10.0, 2.0, 0.1)],
-            });
-        }
-        on_stroke_committed();
+        on_pen_activity(); // 本会话有笔信号(不是纯鼠标)
+
+        commit_stroke(1);
         assert_eq!(INNER.lock().unwrap().pending.len(), 1);
 
         // 悬停构思 60s: 笔活动心跳持续刷新(刚刚还在悬空移动),
@@ -532,45 +580,41 @@ mod tests {
             g.last_activity = Some(Instant::now() - std::time::Duration::from_secs(60));
             g.pen_last_seen = Some(Instant::now());
         }
-        {
-            let mut strokes = crate::STROKES.lock().unwrap();
-            strokes.push(crate::Stroke {
-                id: 2,
-                r: 1.0,
-                g: 0.0,
-                b: 0.0,
-                points: vec![(15.0, 15.0, 2.0, 0.0)],
-            });
-        }
-        on_stroke_committed();
+        commit_stroke(2);
         assert_eq!(
             INNER.lock().unwrap().pending.len(),
             2,
             "悬停构思不拆: 两笔仍同段"
         );
 
-        // 笔离开感应区(proximity exit → 冷标记) → 下一次落笔必分段
+        // 字间抬笔: proximity exit + 800ms 后 enter(远小于 3s)→ 不拆
         on_pen_gone();
-        {
-            let mut strokes = crate::STROKES.lock().unwrap();
-            strokes.push(crate::Stroke {
-                id: 3,
-                r: 1.0,
-                g: 0.0,
-                b: 0.0,
-                points: vec![(20.0, 20.0, 2.0, 0.0)],
-            });
-        }
-        on_stroke_committed();
+        INNER.lock().unwrap().pen_away_since =
+            Some(Instant::now() - std::time::Duration::from_millis(800));
+        on_pen_back();
+        commit_stroke(3);
+        assert_eq!(
+            INNER.lock().unwrap().pending.len(),
+            3,
+            "短促抬笔不拆: hello 的字母不能各成一条"
+        );
+
+        // 真离开: 离开满 3s 后笔回来 → 冷标记, 下一笔开新消息
+        on_pen_gone();
+        INNER.lock().unwrap().pen_away_since =
+            Some(Instant::now() - std::time::Duration::from_millis(COLD_START_MIN_MS + 100));
+        on_pen_back();
+        assert!(INNER.lock().unwrap().pen_cold, "离开满阈值应置冷");
+        commit_stroke(4);
         let g = INNER.lock().unwrap();
-        assert_eq!(g.msgs.len(), 1, "冷启动结出第一条(2 笔)");
-        assert_eq!(g.msgs[0].strokes.len(), 2);
+        assert_eq!(g.msgs.len(), 1, "冷启动结出第一条(3 笔)");
+        assert_eq!(g.msgs[0].strokes.len(), 3);
         assert_eq!(g.pending.len(), 1, "笔回来后的笔开新段");
         assert!(!g.pen_cold, "冷标记应在提交时消费");
     }
 
     /// 笔静默超时(悬停完全不动/平台无显式离开信号)按心跳超时分段;
-    /// 纯鼠标(无笔信号)回退旧的笔迹间隔规则; 笔↔橡皮切换宽限撤销冷标记。
+    /// 纯鼠标(无笔信号)回退旧的笔迹间隔规则; 短离开不置冷、满 3s 才置冷。
     #[test]
     fn pen_silent_and_mouse_fallback() {
         let _g = crate::tests::TEST_LOCK.lock().unwrap();
@@ -583,20 +627,116 @@ mod tests {
         assert!(!should_split(false, None, 59_000, 2_000.0));
         assert!(should_split(false, None, 60_500, 2_000.0));
 
-        // pen_back 宽限: 刚离开就回 = 切橡皮, 撤销冷标记
+        // 短离开(笔↔橡皮切换/字间抬笔)不置冷; 离开满 3s 才置冷
+        reset_fixture();
+        on_pen_activity();
+        on_pen_gone();
+        INNER.lock().unwrap().pen_away_since =
+            Some(Instant::now() - std::time::Duration::from_millis(800));
+        on_pen_back();
+        assert!(!INNER.lock().unwrap().pen_cold, "短离开不应置冷");
+        on_pen_gone();
+        INNER.lock().unwrap().pen_away_since =
+            Some(Instant::now() - std::time::Duration::from_millis(COLD_START_MIN_MS + 100));
+        on_pen_back();
+        assert!(INNER.lock().unwrap().pen_cold, "离开满 3s 才置冷");
+    }
+
+    /// 回归: "hello" 的字母/笔画之间只是短促抬笔, 不能各成一条消息。
+    /// 模拟每笔后 proximity exit + enter(常见于抬笔即离开感应区的平板)。
+    #[test]
+    fn hello_short_lifts_stay_one_message() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        reset_fixture();
+        on_pen_activity(); // 笔进入感应区, 本会话有笔信号
+        for i in 1..=5 {
+            commit_stroke(i);
+            on_pen_gone();
+            // 抬笔后 800ms 才把笔挪回感应区: 旧实现 300ms 宽限会拆,
+            // 新实现按 3s 冷启动阈值并入同一条。
+            INNER.lock().unwrap().pen_away_since =
+                Some(Instant::now() - std::time::Duration::from_millis(800));
+            on_pen_back();
+        }
+        let g = INNER.lock().unwrap();
+        assert_eq!(g.pending.len(), 5, "hello 应是一条 5 笔的消息");
+        assert!(g.msgs.is_empty(), "短抬笔不应提前结段");
+        assert!(!g.pen_cold, "短离开不置冷");
+    }
+
+    /// 抬笔/迟到的活动事件不能撤销 proximity exit 的离开计时; 否则冷启动
+    /// 永远不生效。真正"笔回来"只能由 on_pen_back(proximity enter, 或
+    /// 平台的悬停/落笔回退)结算。
+    #[test]
+    fn late_activity_does_not_cancel_away_timer() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        reset_fixture();
+        on_pen_activity();
+        commit_stroke(1);
+        on_pen_gone();
+        on_pen_activity(); // 迟到的抬笔/活动心跳
+        assert!(
+            INNER.lock().unwrap().pen_away_since.is_some(),
+            "活动事件不应清掉离开计时"
+        );
+        // 离开满 3s 后回来 → 冷标记, 下一笔开新消息
+        INNER.lock().unwrap().pen_away_since =
+            Some(Instant::now() - std::time::Duration::from_millis(COLD_START_MIN_MS + 100));
+        on_pen_back();
+        assert!(INNER.lock().unwrap().pen_cold);
+        commit_stroke(2);
+        let g = INNER.lock().unwrap();
+        assert_eq!(g.msgs.len(), 1, "旧消息结段");
+        assert_eq!(g.pending.len(), 1, "新消息只含新笔");
+        assert!(!g.pen_cold, "冷标记已消费");
+    }
+
+    /// 面板刷新(flush_expired)不能把字间短抬笔提前结段; 离开满 3s 才结。
+    #[test]
+    fn flush_only_after_sustained_absence() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        reset_fixture();
+        on_pen_activity();
+        commit_stroke(1);
+        on_pen_gone();
+        INNER.lock().unwrap().pen_away_since =
+            Some(Instant::now() - std::time::Duration::from_millis(800));
+        let _ = messages_json();
+        assert!(
+            INNER.lock().unwrap().msgs.is_empty(),
+            "短离开时面板刷新不结段"
+        );
+        on_pen_back();
+        commit_stroke(2);
+        assert_eq!(INNER.lock().unwrap().pending.len(), 2);
+
+        // 真离开 3s: 刷新即结段, 笔回来后下一笔开新消息
+        on_pen_gone();
+        INNER.lock().unwrap().pen_away_since =
+            Some(Instant::now() - std::time::Duration::from_millis(COLD_START_MIN_MS + 100));
+        let _ = messages_json();
+        {
+            let g = INNER.lock().unwrap();
+            assert_eq!(g.msgs.len(), 1, "离开满 3s 刷新应结段");
+            assert!(g.pending.is_empty());
+        }
+        on_pen_back();
+        commit_stroke(3);
+        assert_eq!(INNER.lock().unwrap().pending.len(), 1, "新消息只含新笔");
+    }
+
+    /// 纯鼠标(从无笔信号): 鼠标移动回退的 on_pen_gone 不能设冷。
+    #[test]
+    fn pure_mouse_ignores_pen_gone() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
         reset_fixture();
         on_pen_gone();
-        on_pen_back();
-        assert!(
-            !INNER.lock().unwrap().pen_cold,
-            "切换宽限内笔回 = 撤销冷标记"
-        );
-        // 真离开后再回(超宽限, 直接回拨置位时刻模拟等待) → 冷标记保留
-        on_pen_gone();
-        INNER.lock().unwrap().pen_cold_at =
-            Some(Instant::now() - std::time::Duration::from_millis(400));
-        on_pen_back();
-        assert!(INNER.lock().unwrap().pen_cold, "超宽限笔回不撤销冷标记");
+        assert!(INNER.lock().unwrap().pen_away_since.is_none());
+        commit_stroke(1);
+        on_pen_gone(); // pen_last_seen 仍为 None
+        assert!(INNER.lock().unwrap().pen_away_since.is_none());
+        commit_stroke(2);
+        assert_eq!(INNER.lock().unwrap().pending.len(), 2);
     }
 
     /// 节奏学习: 段内间隔把 EMA 拉向用户节奏(α=0.3)。
@@ -627,8 +767,8 @@ mod tests {
             last_activity: Some(Instant::now()),
             typical_gap_ms: INITIAL_TYPICAL_MS, // 阈值 10s
             pen_last_seen: None,
+            pen_away_since: None,
             pen_cold: false,
-            pen_cold_at: None,
             last_capture: None,
             msgs: Vec::new(),
             next_id: 1,
@@ -637,6 +777,15 @@ mod tests {
         let mut g = base();
         g.pen_cold = true;
         assert!(will_split_soon(&g, 0));
+        // 离开满 3s = 分(即使平台没发 enter)
+        let mut g = base();
+        g.pen_away_since =
+            Some(Instant::now() - std::time::Duration::from_millis(COLD_START_MIN_MS + 100));
+        assert!(will_split_soon(&g, 0));
+        // 短离开 = 不分(字间抬笔)
+        let mut g = base();
+        g.pen_away_since = Some(Instant::now() - std::time::Duration::from_millis(500));
+        assert!(!will_split_soon(&g, 0));
         // 心跳新鲜(0.5s 前还在悬停) = 不分(悬停构思桥接)
         let mut g = base();
         g.pen_last_seen = Some(Instant::now() - std::time::Duration::from_millis(500));

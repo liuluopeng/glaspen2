@@ -296,6 +296,10 @@ static BOOL g_eraser_mode = NO;
 // (pointingDeviceType 恒为 other), 笔键 "Pen/Eraser" 切换只体现在
 // proximity 事件的设备类型上 —— 落笔时用它判橡皮。
 static NSInteger g_prox_dev = 0; // NSPointingDeviceType(全局处枚举不可见, 用数值)
+// 本会话见过 stylus proximity 事件 = 平台有显式"笔离开"信号。之后真鼠标
+// 移动不能再当成笔离开的证据(否则笔还悬在板上、动一下鼠标就会给气泡
+// 分段设冷); 只在完全没有 proximity 的平板上才走鼠标回退。
+static BOOL g_has_tablet_proximity = NO;
 
 // Active cairo context (reused across pen events during a stroke).
 // Created on pen-down, destroyed on pen-up. Avoids per-event malloc/free
