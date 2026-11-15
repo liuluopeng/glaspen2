@@ -165,6 +165,80 @@ extension _SettingsShortcutsUi on _SettingsPageState {
   String _shortcutSectionTitle() =>
       _shortcutText('快捷键', 'Shortcuts');
 
+  /// 当前所有绑定里用到的修饰键/主键, 供键盘示意图高亮。
+  Widget _buildShortcutKeyboard() {
+    final usedModifiers = <String>{};
+    final usedKeys = <String>{};
+    for (final chord in _shortcuts.values) {
+      if (chord.isEmpty) continue;
+      final parts = chord.split('+');
+      if (parts.length < 2) continue;
+      for (final m in parts.sublist(0, parts.length - 1)) {
+        usedModifiers.add(m);
+      }
+      usedKeys.add(parts.last);
+    }
+    final keyboardNames = <String>{
+      for (final row in _keyboardRows)
+        for (final key in row) key.name,
+    };
+    final unmapped = usedKeys.difference(keyboardNames);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              _shortcutText('当前组合示意', 'Current bindings'),
+              style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600, color: _inkFaint),
+            ),
+            const Spacer(),
+            Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                color: _penRed,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              _shortcutText('已绑定', 'Bound'),
+              style: const TextStyle(fontSize: 10, color: _inkFaint),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        RepaintBoundary(
+          key: const ValueKey('shortcut-keyboard'),
+          child: SizedBox(
+            width: double.infinity,
+            child: AspectRatio(
+              aspectRatio: _keyboardAspect,
+              child: CustomPaint(
+                painter: _ShortcutKeyboardPainter(
+                  usedModifiers: usedModifiers,
+                  usedKeys: usedKeys,
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (unmapped.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            _shortcutText(
+              '方向键 / F 键等不在左侧示意图中。',
+              'Arrow / F keys are not drawn in this left-side diagram.',
+            ),
+            style: const TextStyle(fontSize: 10, color: _inkFaint),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildShortcutEditor() {
     if (Platform.isWindows) {
       return Text(
@@ -191,7 +265,9 @@ extension _SettingsShortcutsUi on _SettingsPageState {
           ),
           style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
+        _buildShortcutKeyboard(),
+        const SizedBox(height: 14),
         ..._shortcutActions.map(_shortcutRow),
         Align(
           alignment: Alignment.centerRight,
@@ -430,3 +506,217 @@ class _ShortcutRecorderDialogState extends State<_ShortcutRecorderDialog> {
     );
   }
 }
+
+// ── 左侧键盘示意图 ─────────────────────────────────────────────────
+// 只画物理左侧一块(esc/数字行/Tab/字母/Caps/Shift/修饰键/Space),
+// 按键名与后端 chord 的规范键名一致; 修饰键名 = cmd/ctrl/alt/shift。
+// 这些键宽以 1u 为单位, 行内累计; 总宽 16u, 与右侧空格对齐。
+
+class _KeyCap {
+  final String label;
+  final String name;
+  final double width;
+  final bool isModifier;
+  const _KeyCap(this.label, this.name, this.width,
+      {this.isModifier = false});
+}
+
+const List<List<_KeyCap>> _keyboardRows = [
+  [
+    _KeyCap('esc', 'Escape', 1.25),
+    _KeyCap('`', '`', 1),
+    _KeyCap('1', '1', 1),
+    _KeyCap('2', '2', 1),
+    _KeyCap('3', '3', 1),
+    _KeyCap('4', '4', 1),
+    _KeyCap('5', '5', 1),
+    _KeyCap('6', '6', 1),
+    _KeyCap('7', '7', 1),
+    _KeyCap('8', '8', 1),
+    _KeyCap('9', '9', 1),
+    _KeyCap('0', '0', 1),
+    _KeyCap('-', '-', 1),
+    _KeyCap('=', '=', 1),
+    _KeyCap('delete', 'Backspace', 1.75),
+  ],
+  [
+    _KeyCap('tab', 'Tab', 1.5),
+    _KeyCap('Q', 'Q', 1),
+    _KeyCap('W', 'W', 1),
+    _KeyCap('E', 'E', 1),
+    _KeyCap('R', 'R', 1),
+    _KeyCap('T', 'T', 1),
+    _KeyCap('Y', 'Y', 1),
+    _KeyCap('U', 'U', 1),
+    _KeyCap('I', 'I', 1),
+    _KeyCap('O', 'O', 1),
+    _KeyCap('P', 'P', 1),
+    _KeyCap('[', '[', 1),
+    _KeyCap(']', ']', 1),
+    _KeyCap('\\', '\\', 1.5),
+  ],
+  [
+    _KeyCap('caps', 'CapsLock', 1.75),
+    _KeyCap('A', 'A', 1),
+    _KeyCap('S', 'S', 1),
+    _KeyCap('D', 'D', 1),
+    _KeyCap('F', 'F', 1),
+    _KeyCap('G', 'G', 1),
+    _KeyCap('H', 'H', 1),
+    _KeyCap('J', 'J', 1),
+    _KeyCap('K', 'K', 1),
+    _KeyCap('L', 'L', 1),
+    _KeyCap(';', ';', 1),
+    _KeyCap("'", "'", 1),
+    _KeyCap('return', 'Return', 2.25),
+  ],
+  [
+    _KeyCap('shift', 'shift', 2.25, isModifier: true),
+    _KeyCap('Z', 'Z', 1),
+    _KeyCap('X', 'X', 1),
+    _KeyCap('C', 'C', 1),
+    _KeyCap('V', 'V', 1),
+    _KeyCap('B', 'B', 1),
+    _KeyCap('N', 'N', 1),
+    _KeyCap('M', 'M', 1),
+    _KeyCap(',', ',', 1),
+    _KeyCap('.', '.', 1),
+    _KeyCap('/', '/', 1),
+    _KeyCap('shift', 'shift', 2.75, isModifier: true),
+  ],
+  [
+    _KeyCap('ctrl', 'ctrl', 1.25, isModifier: true),
+    _KeyCap('opt', 'alt', 1.25, isModifier: true),
+    _KeyCap('cmd', 'cmd', 1.25, isModifier: true),
+    _KeyCap('space', 'Space', 5.0),
+    _KeyCap('cmd', 'cmd', 1.25, isModifier: true),
+    _KeyCap('opt', 'alt', 1.25, isModifier: true),
+    _KeyCap('ctrl', 'ctrl', 1.25, isModifier: true),
+  ],
+];
+
+/// 宽 16u + 左右各 0.15u 内边距; 高 5 行 × (0.9u + 0.1u) + 上下 0.15u。
+const double _keyboardAspect = 16.3 / 5.2;
+
+class _ShortcutKeyboardPainter extends CustomPainter {
+  final Set<String> usedModifiers;
+  final Set<String> usedKeys;
+  const _ShortcutKeyboardPainter({
+    required this.usedModifiers,
+    required this.usedKeys,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final u = size.width / 16.3;
+    final pad = u * 0.15;
+    final keyH = u * 0.9;
+    final gap = u * 0.06;
+    final rowGap = u * 0.1;
+
+    final body = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(u * 0.28),
+    );
+    canvas.drawRRect(
+      body,
+      Paint()..color = _paperLine.withValues(alpha: 0.55),
+    );
+    canvas.drawRRect(
+      body.deflate(u * 0.04),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = u * 0.03
+        ..color = Colors.white.withValues(alpha: 0.55),
+    );
+
+    double y = pad;
+    for (final row in _keyboardRows) {
+      double x = pad;
+      for (final key in row) {
+        final w = key.width * u - gap;
+        final rect = Rect.fromLTWH(x, y, w, keyH);
+        final rr = RRect.fromRectAndRadius(
+          rect,
+          Radius.circular(u * 0.12),
+        );
+        final active = key.isModifier
+            ? usedModifiers.contains(key.name)
+            : usedKeys.contains(key.name);
+
+        // keycap 底部投影
+        canvas.drawRRect(
+          rr.shift(Offset(0, u * 0.05)),
+          Paint()..color = Colors.black.withValues(alpha: 0.10),
+        );
+
+        final fill = Paint()..style = PaintingStyle.fill;
+        if (active) {
+          // 修饰键是"按住的键", 实心红; 普通键可能很多, 用浅红底
+          // + 红描边/红字, 避免整块键盘糊成一片红。
+          fill.color = key.isModifier
+              ? _penRed
+              : _penRed.withValues(alpha: 0.16);
+        } else {
+          fill.shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: key.isModifier
+                ? const [Color(0xFFFFFDF8), Color(0xFFEDE6D7)]
+                : const [Colors.white, Color(0xFFF5F1E7)],
+          ).createShader(rect);
+        }
+        canvas.drawRRect(rr, fill);
+        canvas.drawRRect(
+          rr,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = u * 0.025
+            ..color = active ? _penRed : _paperLine,
+        );
+        if (!active) {
+          // 键帽顶沿高光, 让平面图有一点立体感
+          canvas.drawLine(
+            Offset(rect.left + u * 0.12, rect.top + u * 0.10),
+            Offset(rect.right - u * 0.12, rect.top + u * 0.10),
+            Paint()
+              ..color = Colors.white.withValues(alpha: 0.7)
+              ..strokeWidth = u * 0.03,
+          );
+        }
+
+        final long = key.label.length > 2;
+        final fs =
+            (long ? u * 0.23 : u * 0.34).clamp(6.5, 13.0).toDouble();
+        final tp = TextPainter(
+          text: TextSpan(
+            text: key.label,
+            style: TextStyle(
+              fontSize: fs,
+              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+              color: active
+                  ? (key.isModifier ? Colors.white : _penRed)
+                  : _ink,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+          maxLines: 1,
+        )..layout();
+        canvas.save();
+        canvas.translate(
+          rect.center.dx - tp.width / 2,
+          rect.center.dy - tp.height / 2,
+        );
+        tp.paint(canvas, Offset.zero);
+        canvas.restore();
+
+        x += key.width * u;
+      }
+      y += keyH + rowGap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ShortcutKeyboardPainter oldDelegate) => true;
+}
+
