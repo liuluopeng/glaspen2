@@ -12,6 +12,13 @@ fn main() {
             println!("cargo:rerun-if-changed=src/macos/parts/{part}");
         }
         println!("cargo:rerun-if-changed=flutter_settings/lib/main.dart");
+        // main.dart 的 part 文件(main.*.dart)也是 Dart 源: 只盯 main.dart
+        // 会在改 part 时不重建 App.framework, 面板改动静默失效。
+        for e in std::fs::read_dir("flutter_settings/lib").unwrap().flatten() {
+            if e.path().extension().is_some_and(|x| x == "dart") {
+                println!("cargo:rerun-if-changed={}", e.path().display());
+            }
+        }
         println!("cargo:rerun-if-changed=flutter_settings/pubspec.yaml");
         // flutter_rust_bridge 生成的 Dart 绑定:codegen 只改这里而不动
         // main.dart 时,不监听会导致 App.framework 里打进旧 Dart(与 Rust
