@@ -1175,6 +1175,10 @@ static BOOL tunnel_make_card(int slot, int cache_slot, long screen_id,
 // 相机后退 —— 前一页从镜头后方飞出、当前页缩进隧道深处。
 static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
                              void (^prepare)(void), void (^commit)(void)) {
+  // 防重入兜底: page_flip_swap_from 已经先 tunnel_finish() 收尾上一段;
+  // 若仍处于活动态(异常路径), 不要再销毁/重建表面。
+  if (s_tun_active)
+    return NO;
   if (!g_surface || g_screen_w <= 0 || g_screen_h <= 0)
     return NO;
 
@@ -1322,8 +1326,14 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
   return YES;
 }
 
-static void page_flip_swap(BOOL going_next, void (^prepare)(void),
-                           void (^commit)(void)) {
+static void page_flip_swap_from(BOOL going_next, long from_page,
+                                void (^prepare)(void), void (^commit)(void)) {
+  // 上一段隧道还没落定时先让它收尾(commit 旧目标页), 再开始新的翻页。
+  // 否则 tunnel_free_cards() 会在旧 timer 仍在跑时销毁表面, 旧 timer 也
+  // 永远不会被 cancel(表现为翻页越来越快/卡顿/漏帧)。
+  if (s_tun_active) {
+    tunnel_finish();
+  }
   if (!g_window) {
     prepare();
     commit();
@@ -1336,7 +1346,10 @@ static void page_flip_swap(BOOL going_next, void (^prepare)(void),
   // 载入 STROKES 并平滑好 —— 落定那一下只是重绘, 不会卡。
   if (g_flip_effect == 1 && !g_infinite_canvas && g_surface &&
       !g_stroke_active) {
-    long cur_before = glaspen2_get_current_screen_id(); // prepare 会切页, 先抓
+    // 新建页/气泡自动翻页的 current 可能已经被 core 切到目标页, 调用方
+    // 可显式传入翻页**前**的页; 0 = 读当前页(普通上一页/下一页)。
+    long cur_before =
+        from_page > 0 ? from_page : glaspen2_get_current_screen_id();
     double tp0 = [NSDate timeIntervalSinceReferenceDate];
     prepare(); // 载入 + 平滑(目标页), 与建卡共用一次 DB 访问
     double tp1 = [NSDate timeIntervalSinceReferenceDate];
@@ -1355,6 +1368,12 @@ static void page_flip_swap(BOOL going_next, void (^prepare)(void),
     double t1 = [NSDate timeIntervalSinceReferenceDate];
     NSLog(@"[flip] 隐藏间隙 %.0fms", (t1 - t0) * 1000.0);
   });
+}
+
+/// 普通翻页: 翻页前的当前页 = 调用时的 current。
+static void page_flip_swap(BOOL going_next, void (^prepare)(void),
+                           void (^commit)(void)) {
+  page_flip_swap_from(going_next, 0, prepare, commit);
 }
 
 /// 气泡「写完自动新建一页」: 落笔瞬间(笔画尚未开始)若这一笔将开新消息
@@ -1549,11 +1568,13 @@ static BOOL perform_hotkey(unsigned short kc) {
             L(@"没有下一页(再按一次新建)", @"No next page (press again to create)"));
         return YES;
       }
-      long pageId =
-          glaspen2_create_next_page(glaspen2_get_current_screen_id());
-      if (pageId > 0 && pageId != glaspen2_get_current_screen_id()) {
-        page_flip_swap(
-            YES,
+      // core 建页时会顺手把 current 切到新页; 翻页前的页必须先抓下来,
+      // 否则拿返回 id 再和 current 比较永远相等 → 建了页却不载入/不翻。
+      long before = glaspen2_get_current_screen_id();
+      long pageId = glaspen2_create_next_page(before);
+      if (pageId > 0 && pageId != before) {
+        page_flip_swap_from(
+            YES, before,
             ^{ // 渐隐期间并行: 载入 + 平滑
               glaspen2_load_strokes_for_screen(pageId);
               glaspen2_smooth_loaded_strokes();
@@ -1565,8 +1586,10 @@ static BOOL perform_hotkey(unsigned short kc) {
         peek_strokes(1.0);
         show_page_info(pageId);
         show_notification(L(@"已新建了一页", @"A new page was created"));
-      } else if (pageId == 0) {
-        show_notification(L(@"已是空白末页", @"Last page is already blank"));
+      } else if (pageId == before) {
+        show_notification(L(@"已是最新一页", @"Already on the latest page"));
+      } else {
+        show_notification(L(@"新建页失败", @"Could not create a page"));
       }
     }
     return YES;
@@ -1954,6 +1977,12 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       BOOL hasCmdCtrl = (mods & NSEventModifierFlagCommand) &&
                         (mods & NSEventModifierFlagControl);
       unsigned short kc = [keyEvent keyCode];
+      // 长按自动重复只认第一次 key-down。翻页键若跟着 repeat 走, 按住
+      // 一秒会翻十几页(隧道/系统淡入淡出还会叠起来), 这是"翻页不好用"
+      // 最直接的来源之一。
+      BOOL isRepeat =
+          (type == kCGEventKeyDown) &&
+          CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat) != 0;
       // Stop the GIF recorder on R key-up regardless of modifiers, so a
       // Cmd/Ctrl released before R can't leave the recorder stuck.
       if (type == kCGEventKeyUp && kc == kVK_ANSI_R && g_gif_recording) {
@@ -2010,6 +2039,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       if (!g_infinite_canvas && kHasOptCmd && !g_stroke_active &&
           type == kCGEventKeyDown &&
           (kc == kVK_UpArrow || kc == kVK_DownArrow)) {
+        if (isRepeat)
+          return NULL; // 长按自动重复: 不再翻页, 也不透传给系统
         finish_active_stroke();
         BOOL up = (kc == kVK_UpArrow);
         long target =
@@ -2034,11 +2065,11 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
           BOOL secondPress = (nowTs - lastNoNextAt) < 5.0;
           lastNoNextAt = nowTs;
           if (secondPress) {
-            long pageId =
-                glaspen2_create_next_page(glaspen2_get_current_screen_id());
-            if (pageId > 0 && pageId != glaspen2_get_current_screen_id()) {
-              page_flip_swap(
-                  YES,
+            long before = glaspen2_get_current_screen_id();
+            long pageId = glaspen2_create_next_page(before);
+            if (pageId > 0 && pageId != before) {
+              page_flip_swap_from(
+                  YES, before,
                   ^{ // 渐隐期间并行: 载入 + 平滑
                     glaspen2_load_strokes_for_screen(pageId);
                     glaspen2_smooth_loaded_strokes();
@@ -2052,7 +2083,11 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
                   L(@"已新建了一页", @"A new page was created"));
               return NULL;
             }
-            show_notification(L(@"已是空白末页", @"Last page is already blank"));
+            if (pageId == before) {
+              show_notification(L(@"已是最新一页", @"Already on the latest page"));
+            } else {
+              show_notification(L(@"新建页失败", @"Could not create a page"));
+            }
             return NULL;
           }
           show_notification(L(@"没有下一页(再按一次新建)",
@@ -2078,6 +2113,9 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
         return NULL;
       }
       if (hasCmdCtrl && type == kCGEventKeyDown) {
+        // 翻页键的长按重复不应连续翻页; 其它键保持原行为。
+        if (isRepeat && (kc == 0x32 || kc == 0x12))
+          return NULL;
         if (perform_hotkey(kc))
           return NULL;
       }

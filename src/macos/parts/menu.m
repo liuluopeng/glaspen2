@@ -869,6 +869,11 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
 /// 删除一页;返回 1 表示成功。删除当前页时自动切到相邻页。
 int glaspen2_macos_delete_page(long long screen_id) {
     __block int ok = 0;
+    // delete_screen 会把 current 置 0; 邻居必须在**删除前**按当前页取好,
+    // 否则删完 current=0, next/prev 都查不到, 外壳永远进不了切页分支。
+    BOOL was_current = (screen_id == glaspen2_get_current_screen_id());
+    int64_t next_id = was_current ? glaspen2_next_screen_id() : 0;
+    int64_t prev_id = was_current ? glaspen2_prev_screen_id() : 0;
     dispatch_sync(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         ok = glaspen2_delete_screen(screen_id);
         gl_run_on_main_sync(^{
@@ -877,11 +882,11 @@ int glaspen2_macos_delete_page(long long screen_id) {
                 rebuild_surface_from_strokes();
                 return;
             }
-            if (ok && screen_id == glaspen2_get_current_screen_id()) {
-                int64_t next = glaspen2_next_screen_id();
-                if (next == 0) next = glaspen2_prev_screen_id();
-                if (next != 0) {
-                    glaspen2_load_strokes_for_screen(next);
+            if (ok && was_current) {
+                int64_t target = next_id != 0 ? next_id : prev_id;
+                if (target != 0) {
+                    glaspen2_load_strokes_for_screen(target);
+                    pageview_update(); // 相邻页几何可能 ≠ 屏幕
                     rebuild_surface_from_strokes();
                 } else {
                     clear_screen();
