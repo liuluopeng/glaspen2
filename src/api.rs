@@ -238,6 +238,9 @@ pub struct Settings {
     pub share_canvas: bool,
     /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
     pub language: String,
+    /// 可配置快捷键(action id → chord)的 JSON 字符串; 空 = 后端用默认表。
+    /// chord 形如 "cmd+ctrl+Z"; 空串 = 该动作未绑定。
+    pub shortcuts: String,
 }
 
 impl Settings {
@@ -315,6 +318,7 @@ impl Settings {
                     "zh".to_string()
                 }
             },
+            shortcuts: s("shortcuts"),
         })
     }
 }
@@ -1108,6 +1112,17 @@ mod tests {
         assert!(!s.chat_has_password);
         // 语言不再跟随系统:缺字段默认中文
         assert_eq!(s.language, "zh");
+        // 快捷键表缺字段 = 后端用默认表
+        assert_eq!(s.shortcuts, "");
+    }
+
+    /// 可配置快捷键: shortcuts 是"动作→chord"的 JSON 字符串, 原样透传给面板。
+    #[test]
+    fn test_settings_shortcuts_string_roundtrip() {
+        let s =
+            Settings::from_json(r#"{"shortcuts":"{\"undo\":\"cmd+ctrl+Z\",\"page_next\":\"\"}"}"#)
+                .unwrap();
+        assert_eq!(s.shortcuts, r#"{"undo":"cmd+ctrl+Z","page_next":""}"#);
     }
 
     /// 涂鸦身份字段:字符串与 has_password 保真;密码本体永不进快照。

@@ -396,6 +396,10 @@ class Settings {
   /// 界面语言: "zh" | "en"。不再跟随系统自动检测, 由面板选择器决定。
   final String language;
 
+  /// 可配置快捷键(action id → chord)的 JSON 字符串; 空 = 后端用默认表。
+  /// chord 形如 "cmd+ctrl+Z"; 空串 = 该动作未绑定。
+  final String shortcuts;
+
   const Settings({
     required this.color,
     required this.width,
@@ -433,6 +437,7 @@ class Settings {
     required this.nasUrl,
     required this.shareCanvas,
     required this.language,
+    required this.shortcuts,
   });
 
   @override
@@ -472,7 +477,8 @@ class Settings {
       bubbleAutoNewPage.hashCode ^
       nasUrl.hashCode ^
       shareCanvas.hashCode ^
-      language.hashCode;
+      language.hashCode ^
+      shortcuts.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -514,7 +520,8 @@ class Settings {
           bubbleAutoNewPage == other.bubbleAutoNewPage &&
           nasUrl == other.nasUrl &&
           shareCanvas == other.shareCanvas &&
-          language == other.language;
+          language == other.language &&
+          shortcuts == other.shortcuts;
 }
 
 /// release 里的一个安装包(挑包下载用)。

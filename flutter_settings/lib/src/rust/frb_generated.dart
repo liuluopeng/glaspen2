@@ -1525,8 +1525,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Settings dco_decode_settings(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 36)
-      throw Exception('unexpected arr length: expect 36 but see ${arr.length}');
+    if (arr.length != 37)
+      throw Exception('unexpected arr length: expect 37 but see ${arr.length}');
     return Settings(
       color: dco_decode_i_32(arr[0]),
       width: dco_decode_i_32(arr[1]),
@@ -1564,6 +1564,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       nasUrl: dco_decode_String(arr[33]),
       shareCanvas: dco_decode_bool(arr[34]),
       language: dco_decode_String(arr[35]),
+      shortcuts: dco_decode_String(arr[36]),
     );
   }
 
@@ -1926,6 +1927,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_nasUrl = sse_decode_String(deserializer);
     var var_shareCanvas = sse_decode_bool(deserializer);
     var var_language = sse_decode_String(deserializer);
+    var var_shortcuts = sse_decode_String(deserializer);
     return Settings(
       color: var_color,
       width: var_width,
@@ -1963,6 +1965,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       nasUrl: var_nasUrl,
       shareCanvas: var_shareCanvas,
       language: var_language,
+      shortcuts: var_shortcuts,
     );
   }
 
@@ -2345,6 +2348,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.nasUrl, serializer);
     sse_encode_bool(self.shareCanvas, serializer);
     sse_encode_String(self.language, serializer);
+    sse_encode_String(self.shortcuts, serializer);
   }
 
   @protected

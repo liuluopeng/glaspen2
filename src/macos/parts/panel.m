@@ -175,6 +175,7 @@ static void finish_active_stroke(void) {
     }
     stroke_end();
     g_stroke_active = NO;
+    gl_settings_apply_pending_color_width();
     g_raw_has_last = NO;
     g_raw_has_prev = NO;
     g_raw_path_len = 0;

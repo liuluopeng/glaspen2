@@ -5,6 +5,12 @@ static GlaspenMenuHandler *g_menuHandler = nil;
 static NSStatusItem *g_statusItem = nil;
 static NSMenu *g_menu = nil;
 static int g_selectedColorIndex = 0; // 0=red (default)
+// 换回上一色/上一粗细的交换键用; 重新选色时更新, 初值给一个可用的另一端。
+static int g_prev_color_index = 9;   // black
+static int g_prev_width_index = 2;   // fine (current default is 3/medium)
+// 书写中按了换色/换粗细: 等抬笔后再应用, 避免污染正在写的那一笔。
+static int g_pending_color_index = -1;
+static int g_pending_width_index = -1;
 
 static NSAttributedString* gl_color_item_text(NSInteger idx);
 static NSAttributedString* gl_width_item_text(NSInteger idx);
@@ -84,24 +90,33 @@ static NSAttributedString* gl_menu_text(NSImage *icon, NSString *name) {
     return s;
 }
 
-static NSAttributedString* gl_color_item_text(NSInteger idx) {
+static NSString *gl_color_display_name(NSInteger idx) {
     static NSString *zh[] = {@"红", @"橙", @"黄", @"绿", @"青", @"蓝", @"紫", @"粉", @"白", @"黑"};
-    NSString *name = (g_lang == 0)
+    if (idx < 0 || idx >= g_color_preset_count) return @"";
+    return (g_lang == 0)
         ? zh[idx]
         : [NSString stringWithUTF8String:g_color_presets[idx].name];
+}
+
+static NSString *gl_width_display_name(NSInteger idx) {
+    static NSString *zh[] = {@"极细", @"很细", @"细", @"中", @"粗", @"很粗", @"超粗", @"极粗"};
+    static NSString *en[] = {@"Hair", @"Very fine", @"Fine", @"Medium",
+                             @"Thick", @"Very thick", @"Extra thick", @"Boldest"};
+    if (idx < 0 || idx >= g_width_preset_count) return @"";
+    return (g_lang == 0) ? zh[idx] : en[idx];
+}
+
+static NSAttributedString* gl_color_item_text(NSInteger idx) {
     NSColor *c = [NSColor colorWithRed:g_color_presets[idx].r
                                  green:g_color_presets[idx].g
                                   blue:g_color_presets[idx].b
                                  alpha:1.0];
-    return gl_menu_text(gl_color_dot_image(c), name);
+    return gl_menu_text(gl_color_dot_image(c), gl_color_display_name(idx));
 }
 
 static NSAttributedString* gl_width_item_text(NSInteger idx) {
-    static NSString *zh[] = {@"极细", @"很细", @"细", @"中", @"粗", @"很粗", @"超粗", @"极粗"};
-    static NSString *en[] = {@"Hair", @"Very fine", @"Fine", @"Medium",
-                             @"Thick", @"Very thick", @"Extra thick", @"Boldest"};
-    NSString *name = (g_lang == 0) ? zh[idx] : en[idx];
-    return gl_menu_text(gl_width_line_image(g_width_presets[idx]), name);
+    return gl_menu_text(gl_width_line_image(g_width_presets[idx]),
+                        gl_width_display_name(idx));
 }
 
 // ── 菜单栏图标: 一支斜放的马克笔, 把当前关键状态画进 18pt 里 ──
@@ -591,6 +606,251 @@ static NSString *gl_string_setting(const char *key) {
     return s;
 }
 
+// ── 可配置快捷键 ─────────────────────────────────────────────────────
+// 动作 id 与默认组合; 真正的动作执行在 run.m 的 perform_action()。本区只
+// 负责 "chord → action" 映射、持久化、录制期间暂停全局拦截。
+//
+// chord 规范: cmd+ctrl+alt+shift+<Key>，顺序固定; 至少包含 ctrl 或 alt
+// (只按 ⌘/⇧ 的组合容易和 App 菜单/系统快捷键冲突, 且录制时会被菜单先吃掉)。
+// 空串 = 该动作未绑定。按键名走物理位置(与布局无关), 与事件 tap 的
+// kVK_* keycode 一一对应。
+static NSArray<NSString *> *gl_shortcut_actions(void) {
+    return @[
+        @"undo", @"page_prev", @"page_next", @"color_swap", @"width_swap",
+        @"toggle_draw", @"clear", @"export", @"copy_svg",
+        @"toggle_glass", @"toggle_ethereal", @"settings",
+    ];
+}
+
+static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) {
+    return @{
+        @"undo": @"cmd+ctrl+Z",
+        @"page_prev": @"cmd+ctrl+`",
+        @"page_next": @"cmd+ctrl+1",
+        @"color_swap": @"cmd+ctrl+E",
+        @"width_swap": @"cmd+ctrl+W",
+        @"toggle_draw": @"cmd+ctrl+V",
+        @"clear": @"cmd+ctrl+C",
+        @"export": @"cmd+ctrl+G",
+        @"copy_svg": @"cmd+ctrl+S",
+        @"toggle_glass": @"cmd+ctrl+B",
+        @"toggle_ethereal": @"cmd+ctrl+X",
+        @"settings": @"cmd+ctrl+D",
+    };
+}
+
+/// keycode → 规范按键名。只收录能当全局快捷键的键; 其它键录制时拒绝。
+static NSDictionary<NSNumber *, NSString *> *gl_keycode_names(void) {
+    static NSDictionary *m;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        m = @{
+            @(kVK_ANSI_A): @"A", @(kVK_ANSI_B): @"B", @(kVK_ANSI_C): @"C",
+            @(kVK_ANSI_D): @"D", @(kVK_ANSI_E): @"E", @(kVK_ANSI_F): @"F",
+            @(kVK_ANSI_G): @"G", @(kVK_ANSI_H): @"H", @(kVK_ANSI_I): @"I",
+            @(kVK_ANSI_J): @"J", @(kVK_ANSI_K): @"K", @(kVK_ANSI_L): @"L",
+            @(kVK_ANSI_M): @"M", @(kVK_ANSI_N): @"N", @(kVK_ANSI_O): @"O",
+            @(kVK_ANSI_P): @"P", @(kVK_ANSI_Q): @"Q", @(kVK_ANSI_R): @"R",
+            @(kVK_ANSI_S): @"S", @(kVK_ANSI_T): @"T", @(kVK_ANSI_U): @"U",
+            @(kVK_ANSI_V): @"V", @(kVK_ANSI_W): @"W", @(kVK_ANSI_X): @"X",
+            @(kVK_ANSI_Y): @"Y", @(kVK_ANSI_Z): @"Z",
+            @(kVK_ANSI_0): @"0", @(kVK_ANSI_1): @"1", @(kVK_ANSI_2): @"2",
+            @(kVK_ANSI_3): @"3", @(kVK_ANSI_4): @"4", @(kVK_ANSI_5): @"5",
+            @(kVK_ANSI_6): @"6", @(kVK_ANSI_7): @"7", @(kVK_ANSI_8): @"8",
+            @(kVK_ANSI_9): @"9",
+            @(kVK_ANSI_Minus): @"-", @(kVK_ANSI_Equal): @"=",
+            @(kVK_ANSI_LeftBracket): @"[", @(kVK_ANSI_RightBracket): @"]",
+            @(kVK_ANSI_Backslash): @"\\", @(kVK_ANSI_Semicolon): @";",
+            @(kVK_ANSI_Quote): @"'", @(kVK_ANSI_Grave): @"`",
+            @(kVK_ANSI_Comma): @",", @(kVK_ANSI_Period): @".",
+            @(kVK_ANSI_Slash): @"/",
+            @(kVK_LeftArrow): @"Left", @(kVK_RightArrow): @"Right",
+            @(kVK_DownArrow): @"Down", @(kVK_UpArrow): @"Up",
+            @(kVK_PageUp): @"PageUp", @(kVK_PageDown): @"PageDown",
+            @(kVK_Home): @"Home", @(kVK_End): @"End",
+            @(0x75): @"Delete", // kVK_ForwardDelete
+            @(kVK_Delete): @"Backspace",
+            @(kVK_Return): @"Return", @(kVK_Escape): @"Escape",
+            @(kVK_Tab): @"Tab", @(kVK_Space): @"Space",
+            @(kVK_F1): @"F1", @(kVK_F2): @"F2", @(kVK_F3): @"F3",
+            @(kVK_F4): @"F4", @(kVK_F5): @"F5", @(kVK_F6): @"F6",
+            @(kVK_F7): @"F7", @(kVK_F8): @"F8", @(kVK_F9): @"F9",
+            @(kVK_F10): @"F10", @(kVK_F11): @"F11", @(kVK_F12): @"F12",
+        };
+    });
+    return m;
+}
+
+static NSSet<NSString *> *gl_keyname_set(void) {
+    static NSSet *s;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        s = [NSSet setWithArray:gl_keycode_names().allValues];
+    });
+    return s;
+}
+
+/// 规范按键名(大小写/别名容忍); 不支持返回 nil。
+static NSString *gl_normalize_key_token(NSString *token) {
+    NSString *t = [token stringByTrimmingCharactersInSet:
+                              [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (t.length == 0) return nil;
+    if (t.length == 1) {
+        NSString *up = [t uppercaseString];
+        if ([gl_keyname_set() containsObject:up]) return up;
+        if ([gl_keyname_set() containsObject:t]) return t;
+    }
+    for (NSString *cand in gl_keyname_set()) {
+        if ([cand caseInsensitiveCompare:t] == NSOrderedSame) return cand;
+    }
+    return nil;
+}
+
+/// 规范化用户/存档 chord; 空串 = 未绑定; 非法返回 nil。
+static NSString *gl_normalize_chord(NSString *raw) {
+    if (![raw isKindOfClass:[NSString class]]) return nil;
+    NSString *s = [raw stringByTrimmingCharactersInSet:
+                            [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (s.length == 0) return @"";
+    NSArray<NSString *> *parts = [s componentsSeparatedByString:@"+"];
+    if (parts.count < 2) return nil;
+    NSString *key = gl_normalize_key_token(parts.lastObject);
+    if (!key) return nil;
+    NSMutableSet<NSString *> *mods = [NSMutableSet set];
+    for (NSUInteger i = 0; i + 1 < parts.count; i++) {
+        NSString *m = [[parts[i] stringByTrimmingCharactersInSet:
+                                   [NSCharacterSet whitespaceAndNewlineCharacterSet]]
+            lowercaseString];
+        if ([m isEqualToString:@"cmd"] || [m isEqualToString:@"command"] ||
+            [m isEqualToString:@"meta"]) {
+            m = @"cmd";
+        } else if ([m isEqualToString:@"ctrl"] || [m isEqualToString:@"control"]) {
+            m = @"ctrl";
+        } else if ([m isEqualToString:@"alt"] || [m isEqualToString:@"option"] ||
+                   [m isEqualToString:@"opt"]) {
+            m = @"alt";
+        } else if ([m isEqualToString:@"shift"]) {
+            m = @"shift";
+        } else {
+            return nil;
+        }
+        if ([mods containsObject:m]) return nil;
+        [mods addObject:m];
+    }
+    // 只按 ⌘ 或 ⇧ 的全局键太容易和系统/菜单冲突; 录制端也按这条规则拦。
+    if (![mods containsObject:@"ctrl"] && ![mods containsObject:@"alt"]) return nil;
+    NSMutableArray<NSString *> *out = [NSMutableArray array];
+    for (NSString *m in @[ @"cmd", @"ctrl", @"alt", @"shift" ]) {
+        if ([mods containsObject:m]) [out addObject:m];
+    }
+    [out addObject:key];
+    return [out componentsJoinedByString:@"+"];
+}
+
+/// 保留组合: 按住类功能/系统锁屏不能被普通动作占用。
+static BOOL gl_shortcut_reserved(NSString *chord) {
+    static NSSet *r;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        r = [NSSet setWithArray:@[
+            @"cmd+ctrl+Q", // macOS 锁屏
+            @"cmd+ctrl+R", // 按住录 GIF
+            @"cmd+ctrl+2", // 按住手写草稿
+            @"cmd+ctrl+3", // 按住手写消息
+        ]];
+    });
+    return [r containsObject:chord];
+}
+
+static NSMutableDictionary<NSString *, NSString *> *g_shortcut_values;
+static NSMutableDictionary<NSString *, NSString *> *g_shortcut_lookup;
+static BOOL g_hotkey_recording = NO;
+static NSUInteger g_hotkey_recording_gen = 0;
+
+static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved) {
+    NSDictionary<NSString *, NSString *> *defaults = gl_shortcut_defaults();
+    NSMutableDictionary<NSString *, NSString *> *values = [NSMutableDictionary dictionary];
+    NSMutableDictionary<NSString *, NSString *> *lookup = [NSMutableDictionary dictionary];
+    for (NSString *action in gl_shortcut_actions()) {
+        id raw = saved[action];
+        NSString *chord = nil;
+        if ([raw isKindOfClass:[NSString class]]) {
+            chord = gl_normalize_chord(raw);
+            if (!chord && [(NSString *)raw length] > 0) {
+                NSLog(@"[hotkey] 非法组合 %@=%@, 回退默认", action, raw);
+            }
+        }
+        if (!chord) chord = defaults[action]; // 缺失/非法 → 默认
+        if (chord.length && gl_shortcut_reserved(chord)) {
+            NSLog(@"[hotkey] 保留组合 %@=%@, 回退默认", action, chord);
+            chord = defaults[action];
+        }
+        if (chord.length && lookup[chord]) {
+            NSLog(@"[hotkey] 冲突 %@ 与 %@ 都是 %@; 后者解绑",
+                  lookup[chord], action, chord);
+            chord = @"";
+        }
+        values[action] = chord ?: @"";
+        if (chord.length) lookup[chord] = action;
+    }
+    g_shortcut_values = values;
+    g_shortcut_lookup = lookup;
+}
+
+/// 当前生效表(含默认补齐)的 JSON; settings_json / 面板回显用。
+static NSString *gl_shortcuts_effective_json(void) {
+    if (!g_shortcut_values) gl_shortcuts_apply(@{});
+    NSData *d = [NSJSONSerialization dataWithJSONObject:g_shortcut_values
+                                                options:0
+                                                  error:nil];
+    if (!d) return @"{}";
+    return [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] ?: @"{}";
+}
+
+/// 启动时从 user_settings 恢复; 必须在 event tap 安装前调用。
+static void gl_shortcuts_load(void) {
+    NSString *raw = gl_string_setting("shortcuts");
+    NSDictionary *saved = nil;
+    if (raw.length) {
+        id obj = [NSJSONSerialization JSONObjectWithData:
+                                     [raw dataUsingEncoding:NSUTF8StringEncoding]
+                                                 options:0
+                                                   error:nil];
+        if ([obj isKindOfClass:[NSDictionary class]]) saved = obj;
+    }
+    gl_shortcuts_apply(saved);
+}
+
+/// 录制快捷键期间放行所有键盘事件给设置面板; 60s 兜底, 防止面板异常退出
+/// 后全局热键永久失效。
+static void gl_set_hotkey_recording(BOOL on) {
+    g_hotkey_recording = on;
+    NSUInteger gen = ++g_hotkey_recording_gen;
+    if (!on) return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(60.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (gen == g_hotkey_recording_gen && g_hotkey_recording) {
+            g_hotkey_recording = NO;
+            NSLog(@"[hotkey] 录制超时, 恢复全局快捷键");
+        }
+    });
+}
+
+/// 事件 tap 用: keycode + 修饰键 → 规范 chord → action id。
+static NSString *gl_shortcut_action_for_key(unsigned short kc, NSUInteger mods) {
+    if (!g_shortcut_lookup) gl_shortcuts_apply(@{});
+    NSString *key = gl_keycode_names()[@(kc)];
+    if (!key) return nil;
+    NSMutableArray<NSString *> *parts = [NSMutableArray array];
+    if (mods & NSEventModifierFlagCommand) [parts addObject:@"cmd"];
+    if (mods & NSEventModifierFlagControl) [parts addObject:@"ctrl"];
+    if (mods & NSEventModifierFlagOption) [parts addObject:@"alt"];
+    if (mods & NSEventModifierFlagShift) [parts addObject:@"shift"];
+    if (![parts containsObject:@"ctrl"] && ![parts containsObject:@"alt"]) return nil;
+    [parts addObject:key];
+    return g_shortcut_lookup[[parts componentsJoinedByString:@"+"]];
+}
+
 /// 当前设置的 JSON 快照;调用方用 glaspen2_macos_free_c_string 释放。
 char *glaspen2_macos_settings_json(void) {
     __block char *out = NULL;
@@ -648,6 +908,8 @@ char *glaspen2_macos_settings_json(void) {
             @"shareCanvas": @(glaspen2_load_bool_setting("share_ink") != 0),
             // 语言由面板选择器决定, 不再跟随系统; 缺省中文
             @"language": (g_lang == 1 ? @"en" : @"zh"),
+            // 可配置快捷键: 动作 id → chord 的 JSON 字符串(含默认补齐)
+            @"shortcuts": gl_shortcuts_effective_json(),
         };
         NSData *json = [NSJSONSerialization dataWithJSONObject:d options:0 error:nil];
         if (!json) return;
@@ -862,6 +1124,28 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             glaspen2_save_string_setting("language", g_lang == 1 ? "en" : "zh");
             update_menu_texts();
             glaspen2_notify_settings_changed();
+        } else if ([key isEqualToString:@"shortcuts"]) {
+            // 面板发来整张 action→chord 表; 后端规范化/补默认/挡冲突后落库
+            NSDictionary *map = nil;
+            if ([value isKindOfClass:[NSDictionary class]]) {
+                map = value;
+            } else if ([value isKindOfClass:[NSString class]]) {
+                id obj = [NSJSONSerialization JSONObjectWithData:
+                                          [(NSString *)value dataUsingEncoding:NSUTF8StringEncoding]
+                                                      options:0
+                                                        error:nil];
+                if ([obj isKindOfClass:[NSDictionary class]]) map = obj;
+            }
+            if (map) {
+                gl_shortcuts_apply(map);
+                NSString *json = gl_shortcuts_effective_json();
+                if (json.length)
+                    glaspen2_save_string_setting("shortcuts", json.UTF8String);
+                sync_settings_panel();
+            }
+        } else if ([key isEqualToString:@"hotkeyRecording"]) {
+            // 录制期间放行键盘给面板; 不落库, 20s 自动恢复
+            gl_set_hotkey_recording([value boolValue]);
         }
     });
 }
@@ -1082,6 +1366,12 @@ int glaspen2_macos_export_gif(void) {
 
 static void gl_settings_set_color(int idx) {
     if (idx < 0 || idx >= g_color_preset_count) return;
+    // 书写中换色: 存 pending, 抬笔后再应用 —— 否则当前笔的尾部会被改色。
+    if (g_stroke_active) {
+        g_pending_color_index = idx;
+        return;
+    }
+    if (idx != g_selectedColorIndex) g_prev_color_index = g_selectedColorIndex;
     g_pen_r = g_color_presets[idx].r;
     g_pen_g = g_color_presets[idx].g;
     g_pen_b = g_color_presets[idx].b;
@@ -1094,12 +1384,32 @@ static void gl_settings_set_color(int idx) {
 
 static void gl_settings_set_width(int idx) {
     if (idx < 0 || idx >= g_width_preset_count) return;
+    if (g_stroke_active) {
+        g_pending_width_index = idx;
+        return;
+    }
+    if (idx != g_selected_width_index) g_prev_width_index = g_selected_width_index;
     g_width_scale = g_width_presets[idx];
     g_selected_width_index = idx;
     glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
     update_menu_checkmarks();
     update_status_icon_state(); // 笔宽画在图标笔杆粗细里
     sync_settings_panel();
+}
+
+/// 抬笔后应用书写中按下的换色/换粗细(只保留最后一次)。
+static void gl_settings_apply_pending_color_width(void) {
+    if (g_stroke_active) return;
+    if (g_pending_color_index >= 0) {
+        int idx = g_pending_color_index;
+        g_pending_color_index = -1;
+        gl_settings_set_color(idx);
+    }
+    if (g_pending_width_index >= 0) {
+        int idx = g_pending_width_index;
+        g_pending_width_index = -1;
+        gl_settings_set_width(idx);
+    }
 }
 
 static void gl_settings_set_grid(BOOL on) {

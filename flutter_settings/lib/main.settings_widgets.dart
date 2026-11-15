@@ -208,64 +208,6 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     return '≈ ${(bytesPerSec / 1024).round()} KB/s';
   }
 
-  /// 快捷键按钮,按键盘排布(如:X 在 V 左侧,按钮也在 V 左侧),
-  /// 长方形按钮:键名 + 汉字功能提示
-  Widget _buildHotkeyGrid() {
-    Widget key(String k, String label) {
-      return Tooltip(
-        message: label,
-        child: Padding(
-          padding: const EdgeInsets.only(right: 6, bottom: 6),
-          child: SizedBox(
-            width: 64,
-            height: 48,
-            child: OutlinedButton(
-              onPressed: () => _bridge.triggerHotkey(k),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(k,
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.bold)),
-                  Text(label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 9, color: Colors.grey.shade700)),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    Widget row(List<Widget> children, {double indent = 0}) {
-      return Padding(
-        padding: EdgeInsets.only(left: indent),
-        child: Row(children: children),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        row([key('Q', AppLocalizations.of(context)!.quitApp)]),
-        row([key('G', AppLocalizations.of(context)!.exportImage), key('`', AppLocalizations.of(context)!.previousPage), key('1', AppLocalizations.of(context)!.nextPage)], indent: 22),
-        row([
-          key('Z', AppLocalizations.of(context)!.undoLastStroke),
-          key('X', AppLocalizations.of(context)!.etherealCanvas),
-          key('C', AppLocalizations.of(context)!.newCanvas),
-          key('V', AppLocalizations.of(context)!.toggleDoodle),
-          key('B', AppLocalizations.of(context)!.blurBackground),
-        ]),
-      ],
-    );
-  }
-
   // ── 笔:颜色 + 粗细 ──
   Widget _buildPenSection() {
     return Column(

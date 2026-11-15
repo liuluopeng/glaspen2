@@ -5,7 +5,9 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:ffi/ffi.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData, rootBundle;
+import 'package:flutter/services.dart'
+    show Clipboard, ClipboardData, rootBundle, HardwareKeyboard, KeyEvent,
+         KeyDownEvent, KeyRepeatEvent, LogicalKeyboardKey;
 import 'package:flutter/foundation.dart';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -24,6 +26,7 @@ part 'main.notebook_data.dart';
 part 'main.notebook.dart';
 part 'main.update.dart';
 part 'main.settings_widgets.dart';
+part 'main.shortcuts.dart';
 
 void main() {
   // FRB 需要绑定初始化(消息端口/isolate)后才能解析 Rust 符号
@@ -173,6 +176,9 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   int _selectedColor = 0;
   int _selectedWidth = 2;
   String _language = 'zh'; // 界面语言: zh | en(不再跟随系统)
+  // 可配置快捷键: action id → chord(空串 = 未绑定)。后端 settings_json 的
+  // shortcuts 字段是这张表的 JSON 字符串; 面板负责展示/录制/校验。
+  Map<String, String> _shortcuts = _decodeShortcuts(null);
   bool _pressureMonitor = false;
   bool _launchAtLogin = false;
   bool _showGrid = false;
@@ -608,10 +614,8 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
                   ),
                   const SizedBox(height: 16),
                   _buildSection(
-                    Platform.isWindows
-                        ? AppLocalizations.of(context)!.hotkeysCtrlAlt
-                        : AppLocalizations.of(context)!.hotkeys,
-                    _buildHotkeyGrid(),
+                    _shortcutSectionTitle(),
+                    _buildShortcutEditor(),
                   ),
                 ],
               ),

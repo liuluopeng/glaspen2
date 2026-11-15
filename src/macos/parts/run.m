@@ -1679,6 +1679,44 @@ static BOOL perform_hotkey(unsigned short kc) {
   return NO;
 }
 
+// 按动作 id 执行(事件 tap 的可配置键位表命中后调用)。旧 perform_hotkey
+// 仍保留给设置面板按钮/诊断钩子; 这里用固定的 keyCode 当作 action 选择器,
+// 与用户实际按下的键无关 —— 键位匹配在菜单层按 chord 完成。
+static BOOL perform_action(NSString *action) {
+  if (![action isKindOfClass:[NSString class]]) return NO;
+  if ([action isEqualToString:@"undo"]) return perform_hotkey(kVK_ANSI_Z);
+  if ([action isEqualToString:@"page_prev"]) return perform_hotkey(0x32);
+  if ([action isEqualToString:@"page_next"]) return perform_hotkey(0x12);
+  if ([action isEqualToString:@"toggle_draw"]) return perform_hotkey(kVK_ANSI_V);
+  if ([action isEqualToString:@"clear"]) return perform_hotkey(kVK_ANSI_C);
+  if ([action isEqualToString:@"export"]) return perform_hotkey(kVK_ANSI_G);
+  if ([action isEqualToString:@"copy_svg"]) return perform_hotkey(kVK_ANSI_S);
+  if ([action isEqualToString:@"toggle_glass"]) return perform_hotkey(kVK_ANSI_B);
+  if ([action isEqualToString:@"toggle_ethereal"]) return perform_hotkey(kVK_ANSI_X);
+  if ([action isEqualToString:@"settings"]) return perform_hotkey(kVK_ANSI_D);
+  if ([action isEqualToString:@"color_swap"]) {
+    int prev = g_prev_color_index;
+    if (prev < 0 || prev >= g_color_preset_count || prev == g_selectedColorIndex) {
+      prev = (g_selectedColorIndex == 0) ? 9 : 0; // 无历史时给红/黑另一端
+    }
+    gl_settings_set_color(prev);
+    show_notification([NSString stringWithFormat:L(@"颜色: %@", @"Color: %@"),
+                                                 gl_color_display_name(prev)]);
+    return YES;
+  }
+  if ([action isEqualToString:@"width_swap"]) {
+    int prev = g_prev_width_index;
+    if (prev < 0 || prev >= g_width_preset_count || prev == g_selected_width_index) {
+      prev = (g_selected_width_index <= 3) ? 6 : 2; // 无历史时给细/粗另一端
+    }
+    gl_settings_set_width(prev);
+    show_notification([NSString stringWithFormat:L(@"粗细: %@", @"Width: %@"),
+                                                 gl_width_display_name(prev)]);
+    return YES;
+  }
+  return NO;
+}
+
 // ── Quick GIF recording (hold Cmd+Ctrl+R, doodle, release to copy) ──
 
 // Write the GIF bytes to a temp .gif file and put that file URL on the
@@ -1972,6 +2010,9 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
 
   // Handle keyboard events separately — always intercept hotkeys
   if (type == kCGEventKeyDown || type == kCGEventKeyUp) {
+    // 设置面板正在录制快捷键: 全部放行给 Flutter, 由面板捕获键帽。
+    // (60s 兜底在 menu.m 的 gl_set_hotkey_recording 里)
+    if (g_hotkey_recording) return event;
     NSEvent *keyEvent = [NSEvent eventWithCGEvent:event];
     if (keyEvent) {
       NSUInteger mods = [keyEvent modifierFlags];
@@ -2035,69 +2076,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
                        (double)g_screen_w * 0.5, (double)g_screen_h * 0.5);
         return NULL;
       }
-      // 活页本模式:⌥⌘↑/↓ = 整页翻页(↑ 上一页 / ↓ 下一页),
-      // 带窗口级原生淡入淡出;无限画布模式则由下方分支做镜头平移。
-      if (!g_infinite_canvas && kHasOptCmd && !g_stroke_active &&
-          type == kCGEventKeyDown &&
-          (kc == kVK_UpArrow || kc == kVK_DownArrow)) {
-        if (isRepeat)
-          return NULL; // 长按自动重复: 不再翻页, 也不透传给系统
-        finish_active_stroke();
-        BOOL up = (kc == kVK_UpArrow);
-        long target =
-            up ? glaspen2_prev_screen_id() : glaspen2_next_screen_id();
-        if (target > 0) {
-          page_flip_swap(
-              up ? NO : YES,
-              ^{ // 渐隐期间并行: 载入 + 平滑
-                glaspen2_load_strokes_for_screen(target);
-                glaspen2_smooth_loaded_strokes();
-                pageview_update();
-              },
-              ^{
-                replay_strokes_from_memory();
-              });
-          peek_strokes(1.0); // show the page briefly in ethereal mode
-          show_page_info(target);
-        } else if (!up) {
-          // 没有下一页: 5 秒内再按一次 = 新建一页并翻过去(同 ⌘⌃1 路径)
-          static NSTimeInterval lastNoNextAt = 0;
-          NSTimeInterval nowTs = [[NSProcessInfo processInfo] systemUptime];
-          BOOL secondPress = (nowTs - lastNoNextAt) < 5.0;
-          lastNoNextAt = nowTs;
-          if (secondPress) {
-            long before = glaspen2_get_current_screen_id();
-            long pageId = glaspen2_create_next_page(before);
-            if (pageId > 0 && pageId != before) {
-              page_flip_swap_from(
-                  YES, before,
-                  ^{ // 渐隐期间并行: 载入 + 平滑
-                    glaspen2_load_strokes_for_screen(pageId);
-                    glaspen2_smooth_loaded_strokes();
-                    pageview_update();
-                  },
-                  ^{
-                    replay_strokes_from_memory();
-                  });
-              peek_strokes(1.0);
-              show_notification(
-                  L(@"已新建了一页", @"A new page was created"));
-              return NULL;
-            }
-            if (pageId == before) {
-              show_notification(L(@"已是最新一页", @"Already on the latest page"));
-            } else {
-              show_notification(L(@"新建页失败", @"Could not create a page"));
-            }
-            return NULL;
-          }
-          show_notification(L(@"没有下一页(再按一次新建)",
-                              @"No next page (press again to create)"));
-        }
-        return NULL;
-      }
       // 自由画布(无限画布)模式:⌥⌘上下左右 = 镜头四向平移。
-      // (活页本模式只做上下移动,⌥⌘←/→ 在此不处理,见上。)
+      // (活页本模式没有内置方向键翻页; 要翻页请给"上一页/下一页"绑定方向键。)
       if (g_infinite_canvas && kHasOptCmd && g_enabled && !g_stroke_active &&
           type == kCGEventKeyDown && kc >= kVK_LeftArrow && kc <= kVK_UpArrow) {
         double step = 80.0 / g_zoom;
@@ -2113,12 +2093,17 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
         canvas_pan_by(dx, dy);
         return NULL;
       }
-      if (hasCmdCtrl && type == kCGEventKeyDown) {
-        // 翻页键的长按重复不应连续翻页; 其它键保持原行为。
-        if (isRepeat && (kc == 0x32 || kc == 0x12))
+      // 可配置快捷键: 按 chord 精确匹配(菜单层已按物理键名+修饰键建表)。
+      // 长按重复只消费、不重复执行; 停用涂鸦时只保留"重新启用"一键,
+      // 其余 chord 放行给系统 —— 不把总开关关掉后还霸占全局按键。
+      if (type == kCGEventKeyDown) {
+        NSString *action = gl_shortcut_action_for_key(kc, mods);
+        if (action) {
+          if (!g_enabled && ![action isEqualToString:@"toggle_draw"])
+            return event;
+          if (!isRepeat) perform_action(action);
           return NULL;
-        if (perform_hotkey(kc))
-          return NULL;
+        }
       }
     }
     // Not a hotkey — pass through to system
@@ -2425,6 +2410,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       // strokes.
       stroke_end(); // release shared cairo context
       g_stroke_active = NO;
+      gl_settings_apply_pending_color_width(); // 书写中换色/换粗细, 抬笔后生效
       g_raw_has_last = NO;
       g_raw_has_prev = NO;
       g_raw_path_len = 0;
@@ -2858,6 +2844,9 @@ void glaspen2_run(void) {
     }
     update_status_icon_state();
     update_menu_checkmarks();
+
+    // 可配置快捷键: 必须在 event_tap_reinstall 之前装载, 否则首帧仍是旧键位。
+    gl_shortcuts_load();
 
     // Restore glass settings (opacity stored as millipercent, enabled as bool)
     int glass_milli = glaspen2_load_bool_setting("glass_alpha");

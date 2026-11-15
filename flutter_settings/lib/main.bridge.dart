@@ -135,6 +135,7 @@ class _FrbBridge extends SettingsBridge {
       'bubbleAutoNewPage': s.bubbleAutoNewPage,
       'shareCanvas': s.shareCanvas,
       'language': s.language,
+      'shortcuts': s.shortcuts,
     };
   }
 

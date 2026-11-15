@@ -1748,6 +1748,7 @@ impl SseDecode for crate::api::Settings {
         let mut var_nasUrl = <String>::sse_decode(deserializer);
         let mut var_shareCanvas = <bool>::sse_decode(deserializer);
         let mut var_language = <String>::sse_decode(deserializer);
+        let mut var_shortcuts = <String>::sse_decode(deserializer);
         return crate::api::Settings {
             color: var_color,
             width: var_width,
@@ -1785,6 +1786,7 @@ impl SseDecode for crate::api::Settings {
             nas_url: var_nasUrl,
             share_canvas: var_shareCanvas,
             language: var_language,
+            shortcuts: var_shortcuts,
         };
     }
 }
@@ -2084,6 +2086,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::Settings {
             self.nas_url.into_into_dart().into_dart(),
             self.share_canvas.into_into_dart().into_dart(),
             self.language.into_into_dart().into_dart(),
+            self.shortcuts.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -2437,6 +2440,7 @@ impl SseEncode for crate::api::Settings {
         <String>::sse_encode(self.nas_url, serializer);
         <bool>::sse_encode(self.share_canvas, serializer);
         <String>::sse_encode(self.language, serializer);
+        <String>::sse_encode(self.shortcuts, serializer);
     }
 }
 

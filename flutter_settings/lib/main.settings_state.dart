@@ -44,6 +44,9 @@ extension _SettingsStateUi on _SettingsPageState {
         _notebookGlass = s['notebookStyle'] as bool? ?? _notebookGlass;
         _panelTransparent = _b(s['panelTransparent']);
         _language = (s['language'] as String?) == 'en' ? 'en' : 'zh';
+        if (s.containsKey('shortcuts')) {
+          _shortcuts = _decodeShortcuts(s['shortcuts']);
+        }
         _syncTabCount();
       });
       _applyLanguage(_language);
@@ -95,6 +98,7 @@ extension _SettingsStateUi on _SettingsPageState {
           _notebookGlass = _b(settings['notebookStyle']);
           _panelTransparent = _b(settings['panelTransparent']);
           _language = (settings['language'] as String?) == 'en' ? 'en' : 'zh';
+          _shortcuts = _decodeShortcuts(settings['shortcuts']);
           _syncTabCount();
           _connected = true;
         });
