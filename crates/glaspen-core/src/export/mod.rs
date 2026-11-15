@@ -344,6 +344,8 @@ pub(crate) fn ffi_guard<T>(default: T, f: impl FnOnce() -> T) -> T {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_shutdown() {
     runtime().block_on(db::end_stroke());
+    // 退出前把未完结的气泡段结掉并落库, 否则最后一条消息只在内存里。
+    bubbles::flush_now();
     runtime().block_on(db::checkpoint());
 }
 

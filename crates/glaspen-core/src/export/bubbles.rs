@@ -22,9 +22,11 @@
 //!
 //! 数据结构对齐手写消息的 ShareStroke 语义(color/width_scale/points),
 //! 以 JSON 出口交给面板, Flutter CustomPainter 负责把折线画进气泡。
-//! 纯内存、会话级: 进程退出即清空, 不落库。
+//! 已完结的消息落 SQLite 表 `bubble_messages`(整条 strokes JSON 一行),
+//! 启动时恢复最近 MAX_MSGS 条; 进程退出时把未完结段 flush 落库。
 
-use serde_json::json;
+use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -40,7 +42,7 @@ const THRESHOLD_FACTOR: f64 = 5.0;
 const EMA_ALPHA: f64 = 0.3;
 /// EMA 初值(2s ≈ 连贯书写的典型间隔)。
 const INITIAL_TYPICAL_MS: f64 = 2_000.0;
-/// 保留的消息条数上限(最旧的丢弃)。
+/// 内存/面板保留的消息条数上限(最旧的不在面板显示; DB 里仍保留历史)。
 const MAX_MSGS: usize = 50;
 /// 单段笔数上限。
 const MAX_PENDING_STROKES: usize = 60;
@@ -65,9 +67,12 @@ struct BubbleStroke {
 }
 
 struct BubbleMsg {
+    /// DB 行 id(写入失败时退回内存自增 id)。
     id: u64,
     /// 完成时刻(unix 毫秒)。
     ts_ms: u64,
+    /// 作者设备 UUIDv7(未来他人消息按它分左右栏)。
+    device: String,
     strokes: Vec<BubbleStroke>,
 }
 
@@ -91,6 +96,8 @@ struct Inner {
     last_capture: Option<Instant>,
     msgs: Vec<BubbleMsg>,
     next_id: u64,
+    /// 是否已从 DB 恢复过历史(load_from_db 幂等)。
+    loaded: bool,
 }
 
 static INNER: Mutex<Inner> = Mutex::new(Inner {
@@ -105,6 +112,7 @@ static INNER: Mutex<Inner> = Mutex::new(Inner {
     last_capture: None,
     msgs: Vec::new(),
     next_id: 1,
+    loaded: false,
 });
 
 fn now_ms() -> u64 {
@@ -221,23 +229,137 @@ pub fn on_stroke_committed() {
     g.last_activity = Some(Instant::now());
 }
 
-/// 把进行中的段结为一条消息(容量护栏路径)。
+/// 一笔气泡笔迹 → 面板/DB 共用的 JSON 形状(rgb/w/g/pts 平铺)。
+fn stroke_value(s: &BubbleStroke) -> Value {
+    json!({
+        "rgb": s.rgb,
+        "w": s.width_scale,
+        "g": s.gap_ms,
+        "pts": s.pts.iter().flat_map(|&(x, y, w)| [x, y, w]).collect::<Vec<f64>>(),
+    })
+}
+
+/// 一条消息的 strokes 数组 → 紧凑 JSON(DB 的 strokes_json 列)。
+fn encode_strokes(strokes: &[BubbleStroke]) -> String {
+    let arr: Vec<Value> = strokes.iter().map(stroke_value).collect();
+    serde_json::to_string(&arr).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// 反向解析; 损坏/不完整的数据跳过(不阻断其余历史消息)。
+fn decode_strokes(payload: &str) -> Vec<BubbleStroke> {
+    let Ok(v) = serde_json::from_str::<Value>(payload) else {
+        return Vec::new();
+    };
+    let Some(arr) = v.as_array() else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|s| {
+            let rgb = s.get("rgb")?.as_u64()? as u32;
+            let width_scale = s.get("w").and_then(Value::as_f64).unwrap_or(1.0);
+            let gap_ms = s.get("g").and_then(Value::as_u64).unwrap_or(0);
+            let pts_v = s.get("pts")?.as_array()?;
+            let mut pts = Vec::with_capacity(pts_v.len() / 3);
+            for chunk in pts_v.chunks_exact(3) {
+                pts.push((chunk[0].as_f64()?, chunk[1].as_f64()?, chunk[2].as_f64()?));
+            }
+            if pts.is_empty() {
+                None
+            } else {
+                Some(BubbleStroke {
+                    rgb,
+                    width_scale,
+                    pts,
+                    gap_ms,
+                })
+            }
+        })
+        .collect()
+}
+
+/// 把进行中的段结为一条消息, 并落库(bubble_messages)。
+///
+/// DB 写入失败时仍保留内存副本(仅本会话可见); 返回 DB 行 id 作为稳定消息 id,
+/// 失败退回内存自增 id。写入是同步的: 落笔/翻页路径本来就在这个线程上写
+/// SQLite, 单行 INSERT 的代价远小于丢消息。
 fn finish_pending(g: &mut Inner) {
     if g.pending.is_empty() {
         return;
     }
+    let ts_ms = now_ms();
+    let device = crate::device::device_uuid();
+    let payload = encode_strokes(&g.pending);
+    let db_id =
+        crate::runtime().block_on(crate::db::insert_bubble_message(&device, ts_ms, &payload));
+    let id = match db_id {
+        Some(id) if id > 0 => id as u64,
+        _ => g.next_id,
+    };
+    if id >= g.next_id {
+        g.next_id = id.saturating_add(1);
+    }
     let msg = BubbleMsg {
-        id: g.next_id,
-        ts_ms: now_ms(),
+        id,
+        ts_ms,
+        device,
         strokes: std::mem::take(&mut g.pending),
     };
-    g.next_id += 1;
     g.pending_points = 0;
     g.last_capture = None; // 新段第一笔间隔记 0
     g.msgs.push(msg);
     if g.msgs.len() > MAX_MSGS {
         g.msgs.remove(0);
     }
+}
+
+/// 从 DB 恢复最近 MAX_MSGS 条消息(启动时调用; 幂等)。
+pub fn load_from_db() {
+    {
+        let g = INNER.lock().unwrap_or_else(|e| e.into_inner());
+        if g.loaded {
+            return;
+        }
+    }
+    let rows = crate::runtime().block_on(crate::db::load_bubble_messages(MAX_MSGS as i64));
+    let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
+    if g.loaded {
+        return;
+    }
+    g.loaded = true;
+    // 期间可能已有新消息先落库/进内存; 按 id 合并去重。
+    let mut by_id: BTreeMap<u64, BubbleMsg> = std::mem::take(&mut g.msgs)
+        .into_iter()
+        .map(|m| (m.id, m))
+        .collect();
+    for row in rows {
+        if row.id <= 0 {
+            continue;
+        }
+        let id = row.id as u64;
+        g.next_id = g.next_id.max(id.saturating_add(1));
+        if by_id.contains_key(&id) {
+            continue;
+        }
+        let strokes = decode_strokes(&row.strokes_json);
+        if strokes.is_empty() {
+            continue;
+        }
+        by_id.insert(
+            id,
+            BubbleMsg {
+                id,
+                ts_ms: row.ts_ms.max(0) as u64,
+                device: row.device,
+                strokes,
+            },
+        );
+    }
+    let mut msgs: Vec<BubbleMsg> = by_id.into_values().collect();
+    if msgs.len() > MAX_MSGS {
+        let drop_n = msgs.len() - MAX_MSGS;
+        msgs.drain(..drop_n);
+    }
+    g.msgs = msgs;
 }
 
 /// 惰性过期: 取数据前调用。笔已离开满冷启动阈值, 或笔静默超节奏阈值的
@@ -394,23 +516,20 @@ fn runtime_block_on_setting(key: &str) -> Option<String> {
 /// (g = 与上一笔的间隔 ms, 重播时间线用;device = 作者设备 UUIDv7,
 /// 当前全为本机, 未来他人消息按它分左右栏)
 pub fn messages_json() -> String {
+    load_from_db();
     let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
     flush_expired(&mut g);
     let device = crate::device::device_uuid();
-    let msgs: Vec<serde_json::Value> = g
+    let msgs: Vec<Value> = g
         .msgs
         .iter()
         .map(|m| {
             json!({
                 "id": m.id,
                 "ts_ms": m.ts_ms,
-                "device": device,
-                "strokes": m.strokes.iter().map(|s| json!({
-                    "rgb": s.rgb,
-                    "w": s.width_scale,
-                    "g": s.gap_ms,
-                    "pts": s.pts.iter().flat_map(|&(x, y, w)| [x, y, w]).collect::<Vec<f64>>(),
-                })).collect::<Vec<_>>(),
+                // 逐条携带作者设备: 历史消息的 device 可能不是当前设备(未来他人消息)
+                "device": m.device,
+                "strokes": m.strokes.iter().map(stroke_value).collect::<Vec<_>>(),
             })
         })
         .collect();
@@ -437,6 +556,68 @@ mod tests {
         g.pen_away_since = None;
         g.pen_cold = false;
         g.last_capture = None;
+        // 测试默认不读全局 DB 历史(其他测试的 finish_pending 会写库);
+        // 持久化专项测试自行置 false 并清表。
+        g.loaded = true;
+    }
+
+    /// strokes JSON 与 DB 列同构: encode → decode 保真, 坏数据不 panic。
+    #[test]
+    fn strokes_json_roundtrip() {
+        let s = BubbleStroke {
+            rgb: 0xFF0038,
+            width_scale: 1.5,
+            pts: vec![(1.0, 2.0, 3.0), (4.5, 5.5, 6.5)],
+            gap_ms: 42,
+        };
+        let encoded = encode_strokes(std::slice::from_ref(&s));
+        let back = decode_strokes(&encoded);
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0].rgb, 0xFF0038);
+        assert_eq!(back[0].width_scale, 1.5);
+        assert_eq!(back[0].gap_ms, 42);
+        assert_eq!(back[0].pts, s.pts);
+        assert!(decode_strokes("{not json").is_empty());
+        assert!(decode_strokes("[]").is_empty());
+    }
+
+    /// 端到端: 结段落库 → 清空内存 → load_from_db 恢复(同一条 id/内容)。
+    #[test]
+    fn bubble_messages_persist_and_reload() {
+        let _g = crate::tests::TEST_LOCK.lock().unwrap();
+        if !crate::db::is_init() {
+            let path =
+                std::env::temp_dir().join(format!("glaspen2_bubble_{}.db", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            // SAFETY: 测试单线程初始化(TEST_LOCK 串行化)
+            unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
+            crate::runtime().block_on(crate::db::init());
+        }
+        crate::runtime().block_on(crate::db::clear_bubble_messages_for_test());
+        reset_fixture();
+        on_pen_activity();
+        commit_stroke(1);
+        flush_now();
+        let inserted = {
+            let g = INNER.lock().unwrap();
+            assert_eq!(g.msgs.len(), 1);
+            (g.msgs[0].id, g.msgs[0].ts_ms, g.msgs[0].strokes.len())
+        };
+        // 模拟重启: 清内存, 允许重新从 DB 读
+        {
+            let mut g = INNER.lock().unwrap();
+            g.msgs.clear();
+            g.loaded = false;
+            g.next_id = 1;
+        }
+        load_from_db();
+        let g = INNER.lock().unwrap();
+        assert_eq!(g.msgs.len(), 1, "重启后应恢复最近一条");
+        assert_eq!(g.msgs[0].id, inserted.0, "消息 id = DB 行 id");
+        assert_eq!(g.msgs[0].ts_ms, inserted.1);
+        assert_eq!(g.msgs[0].strokes.len(), inserted.2);
+        assert!(g.msgs[0].id > 0);
+        assert!(!g.msgs[0].device.is_empty());
     }
 
     /// 追加一笔并走提交钩子(测试用)。
@@ -515,8 +696,7 @@ mod tests {
         on_stroke_committed();
         crate::STROKES.lock().unwrap().clear();
         on_stroke_committed();
-        let v: serde_json::Value =
-            serde_json::from_str(&messages_json()).expect("应为合法 JSON");
+        let v: serde_json::Value = serde_json::from_str(&messages_json()).expect("应为合法 JSON");
         let msgs = v["messages"].as_array().expect("messages 数组");
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0]["strokes"][0]["rgb"], 0x00FF00);
@@ -772,6 +952,7 @@ mod tests {
             last_capture: None,
             msgs: Vec::new(),
             next_id: 1,
+            loaded: true,
         };
         // 笔冷 = 必分
         let mut g = base();

@@ -147,7 +147,7 @@ mod platform {
     ///
     /// 两个作用: 旧版程序打开新版写过的库时直接拒绝(而不是按旧 schema 读写出
     /// 错、把数据写坏); 迁移失败时定位到底停在哪一版。
-    pub(crate) const SCHEMA_VERSION: i32 = 2;
+    pub(crate) const SCHEMA_VERSION: i32 = 3;
 
     /// 全局库是否已初始化(测试:FFI 层测试需要一次性初始化全局 DB)
     #[cfg(test)]
@@ -392,6 +392,15 @@ mod platform {
                 png BLOB NOT NULL,
                 generated_at REAL NOT NULL,
                 PRIMARY KEY (screen_id, max_size)
+            )",
+            // 气泡消息: 手写消息回顾的会话历史。strokes_json 与面板消费的
+            // messages[].strokes 同构(rgb/w/g/pts 平铺), 整条消息一行, 不拆点表
+            // —— 气泡是"回顾"载荷, 不需要按页/按笔查询。
+            "CREATE TABLE IF NOT EXISTS bubble_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device TEXT NOT NULL,
+                ts_ms INTEGER NOT NULL,
+                strokes_json TEXT NOT NULL
             )",
         ] {
             exec(pool, sql).await?;
@@ -1832,6 +1841,96 @@ mod platform {
         ).bind(screen_id).fetch_optional(pool).await.ok()?
     }
 
+    // ── 气泡消息(手写消息回顾历史) ──
+
+    /// 一条已完结的气泡消息。strokes_json 与面板 messages[].strokes 同构。
+    pub struct BubbleMessageRow {
+        pub id: i64,
+        pub device: String,
+        pub ts_ms: i64,
+        pub strokes_json: String,
+    }
+
+    /// 最近 limit 条气泡消息, 按 id 升序返回(面板按时间从上到下)。
+    pub async fn load_bubble_messages(limit: i64) -> Vec<BubbleMessageRow> {
+        match DB.get() {
+            Some(pool) => load_bubble_messages_with(pool, limit).await,
+            None => Vec::new(),
+        }
+    }
+
+    pub(crate) async fn load_bubble_messages_with(
+        pool: &SqlitePool,
+        limit: i64,
+    ) -> Vec<BubbleMessageRow> {
+        if limit <= 0 {
+            return Vec::new();
+        }
+        let rows = sqlx::query_as::<_, (i64, String, i64, String)>(
+            "SELECT id, device, ts_ms, strokes_json FROM bubble_messages              ORDER BY id DESC LIMIT ?1",
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_else(|e| {
+            dblog!("ERR 气泡消息读取失败: {e}");
+            Vec::new()
+        });
+        rows.into_iter()
+            .rev()
+            .map(|(id, device, ts_ms, strokes_json)| BubbleMessageRow {
+                id,
+                device,
+                ts_ms,
+                strokes_json,
+            })
+            .collect()
+    }
+
+    /// 追加一条气泡消息, 返回 DB 行 id。DB 未初始化/写入失败返回 None
+    /// (调用方仍保留内存副本, 重启后丢这一条但不影响书写)。
+    pub async fn insert_bubble_message(
+        device: &str,
+        ts_ms: u64,
+        strokes_json: &str,
+    ) -> Option<i64> {
+        let pool = DB.get()?;
+        insert_bubble_message_with(pool, device, ts_ms, strokes_json).await
+    }
+
+    /// 测试专用: 清空全局测试库里的气泡消息(气泡历史测试之间隔离)。
+    #[cfg(test)]
+    pub(crate) async fn clear_bubble_messages_for_test() {
+        if let Some(pool) = DB.get() {
+            let _ = sqlx::query("DELETE FROM bubble_messages")
+                .execute(pool)
+                .await;
+        }
+    }
+
+    pub(crate) async fn insert_bubble_message_with(
+        pool: &SqlitePool,
+        device: &str,
+        ts_ms: u64,
+        strokes_json: &str,
+    ) -> Option<i64> {
+        match sqlx::query_scalar::<_, i64>(
+            "INSERT INTO bubble_messages (device, ts_ms, strokes_json)              VALUES (?1, ?2, ?3) RETURNING id",
+        )
+        .bind(device)
+        .bind(ts_ms as i64)
+        .bind(strokes_json)
+        .fetch_optional(pool)
+        .await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                dblog!("ERR 气泡消息落库失败: {e}");
+                None
+            }
+        }
+    }
+
     // ── 无限画布(独立存储,全局仅一个画布) ──
 
     /// 读取整个无限画布的笔迹(全局 DB)。
@@ -2097,11 +2196,11 @@ pub use platform::*;
 mod tests {
     use super::StrokeData;
     use super::platform::{
-        SCHEMA_VERSION, attach_points, backup_to_with, last_screen_with_geometry_with,
-        migrate_with, next_screen_with, page_info_with, prev_screen_with, reorder_screen_with,
-        restore_merge_from_with, screen_stroke_version_with, stroke_versions_many_with,
-        thumbnail_lookup_with, thumbnail_store_with, thumbnails_many_with,
-        thumbnails_purge_screen_with,
+        SCHEMA_VERSION, attach_points, backup_to_with, insert_bubble_message_with,
+        last_screen_with_geometry_with, load_bubble_messages_with, migrate_with, next_screen_with,
+        page_info_with, prev_screen_with, reorder_screen_with, restore_merge_from_with,
+        screen_stroke_version_with, stroke_versions_many_with, thumbnail_lookup_with,
+        thumbnail_store_with, thumbnails_many_with, thumbnails_purge_screen_with,
     };
     use crate::runtime;
     use sqlx::SqlitePool;
@@ -2797,5 +2896,43 @@ mod tests {
         assert_eq!(std::fs::read(&new_path).unwrap(), b"db-bytes");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 气泡消息落库/按最近 N 条升序读回; limit=0 返回空。
+    #[test]
+    fn bubble_messages_insert_and_load() {
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        runtime().block_on(async {
+            let (pool, path) = raw_temp_pool().await;
+            migrate_with(&pool).await.unwrap();
+
+            let first = insert_bubble_message_with(&pool, "dev-a", 1_000, r#"[{"rgb":1}]"#)
+                .await
+                .expect("第一条应写入");
+            let second = insert_bubble_message_with(&pool, "dev-b", 2_000, "[]")
+                .await
+                .expect("第二条应写入");
+            assert!(second > first);
+
+            let rows = load_bubble_messages_with(&pool, 10).await;
+            assert_eq!(rows.len(), 2);
+            // 按 id 升序(面板从上到下)
+            assert_eq!(rows[0].id, first);
+            assert_eq!(rows[0].device, "dev-a");
+            assert_eq!(rows[0].ts_ms, 1_000);
+            assert_eq!(rows[0].strokes_json, r#"[{"rgb":1}]"#);
+            assert_eq!(rows[1].id, second);
+
+            // 只取最近一条
+            let newest = load_bubble_messages_with(&pool, 1).await;
+            assert_eq!(newest.len(), 1);
+            assert_eq!(newest[0].id, second);
+            assert!(load_bubble_messages_with(&pool, 0).await.is_empty());
+
+            pool.close().await;
+            let _ = std::fs::remove_file(&path);
+        });
     }
 }

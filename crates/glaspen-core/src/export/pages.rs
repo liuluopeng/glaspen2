@@ -48,6 +48,8 @@ pub extern "C" fn glaspen2_clear_strokes(screen_w: c_int, screen_h: c_int) -> c_
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_init_db(screen_w: c_int, screen_h: c_int) {
     runtime().block_on(db::init());
+    // 气泡消息历史: DB 刚就绪, 在 event tap/面板之前恢复最近 MAX_MSGS 条。
+    super::bubbles::load_from_db();
     let purged = runtime().block_on(db::purge_blank_screens());
     if purged > 0 {
         tracing::info!("清理空白页 {purged} 页");
