@@ -41,6 +41,38 @@ const Set<String> _reservedShortcuts = {
   'cmd+ctrl+3',
 };
 
+/// 键帽右下角的一句话动作提示(旧版快捷键按钮的 label 信息)。
+/// 取该键当前绑定的第一个动作; 同键多动作显示 "+N"。
+const Map<String, String> _shortcutHintsZh = {
+  'undo': '撤销',
+  'page_prev': '上页',
+  'page_next': '下页',
+  'color_swap': '换色',
+  'width_swap': '换粗细',
+  'toggle_draw': '涂鸦',
+  'clear': '清空',
+  'export': '导出',
+  'copy_svg': '复制',
+  'toggle_glass': '玻璃',
+  'toggle_ethereal': '飘渺',
+  'settings': '设置',
+};
+
+const Map<String, String> _shortcutHintsEn = {
+  'undo': 'Undo',
+  'page_prev': 'Prev',
+  'page_next': 'Next',
+  'color_swap': 'Color',
+  'width_swap': 'Width',
+  'toggle_draw': 'Doodle',
+  'clear': 'Clear',
+  'export': 'Export',
+  'copy_svg': 'Copy',
+  'toggle_glass': 'Glass',
+  'toggle_ethereal': 'Mist',
+  'settings': 'Setup',
+};
+
 /// USB HID usage(去掉 page, 即 & 0xffff) → 后端规范键名。
 /// 字母/数字/标点走 US 物理位置; 与后端 gl_keycode_names() 一一对应。
 const Map<int, String> _hidKeyNames = {
@@ -183,6 +215,23 @@ extension _SettingsShortcutsUi on _SettingsPageState {
         for (final key in row) key.name,
     };
     final unmapped = usedKeys.difference(keyboardNames);
+    // 键 → 当前绑定动作 id(保持动作表顺序, 第一个作为角标主文案)
+    final keyActions = <String, List<String>>{};
+    for (final action in _shortcutActions) {
+      final chord = _shortcuts[action.id] ?? action.defaultChord;
+      if (chord.isEmpty) continue;
+      final parts = chord.split('+');
+      if (parts.length < 2) continue;
+      keyActions.putIfAbsent(parts.last, () => []).add(action.id);
+    }
+    final keyHints = <String, String>{};
+    keyActions.forEach((key, ids) {
+      final first = ids.first;
+      final label = _language == 'en'
+          ? (_shortcutHintsEn[first] ?? first)
+          : (_shortcutHintsZh[first] ?? first);
+      keyHints[key] = ids.length > 1 ? '$label+${ids.length - 1}' : label;
+    });
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -220,13 +269,22 @@ extension _SettingsShortcutsUi on _SettingsPageState {
                 painter: _ShortcutKeyboardPainter(
                   usedModifiers: usedModifiers,
                   usedKeys: usedKeys,
+                  keyHints: keyHints,
                 ),
               ),
             ),
           ),
         ),
+        const SizedBox(height: 4),
+        Text(
+          _shortcutText(
+            '键帽右下角 = 该键当前绑定的动作。',
+            'Bottom-right of a key = its current action.',
+          ),
+          style: const TextStyle(fontSize: 10, color: _inkFaint),
+        ),
         if (unmapped.isNotEmpty) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             _shortcutText(
               '方向键 / F 键等不在左侧示意图中。',
@@ -601,9 +659,11 @@ const double _keyboardAspect = 16.3 / 5.2;
 class _ShortcutKeyboardPainter extends CustomPainter {
   final Set<String> usedModifiers;
   final Set<String> usedKeys;
+  final Map<String, String> keyHints;
   const _ShortcutKeyboardPainter({
     required this.usedModifiers,
     required this.usedKeys,
+    required this.keyHints,
   });
 
   @override
@@ -709,6 +769,32 @@ class _ShortcutKeyboardPainter extends CustomPainter {
         );
         tp.paint(canvas, Offset.zero);
         canvas.restore();
+
+        // 键帽右下角: 该键当前绑定的动作(旧版按钮 label 的角标版)
+        final hint = key.isModifier ? null : keyHints[key.name];
+        if (hint != null && hint.isNotEmpty) {
+          final hintFs = (u * 0.18).clamp(6.0, 8.5).toDouble();
+          final hp = TextPainter(
+            text: TextSpan(
+              text: hint,
+              style: TextStyle(
+                fontSize: hintFs,
+                fontWeight: FontWeight.w600,
+                color: _penRed.withValues(alpha: 0.86),
+              ),
+            ),
+            textDirection: TextDirection.ltr,
+            maxLines: 1,
+            ellipsis: '…',
+          )..layout(maxWidth: (w - u * 0.12).clamp(1.0, double.infinity));
+          canvas.save();
+          canvas.translate(
+            rect.right - hp.width - u * 0.08,
+            rect.bottom - hp.height - u * 0.06,
+          );
+          hp.paint(canvas, Offset.zero);
+          canvas.restore();
+        }
 
         x += key.width * u;
       }
