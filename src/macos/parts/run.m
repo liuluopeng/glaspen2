@@ -445,7 +445,7 @@ static void canvas_apply_transform(void) {
   }
 }
 
-// 滚轮平移镜头(⌘⌃滚轮,书写中忽略)
+// 键盘平移镜头(滚轮缩放走 canvas_zoom_at; 书写中忽略)
 static void canvas_pan_by(double dx, double dy) {
   if (g_stroke_active)
     return;
@@ -455,7 +455,7 @@ static void canvas_pan_by(double dx, double dy) {
   peek_lens_change(); // 飘渺模式下短暂露出笔迹, 让镜头移动可见
 }
 
-// 缩放镜头(⌘⌃滚轮):以鼠标位置为锚,zoom ∈ (0.05, 1.0]。
+// 缩放镜头(键盘/滚轮共用):以鼠标位置为锚,zoom ∈ (0.05, 1.0]。
 // 锚点的画布坐标在缩放前后保持同一屏幕位置(view = (canvas−pan)×zoom)。
 static void canvas_zoom_at(double factor, double vx, double vy) {
   if (g_stroke_active)
@@ -2019,18 +2019,23 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     return event;
   }
 
-  // ⌥⌘滚轮:无限画布镜头缩放(以鼠标为锚)。书写中忽略(模型器坐标系不能
-  // 中途跳变); 非无限画布/未按修饰键时滚轮原样放行给系统。
+  // 滚轮缩放使用当前 canvas_zoom_in 动作的修饰键(默认 ⌃⌥), 与键盘镜头
+  // 同一套方案; 改键后鼠标自动跟随。书写中忽略(模型器坐标系不能中途跳变);
+  // 未按这套修饰键/未绑定缩放时滚轮原样放行给系统。
   if (type == kCGEventScrollWheel && g_infinite_canvas) {
     NSEvent *scrollEvent = [NSEvent eventWithCGEvent:event];
     if (scrollEvent) {
       NSUInteger smods = [scrollEvent modifierFlags];
-      // ⌥⌘ 避开系统占用的 ⌘⌃(⌃滚轮=辅助功能缩放)
-      BOOL sHasOptCmd = (smods & NSEventModifierFlagOption) &&
-                        (smods & NSEventModifierFlagCommand);
-      if (sHasOptCmd && g_enabled && !g_stroke_active) {
-        // ⌘⌃滚轮:缩放,以鼠标位置为中心(上限 100%)。
-        // 平移改用 ⌘⌃方向键。
+      const NSUInteger relevantMods = NSEventModifierFlagCommand |
+                                      NSEventModifierFlagControl |
+                                      NSEventModifierFlagOption |
+                                      NSEventModifierFlagShift;
+      NSUInteger cameraMods = gl_shortcut_camera_modifier_mask();
+      BOOL sHasCameraMods = cameraMods != 0 &&
+                            (smods & relevantMods) == cameraMods;
+      if (sHasCameraMods && g_enabled && !g_stroke_active) {
+        // 滚轮缩放:以鼠标位置为中心(上限 100%)。
+        // 修饰键来自 canvas_zoom_in; 平移用 canvas_pan_* 键位动作。
         double dy = [scrollEvent scrollingDeltaY];
         double factor;
         if ([scrollEvent hasPreciseScrollingDeltas]) {
