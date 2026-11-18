@@ -1974,6 +1974,107 @@ mod platform {
         attach_points(strokes, pts)
     }
 
+    /// 平移无限画布所选笔迹(面板圈选移动)。返回受影响点数(0 = 无)。
+    pub async fn move_infinite_strokes_translate(ids: &[i64], dx: f64, dy: f64) -> u64 {
+        let Some(pool) = DB.get() else { return 0 };
+        if ids.is_empty() {
+            return 0;
+        }
+        let in_clause = ids
+            .iter()
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "UPDATE infinite_points SET x = x + ?1, y = y + ?2 \
+             WHERE stroke_id IN ({in_clause}) AND EXISTS (SELECT 1 FROM infinite_strokes \
+             WHERE infinite_strokes.id = infinite_points.stroke_id AND deleted_at IS NULL)"
+        );
+        match sqlx::query(&sql).bind(dx).bind(dy).execute(pool).await {
+            Ok(r) => {
+                dblog!("无限笔迹平移 {} 笔 (dx={dx:.1} dy={dy:.1})", ids.len());
+                r.rows_affected()
+            }
+            Err(e) => {
+                dblog!("ERR 无限笔迹平移: {e}");
+                0
+            }
+        }
+    }
+
+    /// 软删无限画布所选笔迹(面板圈选删除)。
+    pub async fn delete_infinite_strokes(ids: &[i64]) -> u64 {
+        let Some(pool) = DB.get() else { return 0 };
+        if ids.is_empty() {
+            return 0;
+        }
+        let in_clause = ids
+            .iter()
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "UPDATE infinite_strokes SET deleted_at = ?1 \
+             WHERE id IN ({in_clause}) AND deleted_at IS NULL"
+        );
+        match sqlx::query(&sql).bind(now_f64()).execute(pool).await {
+            Ok(r) => {
+                dblog!("无限笔迹软删 {} 笔", r.rows_affected());
+                r.rows_affected()
+            }
+            Err(e) => {
+                dblog!("ERR 无限笔迹软删: {e}");
+                0
+            }
+        }
+    }
+
+    /// 粘贴笔迹到无限画布(新 id 新时间 = 新实体; 颜色保留)。
+    pub async fn paste_infinite_strokes(
+        strokes: &[(f64, f64, f64, Vec<(f64, f64, f64)>)],
+    ) -> usize {
+        let Some(pool) = DB.get() else { return 0 };
+        let now = now_f64();
+        let mut created = 0usize;
+        for &(r, g, b, ref pts) in strokes {
+            let Ok(id) = sqlx::query_scalar::<_, i64>(
+                "INSERT INTO infinite_strokes \
+                 (color_r, color_g, color_b, width_scale, created_at) \
+                 VALUES (?1, ?2, ?3, 1.0, ?4) RETURNING id",
+            )
+            .bind(r)
+            .bind(g)
+            .bind(b)
+            .bind(now)
+            .fetch_one(pool)
+            .await
+            else {
+                dblog!("ERR 无限粘贴 INSERT 失败");
+                continue;
+            };
+            for (i, &(x, y, w)) in pts.iter().enumerate() {
+                if sqlx::query(
+                    "INSERT INTO infinite_points (stroke_id, seq, x, y, width, t) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, 0.0)",
+                )
+                .bind(id)
+                .bind(i as i64)
+                .bind(x)
+                .bind(y)
+                .bind(w)
+                .execute(pool)
+                .await
+                .is_err()
+                {
+                    dblog!("ERR 无限粘贴点写入失败 stroke={id}");
+                }
+            }
+            created += 1;
+            dblog!("无限笔迹+ id={id} (粘贴, {} 点)", pts.len());
+        }
+        created
+    }
+
     pub async fn delete_infinite_stroke_by_id(stroke_id: i64) -> bool {
         let pool = match DB.get() {
             Some(p) => p,

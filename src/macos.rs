@@ -9,9 +9,13 @@ pub fn macos_run() {
     // 在主线程重建玻璃(load_strokes + rebuild, 定义在 parts/menu.m)。
     unsafe extern "C" {
         fn glaspen2_macos_refresh_page(screen_id: i64);
+        fn glaspen2_macos_refresh_infinite();
     }
     glaspen_core::export::set_glass_refresh_hook(|screen_id| unsafe {
         glaspen2_macos_refresh_page(screen_id);
+    });
+    glaspen_core::export::set_infinite_refresh_hook(|| unsafe {
+        glaspen2_macos_refresh_infinite();
     });
 
 

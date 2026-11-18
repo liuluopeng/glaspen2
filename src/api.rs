@@ -79,9 +79,9 @@ pub(crate) mod shim {
         }
     }
 
-    /// 画布总览:返回 (PNG, 视口矩形)。空画布返回 None。
+    /// 画布总览:返回 (PNG, [视口矩形 x4 + 内容包围盒 x4])。空画布返回 None。
     pub fn canvas_payload(w: i32, h: i32, action: i32) -> Option<(Vec<u8>, Vec<f64>)> {
-        let mut rect = [0.0f64; 4];
+        let mut rect = [0.0f64; 8];
         let mut len: i32 = 0;
         unsafe {
             let png = glaspen2_macos_canvas_payload(w, h, action, rect.as_mut_ptr(), &mut len);
@@ -660,7 +660,8 @@ pub enum CanvasAction {
     New,
 }
 
-/// 总览载荷:PNG + 当前视口矩形 [x, y, w, h]。
+/// 总览载荷:PNG + [视口矩形 x4, 内容包围盒 x4]。
+/// 包围盒 [bx,by,bw,bh] 用于面板自由涂鸦编辑时把图片坐标映射回画布。
 #[frb]
 #[derive(Debug, Clone)]
 pub struct CanvasPayload {

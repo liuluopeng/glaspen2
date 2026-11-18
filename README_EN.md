@@ -29,6 +29,7 @@ Switch from the tabs at the top of the settings panel, or the "Infinite canvas" 
   - `⌥⌘↑ / ⌥⌘↓ / ⌥⌘← / ⌥⌘→` pan the lens; `⌥⌘PageUp / PageDown` zoom
     (both configurable in Settings → Shortcuts).
   - `⌥⌘scroll` zooms anchored at the pointer (capped at 100%).
+  - Panel "Edit content": lasso / drag to move / copy / paste / delete (shares the page clipboard).
 
 ## Features
 

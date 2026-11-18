@@ -528,7 +528,8 @@ pub extern "C" fn glaspen2_page_reorder(screen_id: i64, anchor_id: i64, before: 
 // 纯 DB 数据操作; 涉及当前页时由 ObjC 壳刷新玻璃(rebuild)。
 
 /// 圈选命中: 多边形任一点在内部的笔迹(整笔为单位)。
-/// poly = 逗号分隔的 "x,y" 对(页面坐标)。返回入选 stroke id 列表
+/// screen_id < 0 = 无限画布(读 infinite_strokes)。
+/// poly = 逗号分隔的 "x,y" 对(页面/画布坐标)。返回入选 stroke id 列表
 /// (逗号分隔字符串, 空串 = 无), 调用方负责 free。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_lasso_select(screen_id: i64, poly: *const c_char) -> *mut c_char {
@@ -555,7 +556,11 @@ pub extern "C" fn glaspen2_lasso_select(screen_id: i64, poly: *const c_char) -> 
     if pts.len() < 3 {
         return CString::new("").unwrap_or_default().into_raw();
     }
-    let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
+    let strokes = if screen_id < 0 {
+        runtime().block_on(db::load_infinite_strokes())
+    } else {
+        runtime().block_on(db::strokes_for_screen(screen_id))
+    };
     let ids: Vec<String> = strokes
         .iter()
         .filter(|s| {
@@ -593,7 +598,30 @@ pub fn set_glass_refresh_hook(f: fn(i64)) {
     *REFRESH_HOOK.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
 }
 
+/// 无限画布没有 screen_id; 面板编辑(-1)改完 DB 后由壳重载 STROKES。
+static INFINITE_REFRESH_HOOK: std::sync::Mutex<Option<fn()>> = std::sync::Mutex::new(None);
+
+pub fn set_infinite_refresh_hook(f: fn()) {
+    *INFINITE_REFRESH_HOOK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(f);
+}
+
 fn refresh_glass_if_current(screen_id: i64) {
+    // 负数 = 无限画布编辑(面板圈选/移动/复制粘贴/删除)。
+    if screen_id < 0 {
+        match INFINITE_REFRESH_HOOK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
+            Some(f) => f(),
+            None => {
+                glaspen2_load_infinite_strokes();
+            }
+        }
+        return;
+    }
     if state::current_screen_id() != screen_id {
         return;
     }
@@ -612,7 +640,7 @@ fn refresh_glass_if_current(screen_id: i64) {
     }
 }
 
-/// 平移所选笔迹(同页)。返回 1 成功。
+/// 平移所选笔迹(同页)。screen_id < 0 = 无限画布。返回 1 成功。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_move_strokes(
     screen_id: i64,
@@ -626,9 +654,15 @@ pub extern "C" fn glaspen2_move_strokes(
     if ids.is_empty() || (dx == 0.0 && dy == 0.0) {
         return 1; // 空操作视为成功
     }
-    let n = runtime().block_on(db::move_strokes_translate(screen_id, &ids, dx, dy));
+    let n = if screen_id < 0 {
+        runtime().block_on(db::move_infinite_strokes_translate(&ids, dx, dy))
+    } else {
+        runtime().block_on(db::move_strokes_translate(screen_id, &ids, dx, dy))
+    };
     if n > 0 {
-        runtime().block_on(db::thumbnails_purge_screen(screen_id));
+        if screen_id >= 0 {
+            runtime().block_on(db::thumbnails_purge_screen(screen_id));
+        }
         refresh_glass_if_current(screen_id);
     }
     (n > 0) as c_int
@@ -669,7 +703,7 @@ pub extern "C" fn glaspen2_move_strokes_to_page(
     (n > 0) as c_int
 }
 
-/// 删除所选笔迹(软删)。返回 1 成功。
+/// 删除所选笔迹(软删)。screen_id < 0 = 无限画布。返回 1 成功。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_delete_strokes(screen_id: i64, ids_csv: *const c_char) -> c_int {
     let Some(ids) = parse_ids_csv(ids_csv) else {
@@ -678,9 +712,15 @@ pub extern "C" fn glaspen2_delete_strokes(screen_id: i64, ids_csv: *const c_char
     if ids.is_empty() {
         return 1;
     }
-    let n = runtime().block_on(db::delete_strokes(screen_id, &ids));
+    let n = if screen_id < 0 {
+        runtime().block_on(db::delete_infinite_strokes(&ids))
+    } else {
+        runtime().block_on(db::delete_strokes(screen_id, &ids))
+    };
     if n > 0 {
-        runtime().block_on(db::thumbnails_purge_screen(screen_id));
+        if screen_id >= 0 {
+            runtime().block_on(db::thumbnails_purge_screen(screen_id));
+        }
         refresh_glass_if_current(screen_id);
     }
     (n > 0) as c_int
@@ -715,6 +755,7 @@ pub fn shift_stroke_payload(payload: &str, cx: f64, cy: f64) -> String {
 }
 
 /// 把剪贴板笔迹粘到某页(新 id 新时间 = 新实体; 点内相对 t 保速度曲线)。
+/// screen_id < 0 = 无限画布。
 /// payload = 手写消息同款墨迹序列化(逗号三元组 "x,y,w" 分号连接)。
 /// 返回新 stroke 数。
 #[unsafe(no_mangle)]
@@ -763,15 +804,22 @@ pub extern "C" fn glaspen2_paste_strokes(screen_id: i64, payload: *const c_char)
     if strokes.is_empty() {
         return 0;
     }
-    let n = runtime().block_on(db::paste_strokes(screen_id, &strokes));
+    let n = if screen_id < 0 {
+        runtime().block_on(db::paste_infinite_strokes(&strokes))
+    } else {
+        runtime().block_on(db::paste_strokes(screen_id, &strokes))
+    };
     if n > 0 {
-        runtime().block_on(db::thumbnails_purge_screen(screen_id));
+        if screen_id >= 0 {
+            runtime().block_on(db::thumbnails_purge_screen(screen_id));
+        }
         refresh_glass_if_current(screen_id);
     }
     n as c_int
 }
 
 /// 取所选笔迹的剪贴板载荷(手写消息同款): "x,y,w;x,y,w;..."。
+/// screen_id < 0 = 无限画布。
 /// 坐标已平移为包围盒中心在原点(粘贴时按中心对齐鼠标)。
 /// 返回 C 字符串(调用方 free), 空串 = 无。
 #[unsafe(no_mangle)]
@@ -782,7 +830,11 @@ pub extern "C" fn glaspen2_copy_strokes_payload(
     let Some(ids) = parse_ids_csv(ids_csv) else {
         return CString::new("").unwrap_or_default().into_raw();
     };
-    let strokes = runtime().block_on(db::strokes_for_screen(screen_id));
+    let strokes = if screen_id < 0 {
+        runtime().block_on(db::load_infinite_strokes())
+    } else {
+        runtime().block_on(db::strokes_for_screen(screen_id))
+    };
     let sel: Vec<&crate::db::StrokeData> = strokes.iter().filter(|s| ids.contains(&s.id)).collect();
     if sel.is_empty() {
         return CString::new("").unwrap_or_default().into_raw();
@@ -1017,6 +1069,70 @@ mod lasso_tests {
                 .block_on(crate::db::strokes_for_screen(target))
                 .is_empty()
         );
+    }
+
+    /// 无限画布编辑端到端(screen_id = -1): 粘贴 → 圈选 → 移动 → 复制 → 删除。
+    #[test]
+    fn infinite_canvas_edit_roundtrip() {
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if !crate::db::is_init() {
+            let path = std::env::temp_dir().join(format!("glaspen2_ffi_{}.db", std::process::id()));
+            let _ = std::fs::remove_file(&path);
+            // SAFETY: 测试单线程初始化(TEST_LOCK 串行化), 无并发读
+            unsafe { std::env::set_var("GLASPEN2_DB_PATH", &path) };
+            runtime().block_on(crate::db::init());
+        }
+        runtime().block_on(crate::db::clear_infinite_canvas());
+
+        // 两笔: 第一笔在 (10,10)-(20,20), 第二笔在 (100,100)-(120,120)
+        let payload =
+            "1.0,0.0,0.0|10.0,10.0,2.0,20.0,20.0,2.0;0.0,0.0,1.0|100.0,100.0,2.0,120.0,120.0,2.0";
+        let c = std::ffi::CString::new(payload).unwrap();
+        assert_eq!(glaspen2_paste_strokes(-1, c.as_ptr()), 2);
+        let strokes = runtime().block_on(crate::db::load_infinite_strokes());
+        assert_eq!(strokes.len(), 2);
+        let first = strokes.iter().find(|s| s.r > 0.5).unwrap().id;
+        let second = strokes.iter().find(|s| s.b > 0.5).unwrap().id;
+
+        // 圈住第一笔
+        let poly = "0,0,30,0,30,30,0,30";
+        let pc = std::ffi::CString::new(poly).unwrap();
+        let ptr = glaspen2_lasso_select(-1, pc.as_ptr());
+        let ids = unsafe { std::ffi::CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        glaspen2_free_c_string(ptr);
+        assert!(ids.split(',').any(|v| v == first.to_string()), "{ids}");
+        assert!(!ids.split(',').any(|v| v == second.to_string()), "{ids}");
+
+        // 移动第一笔
+        let csv = std::ffi::CString::new(first.to_string()).unwrap();
+        assert_ne!(glaspen2_move_strokes(-1, csv.as_ptr(), 50.0, -25.0), 0);
+        let moved = runtime().block_on(crate::db::load_infinite_strokes());
+        let m = moved.iter().find(|s| s.id == first).unwrap();
+        assert!((m.points[0].0 - 60.0).abs() < 1e-6);
+        assert!((m.points[0].1 + 15.0).abs() < 1e-6);
+
+        // 复制载荷
+        let csv = std::ffi::CString::new(first.to_string()).unwrap();
+        let ptr = glaspen2_copy_strokes_payload(-1, csv.as_ptr());
+        assert!(!ptr.is_null());
+        let copied = unsafe { std::ffi::CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        glaspen2_free_c_string(ptr);
+        assert!(!copied.is_empty(), "无限画布复制载荷不能为空");
+
+        // 删除第一笔
+        let csv = std::ffi::CString::new(first.to_string()).unwrap();
+        assert_ne!(glaspen2_delete_strokes(-1, csv.as_ptr()), 0);
+        let left = runtime().block_on(crate::db::load_infinite_strokes());
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].id, second);
+
+        runtime().block_on(crate::db::clear_infinite_canvas());
     }
 
     /// lasso FFI 端到端: 多边形字符串解析("x,y" 成对) + 命中判定。

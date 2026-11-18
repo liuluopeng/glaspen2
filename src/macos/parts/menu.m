@@ -550,7 +550,7 @@ static NSButton *g_glass_buttons[1];
 
 // 无限画布总览载荷:渲染当前页包围盒适配图 + 当前视口矩形。
 // 返回 nil 表示空画布(无笔迹)。
-static NSDictionary *canvas_overview_payload(double w, double h) {
+static NSDictionary *canvas_overview_payload(double w, double h, double *bounds_out) {
     double bx, by, bx2, by2;
     if (!glaspen2_stroke_bbox(&bx, &by, &bx2, &by2)) {
         return nil;
@@ -561,6 +561,12 @@ static NSDictionary *canvas_overview_payload(double w, double h) {
     // 外扩 5%,笔迹不贴边
     double mx = bw * 0.05, my = bh * 0.05;
     bx -= mx; by -= my; bw += mx * 2; bh += my * 2;
+    if (bounds_out) {
+        bounds_out[0] = bx;
+        bounds_out[1] = by;
+        bounds_out[2] = bw;
+        bounds_out[3] = bh;
+    }
 
     int ow = (int)w, oh = (int)h;
     int outLen = 0;
@@ -1244,6 +1250,16 @@ void glaspen2_macos_refresh_page(long long screen_id) {
     });
 }
 
+/// 面板自由涂鸦编辑(圈选移动/粘贴/删除)改动了无限画布 → 重载并重建玻璃。
+void glaspen2_macos_refresh_infinite(void) {
+    gl_run_on_main_sync(^{
+        if (!g_infinite_canvas) return;
+        glaspen2_load_infinite_strokes();
+        rebuild_surface_from_strokes();
+        flush_to_layer();
+    });
+}
+
 /// 跳转到指定页继续绘画。
 void glaspen2_macos_navigate_to_page(long long screen_id) {
     if (screen_id <= 0) return;
@@ -1302,7 +1318,9 @@ void glaspen2_macos_open_url(const char *url_c) {
 }
 
 /// 无限画布总览:action 0=当前 1=镜头回原点 2=居中内容 3=新建(清空)。
-/// 返回 PNG 缓冲区(用 glaspen2_macos_free_bytes 释放),rect_out 收视口矩形;
+/// 返回 PNG 缓冲区(用 glaspen2_macos_free_bytes 释放)。rect_out 必须指向
+/// 8 个 double: [0..3] 视口矩形, [4..7] 渲染内容包围盒 [bx,by,bw,bh]
+/// (面板编辑用:图片像素 → 画布坐标的映射)。
 /// 空画布返回 NULL 且 *out_len = 0。
 unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *rect_out,
                                              int *out_len) {
@@ -1336,7 +1354,8 @@ unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *r
             ow = 1024;
             oh = 768;
         }
-        NSDictionary *payload = canvas_overview_payload(ow, oh);
+        double bounds[4] = {0};
+        NSDictionary *payload = canvas_overview_payload(ow, oh, bounds);
         if (!payload) return;
         NSData *data = payload[@"png"];
         NSArray *rect = payload[@"rect"];
@@ -1346,8 +1365,11 @@ unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *r
         memcpy(buf, data.bytes, data.length);
         result_png = buf;
         if (out_len) *out_len = (int)data.length;
-        if (rect_out && rect.count == 4) {
-            for (int i = 0; i < 4; i++) rect_out[i] = [rect[i] doubleValue];
+        if (rect_out) {
+            if (rect.count == 4) {
+                for (int i = 0; i < 4; i++) rect_out[i] = [rect[i] doubleValue];
+            }
+            for (int i = 0; i < 4; i++) rect_out[4 + i] = bounds[i];
         }
     });
     return result_png;

@@ -198,7 +198,20 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   // 画布总览 tab
   Uint8List? _canvasPng;
   List<double>? _canvasRect;
+  /// 总览渲染的内容包围盒 [bx,by,bw,bh](画布坐标, 5% 外扩);
+  /// 自由涂鸦编辑用它把位图坐标映射回画布。
+  List<double> _canvasBounds = const [];
   bool _canvasLoading = false;
+  // 自由涂鸦编辑(圈选/移动/复制粘贴/删除), screenId = -1 走无限画布
+  bool _canvasEditing = false;
+  ui.Image? _canvasEditImage;
+  final List<Offset> _canvasLassoPts = [];
+  List<int> _canvasSelectedStrokes = [];
+  Offset? _canvasDragStart;
+  Offset _canvasDragNow = Offset.zero;
+  double _canvasEditScale = 1.0;
+  Offset _canvasEditOffset = Offset.zero;
+  final List<(List<int>, double, double)> _canvasUndoMoves = [];
   bool _connected = false;
   Timer? _reloadTimer;
 
@@ -416,7 +429,7 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     if (idx == 1 && _pages.isEmpty && !_pagesLoading) {
       _loadPages();
     }
-    if (idx == 2 && _showFreeCanvas) {
+    if (idx == 2 && _showFreeCanvas && !_canvasEditing) {
       _loadCanvasOverview();
     }
     // 气泡消息 tab: 位置在自由涂鸦之后(自由涂鸦隐藏时占 index 2)
