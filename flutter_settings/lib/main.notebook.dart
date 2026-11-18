@@ -236,19 +236,23 @@ extension _NotebookUi on _SettingsPageState {
       setState(() => _lassoPts.clear());
       return;
     }
+    final pageId = _detailPageId!;
+    final gen = _detailGen;
     final poly = _lassoPts.map(_viewToPage).map((p) => (p.dx, p.dy)).toList();
-    final ids = await _bridge.lassoSelect(_detailPageId!, poly);
-    if (!mounted) return;
+    final ids = await _bridge.lassoSelect(pageId, poly);
+    // 等结果期间关了详情/换了页: 这批 id 属于旧页, 不能落到新页选择上
+    // (旧代码这里还会对 _detailPageId! 做非空断言, 关详情时直接抛异常)。
+    if (!mounted || gen != _detailGen || _detailPageId != pageId) return;
     setState(() {
       _selectedStrokes = ids;
       _lassoPts.clear();
     });
     if (ids.isEmpty) {
       _toast(AppLocalizations.of(context)!.noStrokesInsideThe);
-      unawaited(_reloadDetailImage(_detailPageId!));
+      unawaited(_reloadDetailImage(pageId));
     } else {
       _toast(AppLocalizations.of(context)!.p1StrokesSelectedBlue(ids.length));
-      unawaited(_reloadDetailImage(_detailPageId!, highlight: ids));
+      unawaited(_reloadDetailImage(pageId, highlight: ids));
     }
   }
 
@@ -310,12 +314,17 @@ extension _NotebookUi on _SettingsPageState {
       _toast(AppLocalizations.of(context)!.clipboardIsEmpty);
       return;
     }
+    final pageId = _detailPageId!;
+    final gen = _detailGen;
     final p = _viewToPage(viewPos);
-    final n = await _bridge.pasteStrokes(_detailPageId!, _clipPayload, p.dx, p.dy);
+    final n = await _bridge.pasteStrokes(pageId, _clipPayload, p.dx, p.dy);
     if (!mounted) return;
     if (n > 0) {
       _toast(AppLocalizations.of(context)!.pastedP1Strokes(n));
-      unawaited(_reloadDetailImage(_detailPageId!));
+      // 粘贴已落到 pageId; 期间关了/换了详情就不要拿 null/新页去刷新
+      if (gen == _detailGen && _detailPageId == pageId) {
+        unawaited(_reloadDetailImage(pageId));
+      }
     } else {
       _toast(AppLocalizations.of(context)!.pasteFailed);
     }
@@ -349,13 +358,14 @@ extension _NotebookUi on _SettingsPageState {
     }
   }
 
-  void _showDetailMenu(Offset globalPos) {
+  void _showDetailMenu(Offset globalPos, Offset canvasPos) {
     final sel = _selectedStrokes.isNotEmpty;
     // showMenu 的 position 相对当前 Overlay。pos 已是全局坐标
     // (TapUpDetails.globalPosition), 只需相对 Overlay 反算; 不要用
     // State 的 context 找 RenderBox(那是整面板, 原点错 → 菜单偏移)。
-    final box = context.findRenderObject() as RenderBox;
-    final canvasPos = box.globalToLocal(globalPos); // 画布局部(粘贴锚点用)
+    // canvasPos 必须用 GestureDetector 的 localPosition: 它与
+    // _viewToPage 的 CustomPaint 同一坐标系; 用整面板坐标会把粘贴点
+    // 按顶部 tab/工具条的高度往下偏(用户看到的"粘错位置")。
     final overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
     final rel = overlay.globalToLocal(globalPos);
@@ -491,7 +501,8 @@ extension _NotebookUi on _SettingsPageState {
                 unawaited(_finishLasso());
               }
             },
-            onSecondaryTapUp: (d) => _showDetailMenu(d.globalPosition),
+            onSecondaryTapUp: (d) =>
+                _showDetailMenu(d.globalPosition, d.localPosition),
             child: CustomPaint(
               painter: _DetailPainter(
                 image: img,
