@@ -343,10 +343,9 @@ static void auto_show_canvas(void) {
     }
 }
 
-// ── Page-navigation peek (ethereal mode) ──
-// 翻页 loads strokes onto the hidden canvas; show them briefly so the user
-// can see the page they navigated to, then hide again after `seconds`
-// unless the user interacted (pen activity) or left 飘渺画布涂鸦模式.
+// ── Page-navigation / lens peek (ethereal mode) ──
+// 翻页载入笔迹、无限画布平移/缩放镜头时, 笔迹是隐藏的; 短暂显示让用户
+// 看见新页面/新镜头, 然后按 `seconds` 隐回去(笔互动会取消隐藏计时器)。
 static NSTimer *g_peek_timer = nil;
 
 static void peek_cancel_timer(void) {
@@ -369,6 +368,18 @@ static void peek_strokes(double seconds) {
             auto_hide_now();
         }
     }];
+}
+
+/// 飘渺模式下镜头平移/缩放时, 笔迹本身是隐藏的, 用户看不到画面变化。
+/// 短暂 peek 一下, 让新镜头下的笔迹/网格露出来再隐回去。
+///
+/// 笔正悬停(笔迹已经可见、且没有 peek 计时器)时不要启动隐藏计时器,
+/// 否则悬浮看画会被 1 秒后自动隐藏。已有 peek 计时器时重新计时, 让连续
+/// 平移/缩放期间笔迹保持可见, 松手后再隐。
+static void peek_lens_change(void) {
+    if (!g_ethereal_canvas || !g_infinite_canvas) return;
+    if (g_strokes_visible && g_peek_timer == nil) return; // 悬停可见, 保持
+    peek_strokes(1.0);
 }
 
 // Switch between 固定画布涂鸦模式 and 飘渺画布涂鸦模式. Shortcut: ⌘ + ⌃ + X

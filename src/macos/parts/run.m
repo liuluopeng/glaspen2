@@ -452,6 +452,7 @@ static void canvas_pan_by(double dx, double dy) {
   g_pan_x -= dx;
   g_pan_y -= dy;
   canvas_apply_transform();
+  peek_lens_change(); // 飘渺模式下短暂露出笔迹, 让镜头移动可见
 }
 
 // 缩放镜头(⌘⌃滚轮):以鼠标位置为锚,zoom ∈ (0.05, 1.0]。
@@ -475,10 +476,14 @@ static void canvas_zoom_at(double factor, double vx, double vy) {
   }
   if (nz < 0.05)
     nz = 0.05; // 防退化下限
+  double old_pan_x = g_pan_x, old_pan_y = g_pan_y, old_zoom = g_zoom;
   g_zoom = nz;
   g_pan_x = ccx - vx / nz;
   g_pan_y = ccy - vy / nz;
+  if (g_zoom == old_zoom && g_pan_x == old_pan_x && g_pan_y == old_pan_y)
+    return; // 已在缩放边界/无变化: 不白 flash
   canvas_apply_transform();
+  peek_lens_change(); // 飘渺模式下短暂露出笔迹, 让缩放变化可见
 }
 
 // 保存唯一的无限画布镜头(仅无限模式;翻页模式无镜头)
