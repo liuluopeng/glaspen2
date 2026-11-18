@@ -22,11 +22,13 @@ Ideal for remote meetings, teaching, screen annotation, and quick notes.
 Switch from the tabs at the top of the settings panel, or the "Infinite canvas" menu item. The two modes store strokes **independently**.
 
 - **Notebook (paged) mode** — one page per screen, classic page flipping (whole-page flip with the native window fade)
-  - `⌥⌘↑` / `⌥⌘↓` or `⌘⌃~` / `⌘⌃1`: flip a whole page to previous / next.
+  - `⌘⌃~` / `⌘⌃1`: flip a whole page to previous / next (configurable in Settings → Shortcuts).
   - Page grid: **drag to reorder / batch multi-select delete**, plus lasso **move / copy / paste** in the full-page view.
 - **Infinite canvas (free doodle) mode** — one canvas with no borders (currently a single global canvas)
-  - `⌥⌘↑ / ⌥⌘↓ / ⌥⌘← / ⌥⌘→` pan the lens.
-  - `⌘⌃scroll` pans, `⌥⇧scroll` zooms anchored at the pointer (capped at 100%).
+  - `⌘⌃I` toggles free doodle (infinite canvas).
+  - `⌥⌘↑ / ⌥⌘↓ / ⌥⌘← / ⌥⌘→` pan the lens; `⌘⌃PageUp / PageDown` zoom
+    (both configurable in Settings → Shortcuts).
+  - `⌥⌘scroll` zooms anchored at the pointer (capped at 100%).
 
 ## Features
 
@@ -95,14 +97,16 @@ Settings · Notebook · Free doodle"]
 | Undo last stroke | `⌘ + ⌃ + Z` | `Ctrl + Alt + Z` |
 | Toggle drawing | `⌘ + ⌃ + V` | `Ctrl + Alt + V` |
 | Toggle canvas mode (fixed ↔ ethereal) | `⌘ + ⌃ + X` | `Ctrl + Alt + X` |
-| Previous / next page (whole page) | `⌥ + ⌘ + ↑/↓`, `⌘ + ⌃ + ~ / 1` | `Ctrl + Alt + ~` / `Ctrl + Alt + 1` |
+| Previous / next page (whole page) | `⌘ + ⌃ + ~ / 1` | `Ctrl + Alt + ~` / `Ctrl + Alt + 1` |
+| Toggle free doodle (infinite canvas) | `⌘ + ⌃ + I` | `Ctrl + Alt + I` |
 | Export SVG + GIF (copies to clipboard) | `⌘ + ⌃ + G` | `Ctrl + Alt + G` |
 | Frosted glass toggle | `⌘ + ⌃ + B` | `Ctrl + Alt + B` |
 | Open settings | `⌘ + ⌃ + D` | `Ctrl + Alt + D` |
 | Quit | | `Ctrl + Alt + Q` |
 | Quick GIF recording (hold) | `⌘ + ⌃ + R` | `Ctrl + Alt + R` (hold) |
 | Infinite canvas: pan (four directions) | `⌥ + ⌘ + arrows` | `Ctrl + Alt + arrows` |
-| Infinite canvas: zoom (cursor anchored) | `⌥ + ⇧ + scroll` | `Ctrl + Alt + scroll` |
+| Infinite canvas: keyboard zoom | `⌘ + ⌃ + PgUp / PgDn` | `Ctrl + Alt + PgUp / PgDn` |
+| Infinite canvas: zoom (cursor anchored) | `⌥ + ⌘ + scroll` | `Ctrl + Alt + scroll` |
 
 ## Installation
 

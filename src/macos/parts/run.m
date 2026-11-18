@@ -407,8 +407,8 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
   sync_settings_panel(); // Flutter 面板的开关/圆点同步
   if (notify) {
     show_notification(
-        on ? L(@"无限画布已开启 (⌥⇧滚轮缩放 · ⌥⌘方向键平移)",
-               @"Infinite canvas on (⌥⇧scroll zoom · ⌥⌘arrows pan)")
+        on ? L(@"无限画布已开启 (镜头键可在设置 → 快捷键中查看)",
+               @"Infinite canvas on (camera keys are in Settings → Shortcuts)")
            : L(@"无限画布已关闭", @"Infinite canvas off"));
   }
 }
@@ -1688,6 +1688,35 @@ static BOOL perform_action(NSString *action) {
   if ([action isEqualToString:@"page_prev"]) return perform_hotkey(0x32);
   if ([action isEqualToString:@"page_next"]) return perform_hotkey(0x12);
   if ([action isEqualToString:@"toggle_draw"]) return perform_hotkey(kVK_ANSI_V);
+  if ([action isEqualToString:@"toggle_free_canvas"]) {
+    // 事件 tap 回调里重装 tap 不安全: 下一 tick 再切模式(与菜单/面板同一条
+    // apply_infinite_canvas 路径, 会同步面板 tab 与 ∞ 徽标)。
+    dispatch_async(dispatch_get_main_queue(), ^{
+      apply_infinite_canvas(!g_infinite_canvas, YES);
+    });
+    return YES;
+  }
+  // 自由涂鸦镜头: 动作只在无限画布模式生效; 事件 tap 层会放行非自由画布
+  // 模式下的组合。步长除以 zoom, 保证屏幕上每次移动的视觉距离一致。
+  if ([action hasPrefix:@"canvas_pan_"]) {
+    if (!g_infinite_canvas) return YES;
+    double z = (g_zoom > 0.05) ? g_zoom : 1.0;
+    double step = 80.0 / z;
+    double dx = 0.0, dy = 0.0;
+    if ([action isEqualToString:@"canvas_pan_left"])       dx = -step;
+    else if ([action isEqualToString:@"canvas_pan_right"]) dx = step;
+    else if ([action isEqualToString:@"canvas_pan_up"])    dy = -step;
+    else if ([action isEqualToString:@"canvas_pan_down"])  dy = step;
+    canvas_pan_by(dx, dy);
+    return YES;
+  }
+  if ([action isEqualToString:@"canvas_zoom_in"] ||
+      [action isEqualToString:@"canvas_zoom_out"]) {
+    if (!g_infinite_canvas) return YES;
+    double factor = [action isEqualToString:@"canvas_zoom_in"] ? 1.15 : 1.0 / 1.15;
+    canvas_zoom_at(factor, (double)g_screen_w * 0.5, (double)g_screen_h * 0.5);
+    return YES;
+  }
   if ([action isEqualToString:@"clear"]) return perform_hotkey(kVK_ANSI_C);
   if ([action isEqualToString:@"export"]) return perform_hotkey(kVK_ANSI_G);
   if ([action isEqualToString:@"copy_svg"]) return perform_hotkey(kVK_ANSI_S);
@@ -1976,8 +2005,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     return event;
   }
 
-  // ⌘⌃滚轮:无限画布镜头平移。书写中忽略(模型器坐标系不能中途跳变);
-  // 非无限画布/未按修饰键时滚轮原样放行给系统。
+  // ⌥⌘滚轮:无限画布镜头缩放(以鼠标为锚)。书写中忽略(模型器坐标系不能
+  // 中途跳变); 非无限画布/未按修饰键时滚轮原样放行给系统。
   if (type == kCGEventScrollWheel && g_infinite_canvas) {
     NSEvent *scrollEvent = [NSEvent eventWithCGEvent:event];
     if (scrollEvent) {
@@ -2066,42 +2095,29 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
           ink_draft_start();
         return NULL;
       }
-      BOOL kHasOptCmd = (mods & NSEventModifierFlagOption) &&
-                        (mods & NSEventModifierFlagCommand);
-      // ⌘⌃PageUp/PageDown:缩放(额外绑定,不依赖滚轮)
-      if (g_infinite_canvas && hasCmdCtrl && g_enabled && !g_stroke_active &&
-          type == kCGEventKeyDown && (kc == kVK_PageUp || kc == kVK_PageDown)) {
-        // 键盘缩放以视口中心为锚
-        canvas_zoom_at(kc == kVK_PageUp ? 1.15 : 1.0 / 1.15,
-                       (double)g_screen_w * 0.5, (double)g_screen_h * 0.5);
-        return NULL;
-      }
-      // 自由画布(无限画布)模式:⌥⌘上下左右 = 镜头四向平移。
-      // (活页本模式没有内置方向键翻页; 要翻页请给"上一页/下一页"绑定方向键。)
-      if (g_infinite_canvas && kHasOptCmd && g_enabled && !g_stroke_active &&
-          type == kCGEventKeyDown && kc >= kVK_LeftArrow && kc <= kVK_UpArrow) {
-        double step = 80.0 / g_zoom;
-        double dx = 0.0, dy = 0.0;
-        if (kc == kVK_LeftArrow)
-          dx = -step;
-        else if (kc == kVK_RightArrow)
-          dx = step;
-        else if (kc == kVK_UpArrow)
-          dy = step;
-        else if (kc == kVK_DownArrow)
-          dy = -step;
-        canvas_pan_by(dx, dy);
-        return NULL;
-      }
+      // 自由画布的镜头平移/缩放已并入可配置动作(canvas_pan_* / canvas_zoom_*),
+      // 默认组合见 menu.m 的 gl_shortcut_defaults(); 不再在此硬编码。
       // 可配置快捷键: 按 chord 精确匹配(菜单层已按物理键名+修饰键建表)。
-      // 长按重复只消费、不重复执行; 停用涂鸦时只保留"重新启用"一键,
-      // 其余 chord 放行给系统 —— 不把总开关关掉后还霸占全局按键。
+      // 长按重复: 镜头平移/缩放跟随键盘重复, 其余一次性动作只消费不执行;
+      // 停用涂鸦时只保留"重新启用"一键(及自由涂鸦模式切换), 其余 chord
+      // 放行给系统 —— 不把总开关关掉后还霸占全局按键。
       if (type == kCGEventKeyDown) {
         NSString *action = gl_shortcut_action_for_key(kc, mods);
         if (action) {
-          if (!g_enabled && ![action isEqualToString:@"toggle_draw"])
+          if (!g_enabled && ![action isEqualToString:@"toggle_draw"] &&
+              ![action isEqualToString:@"toggle_free_canvas"])
             return event;
-          if (!isRepeat) perform_action(action);
+          // 自由涂鸦镜头动作只在无限画布模式、且未在书写时生效; 其它情况
+          // 把组合放行给系统(与旧的硬编码镜头分支一致)。
+          if ([action hasPrefix:@"canvas_"] &&
+              (!g_infinite_canvas || g_stroke_active))
+            return event;
+          // 一次性动作忽略长按重复; 镜头平移/缩放跟随键盘重复连续生效。
+          BOOL repeatable = [action hasPrefix:@"canvas_pan_"] ||
+                            [action isEqualToString:@"canvas_zoom_in"] ||
+                            [action isEqualToString:@"canvas_zoom_out"];
+          if (!isRepeat || repeatable)
+            perform_action(action);
           return NULL;
         }
       }

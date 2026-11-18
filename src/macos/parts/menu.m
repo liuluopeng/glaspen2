@@ -617,7 +617,10 @@ static NSString *gl_string_setting(const char *key) {
 static NSArray<NSString *> *gl_shortcut_actions(void) {
     return @[
         @"undo", @"page_prev", @"page_next", @"color_swap", @"width_swap",
-        @"toggle_draw", @"clear", @"export", @"copy_svg",
+        @"toggle_draw", @"toggle_free_canvas",
+        @"canvas_pan_left", @"canvas_pan_right", @"canvas_pan_up",
+        @"canvas_pan_down", @"canvas_zoom_in", @"canvas_zoom_out",
+        @"clear", @"export", @"copy_svg",
         @"toggle_glass", @"toggle_ethereal", @"settings",
     ];
 }
@@ -630,6 +633,13 @@ static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) {
         @"color_swap": @"cmd+ctrl+E",
         @"width_swap": @"cmd+ctrl+W",
         @"toggle_draw": @"cmd+ctrl+V",
+        @"toggle_free_canvas": @"cmd+ctrl+I",
+        @"canvas_pan_left": @"cmd+alt+Left",
+        @"canvas_pan_right": @"cmd+alt+Right",
+        @"canvas_pan_up": @"cmd+alt+Up",
+        @"canvas_pan_down": @"cmd+alt+Down",
+        @"canvas_zoom_in": @"cmd+ctrl+PageUp",
+        @"canvas_zoom_out": @"cmd+ctrl+PageDown",
         @"clear": @"cmd+ctrl+C",
         @"export": @"cmd+ctrl+G",
         @"copy_svg": @"cmd+ctrl+S",
