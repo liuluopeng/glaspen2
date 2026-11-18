@@ -648,7 +648,8 @@ static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) {
         @"page_prev": @"cmd+ctrl+`",
         @"page_next": @"cmd+ctrl+1",
         @"color_swap": @"cmd+ctrl+E",
-        @"width_swap": @"cmd+ctrl+W",
+        // 避开微信「显示/隐藏主面板」默认 ⌘⌃W; T = thickness。
+        @"width_swap": @"cmd+ctrl+T",
         @"toggle_draw": @"cmd+ctrl+V",
         @"toggle_free_canvas": @"cmd+ctrl+I",
         @"canvas_pan_left": @"cmd+alt+Left",
@@ -774,7 +775,7 @@ static NSString *gl_normalize_chord(NSString *raw) {
     return [out componentsJoinedByString:@"+"];
 }
 
-/// 保留组合: 按住类功能/系统锁屏不能被普通动作占用。
+/// 保留组合: 按住类功能、系统锁屏、常用 App 默认不能被普通动作占用。
 static BOOL gl_shortcut_reserved(NSString *chord) {
     static NSSet *r;
     static dispatch_once_t once;
@@ -784,6 +785,9 @@ static BOOL gl_shortcut_reserved(NSString *chord) {
             @"cmd+ctrl+R", // 按住录 GIF
             @"cmd+ctrl+2", // 按住手写草稿
             @"cmd+ctrl+3", // 按住手写消息
+            @"cmd+ctrl+W", // 微信 显示/隐藏主面板
+            @"cmd+ctrl+A", // 微信 截图
+            @"cmd+ctrl+F", // macOS 全屏
         ]];
     });
     return [r containsObject:chord];
@@ -799,7 +803,10 @@ static NSUInteger g_hotkey_recording_gen = 0;
 static id gl_shortcut_migrate_saved(NSString *action, id raw) {
     if (![raw isKindOfClass:[NSString class]]) return raw;
     NSString *legacy = nil;
-    if ([action isEqualToString:@"canvas_zoom_in"]) {
+    if ([action isEqualToString:@"width_swap"]) {
+        // 旧默认 ⌘⌃W 与微信显示/隐藏主面板冲突, 统一迁到 ⌘⌃T。
+        legacy = @"cmd+ctrl+W";
+    } else if ([action isEqualToString:@"canvas_zoom_in"]) {
         legacy = @"cmd+ctrl+PageUp";
     } else if ([action isEqualToString:@"canvas_zoom_out"]) {
         legacy = @"cmd+ctrl+PageDown";

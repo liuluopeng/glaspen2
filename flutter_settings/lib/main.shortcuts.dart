@@ -23,7 +23,8 @@ const List<_ShortcutAction> _shortcutActions = [
   _ShortcutAction('page_prev', '上一页', 'Previous page', 'cmd+ctrl+`'),
   _ShortcutAction('page_next', '下一页', 'Next page', 'cmd+ctrl+1'),
   _ShortcutAction('color_swap', '换回上一颜色', 'Swap color', 'cmd+ctrl+E'),
-  _ShortcutAction('width_swap', '换回上一粗细', 'Swap width', 'cmd+ctrl+W'),
+  // ⌘⌃W 与微信「显示/隐藏主面板」默认冲突; T = thickness。
+  _ShortcutAction('width_swap', '换回上一粗细', 'Swap width', 'cmd+ctrl+T'),
   _ShortcutAction('toggle_draw', '启用/停用涂鸦', 'Toggle doodle', 'cmd+ctrl+V'),
   _ShortcutAction('toggle_free_canvas', '自由涂鸦 (无限画布)', 'Free doodle (infinite canvas)', 'cmd+ctrl+I'),
   _ShortcutAction('canvas_pan_left', '自由涂鸦: 镜头左移', 'Free doodle: pan left', 'cmd+alt+Left'),
@@ -40,12 +41,16 @@ const List<_ShortcutAction> _shortcutActions = [
   _ShortcutAction('settings', '打开设置', 'Open settings', 'cmd+ctrl+D'),
 ];
 
-/// 按住类功能/系统锁屏占用的组合, 普通动作不能选。
+/// 系统/常用 App 默认与按住类功能占用的组合, 普通动作不能选。
+/// W/A 是微信(macOS)的显示隐藏/截图默认; F 是 macOS 全屏。
 const Set<String> _reservedShortcuts = {
-  'cmd+ctrl+Q',
-  'cmd+ctrl+R',
-  'cmd+ctrl+2',
-  'cmd+ctrl+3',
+  'cmd+ctrl+Q', // macOS 锁屏
+  'cmd+ctrl+R', // 按住录 GIF
+  'cmd+ctrl+2', // 按住手写草稿
+  'cmd+ctrl+3', // 按住手写消息
+  'cmd+ctrl+W', // 微信 显示/隐藏主面板
+  'cmd+ctrl+A', // 微信 截图
+  'cmd+ctrl+F', // macOS 全屏
 };
 
 /// 键帽右下角的一句话动作提示(旧版快捷键按钮的 label 信息)。
@@ -175,7 +180,9 @@ String? _shortcutError(
     return en ? 'Must include Ctrl or Option' : '需要同时按 Ctrl 或 Option';
   }
   if (_reservedShortcuts.contains(chord)) {
-    return en ? 'Reserved by system/hold features' : '已被系统或按住类功能保留';
+    return en
+        ? 'Reserved by macOS, common apps, or hold features'
+        : '已被系统、常用 App 或按住类功能保留';
   }
   for (final a in _shortcutActions) {
     if (a.id == actionId) continue;
