@@ -1689,6 +1689,14 @@ static BOOL perform_action(NSString *action) {
   if ([action isEqualToString:@"page_next"]) return perform_hotkey(0x12);
   if ([action isEqualToString:@"toggle_draw"]) return perform_hotkey(kVK_ANSI_V);
   if ([action isEqualToString:@"toggle_free_canvas"]) {
+    // 打开自由画布时, 如果 Flutter 的「自由涂鸦模式」开关还是关的, 自动
+    // 打开它: 否则面板没有自由涂鸦 tab, 模式切换既看不见落点, 也容易被
+    // 面板的 tab 逻辑推回翻页模式。sync_settings_panel 会随后的
+    // apply_infinite_canvas 把 showFreeCanvas 推给 Flutter。
+    if (!g_infinite_canvas &&
+        glaspen2_load_bool_setting("show_free_canvas") == 0) {
+      glaspen2_save_bool_setting("show_free_canvas", 1);
+    }
     // 事件 tap 回调里重装 tap 不安全: 下一 tick 再切模式(与菜单/面板同一条
     // apply_infinite_canvas 路径, 会同步面板 tab 与 ∞ 徽标)。
     dispatch_async(dispatch_get_main_queue(), ^{
