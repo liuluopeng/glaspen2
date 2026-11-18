@@ -652,12 +652,14 @@ static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) {
         @"width_swap": @"cmd+ctrl+T",
         @"toggle_draw": @"cmd+ctrl+V",
         @"toggle_free_canvas": @"cmd+ctrl+I",
-        @"canvas_pan_left": @"cmd+alt+Left",
-        @"canvas_pan_right": @"cmd+alt+Right",
-        @"canvas_pan_up": @"cmd+alt+Up",
-        @"canvas_pan_down": @"cmd+alt+Down",
-        @"canvas_zoom_in": @"cmd+alt+PageUp",
-        @"canvas_zoom_out": @"cmd+alt+PageDown",
+        // 左手镜头: 拇指按住左 ⌥, 手指留在 WASD; Z/X 缩放。
+        // 避开 ⌥E(微信表情/重音死键) 与 ⌘⌃W(微信显示/隐藏)。
+        @"canvas_pan_left": @"alt+A",
+        @"canvas_pan_right": @"alt+D",
+        @"canvas_pan_up": @"alt+W",
+        @"canvas_pan_down": @"alt+S",
+        @"canvas_zoom_in": @"alt+X",
+        @"canvas_zoom_out": @"alt+Z",
         @"clear": @"cmd+ctrl+C",
         @"export": @"cmd+ctrl+G",
         @"copy_svg": @"cmd+ctrl+S",
@@ -798,22 +800,40 @@ static NSMutableDictionary<NSString *, NSString *> *g_shortcut_lookup;
 static BOOL g_hotkey_recording = NO;
 static NSUInteger g_hotkey_recording_gen = 0;
 
-/// 旧默认值迁移: 镜头缩放原来用 ⌘⌃PgUp/PgDn, 与平移的 ⌥⌘ 不一致;
-/// 现在统一到 ⌥⌘. 只迁移"仍是旧默认值"的存档, 用户自定义组合不动。
+/// 旧默认值迁移表: 只迁移"仍等于旧默认"的存档, 用户自定义组合不动。
+/// 镜头从 ⌥⌘方向键/PgUp/PgDn 改为左手 ⌥WASD/ZX; 宽度的旧默认
+/// ⌘⌃W 与微信显示/隐藏冲突, 改为 ⌘⌃T。
+static NSArray<NSString *> *gl_shortcut_legacy_defaults(NSString *action) {
+    if ([action isEqualToString:@"width_swap"]) {
+        return @[ @"cmd+ctrl+W" ];
+    }
+    if ([action isEqualToString:@"canvas_pan_left"]) {
+        return @[ @"cmd+alt+Left", @"cmd+ctrl+Left" ];
+    }
+    if ([action isEqualToString:@"canvas_pan_right"]) {
+        return @[ @"cmd+alt+Right", @"cmd+ctrl+Right" ];
+    }
+    if ([action isEqualToString:@"canvas_pan_up"]) {
+        return @[ @"cmd+alt+Up", @"cmd+ctrl+Up" ];
+    }
+    if ([action isEqualToString:@"canvas_pan_down"]) {
+        return @[ @"cmd+alt+Down", @"cmd+ctrl+Down" ];
+    }
+    if ([action isEqualToString:@"canvas_zoom_in"]) {
+        return @[ @"cmd+alt+PageUp", @"cmd+ctrl+PageUp" ];
+    }
+    if ([action isEqualToString:@"canvas_zoom_out"]) {
+        return @[ @"cmd+alt+PageDown", @"cmd+ctrl+PageDown" ];
+    }
+    return nil;
+}
+
 static id gl_shortcut_migrate_saved(NSString *action, id raw) {
     if (![raw isKindOfClass:[NSString class]]) return raw;
-    NSString *legacy = nil;
-    if ([action isEqualToString:@"width_swap"]) {
-        // 旧默认 ⌘⌃W 与微信显示/隐藏主面板冲突, 统一迁到 ⌘⌃T。
-        legacy = @"cmd+ctrl+W";
-    } else if ([action isEqualToString:@"canvas_zoom_in"]) {
-        legacy = @"cmd+ctrl+PageUp";
-    } else if ([action isEqualToString:@"canvas_zoom_out"]) {
-        legacy = @"cmd+ctrl+PageDown";
-    } else {
-        return raw;
-    }
-    if ([gl_normalize_chord(raw) isEqualToString:legacy]) {
+    NSArray<NSString *> *legacy = gl_shortcut_legacy_defaults(action);
+    if (!legacy) return raw;
+    NSString *norm = gl_normalize_chord(raw);
+    if (norm && [legacy containsObject:norm]) {
         return gl_shortcut_defaults()[action];
     }
     return raw;
