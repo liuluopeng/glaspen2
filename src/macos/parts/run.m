@@ -1,5 +1,9 @@
 }
 
+// 鼠标 ⌃⌥ + 左键拖动镜头(临时抓手)状态; 由 event tap 维护。
+static BOOL g_camera_mouse_dragging = NO;
+static NSPoint g_camera_mouse_last = {0, 0};
+
 static void pageview_frame_draw(void);
 static void rebuild_surface_from_strokes(void) {
   if (!g_surface)
@@ -377,6 +381,7 @@ static void flush_tunnel_to_layer(void) {
 static void apply_infinite_canvas(BOOL on, BOOL notify) {
   if (g_infinite_canvas == on)
     return;
+  g_camera_mouse_dragging = NO; // 模式切换时结束任何鼠标抓手
   finish_active_stroke(); // 先把在写的笔画落库到"旧"存储
   if (g_infinite_canvas)
     canvas_infinite_persist(); // 离开无限画布前存镜头
@@ -2030,7 +2035,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
                                       NSEventModifierFlagControl |
                                       NSEventModifierFlagOption |
                                       NSEventModifierFlagShift;
-      NSUInteger cameraMods = gl_shortcut_camera_modifier_mask();
+      NSUInteger cameraMods = gl_shortcut_modifier_mask_for(@"canvas_zoom_in");
       BOOL sHasCameraMods = cameraMods != 0 &&
                             (smods & relevantMods) == cameraMods;
       if (sHasCameraMods && g_enabled && !g_stroke_active) {
@@ -2149,6 +2154,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
   // Restore the system cursor first — disabling mid-stroke must never
   // leave the cursor hidden.
   if (!g_enabled) {
+    g_camera_mouse_dragging = NO;
     restore_system_cursor();
     return event;
   }
@@ -2167,6 +2173,38 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       (devType == NSPenPointingDevice || devType == NSEraserPointingDevice ||
        subtype == 1 || subtype == 2);
 
+  // ⌃⌥ + 左键拖动 = 临时抓手; 与镜头键位用同一套修饰键。
+  // 正常鼠标左键(无修饰键)仍然原样放行给下层 App。
+  const NSUInteger cameraRelevantMods = NSEventModifierFlagCommand |
+                                        NSEventModifierFlagControl |
+                                        NSEventModifierFlagOption |
+                                        NSEventModifierFlagShift;
+  if (!isPen && g_camera_mouse_dragging &&
+      (etype == NSEventTypeLeftMouseDragged || etype == NSEventTypeLeftMouseUp)) {
+    if (etype == NSEventTypeLeftMouseDragged) {
+      if (g_infinite_canvas && g_enabled && !g_stroke_active) {
+        NSPoint loc = [nsevent locationInWindow];
+        double z = (g_zoom > 0.05) ? g_zoom : 1.0;
+        // 内容跟随鼠标: 向右/向上拖 → 画布向右/向上移动。
+        canvas_pan_by((loc.x - g_camera_mouse_last.x) / z,
+                      (loc.y - g_camera_mouse_last.y) / z);
+        g_camera_mouse_last = loc;
+      }
+    } else {
+      g_camera_mouse_dragging = NO;
+    }
+    return NULL;
+  }
+  if (!isPen && g_infinite_canvas && g_enabled && !g_stroke_active &&
+      etype == NSEventTypeLeftMouseDown) {
+    NSUInteger cameraMods = gl_shortcut_modifier_mask_for(@"canvas_pan_up");
+    NSUInteger smods = [nsevent modifierFlags];
+    if (cameraMods != 0 && (smods & cameraRelevantMods) == cameraMods) {
+      g_camera_mouse_dragging = YES;
+      g_camera_mouse_last = [nsevent locationInWindow];
+      return NULL;
+    }
+  }
 
   // Non-pen mouse move while no active stroke and cursor visible → hide
   // crosshair. Covers pen-leave-proximity on tablets that don't emit proximity

@@ -800,12 +800,12 @@ static NSMutableDictionary<NSString *, NSString *> *g_shortcut_lookup;
 
 static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved);
 
-/// 当前"镜头放大"动作的修饰键位掩码; 鼠标滚轮缩放按这套修饰键工作,
+/// 某镜头动作当前的修饰键位掩码; 鼠标滚轮/拖动按这套修饰键工作,
 /// 改键后鼠标自动跟随(默认 ⌃⌥).
-/// 未绑定/非法返回 0 —— 滚轮不缩放, 与键盘动作保持一致。
-static NSUInteger gl_shortcut_camera_modifier_mask(void) {
+/// 未绑定/非法返回 0 —— 鼠标不控制镜头, 与键盘动作保持一致。
+static NSUInteger gl_shortcut_modifier_mask_for(NSString *action) {
     if (!g_shortcut_values) gl_shortcuts_apply(@{});
-    NSString *chord = g_shortcut_values[@"canvas_zoom_in"];
+    NSString *chord = g_shortcut_values[action];
     if (chord.length == 0) return 0;
     NSUInteger mask = 0;
     for (NSString *part in [chord componentsSeparatedByString:@"+"]) {

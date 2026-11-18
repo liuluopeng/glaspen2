@@ -29,6 +29,7 @@ Switch from the tabs at the top of the settings panel, or the "Infinite canvas" 
   - Left-hand camera: `⌃⌥W / ⌃⌥S / ⌃⌥A / ⌃⌥D` to pan; `⌃⌥Z / ⌃⌥X` to zoom
     (both configurable in Settings → Shortcuts).
   - `⌃⌥scroll` zooms anchored at the pointer (capped at 100%; modifiers follow the keyboard Zoom-in action).
+  - `⌃⌥ + left-drag` is a temporary hand tool; drag to pan (modifiers follow the keyboard Pan-up action).
   - Panel "Edit content": lasso / drag to move / copy / paste / delete (shares the page clipboard).
 
 ## Features
@@ -106,6 +107,7 @@ Settings · Notebook · Free doodle"]
 | Quit | | `Ctrl + Alt + Q` |
 | Quick GIF recording (hold) | `⌘ + ⌃ + R` | `Ctrl + Alt + R` (hold) |
 | Infinite canvas: pan (four directions) | `⌃⌥ + W / A / S / D` | `Ctrl + Alt + arrows` |
+| Infinite canvas: mouse pan | `⌃⌥ + left-drag` | `Ctrl + Alt + left-drag` |
 | Infinite canvas: keyboard zoom | `⌃⌥ + Z / X` | `Ctrl + Alt + PgUp / PgDn` |
 | Infinite canvas: zoom (cursor anchored) | `⌃⌥ + scroll` | `Ctrl + Alt + scroll` |
 
