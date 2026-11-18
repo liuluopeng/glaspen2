@@ -27,13 +27,14 @@ const List<_ShortcutAction> _shortcutActions = [
   _ShortcutAction('width_swap', '换回上一粗细', 'Swap width', 'cmd+ctrl+T'),
   _ShortcutAction('toggle_draw', '启用/停用涂鸦', 'Toggle doodle', 'cmd+ctrl+V'),
   _ShortcutAction('toggle_free_canvas', '自由涂鸦 (无限画布)', 'Free doodle (infinite canvas)', 'cmd+ctrl+I'),
-  // 左手镜头: 拇指按住左 ⌥, 手指留在 WASD; Z/X 缩放。
-  _ShortcutAction('canvas_pan_left', '自由涂鸦: 镜头左移', 'Free doodle: pan left', 'alt+A'),
-  _ShortcutAction('canvas_pan_right', '自由涂鸦: 镜头右移', 'Free doodle: pan right', 'alt+D'),
-  _ShortcutAction('canvas_pan_up', '自由涂鸦: 镜头上移', 'Free doodle: pan up', 'alt+W'),
-  _ShortcutAction('canvas_pan_down', '自由涂鸦: 镜头下移', 'Free doodle: pan down', 'alt+S'),
-  _ShortcutAction('canvas_zoom_in', '自由涂鸦: 放大', 'Free doodle: zoom in', 'alt+X'),
-  _ShortcutAction('canvas_zoom_out', '自由涂鸦: 缩小', 'Free doodle: zoom out', 'alt+Z'),
+  // 左手镜头: 小指 ⌃ + 拇指 ⌥ + WASD/ZX。选冷门组合避开微信 ⌘⌃W
+  // 与常见 ⌥+字母; 注意 ⌃⌥ 也是 VoiceOver 修饰键(未开 VO 时无冲突)。
+  _ShortcutAction('canvas_pan_left', '自由涂鸦: 镜头左移', 'Free doodle: pan left', 'ctrl+alt+A'),
+  _ShortcutAction('canvas_pan_right', '自由涂鸦: 镜头右移', 'Free doodle: pan right', 'ctrl+alt+D'),
+  _ShortcutAction('canvas_pan_up', '自由涂鸦: 镜头上移', 'Free doodle: pan up', 'ctrl+alt+W'),
+  _ShortcutAction('canvas_pan_down', '自由涂鸦: 镜头下移', 'Free doodle: pan down', 'ctrl+alt+S'),
+  _ShortcutAction('canvas_zoom_in', '自由涂鸦: 放大', 'Free doodle: zoom in', 'ctrl+alt+X'),
+  _ShortcutAction('canvas_zoom_out', '自由涂鸦: 缩小', 'Free doodle: zoom out', 'ctrl+alt+Z'),
   _ShortcutAction('clear', '新建画布(清空)', 'New canvas (clear)', 'cmd+ctrl+C'),
   _ShortcutAction('export', '导出 SVG + GIF', 'Export SVG + GIF', 'cmd+ctrl+G'),
   _ShortcutAction('copy_svg', '复制 SVG', 'Copy SVG', 'cmd+ctrl+S'),

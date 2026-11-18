@@ -652,14 +652,14 @@ static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) {
         @"width_swap": @"cmd+ctrl+T",
         @"toggle_draw": @"cmd+ctrl+V",
         @"toggle_free_canvas": @"cmd+ctrl+I",
-        // 左手镜头: 拇指按住左 ⌥, 手指留在 WASD; Z/X 缩放。
-        // 避开 ⌥E(微信表情/重音死键) 与 ⌘⌃W(微信显示/隐藏)。
-        @"canvas_pan_left": @"alt+A",
-        @"canvas_pan_right": @"alt+D",
-        @"canvas_pan_up": @"alt+W",
-        @"canvas_pan_down": @"alt+S",
-        @"canvas_zoom_in": @"alt+X",
-        @"canvas_zoom_out": @"alt+Z",
+        // 左手镜头: 小指 ⌃ + 拇指 ⌥ + WASD/ZX。选冷门组合避开微信 ⌘⌃W
+        // 与常见 ⌥+字母; 注意 ⌃⌥ 也是 VoiceOver 修饰键(未开 VO 时无冲突)。
+        @"canvas_pan_left": @"ctrl+alt+A",
+        @"canvas_pan_right": @"ctrl+alt+D",
+        @"canvas_pan_up": @"ctrl+alt+W",
+        @"canvas_pan_down": @"ctrl+alt+S",
+        @"canvas_zoom_in": @"ctrl+alt+X",
+        @"canvas_zoom_out": @"ctrl+alt+Z",
         @"clear": @"cmd+ctrl+C",
         @"export": @"cmd+ctrl+G",
         @"copy_svg": @"cmd+ctrl+S",
@@ -808,22 +808,22 @@ static NSArray<NSString *> *gl_shortcut_legacy_defaults(NSString *action) {
         return @[ @"cmd+ctrl+W" ];
     }
     if ([action isEqualToString:@"canvas_pan_left"]) {
-        return @[ @"cmd+alt+Left", @"cmd+ctrl+Left" ];
+        return @[ @"cmd+alt+Left", @"cmd+ctrl+Left", @"alt+A" ];
     }
     if ([action isEqualToString:@"canvas_pan_right"]) {
-        return @[ @"cmd+alt+Right", @"cmd+ctrl+Right" ];
+        return @[ @"cmd+alt+Right", @"cmd+ctrl+Right", @"alt+D" ];
     }
     if ([action isEqualToString:@"canvas_pan_up"]) {
-        return @[ @"cmd+alt+Up", @"cmd+ctrl+Up" ];
+        return @[ @"cmd+alt+Up", @"cmd+ctrl+Up", @"alt+W" ];
     }
     if ([action isEqualToString:@"canvas_pan_down"]) {
-        return @[ @"cmd+alt+Down", @"cmd+ctrl+Down" ];
+        return @[ @"cmd+alt+Down", @"cmd+ctrl+Down", @"alt+S" ];
     }
     if ([action isEqualToString:@"canvas_zoom_in"]) {
-        return @[ @"cmd+alt+PageUp", @"cmd+ctrl+PageUp" ];
+        return @[ @"cmd+alt+PageUp", @"cmd+ctrl+PageUp", @"alt+X" ];
     }
     if ([action isEqualToString:@"canvas_zoom_out"]) {
-        return @[ @"cmd+alt+PageDown", @"cmd+ctrl+PageDown" ];
+        return @[ @"cmd+alt+PageDown", @"cmd+ctrl+PageDown", @"alt+Z" ];
     }
     return nil;
 }
