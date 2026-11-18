@@ -649,8 +649,8 @@ static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) {
         @"canvas_pan_right": @"cmd+alt+Right",
         @"canvas_pan_up": @"cmd+alt+Up",
         @"canvas_pan_down": @"cmd+alt+Down",
-        @"canvas_zoom_in": @"cmd+ctrl+PageUp",
-        @"canvas_zoom_out": @"cmd+ctrl+PageDown",
+        @"canvas_zoom_in": @"cmd+alt+PageUp",
+        @"canvas_zoom_out": @"cmd+alt+PageDown",
         @"clear": @"cmd+ctrl+C",
         @"export": @"cmd+ctrl+G",
         @"copy_svg": @"cmd+ctrl+S",
@@ -788,12 +788,30 @@ static NSMutableDictionary<NSString *, NSString *> *g_shortcut_lookup;
 static BOOL g_hotkey_recording = NO;
 static NSUInteger g_hotkey_recording_gen = 0;
 
+/// 旧默认值迁移: 镜头缩放原来用 ⌘⌃PgUp/PgDn, 与平移的 ⌥⌘ 不一致;
+/// 现在统一到 ⌥⌘. 只迁移"仍是旧默认值"的存档, 用户自定义组合不动。
+static id gl_shortcut_migrate_saved(NSString *action, id raw) {
+    if (![raw isKindOfClass:[NSString class]]) return raw;
+    NSString *legacy = nil;
+    if ([action isEqualToString:@"canvas_zoom_in"]) {
+        legacy = @"cmd+ctrl+PageUp";
+    } else if ([action isEqualToString:@"canvas_zoom_out"]) {
+        legacy = @"cmd+ctrl+PageDown";
+    } else {
+        return raw;
+    }
+    if ([gl_normalize_chord(raw) isEqualToString:legacy]) {
+        return gl_shortcut_defaults()[action];
+    }
+    return raw;
+}
+
 static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved) {
     NSDictionary<NSString *, NSString *> *defaults = gl_shortcut_defaults();
     NSMutableDictionary<NSString *, NSString *> *values = [NSMutableDictionary dictionary];
     NSMutableDictionary<NSString *, NSString *> *lookup = [NSMutableDictionary dictionary];
     for (NSString *action in gl_shortcut_actions()) {
-        id raw = saved[action];
+        id raw = gl_shortcut_migrate_saved(action, saved[action]);
         NSString *chord = nil;
         if ([raw isKindOfClass:[NSString class]]) {
             chord = gl_normalize_chord(raw);

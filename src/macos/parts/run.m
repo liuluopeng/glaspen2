@@ -465,13 +465,14 @@ static void canvas_zoom_at(double factor, double vx, double vy) {
   double nz = g_zoom * factor;
   if (nz > 1.0) {
     nz = 1.0;
-    if (g_zoom < 1.0) {
-      static CFAbsoluteTime last_hint = 0.0;
-      CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-      if (now - last_hint > 1.5) {
-        last_hint = now;
-        show_notification(L(@"已达最大缩放 100%", @"Max zoom 100%"));
-      }
+    // 只要这次请求是"继续放大但被 100% 上限挡住"就提示, 不再要求
+    // g_zoom < 1.0 —— 否则到达 100% 后再按放大键/滚轮会完全静默。
+    // 1.5s 节流防长按/连续滚动刷屏。
+    static CFAbsoluteTime last_hint = 0.0;
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    if (now - last_hint > 1.5) {
+      last_hint = now;
+      show_notification(L(@"已达最大缩放 100%", @"Max zoom 100%"));
     }
   }
   if (nz < 0.05)
