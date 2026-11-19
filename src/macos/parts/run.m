@@ -394,7 +394,7 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
     canvas_infinite_persist(); // 离开无限画布前存镜头
   g_infinite_canvas = on;
   glaspen2_save_bool_setting("infinite_canvas", on ? 1 : 0);
-  NSMenuItem *item = [g_menu itemWithTag:668];
+  NSMenuItem *item = gl_menu_item_with_tag(668);
   if (item)
     [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
   update_status_icon_state(); // 无限画布 = 图标右下角的 ∞ 徽标
@@ -433,7 +433,7 @@ static void apply_outline(BOOL on) {
   g_outline_enabled = on;
   glaspen2_set_stroke_outline(on ? 1 : 0);
   glaspen2_save_bool_setting("outline", on ? 1 : 0);
-  NSMenuItem *item = [g_menu itemWithTag:667];
+  NSMenuItem *item = gl_menu_item_with_tag(667);
   if (item)
     [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
   // 立即对已有笔迹生效(重绘 = 从 STROKES 按当前描边开关重建)
@@ -2835,63 +2835,45 @@ void glaspen2_run(void) {
     }
 
     [g_menu addItem:[NSMenuItem separatorItem]];
+    // 高频动作留在顶层; 低频导出/实验开关收进子菜单, 首屏不再铺满 30+ 行。
     [g_menu addItemWithTitle:L(@"保存(含背景)", @"Save (with bg)")
                       action:@selector(saveWithBg)
                keyEquivalent:@""];
     [g_menu addItemWithTitle:L(@"保存(涂鸦)", @"Save (drawing)")
                       action:@selector(saveOnly)
                keyEquivalent:@""];
-    [g_menu addItemWithTitle:L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)")
-                      action:@selector(saveXoj)
-               keyEquivalent:@""];
-    [g_menu addItemWithTitle:L(@"导出无限画布 PDF (分页)",
-                               @"Export infinite canvas PDF (paged)")
-                      action:@selector(exportInfinitePdf)
-               keyEquivalent:@""];
-    [g_menu addItemWithTitle:L(@"导出无限画布 SVG (整幅)",
-                               @"Export infinite canvas SVG (whole)")
-                      action:@selector(exportInfiniteSvg)
-               keyEquivalent:@""];
     [g_menu addItemWithTitle:L(@"新建画布", @"New canvas")
                       action:@selector(clearScreen)
                keyEquivalent:@""];
-    NSMenuItem *launchItem =
-        [g_menu addItemWithTitle:L(@"开机自启", @"Launch at login")
-                          action:@selector(toggleLaunch)
+
+    // ── 导出 ▸ ──
+    NSMenuItem *exportMenuItem =
+        [g_menu addItemWithTitle:L(@"导出", @"Export")
+                          action:nil
                    keyEquivalent:@""];
-    launchItem.target = g_menuHandler;
-    launchItem.tag = 777;
-    launchItem.state = glaspen2_is_launch_at_login() ? NSControlStateValueOn
-                                                     : NSControlStateValueOff;
-    NSMenuItem *glassItem =
-        [g_menu addItemWithTitle:L(@"磨砂玻璃", @"Frosted Glass")
-                          action:@selector(toggleGlass)
-                   keyEquivalent:@""];
-    glassItem.target = g_menuHandler;
-    glassItem.tag = 444;
-    glassItem.state =
-        g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff;
-    NSMenuItem *outlineItem =
-        [g_menu addItemWithTitle:L(@"笔迹描边", @"Stroke outline")
-                          action:@selector(toggleOutline)
-                   keyEquivalent:@""];
-    outlineItem.target = g_menuHandler;
-    outlineItem.tag = 667;
-    outlineItem.state = NSControlStateValueOff;
-    NSMenuItem *infiniteItem =
-        [g_menu addItemWithTitle:L(@"无限画布", @"Infinite canvas")
-                          action:@selector(toggleInfiniteCanvas)
-                   keyEquivalent:@""];
-    infiniteItem.target = g_menuHandler;
-    infiniteItem.tag = 668;
-    infiniteItem.state = NSControlStateValueOff;
-    NSMenuItem *modeItem =
-        [g_menu addItemWithTitle:L(@"固定画布涂鸦模式", @"Fixed canvas mode")
-                          action:@selector(toggleCanvasMode)
-                   keyEquivalent:@""];
-    modeItem.target = g_menuHandler;
-    modeItem.tag = 778;
-    modeItem.state = NSControlStateValueOff;
+    NSMenu *exportMenu = [[NSMenu alloc] init];
+    [exportMenu setAutoenablesItems:NO];
+    {
+      NSMenuItem *it =
+          [exportMenu addItemWithTitle:L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)")
+                                action:@selector(saveXoj)
+                         keyEquivalent:@""];
+      it.target = g_menuHandler;
+      it =
+          [exportMenu addItemWithTitle:L(@"导出无限画布 PDF (分页)",
+                                         @"Export infinite canvas PDF (paged)")
+                                action:@selector(exportInfinitePdf)
+                         keyEquivalent:@""];
+      it.target = g_menuHandler;
+      it =
+          [exportMenu addItemWithTitle:L(@"导出无限画布 SVG (整幅)",
+                                         @"Export infinite canvas SVG (whole)")
+                                action:@selector(exportInfiniteSvg)
+                         keyEquivalent:@""];
+      it.target = g_menuHandler;
+    }
+    exportMenuItem.submenu = exportMenu;
+
     [g_menu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *toggleItem =
         [g_menu addItemWithTitle:L(@"开启涂鸦", @"Enable Drawing")
@@ -2905,6 +2887,50 @@ void glaspen2_run(void) {
                           action:@selector(showSettingsPanel)
                    keyEquivalent:@""];
     settingsItem.target = g_menuHandler;
+
+    // ── 更多 ▸(低频实验/系统开关) ──
+    NSMenuItem *moreMenuItem =
+        [g_menu addItemWithTitle:L(@"更多", @"More")
+                          action:nil
+                   keyEquivalent:@""];
+    NSMenu *moreMenu = [[NSMenu alloc] init];
+    [moreMenu setAutoenablesItems:NO];
+    {
+      NSMenuItem *it =
+          [moreMenu addItemWithTitle:L(@"开机自启", @"Launch at login")
+                              action:@selector(toggleLaunch)
+                       keyEquivalent:@""];
+      it.target = g_menuHandler;
+      it.tag = 777;
+      it.state = glaspen2_is_launch_at_login() ? NSControlStateValueOn
+                                               : NSControlStateValueOff;
+      it = [moreMenu addItemWithTitle:L(@"磨砂玻璃", @"Frosted Glass")
+                               action:@selector(toggleGlass)
+                        keyEquivalent:@""];
+      it.target = g_menuHandler;
+      it.tag = 444;
+      it.state = g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff;
+      it = [moreMenu addItemWithTitle:L(@"笔迹描边", @"Stroke outline")
+                               action:@selector(toggleOutline)
+                        keyEquivalent:@""];
+      it.target = g_menuHandler;
+      it.tag = 667;
+      it.state = NSControlStateValueOff;
+      it = [moreMenu addItemWithTitle:L(@"无限画布", @"Infinite canvas")
+                               action:@selector(toggleInfiniteCanvas)
+                        keyEquivalent:@""];
+      it.target = g_menuHandler;
+      it.tag = 668;
+      it.state = NSControlStateValueOff;
+      it = [moreMenu addItemWithTitle:L(@"固定画布涂鸦模式", @"Fixed canvas mode")
+                               action:@selector(toggleCanvasMode)
+                        keyEquivalent:@""];
+      it.target = g_menuHandler;
+      it.tag = 778;
+      it.state = NSControlStateValueOff;
+    }
+    moreMenuItem.submenu = moreMenu;
+
     [g_menu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *langItem = [g_menu addItemWithTitle:L(@"English", @"中文")
                                              action:@selector(toggleLanguage)
@@ -2999,7 +3025,7 @@ void glaspen2_run(void) {
     g_outline_enabled = glaspen2_load_bool_setting("outline") != 0;
     glaspen2_set_stroke_outline(g_outline_enabled ? 1 : 0);
     {
-      NSMenuItem *oi = [g_menu itemWithTag:667];
+      NSMenuItem *oi = gl_menu_item_with_tag(667);
       if (oi)
         [oi setState:g_outline_enabled ? NSControlStateValueOn
                                        : NSControlStateValueOff];
@@ -3041,6 +3067,11 @@ void glaspen2_run(void) {
       }
     }
 
+    // 气泡捕获只在「气泡消息」tab 打开时运行(默认关): 关闭时笔事件钩子
+    // 立即返回, 不占 CPU、不落库、不读历史。必须在 event tap 安装前装载。
+    glaspen2_bubble_set_capture(
+        glaspen2_load_bool_setting("show_bubble_tab") != 0 ? 1 : 0);
+
     // Restore canvas mode and load the matching independent store.
     // 翻页/无限两套存储互不影响:无限画布全局仅一个。
     g_infinite_canvas = glaspen2_load_bool_setting("infinite_canvas") != 0;
@@ -3050,7 +3081,7 @@ void glaspen2_run(void) {
     // gl_ethereal_restore_now() 统一落位(下方 window ready 之后)。
     g_ethereal_canvas = glaspen2_load_bool_setting("ethereal") != 0;
     {
-      NSMenuItem *ethRestoreItem = [g_menu itemWithTag:778];
+      NSMenuItem *ethRestoreItem = gl_menu_item_with_tag(778);
       if (ethRestoreItem) {
         [ethRestoreItem setState:g_ethereal_canvas ? NSControlStateValueOn
                                                    : NSControlStateValueOff];
@@ -3059,7 +3090,7 @@ void glaspen2_run(void) {
             : L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];
       }
     }
-    NSMenuItem *infiniteRestoreItem = [g_menu itemWithTag:668];
+    NSMenuItem *infiniteRestoreItem = gl_menu_item_with_tag(668);
     if (infiniteRestoreItem) {
       [infiniteRestoreItem setState:g_infinite_canvas ? NSControlStateValueOn
                                                       : NSControlStateValueOff];
@@ -3073,7 +3104,7 @@ void glaspen2_run(void) {
     }
 
     // Canvas mode starts in 固定画布涂鸦模式; menu item shows the switch target
-    [[g_menu itemWithTag:778]
+    [gl_menu_item_with_tag(778)
         setTitle:L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];
 
     // Restore pressure monitor setting

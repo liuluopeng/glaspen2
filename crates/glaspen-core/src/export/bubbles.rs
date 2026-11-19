@@ -28,6 +28,7 @@
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 /// 分段阈值下限: 一分钟之内的连续书写(换区域/短思考)都是同一条
@@ -48,6 +49,19 @@ const MAX_MSGS: usize = 50;
 const MAX_PENDING_STROKES: usize = 60;
 /// 单段点数上限。
 const MAX_PENDING_POINTS: usize = 8000;
+/// 气泡捕获总开关(默认关): 只在面板「气泡消息」tab 打开时才捕获。
+/// 关 = 笔事件钩子立即返回, 不占 CPU/不落库 —— "关掉的功能零成本"。
+static CAPTURE_ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// 由壳层在启动与 showBubbleTab 变化时调用。
+pub fn set_capture_enabled(on: bool) {
+    CAPTURE_ENABLED.store(on, Ordering::Relaxed);
+}
+
+fn capture_enabled() -> bool {
+    CAPTURE_ENABLED.load(Ordering::Relaxed)
+}
+
 /// 冷启动最小离开时长: 笔离开感应区 >= 3s 才算"放下笔", 下一次落笔开新
 /// 消息。手写时抬笔/字间/换笔尖的 proximity 中断都在 1-2s 内; 3s 是
 /// "停笔思考"的保守分界。短于它的离开一律并入当前消息(面板刷新也不会
@@ -153,6 +167,9 @@ fn should_split(
 
 /// 提交钩子(抬笔扇出, STROKES 锁已释放): 捕获新笔迹 + 维护分段。
 pub fn on_stroke_committed() {
+    if !capture_enabled() {
+        return;
+    }
     let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
     let strokes = crate::STROKES.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -314,6 +331,9 @@ fn finish_pending(g: &mut Inner) {
 
 /// 从 DB 恢复最近 MAX_MSGS 条消息(启动时调用; 幂等)。
 pub fn load_from_db() {
+    if !capture_enabled() {
+        return; // tab 关着: 不读历史, 也不标记 loaded
+    }
     {
         let g = INNER.lock().unwrap_or_else(|e| e.into_inner());
         if g.loaded {
@@ -389,6 +409,9 @@ fn flush_expired(g: &mut Inner) {
 
 /// 强制结段(打开气泡 tab 时调用): 进行中的段立即成为一条消息。
 pub fn flush_now() {
+    if !capture_enabled() {
+        return;
+    }
     let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
     finish_pending(&mut g);
 }
@@ -409,6 +432,9 @@ fn resolve_pen_back(g: &mut Inner) {
 /// 或平台不发 enter 时的悬停/落笔回退)负责。Windows 没有 proximity, 所有
 /// 笔事件都走这里, 由静默阈值兜底。
 pub fn on_pen_activity() {
+    if !capture_enabled() {
+        return;
+    }
     let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
     g.pen_last_seen = Some(Instant::now());
 }
@@ -417,6 +443,9 @@ pub fn on_pen_activity() {
 /// 补发)。按离开时长结算: 不足 COLD_START_MIN_MS 撤销, 超阈值置冷; 不再
 /// 需要单独的笔↔橡皮切换宽限。
 pub fn on_pen_back() {
+    if !capture_enabled() {
+        return;
+    }
     let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
     resolve_pen_back(&mut g);
     g.pen_last_seen = Some(Instant::now());
@@ -427,6 +456,9 @@ pub fn on_pen_back() {
 /// (或面板刷新时)按离开时长结算, 否则字与字之间的抬笔会把 hello 拆成
 /// 五个消息。
 pub fn on_pen_gone() {
+    if !capture_enabled() {
+        return;
+    }
     let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
     // 纯鼠标(本会话从无笔信号)没有"笔离开感应区"语义; 鼠标移动回退
     // 不能给纯鼠标用户设冷, 否则每一笔都被拆开。纯鼠标走静默阈值。
@@ -467,6 +499,9 @@ fn will_split_soon(g: &Inner, stroke_gap_ms: u64) -> bool {
 /// 在飞, 见 create_next_page_inner); 保留 2s 建页频率闸, 末页空白复用
 /// 场景返回 0(与手动路径"已是空白末页"同语义, 不做中途跳页)。
 pub fn auto_page_if_due() -> i64 {
+    if !capture_enabled() {
+        return 0;
+    }
     // 设置门槛: 开关 + 气泡 tab 显示, 均落笔低频读, 不缓存
     let enabled = runtime_block_on_setting("bubble_auto_new_page").as_deref() == Some("1")
         && runtime_block_on_setting("show_bubble_tab").as_deref() == Some("1");
@@ -543,6 +578,8 @@ mod tests {
     /// 测试前置: STROKES 清空 + 累积器归零(全量跑时其他测试会留残余,
     /// 不清场会把别人的尾巴吞进本测试的段里)。
     fn reset_fixture() {
+        // 捕获默认关(tab 未开); 测试直接喂钩子, 必须先打开。
+        set_capture_enabled(true);
         crate::STROKES.lock().unwrap().clear();
         let mut g = INNER.lock().unwrap();
         g.captured = 0;

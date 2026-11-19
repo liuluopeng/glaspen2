@@ -89,7 +89,7 @@ Settings · Notebook · Free doodle"]
 
 - **Native layer**: macOS uses ObjC (global events + overlay window), Windows is pure Rust Win32 — the doodling experience lives entirely here.
 - **glaspen-core**: the platform-neutral shared core — storage, smoothing, rendering, export and updates.
-- **Settings panel**: Flutter, talking to Rust in-process via FRB; by default only "Settings + Notebook" tabs are shown, advanced capabilities opt-in.
+- **Settings panel**: Flutter, talking to Rust in-process via FRB; by default only "Settings + Notebook" tabs are shown, the settings page itself shows just Pen + About first and folds the rest under "More settings".
 
 ## Keyboard shortcuts
 
@@ -98,11 +98,8 @@ Settings · Notebook · Free doodle"]
 | New canvas | `⌘ + ⌃ + C` | `Ctrl + Alt + C` |
 | Undo last stroke | `⌘ + ⌃ + Z` | `Ctrl + Alt + Z` |
 | Toggle drawing | `⌘ + ⌃ + V` | `Ctrl + Alt + V` |
-| Toggle canvas mode (fixed ↔ ethereal) | `⌘ + ⌃ + X` | `Ctrl + Alt + X` |
+| Undo | `⌘ + ⌃ + Z` | `Ctrl + Alt + Z` |
 | Previous / next page (whole page) | `⌘ + ⌃ + ~ / 1` | `Ctrl + Alt + ~` / `Ctrl + Alt + 1` |
-| Toggle free doodle (infinite canvas) | `⌘ + ⌃ + I` | `Ctrl + Alt + I` |
-| Export SVG + GIF (copies to clipboard) | `⌘ + ⌃ + G` | `Ctrl + Alt + G` |
-| Frosted glass toggle | `⌘ + ⌃ + B` | `Ctrl + Alt + B` |
 | Open settings | `⌘ + ⌃ + D` | `Ctrl + Alt + D` |
 | Quit | | `Ctrl + Alt + Q` |
 | Quick GIF recording (hold) | `⌘ + ⌃ + R` | `Ctrl + Alt + R` (hold) |
@@ -110,6 +107,10 @@ Settings · Notebook · Free doodle"]
 | Infinite canvas: mouse pan | `⌃⌥ + left-drag` | `Ctrl + Alt + left-drag` |
 | Infinite canvas: keyboard zoom | `⌃⌥ + Z / X` | `Ctrl + Alt + PgUp / PgDn` |
 | Infinite canvas: zoom (cursor anchored) | `⌃⌥ + scroll` | `Ctrl + Alt + scroll` |
+
+Only the core actions and the free-doodle camera keys are bound by default;
+color swap, width swap, new canvas, SVG/GIF export, copy SVG, frosted glass,
+ethereal canvas and the free-doodle toggle can be bound in Settings → Shortcuts.
 
 ## Installation
 

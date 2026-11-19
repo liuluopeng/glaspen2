@@ -922,6 +922,13 @@ pub extern "C" fn glaspen2_notify_stroke_committed() {
 ///   距离开 <300ms 视为笔↔橡皮切换, 撤销冷标记;
 /// - `glaspen2_bubble_pen_gone`: 笔离开感应区(macOS proximity exit /
 ///   无 proximity 平板的真鼠标移动回退), 下一次落笔必开新消息。
+/// 气泡捕获总开关(壳层启动与「气泡消息」tab 开关变化时调用)。
+/// 关 = 笔事件钩子立即返回、不落库、不读历史 —— 关闭的功能零成本。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_bubble_set_capture(on: c_int) {
+    bubbles::set_capture_enabled(on != 0);
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_bubble_pen_activity() {
     bubbles::on_pen_activity();

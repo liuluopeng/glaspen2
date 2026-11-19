@@ -232,6 +232,43 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     return Material(type: MaterialType.transparency, child: child);
   }
 
+  /// 渐进披露开关: 核心只有「笔」和「关于」, 其余设置默认折叠。
+  /// 状态只在本次运行内记忆(重启后回到简洁首屏)。
+  Widget _buildMoreSettingsToggle() {
+    final en = _language == 'en';
+    return _tile(InkWell(
+      onTap: () => setState(() => _showAdvanced = !_showAdvanced),
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+        child: Row(children: [
+          Icon(_showAdvanced ? Icons.expand_less : Icons.expand_more,
+              size: 20, color: _inkFaint),
+          const SizedBox(width: 6),
+          Text(
+            _showAdvanced
+                ? (en ? 'Hide more settings' : '收起更多设置')
+                : (en ? 'More settings' : '更多设置'),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              _showAdvanced
+                  ? ''
+                  : (en
+                      ? 'Appearance, notebook, export, backup, language, shortcuts'
+                      : '外观 / 活页本 / 导出 / 备份 / 语言 / 快捷键'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: _inkFaint),
+            ),
+          ),
+        ]),
+      ),
+    ));
+  }
+
   // ── 画布外观: 自由涂鸦 tab 显隐 + 网格 + 跟随 + 笔迹风格(描边/阴影/反色) ──
   Widget _buildAppearanceSection() {
     return Column(

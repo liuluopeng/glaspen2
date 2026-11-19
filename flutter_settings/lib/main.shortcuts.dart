@@ -22,11 +22,12 @@ const List<_ShortcutAction> _shortcutActions = [
   _ShortcutAction('undo', '撤销上一笔', 'Undo', 'cmd+ctrl+Z'),
   _ShortcutAction('page_prev', '上一页', 'Previous page', 'cmd+ctrl+`'),
   _ShortcutAction('page_next', '下一页', 'Next page', 'cmd+ctrl+1'),
-  _ShortcutAction('color_swap', '换回上一颜色', 'Swap color', 'cmd+ctrl+E'),
+  // 默认只绑核心动作 + 自由涂鸦镜头; 其余默认不绑, 可在编辑器里自行绑定。
+  _ShortcutAction('color_swap', '换回上一颜色', 'Swap color', ''),
   // ⌘⌃W 与微信「显示/隐藏主面板」默认冲突; T = thickness。
-  _ShortcutAction('width_swap', '换回上一粗细', 'Swap width', 'cmd+ctrl+T'),
+  _ShortcutAction('width_swap', '换回上一粗细', 'Swap width', ''),
   _ShortcutAction('toggle_draw', '启用/停用涂鸦', 'Toggle doodle', 'cmd+ctrl+V'),
-  _ShortcutAction('toggle_free_canvas', '自由涂鸦 (无限画布)', 'Free doodle (infinite canvas)', 'cmd+ctrl+I'),
+  _ShortcutAction('toggle_free_canvas', '自由涂鸦 (无限画布)', 'Free doodle (infinite canvas)', ''),
   // 左手镜头: 小指 ⌃ + 拇指 ⌥ + WASD/ZX。选冷门组合避开微信 ⌘⌃W
   // 与常见 ⌥+字母; 注意 ⌃⌥ 也是 VoiceOver 修饰键(未开 VO 时无冲突)。
   _ShortcutAction('canvas_pan_left', '自由涂鸦: 镜头左移', 'Free doodle: pan left', 'ctrl+alt+A'),
@@ -35,11 +36,11 @@ const List<_ShortcutAction> _shortcutActions = [
   _ShortcutAction('canvas_pan_down', '自由涂鸦: 镜头下移', 'Free doodle: pan down', 'ctrl+alt+S'),
   _ShortcutAction('canvas_zoom_in', '自由涂鸦: 放大', 'Free doodle: zoom in', 'ctrl+alt+X'),
   _ShortcutAction('canvas_zoom_out', '自由涂鸦: 缩小', 'Free doodle: zoom out', 'ctrl+alt+Z'),
-  _ShortcutAction('clear', '新建画布(清空)', 'New canvas (clear)', 'cmd+ctrl+C'),
-  _ShortcutAction('export', '导出 SVG + GIF', 'Export SVG + GIF', 'cmd+ctrl+G'),
-  _ShortcutAction('copy_svg', '复制 SVG', 'Copy SVG', 'cmd+ctrl+S'),
-  _ShortcutAction('toggle_glass', '磨砂玻璃', 'Frosted glass', 'cmd+ctrl+B'),
-  _ShortcutAction('toggle_ethereal', '飘渺画布', 'Ethereal canvas', 'cmd+ctrl+X'),
+  _ShortcutAction('clear', '新建画布(清空)', 'New canvas (clear)', ''),
+  _ShortcutAction('export', '导出 SVG + GIF', 'Export SVG + GIF', ''),
+  _ShortcutAction('copy_svg', '复制 SVG', 'Copy SVG', ''),
+  _ShortcutAction('toggle_glass', '磨砂玻璃', 'Frosted glass', ''),
+  _ShortcutAction('toggle_ethereal', '飘渺画布', 'Ethereal canvas', ''),
   _ShortcutAction('settings', '打开设置', 'Open settings', 'cmd+ctrl+D'),
 ];
 

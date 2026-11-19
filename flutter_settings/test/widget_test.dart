@@ -33,6 +33,9 @@ void main() {
 
     await tester.pumpWidget(const GlaspenSettingsApp());
     await tester.pump(const Duration(seconds: 1));
+    // 设置页默认只显示「笔」+「关于」; 语言选择器在「更多设置」折叠里。
+    await tester.tap(find.text('更多设置'));
+    await tester.pump();
     expect(find.text('界面语言'), findsOneWidget);
 
     appLocale.value = const Locale('en');

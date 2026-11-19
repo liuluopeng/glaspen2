@@ -238,6 +238,8 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
   bool _showFreeCanvas = false;
   bool _showBubbleTab = false;
+  /// 设置页渐进披露: 默认只显示「笔」和「关于」, 其余折叠进「更多设置」。
+  bool _showAdvanced = false;
   bool _bubblesLoading = false;
   List<Map<String, dynamic>> _bubbleMsgs = const [];
   final ScrollController _bubbleScroll = ScrollController();
@@ -511,125 +513,129 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
                   // ── 书写: 最常用的放最前 ──
                   _buildSection(AppLocalizations.of(context)!.pen, _buildPenSection()),
                   const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.canvasLook, _buildAppearanceSection()),
+                  _buildSection(AppLocalizations.of(context)!.about, _buildAboutSection()),
                   const SizedBox(height: 16),
-                  // ── 活页本: 外观 / 翻页动效 / 缩略图 / 真穿透 ──
-                  _buildSection(AppLocalizations.of(context)!.notebookLook, Column(children: [
-                    Row(children: [
-                      Text(AppLocalizations.of(context)!.style, style: TextStyle(fontSize: 13)),
-                      const Spacer(),
-                      SegmentedButton<bool>(
-                        segments: [
-                          ButtonSegment(value: true, label: Text(AppLocalizations.of(context)!.skeuoGlass)),
-                          ButtonSegment(value: false, label: Text(AppLocalizations.of(context)!.notePaper)),
-                        ],
-                        selected: {_notebookGlass},
-                        showSelectedIcon: false,
-                        onSelectionChanged: (s2) {
-                          setState(() => _notebookGlass = s2.first);
-                          _setSetting('notebookStyle', s2.first);
-                        },
-                      ),
-                    ]),
-                    if (Platform.isMacOS) ...[
-                      const Divider(height: 20),
+                  _buildMoreSettingsToggle(),
+                  if (_showAdvanced) ...[
+                    const SizedBox(height: 12),
+                    _buildSection(AppLocalizations.of(context)!.canvasLook, _buildAppearanceSection()),
+                    const SizedBox(height: 16),
+                    // ── 活页本: 外观 / 翻页动效 / 缩略图 / 真穿透 ──
+                    _buildSection(AppLocalizations.of(context)!.notebookLook, Column(children: [
                       Row(children: [
-                        Text(AppLocalizations.of(context)!.pageFlipEffect,
-                            style: TextStyle(fontSize: 13, color: _inkFaint)),
+                        Text(AppLocalizations.of(context)!.style, style: TextStyle(fontSize: 13)),
                         const Spacer(),
-                        SegmentedButton<int>(
-                          showSelectedIcon: false,
-                          style: const ButtonStyle(
-                            visualDensity: VisualDensity(horizontal: -2, vertical: -2),
-                          ),
+                        SegmentedButton<bool>(
                           segments: [
-                            ButtonSegment(value: 0, label: Text(AppLocalizations.of(context)!.systemAnimation)),
-                            ButtonSegment(value: 1, label: Text(AppLocalizations.of(context)!.timeTunnel)),
+                            ButtonSegment(value: true, label: Text(AppLocalizations.of(context)!.skeuoGlass)),
+                            ButtonSegment(value: false, label: Text(AppLocalizations.of(context)!.notePaper)),
                           ],
-                          selected: {_flipEffect},
-                          onSelectionChanged: (sel) {
-                            setState(() => _flipEffect = sel.first);
-                            _setSetting('flipEffect', sel.first);
+                          selected: {_notebookGlass},
+                          showSelectedIcon: false,
+                          onSelectionChanged: (s2) {
+                            setState(() => _notebookGlass = s2.first);
+                            _setSetting('notebookStyle', s2.first);
                           },
                         ),
                       ]),
-                    ],
-                    const Divider(height: 20),
-                    _tile(SwitchListTile(
-                      title: Text(AppLocalizations.of(context)!.show10NearbyPages, style: TextStyle(fontSize: 14)),
-                      subtitle: Text(AppLocalizations.of(context)!.verticalMinimapOnThe, style: TextStyle(fontSize: 12)),
-                      value: _minimapEnabled,
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      onChanged: (v) {
-                        setState(() => _minimapEnabled = v);
-                        _setSetting('minimap', v);
-                      },
-                    )),
-                    const Divider(height: 20),
-                    _tile(SwitchListTile(
-                      title: Text(AppLocalizations.of(context)!.truePassThroughExperimental, style: TextStyle(fontSize: 14)),
-                      subtitle: Text(AppLocalizations.of(context)!.cardsRevealTheDesktop, style: TextStyle(fontSize: 12)),
-                      value: _panelTransparent && _notebookGlass,
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      onChanged: _notebookGlass
-                          ? (v) {
-                              setState(() => _panelTransparent = v);
-                              _setSetting('panelTransparent', v);
-                            }
-                          : null,
-                    )),
-                  ])),
-                  const SizedBox(height: 16),
-                  // ── 录制与导出 ──
-                  _buildSection(AppLocalizations.of(context)!.recordExport, _buildRecordExportSection()),
-                  const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.dataBackup, _buildBackupButtons()),
-                  const SizedBox(height: 16),
-                  if (_chatIntegration)
-                    _buildSection(AppLocalizations.of(context)!.sharedCanvas, _tile(SwitchListTile(
-                      title: Text(AppLocalizations.of(context)!.streamDoodlesLive, style: TextStyle(fontSize: 14)),
-                      subtitle: Text(AppLocalizations.of(context)!.pushedToThePeer,
-                          style: TextStyle(fontSize: 12)),
-                      value: _shareCanvas,
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      onChanged: (v) {
-                        setState(() => _shareCanvas = v);
-                        _setSetting('shareCanvas', v);
-                      },
-                    ))),
-                  if (_chatIntegration) const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.doodleIdentity, _buildChatAuthSection()),
-                  const SizedBox(height: 16),
-                  // ── 系统与辅助 ──
-                  _buildSection(AppLocalizations.of(context)!.systemAndAssist, _buildSystemSection()),
-                  const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.about, _buildAboutSection()),
-                  const SizedBox(height: 16),
-                  // ── 少用的放最后: 语言 / 快捷键 ──
-                  _buildSection(
-                    AppLocalizations.of(context)!.language,
-                    SegmentedButton<String>(
-                      segments: [
-                        ButtonSegment(
-                            value: 'zh',
-                            label: Text(AppLocalizations.of(context)!.chinese)),
-                        ButtonSegment(
-                            value: 'en',
-                            label: Text(AppLocalizations.of(context)!.english)),
+                      if (Platform.isMacOS) ...[
+                        const Divider(height: 20),
+                        Row(children: [
+                          Text(AppLocalizations.of(context)!.pageFlipEffect,
+                              style: TextStyle(fontSize: 13, color: _inkFaint)),
+                          const Spacer(),
+                          SegmentedButton<int>(
+                            showSelectedIcon: false,
+                            style: const ButtonStyle(
+                              visualDensity: VisualDensity(horizontal: -2, vertical: -2),
+                            ),
+                            segments: [
+                              ButtonSegment(value: 0, label: Text(AppLocalizations.of(context)!.systemAnimation)),
+                              ButtonSegment(value: 1, label: Text(AppLocalizations.of(context)!.timeTunnel)),
+                            ],
+                            selected: {_flipEffect},
+                            onSelectionChanged: (sel) {
+                              setState(() => _flipEffect = sel.first);
+                              _setSetting('flipEffect', sel.first);
+                            },
+                          ),
+                        ]),
                       ],
-                      selected: {_language},
-                      showSelectedIcon: false,
-                      onSelectionChanged: (sel) => _setLanguage(sel.first),
+                      const Divider(height: 20),
+                      _tile(SwitchListTile(
+                        title: Text(AppLocalizations.of(context)!.show10NearbyPages, style: TextStyle(fontSize: 14)),
+                        subtitle: Text(AppLocalizations.of(context)!.verticalMinimapOnThe, style: TextStyle(fontSize: 12)),
+                        value: _minimapEnabled,
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        onChanged: (v) {
+                          setState(() => _minimapEnabled = v);
+                          _setSetting('minimap', v);
+                        },
+                      )),
+                      const Divider(height: 20),
+                      _tile(SwitchListTile(
+                        title: Text(AppLocalizations.of(context)!.truePassThroughExperimental, style: TextStyle(fontSize: 14)),
+                        subtitle: Text(AppLocalizations.of(context)!.cardsRevealTheDesktop, style: TextStyle(fontSize: 12)),
+                        value: _panelTransparent && _notebookGlass,
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        onChanged: _notebookGlass
+                            ? (v) {
+                                setState(() => _panelTransparent = v);
+                                _setSetting('panelTransparent', v);
+                              }
+                            : null,
+                      )),
+                    ])),
+                    const SizedBox(height: 16),
+                    // ── 录制与导出 ──
+                    _buildSection(AppLocalizations.of(context)!.recordExport, _buildRecordExportSection()),
+                    const SizedBox(height: 16),
+                    _buildSection(AppLocalizations.of(context)!.dataBackup, _buildBackupButtons()),
+                    const SizedBox(height: 16),
+                    if (_chatIntegration)
+                      _buildSection(AppLocalizations.of(context)!.sharedCanvas, _tile(SwitchListTile(
+                        title: Text(AppLocalizations.of(context)!.streamDoodlesLive, style: TextStyle(fontSize: 14)),
+                        subtitle: Text(AppLocalizations.of(context)!.pushedToThePeer,
+                            style: TextStyle(fontSize: 12)),
+                        value: _shareCanvas,
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        onChanged: (v) {
+                          setState(() => _shareCanvas = v);
+                          _setSetting('shareCanvas', v);
+                        },
+                      ))),
+                    if (_chatIntegration) const SizedBox(height: 16),
+                    _buildSection(AppLocalizations.of(context)!.doodleIdentity, _buildChatAuthSection()),
+                    const SizedBox(height: 16),
+                    // ── 系统与辅助 ──
+                    _buildSection(AppLocalizations.of(context)!.systemAndAssist, _buildSystemSection()),
+                    const SizedBox(height: 16),
+                    // ── 少用的放最后: 语言 / 快捷键 ──
+                    _buildSection(
+                      AppLocalizations.of(context)!.language,
+                      SegmentedButton<String>(
+                        segments: [
+                          ButtonSegment(
+                              value: 'zh',
+                              label: Text(AppLocalizations.of(context)!.chinese)),
+                          ButtonSegment(
+                              value: 'en',
+                              label: Text(AppLocalizations.of(context)!.english)),
+                        ],
+                        selected: {_language},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (sel) => _setLanguage(sel.first),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildSection(
-                    _shortcutSectionTitle(),
-                    _buildShortcutEditor(),
-                  ),
+                    const SizedBox(height: 16),
+                    _buildSection(
+                      _shortcutSectionTitle(),
+                      _buildShortcutEditor(),
+                    ),
+                  ],
                 ],
               ),
             )),

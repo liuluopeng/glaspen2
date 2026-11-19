@@ -4,6 +4,19 @@
 static GlaspenMenuHandler *g_menuHandler = nil;
 static NSStatusItem *g_statusItem = nil;
 static NSMenu *g_menu = nil;
+
+/// 按 tag 找菜单项(含一层子菜单)。菜单把低频项收进子菜单后, 原先
+/// `[g_menu itemWithTag:]` 找不到子菜单里的项, 统一走这个入口。
+static NSMenuItem *gl_menu_item_with_tag(NSInteger tag) {
+    if (!g_menu) return nil;
+    NSMenuItem *found = [g_menu itemWithTag:tag];
+    if (found) return found;
+    for (NSMenuItem *item in [g_menu itemArray]) {
+        NSMenuItem *inner = item.submenu ? [item.submenu itemWithTag:tag] : nil;
+        if (inner) return inner;
+    }
+    return nil;
+}
 static int g_selectedColorIndex = 0; // 0=red (default)
 // 换回上一色/上一粗细的交换键用; 重新选色时更新, 初值给一个可用的另一端。
 static int g_prev_color_index = 9;   // black
@@ -23,22 +36,35 @@ static void update_menu_texts(void) {
     for (int i = 0; i < g_width_preset_count; i++) {
         [[g_menu itemAtIndex:wBase + i] setAttributedTitle:gl_width_item_text(i)];
     }
+    // 顶层布局(颜色/粗细之后): 保存×2 / 新建画布 / 导出▸ / sep /
+    // 涂鸦开关 / 设置 / 更多▸ / sep / 语言 / 退出。
     int base = g_color_preset_count + 1 + g_width_preset_count + 1;
-    [[g_menu itemAtIndex:base+0] setTitle:L(@"保存(含背景)", @"Save (with bg)")];
-    [[g_menu itemAtIndex:base+1] setTitle:L(@"保存(涂鸦)", @"Save (drawing)")];
-    [[g_menu itemAtIndex:base+2] setTitle:L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)")];
-    [[g_menu itemAtIndex:base+3] setTitle:L(@"导出无限画布 PDF (分页)", @"Export infinite canvas PDF (paged)")];
-    [[g_menu itemAtIndex:base+4] setTitle:L(@"导出无限画布 SVG (整幅)", @"Export infinite canvas SVG (whole)")];
-    [[g_menu itemAtIndex:base+5] setTitle:L(@"新建画布", @"New canvas")];
-    [[g_menu itemAtIndex:base+6] setTitle:L(@"开机自启", @"Launch at login")];
-    [[g_menu itemAtIndex:base+7] setTitle:L(@"磨砂玻璃", @"Frosted Glass")];
-    [[g_menu itemAtIndex:base+8] setTitle:L(@"笔迹描边", @"Stroke outline")];
-    [[g_menu itemAtIndex:base+9] setTitle:L(@"无限画布", @"Infinite canvas")];
+    [[g_menu itemAtIndex:base + 0] setTitle:L(@"保存(含背景)", @"Save (with bg)")];
+    [[g_menu itemAtIndex:base + 1] setTitle:L(@"保存(涂鸦)", @"Save (drawing)")];
+    [[g_menu itemAtIndex:base + 2] setTitle:L(@"新建画布", @"New canvas")];
+    [[g_menu itemAtIndex:base + 3] setTitle:L(@"导出", @"Export")];
+    [[g_menu itemAtIndex:base + 6] setTitle:L(@"设置...", @"Settings...")];
+    [[g_menu itemAtIndex:base + 7] setTitle:L(@"更多", @"More")];
+    [[g_menu itemAtIndex:base + 9] setTitle:L(@"English", @"中文")];
+    [[g_menu itemAtIndex:base + 10] setTitle:L(@"退出", @"Quit")];
+    // 子菜单条目也要跟着语言走(索引与 run.m 的构建顺序一致)
+    NSMenu *exportMenu = [[g_menu itemAtIndex:base + 3] submenu];
+    if (exportMenu) {
+        [[exportMenu itemAtIndex:0] setTitle:L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)")];
+        [[exportMenu itemAtIndex:1] setTitle:L(@"导出无限画布 PDF (分页)", @"Export infinite canvas PDF (paged)")];
+        [[exportMenu itemAtIndex:2] setTitle:L(@"导出无限画布 SVG (整幅)", @"Export infinite canvas SVG (whole)")];
+    }
+    NSMenu *moreMenu = [[g_menu itemAtIndex:base + 7] submenu];
+    if (moreMenu) {
+        [[moreMenu itemAtIndex:0] setTitle:L(@"开机自启", @"Launch at login")];
+        [[moreMenu itemAtIndex:1] setTitle:L(@"磨砂玻璃", @"Frosted Glass")];
+        [[moreMenu itemAtIndex:2] setTitle:L(@"笔迹描边", @"Stroke outline")];
+        [[moreMenu itemAtIndex:3] setTitle:L(@"无限画布", @"Infinite canvas")];
+        // 第 4 项(固定/飘渺模式)的标题由模式切换逻辑动态维护, 这里不覆盖
+    }
     // Update toggle item title based on state
-    NSMenuItem *toggleItem = [g_menu itemWithTag:888];
+    NSMenuItem *toggleItem = gl_menu_item_with_tag(888);
     if (toggleItem) [toggleItem setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
-    [[g_menu itemAtIndex:base+13] setTitle:L(@"English", @"中文")];
-    [[g_menu itemAtIndex:base+14] setTitle:L(@"退出", @"Quit")];
 }
 
 // ── 颜色/粗细菜单条目的富文本:内嵌小图标 + 名称 ──
@@ -280,7 +306,7 @@ static void toggle_enabled(void) {
         ? L(@"涂鸦已开启", @"Drawing enabled")
         : L(@"涂鸦已关闭", @"Drawing disabled"));
     // Update menu item
-    NSMenuItem *item = [g_menu itemWithTag:888];
+    NSMenuItem *item = gl_menu_item_with_tag(888);
     if (item) {
         [item setState:g_enabled ? NSControlStateValueOn : NSControlStateValueOff];
         [item setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
@@ -404,7 +430,7 @@ static void toggle_canvas_mode(void) {
         show_notification(L(@"固定画布涂鸦模式", @"Fixed canvas mode"));
     }
     // Sync the menu item (title shows the mode you switch TO, like toggleDraw)
-    NSMenuItem *item = [g_menu itemWithTag:778];
+    NSMenuItem *item = gl_menu_item_with_tag(778);
     if (item) {
         [item setState:g_ethereal_canvas ? NSControlStateValueOn : NSControlStateValueOff];
         [item setTitle:g_ethereal_canvas
@@ -647,11 +673,13 @@ static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) {
         @"undo": @"cmd+ctrl+Z",
         @"page_prev": @"cmd+ctrl+`",
         @"page_next": @"cmd+ctrl+1",
-        @"color_swap": @"cmd+ctrl+E",
-        // 避开微信「显示/隐藏主面板」默认 ⌘⌃W; T = thickness。
-        @"width_swap": @"cmd+ctrl+T",
+        // 默认只绑核心 5 个动作 + 自由涂鸦镜头 6 个键。
+        // 其余动作默认不绑(仍可在 设置 → 快捷键 里绑定): 新用户不被
+        // 一堆全局热键打扰, 也少占系统按键。
+        @"color_swap": @"",
+        @"width_swap": @"",
         @"toggle_draw": @"cmd+ctrl+V",
-        @"toggle_free_canvas": @"cmd+ctrl+I",
+        @"toggle_free_canvas": @"",
         // 左手镜头: 小指 ⌃ + 拇指 ⌥ + WASD/ZX。选冷门组合避开微信 ⌘⌃W
         // 与常见 ⌥+字母; 注意 ⌃⌥ 也是 VoiceOver 修饰键(未开 VO 时无冲突)。
         @"canvas_pan_left": @"ctrl+alt+A",
@@ -660,11 +688,11 @@ static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) {
         @"canvas_pan_down": @"ctrl+alt+S",
         @"canvas_zoom_in": @"ctrl+alt+X",
         @"canvas_zoom_out": @"ctrl+alt+Z",
-        @"clear": @"cmd+ctrl+C",
-        @"export": @"cmd+ctrl+G",
-        @"copy_svg": @"cmd+ctrl+S",
-        @"toggle_glass": @"cmd+ctrl+B",
-        @"toggle_ethereal": @"cmd+ctrl+X",
+        @"clear": @"",
+        @"export": @"",
+        @"copy_svg": @"",
+        @"toggle_glass": @"",
+        @"toggle_ethereal": @"",
         @"settings": @"cmd+ctrl+D",
     };
 }
@@ -852,10 +880,11 @@ static id gl_shortcut_migrate_saved(NSString *action, id raw) {
     NSArray<NSString *> *legacy = gl_shortcut_legacy_defaults(action);
     if (!legacy) return raw;
     NSString *norm = gl_normalize_chord(raw);
-    if (norm && [legacy containsObject:norm]) {
-        return gl_shortcut_defaults()[action];
-    }
-    return raw;
+    if (!norm || ![legacy containsObject:norm]) return raw;
+    // 宽度动作的新默认已改为"不绑定", 但老用户明确用过的宽度热键
+    // 迁到 ⌘⌃T 而不是直接丢掉; 镜头动作的目标就是当前默认值。
+    if ([action isEqualToString:@"width_swap"]) return @"cmd+ctrl+T";
+    return gl_shortcut_defaults()[action];
 }
 
 static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved) {
@@ -1177,7 +1206,9 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             gl_settings_set_chat_integration([value boolValue]);
         } else if ([key isEqualToString:@"showBubbleTab"]) {
             // 「气泡消息」tab 显隐(默认关; 与 showFreeCanvas 同款纯面板开关)
+            // tab 关闭时同时关掉气泡捕获: 不占笔事件 CPU、不落库。
             glaspen2_save_bool_setting("show_bubble_tab", [value boolValue] ? 1 : 0);
+            glaspen2_bubble_set_capture([value boolValue] ? 1 : 0);
         } else if ([key isEqualToString:@"bubbleReplaySpeed"]) {
             // 气泡重播速度倍率(1/2/4, 钳 1..8; 纯面板自用设置)
             NSInteger sp = [value integerValue];
@@ -1529,7 +1560,7 @@ static void gl_settings_set_grid(BOOL on) {
 
 static void gl_settings_set_launch(BOOL on) {
     glaspen2_set_launch_at_login(on ? 1 : 0);
-    NSMenuItem *item = [g_menu itemWithTag:777];
+    NSMenuItem *item = gl_menu_item_with_tag(777);
     [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
     sync_settings_panel();
 }
@@ -1545,7 +1576,7 @@ static void gl_glass_apply(void) {
         g_glass_view.alphaValue = visual * 2.0; // map to visible range
         g_glass_view.hidden = !g_glass_enabled || hidden_by_ethereal;
     }
-    NSMenuItem *gi = [g_menu itemWithTag:444];
+    NSMenuItem *gi = gl_menu_item_with_tag(444);
     [gi setState:g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff];
     if (g_glass_toggle) g_glass_toggle.state = g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff;
     g_glass_buttons[0].state = (fabs(g_glass_opacity - 0.50) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
@@ -1565,7 +1596,7 @@ static void gl_settings_set_glass_opacity(double alpha) {
 
 static void gl_settings_set_enabled(BOOL on) {
     g_enabled = on;
-    NSMenuItem *item = [g_menu itemWithTag:888];
+    NSMenuItem *item = gl_menu_item_with_tag(888);
     [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
     [item setTitle:on ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
     update_status_icon_state();
