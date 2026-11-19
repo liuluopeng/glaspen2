@@ -1764,10 +1764,13 @@ static BOOL perform_action(NSString *action) {
     double z = (g_zoom > 0.05) ? g_zoom : 1.0;
     double step = 80.0 / z;
     double dx = 0.0, dy = 0.0;
-    if ([action isEqualToString:@"canvas_pan_left"])       dx = -step;
-    else if ([action isEqualToString:@"canvas_pan_right"]) dx = step;
-    else if ([action isEqualToString:@"canvas_pan_up"])    dy = -step;
-    else if ([action isEqualToString:@"canvas_pan_down"])  dy = step;
+    // 按键方向 = 视野移动方向(与普通软件一致): 按左 → 镜头左移(内容右移),
+    // 按上 → 镜头上移(内容下移)。canvas_pan_by 内部是 pan -= d, 所以 d 取正
+    // 表示镜头朝该方向移动。
+    if ([action isEqualToString:@"canvas_pan_left"])       dx = step;
+    else if ([action isEqualToString:@"canvas_pan_right"]) dx = -step;
+    else if ([action isEqualToString:@"canvas_pan_up"])    dy = step;
+    else if ([action isEqualToString:@"canvas_pan_down"])  dy = -step;
     canvas_pan_by(dx, dy);
     return YES;
   }
@@ -2229,8 +2232,11 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
         NSPoint loc = [nsevent locationInWindow];
         double z = (g_zoom > 0.05) ? g_zoom : 1.0;
         // 内容跟随鼠标: 向右/向上拖 → 画布向右/向上移动。
+        // Y 取反: locationInWindow 是 AppKit 左下原点(向上为正), 画布/视图
+        // 是左上原点(向下为正); 不取反时上下拖动会像 macOS「自然滚动」
+        // 一样与鼠标相反。
         camera_mouse_queue_pan((loc.x - g_camera_mouse_last.x) / z,
-                               (loc.y - g_camera_mouse_last.y) / z);
+                               (g_camera_mouse_last.y - loc.y) / z);
         g_camera_mouse_last = loc;
       }
     } else {
