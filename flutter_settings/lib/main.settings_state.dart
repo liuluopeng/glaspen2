@@ -100,7 +100,6 @@ extension _SettingsStateUi on _SettingsPageState {
           _language = (settings['language'] as String?) == 'en' ? 'en' : 'zh';
           _shortcuts = _decodeShortcuts(settings['shortcuts']);
           _syncTabCount();
-          _connected = true;
         });
         _applyLanguage(_language);
         // 设置就绪后顺手预取活页本首屏缩略图(一次批量往返),

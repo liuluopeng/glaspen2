@@ -212,7 +212,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   double _canvasEditScale = 1.0;
   Offset _canvasEditOffset = Offset.zero;
   final List<(List<int>, double, double)> _canvasUndoMoves = [];
-  bool _connected = false;
   Timer? _reloadTimer;
 
   // GIF quality/speed (⌘⌃R 快捷录制)
@@ -466,7 +465,7 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
       backgroundColor: Colors.transparent,
       body: Column(
         children: [
-          // 顶栏:tab + 未连接指示(原 AppBar 已按需求去掉)
+          // 顶栏:tab(原 AppBar 已按需求去掉)
           Container(
             color: _paperBg,
             padding: const EdgeInsets.only(top: 6),
@@ -491,11 +490,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
                   ],
                 ),
                 ),
-                if (!_connected)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 12),
-                    child: Icon(Icons.cloud_off, color: Colors.red, size: 18),
-                  ),
               ],
             ),
           ),
@@ -512,8 +506,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
                 children: [
                   // ── 书写: 最常用的放最前 ──
                   _buildSection(AppLocalizations.of(context)!.pen, _buildPenSection()),
-                  const SizedBox(height: 16),
-                  _buildSection(AppLocalizations.of(context)!.about, _buildAboutSection()),
                   const SizedBox(height: 16),
                   _buildMoreSettingsToggle(),
                   if (_showAdvanced) ...[
@@ -636,6 +628,9 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
                       _buildShortcutEditor(),
                     ),
                   ],
+                  const SizedBox(height: 16),
+                  // 一般软件的「检查更新」都在最底部: 关于区(版本 + 检查更新)放最后
+                  _buildSection(AppLocalizations.of(context)!.about, _buildAboutSection()),
                 ],
               ),
             )),
