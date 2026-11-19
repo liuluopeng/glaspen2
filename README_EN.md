@@ -14,8 +14,8 @@ Ideal for remote meetings, teaching, screen annotation, and quick notes.
 
 ## Platforms
 
-- macOS
-- Windows (reads the pen via Raw HID; pressure works, no Microsoft Ink required)
+- macOS 12+ (current release: Apple Silicon / arm64)
+- Windows 10/11 x64 (reads the pen via Raw HID; pressure works, no Microsoft Ink required)
 
 ## Two canvas modes
 
@@ -44,7 +44,7 @@ Switch from the tabs at the top of the settings panel, or the "Infinite canvas" 
   The infinite canvas has its own exports: a **paged PDF** sized to the screen, or a **whole-canvas SVG** (content bounding box, unaffected by the current lens).
 
 - **Grid** adjustable spacing; a heavier boundary line is drawn only at multiples of the screen size (page boundary in Notebook mode, one per screen on the infinite canvas).
-  Optional **column guides**: halves or a 3×3 grid (purely visual).
+  Optional **column guides**: halves, a 3×3 grid, or Cornell (30% cue column + 75% summary line; purely visual).
 
 - **Stroke outline / soft shadow** outline = black-and-white marching-ants dashes so strokes read on light or dark backgrounds; soft shadow = a gentle dark halo under the strokes, keeps them visible on same-color backgrounds. Both can be combined.
 
@@ -95,10 +95,8 @@ Settings · Notebook · Free doodle"]
 
 | Function | macOS | Windows |
 | --- | --- | --- |
-| New canvas | `⌘ + ⌃ + C` | `Ctrl + Alt + C` |
-| Undo last stroke | `⌘ + ⌃ + Z` | `Ctrl + Alt + Z` |
 | Toggle drawing | `⌘ + ⌃ + V` | `Ctrl + Alt + V` |
-| Undo | `⌘ + ⌃ + Z` | `Ctrl + Alt + Z` |
+| Undo last stroke | `⌘ + ⌃ + Z` | `Ctrl + Alt + Z` |
 | Previous / next page (whole page) | `⌘ + ⌃ + ~ / 1` | `Ctrl + Alt + ~` / `Ctrl + Alt + 1` |
 | Open settings | `⌘ + ⌃ + D` | `Ctrl + Alt + D` |
 | Quit | | `Ctrl + Alt + Q` |
@@ -120,3 +118,9 @@ Follow the on-screen guide to grant Accessibility and Screen Recording permissio
 
 - macOS: Rust + Flutter
 - Windows: Rust + Flutter
+
+## Privacy
+
+- Doodle data stays on this machine by default; update checks only contact GitHub, and no telemetry is collected.
+- Handwritten messages / shared canvas / OCR are optional; nothing is sent unless a service address is configured.
+- See [docs/privacy.md](./docs/privacy.md).

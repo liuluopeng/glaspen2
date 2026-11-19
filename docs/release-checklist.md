@@ -10,6 +10,7 @@
 - [ ] `flutter_settings/pubspec.yaml` 的 `version` 与上面一致
 - [ ] `Cargo.lock`、`flutter_settings/pubspec.lock` 已提交（应用项目必须锁）
 - [ ] `CHANGELOG.md` 有对应版本段落，日期与 tag 一致
+- [ ] 每次 bump 的版本都要有对应 tag 与 CHANGELOG 段落（0.5.2 曾只 bump 未发，勿重演）
 
 ## 1. 质量门
 
@@ -27,6 +28,9 @@ sh scripts/lint.sh
 - [ ] `cd flutter_settings && fvm flutter analyze`（0 issue）
 - [ ] `cd flutter_settings && fvm flutter test`
 
+> CI 未固定 Rust 版本（用最新 stable）。升级 stable 后先本地跑一遍
+> `sh scripts/lint.sh`，让新 fmt/clippy lint 导致的红在本地暴露，别等 CI。
+
 Windows 侧（有真机时）：
 
 - [ ] `cargo check --workspace --exclude glaspen2_installer --all-targets`
@@ -41,7 +45,7 @@ macOS：
 - [ ] 翻页（⌥⌘↑/↓、⌘⌃`/1）整页动效正常，笔迹不串页
 - [ ] 关掉设置面板再打开（⌘⌃D），状态还在
 - [ ] 保存（涂鸦 / 含背景）各一次；macOS 12/13 也要试含背景
-- [ ] GIF 录制、PDF 导出（含 OCR 文本层可复制）
+- [ ] GIF 录制、PDF 导出（OCR 文本层需配置 axum OCR 服务；未配置时 PDF 无文本层属预期）
 - [ ] 活页本：缩略图、minimap、重排、多选删除、页面详情圈选
 - [ ] 检查更新 → 立即更新 → 自动重启 → 版本号变化
 - [ ] 睡眠唤醒、双屏热插拔、4K/缩放屏各一次
