@@ -11,17 +11,14 @@ static DEVICE: OnceLock<String> = OnceLock::new();
 pub fn device_uuid() -> String {
     DEVICE
         .get_or_init(|| {
-            if let Some(v) =
-                crate::runtime().block_on(crate::db::load_setting("device_uuid"))
-            {
+            if let Some(v) = crate::runtime().block_on(crate::db::load_setting("device_uuid")) {
                 let v = v.trim().to_string();
                 if !v.is_empty() {
                     return v;
                 }
             }
             let id = uuid::Uuid::now_v7().to_string();
-            crate::runtime()
-                .block_on(crate::db::save_setting("device_uuid", &id));
+            crate::runtime().block_on(crate::db::save_setting("device_uuid", &id));
             tracing::info!(%id, "生成设备 UUID(v7)");
             id
         })

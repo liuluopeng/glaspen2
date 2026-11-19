@@ -292,11 +292,7 @@ impl Settings {
             show_bubble_tab: b("showBubbleTab"),
             bubble_replay_speed: {
                 let sp = i("bubbleReplaySpeed");
-                if sp < 1 {
-                    1
-                } else {
-                    sp.min(8)
-                }
+                if sp < 1 { 1 } else { sp.min(8) }
             },
             bubble_replay_hold_last: v
                 .get("bubbleReplayHoldLast")
@@ -336,12 +332,12 @@ pub async fn get_settings() -> Option<Settings> {
 /// 「气泡消息」tab: 全部已完结消息的 JSON(自适应节奏/空间跳变/翻页分段,
 /// 结构对齐 ShareStroke, 见 export/bubbles.rs)。
 pub async fn bubble_messages() -> String {
-    run_blocking(|| glaspen_core::export::bubbles::messages_json())
+    run_blocking(glaspen_core::export::bubbles::messages_json)
 }
 
 /// 打开气泡 tab 时调用: 把进行中的段强制结为一条消息。
 pub async fn bubble_flush() {
-    run_blocking(|| glaspen_core::export::bubbles::flush_now())
+    run_blocking(glaspen_core::export::bubbles::flush_now)
 }
 
 /// NAS 备份(设置 → 数据 → 立即备份): 整库一致性快照 → POST 到 NAS 的

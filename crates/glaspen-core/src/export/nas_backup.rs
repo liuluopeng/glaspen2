@@ -21,8 +21,11 @@ pub fn backup_now() -> String {
         Ok(mut v) => {
             v["ok"] = json!(true);
             v["elapsed_ms"] = json!(t0.elapsed().as_millis() as u64);
-            tracing::info!(elapsed_ms = v["elapsed_ms"].as_u64().unwrap_or(0),
-                           "NAS 备份完成: {}", v);
+            tracing::info!(
+                elapsed_ms = v["elapsed_ms"].as_u64().unwrap_or(0),
+                "NAS 备份完成: {}",
+                v
+            );
             v.to_string()
         }
         Err((error, hint)) => {
@@ -46,11 +49,8 @@ fn backup_inner() -> Result<serde_json::Value, (String, String)> {
 
     // 1) 一致性快照到临时目录(VACUUM INTO; 目标必须不存在)
     let ts_ms = chrono::Utc::now().timestamp_millis().unsigned_abs();
-    let tmp = std::env::temp_dir().join(format!(
-        "glaspen2-nas-{}-{}.db",
-        std::process::id(),
-        ts_ms
-    ));
+    let tmp =
+        std::env::temp_dir().join(format!("glaspen2-nas-{}-{}.db", std::process::id(), ts_ms));
     let _ = std::fs::remove_file(&tmp);
     crate::runtime()
         .block_on(crate::db::snapshot_to(&tmp))
@@ -69,8 +69,8 @@ fn upload(
 ) -> Result<serde_json::Value, (String, String)> {
     use sha2::Digest;
     use std::io::Read;
-    let mut file = std::fs::File::open(snapshot)
-        .map_err(|e| (format!("打开快照失败: {e}"), String::new()))?;
+    let mut file =
+        std::fs::File::open(snapshot).map_err(|e| (format!("打开快照失败: {e}"), String::new()))?;
     let size_bytes = file
         .metadata()
         .map_err(|e| (format!("读取快照大小失败: {e}"), String::new()))?
@@ -86,11 +86,13 @@ fn upload(
         }
         hasher.update(&buf[..n]);
     }
-    let sha256: String =
-        hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    let sha256: String = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
 
-    let stroke_count =
-        crate::runtime().block_on(crate::db::stroke_count());
+    let stroke_count = crate::runtime().block_on(crate::db::stroke_count());
     let device = crate::device::device_uuid();
 
     let url = format!("{nas_url}/api/glaspen/backups");
@@ -104,8 +106,8 @@ fn upload(
     let agent = ureq::Agent::new_with_config(config);
 
     // 重新打开文件从头流式上传(body = 原始字节流, NAS 侧直接落盘)
-    let mut body = std::fs::File::open(snapshot)
-        .map_err(|e| (format!("打开快照失败: {e}"), String::new()))?;
+    let mut body =
+        std::fs::File::open(snapshot).map_err(|e| (format!("打开快照失败: {e}"), String::new()))?;
     let mut resp = agent
         .post(&url)
         .header("Content-Type", "application/octet-stream")
@@ -124,8 +126,8 @@ fn upload(
         .body_mut()
         .read_to_string()
         .map_err(|e| (format!("读取 NAS 应答失败: {e}"), String::new()))?;
-    let v: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|e| (format!("NAS 应答不是合法 JSON: {e}"), text.into()))?;
+    let v: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| (format!("NAS 应答不是合法 JSON: {e}"), text))?;
     if v.get("ok").and_then(|b| b.as_bool()) != Some(true) {
         let msg = v
             .get("error")
@@ -156,6 +158,9 @@ mod tests {
     fn url_trailing_slash_is_trimmed() {
         // 纯字符串处理: 保证拼接端点不会出现双斜杠
         let u = "http://nas:8080/".trim_end_matches('/').to_string();
-        assert_eq!(format!("{u}/api/glaspen/backups"), "http://nas:8080/api/glaspen/backups");
+        assert_eq!(
+            format!("{u}/api/glaspen/backups"),
+            "http://nas:8080/api/glaspen/backups"
+        );
     }
 }

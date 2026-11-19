@@ -151,6 +151,7 @@ fn next_typical(gap_ms: u64, typical: f64) -> f64 {
 /// 2. **笔静默超时**: 距最近一次笔事件(悬空移动/落笔/抬笔) >= 节奏阈值 → 分。
 ///    悬空移动持续刷新心跳, 所以"悬停构思"再久也不断; 无笔信号(纯鼠标,
 ///    activity_gap_ms = None)回退旧的笔迹间隔规则。
+///
 /// (空间跳变规则已废 —— 位置不构成消息边界, 见 THRESHOLD_MIN_MS 注释。)
 fn should_split(
     pen_cold: bool,
@@ -277,7 +278,7 @@ fn decode_strokes(payload: &str) -> Vec<BubbleStroke> {
             let gap_ms = s.get("g").and_then(Value::as_u64).unwrap_or(0);
             let pts_v = s.get("pts")?.as_array()?;
             let mut pts = Vec::with_capacity(pts_v.len() / 3);
-            for chunk in pts_v.chunks_exact(3) {
+            for chunk in pts_v.as_chunks::<3>().0 {
                 pts.push((chunk[0].as_f64()?, chunk[1].as_f64()?, chunk[2].as_f64()?));
             }
             if pts.is_empty() {

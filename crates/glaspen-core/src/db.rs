@@ -1189,18 +1189,16 @@ mod platform {
         let Some(pool) = DB.get() else {
             return 0;
         };
-        let paged: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM strokes WHERE deleted_at IS NULL",
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0);
-        let infinite: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM infinite_strokes WHERE deleted_at IS NULL",
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0);
+        let paged: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM strokes WHERE deleted_at IS NULL")
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
+        let infinite: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM infinite_strokes WHERE deleted_at IS NULL")
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
         paged + infinite
     }
 

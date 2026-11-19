@@ -18,7 +18,6 @@ pub fn macos_run() {
         glaspen2_macos_refresh_infinite();
     });
 
-
     unsafe extern "C" {
         fn glaspen2_run();
     }
