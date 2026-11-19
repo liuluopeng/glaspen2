@@ -3,6 +3,12 @@
 // 鼠标 ⌃⌥ + 左键拖动镜头(临时抓手)状态; 由 event tap 维护。
 static BOOL g_camera_mouse_dragging = NO;
 static NSPoint g_camera_mouse_last = {0, 0};
+// 鼠标拖动平移是高频事件; 累积位移, 每 ~16ms 只重建一次 surface.
+static double g_camera_pan_pending_dx = 0.0;
+static double g_camera_pan_pending_dy = 0.0;
+static BOOL g_camera_pan_scheduled = NO;
+static uint64_t g_camera_pan_gen = 0;
+static void camera_mouse_cancel_pan(void);
 
 static void pageview_frame_draw(void);
 static void rebuild_surface_from_strokes(void) {
@@ -382,6 +388,7 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
   if (g_infinite_canvas == on)
     return;
   g_camera_mouse_dragging = NO; // 模式切换时结束任何鼠标抓手
+  camera_mouse_cancel_pan();
   finish_active_stroke(); // 先把在写的笔画落库到"旧"存储
   if (g_infinite_canvas)
     canvas_infinite_persist(); // 离开无限画布前存镜头
@@ -458,6 +465,41 @@ static void canvas_pan_by(double dx, double dy) {
   g_pan_y -= dy;
   canvas_apply_transform();
   peek_lens_change(); // 飘渺模式下短暂露出笔迹, 让镜头移动可见
+}
+
+/// 鼠标拖动平移: 高频事件只累积位移, 每帧最多真正重建一次 surface。
+static void camera_mouse_flush_pan(void) {
+  g_camera_pan_scheduled = NO;
+  ++g_camera_pan_gen; // 作废已排队的 block
+  double dx = g_camera_pan_pending_dx;
+  double dy = g_camera_pan_pending_dy;
+  g_camera_pan_pending_dx = 0.0;
+  g_camera_pan_pending_dy = 0.0;
+  if ((dx != 0.0 || dy != 0.0) && g_infinite_canvas && g_enabled &&
+      !g_stroke_active) {
+    canvas_pan_by(dx, dy);
+  }
+}
+
+static void camera_mouse_queue_pan(double dx, double dy) {
+  g_camera_pan_pending_dx += dx;
+  g_camera_pan_pending_dy += dy;
+  if (g_camera_pan_scheduled) return;
+  g_camera_pan_scheduled = YES;
+  uint64_t gen = ++g_camera_pan_gen;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(16 * NSEC_PER_MSEC)),
+                 dispatch_get_main_queue(), ^{
+                   if (gen != g_camera_pan_gen) return;
+                   camera_mouse_flush_pan();
+                 });
+}
+
+/// 模式切换/停用涂鸦时调用: 丢弃未应用的鼠标拖动位移。
+static void camera_mouse_cancel_pan(void) {
+  g_camera_pan_pending_dx = 0.0;
+  g_camera_pan_pending_dy = 0.0;
+  g_camera_pan_scheduled = NO;
+  ++g_camera_pan_gen;
 }
 
 // 缩放镜头(键盘/滚轮共用):以鼠标位置为锚,zoom ∈ (0.05, 1.0]。
@@ -2155,6 +2197,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
   // leave the cursor hidden.
   if (!g_enabled) {
     g_camera_mouse_dragging = NO;
+    camera_mouse_cancel_pan();
     restore_system_cursor();
     return event;
   }
@@ -2186,11 +2229,12 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
         NSPoint loc = [nsevent locationInWindow];
         double z = (g_zoom > 0.05) ? g_zoom : 1.0;
         // 内容跟随鼠标: 向右/向上拖 → 画布向右/向上移动。
-        canvas_pan_by((loc.x - g_camera_mouse_last.x) / z,
-                      (loc.y - g_camera_mouse_last.y) / z);
+        camera_mouse_queue_pan((loc.x - g_camera_mouse_last.x) / z,
+                               (loc.y - g_camera_mouse_last.y) / z);
         g_camera_mouse_last = loc;
       }
     } else {
+      camera_mouse_flush_pan();
       g_camera_mouse_dragging = NO;
     }
     return NULL;
