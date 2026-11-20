@@ -149,3 +149,34 @@ A 先行 (一份 UI 成立), 中长期走向 B (宿主对称 + mac 构建瘦身)
    回归 `cargo build` / `cargo test` / `fvm flutter analyze`。
 
 ### 状态: 未实施, 方案 A 待确认 (讨论日期 2026-11-20)
+
+### 补充 (2026-11-20): 附件 / 非墨迹内容怎么办 (PDF、文本、图片)
+
+- 语料里的"附件"其实极少: 1 个 327 页 PDF 批注 `.xopp`(background 属性里带 PDF 文件名,
+  原 PDF 181MB 就在同目录; 但只画了 5 笔)、`quick_note.xopp` 有 2 条 `<text>`、
+  `quick_note.rnote` 有 1 个 textstroke、全语料共 14 个 shapestroke; 0.13/0.14 语料
+  没有内嵌图片(只有 0.9 测试文件有 3 个 bitmapimage)。
+- 两种格式怎么装附件:
+  - xopp: `<background type="pdf" domain="absolute|attach" filename=... pageno=N>`
+    (attach 时 PDF 打进 zip 的 bg.pdf; absolute 时指向外部 PDF), `<background type="pixmap">`
+    图片背景, `<image>`(base64 内联或 zip 附件), `<text font size color x y>` 真文本,
+    `<teximage>` LaTeX(本质是一张 PNG 二进制), `<audio>` 录音附件。
+  - rnote: 没有 PDF 背景类型; PDF 页是 bitmapimage/vectorimage 笔画, textstroke 是真文本
+    (TextStyle + transform)。
+- glaspen2 只有墨迹层。要保留附件 = 给页面加"内容层"(底图), 不是给 strokes 加字段:
+  - 新表 `page_backgrounds(screen_id, png BLOB, src_kind, src_ref, created_at)`;
+    screens/strokes 不动; 页底图在墨迹下面渲染.
+  - 导入时把非墨迹内容合成成一张页底图: PDF 页用 macOS CoreGraphics 光栅化(ObjC shim,
+    CGPDFDocument)、pixmap/<image>/<teximage>/rnote image 直接解码合成、rnote shape 画进去、
+    文本先用 cairo 默认字体近似或跳过(准确字体/排版不保证).
+  - **只给"有墨迹的页"生成底图**: 327 页 PDF 书只有 5 页有笔 → 只存 5 张底图, 不存 327 张.
+  - 渲染/导出: draw_rebuild、render_page_into、缩略图、隧道缓存、PDF/PNG/SVG 导出都在
+    墨迹之前画底图, 页 fit 变换复用现有管线; 橡皮/撤销只碰墨迹(底图天然只读), 批注仍可编辑.
+  - 存储: 长边 1200-2000px PNG 约 80-300KB/页(JPEG 更省), 且只存有笔迹页.
+- 代价: 约 +4-7 人日: 底图存储+渲染+导出 2-3 天; macOS PDF 光栅 0.5-1 天;
+  xopp/rnote 附件合成 2-3 天; 文本近似 0.5-1 天。Windows 的 PDF 光栅可后补 —— 导入时
+  已把底图烤成 PNG, 数据可跨机。
+- 若只想"看"不想编辑: 可以走外部整页光栅存档(rnote-cli / xournalpp 导出 PDF/PNG),
+  同样需要上面的底图层, 只是不导入矢量墨迹; 不是捷径.
+- 结论: 一期(纯墨迹导入)照旧; 若要查看/继续批注带 PDF 的旧笔记, 单独做"页内容层".
+  它本身也是"在 PDF/图片上批注"的能力, 不只是导入的附属功能.
