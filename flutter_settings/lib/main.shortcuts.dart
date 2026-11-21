@@ -38,9 +38,11 @@ const List<_ShortcutAction> _shortcutActions = [
   _ShortcutAction('toggle_glass', '磨砂玻璃', 'Frosted glass'),
   _ShortcutAction('toggle_ethereal', '飘渺画布', 'Ethereal canvas'),
   _ShortcutAction('settings', '打开设置', 'Open settings'),
+  _ShortcutAction('quit', '彻底退出程序', 'Quit app completely'),
 ];
 
-/// macOS 默认绑定: 与 v0.6.0 内置在动作表里的值一字不差, 不要改。
+/// macOS 默认绑定: 既有动作与 v0.6.0 内置值一字不差, 不要改
+/// (quit 是新增的「彻底退出」动作, 默认 ⌘⌃⇧Q)。
 /// 默认只绑核心动作 + 自由涂鸦镜头; 其余默认不绑, 可在编辑器里自行绑定。
 /// ⌘⌃W 与微信「显示/隐藏主面板」默认冲突, 所以换粗细默认不绑(T = thickness)。
 /// 左手镜头: 小指 ⌃ + 拇指 ⌥ + WASD/ZX; 注意 ⌃⌥ 也是 VoiceOver 修饰键(未开 VO 时无冲突)。
@@ -64,6 +66,8 @@ const Map<String, String> _shortcutDefaultsMac = {
   'toggle_glass': '',
   'toggle_ethereal': '',
   'settings': 'cmd+ctrl+D',
+  // 彻底退出: ⌘⌃Q 被 macOS 锁屏占用(保留组合), 加 ⇧ 区分。
+  'quit': 'cmd+ctrl+shift+Q',
 };
 
 /// Windows 默认绑定: 必须与 Rust(Windows 壳)侧的默认表逐字一致。
@@ -90,6 +94,8 @@ const Map<String, String> _shortcutDefaultsWindows = {
   'toggle_glass': '',
   'toggle_ethereal': '',
   'settings': 'ctrl+alt+D',
+  // 与旧固定热键一致(退出动作从固定表迁入可配置表, 默认值不变)。
+  'quit': 'ctrl+alt+Q',
 };
 
 /// 当前平台的默认绑定表: _decodeShortcuts 兜底与「恢复默认」都走这里。
@@ -108,10 +114,10 @@ const Set<String> _reservedShortcutsMac = {
   'cmd+ctrl+F', // macOS 全屏
 };
 
-/// Windows 壳占用的组合: Q 退出、R 按住录 GIF、2/3 按住手写。
+/// Windows 壳占用的组合: R 按住录 GIF、2/3 按住手写。
+/// 退出(Ctrl+Alt+Q)已迁入可配置动作表, 不算保留组合 —— 「彻底退出程序」可以改键。
 /// 注意 Ctrl+Alt+方向键 / PageUp/PageDown 不在保留集合里 —— 默认镜头/缩放要用。
 const Set<String> _reservedShortcutsWindows = {
-  'ctrl+alt+Q',
   'ctrl+alt+R',
   'ctrl+alt+2',
   'ctrl+alt+3',
@@ -119,6 +125,12 @@ const Set<String> _reservedShortcutsWindows = {
 
 Set<String> _reservedShortcuts() =>
     Platform.isWindows ? _reservedShortcutsWindows : _reservedShortcutsMac;
+
+/// Windows 没有菜单栏/托盘: 「打开设置」和「彻底退出程序」是重开面板/退出进程的
+/// 唯一入口。后端会强制回退默认(hotkeys.rs build_effective), 面板同步禁用清除,
+/// 避免界面显示「未绑定」而实际仍生效。
+bool _shortcutForceBound(String actionId) =>
+    Platform.isWindows && (actionId == 'settings' || actionId == 'quit');
 
 /// 键帽右下角的一句话动作提示(旧版快捷键按钮的 label 信息)。
 /// 取该键当前绑定的第一个动作; 同键多动作显示 "+N"。
@@ -142,6 +154,7 @@ const Map<String, String> _shortcutHintsZh = {
   'toggle_glass': '玻璃',
   'toggle_ethereal': '飘渺',
   'settings': '设置',
+  'quit': '退出',
 };
 
 const Map<String, String> _shortcutHintsEn = {
@@ -164,6 +177,7 @@ const Map<String, String> _shortcutHintsEn = {
   'toggle_glass': 'Glass',
   'toggle_ethereal': 'Mist',
   'settings': 'Setup',
+  'quit': 'Quit',
 };
 
 /// USB HID usage(去掉 page, 即 & 0xffff) → 后端规范键名。
@@ -502,9 +516,9 @@ extension _SettingsShortcutsUi on _SettingsPageState {
             visualDensity: VisualDensity.compact,
             tooltip: _shortcutText('清除', 'Clear'),
             icon: const Icon(Icons.close, size: 16),
-            // Windows 没有菜单栏/托盘,「打开设置」是重开面板的唯一入口:
-            // 后端会强制回退默认, 这里直接禁用清除, 避免显示与生效不一致。
-            onPressed: chord.isEmpty || (a.id == 'settings' && Platform.isWindows)
+            // Windows 没有菜单栏/托盘: 强制绑定的动作(打开设置/彻底退出)
+            // 后端会回退默认, 这里直接禁用清除, 避免显示与生效不一致。
+            onPressed: chord.isEmpty || _shortcutForceBound(a.id)
                 ? null
                 : () => _saveShortcuts({..._shortcuts, a.id: ''}),
           ),
@@ -682,7 +696,10 @@ class _ShortcutRecorderDialogState extends State<_ShortcutRecorderDialog> {
           child: Text(_t('取消', 'Cancel')),
         ),
         TextButton(
-          onPressed: () => Navigator.of(context).pop(''),
+          // 强制绑定的动作不许清空(Windows 没有菜单栏/托盘兜底)
+          onPressed: _shortcutForceBound(widget.actionId)
+              ? null
+              : () => Navigator.of(context).pop(''),
           child: Text(_t('清除', 'Clear')),
         ),
         FilledButton(

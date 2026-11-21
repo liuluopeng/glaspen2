@@ -99,7 +99,7 @@ Settings · Notebook · Free doodle"]
 | Undo last stroke | `⌘ + ⌃ + Z` | `Ctrl + Alt + Z` |
 | Previous / next page (whole page) | `⌘ + ⌃ + ~ / 1` | `Ctrl + Alt + ~` / `Ctrl + Alt + 1` |
 | Open settings | `⌘ + ⌃ + D` | `Ctrl + Alt + D` |
-| Quit | | `Ctrl + Alt + Q` |
+| Quit completely | `⌘ + ⌃ + ⇧ + Q` | `Ctrl + Alt + Q` |
 | Quick GIF recording (hold) | `⌘ + ⌃ + R` | `Ctrl + Alt + R` (hold) |
 | Infinite canvas: pan (four directions) | `⌃⌥ + W / A / S / D` | `Ctrl + Alt + arrows` |
 | Infinite canvas: mouse pan | `⌃⌥ + left-drag` | `Ctrl + Alt + left-drag` |
@@ -115,6 +115,11 @@ Shortcuts lets you record / clear / reset each action, and the on-screen keyboar
 highlights the keys currently in use. Defaults are the Windows chords in the table
 above; global hotkeys are suspended while recording, and the scroll-wheel zoom
 modifiers follow the Zoom-in action after rebinding.
+
+Quit is `⌘⌃⇧Q` on macOS (`⌘⌃Q` is the system lock screen, so it cannot be used)
+and `Ctrl+Alt+Q` on Windows. Quitting flushes queued stroke points, checkpoints
+the WAL and also terminates the settings-panel process (a separate process on
+Windows), so nothing is left behind for the next launch to clean up.
 
 ## Installation
 
