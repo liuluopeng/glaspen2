@@ -6,6 +6,20 @@ const UNBLOCK_DELAY_MS: u32 = 50;
 // 落笔状态下多久没有新报告就认为"抬笔报告丢了/笔已离开感应区":
 // 超过这个时长强制收笔并恢复鼠标穿透(否则覆盖层会一直拦截鼠标)
 const STALE_STROKE: std::time::Duration = std::time::Duration::from_millis(500);
+// 悬空移动判定阈值(px):超过才算"笔在动"; 低于视为静止悬停(手搁板上抖动),
+// 静止时不刷新 activity, 几百 ms 后鼠标恢复可用。
+const HOVER_MOVE_EPS: f32 = 1.5;
+// 笔"活动"(落笔/悬空移动)后继续拦截输入的窗口: 覆盖"悬空移动 → 落笔"的间隔,
+// 让驱动合成的鼠标事件在下笔前就被覆盖层吃掉(否则启动后第一笔穿透)。
+const PEN_ACTIVE_WINDOW: std::time::Duration = std::time::Duration::from_millis(400);
+
+// ── 鼠标拦截状态(看门狗线程读; 不依赖消息循环) ──
+/// 覆盖层当前是否在拦截鼠标(WS_EX_TRANSPARENT 已清)
+static INPUT_BLOCKED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+/// 最近一份笔 HID 报告的系统时间(ms)
+static LAST_PEN_REPORT_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 // 飘渺模式下翻页后短暂显示笔迹的时长(ms)
 const PEEK_DELAY_MS: u32 = 2000;
 // 近透明底色 alpha=2(0.01*255):肉眼不可见,但窗口可命中/可收指针消息

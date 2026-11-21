@@ -48,6 +48,25 @@ unsafe fn process_raw_hid(buf: &[u64]) -> Option<RECT> {
         let sy = (y.min(ctx.y_max as u32) as f64 / ctx.y_max * (state.canvas.h - 1) as f64) as f32;
         let pnorm = ((press as f64 / ctx.p_max).clamp(0.0, 1.0)) as f32;
         let down = (switches & 0x05) != 0;
+        // 活动判定(决定是否提前拦截鼠标, 见 wndproc/WM_INPUT):
+        // 落笔一定算活动; 悬空按"移动距离"算 —— 静止悬停不刷新, 这样笔搁在
+        // 板上(驱动即使仍在发报告)也能在几百 ms 后把鼠标让出来。
+        let now = Instant::now();
+        if down {
+            state.last_activity = now;
+        } else {
+            match state.last_hover {
+                Some((lx, ly)) => {
+                    let (dx, dy) = (sx - lx, sy - ly);
+                    if dx * dx + dy * dy > HOVER_MOVE_EPS * HOVER_MOVE_EPS {
+                        state.last_activity = now;
+                    }
+                }
+                // 刚进入感应区的第一份悬空报告: 也算活动(笔正在靠近)
+                None => state.last_activity = now,
+            }
+        }
+        state.last_hover = Some((sx, sy));
         // 压力监控:每帧刷新(视图坐标 = 屏幕像素位置)
         if state.draw.pressure_monitor {
             hud_update_pressure(press as i32, down, sx as i32, sy as i32);

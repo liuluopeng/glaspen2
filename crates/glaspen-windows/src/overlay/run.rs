@@ -141,6 +141,9 @@ pub fn run() {
             width_scale,
             selected_color,
             selected_width: closest_width_index(width_scale),
+            // 换色/换粗细的历史起点(与 macOS 初始值一致: 黑 / 细)
+            prev_color: 9,
+            prev_width: 2,
             enabled: true,
             outline_enabled,
             show_grid,
@@ -163,6 +166,8 @@ pub fn run() {
             stroke_modeler: StrokeModeler::default(),
             start_time: Instant::now(),
             last_report: Instant::now(),
+            last_activity: Instant::now(),
+            last_hover: None,
             in_stroke: false,
             strokes_visible: true,
             gif_recording: false,
@@ -174,7 +179,9 @@ pub fn run() {
         // 按当前画布模式绘制网格与笔迹(无限画布重启后恢复镜头与内容)
         redraw_from_strokes(&mut state);
         // 初始穿透(WS_EX_TRANSPARENT),鼠标可正常操作;笔事件到达时自动唤醒拦截
-        set_input_blocking(hwnd, false);
+        set_input_blocking(hwnd, false, "init");
+        // 鼠标输入看门狗(独立线程): 拦截态 + 笔 1.5s 无报告 → 强制恢复穿透
+        spawn_input_watchdog(hwnd);
         STATE.store(Box::into_raw(Box::new(state)), Ordering::SeqCst);
 
         // 注册 Raw Input 设备收报告(WM_INPUT 不依赖 hit test,穿透时也能收到):
@@ -208,30 +215,10 @@ pub fn run() {
         let r = RegisterRawInputDevices(&mut devices, std::mem::size_of::<RAWINPUTDEVICE>() as u32);
         tracing::info!("RegisterRawInputDevices: {:?}", r);
 
-        // 热键(README 快捷键表):Ctrl+Alt+C 新建画布 / V 开关 / Z 撤销 /
-        // ` / 1 翻页(与 macOS b7cb22d 同改:J/K → 左手单手可及的 ~/1) /
-        // G 导出 / B 模糊背景 / Q 退出 / X 固定↔飘渺;
-        // 无限画布:方向键平移 / PageUp·PageDown 键盘缩放
-        let mods = HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0);
-        RegisterHotKey(Some(hwnd), 1, mods, 'C' as u32).ok();
-        RegisterHotKey(Some(hwnd), 2, mods, 'V' as u32).ok();
-        RegisterHotKey(Some(hwnd), 3, mods, 'Z' as u32).ok();
-        RegisterHotKey(Some(hwnd), 4, mods, VK_OEM_3.0 as u32).ok(); // ` 上一页
-        RegisterHotKey(Some(hwnd), 5, mods, '1' as u32).ok(); // 1 下一页
-        RegisterHotKey(Some(hwnd), 6, mods, 'G' as u32).ok();
-        RegisterHotKey(Some(hwnd), 7, mods, 'B' as u32).ok();
-        RegisterHotKey(Some(hwnd), 8, mods, 'Q' as u32).ok();
-        RegisterHotKey(Some(hwnd), 9, mods, 'X' as u32).ok();
-        RegisterHotKey(Some(hwnd), 10, mods, VK_LEFT.0 as u32).ok();
-        RegisterHotKey(Some(hwnd), 11, mods, VK_UP.0 as u32).ok();
-        RegisterHotKey(Some(hwnd), 12, mods, VK_RIGHT.0 as u32).ok();
-        RegisterHotKey(Some(hwnd), 13, mods, VK_DOWN.0 as u32).ok();
-        RegisterHotKey(Some(hwnd), 14, mods, VK_PRIOR.0 as u32).ok(); // PageUp
-        RegisterHotKey(Some(hwnd), 15, mods, VK_NEXT.0 as u32).ok(); // PageDown
-        RegisterHotKey(Some(hwnd), 16, mods, 'R' as u32).ok(); // 按住录 GIF
-        RegisterHotKey(Some(hwnd), 17, mods, '2' as u32).ok(); // 按住手写草稿(集成开)
-        RegisterHotKey(Some(hwnd), 18, mods, '3' as u32).ok(); // 按住手写消息直发(集成开)
-        RegisterHotKey(Some(hwnd), 19, mods, 'D' as u32).ok(); // 打开设置面板
+        // 可配置快捷键(对齐 macOS v0.6.0): 从 user_settings.shortcuts 载入,
+        // 合并默认/去冲突后注册; 面板改键经设置管道(setSetting shortcuts)
+        // 热更新, 录制期间自动注销/恢复。固定热键(退出 + 按住类)也在里面。
+        init(hwnd);
 
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         let _ = UpdateWindow(hwnd);
@@ -249,7 +236,7 @@ pub fn run() {
 
         tracing::info!("全屏透明涂鸦已启动(WM_INPUT + ink-stroke-modeler + cairo)。");
         tracing::info!(
-            "快捷键: Ctrl+Alt+C 新建 / V 开关 / Z 撤销 / `·1 翻页 / G 导出 / B 模糊 / X 固定↔飘渺 / Q 退出 / 2 按住手写草稿 / 3 按住手写直发(集成开时);无限画布: 方向键平移 / PageUp·Down 缩放 / Ctrl+Alt+滚轮缩放"
+            "快捷键: 面板「设置 → 快捷键」可逐动作录制(默认 Ctrl+Alt+C 新建 / V 开关 / Z 撤销 / `·1 翻页 / G 导出 / B 模糊 / X 固定↔飘渺 / D 打开面板);Ctrl+Alt+Q 退出 / R 按住录 GIF / 2·3 按住手写消息(集成开时)为固定保留组合;无限画布:方向键平移 / PageUp·Down 缩放 / 镜头修饰键+滚轮缩放"
         );
         run_loop();
 
@@ -318,11 +305,17 @@ fn create_overlay_window() -> HWND {
     }
 }
 
-fn set_input_blocking(hwnd: HWND, blocking: bool) {
+/// 拦截/放行鼠标(WS_EX_TRANSPARENT 的反向操作)。
+/// blocking=true 时窗口可命中, 驱动为笔合成的鼠标事件会被覆盖层吃掉
+/// (不会点穿到下层窗口); blocking=false 时窗口穿透, 系统鼠标/笔都直达
+/// 下层窗口 —— 这就是"键鼠/笔分离"的实现方式。
+/// `why` 只进日志, 用于排查拦截态卡住。
+fn set_input_blocking(hwnd: HWND, blocking: bool, why: &str) {
     unsafe {
         let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
         let want_transparent = !blocking;
         let has_transparent = (style & (WS_EX_TRANSPARENT.0 as isize)) != 0;
+        INPUT_BLOCKED.store(blocking, std::sync::atomic::Ordering::SeqCst);
         if want_transparent == has_transparent {
             // 样式未变化时不调用 SetWindowLongPtr:书写中每个笔事件都走到这里,
             // 200 次/秒的冗余 win32k 调用会加剧输入管线压力(卡顿嫌疑之一)
@@ -335,7 +328,37 @@ fn set_input_blocking(hwnd: HWND, blocking: bool) {
         };
         let new_style = (style & !(WS_EX_TRANSPARENT.0 as isize)) | transparent;
         let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_style);
+        tracing::debug!(
+            "鼠标拦截{} ({why})",
+            if blocking { "开" } else { "关" }
+        );
     }
+}
+
+/// 鼠标输入看门狗: 不依赖消息循环的最后一层保险。
+/// 只要覆盖层处于拦截态且笔已 1.5s 没有任何 HID 报告, 就强制恢复穿透 ——
+/// 鼠标永久点不动比"少画一笔"严重得多(之前消息循环/计时器出岔子时卡死过)。
+fn spawn_input_watchdog(hwnd: HWND) {
+    let hwnd_val = hwnd.0 as isize;
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let now = now_millis();
+            let last = LAST_PEN_REPORT_MS.load(std::sync::atomic::Ordering::SeqCst);
+            let blocked = INPUT_BLOCKED.load(std::sync::atomic::Ordering::SeqCst);
+            if blocked && last > 0 && now.saturating_sub(last) > 1500 {
+                set_input_blocking(
+                    HWND(hwnd_val as *mut std::ffi::c_void),
+                    false,
+                    "watchdog",
+                );
+                tracing::warn!(
+                    "[看门狗] 笔已 {}ms 无报告仍拦截鼠标, 已强制恢复穿透",
+                    now.saturating_sub(last)
+                );
+            }
+        }
+    });
 }
 
 // ── 无限画布:Ctrl+Alt+滚轮 缩放(鼠标 Raw Input) ──

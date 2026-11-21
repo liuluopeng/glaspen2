@@ -3,6 +3,9 @@
 pub const WM_TRAY_COMMAND: u32 = WM_USER + 1;
 /// 录制完成 → 消息循环:wparam 1=已复制剪贴板, 2=没有笔迹/失败
 const WM_RECORD_DONE: u32 = WM_USER + 3;
+/// 请求在窗口线程重新注册全局热键(管道/定时器线程投递; RegisterHotKey
+/// 不接受"属于别的线程的窗口", 必须回到窗口线程执行)
+const WM_HOTKEY_RELOAD: u32 = WM_USER + 6;
 
 pub const CMD_SELECT_COLOR: usize = 100;
 pub const CMD_SELECT_WIDTH: usize = 200;

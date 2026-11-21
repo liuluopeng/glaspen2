@@ -1,0 +1,672 @@
+// ── 可配置快捷键(对齐 macOS v0.6.0) ─────────────────────────────────
+//
+// chord 规范与 macOS 完全一致: cmd+ctrl+alt+shift+<Key>, 顺序固定, 至少含
+// ctrl 或 alt; 空串 = 该动作未绑定。Windows 上 cmd 令牌 = Win 键。
+// 动作 id 与 macOS 共用一张表(设置面板 main.shortcuts.dart); 默认值按平台
+// 给: Windows 保持 0.5/0.6 既有的 Ctrl+Alt+Z / ` / 1 等组合(实体键与 macOS
+// 不同, 不照搬 ⌘⌃)。
+//
+// 实现差异: macOS 用 CGEventTap 自己匹配 chord; Windows 用 RegisterHotKey
+// 让系统匹配(不挂低级键盘钩子 —— 钩子会同步卡系统输入管线)。因此:
+//   - 录制快捷键期间必须把热键全部注销, 否则面板按下的组合先被覆盖层吃掉;
+//   - 被系统/其它 App 占用的组合 RegisterHotKey 会失败, 只记 warn 不阻断。
+//
+// 线程: 注册表用互斥量保护; RegisterHotKey/UnregisterHotKey 只要有 hwnd
+// 就能从任意线程调用(WM_HOTKEY 投递到窗口线程), 所以设置管道线程改键
+// 直接改, 不用 PostMessage 中转。必须要求"与 macOS 同 id 同语义":
+// 面板保存的是 action → chord 的完整表。
+
+/// 动作表与 Windows 默认组合(顺序 = 面板显示顺序, 与 macOS 同序)。
+/// 画布镜头默认保持 0.6 的 Ctrl+Alt+方向键 / PageUp·PageDown(旧硬编码),
+/// 其余没绑过的动作默认不绑(与 macOS「新用户不占一堆全局键」一致)。
+const HOTKEY_ACTIONS: [(&str, &str); 19] = [
+    ("undo", "ctrl+alt+Z"),
+    ("page_prev", "ctrl+alt+`"),
+    ("page_next", "ctrl+alt+1"),
+    ("color_swap", ""),
+    ("width_swap", ""),
+    ("toggle_draw", "ctrl+alt+V"),
+    ("toggle_free_canvas", ""),
+    ("canvas_pan_left", "ctrl+alt+Left"),
+    ("canvas_pan_right", "ctrl+alt+Right"),
+    ("canvas_pan_up", "ctrl+alt+Up"),
+    ("canvas_pan_down", "ctrl+alt+Down"),
+    ("canvas_zoom_in", "ctrl+alt+PageUp"),
+    ("canvas_zoom_out", "ctrl+alt+PageDown"),
+    ("clear", "ctrl+alt+C"),
+    ("export", "ctrl+alt+G"),
+    ("copy_svg", ""),
+    ("toggle_glass", "ctrl+alt+B"),
+    ("toggle_ethereal", "ctrl+alt+X"),
+    ("settings", "ctrl+alt+D"),
+];
+
+/// 可配置动作的热键 id 基址(id = 基址 + 动作表下标)。
+const HOTKEY_ID_ACTION_BASE: i32 = 100;
+/// 固定热键(不进可配置表, 与 macOS 的"保留组合"对应): 退出 + 三个按住类。
+const HOTKEY_ID_QUIT: i32 = 8;
+const HOTKEY_ID_GIF: i32 = 16;
+const HOTKEY_ID_DRAFT: i32 = 17;
+const HOTKEY_ID_SEND: i32 = 18;
+
+/// Windows 保留组合: 退出 + 按住类(录 GIF / 手写草稿 / 手写直发)。
+/// 用户不能用这些组合绑普通动作, 与 macOS 的保留表语义一致。
+const RESERVED_CHORDS: [&str; 4] = ["ctrl+alt+Q", "ctrl+alt+R", "ctrl+alt+2", "ctrl+alt+3"];
+
+/// 能当全局热键的按键名(与 macOS gl_keycode_names / Dart _hidKeyNames 对齐)。
+/// 只收录用来当快捷键的键; 面板录制端也用同一张表(经 Dart 侧映射)。
+const KEY_NAMES: [&str; 73] = [
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
+    "T", "U", "V", "W", "X", "Y", "Z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "-", "=",
+    "[", "]", "\\", ";", "'", "`", ",", ".", "/", "Left", "Right", "Up", "Down", "PageUp",
+    "PageDown", "Home", "End", "Delete", "Backspace", "Return", "Escape", "Tab", "Space", "F1",
+    "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+];
+
+/// 规范化按键名(大小写/别名容忍); 不支持返回 None。
+fn normalize_key_token(token: &str) -> Option<String> {
+    let t = token.trim();
+    if t.is_empty() {
+        return None;
+    }
+    let up = t.to_ascii_uppercase();
+    if KEY_NAMES.contains(&up.as_str()) {
+        return Some(up);
+    }
+    KEY_NAMES
+        .iter()
+        .find(|k| k.eq_ignore_ascii_case(t))
+        .map(|k| (*k).to_string())
+}
+
+/// 规范化 chord(与 macOS gl_normalize_chord 同规则):
+/// 空串 = 未绑定; 合法返回固定顺序 cmd→ctrl→alt→shift→Key; 非法返回 None。
+fn normalize_chord(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Some(String::new());
+    }
+    let parts: Vec<&str> = s.split('+').map(str::trim).collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    let key = normalize_key_token(parts.last()?)?;
+    let mut seen: Vec<&str> = Vec::new();
+    for m in &parts[..parts.len() - 1] {
+        let m = m.to_ascii_lowercase();
+        let canonical = match m.as_str() {
+            "cmd" | "command" | "meta" | "win" => "cmd",
+            "ctrl" | "control" => "ctrl",
+            "alt" | "option" | "opt" => "alt",
+            "shift" => "shift",
+            _ => return None,
+        };
+        if seen.contains(&canonical) {
+            return None; // 重复修饰键
+        }
+        seen.push(canonical);
+    }
+    // 只按住 Win/Shift 的全局键太容易和系统/菜单冲突; 录制端也按这条拦。
+    if !seen.contains(&"ctrl") && !seen.contains(&"alt") {
+        return None;
+    }
+    let mut out: Vec<&str> = Vec::new();
+    for m in ["cmd", "ctrl", "alt", "shift"] {
+        if seen.contains(&m) {
+            out.push(m);
+        }
+    }
+    out.push(&key);
+    Some(out.join("+"))
+}
+
+/// 按键名 → Win32 虚拟键码(RegisterHotKey 用)。字母/数字用 ASCII 惯用值,
+/// 其余给显式数值(与 winuser.h 的 VK_* 一致), 免得为每个键都引一个常量。
+fn vk_for_key(name: &str) -> Option<u32> {
+    let b = name.as_bytes();
+    if b.len() == 1 {
+        let c = b[0];
+        if c.is_ascii_uppercase() {
+            return Some(c as u32); // VK_A..VK_Z = 'A'..'Z'
+        }
+        if c.is_ascii_digit() {
+            return Some(c as u32); // VK_0..VK_9 = '0'..'9'
+        }
+    }
+    if let Some(n) = name.strip_prefix('F')
+        && let Ok(n) = n.parse::<u32>()
+        && (1..=12).contains(&n)
+    {
+        return Some(0x70 + n - 1); // VK_F1 = 112
+    }
+    let vk = match name {
+        "-" => 0xBD,       // VK_OEM_MINUS
+        "=" => 0xBB,       // VK_OEM_PLUS
+        "[" => 0xDB,       // VK_OEM_4
+        "]" => 0xDD,       // VK_OEM_6
+        "\\" => 0xDC,      // VK_OEM_5
+        ";" => 0xBA,       // VK_OEM_1
+        "'" => 0xDE,       // VK_OEM_7
+        "`" => 0xC0,       // VK_OEM_3
+        "," => 0xBC,       // VK_OEM_COMMA
+        "." => 0xBE,       // VK_OEM_PERIOD
+        "/" => 0xBF,       // VK_OEM_2
+        "Left" => 0x25,    // VK_LEFT
+        "Up" => 0x26,      // VK_UP
+        "Right" => 0x27,   // VK_RIGHT
+        "Down" => 0x28,    // VK_DOWN
+        "PageUp" => 0x21,  // VK_PRIOR
+        "PageDown" => 0x22, // VK_NEXT
+        "Home" => 0x24,    // VK_HOME
+        "End" => 0x23,     // VK_END
+        "Delete" => 0x2E,  // VK_DELETE
+        "Backspace" => 0x08, // VK_BACK
+        "Return" => 0x0D,  // VK_RETURN
+        "Escape" => 0x1B,  // VK_ESCAPE
+        "Tab" => 0x09,     // VK_TAB
+        "Space" => 0x20,   // VK_SPACE
+        _ => return None,
+    };
+    Some(vk)
+}
+
+/// chord → (MOD_* 掩码, VK)。空串/非法返回 None。
+fn parse_chord(chord: &str) -> Option<(u32, u32)> {
+    let norm = normalize_chord(chord)?;
+    if norm.is_empty() {
+        return None;
+    }
+    let parts: Vec<&str> = norm.split('+').collect();
+    let key = parts.last()?;
+    let mut mods = 0u32;
+    for m in &parts[..parts.len() - 1] {
+        mods |= match *m {
+            "cmd" => MOD_WIN.0 as u32,
+            "ctrl" => MOD_CONTROL.0 as u32,
+            "alt" => MOD_ALT.0 as u32,
+            "shift" => MOD_SHIFT.0 as u32,
+            _ => return None,
+        };
+    }
+    Some((mods, vk_for_key(key)?))
+}
+
+fn is_reserved(chord: &str) -> bool {
+    RESERVED_CHORDS.contains(&chord)
+}
+
+#[derive(Default)]
+struct HotkeyRegistry {
+    hwnd: isize,
+    /// action id → 生效 chord(已补默认/去冲突; 空串 = 未绑定)
+    effective: Vec<(&'static str, String)>,
+    /// 已成功注册的可配置热键 id
+    registered: Vec<i32>,
+    /// 固定热键(退出 + 按住类)是否已注册
+    fixed_registered: bool,
+    /// 录制快捷键期间暂停全部热键
+    paused: bool,
+    /// 录制暂停的代数(60s 兜底定时器用: 代数变了说明已恢复)
+    pause_gen: u64,
+    /// 涂鸦已停用: 除「启停涂鸦 / 自由涂鸦 / 打开设置」外的动作热键全部注销,
+    /// 键位透传给前台应用(macOS event tap 只在 tap 里"放行",Windows 的
+    /// RegisterHotKey 会吞键, 只能靠反注册复刻同一体验)。
+    draw_disabled: bool,
+}
+
+static HOTKEYS: std::sync::LazyLock<std::sync::Mutex<HotkeyRegistry>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(HotkeyRegistry::default()));
+
+fn lock_registry() -> std::sync::MutexGuard<'static, HotkeyRegistry> {
+    HOTKEYS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// 把存档表合并成生效表(与 macOS gl_shortcuts_apply 同规则):
+/// 缺失/非法 → 默认; 保留组合 → 默认; 同组合后者解绑。
+fn build_effective(saved: &HashMap<String, String>) -> Vec<(&'static str, String)> {
+    let mut out: Vec<(&'static str, String)> = Vec::new();
+    let mut used: Vec<String> = Vec::new();
+    for (action, default) in HOTKEY_ACTIONS {
+        let mut chord = match saved.get(action) {
+            Some(raw) => {
+                let norm = normalize_chord(raw);
+                if norm.is_none() && !raw.trim().is_empty() {
+                    tracing::warn!("[hotkey] 非法组合 {action}={raw}, 回退默认");
+                }
+                norm.filter(|c| !c.is_empty()).unwrap_or_else(|| {
+                    // 缺失/非法/空串都按"回退默认"处理: 只有面板显式保存的空串
+                    // 才代表"用户解绑", 这里用 save 的语义区分不了, 交给
+                    // resolve_chord 的"空串=解绑"分支。
+                    default.to_string()
+                })
+            }
+            None => default.to_string(),
+        };
+        if !chord.is_empty() && is_reserved(&chord) {
+            tracing::warn!("[hotkey] 保留组合 {action}={chord}, 回退默认");
+            chord = default.to_string();
+        }
+        if !chord.is_empty() && used.contains(&chord) {
+            tracing::warn!("[hotkey] 冲突 {chord} → {action} 解绑(本表里已有动作占用)");
+            chord.clear();
+        }
+        // Windows 没有菜单栏/托盘,「打开设置」是重开面板的唯一入口:
+        // 允许解绑 = 用户可能把自己锁在外面, 所以这个动作强制不可解绑。
+        if action == "settings" && chord.is_empty() {
+            tracing::warn!("[hotkey] settings 动作在 Windows 不允许解绑, 回退默认");
+            chord = default.to_string();
+        }
+        if !chord.is_empty() {
+            used.push(chord.clone());
+        }
+        out.push((action, chord));
+    }
+    out
+}
+
+/// 用户显式解绑(空串)与"缺键 = 默认"要区分: 面板保存的是完整表,
+/// 空串代表解绑, 所以 merged 表里出现空串时保持空串。
+fn build_effective_saved(saved: &HashMap<String, String>) -> Vec<(&'static str, String)> {
+    let mut out = build_effective(saved);
+    if saved.is_empty() {
+        return out;
+    }
+    for (action, chord) in out.iter_mut() {
+        if *action == "settings" {
+            continue; // Windows 上不可解绑(没有菜单栏/托盘的备用入口)
+        }
+        if let Some(raw) = saved.get(*action)
+            && raw.trim().is_empty()
+        {
+            *chord = String::new();
+        }
+    }
+    out
+}
+
+fn register_fixed(hwnd: HWND) {
+    let mods = HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0);
+    for (id, vk) in [
+        (HOTKEY_ID_QUIT, b'Q' as u32),
+        (HOTKEY_ID_GIF, b'R' as u32),
+        (HOTKEY_ID_DRAFT, b'2' as u32),
+        (HOTKEY_ID_SEND, b'3' as u32),
+    ] {
+        if unsafe { RegisterHotKey(Some(hwnd), id, mods, vk) }.is_err() {
+            tracing::warn!("[hotkey] 固定热键 id={id} 注册失败(可能被其它程序占用)");
+        }
+    }
+}
+
+fn unregister_fixed(hwnd: HWND) {
+    for id in [
+        HOTKEY_ID_QUIT,
+        HOTKEY_ID_GIF,
+        HOTKEY_ID_DRAFT,
+        HOTKEY_ID_SEND,
+    ] {
+        let _ = unsafe { UnregisterHotKey(Some(hwnd), id) };
+    }
+}
+
+/// 注销并重新注册可配置动作的热键(固定热键不动)。
+fn register_actions_locked(reg: &mut HotkeyRegistry, hwnd: HWND) {
+    for id in reg.registered.drain(..) {
+        let _ = unsafe { UnregisterHotKey(Some(hwnd), id) };
+    }
+    for (idx, (action, chord)) in reg.effective.iter().enumerate() {
+        if chord.is_empty() {
+            continue;
+        }
+        // 涂鸦停用时只有这三个动作仍消费按键, 其余注销后透传给前台应用
+        if reg.draw_disabled
+            && !matches!(*action, "toggle_draw" | "toggle_free_canvas" | "settings")
+        {
+            continue;
+        }
+        let Some((mods, vk)) = parse_chord(chord) else {
+            tracing::warn!("[hotkey] {action}={chord} 解析失败, 跳过注册");
+            continue;
+        };
+        // 镜头平移/缩放要支持"按住连续"(WM_HOTKEY 自动重复), 其余一次动作
+        // 加 MOD_NOREPEAT: 否则按住翻页键会连翻好几页(macOS 用 isRepeat 过滤)。
+        let repeatable = action.starts_with("canvas_pan_")
+            || matches!(*action, "canvas_zoom_in" | "canvas_zoom_out");
+        let flags = if repeatable {
+            HOT_KEY_MODIFIERS(mods)
+        } else {
+            HOT_KEY_MODIFIERS(mods | MOD_NOREPEAT.0 as u32)
+        };
+        let id = HOTKEY_ID_ACTION_BASE + idx as i32;
+        match unsafe { RegisterHotKey(Some(hwnd), id, flags, vk) } {
+            Ok(()) => reg.registered.push(id),
+            Err(e) => tracing::warn!(
+                "[hotkey] {action}={chord} 注册失败(被系统/其它程序占用?): {e}"
+            ),
+        }
+    }
+    // 生效表(含未绑定)写进日志, 排障时一眼看到底注册了什么
+    let summary: Vec<String> = reg
+        .effective
+        .iter()
+        .map(|(a, c)| {
+            if c.is_empty() {
+                format!("{a}=-")
+            } else {
+                format!("{a}={c}")
+            }
+        })
+        .collect();
+    tracing::info!("[hotkey] 生效快捷键: {}", summary.join(" "));
+}
+
+fn effective_json_locked(reg: &HotkeyRegistry) -> String {
+    let map: std::collections::BTreeMap<&str, &str> = reg
+        .effective
+        .iter()
+        .map(|(a, c)| (*a, c.as_str()))
+        .collect();
+    serde_json::to_string(&map).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// **只在窗口所属线程**执行热键(重)注册。
+/// RegisterHotKey/UnregisterHotKey 对"别的线程的窗口"会直接失败
+/// (0x80070580 无效窗口;它属于另一线程 —— v0.6 的管道线程就踩过这个坑),
+/// 所以管道线程/定时器线程只改状态, 由它们投递 WM_HOTKEY_RELOAD 到这里。
+fn apply_reload(hwnd: HWND) {
+    let mut reg = lock_registry();
+    if reg.hwnd == 0 {
+        reg.hwnd = hwnd.0 as isize;
+    }
+    if reg.paused {
+        // 录制快捷键: 注销全部(含退出/按住类), 让面板能收到任意组合
+        for id in reg.registered.drain(..) {
+            let _ = unsafe { UnregisterHotKey(Some(hwnd), id) };
+        }
+        if reg.fixed_registered {
+            unregister_fixed(hwnd);
+            reg.fixed_registered = false;
+        }
+        return;
+    }
+    if !reg.fixed_registered {
+        register_fixed(hwnd);
+        reg.fixed_registered = true;
+    }
+    register_actions_locked(&mut reg, hwnd);
+}
+
+/// 从任意线程请求在窗口线程重新注册热键(投递自定义消息, 不阻塞调用方)。
+fn post_reload(hwnd: HWND) {
+    unsafe {
+        let _ = PostMessageW(Some(hwnd), WM_HOTKEY_RELOAD, WPARAM(0), LPARAM(0));
+    }
+}
+
+/// 启动: 从 user_settings 读 "shortcuts" → 合并默认 → 注册。
+/// 必须在窗口创建后、run_loop 之前(窗口线程)调用。
+pub(crate) fn init(hwnd: HWND) {
+    let raw = glaspen_core::runtime()
+        .block_on(glaspen_core::db::load_setting("shortcuts"))
+        .unwrap_or_default();
+    let saved: HashMap<String, String> = serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|v| v.as_object().cloned())
+        .map(|o| {
+            o.into_iter()
+                .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
+                .collect()
+        })
+        .unwrap_or_default();
+    let effective = build_effective_saved(&saved);
+    {
+        let mut reg = lock_registry();
+        reg.hwnd = hwnd.0 as isize;
+        reg.effective = effective;
+    } // 先放锁: apply_reload 内部自己取锁
+    apply_reload(hwnd);
+    // 首次启动即把"补齐默认后的完整表"落库: 面板读取的永远是完整表,
+    // 之后缺键(old 存档)也能稳定回退默认(与 macOS settings_json 回显一致)。
+    let json = effective_json();
+    glaspen_core::runtime().block_on(glaspen_core::db::save_setting("shortcuts", &json));
+}
+
+/// 面板保存快捷键(完整表 action→chord): 合并/校验 → 落库 → 请求重新注册。
+/// 可从管道线程调用: 注册动作投递到窗口线程执行。
+pub(crate) fn apply_saved_map(hwnd: HWND, saved: &HashMap<String, String>) {
+    let effective = build_effective_saved(saved);
+    let json = {
+        let mut reg = lock_registry();
+        if reg.hwnd == 0 {
+            reg.hwnd = hwnd.0 as isize;
+        }
+        reg.effective = effective;
+        effective_json_locked(&reg)
+    };
+    glaspen_core::runtime().block_on(glaspen_core::db::save_setting("shortcuts", &json));
+    tracing::info!("[hotkey] 面板已保存新绑定: {json}");
+    post_reload(hwnd);
+}
+
+/// 当前生效表的 JSON(含默认补齐); 设置面板 getSettings 回显用。
+pub(crate) fn effective_json() -> String {
+    let reg = lock_registry();
+    if reg.effective.is_empty() {
+        // 尚未 init(理论上不会): 至少给默认表, 面板不至于空
+        let saved = HashMap::new();
+        return serde_json::to_string(
+            &build_effective_saved(&saved)
+                .into_iter()
+                .collect::<std::collections::BTreeMap<&str, String>>(),
+        )
+        .unwrap_or_else(|_| "{}".to_string());
+    }
+    effective_json_locked(&reg)
+}
+
+/// 录制快捷键: 暂停 = 注销全部热键(让面板能收到组合), 恢复 = 重新注册。
+/// 可从任意线程调用(状态 + 投递 WM_HOTKEY_RELOAD)。
+/// 60s 兜底: 面板异常退出(没发 false)时自动恢复, 不让全局热键永久失效
+/// (与 macOS gl_set_hotkey_recording 一致)。
+pub(crate) fn set_recording(hwnd: HWND, on: bool) {
+    let generation = {
+        let mut reg = lock_registry();
+        if reg.hwnd == 0 {
+            reg.hwnd = hwnd.0 as isize;
+        }
+        if on == reg.paused {
+            return;
+        }
+        reg.paused = on;
+        reg.pause_gen += 1;
+        reg.pause_gen
+    };
+    post_reload(hwnd);
+    tracing::info!(
+        "[hotkey] {}",
+        if on {
+            "录制中: 已注销全部全局热键"
+        } else {
+            "录制结束: 已恢复全局热键"
+        }
+    );
+    if on {
+        let hwnd_val = hwnd.0 as isize;
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+            let resume = {
+                let mut reg = lock_registry();
+                if reg.paused && reg.pause_gen == generation {
+                    reg.paused = false;
+                    true
+                } else {
+                    false
+                }
+            };
+            if resume {
+                post_reload(HWND(hwnd_val as *mut std::ffi::c_void));
+                tracing::warn!("[hotkey] 录制超时 60s, 已自动恢复全局热键");
+            }
+        });
+    }
+}
+
+/// 某动作当前组合的修饰键掩码(MOD_*); 未绑定/非法返回 0。
+/// 鼠标滚轮缩放用它: 改键后鼠标自动跟随(与 macOS gl_shortcut_modifier_mask_for 一致)。
+pub(crate) fn modifier_mask_for(action: &str) -> u32 {
+    let reg = lock_registry();
+    let chord = reg
+        .effective
+        .iter()
+        .find(|(a, _)| *a == action)
+        .map(|(_, c)| c.as_str())
+        .unwrap_or("");
+    parse_chord(chord).map(|(m, _)| m).unwrap_or(0)
+}
+
+/// 涂鸦启停时调用(actions.rs toggle_enabled): 停用后除「启停涂鸦 / 自由
+/// 涂鸦 / 打开设置」外的动作热键全部注销, 组合键透传给前台应用 —— 复刻
+/// macOS event tap「停用涂鸦时只消费那两个动作」的语义(Windows 的
+/// RegisterHotKey 注册即吞键, 只能反注册)。
+pub(crate) fn on_draw_enabled_changed(hwnd: HWND, enabled: bool) {
+    {
+        let mut reg = lock_registry();
+        if reg.draw_disabled == !enabled {
+            return;
+        }
+        reg.draw_disabled = !enabled;
+    }
+    // 注册/注销必须在窗口线程做 → 投递
+    post_reload(hwnd);
+    tracing::info!(
+        "[hotkey] 涂鸦{}: {}",
+        if enabled { "已启用" } else { "已停用" },
+        if enabled {
+            "动作热键已全部注册"
+        } else {
+            "仅保留 启停涂鸦/自由涂鸦/打开设置 三个热键, 其余透传给前台应用"
+        }
+    );
+}
+
+/// 设置面板断开(进程崩溃/被关闭)时调用: 若正在录制, 立即恢复全局热键,
+/// 不等 60s 兜底(Windows 面板是独立进程, 崩溃概率高于 macOS 内嵌视图)。
+pub(crate) fn resume_if_paused(hwnd: HWND) {
+    let paused = lock_registry().paused;
+    if paused {
+        set_recording(hwnd, false);
+        tracing::warn!("[hotkey] 设置面板断开, 已恢复全局热键");
+    }
+}
+
+/// WM_HOTKEY 分发: 固定按住类/退出 + 可配置动作。
+pub(crate) fn dispatch_hotkey(state: &mut OverlayState, id: i32) {
+    match id {
+        HOTKEY_ID_QUIT => unsafe {
+            let _ = DestroyWindow(state.canvas.hwnd);
+        },
+        HOTKEY_ID_GIF => gif_record_start(state),
+        // 按住类与 macOS 一致受集成总开关守门
+        HOTKEY_ID_DRAFT => {
+            if state.draw.chat_integration {
+                ink_draft_start(state);
+            }
+        }
+        HOTKEY_ID_SEND => {
+            if state.draw.chat_integration {
+                chat_record_start(state);
+            }
+        }
+        _ => {
+            let idx = (id - HOTKEY_ID_ACTION_BASE) as usize;
+            let action = HOTKEY_ACTIONS.get(idx).map(|(a, _)| *a).unwrap_or("");
+            if action.is_empty() {
+                return;
+            }
+            perform_action(state, action);
+        }
+    }
+}
+
+/// 执行一个可配置动作(macOS perform_action 的 Windows 对照实现)。
+fn perform_action(state: &mut OverlayState, action: &str) {
+    // 自由涂鸦镜头动作只在无限画布 + 涂鸦开启时生效(旧硬编码同规则)
+    if (action.starts_with("canvas_pan_") || action.starts_with("canvas_zoom_"))
+        && (!infinite_on() || !state.draw.enabled)
+    {
+        return;
+    }
+    match action {
+        "undo" => undo_last_stroke(state),
+        "page_prev" => navigate_page(state, false),
+        "page_next" => navigate_page(state, true),
+        "color_swap" => color_swap(state),
+        "width_swap" => width_swap(state),
+        "toggle_draw" => toggle_enabled(state),
+        "toggle_free_canvas" => {
+            // 与 macOS 一致: 顺手把面板「自由涂鸦模式」打开, 否则面板没有
+            // 自由涂鸦 tab, 模式切换既看不见落点又容易被 tab 逻辑推回去。
+            if !infinite_on() {
+                let rt = glaspen_core::runtime();
+                let shown = rt
+                    .block_on(glaspen_core::db::load_setting("show_free_canvas"))
+                    .and_then(|v| v.parse::<i32>().ok())
+                    .unwrap_or(0)
+                    != 0;
+                if !shown {
+                    rt.block_on(glaspen_core::db::save_setting("show_free_canvas", "1"));
+                }
+            }
+            apply_infinite_canvas(state, !infinite_on());
+        }
+        // 方向语义与 macOS 一致: 按键方向 = 视野移动方向(canvas_pan_by 内部
+        // pan -= d)。v0.6 之前 Windows 侧方向是反的, 这里一并对齐。
+        "canvas_pan_left" => pan_step(state, 1.0, 0.0),
+        "canvas_pan_right" => pan_step(state, -1.0, 0.0),
+        "canvas_pan_up" => pan_step(state, 0.0, 1.0),
+        "canvas_pan_down" => pan_step(state, 0.0, -1.0),
+        "canvas_zoom_in" => zoom_step(state, 1.15),
+        "canvas_zoom_out" => zoom_step(state, 1.0 / 1.15),
+        "clear" => handle_command(state, CMD_CLEAR_SCREEN, usize::MAX),
+        "export" => export_svg_gif_clipboard(state),
+        "copy_svg" => copy_svg_to_clipboard(state),
+        "toggle_glass" => toggle_frosted(state),
+        "toggle_ethereal" => handle_command(state, CMD_TOGGLE_ETHEREAL, usize::MAX),
+        "settings" => crate::show_settings_window(),
+        _ => {}
+    }
+}
+
+fn pan_step(state: &mut OverlayState, dir_x: f64, dir_y: f64) {
+    let (_, _, z) = cam();
+    let z = if z > ZOOM_MIN { z } else { 1.0 };
+    let step = 80.0 / z;
+    canvas_pan_by(state, dir_x * step, dir_y * step);
+}
+
+fn zoom_step(state: &mut OverlayState, factor: f64) {
+    let (w, h) = (state.canvas.w as f64, state.canvas.h as f64);
+    canvas_zoom_at(state, factor, w * 0.5, h * 0.5);
+}
+
+/// 换回上一颜色(macOS color_swap 同语义: 无历史时给红/黑另一端)
+fn color_swap(state: &mut OverlayState) {
+    let cur = state.draw.selected_color;
+    let mut prev = state.draw.prev_color;
+    if prev >= COLOR_PRESETS.len() || prev == cur {
+        prev = if cur == 0 { COLOR_PRESETS.len() - 1 } else { 0 };
+    }
+    handle_command(state, CMD_SELECT_COLOR + prev, usize::MAX);
+    hud_notify(&format!("颜色: {}", COLOR_NAMES_ZH[prev.min(COLOR_NAMES_ZH.len() - 1)]));
+}
+
+/// 换回上一粗细(macOS width_swap 同语义: 无历史时给细/粗另一端)
+fn width_swap(state: &mut OverlayState) {
+    let cur = state.draw.selected_width;
+    let mut prev = state.draw.prev_width;
+    if prev >= WIDTH_PRESETS.len() || prev == cur {
+        prev = if cur <= 3 { 6.min(WIDTH_PRESETS.len() - 1) } else { 2 };
+    }
+    handle_command(state, CMD_SELECT_WIDTH + prev, usize::MAX);
+    hud_notify(&format!("粗细: {}", WIDTH_NAMES_ZH[prev.min(WIDTH_NAMES_ZH.len() - 1)]));
+}

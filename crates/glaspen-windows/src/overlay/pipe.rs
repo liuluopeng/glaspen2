@@ -94,6 +94,10 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
     // Prevent File from closing the handle; we close it ourselves
     let _ = stream.into_raw_handle();
     close_pipe(pipe);
+    // 面板进程断开: 若当时正在录制快捷键, 立即恢复全局热键
+    // (Windows 面板是独立进程, 崩溃/被杀不该让快捷键永久失效)。
+    let hwnd = HWND(hwnd as *mut std::ffi::c_void);
+    resume_if_paused(hwnd);
 }
 
 /// 无限画布总览载荷(macOS canvas_overview_payload 同款):
@@ -619,8 +623,11 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let launch =
             glaspen_core::export::glaspen2_is_launch_at_login() == 1;
         // 密码本体不回读,只回是否已保存(macOS 同款)
+        // shortcuts: 生效表(action → chord 的 JSON 字符串, 已补默认/去冲突),
+        // 形状与 macOS settings_json 完全一致; 面板 _decodeShortcuts 直接解。
+        let shortcuts_json = json_escape(&effective_json());
         let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"showBubbleTab\":{},\"bubbleReplaySpeed\":{},\"bubbleReplayHoldLast\":{},\"bubbleReplayAuto\":{},\"bubbleAutoNewPage\":{},\"nasUrl\":\"{}\",\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\"}}}}\n",
+            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"showBubbleTab\":{},\"bubbleReplaySpeed\":{},\"bubbleReplayHoldLast\":{},\"bubbleReplayAuto\":{},\"bubbleAutoNewPage\":{},\"nasUrl\":\"{}\",\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\",\"shortcuts\":\"{}\"}}}}\n",
             color,
             width,
             outline,
@@ -685,12 +692,55 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             json_escape(&chat_api_base),
             json_escape(&chat_user),
             language,
+            shortcuts_json,
         );
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
     } else if msg_type == "setSetting" {
         let key = json_get_str(line, "key");
-        if key == "save_drawing" {
+        if key == "shortcuts" {
+            // 面板保存整表(action → chord)。管道发的是**内联 JSON 对象**
+            // (不是字符串), 所以必须解析整行而不是 json_get_str。
+            // 应用(补默认/挡保留/去冲突) → 落库 → 回推规范化结果, 保证面板
+            // 显示与真正生效的表一致(与 macOS sync_settings_panel 同义)。
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                let saved: HashMap<String, String> = v
+                    .get("value")
+                    .and_then(|x| {
+                        x.as_object().cloned().or_else(|| {
+                            // 兼容 FRB 式"JSON 字符串"形状(macOS 走这条路,
+                            // Windows 管道理论上不会, 但别静默失败)。
+                            x.as_str()
+                                .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+                                .and_then(|y| y.as_object().cloned())
+                        })
+                    })
+                    .map(|o| {
+                        o.into_iter()
+                            .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if !saved.is_empty() {
+                    apply_saved_map(HWND(hwnd as *mut std::ffi::c_void), &saved);
+                    let frame = format!(
+                        "{{\"type\":\"onSettingsChanged\",\"data\":{{\"shortcuts\":\"{}\"}}}}\n",
+                        json_escape(&effective_json())
+                    );
+                    let _ = writer.write_all(frame.as_bytes());
+                    let _ = writer.flush();
+                } else {
+                    tracing::warn!("[hotkey] shortcuts 保存消息里没有可解析的 value");
+                }
+            }
+        } else if key == "hotkeyRecording" {
+            // 录制期间注销全部全局热键: RegisterHotKey 注册即吞键, 不注销
+            // 面板根本收不到组合键。60s 兜底与面板断开自动恢复见
+            // hotkeys::set_recording / handle_pipe_client。
+            if let Some(on) = json_get_bool(line, "value") {
+                set_recording(HWND(hwnd as *mut std::ffi::c_void), on);
+            }
+        } else if key == "save_drawing" {
             let _ = unsafe {
                 PostMessageW(
                     Some(HWND(hwnd as *mut _)),

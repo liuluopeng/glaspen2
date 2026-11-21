@@ -33,8 +33,8 @@ use windows::Win32::Storage::FileSystem::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Pipes::PeekNamedPipe;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, RegisterHotKey, VK_CONTROL, VK_DOWN,
-    VK_LEFT, VK_MENU, VK_NEXT, VK_OEM_3, VK_PRIOR, VK_RIGHT, VK_UP,
+    GetAsyncKeyState, HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN,
+    RegisterHotKey, UnregisterHotKey, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
 };
 use windows::Win32::UI::Input::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
@@ -55,4 +55,5 @@ include!("overlay/run.rs");
 include!("overlay/mouse.rs");
 include!("overlay/hud.rs");
 include!("overlay/actions.rs");
+include!("overlay/hotkeys.rs");
 include!("overlay/pipe.rs");

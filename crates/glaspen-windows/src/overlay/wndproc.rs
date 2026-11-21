@@ -58,12 +58,13 @@ unsafe extern "system" fn wnd_proc(
             let state = &mut *STATE.load(Ordering::SeqCst);
             if !state.draw.enabled {
                 // 涂鸦关闭:保持穿透,不拦截、不处理
-                set_input_blocking(hwnd, false);
+                set_input_blocking(hwnd, false, "draw-disabled");
                 return LRESULT(0);
             }
             // 记录"笔还在活动"的时间戳:穿透计时器用它区分"按住不动"
-            // 和"抬笔报告丢了/笔已离开感应区"。
+            // 和"抬笔报告丢了/笔已离开感应区"; 看门狗线程也读它。
             state.last_report = std::time::Instant::now();
+            LAST_PEN_REPORT_MS.store(now_millis(), Ordering::SeqCst);
             let _ = KillTimer(Some(hwnd), TIMER_UNBLOCK);
             let _ = KillTimer(Some(hwnd), TIMER_PEEK);
 
@@ -77,14 +78,26 @@ unsafe extern "system" fn wnd_proc(
                 state.canvas.present_rect(&dirty);
             }
 
-            // 只有**落笔**才拦截鼠标(清 WS_EX_TRANSPARENT),抬笔后恢复穿透。
-            // 恢复计时器**每份报告都要重新武装**:抬笔报告的 in_stroke 已经是
+            // 拦截策略(兼顾"第一笔不穿透"与"笔搁板上时鼠标可用"):
+            //  - 落笔中, 或笔最近 400ms 内在悬空移动 → 清 WS_EX_TRANSPARENT,
+            //    让驱动为笔合成的鼠标事件被覆盖层吃掉, 不会点穿到下层窗口;
+            //  - 笔静止悬停/搁在板上(驱动即使仍在发报告) → 不刷新 activity,
+            //    计时器到期就恢复穿透, 系统鼠标照常工作(键鼠/笔分离)。
+            // 恢复计时器**每份报告都要重新武装**: 抬笔报告的 in_stroke 已经是
             // false, 若只在书写中武装, 上面两行 KillTimer 就会把唯一一次恢复
-            // 穿透的机会杀掉 —— 全屏窗口从此不透明, 所有鼠标点击被覆盖层吃掉
-            // (v0.6.0 的"鼠标卡死", 见 44fac24 引入的回归)。
+            // 穿透的机会杀掉 —— 全屏窗口从此不透明(v0.6.0 的"鼠标卡死", 见 44fac24)。
             let state = &mut *STATE.load(Ordering::SeqCst);
-            if state.in_stroke {
-                set_input_blocking(hwnd, true);
+            let active = state.in_stroke || state.last_activity.elapsed() < PEN_ACTIVE_WINDOW;
+            if active {
+                set_input_blocking(
+                    hwnd,
+                    true,
+                    if state.in_stroke {
+                        "pen-down"
+                    } else {
+                        "pen-hover-move"
+                    },
+                );
             }
             let _ = SetTimer(Some(hwnd), TIMER_UNBLOCK, UNBLOCK_DELAY_MS, None);
             LRESULT(0)
@@ -107,9 +120,14 @@ unsafe extern "system" fn wnd_proc(
                             state.last_report.elapsed().as_secs_f64() * 1000.0
                         );
                         end_stroke_cleanup(state);
+                    } else if state.last_activity.elapsed() < PEN_ACTIVE_WINDOW {
+                        // 笔还在悬空移动(正要落笔): 继续拦截一小会儿,
+                        // 保证接下来的落笔不穿透(启动后第一笔就是靠这个挡住)。
+                        let _ = SetTimer(Some(hwnd), TIMER_UNBLOCK, UNBLOCK_DELAY_MS, None);
+                        return LRESULT(0);
                     }
-                    // 笔离开:设 WS_EX_TRANSPARENT 恢复穿透
-                    set_input_blocking(hwnd, false);
+                    // 笔已静止/离开: 设 WS_EX_TRANSPARENT 恢复穿透
+                    set_input_blocking(hwnd, false, "idle");
                     // 飘渺模式:隐藏笔迹
                     if state.draw.ethereal && state.strokes_visible {
                         hide_strokes(state);
@@ -127,73 +145,11 @@ unsafe extern "system" fn wnd_proc(
             LRESULT(0)
         }
         WM_HOTKEY => {
+            // 热键 id → 动作的统一分发在 hotkeys.rs:
+            //   8=退出 / 16·17·18=按住类(录 GIF·草稿·直发) 固定;
+            //   100+=面板里可配置的 19 个动作(动作表下标 + 基址)。
             let state = &mut *STATE.load(Ordering::SeqCst);
-            match wparam.0 as i32 {
-                // Ctrl+Alt+C 新建画布 / Ctrl+Alt+V 开关涂鸦 / Ctrl+Alt+Z 撤销
-                1 => clear_screen(state),
-                2 => toggle_enabled(state),
-                3 => undo_last_stroke(state),
-                // Ctrl+Alt+`/1 上一页/下一页(b7cb22d 同改)
-                4 => navigate_page(state, false),
-                5 => navigate_page(state, true),
-                // Ctrl+Alt+G 导出 SVG + GIF 并复制到剪贴板
-                6 => export_svg_gif_clipboard(state),
-                // Ctrl+Alt+B 模糊背景(磨砂玻璃)
-                7 => toggle_frosted(state),
-                // Ctrl+Alt+X 切换固定/飘渺画布模式
-                9 => handle_command(state, CMD_TOGGLE_ETHEREAL, usize::MAX),
-                // Ctrl+Alt+Q 退出
-                8 => unsafe {
-                    let _ = DestroyWindow(hwnd);
-                },
-                // 无限画布:Ctrl+Alt+方向键 平移镜头(步长随缩放,越缩小步长越大)
-                10 | 11 | 12 | 13 => {
-                    if infinite_on() && state.draw.enabled {
-                        let (_, _, z) = cam();
-                        let step = 80.0 / z;
-                        let (dx, dy) = match wparam.0 as i32 {
-                            10 => (-step, 0.0), // ←
-                            11 => (0.0, step),  // ↑
-                            12 => (step, 0.0),  // →
-                            _ => (0.0, -step),  // ↓
-                        };
-                        canvas_pan_by(state, dx, dy);
-                    }
-                }
-                // 无限画布:Ctrl+Alt+PageUp/PageDown 键盘缩放(以视口中心为锚)
-                14 | 15 => {
-                    if infinite_on() && state.draw.enabled {
-                        let factor = if wparam.0 as i32 == 14 {
-                            1.15
-                        } else {
-                            1.0 / 1.15
-                        };
-                        canvas_zoom_at(
-                            state,
-                            factor,
-                            state.canvas.w as f64 * 0.5,
-                            state.canvas.h as f64 * 0.5,
-                        );
-                    }
-                }
-                // Ctrl+Alt+R 按住录制手写 GIF(松开由键盘 Raw Input 检测)
-                16 => gif_record_start(state),
-                // Ctrl+Alt+2 按住:手写草稿通道(集成开关守门,松开由 Raw Input 检测)
-                17 => {
-                    if state.draw.chat_integration {
-                        ink_draft_start(state);
-                    }
-                }
-                // Ctrl+Alt+3 按住:录制手写消息,松开直发(松开由 Raw Input 检测)
-                18 => {
-                    if state.draw.chat_integration {
-                        chat_record_start(state);
-                    }
-                }
-                // Ctrl+Alt+D 打开/重开设置面板(macOS ⌘⌃D 同义)
-                19 => crate::show_settings_window(),
-                _ => {}
-            }
+            dispatch_hotkey(state, wparam.0 as i32);
             LRESULT(0)
         }
         WM_RECORD_DONE => {
@@ -208,6 +164,12 @@ unsafe extern "system" fn wnd_proc(
         WM_TRAY_COMMAND => {
             let state = &mut *STATE.load(Ordering::SeqCst);
             handle_command(state, wparam.0, lparam.0 as usize);
+            LRESULT(0)
+        }
+        WM_HOTKEY_RELOAD => {
+            // 设置管道线程/录制超时线程投递的"重新注册热键"请求:
+            // 只有窗口所属线程能注册(否则 0x80070580 无效窗口)。
+            apply_reload(hwnd);
             LRESULT(0)
         }
         WM_KEYDOWN => DefWindowProcW(hwnd, msg, wparam, lparam),

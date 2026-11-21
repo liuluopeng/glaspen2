@@ -5,6 +5,10 @@ pub struct DrawState {
     pub width_scale: f64,
     pub selected_color: usize,
     pub selected_width: usize,
+    /// 换色/换粗细的"上一档"历史(可配置动作 color_swap / width_swap 用,
+    /// 与 macOS g_prev_color_index / g_prev_width_index 同语义)
+    pub prev_color: usize,
+    pub prev_width: usize,
     pub enabled: bool,
     pub outline_enabled: bool,
     pub show_grid: bool,
@@ -217,6 +221,13 @@ struct OverlayState {
     /// 抬笔报告丢失时(笔直接离开感应区)没有新的 in_stroke=false 报告,
     /// 超时后必须强制收笔并恢复鼠标穿透,否则全屏覆盖层会一直吃掉鼠标点击。
     last_report: Instant,
+    /// 最近一次"笔真的在动"的时间(落笔,或悬空移动超过阈值)。
+    /// 用于"落地前先拦截合成鼠标": 笔悬空移动时提前清 WS_EX_TRANSPARENT,
+    /// 这样下一次落笔的驱动合成鼠标事件不会点穿到下层窗口(0.6.0 第一笔穿透);
+    /// 而笔静止悬停/搁在板上时不刷新, 几百 ms 后恢复鼠标可用(键鼠/笔分离)。
+    last_activity: Instant,
+    /// 上一份悬空报告的屏幕坐标(判断悬空移动距离)
+    last_hover: Option<(f32, f32)>,
     /// 当前是否处于笔画中(首事件必须发 Down)
     in_stroke: bool,
     /// 笔迹当前是否可见(飘渺模式)

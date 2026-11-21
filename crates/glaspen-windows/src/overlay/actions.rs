@@ -1,4 +1,4 @@
-fn run_loop() {
+﻿fn run_loop() {
     unsafe {
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {
@@ -29,6 +29,10 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
     if cmd >= CMD_SELECT_COLOR && cmd < CMD_SELECT_COLOR + 10 {
         let idx = cmd - CMD_SELECT_COLOR;
         if idx < COLOR_PRESETS.len() {
+            // 记录"上一档"给 color_swap(可配置动作);同色重复点不变更历史
+            if idx != state.draw.selected_color {
+                state.draw.prev_color = state.draw.selected_color;
+            }
             state.draw.pen_r = COLOR_PRESETS[idx].0;
             state.draw.pen_g = COLOR_PRESETS[idx].1;
             state.draw.pen_b = COLOR_PRESETS[idx].2;
@@ -48,6 +52,10 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
     } else if cmd >= CMD_SELECT_WIDTH && cmd < CMD_SELECT_WIDTH + WIDTH_PRESETS.len() {
         let idx = cmd - CMD_SELECT_WIDTH;
         if idx < WIDTH_PRESETS.len() {
+            // 记录"上一档"给 width_swap(可配置动作)
+            if idx != state.draw.selected_width {
+                state.draw.prev_width = state.draw.selected_width;
+            }
             state.draw.width_scale = WIDTH_PRESETS[idx];
             state.draw.selected_width = idx;
             glaspen_core::export::glaspen2_save_settings(
@@ -268,8 +276,11 @@ fn toggle_enabled(state: &mut OverlayState) {
     state.draw.enabled = !state.draw.enabled;
     if !state.draw.enabled {
         // 立即恢复穿透
-        set_input_blocking(state.canvas.hwnd, false);
+        set_input_blocking(state.canvas.hwnd, false, "draw-disabled");
     }
+    // 停用涂鸦时把其余动作热键注销, 组合键透传给前台应用(macOS 同语义);
+    // 只留 启停涂鸦/自由涂鸦/打开设置 三个。
+    on_draw_enabled_changed(state.canvas.hwnd, state.draw.enabled);
     hud_notify(if state.draw.enabled {
         "涂鸦已开启"
     } else {
@@ -878,6 +889,49 @@ fn copy_canvas_to_clipboard(state: &mut OverlayState) {
     }
 }
 
+/// 复制 SVG 到剪贴板(可配置动作 copy_svg,macOS perform_hotkey(kVK_ANSI_S)
+/// 同语义)。SVG 由 core 的 cropped 导出生成(与 mac 同源),以 CF_UNICODETEXT
+/// 放入剪贴板,可直接粘进编辑器/聊天框。
+fn copy_svg_to_clipboard(state: &mut OverlayState) {
+    let ptr = glaspen_core::export::glaspen2_get_cropped_svg();
+    if ptr.is_null() {
+        hud_notify("没有可复制的笔迹");
+        return;
+    }
+    let svg = unsafe { std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned() };
+    glaspen_core::export::glaspen2_free_c_string(ptr);
+    if svg.is_empty() {
+        hud_notify("没有可复制的笔迹");
+        return;
+    }
+    // Windows 剪贴板文本必须是 UTF-16 + NUL 结尾
+    let wide: Vec<u16> = svg.encode_utf16().chain(std::iter::once(0)).collect();
+    let bytes = wide.len() * std::mem::size_of::<u16>();
+    unsafe {
+        if OpenClipboard(state.canvas.hwnd) == 0 {
+            tracing::error!("剪贴板打开失败,SVG 未复制");
+            hud_notify("剪贴板打开失败");
+            return;
+        }
+        EmptyClipboard();
+        let mem = GlobalAlloc(GMEM_MOVEABLE, bytes);
+        if !mem.0.is_null() {
+            let p = GlobalLock(mem);
+            if !p.is_null() {
+                std::ptr::copy_nonoverlapping(wide.as_ptr() as *const u8, p as *mut u8, bytes);
+                let _ = GlobalUnlock(mem);
+            }
+            let h = SetClipboardData(CF_UNICODETEXT, mem);
+            if h.0.is_null() {
+                let _ = GlobalFree(mem);
+            }
+        }
+        CloseClipboard();
+    }
+    tracing::info!("SVG 已复制到剪贴板 ({} 字节)", svg.len());
+    hud_notify("SVG 已复制到剪贴板");
+}
+
 /// 应用/取消模糊背景(磨砂玻璃)。SetWindowCompositionAttribute 是
 /// undocumented API,user32 导入库中没有,故用 libloading 动态加载。
 /// 注:对 UpdateLayeredWindow 窗口,Windows 可能忽略该效果(与 ULW 合成冲突),
@@ -1051,9 +1105,10 @@ unsafe extern "system" {
     fn DisconnectNamedPipe(h_named_pipe: isize) -> i32;
 }
 
-// ── 剪贴板(CF_DIB 复制画布) ──
+// ── 剪贴板(CF_DIB 复制画布 / CF_UNICODETEXT 复制 SVG) ──
 
 const CF_DIB: u32 = 8;
+const CF_UNICODETEXT: u32 = 13;
 const GMEM_MOVEABLE: u32 = 0x0002;
 
 #[link(name = "user32")]
