@@ -31,7 +31,7 @@
         (EXPECTED_SIGNER; GLASPEN2_EXPECT_SIGNER 可覆盖)—— 只验完整性
         不验身份, 发布渠道被劫持时对方换一个自签包也能过
   → 点「立即重启更新」
-      主程序: spawn `--updater`(setsid detach)→ 300ms 落盘 → ⌘⌃Q 同路退出
+      主程序: spawn `--updater`(setsid detach)→ 300ms 落盘 → 与菜单「退出」同路退出
       帮手:   写 helper.pid → 等主程序退出 → DB 快照
                → rename target→target.old → ditto 暂存→target → open 拉起
                → 等 ack ── 45s 内等到 → 写 cleanup.list(含 .old、dmg)→ 退出

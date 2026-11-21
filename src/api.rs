@@ -917,8 +917,9 @@ pub async fn stage_update(tag: String) -> UpdateOutcome {
 
 /// 启动 `--updater` 帮手并退出本程序(用户点「立即重启更新」)。
 ///
-/// **成功的路径不返回**:`shim::hotkey("Q")` → `[NSApp terminate:]` 会在
-/// 主线程把进程结束掉;只有每一步失败才回到这里,带着 `ok=false`。
+/// **成功的路径不返回**:`shim::hotkey("Q")` → `gl_quit_app`(与菜单「退出」
+/// 同一条路径)→ `[NSApp terminate:]` 在主线程结束进程;只有每一步失败才回到
+/// 这里,带着 `ok=false`。
 #[frb]
 pub async fn apply_update() -> UpdateOutcome {
     #[cfg(not(target_os = "macos"))]
@@ -985,7 +986,8 @@ pub async fn apply_update() -> UpdateOutcome {
 
         // 给在途的后台写(落笔 edited 标记等)一点时间落地, 再走正常退出
         std::thread::sleep(std::time::Duration::from_millis(300));
-        // ⌘⌃Q 的同一条路径:gl_run_on_main_sync → [NSApp terminate:nil]。
+        // 与菜单「退出」同一条路径:gl_run_on_main_sync → gl_quit_app →
+        // [NSApp terminate:nil](applicationShouldTerminate 写排队点 + WAL)。
         // terminate 结束进程, 正常情况下这行之后什么都不会执行。
         shim::hotkey("Q");
         // 走到这里说明 quit 没生效 —— 帮手还在等主进程, 硬退。
