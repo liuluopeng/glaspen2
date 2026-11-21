@@ -22,10 +22,10 @@ Ideal for remote meetings, teaching, screen annotation, and quick notes.
 Switch from the tabs at the top of the settings panel, or the "Infinite canvas" menu item. The two modes store strokes **independently**.
 
 - **Notebook (paged) mode** — one page per screen, classic page flipping (whole-page flip with the native window fade)
-  - `⌘⌃~` / `⌘⌃1`: flip a whole page to previous / next (configurable in Settings → Shortcuts).
+  - ``⌘⌃` `` / `⌘⌃1`: flip a whole page to previous / next (configurable in Settings → Shortcuts).
   - Page grid: **drag to reorder / batch multi-select delete**, plus lasso **move / copy / paste** in the full-page view.
 - **Infinite canvas (free doodle) mode** — one canvas with no borders (currently a single global canvas)
-  - `⌘⌃I` toggles free doodle (infinite canvas).
+  - Free doodle (infinite canvas) has no default shortcut; bind it in Settings → Shortcuts.
   - Left-hand camera: `⌃⌥W / ⌃⌥S / ⌃⌥A / ⌃⌥D` to pan; `⌃⌥Z / ⌃⌥X` to zoom
     (both configurable in Settings → Shortcuts).
   - `⌃⌥scroll` zooms anchored at the pointer (capped at 100%; modifiers follow the keyboard Zoom-in action).
@@ -97,7 +97,7 @@ Settings · Notebook · Free doodle"]
 | --- | --- | --- |
 | Toggle drawing | `⌘ + ⌃ + V` | `Ctrl + Alt + V` |
 | Undo last stroke | `⌘ + ⌃ + Z` | `Ctrl + Alt + Z` |
-| Previous / next page (whole page) | `⌘ + ⌃ + ~ / 1` | `Ctrl + Alt + ~` / `Ctrl + Alt + 1` |
+| Previous / next page (whole page) | ``⌘ + ⌃ + ` `` / `⌘ + ⌃ + 1` | ``Ctrl + Alt + ` `` / `Ctrl + Alt + 1` |
 | Open settings | `⌘ + ⌃ + D` | `Ctrl + Alt + Shift + D` |
 | Quit completely | `⌘ + ⌃ + ⇧ + Q` | `Ctrl + Alt + Shift + Q` |
 | Quick GIF recording (hold) | `⌘ + ⌃ + R` | `Ctrl + Alt + R` (hold) |
