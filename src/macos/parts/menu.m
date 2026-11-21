@@ -442,6 +442,16 @@ static void toggle_canvas_mode(void) {
     update_status_icon_state(); // 飘渺画布 = 图标左上角的 ghost 圆环徽标
 }
 
+/// 彻底退出:菜单「退出」、可配置快捷键 quit、设置面板/自动更新流程共用**同一条**
+/// 路径 —— 先记性能汇总、把光标还给系统, 再 terminate。terminate 会同步走
+/// applicationShouldTerminate 把排队点写完并 checkpoint WAL(见下), 进程里
+/// 没有其它需要单独收尾的子进程(设置面板是内嵌 Flutter 视图, 不是独立进程)。
+static void gl_quit_app(void) {
+    perf_log_summary();
+    CGDisplayShowCursor(kCGDirectMainDisplay);
+    [NSApp terminate:nil];
+}
+
 @implementation GlaspenMenuHandler
 
 - (void)saveWithBg {
@@ -538,9 +548,7 @@ static void toggle_canvas_mode(void) {
 }
 
 - (void)quitApp {
-    perf_log_summary();
-    CGDisplayShowCursor(kCGDirectMainDisplay);
-    [NSApp terminate:nil];
+    gl_quit_app();
 }
 
 // NSMenuDelegate
@@ -664,7 +672,7 @@ static NSArray<NSString *> *gl_shortcut_actions(void) {
         @"canvas_pan_left", @"canvas_pan_right", @"canvas_pan_up",
         @"canvas_pan_down", @"canvas_zoom_in", @"canvas_zoom_out",
         @"clear", @"export", @"copy_svg",
-        @"toggle_glass", @"toggle_ethereal", @"settings",
+        @"toggle_glass", @"toggle_ethereal", @"settings", @"quit",
     ];
 }
 
@@ -673,7 +681,7 @@ static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) {
         @"undo": @"cmd+ctrl+Z",
         @"page_prev": @"cmd+ctrl+`",
         @"page_next": @"cmd+ctrl+1",
-        // 默认只绑核心 5 个动作 + 自由涂鸦镜头 6 个键。
+        // 默认只绑核心动作(含新增的彻底退出) + 自由涂鸦镜头 6 个键。
         // 其余动作默认不绑(仍可在 设置 → 快捷键 里绑定): 新用户不被
         // 一堆全局热键打扰, 也少占系统按键。
         @"color_swap": @"",
@@ -694,6 +702,8 @@ static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) {
         @"toggle_glass": @"",
         @"toggle_ethereal": @"",
         @"settings": @"cmd+ctrl+D",
+        // 彻底退出: ⌘⌃Q 是 macOS 系统锁屏(保留组合), 加 ⇧ 区分。
+        @"quit": @"cmd+ctrl+shift+Q",
     };
 }
 
@@ -1360,9 +1370,10 @@ void glaspen2_macos_hotkey(const char *key_c) {
     if (!key_c) return;
     NSString *key = @(key_c);
     gl_run_on_main_sync(^{
-        // Q (退出) 不走 perform_hotkey: 那是按钮专属动作, ⌃⌘Q 必须留给锁屏。
+        // Q(彻底退出)不走 perform_hotkey: 退出是独立动作, 且必须和菜单「退出」
+        // 共用同一条收尾路径(⌘⌃Q 本体留给 macOS 锁屏, 见 gl_shortcut_defaults)。
         if ([key isEqualToString:@"Q"]) {
-            [NSApp terminate:nil];
+            gl_quit_app();
             return;
         }
         unsigned short kc = 0;

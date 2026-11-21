@@ -1728,7 +1728,8 @@ static BOOL perform_hotkey(unsigned short kc) {
     return YES;
   }
   // 注意: 不要在这里处理 Q — ⌃⌘Q 是 macOS 的系统锁屏快捷键,
-  // 拦截它会顶掉锁屏。退出只由设置面板按钮触发(见 'hotkey' 处理器)。
+  // 拦截它会顶掉锁屏。可配置的彻底退出动作走 perform_action("quit")
+  // (默认 ⌘⌃⇧Q), 见 gl_shortcut_defaults()。
   return NO;
 }
 
@@ -1787,6 +1788,16 @@ static BOOL perform_action(NSString *action) {
   if ([action isEqualToString:@"toggle_glass"]) return perform_hotkey(kVK_ANSI_B);
   if ([action isEqualToString:@"toggle_ethereal"]) return perform_hotkey(kVK_ANSI_X);
   if ([action isEqualToString:@"settings"]) return perform_hotkey(kVK_ANSI_D);
+  if ([action isEqualToString:@"quit"]) {
+    // 彻底退出: 与菜单「退出」共用 gl_quit_app 这条收尾路径(terminate →
+    // applicationShouldTerminate 写完排队点 + checkpoint WAL)。事件 tap 回调里
+    // 同步 terminate 会把 DB 收尾卡在回调栈上, 放到下一 tick 更稳; 本事件仍吞掉,
+    // 不让组合键漏给前台 App。
+    dispatch_async(dispatch_get_main_queue(), ^{
+      gl_quit_app();
+    });
+    return YES;
+  }
   if ([action isEqualToString:@"color_swap"]) {
     int prev = g_prev_color_index;
     if (prev < 0 || prev >= g_color_preset_count || prev == g_selectedColorIndex) {
@@ -2173,8 +2184,12 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       if (type == kCGEventKeyDown) {
         NSString *action = gl_shortcut_action_for_key(kc, mods);
         if (action) {
+          // 停用涂鸦时只保留"重新启用/自由涂鸦/彻底退出":
+          // 退出是逃生键, 不能因为涂鸦停用就按不出来(Windows 侧退出热键
+          // 在停用涂鸦时同样保持注册, 见 hotkeys.rs register_actions_locked)。
           if (!g_enabled && ![action isEqualToString:@"toggle_draw"] &&
-              ![action isEqualToString:@"toggle_free_canvas"])
+              ![action isEqualToString:@"toggle_free_canvas"] &&
+              ![action isEqualToString:@"quit"])
             return event;
           // 自由涂鸦镜头动作只在无限画布模式、且未在书写时生效; 其它情况
           // 把组合放行给系统(与旧的硬编码镜头分支一致)。
