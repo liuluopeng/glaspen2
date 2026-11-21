@@ -45,9 +45,14 @@ fn run_settings_pipe_server(hwnd: isize) {
         }
         tracing::info!("Flutter settings client connected");
 
-        handle_pipe_client(pipe, hwnd);
-
-        tracing::info!("Flutter settings client disconnected");
+        // 每个连接一个线程继续接受下一个: 面板是独立进程, 旧面板/手动双击开的
+        // 面板可能占着前一个连接 —— 单线程服务会让"后来那个看得见的面板"
+        // 永远连不上(它的改设置/切画布模式全部静默丢失)。多客户端彼此独立,
+        // 回推帧发给"最新连接"的面板(PANEL_WRITER)。
+        std::thread::spawn(move || {
+            handle_pipe_client(pipe, hwnd);
+            tracing::info!("Flutter settings client disconnected");
+        });
     }
 }
 
@@ -65,9 +70,12 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
     // Wrap pipe HANDLE in a single File for both read and write
     let mut stream = unsafe { std::fs::File::from_raw_handle(pipe as *mut std::ffi::c_void) };
     // 留一份写句柄克隆给"覆盖层 → 面板"的回推通道(热键改设置时同步面板)
+    let mut my_gen: Option<u64> = None;
     match stream.try_clone() {
         Ok(clone) => {
-            *PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner()) = Some(clone);
+            let conn_gen = PANEL_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            my_gen = Some(conn_gen);
+            *PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner()) = Some((conn_gen, clone));
         }
         Err(e) => tracing::warn!("面板回推通道创建失败: {e}"),
     }
@@ -100,7 +108,13 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
 
     // Prevent File from closing the handle; we close it ourselves
     let _ = stream.into_raw_handle();
-    *PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    // 只清掉"自己这一代"的回推句柄: 多客户端时其它连接可能已经接管
+    if let Some(conn_gen) = my_gen {
+        let mut guard = PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.as_ref().map(|(g, _)| *g) == Some(conn_gen) {
+            *guard = None;
+        }
+    }
     close_pipe(pipe);
     // 面板进程断开: 若当时正在录制快捷键, 立即恢复全局热键
     // (Windows 面板是独立进程, 崩溃/被杀不该让快捷键永久失效)。
@@ -112,20 +126,59 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
 // 面板是独立进程, 只能经命名管道推。连接时保存一份写句柄克隆;
 // 消息循环线程(热键/菜单改设置)用 push_settings_changed 推局部字段,
 // Dart 侧缺省字段沿用当前值, 于是开关/圆点能实时跟上。
-static PANEL_WRITER: std::sync::LazyLock<std::sync::Mutex<Option<std::fs::File>>> =
+//
+// **写必须在独立线程做**: 面板若是暂停读(忙碌/挂起/被杀但句柄未断),
+// 窗口线程上的 write_all 会阻塞 → 整个消息循环卡死 → 通知不消失、热键失灵。
+// 所以窗口线程只往队列里投帧, 由 panel-push 线程负责真正的阻塞写。
+/// 当前面板连接:(连接代号, 写句柄)。代号用于"写失败时别误清新连接"。
+static PANEL_WRITER: std::sync::LazyLock<std::sync::Mutex<Option<(u64, std::fs::File)>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+static PANEL_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 回推帧队列(有界): 窗口线程 try_send 永不阻塞; 面板不读时最多积压 64 帧,
+/// 再多的直接丢弃(局部字段帧丢一帧无妨, 下次改设置会重新推)。
+static PANEL_TX: std::sync::LazyLock<std::sync::mpsc::SyncSender<String>> =
+    std::sync::LazyLock::new(|| {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<String>(64);
+        std::thread::Builder::new()
+            .name("panel-push".into())
+            .spawn(move || {
+                use std::io::Write;
+                for frame in rx {
+                    // 取一份句柄克隆后**立即放锁**: 阻塞写不能占着锁
+                    // (否则面板重连时管道线程会卡在 lock 上)
+                    let conn = {
+                        let guard = PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner());
+                        guard
+                            .as_ref()
+                            .and_then(|(g, f)| f.try_clone().ok().map(|c| (*g, c)))
+                    };
+                    let Some((conn_gen, mut f)) = conn else { continue };
+                    if f.write_all(frame.as_bytes()).is_err() || f.flush().is_err() {
+                        // 写失败 = 面板已断开; 只清掉自己那一代连接
+                        let mut guard =
+                            PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner());
+                        if guard.as_ref().map(|(g, _)| *g) == Some(conn_gen) {
+                            *guard = None;
+                        }
+                    }
+                }
+            })
+            .ok();
+        tx
+    });
 
 /// 向设置面板推一帧 onSettingsChanged;未连接时静默丢弃。
+/// **可从任意线程调用**(含窗口线程): 只入队, 绝不阻塞。
 fn push_settings_changed(data_json: &str) {
-    let mut guard = PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(w) = guard.as_mut() else { return };
-    use std::io::Write;
     let frame = format!("{{\"type\":\"onSettingsChanged\",\"data\":{data_json}}}\n");
-    if w.write_all(frame.as_bytes()).is_err() {
-        *guard = None;
-        return;
+    match PANEL_TX.try_send(frame) {
+        Ok(()) => {}
+        Err(std::sync::mpsc::TrySendError::Full(_)) => {
+            tracing::debug!("面板回推积压已满, 丢弃一帧局部设置");
+        }
+        Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {}
     }
-    let _ = w.flush();
 }
 
 /// 管道线程 → 消息循环线程: 投递一个 WM_TRAY_COMMAND(改运行态设置用)
@@ -1153,6 +1206,14 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             }
         } else if key == "infiniteCanvas" {
             // 模式 tab 切换:活页本 ↔ 无限画布(参数 0/1 显式设置)
+            tracing::info!(
+                "面板请求切换画布模式: {}",
+                if json_get_bool(line, "value").unwrap_or(false) {
+                    "无限画布"
+                } else {
+                    "活页本"
+                }
+            );
             if let Some(on) = json_get_bool(line, "value") {
                 let _ = unsafe {
                     PostMessageW(

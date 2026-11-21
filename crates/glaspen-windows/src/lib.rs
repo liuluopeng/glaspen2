@@ -22,44 +22,65 @@ pub fn win_main() {}
 static SETTINGS_CHILDREN: std::sync::Mutex<Vec<std::process::Child>> =
     std::sync::Mutex::new(Vec::new());
 
-/// 重新拉起设置面板。面板是**独立进程**, 用户点 X 关掉后进程就没了,
-/// 覆盖层侧靠 settings 动作(默认 Ctrl+Alt+D)重新拉起; 每次 spawn 的 pid
-/// 记进 SETTINGS_CHILDREN, 退出时统一结束(见 kill_settings_processes)。
+/// 设置面板(独立进程)的单实例查询/置顶/拉起。
+///
+/// **面板必须单实例**: 设置管道同一时刻只服务一个客户端。若同时存在两个面板,
+/// 先开的那个(可能被后开的挡在下面、用户看不见)会一直占着连接, 后开的"看得见
+/// 的那个"连不上覆盖层 —— 用户在它里面切画布模式/改设置全部无效(典型症状:
+/// 切到自由涂鸦后涂鸦仍然落在活页本里)。已有活面板时只把它提到最前, 绝不新开。
 #[cfg(windows)]
 pub(crate) fn show_settings_window() {
-    if let Some(p) = find_settings_exe() {
-        match std::process::Command::new(&p).spawn() {
-            Ok(child) => {
-                let pid = child.id();
-                tracing::info!("设置面板已拉起: {} (pid={pid})", p.display());
-                let mut children = SETTINGS_CHILDREN.lock().unwrap_or_else(|e| e.into_inner());
-                // 顺手清掉已自行关闭(X 按钮/崩溃)的面板, 别让列表无限长
-                children.retain_mut(|c| !matches!(c.try_wait(), Ok(Some(_))));
-                children.push(child);
-                drop(children);
-                // 覆盖层是置顶窗口, 面板默认会被压在玻璃下面(磨砂开启时直接看不清):
-                // 等 Flutter 窗口一出现就把它抬到置顶并激活。
-                std::thread::spawn(move || raise_settings_window(pid));
+    // 清理已自行关闭(X 按钮/崩溃)的; 历史遗留的多面板只留最后一个, 其余结束
+    let existing_pid = {
+        let mut children = SETTINGS_CHILDREN.lock().unwrap_or_else(|e| e.into_inner());
+        children.retain_mut(|c| !matches!(c.try_wait(), Ok(Some(_))));
+        let keep_from = children.len().saturating_sub(1);
+        for mut stale in children.drain(..keep_from) {
+            let pid = stale.id();
+            if stale.kill().is_ok() {
+                let _ = stale.wait();
+                tracing::info!("结束多余的设置面板进程(pid={pid})");
             }
-            Err(e) => tracing::warn!("重新拉起设置面板失败({}): {e}", p.display()),
         }
-    } else {
+        children.first().map(std::process::Child::id)
+    };
+
+    if let Some(pid) = existing_pid {
+        if let Some(hwnd) = find_settings_window(pid) {
+            activate_settings_window(hwnd, pid);
+            tracing::info!("设置面板已在运行, 置顶显示(pid={pid})");
+        } else {
+            // 进程在但 Flutter 窗口还没创建(刚拉起/首帧中): 等它出来再置顶
+            std::thread::spawn(move || raise_settings_window(pid));
+        }
+        return;
+    }
+
+    let Some(p) = find_settings_exe() else {
         tracing::warn!("找不到 glaspen2_settings.exe, 无法打开设置面板");
+        return;
+    };
+    match std::process::Command::new(&p).spawn() {
+        Ok(child) => {
+            let pid = child.id();
+            tracing::info!("设置面板已拉起: {} (pid={pid})", p.display());
+            SETTINGS_CHILDREN
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(child);
+            // 覆盖层是置顶窗口, 面板会被压在玻璃下面: 等 Flutter 窗口出现后置顶。
+            std::thread::spawn(move || raise_settings_window(pid));
+        }
+        Err(e) => tracing::warn!("拉起设置面板失败({}): {e}", p.display()),
     }
 }
 
-/// 把设置面板窗口提到置顶并激活。
-///
-/// 覆盖层是 `WS_EX_TOPMOST` 全屏窗口, 而设置面板(独立进程的普通窗口)默认会被
-/// 压在它下面 —— 开磨砂玻璃时面板直接看不清/点不到, 用户会以为"只有玻璃、
-/// 面板没出来"。Flutter 窗口要等首帧就绪才创建, 所以在后台线程轮询等它出现,
-/// 再抬到最前(面板是独立进程, 这里只能按 pid 找它的顶层窗口)。
+/// 按 pid 找面板进程的 Flutter 顶层窗口(FLUTTER_RUNNER_WIN32_WINDOW)。
 #[cfg(windows)]
-fn raise_settings_window(pid: u32) {
+fn find_settings_window(pid: u32) -> Option<windows::Win32::Foundation::HWND> {
     use windows::Win32::Foundation::{HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetClassNameW, GetWindowThreadProcessId, HWND_TOPMOST, SW_SHOW, SWP_NOMOVE,
-        SWP_NOSIZE, SWP_SHOWWINDOW, SetForegroundWindow, SetWindowPos, ShowWindow,
+        EnumWindows, GetClassNameW, GetWindowThreadProcessId,
     };
     use windows::core::BOOL;
 
@@ -81,27 +102,48 @@ fn raise_settings_window(pid: u32) {
         BOOL(1)
     }
 
+    let mut ctx: (u32, Option<HWND>) = (pid, None);
+    let _ = unsafe { EnumWindows(Some(find_panel), LPARAM(&mut ctx as *mut _ as isize)) };
+    ctx.1
+}
+
+/// 把面板窗口提到置顶并激活。
+///
+/// 覆盖层是 `WS_EX_TOPMOST` 全屏窗口, 而设置面板(独立进程的普通窗口)默认会被
+/// 压在它下面 —— 开磨砂玻璃时面板直接看不清/点不到, 用户会以为"只有玻璃、
+/// 面板没出来"。
+#[cfg(windows)]
+fn activate_settings_window(hwnd: windows::Win32::Foundation::HWND, pid: u32) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        HWND_TOPMOST, SW_SHOW, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SetForegroundWindow,
+        SetWindowPos, ShowWindow,
+    };
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+        );
+        let _ = ShowWindow(hwnd, SW_SHOW);
+        // 覆盖层不抢焦点, 正常能被提到前台; 失败也不影响显示(只是不激活)。
+        let _ = SetForegroundWindow(hwnd);
+    }
+    tracing::info!("设置面板窗口已置顶并激活(pid={pid})");
+}
+
+/// 新拉起的面板: Flutter 窗口要等首帧就绪才创建, 轮询等它出现再置顶(最多 6s)。
+#[cfg(windows)]
+fn raise_settings_window(pid: u32) {
     for _ in 0..60 {
         std::thread::sleep(std::time::Duration::from_millis(100));
-        let mut ctx: (u32, Option<HWND>) = (pid, None);
-        let _ = unsafe { EnumWindows(Some(find_panel), LPARAM(&mut ctx as *mut _ as isize)) };
-        let Some(hwnd) = ctx.1 else { continue };
-        unsafe {
-            let _ = SetWindowPos(
-                hwnd,
-                Some(HWND_TOPMOST),
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
-            );
-            let _ = ShowWindow(hwnd, SW_SHOW);
-            // 覆盖层不抢焦点, 正常能被提到前台; 失败也不影响显示(只是不激活)。
-            let _ = SetForegroundWindow(hwnd);
+        if let Some(hwnd) = find_settings_window(pid) {
+            activate_settings_window(hwnd, pid);
+            return;
         }
-        tracing::info!("设置面板窗口已置顶并激活(pid={pid})");
-        return;
     }
     tracing::warn!("设置面板窗口 6s 内未出现, 无法置顶(pid={pid})");
 }
