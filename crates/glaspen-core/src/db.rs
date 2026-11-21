@@ -134,7 +134,7 @@ macro_rules! dblog {
 // ---------------------------------------------------------------------------
 mod platform {
     use crate::state;
-    use sqlx::{Connection, Row, SqlitePool};
+    use sqlx::{Acquire, Row, SqliteConnection, SqlitePool};
     use std::collections::HashMap;
     use std::sync::OnceLock;
 
@@ -203,9 +203,14 @@ mod platform {
         tracing::info!("DB initialized at {}", path.display());
     }
 
-    async fn exec(pool: &SqlitePool, sql: &str) -> Result<(), String> {
+    /// 在给定连接(通常是迁移事务)上执行一条语句。
+    ///
+    /// 迁移统一走事务(见 `migrate_with`), 所以这里接 `&mut SqliteConnection`
+    /// 而不是池 —— 事务内的 DDL、`PRAGMA table_info` 与版本号写入必须落在
+    /// **同一条连接**上, 否则彼此看不到、也回滚不到一起。
+    async fn exec(conn: &mut SqliteConnection, sql: &str) -> Result<(), String> {
         sqlx::query(sql)
-            .execute(pool)
+            .execute(&mut *conn)
             .await
             .map(|_| ())
             .map_err(|e| {
@@ -216,9 +221,14 @@ mod platform {
             })
     }
 
-    /// 迁移前备份: 仅当库文件已存在且 schema 版本落后于本程序时执行。
-    /// 目标文件已存在则跳过(同一版本只备份一次), 避免每次启动都重写。
-    async fn backup_before_migration(
+    /// 迁移前备份: 仅当库里确实有表(有数据可保护)且 schema 版本落后于本程序时执行。
+    ///
+    /// 写入顺序 = 临时文件 → `VACUUM INTO` → `quick_check` + 版本号校验 →
+    /// 原子 rename。**不能**直接写最终文件名: 中途失败(磁盘满/被中断)会留下
+    /// 一个截断的 `before-vN`, 而只看"文件是否存在"的旧逻辑下次启动会以为
+    /// 备份还在、跳过重做 —— 安全网就永久缺了一角。已存在的备份同样先校验:
+    /// 坏了就挪到 `.corrupt-<时间戳>` 后重新生成一份。
+    pub(crate) async fn backup_before_migration(
         pool: &SqlitePool,
         path: &std::path::Path,
     ) -> Result<(), String> {
@@ -229,23 +239,164 @@ mod platform {
         if version >= SCHEMA_VERSION {
             return Ok(());
         }
-        let looks_existing = std::fs::metadata(path)
-            .map(|m| m.len() > 0)
-            .unwrap_or(false);
-        if !looks_existing {
+        // 只有"真正含表"的库才值得备份。不能只看文件大小: 新建库在
+        // `journal_mode=WAL` 时就会写出非空头部, 但没有任何表 —— 这时
+        // 既没有可备份的数据, 更不该因为"校验不过"而中止启动。
+        let tables: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'")
+                .fetch_one(pool)
+                .await
+                .map_err(|e| format!("读取库结构失败(无法确认是否需要迁移前备份): {e}"))?;
+        if tables == 0 {
+            dblog!("空库无需迁移前备份: {}", path.display());
             return Ok(());
         }
+        let dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
         let bak = path.with_file_name(format!("glaspen2.db.before-v{version}"));
+
         if bak.exists() {
-            return Ok(());
+            match validate_backup_file(&bak, version).await {
+                Ok(()) => {
+                    dblog!("迁移前备份已存在且校验通过: {}", bak.display());
+                    prune_old_backups(dir, BACKUP_KEEP);
+                    return Ok(());
+                }
+                Err(e) => {
+                    // 坏备份不能挡住新备份: 挪走留证(挪不动就直接删, 但一定重做)
+                    let quarantine = path.with_file_name(format!(
+                        "glaspen2.db.before-v{version}.corrupt-{}",
+                        now_f64() as i64
+                    ));
+                    match std::fs::rename(&bak, &quarantine) {
+                        Ok(()) => tracing::warn!(
+                            "旧迁移备份校验失败({e}), 已移到 {} 并重新生成",
+                            quarantine.display()
+                        ),
+                        Err(re) => {
+                            let _ = std::fs::remove_file(&bak);
+                            tracing::warn!(
+                                "旧迁移备份校验失败({e}), 移走也失败({re}), 已直接删除并重新生成"
+                            );
+                        }
+                    }
+                }
+            }
         }
-        let escaped = bak.to_string_lossy().replace('\'', "''");
-        sqlx::query(&format!("VACUUM INTO '{escaped}'"))
+
+        // 临时文件与最终文件同目录 ⇒ 同一文件系统 ⇒ rename 是原子的
+        let tmp = path.with_file_name(format!(
+            "glaspen2.db.before-v{version}.tmp-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&tmp);
+        let escaped = tmp.to_string_lossy().replace('\'', "''");
+        if let Err(e) = sqlx::query(&format!("VACUUM INTO '{escaped}'"))
             .execute(pool)
             .await
-            .map_err(|e| format!("VACUUM INTO {} 失败: {e}", bak.display()))?;
-        tracing::info!("迁移前备份: {} (schema v{version})", bak.display());
+        {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!("VACUUM INTO {} 失败: {e}", tmp.display()));
+        }
+        if let Err(e) = validate_backup_file(&tmp, version).await {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!(
+                "迁移前备份校验失败({e}), 已删除临时文件 —— 未对库做任何迁移"
+            ));
+        }
+        if let Err(e) = std::fs::rename(&tmp, &bak) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!("备份落盘失败({e}): {}", bak.display()));
+        }
+        let bytes = std::fs::metadata(&bak).map(|m| m.len()).unwrap_or(0);
+        tracing::info!(
+            "迁移前备份: {} (schema v{version}, {bytes} 字节)",
+            bak.display()
+        );
+        prune_old_backups(dir, BACKUP_KEEP);
         Ok(())
+    }
+
+    /// 迁移前备份保留份数(只留最近几份, 防止每个 schema 版本都永久多占一份库大小)。
+    const BACKUP_KEEP: usize = 3;
+
+    /// 校验一个 `.db` 是不是可用的迁移前备份: 能打开、结构完整、版本号对得上。
+    /// 只读打开, 绝不改动备份文件本身。
+    async fn validate_backup_file(
+        path: &std::path::Path,
+        expected_version: i32,
+    ) -> Result<(), String> {
+        let pool = SqlitePool::connect_with(
+            sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(path)
+                .create_if_missing(false)
+                .read_only(true),
+        )
+        .await
+        .map_err(|e| format!("打开备份失败: {e}"))?;
+        let result = async {
+            let check: String = sqlx::query_scalar("PRAGMA quick_check")
+                .fetch_one(&pool)
+                .await
+                .map_err(|e| format!("quick_check 失败: {e}"))?;
+            if check != "ok" {
+                return Err(format!("quick_check 未通过: {check}"));
+            }
+            let found: i32 = sqlx::query_scalar("PRAGMA user_version")
+                .fetch_one(&pool)
+                .await
+                .map_err(|e| format!("读取备份版本失败: {e}"))?;
+            if found != expected_version {
+                return Err(format!("备份版本 v{found} ≠ 期望 v{expected_version}"));
+            }
+            let tables: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'")
+                    .fetch_one(&pool)
+                    .await
+                    .map_err(|e| format!("读取备份表数失败: {e}"))?;
+            if tables == 0 {
+                return Err("备份里没有任何表".to_string());
+            }
+            Ok(())
+        }
+        .await;
+        pool.close().await;
+        result
+    }
+
+    /// 迁移前备份保留策略: 只保留最近 `keep` 份 `glaspen2.db.before-vN`。
+    /// 严格按文件名匹配(不碰 `.tmp-`/`.corrupt-`/用户其它文件), 失败只记日志。
+    pub(crate) fn prune_old_backups(dir: &std::path::Path, keep: usize) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let mut backups: Vec<(std::time::SystemTime, std::path::PathBuf)> = Vec::new();
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(rest) = name.strip_prefix("glaspen2.db.before-v") else {
+                continue;
+            };
+            if rest.is_empty() || !rest.bytes().all(|b| b.is_ascii_digit()) {
+                continue;
+            }
+            let Ok(meta) = entry.metadata() else { continue };
+            if !meta.is_file() {
+                continue;
+            }
+            backups.push((
+                meta.modified().unwrap_or(std::time::UNIX_EPOCH),
+                entry.path(),
+            ));
+        }
+        if backups.len() <= keep {
+            return;
+        }
+        backups.sort_by_key(|(t, _)| std::cmp::Reverse(*t));
+        for (_, old) in backups.into_iter().skip(keep) {
+            match std::fs::remove_file(&old) {
+                Ok(()) => tracing::info!("清理旧迁移备份: {}", old.display()),
+                Err(e) => tracing::warn!("清理旧迁移备份失败 {}: {e}", old.display()),
+            }
+        }
     }
 
     /// 退出前把 WAL 合并回主库: 更新器的数据库快照只拷 `.db`, 不 checkpoint
@@ -268,13 +419,13 @@ mod platform {
     /// **真正的失败也被一起吞掉了** —— 结果是一个缺列的库继续跑, 直到某次
     /// 查询报错。现在只有"列已存在"会静默跳过, 别的错误一律上报。
     async fn add_column_if_missing(
-        pool: &SqlitePool,
+        conn: &mut SqliteConnection,
         table: &str,
         column: &str,
         decl: &str,
     ) -> Result<(), String> {
         let rows = sqlx::query(&format!("PRAGMA table_info({table})"))
-            .fetch_all(pool)
+            .fetch_all(&mut *conn)
             .await
             .map_err(|e| format!("读取 {table} 表结构失败: {e}"))?;
         let exists = rows.iter().any(|r| {
@@ -286,7 +437,7 @@ mod platform {
             return Ok(());
         }
         exec(
-            pool,
+            conn,
             &format!("ALTER TABLE {table} ADD COLUMN {column} {decl}"),
         )
         .await
@@ -294,9 +445,19 @@ mod platform {
 
     /// 建表 + 迁移。拆出来是为了能在测试里对指定 pool 跑, 而不是只能走全局单例。
     ///
-    /// 全部语句都是幂等的(`CREATE ... IF NOT EXISTS` / 加列前先查), 所以
-    /// 中途失败后下次启动重跑是安全的。
+    /// 全部语句都是幂等的(`CREATE ... IF NOT EXISTS` / 加列前先查), 且**整体
+    /// 在一个事务里**(`BEGIN IMMEDIATE`): SQLite 的 DDL 与 `PRAGMA user_version`
+    /// 都参与事务, 中途任何一步失败都整体回滚 —— 不会留下"加了半套列、版本号
+    /// 还是旧的"这种半迁移状态; 失败后下次启动从头重跑(幂等)。
     pub(crate) async fn migrate_with(pool: &SqlitePool) -> Result<(), String> {
+        migrate_with_hook(pool, None).await
+    }
+
+    /// [`migrate_with`] 的可注入版本: `fail_at` 仅供测试制造中途失败以验证回滚。
+    pub(crate) async fn migrate_with_hook(
+        pool: &SqlitePool,
+        fail_at: Option<usize>,
+    ) -> Result<(), String> {
         let version: i32 = sqlx::query_scalar("PRAGMA user_version")
             .fetch_one(pool)
             .await
@@ -309,6 +470,35 @@ mod platform {
             ));
         }
 
+        // BEGIN IMMEDIATE: 一开始就拿写锁, 避免"先读后写"到中途才因锁升级失败。
+        let mut tx = pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(|e| format!("开启迁移事务失败: {e}"))?;
+        // 显式 rollback(而不是靠 Drop 的异步回滚), 让"回滚已完成"对调用方与测试都是确定的。
+        match migrate_steps(&mut tx, version, fail_at).await {
+            Ok(()) => tx
+                .commit()
+                .await
+                .map_err(|e| format!("迁移事务提交失败: {e}")),
+            Err(e) => {
+                if let Err(re) = tx.rollback().await {
+                    tracing::warn!("迁移回滚失败: {re}");
+                }
+                Err(e)
+            }
+        }
+    }
+
+    /// 迁移的全部步骤, 在 [`migrate_with_hook`] 开启的事务内执行。
+    ///
+    /// 只放幂等语句: 事务保证"全做或全不做", 幂等保证极端情况(提交前进程被杀,
+    /// 重启后 WAL 恢复)下再跑一遍也不会出错。
+    async fn migrate_steps(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        version: i32,
+        fail_at: Option<usize>,
+    ) -> Result<(), String> {
         for sql in [
             "CREATE TABLE IF NOT EXISTS screens (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -403,24 +593,33 @@ mod platform {
                 strokes_json TEXT NOT NULL
             )",
         ] {
-            exec(pool, sql).await?;
+            exec(tx, sql).await?;
         }
+        injected_failure(fail_at, 1)?;
 
         // 历史迁移(老库缺这些列)。软删除:deleted_at 非 NULL 表示已删除
         // (不参与查询,可恢复);三张实体表各自记录,points/infinite_points
         // 跟随父级笔迹即可。
-        add_column_if_missing(pool, "screens", "edited", "INTEGER NOT NULL DEFAULT 0").await?;
-        add_column_if_missing(pool, "points", "t", "REAL NOT NULL DEFAULT 0.0").await?;
-        add_column_if_missing(pool, "screens", "deleted_at", "REAL").await?;
-        add_column_if_missing(pool, "strokes", "deleted_at", "REAL").await?;
-        add_column_if_missing(pool, "infinite_strokes", "deleted_at", "REAL").await?;
+        add_column_if_missing(tx, "screens", "edited", "INTEGER NOT NULL DEFAULT 0").await?;
+        add_column_if_missing(tx, "points", "t", "REAL NOT NULL DEFAULT 0.0").await?;
+        add_column_if_missing(tx, "screens", "deleted_at", "REAL").await?;
+        add_column_if_missing(tx, "strokes", "deleted_at", "REAL").await?;
+        add_column_if_missing(tx, "infinite_strokes", "deleted_at", "REAL").await?;
+        injected_failure(fail_at, 2)?;
+
         // 页序 v2: 活页本可重排/插页。回填 = id 序(与迁移前完全一致,
         // 老库行为零变化); 之后新页追加到全局序列末尾, 面板可调序。
-        add_column_if_missing(pool, "screens", "order_index", "INTEGER NOT NULL DEFAULT 0").await?;
-        sqlx::query("UPDATE screens SET order_index = id WHERE order_index = 0")
-            .execute(pool)
-            .await
-            .map_err(|e| format!("回填 order_index 失败: {e}"))?;
+        // 只有 **v2 之前** 的老库需要回填 —— 不再每次启动无条件 UPDATE:
+        // 一旦将来 0 成为合法 order_index, 无条件 UPDATE 会在每次启动时
+        // 把用户页序悄悄改回 id 序。
+        add_column_if_missing(tx, "screens", "order_index", "INTEGER NOT NULL DEFAULT 0").await?;
+        if version < 2 {
+            sqlx::query("UPDATE screens SET order_index = id WHERE order_index = 0")
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| format!("回填 order_index 失败: {e}"))?;
+        }
+        injected_failure(fail_at, 3)?;
 
         // 注:旧版本曾在 screens 上存 per-page 镜头(pan_x/pan_y/zoom)。
         // 现在无限画布独立存储且全局只有一个画布,镜头改存 user_settings,
@@ -431,30 +630,40 @@ mod platform {
         // 本函数, 不能无条件 DELETE 白费缓存)。
         let purged: Option<String> =
             sqlx::query_scalar("SELECT value FROM user_settings WHERE key = 'thumbs_purged_v2'")
-                .fetch_optional(pool)
+                .fetch_optional(&mut **tx)
                 .await
                 .ok()
                 .flatten();
         if purged.is_none() {
             sqlx::query("DELETE FROM screen_thumbnails")
-                .execute(pool)
+                .execute(&mut **tx)
                 .await
                 .map_err(|e| format!("清理旧缩略图失败: {e}"))?;
             sqlx::query(
                 "INSERT OR REPLACE INTO user_settings (key, value) VALUES ('thumbs_purged_v2', '1')",
             )
-            .execute(pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| format!("写缩略图清理标记失败: {e}"))?;
             dblog!("缩略图缓存已一次性清理(裁剪 → 整页形态)");
         }
+        injected_failure(fail_at, 4)?;
 
-        // 迁移全部成功才写版本号:中途失败时下次启动会整套重跑(语句都幂等)
+        // 版本号与建表/加列在同一个事务里提交: 要么全生效, 要么全回滚。
         sqlx::query(&format!("PRAGMA user_version = {SCHEMA_VERSION}"))
-            .execute(pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| format!("写入 schema 版本失败: {e}"))?;
         Ok(())
+    }
+
+    /// 测试注入点: 让迁移在指定步骤后返回错误, 用于验证整体回滚。
+    /// 生产路径传 `None`, 永远不触发。
+    fn injected_failure(fail_at: Option<usize>, step: usize) -> Result<(), String> {
+        match fail_at {
+            Some(n) if n == step => Err(format!("测试注入失败: 迁移第 {step} 步")),
+            _ => Ok(()),
+        }
     }
 
     async fn apply_defaults(pool: &SqlitePool) {
@@ -1128,7 +1337,7 @@ mod platform {
     const RESTORE_TABLES: [(&str, &str); 5] = [
         (
             "screens",
-            "id, created_at, screen_w, screen_h, edited, deleted_at",
+            "id, created_at, screen_w, screen_h, edited, deleted_at, order_index",
         ),
         (
             "strokes",
@@ -2295,11 +2504,12 @@ pub use platform::*;
 mod tests {
     use super::StrokeData;
     use super::platform::{
-        SCHEMA_VERSION, attach_points, backup_to_with, insert_bubble_message_with,
-        last_screen_with_geometry_with, load_bubble_messages_with, migrate_with, next_screen_with,
-        page_info_with, prev_screen_with, reorder_screen_with, restore_merge_from_with,
-        screen_stroke_version_with, stroke_versions_many_with, thumbnail_lookup_with,
-        thumbnail_store_with, thumbnails_many_with, thumbnails_purge_screen_with,
+        SCHEMA_VERSION, attach_points, backup_before_migration, backup_to_with,
+        insert_bubble_message_with, last_screen_with_geometry_with, load_bubble_messages_with,
+        migrate_with, migrate_with_hook, next_screen_with, page_info_with, prev_screen_with,
+        reorder_screen_with, restore_merge_from_with, screen_stroke_version_with,
+        stroke_versions_many_with, thumbnail_lookup_with, thumbnail_store_with,
+        thumbnails_many_with, thumbnails_purge_screen_with,
     };
     use crate::runtime;
     use sqlx::SqlitePool;
@@ -2712,6 +2922,17 @@ mod tests {
             .unwrap()
     }
 
+    async fn has_table(pool: &SqlitePool, table: &str) -> bool {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        )
+        .bind(table)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        n > 0
+    }
+
     async fn has_column(pool: &SqlitePool, table: &str, column: &str) -> bool {
         use sqlx::Row;
         sqlx::query(&format!("PRAGMA table_info({table})"))
@@ -2787,6 +3008,187 @@ mod tests {
             let _ = std::fs::remove_file(&path);
         });
     }
+
+    /// 迁移必须整体成功或整体回滚: 注入中途失败后, 已执行了一半的建表/加列
+    /// 不能留在库里(否则下次启动看到一个"半套 schema + 旧版本号"的库);
+    /// 回滚后正常迁移仍能从干净状态成功。
+    #[test]
+    fn test_migration_is_atomic_on_failure() {
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        runtime().block_on(async {
+            let (pool, path) = raw_temp_pool().await;
+            // 老库(v0): 只有最基础的三张表 + 一行数据
+            for sql in [
+                "CREATE TABLE screens (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at REAL NOT NULL, screen_w INTEGER NOT NULL, screen_h INTEGER NOT NULL)",
+                "CREATE TABLE strokes (id INTEGER PRIMARY KEY, screen_id INTEGER NOT NULL, color_r REAL NOT NULL, color_g REAL NOT NULL, color_b REAL NOT NULL, width_scale REAL NOT NULL DEFAULT 1.0, created_at REAL NOT NULL)",
+                "CREATE TABLE points (stroke_id INTEGER NOT NULL, seq INTEGER NOT NULL, x REAL NOT NULL, y REAL NOT NULL, width REAL NOT NULL, PRIMARY KEY (stroke_id, seq))",
+            ] {
+                sqlx::query(sql).execute(&pool).await.unwrap();
+            }
+            sqlx::query(
+                "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (1.0, 100, 100)",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO strokes (id, screen_id, color_r, color_g, color_b, created_at) \
+                 VALUES (1, 1, 0.0, 0.0, 0.0, 1.0)",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+
+            let err = migrate_with_hook(&pool, Some(2))
+                .await
+                .expect_err("注入失败必须上报");
+            assert!(err.contains("测试注入"), "错误信息要能定位: {err}");
+
+            // 回滚: 版本号保持原值, 半套 schema 不落库
+            assert_eq!(user_version(&pool).await, 0, "失败后版本号必须保持原值");
+            assert!(
+                !has_table(&pool, "bubble_messages").await,
+                "事务内新建的表必须整体回滚"
+            );
+            assert!(
+                !has_table(&pool, "user_settings").await,
+                "事务内新建的表必须整体回滚"
+            );
+            assert!(
+                !has_column(&pool, "screens", "edited").await,
+                "事务内加的列必须整体回滚"
+            );
+            assert!(!has_column(&pool, "points", "t").await);
+            let screens: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM screens")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            let strokes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM strokes")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            assert_eq!((screens, strokes), (1, 1), "旧数据必须原样在");
+
+            // 回滚后的库仍是干净的老库: 正常迁移应成功, 且旧数据保留
+            migrate_with(&pool)
+                .await
+                .expect("回滚后正常迁移应成功");
+            assert_eq!(user_version(&pool).await, SCHEMA_VERSION);
+            assert!(has_column(&pool, "screens", "edited").await);
+            assert!(has_column(&pool, "points", "t").await);
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM screens")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap(),
+                1
+            );
+            assert_eq!(
+                sqlx::query_scalar::<_, i64>("SELECT order_index FROM screens")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap(),
+                1,
+                "v2 之前的老库要按 id 回填页序"
+            );
+
+            pool.close().await;
+            let _ = std::fs::remove_file(&path);
+        });
+    }
+
+    /// 迁移前备份: 损坏/截断的旧备份不能被"文件已存在"挡成永久缺角 ——
+    /// 必须校验、挪走、重新生成一份可用的; 临时文件不残留。
+    #[test]
+    fn test_backup_before_migration_validates_and_regenerates() {
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        runtime().block_on(async {
+            let dir = std::env::temp_dir().join(format!(
+                "glaspen2_migbak_{}_{}",
+                std::process::id(),
+                DB_COUNTER.fetch_add(1, Ordering::SeqCst)
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let db_path = dir.join("glaspen2.db");
+            let pool = SqlitePool::connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&db_path)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+            // 老库(v0)有数据 —— 备份里必须能看到
+            sqlx::query(
+                "CREATE TABLE screens (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at REAL NOT NULL, screen_w INTEGER NOT NULL, screen_h INTEGER NOT NULL)",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO screens (created_at, screen_w, screen_h) VALUES (1.0, 100, 100)",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+
+            // 上一次备份中途失败留下的垃圾文件
+            let bak = dir.join("glaspen2.db.before-v0");
+            std::fs::write(&bak, b"this is not a database").unwrap();
+
+            backup_before_migration(&pool, &db_path)
+                .await
+                .expect("坏备份应被校验发现并重新生成");
+
+            // 新备份必须可打开、结构完整、版本与数据都对
+            let vp = SqlitePool::connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&bak)
+                    .create_if_missing(false)
+                    .read_only(true),
+            )
+            .await
+            .unwrap();
+            let check: String = sqlx::query_scalar("PRAGMA quick_check")
+                .fetch_one(&vp)
+                .await
+                .unwrap();
+            assert_eq!(check, "ok");
+            let ver: i32 = sqlx::query_scalar("PRAGMA user_version")
+                .fetch_one(&vp)
+                .await
+                .unwrap();
+            assert_eq!(ver, 0, "备份必须记录迁移前版本");
+            let screens: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM screens")
+                .fetch_one(&vp)
+                .await
+                .unwrap();
+            assert_eq!(screens, 1);
+            vp.close().await;
+
+            let names: Vec<String> = std::fs::read_dir(&dir)
+                .unwrap()
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect();
+            assert!(
+                names.iter().any(|n| n.contains(".corrupt-")),
+                "坏备份应被挪走留证, 实际: {names:?}"
+            );
+            assert!(
+                !names.iter().any(|n| n.contains(".tmp-")),
+                "临时文件不应残留, 实际: {names:?}"
+            );
+
+            pool.close().await;
+            let _ = std::fs::remove_dir_all(&dir);
+        });
+    }
+
     #[test]
     fn test_reorder_screen_and_navigation() {
         let _g = crate::tests::TEST_LOCK
