@@ -220,18 +220,26 @@ fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) ->
         // 抬起:补最后一段轮廓 + 终点圆帽,清空并重置模型器
         state.in_stroke = false;
         let dirty = redraw_pen(state, &pts);
-        glaspen_core::export::glaspen2_end_stroke();
-        // 抬笔扇出:草稿推送/共享上行/OCR 登记(macOS 在 modeler_commit 里做)
-        glaspen_core::export::glaspen2_notify_stroke_committed();
-        state.pen_path.clear();
-        let params = modeler_params();
-        let _ = state.stroke_modeler.reset_w_params(params);
-        state.start_time = Instant::now();
+        end_stroke_cleanup(state);
         return dirty;
     }
 
     state.in_stroke = true;
     redraw_pen(state, &pts)
+}
+
+/// 收笔收尾(DB 落笔 + 抬笔扇出 + 模型器重置)。
+/// 正常抬笔走这里;抬笔报告丢失(笔离开感应区)时由穿透计时器超时强制调用,
+/// 否则 in_stroke 会永远停在 true,全屏覆盖层一直拦截鼠标。
+pub(crate) fn end_stroke_cleanup(state: &mut OverlayState) {
+    state.in_stroke = false;
+    glaspen_core::export::glaspen2_end_stroke();
+    // 抬笔扇出:草稿推送/共享上行/OCR 登记(macOS 在 modeler_commit 里做)
+    glaspen_core::export::glaspen2_notify_stroke_committed();
+    state.pen_path.clear();
+    let params = modeler_params();
+    let _ = state.stroke_modeler.reset_w_params(params);
+    state.start_time = Instant::now();
 }
 
 fn modeler_params() -> ModelerParams {

@@ -162,6 +162,7 @@ pub fn run() {
             pen_path: Vec::new(),
             stroke_modeler: StrokeModeler::default(),
             start_time: Instant::now(),
+            last_report: Instant::now(),
             in_stroke: false,
             strokes_visible: true,
             gif_recording: false,

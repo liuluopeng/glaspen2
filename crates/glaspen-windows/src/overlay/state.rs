@@ -213,6 +213,10 @@ struct OverlayState {
     /// ink-stroke-modeler(位置/压力平滑 + 120Hz 重采样)
     stroke_modeler: StrokeModeler,
     start_time: Instant,
+    /// 最近一份笔 HID 报告的时间。穿透计时器用它判断"笔还在活动":
+    /// 抬笔报告丢失时(笔直接离开感应区)没有新的 in_stroke=false 报告,
+    /// 超时后必须强制收笔并恢复鼠标穿透,否则全屏覆盖层会一直吃掉鼠标点击。
+    last_report: Instant,
     /// 当前是否处于笔画中(首事件必须发 Down)
     in_stroke: bool,
     /// 笔迹当前是否可见(飘渺模式)

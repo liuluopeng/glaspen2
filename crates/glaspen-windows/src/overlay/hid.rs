@@ -3,6 +3,9 @@ const TIMER_UNBLOCK: usize = 1;
 const TIMER_PEEK: usize = 2;
 // 笔事件停止后的延迟:恢复穿透 + 飘渺模式隐藏笔迹
 const UNBLOCK_DELAY_MS: u32 = 50;
+// 落笔状态下多久没有新报告就认为"抬笔报告丢了/笔已离开感应区":
+// 超过这个时长强制收笔并恢复鼠标穿透(否则覆盖层会一直拦截鼠标)
+const STALE_STROKE: std::time::Duration = std::time::Duration::from_millis(500);
 // 飘渺模式下翻页后短暂显示笔迹的时长(ms)
 const PEEK_DELAY_MS: u32 = 2000;
 // 近透明底色 alpha=2(0.01*255):肉眼不可见,但窗口可命中/可收指针消息

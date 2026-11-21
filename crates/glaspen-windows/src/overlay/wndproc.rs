@@ -61,6 +61,9 @@ unsafe extern "system" fn wnd_proc(
                 set_input_blocking(hwnd, false);
                 return LRESULT(0);
             }
+            // 记录"笔还在活动"的时间戳:穿透计时器用它区分"按住不动"
+            // 和"抬笔报告丢了/笔已离开感应区"。
+            state.last_report = std::time::Instant::now();
             let _ = KillTimer(Some(hwnd), TIMER_UNBLOCK);
             let _ = KillTimer(Some(hwnd), TIMER_PEEK);
 
@@ -74,14 +77,16 @@ unsafe extern "system" fn wnd_proc(
                 state.canvas.present_rect(&dirty);
             }
 
-            // 只有**落笔**才拦截鼠标(清 WS_EX_TRANSPARENT),抬笔 50ms 后恢复。
-            // 以前每份 HID 报告都拦截: 笔搁在板上(悬停/在范围内)时鼠标
-            // 完全点不了下层应用, 直接破坏"键鼠/笔分离"的核心卖点。
+            // 只有**落笔**才拦截鼠标(清 WS_EX_TRANSPARENT),抬笔后恢复穿透。
+            // 恢复计时器**每份报告都要重新武装**:抬笔报告的 in_stroke 已经是
+            // false, 若只在书写中武装, 上面两行 KillTimer 就会把唯一一次恢复
+            // 穿透的机会杀掉 —— 全屏窗口从此不透明, 所有鼠标点击被覆盖层吃掉
+            // (v0.6.0 的"鼠标卡死", 见 44fac24 引入的回归)。
             let state = &mut *STATE.load(Ordering::SeqCst);
             if state.in_stroke {
                 set_input_blocking(hwnd, true);
-                let _ = SetTimer(Some(hwnd), TIMER_UNBLOCK, UNBLOCK_DELAY_MS, None);
             }
+            let _ = SetTimer(Some(hwnd), TIMER_UNBLOCK, UNBLOCK_DELAY_MS, None);
             LRESULT(0)
         }
         WM_TIMER => {
@@ -89,10 +94,24 @@ unsafe extern "system" fn wnd_proc(
             match wparam.0 as usize {
                 TIMER_UNBLOCK => {
                     let _ = KillTimer(Some(hwnd), TIMER_UNBLOCK);
+                    // 笔还按着但报告停了(按住不动): 续一个计时器继续拦截。
+                    // 超过 STALE_STROKE 没有报告 = 抬笔报告丢了/笔离开了感应区,
+                    // 强制收笔, 绝不让 in_stroke 卡在 true 把鼠标永久拦住。
+                    if state.in_stroke {
+                        if state.last_report.elapsed() < STALE_STROKE {
+                            let _ = SetTimer(Some(hwnd), TIMER_UNBLOCK, UNBLOCK_DELAY_MS, None);
+                            return LRESULT(0);
+                        }
+                        tracing::warn!(
+                            "笔报告已 {:.0}ms 未更新仍处于落笔状态, 强制收笔并恢复鼠标穿透",
+                            state.last_report.elapsed().as_secs_f64() * 1000.0
+                        );
+                        end_stroke_cleanup(state);
+                    }
                     // 笔离开:设 WS_EX_TRANSPARENT 恢复穿透
                     set_input_blocking(hwnd, false);
                     // 飘渺模式:隐藏笔迹
-                    if state.draw.ethereal && state.strokes_visible && !state.in_stroke {
+                    if state.draw.ethereal && state.strokes_visible {
                         hide_strokes(state);
                     }
                 }
