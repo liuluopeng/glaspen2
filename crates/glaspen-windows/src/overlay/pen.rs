@@ -68,8 +68,10 @@ fn fill_stroke_path(
     if shadow {
         const STEPS: [(f64, f64); 3] = [(1.5, 0.20), (3.0, 0.13), (5.0, 0.07)];
         for (spread, sa) in STEPS {
-            let rect = canvas.stroke_shadow_pass(path, spread, sa);
-            merge_rect(&mut dirty, &rect);
+            // 无 cairo 回退时不支持半透明, shadow pass 直接返回 None
+            if let Some(rect) = canvas.stroke_shadow_pass(path, spread, sa) {
+                merge_rect(&mut dirty, &rect);
+            }
         }
     }
 

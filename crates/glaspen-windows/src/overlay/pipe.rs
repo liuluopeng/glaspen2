@@ -459,6 +459,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         }
     } else if msg_type == "getBubbles" {
         // 气泡消息: 全部已完结消息 JSON(先惰性过期)。体量小(折线点列), 直接内嵌 JSON 回复
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
         let json = glaspen_core::export::bubbles::messages_json();
         let resp = format!(
             "{{\"type\":\"getBubbles_response\",\"reqId\":{},\"data\":{}}}",
@@ -467,6 +468,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
     } else if msg_type == "flushBubbles" {
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
         glaspen_core::export::bubbles::flush_now();
         let resp = format!(
             "{{\"type\":\"flushBubbles_response\",\"reqId\":{}}}",
@@ -477,6 +479,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
     } else if msg_type == "nasBackup" {
         // NAS 备份: 整库快照 + 上传(耗时数秒~分钟, 管道线程同步执行;
         // 失败原因在返回 JSON 里, 面板直接展示)
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
         let json = glaspen_core::export::nas_backup::backup_now();
         let resp = format!(
             "{{\"type\":\"nasBackup_response\",\"reqId\":{},\"data\":{}}}",
