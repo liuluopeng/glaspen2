@@ -110,6 +110,12 @@ Only the core actions and the free-doodle camera keys are bound by default;
 color swap, width swap, new canvas, SVG/GIF export, copy SVG, frosted glass,
 ethereal canvas and the free-doodle toggle can be bound in Settings → Shortcuts.
 
+Windows uses the same configurable shortcut system: Settings → More settings →
+Shortcuts lets you record / clear / reset each action, and the on-screen keyboard
+highlights the keys currently in use. Defaults are the Windows chords in the table
+above; global hotkeys are suspended while recording, and the scroll-wheel zoom
+modifiers follow the Zoom-in action after rebinding.
+
 ## Installation
 
 Follow the on-screen guide to grant Accessibility and Screen Recording permissions (used for global shortcuts and for saving screenshots with background).
