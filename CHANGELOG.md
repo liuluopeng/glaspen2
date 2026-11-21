@@ -4,6 +4,17 @@
 
 ---
 
+## 未发布
+
+- **Windows 版 0.6.0 修复**: 该 tag 的 Windows 侧无法编译(`pipe.rs` 新增的
+  `getBubbles`/`flushBubbles`/`nasBackup` 三个分支漏了 `req_id`, 软阴影脏
+  矩形没解包 `Option<RECT>`); 且**已有旧库的 Windows 用户会启动即中止** ——
+  迁移前备份校验完立刻 rename, Windows 上校验连接句柄尚未真正释放, 报共享
+  冲突(os error 32)。现改为单连接显式 `close()` 后再 rename, 并给 rename
+  加重试, 迁移前备份正常落盘、旧库可正常升级到 0.6.0。
+
+---
+
 ## 0.6.0（2026-11-21）
 
 ### 稳定性 / 数据安全
