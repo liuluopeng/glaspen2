@@ -266,7 +266,8 @@ pub fn run() {
 
         // 可配置快捷键(对齐 macOS v0.6.0): 从 user_settings.shortcuts 载入,
         // 合并默认/去冲突后注册; 面板改键经设置管道(setSetting shortcuts)
-        // 热更新, 录制期间自动注销/恢复。固定热键(退出 + 按住类)也在里面。
+        // 热更新, 录制期间自动注销/恢复。固定热键(按住类)也在里面;
+        // 「彻底退出」已从固定热键迁入可配置动作表(默认仍是 Ctrl+Alt+Q)。
         init(hwnd, chat_integration);
 
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
@@ -285,7 +286,7 @@ pub fn run() {
 
         tracing::info!("全屏透明涂鸦已启动(WM_INPUT + ink-stroke-modeler + cairo)。");
         tracing::info!(
-            "快捷键: 面板「设置 → 快捷键」可逐动作录制(默认只绑核心 5 个: Ctrl+Alt+Z 撤销 / `·1 翻页 / V 开关 / D 打开面板 + 无限画布镜头 6 键);Ctrl+Alt+Q 退出 / R 按住录 GIF / 2·3 按住手写消息(集成开时)为固定保留组合;无限画布:镜头键在设置里查看 / 镜头修饰键+滚轮缩放"
+            "快捷键: 面板「设置 → 快捷键」可逐动作录制(默认只绑核心动作: Ctrl+Alt+Z 撤销 / `·1 翻页 / V 开关 / D 打开面板 / Q 彻底退出 + 无限画布镜头 6 键);R 按住录 GIF / 2·3 按住手写消息(集成开时)为固定保留组合;无限画布:镜头键在设置里查看 / 镜头修饰键+滚轮缩放"
         );
         run_loop();
 

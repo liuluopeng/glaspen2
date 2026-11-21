@@ -163,8 +163,8 @@ unsafe extern "system" fn wnd_proc(
         }
         WM_HOTKEY => {
             // 热键 id → 动作的统一分发在 hotkeys.rs:
-            //   8=退出 / 16·17·18=按住类(录 GIF·草稿·直发) 固定;
-            //   100+=面板里可配置的 19 个动作(动作表下标 + 基址)。
+            //   16·17·18=按住类(录 GIF·草稿·直发) 固定;
+            //   100+=面板里可配置的 20 个动作(动作表下标 + 基址, 含"彻底退出")。
             let state = &mut *STATE.load(Ordering::SeqCst);
             dispatch_hotkey(state, wparam.0 as i32);
             LRESULT(0)

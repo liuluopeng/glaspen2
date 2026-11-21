@@ -16,17 +16,54 @@ pub(crate) fn set_pending_installer(path: std::path::PathBuf) {
 #[cfg(not(windows))]
 pub fn win_main() {}
 
+/// 本进程拉起过的设置面板进程(macOS 面板是内嵌视图, Windows 是独立进程)。
+/// 退出时要显式结束它们 —— 见 kill_settings_processes。
+#[cfg(windows)]
+static SETTINGS_CHILDREN: std::sync::Mutex<Vec<std::process::Child>> =
+    std::sync::Mutex::new(Vec::new());
+
 /// 重新拉起设置面板。面板是独立进程, 用户关掉后此前无法再打开
 /// (没有托盘菜单, 也没有对应热键), 只能退出整个覆盖层重来。
 #[cfg(windows)]
 pub(crate) fn show_settings_window() {
     if let Some(p) = find_settings_exe() {
         match std::process::Command::new(&p).spawn() {
-            Ok(_) => tracing::info!("设置面板已重新拉起: {}", p.display()),
+            Ok(child) => {
+                tracing::info!("设置面板已拉起: {} (pid={})", p.display(), child.id());
+                let mut children = SETTINGS_CHILDREN.lock().unwrap_or_else(|e| e.into_inner());
+                // 顺手清掉已自行关闭(X 按钮/崩溃)的面板, 别让列表无限长
+                children.retain_mut(|c| !matches!(c.try_wait(), Ok(Some(_))));
+                children.push(child);
+            }
             Err(e) => tracing::warn!("重新拉起设置面板失败({}): {e}", p.display()),
         }
     } else {
         tracing::warn!("找不到 glaspen2_settings.exe, 无法打开设置面板");
+    }
+}
+
+/// 彻底退出:结束所有由本进程拉起的设置面板进程。
+///
+/// macOS 的面板是主程序里的 Flutter 视图, terminate 一并带走; Windows 的面板
+/// 是**独立进程**, 只销毁覆盖层窗口的话它仍会活着、每 2 秒重连已经消失的命名
+/// 管道, 用户看到的是"退出后设置窗口还在"——不是彻底退出。另外
+/// glaspen2_settings.exe 的文件锁会挡住自动更新替换, 所以更新前也必须先结束它。
+#[cfg(windows)]
+pub(crate) fn kill_settings_processes() {
+    let mut children = SETTINGS_CHILDREN.lock().unwrap_or_else(|e| e.into_inner());
+    if children.is_empty() {
+        return;
+    }
+    for mut child in children.drain(..) {
+        let pid = child.id();
+        match child.kill() {
+            Ok(()) => {
+                let _ = child.wait(); // 等句柄/文件锁真正释放
+                tracing::info!("已结束设置面板进程(pid={pid})");
+            }
+            // 面板可能已自行关闭(X 按钮/崩溃), 不算错误
+            Err(e) => tracing::debug!("设置面板进程 pid={pid} 无需结束: {e}"),
+        }
     }
 }
 
@@ -79,8 +116,8 @@ pub fn win_main() {
 
     // 设置面板不再随启动无脑拉起(macOS 只在菜单/热键里打开)。
     // 首次启动由 overlay::run 里的"首启引导"拉起一次并记住;
-    // 之后用 Ctrl+Alt+D(可配置 settings 动作)打开。
-    let mut settings_child: Option<std::process::Child> = None;
+    // 之后用 Ctrl+Alt+D(可配置 settings 动作)打开; 每次拉起的 pid 都记在
+    // SETTINGS_CHILDREN 里, 退出时统一结束(见 kill_settings_processes)。
 
     // Run the overlay (blocking — message loop until quit)
     overlay::run();
@@ -88,10 +125,8 @@ pub fn win_main() {
     // 写完排队点 + checkpoint WAL, 让更新器的数据库快照完整。
     glaspen_core::export::glaspen2_shutdown();
 
-    if let Some(child) = settings_child.as_mut() {
-        let _ = child.kill();
-        let _ = child.wait();
-    }
+    // 彻底退出:连设置面板进程一起结束(macOS 面板是内嵌视图, terminate 自带)。
+    kill_settings_processes();
 
     // 自动更新收尾:applyUpdate 已记下安装包路径。cmd 延迟 2 秒再启动,
     // 确保本进程(含设置面板)完全退出、文件锁释放;安装器解压到

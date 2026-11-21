@@ -19,7 +19,7 @@
 /// 动作表与 Windows 默认组合(顺序 = 面板显示顺序, 与 macOS 同序)。
 /// 画布镜头默认保持 0.6 的 Ctrl+Alt+方向键 / PageUp·PageDown(旧硬编码),
 /// 其余没绑过的动作默认不绑(与 macOS「新用户不占一堆全局键」一致)。
-const HOTKEY_ACTIONS: [(&str, &str); 19] = [
+const HOTKEY_ACTIONS: [(&str, &str); 20] = [
     ("undo", "ctrl+alt+Z"),
     ("page_prev", "ctrl+alt+`"),
     ("page_next", "ctrl+alt+1"),
@@ -39,19 +39,23 @@ const HOTKEY_ACTIONS: [(&str, &str); 19] = [
     ("toggle_glass", ""),
     ("toggle_ethereal", ""),
     ("settings", "ctrl+alt+D"),
+    // 彻底退出: 从"固定热键"迁入可配置动作表(默认值保持 Ctrl+Alt+Q),
+    // 与 macOS 的 quit 动作同语义、同 UX(可录制改键, 但 Windows 上不可解绑)。
+    ("quit", "ctrl+alt+Q"),
 ];
 
 /// 可配置动作的热键 id 基址(id = 基址 + 动作表下标)。
 const HOTKEY_ID_ACTION_BASE: i32 = 100;
-/// 固定热键(不进可配置表, 与 macOS 的"保留组合"对应): 退出 + 三个按住类。
-const HOTKEY_ID_QUIT: i32 = 8;
+/// 固定热键(不进可配置表, 与 macOS 的"保留组合"对应): 三个按住类。
+/// 退出已迁入可配置动作表(见 HOTKEY_ACTIONS 的 "quit"), 不再是固定 id。
 const HOTKEY_ID_GIF: i32 = 16;
 const HOTKEY_ID_DRAFT: i32 = 17;
 const HOTKEY_ID_SEND: i32 = 18;
 
-/// Windows 保留组合: 退出 + 按住类(录 GIF / 手写草稿 / 手写直发)。
+/// Windows 保留组合: 按住类(录 GIF / 手写草稿 / 手写直发)。
 /// 用户不能用这些组合绑普通动作, 与 macOS 的保留表语义一致。
-const RESERVED_CHORDS: [&str; 4] = ["ctrl+alt+Q", "ctrl+alt+R", "ctrl+alt+2", "ctrl+alt+3"];
+/// 退出默认键 Ctrl+Alt+Q 不在此列 —— 它属于「彻底退出」动作本身, 可以改键。
+const RESERVED_CHORDS: [&str; 3] = ["ctrl+alt+R", "ctrl+alt+2", "ctrl+alt+3"];
 
 /// 能当全局热键的按键名(与 macOS gl_keycode_names / Dart _hidKeyNames 对齐)。
 /// 只收录用来当快捷键的键; 面板录制端也用同一张表(经 Dart 侧映射)。
@@ -208,9 +212,9 @@ struct HotkeyRegistry {
     paused: bool,
     /// 录制暂停的代数(60s 兜底定时器用: 代数变了说明已恢复)
     pause_gen: u64,
-    /// 涂鸦已停用: 除「启停涂鸦 / 自由涂鸦 / 打开设置」外的动作热键全部注销,
-    /// 键位透传给前台应用(macOS event tap 只在 tap 里"放行",Windows 的
-    /// RegisterHotKey 会吞键, 只能靠反注册复刻同一体验)。
+    /// 涂鸦已停用: 除「启停涂鸦 / 自由涂鸦 / 打开设置 / 彻底退出」外的动作
+    /// 热键全部注销, 键位透传给前台应用(macOS event tap 只在 tap 里"放行",
+    /// Windows 的 RegisterHotKey 会吞键, 只能靠反注册复刻同一体验)。
     draw_disabled: bool,
     /// 是否处于无限画布模式: 镜头类动作只在无限画布下注册。
     /// macOS 在翻页模式下对 canvas_* 组合是"放行给系统", 而 RegisterHotKey
@@ -226,6 +230,11 @@ static HOTKEYS: std::sync::LazyLock<std::sync::Mutex<HotkeyRegistry>> =
 
 fn lock_registry() -> std::sync::MutexGuard<'static, HotkeyRegistry> {
     HOTKEYS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Windows 上没有菜单栏/托盘兜底、必须始终可用的动作(见 build_effective)。
+fn force_bound(action: &str) -> bool {
+    matches!(action, "settings" | "quit")
 }
 
 /// 把存档表合并成生效表(与 macOS gl_shortcuts_apply 同规则):
@@ -257,11 +266,23 @@ fn build_effective(saved: &HashMap<String, String>) -> Vec<(&'static str, String
             tracing::warn!("[hotkey] 冲突 {chord} → {action} 解绑(本表里已有动作占用)");
             chord.clear();
         }
-        // Windows 没有菜单栏/托盘,「打开设置」是重开面板的唯一入口:
-        // 允许解绑 = 用户可能把自己锁在外面, 所以这个动作强制不可解绑。
-        if action == "settings" && chord.is_empty() {
-            tracing::warn!("[hotkey] settings 动作在 Windows 不允许解绑, 回退默认");
+        // Windows 没有菜单栏/托盘: 「打开设置」是重开面板的唯一入口,
+        // 「彻底退出」是退出进程的唯一入口(任务管理器除外)。允许解绑 = 用户
+        // 可能把自己锁在外面, 所以这两个动作强制不可解绑。
+        if force_bound(action) && chord.is_empty() {
+            tracing::warn!("[hotkey] {action} 动作在 Windows 不允许解绑, 回退默认");
             chord = default.to_string();
+            // 回退后的默认组合若已被前面的动作占用(手改库/跨平台恢复), 强制绑定
+            // 动作优先: 让前面那个解绑, 否则两个动作抢同一组合, 注册时必有一个失败。
+            if let Some((prev_action, prev_chord)) =
+                out.iter_mut().find(|(_, c)| c == &chord)
+            {
+                tracing::warn!(
+                    "[hotkey] {chord} 让位给强制绑定动作 {action}, {prev_action} 解绑"
+                );
+                prev_chord.clear();
+                used.retain(|c| c != &chord);
+            }
         }
         if !chord.is_empty() {
             used.push(chord.clone());
@@ -279,7 +300,7 @@ fn build_effective_saved(saved: &HashMap<String, String>) -> Vec<(&'static str, 
         return out;
     }
     for (action, chord) in out.iter_mut() {
-        if *action == "settings" {
+        if force_bound(action) {
             continue; // Windows 上不可解绑(没有菜单栏/托盘的备用入口)
         }
         if let Some(raw) = saved.get(*action)
@@ -291,15 +312,13 @@ fn build_effective_saved(saved: &HashMap<String, String>) -> Vec<(&'static str, 
     out
 }
 
-/// 固定热键: Q 退出 / R 按住录 GIF 永远注册; 2/3 只在手写消息集成开启时
+/// 固定热键: R 按住录 GIF 永远注册; 2/3 只在手写消息集成开启时
 /// 注册 —— 集成关必须直通前台(AGENTS 铁律: 关 = ⌘⌃2/⌘⌃3 热键直通不劫持),
 /// RegisterHotKey 注册即吞键, dispatch 里再判断是来不及的。
+/// (退出走可配置动作表的 "quit", 不再在这里重复注册。)
 fn register_fixed(hwnd: HWND, chat_integration: bool) {
     let mods = HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0);
-    let mut keys = vec![
-        (HOTKEY_ID_QUIT, b'Q' as u32),
-        (HOTKEY_ID_GIF, b'R' as u32),
-    ];
+    let mut keys = vec![(HOTKEY_ID_GIF, b'R' as u32)];
     if chat_integration {
         keys.push((HOTKEY_ID_DRAFT, b'2' as u32));
         keys.push((HOTKEY_ID_SEND, b'3' as u32));
@@ -312,12 +331,7 @@ fn register_fixed(hwnd: HWND, chat_integration: bool) {
 }
 
 fn unregister_fixed(hwnd: HWND) {
-    for id in [
-        HOTKEY_ID_QUIT,
-        HOTKEY_ID_GIF,
-        HOTKEY_ID_DRAFT,
-        HOTKEY_ID_SEND,
-    ] {
+    for id in [HOTKEY_ID_GIF, HOTKEY_ID_DRAFT, HOTKEY_ID_SEND] {
         let _ = unsafe { UnregisterHotKey(Some(hwnd), id) };
     }
 }
@@ -331,9 +345,14 @@ fn register_actions_locked(reg: &mut HotkeyRegistry, hwnd: HWND) {
         if chord.is_empty() {
             continue;
         }
-        // 涂鸦停用时只有这三个动作仍消费按键, 其余注销后透传给前台应用
+        // 涂鸦停用时只有这几个动作仍消费按键(启停/自由涂鸦/开面板/彻底退出),
+        // 其余注销后透传给前台应用。退出必须始终可用 —— Windows 没有菜单栏,
+        // 按不出来就只能任务管理器强杀。
         if reg.draw_disabled
-            && !matches!(*action, "toggle_draw" | "toggle_free_canvas" | "settings")
+            && !matches!(
+                *action,
+                "toggle_draw" | "toggle_free_canvas" | "settings" | "quit"
+            )
         {
             continue;
         }
@@ -601,7 +620,7 @@ pub(crate) fn on_draw_enabled_changed(hwnd: HWND, enabled: bool) {
         if enabled {
             "动作热键已全部注册"
         } else {
-            "仅保留 启停涂鸦/自由涂鸦/打开设置 三个热键, 其余透传给前台应用"
+            "仅保留 启停涂鸦/自由涂鸦/打开设置/彻底退出 四个热键, 其余透传给前台应用"
         }
     );
 }
@@ -616,12 +635,9 @@ pub(crate) fn resume_if_paused(hwnd: HWND) {
     }
 }
 
-/// WM_HOTKEY 分发: 固定按住类/退出 + 可配置动作。
+/// WM_HOTKEY 分发: 固定按住类 + 可配置动作。
 fn dispatch_hotkey(state: &mut OverlayState, id: i32) {
     match id {
-        HOTKEY_ID_QUIT => unsafe {
-            let _ = DestroyWindow(state.canvas.hwnd);
-        },
         HOTKEY_ID_GIF => gif_record_start(state),
         // 按住类与 macOS 一致受集成总开关守门
         HOTKEY_ID_DRAFT => {
@@ -690,9 +706,16 @@ fn perform_action(state: &mut OverlayState, action: &str) {
         "toggle_glass" => toggle_frosted(state),
         "toggle_ethereal" => handle_command(state, CMD_TOGGLE_ETHEREAL, usize::MAX),
         "settings" => crate::show_settings_window(),
+        // 彻底退出: 与 macOS 菜单「退出」同语义 —— 收尾(写完排队点 +
+        // checkpoint WAL, 见 wndproc WM_DESTROY → win_main)后整个进程退出,
+        // 并结束设置面板进程(见 lib.rs kill_settings_processes)。
+        "quit" => unsafe {
+            let _ = DestroyWindow(state.canvas.hwnd);
+        },
         _ => {}
     }
 }
+
 
 fn pan_step(state: &mut OverlayState, dir_x: f64, dir_y: f64) {
     let (_, _, z) = cam();
@@ -726,4 +749,83 @@ fn width_swap(state: &mut OverlayState) {
     }
     handle_command(state, CMD_SELECT_WIDTH + prev, usize::MAX);
     hud_notify(&format!("粗细: {}", WIDTH_NAMES_ZH[prev.min(WIDTH_NAMES_ZH.len() - 1)]));
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn saved(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    }
+
+    fn chord_of(effective: &[(&'static str, String)], action: &str) -> String {
+        effective
+            .iter()
+            .find(|(a, _)| *a == action)
+            .unwrap_or_else(|| panic!("动作表里没有 {action}"))
+            .1
+            .clone()
+    }
+
+    /// 退出动作默认 Ctrl+Alt+Q, 且旧保留组合已让位(可改键)。
+    #[test]
+    fn quit_defaults_to_ctrl_alt_q_and_is_not_reserved() {
+        let effective = build_effective_saved(&HashMap::new());
+        assert_eq!(chord_of(&effective, "quit"), "ctrl+alt+Q");
+        assert_eq!(HOTKEY_ACTIONS.len(), effective.len());
+        assert!(!is_reserved("ctrl+alt+Q"));
+    }
+
+    /// Windows 没有菜单栏/托盘: 退出与打开设置都是强制绑定, 解绑必须回退默认。
+    #[test]
+    fn quit_and_settings_cannot_be_unbound() {
+        let effective = build_effective_saved(&saved(&[("quit", ""), ("settings", "")]));
+        assert_eq!(chord_of(&effective, "quit"), "ctrl+alt+Q");
+        assert_eq!(chord_of(&effective, "settings"), "ctrl+alt+D");
+    }
+
+    /// 退出可以改到别的组合(可配置), 改完原 Ctrl+Alt+Q 不再是保留组合。
+    #[test]
+    fn quit_can_be_rebound() {
+        let effective = build_effective_saved(&saved(&[("quit", "ctrl+alt+shift+Q")]));
+        assert_eq!(chord_of(&effective, "quit"), "ctrl+alt+shift+Q");
+    }
+
+    /// 普通动作占了强制绑定动作的默认键时, 让位的必须是普通动作 —— 否则
+    /// 「彻底退出/打开设置」可能注册不上(两个动作抢同一组合, 后注册的失败)。
+    #[test]
+    fn forced_action_wins_conflict() {
+        let effective = build_effective_saved(&saved(&[("undo", "ctrl+alt+Q")]));
+        assert_eq!(chord_of(&effective, "quit"), "ctrl+alt+Q");
+        assert_eq!(chord_of(&effective, "undo"), "");
+    }
+
+    /// 默认表与"改过键"的表都不能出现两个动作抢同一个组合。
+    #[test]
+    fn effective_table_never_has_duplicate_chords() {
+        for map in [
+            HashMap::new(),
+            saved(&[("undo", "ctrl+alt+Q")]), // 用户把撤销改到退出的默认键上
+            saved(&[("quit", "ctrl+alt+shift+Q"), ("undo", "ctrl+alt+Q")]),
+        ] {
+            let effective = build_effective_saved(&map);
+            let mut seen: Vec<&str> = Vec::new();
+            for (action, chord) in &effective {
+                if chord.is_empty() {
+                    continue;
+                }
+                assert!(
+                    !seen.contains(&chord.as_str()),
+                    "组合 {chord} 被多个动作占用: {action} (表: {:?})",
+                    effective
+                );
+                seen.push(chord.as_str());
+            }
+        }
+    }
 }
