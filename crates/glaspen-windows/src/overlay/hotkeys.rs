@@ -619,6 +619,29 @@ pub(crate) fn set_recording(hwnd: HWND, on: bool) {
     }
 }
 
+/// 生效表里某动作的 chord → 面板同款可读文本("ctrl+alt+shift+D" → "Ctrl+Alt+Shift+D")。
+/// 用于 Windows 启动提示: 没有菜单栏/托盘, 用户只能靠热键呼出设置面板。
+pub(crate) fn chord_display(action: &str) -> String {
+    let reg = lock_registry();
+    let chord = reg
+        .effective
+        .iter()
+        .find(|(a, _)| *a == action)
+        .map(|(_, c)| c.as_str())
+        .unwrap_or("");
+    chord
+        .split('+')
+        .map(|part| match part {
+            "cmd" => "Win".to_string(),
+            "ctrl" => "Ctrl".to_string(),
+            "alt" => "Alt".to_string(),
+            "shift" => "Shift".to_string(),
+            other => other.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
 /// 某动作当前组合的修饰键掩码(MOD_*); 未绑定/非法返回 0。
 /// 鼠标滚轮缩放用它: 改键后鼠标自动跟随(与 macOS gl_shortcut_modifier_mask_for 一致)。
 pub(crate) fn modifier_mask_for(action: &str) -> u32 {

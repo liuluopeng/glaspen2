@@ -30,17 +30,80 @@ pub(crate) fn show_settings_window() {
     if let Some(p) = find_settings_exe() {
         match std::process::Command::new(&p).spawn() {
             Ok(child) => {
-                tracing::info!("设置面板已拉起: {} (pid={})", p.display(), child.id());
+                let pid = child.id();
+                tracing::info!("设置面板已拉起: {} (pid={pid})", p.display());
                 let mut children = SETTINGS_CHILDREN.lock().unwrap_or_else(|e| e.into_inner());
                 // 顺手清掉已自行关闭(X 按钮/崩溃)的面板, 别让列表无限长
                 children.retain_mut(|c| !matches!(c.try_wait(), Ok(Some(_))));
                 children.push(child);
+                drop(children);
+                // 覆盖层是置顶窗口, 面板默认会被压在玻璃下面(磨砂开启时直接看不清):
+                // 等 Flutter 窗口一出现就把它抬到置顶并激活。
+                std::thread::spawn(move || raise_settings_window(pid));
             }
             Err(e) => tracing::warn!("重新拉起设置面板失败({}): {e}", p.display()),
         }
     } else {
         tracing::warn!("找不到 glaspen2_settings.exe, 无法打开设置面板");
     }
+}
+
+/// 把设置面板窗口提到置顶并激活。
+///
+/// 覆盖层是 `WS_EX_TOPMOST` 全屏窗口, 而设置面板(独立进程的普通窗口)默认会被
+/// 压在它下面 —— 开磨砂玻璃时面板直接看不清/点不到, 用户会以为"只有玻璃、
+/// 面板没出来"。Flutter 窗口要等首帧就绪才创建, 所以在后台线程轮询等它出现,
+/// 再抬到最前(面板是独立进程, 这里只能按 pid 找它的顶层窗口)。
+#[cfg(windows)]
+fn raise_settings_window(pid: u32) {
+    use windows::Win32::Foundation::{HWND, LPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetClassNameW, GetWindowThreadProcessId, HWND_TOPMOST, SW_SHOW, SWP_NOMOVE,
+        SWP_NOSIZE, SWP_SHOWWINDOW, SetForegroundWindow, SetWindowPos, ShowWindow,
+    };
+    use windows::core::BOOL;
+
+    unsafe extern "system" fn find_panel(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let ctx = &mut *(lparam.0 as *mut (u32, Option<HWND>));
+        let mut win_pid = 0u32;
+        let _ = GetWindowThreadProcessId(hwnd, Some(&mut win_pid as *mut u32));
+        if win_pid != ctx.0 {
+            return BOOL(1); // 不是这个进程的窗口, 继续找
+        }
+        let mut class_name = [0u16; 64];
+        let n = GetClassNameW(hwnd, &mut class_name);
+        if n > 0
+            && String::from_utf16_lossy(&class_name[..n as usize]) == "FLUTTER_RUNNER_WIN32_WINDOW"
+        {
+            ctx.1 = Some(hwnd);
+            return BOOL(0); // 找到 Flutter 主窗口, 停止枚举
+        }
+        BOOL(1)
+    }
+
+    for _ in 0..60 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let mut ctx: (u32, Option<HWND>) = (pid, None);
+        let _ = unsafe { EnumWindows(Some(find_panel), LPARAM(&mut ctx as *mut _ as isize)) };
+        let Some(hwnd) = ctx.1 else { continue };
+        unsafe {
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+            );
+            let _ = ShowWindow(hwnd, SW_SHOW);
+            // 覆盖层不抢焦点, 正常能被提到前台; 失败也不影响显示(只是不激活)。
+            let _ = SetForegroundWindow(hwnd);
+        }
+        tracing::info!("设置面板窗口已置顶并激活(pid={pid})");
+        return;
+    }
+    tracing::warn!("设置面板窗口 6s 内未出现, 无法置顶(pid={pid})");
 }
 
 /// 彻底退出:结束所有由本进程拉起的设置面板进程。
