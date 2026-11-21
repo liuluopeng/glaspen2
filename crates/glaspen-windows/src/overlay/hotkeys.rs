@@ -33,11 +33,11 @@ const HOTKEY_ACTIONS: [(&str, &str); 19] = [
     ("canvas_pan_down", "ctrl+alt+Down"),
     ("canvas_zoom_in", "ctrl+alt+PageUp"),
     ("canvas_zoom_out", "ctrl+alt+PageDown"),
-    ("clear", "ctrl+alt+C"),
-    ("export", "ctrl+alt+G"),
+    ("clear", ""),
+    ("export", ""),
     ("copy_svg", ""),
-    ("toggle_glass", "ctrl+alt+B"),
-    ("toggle_ethereal", "ctrl+alt+X"),
+    ("toggle_glass", ""),
+    ("toggle_ethereal", ""),
     ("settings", "ctrl+alt+D"),
 ];
 
@@ -212,6 +212,13 @@ struct HotkeyRegistry {
     /// 键位透传给前台应用(macOS event tap 只在 tap 里"放行",Windows 的
     /// RegisterHotKey 会吞键, 只能靠反注册复刻同一体验)。
     draw_disabled: bool,
+    /// 是否处于无限画布模式: 镜头类动作只在无限画布下注册。
+    /// macOS 在翻页模式下对 canvas_* 组合是"放行给系统", 而 RegisterHotKey
+    /// 注册即吞键(会顶掉浏览器 Ctrl+Alt+PgUp 切 tab 之类), 所以非无限画布
+    /// 时不注册这些键。
+    canvas_mode: bool,
+    /// 手写消息集成总开关: 关时 Ctrl+Alt+2/3 不注册(直通前台)
+    chat_integration: bool,
 }
 
 static HOTKEYS: std::sync::LazyLock<std::sync::Mutex<HotkeyRegistry>> =
@@ -284,14 +291,20 @@ fn build_effective_saved(saved: &HashMap<String, String>) -> Vec<(&'static str, 
     out
 }
 
-fn register_fixed(hwnd: HWND) {
+/// 固定热键: Q 退出 / R 按住录 GIF 永远注册; 2/3 只在手写消息集成开启时
+/// 注册 —— 集成关必须直通前台(AGENTS 铁律: 关 = ⌘⌃2/⌘⌃3 热键直通不劫持),
+/// RegisterHotKey 注册即吞键, dispatch 里再判断是来不及的。
+fn register_fixed(hwnd: HWND, chat_integration: bool) {
     let mods = HOT_KEY_MODIFIERS(MOD_CONTROL.0 | MOD_ALT.0);
-    for (id, vk) in [
+    let mut keys = vec![
         (HOTKEY_ID_QUIT, b'Q' as u32),
         (HOTKEY_ID_GIF, b'R' as u32),
-        (HOTKEY_ID_DRAFT, b'2' as u32),
-        (HOTKEY_ID_SEND, b'3' as u32),
-    ] {
+    ];
+    if chat_integration {
+        keys.push((HOTKEY_ID_DRAFT, b'2' as u32));
+        keys.push((HOTKEY_ID_SEND, b'3' as u32));
+    }
+    for (id, vk) in keys {
         if unsafe { RegisterHotKey(Some(hwnd), id, mods, vk) }.is_err() {
             tracing::warn!("[hotkey] 固定热键 id={id} 注册失败(可能被其它程序占用)");
         }
@@ -322,6 +335,10 @@ fn register_actions_locked(reg: &mut HotkeyRegistry, hwnd: HWND) {
         if reg.draw_disabled
             && !matches!(*action, "toggle_draw" | "toggle_free_canvas" | "settings")
         {
+            continue;
+        }
+        // 镜头动作只在无限画布模式注册(翻页模式下放行给系统, macOS 同语义)
+        if action.starts_with("canvas_") && !reg.canvas_mode {
             continue;
         }
         let Some((mods, vk)) = parse_chord(chord) else {
@@ -390,7 +407,7 @@ fn apply_reload(hwnd: HWND) {
         return;
     }
     if !reg.fixed_registered {
-        register_fixed(hwnd);
+        register_fixed(hwnd, reg.chat_integration);
         reg.fixed_registered = true;
     }
     register_actions_locked(&mut reg, hwnd);
@@ -405,7 +422,7 @@ fn post_reload(hwnd: HWND) {
 
 /// 启动: 从 user_settings 读 "shortcuts" → 合并默认 → 注册。
 /// 必须在窗口创建后、run_loop 之前(窗口线程)调用。
-pub(crate) fn init(hwnd: HWND) {
+pub(crate) fn init(hwnd: HWND, chat_integration: bool) {
     let raw = glaspen_core::runtime()
         .block_on(glaspen_core::db::load_setting("shortcuts"))
         .unwrap_or_default();
@@ -423,6 +440,8 @@ pub(crate) fn init(hwnd: HWND) {
         let mut reg = lock_registry();
         reg.hwnd = hwnd.0 as isize;
         reg.effective = effective;
+        reg.canvas_mode = infinite_on();
+        reg.chat_integration = chat_integration;
     } // 先放锁: apply_reload 内部自己取锁
     apply_reload(hwnd);
     // 首次启动即把"补齐默认后的完整表"落库: 面板读取的永远是完整表,
@@ -524,8 +543,46 @@ pub(crate) fn modifier_mask_for(action: &str) -> u32 {
     parse_chord(chord).map(|(m, _)| m).unwrap_or(0)
 }
 
-/// 涂鸦启停时调用(actions.rs toggle_enabled): 停用后除「启停涂鸦 / 自由
-/// 涂鸦 / 打开设置」外的动作热键全部注销, 组合键透传给前台应用 —— 复刻
+/// 模式切换(活页本 ↔ 无限画布)后刷新镜头热键注册。
+/// 镜头动作只在无限画布模式注册(翻页模式下放行给系统, macOS 同语义)。
+pub(crate) fn set_canvas_mode(hwnd: HWND, on: bool) {
+    {
+        let mut reg = lock_registry();
+        if reg.canvas_mode == on {
+            return;
+        }
+        reg.canvas_mode = on;
+    }
+    post_reload(hwnd);
+}
+
+/// 手写消息集成总开关变化: Ctrl+Alt+2/3 注册/注销。
+/// 集成关时这两个组合必须直通前台(AGENTS 铁律), 只有反注册能做到。
+pub(crate) fn set_chat_integration(hwnd: HWND, on: bool) {
+    {
+        let mut reg = lock_registry();
+        if reg.chat_integration == on {
+            return;
+        }
+        reg.chat_integration = on;
+        if reg.fixed_registered {
+            unregister_fixed(hwnd);
+            reg.fixed_registered = false;
+        }
+    }
+    post_reload(hwnd);
+    tracing::info!(
+        "[hotkey] 手写消息集成{}: Ctrl+Alt+2/3 {}",
+        if on { "开" } else { "关" },
+        if on {
+            "已注册"
+        } else {
+            "已注销(直通前台)"
+        }
+    );
+}
+
+/// 涂鸦启停时调用(actions.rs toggle_enabled): 停用后除「启停涂鸦 / 自由/// 涂鸦 / 打开设置」外的动作热键全部注销, 组合键透传给前台应用 —— 复刻
 /// macOS event tap「停用涂鸦时只消费那两个动作」的语义(Windows 的
 /// RegisterHotKey 注册即吞键, 只能反注册)。
 pub(crate) fn on_draw_enabled_changed(hwnd: HWND, enabled: bool) {
@@ -560,7 +617,7 @@ pub(crate) fn resume_if_paused(hwnd: HWND) {
 }
 
 /// WM_HOTKEY 分发: 固定按住类/退出 + 可配置动作。
-pub(crate) fn dispatch_hotkey(state: &mut OverlayState, id: i32) {
+fn dispatch_hotkey(state: &mut OverlayState, id: i32) {
     match id {
         HOTKEY_ID_QUIT => unsafe {
             let _ = DestroyWindow(state.canvas.hwnd);
@@ -617,7 +674,7 @@ fn perform_action(state: &mut OverlayState, action: &str) {
                     rt.block_on(glaspen_core::db::save_setting("show_free_canvas", "1"));
                 }
             }
-            apply_infinite_canvas(state, !infinite_on());
+            apply_infinite_canvas(state, !infinite_on(), true);
         }
         // 方向语义与 macOS 一致: 按键方向 = 视野移动方向(canvas_pan_by 内部
         // pan -= d)。v0.6 之前 Windows 侧方向是反的, 这里一并对齐。

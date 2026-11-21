@@ -9,17 +9,58 @@ pub fn run() {
 
         let hwnd = create_overlay_window();
 
+        // 首启引导: macOS 启动不弹面板(只在菜单/热键里打开), Windows 没有
+        // 菜单栏, 所以仅在**第一次**启动时拉起一次设置面板, 之后靠
+        // Ctrl+Alt+D(可配置 settings 动作)。用 settings_opened 键记住。
+        {
+            let opened = glaspen_core::runtime()
+                .block_on(glaspen_core::db::load_setting("settings_opened"))
+                .is_some();
+            if !opened {
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "settings_opened",
+                    "1",
+                ));
+                crate::show_settings_window();
+            }
+        }
+
         let mut pen_r = 1.0;
         let mut pen_g = 0.0;
         let mut pen_b = 0.0;
-        let mut width_scale = 0.3;
+        // 默认线宽与 macOS 一致 = 1.0(宽档预设索引 3);有存档时下面的
+        // load_settings_parts 会覆盖它
+        let mut width_scale = 1.0;
         glaspen_core::export::glaspen2_load_settings_parts(
             &mut pen_r,
             &mut pen_g,
             &mut pen_b,
             &mut width_scale,
         );
-        let outline_enabled = OUTLINE_ENABLED.load(std::sync::atomic::Ordering::Relaxed);
+        // 描边: 从库恢复(macOS load_bool_setting("outline") 同款, 重启保留)
+        let outline_enabled = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("outline"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
+        OUTLINE_ENABLED.store(
+            outline_enabled,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        glaspen_core::export::glaspen2_set_stroke_outline(outline_enabled as i32);
+        // 软阴影 / 气泡捕获: 与 macOS 启动恢复段对齐(core 侧导出/缩略图要用)
+        let soft_shadow = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("softShadow"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
+        glaspen_core::export::glaspen2_set_soft_shadow(soft_shadow as i32);
+        let bubble_capture = glaspen_core::runtime()
+            .block_on(glaspen_core::db::load_setting("show_bubble_tab"))
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0)
+            != 0;
+        glaspen_core::export::glaspen2_bubble_set_capture(bubble_capture as i32);
         let frosted = glaspen_core::runtime()
             .block_on(glaspen_core::db::load_setting("frostedGlass"))
             .and_then(|v| v.parse::<i32>().ok())
@@ -54,11 +95,6 @@ pub fn run() {
             .block_on(glaspen_core::db::load_setting("invertFps"))
             .and_then(|v| v.parse::<i32>().ok())
             .unwrap_or(30);
-        let soft_shadow = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("softShadow"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0)
-            != 0;
         let glass_follow_strokes = glaspen_core::runtime()
             .block_on(glaspen_core::db::load_setting("glassFollowStrokes"))
             .and_then(|v| v.parse::<i32>().ok())
@@ -170,6 +206,14 @@ pub fn run() {
             last_hover: None,
             in_stroke: false,
             strokes_visible: true,
+            peek_active: false,
+            last_no_next: None,
+            camera_dragging: false,
+            camera_last_cursor: (0, 0),
+            camera_pending_dx: 0.0,
+            camera_pending_dy: 0.0,
+            camera_pan_timer: false,
+            camera_blocked: false,
             gif_recording: false,
             gif_record_start: -1,
             msg_record_start: -1,
@@ -178,6 +222,11 @@ pub fn run() {
         let _ = state.stroke_modeler.reset_w_params(modeler_params());
         // 按当前画布模式绘制网格与笔迹(无限画布重启后恢复镜头与内容)
         redraw_from_strokes(&mut state);
+        // 飘渺模式: 启动就落位到"隐藏"态(macOS gl_ethereal_restore_now 同款),
+        // 等笔靠近/落笔再露出; 否则重启后笔迹会先闪一下
+        if state.draw.ethereal {
+            hide_strokes(&mut state);
+        }
         // 初始穿透(WS_EX_TRANSPARENT),鼠标可正常操作;笔事件到达时自动唤醒拦截
         set_input_blocking(hwnd, false, "init");
         // 鼠标输入看门狗(独立线程): 拦截态 + 笔 1.5s 无报告 → 强制恢复穿透
@@ -218,7 +267,7 @@ pub fn run() {
         // 可配置快捷键(对齐 macOS v0.6.0): 从 user_settings.shortcuts 载入,
         // 合并默认/去冲突后注册; 面板改键经设置管道(setSetting shortcuts)
         // 热更新, 录制期间自动注销/恢复。固定热键(退出 + 按住类)也在里面。
-        init(hwnd);
+        init(hwnd, chat_integration);
 
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         let _ = UpdateWindow(hwnd);
@@ -236,7 +285,7 @@ pub fn run() {
 
         tracing::info!("全屏透明涂鸦已启动(WM_INPUT + ink-stroke-modeler + cairo)。");
         tracing::info!(
-            "快捷键: 面板「设置 → 快捷键」可逐动作录制(默认 Ctrl+Alt+C 新建 / V 开关 / Z 撤销 / `·1 翻页 / G 导出 / B 模糊 / X 固定↔飘渺 / D 打开面板);Ctrl+Alt+Q 退出 / R 按住录 GIF / 2·3 按住手写消息(集成开时)为固定保留组合;无限画布:方向键平移 / PageUp·Down 缩放 / 镜头修饰键+滚轮缩放"
+            "快捷键: 面板「设置 → 快捷键」可逐动作录制(默认只绑核心 5 个: Ctrl+Alt+Z 撤销 / `·1 翻页 / V 开关 / D 打开面板 + 无限画布镜头 6 键);Ctrl+Alt+Q 退出 / R 按住录 GIF / 2·3 按住手写消息(集成开时)为固定保留组合;无限画布:镜头键在设置里查看 / 镜头修饰键+滚轮缩放"
         );
         run_loop();
 
@@ -274,7 +323,10 @@ fn create_overlay_window() -> HWND {
         let cx = GetSystemMetrics(SM_CXVIRTUALSCREEN);
         let cy = GetSystemMetrics(SM_CYVIRTUALSCREEN);
         let hwnd = CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+            // WS_EX_NOACTIVATE: 镜头拖动/落笔拦截时会临时清掉 WS_EX_TRANSPARENT
+            // 让窗口可命中 —— 没有 NOACTIVATE 的话点一下就把前台 App 顶掉,
+            // 之后键盘全进覆盖层被吞。macOS 用全局 tap 消费点击也不抢焦点。
+            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
             PCWSTR(class_name.as_ptr()),
             PCWSTR::null(),
             WS_POPUP,
@@ -346,14 +398,19 @@ fn spawn_input_watchdog(hwnd: HWND) {
             let now = now_millis();
             let last = LAST_PEN_REPORT_MS.load(std::sync::atomic::Ordering::SeqCst);
             let blocked = INPUT_BLOCKED.load(std::sync::atomic::Ordering::SeqCst);
-            if blocked && last > 0 && now.saturating_sub(last) > 1500 {
+            // 拦截态没有继续的理由就恢复穿透: 笔已 1.5s 无报告, 且镜头修饰键
+            // 也没按着(key-up 万一丢了不会永久拦截鼠标)。
+            if blocked
+                && !camera_mods_held_now()
+                && (last == 0 || now.saturating_sub(last) > 1500)
+            {
                 set_input_blocking(
                     HWND(hwnd_val as *mut std::ffi::c_void),
                     false,
                     "watchdog",
                 );
                 tracing::warn!(
-                    "[看门狗] 笔已 {}ms 无报告仍拦截鼠标, 已强制恢复穿透",
+                    "[看门狗] 笔已 {}ms 无报告且镜头键未按仍拦截鼠标, 已强制恢复穿透",
                     now.saturating_sub(last)
                 );
             }

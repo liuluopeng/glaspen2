@@ -232,6 +232,23 @@ struct OverlayState {
     in_stroke: bool,
     /// 笔迹当前是否可见(飘渺模式)
     strokes_visible: bool,
+    /// 飘渺 peek 计时器是否在跑(macOS g_peek_timer 同义): 镜头移动时判断
+    /// 要不要重新计时; 笔正在悬停可见且没有计时器时保持可见, 不启动隐藏。
+    peek_active: bool,
+    /// 末页按"下一页"的首次时间: 5 秒内再按一次 = 新建一页并翻过去
+    /// (macOS perform_hotkey(0x12) 同款规则)
+    last_no_next: Option<Instant>,
+    /// 无限画布: Ctrl+Alt + 左键拖动平移进行中(macOS g_camera_mouse_dragging)
+    camera_dragging: bool,
+    /// 拖动中上一次的系统光标位置(用 GetCursorPos 差值, 与 macOS
+    /// locationInWindow 同语义: 含系统指针加速, 画布严格跟手)
+    camera_last_cursor: (i32, i32),
+    /// 镜头拖动位移合并: 累积位移 + 是否已挂 16ms 计时器
+    camera_pending_dx: f64,
+    camera_pending_dy: f64,
+    camera_pan_timer: bool,
+    /// 是否因"镜头修饰键按住"而拦截了鼠标(释放修饰键/退出模式时要还原穿透)
+    camera_blocked: bool,
     /// 快捷录制 GIF 进行中(Ctrl+Alt+R 按住)
     gif_recording: bool,
     /// 录制起点笔画序号(-1 = 未在录制)

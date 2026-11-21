@@ -7,50 +7,58 @@ part of 'main.dart';
 // ── 设置同步与聊天集成状态 ──
 
 extension _SettingsStateUi on _SettingsPageState {
+  /// 覆盖层推送的设置更新: **只覆盖帧里出现的字段**, 其余保持当前值。
+  /// 覆盖层(Windows 管道 / macOS FRB)可能只推局部字段(如只推 shortcuts /
+  /// infiniteCanvas), 若对缺失字段用 `_b(null)=false` 兜底, 一次推送就会把
+  /// 面板其它开关全部清成关、tab 数也算错。
   void _onSettingsChanged(Map<dynamic, dynamic> s) {
     _settingsLoadGen++; // 服务端推送视为最新状态, 作废在途的旧加载
-    if (mounted) {
-      setState(() {
-        _selectedColor = (s['color'] as num?)?.toInt() ?? _selectedColor;
-        _selectedWidth = (s['width'] as num?)?.toInt() ?? _selectedWidth;
-        _pressureMonitor = _b(s['pressureMonitor']);
-        _launchAtLogin = _b(s['launchAtLogin']);
-        _showGrid = _b(s['grid']);
-        _gridFollowStrokes = _b(s['gridFollowStrokes']);
-        _glassFollowStrokes = s['glassFollowStrokes'] as bool? ?? _glassFollowStrokes;
-        _softShadow = _b(s['softShadow']);
-        _invertInk = _b(s['invertInk']);
-        _invertFps = (s['invertFps'] as num?)?.toInt() ?? _invertFps;
-        _outlineEnabled = _b(s['outline']);
-        _infiniteCanvas = _b(s['infiniteCanvas']);
-        _minimapEnabled = _b(s['minimap']);
-        _gridSizeValue = (s['gridSize'] as num?)?.toInt() ?? _gridSizeValue;
-        _gridDividerValue = (s['gridDivider'] as num?)?.toInt() ?? _gridDividerValue;
-        _gifFps = (s['gifFps'] as num?)?.toInt() ?? _gifFps;
-        _gifResolution = (s['gifResolution'] as num?)?.toDouble() ?? _gifResolution;
-        _gifSpeed = (s['gifSpeed'] as num?)?.toDouble() ?? _gifSpeed;
-        _gifEndMode = (s['gifEndMode'] as num?)?.toInt() ?? _gifEndMode;
-        _flipEffect = (s['flipEffect'] as num?)?.toInt() ?? _flipEffect;
-        _showFreeCanvas = _b(s['showFreeCanvas']);
-        _showBubbleTab = _b(s['showBubbleTab']);
-        _bubbleReplaySpeed =
-            ((s['bubbleReplaySpeed'] as num?)?.toInt() ?? _bubbleReplaySpeed)
-                .clamp(1, 8);
-        _bubbleReplayHoldLast =
-            s['bubbleReplayHoldLast'] as bool? ?? _bubbleReplayHoldLast;
-        _bubbleReplayAuto = _b(s['bubbleReplayAuto']);
-        _bubbleAutoNewPage = _b(s['bubbleAutoNewPage']);
-        _shareCanvas = _b(s['shareCanvas']);
-        _notebookGlass = s['notebookStyle'] as bool? ?? _notebookGlass;
-        _panelTransparent = _b(s['panelTransparent']);
+    if (!mounted) return;
+    final has = s.containsKey;
+    bool b(String key, bool cur) => has(key) ? _b(s[key]) : cur;
+    int i(String key, int cur) => (s[key] as num?)?.toInt() ?? cur;
+    double d(String key, double cur) => (s[key] as num?)?.toDouble() ?? cur;
+    setState(() {
+      _selectedColor = i('color', _selectedColor);
+      _selectedWidth = i('width', _selectedWidth);
+      _pressureMonitor = b('pressureMonitor', _pressureMonitor);
+      _launchAtLogin = b('launchAtLogin', _launchAtLogin);
+      _showGrid = b('grid', _showGrid);
+      _gridFollowStrokes = b('gridFollowStrokes', _gridFollowStrokes);
+      _glassFollowStrokes =
+          s['glassFollowStrokes'] as bool? ?? _glassFollowStrokes;
+      _softShadow = b('softShadow', _softShadow);
+      _invertInk = b('invertInk', _invertInk);
+      _invertFps = i('invertFps', _invertFps);
+      _outlineEnabled = b('outline', _outlineEnabled);
+      _infiniteCanvas = b('infiniteCanvas', _infiniteCanvas);
+      _minimapEnabled = b('minimap', _minimapEnabled);
+      _gridSizeValue = i('gridSize', _gridSizeValue);
+      _gridDividerValue = i('gridDivider', _gridDividerValue);
+      _gifFps = i('gifFps', _gifFps);
+      _gifResolution = d('gifResolution', _gifResolution);
+      _gifSpeed = d('gifSpeed', _gifSpeed);
+      _gifEndMode = i('gifEndMode', _gifEndMode);
+      _flipEffect = i('flipEffect', _flipEffect);
+      _showFreeCanvas = b('showFreeCanvas', _showFreeCanvas);
+      _showBubbleTab = b('showBubbleTab', _showBubbleTab);
+      _bubbleReplaySpeed = i('bubbleReplaySpeed', _bubbleReplaySpeed).clamp(1, 8);
+      _bubbleReplayHoldLast =
+          s['bubbleReplayHoldLast'] as bool? ?? _bubbleReplayHoldLast;
+      _bubbleReplayAuto = b('bubbleReplayAuto', _bubbleReplayAuto);
+      _bubbleAutoNewPage = b('bubbleAutoNewPage', _bubbleAutoNewPage);
+      _shareCanvas = b('shareCanvas', _shareCanvas);
+      _notebookGlass = s['notebookStyle'] as bool? ?? _notebookGlass;
+      _panelTransparent = b('panelTransparent', _panelTransparent);
+      if (has('language')) {
         _language = (s['language'] as String?) == 'en' ? 'en' : 'zh';
-        if (s.containsKey('shortcuts')) {
-          _shortcuts = _decodeShortcuts(s['shortcuts']);
-        }
-        _syncTabCount();
-      });
-      _applyLanguage(_language);
-    }
+      }
+      if (has('shortcuts')) {
+        _shortcuts = _decodeShortcuts(s['shortcuts']);
+      }
+      _syncTabCount();
+    });
+    _applyLanguage(_language);
   }
 
   Future<void> _loadSettings() async {

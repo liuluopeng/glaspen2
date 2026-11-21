@@ -126,7 +126,10 @@ fn redraw_pen(state: &mut OverlayState, new_pts: &[(f32, f32, f32)]) -> Option<R
     // dirty 只保留新增段区域(旧区域内容未变)
     let mut new_dirty: Option<RECT> = None;
     for &(px, py, r) in &state.pen_path[new_start.saturating_sub(1)..new_end] {
-        let rr = r.ceil() as i32 + 1 + ol as i32;
+        // 脏区含软阴影余量(最宽一档 spread=5):少了它阴影外缘不会刷新,
+        // 书写中阴影会残缺(抬笔后整页重绘才补齐)
+        let shadow_pad = if state.draw.soft_shadow { 5 } else { 0 };
+        let rr = r.ceil() as i32 + 1 + ol as i32 + shadow_pad;
         let rect = RECT {
             left: (px as i32 - rr).max(0),
             top: (py as i32 - rr).max(0),
@@ -164,8 +167,10 @@ fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) ->
         Err(_) => return None, // Duplicate/负时间等,忽略
     };
 
-    // 落笔时确定笔迹颜色
+    // 落笔时确定笔迹颜色; 同时结束任何进行中的鼠标镜头拖动
+    // (macOS: g_stroke_active 时镜头操作一律忽略, 抓手也会被取消)
     if down && !state.in_stroke {
+        cancel_camera_drag(state);
         state.canvas.color = (
             (state.draw.pen_r * 255.0) as u8,
             (state.draw.pen_g * 255.0) as u8,
@@ -231,9 +236,11 @@ fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) ->
 /// 收笔收尾(DB 落笔 + 抬笔扇出 + 模型器重置)。
 /// 正常抬笔走这里;抬笔报告丢失(笔离开感应区)时由穿透计时器超时强制调用,
 /// 否则 in_stroke 会永远停在 true,全屏覆盖层一直拦截鼠标。
-pub(crate) fn end_stroke_cleanup(state: &mut OverlayState) {
+fn end_stroke_cleanup(state: &mut OverlayState) {
     state.in_stroke = false;
     glaspen_core::export::glaspen2_end_stroke();
+    // 长笔点列抽稀(macOS 在 modeler_commit_to_strokes 内部做同样的事)
+    glaspen_core::export::glaspen2_decimate_last_stroke();
     // 抬笔扇出:草稿推送/共享上行/OCR 登记(macOS 在 modeler_commit 里做)
     glaspen_core::export::glaspen2_notify_stroke_committed();
     state.pen_path.clear();

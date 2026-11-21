@@ -34,7 +34,8 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Pipes::PeekNamedPipe;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN,
-    RegisterHotKey, UnregisterHotKey, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+    RegisterHotKey, UnregisterHotKey, VK_CONTROL, VK_LCONTROL, VK_LSHIFT, VK_LWIN, VK_MENU,
+    VK_RCONTROL, VK_RSHIFT, VK_RWIN, VK_SHIFT,
 };
 use windows::Win32::UI::Input::*;
 use windows::Win32::UI::WindowsAndMessaging::*;

@@ -1,6 +1,13 @@
 const WM_INPUT: u32 = 0x00FF;
 const TIMER_UNBLOCK: usize = 1;
 const TIMER_PEEK: usize = 2;
+/// 镜头拖动位移合并帧计时(与 macOS 16ms 一帧一致, 高频鼠标事件不逐条重建 surface)
+const TIMER_CAMERA_PAN: usize = 3;
+const CAMERA_PAN_INTERVAL_MS: u32 = 16;
+/// 显示器变化防抖: 重开/休眠唤醒时分辨率会成串瞬态变化, 稳定 2.5s 后再处理
+/// (macOS panel.m 同款; 不防抖会按瞬态分辨率凭空建页)
+const TIMER_DISPLAY: usize = 4;
+const DISPLAY_DEBOUNCE_MS: u32 = 2500;
 // 笔事件停止后的延迟:恢复穿透 + 飘渺模式隐藏笔迹
 const UNBLOCK_DELAY_MS: u32 = 50;
 // 落笔状态下多久没有新报告就认为"抬笔报告丢了/笔已离开感应区":
@@ -20,8 +27,6 @@ static INPUT_BLOCKED: std::sync::atomic::AtomicBool =
 /// 最近一份笔 HID 报告的系统时间(ms)
 static LAST_PEN_REPORT_MS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
-// 飘渺模式下翻页后短暂显示笔迹的时长(ms)
-const PEEK_DELAY_MS: u32 = 2000;
 // 近透明底色 alpha=2(0.01*255):肉眼不可见,但窗口可命中/可收指针消息
 const BG_BLOCK: u8 = 2;
 

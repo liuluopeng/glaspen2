@@ -1,4 +1,4 @@
-﻿fn run_loop() {
+fn run_loop() {
     unsafe {
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {
@@ -48,6 +48,11 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                 state.draw.pen_b,
                 state.draw.width_scale,
             );
+            // 面板色板同步(macOS sync_settings_panel: 热键换色后圆点跟随)
+            push_settings_changed(&format!(
+                "{{\"color\":{},\"width\":{}}}",
+                state.draw.selected_color, state.draw.selected_width
+            ));
         }
     } else if cmd >= CMD_SELECT_WIDTH && cmd < CMD_SELECT_WIDTH + WIDTH_PRESETS.len() {
         let idx = cmd - CMD_SELECT_WIDTH;
@@ -64,6 +69,10 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                 state.draw.pen_b,
                 state.draw.width_scale,
             );
+            push_settings_changed(&format!(
+                "{{\"color\":{},\"width\":{}}}",
+                state.draw.selected_color, state.draw.selected_width
+            ));
         }
     } else {
         match cmd {
@@ -85,6 +94,48 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                 let on = param_on(state.draw.outline_enabled);
                 state.draw.outline_enabled = on;
                 OUTLINE_ENABLED.store(on, std::sync::atomic::Ordering::Relaxed);
+                // macOS apply_outline 同款: core 同步(导出/缩略图带描边) +
+                // 落库(重启保留) + 立即重绘已有笔迹
+                glaspen_core::export::glaspen2_set_stroke_outline(on as i32);
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "outline",
+                    if on { "1" } else { "0" },
+                ));
+                redraw_from_strokes(state);
+            }
+            x if x == CMD_SET_GRID_FOLLOW => {
+                // 网格跟随涂鸦: 运行态立即生效(飘渺隐藏时决定网格是否陪葬)
+                let on = param_on(state.draw.grid_follow_strokes);
+                state.draw.grid_follow_strokes = on;
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "gridFollowStrokes",
+                    if on { "1" } else { "0" },
+                ));
+                if state.draw.ethereal && !state.strokes_visible {
+                    redraw_from_strokes(state);
+                }
+            }
+            x if x == CMD_SET_GLASS_FOLLOW => {
+                // 玻璃跟随涂鸦: 立即按新规则重估玻璃可见性(macOS gl_glass_apply)
+                let on = param_on(state.draw.glass_follow_strokes);
+                state.draw.glass_follow_strokes = on;
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "glassFollowStrokes",
+                    if on { "1" } else { "0" },
+                ));
+                let hidden = state.draw.ethereal && !state.strokes_visible;
+                apply_frosted(state.canvas.hwnd, state.draw.frosted && !hidden);
+            }
+            x if x == CMD_SET_SOFT_SHADOW => {
+                // 软阴影: 运行态立即生效 + core 同步(导出/缩略图) + 重绘
+                let on = param_on(state.draw.soft_shadow);
+                state.draw.soft_shadow = on;
+                glaspen_core::export::glaspen2_set_soft_shadow(on as i32);
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "softShadow",
+                    if on { "1" } else { "0" },
+                ));
+                redraw_from_strokes(state);
             }
             x if x == CMD_TOGGLE_GRID => {
                 let on = param_on(state.draw.show_grid);
@@ -155,6 +206,9 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                     }
                     glaspen_core::export::glaspen2_share_ink_set_active(0);
                 }
+                // Ctrl+Alt+2/3: 集成开才注册, 关时把组合直通前台
+                set_chat_integration(state.canvas.hwnd, on);
+                push_settings_changed(&format!("{{\"chatIntegration\":{on}}}"));
             }
             x if x == CMD_TOGGLE_FROSTED => {
                 let on = param_on(state.draw.frosted);
@@ -166,6 +220,10 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                 apply_frosted(state.canvas.hwnd, on);
             }
             x if x == CMD_TOGGLE_ETHEREAL => {
+                // 模式切换时作废未到期的 peek 隐藏计时(macOS peek_cancel_timer),
+                // 否则刚切完模式会被上一轮的 1s 计时器藏掉
+                let _ = unsafe { KillTimer(Some(state.canvas.hwnd), TIMER_PEEK) };
+                state.peek_active = false;
                 let on = param_on(state.draw.ethereal);
                 state.draw.ethereal = on;
                 glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
@@ -179,6 +237,7 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                     show_strokes(state);
                     hud_notify("固定画布涂鸦模式");
                 }
+                push_settings_changed(&format!("{{\"ethereal\":{on}}}"));
             }
             x if x == CMD_TOGGLE_PRESSURE_MONITOR => {
                 let on = param_on(state.draw.pressure_monitor);
@@ -188,6 +247,7 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                     if on { "1" } else { "0" },
                 ));
                 hud_toggle_pressure(on);
+                push_settings_changed(&format!("{{\"pressureMonitor\":{on}}}"));
                 hud_notify(if on {
                     "压力监控已开启"
                 } else {
@@ -196,14 +256,29 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
             }
             x if x == CMD_NAVIGATE_TO_PAGE => {
                 // 内容 tab 点击页面:恢复该页笔迹继续绘画
-                navigate_to(state, param as i64, "已切换到该页面");
+                navigate_to_page_from_panel(state, param as i64);
+            }
+            x if x == CMD_REFRESH_PAGE => {
+                // 面板改动了数据(圈选移动/粘贴/删除/删页): 重载当前页并重绘。
+                // macOS 同款: 只有"当前页"的数据改动才需要重建玻璃。
+                let sid = param as i64;
+                if infinite_on() {
+                    glaspen_core::export::glaspen2_load_infinite_strokes();
+                    redraw_from_strokes(state);
+                } else {
+                    let cur = glaspen_core::export::glaspen2_get_current_screen_id();
+                    if sid <= 0 || sid == cur {
+                        let _ = glaspen_core::export::glaspen2_load_strokes_for_screen(cur);
+                        redraw_from_strokes(state);
+                    }
+                }
             }
             x if x == CMD_PAGE_PREV => navigate_page(state, false),
             x if x == CMD_PAGE_NEXT => navigate_page(state, true),
             x if x == CMD_EXPORT_SVG_GIF => export_svg_gif_clipboard(state),
             x if x == CMD_TOGGLE_ENABLED => toggle_enabled(state),
             x if x == CMD_TOGGLE_INFINITE_CANVAS => {
-                apply_infinite_canvas(state, param_on(infinite_on()))
+                apply_infinite_canvas(state, param_on(infinite_on()), param == usize::MAX)
             }
             x if x == CMD_CANVAS_HOME => {
                 // 回到原点 + 100%(设置面板「回到原点」)
@@ -228,13 +303,13 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                 redraw_from_strokes(state);
             }
             x if x == CMD_CANVAS_NEW => {
-                // 手动新建:清空内容,镜头回原点 + 100%(活页本退化为普通新建)
+                // 手动新建(面板按钮,macOS 同款): 先收笔(要触发抬笔扇出), 静默执行,
+                // 无限画布清空 + 镜头回原点(macOS 只 set_view_transform, 不立即持久化)
+                finish_active_stroke(state);
                 if infinite_on() {
                     let _ = glaspen_core::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
                     set_cam(0.0, 0.0, 1.0);
-                    persist_camera();
                     redraw_from_strokes(state);
-                    hud_notify("已新建画布");
                 } else {
                     clear_screen(state);
                 }
@@ -248,6 +323,8 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
 }
 
 fn clear_screen(state: &mut OverlayState) {
+    // macOS 清空前先 finish_active_stroke(提交 + 抬笔扇出), 无论哪个分支
+    finish_active_stroke(state);
     // 无限画布不清空(内容多,误清损失大):新建走设置面板的「新建画布」
     if infinite_on() {
         hud_notify("无限画布不会被清除 · 新建请到设置面板手动新建");
@@ -266,21 +343,51 @@ fn clear_screen(state: &mut OverlayState) {
     let created = glaspen_core::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
     if created == 0 {
         // 当前页从未涂鸦:不能连续创建空白画布(macOS 同款提示)
-        hud_notify("不能连续创建空白画布,请先涂鸦");
+        hud_notify("不能连续创建空白画布, 请先涂鸦");
     } else {
-        hud_notify("已新建画布");
+        // macOS 成功后显示页信息("今天 第2页 第3/5页"), 不另发"已新建"
+        let cur = glaspen_core::export::glaspen2_get_current_screen_id();
+        hud_notify(&page_info_text(cur));
     }
 }
 
 fn toggle_enabled(state: &mut OverlayState) {
     state.draw.enabled = !state.draw.enabled;
+    let hwnd = state.canvas.hwnd;
     if !state.draw.enabled {
-        // 立即恢复穿透
-        set_input_blocking(state.canvas.hwnd, false, "draw-disabled");
+        // macOS: 关闭涂鸦 = 临时隐藏整个覆盖层窗口(笔迹/网格/磨砂全不可见),
+        // 干净地让位给其它绘图软件; 在写的笔画先落库, 镜头抓手中止。
+        finish_active_stroke(state);
+        cancel_camera_drag(state);
+        unsafe {
+            let _ = ShowWindow(hwnd, SW_HIDE);
+        }
+        if state.draw.pressure_monitor {
+            hud_toggle_pressure(false);
+        }
+        set_input_blocking(hwnd, false, "draw-disabled");
+    } else {
+        // macOS: 重新启用后, 飘渺隐藏态维持"窗口不出场"(等笔靠近再露出);
+        // 其余情况把窗口拉回来并重绘。
+        if state.draw.ethereal && !state.strokes_visible {
+            redraw_from_strokes(state);
+            unsafe {
+                let _ = ShowWindow(hwnd, SW_HIDE);
+            }
+        } else {
+            state.strokes_visible = true;
+            redraw_from_strokes(state);
+            unsafe {
+                let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            }
+            if state.draw.pressure_monitor {
+                hud_toggle_pressure(true);
+            }
+        }
     }
     // 停用涂鸦时把其余动作热键注销, 组合键透传给前台应用(macOS 同语义);
     // 只留 启停涂鸦/自由涂鸦/打开设置 三个。
-    on_draw_enabled_changed(state.canvas.hwnd, state.draw.enabled);
+    on_draw_enabled_changed(hwnd, state.draw.enabled);
     hud_notify(if state.draw.enabled {
         "涂鸦已开启"
     } else {
@@ -289,6 +396,11 @@ fn toggle_enabled(state: &mut OverlayState) {
 }
 
 fn undo_last_stroke(state: &mut OverlayState) {
+    // macOS: 书写中按下只提示, 不动库
+    if state.in_stroke {
+        hud_notify("正在书写中");
+        return;
+    }
     let remaining = glaspen_core::export::glaspen2_undo_last_stroke();
     if remaining < 0 {
         hud_notify("没有可撤销的笔画");
@@ -296,11 +408,27 @@ fn undo_last_stroke(state: &mut OverlayState) {
     }
     // 清空画布,从 STROKES 重绘全部剩余笔画
     redraw_from_strokes(state);
-    hud_notify("已撤销上一笔");
+    hud_notify("撤销成功");
 }
 
 /// 清空画布并从 STROKES 重绘全部笔画(撤销/翻页/网格开关后使用)
 fn redraw_from_strokes(state: &mut OverlayState) {
+    // 飘渺隐藏态: 只画网格/分栏/缩略图, 绝不画笔迹 —— 等价 macOS drawRect 的
+    // `if (image && g_strokes_visible)` 门控。没有这道门控时, 改网格/撤销/
+    // 切模式/镜头移动等"重建类操作"都会把整片笔迹重新露出来。
+    if state.draw.ethereal && !state.strokes_visible {
+        state.pen_path.clear();
+        state.in_stroke = false;
+        state.canvas.clear();
+        if !state.draw.grid_follow_strokes {
+            state.canvas
+                .draw_grid(state.draw.show_grid, state.draw.grid_divider);
+        }
+        draw_minimap(state);
+        state.canvas.set_bg_alpha(BG_BLOCK);
+        state.canvas.present_all();
+        return;
+    }
     state.pen_path.clear();
     state.in_stroke = false;
     let params = modeler_params();
@@ -340,40 +468,120 @@ fn redraw_from_strokes(state: &mut OverlayState) {
     state.canvas.present_all();
 }
 
-/// 上一页/下一页(加载目标页笔画并重绘)
+/// 末页"再按一次新建"的判定窗口(macOS perform_hotkey 0x12 用 5 秒)
+const NO_NEXT_SECONDS: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// 上一页/下一页(热键专用,macOS perform_hotkey 同款语义):
+/// - 无限画布: 只有一块画布, 只提示不切模式;
+/// - 有目标页: 切页 + 飘渺 peek + 页信息 HUD;
+/// - 末页再按: 5 秒内二次按 = 新建一页并翻过去。
 fn navigate_page(state: &mut OverlayState, next: bool) {
+    if infinite_on() {
+        hud_notify("无限画布只有一个画布");
+        return;
+    }
+    finish_active_stroke(state);
     let target = if next {
         glaspen_core::export::glaspen2_next_screen_id()
     } else {
         glaspen_core::export::glaspen2_prev_screen_id()
     };
-    navigate_to(state, target, if next { "下一页" } else { "上一页" });
+    if target > 0 {
+        if switch_to_page(state, target) {
+            peek_strokes(state, 1.0);
+            hud_notify(&page_info_text(target));
+        }
+        return;
+    }
+    if !next {
+        hud_notify("没有上一页");
+        return;
+    }
+    // 没有下一页: 5 秒内再按一次 = 新建一页并翻过去(写完接着写)
+    let now = Instant::now();
+    let second = state
+        .last_no_next
+        .map(|t| now.duration_since(t) < NO_NEXT_SECONDS)
+        .unwrap_or(false);
+    state.last_no_next = Some(now);
+    if !second {
+        hud_notify("没有下一页(再按一次新建)");
+        return;
+    }
+    // core 建页时会顺手把 current 切到新页; 翻页前的页必须先抓下来
+    let before = glaspen_core::export::glaspen2_get_current_screen_id();
+    let page_id = glaspen_core::export::glaspen2_create_next_page(before);
+    if page_id > 0 && page_id != before {
+        // 注意: core 已把 current 切到 page_id, 不能再走 switch_to_page
+        // (target == current 会早退, 导致不载入/不重绘, 内存还是旧页)。
+        // macOS 用 page_flip_swap_from(before) 显式 load 正是为此。
+        let count = glaspen_core::export::glaspen2_load_strokes_for_screen(page_id);
+        redraw_from_strokes(state);
+        tracing::info!("已新建并切换到页面 {page_id} ({count} 笔)");
+        peek_strokes(state, 1.0);
+        // macOS 先报页信息再报"已新建了一页"(HUD 后一条覆盖前一条)
+        hud_notify(&page_info_text(page_id));
+        hud_notify("已新建了一页");
+    } else if page_id == before {
+        hud_notify("已是最新一页");
+    } else {
+        hud_notify("新建页失败");
+    }
 }
 
-/// 跳转到指定页面:加载该页笔画并重绘,可继续绘画。
+/// 切到指定页并重绘(不含提示/peek, 调用方按场景决定)。
 /// 无限画布下先切回活页本(否则会把页笔迹塞进无限画布内存,macOS 同款)。
-fn navigate_to(state: &mut OverlayState, target: i64, _label: &str) {
+/// 成功返回 true; target 非法/与当前页相同返回 false。
+fn switch_to_page(state: &mut OverlayState, target: i64) -> bool {
     if infinite_on() {
-        apply_infinite_canvas(state, false);
+        apply_infinite_canvas(state, false, false);
     }
     let current = glaspen_core::export::glaspen2_get_current_screen_id();
     if target <= 0 || target == current {
-        tracing::info!(
-            "没有更多页面 (current={}, target={})",
-            current, target
-        );
-        hud_notify("没有可跳转的页面");
-        return;
+        tracing::info!("没有更多页面 (current={current}, target={target})");
+        return false;
     }
     let count = glaspen_core::export::glaspen2_load_strokes_for_screen(target);
     redraw_from_strokes(state);
-    tracing::info!("已切换到页面 {} ({} 笔)", target, count);
-    hud_notify(&page_info_text(target));
-    // 飘渺模式:短暂显示目标页,随后自动隐藏(除非笔在活动)
-    if state.draw.ethereal {
-        let hwnd = state.canvas.hwnd;
-        let _ = unsafe { SetTimer(Some(hwnd), TIMER_PEEK, PEEK_DELAY_MS, None) };
+    tracing::info!("已切换到页面 {target} ({count} 笔)");
+    true
+}
+
+/// 设置面板点页面跳转: 只切页, 不弹 HUD/peek
+/// (macOS glaspen2_macos_navigate_to_page 就是这么做的)。
+fn navigate_to_page_from_panel(state: &mut OverlayState, screen_id: i64) {
+    if screen_id > 0 {
+        // macOS glaspen2_macos_navigate_to_page 也会先把在写的笔收掉
+        finish_active_stroke(state);
+        let _ = switch_to_page(state, screen_id);
     }
+}
+
+/// 飘渺模式: 短暂显示笔迹 `seconds` 秒后自动隐回(macOS peek_strokes 同款)。
+/// 每次调用重新计时; 笔在书写中不隐藏。
+fn peek_strokes(state: &mut OverlayState, seconds: f64) {
+    if !state.draw.ethereal {
+        return; // 固定画布模式: 笔迹本来就一直可见
+    }
+    if !state.strokes_visible {
+        show_strokes(state);
+    }
+    state.peek_active = true;
+    let ms = (seconds.max(0.05) * 1000.0).round() as u32;
+    let _ = unsafe { SetTimer(Some(state.canvas.hwnd), TIMER_PEEK, ms, None) };
+}
+
+/// 飘渺模式下镜头平移/缩放时短暂露出笔迹, 让新镜头可见(macOS peek_lens_change 同款)。
+/// 笔正悬停(笔迹已可见且没有 peek 计时器)时不启动隐藏计时器, 否则悬浮看画会
+/// 1 秒后被藏起来。
+fn peek_lens_change(state: &mut OverlayState) {
+    if !state.draw.ethereal || !infinite_on() {
+        return;
+    }
+    if state.strokes_visible && !state.peek_active {
+        return;
+    }
+    peek_strokes(state, 1.0);
 }
 
 /// 页数+日期通知文本,如 "今天 第2页  第3/5页"(与 macOS 一致)
@@ -400,12 +608,8 @@ fn page_info_text(screen_id: i64) -> String {
 
 /// 飘渺模式:隐藏笔迹(保留数据,仅清空显示;网格按"网格跟随涂鸦"决定)
 fn hide_strokes(state: &mut OverlayState) {
-    // 提交未完成的笔画,避免悬空
-    if state.in_stroke {
-        glaspen_core::export::glaspen2_end_stroke();
-        state.in_stroke = false;
-        state.pen_path.clear();
-    }
+    // 提交未完成的笔画(含抬笔扇出,不能只 end_stroke)
+    finish_active_stroke(state);
     state.strokes_visible = false;
     state.canvas.clear();
     // 网格跟随涂鸦 → 网格与分栏线一起隐藏;否则按各自开关保持可见
@@ -416,6 +620,10 @@ fn hide_strokes(state: &mut OverlayState) {
     // 玻璃跟随涂鸦 → 磨砂背景一起关;否则保持
     if state.draw.glass_follow_strokes && state.draw.frosted {
         apply_frosted(state.canvas.hwnd, false);
+    }
+    // 压力监控跟随笔迹显隐(macOS ethereal_hide_now: pm_hide)
+    if state.draw.pressure_monitor {
+        hud_toggle_pressure(false);
     }
     state.canvas.set_bg_alpha(BG_BLOCK);
     state.canvas.present_all();
@@ -429,6 +637,14 @@ fn show_strokes(state: &mut OverlayState) {
         // 重现时把跟随隐藏的磨砂背景按自身开关恢复
         if state.draw.glass_follow_strokes && state.draw.frosted {
             apply_frosted(state.canvas.hwnd, true);
+        }
+        // 压力监控跟着笔迹出现(macOS auto_show_canvas: pm_show)
+        if state.draw.pressure_monitor {
+            hud_toggle_pressure(true);
+        }
+        // 之前可能因"关闭涂鸦"隐藏了窗口: 这里把窗口拉回来
+        unsafe {
+            let _ = ShowWindow(state.canvas.hwnd, SW_SHOWNOACTIVATE);
         }
     }
 }
@@ -462,6 +678,8 @@ fn canvas_pan_by(state: &mut OverlayState, dx: f64, dy: f64) {
     let (px, py, z) = cam();
     set_cam(px - dx, py - dy, z);
     canvas_apply_transform(state);
+    // 飘渺模式下笔迹是隐的: 短暂露出, 让镜头变化可见(macOS peek_lens_change)
+    peek_lens_change(state);
 }
 
 /// 缩放镜头:以视图点 (vx, vy) 为锚,zoom ∈ (0.05, 1.0]。
@@ -474,42 +692,54 @@ fn canvas_zoom_at(state: &mut OverlayState, factor: f64, vx: f64, vy: f64) {
     let ccx = vx / z + px;
     let ccy = vy / z + py;
     let mut nz = z * factor;
+    let mut clamped_hint = false;
     if nz > ZOOM_MAX {
         nz = ZOOM_MAX;
-        if z < ZOOM_MAX {
-            static LAST_HINT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        clamped_hint = true;
+    }
+    if nz < ZOOM_MIN {
+        nz = ZOOM_MIN;
+        clamped_hint = true;
+    }
+    // 边界无变化: 只做提示(1.5s 节流), 不重建/不 peek —— 否则到顶后每次滚轮
+    // 都会全屏重绘, 飘渺模式下还会闪一下(macOS run.m 同款提前 return)
+    if nz == z {
+        if clamped_hint {
+            static LAST_HINT: std::sync::atomic::AtomicU64 =
+                std::sync::atomic::AtomicU64::new(0);
             let now = now_millis();
             if now.saturating_sub(LAST_HINT.load(std::sync::atomic::Ordering::Relaxed))
                 > ZOOM_HINT_MS
             {
                 LAST_HINT.store(now, std::sync::atomic::Ordering::Relaxed);
-                hud_notify("已达最大缩放 100%");
+                hud_notify(if nz >= ZOOM_MAX {
+                    "已达最大缩放 100%"
+                } else {
+                    "已达最小缩放 5%"
+                });
             }
         }
-    }
-    if nz < ZOOM_MIN {
-        nz = ZOOM_MIN;
+        return;
     }
     set_cam(ccx - vx / nz, ccy - vy / nz, nz);
     canvas_apply_transform(state);
+    // 飘渺模式下笔迹是隐的: 短暂露出, 让缩放变化可见(macOS peek_lens_change)
+    peek_lens_change(state);
 }
 
 /// 应用无限画布开关(设置面板与热键共用的唯一入口)。
 /// 两种模式各自独立存储:活页本用 screens/strokes,无限画布用全局唯一的
 /// infinite_strokes。切换时冲刷当前笔画、切存储、载入对应画布的笔迹与镜头。
-fn apply_infinite_canvas(state: &mut OverlayState, on: bool) {
+/// `notify`: 面板切换静默、热键/菜单切换才弹提示(macOS apply_infinite_canvas 同款)。
+fn apply_infinite_canvas(state: &mut OverlayState, on: bool, notify: bool) {
     if infinite_on() == on {
         return;
     }
-    // 先把在写的笔画落库到"旧"存储
-    if state.in_stroke {
-        glaspen_core::export::glaspen2_end_stroke();
-        state.in_stroke = false;
-        state.pen_path.clear();
-        let params = modeler_params();
-        let _ = state.stroke_modeler.reset_w_params(params);
-        state.start_time = Instant::now();
-    }
+    // 模式切换: 结束任何鼠标抓手, 丢弃未应用的镜头拖动位移(macOS 同款)
+    cancel_camera_drag(state);
+    // 先把在写的笔画落库到"旧"存储; 必须走 finish_active_stroke 才会触发
+    // 抬笔扇出(草稿/共享/OCR), 直接 end_stroke 会漏掉钩子(macOS 同款)
+    finish_active_stroke(state);
     if infinite_on() {
         persist_camera(); // 离开无限画布前存镜头
     }
@@ -541,11 +771,27 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool) {
     // undo/导出所见即所得。此前的"切换后清空内存副本"会把刚载入的内容
     // 抹成空白,看起来像切换失败,且让 undo/导出与页面数据脱节。
     redraw_from_strokes(state);
-    hud_notify(if on {
-        "无限画布已开启 (Ctrl+Alt+滚轮缩放 · Ctrl+Alt+方向键平移)"
-    } else {
-        "无限画布已关闭,回到活页本"
-    });
+    // 镜头热键只在无限画布模式注册(翻页模式放行给系统, macOS 同语义)
+    set_canvas_mode(state.canvas.hwnd, on);
+    // 面板开关/圆点同步(macOS sync_settings_panel 的等价物)
+    let show_free = glaspen_core::runtime()
+        .block_on(glaspen_core::db::load_setting("show_free_canvas"))
+        .and_then(|v| v.parse::<i32>().ok())
+        .unwrap_or(0)
+        != 0;
+    push_settings_changed(&format!(
+        "{{\"infiniteCanvas\":{},\"showFreeCanvas\":{}}}",
+        if on { "true" } else { "false" },
+        if show_free { "true" } else { "false" }
+    ));
+    // macOS: 从面板切换是静默的(NO), 只有热键/菜单切换才提示
+    if notify {
+        hud_notify(if on {
+            "无限画布已开启 (镜头键可在设置 → 快捷键中查看)"
+        } else {
+            "无限画布已关闭"
+        });
+    }
 }
 
 // ── 快捷录制 GIF(Ctrl+Alt+R 按住,松开生成并复制剪贴板;macOS ⌘⌃R 同款) ──
@@ -554,6 +800,7 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool) {
 fn finish_active_stroke(state: &mut OverlayState) {
     if state.in_stroke {
         glaspen_core::export::glaspen2_end_stroke();
+        glaspen_core::export::glaspen2_decimate_last_stroke();
         // 抬笔扇出(草稿/共享/OCR):与 pen.rs 的正常抬笔路径一致
         glaspen_core::export::glaspen2_notify_stroke_committed();
         state.in_stroke = false;
@@ -569,10 +816,7 @@ fn gif_record_start(state: &mut OverlayState) {
     if state.gif_recording {
         return;
     }
-    if !state.draw.enabled {
-        hud_notify("涂鸦已关闭, 无法录制 GIF");
-        return;
-    }
+    // macOS 在涂鸦停用时也允许进入录制(松手才报"没有笔迹"), 这里保持一致
     finish_active_stroke(state);
     state.gif_record_start = glaspen_core::export::glaspen2_stroke_count();
     state.gif_recording = true;
@@ -649,9 +893,9 @@ fn chat_record_stop(state: &mut OverlayState) {
     std::thread::spawn(move || {
         let sent = glaspen_core::export::glaspen2_chat_send_strokes(start, end);
         if sent >= 0 {
-            hud_notify(&format!("手写消息已发送 ({sent} 笔)"));
+            hud_notify_async(format!("手写消息已发送 ({sent} 笔)"));
         } else {
-            hud_notify("手写消息发送失败");
+            hud_notify_async("手写消息发送失败".to_string());
         }
     });
 }
@@ -690,13 +934,13 @@ fn ink_draft_stop(state: &mut OverlayState) {
                 .to_string()
         };
         if r > 0 {
-            hud_notify(&format!("对方已接收手写草稿 ({r} 笔)"));
+            hud_notify_async(format!("对方已接收手写草稿 ({r} 笔)"));
         } else if r == 0 {
-            hud_notify("对方未采用这份手写草稿");
+            hud_notify_async("对方未采用这份手写草稿".to_string());
         } else if !detail.is_empty() {
-            hud_notify(&detail);
+            hud_notify_async(detail);
         } else {
-            hud_notify("手写通道失败(未连接或中断)");
+            hud_notify_async("手写通道失败(未连接或中断)".to_string());
         }
     });
 }
@@ -800,6 +1044,31 @@ unsafe fn handle_keyboard_raw(buf: &[u64], state: &mut OverlayState) {
         return;
     }
     let kb = &(*raw).data.keyboard;
+    let key_up = kb.Message == WM_KEYUP || kb.Message == WM_SYSKEYUP;
+    let is_modifier = matches!(
+        kb.VKey,
+        0x11 | 0xA2 | 0xA3 // Ctrl: VK_CONTROL / VK_LCONTROL / VK_RCONTROL
+        | 0x12 | 0xA4 | 0xA5 // Alt: VK_MENU / VK_LMENU / VK_RMENU
+        | 0x10 | 0xA0 | 0xA1 // Shift: VK_SHIFT / VK_LSHIFT / VK_RSHIFT
+        | 0x5B | 0x5C // Win
+    );
+    // 镜头修饰键按下: 提前清穿透把鼠标交给覆盖层, 这样 Ctrl+Alt+滚轮从第一格
+    // 起就被吞掉(不会同时缩放下层浏览器), 左键拖动也不会先点到下层窗口。
+    if !key_up
+        && is_modifier
+        && infinite_on()
+        && state.draw.enabled
+        && !state.in_stroke
+        && !state.camera_blocked
+        && (mods_match_exact(camera_pan_mods()) || mods_match_exact(camera_zoom_mods()))
+    {
+        set_input_blocking(state.canvas.hwnd, true, "camera-mods");
+        state.camera_blocked = true;
+    }
+    // 镜头修饰键释放 → 还原穿透(否则 Ctrl+Alt 按住时清掉的穿透会一直留着)
+    if key_up && is_modifier {
+        camera_mods_maybe_released(state);
+    }
     if state.gif_recording && kb.VKey == 0x52 && kb.Message == WM_KEYUP {
         // R 松开(无需再验修饰键:录制只在热键按下时开启)
         gif_record_stop(state);
@@ -816,96 +1085,73 @@ unsafe fn handle_keyboard_raw(buf: &[u64], state: &mut OverlayState) {
     }
 }
 
-/// Ctrl+Alt+G:导出 SVG + GIF,并把当前画布复制到系统剪贴板(CF_DIB)
+/// Ctrl+Alt+G(可配置 export): 导出 SVG + 按内容裁切的动画 GIF 到桌面, 并把
+/// 最新 GIF 以**文件**形式复制到剪贴板(macOS perform_hotkey(kVK_ANSI_G) 同款:
+/// 写 SVG → 存裁切 GIF → pboard 写文件 URL → 成功/失败通知)。
 fn export_svg_gif_clipboard(state: &mut OverlayState) {
     glaspen_core::export::glaspen2_save_svg();
-    // Default GIF quality/speed (fps, resolution, playback speed); the macOS
-    // settings panel exposes these for the Cmd+Ctrl+R recording flow.
-    let ok = glaspen_core::export::glaspen2_save_animated_gif(15, 0.5, 2.0, 1);
-    tracing::info!(
-        "SVG 已导出;GIF 导出: {}",
-        if ok != 0 { "OK" } else { "FAILED" }
-    );
-    copy_canvas_to_clipboard(state);
-    hud_notify("已导出 SVG + GIF,并复制到剪贴板");
-}
-
-/// 把当前画布(32bit BGRA 预乘)复制为 CF_DIB 到系统剪贴板
-fn copy_canvas_to_clipboard(state: &mut OverlayState) {
-    let w = state.canvas.w as usize;
-    let h = state.canvas.h as usize;
-    let row = (w * 4 + 3) & !3;
-    let header = 40usize;
-    let total = header + row * h;
-    let mem = unsafe { GlobalAlloc(GMEM_MOVEABLE, total) };
-    if mem.0.is_null() {
-        return;
-    }
-    let ptr = unsafe { GlobalLock(mem) };
-    if ptr.is_null() {
-        unsafe {
-            let _ = GlobalFree(mem);
-        }
-        return;
-    }
+    // 画布快照是预乘 BGRA(top-down, stride = w*4), 与 core 期望的
+    // cairo ARGB32 小端布局一致; Windows 无 Retina 缩放(scale=1.0)。
     let snap = state.canvas.snapshot();
-    unsafe {
-        let p = ptr as *mut u8;
-        // BITMAPINFOHEADER(40 字节,bottom-up 32bpp BGRA)
-        std::slice::from_raw_parts_mut(p, 40).fill(0);
-        std::slice::from_raw_parts_mut(p.add(0), 4).copy_from_slice(&40u32.to_le_bytes());
-        std::slice::from_raw_parts_mut(p.add(4), 4).copy_from_slice(&(w as i32).to_le_bytes());
-        std::slice::from_raw_parts_mut(p.add(8), 4).copy_from_slice(&(h as i32).to_le_bytes()); // 正高度 = bottom-up
-        std::slice::from_raw_parts_mut(p.add(12), 2).copy_from_slice(&1u16.to_le_bytes()); // biPlanes
-        std::slice::from_raw_parts_mut(p.add(14), 2).copy_from_slice(&32u16.to_le_bytes()); // biBitCount
-        std::slice::from_raw_parts_mut(p.add(16), 4).copy_from_slice(&0u32.to_le_bytes()); // biCompression = BI_RGB
-        // 像素:源为 top-down,写入 bottom-up(行反转)
-        for y in 0..h {
-            let src_off = y * w * 4;
-            std::ptr::copy_nonoverlapping(
-                snap.as_ptr().add(src_off),
-                p.add(header + (h - 1 - y) * row),
-                w * 4,
-            );
-        }
-        let _ = GlobalUnlock(mem);
-    }
-    unsafe {
-        if OpenClipboard(state.canvas.hwnd) != 0 {
-            EmptyClipboard();
-            let h = SetClipboardData(CF_DIB, mem);
-            CloseClipboard();
-            if h.0.is_null() {
-                let _ = GlobalFree(mem);
+    let ok = glaspen_core::export::glaspen2_save_gif_cropped(
+        snap.as_ptr(),
+        state.canvas.w,
+        state.canvas.h,
+        state.canvas.w * 4,
+        1.0,
+    );
+    if ok != 0 {
+        if let Some(path) = newest_desktop_gif() {
+            if let Ok(bytes) = std::fs::read(&path) {
+                let _ = unsafe { copy_gif_bytes_to_clipboard(&bytes) };
+                tracing::info!("已导出 SVG + GIF: {}", path.display());
             }
-            tracing::info!(
-                "画布已复制到剪贴板 ({}x{})",
-                state.canvas.w, state.canvas.h
-            );
-        } else {
-            let _ = GlobalFree(mem);
-            tracing::error!("剪贴板打开失败,未复制");
         }
+        hud_notify("已导出 SVG + GIF");
+    } else {
+        tracing::warn!("GIF 导出失败(没有笔迹?)");
+        hud_notify("导出失败");
     }
 }
 
-/// 复制 SVG 到剪贴板(可配置动作 copy_svg,macOS perform_hotkey(kVK_ANSI_S)
-/// 同语义)。SVG 由 core 的 cropped 导出生成(与 mac 同源),以 CF_UNICODETEXT
-/// 放入剪贴板,可直接粘进编辑器/聊天框。
+/// 桌面上最新的一个 glaspen2_*.gif(刚导出写完的那份)
+fn newest_desktop_gif() -> Option<std::path::PathBuf> {
+    let dir = glaspen_core::desktop_path();
+    let mut best: Option<(std::time::SystemTime, std::path::PathBuf)> = None;
+    for e in std::fs::read_dir(dir).ok()?.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let lower = name.to_ascii_lowercase();
+        if !lower.starts_with("glaspen2_") || !lower.ends_with(".gif") {
+            continue;
+        }
+        let Ok(meta) = e.metadata() else { continue };
+        let m = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
+        if best.as_ref().map(|(t, _)| m > *t).unwrap_or(true) {
+            best = Some((m, e.path()));
+        }
+    }
+    best.map(|(_, p)| p)
+}
+
+/// 复制 SVG 到剪贴板(可配置动作 copy_svg,macOS perform_hotkey(kVK_ANSI_S) 同语义)。
+/// macOS 放的是 `<img src="data:image/svg+xml;base64,…" />` 字符串(可直接粘进
+/// 富文本/聊天框渲染), 不是裸 SVG 文本; 这里保持一致。
 fn copy_svg_to_clipboard(state: &mut OverlayState) {
     let ptr = glaspen_core::export::glaspen2_get_cropped_svg();
     if ptr.is_null() {
-        hud_notify("没有可复制的笔迹");
+        hud_notify("没有笔迹可复制");
         return;
     }
     let svg = unsafe { std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned() };
     glaspen_core::export::glaspen2_free_c_string(ptr);
     if svg.is_empty() {
-        hud_notify("没有可复制的笔迹");
+        hud_notify("没有笔迹可复制");
         return;
     }
+    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, svg.as_bytes());
+    let html = format!("<img src=\"data:image/svg+xml;base64,{b64}\" />");
     // Windows 剪贴板文本必须是 UTF-16 + NUL 结尾
-    let wide: Vec<u16> = svg.encode_utf16().chain(std::iter::once(0)).collect();
+    let wide: Vec<u16> = html.encode_utf16().chain(std::iter::once(0)).collect();
     let bytes = wide.len() * std::mem::size_of::<u16>();
     unsafe {
         if OpenClipboard(state.canvas.hwnd) == 0 {
@@ -928,7 +1174,7 @@ fn copy_svg_to_clipboard(state: &mut OverlayState) {
         }
         CloseClipboard();
     }
-    tracing::info!("SVG 已复制到剪贴板 ({} 字节)", svg.len());
+    tracing::info!("SVG(data-URI img) 已复制到剪贴板 ({} 字节)", svg.len());
     hud_notify("SVG 已复制到剪贴板");
 }
 
@@ -980,6 +1226,10 @@ fn toggle_frosted(state: &mut OverlayState) {
         if state.draw.frosted { "1" } else { "0" },
     ));
     apply_frosted(state.canvas.hwnd, state.draw.frosted);
+    push_settings_changed(&format!(
+        "{{\"frostedGlass\":{}}}",
+        state.draw.frosted
+    ));
     tracing::info!(
         "模糊背景: {}",
         if state.draw.frosted { "开" } else { "关" }
@@ -1010,6 +1260,13 @@ fn on_display_change(state: &mut OverlayState) {
         );
     }
     glaspen_core::export::glaspen2_on_display_change(w, h);
+    // core 只切 current, STROKES 内存归壳层: 必须重载新页笔迹再重绘,
+    // 否则旧页内容会被画到新页上(macOS display_change_apply 同款)
+    let cur = glaspen_core::export::glaspen2_get_current_screen_id();
+    if cur > 0 {
+        glaspen_core::export::glaspen2_load_strokes_for_screen(cur);
+        glaspen_core::export::glaspen2_smooth_loaded_strokes();
+    }
     let color = state.canvas.color;
     state.canvas = OverlayCanvas::create(hwnd);
     state.canvas.color = color;
@@ -1105,9 +1362,9 @@ unsafe extern "system" {
     fn DisconnectNamedPipe(h_named_pipe: isize) -> i32;
 }
 
-// ── 剪贴板(CF_DIB 复制画布 / CF_UNICODETEXT 复制 SVG) ──
+// ── 剪贴板(CF_UNICODETEXT 复制 SVG data-URI / GIF 文件) ──
 
-const CF_DIB: u32 = 8;
+
 const CF_UNICODETEXT: u32 = 13;
 const GMEM_MOVEABLE: u32 = 0x0002;
 

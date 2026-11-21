@@ -82,11 +82,13 @@ const Map<String, String> _shortcutDefaultsWindows = {
   'canvas_pan_down': 'ctrl+alt+Down',
   'canvas_zoom_in': 'ctrl+alt+PageUp',
   'canvas_zoom_out': 'ctrl+alt+PageDown',
-  'clear': 'ctrl+alt+C',
-  'export': 'ctrl+alt+G',
+  // macOS 同策略: 默认只绑核心动作 + 镜头; 新建/导出/磨砂/飘渺默认不占键,
+  // 需要的人在 设置 → 快捷键 里自己绑。
+  'clear': '',
+  'export': '',
   'copy_svg': '',
-  'toggle_glass': 'ctrl+alt+B',
-  'toggle_ethereal': 'ctrl+alt+X',
+  'toggle_glass': '',
+  'toggle_ethereal': '',
   'settings': 'ctrl+alt+D',
 };
 

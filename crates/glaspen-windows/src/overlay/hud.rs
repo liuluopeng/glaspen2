@@ -3,7 +3,7 @@ const HUD_NOTIF_H: i32 = 48;
 const HUD_PM_W: i32 = 240;
 const HUD_PM_H: i32 = 32;
 const HUD_NOTIF_TIMER: usize = 10;
-const HUD_NOTIF_MS: u32 = 1200;
+const HUD_NOTIF_MS: u32 = 1000;
 
 /// 日期标签:今天 / 昨天 / YYYY-MM-DD(本地时区,chrono 计算)
 fn date_label(unix_secs: u64) -> String {
@@ -282,7 +282,7 @@ struct HudState {
     notif_hwnd: HWND,
     /// 压力监控窗口(左上角,macOS 同位置)
     pm_hwnd: HWND,
-    /// 短暂通知文本(1.2s 后清除)
+    /// 短暂通知文本(1s 后清除,macOS 同款)
     notif: Option<String>,
     /// 压力监控文本(常驻,开关控制)
     pm_text: String,
@@ -704,6 +704,30 @@ unsafe fn hud_render_notif_text(hwnd: HWND, text: &str) {
 }
 
 /// 显示短暂通知(1.2s 后自动消失)
+/// 后台线程 → 窗口线程的通知队列: HUD 的 static mut 状态与 GDI+ 对象只能在
+/// 窗口线程碰; 管道线程/聊天发送线程用 hud_notify_async 投递(WM_HUD_NOTIFY)。
+static HUD_QUEUE: std::sync::LazyLock<std::sync::Mutex<Vec<String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
+
+/// 任意线程弹通知: 入队 + 通知窗口线程(macOS 里是 dispatch_async 回主线程)
+fn hud_notify_async(text: String) {
+    HUD_QUEUE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(text);
+    let hwnd = *OVERLAY_HWND.lock().unwrap_or_else(|e| e.into_inner());
+    if hwnd != 0 {
+        let _ = unsafe {
+            PostMessageW(
+                Some(HWND(hwnd as *mut std::ffi::c_void)),
+                WM_HUD_NOTIFY,
+                WPARAM(0),
+                LPARAM(0),
+            )
+        };
+    }
+}
+
 fn hud_notify(text: &str) {
     unsafe {
         if HUD.is_null() {

@@ -77,12 +77,10 @@ pub fn win_main() {
             .output();
     }
 
-    // Launch Flutter settings UI (non-blocking); keep the handle so quitting
-    // the overlay takes the settings window down with it.
-    let mut settings_child = find_settings_exe().and_then(|p| {
-        tracing::info!("Launching Flutter settings: {}", p.display());
-        std::process::Command::new(p).spawn().ok()
-    });
+    // 设置面板不再随启动无脑拉起(macOS 只在菜单/热键里打开)。
+    // 首次启动由 overlay::run 里的"首启引导"拉起一次并记住;
+    // 之后用 Ctrl+Alt+D(可配置 settings 动作)打开。
+    let mut settings_child: Option<std::process::Child> = None;
 
     // Run the overlay (blocking — message loop until quit)
     overlay::run();

@@ -479,19 +479,22 @@ extension _SettingsWidgetsUi on _SettingsPageState {
             _setSetting('softShadow', v);
           },
         )),
-        _tile(SwitchListTile(
-          title: Text(AppLocalizations.of(context)!.invertedInk, style: TextStyle(fontSize: 15)),
-          subtitle: Text(AppLocalizations.of(context)!.strokesTakeThePer, style: TextStyle(fontSize: 12)),
-          value: _invertInk,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            setState(() => _invertInk = v);
-            _setSetting('invertInk', v);
-          },
-        )),
+        // 反色突出是 macOS 专属实现(SCK 持续截屏反相); Windows 无实现,
+        // 不展示假开关(macOS 面板门控同款做法)
+        if (Platform.isMacOS)
+          _tile(SwitchListTile(
+            title: Text(AppLocalizations.of(context)!.invertedInk, style: TextStyle(fontSize: 15)),
+            subtitle: Text(AppLocalizations.of(context)!.strokesTakeThePer, style: TextStyle(fontSize: 12)),
+            value: _invertInk,
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            onChanged: (v) {
+              setState(() => _invertInk = v);
+              _setSetting('invertInk', v);
+            },
+          )),
         // 帧率上限只在反色开启时有意义: 关着时不再占一整行
-        if (_invertInk) ...[
+        if (Platform.isMacOS && _invertInk) ...[
           _tile(Padding(
             padding: const EdgeInsets.only(left: 16, top: 4),
             child: SizedBox(

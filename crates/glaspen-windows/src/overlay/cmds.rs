@@ -6,6 +6,8 @@ const WM_RECORD_DONE: u32 = WM_USER + 3;
 /// 请求在窗口线程重新注册全局热键(管道/定时器线程投递; RegisterHotKey
 /// 不接受"属于别的线程的窗口", 必须回到窗口线程执行)
 const WM_HOTKEY_RELOAD: u32 = WM_USER + 6;
+/// 后台线程请求弹通知(管道/聊天/草稿线程不能直接碰 HUD 静态对象)
+const WM_HUD_NOTIFY: u32 = WM_USER + 7;
 
 pub const CMD_SELECT_COLOR: usize = 100;
 pub const CMD_SELECT_WIDTH: usize = 200;
@@ -24,7 +26,15 @@ pub const CMD_TOGGLE_CHAT_INTEGRATION: usize = 657; // 手写消息集成总开�
 pub const CMD_SET_GRID_SIZE: usize = 658; // 网格尺寸 20/40/80(面板)
 pub const CMD_TOGGLE_MINIMAP: usize = 659; // 页面缩略图条开关(面板)
 pub const CMD_MINIMAP_REFRESH: usize = 660; // 后台缩略图渲染完成 → 重绘条带
+/// 面板「网格跟随涂鸦 / 玻璃跟随涂鸦 / 软阴影」: 运行态立即生效(macOS 同款),
+/// 落库与重绘都在消息循环线程做, 不能只写库等重启。
+pub const CMD_SET_GRID_FOLLOW: usize = 661;
+pub const CMD_SET_GLASS_FOLLOW: usize = 662;
+pub const CMD_SET_SOFT_SHADOW: usize = 663;
 pub const CMD_NAVIGATE_TO_PAGE: usize = 810;
+/// 面板改动了当前页/无限画布的数据(圈选移动/粘贴/删除) → 重载并重绘
+/// (对应 macOS glaspen2_macos_refresh_page / refresh_infinite)
+pub const CMD_REFRESH_PAGE: usize = 811;
 pub const CMD_PAGE_PREV: usize = 720;
 pub const CMD_PAGE_NEXT: usize = 721;
 pub const CMD_EXPORT_SVG_GIF: usize = 722;

@@ -58,6 +58,7 @@ unsafe extern "system" fn wnd_proc(
             let state = &mut *STATE.load(Ordering::SeqCst);
             if !state.draw.enabled {
                 // 涂鸦关闭:保持穿透,不拦截、不处理
+                cancel_camera_drag(state);
                 set_input_blocking(hwnd, false, "draw-disabled");
                 return LRESULT(0);
             }
@@ -67,6 +68,9 @@ unsafe extern "system" fn wnd_proc(
             LAST_PEN_REPORT_MS.store(now_millis(), Ordering::SeqCst);
             let _ = KillTimer(Some(hwnd), TIMER_UNBLOCK);
             let _ = KillTimer(Some(hwnd), TIMER_PEEK);
+            // peek 计时器被笔活动取消时同步清标志(否则 peek_lens_change 会误判
+            // "有计时器在跑", 笔悬停移动镜头后 1s 把笔迹藏掉)
+            state.peek_active = false;
 
             // 飘渺模式:笔悬空/落笔 → 显示笔迹(仅首次,避免高频全量重绘)
             if state.draw.ethereal && !state.strokes_visible {
@@ -125,6 +129,9 @@ unsafe extern "system" fn wnd_proc(
                         // 保证接下来的落笔不穿透(启动后第一笔就是靠这个挡住)。
                         let _ = SetTimer(Some(hwnd), TIMER_UNBLOCK, UNBLOCK_DELAY_MS, None);
                         return LRESULT(0);
+                    } else if state.camera_blocked || state.camera_dragging {
+                        // 镜头修饰键还按着/正在拖动: 拦截权归镜头, 别在这里还原穿透
+                        return LRESULT(0);
                     }
                     // 笔已静止/离开: 设 WS_EX_TRANSPARENT 恢复穿透
                     set_input_blocking(hwnd, false, "idle");
@@ -133,9 +140,19 @@ unsafe extern "system" fn wnd_proc(
                         hide_strokes(state);
                     }
                 }
+                TIMER_CAMERA_PAN => {
+                    let _ = KillTimer(Some(hwnd), TIMER_CAMERA_PAN);
+                    flush_camera_pan(state);
+                }
+                TIMER_DISPLAY => {
+                    let _ = KillTimer(Some(hwnd), TIMER_DISPLAY);
+                    // 到期重读真实几何(on_display_change 内部读 GetSystemMetrics)
+                    on_display_change(state);
+                }
                 TIMER_PEEK => {
                     let _ = KillTimer(Some(hwnd), TIMER_PEEK);
-                    // 飘渺模式翻页 peek 到期:无笔活动时隐藏
+                    state.peek_active = false;
+                    // 飘渺模式 peek 到期(翻页/镜头):无笔活动时隐藏
                     if state.draw.ethereal && !state.in_stroke && state.strokes_visible {
                         hide_strokes(state);
                     }
@@ -166,6 +183,18 @@ unsafe extern "system" fn wnd_proc(
             handle_command(state, wparam.0, lparam.0 as usize);
             LRESULT(0)
         }
+        WM_HUD_NOTIFY => {
+            // 后台线程投递的通知: 在窗口线程弹(避免跨线程碰 HUD 状态)
+            let texts: Vec<String> = HUD_QUEUE
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .drain(..)
+                .collect();
+            for t in texts {
+                hud_notify(&t);
+            }
+            LRESULT(0)
+        }
         WM_HOTKEY_RELOAD => {
             // 设置管道线程/录制超时线程投递的"重新注册热键"请求:
             // 只有窗口所属线程能注册(否则 0x80070580 无效窗口)。
@@ -173,9 +202,14 @@ unsafe extern "system" fn wnd_proc(
             LRESULT(0)
         }
         WM_KEYDOWN => DefWindowProcW(hwnd, msg, wparam, lparam),
+        WM_MOUSEACTIVATE => {
+            // 覆盖层可命中时(落笔拦截/镜头拖动)也不抢前台焦点
+            LRESULT(MA_NOACTIVATE as isize)
+        }
         WM_DISPLAYCHANGE => {
-            let state = &mut *STATE.load(Ordering::SeqCst);
-            on_display_change(state);
+            // 防抖(macOS panel.m 同款): 事件成串到达时只重置计时, 稳定 2.5s 后
+            // 再处理; 否则每个瞬态分辨率都会凭空建一页。
+            let _ = SetTimer(Some(hwnd), TIMER_DISPLAY, DISPLAY_DEBOUNCE_MS, None);
             LRESULT(0)
         }
         WM_ERASEBKGND => LRESULT(1),

@@ -64,6 +64,13 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
 
     // Wrap pipe HANDLE in a single File for both read and write
     let mut stream = unsafe { std::fs::File::from_raw_handle(pipe as *mut std::ffi::c_void) };
+    // 留一份写句柄克隆给"覆盖层 → 面板"的回推通道(热键改设置时同步面板)
+    match stream.try_clone() {
+        Ok(clone) => {
+            *PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner()) = Some(clone);
+        }
+        Err(e) => tracing::warn!("面板回推通道创建失败: {e}"),
+    }
 
     let mut buf = [0u8; 4096];
     let mut line_buf = Vec::new();
@@ -93,11 +100,44 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
 
     // Prevent File from closing the handle; we close it ourselves
     let _ = stream.into_raw_handle();
+    *PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner()) = None;
     close_pipe(pipe);
     // 面板进程断开: 若当时正在录制快捷键, 立即恢复全局热键
     // (Windows 面板是独立进程, 崩溃/被杀不该让快捷键永久失效)。
     let hwnd = HWND(hwnd as *mut std::ffi::c_void);
     resume_if_paused(hwnd);
+}
+
+// ── 覆盖层 → 设置面板回推(等价 macOS sync_settings_panel) ──
+// 面板是独立进程, 只能经命名管道推。连接时保存一份写句柄克隆;
+// 消息循环线程(热键/菜单改设置)用 push_settings_changed 推局部字段,
+// Dart 侧缺省字段沿用当前值, 于是开关/圆点能实时跟上。
+static PANEL_WRITER: std::sync::LazyLock<std::sync::Mutex<Option<std::fs::File>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+
+/// 向设置面板推一帧 onSettingsChanged;未连接时静默丢弃。
+fn push_settings_changed(data_json: &str) {
+    let mut guard = PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(w) = guard.as_mut() else { return };
+    use std::io::Write;
+    let frame = format!("{{\"type\":\"onSettingsChanged\",\"data\":{data_json}}}\n");
+    if w.write_all(frame.as_bytes()).is_err() {
+        *guard = None;
+        return;
+    }
+    let _ = w.flush();
+}
+
+/// 管道线程 → 消息循环线程: 投递一个 WM_TRAY_COMMAND(改运行态设置用)
+fn post_tray_command(hwnd: isize, cmd: usize, param: usize) {
+    let _ = unsafe {
+        PostMessageW(
+            Some(HWND(hwnd as *mut std::ffi::c_void)),
+            WM_TRAY_COMMAND,
+            WPARAM(cmd),
+            LPARAM(param as isize),
+        )
+    };
 }
 
 /// 无限画布总览载荷(macOS canvas_overview_payload 同款):
@@ -240,25 +280,57 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         );
         let _ = writer.flush();
     } else if msg_type == "deletePage" {
-        // 删除一页(内容 tab)。删掉当前页时 Rust 侧会清空内存笔迹,
-        // 这里再切到相邻页并让覆盖层重载。
+        // 删除一页(内容 tab)。delete_screen 会把 current 置 0, 所以"相邻页"
+        // 必须在**删除前**按当前页取好(macOS glaspen2_macos_delete_page 同款),
+        // 否则删完 next/prev 都查不到, 外壳永远进不了切页分支。
         let screen_id = json_get_i64(line, "screenId").unwrap_or(0);
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let was_current =
+            screen_id == glaspen_core::export::glaspen2_get_current_screen_id();
+        let next_id = if was_current {
+            glaspen_core::export::glaspen2_next_screen_id()
+        } else {
+            0
+        };
+        let prev_id = if was_current {
+            glaspen_core::export::glaspen2_prev_screen_id()
+        } else {
+            0
+        };
         let ok = glaspen_core::export::glaspen2_delete_screen(screen_id);
         if ok != 0 {
-            let mut next = glaspen_core::export::glaspen2_next_screen_id();
-            if next == 0 {
-                next = glaspen_core::export::glaspen2_prev_screen_id();
-            }
-            if next > 0 {
+            if infinite_on() {
+                // 无限画布独立存储, 不受页删除影响: 重载重绘即可
                 let _ = unsafe {
                     PostMessageW(
                         Some(HWND(hwnd as *mut _)),
                         WM_TRAY_COMMAND,
-                        WPARAM(CMD_NAVIGATE_TO_PAGE),
-                        LPARAM(next as isize),
+                        WPARAM(CMD_REFRESH_PAGE),
+                        LPARAM(0),
                     )
                 };
+            } else if was_current {
+                let target = if next_id != 0 { next_id } else { prev_id };
+                if target > 0 {
+                    let _ = unsafe {
+                        PostMessageW(
+                            Some(HWND(hwnd as *mut _)),
+                            WM_TRAY_COMMAND,
+                            WPARAM(CMD_NAVIGATE_TO_PAGE),
+                            LPARAM(target as isize),
+                        )
+                    };
+                } else {
+                    // 没有相邻页: 新建一页(macOS 删光后走 clear_screen)
+                    let _ = unsafe {
+                        PostMessageW(
+                            Some(HWND(hwnd as *mut _)),
+                            WM_TRAY_COMMAND,
+                            WPARAM(CMD_CLEAR_SCREEN),
+                            LPARAM(usize::MAX as isize),
+                        )
+                    };
+                }
             }
         }
         let _ = writer.write_all(
@@ -409,6 +481,22 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         );
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
+        // 数据改动(移动/粘贴/删除所选)后让覆盖层重载当前页并重绘 ——
+        // macOS 侧由 core 的 refresh hook 调 glaspen2_macos_refresh_page 完成,
+        // Windows 走 PostMessage 回消息循环线程。
+        if matches!(
+            msg_type,
+            "moveStrokes" | "moveStrokesToPage" | "deleteStrokes" | "pasteStrokes"
+        ) {
+            let _ = unsafe {
+                PostMessageW(
+                    Some(HWND(hwnd as *mut _)),
+                    WM_TRAY_COMMAND,
+                    WPARAM(CMD_REFRESH_PAGE),
+                    LPARAM(screen_id as isize),
+                )
+            };
+        }
     } else if msg_type == "exportPdf" {
         // 导出全部页面为 PDF(纯 Rust,不需要覆盖层配合)
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
@@ -564,7 +652,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let notebook_style = glaspen_core::runtime()
             .block_on(glaspen_core::db::load_setting("notebookStyle"))
             .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(1);
+            .unwrap_or(0); // 缺省 = 笔记纸(macOS load_bool_setting 缺省 0)
         let invert_fps = glaspen_core::runtime()
             .block_on(glaspen_core::db::load_setting("invertFps"))
             .and_then(|v| v.parse::<i32>().ok())
@@ -777,15 +865,22 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 )
             };
         } else if key == "export_animated_gif" {
-            let result = glaspen_core::export::glaspen2_save_animated_gif(15, 0.5, 2.0, 1);
+            // 用面板的 GIF 设置(macOS 同键), 不再硬编码默认值
+            let (fps, resolution, speed, end_mode) = gif_settings();
+            let result = glaspen_core::export::glaspen2_save_animated_gif(
+                fps,
+                resolution,
+                speed,
+                end_mode,
+            );
             tracing::info!(
                 "animated GIF export: {}",
                 if result != 0 { "OK" } else { "FAILED" }
             );
-            hud_notify(if result != 0 {
-                "动画 GIF 已保存到桌面"
+            hud_notify_async(if result != 0 {
+                "动画 GIF 已保存到桌面".to_string()
             } else {
-                "动画 GIF 导出失败"
+                "动画 GIF 导出失败".to_string()
             });
         } else if key == "export_pdf" {
             let result = glaspen_core::export::glaspen2_export_pdf();
@@ -793,10 +888,10 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 "PDF export: {}",
                 if result != 0 { "OK" } else { "FAILED" }
             );
-            hud_notify(if result != 0 {
-                "PDF 已保存到桌面"
+            hud_notify_async(if result != 0 {
+                "PDF 已保存到桌面".to_string()
             } else {
-                "PDF 导出失败"
+                "PDF 导出失败".to_string()
             });
         } else if key == "color" {
             if let Some(val) = json_get_i64(line, "value") {
@@ -936,12 +1031,15 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 ));
             }
         } else if key == "showBubbleTab" {
-            // 「气泡消息」tab 开关:纯面板可见性设置,落库即可(macOS 同键)
+            // 「气泡消息」tab 开关:落库 + 开/关 core 的气泡捕获
+            // (macOS setSetting showBubbleTab 会调 glaspen2_bubble_set_capture;
+            //  Windows 之前只落库 → CAPTURE 恒 false, 气泡 tab 永远空)
             if let Some(on) = json_get_bool(line, "value") {
                 glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
                     "show_bubble_tab",
                     if on { "1" } else { "0" },
                 ));
+                glaspen_core::export::glaspen2_bubble_set_capture(on as i32);
             }
         } else if key == "bubbleReplaySpeed" {
             // 气泡重播速度倍率:落库即可(钳 1..8, macOS 同键)
@@ -1000,18 +1098,13 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             let lang = if value == "en" { "en" } else { "zh" };
             glaspen_core::runtime().block_on(glaspen_core::db::save_setting("language", lang));
         } else if key == "gridFollowStrokes" {
+            // 运行态立即生效(macOS setSetting 同款): 交给消息循环线程改状态+落库
             if let Some(on) = json_get_bool(line, "value") {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "gridFollowStrokes",
-                    if on { "1" } else { "0" },
-                ));
+                post_tray_command(hwnd, CMD_SET_GRID_FOLLOW, on as usize);
             }
         } else if key == "softShadow" {
             if let Some(on) = json_get_bool(line, "value") {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "softShadow",
-                    if on { "1" } else { "0" },
-                ));
+                post_tray_command(hwnd, CMD_SET_SOFT_SHADOW, on as usize);
             }
         } else if key == "invertInk" {
             if let Some(on) = json_get_bool(line, "value") {
@@ -1044,10 +1137,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             }
         } else if key == "glassFollowStrokes" {
             if let Some(on) = json_get_bool(line, "value") {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "glassFollowStrokes",
-                    if on { "1" } else { "0" },
-                ));
+                post_tray_command(hwnd, CMD_SET_GLASS_FOLLOW, on as usize);
             }
         } else if key == "pressureMonitor" {
             if let Some(on) = json_get_bool(line, "value") {

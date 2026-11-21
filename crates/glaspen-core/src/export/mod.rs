@@ -94,6 +94,18 @@ pub(crate) fn decimate(points: &[(f64, f64, f64, f64)]) -> Vec<(f64, f64, f64, f
     out
 }
 
+/// 抽稀最后一笔的点列。Windows 壳在抬笔后调用(它用自己的 StrokeModeler,
+/// 不经过 modeler_commit_to_strokes); macOS 在 commit 内部已经抽稀。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_decimate_last_stroke() {
+    ffi_guard((), || {
+        let mut strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(last) = strokes.last_mut() {
+            last.points = decimate(&last.points);
+        }
+    });
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_begin_stroke(
     r: c_double,
