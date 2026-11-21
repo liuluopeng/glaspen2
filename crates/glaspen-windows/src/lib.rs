@@ -22,8 +22,9 @@ pub fn win_main() {}
 static SETTINGS_CHILDREN: std::sync::Mutex<Vec<std::process::Child>> =
     std::sync::Mutex::new(Vec::new());
 
-/// 重新拉起设置面板。面板是独立进程, 用户关掉后此前无法再打开
-/// (没有托盘菜单, 也没有对应热键), 只能退出整个覆盖层重来。
+/// 重新拉起设置面板。面板是**独立进程**, 用户点 X 关掉后进程就没了,
+/// 覆盖层侧靠 settings 动作(默认 Ctrl+Alt+D)重新拉起; 每次 spawn 的 pid
+/// 记进 SETTINGS_CHILDREN, 退出时统一结束(见 kill_settings_processes)。
 #[cfg(windows)]
 pub(crate) fn show_settings_window() {
     if let Some(p) = find_settings_exe() {
@@ -157,10 +158,11 @@ pub fn win_main() {
 fn already_running_message() {
     use windows::Win32::UI::WindowsAndMessaging::{MB_ICONWARNING, MB_OK, MessageBoxW};
     use windows::core::PCWSTR;
-    let text: Vec<u16> = "glaspen2 已在运行,请使用现有实例 (可从系统托盘或 Ctrl+Alt+Q 退出后重试)"
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
+    let text: Vec<u16> =
+        "glaspen2 已在运行,请使用现有实例(彻底退出: 默认 Ctrl+Alt+Q, 可在 设置→快捷键 改键)"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
     let caption: Vec<u16> = "glaspen2"
         .encode_utf16()
         .chain(std::iter::once(0))
