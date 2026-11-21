@@ -71,7 +71,10 @@ const Map<String, String> _shortcutDefaultsMac = {
 };
 
 /// Windows 默认绑定: 必须与 Rust(Windows 壳)侧的默认表逐字一致。
-/// Win 键在 chord 里写作 cmd; 其余用 Ctrl+Alt 前缀, 避开 Windows 常见组合。
+/// **主键与 macOS 对齐**(⌘⌃→Ctrl+Alt, ⌃⌥ 保持 Ctrl+Alt): 核心动作 Z/`/1/V/D、
+/// 镜头 W/A/S/D + X/Z、退出 ⇧Q 都与 macOS 同键。Windows 只有一套安全的双修饰键,
+/// macOS 的 ⌘⌃ 与 ⌃⌥ 两套在这里都会落到 Ctrl+Alt, 所以两处撞车各加一个 Shift:
+/// 镜头右移占用了 D(设置改 ⇧D)、缩小要用的 Z 被撤销占用(缩小改 ⇧Z)。
 const Map<String, String> _shortcutDefaultsWindows = {
   'undo': 'ctrl+alt+Z',
   'page_prev': 'ctrl+alt+`',
@@ -80,12 +83,12 @@ const Map<String, String> _shortcutDefaultsWindows = {
   'width_swap': '',
   'toggle_draw': 'ctrl+alt+V',
   'toggle_free_canvas': '',
-  'canvas_pan_left': 'ctrl+alt+Left',
-  'canvas_pan_right': 'ctrl+alt+Right',
-  'canvas_pan_up': 'ctrl+alt+Up',
-  'canvas_pan_down': 'ctrl+alt+Down',
-  'canvas_zoom_in': 'ctrl+alt+PageUp',
-  'canvas_zoom_out': 'ctrl+alt+PageDown',
+  'canvas_pan_left': 'ctrl+alt+A',
+  'canvas_pan_right': 'ctrl+alt+D',
+  'canvas_pan_up': 'ctrl+alt+W',
+  'canvas_pan_down': 'ctrl+alt+S',
+  'canvas_zoom_in': 'ctrl+alt+X',
+  'canvas_zoom_out': 'ctrl+alt+shift+Z',
   // macOS 同策略: 默认只绑核心动作 + 镜头; 新建/导出/磨砂/飘渺默认不占键,
   // 需要的人在 设置 → 快捷键 里自己绑。
   'clear': '',
@@ -93,9 +96,8 @@ const Map<String, String> _shortcutDefaultsWindows = {
   'copy_svg': '',
   'toggle_glass': '',
   'toggle_ethereal': '',
-  'settings': 'ctrl+alt+D',
-  // 与旧固定热键一致(退出动作从固定表迁入可配置表, 默认值不变)。
-  'quit': 'ctrl+alt+Q',
+  'settings': 'ctrl+alt+shift+D',
+  'quit': 'ctrl+alt+shift+Q',
 };
 
 /// 当前平台的默认绑定表: _decodeShortcuts 兜底与「恢复默认」都走这里。
@@ -115,8 +117,8 @@ const Set<String> _reservedShortcutsMac = {
 };
 
 /// Windows 壳占用的组合: R 按住录 GIF、2/3 按住手写。
-/// 退出(Ctrl+Alt+Q)已迁入可配置动作表, 不算保留组合 —— 「彻底退出程序」可以改键。
-/// 注意 Ctrl+Alt+方向键 / PageUp/PageDown 不在保留集合里 —— 默认镜头/缩放要用。
+/// 退出已迁入可配置动作表(默认 Ctrl+Alt+Shift+Q), 不算保留组合 —— 可以改键。
+/// 注意 Ctrl+Alt+W/A/S/D、X/Z 不在保留集合里 —— 默认镜头/缩放要用。
 const Set<String> _reservedShortcutsWindows = {
   'ctrl+alt+R',
   'ctrl+alt+2',
