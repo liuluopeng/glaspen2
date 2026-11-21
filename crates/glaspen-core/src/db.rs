@@ -134,7 +134,7 @@ macro_rules! dblog {
 // ---------------------------------------------------------------------------
 mod platform {
     use crate::state;
-    use sqlx::{Acquire, Row, SqliteConnection, SqlitePool};
+    use sqlx::{Acquire, Connection, Row, SqliteConnection, SqlitePool};
     use std::collections::HashMap;
     use std::sync::OnceLock;
 
@@ -221,6 +221,43 @@ mod platform {
             })
     }
 
+    /// Windows 上刚被 SQLite 写过(或刚打开校验过)的文件, rename 可能撞上
+    /// 短暂的共享冲突(os error 32/33): 句柄释放与磁盘刷写不在同一时刻,
+    /// 杀毒/索引器也可能正在扫描新落盘的备份。POSIX 语义下 rename 不受
+    /// 打开句柄影响, macOS 从不报错, 所以在非 Windows 上只试一次。
+    /// 重试耗尽仍失败就返回最后一次错误, 调用方照旧中止启动(安全网优先)。
+    async fn rename_with_retry(
+        from: &std::path::Path,
+        to: &std::path::Path,
+    ) -> std::io::Result<()> {
+        #[cfg(windows)]
+        const ATTEMPTS: usize = 40; // 40 × 50ms = 最多等 2s
+        #[cfg(not(windows))]
+        const ATTEMPTS: usize = 1;
+
+        let mut last = None;
+        for attempt in 0..ATTEMPTS {
+            match std::fs::rename(from, to) {
+                Ok(()) => {
+                    if attempt > 0 {
+                        tracing::debug!(
+                            "备份 rename 第 {} 次尝试才成功(Windows 短暂共享冲突)",
+                            attempt + 1
+                        );
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    last = Some(e);
+                    if attempt + 1 < ATTEMPTS {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                }
+            }
+        }
+        Err(last.expect("rename 至少尝试过一次"))
+    }
+
     /// 迁移前备份: 仅当库里确实有表(有数据可保护)且 schema 版本落后于本程序时执行。
     ///
     /// 写入顺序 = 临时文件 → `VACUUM INTO` → `quick_check` + 版本号校验 →
@@ -267,7 +304,7 @@ mod platform {
                         "glaspen2.db.before-v{version}.corrupt-{}",
                         now_f64() as i64
                     ));
-                    match std::fs::rename(&bak, &quarantine) {
+                    match rename_with_retry(&bak, &quarantine).await {
                         Ok(()) => tracing::warn!(
                             "旧迁移备份校验失败({e}), 已移到 {} 并重新生成",
                             quarantine.display()
@@ -303,7 +340,7 @@ mod platform {
                 "迁移前备份校验失败({e}), 已删除临时文件 —— 未对库做任何迁移"
             ));
         }
-        if let Err(e) = std::fs::rename(&tmp, &bak) {
+        if let Err(e) = rename_with_retry(&tmp, &bak).await {
             let _ = std::fs::remove_file(&tmp);
             return Err(format!("备份落盘失败({e}): {}", bak.display()));
         }
@@ -325,8 +362,12 @@ mod platform {
         path: &std::path::Path,
         expected_version: i32,
     ) -> Result<(), String> {
-        let pool = SqlitePool::connect_with(
-            sqlx::sqlite::SqliteConnectOptions::new()
+        // 用单条连接 + 显式 `close().await`, 而不是 SqlitePool:pool 的收尾是
+        // 异步的, Windows 上句柄没真正释放时紧接着的 rename/remove 会报共享
+        // 冲突(os error 32), 迁移前备份因此失败、启动中止。单连接 close 返回
+        // 即代表句柄已关。
+        let mut conn = SqliteConnection::connect_with(
+            &sqlx::sqlite::SqliteConnectOptions::new()
                 .filename(path)
                 .create_if_missing(false)
                 .read_only(true),
@@ -335,14 +376,14 @@ mod platform {
         .map_err(|e| format!("打开备份失败: {e}"))?;
         let result = async {
             let check: String = sqlx::query_scalar("PRAGMA quick_check")
-                .fetch_one(&pool)
+                .fetch_one(&mut conn)
                 .await
                 .map_err(|e| format!("quick_check 失败: {e}"))?;
             if check != "ok" {
                 return Err(format!("quick_check 未通过: {check}"));
             }
             let found: i32 = sqlx::query_scalar("PRAGMA user_version")
-                .fetch_one(&pool)
+                .fetch_one(&mut conn)
                 .await
                 .map_err(|e| format!("读取备份版本失败: {e}"))?;
             if found != expected_version {
@@ -350,7 +391,7 @@ mod platform {
             }
             let tables: i64 =
                 sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'")
-                    .fetch_one(&pool)
+                    .fetch_one(&mut conn)
                     .await
                     .map_err(|e| format!("读取备份表数失败: {e}"))?;
             if tables == 0 {
@@ -359,7 +400,7 @@ mod platform {
             Ok(())
         }
         .await;
-        pool.close().await;
+        let _ = conn.close().await;
         result
     }
 
