@@ -158,11 +158,11 @@ unsafe fn handle_mouse_raw(buf: &[u64], state: &mut OverlayState) -> bool {
         if dx != 0.0 || dy != 0.0 {
             let (_, _, z) = cam();
             let z = if z > ZOOM_MIN { z } else { 1.0 };
-            // 方向按用户 2026-11 要求取反(与键盘镜头同一套取反): 鼠标向右拖 →
-            // 镜头向右移(画面内容向左)；canvas_pan_by 内部 pan -= d, 所以这里
-            // 传负的屏幕位移。
-            state.camera_pending_dx -= dx / z;
-            state.camera_pending_dy -= dy / z;
+            // 抓手拖动方向 = 常规直觉: 鼠标向右拖 → 画面内容跟着向右(像抓住纸拖),
+            // 上下同理。canvas_pan_by 内部 pan -= d, 所以这里直接传正的屏幕位移。
+            // (键盘 WASD / 滚轮缩放的方向仍在 perform_action / 滚轮分支里单独取反。)
+            state.camera_pending_dx += dx / z;
+            state.camera_pending_dy += dy / z;
             if !state.camera_pan_timer {
                 state.camera_pan_timer = true;
                 let _ = SetTimer(
