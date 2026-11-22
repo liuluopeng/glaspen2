@@ -812,15 +812,15 @@ fn perform_action(state: &mut OverlayState, action: &str) {
 
 
 fn pan_step(state: &mut OverlayState, dir_x: f64, dir_y: f64) {
-    let (_, _, z) = cam();
-    let z = if z > ZOOM_MIN { z } else { 1.0 };
-    let step = 80.0 / z;
+    // 步长 80 / step_zoom 单源在 core;方向符号仍由调用方给(本平台是"内容
+    // 跟随按键",与 macOS 相反,见 ActionEffect::CameraPan 文档)。
+    let step = camera().keyboard_pan_step();
     canvas_pan_by(state, dir_x * step, dir_y * step);
 }
 
 fn zoom_step(state: &mut OverlayState, factor: f64) {
-    let (w, h) = (state.canvas.w as f64, state.canvas.h as f64);
-    canvas_zoom_at(state, factor, w * 0.5, h * 0.5);
+    // 键盘缩放锚点 = 视口中心(core Camera::zoom_at_center 单源)
+    canvas_zoom_at_center(state, factor);
 }
 
 /// 换回上一颜色(macOS color_swap 同语义: 无历史时给红/黑另一端)

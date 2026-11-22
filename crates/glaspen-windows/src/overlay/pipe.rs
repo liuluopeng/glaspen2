@@ -278,21 +278,23 @@ fn render_overview_json(ow: i32, oh: i32) -> String {
     let ov_ox = ((ow as f64) - bw * ov_scale) * 0.5;
     let ov_oy = ((oh as f64) - bh * ov_scale) * 0.5;
     // 视口矩形: 无限画布模式下用实时镜头; 还停在活页本时用库里保存的无限画布镜头
-    // (切换动作还没被窗口线程处理完时, cam() 是活页本的 0,0,1, 会画错视口框)。
-    let (px, py, z) = if infinite_on() {
-        cam()
+    // (切换动作还没被窗口线程处理完时, camera() 是活页本的 0,0,1, 会画错视口框)。
+    // 镜头数学(交互 zoom 兜底)单源 core Camera;载入兜底同 Camera::from_stored。
+    let cam = if infinite_on() {
+        camera()
     } else {
         glaspen_core::runtime()
             .block_on(glaspen_core::db::get_infinite_transform())
-            .unwrap_or((0.0, 0.0, 1.0))
+            .map(|(px, py, z)| Camera::from_stored(px, py, z))
+            .unwrap_or(Camera::HOME)
     };
-    let z = if z > ZOOM_MIN { z } else { 1.0 };
+    let z = cam.step_zoom();
     let sw = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) } as f64;
     let sh = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) } as f64;
     let vr_w = sw / z * ov_scale;
     let vr_h = sh / z * ov_scale;
-    let vx = ov_ox + (px - bx) * ov_scale;
-    let vy = ov_oy + (py - by) * ov_scale;
+    let vx = ov_ox + (cam.pan_x - bx) * ov_scale;
+    let vy = ov_oy + (cam.pan_y - by) * ov_scale;
     format!(
         "\"png\":\"{}\",\"rect\":[{},{},{},{}]",
         b64, vx, vy, vr_w, vr_h

@@ -2433,9 +2433,11 @@ mod platform {
     /// 无限画布镜头变换(全局唯一,存 user_settings)。
     pub async fn set_infinite_transform(pan_x: f64, pan_y: f64, zoom: f64) {
         dblog!("无限镜头存 pan=({pan_x:.1},{pan_y:.1}) zoom={zoom:.3}");
-        save_setting("infinite_pan_x", &format!("{pan_x:.6}")).await;
-        save_setting("infinite_pan_y", &format!("{pan_y:.6}")).await;
-        save_setting("infinite_zoom", &format!("{zoom:.6}")).await;
+        // 落库格式({:.6}, 键名)唯一来源: camera::Camera::to_db_values(D5b)。
+        let (px, py, pz) = crate::camera::Camera::new(pan_x, pan_y, zoom).to_db_values();
+        save_setting("infinite_pan_x", &px).await;
+        save_setting("infinite_pan_y", &py).await;
+        save_setting("infinite_zoom", &pz).await;
     }
 
     /// 无限画布镜头变换(未设置 → None,调用方用 0,0,1)。

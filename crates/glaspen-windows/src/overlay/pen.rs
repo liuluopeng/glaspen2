@@ -207,7 +207,7 @@ fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) ->
             );
         }
     }
-    let z = if infinite_on() { cam().2 as f32 } else { 1.0 };
+    let z = if infinite_on() { camera().zoom as f32 } else { 1.0 };
     // 模型器输出是画布坐标;绘制前经镜头变换回视图,线宽同步缩放
     let pts: Vec<(f32, f32, f32)> = results
         .iter()

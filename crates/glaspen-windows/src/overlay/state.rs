@@ -47,6 +47,11 @@ pub static OUTLINE_ENABLED: std::sync::atomic::AtomicBool =
 // 笔迹以画布坐标存储(可为负/超屏),输入侧 视图→画布,渲染侧 画布→视图。
 // 开关与镜头用原子量:消息循环线程独占改写,管道线程(getSettings /
 // 画布总览)只读。翻页模式下两者不起作用(pan=0、zoom=1)。
+//
+// D5b: 镜头数学唯一来源 = core camera::Camera(锚点/限幅/居中/步长/持久化格式);
+// 本文件只做状态存取(对应 macOS 的 g_pan_x/g_pan_y/g_zoom 赋值)。两端真实
+// 差异(键盘平移方向符号、最小缩放提示仅 Windows、居中 zoom 回写、非法 zoom
+// 绘制兜底)留在 adapter,见 camera.rs 模块文档。
 pub static INFINITE_CANVAS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
@@ -54,27 +59,27 @@ static CAM_PAN_X: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::n
 static CAM_PAN_Y: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static CAM_ZOOM: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-const ZOOM_MIN: f64 = 0.05;
-const ZOOM_MAX: f64 = 1.0;
 const ZOOM_HINT_MS: u64 = 1500; // "已达最大缩放"提示节流
 const CAM_SAVE_INTERVAL_MS: u64 = 500; // 镜头持久化节流(与 macOS 一致)
 
-/// 当前镜头 (pan_x, pan_y, zoom)
-fn cam() -> (f64, f64, f64) {
+/// 当前镜头。读取时 zoom 经 [Camera::from_stored] 兜底(> 0 否则 1.0),
+/// 与 core view_transform() / 旧 cam() 同款(渲染除零兜底, 见 camera.rs
+/// 模块文档差异 3)—— 历史脏值(0/NaN)不会传播到绘制/命中数学。
+fn camera() -> Camera {
     use std::sync::atomic::Ordering;
-    let z = f64::from_bits(CAM_ZOOM.load(Ordering::SeqCst));
-    (
+    Camera::from_stored(
         f64::from_bits(CAM_PAN_X.load(Ordering::SeqCst)),
         f64::from_bits(CAM_PAN_Y.load(Ordering::SeqCst)),
-        if z > 0.0 { z } else { 1.0 },
+        f64::from_bits(CAM_ZOOM.load(Ordering::SeqCst)),
     )
 }
 
-fn set_cam(px: f64, py: f64, z: f64) {
+/// 写回镜头(core 算完的完整三值;字段级写回与旧原子量布局/线程模型一致)。
+fn set_camera(cam: Camera) {
     use std::sync::atomic::Ordering;
-    CAM_PAN_X.store(px.to_bits(), Ordering::SeqCst);
-    CAM_PAN_Y.store(py.to_bits(), Ordering::SeqCst);
-    CAM_ZOOM.store(z.to_bits(), Ordering::SeqCst);
+    CAM_PAN_X.store(cam.pan_x.to_bits(), Ordering::SeqCst);
+    CAM_PAN_Y.store(cam.pan_y.to_bits(), Ordering::SeqCst);
+    CAM_ZOOM.store(cam.zoom.to_bits(), Ordering::SeqCst);
 }
 
 fn infinite_on() -> bool {
@@ -84,8 +89,7 @@ fn infinite_on() -> bool {
 /// 视图坐标 → 画布坐标(笔输入;视图 = 屏幕像素坐标)
 fn canvas_from_view(vx: f64, vy: f64) -> (f64, f64) {
     if infinite_on() {
-        let (px, py, z) = cam();
-        (vx / z + px, vy / z + py)
+        camera().view_to_canvas(vx, vy)
     } else {
         (vx, vy)
     }
@@ -94,8 +98,7 @@ fn canvas_from_view(vx: f64, vy: f64) -> (f64, f64) {
 /// 画布坐标 → 视图坐标(渲染)
 fn view_from_canvas(cx: f64, cy: f64) -> (f64, f64) {
     if infinite_on() {
-        let (px, py, z) = cam();
-        ((cx - px) * z, (cy - py) * z)
+        camera().canvas_to_view(cx, cy)
     } else {
         (cx, cy)
     }

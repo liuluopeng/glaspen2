@@ -143,9 +143,10 @@ pub fn run() {
         glaspen_core::export::glaspen2_set_canvas_kind(if infinite { 1 } else { 0 });
         if infinite {
             glaspen_core::export::glaspen2_load_infinite_strokes();
-            let (mut px, mut py, mut pz) = (0.0f64, 0.0f64, 0.0f64);
+            let (mut px, mut py, mut pz) = (0.0f64, 0.0f64, 1.0f64);
             glaspen_core::export::glaspen2_get_infinite_transform(&mut px, &mut py, &mut pz);
-            set_cam(px, py, if pz > 0.0 { pz } else { 1.0 });
+            // zoom 兜底已在 FFI 边界完成(from_db_values 语义), 直接写状态(D5b)
+            set_camera(Camera::new(px, py, pz));
         }
 
         // HUD 窗口(通知居中 + 压力监控左上角)

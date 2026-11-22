@@ -59,8 +59,9 @@
 //!    1.1(`run.m:2126-2132`), Windows 行滚恒 1.1(`mouse.rs:211-219`);键盘
 //!    缩放锚点两端都是视口中心([Camera::zoom_at_center]), 滚轮锚点是鼠标位置。
 //!
-//! 下一步 D5b: 两端删掉行内镜头公式, 改调本模块(Windows 同进程直接调;macOS
-//! 需先定 FFI 形状, 与 D1b/D3b 同形)。
+//! D5b: 两端已接线 —— Windows 同进程直接调 [Camera](`overlay/state.rs::camera()`),
+//! macOS 经 `export::glaspen2_camera_*` FFI 拿 JSON(与 D1b/D3b 同形),
+//! 镜头状态/门控/提示节流/持久化节流仍留在 adapter。
 
 /// 镜头缩放下限 5%(两壳 `ZOOM_MIN = 0.05`: macOS `run.m:525-526`,
 /// Windows `state.rs:57`)。
@@ -261,11 +262,20 @@ impl Camera {
         let pan_x = pan_x.parse::<f64>().ok()?;
         let pan_y = pan_y.parse::<f64>().ok()?;
         let zoom = zoom.parse::<f64>().ok()?;
-        Some(Self {
+        Some(Self::from_stored(pan_x, pan_y, zoom))
+    }
+
+    /// 载入兜底(输入已是解析后的 `f64`;与 [Camera::from_db_values] 的 zoom 规则
+    /// 同款): pan 原样, zoom 只做 `> 0.0` 兜底为 1.0(含 NaN), **不钳 100% 上限**。
+    ///
+    /// 给已经拿到 `f64` 三值的载入路径用: `glaspen2_get_infinite_transform`
+    /// (macOS/Windows 都经它载入) 在 FFI 边界做一次兜底, adapter 不再重复。
+    pub fn from_stored(pan_x: f64, pan_y: f64, zoom: f64) -> Self {
+        Self {
             pan_x,
             pan_y,
             zoom: if zoom > 0.0 { zoom } else { 1.0 },
-        })
+        }
     }
 }
 
@@ -526,6 +536,15 @@ mod tests {
         // 任一坏值 → None(调用方回 HOME, 同 FFI unwrap_or)。
         assert_eq!(Camera::from_db_values("oops", "0", "1"), None);
         assert_eq!(Camera::from_db_values("", "", ""), None);
+
+        // from_stored = 已解析 f64 的同款兜底(FFI 边界用;不钳上限)。
+        assert_eq!(Camera::from_stored(0.0, 0.0, 0.0), Camera::HOME);
+        assert_eq!(Camera::from_stored(0.0, 0.0, -3.0), Camera::HOME);
+        assert!(Camera::from_stored(0.0, 0.0, f64::NAN).zoom == 1.0);
+        assert_eq!(
+            Camera::from_stored(-12.5, 33.25, 2.5),
+            Camera::new(-12.5, 33.25, 2.5)
+        );
     }
 
     #[test]
@@ -539,5 +558,218 @@ mod tests {
         let (cx, cy) = c.view_to_canvas(vx, vy);
         assert_close(cx, 123.0);
         assert_close(cy, 456.0);
+    }
+
+    // ── D5b: 两端 adapter 镜头公式残留闸门 ──
+    //
+    // core 是镜头数学(pan/zoom/锚点/限幅/居中/步长/持久化格式)的唯一来源:
+    // macOS 经 export::glaspen2_camera_* FFI, Windows 同进程直接调 Camera。
+    // 本闸门按文本扫描两端 adapter 源文件, 两类断言:
+    //
+    // 1) **必须**出现 core 镜头入口 token(接线被退回/删调用即红);
+    // 2) 旧行内公式的"指纹"**不得**出现(有人把公式抄回 adapter 即红)。
+    //
+    // 扫描范围 = 真正做镜头更新的文件:
+    //   macOS  run.m / menu.m;
+    //   Windows overlay/{actions,hotkeys,mouse,state,run,pipe}.rs。
+    // 有意排除(不是 D5b 的重复项):
+    //   - run.m 网格绘制的 zoom 兜底 0.05(网格几何, D6);
+    //   - glaspen2.m 的 canvas_input_x/y(每笔事件热路径的 view→canvas 只读
+    //     换算, 不更新镜头)与 run.m 笔宽 `raw_w *= g_zoom`(绘制消费);
+    //   - Windows canvas.rs draw_grid / actions.rs 笔宽缩放(绘制消费, D6/D9)。
+    //
+    // 模式选择: 不用 "g_pan_x"/"zoom" 这类宽泛子串(会命中状态赋值/绘制),
+    // 只用旧公式的独特写法, 误报为零; 命中输出 文件:行号 + 匹配文本。
+    #[test]
+    fn adapter_camera_math_uses_core() {
+        // 行注释剥掉再做匹配(注释里允许出现旧公式的说明; ObjC/Rust 的 // 都适用)。
+        fn code_lines(src: &str) -> String {
+            src.lines()
+                .map(|line| match line.find("//") {
+                    Some(at) => &line[..at],
+                    None => line,
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+
+        fn violations(name: &str, src: &str, forbidden: &[&str]) -> Vec<String> {
+            let code = code_lines(src);
+            forbidden
+                .iter()
+                .filter_map(|pat| {
+                    code.find(pat).map(|at| {
+                        format!(
+                            "{name}:{} 仍含行内镜头公式 {:?}",
+                            code[..at].matches('\n').count() + 1,
+                            pat
+                        )
+                    })
+                })
+                .collect()
+        }
+
+        fn must_contain(name: &str, src: &str, tokens: &[&str]) -> Vec<String> {
+            tokens
+                .iter()
+                .filter(|token| !src.contains(**token))
+                .map(|token| format!("{name} 缺少 core 镜头入口 {token:?}"))
+                .collect()
+        }
+
+        let mac_run = include_str!("../../../src/macos/parts/run.m");
+        let mac_menu = include_str!("../../../src/macos/parts/menu.m");
+        let win_actions = include_str!("../../../crates/glaspen-windows/src/overlay/actions.rs");
+        let win_hotkeys = include_str!("../../../crates/glaspen-windows/src/overlay/hotkeys.rs");
+        let win_mouse = include_str!("../../../crates/glaspen-windows/src/overlay/mouse.rs");
+        let win_state = include_str!("../../../crates/glaspen-windows/src/overlay/state.rs");
+        let win_run = include_str!("../../../crates/glaspen-windows/src/overlay/run.rs");
+        let win_pipe = include_str!("../../../crates/glaspen-windows/src/overlay/pipe.rs");
+        let db = include_str!("db.rs");
+        // include_str! 指错文件/文件被清空时闸门不能静默变绿。
+        for (name, src) in [
+            ("run.m", mac_run),
+            ("menu.m", mac_menu),
+            ("actions.rs", win_actions),
+            ("hotkeys.rs", win_hotkeys),
+            ("mouse.rs", win_mouse),
+            ("state.rs", win_state),
+            ("run.rs", win_run),
+            ("pipe.rs", win_pipe),
+            ("db.rs", db),
+        ] {
+            assert!(
+                src.len() > 500,
+                "闸门扫到的 {name} 过短, include_str! 路径可疑"
+            );
+        }
+
+        // ── 旧行内公式指纹(两端各自的历史写法) ──
+        let mac_forbidden = [
+            // 平移: g_pan_x -= dx / g_pan_y -= dy
+            "g_pan_x -=",
+            "g_pan_y -=",
+            // 缩放: cc = v/z + pan; nz = zoom * factor; g_zoom = nz; pan = cc - v/nz
+            "g_zoom * factor",
+            "ccx =",
+            "ccy =",
+            "g_zoom = nz",
+            // 居中: pan = bbox 中心 - 视口/2z
+            "(bx + bx2) * 0.5 -",
+            "(by + by2) * 0.5 -",
+            // 键盘步长: step = 80.0 / z
+            "80.0 / z",
+            // 交互 zoom 兜底: (g_zoom > 0.05) ? g_zoom : 1.0
+            "g_zoom > 0.05 ? g_zoom : 1.0",
+            // 载入兜底: g_zoom = (pz > 0.0) ? pz : 1.0(已收进 FFI)
+            "(pz > 0.0) ? pz : 1.0",
+        ];
+        let win_forbidden = [
+            // 平移: set_cam(px - dx, py - dy, z)
+            "px - dx",
+            "py - dy",
+            // 缩放: ccx = vx / z + px; nz = z * factor; set_cam(ccx - vx / nz, ..)
+            "nz = z * factor",
+            "vx / z + px",
+            "vy / z + py",
+            "ccx - vx / nz",
+            "ccy - vy / nz",
+            "if nz == z",
+            // 居中: pan = bbox 中心 - 视口/2z
+            "(bx + bx2) * 0.5",
+            "(by + by2) * 0.5",
+            // 键盘步长 / 交互 zoom 兜底
+            "80.0 / z",
+            "if z > ZOOM_MIN",
+            // 载入兜底: if pz > 0.0 { pz } else { 1.0 }(已收进 FFI)
+            "pz > 0.0 { pz } else { 1.0 }",
+            // 状态层兜底: (cx - px) * z / cam()/set_cam 旧 helper
+            "cam()",
+            "set_cam(",
+        ];
+
+        let mut problems = Vec::new();
+        problems.extend(violations("run.m", mac_run, &mac_forbidden));
+        problems.extend(violations("menu.m", mac_menu, &mac_forbidden));
+        for (name, src) in [
+            ("actions.rs", win_actions),
+            ("hotkeys.rs", win_hotkeys),
+            ("mouse.rs", win_mouse),
+            ("state.rs", win_state),
+            ("run.rs", win_run),
+            ("pipe.rs", win_pipe),
+        ] {
+            problems.extend(violations(name, src, &win_forbidden));
+        }
+
+        // ── 必须接 core 镜头入口(mac 经 FFI / Windows 直接调 Camera) ──
+        for (name, src, tokens) in [
+            (
+                "run.m",
+                mac_run,
+                &[
+                    "glaspen2_camera_pan(",
+                    "glaspen2_camera_zoom_at(",
+                    "glaspen2_camera_zoom_at_center(",
+                    "glaspen2_camera_keyboard_pan_step(",
+                    "glaspen2_camera_step_zoom(",
+                    "glaspen2_camera_home(",
+                    "camera_assign(",
+                ][..],
+            ),
+            (
+                "menu.m",
+                mac_menu,
+                &[
+                    "glaspen2_camera_centered(",
+                    "glaspen2_camera_home(",
+                    "camera_assign(",
+                ][..],
+            ),
+            (
+                "actions.rs",
+                win_actions,
+                &[
+                    "let mut cam = camera();",
+                    "cam.pan_by(",
+                    "cam.zoom_at(",
+                    "cam.zoom_at_center(",
+                    "cam.centered_on(",
+                    "set_camera(",
+                    "Camera::HOME",
+                ][..],
+            ),
+            (
+                "hotkeys.rs",
+                win_hotkeys,
+                &["keyboard_pan_step(", "canvas_zoom_at_center("][..],
+            ),
+            ("mouse.rs", win_mouse, &["step_zoom("][..]),
+            (
+                "state.rs",
+                win_state,
+                &[
+                    "Camera::from_stored(",
+                    "fn camera() -> Camera",
+                    "fn set_camera(cam: Camera)",
+                ][..],
+            ),
+            ("run.rs", win_run, &["Camera::new(", "set_camera("][..]),
+            (
+                "pipe.rs",
+                win_pipe,
+                &["Camera::from_stored(", "step_zoom()"][..],
+            ),
+            // 持久化 {:.6} 格式单源到 Camera::to_db_values
+            ("db.rs", db, &["camera::Camera", "to_db_values()"][..]),
+        ] {
+            problems.extend(must_contain(name, src, tokens));
+        }
+
+        assert!(
+            problems.is_empty(),
+            "D5b 镜头接线闸门失败(两端必须只用 core camera 数学):\n{}",
+            problems.join("\n")
+        );
     }
 }

@@ -173,8 +173,7 @@ unsafe fn handle_mouse_raw(buf: &[u64], state: &mut OverlayState) -> bool {
         let dy = (pt.y - state.camera_last_cursor.1) as f64;
         state.camera_last_cursor = (pt.x, pt.y);
         if dx != 0.0 || dy != 0.0 {
-            let (_, _, z) = cam();
-            let z = if z > ZOOM_MIN { z } else { 1.0 };
+            let z = camera().step_zoom();
             // 抓手拖动方向 = 常规直觉: 鼠标向右拖 → 画面内容跟着向右(像抓住纸拖),
             // 上下同理。canvas_pan_by 内部 pan -= d, 所以这里直接传正的屏幕位移。
             // (键盘 WASD / 滚轮缩放的方向仍在 perform_action / 滚轮分支里单独取反。)

@@ -341,7 +341,8 @@ impl OverlayCanvas {
         const DIV_HALF_GR: u8 = 41;
 
         let infinite = infinite_on();
-        let (pan_x, pan_y, zoom) = if infinite { cam() } else { (0.0, 0.0, 1.0) };
+        let cam = if infinite { camera() } else { Camera::HOME };
+        let (pan_x, pan_y, zoom) = (cam.pan_x, cam.pan_y, cam.zoom);
         let w = self.w;
         let h = self.h;
         // 可见画布范围(view = (canvas − pan) × zoom)

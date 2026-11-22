@@ -611,7 +611,8 @@ static NSDictionary *canvas_overview_payload(double w, double h, double *bounds_
     double ov_scale = (ow / bw) < (oh / bh) ? (ow / bw) : (oh / bh);
     double ov_ox = (ow - bw * ov_scale) * 0.5;
     double ov_oy = (oh - bh * ov_scale) * 0.5;
-    double z = g_zoom > 0.05 ? g_zoom : 1.0;
+    // 交互 zoom 兜底(> 0.05 否则 1.0)单源在 core(D5b)
+    double z = glaspen2_camera_step_zoom(g_zoom);
     double vr_w = g_screen_w / z * ov_scale;
     double vr_h = g_screen_h / z * ov_scale;
     double vx = ov_ox + (g_pan_x - bx) * ov_scale;
@@ -1247,24 +1248,25 @@ unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *r
         if (ow < 400) ow = 1024;
         if (oh < 400) oh = 768;
         if (action == 1) {
-            g_pan_x = 0.0;
-            g_pan_y = 0.0;
-            g_zoom = 1.0;
+            // 镜头回原点 + 100%(HOME 常量单源 core Camera::HOME, D5b)
+            glaspen2_camera_home(&g_pan_x, &g_pan_y, &g_zoom);
             canvas_apply_transform();
         } else if (action == 2) {
             double bx, by, bx2, by2;
             if (glaspen2_stroke_bbox(&bx, &by, &bx2, &by2)) {
-                double z = g_zoom > 0.05 ? g_zoom : 1.0;
-                g_pan_x = (bx + bx2) * 0.5 - g_screen_w * 0.5 / z;
-                g_pan_y = (by + by2) * 0.5 - g_screen_h * 0.5 / z;
-                canvas_apply_transform();
+                // 居中公式单源 core Camera::centered_on(D5b)。macOS 只改 pan:
+                // assign_zoom = NO 保留当前 g_zoom;Windows 会把兜底后的 zoom
+                // 一并写回(差异见 camera.rs 模块文档 5)。
+                NSDictionary *result = camera_result_json(glaspen2_camera_centered(
+                    bx, by, bx2, by2, (double)g_screen_w, (double)g_screen_h,
+                    g_zoom));
+                if (camera_assign(result, NO))
+                    canvas_apply_transform();
             }
         } else if (action == 3) {
             finish_active_stroke();
             glaspen2_clear_strokes(g_screen_w, g_screen_h);
-            g_pan_x = 0.0;
-            g_pan_y = 0.0;
-            g_zoom = 1.0;
+            glaspen2_camera_home(&g_pan_x, &g_pan_y, &g_zoom);
             glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
             rebuild_surface_from_strokes();
             ow = 1024;

@@ -281,8 +281,8 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                 apply_infinite_canvas(state, param_on(infinite_on()), param == usize::MAX)
             }
             x if x == CMD_CANVAS_HOME => {
-                // 回到原点 + 100%(设置面板「回到原点」)
-                set_cam(0.0, 0.0, 1.0);
+                // 回到原点 + 100%(设置面板「回到原点」);HOME 常量单源在 core
+                set_camera(Camera::HOME);
                 persist_camera();
                 redraw_from_strokes(state);
             }
@@ -290,14 +290,16 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                 // 居中内容包围盒(设置面板「居中内容」)
                 let (mut bx, mut by, mut bx2, mut by2) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
                 if glaspen_core::export::glaspen2_stroke_bbox(&mut bx, &mut by, &mut bx2, &mut by2) != 0 {
-                    let (_, _, z) = cam();
-                    let z = if z > ZOOM_MIN { z } else { 1.0 };
-                    let (w, h) = (state.canvas.w as f64, state.canvas.h as f64);
-                    set_cam(
-                        (bx + bx2) * 0.5 - w * 0.5 / z,
-                        (by + by2) * 0.5 - h * 0.5 / z,
-                        z,
+                    let mut cam = camera();
+                    let used_zoom = cam.centered_on(
+                        (bx, by, bx2, by2),
+                        (state.canvas.w as f64, state.canvas.h as f64),
                     );
+                    // Windows 旧行为: 顺带把公式实际用的 zoom 写回(越界 zoom 被
+                    // "修"成 1.0);macOS 只改 pan —— 差异保留, 见 camera.rs 模块
+                    // 文档差异 5。
+                    cam.zoom = used_zoom;
+                    set_camera(cam);
                     persist_camera();
                 }
                 redraw_from_strokes(state);
@@ -438,7 +440,7 @@ fn redraw_from_strokes(state: &mut OverlayState) {
     state.canvas
         .draw_grid(state.draw.show_grid, state.draw.grid_divider);
     let ol = if state.draw.outline_enabled { 1.0 } else { 0.0 };
-    let z = if infinite_on() { cam().2 as f32 } else { 1.0 };
+    let z = if infinite_on() { camera().zoom as f32 } else { 1.0 };
     {
         let strokes = glaspen_core::STROKES.lock().unwrap_or_else(|e| e.into_inner());
         for s in strokes.iter() {
@@ -635,10 +637,11 @@ fn show_strokes(state: &mut OverlayState) {
 
 // ── 无限画布(自由涂鸦):模式切换与镜头(macOS 同款行为) ──
 
-/// 镜头持久化到 user_settings(仅无限模式有意义)
+/// 镜头持久化到 user_settings(仅无限模式有意义)。{:.6} 落库格式单源在
+/// core camera::Camera::to_db_values(经 db::set_infinite_transform, D5b)。
 fn persist_camera() {
-    let (px, py, z) = cam();
-    glaspen_core::export::glaspen2_set_infinite_transform(px, py, z);
+    let cam = camera();
+    glaspen_core::export::glaspen2_set_infinite_transform(cam.pan_x, cam.pan_y, cam.zoom);
 }
 
 /// 应用镜头变换到渲染 + 节流持久化(0.5s 一次,与 macOS 一致)
@@ -655,41 +658,28 @@ fn canvas_apply_transform(state: &mut OverlayState) {
 }
 
 /// 镜头平移(键盘镜头键/鼠标抓手共用; 方向由调用方按"直觉"取号)。书写中忽略
-/// (模型器坐标系不能中途跳变)
+/// (模型器坐标系不能中途跳变)。数学(pan -= d)单源在 core Camera::pan_by。
 fn canvas_pan_by(state: &mut OverlayState, dx: f64, dy: f64) {
     if state.in_stroke {
         return;
     }
-    let (px, py, z) = cam();
-    set_cam(px - dx, py - dy, z);
+    let mut cam = camera();
+    cam.pan_by(dx, dy);
+    set_camera(cam);
     canvas_apply_transform(state);
     // 飘渺模式下笔迹是隐的: 短暂露出, 让镜头变化可见(macOS peek_lens_change)
     peek_lens_change(state);
 }
 
-/// 缩放镜头:以视图点 (vx, vy) 为锚,zoom ∈ (0.05, 1.0]。
-/// 锚点的画布坐标在缩放前后保持同一屏幕位置(view = (canvas−pan)×zoom)。
-fn canvas_zoom_at(state: &mut OverlayState, factor: f64, vx: f64, vy: f64) {
-    if state.in_stroke {
-        return;
-    }
-    let (px, py, z) = cam();
-    let ccx = vx / z + px;
-    let ccy = vy / z + py;
-    let mut nz = z * factor;
-    let mut clamped_hint = false;
-    if nz > ZOOM_MAX {
-        nz = ZOOM_MAX;
-        clamped_hint = true;
-    }
-    if nz < ZOOM_MIN {
-        nz = ZOOM_MIN;
-        clamped_hint = true;
-    }
-    // 边界无变化: 只做提示(1.5s 节流), 不重建/不 peek —— 否则到顶后每次滚轮
-    // 都会全屏重绘, 飘渺模式下还会闪一下(macOS run.m 同款提前 return)
-    if nz == z {
-        if clamped_hint {
+/// 缩放结果统一处理(锚点缩放/中心缩放共用): 端点提示(仅 Windows 有下限提示)、
+/// 无变化早退、写回 + 重绘/peek。
+///
+/// 提示/早退规则与旧内联实现逐行一致: 只看"钳制后是否真的变了";没变且本次
+/// 撞到上/下限 → 1.5s 节流弹提示, 不重建/不 peek(否则到顶后每次滚轮都会全屏
+/// 重绘, 飘渺模式下还会闪一下)。macOS 只在撞上限时提示(差异 2)。
+fn apply_camera_zoom(state: &mut OverlayState, cam: Camera, out: ZoomOutcome) {
+    if !out.changed() {
+        if out.hit_max || out.hit_min {
             static LAST_HINT: std::sync::atomic::AtomicU64 =
                 std::sync::atomic::AtomicU64::new(0);
             let now = now_millis();
@@ -697,7 +687,7 @@ fn canvas_zoom_at(state: &mut OverlayState, factor: f64, vx: f64, vy: f64) {
                 > ZOOM_HINT_MS
             {
                 LAST_HINT.store(now, std::sync::atomic::Ordering::Relaxed);
-                hud_notify(if nz >= ZOOM_MAX {
+                hud_notify(if out.hit_max {
                     "已达最大缩放 100%"
                 } else {
                     "已达最小缩放 5%"
@@ -706,10 +696,32 @@ fn canvas_zoom_at(state: &mut OverlayState, factor: f64, vx: f64, vy: f64) {
         }
         return;
     }
-    set_cam(ccx - vx / nz, ccy - vy / nz, nz);
+    set_camera(cam);
     canvas_apply_transform(state);
     // 飘渺模式下笔迹是隐的: 短暂露出, 让缩放变化可见(macOS peek_lens_change)
     peek_lens_change(state);
+}
+
+/// 缩放镜头:以视图点 (vx, vy) 为锚,zoom ∈ (0.05, 1.0]。
+/// 锚点的画布坐标在缩放前后保持同一屏幕位置(view = (canvas−pan)×zoom);
+/// 数学(锚点不变/限幅/hit 标记)单源在 core Camera::zoom_at。
+fn canvas_zoom_at(state: &mut OverlayState, factor: f64, vx: f64, vy: f64) {
+    if state.in_stroke {
+        return;
+    }
+    let mut cam = camera();
+    let out = cam.zoom_at(factor, vx, vy);
+    apply_camera_zoom(state, cam, out);
+}
+
+/// 以视口中心为锚缩放(键盘镜头缩放两端同款; 数学单源 core zoom_at_center)。
+fn canvas_zoom_at_center(state: &mut OverlayState, factor: f64) {
+    if state.in_stroke {
+        return;
+    }
+    let mut cam = camera();
+    let out = cam.zoom_at_center(factor, state.canvas.w as f64, state.canvas.h as f64);
+    apply_camera_zoom(state, cam, out);
 }
 
 /// 应用无限画布开关(设置面板与热键共用的唯一入口)。
@@ -736,11 +748,10 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool, notify: bool) {
     glaspen_core::export::glaspen2_set_canvas_kind(if on { 1 } else { 0 });
     if on {
         glaspen_core::export::glaspen2_load_infinite_strokes();
-        let mut px = 0.0f64;
-        let mut py = 0.0f64;
-        let mut pz = 0.0f64;
+        let (mut px, mut py, mut pz) = (0.0f64, 0.0f64, 1.0f64);
         glaspen_core::export::glaspen2_get_infinite_transform(&mut px, &mut py, &mut pz);
-        set_cam(px, py, if pz > 0.0 { pz } else { 1.0 });
+        // zoom 兜底已在 FFI 边界完成(from_db_values 语义, > 0 不钳上限), 直接写状态
+        set_camera(Camera::new(px, py, pz));
     } else {
         // 回到活页本:载入当前页;没有页就建一页;镜头恒为原点 + 100%
         let cur = glaspen_core::export::glaspen2_get_current_screen_id();
@@ -749,7 +760,7 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool, notify: bool) {
         } else {
             glaspen_core::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
         }
-        set_cam(0.0, 0.0, 1.0);
+        set_camera(Camera::HOME);
     }
     // 载入什么就显示什么(与 macOS 一致):load_strokes_for_screen /
     // load_infinite_strokes 都是"清空再填充"的替换语义,内存与库天然一致,

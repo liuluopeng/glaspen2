@@ -84,6 +84,19 @@ extern char* glaspen2_settings_apply(const char *key, const char *value_json);
 // ({"kind":"<ActionEffect 变体名>"} 或 {"error":"..."}); 调用方用
 // glaspen2_free_c_string 释放。ObjC 只按 kind 做本平台运行时副作用。
 extern char* glaspen2_action_effect_json(const char *action);
+// D5b 镜头数学桥(core/camera.rs): 输入 ObjC 持有的镜头三值 + 本次操作参数,
+// 返回 core 算好的新三值 JSON({"pan_x","pan_y","zoom"}[,"hit_max","hit_min",
+// "changed"] 或 {"error":"..."}), 永不 NULL;调用方用 glaspen2_free_c_string 释放。
+// ObjC 只负责写回 g_pan_x/g_pan_y/g_zoom 与本平台门控/提示/持久化/重绘。
+extern char* glaspen2_camera_pan(double pan_x, double pan_y, double zoom, double dx, double dy);
+extern char* glaspen2_camera_zoom_at(double pan_x, double pan_y, double zoom, double factor, double vx, double vy);
+extern char* glaspen2_camera_zoom_at_center(double pan_x, double pan_y, double zoom, double factor, double viewport_w, double viewport_h);
+extern char* glaspen2_camera_centered(double bx, double by, double bx2, double by2, double viewport_w, double viewport_h, double zoom);
+// 标量(高频拖动/键盘步长, 避免走 JSON/堆分配)。
+extern double glaspen2_camera_step_zoom(double zoom);
+extern double glaspen2_camera_keyboard_pan_step(double zoom);
+// 回原点 + 100%(out 参数可传 NULL)。
+extern void glaspen2_camera_home(double *pan_x, double *pan_y, double *zoom);
 extern void glaspen2_chat_auth_reload(void); // 设置/启动时把 DB 账号配置推给 Rust auth
 extern void glaspen2_share_ink_set_active(int active); // 共享画布上行开关(export.rs)
 // (共享画布上行已无 ObjC 入口:生命周期完全由面板 tab 驱动,FRB 直达 Rust)
@@ -419,6 +432,45 @@ static double g_zoom = 1.0; // 视图缩放,(0,1],上限 100%
 // 翻页模式的滚动偏移:整页翻页后恒为 0(变量保留,canvas_input/drawRect
 // 的变换式以此为恒等项;不再有任何滑动写入路径)。
 static double g_page_off_x = 0.0, g_page_off_y = 0.0;
+// ── D5b: 镜头数学唯一来源是 core::camera(经 FFI);本文件只持有状态 ──
+//
+// 下面的 helper 只做两件事: 释放 Rust 缓冲区 + 把 core 算好的三值写回全局。
+// 模式门控(仅无限画布/书写中忽略)、提示文案与 1.5s 节流、持久化节流、
+// 飘渺 peek、重绘都留在各调用点(adapter);两端真实差异(键盘平移方向符号、
+// 最小缩放提示仅 Windows、居中 zoom 回写、载入不钳上限)见 camera.rs 模块文档。
+
+// 解析 Rust 返回的镜头 JSON 并释放缓冲区;形状不对/error JSON 返回 nil。
+static NSDictionary *camera_result_json(char *json) {
+  if (!json) {
+    NSLog(@"[camera] core 镜头 FFI 返回 NULL");
+    return nil;
+  }
+  NSData *data = [NSData dataWithBytes:json length:strlen(json)];
+  glaspen2_free_c_string(json);
+  id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+  if (![parsed isKindOfClass:[NSDictionary class]]) {
+    NSLog(@"[camera] core 镜头 JSON 无法解析");
+    return nil;
+  }
+  return parsed;
+}
+
+// 把 core 算好的三值写回全局。assign_zoom = NO 时保留当前 g_zoom(macOS
+// 居中只改 pan;Windows 会把兜底后的 zoom 写回, 差异见 camera.rs 模块文档 5)。
+// 字段缺失(含 error JSON)返回 NO 且不改状态。
+static BOOL camera_assign(NSDictionary *result, BOOL assign_zoom) {
+  if (![result isKindOfClass:[NSDictionary class]]) return NO;
+  NSNumber *px = result[@"pan_x"], *py = result[@"pan_y"], *pz = result[@"zoom"];
+  if (![px isKindOfClass:[NSNumber class]] || ![py isKindOfClass:[NSNumber class]] ||
+      ![pz isKindOfClass:[NSNumber class]]) {
+    NSLog(@"[camera] 镜头 JSON 缺字段: %@", result[@"error"] ?: result);
+    return NO;
+  }
+  g_pan_x = [px doubleValue];
+  g_pan_y = [py doubleValue];
+  if (assign_zoom) g_zoom = [pz doubleValue];
+  return YES;
+}
 
 // 页视图变换(scale-to-fit): 当前页几何 ≠ 屏幕时, 等比缩放居中观看该页
 // (页 = 某时刻玻璃的几何快照); 同几何时恒为恒等 —— 纯玻璃, 严格 1:1。

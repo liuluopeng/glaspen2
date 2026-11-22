@@ -9,6 +9,7 @@
 //! 本文件保留:绘图与模型器 FFI、描边/镜头状态、设置持久化 FFI、
 //! 开机自启、公共小工具(free_c_string / leak_png 等)。
 
+use crate::camera::{Camera, ZoomOutcome};
 pub(crate) use crate::{
     RAW_STROKE_START, Stroke, desktop_path, modeler, pressure_to_width, runtime, state,
     timestamped_name, timestamped_path,
@@ -316,19 +317,25 @@ pub extern "C" fn glaspen2_set_infinite_transform(
 }
 
 /// 读取无限画布镜头变换。未设置时回原点 + 100%。
+///
+/// D5b: zoom 在 FFI 边界按 [Camera::from_stored](与 `from_db_values` 同款)
+/// 兜底 —— `zoom > 0 ? zoom : 1.0`(含 NaN), **不钳 100% 上限**;两端载入
+/// (macOS `canvas_infinite_load` / Windows `apply_infinite_canvas`、启动恢复)
+/// 因此不再各写一份兜底公式。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_get_infinite_transform(
     x: *mut c_double,
     y: *mut c_double,
     z: *mut c_double,
 ) {
-    let (px, py, pz) = runtime()
+    let cam = runtime()
         .block_on(db::get_infinite_transform())
-        .unwrap_or((0.0, 0.0, 1.0));
+        .map(|(pan_x, pan_y, zoom)| Camera::from_stored(pan_x, pan_y, zoom))
+        .unwrap_or(Camera::HOME);
     unsafe {
-        *x = px;
-        *y = py;
-        *z = pz;
+        *x = cam.pan_x;
+        *y = cam.pan_y;
+        *z = cam.zoom;
     }
 }
 
@@ -1558,6 +1565,154 @@ pub extern "C" fn glaspen2_action_effect_json(action: *const c_char) -> *mut c_c
     }
 }
 
+// ── 镜头数学单源 FFI(D5b): macOS 壳经此使用 core::camera ──
+//
+// 与 D1b/D3b 同形: 输入是 ObjC 侧持有的镜头三值(pan_x/pan_y/zoom)与本次操作
+// 参数, 输出是 core 算好的新三值 JSON(ObjC 解析后写回 `g_pan_x/g_pan_y/g_zoom`)。
+// 镜头**状态**仍归 adapter;这里只做数学。缩放结果额外带 `hit_max/hit_min/
+// changed` 三个标记, 让两端各自保留本平台的提示/早退规则(见 camera.rs 模块
+// 文档差异 2)。JSON 一律单行(ObjC 用 NSJSONSerialization 解析), 永不返回
+// NULL: 非有限数输入回 `{"error": ...}` 而不是 panic/UB。
+// Windows 同进程直接调 `Camera`, 不经这些 JSON 入口。
+
+/// 镜头三值 JSON;非有限数(被除零/NaN 输入污染)回 error JSON, 永不上抛 panic。
+///
+/// `zoom_outcome` 为 Some 时附带 `hit_max/hit_min/changed`(`glaspen2_camera_zoom_at`
+/// / `zoom_at_center`);pan/centered 传 None。
+fn camera_result_json(
+    pan_x: f64,
+    pan_y: f64,
+    zoom: f64,
+    zoom_outcome: Option<ZoomOutcome>,
+) -> *mut c_char {
+    if !pan_x.is_finite() || !pan_y.is_finite() || !zoom.is_finite() {
+        return return_c_string(
+            serde_json::json!({ "error": "镜头结果非法(需要有限数)" }).to_string(),
+        );
+    }
+    let mut value = serde_json::json!({
+        "pan_x": pan_x,
+        "pan_y": pan_y,
+        "zoom": zoom,
+    });
+    if let Some(out) = zoom_outcome {
+        value["hit_max"] = serde_json::Value::Bool(out.hit_max);
+        value["hit_min"] = serde_json::Value::Bool(out.hit_min);
+        value["changed"] = serde_json::Value::Bool(out.changed());
+    }
+    return_c_string(value.to_string())
+}
+
+/// 平移镜头(两壳 `canvas_pan_by` 的数学): 返回 `{"pan_x","pan_y","zoom"}`。
+///
+/// `dx/dy` 是画布单位增量(调用方已按 zoom 折算: 键盘 `80/z`、鼠标拖动
+/// `Δ/z`);正 dx = 内容向右。书写中忽略/仅无限画布生效的门控留在 adapter。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_camera_pan(
+    pan_x: c_double,
+    pan_y: c_double,
+    zoom: c_double,
+    dx: c_double,
+    dy: c_double,
+) -> *mut c_char {
+    let mut cam = Camera::new(pan_x, pan_y, zoom);
+    cam.pan_by(dx, dy);
+    camera_result_json(cam.pan_x, cam.pan_y, cam.zoom, None)
+}
+
+/// 以视口点 `(vx, vy)` 为锚缩放(滚轮/触控板, 锚点 = 鼠标位置)。
+/// 返回 `{"pan_x","pan_y","zoom","hit_max","hit_min","changed"}`。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_camera_zoom_at(
+    pan_x: c_double,
+    pan_y: c_double,
+    zoom: c_double,
+    factor: c_double,
+    vx: c_double,
+    vy: c_double,
+) -> *mut c_char {
+    let mut cam = Camera::new(pan_x, pan_y, zoom);
+    let out = cam.zoom_at(factor, vx, vy);
+    camera_result_json(cam.pan_x, cam.pan_y, cam.zoom, Some(out))
+}
+
+/// 以视口中心为锚缩放(键盘镜头缩放两端同款;macOS 传 `g_screen_w/h`)。
+/// 返回形状同 [glaspen2_camera_zoom_at]。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_camera_zoom_at_center(
+    pan_x: c_double,
+    pan_y: c_double,
+    zoom: c_double,
+    factor: c_double,
+    viewport_w: c_double,
+    viewport_h: c_double,
+) -> *mut c_char {
+    let mut cam = Camera::new(pan_x, pan_y, zoom);
+    let out = cam.zoom_at_center(factor, viewport_w, viewport_h);
+    camera_result_json(cam.pan_x, cam.pan_y, cam.zoom, Some(out))
+}
+
+/// 镜头居中到内容包围盒(面板「居中内容」/ `canvasCenter`)。
+/// 返回 `{"pan_x","pan_y","zoom"}`, 其中 zoom = **公式实际用的 z**
+/// ([Camera::centered_on] 的 `used_zoom`, 越界 zoom 会兜底成 1.0);
+/// 只改 pan, 是否把 zoom 写回由 adapter 决定(macOS 不写, Windows 写)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_camera_centered(
+    bx: c_double,
+    by: c_double,
+    bx2: c_double,
+    by2: c_double,
+    viewport_w: c_double,
+    viewport_h: c_double,
+    zoom: c_double,
+) -> *mut c_char {
+    let mut cam = Camera::new(0.0, 0.0, zoom);
+    let used_zoom = cam.centered_on((bx, by, bx2, by2), (viewport_w, viewport_h));
+    camera_result_json(cam.pan_x, cam.pan_y, used_zoom, None)
+}
+
+/// 交互公式用的 zoom 兜底: `zoom > 0.05 ? zoom : 1.0`([Camera::step_zoom])。
+///
+/// macOS 鼠标抓手每帧把屏幕位移折算成画布增量(`Δ / z`)时用;标量返回避免
+/// 高频拖动走 JSON/堆分配。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_camera_step_zoom(zoom: c_double) -> c_double {
+    Camera::new(0.0, 0.0, zoom).step_zoom()
+}
+
+/// 键盘镜头平移每步的画布增量 = `80 / step_zoom`([Camera::keyboard_pan_step])。
+///
+/// 只有 macOS 用(Windows 同进程直接调);方向符号(哪边是正)留在 adapter:
+/// macOS 是"视野移动"(Left → +step), Windows 是"内容跟随"(Left → -step)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_camera_keyboard_pan_step(zoom: c_double) -> c_double {
+    Camera::new(0.0, 0.0, zoom).keyboard_pan_step()
+}
+
+/// 镜头回原点 + 100%(`canvas_reset_lens` / 菜单「回到原点」「新建画布」)。
+///
+/// out 参数可传 NULL(跳过该字段);不分配、无返回值。数学常量唯一来源是
+/// [Camera::HOME]。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_camera_home(
+    pan_x: *mut c_double,
+    pan_y: *mut c_double,
+    zoom: *mut c_double,
+) {
+    let home = Camera::HOME;
+    unsafe {
+        if !pan_x.is_null() {
+            *pan_x = home.pan_x;
+        }
+        if !pan_y.is_null() {
+            *pan_y = home.pan_y;
+        }
+        if !zoom.is_null() {
+            *zoom = home.zoom;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2190,5 +2345,152 @@ mod tests {
             .into_owned();
         glaspen2_free_c_string(ptr);
         assert!(parse(&text)["error"].is_string(), "null 指针应返回 error");
+    }
+
+    /// D5b 镜头数学 FFI: macOS ObjC 依赖的 JSON 形状 + 数值语义。
+    ///
+    /// - pan/zoom/centered 与 core [Camera] 同一条公式(已知值 + 与 core 对比);
+    /// - zoom 结果带 hit_max/hit_min/changed(两端提示/早退规则不同, 见 camera.rs);
+    /// - 输出必须单行合法 JSON(NSJSONSerialization);永不 NULL / panic;
+    /// - 非有限数输入回 {"error":...}(防止 ObjC 侧写出 NaN).
+    #[test]
+    fn camera_ffi_roundtrip() {
+        fn take(ptr: *mut c_char) -> serde_json::Value {
+            assert!(!ptr.is_null(), "镜头 FFI 必须返回 JSON 字符串, 不能 NULL");
+            let text = unsafe { CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .into_owned();
+            glaspen2_free_c_string(ptr);
+            assert!(!text.contains('\n'), "镜头 JSON 必须单行: {text}");
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("镜头 JSON 不合法: {e}: {text}"))
+        }
+
+        // 平移: 与 Camera::pan_by 同款(pan -= d)。
+        let v = take(glaspen2_camera_pan(120.0, -45.0, 0.5, 30.0, -10.0));
+        assert_eq!(
+            v.as_object().map(|obj| obj.len()),
+            Some(3),
+            "pan 只回三值: {v}"
+        );
+        assert_eq!(v["pan_x"], 90.0);
+        assert_eq!(v["pan_y"], -35.0);
+        assert_eq!(v["zoom"], 0.5);
+
+        // 缩放锚点不变: 与 camera.rs 的已知向量逐值一致。
+        let mut expected = Camera::new(120.0, -45.0, 0.5);
+        let expected_out = expected.zoom_at(2.0, 300.0, 200.0);
+        let v = take(glaspen2_camera_zoom_at(
+            120.0, -45.0, 0.5, 2.0, 300.0, 200.0,
+        ));
+        assert_eq!(
+            v.as_object().map(|obj| obj.len()),
+            Some(6),
+            "zoom 结果带三个标记: {v}"
+        );
+        assert_eq!(v["pan_x"], expected.pan_x);
+        assert_eq!(v["pan_y"], expected.pan_y);
+        assert_eq!(v["zoom"], expected_out.zoom);
+        assert_eq!(v["hit_max"], false);
+        assert_eq!(v["hit_min"], false);
+        assert_eq!(v["changed"], true);
+
+        // 100% 上限: 镜头不变但 hit_max(两端都据此提示)。
+        let v = take(glaspen2_camera_zoom_at(0.0, 0.0, 1.0, 1.15, 300.0, 200.0));
+        assert_eq!(v["zoom"], 1.0);
+        assert_eq!(v["changed"], false);
+        assert_eq!(v["hit_max"], true);
+        assert_eq!(v["hit_min"], false);
+        // 5% 下限: changed + hit_min(只有 Windows 弹提示)。
+        let v = take(glaspen2_camera_zoom_at(0.0, 0.0, 0.06, 0.5, 0.0, 0.0));
+        assert_eq!(v["zoom"], 0.05);
+        assert_eq!(v["changed"], true);
+        assert_eq!(v["hit_min"], true);
+        assert_eq!(v["hit_max"], false);
+
+        // 键盘缩放以视口中心为锚: 与 Camera::zoom_at_center 一致
+        // (JSON 数字按最短往返字符串输出, 浮点比较用 1e-12 容差)。
+        let close = |actual: &serde_json::Value, expected: f64| {
+            let actual = actual
+                .as_f64()
+                .unwrap_or_else(|| panic!("不是数字: {actual}"));
+            assert!(
+                (actual - expected).abs() < 1e-12,
+                "actual={actual} expected={expected}"
+            );
+        };
+        let mut c = Camera::new(-40.0, 23.0, 0.8);
+        let out = c.zoom_at_center(1.15, 1024.0, 768.0);
+        let v = take(glaspen2_camera_zoom_at_center(
+            -40.0, 23.0, 0.8, 1.15, 1024.0, 768.0,
+        ));
+        close(&v["pan_x"], c.pan_x);
+        close(&v["pan_y"], c.pan_y);
+        close(&v["zoom"], out.zoom);
+        assert_eq!(v["changed"], true);
+
+        // 居中: zoom 字段 = 公式实际用的 z(越界 zoom 兜底成 1.0, Windows 会写回)。
+        let v = take(glaspen2_camera_centered(
+            100.0, 50.0, 300.0, 150.0, 800.0, 600.0, 0.5,
+        ));
+        assert_eq!(v["pan_x"], -600.0);
+        assert_eq!(v["pan_y"], -500.0);
+        assert_eq!(v["zoom"], 0.5);
+        let v = take(glaspen2_camera_centered(
+            0.0, 0.0, 200.0, 100.0, 800.0, 600.0, 0.05,
+        ));
+        assert_eq!(v["zoom"], 1.0, "居中公式的 zoom 兜底是 step_zoom(strict >)");
+        assert_eq!(v["pan_x"], -300.0);
+        assert_eq!(v["pan_y"], -250.0);
+
+        // 标量: 交互公式的 zoom 兜底 / 键盘步长(80 / step_zoom)。
+        assert_eq!(glaspen2_camera_step_zoom(1.0), 1.0);
+        assert_eq!(glaspen2_camera_step_zoom(0.05), 1.0);
+        assert_eq!(glaspen2_camera_step_zoom(0.4), 0.4);
+        assert_eq!(glaspen2_camera_keyboard_pan_step(1.0), 80.0);
+        assert_eq!(glaspen2_camera_keyboard_pan_step(0.4), 200.0);
+
+        // 非有限数输入: 回 error JSON, 不 panic(否则 ObjC 侧会写出 NaN/崩溃)。
+        for v in [
+            take(glaspen2_camera_pan(0.0, 0.0, 1.0, f64::NAN, 0.0)),
+            take(glaspen2_camera_zoom_at(0.0, 0.0, 0.5, f64::NAN, 0.0, 0.0)),
+            take(glaspen2_camera_zoom_at_center(
+                0.0,
+                0.0,
+                f64::NAN,
+                1.0,
+                100.0,
+                100.0,
+            )),
+            take(glaspen2_camera_centered(
+                f64::NAN,
+                0.0,
+                1.0,
+                1.0,
+                100.0,
+                100.0,
+                1.0,
+            )),
+        ] {
+            assert!(v["error"].is_string(), "非有限输入应回 error: {v}");
+        }
+
+        // home: out 参数写回 HOME;空指针安全(不 crash)。
+        let (mut hx, mut hy, mut hz) = (9.0f64, 9.0f64, 9.0f64);
+        glaspen2_camera_home(&mut hx, &mut hy, &mut hz);
+        assert_eq!((hx, hy, hz), (0.0, 0.0, 1.0));
+        glaspen2_camera_home(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+
+        // 载入 FFI: zoom 已在边界兜底(> 0, 不钳上限), 输出必须有限。
+        let (mut px, mut py, mut pz) = (f64::NAN, f64::NAN, f64::NAN);
+        glaspen2_get_infinite_transform(&mut px, &mut py, &mut pz);
+        assert!(
+            px.is_finite() && py.is_finite() && pz.is_finite(),
+            "载入输出必须是有限数"
+        );
+        assert!(pz > 0.0, "载入 zoom 必须 > 0(FFI 已做 from_db_values 兜底)");
     }
 }

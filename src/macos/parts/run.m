@@ -457,12 +457,16 @@ static void canvas_apply_transform(void) {
   }
 }
 
-// 键盘平移镜头(滚轮缩放走 canvas_zoom_at; 书写中忽略)
+// 键盘平移镜头(滚轮缩放走 canvas_zoom_at; 书写中忽略)。
+// D5b: 数学(pan -= d)单源在 core Camera::pan_by, 经 FFI 拿回三值;
+// 门控/重绘/0.5s 持久化节流/飘渺 peek 仍在本文件(adapter)。
 static void canvas_pan_by(double dx, double dy) {
   if (g_stroke_active)
     return;
-  g_pan_x -= dx;
-  g_pan_y -= dy;
+  NSDictionary *result = camera_result_json(
+      glaspen2_camera_pan(g_pan_x, g_pan_y, g_zoom, dx, dy));
+  if (!camera_assign(result, YES))
+    return;
   canvas_apply_transform();
   peek_lens_change(); // 飘渺模式下短暂露出笔迹, 让镜头移动可见
 }
@@ -502,19 +506,17 @@ static void camera_mouse_cancel_pan(void) {
   ++g_camera_pan_gen;
 }
 
-// 缩放镜头(键盘/滚轮共用):以鼠标位置为锚,zoom ∈ (0.05, 1.0]。
-// 锚点的画布坐标在缩放前后保持同一屏幕位置(view = (canvas−pan)×zoom)。
-static void canvas_zoom_at(double factor, double vx, double vy) {
-  if (g_stroke_active)
+// 缩放结果统一处理(鼠标锚点/键盘中心共用): 100% 上限提示(1.5s 节流)、
+// 无变化早退、写回 + 应用变换/peek。
+// macOS 没有 5% 下限提示(只有 Windows 有, 见 camera.rs 模块文档差异 2);
+// 命中上限的判定用 core 的 hit_max(钳制前的请求越过 100%), 因此到达 100%
+// 后继续放大仍会提示, 不会静默。
+static void canvas_zoom_apply(NSDictionary *result) {
+  if (!result)
     return;
-  double ccx = vx / g_zoom + g_pan_x;
-  double ccy = vy / g_zoom + g_pan_y;
-  double nz = g_zoom * factor;
-  if (nz > 1.0) {
-    nz = 1.0;
-    // 只要这次请求是"继续放大但被 100% 上限挡住"就提示, 不再要求
-    // g_zoom < 1.0 —— 否则到达 100% 后再按放大键/滚轮会完全静默。
-    // 1.5s 节流防长按/连续滚动刷屏。
+  BOOL hit_max = [result[@"hit_max"] boolValue];
+  BOOL changed = [result[@"changed"] boolValue];
+  if (hit_max) {
     static CFAbsoluteTime last_hint = 0.0;
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
     if (now - last_hint > 1.5) {
@@ -522,16 +524,31 @@ static void canvas_zoom_at(double factor, double vx, double vy) {
       show_notification(L(@"已达最大缩放 100%", @"Max zoom 100%"));
     }
   }
-  if (nz < 0.05)
-    nz = 0.05; // 防退化下限
-  double old_pan_x = g_pan_x, old_pan_y = g_pan_y, old_zoom = g_zoom;
-  g_zoom = nz;
-  g_pan_x = ccx - vx / nz;
-  g_pan_y = ccy - vy / nz;
-  if (g_zoom == old_zoom && g_pan_x == old_pan_x && g_pan_y == old_pan_y)
+  if (!camera_assign(result, YES))
+    return;
+  if (!changed)
     return; // 已在缩放边界/无变化: 不白 flash
   canvas_apply_transform();
   peek_lens_change(); // 飘渺模式下短暂露出笔迹, 让缩放变化可见
+}
+
+// 缩放镜头(滚轮):以视口点 (vx, vy) 为锚,zoom ∈ (0.05, 1.0]。
+// 锚点的画布坐标在缩放前后保持同一屏幕位置(view = (canvas−pan)×zoom);
+// 数学(锚点不变/限幅/hit 标记)单源在 core Camera::zoom_at。
+static void canvas_zoom_at(double factor, double vx, double vy) {
+  if (g_stroke_active)
+    return;
+  canvas_zoom_apply(camera_result_json(
+      glaspen2_camera_zoom_at(g_pan_x, g_pan_y, g_zoom, factor, vx, vy)));
+}
+
+// 键盘缩放 = 以视口中心为锚(数学单源 core Camera::zoom_at_center)。
+static void canvas_zoom_at_center(double factor) {
+  if (g_stroke_active)
+    return;
+  canvas_zoom_apply(camera_result_json(glaspen2_camera_zoom_at_center(
+      g_pan_x, g_pan_y, g_zoom, factor, (double)g_screen_w,
+      (double)g_screen_h)));
 }
 
 // 保存唯一的无限画布镜头(仅无限模式;翻页模式无镜头)
@@ -1459,18 +1476,18 @@ static void canvas_infinite_load(void) {
   glaspen2_get_infinite_transform(&px, &py, &pz);
   g_pan_x = px;
   g_pan_y = py;
-  g_zoom = (pz > 0.0) ? pz : 1.0;
+  // zoom 兜底(>0 否则 1.0, 不钳 100% 上限)已在 FFI 边界按 from_db_values
+  // 语义完成(D5b), 这里不再重复公式。
+  g_zoom = pz;
   glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
 }
 
-// 翻页模式:镜头恒为原点 + 100%
+// 翻页模式:镜头恒为原点 + 100%(HOME 常量单源在 core Camera::HOME)
 static void canvas_reset_lens(void) {
   g_page_off_x = 0.0;
   g_page_off_y = 0.0;
-  g_pan_x = 0.0;
-  g_pan_y = 0.0;
-  g_zoom = 1.0;
-  glaspen2_set_view_transform(0.0, 0.0, 1.0);
+  glaspen2_camera_home(&g_pan_x, &g_pan_y, &g_zoom);
+  glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
 }
 
 // --- CGEventTap callback ---
@@ -1787,8 +1804,10 @@ static BOOL perform_action(NSString *action) {
   // 模式下的组合。步长除以 zoom, 保证屏幕上每次移动的视觉距离一致。
   if ([kind hasPrefix:@"CameraPan"]) {
     if (!g_infinite_canvas) return YES;
-    double z = (g_zoom > 0.05) ? g_zoom : 1.0;
-    double step = 80.0 / z;
+    // 步长 80/step_zoom 单源在 core(D5b);方向符号留在本平台:
+    // 按键方向 = 视野移动方向(与 Windows 的"内容跟随"相反, 见
+    // ActionEffect::CameraPan 文档)。
+    double step = glaspen2_camera_keyboard_pan_step(g_zoom);
     double dx = 0.0, dy = 0.0;
     // 按键方向 = 视野移动方向(与普通软件一致): 按左 → 镜头左移(内容右移),
     // 按上 → 镜头上移(内容下移)。canvas_pan_by 内部是 pan -= d, 所以 d 取正
@@ -1804,7 +1823,8 @@ static BOOL perform_action(NSString *action) {
       [kind isEqualToString:@"CameraZoomOut"]) {
     if (!g_infinite_canvas) return YES;
     double factor = [kind isEqualToString:@"CameraZoomIn"] ? 1.15 : 1.0 / 1.15;
-    canvas_zoom_at(factor, (double)g_screen_w * 0.5, (double)g_screen_h * 0.5);
+    // 键盘缩放锚点 = 视口中心(core Camera::zoom_at_center 单源, D5b)
+    canvas_zoom_at_center(factor);
     return YES;
   }
   if ([kind isEqualToString:@"Clear"]) return perform_hotkey(kVK_ANSI_C);
@@ -2271,7 +2291,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     if (etype == NSEventTypeLeftMouseDragged) {
       if (g_infinite_canvas && g_enabled && !g_stroke_active) {
         NSPoint loc = [nsevent locationInWindow];
-        double z = (g_zoom > 0.05) ? g_zoom : 1.0;
+        // 抓手折算用的 zoom 兜底(> 0.05 否则 1.0)单源在 core(D5b)
+        double z = glaspen2_camera_step_zoom(g_zoom);
         // 内容跟随鼠标: 向右/向上拖 → 画布向右/向上移动。
         // Y 取反: locationInWindow 是 AppKit 左下原点(向上为正), 画布/视图
         // 是左上原点(向下为正); 不取反时上下拖动会像 macOS「自然滚动」
