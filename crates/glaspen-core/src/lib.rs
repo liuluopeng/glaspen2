@@ -36,6 +36,8 @@ pub mod device;
 pub mod export;
 // 网格/分栏几何(细网格 + 屏幕分界线 + 分栏参考线线段表, D6)
 pub mod grid;
+// 用户可见文案表(中/英)单源 + 查表 API/审计 JSON(D10a; FFI 在 export)
+pub mod i18n;
 // 页面缩略图条的页窗与条带布局(当前页 ±5 页 + 右缘竖条几何, D7)
 pub mod minimap;
 pub mod modeler;

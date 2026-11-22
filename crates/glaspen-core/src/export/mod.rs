@@ -2020,6 +2020,31 @@ pub extern "C" fn glaspen2_recording_mode(slot: c_int) -> c_int {
     }
 }
 
+// ── 文案表 FFI(D10a): macOS ObjC 经此查 core::i18n, Windows 同进程直接调 ──
+//
+// 单行纯文本, **永不返回 NULL**: 未知 key 回显 key 本身(便于发现漏登记/
+// adapter 拼错), null/非法 UTF-8 的 key 回 "?"; lang 缺省/未知一律中文
+// (与两端现状一致)。返回值用 glaspen2_free_c_string 释放。
+// Windows 侧不经过这个 FFI(同进程直接 crate::i18n::text), 与 D6/D7/D8 同形。
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_i18n(msg_key: *const c_char, lang: *const c_char) -> *mut c_char {
+    use crate::i18n::{Lang, by_key};
+    let lang = unsafe { borrow_cstr(lang) }.map_or(Lang::Zh, Lang::from_code);
+    let text = match unsafe { borrow_cstr(msg_key) } {
+        Some(key) => by_key(key).map_or_else(|| key.to_string(), |msg| msg.text(lang).to_string()),
+        None => "?".to_string(),
+    };
+    return_c_string(text)
+}
+
+/// 全表审计 JSON(D10a): `{"<key>":{"zh":"...","en":"..."}}`, 单行, key 字典序。
+/// 供审计/测试用; 永不 NULL。返回值用 glaspen2_free_c_string 释放。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_i18n_catalog_json() -> *mut c_char {
+    return_c_string(crate::i18n::catalog_json())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3223,5 +3248,74 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&text).unwrap()["error"].is_string(),
             "空指针应回 error JSON: {text}"
         );
+    }
+
+    /// D10a 文案表 FFI: 全表 key×lang 往返、未知 key 回显、null/坏 UTF-8 兜底、
+    /// Windows 同进程路径(crate::i18n::text)与 FFI 一致。
+    #[test]
+    fn i18n_ffi_roundtrip() {
+        use crate::i18n::{Lang, Msg};
+
+        fn take(ptr: *mut c_char) -> String {
+            assert!(!ptr.is_null(), "i18n FFI 必须返回字符串, 不能 NULL");
+            let text = unsafe { CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .into_owned();
+            glaspen2_free_c_string(ptr);
+            assert!(!text.contains('\n'), "i18n 文案必须单行: {text}");
+            text
+        }
+
+        // 全表: 每条 key × 两种语言都和 core 表逐字一致。
+        for msg in Msg::ALL {
+            let key = CString::new(msg.key()).expect("key 不含 NUL");
+            for (code, lang) in [("zh", Lang::Zh), ("en", Lang::En)] {
+                let code_c = CString::new(code).expect("lang 不含 NUL");
+                let text = take(glaspen2_i18n(key.as_ptr(), code_c.as_ptr()));
+                assert_eq!(text, msg.text(lang), "key={} lang={code}", msg.key());
+                // Windows 同进程路径: 与 FFI 走同一张表。
+                assert_eq!(crate::i18n::text(lang, msg), msg.text(lang));
+            }
+            // lang 缺省 → 中文(与两端默认一致)。
+            assert_eq!(
+                take(glaspen2_i18n(key.as_ptr(), std::ptr::null())),
+                msg.zh()
+            );
+        }
+
+        // 未知 key → 回显 key 本身(便于定位 adapter 拼错的 key), 不是 NULL/"?"。
+        let unknown = CString::new("no.such.key").unwrap();
+        let lang_en = CString::new("en").unwrap();
+        assert_eq!(
+            take(glaspen2_i18n(unknown.as_ptr(), lang_en.as_ptr())),
+            "no.such.key"
+        );
+        // 中文 UTF-8 往返(macOS 侧 NSString stringWithUTF8String 依赖合法 UTF-8)。
+        let gif = CString::new("recording.gif_copied").unwrap();
+        let text = take(glaspen2_i18n(gif.as_ptr(), lang_en.as_ptr()));
+        assert_eq!(text, "GIF copied to clipboard");
+        // null key / 非法 UTF-8 key → "?", 永不 NULL。
+        assert_eq!(take(glaspen2_i18n(std::ptr::null(), std::ptr::null())), "?");
+        let bad = CString::new(vec![0xFF_u8]).expect("非 UTF-8 但无 NUL, 仍是合法 CString");
+        assert_eq!(take(glaspen2_i18n(bad.as_ptr(), std::ptr::null())), "?");
+    }
+
+    /// D10a 审计 JSON FFI: 单行、合法、覆盖全表。
+    #[test]
+    fn i18n_catalog_json_ffi() {
+        let ptr = glaspen2_i18n_catalog_json();
+        assert!(!ptr.is_null(), "审计 JSON 不能 NULL");
+        let text = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        glaspen2_free_c_string(ptr);
+        assert!(!text.contains('\n'), "审计 JSON 必须单行");
+        let value: serde_json::Value = serde_json::from_str(&text).expect("审计 JSON 合法");
+        assert_eq!(
+            value.as_object().expect("对象").len(),
+            crate::i18n::Msg::ALL.len()
+        );
+        // 与纯函数输出同一份(FFI 只是转发, 不另拼一份)。
+        assert_eq!(text, crate::i18n::catalog_json());
     }
 }
