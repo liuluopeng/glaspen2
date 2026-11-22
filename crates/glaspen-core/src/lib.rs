@@ -45,6 +45,8 @@ pub mod pagerender;
 pub mod pdf;
 pub mod presets;
 pub mod protocol;
+// 录制会话状态机(GIF/⌘⌃2 草稿/⌘⌃3 直发;状态/起止/事件/用户可见动作单源, D8a)
+pub mod recording;
 pub mod settings;
 pub mod settings_apply;
 pub mod state;
