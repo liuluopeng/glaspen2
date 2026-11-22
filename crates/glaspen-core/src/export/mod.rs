@@ -1835,6 +1835,84 @@ pub extern "C" fn glaspen2_grid_json_clipped(
     }
 }
 
+// ── 缩略图条(minimap)页窗/布局单源 FFI(D7): macOS 壳经此使用 core::minimap ──
+//
+// 与 D1b/D3b/D5b/D6 同形: ObjC 只持有当前页/视图尺寸/几何组过滤宽度, 输出是
+// core 算好的条带布局 JSON(单行, NSJSONSerialization 解析);缩略图渲染/缓存/
+// 后台队列/条带合成/描边/页号字体仍归 adapter。
+// 永不返回 NULL: 视图尺寸非法回 {"error": ...};当前页不在活页列表(新建的空白页
+// /空库)是合法状态 → items 为空(adapter 直接跳过绘制)。
+// Windows 同进程直接调 minimap::page_window/layout, 不经此 JSON 入口。
+
+/// 页列表行 + core 页窗/布局 → FFI JSON 值(单行形状)。
+///
+/// 抽成独立函数便于测试: 不碰全局 DB、不分配 C 字符串。
+fn minimap_layout_json_value(
+    rows: &[(i64, i32, i32)],
+    current: i64,
+    view_w: f64,
+    view_h: f64,
+    filter: crate::minimap::PageFilter,
+) -> Result<serde_json::Value, crate::minimap::MinimapError> {
+    use crate::minimap::{MACOS_METRICS, WINDOW_COUNT, WINDOW_HALF, layout, page_window_from_rows};
+    let window = page_window_from_rows(rows, current, filter, WINDOW_HALF, WINDOW_COUNT);
+    let (ids, start): (&[i64], usize) = match window.as_ref() {
+        Some(window) => (window.ids.as_slice(), window.start),
+        None => (&[], 0),
+    };
+    let layout = layout(view_w, view_h, ids, start, current, &MACOS_METRICS)?;
+    Ok(serde_json::json!({
+        "strip_x": layout.strip_x,
+        "strip_y": layout.strip_y,
+        "strip_w": layout.strip_w,
+        "strip_h": layout.strip_h,
+        "items": layout
+            .items
+            .iter()
+            .map(|item| {
+                serde_json::json!({
+                    "screen_id": item.screen_id,
+                    "index": item.index,
+                    "y": item.y,
+                    "h": item.h,
+                    "label": item.label,
+                    "current": item.current,
+                })
+            })
+            .collect::<Vec<_>>(),
+    }))
+}
+
+/// 缩略图条布局 JSON: 页窗(当前页前后各 [crate::minimap::WINDOW_HALF] 页)+
+/// 条带几何(右缘竖条, 卡片 64×40 / 间距 4 / 右缘 8 / 顶端 8;公式与两端差异
+/// 见 crate::minimap 模块文档)。
+///
+/// 形状: {"strip_x","strip_y","strip_w","strip_h",
+///        "items":[{"screen_id","index","y","h","label","current"},...]}
+/// 坐标 = 视图坐标(原点左上, y 向下);macOS adapter 合成条带时翻转 y。
+/// geometry_width > 0 时只保留 screen_w == geometry_width 的页(macOS
+/// page-view-fit 模式, 只显示当前几何组);<= 0 = 不过滤(Windows 语义)。
+/// 返回值用 glaspen2_free_c_string 释放。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_minimap_layout_json(
+    current_screen_id: i64,
+    view_w: c_double,
+    view_h: c_double,
+    geometry_width: c_int,
+) -> *mut c_char {
+    use crate::minimap::PageFilter;
+    let filter = if geometry_width > 0 {
+        PageFilter::Width(geometry_width)
+    } else {
+        PageFilter::All
+    };
+    let rows = runtime().block_on(db::list_screens());
+    match minimap_layout_json_value(&rows, current_screen_id, view_w, view_h, filter) {
+        Ok(value) => return_c_string(value.to_string()),
+        Err(err) => return_c_string(serde_json::json!({ "error": err.to_string() }).to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2736,5 +2814,103 @@ mod tests {
             let error = v["error"].as_str().unwrap_or_default();
             assert!(error.contains("网格"), "error JSON 应说明网格非法: {v}");
         }
+    }
+
+    /// D7: 缩略图条布局 JSON 形状 + 与 core::minimap 的往返一致性 + error JSON。
+    #[test]
+    fn minimap_ffi_roundtrip() {
+        use crate::minimap::{
+            MACOS_METRICS, MinimapError, PageFilter, WINDOW_COUNT, WINDOW_HALF, layout,
+            page_window_from_rows,
+        };
+
+        fn number(value: &serde_json::Value, key: &str) -> f64 {
+            value[key]
+                .as_f64()
+                .unwrap_or_else(|| panic!("{key} 应为数字: {value}"))
+        }
+
+        // 页列表: 5 页, 当前页 3(索引 2);1920 组两页(1/4), 3440 组三页。
+        let rows = vec![
+            (1, 1920, 1080),
+            (2, 3440, 1440),
+            (3, 3440, 1440),
+            (4, 1920, 1080),
+            (5, 3440, 1440),
+        ];
+        let value = minimap_layout_json_value(&rows, 3, 1440.0, 900.0, PageFilter::All).unwrap();
+        let window =
+            page_window_from_rows(&rows, 3, PageFilter::All, WINDOW_HALF, WINDOW_COUNT).unwrap();
+        let core = layout(1440.0, 900.0, &window.ids, window.start, 3, &MACOS_METRICS).unwrap();
+        for (key, expected) in [
+            ("strip_x", core.strip_x),
+            ("strip_y", core.strip_y),
+            ("strip_w", core.strip_w),
+            ("strip_h", core.strip_h),
+        ] {
+            assert_eq!(number(&value, key), expected, "{key}");
+        }
+        let items = value["items"].as_array().expect("items 数组");
+        assert_eq!(items.len(), core.items.len());
+        for (json, core_item) in items.iter().zip(&core.items) {
+            assert_eq!(json["screen_id"].as_i64(), Some(core_item.screen_id));
+            assert_eq!(json["index"].as_u64(), Some(core_item.index as u64));
+            assert_eq!(json["label"].as_str(), Some(core_item.label.as_str()));
+            assert_eq!(json["current"].as_bool(), Some(core_item.current));
+            assert_eq!(number(json, "y"), core_item.y);
+            assert_eq!(number(json, "h"), core_item.h);
+        }
+        // 当前页高亮恰好一个;页号 = 全列表 1 基序号。
+        assert_eq!(items.iter().filter(|i| i["current"] == true).count(), 1);
+        assert_eq!(items[2]["label"], "3");
+        // 公式抽查: total_h = 5*40 + 4*4 = 216;macOS 顶端 8。
+        assert_eq!(
+            (number(&value, "strip_h"), number(&value, "strip_y")),
+            (216.0, 8.0)
+        );
+
+        // 几何组过滤(macOS page-view-fit): 只留 1920 组 → [1, 4], 当前页 4。
+        let value =
+            minimap_layout_json_value(&rows, 4, 1440.0, 900.0, PageFilter::Width(1920)).unwrap();
+        let items = value["items"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["screen_id"], 1);
+        assert_eq!(items[1]["screen_id"], 4);
+        assert_eq!(items[1]["label"], "2");
+
+        // 当前页不在活页列表(新建空白页): 合法空 items, 不是 error。
+        let value = minimap_layout_json_value(&rows, 99, 1440.0, 900.0, PageFilter::All).unwrap();
+        assert!(value["items"].as_array().unwrap().is_empty());
+        assert!(value.get("error").is_none());
+
+        // 非法视图尺寸 → core error(FFI 包成 {"error"})。
+        assert_eq!(
+            minimap_layout_json_value(&rows, 3, 0.0, 900.0, PageFilter::All).unwrap_err(),
+            MinimapError::ViewSize
+        );
+
+        // 真实 FFI 入口: 永不 NULL 且单行 JSON;非法尺寸回 error JSON。
+        let take = |ptr: *mut c_char| -> serde_json::Value {
+            assert!(
+                !ptr.is_null(),
+                "minimap FFI 必须返回 JSON 字符串, 不能 NULL"
+            );
+            let text = unsafe { CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .into_owned();
+            glaspen2_free_c_string(ptr);
+            assert!(!text.contains('\n'), "minimap JSON 必须单行: {text}");
+            serde_json::from_str(&text)
+                .unwrap_or_else(|e| panic!("minimap JSON 不合法: {e}: {text}"))
+        };
+        let value = take(glaspen2_minimap_layout_json(3, 1440.0, 900.0, 0));
+        assert!(value["strip_x"].is_number());
+        assert!(value["items"].is_array());
+        let err = take(glaspen2_minimap_layout_json(3, 0.0, 900.0, 0));
+        let message = err["error"].as_str().unwrap_or_default();
+        assert!(
+            message.contains("缩略图"),
+            "error JSON 应说明 minimap 非法: {err}"
+        );
     }
 }

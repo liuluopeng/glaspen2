@@ -1399,11 +1399,12 @@ struct WindowCompositionAttributeData {
     size: usize,
 }
 
-// ── 页面缩略图条(minimap,仅活页本模式;macOS d67f838 对齐)──
-// 屏幕右缘竖向展示附近 10 页(VS Code 风):缺失的缩略图由单个后台线程
-// 串行渲染(不与书写落笔抢锁、不并发打爆 CPU,macOS 同策略),每完成
-// 一张 PostMessage 触发一次重绘;当前页高亮描边。首版不带页号文本
-// (分层窗口画文本需另建 GDI DC,页号看面板网格)。
+// ── 页面缩略图条(minimap,仅活页本模式;macOS 同键,库键 minimap)──
+// 页窗(当前页前后各 5 页)与条带几何(卡片 y/高度/页号)的唯一来源 =
+// glaspen_core::minimap(D7);本文件只保留缩略图渲染/缓存/单后台工人泵/
+// 像素直写/样式(与 macOS 同策略)。两端差异见 core::minimap 模块文档:
+// Windows 条带垂直居中(顶边 >= 4px)、不画页号文本(分层窗口画文本需另建
+// GDI DC,页号看面板网格)。
 
 struct MinimapThumb {
     /// 预乘 RGBA(与目标 BGRA 缓冲同布局交换通道即可)
@@ -1416,50 +1417,32 @@ static MINIMAP_THUMBS: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashMap<i64, MinimapThumb>>,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
 static MINIMAP_INFLIGHT: std::sync::Mutex<Vec<i64>> = std::sync::Mutex::new(Vec::new());
-static MINIMAP_IDS: std::sync::Mutex<Vec<i64>> = std::sync::Mutex::new(Vec::new());
-static MINIMAP_IDS_FOR: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+/// 页窗缓存(core::minimap::page_window 的结果;当前页变化时重算 —— 与 macOS
+/// 的布局 JSON 缓存同策略, 不在重绘路径上反复查库)。
+static MINIMAP_WINDOW: std::sync::Mutex<Option<glaspen_core::minimap::PageWindow>> =
+    std::sync::Mutex::new(None);
+static MINIMAP_WINDOW_FOR: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
 /// 单渲染工人的 CAS 门(同一时刻至多一个后台线程在逐张渲染)
 static MINIMAP_PUMPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-const MM_TW: i32 = 64;
-const MM_TH: i32 = 40;
-const MM_GAP: i32 = 4;
-
-/// 页序缓存(当前页变化时重新解析 list_screens_json,与 macOS 同策略)
-fn minimap_page_ids(cur: i64) -> Option<Vec<i64>> {
-    if MINIMAP_IDS_FOR.load(std::sync::atomic::Ordering::SeqCst) == cur {
-        let g = MINIMAP_IDS.lock().unwrap_or_else(|e| e.into_inner());
-        if !g.is_empty() {
-            return Some(g.clone());
+/// 页窗(当前页附近;过滤/排序/窗口公式唯一来源 = core::minimap::page_window)。
+fn minimap_window(cur: i64) -> Option<glaspen_core::minimap::PageWindow> {
+    if MINIMAP_WINDOW_FOR.load(std::sync::atomic::Ordering::SeqCst) == cur {
+        let g = MINIMAP_WINDOW.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(window) = g.as_ref() {
+            return Some(window.clone());
         }
     }
-    let ptr = glaspen_core::export::glaspen2_list_screens_json();
-    if ptr.is_null() {
-        return None;
-    }
-    let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
-        .to_string_lossy()
-        .to_string();
-    glaspen_core::export::glaspen2_free_c_string(ptr);
-    let ids: Vec<i64> = serde_json::from_str::<serde_json::Value>(&s)
-        .ok()
-        .and_then(|v| Some(v.as_array()?.clone()))
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|o| o.get("id").and_then(|x| x.as_i64()))
-        .collect();
-    if ids.is_empty() {
-        return None;
-    }
-    *MINIMAP_IDS.lock().unwrap_or_else(|e| e.into_inner()) = ids.clone();
-    MINIMAP_IDS_FOR.store(cur, std::sync::atomic::Ordering::SeqCst);
-    Some(ids)
+    let window = glaspen_core::minimap::page_window(cur, glaspen_core::minimap::PageFilter::All)?;
+    *MINIMAP_WINDOW.lock().unwrap_or_else(|e| e.into_inner()) = Some(window.clone());
+    MINIMAP_WINDOW_FOR.store(cur, std::sync::atomic::Ordering::SeqCst);
+    Some(window)
 }
 
-/// 单后台工人:逐张渲染 [start,end) 里缺失的页,每张完成即投递刷新。
-fn minimap_pump(ids: &[i64], start: usize, end: usize) {
+/// 单后台工人:逐张渲染窗口里缺失的页,每张完成即投递刷新。
+fn minimap_pump(ids: &[i64]) {
     use std::sync::atomic::Ordering;
-    let want: Vec<i64> = ids[start..end]
+    let want: Vec<i64> = ids
         .iter()
         .copied()
         .filter(|id| {
@@ -1531,43 +1514,51 @@ fn draw_minimap(state: &mut OverlayState) {
     if cur <= 0 {
         return;
     }
-    let Some(ids) = minimap_page_ids(cur) else {
+    let Some(window) = minimap_window(cur) else {
         return;
     };
-    let Some(idx) = ids.iter().position(|&x| x == cur) else {
-        return;
-    };
-    let start = idx.saturating_sub(5);
-    let end = (start + 10).min(ids.len());
-    if end <= start {
-        return;
-    }
-    let total_h = (end - start) as i32 * MM_TH + (end - start - 1) as i32 * MM_GAP;
 
     let canvas = &mut state.canvas;
     let (w, h) = (canvas.w, canvas.h);
+    // 页窗 + 条带几何唯一来源 = core::minimap(Windows 样式: 垂直居中)。
+    let Ok(layout) = glaspen_core::minimap::layout(
+        w as f64,
+        h as f64,
+        &window.ids,
+        window.start,
+        cur,
+        &glaspen_core::minimap::WINDOWS_METRICS,
+    ) else {
+        return;
+    };
+    if layout.items.is_empty() {
+        return;
+    }
     let bits = canvas.bits;
     let accent = canvas.color; // 当前页描边用当前笔色
+    let mw = layout.strip_w as i32;
+    let tx = layout.strip_x as i32;
     unsafe {
-        let y0 = ((h - total_h) / 2).max(4);
-        let tx = w - MM_TW - 8;
-        for (k, &pid) in ids[start..end].iter().enumerate() {
-            let ty = y0 + k as i32 * (MM_TH + MM_GAP);
-            if ty < 0 || ty + MM_TH > h || tx < 0 {
+        for item in &layout.items {
+            let ty = item.y as i32;
+            let mh = item.h as i32;
+            if ty < 0 || ty + mh > h || tx < 0 {
                 continue;
             }
             // 白底卡片(不透明)
-            minimap_fill(bits, w, h, tx, ty, MM_TW, MM_TH, 252, 252, 252, 255);
+            minimap_fill(bits, w, h, tx, ty, mw, mh, 252, 252, 252, 255);
             // 内容:等比缩放居中(最近邻,缩略图够清晰)
-            let thumb = MINIMAP_THUMBS.lock().unwrap_or_else(|e| e.into_inner()).get(&pid).map(|t| {
-                (t.rgba.clone(), t.w, t.h)
-            });
+            let thumb = MINIMAP_THUMBS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&item.screen_id)
+                .map(|t| (t.rgba.clone(), t.w, t.h));
             if let Some((src, sw, sh)) = thumb {
-                let scale = (MM_TW as f32 / sw as f32).min(MM_TH as f32 / sh as f32);
+                let scale = (mw as f32 / sw as f32).min(mh as f32 / sh as f32);
                 let dw = (sw as f32 * scale) as i32;
                 let dh = (sh as f32 * scale) as i32;
-                let ox = tx + (MM_TW - dw) / 2;
-                let oy = ty + (MM_TH - dh) / 2;
+                let ox = tx + (mw - dw) / 2;
+                let oy = ty + (mh - dh) / 2;
                 for dy in 0..dh {
                     let py = oy + dy;
                     if py < 0 || py >= h {
@@ -1590,21 +1581,33 @@ fn draw_minimap(state: &mut OverlayState) {
                 }
             }
             // 边框:当前页 2px 笔色,其余 1px 浅灰
-            let (bc, bg_, bb, thick) = if pid == cur {
+            let (bc, bg_, bb, thick) = if item.current {
                 (accent.0, accent.1, accent.2, 2)
             } else {
                 (200u8, 200u8, 200u8, 1)
             };
             for t in 0..thick {
                 // 上下
-                minimap_fill(bits, w, h, tx - t, ty - t, MM_TW + 2 * t + 1, 1, bc, bg_, bb, 255);
                 minimap_fill(
                     bits,
                     w,
                     h,
                     tx - t,
-                    ty + MM_TH + t,
-                    MM_TW + 2 * t + 1,
+                    ty - t,
+                    mw + 2 * t + 1,
+                    1,
+                    bc,
+                    bg_,
+                    bb,
+                    255,
+                );
+                minimap_fill(
+                    bits,
+                    w,
+                    h,
+                    tx - t,
+                    ty + mh + t,
+                    mw + 2 * t + 1,
                     1,
                     bc,
                     bg_,
@@ -1612,15 +1615,15 @@ fn draw_minimap(state: &mut OverlayState) {
                     255,
                 );
                 // 左右
-                minimap_fill(bits, w, h, tx - t, ty, 1, MM_TH, bc, bg_, bb, 255);
+                minimap_fill(bits, w, h, tx - t, ty, 1, mh, bc, bg_, bb, 255);
                 minimap_fill(
                     bits,
                     w,
                     h,
-                    tx + MM_TW + t,
+                    tx + mw + t,
                     ty,
                     1,
-                    MM_TH,
+                    mh,
                     bc,
                     bg_,
                     bb,
@@ -1629,7 +1632,7 @@ fn draw_minimap(state: &mut OverlayState) {
             }
         }
     }
-    minimap_pump(&ids, start, end);
+    minimap_pump(&window.ids);
 }
 
 /// 矩形填色(预乘 BGRA,带边界裁剪)

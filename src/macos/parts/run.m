@@ -545,13 +545,51 @@ static void canvas_zoom_at_center(double factor) {
 }
 
 // 保存唯一的无限画布镜头(仅无限模式;翻页模式无镜头)
-// 页面缩略图条(minimap,仅翻页模式):屏幕右缘竖向展示附近 10 页(VS Code 风)。
+// 页面缩略图条(minimap,仅翻页模式;D7: 页窗/条带几何唯一来源 = core::minimap)。
+// 本文件不再算页窗与条带几何(旧 draw_minimap 的 list_screens 过滤 / 5+10 页
+// 窗口 / (n-1-row)*(th+gap) 公式已删): 当前页/视图尺寸/几何组过滤宽度经
+// glaspen2_minimap_layout_json 交给 core, 这里只解析 core 算好的布局 JSON,
+// 再做本平台原有的缩略图队列/条带合成/描边/页号字体(样式逐字保持)。
+// 布局是视图坐标(y 向下); NSImage/CGContext 是 y 向上, 合成条带时翻转。
 // 性能要点:缩略图在专属串行低优先级队列逐张渲染(避免并发全屏渲染打爆 CPU),
-// 每帧只把合成好的整条 strip 图贴一次(而不是逐张画 10 次)。
+// 每帧只把合成好的整条 strip 图贴一次(而不是逐张画 10 次);布局 JSON 只在
+// 当前页/视图尺寸/几何组过滤宽度变化时重取(同旧 id 列表缓存策略)。
 static dispatch_queue_t g_minimap_queue = nil;
 static NSImage *g_minimap_strip = nil;        // 合成好的整条(含边框/页号)
 static NSInteger g_minimap_strip_key = -1;    // 条带指纹:(当前页, 取图版本)
 static NSInteger g_minimap_fetch_version = 0; // 每完成一张取图 +1
+
+// core minimap 布局 FFI JSON → 字典;失败/error JSON 只记一次日志(避免每帧
+// 刷屏)并回 nil。
+static NSDictionary *minimap_layout_json(char *json) {
+  static BOOL s_minimap_ffi_warned = NO;
+  if (!json) {
+    if (!s_minimap_ffi_warned) {
+      s_minimap_ffi_warned = YES;
+      NSLog(@"[minimap] core 布局 FFI 返回 NULL");
+    }
+    return nil;
+  }
+  NSData *data = [NSData dataWithBytes:json length:strlen(json)];
+  glaspen2_free_c_string(json);
+  id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+  if (![parsed isKindOfClass:[NSDictionary class]]) {
+    if (!s_minimap_ffi_warned) {
+      s_minimap_ffi_warned = YES;
+      NSLog(@"[minimap] core 布局 JSON 无法解析");
+    }
+    return nil;
+  }
+  NSDictionary *dict = parsed;
+  if (dict[@"error"]) {
+    if (!s_minimap_ffi_warned) {
+      s_minimap_ffi_warned = YES;
+      NSLog(@"[minimap] core 布局 FFI 错误: %@", dict[@"error"]);
+    }
+    return nil;
+  }
+  return dict;
+}
 
 static void draw_minimap(CGContextRef ctx, NSRect bounds) {
   if (g_infinite_canvas)
@@ -570,43 +608,31 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
   if (g_minimap_thumbs.count > 128)
     [g_minimap_thumbs removeAllObjects]; // 活页本很大时别无限涨
 
-  // 附近页 id 列表(当前页变化时重新解析)
-  if (g_minimap_ids == nil || g_minimap_ids_for != cur) {
-    char *json = glaspen2_list_screens_json();
-    if (!json)
-      return;
-    NSString *str = [[NSString alloc] initWithUTF8String:json];
-    glaspen2_free_c_string(json);
-    NSData *d = [str dataUsingEncoding:NSUTF8StringEncoding];
-    NSArray *arr = [NSJSONSerialization JSONObjectWithData:d
-                                                   options:0
-                                                     error:nil];
-    if (![arr isKindOfClass:[NSArray class]])
-      return;
-    NSMutableArray *ids = [NSMutableArray array];
-    for (NSDictionary *o in arr) {
-      // 页按分辨率分组, minimap 只显示当前几何组的页
-      if (g_pageview_pw > 0 && [o[@"w"] intValue] != g_pageview_pw)
-        continue;
-      NSNumber *pid = o[@"id"];
-      if (pid)
-        [ids addObject:pid];
-    }
-    g_minimap_ids = ids;
-    g_minimap_ids_for = cur;
-    g_minimap_strip_key = -1; // 列表变了,条带重合成
+  // 页窗 + 条带几何: 唯一来源 core::minimap(FFI)。只在当前页/视图尺寸/
+  // 几何组过滤宽度变化时重取(与旧 id 列表缓存同策略: 不在绘制热路径查库)。
+  // g_pageview_pw > 0 = page-view-fit 模式, core 只保留当前几何组(按页宽过滤);
+  // 0 = 不过滤(与旧 if (g_pageview_pw > 0 ...) 同款)。
+  double view_w = bounds.size.width, view_h = bounds.size.height;
+  if (g_minimap_layout == nil || g_minimap_layout_for != cur ||
+      g_minimap_layout_w != view_w || g_minimap_layout_h != view_h ||
+      g_minimap_layout_geom_w != g_pageview_pw) {
+    g_minimap_layout = minimap_layout_json(glaspen2_minimap_layout_json(
+        cur, view_w, view_h, g_pageview_pw));
+    g_minimap_layout_for = cur;
+    g_minimap_layout_w = view_w;
+    g_minimap_layout_h = view_h;
+    g_minimap_layout_geom_w = g_pageview_pw;
+    g_minimap_strip_key = -1; // 布局变了, 条带重合成
   }
-  NSUInteger idx = [g_minimap_ids indexOfObject:@(cur)];
-  if (idx == NSNotFound)
+  NSArray *items = g_minimap_layout[@"items"];
+  if (![items isKindOfClass:[NSArray class]] || items.count == 0)
     return;
-  NSUInteger start = (idx > 5) ? idx - 5 : 0;
-  NSUInteger end = MIN(start + 10, [g_minimap_ids count]);
-  NSUInteger n = end - start;
-  if (n == 0)
+  double strip_w = [g_minimap_layout[@"strip_w"] doubleValue];
+  double strip_h = [g_minimap_layout[@"strip_h"] doubleValue];
+  double strip_x = [g_minimap_layout[@"strip_x"] doubleValue];
+  double strip_y = [g_minimap_layout[@"strip_y"] doubleValue];
+  if (!(strip_w > 0.0) || !(strip_h > 0.0))
     return;
-
-  const CGFloat tw = 64, th = 40, gap = 4;
-  CGFloat total_h = n * th + (n - 1) * gap;
 
   // 1) 缺失的缩略图:排入专属串行队列逐张渲染(utility 优先级,
   //    不与书写落库抢锁、不并发打爆 CPU)
@@ -617,8 +643,12 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
     dispatch_set_target_queue(g_minimap_queue,
                               dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
   });
-  for (NSUInteger i = start; i < end; i++) {
-    NSNumber *pid = g_minimap_ids[i];
+  for (NSDictionary *item in items) {
+    if (![item isKindOfClass:[NSDictionary class]])
+      continue;
+    NSNumber *pid = item[@"screen_id"];
+    if (![pid isKindOfClass:[NSNumber class]])
+      continue;
     if ([g_minimap_thumbs objectForKey:pid])
       continue;
     if ([g_minimap_inflight containsObject:pid])
@@ -646,19 +676,25 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
     });
   }
 
-  // 2) 合成整条 strip(小图,只在缩略图版本/当前页变化时重建)
+  // 2) 合成整条 strip(小图,只在缩略图版本/当前页/布局变化时重建)
   NSInteger key = g_minimap_fetch_version * 100000 + (NSInteger)cur;
   if (g_minimap_strip == nil || key != g_minimap_strip_key) {
     g_minimap_strip_key = key;
-    NSImage *strip = [[NSImage alloc] initWithSize:NSMakeSize(tw, total_h)];
+    NSImage *strip =
+        [[NSImage alloc] initWithSize:NSMakeSize(strip_w, strip_h)];
     [strip lockFocus];
-    for (NSUInteger i = start; i < end; i++) {
-      NSNumber *pid = g_minimap_ids[i];
-      BOOL isCur = ([pid longLongValue] == cur);
-      NSUInteger row = i - start;
-      // lockFocus 坐标 y 向上:row 0 画在条带顶部
-      CGFloat y = (n - 1 - row) * (th + gap);
-      NSRect rect = NSMakeRect(0, y, tw, th);
+    for (NSDictionary *item in items) {
+      if (![item isKindOfClass:[NSDictionary class]])
+        continue;
+      NSNumber *pid = item[@"screen_id"];
+      if (![pid isKindOfClass:[NSNumber class]])
+        continue;
+      BOOL isCur = [item[@"current"] boolValue];
+      // 视图 y 向下 → 条带本地向下 → lockFocus(y 向上) 翻转
+      double item_y = [item[@"y"] doubleValue] - strip_y;
+      double item_h = [item[@"h"] doubleValue];
+      CGFloat ly = (CGFloat)(strip_h - (item_y + item_h));
+      NSRect rect = NSMakeRect(0, ly, (CGFloat)strip_w, (CGFloat)item_h);
       NSImage *im = [g_minimap_thumbs objectForKey:pid];
       if (im) {
         [im drawInRect:rect
@@ -673,25 +709,27 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
       border.lineWidth = isCur ? 2.0 : 1.0;
       (isCur ? NSColor.systemRedColor : NSColor.systemGrayColor).setStroke;
       [border stroke];
-      // 页号 = 全列表中的序号(从 1 起)
-      NSString *num =
-          [NSString stringWithFormat:@"%lu", (unsigned long)(start + row + 1)];
-      [num drawAtPoint:NSMakePoint(rect.origin.x + 3, rect.origin.y + 3)
-          withAttributes:@{
-            NSFontAttributeName :
-                [NSFont monospacedSystemFontOfSize:9
-                                            weight:NSFontWeightRegular],
-            NSForegroundColorAttributeName :
-                [NSColor colorWithCalibratedWhite:0.25 alpha:0.9],
-          }];
+      // 页号 = core 下发的全列表 1 基序号(label);位置/字体/颜色逐字保持
+      NSString *num = item[@"label"];
+      if ([num isKindOfClass:[NSString class]] && num.length > 0) {
+        [num drawAtPoint:NSMakePoint(rect.origin.x + 3, rect.origin.y + 3)
+            withAttributes:@{
+              NSFontAttributeName :
+                  [NSFont monospacedSystemFontOfSize:9
+                                              weight:NSFontWeightRegular],
+              NSForegroundColorAttributeName :
+                  [NSColor colorWithCalibratedWhite:0.25 alpha:0.9],
+            }];
+      }
     }
     [strip unlockFocus];
     g_minimap_strip = strip;
   }
 
-  // 3) 一次贴图(右缘,自上而下)
-  NSRect dst = NSMakeRect(bounds.size.width - tw - 8,
-                          bounds.size.height - total_h - 8, tw, total_h);
+  // 3) 一次贴图(右缘, 顶端 8pt; y 向下布局 → Cocoa y 向上翻转)
+  NSRect dst = NSMakeRect((CGFloat)strip_x,
+                          (CGFloat)(view_h - strip_y - strip_h),
+                          (CGFloat)strip_w, (CGFloat)strip_h);
   [g_minimap_strip drawInRect:dst
                      fromRect:NSZeroRect
                     operation:NSCompositingOperationSourceOver

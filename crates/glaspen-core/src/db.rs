@@ -1813,7 +1813,19 @@ mod platform {
             Some(p) => p,
             None => return Vec::new(),
         };
-        let r = sqlx::query_as(
+        let r = list_screens_with(pool).await;
+        dblog!("页列表 → {} 页", r.len());
+        r
+    }
+
+    /// Same query as [list_screens] but on an explicit pool (tests / callers that
+    /// already hold one): live screens that have at least one stroke row, in
+    /// notebook order (`order_index, id`).
+    ///
+    /// 语义提醒: EXISTS 不看 strokes.deleted_at —— 页的软删以 screens.deleted_at
+    /// 为准(缩略图条页窗 D7 与两端旧实现同款)。
+    pub(crate) async fn list_screens_with(pool: &SqlitePool) -> Vec<(i64, i32, i32)> {
+        sqlx::query_as(
             "SELECT s.id, s.screen_w, s.screen_h FROM screens s \
              WHERE deleted_at IS NULL \
              AND EXISTS (SELECT 1 FROM strokes WHERE screen_id = s.id) \
@@ -1821,9 +1833,7 @@ mod platform {
         )
         .fetch_all(pool)
         .await
-        .unwrap_or_default();
-        dblog!("页列表 → {} 页", r.len());
-        r
+        .unwrap_or_default()
     }
 
     /// 活页本重排: 把某页移到锚点页前/后(面板内前后移)。全库活页序列
@@ -2632,12 +2642,12 @@ mod tests {
     use super::StrokeData;
     use super::platform::{
         SCHEMA_VERSION, attach_points, backup_before_migration, backup_to_with,
-        insert_bubble_message_with, last_screen_with_geometry_with, load_bubble_messages_with,
-        load_setting_with, migrate_setting_keys, migrate_with, migrate_with_hook, next_screen_with,
-        page_info_with, prev_screen_with, reorder_screen_with, restore_merge_from_with,
-        save_setting_with, screen_stroke_version_with, stroke_versions_many_with,
-        thumbnail_lookup_with, thumbnail_store_with, thumbnails_many_with,
-        thumbnails_purge_screen_with,
+        insert_bubble_message_with, last_screen_with_geometry_with, list_screens_with,
+        load_bubble_messages_with, load_setting_with, migrate_setting_keys, migrate_with,
+        migrate_with_hook, next_screen_with, page_info_with, prev_screen_with, reorder_screen_with,
+        restore_merge_from_with, save_setting_with, screen_stroke_version_with,
+        stroke_versions_many_with, thumbnail_lookup_with, thumbnail_store_with,
+        thumbnails_many_with, thumbnails_purge_screen_with,
     };
     use crate::runtime;
     use sqlx::SqlitePool;
@@ -2756,6 +2766,55 @@ mod tests {
                 None
             );
 
+            let _ = sqlx::query(&format!("DELETE FROM screens WHERE id = {}", p1))
+                .execute(&pool)
+                .await;
+            let _ = std::fs::remove_file(&path);
+        });
+    }
+
+    /// D7: 缩略图条页窗的页来源 = list_screens —— 软删页/无笔迹页不出现,
+    /// 页内笔迹全软删但 screens 未删的页仍算"有笔迹"(两端旧实现同款)。
+    #[test]
+    fn test_list_screens_excludes_soft_deleted_and_blank_pages() {
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        runtime().block_on(async {
+            let (pool, path) = temp_pool().await;
+            migrate_with(&pool).await.unwrap();
+            // 插入顺序 = order_index 顺序: p1, p2(空页), p3(软删页), p4。
+            let p1 = add_screen_at(&pool, 1.0, 1920, 1080).await;
+            let blank = add_screen_at(&pool, 2.0, 3440, 1440).await;
+            let deleted = add_screen_at(&pool, 3.0, 1920, 1080).await;
+            let p4 = add_screen_at(&pool, 4.0, 1920, 1080).await;
+            assert_ne!((p1, blank, deleted, p4), (0, 0, 0, 0));
+            for sid in [p1, deleted, p4] {
+                sqlx::query(
+                    "INSERT INTO strokes (screen_id, color_r, color_g, color_b, width_scale, created_at) \
+                     VALUES (?1, 1.0, 0.0, 0.0, 1.0, 1.0)",
+                )
+                .bind(sid)
+                .execute(&pool)
+                .await
+                .unwrap();
+            }
+            // 软删 deleted 页(及其笔迹);blank 页没有 strokes 行。
+            sqlx::query("UPDATE screens SET deleted_at = 2.0 WHERE id = ?1")
+                .bind(deleted)
+                .execute(&pool)
+                .await
+                .unwrap();
+            sqlx::query("UPDATE strokes SET deleted_at = 2.0 WHERE screen_id = ?1")
+                .bind(deleted)
+                .execute(&pool)
+                .await
+                .unwrap();
+            assert_eq!(
+                list_screens_with(&pool).await,
+                vec![(p1, 1920, 1080), (p4, 1920, 1080)],
+                "页窗只含 screens.deleted_at IS NULL 且有 strokes 行的页, 按 order_index,id"
+            );
             let _ = sqlx::query(&format!("DELETE FROM screens WHERE id = {}", p1))
                 .execute(&pool)
                 .await;

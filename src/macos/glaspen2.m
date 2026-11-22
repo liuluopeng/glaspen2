@@ -145,7 +145,13 @@ extern int glaspen2_export_pdf(void);
 extern int glaspen2_export_infinite_pdf_paged(int page_w, int page_h);
 extern int glaspen2_export_infinite_svg(void);
 extern void glaspen2_on_display_change(int screen_w, int screen_h);
-extern char* glaspen2_list_screens_json(void);
+// D7 缩略图条布局桥(core/minimap.rs): 输入当前页/视图尺寸/几何组过滤宽度,
+// 返回 core 算好的页窗 + 条带布局 JSON({"strip_x","strip_y","strip_w","strip_h",
+// "items":[{"screen_id","index","y","h","label","current"},...]} 或
+// {"error":"..."}), 坐标是视图坐标(原点左上, y 向下; 合成条带时翻转 y)。
+// geometry_width > 0 = page-view-fit 模式, 只保留当前几何组(按页宽过滤)。
+// 永不 NULL; 调用方用 glaspen2_free_c_string 释放。
+extern char* glaspen2_minimap_layout_json(long long current_screen_id, double view_w, double view_h, int geometry_width);
 extern unsigned char* glaspen2_render_thumbnail(long long screen_id, int w, int h, int max_size, int *out_len);
 /// 批量缩略图:一次调用返回多页的 PNG(自描述二进制块,见 export.rs)。
 extern unsigned char* glaspen2_page_thumbnails(const long long *ids, int count, int max_size, int *out_len);
@@ -428,8 +434,14 @@ static NSInteger g_grid_divider = 0;
 static BOOL g_minimap_enabled = NO;
 static NSMutableDictionary *g_minimap_thumbs = nil; // screenId(NSNumber) → NSImage
 static NSMutableArray *g_minimap_inflight = nil;     // 正在后台取图的 screenId
-static NSArray *g_minimap_ids = nil;                 // 附近页 id 列表(缓存)
-static long g_minimap_ids_for = -1;                  // 该列表对应的当前页 id
+// 页窗 + 条带几何的唯一来源 = core::minimap(经 FFI glaspen2_minimap_layout_json);
+// 这里只缓存最近一次布局 JSON(当前页/视图尺寸/几何组过滤宽度变化时重取)。
+// 缩略图队列/条带合成/描边/页号字体仍在 run.m 的 draw_minimap。
+static NSDictionary *g_minimap_layout = nil; // {"strip_x","strip_y","strip_w","strip_h","items":[...]}
+static long g_minimap_layout_for = -1;       // 该布局对应的当前页 id
+static double g_minimap_layout_w = -1.0;     // 该布局对应的视图宽(逻辑点)
+static double g_minimap_layout_h = -1.0;     // 该布局对应的视图高(逻辑点)
+static int g_minimap_layout_geom_w = -1;     // 该布局对应的几何组过滤宽度(0=不过滤)
 
 // ── 无限画布模式 ──
 // 画布坐标 = 视口坐标 + pan(pan = 视口左上角在画布坐标系中的位置)。
