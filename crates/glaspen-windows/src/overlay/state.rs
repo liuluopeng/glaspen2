@@ -252,12 +252,13 @@ struct OverlayState {
     camera_pan_timer: bool,
     /// 是否因"镜头修饰键按住"而拦截了鼠标(释放修饰键/退出模式时要还原穿透)
     camera_blocked: bool,
-    /// 快捷录制 GIF 进行中(Ctrl+Alt+R 按住)
-    gif_recording: bool,
-    /// 录制起点笔画序号(-1 = 未在录制)
-    gif_record_start: i32,
-    /// ⌘⌃3 直发:按住录制的起点笔画序号(-1 = 未在录制)
-    msg_record_start: i32,
-    /// ⌘⌃2 草稿通道进行中(按住期间实时推送)
-    ink_draft_active: bool,
+    /// D8b: GIF / 手写消息两个录制状态机(core recording::RecordingMachine)。
+    /// 消息循环线程独占(状态机不是 Sync);后台结果经自定义 WM_* 投递回该线程
+    /// 再作为结果事件喂回, 旧的 gif_recording/msg_record_start/ink_draft_active
+    /// 三个会话标志位已删除。
+    gif_machine: glaspen_core::recording::RecordingMachine,
+    chat_machine: glaspen_core::recording::RecordingMachine,
+    /// GIF 编码完成、等待窗口线程写剪贴板的字节(两步顺序:
+    /// GifEncodeSucceeded → Clipboard, 见 D8b backlog ①)。
+    pending_gif_bytes: Vec<u8>,
 }

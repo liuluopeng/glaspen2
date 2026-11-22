@@ -180,13 +180,43 @@ unsafe extern "system" fn wnd_proc(
             dispatch_hotkey(state, wparam.0 as i32);
             LRESULT(0)
         }
-        WM_RECORD_DONE => {
-            // 后台 GIF 编码/剪贴板完成(0=复制失败, 1=成功, 2=没有笔迹)
-            match wparam.0 as usize {
-                1 => hud_notify("GIF 已复制到剪贴板"),
-                2 => hud_notify("没有笔迹或导出失败"),
-                _ => hud_notify("GIF 复制失败"),
+        WM_RECORD_ENCODE_OK => {
+            // D8b ①:后台只做了编码, 字节盒子投回窗口线程;窗口线程再喂
+            // GifEncodeSucceeded —— 其 effects 是 Clipboard, 于是剪贴板写入
+            // 发生在窗口线程, 顺序严格是 编码成功 → 写剪贴板 → 结果 HUD。
+            if lparam.0 == 0 {
+                return LRESULT(0);
             }
+            let state = &mut *STATE.load(Ordering::SeqCst);
+            let bytes = unsafe { *Box::from_raw(lparam.0 as *mut Vec<u8>) };
+            recording_encode_done(state, bytes);
+            LRESULT(0)
+        }
+        WM_RECORD_ENCODE_FAIL => {
+            // 后台编码失败(没有笔迹/导出失败) → 状态机提示"没有笔迹或导出失败"
+            let state = &mut *STATE.load(Ordering::SeqCst);
+            recording_encode_failed(state);
+            LRESULT(0)
+        }
+        WM_RECORD_DRAFT_DONE => {
+            // 后台草稿通道已 half-close, 裁决(code + last_error)回窗口线程喂
+            // ChatDraftFinished;提示文案由状态机按 DraftOutcome 选。
+            if lparam.0 == 0 {
+                return LRESULT(0);
+            }
+            let state = &mut *STATE.load(Ordering::SeqCst);
+            let done = unsafe { *Box::from_raw(lparam.0 as *mut DraftDone) };
+            recording_draft_done(state, done);
+            LRESULT(0)
+        }
+        WM_RECORD_SEND_DONE => {
+            // 后台直发完成 → ChatSendSucceeded/Failed → 带条数的 HUD
+            if lparam.0 == 0 {
+                return LRESULT(0);
+            }
+            let state = &mut *STATE.load(Ordering::SeqCst);
+            let done = unsafe { *Box::from_raw(lparam.0 as *mut SendDone) };
+            recording_send_done(state, done);
             LRESULT(0)
         }
         WM_TRAY_COMMAND => {

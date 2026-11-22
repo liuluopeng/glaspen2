@@ -58,5 +58,6 @@ include!("overlay/run.rs");
 include!("overlay/mouse.rs");
 include!("overlay/hud.rs");
 include!("overlay/actions.rs");
+include!("overlay/recording.rs");
 include!("overlay/hotkeys.rs");
 include!("overlay/pipe.rs");

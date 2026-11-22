@@ -197,15 +197,12 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                         glaspen_core::export::glaspen2_share_ink_set_active(1);
                     }
                 } else {
-                    state.msg_record_start = -1;
-                    if state.ink_draft_active {
-                        state.ink_draft_active = false;
-                        std::thread::spawn(|| {
-                            let _ = glaspen_core::export::glaspen2_ink_draft_stop();
-                        });
-                    }
                     glaspen_core::export::glaspen2_share_ink_set_active(0);
                 }
+                // D8b: 总开关镜像喂给手写消息状态机。关闭时按 effects 收尾录制:
+                // 直发静默丢弃(Discard), 草稿走完整 StopChatDraft(提交在写笔画 +
+                // half-close + 按 axum 裁决提示, 修复旧 Windows 静默 stop 的不一致)。
+                recording_chat_integration_changed(state, on);
                 // Ctrl+Alt+2/3: 集成开才注册, 关时把组合直通前台
                 set_chat_integration(state.canvas.hwnd, on);
                 push_settings_changed(&format!("{{\"chatIntegration\":{on}}}"));
@@ -807,139 +804,10 @@ fn finish_active_stroke(state: &mut OverlayState) {
     }
 }
 
-/// 按键按下:记录起始笔画序号,之后画的每一笔都进这段 GIF
-fn gif_record_start(state: &mut OverlayState) {
-    if state.gif_recording {
-        return;
-    }
-    // macOS 在涂鸦停用时也允许进入录制(松手才报"没有笔迹"), 这里保持一致
-    finish_active_stroke(state);
-    state.gif_record_start = glaspen_core::export::glaspen2_stroke_count();
-    state.gif_recording = true;
-    hud_notify("按住绘制, 松开生成 GIF");
-}
-
-/// 按键松开:固定笔画区间,后台线程回放渲染编码 GIF → 剪贴板
-fn gif_record_stop(state: &mut OverlayState) {
-    if !state.gif_recording {
-        return;
-    }
-    let start = state.gif_record_start;
-    state.gif_recording = false;
-    state.gif_record_start = -1;
-    finish_active_stroke(state);
-    let end = glaspen_core::export::glaspen2_stroke_count();
-    let (fps, resolution, speed, end_mode) = gif_settings();
-    // HWND 裸指针不能跨线程,转 isize 传递
-    let hwnd = state.canvas.hwnd.0 as isize;
-    // 回放渲染 + GIF 压缩可能上百毫秒,不阻塞消息循环;
-    // 区间在主线程钉死,新录制不会覆盖尚在编码的这一次
-    std::thread::spawn(move || {
-        let mut len: i32 = 0;
-        let ptr = glaspen_core::export::glaspen2_gif_record_end(
-            start, end, fps, resolution, speed, end_mode, &mut len,
-        );
-        let result = if ptr.is_null() || len <= 0 {
-            2 // 没有笔迹或导出失败
-        } else {
-            let gif = unsafe { std::slice::from_raw_parts(ptr, len as usize) };
-            let ok = unsafe { copy_gif_bytes_to_clipboard(gif) };
-            glaspen_core::export::glaspen2_free_rust_bytes(ptr, len);
-            if ok { 1 } else { 0 }
-        };
-        unsafe {
-            let _ = PostMessageW(
-                Some(HWND(hwnd as *mut core::ffi::c_void)),
-                WM_RECORD_DONE,
-                WPARAM(result as usize),
-                LPARAM(0),
-            );
-        }
-    });
-}
-
-// ── 手写消息集成(macOS ⌘⌃2/⌘⌃3 同款语义,Windows = Ctrl+Alt+2/3)──
-// ⌘⌃3 直发:按住钉住起点,松开把 [start,end) 一次性发送;
-// ⌘⌃2 草稿:按住经 DraftInk 流实时推送,松开 half-close 由 axum 决定。
-// 总开关 chat_integration 关闭时热键不劫持;两者互斥。
-
-/// Ctrl+Alt+3 按下:钉住录制起点(先把手写中的笔画落定)
-fn chat_record_start(state: &mut OverlayState) {
-    if state.msg_record_start >= 0 || state.ink_draft_active {
-        return;
-    }
-    finish_active_stroke(state);
-    state.msg_record_start = glaspen_core::export::glaspen2_stroke_count();
-    hud_notify("书写手写消息… 松开 Ctrl+Alt+3 发送");
-}
-
-/// Ctrl+Alt+3 松开:后台线程发送,gRPC 阻塞不进消息循环
-fn chat_record_stop(state: &mut OverlayState) {
-    let start = state.msg_record_start;
-    state.msg_record_start = -1;
-    if start < 0 {
-        return;
-    }
-    finish_active_stroke(state);
-    let end = glaspen_core::export::glaspen2_stroke_count();
-    if end <= start {
-        hud_notify("没有新手写内容");
-        return;
-    }
-    std::thread::spawn(move || {
-        let sent = glaspen_core::export::glaspen2_chat_send_strokes(start, end);
-        if sent >= 0 {
-            hud_notify_async(format!("手写消息已发送 ({sent} 笔)"));
-        } else {
-            hud_notify_async("手写消息发送失败".to_string());
-        }
-    });
-}
-
-/// Ctrl+Alt+2 按下:打开草稿通道(失败原因经 FFI 取回)
-fn ink_draft_start(state: &mut OverlayState) {
-    if state.ink_draft_active || state.msg_record_start >= 0 {
-        return;
-    }
-    finish_active_stroke(state);
-    let (w, h) = (state.canvas.w, state.canvas.h);
-    if glaspen_core::export::glaspen2_ink_draft_start(w, h) != 0 {
-        state.ink_draft_active = true;
-        hud_notify("书写手写消息(草稿)… 松开 Ctrl+Alt+2 交给对方");
-    } else {
-        hud_notify("手写通道开启失败");
-    }
-}
-
-/// Ctrl+Alt+2 松开:后台线程 half-close 并等 axum 的决定(阻塞 FFI)
-fn ink_draft_stop(state: &mut OverlayState) {
-    if !state.ink_draft_active {
-        return;
-    }
-    state.ink_draft_active = false;
-    finish_active_stroke(state);
-    std::thread::spawn(|| {
-        let r = glaspen_core::export::glaspen2_ink_draft_stop();
-        // 失败原因在后台线程取好再通知,避免与下一次会话竞争(macOS 同款)
-        let ptr = glaspen_core::export::glaspen2_ink_draft_last_error();
-        let detail = if ptr.is_null() {
-            String::new()
-        } else {
-            unsafe { std::ffi::CStr::from_ptr(ptr) }
-                .to_string_lossy()
-                .to_string()
-        };
-        if r > 0 {
-            hud_notify_async(format!("对方已接收手写草稿 ({r} 笔)"));
-        } else if r == 0 {
-            hud_notify_async("对方未采用这份手写草稿".to_string());
-        } else if !detail.is_empty() {
-            hud_notify_async(detail);
-        } else {
-            hud_notify_async("手写通道失败(未连接或中断)".to_string());
-        }
-    });
-}
+// (D8b) 录制会话的起止/决策/effect 分派已迁到 overlay/recording.rs:
+// 热键/Raw Input 只喂 Start/Release 事件, GIF 编码/剪贴板/通道/直发/HUD 全部按
+// core 状态机下发的 effects 顺序执行。本文件保留 finish_active_stroke(笔画
+// 边界)与 copy_gif_bytes_to_clipboard(剪贴板实现)供其复用。
 
 /// GIF 字节写入剪贴板:注册格式 "GIF"(微信/QQ 粘贴动画时识别此格式)
 /// GIF 写入剪贴板,双格式保证粘贴可用:
@@ -1065,18 +933,22 @@ unsafe fn handle_keyboard_raw(buf: &[u64], state: &mut OverlayState) {
     if key_up && is_modifier {
         camera_mods_maybe_released(state);
     }
-    if state.gif_recording && kb.VKey == 0x52 && kb.Message == WM_KEYUP {
-        // R 松开(无需再验修饰键:录制只在热键按下时开启)
-        gif_record_stop(state);
-        return;
-    }
-    // 手写消息:'2'/'3' 松开结束草稿/直发 —— 与 GIF 的 R 同机制,
-    // 不验修饰键,防止先松 Ctrl/Alt 把会话卡死(macOS 同款容错)
+    // 录制会话的抬起交给 core 状态机(起止/窗口/效果顺序全在 core):
+    // 不验修饰键, 防止先松 Ctrl/Alt 把会话卡死(macOS 同款容错), 但只在本
+    // 槽位确实处于该模式时才消费 —— Raw Input 看得到所有按键, 不能把普通
+    // r/2/3 抬键也吃掉。
     if kb.Message == WM_KEYUP {
-        if kb.VKey == 0x32 && state.ink_draft_active {
-            ink_draft_stop(state);
-        } else if kb.VKey == 0x33 && state.msg_record_start >= 0 {
-            chat_record_stop(state);
+        use glaspen_core::recording::RecordingMode;
+        let gif_mode = state.gif_machine.state().mode();
+        let chat_mode = state.chat_machine.state().mode();
+        if kb.VKey == 0x52 && gif_mode == Some(RecordingMode::Gif) {
+            recording_release(state, RecordingMode::Gif);
+            return;
+        }
+        if kb.VKey == 0x32 && chat_mode == Some(RecordingMode::Draft) {
+            recording_release(state, RecordingMode::Draft);
+        } else if kb.VKey == 0x33 && chat_mode == Some(RecordingMode::Send) {
+            recording_release(state, RecordingMode::Send);
         }
     }
 }

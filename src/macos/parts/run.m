@@ -1919,139 +1919,269 @@ static void copy_gif_data_to_clipboard(unsigned char *gif, int len) {
   [pb writeObjects:@[ [NSURL fileURLWithPath:path] ]];
 }
 
-// Begin a recording session. Commits any in-flight stroke first so the
-// snapshot index is exactly where the held-key doodle starts.
-static void gif_record_start(void) {
-  if (g_gif_recording)
-    return;
+// ── 录制会话接线(D8b): GIF / ⌘⌃2 草稿 / ⌘⌃3 直发 ──
+//
+// 状态/起止窗口/决策/用户可见动作的唯一来源 = core recording::RecordingMachine
+// (经 glaspen2_recording_* FFI;槽 0 = GIF,槽 1 = 手写消息)。本文件只做:
+//   1) 键按下/抬起时先 finish_active_stroke 再取笔画数, 拼事件 JSON 喂状态机;
+//   2) 按返回的 effects 顺序执行本平台 OS 动作(通知/编码/剪贴板/gRPC);
+//   3) 后台结果 dispatch 回主线程后作为结果事件喂回, 再执行新 effects。
+// HUD 文案与键名留本平台(D10 再统一); 空窗口/模式不匹配/重复按下/总开关
+// 门控等判定全部在 core(旧的逐模式 stop 分支与三个会话标志位已删除)。
+
+#define REC_SLOT_GIF 0
+#define REC_SLOT_CHAT 1
+
+// 在写笔画先落定再取计数: 事件里的 stroke_count 必须是提交之后的计数,
+// 否则窗口会漏掉正在写的那一笔(与两端旧顺序一致)。
+static int rec_finish_and_count(void) {
   finish_active_stroke();
-  g_gif_record_start = glaspen2_stroke_count();
-  g_gif_recording = YES;
-  show_notification(
-      L(@"按住绘制, 松开生成 GIF", @"Hold & draw, release to make GIF"));
+  return glaspen2_stroke_count();
 }
 
-// Finish the recording and copy the resulting GIF to the clipboard. The heavy
-// Cairo rendering/encoding runs on a background queue; the stroke window is
-// pinned from start (key-down) and end (key-up) captured on the main thread,
-// so a new recording can never clobber a pending one.
-static void gif_record_stop_async(void) {
-  int start = g_gif_record_start;
-  int fps = g_gif_fps;
-  double resolution = g_gif_resolution;
-  double speed = g_gif_speed;
-  int end_mode = g_gif_end_mode;
-  g_gif_record_start = -1;
-  g_gif_recording = NO;
-  finish_active_stroke();
-  int end = glaspen2_stroke_count();
-  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-    int out_len = 0;
-    unsigned char *gif = glaspen2_gif_record_end(start, end, fps, resolution,
-                                                 speed, end_mode, &out_len);
-    dispatch_async(dispatch_get_main_queue(), ^{
-      if (gif && out_len > 0) {
-        copy_gif_data_to_clipboard(gif, out_len);
-        glaspen2_free_rust_bytes(gif, out_len);
-        show_notification(L(@"GIF 已复制到剪贴板", @"GIF copied to clipboard"));
-      } else {
-        show_notification(
-            L(@"没有笔迹或导出失败", @"No strokes or export failed"));
-      }
-    });
+// 事件 JSON 用 NSJSONSerialization 生成(单行 + 自动转义 detail 等字符串)。
+static NSString *rec_json(NSDictionary *fields) {
+  NSData *data = [NSJSONSerialization dataWithJSONObject:fields
+                                                 options:0
+                                                   error:nil];
+  return data ? [[NSString alloc] initWithData:data
+                                      encoding:NSUTF8StringEncoding]
+              : nil;
+}
+
+static NSString *rec_key_event(NSString *type, NSString *mode, int strokes) {
+  return rec_json(@{
+    @"type" : type,
+    @"mode" : mode,
+    @"stroke_count" : @(strokes),
   });
 }
 
-// Begin a handwriting message recording session. Commits any in-flight
-// stroke first so the snapshot index is exactly where the recording starts.
-static void msg_record_start(void) {
-  if (g_msg_record_start >= 0)
-    return;
-  finish_active_stroke();
-  g_msg_record_start = glaspen2_stroke_count();
-  show_notification(L(@"书写手写消息… 松开 ⌘⌃3 发送",
-                      @"Writing handwriting… release ⌘⌃3 to send"));
+static NSString *rec_simple_event(NSString *type) {
+  return rec_json(@{@"type" : type});
 }
 
-// Finish the recording and send the captured stroke window as one batch of
-// chat messages. The gRPC append runs on a background queue; the window is
-// pinned on the main thread (key-down/key-up), matching the GIF recorder.
-static void msg_record_stop_async(void) {
-  int start = g_msg_record_start;
-  g_msg_record_start = -1;
-  finish_active_stroke();
-  int end = glaspen2_stroke_count();
-  if (end <= start) {
-    show_notification(L(@"没有新手写内容", @"No new strokes"));
-    return;
+static void rec_exec_effects(int slot, NSArray *effects);
+
+// 喂一个事件并执行返回的 effects(在调用线程 = 主 runloop 上同步执行)。
+// 返回事件是否产生了 effects; key-up 分支据此决定是否消费按键。
+static BOOL rec_feed(int slot, NSString *event_json) {
+  const char *c = event_json.UTF8String;
+  char *out = glaspen2_recording_event_json(slot, c ? c : "");
+  if (!out) {
+    NSLog(@"[recording] 槽 %d: FFI 返回 NULL(不应发生)", slot);
+    return NO;
   }
-  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-    int sent = glaspen2_chat_send_strokes(start, end);
-    dispatch_async(dispatch_get_main_queue(), ^{
-      if (sent >= 0) {
-        show_notification(
-            [NSString stringWithFormat:L(@"手写消息已发送 (%d 笔)",
-                                         @"Handwriting sent (%d strokes)"),
-                                       sent]);
-      } else {
-        show_notification(L(@"手写消息发送失败", @"Handwriting send failed"));
-      }
-    });
-  });
+  NSData *data = [NSData dataWithBytes:out length:strlen(out)];
+  glaspen2_free_c_string(out);
+  id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+  if (![parsed isKindOfClass:[NSArray class]]) {
+    NSLog(@"[recording] 槽 %d 事件执行失败: %@", slot, parsed);
+    return NO;
+  }
+  if ([(NSArray *)parsed count] == 0)
+    return NO;
+  rec_exec_effects(slot, parsed);
+  return YES;
 }
 
-// ── 手写消息草稿通道(⌘⌃2 hold-to-draft)──
-// 按住期间笔迹经 ChatStore/DraftInk gRPC 流实时推给 axum(可预览);
-// 松开 half-close,由 axum 决定是否发送。与 ⌘⌃3(直发)互斥。
+// 开始一次录制: 先提交在写笔画再喂 StartPressed。键按下分支无条件消费按键
+// (与旧实现一致); 状态机自己的"已在录制"守卫会忽略重复按下。
+static void rec_start(int slot, NSString *mode) {
+  int strokes = rec_finish_and_count();
+  rec_feed(slot, rec_key_event(@"StartPressed", mode, strokes));
+}
 
-static void ink_draft_start(void) {
-  if (g_ink_draft_active)
+// 结束一次录制: 先提交在写笔画再喂 ReleasePressed; 调用方已用
+// glaspen2_recording_mode 确认本槽位正处于该模式。
+static void rec_release(int slot, NSString *mode) {
+  int strokes = rec_finish_and_count();
+  rec_feed(slot, rec_key_event(@"ReleasePressed", mode, strokes));
+}
+
+// GIF 编码结果回主线程后待写剪贴板的字节(Clipboard effect 消费)。
+static NSData *s_pending_gif = nil;
+
+// HUD 语义 → 本平台文案(键名/语言留在 adapter, 与 D10 的边界一致)。
+static void rec_show_hud(NSDictionary *effect) {
+  NSString *hud = effect[@"hud"];
+  if (![hud isKindOfClass:[NSString class]])
     return;
-  finish_active_stroke(); // 把在写的笔画先落定,基线之外的新笔才进通道
-  if (glaspen2_ink_draft_start(g_screen_w, g_screen_h)) {
-    g_ink_draft_active = YES;
+  if ([hud isEqualToString:@"GifStartHint"]) {
     show_notification(
-        L(@"书写手写消息(草稿)… 松开 ⌘⌃2 交给对方",
-          @"Writing handwriting draft… release ⌘⌃2 to hand over"));
-  } else {
+        L(@"按住绘制, 松开生成 GIF", @"Hold & draw, release to make GIF"));
+  } else if ([hud isEqualToString:@"SendStartHint"]) {
+    show_notification(L(@"书写手写消息… 松开 ⌘⌃3 发送",
+                        @"Writing handwriting… release ⌘⌃3 to send"));
+  } else if ([hud isEqualToString:@"DraftStartHint"]) {
+    show_notification(L(@"书写手写消息(草稿)… 松开 ⌘⌃2 交给对方",
+                        @"Writing handwriting draft… release ⌘⌃2 to hand over"));
+  } else if ([hud isEqualToString:@"DraftStartFailed"]) {
     show_notification(
         L(@"手写通道开启失败", @"Failed to open handwriting draft channel"));
+  } else if ([hud isEqualToString:@"GifCopied"]) {
+    show_notification(L(@"GIF 已复制到剪贴板", @"GIF copied to clipboard"));
+  } else if ([hud isEqualToString:@"GifNoStrokesOrExportFailed"]) {
+    show_notification(L(@"没有笔迹或导出失败", @"No strokes or export failed"));
+  } else if ([hud isEqualToString:@"GifClipboardFailed"]) {
+    // 仅 Windows 会走到(两平台差异 3);macOS 剪贴板失败只 NSLog 仍提示成功,
+    // 这里保留文案兜底, 不让未知 HUD 静默。
+    show_notification(L(@"GIF 复制失败", @"Failed to copy GIF"));
+  } else if ([hud isEqualToString:@"SendNoStrokes"]) {
+    show_notification(L(@"没有新手写内容", @"No new strokes"));
+  } else if ([hud isEqualToString:@"SendSucceeded"]) {
+    show_notification([NSString
+        stringWithFormat:L(@"手写消息已发送 (%d 笔)",
+                           @"Handwriting sent (%d strokes)"),
+                         [effect[@"strokes"] intValue]]);
+  } else if ([hud isEqualToString:@"SendFailed"]) {
+    show_notification(L(@"手写消息发送失败", @"Handwriting send failed"));
+  } else if ([hud isEqualToString:@"DraftAccepted"]) {
+    show_notification([NSString
+        stringWithFormat:L(@"对方已接收手写草稿 (%d 笔)",
+                           @"Handwriting draft accepted (%d strokes)"),
+                         [effect[@"strokes"] intValue]]);
+  } else if ([hud isEqualToString:@"DraftDeclined"]) {
+    show_notification(
+        L(@"对方未采用这份手写草稿", @"Handwriting draft declined"));
+  } else if ([hud isEqualToString:@"DraftFailed"]) {
+    // detail = glaspen2_ink_draft_last_error 的可读原因(空则用通用文案)。
+    NSString *detail = effect[@"detail"];
+    if ([detail isKindOfClass:[NSString class]] && detail.length > 0) {
+      show_notification(detail);
+    } else {
+      show_notification(L(@"手写通道失败(未连接或中断)",
+                          @"Handwriting channel failed (not connected or broken)"));
+    }
+  } else {
+    NSLog(@"[recording] 未实现的 HUD 文案: %@", hud);
   }
 }
 
-// Stop the draft session. finish_active_stroke runs on the main thread first
-// so the final stroke goes through the commit hook before the stream closes;
-// the blocking wait for axum's verdict runs on a background queue.
-static void ink_draft_stop_async(void) {
-  if (!g_ink_draft_active)
+// 按状态机下发的顺序执行单个 effect。
+static void rec_exec_effect(int slot, NSDictionary *effect) {
+  NSString *kind = effect[@"kind"];
+  if (![kind isKindOfClass:[NSString class]])
     return;
-  g_ink_draft_active = NO;
-  finish_active_stroke();
-  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-    int r = glaspen2_ink_draft_stop();
-    // 失败原因(身份过期/未注册路由/连接失败)在后台线程取好再回主线程,
-    // 避免与下一次会话的写入竞争。
-    const char *err = glaspen2_ink_draft_last_error();
-    NSString *detail =
-        (err && *err) ? [NSString stringWithUTF8String:err] : nil;
-    dispatch_async(dispatch_get_main_queue(), ^{
-      if (r > 0) {
-        show_notification([NSString
-            stringWithFormat:L(@"对方已接收手写草稿 (%d 笔)",
-                               @"Handwriting draft accepted (%d strokes)"),
-                             r]);
-      } else if (r == 0) {
-        show_notification(
-            L(@"对方未采用这份手写草稿", @"Handwriting draft declined"));
-      } else if (detail) {
-        show_notification(detail);
-      } else {
-        show_notification(
-            L(@"手写通道失败(未连接或中断)",
-              @"Handwriting channel failed (not connected or broken)"));
-      }
+  if ([kind isEqualToString:@"ShowHud"]) {
+    rec_show_hud(effect);
+    return;
+  }
+  if ([kind isEqualToString:@"EncodeGif"]) {
+    int start = [effect[@"start_stroke"] intValue];
+    int end = [effect[@"end_stroke"] intValue];
+    // GIF 参数在松手时读(两平台差异 10: 录制中途改参数影响本次输出)。
+    // EncodeGif 由 ReleasePressed 同步产生, 所以这里读到的就是松手瞬间的设置。
+    int fps = g_gif_fps;
+    double resolution = g_gif_resolution;
+    double speed = g_gif_speed;
+    int end_mode = g_gif_end_mode;
+    // 回放渲染 + GIF 压缩可能上百毫秒, 不阻塞主 runloop;窗口已由状态机钉死,
+    // 新一次录制不会覆盖尚在编码的这一次。
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+      int out_len = 0;
+      unsigned char *gif = glaspen2_gif_record_end(
+          start, end, fps, resolution, speed, end_mode, &out_len);
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if (gif && out_len > 0) {
+          s_pending_gif = [NSData dataWithBytes:gif length:out_len];
+          glaspen2_free_rust_bytes(gif, out_len);
+          rec_feed(REC_SLOT_GIF, rec_simple_event(@"GifEncodeSucceeded"));
+        } else {
+          if (gif)
+            glaspen2_free_rust_bytes(gif, out_len);
+          rec_feed(REC_SLOT_GIF, rec_simple_event(@"GifEncodeFailed"));
+        }
+      });
     });
-  });
+    return;
+  }
+  if ([kind isEqualToString:@"Clipboard"]) {
+    NSData *gif = s_pending_gif;
+    s_pending_gif = nil;
+    if (gif.length > 0) {
+      copy_gif_data_to_clipboard((unsigned char *)gif.bytes, (int)gif.length);
+    } else {
+      NSLog(@"[recording] Clipboard effect 没有待写字节");
+    }
+    // 保持旧行为: 剪贴板写临时文件失败只 NSLog, 仍提示成功(差异 3, 不属本切片)。
+    rec_feed(REC_SLOT_GIF, rec_simple_event(@"GifClipboardSucceeded"));
+    return;
+  }
+  if ([kind isEqualToString:@"StartChatDraft"]) {
+    if (glaspen2_ink_draft_start(g_screen_w, g_screen_h) != 0) {
+      rec_feed(REC_SLOT_CHAT, rec_simple_event(@"ChatDraftStarted"));
+    } else {
+      rec_feed(REC_SLOT_CHAT, rec_simple_event(@"ChatDraftStartFailed"));
+    }
+    return;
+  }
+  if ([kind isEqualToString:@"StopChatDraft"]) {
+    // 提交在写笔画, 再后台 half-close + 取裁决;结果回主线程作为
+    // ChatDraftFinished 喂回状态机(裁决映射单源在 DraftOutcome::from_ffi_code)。
+    finish_active_stroke();
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+      int r = glaspen2_ink_draft_stop();
+      // 失败原因在后台线程取好再回主线程, 避免与下一次会话的写入竞争。
+      const char *err = glaspen2_ink_draft_last_error();
+      NSString *detail = (err && *err) ? [NSString stringWithUTF8String:err] : @"";
+      dispatch_async(dispatch_get_main_queue(), ^{
+        rec_feed(REC_SLOT_CHAT, rec_json(@{
+                   @"type" : @"ChatDraftFinished",
+                   @"code" : @(r),
+                   @"detail" : detail ?: @"",
+                 }));
+      });
+    });
+    return;
+  }
+  if ([kind isEqualToString:@"SendChatStrokes"]) {
+    int start = [effect[@"start_stroke"] intValue];
+    int end = [effect[@"end_stroke"] intValue];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+      int sent = glaspen2_chat_send_strokes(start, end);
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if (sent >= 0) {
+          rec_feed(REC_SLOT_CHAT, rec_json(@{
+                     @"type" : @"ChatSendSucceeded",
+                     @"strokes" : @(sent),
+                   }));
+        } else {
+          rec_feed(REC_SLOT_CHAT, rec_simple_event(@"ChatSendFailed"));
+        }
+      });
+    });
+    return;
+  }
+  if ([kind isEqualToString:@"Discard"]) {
+    // 取消路径(总开关关闭取消直发/强制收尾): 不编码/不发送, 无 OS 资源可释放。
+    NSLog(@"[recording] 丢弃进行中的录制窗口(取消)");
+    return;
+  }
+  NSLog(@"[recording] 未实现的录制 effect: %@", kind);
+}
+
+static void rec_exec_effects(int slot, NSArray *effects) {
+  for (id effect in effects) {
+    if ([effect isKindOfClass:[NSDictionary class]])
+      rec_exec_effect(slot, effect);
+  }
+}
+
+// 手写消息总开关变化(menu.m 调): 把总开关镜像喂给手写槽。关闭时的 effects
+// 会静默取消直发(Discard)或优雅收尾草稿(StopChatDraft: 提交在写笔画 +
+// 完整 stop + 裁决提示)。GIF 槽不受总开关影响。
+static void gl_recording_chat_integration_changed(BOOL on) {
+  rec_feed(REC_SLOT_CHAT, rec_json(@{
+             @"type" : @"ChatIntegrationChanged",
+             @"enabled" : @(on),
+           }));
+}
+
+// 启动: 按当前总开关初始化两个槽位(必须在 g_chat_integration 恢复之后调用)。
+static void gl_recording_init(void) {
+  glaspen2_recording_init(REC_SLOT_GIF, 0);
+  glaspen2_recording_init(REC_SLOT_CHAT, g_chat_integration ? 1 : 0);
 }
 
 // (重)装 event tap:include_scroll 决定滚轮事件是否进入 tap。
@@ -2211,45 +2341,43 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       BOOL isRepeat =
           (type == kCGEventKeyDown) &&
           CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat) != 0;
-      // Stop the GIF recorder on R key-up regardless of modifiers, so a
-      // Cmd/Ctrl released before R can't leave the recorder stuck.
-      if (type == kCGEventKeyUp && kc == kVK_ANSI_R && g_gif_recording) {
-        gif_record_stop_async();
+      // 录制会话(GIF/⌘⌃2 草稿/⌘⌃3 直发)的起止全部交给 core 状态机:
+      // 这里只做按键匹配与"抬起是否属于本槽位"的预判。
+      // 抬起不验修饰键: 先松 ⌘/⌃ 也不会把会话卡死(与旧实现一致);
+      // 抬起只在状态机确实处于该模式时消费, 普通 r/2/3 抬键照常放行。
+      if (type == kCGEventKeyUp && kc == kVK_ANSI_R &&
+          glaspen2_recording_mode(REC_SLOT_GIF) == 1) {
+        rec_release(REC_SLOT_GIF, @"Gif");
         return NULL;
       }
       if (hasCmdCtrl && kc == kVK_ANSI_R && type == kCGEventKeyDown) {
         // Hold-to-record GIF: key-down starts the recording.
-        if (!g_gif_recording)
-          gif_record_start();
+        rec_start(REC_SLOT_GIF, @"Gif");
         return NULL;
       }
-      // Stop the handwriting recorder on '3' key-up regardless of
-      // modifiers, so a Cmd/Ctrl released before '3' can't wedge it.
       if (type == kCGEventKeyUp && kc == kVK_ANSI_3 &&
-          g_msg_record_start >= 0) {
-        msg_record_stop_async();
+          glaspen2_recording_mode(REC_SLOT_CHAT) == 3) {
+        rec_release(REC_SLOT_CHAT, @"Send");
         return NULL;
       }
       if (g_chat_integration && hasCmdCtrl && kc == kVK_ANSI_3 &&
           type == kCGEventKeyDown) {
-        // Hold-to-record handwriting message: key-down pins the start.
-        if (g_msg_record_start < 0 && !g_ink_draft_active)
-          msg_record_start();
+        // Hold-to-record handwriting message: key-down starts the session.
+        rec_start(REC_SLOT_CHAT, @"Send");
         return NULL;
       }
-      // ⌘⌃2 hold-to-draft handwriting: strokes stream live to the axum
-      // side over ChatStore/DraftInk while held; release closes the
-      // stream and axum decides whether to send. '2' key-up ends it
-      // regardless of modifiers (same reasoning as '3' above).
+      // ⌘⌃2 hold-to-draft handwriting: strokes stream live to the axum side
+      // over ChatStore/DraftInk while held; release closes the stream and axum
+      // decides whether to send. '2' key-up ends it regardless of modifiers.
       // 总开关关闭时整段不匹配 → 事件原样放行(不占用这两个键)。
-      if (type == kCGEventKeyUp && kc == kVK_ANSI_2 && g_ink_draft_active) {
-        ink_draft_stop_async();
+      if (type == kCGEventKeyUp && kc == kVK_ANSI_2 &&
+          glaspen2_recording_mode(REC_SLOT_CHAT) == 2) {
+        rec_release(REC_SLOT_CHAT, @"Draft");
         return NULL;
       }
       if (g_chat_integration && hasCmdCtrl && kc == kVK_ANSI_2 &&
           type == kCGEventKeyDown) {
-        if (!g_ink_draft_active && g_msg_record_start < 0)
-          ink_draft_start();
+        rec_start(REC_SLOT_CHAT, @"Draft");
         return NULL;
       }
       // 自由画布的镜头平移/缩放已并入可配置动作(canvas_pan_* / canvas_zoom_*),
@@ -3253,6 +3381,8 @@ void glaspen2_run(void) {
 
     // 手写消息集成总开关(默认关;关 = 热键直通、面板收起)
     g_chat_integration = glaspen2_load_bool_setting("chat_integration") != 0;
+    // D8b: 两个录制状态机按当前总开关初始化(必须在 g_chat_integration 恢复后)
+    gl_recording_init();
     // 共享画布上行:集成开 + 开关此前为开 → 恢复上行
     if (g_chat_integration && glaspen2_load_bool_setting("share_ink")) {
       glaspen2_share_ink_set_active(YES);

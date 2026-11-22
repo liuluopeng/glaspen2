@@ -960,10 +960,11 @@ void glaspen2_macos_free_bytes(unsigned char *p) {
 static void gl_settings_set_chat_integration(BOOL on) {
     g_chat_integration = on;
     glaspen2_save_bool_setting("chat_integration", on ? 1 : 0);
+    // 录制会话收尾交给 core 状态机(D8b): 关闭时直发静默丢弃, 草稿走完整
+    // StopChatDraft(提交在写笔画 + half-close + 按 axum 裁决提示);GIF 不受影响。
+    gl_recording_chat_integration_changed(on);
     if (!on) {
-        // 静默终止进行中的手写录制/草稿;共享上行一并停止
-        g_msg_record_start = -1;
-        if (g_ink_draft_active) ink_draft_stop_async();
+        // 共享上行一并停止
         glaspen2_share_ink_set_active(NO);
     } else if (glaspen2_load_bool_setting("share_ink")) {
         // 重新开启集成:共享上行开关若此前是开的,一并恢复

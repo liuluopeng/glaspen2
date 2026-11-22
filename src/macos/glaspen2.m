@@ -50,7 +50,9 @@ static void gl_ethereal_restore_now(void); // 定义在 parts/menu.m(启动恢�
 static void gl_settings_set_enabled(BOOL on);
 static void toggle_enabled(void);
 static void update_status_icon_state(void);
-static void ink_draft_stop_async(void); // 定义在 ink draft 区(总开关要用)
+// D8b 录制状态机接线: 总开关变化时把事件喂给手写消息槽并执行 effects
+// (定义在 parts/run.m 录制区), 菜单/设置面板切换总开关时调用。
+static void gl_recording_chat_integration_changed(BOOL on);
 static BOOL g_strokes_visible; // 定义在飘渺模式区(总开关恢复 V 时要用)
 static void ethereal_hide_now(void); // 定义在飘渺模式区
 
@@ -172,6 +174,18 @@ extern int glaspen2_chat_send_strokes(int start_index, int end_index);
 extern int glaspen2_ink_draft_start(int canvas_w, int canvas_h);
 extern int glaspen2_ink_draft_stop(void);
 extern const char *glaspen2_ink_draft_last_error(void);
+// D8b 录制会话状态机桥(core/recording.rs): ObjC 不能持 Rust 结构体, 状态机
+// 活在 core 的两个槽位里(adapter 只在主 runloop 线程调用, 后台结果回主线程再喂回):
+//   槽 0 = GIF(⌘⌃R);槽 1 = 手写消息(⌘⌃2 草稿 / ⌘⌃3 直发, 同一机器内互斥)。
+// glaspen2_recording_event_json 喂单行事件 JSON, 回 must-execute-in-order 的
+// effects JSON 数组(单行, 永不 NULL, 非法输入回 {"error":...})。
+// glaspen2_recording_mode 回 0=空闲/1=GIF/2=草稿/3=直发(-1=非法槽位),
+// 供 key-up 分支判断"这次抬起是否属于本槽位"。
+// 字符串一律用 glaspen2_free_c_string 释放。
+extern int glaspen2_recording_init(int slot, int chat_integration);
+extern char* glaspen2_recording_event_json(int slot, const char *event_json);
+extern int glaspen2_recording_reset(int slot);
+extern int glaspen2_recording_mode(int slot);
 extern void glaspen2_set_stroke_outline(int enabled);
 extern void glaspen2_set_soft_shadow(int enabled);
 extern void glaspen2_set_stroke_invert(int enabled);      // 反色突出开关
@@ -308,18 +322,10 @@ static double g_raw_path_len = 0;
 // Track if a stroke is active (modeler has been initialized)
 static BOOL g_stroke_active = NO;
 
-// Quick GIF recording: true between the Cmd+Ctrl+R key-down and key-up.
-// g_gif_record_start is the stroke count at key-down, pinning the window.
-static BOOL g_gif_recording = NO;
-static int g_gif_record_start = -1;
-// Handwriting message recording (Cmd+Ctrl+3 hold-to-write): the stroke
-// window [start, end) pinned at key-down/key-up is sent as one batch of
-// chat messages when the key is released.
-static int g_msg_record_start = -1;
-// Handwriting DRAFT channel (Cmd+Ctrl+2 hold-to-write): strokes stream live
-// over a gRPC DraftInk session while held; on release the stream closes and
-// the axum side decides whether to send. Mutually exclusive with ⌘⌃3.
-static BOOL g_ink_draft_active = NO;
+// D8b: GIF / ⌘⌃2 草稿 / ⌘⌃3 直发的会话状态与起止窗口已上收 core
+// recording::RecordingMachine(经 glaspen2_recording_* FFI 的两个槽位驱动),
+// 本文件不再持 g_gif_recording / g_msg_record_start / g_ink_draft_active ——
+// 适配器只保留 GIF 参数、文案与本平台 OS 动作。
 // 手写消息集成总开关(设置面板,默认关):关 = ⌘⌃2/⌘⌃3 直通不劫持,
 // 登录与画布共享界面隐藏。聊天/共享始终是增强功能,不影响涂鸦本体。
 static BOOL g_chat_integration = NO;

@@ -1913,6 +1913,113 @@ pub extern "C" fn glaspen2_minimap_layout_json(
     }
 }
 
+// ── 录制状态机桥单源 FFI(D8b): macOS ObjC 不能持 Rust 结构体 ──
+//
+// 两个槽位(adapter 在 **main runloop 线程** 调用, 后台结果 dispatch 回主线程
+// 再喂回 —— 状态机不是 Sync, 也不能跨线程共享):
+//   0 = GIF(⌘⌃R);
+//   1 = 手写消息(⌘⌃2 草稿 / ⌘⌃3 直发, 同一机器内互斥, 受总开关门控)。
+// Windows 同进程直接持两个 recording::RecordingMachine, 不经这些 JSON 入口。
+//
+// 事件/effects JSON 形状见 crate::recording 的 "adapter JSON 编解码" 注释
+// (单行, ObjC 用 NSJSONSerialization 解析); 永不返回 NULL, 非法槽位/坏 JSON
+// 一律回 {"error": ...}。返回值用 glaspen2_free_c_string 释放。
+
+static RECORDING_MACHINES: std::sync::LazyLock<
+    std::sync::Mutex<[Option<crate::recording::RecordingMachine>; 2]>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new([None, None]));
+
+fn recording_slot(slot: c_int) -> Option<usize> {
+    match slot {
+        0 => Some(0),
+        1 => Some(1),
+        _ => None,
+    }
+}
+
+fn recording_error_json(message: String) -> *mut c_char {
+    return_c_string(serde_json::json!({ "error": message }).to_string())
+}
+
+/// 初始化(或重建)一个槽位的状态机; chat_integration = 手写消息总开关当前值
+/// (槽 1 用, GIF 槽忽略)。启动时调用一次即可; 事件入口也允许懒初始化。
+/// 返回 1 = 成功, 0 = 非法槽位。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_recording_init(slot: c_int, chat_integration: c_int) -> c_int {
+    let Some(idx) = recording_slot(slot) else {
+        return 0;
+    };
+    let mut machines = RECORDING_MACHINES.lock().unwrap_or_else(|e| e.into_inner());
+    machines[idx] = Some(crate::recording::RecordingMachine::new(
+        chat_integration != 0,
+    ));
+    1
+}
+
+/// 喂一个事件, 返回 must-execute-in-order 的 effects JSON 数组。
+///
+/// 事件 JSON 例: {"type":"StartPressed","mode":"Gif","stroke_count":3}、
+/// {"type":"ReleasePressed","mode":"Draft","stroke_count":7}、
+/// {"type":"GifEncodeSucceeded"}、{"type":"ChatDraftFinished","code":2,"detail":""}。
+/// 未初始化槽位按"默认关总开关的空闲机器"懒建(与两端启动默认一致)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_recording_event_json(
+    slot: c_int,
+    event_json: *const c_char,
+) -> *mut c_char {
+    let Some(idx) = recording_slot(slot) else {
+        return recording_error_json(format!("非法录制槽位: {slot}"));
+    };
+    let Some(text) = (unsafe { borrow_cstr(event_json) }) else {
+        return recording_error_json("录制事件缺少 JSON".to_string());
+    };
+    let event = match crate::recording::event_from_json(text) {
+        Ok(event) => event,
+        Err(err) => return recording_error_json(err),
+    };
+    let mut machines = RECORDING_MACHINES.lock().unwrap_or_else(|e| e.into_inner());
+    let machine = machines[idx].get_or_insert_with(Default::default);
+    let effects = machine.handle(event);
+    return_c_string(crate::recording::effects_to_json(&effects))
+}
+
+/// 复位一个槽位到空闲(保留手写消息总开关镜像; 退出/异常收尾用)。
+/// 返回 1 = 成功, 0 = 非法槽位。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_recording_reset(slot: c_int) -> c_int {
+    let Some(idx) = recording_slot(slot) else {
+        return 0;
+    };
+    let mut machines = RECORDING_MACHINES.lock().unwrap_or_else(|e| e.into_inner());
+    let chat_integration = machines[idx]
+        .as_ref()
+        .is_some_and(crate::recording::RecordingMachine::chat_integration);
+    machines[idx] = Some(crate::recording::RecordingMachine::new(chat_integration));
+    1
+}
+
+/// 当前录制模式: 0 = 空闲, 1 = GIF, 2 = 草稿, 3 = 直发, -1 = 非法槽位。
+///
+/// ObjC 的 key-up 分支靠它判断"这次抬起是否属于本槽位"(避免把普通 r/2/3
+/// 抬键吞掉), 等价于两端旧标志位只做状态查询的那部分。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_recording_mode(slot: c_int) -> c_int {
+    use crate::recording::RecordingMode;
+    let Some(idx) = recording_slot(slot) else {
+        return -1;
+    };
+    let machines = RECORDING_MACHINES.lock().unwrap_or_else(|e| e.into_inner());
+    match machines[idx]
+        .as_ref()
+        .and_then(|machine| machine.state().mode())
+    {
+        None => 0,
+        Some(RecordingMode::Gif) => 1,
+        Some(RecordingMode::Draft) => 2,
+        Some(RecordingMode::Send) => 3,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2911,6 +3018,210 @@ mod tests {
         assert!(
             message.contains("缩略图"),
             "error JSON 应说明 minimap 非法: {err}"
+        );
+    }
+
+    /// D8b 录制状态机桥 FFI: macOS ObjC 依赖的槽位语义 + JSON 形状。
+    ///
+    /// 槽位 0 = GIF, 1 = 手写消息(草稿/直发互斥);事件 JSON 喂入,effects JSON
+    /// 数组按序返回;非法槽位/坏 JSON 回 error JSON(永不 NULL);mode 标量供
+    /// ObjC 的 key-up 门控。Windows 同进程直接用枚举, 本测试只覆盖 ObjC 路径。
+    #[test]
+    fn recording_ffi_roundtrip() {
+        fn take(ptr: *mut c_char) -> serde_json::Value {
+            assert!(!ptr.is_null(), "录制 FFI 必须返回 JSON 字符串, 不能 NULL");
+            let text = unsafe { CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .into_owned();
+            glaspen2_free_c_string(ptr);
+            assert!(!text.contains('\n'), "录制 JSON 必须单行: {text}");
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("录制 JSON 不合法: {e}: {text}"))
+        }
+        fn feed(slot: c_int, event: &str) -> serde_json::Value {
+            let event_c = CString::new(event).unwrap();
+            take(glaspen2_recording_event_json(slot, event_c.as_ptr()))
+        }
+        fn effects(value: serde_json::Value) -> Vec<String> {
+            value
+                .as_array()
+                .unwrap_or_else(|| panic!("effects 必须是数组: {value}"))
+                .iter()
+                .map(|e| e["kind"].as_str().unwrap_or("").to_string())
+                .collect()
+        }
+
+        // 槽位 0: GIF 开始/结束窗口 + 结果顺序。
+        assert_eq!(glaspen2_recording_init(0, 0), 1);
+        assert_eq!(glaspen2_recording_mode(0), 0);
+        let v = feed(
+            0,
+            r#"{"type":"StartPressed","mode":"Gif","stroke_count":3}"#,
+        );
+        assert_eq!(v[0]["kind"], "ShowHud");
+        assert_eq!(v[0]["hud"], "GifStartHint");
+        assert_eq!(glaspen2_recording_mode(0), 1);
+        // 键重复按下被 FSM 忽略 → 空数组(ObjC 不执行任何动作)。
+        assert_eq!(
+            effects(feed(
+                0,
+                r#"{"type":"StartPressed","mode":"Gif","stroke_count":9}"#
+            )),
+            Vec::<String>::new()
+        );
+        let v = feed(
+            0,
+            r#"{"type":"ReleasePressed","mode":"Gif","stroke_count":8}"#,
+        );
+        assert_eq!(v[0]["kind"], "EncodeGif");
+        assert_eq!(v[0]["start_stroke"], 3);
+        assert_eq!(v[0]["end_stroke"], 8);
+        assert_eq!(glaspen2_recording_mode(0), 0);
+        // 编码成功 → Clipboard;剪贴板结果 → HUD(顺序由 adapter 保证)。
+        assert_eq!(
+            effects(feed(0, r#"{"type":"GifEncodeSucceeded"}"#)),
+            vec!["Clipboard".to_string()]
+        );
+        assert_eq!(
+            feed(0, r#"{"type":"GifClipboardSucceeded"}"#)[0]["hud"],
+            "GifCopied"
+        );
+        assert_eq!(
+            feed(0, r#"{"type":"GifEncodeFailed"}"#)[0]["hud"],
+            "GifNoStrokesOrExportFailed"
+        );
+        assert_eq!(
+            feed(0, r#"{"type":"GifClipboardFailed"}"#)[0]["hud"],
+            "GifClipboardFailed"
+        );
+        // 空窗口在 FSM 判定, 不经过 EncodeGif。
+        let _ = feed(
+            0,
+            r#"{"type":"StartPressed","mode":"Gif","stroke_count":4}"#,
+        );
+        assert_eq!(
+            feed(
+                0,
+                r#"{"type":"ReleasePressed","mode":"Gif","stroke_count":4}"#
+            )[0]["hud"],
+            "GifNoStrokesOrExportFailed"
+        );
+
+        // 槽位 1: 手写消息——总开关关闭时草稿/直发不开始;打开后才生效。
+        assert_eq!(glaspen2_recording_init(1, 0), 1);
+        assert_eq!(
+            effects(feed(
+                1,
+                r#"{"type":"StartPressed","mode":"Draft","stroke_count":0}"#
+            )),
+            Vec::<String>::new()
+        );
+        assert_eq!(glaspen2_recording_mode(1), 0);
+        let _ = feed(1, r#"{"type":"ChatIntegrationChanged","enabled":true}"#);
+        assert_eq!(
+            effects(feed(
+                1,
+                r#"{"type":"StartPressed","mode":"Draft","stroke_count":0}"#
+            )),
+            vec!["StartChatDraft".to_string()]
+        );
+        assert_eq!(glaspen2_recording_mode(1), 2);
+        assert_eq!(
+            feed(1, r#"{"type":"ChatDraftStarted"}"#)[0]["hud"],
+            "DraftStartHint"
+        );
+        assert_eq!(
+            effects(feed(
+                1,
+                r#"{"type":"ReleasePressed","mode":"Draft","stroke_count":5}"#
+            )),
+            vec!["StopChatDraft".to_string()]
+        );
+        // 裁决 code 经 DraftOutcome::from_ffi_code 单源映射。
+        let v = feed(1, r#"{"type":"ChatDraftFinished","code":2,"detail":""}"#);
+        assert_eq!(v[0]["hud"], "DraftAccepted");
+        assert_eq!(v[0]["strokes"], 2);
+        assert_eq!(
+            feed(1, r#"{"type":"ChatDraftFinished","code":0}"#)[0]["hud"],
+            "DraftDeclined"
+        );
+        let v = feed(
+            1,
+            r#"{"type":"ChatDraftFinished","code":-1,"detail":"身份过期"}"#,
+        );
+        assert_eq!(v[0]["hud"], "DraftFailed");
+        assert_eq!(v[0]["detail"], "身份过期");
+        // 直发: 发送结果事件 → 带条数的 HUD。
+        let _ = feed(
+            1,
+            r#"{"type":"StartPressed","mode":"Send","stroke_count":1}"#,
+        );
+        assert_eq!(
+            effects(feed(
+                1,
+                r#"{"type":"ReleasePressed","mode":"Send","stroke_count":3}"#
+            )),
+            vec!["SendChatStrokes".to_string()]
+        );
+        let v = feed(1, r#"{"type":"ChatSendSucceeded","strokes":2}"#);
+        assert_eq!(v[0]["hud"], "SendSucceeded");
+        assert_eq!(v[0]["strokes"], 2);
+        assert_eq!(
+            feed(1, r#"{"type":"ChatSendFailed"}"#)[0]["hud"],
+            "SendFailed"
+        );
+        // 总开关关闭时草稿收尾 = StopChatDraft(Windows 侧据此补齐提交与裁决)。
+        let _ = feed(1, r#"{"type":"ChatIntegrationChanged","enabled":true}"#);
+        let _ = feed(
+            1,
+            r#"{"type":"StartPressed","mode":"Draft","stroke_count":0}"#,
+        );
+        assert_eq!(
+            effects(feed(
+                1,
+                r#"{"type":"ChatIntegrationChanged","enabled":false}"#
+            )),
+            vec!["StopChatDraft".to_string()]
+        );
+        // 关总开关时直发 = Discard(静默不发送)。
+        let _ = feed(1, r#"{"type":"ChatIntegrationChanged","enabled":true}"#);
+        let _ = feed(
+            1,
+            r#"{"type":"StartPressed","mode":"Send","stroke_count":1}"#,
+        );
+        assert_eq!(
+            effects(feed(
+                1,
+                r#"{"type":"ChatIntegrationChanged","enabled":false}"#
+            )),
+            vec!["Discard".to_string()]
+        );
+
+        // reset: 回空闲, 保留总开关镜像(这里关掉后 reset 仍是关)。
+        let _ = feed(1, r#"{"type":"ChatIntegrationChanged","enabled":false}"#);
+        let _ = feed(
+            1,
+            r#"{"type":"StartPressed","mode":"Gif","stroke_count":0}"#,
+        );
+        assert_eq!(glaspen2_recording_reset(1), 1);
+        assert_eq!(glaspen2_recording_mode(1), 0);
+
+        // 非法槽位/坏 JSON/空指针: error JSON 且永不 NULL。
+        assert_eq!(glaspen2_recording_init(2, 0), 0);
+        assert_eq!(glaspen2_recording_reset(-1), 0);
+        assert_eq!(glaspen2_recording_mode(9), -1);
+        let v = feed(5, r#"{"type":"ForceStop"}"#);
+        assert!(v["error"].is_string(), "非法槽位应回 error: {v}");
+        let v = feed(0, r#"{"type":"NoSuch"}"#);
+        assert!(v["error"].is_string(), "坏事件应回 error: {v}");
+        let ptr = glaspen2_recording_event_json(0, std::ptr::null());
+        assert!(!ptr.is_null());
+        let text = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        glaspen2_free_c_string(ptr);
+        assert!(
+            serde_json::from_str::<serde_json::Value>(&text).unwrap()["error"].is_string(),
+            "空指针应回 error JSON: {text}"
         );
     }
 }

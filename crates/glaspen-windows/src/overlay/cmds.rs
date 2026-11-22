@@ -1,8 +1,19 @@
 // ── 自定义消息与命令 ID(Flutter 设置管道用) ──
 
 pub const WM_TRAY_COMMAND: u32 = WM_USER + 1;
-/// 录制完成 → 消息循环:wparam 1=已复制剪贴板, 2=没有笔迹/失败
-const WM_RECORD_DONE: u32 = WM_USER + 3;
+// ── D8b 录制状态机的后台结果 → 窗口线程 ──
+// 后台只做"编码/发送/关通道"这类阻塞工作, 结果统一 PostMessage 回消息循环
+// 线程再喂回 core 状态机(状态机不是 Sync);旧的 WM_RECORD_DONE 结果码分派
+// (后台线程一把做完编码+剪贴板)已删除 —— GIF 现在拆成
+// 编码(后台) → 字节投递 → 剪贴板(窗口线程)两步。
+/// GIF 编码成功: lparam = Box<Vec<u8>> 原始指针(窗口线程接管写剪贴板)
+const WM_RECORD_ENCODE_OK: u32 = WM_USER + 3;
+/// GIF 编码失败(没有笔迹/导出失败): 无载荷
+const WM_RECORD_ENCODE_FAIL: u32 = WM_USER + 4;
+/// 草稿收尾裁决: lparam = Box<DraftDone>(code + last_error)
+const WM_RECORD_DRAFT_DONE: u32 = WM_USER + 5;
+/// 直发结果: lparam = Box<SendDone>(Some(条数) = 成功, None = 失败)
+const WM_RECORD_SEND_DONE: u32 = WM_USER + 2;
 /// 请求在窗口线程重新注册全局热键(管道/定时器线程投递; RegisterHotKey
 /// 不接受"属于别的线程的窗口", 必须回到窗口线程执行)
 const WM_HOTKEY_RELOAD: u32 = WM_USER + 6;

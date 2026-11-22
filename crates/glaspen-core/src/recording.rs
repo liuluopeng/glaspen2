@@ -1,4 +1,4 @@
-//! 录制会话状态机(GIF / ⌘⌃2 草稿 / ⌘⌃3 直发, D8a 核心切片)。
+//! 录制会话状态机(GIF / ⌘⌃2 草稿 / ⌘⌃3 直发;D8a 核心 + D8b 两端接线)。
 //!
 //! 三种"按住录制、松开结束"的会话在两端各写了一份状态与通知分派
 //! (`docs/duplication-backlog.md` D8)。本模块把**状态 / 起止窗口 / 事件 /
@@ -6,7 +6,13 @@
 //! OS 侧动作(编码回放、剪贴板、HUD、gRPC/FFI 调用),不再各持一套会话标志位
 //! 并在松手分支里各自决定提示文案。
 //!
-//! # 两端现状证据(main 当前行号)
+//! **D8b 已接线**:macOS 经 `export::glaspen2_recording_{init,event_json,reset,mode}`
+//! 的 FFI 槽位驱动(0 = GIF,1 = 手写消息),Windows 在 `OverlayState` 里直接持
+//! 两个 `RecordingMachine`;两端旧会话标志位与逐模式 HUD/裁决分支已删除,
+//! `tests::adapters_drive_core_recording_machine` 闸门按文本扫描两端 adapter
+//! (必须出现 core 入口/全部变体 token,禁止旧标志位指纹)。
+//!
+//! # 两端现状证据(D8a 读码时行号;D8b 接线后旧代码已删除,行号仅作历史)
 //!
 //! - macOS `src/macos/parts/run.m`:
 //!   - GIF 开始/结束 `:1924-1932` / `:1938-1963`(异步编码 `:1948-1962`,
@@ -56,8 +62,8 @@
 //!    `gif_recording` / `msg_record_start` / `ink_draft_active`
 //!    (`state.rs:256-262`),开始/结束分支各查各的标志位,互不排斥
 //!    (`actions.rs:812`/`:868`/`:901`)。所以 GIF 与一份手写消息可以**同时录制**。
-//!    为保持状态机显式,本层不把两个槽位塞进一个状态枚举;D8b 接线时
-//!    **为 GIF 与手写消息各持一个机器**(与两端现有独立标志位一一对应),
+//!    为保持状态机显式,本层不把两个槽位塞进一个状态枚举;D8b 据此
+//!    **为 GIF 与手写消息各持一个机器**(与两端原有独立标志位一一对应),
 //!    手写消息的草稿/直发互斥由同一机器保证。同一机器里跨模式的
 //!    `StartPressed`/`ReleasePressed` 一律忽略(见迁移表),不要把两种模式喂给
 //!    同一个机器。
@@ -79,8 +85,8 @@
 //!   空窗口由 FSM 直接下发 `ShowHud(..)`,不经过 adapter 的编码/发送调用。
 //! - **SessionReset / PageChange / Clear**:两端翻页、清空、新建页都**不**取消
 //!   录制(会话标志位只在上面的开始/结束/总开关关闭处读写,见证据行号);
-//!   这里不发明行为。若 D8b 发现真实需要(例如退出前统一收尾),用
-//!   [`RecordingEvent::ForceStop`]。
+//!   这里不发明行为。D8b 接线后确认没有"退出前统一收尾"的调用点,
+//!   [`RecordingEvent::ForceStop`] 仍未接线(保留语义与测试)。
 //! - **落笔提交(finish_active_stroke)**:两端都是"先提交在写笔画、再取
 //!   笔画数"作为前置步骤(macOS `run.m:1927`/`:1946`/`:1970`/`:1982`/`:2029`,
 //!   Windows `actions.rs:816`/`:830`/`:871`/`:883`/`:904`/`:920`)。它属于笔画
@@ -121,7 +127,7 @@
 //! | `Recording{Draft}` | `ChatIntegrationChanged{enabled:false}` | `Idle` | `StopChatDraft` | macOS `menu.m:966` 走完整 `ink_draft_stop_async`(提交笔画 + 结果提示);Windows `actions.rs:201-206` 静默 stop(不提交、不提示)——差异见下 |
 //! | `Recording{Send}` | `ChatIntegrationChanged{enabled:false}` | `Idle` | `Discard` | 两端都是静默复位 `msg_record_start = -1`(不发送):`menu.m:965` / `actions.rs:200` |
 //! | `Recording{Gif}` / `Idle` | `ChatIntegrationChanged{..}` | 不变 | — | 总开关只管手写消息,GIF 固定热键不受影响(`hotkeys.rs:290-306` 只门控 2/3) |
-//! | `Recording{Gif\|Send}` | `ForceStop` | `Idle` | `Discard` | 当前两端**没有**调用点(退出即终止进程;翻页/清空不取消),见"不建模";留给 D8b 收尾 |
+//! | `Recording{Gif\|Send}` | `ForceStop` | `Idle` | `Discard` | 两端**没有**调用点(退出即终止进程;翻页/清空不取消),见"不建模";D8b 确认未接 |
 //! | `Recording{Draft}` | `ForceStop` | `Idle` | `StopChatDraft` | 同上;语义同总开关关闭时的草稿收尾 |
 //! | `Idle` | `ForceStop` | `Idle` | — | — |
 //!
@@ -140,13 +146,15 @@
 //!    没有笔迹或导出失败"(`wndproc.rs:183-190`);macOS 只有"有字节 / 没有字节"
 //!    两路(`run.m:1953-1960`),剪贴板写临时文件失败只 NSLog
 //!    (`run.m:1913-1915`),调用方仍提示"GIF 已复制到剪贴板"。所以
-//!    `GifClipboardFailed` 目前只有 Windows 会报;macOS 适配器可继续报
-//!    `GifClipboardSucceeded`(保持现状),D8b 也可以顺手改成如实回报(行为修正)。
-//! 4. **总开关关闭时的草稿收尾不同**:macOS `menu.m:966` 调
+//!    `GifClipboardFailed` 目前只有 Windows 会报;D8b 保持 macOS 现状
+//!    (剪贴板写失败只 NSLog, 仍回报 `GifClipboardSucceeded`)—— 本切片只修
+//!    backlog 明列的两处不一致, 不改这个提示差异。
+//! 4. **总开关关闭时的草稿收尾(原不一致, D8b 已修)**:macOS `menu.m:966` 调
 //!    `ink_draft_stop_async()`,会先 `finish_active_stroke` 再 half-close,
 //!    并按 axum 裁决提示结果;Windows `actions.rs:201-206` 只复位标志并后台
 //!    stop,不提交在写笔画、丢弃结果、不提示。本层统一下发 `StopChatDraft`;
-//!    D8b 两端按现状决定是否提交/回报 `ChatDraftFinished`(建议对齐 macOS)。
+//!    D8b 把 Windows 对齐 macOS:先提交在写笔画, 再 half-close, 结果作为
+//!    `ChatDraftFinished` 喂回状态机并按裁决提示(两端现在同一条路径)。
 //! 5. **草稿开始失败的判定**:`glaspen2_ink_draft_start` 返回 0 也包含"已有会话"
 //!    (`chat_glue.rs:135-138`),两端都把非 1 当"手写通道开启失败";本层同样把
 //!    `ChatDraftStartFailed` 当成一次性失败,状态回 `Idle`。
@@ -158,9 +166,10 @@
 //!    (`run.m:2038-2052` / `actions.rs:932-940`)。[`DraftOutcome::from_ffi_code`]
 //!    把这条契约单源化。
 //! 8. **异步投递线程不同**:macOS 编码/发送在后台队列、结果 `dispatch_async`
-//!    回主线程(`run.m:1948-1962`/`:1988-2000`/`:2030-2054`);Windows 后台线程
-//!    经 `PostMessageW(WM_RECORD_DONE)` / `hud_notify_async` 回窗口线程
-//!    (`actions.rs:850-857`、`wndproc.rs:183-208`)。本层要求所有 `handle` 都在
+//!    回主线程;Windows 后台线程经 `PostMessageW(WM_RECORD_ENCODE_OK/FAIL,
+//!    WM_RECORD_DRAFT_DONE, WM_RECORD_SEND_DONE)` 回窗口线程(D8b 把 GIF 拆成
+//!    "后台编码 → 字节投递 → 窗口线程写剪贴板"两步, 顺序同本层迁移表)。
+//!    本层要求所有 `handle` 都在
 //!    拥有状态机的那条线程上调用(不是 `Sync`),后台结果先投递再喂事件。
 //! 9. **HUD 呈现与文案不同**:macOS `show_notification` 画覆盖层通知;Windows
 //!    `hud_notify` 是轻量 HUD。文案里键名也不同(`⌘⌃2` vs `Ctrl+Alt+2`),
@@ -181,6 +190,10 @@
 //!    机器都要喂(如果 D8b 真的需要强制收尾)。
 //! 5. 同一机器里跨模式的按键事件请忽略(两端是独立标志位,不应把 GIF 事件
 //!    喂进手写消息机器,反之亦然)。
+//! 6. macOS 经 `export` 的 JSON 编解码([`event_from_json`] / [`effects_to_json`])
+//!    驱动槽位;事件/effects 字段名见 `export::glaspen2_recording_event_json`
+//!    的文档(单行、永不 NULL、错误回 `{"error":...}`)。Windows 同进程直接用
+//!    枚举。两端 adapter 的变体覆盖率由本文件 tests 的闸门守(漏实现即红)。
 
 /// 录制模式:三种"按住录制、松开结束"的会话。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -461,7 +474,7 @@ pub enum RecordingEvent {
     /// 强制取消当前会话:不编码/不发送;草稿仍会优雅关闭通道。
     ///
     /// 当前两端**没有调用点**(退出即终止进程,翻页/清空不取消录制);
-    /// 保留给 D8b 的收尾接线与测试,语义 = 总开关关闭的取消路径。
+    /// D8b 接线时确认不需要,保留语义与测试,语义 = 总开关关闭的取消路径。
     ForceStop,
 }
 
@@ -686,6 +699,177 @@ fn hud_for_draft_outcome(outcome: DraftOutcome) -> RecordingHud {
         DraftOutcome::Declined => RecordingHud::DraftDeclined,
         DraftOutcome::Failed { detail } => RecordingHud::DraftFailed { detail },
     }
+}
+
+// ── adapter JSON 编解码(D8b): macOS ObjC 不能持 Rust 状态机/枚举 ──
+//
+// ObjC 手工拼事件 JSON 喂进 `export::glaspen2_recording_event_json`, 拿到
+// effects JSON 数组后按 `kind` 分派执行; 这里的字段名就是两端的接线契约
+// (Windows 同进程直接用枚举, 不经 JSON, 但事件/动作语义与本层一致)。
+//
+// 事件形状(单行; `detail` 可缺省/为空):
+//   {"type":"StartPressed","mode":"Gif","stroke_count":3}
+//   {"type":"ReleasePressed","mode":"Draft","stroke_count":7}
+//   {"type":"ChatIntegrationChanged","enabled":false}
+//   {"type":"GifEncodeSucceeded"} / GifEncodeFailed /
+//   GifClipboardSucceeded / GifClipboardFailed / ChatDraftStarted /
+//   ChatDraftStartFailed / ChatSendFailed / ForceStop   (无载荷)
+//   {"type":"ChatDraftFinished","code":2,"detail":"..."}   // 草稿裁决, 经
+//       [DraftOutcome::from_ffi_code] 单源映射(正数/0/负数)
+//   {"type":"ChatSendSucceeded","strokes":2}
+//
+// effect 形状(`kind` = [RecordingEffect::variant_name]):
+//   {"kind":"ShowHud","hud":"GifStartHint"}
+//   {"kind":"ShowHud","hud":"SendSucceeded","strokes":2}
+//   {"kind":"ShowHud","hud":"DraftFailed","detail":"..."}   // detail 可能缺省
+//   {"kind":"EncodeGif","start_stroke":3,"end_stroke":8}
+//   {"kind":"Clipboard"} / {"kind":"StartChatDraft"} /
+//   {"kind":"StopChatDraft"} / {"kind":"Discard"}
+//   {"kind":"SendChatStrokes","start_stroke":3,"end_stroke":8}
+
+/// 模式名 → [RecordingMode](与 [RecordingMode::name] 互逆)。
+pub fn mode_from_name(name: &str) -> Option<RecordingMode> {
+    match name {
+        "Gif" => Some(RecordingMode::Gif),
+        "Draft" => Some(RecordingMode::Draft),
+        "Send" => Some(RecordingMode::Send),
+        _ => None,
+    }
+}
+
+/// 解析 adapter 喂进来的事件 JSON(契约见本节顶部注释)。
+///
+/// 只接受已知 `type`; 缺字段/未知枚举名/类型不符一律返回可读错误 —— FFI
+/// 边界把它包成 `{"error": ...}`, 不让 ObjC 侧崩溃或静默吞事件。
+pub fn event_from_json(text: &str) -> Result<RecordingEvent, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(text).map_err(|e| format!("录制事件 JSON 不合法: {e}: {text}"))?;
+    let obj = value
+        .as_object()
+        .ok_or_else(|| format!("录制事件必须是 JSON 对象: {text}"))?;
+    let ty = obj
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("录制事件缺少 type: {text}"))?;
+
+    // 事件里的 stroke_count 是"提交在写笔画之后"的计数(见模块文档使用契约 1)。
+    let stroke_count = || -> Result<u32, String> {
+        let n = obj
+            .get("stroke_count")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| format!("录制事件 {ty} 缺少 stroke_count: {text}"))?;
+        u32::try_from(n).map_err(|_| format!("录制事件 {ty} 的 stroke_count 越界: {n}"))
+    };
+    let mode = || -> Result<RecordingMode, String> {
+        let name = obj
+            .get("mode")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("录制事件 {ty} 缺少 mode: {text}"))?;
+        mode_from_name(name).ok_or_else(|| format!("录制事件 {ty} 的未知 mode {name:?}: {text}"))
+    };
+    match ty {
+        "StartPressed" => Ok(RecordingEvent::StartPressed {
+            mode: mode()?,
+            stroke_count: stroke_count()?,
+        }),
+        "ReleasePressed" => Ok(RecordingEvent::ReleasePressed {
+            mode: mode()?,
+            stroke_count: stroke_count()?,
+        }),
+        "ChatIntegrationChanged" => Ok(RecordingEvent::ChatIntegrationChanged {
+            enabled: obj
+                .get("enabled")
+                .and_then(serde_json::Value::as_bool)
+                .ok_or_else(|| format!("录制事件 ChatIntegrationChanged 缺少 enabled: {text}"))?,
+        }),
+        "GifEncodeSucceeded" => Ok(RecordingEvent::GifEncodeSucceeded),
+        "GifEncodeFailed" => Ok(RecordingEvent::GifEncodeFailed),
+        "GifClipboardSucceeded" => Ok(RecordingEvent::GifClipboardSucceeded),
+        "GifClipboardFailed" => Ok(RecordingEvent::GifClipboardFailed),
+        "ChatDraftStarted" => Ok(RecordingEvent::ChatDraftStarted),
+        "ChatDraftStartFailed" => Ok(RecordingEvent::ChatDraftStartFailed),
+        "ChatDraftFinished" => {
+            // 裁决契约单源: code = glaspen2_ink_draft_stop 返回值,
+            // detail = glaspen2_ink_draft_last_error(可为空)。
+            let code = obj
+                .get("code")
+                .and_then(serde_json::Value::as_i64)
+                .ok_or_else(|| format!("录制事件 ChatDraftFinished 缺少 code: {text}"))?;
+            let code = i32::try_from(code)
+                .map_err(|_| format!("录制事件 ChatDraftFinished 的 code 越界: {code}"))?;
+            let detail = obj
+                .get("detail")
+                .and_then(serde_json::Value::as_str)
+                .filter(|d| !d.is_empty())
+                .map(str::to_string);
+            Ok(RecordingEvent::ChatDraftFinished(
+                DraftOutcome::from_ffi_code(code, detail),
+            ))
+        }
+        "ChatSendSucceeded" => {
+            let n = obj
+                .get("strokes")
+                .and_then(serde_json::Value::as_u64)
+                .ok_or_else(|| format!("录制事件 ChatSendSucceeded 缺少 strokes: {text}"))?;
+            let strokes = u32::try_from(n)
+                .map_err(|_| format!("录制事件 ChatSendSucceeded 的 strokes 越界: {n}"))?;
+            Ok(RecordingEvent::ChatSendSucceeded { strokes })
+        }
+        "ChatSendFailed" => Ok(RecordingEvent::ChatSendFailed),
+        "ForceStop" => Ok(RecordingEvent::ForceStop),
+        other => Err(format!("录制事件未知 type {other:?}: {text}")),
+    }
+}
+
+/// HUD 语义 → JSON(带 `hud` 变体名; 载荷写成平铺字段)。
+fn hud_to_json(hud: &RecordingHud) -> serde_json::Value {
+    let mut value = serde_json::json!({ "kind": "ShowHud", "hud": hud.variant_name() });
+    match hud {
+        RecordingHud::SendSucceeded { strokes } | RecordingHud::DraftAccepted { strokes } => {
+            value["strokes"] = serde_json::json!(strokes);
+        }
+        RecordingHud::DraftFailed {
+            detail: Some(detail),
+        } => {
+            value["detail"] = serde_json::json!(detail);
+        }
+        _ => {}
+    }
+    value
+}
+
+/// 单个 effect → JSON(载荷字段名即 ObjC 解析契约)。
+pub fn effect_to_json(effect: &RecordingEffect) -> serde_json::Value {
+    match effect {
+        RecordingEffect::ShowHud(hud) => hud_to_json(hud),
+        RecordingEffect::EncodeGif {
+            start_stroke,
+            end_stroke,
+        } => serde_json::json!({
+            "kind": effect.variant_name(),
+            "start_stroke": start_stroke,
+            "end_stroke": end_stroke,
+        }),
+        RecordingEffect::SendChatStrokes {
+            start_stroke,
+            end_stroke,
+        } => serde_json::json!({
+            "kind": effect.variant_name(),
+            "start_stroke": start_stroke,
+            "end_stroke": end_stroke,
+        }),
+        RecordingEffect::Clipboard
+        | RecordingEffect::StartChatDraft
+        | RecordingEffect::StopChatDraft
+        | RecordingEffect::Discard => {
+            serde_json::json!({ "kind": effect.variant_name() })
+        }
+    }
+}
+
+/// effects 列表 → 单行 JSON 数组(ObjC 用 NSJSONSerialization 解析)。
+pub fn effects_to_json(effects: &[RecordingEffect]) -> String {
+    serde_json::Value::Array(effects.iter().map(effect_to_json).collect()).to_string()
 }
 
 #[cfg(test)]
@@ -1292,5 +1476,512 @@ mod tests {
             (transcript, machine.state())
         };
         assert_eq!(run(), run());
+    }
+
+    // ── D8b adapter JSON 编解码:字段名/单行/错误分支 ──
+
+    fn parse_event(text: &str) -> RecordingEvent {
+        event_from_json(text).unwrap_or_else(|e| panic!("事件 JSON 应可解析: {e}: {text}"))
+    }
+
+    /// 每一种事件(含草稿裁决单源映射)都能从 adapter JSON 还原。
+    #[test]
+    fn event_json_roundtrip_covers_every_variant() {
+        assert_eq!(
+            parse_event(r#"{"type":"StartPressed","mode":"Gif","stroke_count":3}"#),
+            start(Gif, 3)
+        );
+        assert_eq!(
+            parse_event(r#"{"type":"ReleasePressed","mode":"Draft","stroke_count":7}"#),
+            release(Draft, 7)
+        );
+        assert_eq!(
+            parse_event(r#"{"type":"ChatIntegrationChanged","enabled":false}"#),
+            RecordingEvent::ChatIntegrationChanged { enabled: false }
+        );
+        for (json, event) in [
+            (
+                r#"{"type":"GifEncodeSucceeded"}"#,
+                RecordingEvent::GifEncodeSucceeded,
+            ),
+            (
+                r#"{"type":"GifEncodeFailed"}"#,
+                RecordingEvent::GifEncodeFailed,
+            ),
+            (
+                r#"{"type":"GifClipboardSucceeded"}"#,
+                RecordingEvent::GifClipboardSucceeded,
+            ),
+            (
+                r#"{"type":"GifClipboardFailed"}"#,
+                RecordingEvent::GifClipboardFailed,
+            ),
+            (
+                r#"{"type":"ChatDraftStarted"}"#,
+                RecordingEvent::ChatDraftStarted,
+            ),
+            (
+                r#"{"type":"ChatDraftStartFailed"}"#,
+                RecordingEvent::ChatDraftStartFailed,
+            ),
+            (
+                r#"{"type":"ChatSendFailed"}"#,
+                RecordingEvent::ChatSendFailed,
+            ),
+            (r#"{"type":"ForceStop"}"#, RecordingEvent::ForceStop),
+        ] {
+            assert_eq!(parse_event(json), event, "事件 JSON 漂移: {json}");
+        }
+        assert_eq!(
+            parse_event(r#"{"type":"ChatSendSucceeded","strokes":4}"#),
+            RecordingEvent::ChatSendSucceeded { strokes: 4 }
+        );
+        // 草稿裁决: code 经 DraftOutcome::from_ffi_code 单源映射, detail 可缺省。
+        assert_eq!(
+            parse_event(r#"{"type":"ChatDraftFinished","code":3}"#),
+            RecordingEvent::ChatDraftFinished(DraftOutcome::Accepted { strokes: 3 })
+        );
+        assert_eq!(
+            parse_event(r#"{"type":"ChatDraftFinished","code":0,"detail":""}"#),
+            RecordingEvent::ChatDraftFinished(DraftOutcome::Declined)
+        );
+        assert_eq!(
+            parse_event(r#"{"type":"ChatDraftFinished","code":-1,"detail":"身份过期"}"#),
+            RecordingEvent::ChatDraftFinished(DraftOutcome::Failed {
+                detail: Some("身份过期".to_string())
+            })
+        );
+        // 模式名反查是 name() 的逆。
+        for mode in [Gif, Draft, Send] {
+            assert_eq!(mode_from_name(mode.name()), Some(mode));
+        }
+        assert_eq!(mode_from_name("gif"), None);
+    }
+
+    /// 坏 JSON / 缺字段 / 未知枚举名都要给出可读错误(FFI 包成 error JSON)。
+    #[test]
+    fn event_json_rejects_bad_input() {
+        for bad in [
+            "",
+            "not json",
+            "[]",
+            r#"{"type":"NoSuchEvent"}"#,
+            r#"{"type":"StartPressed","mode":"Gif"}"#,
+            r#"{"type":"StartPressed","stroke_count":1}"#,
+            r#"{"type":"StartPressed","mode":"gif","stroke_count":1}"#,
+            r#"{"type":"StartPressed","mode":"Gif","stroke_count":-1}"#,
+            r#"{"type":"ChatIntegrationChanged","enabled":1}"#,
+            r#"{"type":"ChatDraftFinished"}"#,
+            r#"{"type":"ChatSendSucceeded"}"#,
+        ] {
+            let err = event_from_json(bad).expect_err(&format!("坏事件应报错: {bad}"));
+            assert!(!err.is_empty(), "错误文案不能为空: {bad}");
+        }
+    }
+
+    /// effects JSON:每个变体一种形状(ObjC 按 kind 分派), 单行数组。
+    #[test]
+    fn effects_json_shape_covers_every_variant() {
+        let cases: Vec<(RecordingEffect, serde_json::Value)> = vec![
+            (
+                E::ShowHud(H::GifStartHint),
+                serde_json::json!({"kind":"ShowHud","hud":"GifStartHint"}),
+            ),
+            (
+                E::ShowHud(H::SendSucceeded { strokes: 2 }),
+                serde_json::json!({"kind":"ShowHud","hud":"SendSucceeded","strokes":2}),
+            ),
+            (
+                E::ShowHud(H::DraftAccepted { strokes: 5 }),
+                serde_json::json!({"kind":"ShowHud","hud":"DraftAccepted","strokes":5}),
+            ),
+            (
+                E::ShowHud(H::DraftFailed {
+                    detail: Some("身份过期".to_string()),
+                }),
+                serde_json::json!({"kind":"ShowHud","hud":"DraftFailed","detail":"身份过期"}),
+            ),
+            (
+                E::ShowHud(H::DraftFailed { detail: None }),
+                serde_json::json!({"kind":"ShowHud","hud":"DraftFailed"}),
+            ),
+            (
+                E::EncodeGif {
+                    start_stroke: 3,
+                    end_stroke: 8,
+                },
+                serde_json::json!({"kind":"EncodeGif","start_stroke":3,"end_stroke":8}),
+            ),
+            (E::Clipboard, serde_json::json!({"kind":"Clipboard"})),
+            (
+                E::StartChatDraft,
+                serde_json::json!({"kind":"StartChatDraft"}),
+            ),
+            (
+                E::StopChatDraft,
+                serde_json::json!({"kind":"StopChatDraft"}),
+            ),
+            (
+                E::SendChatStrokes {
+                    start_stroke: 1,
+                    end_stroke: 4,
+                },
+                serde_json::json!({"kind":"SendChatStrokes","start_stroke":1,"end_stroke":4}),
+            ),
+            (E::Discard, serde_json::json!({"kind":"Discard"})),
+        ];
+        for (effect, expected) in cases {
+            let value = effect_to_json(&effect);
+            assert_eq!(value, expected, "effect JSON 漂移: {effect:?}");
+        }
+        // 多个 effect = JSON 数组, 单行(ObjC NSJSONSerialization)。
+        let text = effects_to_json(&[
+            E::ShowHud(H::GifCopied),
+            E::EncodeGif {
+                start_stroke: 0,
+                end_stroke: 2,
+            },
+        ]);
+        assert!(!text.contains('\n'), "effects JSON 必须单行: {text}");
+        let parsed: serde_json::Value = serde_json::from_str(&text).expect("effects JSON 合法");
+        assert_eq!(parsed.as_array().map(Vec::len), Some(2));
+        assert_eq!(effects_to_json(&[]), "[]");
+    }
+
+    // ── D8b: 两端 adapter 录制接线闸门(唯一来源 = core RecordingMachine)──
+    //
+    // 按文本扫描两端 adapter(剥掉注释), 两类断言:
+    // 1) **必须**出现 core 入口/变体 token —— macOS 经 glaspen2_recording_* FFI,
+    //    按 effects JSON 的 kind 与 HUD 名字分派;Windows 直接 match
+    //    RecordingEvent/RecordingEffect 变体。漏接线/漏实现某变体即红。
+    // 2) 旧会话标志位 / 逐模式决策的指纹**不得**出现 —— 把
+    //    g_gif_recording / gif_recording / msg_record_start / ink_draft_active
+    //    或旧的 stop/HUD 决策分支抄回 adapter 即红。
+    //
+    // 行注释与块注释先剥掉(注释里允许解释旧实现);include_str! 指错文件/文件
+    // 被清空时闸门不能静默变绿(过短直接失败)。
+
+    /// 剥掉行注释(// ...)与块注释(/* ... */), 只留代码做指纹匹配。
+    fn strip_comments(src: &str) -> String {
+        let mut out = String::with_capacity(src.len());
+        let mut chars = src.chars().peekable();
+        let mut in_line = false;
+        let mut in_block = false;
+        while let Some(ch) = chars.next() {
+            let next = chars.peek().copied();
+            if in_line {
+                if ch == '\n' {
+                    in_line = false;
+                    out.push(ch);
+                }
+                continue;
+            }
+            if in_block {
+                if ch == '*' && next == Some('/') {
+                    chars.next();
+                    in_block = false;
+                }
+                continue;
+            }
+            if ch == '/' && next == Some('/') {
+                chars.next();
+                in_line = true;
+                continue;
+            }
+            if ch == '/' && next == Some('*') {
+                chars.next();
+                in_block = true;
+                continue;
+            }
+            out.push(ch);
+        }
+        out
+    }
+
+    fn gate_violations(name: &str, src: &str, forbidden: &[&str]) -> Vec<String> {
+        let code = strip_comments(src);
+        forbidden
+            .iter()
+            .filter_map(|pat| {
+                code.find(pat).map(|at| {
+                    format!(
+                        "{name}:{} 仍含旧录制会话标志/决策 {:?}",
+                        code[..at].matches('\n').count() + 1,
+                        pat
+                    )
+                })
+            })
+            .collect()
+    }
+
+    fn gate_missing(name: &str, src: &str, required: &[&str]) -> Vec<String> {
+        let code = strip_comments(src);
+        required
+            .iter()
+            .filter(|token| !code.contains(**token))
+            .map(|token| format!("{name} 缺少 core 录制状态机接线 {token:?}"))
+            .collect()
+    }
+
+    #[test]
+    fn adapters_drive_core_recording_machine() {
+        // macOS: run.m = 热键/事件 tap/effects 执行; glaspen2.m = FFI 声明 +
+        // (已删除的)会话标志位; menu.m = 总开关关闭收尾。
+        let mac_main = include_str!("../../../src/macos/glaspen2.m");
+        let mac_run = include_str!("../../../src/macos/parts/run.m");
+        let mac_menu = include_str!("../../../src/macos/parts/menu.m");
+        // Windows: recording.rs = 接线/effects 分派; state.rs = 两个状态机字段;
+        // actions.rs = Raw Input/总开关入口; hotkeys.rs = WM_HOTKEY; wndproc =
+        // 后台结果回窗口线程; cmds.rs = 自定义消息。
+        let win_recording =
+            include_str!("../../../crates/glaspen-windows/src/overlay/recording.rs");
+        let win_state = include_str!("../../../crates/glaspen-windows/src/overlay/state.rs");
+        let win_actions = include_str!("../../../crates/glaspen-windows/src/overlay/actions.rs");
+        let win_hotkeys = include_str!("../../../crates/glaspen-windows/src/overlay/hotkeys.rs");
+        let win_wndproc = include_str!("../../../crates/glaspen-windows/src/overlay/wndproc.rs");
+        let win_cmds = include_str!("../../../crates/glaspen-windows/src/overlay/cmds.rs");
+        for (name, src) in [
+            ("glaspen2.m", mac_main),
+            ("run.m", mac_run),
+            ("menu.m", mac_menu),
+            ("recording.rs", win_recording),
+            ("state.rs", win_state),
+            ("actions.rs", win_actions),
+            ("hotkeys.rs", win_hotkeys),
+            ("wndproc.rs", win_wndproc),
+            ("cmds.rs", win_cmds),
+        ] {
+            assert!(
+                src.len() > 500,
+                "闸门扫到的 {name} 过短, include_str! 路径可疑"
+            );
+        }
+
+        // 旧会话标志位 + 逐模式 start/stop 函数 + 旧结果码分派(两端)。
+        let mac_forbidden = [
+            "g_gif_recording",
+            "g_gif_record_start",
+            "g_msg_record_start",
+            "g_ink_draft_active",
+            "gif_record_start",
+            "gif_record_stop",
+            "msg_record_start",
+            "msg_record_stop",
+            "ink_draft_stop_async",
+            "static void ink_draft_start(",
+            // 旧 HUD/裁决分派指纹: 编码成功分支里直接写剪贴板 + 仍提示成功,
+            // 以及草稿裁决的本地三分支(判定/文案选择应已上收 FSM)。
+            "copy_gif_data_to_clipboard(gif, out_len)",
+            "if (r > 0)",
+        ];
+        let win_forbidden = [
+            "gif_recording",
+            "gif_record_start",
+            "gif_record_stop",
+            "msg_record_start",
+            "msg_record_stop",
+            "ink_draft_active",
+            "chat_record_start",
+            "chat_record_stop",
+            // 旧实现: 后台线程一把做完编码+剪贴板再按结果码分派
+            "WM_RECORD_DONE",
+            "copy_gif_bytes_to_clipboard(gif)",
+            // 旧 HUD/裁决分派指纹
+            "if (sent >= 0)",
+            "if (r > 0)",
+        ];
+
+        let mut problems = Vec::new();
+        for (name, src) in [
+            ("glaspen2.m", mac_main),
+            ("run.m", mac_run),
+            ("menu.m", mac_menu),
+        ] {
+            problems.extend(gate_violations(name, src, &mac_forbidden));
+        }
+        for (name, src) in [
+            ("recording.rs", win_recording),
+            ("state.rs", win_state),
+            ("actions.rs", win_actions),
+            ("hotkeys.rs", win_hotkeys),
+            ("wndproc.rs", win_wndproc),
+            ("cmds.rs", win_cmds),
+        ] {
+            problems.extend(gate_violations(name, src, &win_forbidden));
+        }
+
+        // macOS 必须经 FFI 驱动 core 状态机, 且 effects kind / HUD 名字全覆盖。
+        problems.extend(gate_missing(
+            "glaspen2.m",
+            mac_main,
+            &[
+                "extern int glaspen2_recording_init(",
+                "extern char* glaspen2_recording_event_json(",
+                "extern int glaspen2_recording_reset(",
+                "extern int glaspen2_recording_mode(",
+            ],
+        ));
+        problems.extend(gate_missing(
+            "run.m",
+            mac_run,
+            &[
+                "glaspen2_recording_event_json(",
+                "glaspen2_recording_mode(",
+                "gl_recording_init(",
+                "rec_finish_and_count(",
+                "rec_exec_effect(",
+                "gl_recording_chat_integration_changed(",
+            ],
+        ));
+        // macOS effects/HUD 分派必须覆盖 core 的每个 kind/hud 名字(D3b 同款:
+        // ObjC 没有字符串 switch, 编译器管不到 —— 漏一个变体即红)。
+        let effect_kinds = [
+            "ShowHud",
+            "EncodeGif",
+            "Clipboard",
+            "StartChatDraft",
+            "StopChatDraft",
+            "SendChatStrokes",
+            "Discard",
+        ];
+        let hud_names = [
+            "GifStartHint",
+            "SendStartHint",
+            "DraftStartHint",
+            "DraftStartFailed",
+            "GifCopied",
+            "GifNoStrokesOrExportFailed",
+            "GifClipboardFailed",
+            "SendNoStrokes",
+            "SendSucceeded",
+            "SendFailed",
+            "DraftAccepted",
+            "DraftDeclined",
+            "DraftFailed",
+        ];
+        let event_types = [
+            "StartPressed",
+            "ReleasePressed",
+            "ChatIntegrationChanged",
+            "GifEncodeSucceeded",
+            "GifEncodeFailed",
+            "GifClipboardSucceeded",
+            "GifClipboardFailed",
+            "ChatDraftStarted",
+            "ChatDraftStartFailed",
+            "ChatDraftFinished",
+            "ChatSendSucceeded",
+            "ChatSendFailed",
+        ];
+        let mut mac_required: Vec<String> =
+            effect_kinds.iter().map(|n| format!("@\"{n}\"")).collect();
+        mac_required.extend(hud_names.iter().map(|n| format!("@\"{n}\"")));
+        mac_required.extend(event_types.iter().map(|n| format!("@\"{n}\"")));
+        // NSJSONSerialization 生成的键名(事件/effects 载荷)也要在 adapter 出现。
+        mac_required.extend(
+            [
+                "\"type\"",
+                "\"mode\"",
+                "\"kind\"",
+                "\"hud\"",
+                "\"stroke_count\"",
+            ]
+            .iter()
+            .map(|s| (*s).to_string()),
+        );
+        let mac_required_refs: Vec<&str> = mac_required.iter().map(String::as_str).collect();
+        problems.extend(gate_missing("run.m(变体覆盖)", mac_run, &mac_required_refs));
+        problems.extend(gate_missing(
+            "menu.m",
+            mac_menu,
+            &["gl_recording_chat_integration_changed("],
+        ));
+
+        // Windows 必须直接 match 两个状态机/全部事件与 effect 变体。
+        problems.extend(gate_missing(
+            "state.rs",
+            win_state,
+            &[
+                "gif_machine: glaspen_core::recording::RecordingMachine",
+                "chat_machine: glaspen_core::recording::RecordingMachine",
+            ],
+        ));
+        let win_rec_required = [
+            "RecordingEvent::StartPressed",
+            "RecordingEvent::ReleasePressed",
+            "RecordingEvent::ChatIntegrationChanged",
+            "RecordingEvent::GifEncodeSucceeded",
+            "RecordingEvent::GifEncodeFailed",
+            "RecordingEvent::GifClipboardSucceeded",
+            "RecordingEvent::GifClipboardFailed",
+            "RecordingEvent::ChatDraftStarted",
+            "RecordingEvent::ChatDraftStartFailed",
+            "RecordingEvent::ChatDraftFinished",
+            "RecordingEvent::ChatSendSucceeded",
+            "RecordingEvent::ChatSendFailed",
+            "RecordingEffect::ShowHud",
+            "RecordingEffect::EncodeGif",
+            "RecordingEffect::Clipboard",
+            "RecordingEffect::StartChatDraft",
+            "RecordingEffect::StopChatDraft",
+            "RecordingEffect::SendChatStrokes",
+            "RecordingEffect::Discard",
+            "DraftOutcome::from_ffi_code",
+            "recording_feed(",
+            "recording_start(",
+            "recording_release(",
+            "recording_chat_integration_changed(",
+            "WM_RECORD_ENCODE_OK",
+            "WM_RECORD_ENCODE_FAIL",
+            "WM_RECORD_DRAFT_DONE",
+            "WM_RECORD_SEND_DONE",
+        ];
+        problems.extend(gate_missing(
+            "recording.rs",
+            win_recording,
+            &win_rec_required,
+        ));
+        // Hotkeys 只喂 Start 事件;Raw Input 只喂 Release;窗口线程分发后台结果。
+        problems.extend(gate_missing(
+            "hotkeys.rs",
+            win_hotkeys,
+            &[
+                "recording_start(state, RecordingMode::Gif)",
+                "recording_start(state, RecordingMode::Draft)",
+                "recording_start(state, RecordingMode::Send)",
+            ],
+        ));
+        problems.extend(gate_missing(
+            "actions.rs",
+            win_actions,
+            &[
+                "recording_release(state, RecordingMode::Gif)",
+                "recording_release(state, RecordingMode::Draft)",
+                "recording_release(state, RecordingMode::Send)",
+                "recording_chat_integration_changed(state, on)",
+            ],
+        ));
+        problems.extend(gate_missing(
+            "wndproc.rs",
+            win_wndproc,
+            &[
+                "recording_encode_done(",
+                "recording_encode_failed(",
+                "recording_draft_done(",
+                "recording_send_done(",
+            ],
+        ));
+        // Windows HUD 文案必须覆盖 core 的每个 RecordingHud 变体。
+        problems.extend(gate_missing(
+            "recording.rs(HUD 覆盖)",
+            win_recording,
+            &hud_names,
+        ));
+
+        assert!(
+            problems.is_empty(),
+            "D8b 录制接线闸门失败(两端必须只经 core::recording 状态机):\n{}",
+            problems.join("\n")
+        );
     }
 }

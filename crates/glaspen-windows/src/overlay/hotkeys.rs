@@ -715,19 +715,13 @@ pub(crate) fn resume_if_paused(hwnd: HWND) {
 
 /// WM_HOTKEY 分发: 固定按住类 + 可配置动作。
 fn dispatch_hotkey(state: &mut OverlayState, id: i32) {
+    use glaspen_core::recording::RecordingMode;
     match id {
-        HOTKEY_ID_GIF => gif_record_start(state),
-        // 按住类与 macOS 一致受集成总开关守门
-        HOTKEY_ID_DRAFT => {
-            if state.draw.chat_integration {
-                ink_draft_start(state);
-            }
-        }
-        HOTKEY_ID_SEND => {
-            if state.draw.chat_integration {
-                chat_record_start(state);
-            }
-        }
+        // D8b: 按住类只喂状态机事件, 起止窗口/effects 顺序全在 core
+        // (recording.rs);集成总开关的 adapter 门在 recording_start 里再守一道。
+        HOTKEY_ID_GIF => recording_start(state, RecordingMode::Gif),
+        HOTKEY_ID_DRAFT => recording_start(state, RecordingMode::Draft),
+        HOTKEY_ID_SEND => recording_start(state, RecordingMode::Send),
         _ => {
             let idx = (id - HOTKEY_ID_ACTION_BASE) as usize;
             let action = ui::ACTIONS.get(idx).map(|a| a.id).unwrap_or("");

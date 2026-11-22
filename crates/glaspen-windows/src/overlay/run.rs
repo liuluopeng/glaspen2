@@ -215,10 +215,10 @@ pub fn run() {
             camera_pending_dy: 0.0,
             camera_pan_timer: false,
             camera_blocked: false,
-            gif_recording: false,
-            gif_record_start: -1,
-            msg_record_start: -1,
-            ink_draft_active: false,
+            // D8b: 两个录制状态机(GIF 槽 + 手写消息槽;草稿/直发在消息槽内互斥)
+            gif_machine: glaspen_core::recording::RecordingMachine::new(false),
+            chat_machine: glaspen_core::recording::RecordingMachine::new(chat_integration),
+            pending_gif_bytes: Vec::new(),
         };
         let _ = state.stroke_modeler.reset_w_params(modeler_params());
         // 按当前画布模式绘制网格与笔迹(无限画布重启后恢复镜头与内容)
