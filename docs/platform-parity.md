@@ -161,3 +161,30 @@ macOS 写 snake_case，Windows 写面板 camelCase：
 - 无 Windows 真机：Windows 侧结论来自代码阅读，未做运行时验证。
 - "可删行数"是静态估算，实际取决于抽出的 trait/接口粒度。
 - 少数差异可能是有意为之（例如 invertInk 注释写"macOS v1 独有"），执行前需确认。
+
+## 9. 执行现状(2026-11-22): 从"文档规则"变成"门禁"
+
+单源化已落地并被测试/CI 强制:
+
+- **动作/面板平台差异**: `crates/glaspen-core/src/ui.rs` 是唯一来源(默认键位/保留
+  组合/强制绑定/修饰键显示/键盘示意图/字号/功能可用性)。macOS 走 FRB
+  `uiConfigJson`, Windows 走命名管道 `uiConfig`, Flutter 无平台行为分支
+  (`platform_parity_test.dart` 守卫)。
+- **设置项契约**: `crates/glaspen-core/src/settings.rs` 登记 key / db_key / 类型 /
+  平台可用性。`cargo test` 用 `include_str!` 扫描 Flutter `_settingsToMap`、
+  `api.rs Settings`、Windows 管道 `getSettings`, 任一方少/多一个键即失败
+  (本规则已抓到 `nasUrl` 面板漏映射的真实 bug)。`user_settings` 落库键也由该
+  登记表归一(旧 camelCase 行在启动时合并)。
+- **Windows 壳**: 热键默认/保留/强制绑定从 `ui.rs` 取, 不再有第二份表。
+- **CI 硬门**: `windows-check` 不可 `continue-on-error`; 现在跑
+  `cargo test -p glaspen-windows`(Windows-only 单测)、core 的 db/settings/ui
+  测试、`flutter build windows`、`flutter test`(Windows)。macOS job 追加
+  `scripts/check-platform-parity.sh`(无平台分支/无静默空壳/无 todo!/unimplemented!/
+  版本一致)。
+- **故意空缺原则**: 某平台未实现的能力必须由 `ui_config_json` 的 `features` 隐藏
+  入口、管道/FRB 返回 `UnsupportedError`, **禁止半实现或静默空壳**; 真实缺口因此
+  在真机上一眼可见, 而不是"看起来有按钮、点了没反应"。
+
+尚未单源化的债务(按优先级): 设置 effect 分派(目前仍是 mac ObjC/Windows 管道各
+一份 apply 分支)、面板协议(FRB 与管道仍各自手写 JSON 形状)、camera/grid/页信息/
+录制 FSM 等行为状态机、双渲染实现。下一步按 §7 的 Phase A/B 推进。

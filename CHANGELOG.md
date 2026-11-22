@@ -21,6 +21,14 @@
 - **面板未接入功能显式隐藏**: Windows 尚未实现的反色/翻页动效/页面 PNG·SVG
   导出/所选 PDF/OCR 搜索由 `uiConfig.features` 隐藏入口, 桥层改为
   `UnsupportedError`, 杜绝静默 no-op。
+- **设置项唯一登记表**: `core/settings.rs` 单点声明 key/落库键/类型/平台可用性;
+  契约测试扫描 Flutter 面板、macOS 设置结构体与 Windows 管道快照, 任一方漏项即
+  测试失败(顺带修掉面板漏映射 `nasUrl` 导致 NAS 地址回显为空的 bug)。旧 Windows
+  的 camelCase 键在启动时并入规范键, 跨平台备份恢复不再丢设置。
+- **Windows CI 从"能编译"升级为"跑行为"**: 补跑 Windows-only 单测、core 设置/
+  UI 契约测试、`flutter build windows` 与 Windows 上的 `flutter test`; 另加
+  `scripts/check-platform-parity.sh`(无平台分支/无静默空壳/无 todo! 半实现/版本
+  一致)进 lint 与 CI。
 - **Windows 编译硬门**: CI `windows-check` 移除 `continue-on-error`(cfg(windows)
   代码在 macOS 上根本不编译); 另加 `workflow_dispatch` 便于按分支单独验证。
 

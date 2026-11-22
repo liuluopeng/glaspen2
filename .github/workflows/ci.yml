@@ -89,6 +89,10 @@ jobs:
           # 隔离数据库: FRB wire 测试里的写操作只碰临时库
           GLASPEN2_DB_PATH="$(mktemp -u)/glaspen2-wire-test.db" flutter test
 
+      # 跨平台契约: 面板平台分支 / 静默空壳 / 半实现 / 版本漂移(纯文本, 秒级)
+      - name: platform parity contract
+        run: sh scripts/check-platform-parity.sh
+
   # 覆盖率只在 main push 上跑(PR 上重复整套构建太贵): 产物 lcov.info 存
   # artifact, 本地可用 `cargo llvm-cov --html --open` 看盲区。
   coverage:
@@ -137,7 +141,7 @@ jobs:
 
   windows-check:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     # **硬门**: Windows 是发布平台之一, cfg(windows) 代码在 macOS 上根本不编译,
     # 所以这条一旦红了必须修, 不允许 continue-on-error(历史上它红着放过了
     # 一个 Windows 编不过的 v0.6.0 tag)。
@@ -184,3 +188,41 @@ jobs:
         run: |
           cargo test -p glaspen-core db:: 2>&1 | Tee-Object -FilePath wtest-db.log
           exit $LASTEXITCODE
+      # 跨平台契约测试: 设置登记表/UI schema 扫描源文件, 以下用例在 Windows 上同样必须绿。
+      - name: cargo test (设置/UI 契约)
+        run: |
+          cargo test -p glaspen-core settings:: 2>&1 | Tee-Object -FilePath wtest-settings.log
+          exit $LASTEXITCODE
+      - name: cargo test (core UI schema)
+        run: |
+          cargo test -p glaspen-core ui:: 2>&1 | Tee-Object -FilePath wtest-ui.log
+          exit $LASTEXITCODE
+      # Windows 壳的单测(cfg(windows) 代码, macOS 上不编译也不运行, 过去 0 覆盖)。
+      - name: cargo test (Windows 壳)
+        run: |
+          cargo test -p glaspen-windows --lib 2>&1 | Tee-Object -FilePath wtest-win.log
+          exit $LASTEXITCODE
+
+      # Flutter 面板 Windows 构建 + 单测: 以前只在 macOS 跑, Windows runner/插件问题
+      # 要到真机才发现。这里提前暴露。
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.0
+          channel: stable
+          cache: true
+      - name: flutter build (Windows 面板)
+        working-directory: flutter_settings
+        run: |
+          flutter build windows --release 2>&1 | Tee-Object -FilePath ..\fbuild-win.log
+          exit $LASTEXITCODE
+      - name: flutter test (Windows)
+        working-directory: flutter_settings
+        run: |
+          $env:GLASPEN2_DB_PATH = "$env:RUNNER_TEMP\glaspen2-wire-test.db"
+          flutter test 2>&1 | Tee-Object -FilePath ..\ftest-win.log
+          exit $LASTEXITCODE
+
+      # 面板平台分支/静默空壳/半实现/版本一致(纯文本检查)
+      - name: platform parity contract
+        shell: bash
+        run: sh scripts/check-platform-parity.sh
