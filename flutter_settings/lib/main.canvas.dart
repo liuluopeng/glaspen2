@@ -63,30 +63,25 @@ extension _CanvasTabUi on _SettingsPageState {
   }
 
   Future<void> _canvasAction(String action) async {
-    // 「新建画布」= 清空当前自由涂鸦(软删除, 面板侧不可撤销) —— 必须二次确认,
-    // 不能一个误点就把整片内容清掉。
+    // 自由涂鸦按 macOS 设计**只有一张画布, 不存在清空/新建操作**: 这里只提示,
+    // 绝不发 canvasNew(以前会清空整片自由涂鸦, 数据事故)。
     if (action == 'new') {
-      final ok = await showDialog<bool>(
+      await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(_canvasText('新建画布', 'New canvas')),
           content: Text(_canvasText(
-              '会清空当前自由涂鸦的全部内容，且无法撤销。确定吗？',
-              'This clears all free-doodle content and cannot be undone. Continue?')),
+              '自由涂鸦只有一张画布，不存在清空/新建操作。',
+              'Free doodle has a single canvas — there is no clear/new operation.')),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(_canvasText('取消', 'Cancel')),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(_canvasText('清空并新建', 'Clear and create')),
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(_canvasText('知道了', 'Got it')),
             ),
           ],
         ),
       );
-      if (ok != true) return;
-      if (!mounted) return;
+      return;
     }
     setState(() => _canvasLoading = true);
     try {

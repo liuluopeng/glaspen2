@@ -303,13 +303,12 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                 redraw_from_strokes(state);
             }
             x if x == CMD_CANVAS_NEW => {
-                // 手动新建(面板按钮,macOS 同款): 先收笔(要触发抬笔扇出), 静默执行,
-                // 无限画布清空 + 镜头回原点(macOS 只 set_view_transform, 不立即持久化)
+                // 自由涂鸦按 macOS 设计**只有一张画布, 不存在清空/新建操作**:
+                // 收到该动作只收笔 + 提示, 绝不清空数据(以前这里会清空整片自由涂鸦,
+                // 一次误点就丢内容)。活页本模式下仍按原语义清空当前页。
                 finish_active_stroke(state);
                 if infinite_on() {
-                    let _ = glaspen_core::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
-                    set_cam(0.0, 0.0, 1.0);
-                    redraw_from_strokes(state);
+                    hud_notify("自由涂鸦只有一张画布，不存在清空操作");
                 } else {
                     clear_screen(state);
                 }
