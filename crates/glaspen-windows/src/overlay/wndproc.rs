@@ -206,6 +206,11 @@ unsafe extern "system" fn wnd_proc(
             }
             LRESULT(0)
         }
+        WM_HUD_TICK => {
+            // 看门狗兜底: 通知到点还没隐回去就强制隐藏
+            hud_tick_hide_overdue();
+            LRESULT(0)
+        }
         WM_HOTKEY_RELOAD => {
             // 设置管道线程/录制超时线程投递的"重新注册热键"请求:
             // 只有窗口所属线程能注册(否则 0x80070580 无效窗口)。

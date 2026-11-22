@@ -374,6 +374,7 @@ unsafe extern "system" fn hud_wnd_proc(
                 let _ = KillTimer(Some(hwnd), HUD_NOTIF_TIMER);
                 let hud = hud_ref();
                 hud.notif = None;
+                NOTIF_DEADLINE_MS.store(0, std::sync::atomic::Ordering::Relaxed);
                 let _ = ShowWindow(hud.notif_hwnd, SW_HIDE);
             }
             LRESULT(0)
@@ -728,6 +729,10 @@ fn hud_notify_async(text: String) {
     }
 }
 
+/// 通知的隐藏截止时间(epoch ms, 0=没有待隐藏通知)。
+/// 由窗口线程写、看门狗线程只读, 用原子量避免跨线程碰 HudState。
+static NOTIF_DEADLINE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn hud_notify(text: &str) {
     unsafe {
         if HUD.is_null() {
@@ -735,8 +740,53 @@ fn hud_notify(text: &str) {
         }
         let hud = hud_ref();
         hud.notif = Some(text.to_string());
+        // 先武装定时器再渲染: 渲染中途任何一条提前 return 都不会留下
+        // "窗口已显示但没有计时器" → 通知永久钉死在屏幕上
+        let id = SetTimer(Some(hud.notif_hwnd), HUD_NOTIF_TIMER, HUD_NOTIF_MS, None);
+        if id == 0 {
+            tracing::warn!("通知隐藏计时器创建失败, 改由看门狗兜底隐藏");
+        }
+        NOTIF_DEADLINE_MS.store(
+            now_millis().saturating_add(HUD_NOTIF_MS as u64),
+            std::sync::atomic::Ordering::Relaxed,
+        );
         hud_render_notif_text(hud.notif_hwnd, text);
-        let _ = SetTimer(Some(hud.notif_hwnd), HUD_NOTIF_TIMER, HUD_NOTIF_MS, None);
+    }
+}
+
+/// 看门狗线程调用(每 500ms): 通知已过截止时间仍在显示 → 请求窗口线程隐藏。
+/// 窗口线程阻塞/计时器丢失时, 通知也不会永久留在屏幕上。
+fn hud_watchdog_check(hwnd_overlay: HWND) {
+    let deadline = NOTIF_DEADLINE_MS.load(std::sync::atomic::Ordering::Relaxed);
+    if deadline == 0 || now_millis() < deadline.saturating_add(300) {
+        return;
+    }
+    unsafe {
+        let _ = PostMessageW(
+            Some(hwnd_overlay),
+            WM_HUD_TICK,
+            WPARAM(0),
+            LPARAM(0),
+        );
+    }
+}
+
+/// 窗口线程处理 WM_HUD_TICK: 到点的通知强制隐藏(兜底路径, 与 WM_TIMER 同效)。
+fn hud_tick_hide_overdue() {
+    let deadline = NOTIF_DEADLINE_MS.load(std::sync::atomic::Ordering::Relaxed);
+    if deadline == 0 || now_millis() < deadline {
+        return;
+    }
+    unsafe {
+        if HUD.is_null() {
+            return;
+        }
+        let hud = hud_ref();
+        let _ = KillTimer(Some(hud.notif_hwnd), HUD_NOTIF_TIMER);
+        hud.notif = None;
+        NOTIF_DEADLINE_MS.store(0, std::sync::atomic::Ordering::Relaxed);
+        let _ = ShowWindow(hud.notif_hwnd, SW_HIDE);
+        tracing::debug!("通知兜底隐藏(看门狗)");
     }
 }
 

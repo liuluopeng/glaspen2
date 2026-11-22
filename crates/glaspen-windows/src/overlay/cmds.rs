@@ -8,6 +8,9 @@ const WM_RECORD_DONE: u32 = WM_USER + 3;
 const WM_HOTKEY_RELOAD: u32 = WM_USER + 6;
 /// 后台线程请求弹通知(管道/聊天/草稿线程不能直接碰 HUD 静态对象)
 const WM_HUD_NOTIFY: u32 = WM_USER + 7;
+/// 通知窗口的"兜底隐藏"滴答: 看门狗线程发现通知已过截止时间仍可见时投递
+/// (WM_TIMER 万一没被处理, 通知窗口不会永久钉在屏幕上)
+const WM_HUD_TICK: u32 = WM_USER + 8;
 
 pub const CMD_SELECT_COLOR: usize = 100;
 pub const CMD_SELECT_WIDTH: usize = 200;

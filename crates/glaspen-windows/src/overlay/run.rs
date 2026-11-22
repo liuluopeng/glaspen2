@@ -408,6 +408,9 @@ fn spawn_input_watchdog(hwnd: HWND) {
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(std::time::Duration::from_millis(500));
+            let overlay = HWND(hwnd_val as *mut std::ffi::c_void);
+            // 通知窗口兜底隐藏(计时器丢消息/窗口线程短暂阻塞都能自愈)
+            hud_watchdog_check(overlay);
             let now = now_millis();
             let last = LAST_PEN_REPORT_MS.load(std::sync::atomic::Ordering::SeqCst);
             let blocked = INPUT_BLOCKED.load(std::sync::atomic::Ordering::SeqCst);
