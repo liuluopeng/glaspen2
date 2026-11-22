@@ -358,30 +358,6 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         );
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
-    } else if msg_type == "getPageThumbnail" {
-        // 页面缩略图(PNG,base64 编码)
-        let screen_id = json_get_i64(line, "screenId").unwrap_or(0);
-        let w = json_get_i64(line, "w").unwrap_or(0) as i32;
-        let h = json_get_i64(line, "h").unwrap_or(0) as i32;
-        let max_size = json_get_i64(line, "maxSize").unwrap_or(280) as i32;
-        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        let mut out_len: i32 = 0;
-        let ptr = glaspen_core::export::glaspen2_render_thumbnail(screen_id, w, h, max_size, &mut out_len);
-        if ptr.is_null() || out_len <= 0 {
-            let _ = writer.write_all(
-                format!("{{\"type\":\"getPageThumbnail_response\",\"reqId\":{},\"data\":{{\"png\":\"\"}}}}\n", req_id).as_bytes(),
-            );
-        } else {
-            let bytes = unsafe { std::slice::from_raw_parts(ptr, out_len as usize) };
-            let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
-            glaspen_core::export::glaspen2_free_rust_bytes(ptr, out_len);
-            let resp = format!(
-                "{{\"type\":\"getPageThumbnail_response\",\"reqId\":{},\"data\":{{\"png\":\"{}\"}}}}\n",
-                req_id, b64
-            );
-            let _ = writer.write_all(resp.as_bytes());
-        }
-        let _ = writer.flush();
     } else if msg_type == "getPageThumbnails" {
         // 活页本整屏一次取图:避免每页一次管道往返 + 一次 setState。
         // 回传与 macOS 通道相同的自描述二进制块,这里按 base64 走 JSON。
@@ -1497,16 +1473,6 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
                 );
             }
         }
-        let _ = writer.flush();
-    } else if msg_type == "stageUpdate" {
-        // Windows 无 DMG 解包:安装包下载(校验)完即就绪
-        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        let _ = writer.write_all(
-            format!(
-                "{{\"type\":\"stageUpdate_response\",\"reqId\":{req_id},\"data\":{{\"ok\":1,\"message\":\"安装包已就绪\"}}}}\n"
-            )
-            .as_bytes(),
-        );
         let _ = writer.flush();
     } else if msg_type == "applyUpdate" {
         // 拉起安装包并退出本程序:安装器解压到 %LOCALAPPDATA%\glaspen2 并

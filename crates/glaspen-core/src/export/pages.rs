@@ -404,20 +404,6 @@ pub extern "C" fn glaspen2_undo_last_stroke() -> c_int {
     })
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_delete_last_stroke() {
-    let ok = if state::canvas_kind() == state::CanvasKind::Infinite {
-        runtime().block_on(db::delete_last_infinite_stroke())
-    } else {
-        runtime().block_on(db::delete_last_stroke())
-    };
-    if ok {
-        state::lock(&STROKES).pop();
-    } else {
-        tracing::warn!("删除末笔失败: DB 未删除, 保留内存笔迹");
-    }
-}
-
 // ---------------------------------------------------------------------------
 // PDF export
 // ---------------------------------------------------------------------------
@@ -508,19 +494,6 @@ pub(crate) fn reset_page_create_gate() {
         .unwrap_or_else(|e| e.into_inner())
         .take();
     crate::state::backdate_stroke_activity(std::time::Duration::from_secs(3600));
-}
-
-/// 活页本重排: 把某页移到锚点页前/后(面板内前后移/拖拽)。
-/// 返回 1 成功, 0 失败(页不存在/锚点不存在)。
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_page_reorder(screen_id: i64, anchor_id: i64, before: c_int) -> c_int {
-    match runtime().block_on(db::reorder_screen(screen_id, anchor_id, before != 0)) {
-        Ok(()) => 1,
-        Err(e) => {
-            tracing::error!("重排失败: {e}");
-            0
-        }
-    }
 }
 
 // ── 页面详情: 圈选 / 移动 / 复制粘贴 / 删除所选(面板内鼠标操作) ──

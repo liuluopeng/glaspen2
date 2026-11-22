@@ -95,11 +95,6 @@ pub const COMMANDS: &[CommandDef] = &[
         name: "getBubbles",
         dispatch: Dispatch::Main,
     },
-    // 旧版单页缩略图命令: Flutter 已改用 getPageThumbnails(批量), 保留兼容。
-    CommandDef {
-        name: "getPageThumbnail",
-        dispatch: Dispatch::Legacy,
-    },
     CommandDef {
         name: "getPageThumbnails",
         dispatch: Dispatch::Main,
@@ -155,11 +150,6 @@ pub const COMMANDS: &[CommandDef] = &[
     CommandDef {
         name: "setSetting",
         dispatch: Dispatch::Main,
-    },
-    // Windows Flutter 面板自己实现了 stageUpdate(安装包下载完即就绪), 该分支已无调用方。
-    CommandDef {
-        name: "stageUpdate",
-        dispatch: Dispatch::Legacy,
     },
     CommandDef {
         name: "testChatLogin",

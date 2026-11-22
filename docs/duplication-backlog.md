@@ -57,7 +57,7 @@
 | D10 | **i18n/通知文案** | mac `L(@"zh",@"en")` 共 109 对 ↔ Windows overlay 中约 190 条中/英字面量 | ~300 条 | `core/i18n.rs`: 文案 key + zh/en + 占位符;两端只显示 | 键集合测试:两端使用 ⊆ core 表;缺文案即失败 | P1 | 2–3 d | ⬜ TODO |
 | D11 | **Flutter 设置表单元数据(手写)** | `main.settings_state.dart`(321 行)+ `main.settings_widgets.dart`(1309 行)按 key 手写控件/labels/default/clamp | 400–600 行 | settings registry 扩展 section/label/range/unit;Dart 从 schema 生成控件;平台可用性已由 E3 推导 | 新增设置项只改 core registry + 两端 effect;Dart 无 per-key 手写 | P3 | 2–3 d | ⬜ TODO |
 | D12 | **面板设置快照构建** | `menu.m:985` `glaspen2_macos_settings_json` ↔ `pipe.rs:767/869` `getSettings` 的巨型 format! | ~100 行 + 类型错漏风险 | 形状/排序/类型由 core schema 决定;两端只提供"值"(活状态 + DB);统一用 serde/schema 序列化 | 两端快照键集合已有测试;补值类型/默认一致性测试 | P2 | 1–2 d | ⬜ TODO |
-| D13 | **死代码/历史命令清理** | 4 个零调用 FFI: `glaspen2_page_reorder`/`glaspen2_delete_last_stroke`/`glaspen2_now_secs`/`glaspen2_get_stroke_point_time`;Windows 管道 `stageUpdate`(pipe.rs:1501,Dart 本地实现)、`getPageThumbnail`(已被批量接口取代) | ~100 行 | 直接删除;protocol 表里标 Legacy 的条目一并删(先确认一个 release 无回滚需求) | 全仓 grep 零引用;cargo/flutter 全绿 | P0 | 0.5 d | ⬜ TODO |
+| D13 | **死代码/历史命令清理** | 4 个零调用 FFI: `glaspen2_page_reorder`/`glaspen2_delete_last_stroke`/`glaspen2_now_secs`/`glaspen2_get_stroke_point_time`;Windows 管道 `stageUpdate`(pipe.rs:1501,Dart 本地实现)、`getPageThumbnail`(已被批量接口取代) | ~100 行 | 直接删除;protocol 表里标 Legacy 的条目一并删(先确认一个 release 无回滚需求) | 全仓 grep 零引用;cargo/flutter 全绿 | P0 | 0.5 d | ✅ DONE(本提交) |
 
 ### 评估后确认"保留两份"的(不要合并)
 
@@ -89,3 +89,4 @@
 |---|---|---|---|---|
 | 2026-11-22 | E1–E6 | 动作/UI 配置、Windows 热键默认、设置 registry、协议契约、面板分支、Windows CI 行为门均已单源化 | — | 358c941/8bef542/3a10a98/b80f05b/39206c3/953d74e |
 | 2026-11-22 | D1–D13 | 建立本清单;当前全部 TODO(除 E 系列) | 建议从 P0(D2 chord、D4 页信息、D13 死代码)开始 | — |
+| 2026-11-22 | D13 | 删除 4 个零调用 FFI(`page_reorder`/`delete_last_stroke`/`now_secs`/`get_stroke_point_time`)与管道 Legacy 命令 `getPageThumbnail`/`stageUpdate`,同步命令表;core protocol 测试 7/7、cargo build、Windows 目标交叉检查通过 | 下一项:D4 页信息/日期文案单源 | 本提交 |

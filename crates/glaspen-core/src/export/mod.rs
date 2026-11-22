@@ -1437,30 +1437,6 @@ pub extern "C" fn glaspen2_free_c_string(ptr: *mut c_char) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// GIF save (cropped)
-// ---------------------------------------------------------------------------
-
-/// Save cropped drawing as GIF to desktop. Returns 1 on success, 0 on failure.
-/// `surface_scale` is the backing scale factor (1.0 = non-Retina, 2.0 = Retina).
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_now_secs() -> c_double {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64()
-}
-
-/// Get the time component of a single stroke point. Used by Windows Flutter overlay.
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_get_stroke_point_time(idx: c_int, pidx: c_int) -> c_double {
-    let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
-    strokes
-        .get(idx as usize)
-        .and_then(|s| s.points.get(pidx as usize))
-        .map_or(0.0, |p| p.3)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
