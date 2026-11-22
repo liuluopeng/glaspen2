@@ -210,8 +210,9 @@ Future<UpdateOutcome> stageUpdate({required String tag}) =>
 
 /// 启动 `--updater` 帮手并退出本程序(用户点「立即重启更新」)。
 ///
-/// **成功的路径不返回**:`shim::hotkey("Q")` → `[NSApp terminate:]` 会在
-/// 主线程把进程结束掉;只有每一步失败才回到这里,带着 `ok=false`。
+/// **成功的路径不返回**:`shim::hotkey("Q")` → `gl_quit_app`(与菜单「退出」
+/// 同一条路径)→ `[NSApp terminate:]` 在主线程结束进程;只有每一步失败才回到
+/// 这里,带着 `ok=false`。
 Future<UpdateOutcome> applyUpdate() =>
     RustLib.instance.api.crateApiApplyUpdate();
 
@@ -225,6 +226,11 @@ Future<bool> exportPdf() => RustLib.instance.api.crateApiExportPdf();
 /// 导出动画 GIF 并复制到剪贴板。
 Future<bool> exportAnimatedGif() =>
     RustLib.instance.api.crateApiExportAnimatedGif();
+
+/// 设置面板的平台无关 UI 数据(默认键位/保留组合/提示文案/键盘布局/功能开关)。
+/// 数据单源在 core/ui.rs; Windows 面板经命名管道指令 `uiConfig` 取同一份 JSON,
+/// Flutter 侧因此不再按平台分叉。
+Future<String> uiConfigJson() => RustLib.instance.api.crateApiUiConfigJson();
 
 /// 备份/回导结果:成败 + 给用户看的一句话(成功时是文件路径)。
 class BackupOutcome {
@@ -260,7 +266,8 @@ enum CanvasAction {
   new_,
 }
 
-/// 总览载荷:PNG + 当前视口矩形 [x, y, w, h]。
+/// 总览载荷:PNG + [视口矩形 x4, 内容包围盒 x4]。
+/// 包围盒 [bx,by,bw,bh] 用于面板自由涂鸦编辑时把图片坐标映射回画布。
 class CanvasPayload {
   final Uint8List png;
   final Float64List rect;

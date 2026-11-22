@@ -23,4 +23,4 @@ pub mod macos;
 pub use glaspen_core::{
     STROKES, Stroke, desktop_path, pressure_to_width, runtime, timestamped_name, timestamped_path,
 };
-pub use glaspen_core::{cairo_dl, db, export, modeler, pdf, state, update, updater};
+pub use glaspen_core::{cairo_dl, db, export, modeler, pdf, state, ui, update, updater};

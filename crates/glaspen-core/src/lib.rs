@@ -34,6 +34,7 @@ pub mod pagerender;
 pub mod pdf;
 pub mod presets;
 pub mod state;
+pub mod ui;
 pub mod update;
 pub mod updater;
 

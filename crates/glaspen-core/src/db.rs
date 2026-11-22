@@ -188,6 +188,8 @@ mod platform {
         }
 
         apply_defaults(&pool).await;
+        // 旧 Windows 库里的 camelCase 设置键并到规范键(跨平台备份可互换的前提)。
+        migrate_setting_keys(&pool).await;
 
         // 规模日志: 页数/笔迹数一眼可见, "全新的数据库"一类问题当场暴露
         let (screens, strokes): (i64, i64) = sqlx::query_as(
@@ -2445,35 +2447,130 @@ mod platform {
         Some((x, y, z))
     }
 
-    pub async fn save_setting(key: &str, value: &str) {
-        let pool = match DB.get() {
-            Some(p) => p,
-            None => {
-                dblog!("ERR 设置写 {key}: DB 未初始化");
-                return;
-            }
-        };
-        match sqlx::query("INSERT OR REPLACE INTO user_settings (key, value) VALUES (?1, ?2)")
-            .bind(key)
-            .bind(value)
-            .execute(pool)
-            .await
-        {
-            Ok(_) => dblog!("设置写 {key}={value}"),
-            Err(e) => dblog!("ERR 设置写 {key}: {e}"),
-        }
+    /// 跨平台设置键别名: 面板协议键(Windows 侧 camelCase) → 规范键(macOS 侧
+    /// snake_case)。两个平台共用同一个 `user_settings` 表, 过去各写各的键,
+    /// 导致「把 macOS 的备份恢复到 Windows 会静默丢 9 项设置」。
+    /// 现在读写都归一到规范键; `migrate_setting_keys` 在启动时把旧行并过去。
+    pub(crate) const SETTING_KEY_ALIASES: &[(&str, &str)] = &[
+        ("frostedGlass", "glass_enabled"),
+        ("glassFollowStrokes", "glass_follow_strokes"),
+        ("gridFollowStrokes", "grid_follow_strokes"),
+        ("softShadow", "soft_shadow"),
+        ("invertInk", "invert_ink"),
+        ("invertFps", "invert_fps"),
+        ("pressureMonitor", "pressure_monitor"),
+        ("notebookStyle", "notebook_style"),
+        ("panelTransparent", "panel_transparent"),
+    ];
+
+    /// 面板/壳传进来的键 → 落库规范键。非别名原样返回。
+    pub(crate) fn canonical_setting_key(key: &str) -> &str {
+        SETTING_KEY_ALIASES
+            .iter()
+            .find(|(alias, _)| *alias == key)
+            .map(|(_, canonical)| *canonical)
+            .unwrap_or(key)
     }
 
-    pub async fn load_setting(key: &str) -> Option<String> {
-        let pool = DB.get()?;
-        let r = sqlx::query_scalar::<_, String>("SELECT value FROM user_settings WHERE key = ?1")
+    async fn load_setting_raw(pool: &SqlitePool, key: &str) -> Option<String> {
+        sqlx::query_scalar::<_, String>("SELECT value FROM user_settings WHERE key = ?1")
             .bind(key)
             .fetch_optional(pool)
             .await
             .ok()
-            .flatten();
+            .flatten()
+    }
+
+    pub(crate) async fn save_setting_with(pool: &SqlitePool, key: &str, value: &str) {
+        let canonical = canonical_setting_key(key);
+        match sqlx::query("INSERT OR REPLACE INTO user_settings (key, value) VALUES (?1, ?2)")
+            .bind(canonical)
+            .bind(value)
+            .execute(pool)
+            .await
+        {
+            Ok(_) => dblog!("设置写 {canonical}={value}"),
+            Err(e) => dblog!("ERR 设置写 {canonical}: {e}"),
+        }
+        // 旧版 Windows 写下的别名行删掉, 避免同义键两份值互相打架。
+        if canonical != key
+            && let Err(e) = sqlx::query("DELETE FROM user_settings WHERE key = ?1")
+                .bind(key)
+                .execute(pool)
+                .await
+        {
+            tracing::warn!("清理旧设置键 {key} 失败: {e}");
+        }
+    }
+
+    pub async fn save_setting(key: &str, value: &str) {
+        let Some(pool) = DB.get() else {
+            dblog!("ERR 设置写 {key}: DB 未初始化");
+            return;
+        };
+        save_setting_with(pool, key, value).await;
+    }
+
+    pub(crate) async fn load_setting_with(pool: &SqlitePool, key: &str) -> Option<String> {
+        let canonical = canonical_setting_key(key);
+        let mut r = load_setting_raw(pool, canonical).await;
+        if r.is_none() {
+            // 旧库兼容: 传入键自身(别名)或反向别名行。
+            if canonical != key {
+                r = load_setting_raw(pool, key).await;
+            }
+            if r.is_none() {
+                for (alias, canon) in SETTING_KEY_ALIASES {
+                    if *canon == canonical && *alias != canonical {
+                        r = load_setting_raw(pool, alias).await;
+                        if r.is_some() {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         dblog!("设置读 {key} → {:?}", r);
         r
+    }
+
+    pub async fn load_setting(key: &str) -> Option<String> {
+        let pool = DB.get()?;
+        load_setting_with(pool, key).await
+    }
+
+    /// 把旧版 Windows 写下的 camelCase 设置键并到规范 snake_case 键上。
+    /// 无别名行时零成本; 幂等。
+    pub(crate) async fn migrate_setting_keys(pool: &SqlitePool) {
+        let mut moved = 0usize;
+        for (alias, canonical) in SETTING_KEY_ALIASES {
+            let Some(value) = load_setting_raw(pool, alias).await else {
+                continue;
+            };
+            if load_setting_raw(pool, canonical).await.is_none() {
+                if let Err(e) =
+                    sqlx::query("INSERT OR REPLACE INTO user_settings (key, value) VALUES (?1, ?2)")
+                        .bind(canonical)
+                        .bind(&value)
+                        .execute(pool)
+                        .await
+                {
+                    tracing::warn!("迁移设置键 {alias}→{canonical} 失败: {e}");
+                    continue;
+                }
+                moved += 1;
+            }
+            if let Err(e) = sqlx::query("DELETE FROM user_settings WHERE key = ?1")
+                .bind(alias)
+                .execute(pool)
+                .await
+            {
+                tracing::warn!("清理旧设置键 {alias} 失败: {e}");
+            }
+        }
+        if moved > 0 {
+            tracing::info!("跨平台设置键迁移: {moved} 项合并到规范键");
+        }
     }
 
     pub async fn save_settings(pen_r: f64, pen_g: f64, pen_b: f64, width_scale: f64) {
@@ -2547,10 +2644,11 @@ mod tests {
     use super::platform::{
         SCHEMA_VERSION, attach_points, backup_before_migration, backup_to_with,
         insert_bubble_message_with, last_screen_with_geometry_with, load_bubble_messages_with,
-        migrate_with, migrate_with_hook, next_screen_with, page_info_with, prev_screen_with,
-        reorder_screen_with, restore_merge_from_with, screen_stroke_version_with,
-        stroke_versions_many_with, thumbnail_lookup_with, thumbnail_store_with,
-        thumbnails_many_with, thumbnails_purge_screen_with,
+        load_setting_with, migrate_setting_keys, migrate_with, migrate_with_hook, next_screen_with,
+        page_info_with, prev_screen_with, reorder_screen_with, restore_merge_from_with,
+        save_setting_with, screen_stroke_version_with, stroke_versions_many_with,
+        thumbnail_lookup_with, thumbnail_store_with, thumbnails_many_with,
+        thumbnails_purge_screen_with,
     };
     use crate::runtime;
     use sqlx::SqlitePool;
@@ -3472,6 +3570,83 @@ mod tests {
             assert_eq!(newest.len(), 1);
             assert_eq!(newest[0].id, second);
             assert!(load_bubble_messages_with(&pool, 0).await.is_empty());
+
+            pool.close().await;
+            let _ = std::fs::remove_file(&path);
+        });
+    }
+
+    /// 跨平台设置键: Windows 面板用的 camelCase 键与 macOS 的 snake_case 键
+    /// 现在落到同一条记录; 旧库里的别名行在启动迁移时被合并(跨平台备份可互换)。
+    #[test]
+    fn test_cross_platform_setting_keys() {
+        let _g = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        runtime().block_on(async {
+            let (pool, path) = raw_temp_pool().await;
+            migrate_with(&pool).await.unwrap();
+
+            // 写 Windows 键 → 规范键/别名键都能读出同一个值
+            save_setting_with(&pool, "frostedGlass", "1").await;
+            assert_eq!(
+                load_setting_with(&pool, "glass_enabled").await.as_deref(),
+                Some("1")
+            );
+            assert_eq!(
+                load_setting_with(&pool, "frostedGlass").await.as_deref(),
+                Some("1")
+            );
+            // 落库只剩规范化后的键
+            let keys: Vec<String> = sqlx::query_scalar("SELECT key FROM user_settings")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+            assert!(keys.contains(&"glass_enabled".to_string()));
+            assert!(!keys.contains(&"frostedGlass".to_string()));
+
+            // 模拟 0.5.x Windows 旧库: 只有别名行; 启动迁移后并入规范键
+            sqlx::query(
+                "INSERT OR REPLACE INTO user_settings (key, value) VALUES ('invertInk', '1')",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            migrate_setting_keys(&pool).await;
+            assert_eq!(
+                load_setting_with(&pool, "invert_ink").await.as_deref(),
+                Some("1")
+            );
+            assert!(
+                load_setting_with(&pool, "invertInk").await.is_some(),
+                "读别名仍应兼容(回落到规范键)"
+            );
+            let alias_rows: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM user_settings WHERE key = 'invertInk'")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            assert_eq!(alias_rows, 0, "迁移后旧别名行应被删除");
+
+            // 两边都有值: 规范键优先, 别名被清掉
+            sqlx::query(
+                "INSERT OR REPLACE INTO user_settings (key, value) VALUES ('soft_shadow', '0')",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT OR REPLACE INTO user_settings (key, value) VALUES ('softShadow', '1')",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            migrate_setting_keys(&pool).await;
+            assert_eq!(
+                load_setting_with(&pool, "softShadow").await.as_deref(),
+                Some("0"),
+                "规范键已存在时不能被别名覆盖"
+            );
 
             pool.close().await;
             let _ = std::fs::remove_file(&path);

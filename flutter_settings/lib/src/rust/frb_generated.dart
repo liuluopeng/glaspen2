@@ -64,7 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -1379404633;
+  int get rustContentHash => 3568406;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -192,6 +192,8 @@ abstract class RustLibApi extends BaseApi {
   Future<String> crateApiTestChatLogin();
 
   Future<void> crateApiTriggerHotkey({required String key});
+
+  Future<String> crateApiUiConfigJson();
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -1318,6 +1320,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiTriggerHotkeyConstMeta =>
       const TaskConstMeta(debugName: "trigger_hotkey", argNames: ["key"]);
+
+  @override
+  Future<String> crateApiUiConfigJson() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 38,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiUiConfigJsonConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiUiConfigJsonConstMeta =>
+      const TaskConstMeta(debugName: "ui_config_json", argNames: []);
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {

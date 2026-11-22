@@ -1201,3 +1201,11 @@ mod tests {
         assert!(decode_thumb_blob(&blob).is_empty());
     }
 }
+
+/// 设置面板的平台无关 UI 数据(默认键位/保留组合/提示文案/键盘布局/功能开关)。
+/// 数据单源在 core/ui.rs; Windows 面板经命名管道指令 `uiConfig` 取同一份 JSON,
+/// Flutter 侧因此不再按平台分叉。
+#[frb]
+pub async fn ui_config_json() -> String {
+    crate::ui::ui_config_json(crate::ui::Platform::Macos)
+}
