@@ -974,17 +974,11 @@ abstract class AppLocalizations {
   /// **'粗细'**
   String get width;
 
-  /// No description provided for @gifAnimationRTo.
+  /// No description provided for @gifAnimationHoldP1.
   ///
   /// In zh, this message translates to:
-  /// **'GIF 动画 (⌘⌃R 录制)'**
-  String get gifAnimationRTo;
-
-  /// No description provided for @gifAnimationHoldCtrl.
-  ///
-  /// In zh, this message translates to:
-  /// **'GIF 动画 (Ctrl+Alt+R 按住录制)'**
-  String get gifAnimationHoldCtrl;
+  /// **'GIF 动画 ({p1} 按住录制)'**
+  String gifAnimationHoldP1(String p1);
 
   /// No description provided for @pageFlipEffect.
   ///

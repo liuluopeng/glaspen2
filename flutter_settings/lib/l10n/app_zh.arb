@@ -145,8 +145,7 @@
   "blurBackground": "模糊背景",
   "color": "颜色",
   "width": "粗细",
-  "gifAnimationRTo": "GIF 动画 (⌘⌃R 录制)",
-  "gifAnimationHoldCtrl": "GIF 动画 (Ctrl+Alt+R 按住录制)",
+  "gifAnimationHoldP1": "GIF 动画 ({p1} 按住录制)",
   "pageFlipEffect": "翻页动效",
   "systemAnimation": "系统动效",
   "timeTunnel": "时光隧道",
@@ -246,6 +245,13 @@
   "tapToQueryThe": "点一下向 GitHub 查询最新正式版(需联网)",
   "currentVersion": "当前版本",
   "checkForUpdates": "检查更新",
+  "@gifAnimationHoldP1": {
+    "placeholders": {
+      "p1": {
+        "type": "String"
+      }
+    }
+  },
   "@p1Pages": {
     "placeholders": {
       "p1": {

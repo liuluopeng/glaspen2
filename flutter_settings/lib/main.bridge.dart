@@ -4,6 +4,9 @@ part of 'main.dart';
 
 abstract class SettingsBridge {
   Future<Map<dynamic, dynamic>> getSettings();
+  /// 平台 UI 配置(默认键位/保留组合/修饰键名/字号/功能可用性等)。
+  /// schema 见 crates/glaspen-core/src/ui.rs;macOS 走 FRB,Windows 走管道。
+  Future<Map<String, dynamic>> uiConfig();
   /// 「气泡消息」tab: 全部已完结消息的 JSON(分段规则见 core export/bubbles.rs)
   Future<String> getBubbles();
   /// 把进行中的段强制结为一条消息(打开气泡 tab 时调用)
@@ -152,6 +155,14 @@ class _FrbBridge extends SettingsBridge {
   Future<Map<dynamic, dynamic>> getSettings() async {
     await _init();
     return _settingsToMap(await rust.getSettings());
+  }
+
+  @override
+  Future<Map<String, dynamic>> uiConfig() async {
+    await _init();
+    final decoded = jsonDecode(await rust.uiConfigJson());
+    if (decoded is Map<String, dynamic>) return decoded;
+    throw FormatException('uiConfigJson 不是 JSON 对象: $decoded');
   }
 
   @override
@@ -684,8 +695,10 @@ class _NamedPipeBridge extends SettingsBridge {
   @override
   Future<Uint8List?> exportPagePngBytes(int screenId,
       {List<int> highlight = const [], double margin = 0}) async {
-    debugPrint('[Pipe] exportPagePngBytes: Windows 管道未接入, 忽略');
-    return null;
+    // 面板已按 features.pageExport 隐藏入口;走到这里说明 UI 门控漏了 —— 抛错
+    // 让问题在开发/测试期立刻暴露,而不是返回 null 静默空壳。
+    throw UnsupportedError(
+        'Windows 侧尚未实现 exportPagePngBytes (uiConfig.features.pageExport=false; UI 应已隐藏该入口)');
   }
 
   @override
@@ -774,26 +787,26 @@ class _NamedPipeBridge extends SettingsBridge {
 
   @override
   Future<bool> exportPagePng(int screenId) async {
-    debugPrint('[Pipe] exportPagePng: Windows 管道未接入, 忽略');
-    return false;
+    throw UnsupportedError(
+        'Windows 侧尚未实现 exportPagePng (uiConfig.features.pageExport=false; UI 应已隐藏该入口)');
   }
 
   @override
   Future<bool> exportPageSvg(int screenId) async {
-    debugPrint('[Pipe] exportPageSvg: Windows 管道未接入, 忽略');
-    return false;
+    throw UnsupportedError(
+        'Windows 侧尚未实现 exportPageSvg (uiConfig.features.pageExport=false; UI 应已隐藏该入口)');
   }
 
   @override
   Future<bool> exportSelectedPdf(List<int> ids) async {
-    debugPrint('[Pipe] exportSelectedPdf: Windows 管道未接入, 忽略');
-    return false;
+    throw UnsupportedError(
+        'Windows 侧尚未实现 exportSelectedPdf (uiConfig.features.pageExport=false; UI 应已隐藏该入口)');
   }
 
   @override
   Future<List<int>> ocrSearch(String query) async {
-    debugPrint('[Pipe] ocrSearch: Windows 管道未接入, 忽略');
-    return const [];
+    throw UnsupportedError(
+        'Windows 侧尚未实现 ocrSearch (uiConfig.features.ocrSearch=false; UI 应已隐藏该入口)');
   }
 
   @override
@@ -894,6 +907,17 @@ class _NamedPipeBridge extends SettingsBridge {
   Future<void> triggerHotkey(String key) async {
     if (!_connected) return;
     _writeData('${jsonEncode({'type': 'hotkey', 'key': key})}\n');
+  }
+
+  @override
+  Future<Map<String, dynamic>> uiConfig() async {
+    final r = await _request('uiConfig', null);
+    // 常规 *_response:data 即配置对象;个别后端会把对象再包一层 data,两种都认。
+    final data = r['data'] is Map ? r['data'] : r;
+    if (data is! Map) {
+      throw FormatException('uiConfig 响应不是 JSON 对象: $r');
+    }
+    return {for (final e in data.entries) e.key.toString(): e.value};
   }
 
   @override

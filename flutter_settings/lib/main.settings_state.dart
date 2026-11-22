@@ -54,7 +54,8 @@ extension _SettingsStateUi on _SettingsPageState {
         _language = (s['language'] as String?) == 'en' ? 'en' : 'zh';
       }
       if (has('shortcuts')) {
-        _shortcuts = _decodeShortcuts(s['shortcuts']);
+        _shortcutsRaw = s['shortcuts'];
+        _shortcuts = _decodeShortcuts(_shortcutsRaw);
       }
       _syncTabCount();
     });
@@ -65,6 +66,29 @@ extension _SettingsStateUi on _SettingsPageState {
       _syncTabToCanvasMode(force: true);
     }
     _applyLanguage(_language);
+  }
+
+  /// 拉取一次后端平台 UI 配置(macOS 立即;Windows 管道连上后由 onConnected
+  /// 再拉一次)。失败时保留 [UiConfig.fallback] 只打日志 —— 面板必须能渲染,
+  /// 不能因为平台配置取不到就白屏(widget 测试同样走这条降级路径)。
+  Future<void> _loadUiConfig() async {
+    final UiConfig cfg;
+    try {
+      cfg = UiConfig.fromJson(await _bridge.uiConfig());
+    } catch (e) {
+      // 管道没连上/后端版本不匹配:保留 fallback,面板照常渲染
+      debugPrint('[UiConfig] load failed — using fallback defaults: $e');
+      return;
+    }
+    uiConfigNotifier.value = cfg;
+    if (!mounted) return;
+    // 面板动作表必须与后端 actionOrder 一致(两端 JSON 共用同一份 id 表)。
+    // 放在 catch 外面: 不一致属于代码缺陷, 断言/日志不能被降级逻辑吞掉。
+    _validateShortcutActionTable(cfg);
+    // 平台默认表可能刚变(Windows 首连):用设置原文重新补默认绑定
+    setState(() {
+      _shortcuts = _decodeShortcuts(_shortcutsRaw);
+    });
   }
 
   Future<void> _loadSettings() async {
@@ -112,7 +136,8 @@ extension _SettingsStateUi on _SettingsPageState {
           _notebookGlass = _b(settings['notebookStyle']);
           _panelTransparent = _b(settings['panelTransparent']);
           _language = (settings['language'] as String?) == 'en' ? 'en' : 'zh';
-          _shortcuts = _decodeShortcuts(settings['shortcuts']);
+          _shortcutsRaw = settings['shortcuts'];
+          _shortcuts = _decodeShortcuts(_shortcutsRaw);
           _syncTabCount();
         });
         // 首次拿到设置: 直接把面板停在当前画布模式对应的 tab(自由涂鸦/活页本),

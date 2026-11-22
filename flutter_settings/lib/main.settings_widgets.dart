@@ -479,9 +479,9 @@ extension _SettingsWidgetsUi on _SettingsPageState {
             _setSetting('softShadow', v);
           },
         )),
-        // 反色突出是 macOS 专属实现(SCK 持续截屏反相); Windows 无实现,
-        // 不展示假开关(macOS 面板门控同款做法)
-        if (Platform.isMacOS)
+        // 反色突出是 macOS 专属实现(SCK 持续截屏反相);可用性由后端
+        // uiConfig.features 声明,不可用时整块不展示(不做假开关)。
+        if (uiConfig.features['invertInk'] == true)
           _tile(SwitchListTile(
             title: Text(AppLocalizations.of(context)!.invertedInk, style: TextStyle(fontSize: 15)),
             subtitle: Text(AppLocalizations.of(context)!.strokesTakeThePer, style: TextStyle(fontSize: 12)),
@@ -493,8 +493,8 @@ extension _SettingsWidgetsUi on _SettingsPageState {
               _setSetting('invertInk', v);
             },
           )),
-        // 帧率上限只在反色开启时有意义: 关着时不再占一整行
-        if (Platform.isMacOS && _invertInk) ...[
+        // 帧率上限只在反色可用且开启时有意义: 关着时不再占一整行
+        if (uiConfig.features['invertInk'] == true && _invertInk) ...[
           _tile(Padding(
             padding: const EdgeInsets.only(left: 16, top: 4),
             child: SizedBox(
@@ -560,7 +560,11 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(Platform.isMacOS ? AppLocalizations.of(context)!.gifAnimationRTo : AppLocalizations.of(context)!.gifAnimationHoldCtrl,
+        // GIF 是按住类热键: 组合串由后端 uiConfig.holdHotkeys 给出, 用统一的
+        // chord 格式化器显示(不再按平台选两条不同文案)。
+        Text(
+            AppLocalizations.of(context)!.gifAnimationHoldP1(_prettyShortcut(
+                uiConfig.holdHotkeys['gif'] ?? '', _language == 'en')),
             style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
         const SizedBox(height: 10),
         _buildGifSettings(),

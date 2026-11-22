@@ -17,9 +17,7 @@ void main() {
     await tester.pump();
     expect(find.text('设置'), findsWidgets);
     expect(find.text('Settings'), findsNothing);
-    // 语言选择器在「更多设置」折叠里: 先展开再断言
-    await tester.tap(find.text('更多设置'));
-    await tester.pump();
+    // 高级设置默认展开(_showAdvanced=true), 语言选择器直接可见
     expect(find.text('界面语言'), findsOneWidget);
     expect(find.text('中文'), findsOneWidget);
 
@@ -27,11 +25,6 @@ void main() {
     await tester.pump();
     expect(find.text('Settings'), findsWidgets);
     expect(find.text('设置'), findsNothing);
-    // 同一 State 里「更多设置」可能已是展开态(上一次断言点开过)
-    if (find.text('More settings').evaluate().isNotEmpty) {
-      await tester.tap(find.text('More settings'));
-      await tester.pump();
-    }
     expect(find.text('Language'), findsOneWidget);
     expect(find.text('English'), findsOneWidget);
   });

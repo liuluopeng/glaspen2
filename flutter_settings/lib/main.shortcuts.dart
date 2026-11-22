@@ -9,7 +9,8 @@ part of 'main.dart';
 // 至少包含 ctrl 或 alt; 空串 = 未绑定。这里负责展示、录制、冲突校验。
 // 录制期间通过 setSetting('hotkeyRecording', true) 暂停全局事件拦截,
 // 否则面板按下的组合会被 overlay 先吃掉。
-// Windows 上 cmd 令牌表示 Win 键(录制时按 Win 得到 cmd); 两平台默认表见下面。
+// Windows 上 cmd 令牌表示 Win 键(录制时按 Win 得到 cmd)。平台默认表/
+// 保留组合/修饰键名称/键盘示意图行全部由后端 uiConfig 下发(ui.rs)。
 
 class _ShortcutAction {
   final String id;
@@ -41,99 +42,33 @@ const List<_ShortcutAction> _shortcutActions = [
   _ShortcutAction('quit', '彻底退出程序', 'Quit app completely'),
 ];
 
-/// macOS 默认绑定: 既有动作与 v0.6.0 内置值一字不差, 不要改
-/// (quit 是新增的「彻底退出」动作, 默认 ⌘⌃⇧Q)。
-/// 默认只绑核心动作 + 自由涂鸦镜头; 其余默认不绑, 可在编辑器里自行绑定。
-/// ⌘⌃W 与微信「显示/隐藏主面板」默认冲突, 所以换粗细默认不绑(T = thickness)。
-/// 左手镜头: 小指 ⌃ + 拇指 ⌥ + WASD/ZX; 注意 ⌃⌥ 也是 VoiceOver 修饰键(未开 VO 时无冲突)。
-const Map<String, String> _shortcutDefaultsMac = {
-  'undo': 'cmd+ctrl+Z',
-  'page_prev': 'cmd+ctrl+`',
-  'page_next': 'cmd+ctrl+1',
-  'color_swap': '',
-  'width_swap': '',
-  'toggle_draw': 'cmd+ctrl+V',
-  'toggle_free_canvas': '',
-  'canvas_pan_left': 'ctrl+alt+A',
-  'canvas_pan_right': 'ctrl+alt+D',
-  'canvas_pan_up': 'ctrl+alt+W',
-  'canvas_pan_down': 'ctrl+alt+S',
-  'canvas_zoom_in': 'ctrl+alt+X',
-  'canvas_zoom_out': 'ctrl+alt+Z',
-  'clear': '',
-  'export': '',
-  'copy_svg': '',
-  'toggle_glass': '',
-  'toggle_ethereal': '',
-  'settings': 'cmd+ctrl+D',
-  // 彻底退出: ⌘⌃Q 被 macOS 锁屏占用(保留组合), 加 ⇧ 区分。
-  'quit': 'cmd+ctrl+shift+Q',
-};
+// 平台默认键位/保留组合已全部迁到后端(crates/glaspen-core/src/ui.rs);
+// 面板只消费 uiConfig.defaults / reserved / forceBound 等字段,不再分平台。
 
-/// Windows 默认绑定: 必须与 Rust(Windows 壳)侧的默认表逐字一致。
-/// **所有动作都有默认键**, 按修饰键分两条家族:
-///   - 核心/开关类 → **Ctrl+Alt**: Z/`/1/V、D 设置、⇧Q 退出、C 清空、G 导出、
-///     S 复制 SVG、B 磨砂、X 飘渺、I 自由涂鸦、⇧C 换色、⇧W 换粗细;
-///   - 镜头/缩放 → **Win+Alt**: W/A/S/D 平移、X 放大 / Z 缩小。
-/// 镜头键被其它软件占用时(Win+Alt+W/D 很常见)由 Rust 侧只把**该键**降级为
-/// Alt+Shift+同键(其余保持 Win+Alt; 不做 4 键组合), 并把实际生效值回推,
-/// 面板显示真实组合。鼠标抓手/滚轮缩放固定用 Win+Alt 掩码, 不会切输入法。
-const Map<String, String> _shortcutDefaultsWindows = {
-  'undo': 'ctrl+alt+Z',
-  'page_prev': 'ctrl+alt+`',
-  'page_next': 'ctrl+alt+1',
-  'color_swap': 'ctrl+alt+shift+C',
-  'width_swap': 'ctrl+alt+T',
-  'toggle_draw': 'ctrl+alt+V',
-  'toggle_free_canvas': 'ctrl+alt+I',
-  'canvas_pan_left': 'cmd+alt+A',
-  'canvas_pan_right': 'cmd+alt+D',
-  'canvas_pan_up': 'cmd+alt+W',
-  'canvas_pan_down': 'cmd+alt+S',
-  'canvas_zoom_in': 'cmd+alt+X',
-  'canvas_zoom_out': 'cmd+alt+Z',
-  'clear': 'ctrl+alt+C',
-  'export': 'ctrl+alt+G',
-  'copy_svg': 'ctrl+alt+S',
-  'toggle_glass': 'ctrl+alt+B',
-  'toggle_ethereal': 'ctrl+alt+X',
-  'settings': 'ctrl+alt+D',
-  'quit': 'ctrl+alt+shift+Q',
-};
+/// 默认绑定表 / 保留组合 / 强制绑定全部来自后端 uiConfig(见 ui.rs);
+/// Dart 侧不再维护任何平台表。
+Map<String, String> _shortcutDefaults() => uiConfig.defaults;
 
-/// 当前平台的默认绑定表: _decodeShortcuts 兜底与「恢复默认」都走这里。
-Map<String, String> _shortcutDefaults() =>
-    Platform.isWindows ? _shortcutDefaultsWindows : _shortcutDefaultsMac;
+/// 系统/常用 App/按住类功能占用的组合(后端下发,面板不允许选择)。
+bool _isReservedShortcut(String chord) => uiConfig.reserved.contains(chord);
 
-/// 系统/常用 App 默认与按住类功能占用的组合, 普通动作不能选。
-/// W/A 是微信(macOS)的显示隐藏/截图默认; F 是 macOS 全屏。
-const Set<String> _reservedShortcutsMac = {
-  'cmd+ctrl+Q', // macOS 锁屏
-  'cmd+ctrl+R', // 按住录 GIF
-  'cmd+ctrl+2', // 按住手写草稿
-  'cmd+ctrl+3', // 按住手写消息
-  'cmd+ctrl+W', // 微信 显示/隐藏主面板
-  'cmd+ctrl+A', // 微信 截图
-  'cmd+ctrl+F', // macOS 全屏
-};
+/// 面板动作表必须与后端 uiConfig.actionOrder 完全一致:两端 JSON 共用同一份
+/// 动作 id 表(Rust 单测已保证 macOS/Windows 相同),Dart 表落后时这里报警。
+/// debug 下断言,release 下只打日志(不能为了文案差异让面板挂掉)。
+void _validateShortcutActionTable(UiConfig cfg) {
+  final ours = [for (final a in _shortcutActions) a.id];
+  if (cfg.actionOrder.isEmpty) return;
+  if (listEquals(ours, cfg.actionOrder)) return;
+  final onlyDart = ours.where((id) => !cfg.actionOrder.contains(id)).toList();
+  final onlyBackend =
+      cfg.actionOrder.where((id) => !ours.contains(id)).toList();
+  final msg = '[Shortcuts] 动作表与后端 actionOrder 不一致: '
+      'dart=$ours backend=${cfg.actionOrder} '
+      'onlyDart=$onlyDart onlyBackend=$onlyBackend';
+  debugPrint(msg);
+  assert(listEquals(ours, cfg.actionOrder), msg);
+}
 
-/// Windows 壳占用的组合: R 按住录 GIF、2/3 按住手写。
-/// 退出已迁入可配置动作表(默认 Ctrl+Alt+Shift+Q), 不算保留组合 —— 可以改键。
-/// 注意 Win+Alt+W/A/S/D、X/Z 不在保留集合里 —— 默认镜头/缩放要用。
-const Set<String> _reservedShortcutsWindows = {
-  'ctrl+alt+R',
-  'ctrl+alt+2',
-  'ctrl+alt+3',
-};
-
-Set<String> _reservedShortcuts() =>
-    Platform.isWindows ? _reservedShortcutsWindows : _reservedShortcutsMac;
-
-/// Windows 没有菜单栏/托盘: 「打开设置」和「彻底退出程序」是重开面板/退出进程的
-/// 唯一入口。后端会强制回退默认(hotkeys.rs build_effective), 面板同步禁用清除,
-/// 避免界面显示「未绑定」而实际仍生效。
-bool _shortcutForceBound(String actionId) =>
-    Platform.isWindows && (actionId == 'settings' || actionId == 'quit');
 
 /// 键帽右下角的一句话动作提示(旧版快捷键按钮的 label 信息)。
 /// 取该键当前绑定的第一个动作; 同键多动作显示 "+N"。
@@ -241,53 +176,25 @@ Map<String, String> _decodeShortcuts(dynamic raw) {
   return out;
 }
 
-/// chord → 界面显示串。
-/// macOS 沿用 ⌘⌃⌥⇧ 符号(无分隔); Windows 用 Win/Ctrl/Alt/Shift + 文本键名,
-/// 段间用 + 连接, 方向键等换成箭头(后端 chord 的键名不变)。
+/// chord → 界面显示串。显示名与分隔符全部来自后端 uiConfig
+/// (macOS: ⌘⌃⌥⇧ 无分隔; Windows: Win/Ctrl/Alt/Shift 用 + 连接)。
 String _prettyShortcut(String chord, bool en) {
   if (chord.isEmpty) return en ? 'Unbound' : '未绑定';
-  final win = Platform.isWindows;
-  final names = win
-      ? const <String, String>{
-          'cmd': 'Win',
-          'ctrl': 'Ctrl',
-          'alt': 'Alt',
-          'shift': 'Shift',
-          'Up': '↑',
-          'Down': '↓',
-          'Left': '←',
-          'Right': '→',
-          'PageUp': 'PgUp',
-          'PageDown': 'PgDn',
-          'Return': 'Enter',
-          'Escape': 'Esc',
-          'Backspace': 'Bksp',
-          'Delete': 'Del',
-          'Tab': 'Tab',
-          'Space': 'Space',
-        }
-      : const <String, String>{
-          'cmd': '⌘',
-          'ctrl': '⌃',
-          'alt': '⌥',
-          'shift': '⇧',
-          'Up': '↑',
-          'Down': '↓',
-          'Left': '←',
-          'Right': '→',
-          'PageUp': 'PgUp',
-          'PageDown': 'PgDn',
-          'Return': '↩',
-          'Escape': 'Esc',
-          'Backspace': '⌫',
-          'Delete': '⌦',
-          'Tab': '⇥',
-          'Space': 'Space',
-        };
-  return chord.split('+').map((p) => names[p] ?? p).join(win ? '+' : '');
+  final names = uiConfig.chordNames;
+  return chord.split('+').map((p) => names[p] ?? p).join(uiConfig.chordSeparator);
+}
+
+/// 后端 messages 里的一条双语文案(key = requireModifier / reserved)。
+String _uiMessage(String key, bool en) {
+  final raw = uiConfig.messages[key];
+  final text = raw?[en ? 'en' : 'zh'];
+  if (text != null && text.isNotEmpty) return text;
+  debugPrint('[UiConfig] 缺少文案 messages.$key');
+  return en ? 'Invalid shortcut' : '无效快捷键';
 }
 
 /// 校验录制结果; null = 可用。空串(清除)永远可用。
+/// 保留组合与修饰键提示文案全部来自后端 uiConfig。
 String? _shortcutError(
     String chord, String actionId, Map<String, String> map, bool en) {
   if (chord.isEmpty) return null;
@@ -297,19 +204,10 @@ String? _shortcutError(
     return en ? 'Unsupported key' : '不支持的按键';
   }
   if (!mods.contains('ctrl') && !mods.contains('alt')) {
-    // macOS 设置界面把 ⌥ 叫 Option, Windows 叫 Alt。
-    return Platform.isWindows
-        ? (en ? 'Must include Ctrl or Alt' : '需要同时按 Ctrl 或 Alt')
-        : (en ? 'Must include Ctrl or Option' : '需要同时按 Ctrl 或 Option');
+    return _uiMessage('requireModifier', en);
   }
-  if (_reservedShortcuts().contains(chord)) {
-    return Platform.isWindows
-        ? (en
-            ? 'Reserved by the system or hold features'
-            : '已被系统或按住类功能保留')
-        : (en
-            ? 'Reserved by macOS, common apps, or hold features'
-            : '已被系统、常用 App 或按住类功能保留');
+  if (_isReservedShortcut(chord)) {
+    return _uiMessage('reserved', en);
   }
   for (final a in _shortcutActions) {
     if (a.id == actionId) continue;
@@ -442,8 +340,8 @@ extension _SettingsShortcutsUi on _SettingsPageState {
   }
 
   Widget _buildShortcutEditor() {
-    // macOS 的 ⌥ 在 Windows 上叫 Alt, 说明文案跟着平台走。
-    final altName = Platform.isWindows ? 'Alt' : 'Option';
+    // 修饰键称呼(Option / Alt)由后端 uiConfig 决定。
+    final altName = uiConfig.modifierWord;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -521,7 +419,7 @@ extension _SettingsShortcutsUi on _SettingsPageState {
             icon: const Icon(Icons.close, size: 16),
             // Windows 没有菜单栏/托盘: 强制绑定的动作(打开设置/彻底退出)
             // 后端会回退默认, 这里直接禁用清除, 避免显示与生效不一致。
-            onPressed: chord.isEmpty || _shortcutForceBound(a.id)
+            onPressed: chord.isEmpty || uiConfig.forceBound.contains(a.id)
                 ? null
                 : () => _saveShortcuts({..._shortcuts, a.id: ''}),
           ),
@@ -566,6 +464,7 @@ extension _SettingsShortcutsUi on _SettingsPageState {
 
   void _saveShortcuts(Map<String, String> next) {
     setState(() => _shortcuts = Map<String, String>.of(next));
+    _shortcutsRaw = next;
     _settingsLoadGen++; // 用户刚改的优先于任何在途旧加载
     unawaited(_bridge.setSetting('shortcuts', next).catchError((Object e) {
       debugPrint('[Shortcuts] save failed: $e');
@@ -662,11 +561,8 @@ class _ShortcutRecorderDialogState extends State<_ShortcutRecorderDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(Platform.isWindows
-                ? _t('按下组合键（需包含 Ctrl 或 Alt）',
-                    'Press a shortcut (Ctrl or Alt required)')
-                : _t('按下组合键（需包含 Ctrl 或 Option）',
-                    'Press a shortcut (Ctrl or Option required)')),
+            Text(_t('按下组合键（需包含 Ctrl 或 ${uiConfig.modifierWord}）',
+                'Press a shortcut (Ctrl or ${uiConfig.modifierWord} required)')),
             const SizedBox(height: 12),
             Container(
               width: double.infinity,
@@ -700,7 +596,7 @@ class _ShortcutRecorderDialogState extends State<_ShortcutRecorderDialog> {
         ),
         TextButton(
           // 强制绑定的动作不许清空(Windows 没有菜单栏/托盘兜底)
-          onPressed: _shortcutForceBound(widget.actionId)
+          onPressed: uiConfig.forceBound.contains(widget.actionId)
               ? null
               : () => Navigator.of(context).pop(''),
           child: Text(_t('清除', 'Clear')),
@@ -794,27 +690,16 @@ const List<List<_KeyCap>> _keyboardRowsBase = [
   ],
 ];
 
-/// 底部修饰键行: 键帽 name 仍是 chord 令牌(ctrl/alt/cmd, 高亮逻辑不变),
-/// 只换显示 label —— macOS 是 ctrl/opt/cmd, Windows 是 ctrl/win/alt。
-List<_KeyCap> _shortcutModifierRow() => Platform.isWindows
-    ? const [
-        _KeyCap('ctrl', 'ctrl', 1.25, isModifier: true),
-        _KeyCap('win', 'cmd', 1.25, isModifier: true),
-        _KeyCap('alt', 'alt', 1.25, isModifier: true),
-        _KeyCap('space', 'Space', 5.0),
-        _KeyCap('alt', 'alt', 1.25, isModifier: true),
-        _KeyCap('win', 'cmd', 1.25, isModifier: true),
-        _KeyCap('ctrl', 'ctrl', 1.25, isModifier: true),
-      ]
-    : const [
-        _KeyCap('ctrl', 'ctrl', 1.25, isModifier: true),
-        _KeyCap('opt', 'alt', 1.25, isModifier: true),
-        _KeyCap('cmd', 'cmd', 1.25, isModifier: true),
-        _KeyCap('space', 'Space', 5.0),
-        _KeyCap('cmd', 'cmd', 1.25, isModifier: true),
-        _KeyCap('opt', 'alt', 1.25, isModifier: true),
-        _KeyCap('ctrl', 'ctrl', 1.25, isModifier: true),
-      ];
+/// 底部修饰键行: 全部来自后端 uiConfig.modifierRow(left + space + right)。
+/// 键帽仍按 _KeyCap(label=键面文字, name=chord 令牌) 构造: 后端 JSON 的
+/// name 是键面文字(win/opt), label 是 chord 令牌(cmd/alt), 与旧平台表一致。
+List<_KeyCap> _shortcutModifierRow() {
+  final row = uiConfig.modifierRow;
+  return [
+    for (final k in [...row.left, ...row.space, ...row.right])
+      _KeyCap(k.name, k.label, k.width, isModifier: k.modifier),
+  ];
+}
 
 /// 完整键位行(前四行 + 平台化修饰键行)。
 List<List<_KeyCap>> _keyboardRows() => [

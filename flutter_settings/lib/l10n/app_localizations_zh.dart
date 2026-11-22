@@ -488,10 +488,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get width => '粗细';
 
   @override
-  String get gifAnimationRTo => 'GIF 动画 (⌘⌃R 录制)';
-
-  @override
-  String get gifAnimationHoldCtrl => 'GIF 动画 (Ctrl+Alt+R 按住录制)';
+  String gifAnimationHoldP1(String p1) {
+    return 'GIF 动画 ($p1 按住录制)';
+  }
 
   @override
   String get pageFlipEffect => '翻页动效';

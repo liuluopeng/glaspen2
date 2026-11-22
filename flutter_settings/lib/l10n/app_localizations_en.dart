@@ -499,10 +499,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get width => 'Width';
 
   @override
-  String get gifAnimationRTo => 'GIF animation (⌘⌃R to record)';
-
-  @override
-  String get gifAnimationHoldCtrl => 'GIF animation (hold Ctrl+Alt+R)';
+  String gifAnimationHoldP1(String p1) {
+    return 'GIF animation (hold $p1)';
+  }
 
   @override
   String get pageFlipEffect => 'Page-flip effect';

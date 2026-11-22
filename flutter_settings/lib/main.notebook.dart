@@ -562,29 +562,33 @@ extension _NotebookUi on _SettingsPageState {
               Text(AppLocalizations.of(context)!.p1Pages(_filteredPages.length),
                   style: const TextStyle(fontSize: 12, color: _inkFaint)),
               const Spacer(),
-              if (_searchFieldVisible)
-                SizedBox(
-                  width: 200,
-                  height: 30,
-                  child: TextField(
-                    autofocus: true,
-                    style: const TextStyle(fontSize: 13),
-                    decoration: InputDecoration(
-                      hintText: AppLocalizations.of(context)!.searchTextInPages,
-                      isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      border: OutlineInputBorder(),
-                    ),
-                    onSubmitted: _runSearch,
-                  ),
-                )
-              else
-                IconButton(
-                  tooltip: AppLocalizations.of(context)!.ocrSearch,
-                  onPressed: () => setState(() => _searchFieldVisible = true),
-                  icon: const Icon(Icons.search, size: 18),
-                ),
+              // OCR 搜索入口: 可用性由后端 uiConfig.features 声明(Windows 无实现,
+              // 整块隐藏, 不展示点了没反应的入口)。
+              if (uiConfig.features['ocrSearch'] == true)
+                _searchFieldVisible
+                    ? SizedBox(
+                        width: 200,
+                        height: 30,
+                        child: TextField(
+                          autofocus: true,
+                          style: const TextStyle(fontSize: 13),
+                          decoration: InputDecoration(
+                            hintText:
+                                AppLocalizations.of(context)!.searchTextInPages,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 6),
+                            border: const OutlineInputBorder(),
+                          ),
+                          onSubmitted: _runSearch,
+                        ),
+                      )
+                    : IconButton(
+                        tooltip: AppLocalizations.of(context)!.ocrSearch,
+                        onPressed: () =>
+                            setState(() => _searchFieldVisible = true),
+                        icon: const Icon(Icons.search, size: 18),
+                      ),
             ],
           ),
         ),
@@ -738,22 +742,24 @@ extension _NotebookUi on _SettingsPageState {
     return Row(children: [
       Text(AppLocalizations.of(context)!.p1PagesSelected(_selectedPageIds.length), style: faint),
       const Spacer(),
-      TextButton.icon(
-        onPressed: (_batchDeleting || _selectedPageIds.isEmpty) ? null : () async {
-          setState(() => _batchDeleting = true);
-          try {
-            final ok = await _bridge.exportSelectedPdf(_selectedPageIds.toList());
-            if (mounted) {
-              _toast(ok ? AppLocalizations.of(context)!.exportedP1PagesAs(_selectedPageIds.length) : AppLocalizations.of(context)!.exportFailed);
+      // 选中页合成 PDF: 后端声明 pageExport 才显示(Windows 未接入 → 隐藏)。
+      if (uiConfig.features['pageExport'] == true)
+        TextButton.icon(
+          onPressed: (_batchDeleting || _selectedPageIds.isEmpty) ? null : () async {
+            setState(() => _batchDeleting = true);
+            try {
+              final ok = await _bridge.exportSelectedPdf(_selectedPageIds.toList());
+              if (mounted) {
+                _toast(ok ? AppLocalizations.of(context)!.exportedP1PagesAs(_selectedPageIds.length) : AppLocalizations.of(context)!.exportFailed);
+              }
+            } finally {
+              if (mounted) setState(() => _batchDeleting = false);
             }
-          } finally {
-            if (mounted) setState(() => _batchDeleting = false);
-          }
-        },
-        style: TextButton.styleFrom(foregroundColor: _ink),
-        icon: const Icon(Icons.picture_as_pdf, size: 16),
-        label: Text(AppLocalizations.of(context)!.exportPdf, style: TextStyle(fontSize: 13)),
-      ),
+          },
+          style: TextButton.styleFrom(foregroundColor: _ink),
+          icon: const Icon(Icons.picture_as_pdf, size: 16),
+          label: Text(AppLocalizations.of(context)!.exportPdf, style: TextStyle(fontSize: 13)),
+        ),
       TextButton(
         onPressed: () => setState(() {
           if (_selectedPageIds.length == _filteredPages.length) {
@@ -936,27 +942,31 @@ extension _NotebookUi on _SettingsPageState {
                   overlay.size.height - details.globalPosition.dy,
                 ),
                 items: [
-                  PopupMenuItem(
-                      value: 'detail', height: 36,
-                      child: Row(children: [
-                        Icon(Icons.draw_outlined, size: 16),
-                        SizedBox(width: 8),
-                        Text(AppLocalizations.of(context)!.editContentLassoMove, style: TextStyle(fontSize: 13)),
-                      ])),
-                  PopupMenuItem(
-                      value: 'png', height: 36,
-                      child: Row(children: [
-                        Icon(Icons.image_outlined, size: 16),
-                        SizedBox(width: 8),
-                        Text(AppLocalizations.of(context)!.exportThisPageAs, style: TextStyle(fontSize: 13)),
-                      ])),
-                  PopupMenuItem(
-                      value: 'svg', height: 36,
-                      child: Row(children: [
-                        Icon(Icons.polyline_outlined, size: 16),
-                        SizedBox(width: 8),
-                        Text(AppLocalizations.of(context)!.exportThisPageAs2, style: TextStyle(fontSize: 13)),
-                      ])),
+                  // 页详情/单页 PNG/SVG 都经 pageExport 通道(位图 + 导出);
+                  // Windows 未接入 → 后端 features.pageExport=false, 整组隐藏。
+                  if (uiConfig.features['pageExport'] == true) ...[
+                    PopupMenuItem(
+                        value: 'detail', height: 36,
+                        child: Row(children: [
+                          Icon(Icons.draw_outlined, size: 16),
+                          SizedBox(width: 8),
+                          Text(AppLocalizations.of(context)!.editContentLassoMove, style: TextStyle(fontSize: 13)),
+                        ])),
+                    PopupMenuItem(
+                        value: 'png', height: 36,
+                        child: Row(children: [
+                          Icon(Icons.image_outlined, size: 16),
+                          SizedBox(width: 8),
+                          Text(AppLocalizations.of(context)!.exportThisPageAs, style: TextStyle(fontSize: 13)),
+                        ])),
+                    PopupMenuItem(
+                        value: 'svg', height: 36,
+                        child: Row(children: [
+                          Icon(Icons.polyline_outlined, size: 16),
+                          SizedBox(width: 8),
+                          Text(AppLocalizations.of(context)!.exportThisPageAs2, style: TextStyle(fontSize: 13)),
+                        ])),
+                  ],
                   PopupMenuItem(
                       value: 'info', height: 36,
                       child: Row(children: [

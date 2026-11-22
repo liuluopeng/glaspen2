@@ -38,6 +38,281 @@ void main() {
 /// 设置加载/原生菜单切换时更新这个 notifier, MaterialApp 立即重建。
 final ValueNotifier<Locale> appLocale = ValueNotifier(const Locale('zh'));
 
+// ── 后端下发的平台 UI 配置(Flutter 侧唯一的平台差异来源) ──
+//
+// 平台行为(默认键位/保留组合/强制绑定/修饰键名称/键盘示意图行/字号/功能
+// 可用性)全部由后端 JSON 描述, schema 见 crates/glaspen-core/src/ui.rs:
+// macOS 走 FRB uiConfigJson(), Windows 走命名管道 uiConfig。Flutter 代码
+// 不再按平台写条件分支(由 test/platform_parity_test.dart 把关)。
+
+/// 键盘示意图底部修饰键行里的一个键帽。
+///
+/// 注意 ui.rs 的字段语义: `name` 是键面显示文字(如 win/opt), `label` 是
+/// chord 令牌(如 cmd/alt);与旧 Dart 表 `_KeyCap(label: 显示, name: 令牌)`
+/// 的对应关系是 name→label、label→name。空间键同样是 name="space"、
+/// label="Space"。ui.rs 里的注释把两者写反了(已知,已在交付说明里报告)。
+class UiKeyCapSpec {
+  final String name;
+  final String label;
+  final double width;
+  final bool modifier;
+  const UiKeyCapSpec({
+    required this.name,
+    required this.label,
+    required this.width,
+    required this.modifier,
+  });
+
+  static UiKeyCapSpec fromJson(dynamic raw) {
+    if (raw is! Map) {
+      return const UiKeyCapSpec(name: '', label: '', width: 1, modifier: false);
+    }
+    return UiKeyCapSpec(
+      name: raw['name'] is String ? raw['name'] as String : '',
+      label: raw['label'] is String ? raw['label'] as String : '',
+      width: (raw['width'] as num?)?.toDouble() ?? 1.0,
+      modifier: raw['modifier'] == true,
+    );
+  }
+}
+
+/// 键盘示意图底部修饰键行:left / space / right。
+class UiModifierRow {
+  final List<UiKeyCapSpec> left;
+  final List<UiKeyCapSpec> space;
+  final List<UiKeyCapSpec> right;
+  const UiModifierRow({
+    this.left = const [],
+    this.space = const [],
+    this.right = const [],
+  });
+
+  static List<UiKeyCapSpec> _keys(dynamic raw) {
+    if (raw is! List) return const [];
+    return [for (final e in raw) UiKeyCapSpec.fromJson(e)];
+  }
+
+  static UiModifierRow fromJson(dynamic raw) {
+    if (raw is! Map) return const UiModifierRow();
+    return UiModifierRow(
+      left: _keys(raw['left']),
+      space: _keys(raw['space']),
+      right: _keys(raw['right']),
+    );
+  }
+}
+
+/// 后端 ui_config_json 的 Dart 侧模型(字段契约见 crates/glaspen-core/src/ui.rs)。
+class UiConfig {
+  /// "macos" | "windows"
+  final String platform;
+  final bool isWindows;
+  final double fontScale;
+  /// chord 各段之间的显示分隔符(macOS 空串, Windows "+")。
+  final String chordSeparator;
+  /// chord 令牌 → 显示名(⌘/⌃/⌥/⇧ 或 Win/Ctrl/Alt/Shift)。
+  final Map<String, String> chordNames;
+  /// 文案里指代 ⌥/Alt 的那个词。
+  final String modifierWord;
+  /// 双语文案:key → {zh, en}。
+  final Map<String, Map<String, String>> messages;
+  /// 动作 id → 默认 chord(空串 = 默认不绑定)。
+  final Map<String, String> defaults;
+  /// 按住类固定热键:gif / draft / send。
+  final Map<String, String> holdHotkeys;
+  /// 系统/常用 App/按住类占用的组合,面板不允许选择。
+  final List<String> reserved;
+  /// 必须始终绑定、面板禁止清除的动作 id(Windows 没有菜单栏/托盘兜底)。
+  final List<String> forceBound;
+  /// 后端认定的动作集合与顺序(面板动作表必须与之一致)。
+  final List<String> actionOrder;
+  final UiModifierRow modifierRow;
+  /// 功能可用性:invertInk / pageFlipEffect / pageExport / ocrSearch。
+  final Map<String, bool> features;
+
+  const UiConfig({
+    required this.platform,
+    required this.isWindows,
+    required this.fontScale,
+    required this.chordSeparator,
+    required this.chordNames,
+    required this.modifierWord,
+    required this.messages,
+    required this.defaults,
+    required this.holdHotkeys,
+    required this.reserved,
+    required this.forceBound,
+    required this.actionOrder,
+    required this.modifierRow,
+    required this.features,
+  });
+
+  /// 解析后端 JSON;字段缺失/形状不对时抛 [FormatException],由调用方回退。
+  factory UiConfig.fromJson(Map<String, dynamic> json) {
+    final defaults = _uiStringMap(json['defaults']);
+    final actionOrder = _uiStringList(json['actionOrder']);
+    if (defaults.isEmpty || actionOrder.isEmpty) {
+      throw FormatException(
+          'uiConfig 缺少 defaults/actionOrder(管道未就绪或后端版本不匹配)');
+    }
+    return UiConfig(
+      platform: json['platform'] is String ? json['platform'] as String : '',
+      isWindows: json['isWindows'] == true,
+      fontScale: _uiDouble(json['fontScale'], 1.0),
+      chordSeparator:
+          json['chordSeparator'] is String ? json['chordSeparator'] as String : '',
+      chordNames: _uiStringMap(json['chordNames']),
+      modifierWord:
+          json['modifierWord'] is String ? json['modifierWord'] as String : 'Alt',
+      messages: _uiMessages(json['messages']),
+      defaults: defaults,
+      holdHotkeys: _uiStringMap(json['holdHotkeys']),
+      reserved: _uiStringList(json['reserved']),
+      forceBound: _uiStringList(json['forceBound']),
+      actionOrder: actionOrder,
+      modifierRow: UiModifierRow.fromJson(json['modifierRow']),
+      features: _uiBoolMap(json['features']),
+    );
+  }
+
+  /// 安全兜底(等同一份 macOS 行为): widget 测试 / 管道暂时连不上时仍能渲染。
+  /// 只用于降级,正常运行时必须以后端 JSON 为准。
+  factory UiConfig.fallback() => const UiConfig(
+        platform: 'macos',
+        isWindows: false,
+        fontScale: 1.4,
+        chordSeparator: '',
+        chordNames: {
+          'cmd': '⌘', 'ctrl': '⌃', 'alt': '⌥', 'shift': '⇧',
+          'Up': '↑', 'Down': '↓', 'Left': '←', 'Right': '→',
+          'PageUp': 'PgUp', 'PageDown': 'PgDn',
+          'Return': '↩', 'Escape': 'Esc', 'Backspace': '⌫', 'Delete': '⌦',
+          'Tab': '⇥', 'Space': 'Space',
+        },
+        modifierWord: 'Option',
+        messages: {
+          'requireModifier': {
+            'zh': '需要同时按 Ctrl 或 Option',
+            'en': 'Must include Ctrl or Option',
+          },
+          'reserved': {
+            'zh': '已被系统、常用 App 或按住类功能保留',
+            'en': 'Reserved by macOS, common apps, or hold features',
+          },
+        },
+        defaults: {
+          'undo': 'cmd+ctrl+Z',
+          'page_prev': 'cmd+ctrl+`',
+          'page_next': 'cmd+ctrl+1',
+          'color_swap': '',
+          'width_swap': '',
+          'toggle_draw': 'cmd+ctrl+V',
+          'toggle_free_canvas': '',
+          'canvas_pan_left': 'ctrl+alt+A',
+          'canvas_pan_right': 'ctrl+alt+D',
+          'canvas_pan_up': 'ctrl+alt+W',
+          'canvas_pan_down': 'ctrl+alt+S',
+          'canvas_zoom_in': 'ctrl+alt+X',
+          'canvas_zoom_out': 'ctrl+alt+Z',
+          'clear': '',
+          'export': '',
+          'copy_svg': '',
+          'toggle_glass': '',
+          'toggle_ethereal': '',
+          'settings': 'cmd+ctrl+D',
+          'quit': 'cmd+ctrl+shift+Q',
+        },
+        holdHotkeys: {
+          'gif': 'cmd+ctrl+R',
+          'draft': 'cmd+ctrl+2',
+          'send': 'cmd+ctrl+3',
+        },
+        reserved: [
+          'cmd+ctrl+Q',
+          'cmd+ctrl+R',
+          'cmd+ctrl+2',
+          'cmd+ctrl+3',
+          'cmd+ctrl+W',
+          'cmd+ctrl+A',
+          'cmd+ctrl+F',
+        ],
+        forceBound: [],
+        actionOrder: [
+          'undo', 'page_prev', 'page_next', 'color_swap', 'width_swap',
+          'toggle_draw', 'toggle_free_canvas', 'canvas_pan_left',
+          'canvas_pan_right', 'canvas_pan_up', 'canvas_pan_down',
+          'canvas_zoom_in', 'canvas_zoom_out', 'clear', 'export', 'copy_svg',
+          'toggle_glass', 'toggle_ethereal', 'settings', 'quit',
+        ],
+        modifierRow: UiModifierRow(
+          left: [
+            UiKeyCapSpec(name: 'ctrl', label: 'ctrl', width: 1.25, modifier: true),
+            UiKeyCapSpec(name: 'opt', label: 'alt', width: 1.25, modifier: true),
+            UiKeyCapSpec(name: 'cmd', label: 'cmd', width: 1.25, modifier: true),
+          ],
+          space: [
+            UiKeyCapSpec(name: 'space', label: 'Space', width: 5.0, modifier: false),
+          ],
+          right: [
+            UiKeyCapSpec(name: 'ctrl', label: 'ctrl', width: 1.25, modifier: true),
+            UiKeyCapSpec(name: 'opt', label: 'alt', width: 1.25, modifier: true),
+            UiKeyCapSpec(name: 'cmd', label: 'cmd', width: 1.25, modifier: true),
+          ],
+        ),
+        features: {
+          'invertInk': true,
+          'pageFlipEffect': true,
+          'pageExport': true,
+          'ocrSearch': true,
+        },
+      );
+}
+
+Map<String, String> _uiStringMap(dynamic raw) {
+  if (raw is! Map) return const {};
+  final out = <String, String>{};
+  raw.forEach((k, v) {
+    if (v is String) out[k.toString()] = v;
+  });
+  return out;
+}
+
+List<String> _uiStringList(dynamic raw) {
+  if (raw is! List) return const [];
+  return [for (final v in raw) if (v is String) v];
+}
+
+Map<String, bool> _uiBoolMap(dynamic raw) {
+  if (raw is! Map) return const {};
+  final out = <String, bool>{};
+  raw.forEach((k, v) {
+    out[k.toString()] = v == true;
+  });
+  return out;
+}
+
+Map<String, Map<String, String>> _uiMessages(dynamic raw) {
+  if (raw is! Map) return const {};
+  final out = <String, Map<String, String>>{};
+  raw.forEach((k, v) {
+    out[k.toString()] = _uiStringMap(v);
+  });
+  return out;
+}
+
+double _uiDouble(dynamic v, double fallback) {
+  if (v is num) return v.toDouble();
+  if (v is String) return double.tryParse(v) ?? fallback;
+  return fallback;
+}
+
+/// 当前生效的平台 UI 配置(加载完成前/失败时 = [UiConfig.fallback])。
+final ValueNotifier<UiConfig> uiConfigNotifier =
+    ValueNotifier<UiConfig>(UiConfig.fallback());
+
+/// 顶层函数(快捷键格式化/校验)用的当前配置。
+UiConfig get uiConfig => uiConfigNotifier.value;
+
 // ── Platform-specific communication ──
 
 const _pipeName = r'\\.\pipe\glaspen2_settings';
@@ -115,14 +390,20 @@ class GlaspenSettingsApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (locale != null) return _build(context, locale!);
-    return ValueListenableBuilder<Locale>(
-      valueListenable: appLocale,
-      builder: (context, l, _) => _build(context, l),
+    // 字号缩放读后端 uiConfig;加载完成后 notifier 触发整棵树重建。
+    return ValueListenableBuilder<UiConfig>(
+      valueListenable: uiConfigNotifier,
+      builder: (context, cfg, _) {
+        if (locale != null) return _build(context, locale!, cfg);
+        return ValueListenableBuilder<Locale>(
+          valueListenable: appLocale,
+          builder: (context, l, _) => _build(context, l, cfg),
+        );
+      },
     );
   }
 
-  Widget _build(BuildContext context, Locale locale) {
+  Widget _build(BuildContext context, Locale locale, UiConfig cfg) {
     return MaterialApp(
       locale: locale,
       onGenerateTitle: (context) => AppLocalizations.of(context)!.glaspen2,
@@ -138,7 +419,8 @@ class GlaspenSettingsApp extends StatelessWidget {
       // small vs Windows — scale the entire UI up to match. Windows keeps 1.0
       // (the OS display scaling handles it).
       builder: (context, child) {
-        final s = Platform.isMacOS ? 1.4 : 1.0;
+        // 整屏缩放由后端决定(macOS 1.4, Windows 1.0 = 交给系统缩放)
+        final s = cfg.fontScale;
         Widget w = child!;
         if (s != 1.0) {
           w = Transform.scale(
@@ -179,6 +461,8 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   // 可配置快捷键: action id → chord(空串 = 未绑定)。后端 settings_json 的
   // shortcuts 字段是这张表的 JSON 字符串; 面板负责展示/录制/校验。
   Map<String, String> _shortcuts = _decodeShortcuts(null);
+  /// 后端 settings.shortcuts 原文: UiConfig 迟到加载时用它按新平台默认表重解码。
+  dynamic _shortcutsRaw;
   bool _pressureMonitor = false;
   bool _launchAtLogin = false;
   bool _showGrid = false;
@@ -345,9 +629,13 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
       });
     _bridge = createBridge();
     _bridge.onSettingsChanged(_onSettingsChanged);
-    // Windows 管道连接成功后重新拉取设置(macOS 通道立即可用,不影响)
-    _bridge.onConnected = () => _loadSettings();
+    // Windows 管道连接成功后重新拉取设置与平台 UI 配置(macOS 通道立即可用)
+    _bridge.onConnected = () {
+      _loadSettings();
+      unawaited(_loadUiConfig());
+    };
     _loadSettings();
+    unawaited(_loadUiConfig());
     // 「关于」区显示当前版本;取不到只显示 —,不影响面板其它功能
     unawaited(_loadAppVersion());
   }
@@ -577,7 +865,7 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
                           },
                         ),
                       ]),
-                      if (Platform.isMacOS) ...[
+                      if (uiConfig.features['pageFlipEffect'] == true) ...[
                         const Divider(height: 20),
                         Row(children: [
                           Text(AppLocalizations.of(context)!.pageFlipEffect,

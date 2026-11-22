@@ -145,8 +145,7 @@
   "blurBackground": "Blur background",
   "color": "Color",
   "width": "Width",
-  "gifAnimationRTo": "GIF animation (⌘⌃R to record)",
-  "gifAnimationHoldCtrl": "GIF animation (hold Ctrl+Alt+R)",
+  "gifAnimationHoldP1": "GIF animation (hold {p1})",
   "pageFlipEffect": "Page-flip effect",
   "systemAnimation": "System animation",
   "timeTunnel": "Time tunnel",
@@ -246,6 +245,13 @@
   "tapToQueryThe": "Tap to query the latest release on GitHub (network required)",
   "currentVersion": "Current version",
   "checkForUpdates": "Check for updates",
+  "@gifAnimationHoldP1": {
+    "placeholders": {
+      "p1": {
+        "type": "String"
+      }
+    }
+  },
   "@p1Pages": {
     "placeholders": {
       "p1": {

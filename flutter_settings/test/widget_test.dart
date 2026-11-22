@@ -3,7 +3,8 @@
 import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:glaspen2_settings/main.dart' show GlaspenSettingsApp, appLocale;
+import 'package:glaspen2_settings/main.dart'
+    show GlaspenSettingsApp, UiConfig, appLocale, uiConfigNotifier;
 
 void main() {
   testWidgets('settings page builds', (WidgetTester tester) async {
@@ -33,14 +34,70 @@ void main() {
 
     await tester.pumpWidget(const GlaspenSettingsApp());
     await tester.pump(const Duration(seconds: 1));
-    // 设置页默认只显示「笔」+「关于」; 语言选择器在「更多设置」折叠里。
-    await tester.tap(find.text('更多设置'));
-    await tester.pump();
+    // 高级设置默认展开(_showAdvanced=true), 语言选择器直接可见。
     expect(find.text('界面语言'), findsOneWidget);
 
     appLocale.value = const Locale('en');
     await tester.pump();
     expect(find.text('Language'), findsOneWidget);
     expect(find.text('Settings'), findsWidgets);
+  });
+
+  testWidgets('Windows uiConfig 隐藏 macOS 专属行并用后端 chord 渲染按住热键',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1600, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final fallback = UiConfig.fallback();
+    // 模拟 Windows 后端 JSON(管道测试进程连不上, 直接注入全局配置):
+    // features 全 false = 反色/翻页动效/页面导出/OCR 都应从界面消失。
+    uiConfigNotifier.value = UiConfig.fromJson(<String, dynamic>{
+      'platform': 'windows',
+      'isWindows': true,
+      'fontScale': 1.0,
+      'chordSeparator': '+',
+      'chordNames': {'cmd': 'Win', 'ctrl': 'Ctrl', 'alt': 'Alt', 'shift': 'Shift'},
+      'modifierWord': 'Alt',
+      'messages': {
+        'requireModifier': {
+          'zh': '需要同时按 Ctrl 或 Alt',
+          'en': 'Must include Ctrl or Alt',
+        },
+        'reserved': {'zh': '已被系统或按住类功能保留', 'en': 'Reserved'},
+      },
+      'reserved': ['ctrl+alt+R'],
+      'forceBound': ['settings', 'quit'],
+      'defaults': fallback.defaults,
+      'actionOrder': fallback.actionOrder,
+      'holdHotkeys': {
+        'gif': 'ctrl+alt+R',
+        'draft': 'ctrl+alt+2',
+        'send': 'ctrl+alt+3',
+      },
+      'features': {
+        'invertInk': false,
+        'pageFlipEffect': false,
+        'pageExport': false,
+        'ocrSearch': false,
+      },
+      'modifierRow': {
+        'left': [
+          {'name': 'ctrl', 'label': 'ctrl', 'width': 1.25, 'modifier': true},
+        ],
+        'space': [
+          {'name': 'space', 'label': 'Space', 'width': 5.0, 'modifier': false},
+        ],
+        'right': <dynamic>[],
+      },
+    });
+    addTearDown(() => uiConfigNotifier.value = UiConfig.fallback());
+
+    await tester.pumpWidget(const GlaspenSettingsApp(locale: Locale('zh')));
+    await tester.pump(const Duration(seconds: 1));
+    // GIF 标题 = 本地化句子 + 后端 chord 格式化(不再按平台选 ARB key)
+    expect(find.text('GIF 动画 (Ctrl+Alt+R 按住录制)'), findsOneWidget);
+    // features=false 的整行/整块不渲染
+    expect(find.text('反色突出'), findsNothing);
+    expect(find.text('翻页动效'), findsNothing);
   });
 }
