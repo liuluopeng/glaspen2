@@ -68,9 +68,11 @@ const RESERVED_CHORDS: [&str; 3] = ["ctrl+alt+R", "ctrl+alt+2", "ctrl+alt+3"];
 /// 2 = 主键(字母)与 macOS 对齐的第一版(个别键额外 Shift);
 /// 3 = 与 macOS 字母完全一致: 核心 Ctrl+Alt+同字母, 镜头整套 Ctrl+Alt+Shift;
 /// 4 = 全动作默认都有键: 镜头 Win+Alt+WASD/XZ(占用时降级 Alt+Shift), 其余 Ctrl+Alt 字母。
+/// 5 = 镜头键"整套降级"版: 把 v4 可能已写进库的半套 Alt+Shift 镜头值归一回 Win+Alt,
+///     启动时若主组合被占用再由注册逻辑整套降级(保证 A/S 与 W/D 修饰键一致)。
 /// 迁移只做一次 —— 用户之后自己改回旧组合, 不会在每次启动被反复改写。
 const SHORTCUTS_DEFAULTS_VERSION_KEY: &str = "shortcuts_defaults_v";
-const SHORTCUTS_DEFAULTS_VERSION: i32 = 4;
+const SHORTCUTS_DEFAULTS_VERSION: i32 = 5;
 
 /// 能当全局热键的按键名(与 macOS gl_keycode_names / Dart _hidKeyNames 对齐)。
 /// 只收录用来当快捷键的键; 面板录制端也用同一张表(经 Dart 侧映射)。
@@ -267,28 +269,40 @@ fn legacy_default_target(action: &str, chord: &str) -> Option<&'static str> {
     match action {
         // 镜头: v1 方向键/PgUp·PgDn / v2 Ctrl+Alt+字母 / v3 Ctrl+Alt+Shift+字母
         // → v4 Win+Alt+字母
+        // 注意: v4 的"半套降级"会把个别镜头值写成 alt+shift+字母; 一律归一回
+        // cmd+alt, 让启动注册时按"整套有无占用"重新决定(保证修饰键一致)。
         "canvas_pan_left" => match chord {
-            "ctrl+alt+Left" | "ctrl+alt+A" | "ctrl+alt+shift+A" => Some("cmd+alt+A"),
+            "ctrl+alt+Left" | "ctrl+alt+A" | "ctrl+alt+shift+A" | "alt+shift+A" => {
+                Some("cmd+alt+A")
+            }
             _ => None,
         },
         "canvas_pan_right" => match chord {
-            "ctrl+alt+Right" | "ctrl+alt+D" | "ctrl+alt+shift+D" => Some("cmd+alt+D"),
+            "ctrl+alt+Right" | "ctrl+alt+D" | "ctrl+alt+shift+D" | "alt+shift+D" => {
+                Some("cmd+alt+D")
+            }
             _ => None,
         },
         "canvas_pan_up" => match chord {
-            "ctrl+alt+Up" | "ctrl+alt+W" | "ctrl+alt+shift+W" => Some("cmd+alt+W"),
+            "ctrl+alt+Up" | "ctrl+alt+W" | "ctrl+alt+shift+W" | "alt+shift+W" => {
+                Some("cmd+alt+W")
+            }
             _ => None,
         },
         "canvas_pan_down" => match chord {
-            "ctrl+alt+Down" | "ctrl+alt+S" | "ctrl+alt+shift+S" => Some("cmd+alt+S"),
+            "ctrl+alt+Down" | "ctrl+alt+S" | "ctrl+alt+shift+S" | "alt+shift+S" => {
+                Some("cmd+alt+S")
+            }
             _ => None,
         },
         "canvas_zoom_in" => match chord {
-            "ctrl+alt+PageUp" | "ctrl+alt+X" | "ctrl+alt+shift+X" => Some("cmd+alt+X"),
+            "ctrl+alt+PageUp" | "ctrl+alt+X" | "ctrl+alt+shift+X" | "alt+shift+X" => {
+                Some("cmd+alt+X")
+            }
             _ => None,
         },
         "canvas_zoom_out" => match chord {
-            "ctrl+alt+PageDown" | "ctrl+alt+shift+Z" => Some("cmd+alt+Z"),
+            "ctrl+alt+PageDown" | "ctrl+alt+shift+Z" | "alt+shift+Z" => Some("cmd+alt+Z"),
             _ => None,
         },
         // v2 的设置是 ⇧D; v3/v4 回到 D
@@ -448,6 +462,9 @@ fn register_actions_locked(reg: &mut HotkeyRegistry, hwnd: HWND) {
     // 拷贝一份再遍历: 降级注册时要改写 reg.effective[idx](面板/日志显示实际值)
     let effective = reg.effective.clone();
     let mut fallback_used = false;
+    // 镜头动作: 先按主组合登记, 最后按"整套一致"决定是否统一降级。
+    // (idx, action, 主组合, 是否重复触发, 主组合是否注册成功)
+    let mut camera_plan: Vec<(usize, &'static str, String, bool, bool)> = Vec::new();
     for (idx, (action, chord)) in effective.iter().enumerate() {
         if chord.is_empty() {
             continue;
@@ -481,38 +498,73 @@ fn register_actions_locked(reg: &mut HotkeyRegistry, hwnd: HWND) {
             HOT_KEY_MODIFIERS(mods | MOD_NOREPEAT.0 as u32)
         };
         let id = HOTKEY_ID_ACTION_BASE + idx as i32;
+        if action.starts_with("canvas_") {
+            match unsafe { RegisterHotKey(Some(hwnd), id, flags, vk) } {
+                Ok(()) => {
+                    reg.registered.push(id);
+                    camera_plan.push((idx, action, chord.clone(), repeatable, true));
+                }
+                Err(e) => {
+                    tracing::info!(
+                        "[hotkey] {action}={chord} 注册失败({e}), 镜头键将整套降级"
+                    );
+                    camera_plan.push((idx, action, chord.clone(), repeatable, false));
+                }
+            }
+            continue;
+        }
         match unsafe { RegisterHotKey(Some(hwnd), id, flags, vk) } {
             Ok(()) => reg.registered.push(id),
             Err(e) => {
-                // 镜头键被其它程序占用(Win+Alt+W/D 很常见): 降级 Alt+Shift+同键
-                let fallback = registration_fallback(action, chord)
-                    .filter(|alt| parse_chord(alt).is_some());
-                let Some(alt) = fallback else {
-                    tracing::warn!(
-                        "[hotkey] {action}={chord} 注册失败(被系统/其它程序占用?): {e}"
-                    );
-                    continue;
-                };
-                let (mods2, vk2) = parse_chord(&alt).expect("fallback 已在上面校验");
-                let flags2 = if repeatable {
-                    HOT_KEY_MODIFIERS(mods2)
-                } else {
-                    HOT_KEY_MODIFIERS(mods2 | MOD_NOREPEAT.0 as u32)
-                };
-                match unsafe { RegisterHotKey(Some(hwnd), id, flags2, vk2) } {
-                    Ok(()) => {
-                        tracing::info!(
-                            "[hotkey] {action}={chord} 被占用, 自动降级为 {alt}"
-                        );
-                        reg.effective[idx].1 = alt;
-                        reg.registered.push(id);
-                        fallback_used = true;
-                    }
-                    Err(e2) => tracing::warn!(
-                        "[hotkey] {action}={chord} 注册失败, 降级 {alt} 也失败: {e2}"
-                    ),
-                }
+                tracing::warn!("[hotkey] {action}={chord} 注册失败(被系统/其它程序占用?): {e}");
             }
+        }
+    }
+    // 镜头键必须**整套用同一对修饰键**: Win+Alt+W/D 这类被常驻软件占用的机器上
+    // 只降级个别键会出现"A/S 用 Win+Alt、W/D 用 Alt+Shift"的半套, 用户按不对
+    // 修饰键 → 看起来"镜头快捷键没反应"。这里只要有任意一个主组合注册失败,
+    // 就把整套镜头键统一降级成 Alt+Shift+同键, 并回推面板显示实际值。
+    if camera_plan.iter().any(|p| !p.4) {
+        for (idx, _a, _c, _r, ok) in &camera_plan {
+            if *ok {
+                let id = HOTKEY_ID_ACTION_BASE + *idx as i32;
+                let _ = unsafe { UnregisterHotKey(Some(hwnd), id) };
+                reg.registered.retain(|x| *x != id);
+            }
+        }
+        let mut degraded: Vec<String> = Vec::new();
+        for (idx, action, chord, repeatable, _ok) in &camera_plan {
+            let id = HOTKEY_ID_ACTION_BASE + *idx as i32;
+            let use_chord = registration_fallback(action, chord).unwrap_or_else(|| chord.clone());
+            let Some((mods, vk)) = parse_chord(&use_chord) else {
+                tracing::warn!("[hotkey] {action} 降级组合 {use_chord} 解析失败");
+                continue;
+            };
+            let flags = if *repeatable {
+                HOT_KEY_MODIFIERS(mods)
+            } else {
+                HOT_KEY_MODIFIERS(mods | MOD_NOREPEAT.0 as u32)
+            };
+            match unsafe { RegisterHotKey(Some(hwnd), id, flags, vk) } {
+                Ok(()) => {
+                    reg.effective[*idx].1 = use_chord.clone();
+                    reg.registered.push(id);
+                    if use_chord != *chord {
+                        fallback_used = true;
+                        degraded.push(format!("{action}={use_chord}"));
+                    }
+                }
+                Err(e) => tracing::warn!(
+                    "[hotkey] {action} 降级组合 {use_chord} 注册也失败: {e}"
+                ),
+            }
+        }
+        if fallback_used {
+            tracing::info!(
+                "[hotkey] 镜头键整套降级({} 个): {}",
+                degraded.len(),
+                degraded.join(" ")
+            );
         }
     }
     // 生效表(含未绑定)写进日志, 排障时一眼看到底注册了什么
@@ -992,6 +1044,28 @@ mod tests {
         );
     }
 
+    /// 镜头默认必须是同一套前缀(cmd+alt), 否则"整套降级"无法覆盖全部镜头键;
+    /// 降级后应得到 alt+shift+同一字母(整套一致)。
+    #[test]
+    fn camera_defaults_share_one_family() {
+        let camera: Vec<_> = HOTKEY_ACTIONS
+            .iter()
+            .filter(|(a, _)| a.starts_with("canvas_"))
+            .collect();
+        assert_eq!(camera.len(), 6);
+        for (action, chord) in camera {
+            assert!(
+                chord.starts_with("cmd+alt+"),
+                "镜头默认 {action}={chord} 不在 cmd+alt 家族"
+            );
+            let alt = registration_fallback(action, chord).expect("镜头应有降级组合");
+            assert!(
+                alt.starts_with("alt+shift+"),
+                "降级 {action}={alt} 不是 alt+shift"
+            );
+        }
+    }
+
     /// 镜头键被占用时降级到 Alt+Shift+同键; 非镜头动作不降级。
     #[test]
     fn camera_fallback_chords() {
@@ -1054,6 +1128,28 @@ mod tests {
         assert_eq!(chord_of(&effective, "quit"), "ctrl+alt+shift+Q");
         assert_eq!(chord_of(&effective, "settings"), "ctrl+alt+D");
 
+        // v4: 半套降级(个别镜头 alt+shift) → 归一回 Win+Alt, 再由注册逻辑整套决定
+        let mut v4 = saved(&[
+            ("canvas_pan_left", "cmd+alt+A"),
+            ("canvas_pan_right", "alt+shift+D"),
+            ("canvas_pan_up", "alt+shift+W"),
+            ("canvas_pan_down", "cmd+alt+S"),
+            ("canvas_zoom_in", "cmd+alt+X"),
+            ("canvas_zoom_out", "cmd+alt+Z"),
+        ]);
+        assert_eq!(migrate_legacy_defaults(&mut v4), 2);
+        let effective4 = build_effective_saved(&v4);
+        for (action, chord) in [
+            ("canvas_pan_left", "cmd+alt+A"),
+            ("canvas_pan_right", "cmd+alt+D"),
+            ("canvas_pan_up", "cmd+alt+W"),
+            ("canvas_pan_down", "cmd+alt+S"),
+            ("canvas_zoom_in", "cmd+alt+X"),
+            ("canvas_zoom_out", "cmd+alt+Z"),
+        ] {
+            assert_eq!(chord_of(&effective4, action), chord, "v4 归一回 {action}");
+        }
+
         // v3: 镜头 Ctrl+Alt+Shift+字母 → v4 Win+Alt+字母
         let mut v3 = saved(&[
             ("canvas_pan_left", "ctrl+alt+shift+A"),
@@ -1079,14 +1175,14 @@ mod tests {
     #[test]
     fn custom_chords_are_not_migrated() {
         let mut map = saved(&[
-            ("canvas_pan_left", "alt+shift+A"), // 自定义(可能是降级值), 不是旧默认
-            ("settings", "ctrl+alt+Q"),         // 用户自定义, 不是旧默认
+            ("canvas_pan_left", "ctrl+alt+J"), // 用户自定义, 不是任何旧默认
+            ("settings", "ctrl+alt+Q"),       // 用户自定义, 不是旧默认
             ("quit", "ctrl+alt+E"),
             ("toggle_ethereal", "ctrl+alt+U"),
         ]);
         assert_eq!(migrate_legacy_defaults(&mut map), 0);
         let effective = build_effective_saved(&map);
-        assert_eq!(chord_of(&effective, "canvas_pan_left"), "alt+shift+A");
+        assert_eq!(chord_of(&effective, "canvas_pan_left"), "ctrl+alt+J");
         assert_eq!(chord_of(&effective, "settings"), "ctrl+alt+Q");
         assert_eq!(chord_of(&effective, "quit"), "ctrl+alt+E");
         assert_eq!(chord_of(&effective, "toggle_ethereal"), "ctrl+alt+U");

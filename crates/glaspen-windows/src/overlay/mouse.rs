@@ -44,6 +44,14 @@ fn camera_zoom_mods() -> u32 {
     modifier_mask_for("canvas_zoom_in")
 }
 
+/// 镜头手势(抓手拖动 / 滚轮缩放)的修饰键判定: 平移与缩放是同一套镜头键,
+/// 但用户可能只改了其中一个动作的组合(Win+Alt 被占用时还会整套降级 Alt+Shift),
+/// 所以**两套掩码任一匹配**都算镜头修饰键 —— 否则会出现"按住面板显示的修饰键
+/// 却拖不动/缩不了"的情况。
+fn camera_mods_match() -> bool {
+    mods_match_exact(camera_pan_mods()) || mods_match_exact(camera_zoom_mods())
+}
+
 /// 镜头操作可用条件(macOS: g_infinite_canvas && g_enabled && !g_stroke_active)
 fn camera_available(state: &OverlayState) -> bool {
     infinite_on() && state.draw.enabled && !state.in_stroke
@@ -104,7 +112,7 @@ unsafe fn handle_mouse_raw(buf: &[u64], state: &mut OverlayState) -> bool {
 
     // ── 1. 镜头修饰键按住 → 先清穿透, 让紧接着的左键按下被覆盖层接住 ──
     // (否则左键会先点到下层窗口; macOS 事件 tap 是直接消费的)
-    let pan_held = mods_match_exact(camera_pan_mods());
+    let pan_held = camera_mods_match();
     if camera_available(state) {
         if pan_held && !state.camera_blocked {
             set_input_blocking(state.canvas.hwnd, true, "camera-mods");
@@ -122,7 +130,7 @@ unsafe fn handle_mouse_raw(buf: &[u64], state: &mut OverlayState) -> bool {
     // ── 2. 左键按下 + 镜头修饰键 → 开始拖动平移 ──
     if (btn_flags & RI_MOUSE_LEFT_BUTTON_DOWN as u16) != 0
         && camera_available(state)
-        && mods_match_exact(camera_pan_mods())
+        && camera_mods_match()
     {
         state.camera_dragging = true;
         state.camera_pending_dx = 0.0;
@@ -179,7 +187,7 @@ unsafe fn handle_mouse_raw(buf: &[u64], state: &mut OverlayState) -> bool {
         return false; // 非滚轮(移动/按键)全部忽略
     }
     let delta = mouse.Anonymous.Anonymous.usButtonData as i16;
-    if delta == 0 || !camera_available(state) || !mods_match_exact(camera_zoom_mods()) {
+    if delta == 0 || !camera_available(state) || !camera_mods_match() {
         return false;
     }
     // 方向对齐 macOS 默认"自然滚动": macOS 的 scrollingDeltaY 已被系统按

@@ -10,6 +10,11 @@ const TIMER_DISPLAY: usize = 4;
 const DISPLAY_DEBOUNCE_MS: u32 = 2500;
 // 笔事件停止后的延迟:恢复穿透 + 飘渺模式隐藏笔迹
 const UNBLOCK_DELAY_MS: u32 = 50;
+/// 飘渺模式: 笔离开数位板(报告停止)后多久立即藏起笔迹。
+/// macOS 有官方 proximity exit 事件(立即 auto_hide_now); Windows Raw HID 没有
+/// "离开"事件, 只能以"连续这么久没有笔报告"近似 —— 悬空移动时报告持续到达,
+/// 笔迹保持可见; 抬笔/离开后约 120ms 内消失(以前要等 400ms 的鼠标拦截窗口)。
+const ETHEREAL_LEAVE_MS: u32 = 120;
 // 落笔状态下多久没有新报告就认为"抬笔报告丢了/笔已离开感应区":
 // 超过这个时长强制收笔并恢复鼠标穿透(否则覆盖层会一直拦截鼠标)
 const STALE_STROKE: std::time::Duration = std::time::Duration::from_millis(500);

@@ -75,8 +75,9 @@ const Map<String, String> _shortcutDefaultsMac = {
 ///   - 核心/开关类 → **Ctrl+Alt**: Z/`/1/V、D 设置、⇧Q 退出、C 清空、G 导出、
 ///     S 复制 SVG、B 磨砂、X 飘渺、I 自由涂鸦、⇧C 换色、⇧W 换粗细;
 ///   - 镜头/缩放 → **Win+Alt**: W/A/S/D 平移、X 放大 / Z 缩小。
-/// 镜头键被其它软件占用时(Win+Alt+W/D 很常见)由 Rust 侧自动降级
-/// Alt+Shift+同键, 并把实际生效值回推, 面板显示真实组合。
+/// 镜头键被其它软件占用时(Win+Alt+W/D 很常见)由 Rust 侧**整套**降级为
+/// Alt+Shift+同键(避免 A/S 用 Win+Alt、W/D 用 Alt+Shift 的半套), 并把实际
+/// 生效值回推, 面板显示真实组合。
 const Map<String, String> _shortcutDefaultsWindows = {
   'undo': 'ctrl+alt+Z',
   'page_prev': 'ctrl+alt+`',

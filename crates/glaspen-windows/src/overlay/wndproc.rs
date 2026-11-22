@@ -111,6 +111,17 @@ unsafe extern "system" fn wnd_proc(
             match wparam.0 as usize {
                 TIMER_UNBLOCK => {
                     let _ = KillTimer(Some(hwnd), TIMER_UNBLOCK);
+                    // 飘渺模式: 笔离开数位板(报告停止)后**立即**藏起笔迹 ——
+                    // 不等 400ms 的鼠标拦截窗口, 与 macOS proximity exit 的
+                    // auto_hide_now 体验对齐。悬空移动时报告不断, 笔迹保持可见。
+                    if state.draw.ethereal
+                        && state.strokes_visible
+                        && !state.in_stroke
+                        && state.last_report.elapsed().as_millis() as u64
+                            >= ETHEREAL_LEAVE_MS as u64
+                    {
+                        hide_strokes(state);
+                    }
                     // 笔还按着但报告停了(按住不动): 续一个计时器继续拦截。
                     // 超过 STALE_STROKE 没有报告 = 抬笔报告丢了/笔离开了感应区,
                     // 强制收笔, 绝不让 in_stroke 卡在 true 把鼠标永久拦住。

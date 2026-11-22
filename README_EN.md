@@ -122,9 +122,10 @@ Quit is `⌘⌃⇧Q` on macOS (`⌘⌃Q` is the system lock screen, so it cannot
 and `Ctrl+Alt+Shift+Q` on Windows. Windows defaults use two families: core/toggle
 actions = `Ctrl+Alt+letter` (Z/`/1/V, D settings, ⇧Q quit, C clear, G export,
 S copy, B glass, X ethereal, I free doodle, ⇧C color, ⇧W width) and camera/zoom =
-`Win+Alt+W/A/S/D` plus `X` zoom-in / `Z` zoom-out. If a `Win+Alt` chord is taken by
-another app (W/D commonly are), it falls back to `Alt+Shift` + same key and the
-panel shows the effective chord.
+`Win+Alt+W/A/S/D` plus `X` zoom-in / `Z` zoom-out. If any `Win+Alt` chord is taken
+by another app (W/D commonly are), the **whole camera family** falls back to
+`Alt+Shift` + same key (never a half-mixed set) and the panel shows the effective
+chords.
 Quitting flushes queued stroke points, checkpoints
 the WAL and also terminates the settings-panel process (a separate process on
 Windows), so nothing is left behind for the next launch to clean up.
