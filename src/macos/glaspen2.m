@@ -82,6 +82,11 @@ extern char* glaspen2_load_string_setting(const char *key);
 // 返回 effect JSON({"kind":..., "bool"/"int"/"float"/"str"/"json":...} 或 {"error":...});
 // 调用方用 glaspen2_free_c_string 释放。ObjC 只按 kind 做平台运行时副作用。
 extern char* glaspen2_settings_apply(const char *key, const char *value_json);
+// D12 面板设置快照桥(core/settings_snapshot.rs): 入参 = 运行时专属值 JSON 对象
+// (launchAtLogin/shortcuts/flipEffect/language), 返回完整快照单行 JSON
+// (字段集合/顺序/类型/缺省值/DB 回退全在 core);失败回 {"error":...}, 永不 NULL;
+// 调用方用 glaspen2_free_c_string 释放。
+extern char* glaspen2_settings_snapshot_json(const char *overrides_json);
 // D3b 动作 effect 桥(core/action_effect.rs): action id → 平台无关 effect JSON
 // ({"kind":"<ActionEffect 变体名>"} 或 {"error":"..."}); 调用方用
 // glaspen2_free_c_string 释放。ObjC 只按 kind 做本平台运行时副作用。

@@ -2533,6 +2533,28 @@ mod platform {
         load_setting_with(pool, key).await
     }
 
+    /// 当前全局库连接(未初始化 = None)。
+    ///
+    /// 设置快照(`settings_snapshot`)与测试注入用: 快照一次读全表, 不再逐键
+    /// `block_on`; `None` 时调用方按"全新库 = 全缺省值"处理。
+    pub(crate) fn pool() -> Option<&'static SqlitePool> {
+        DB.get()
+    }
+
+    /// 一次读出全部 `user_settings` 行(D12 设置快照用)。
+    ///
+    /// 快照要读 ~37 项, 逐条 `load_setting` 是 37 次 round-trip; 这张表只有
+    /// 几十行, 全表一次取回再在内存里按键解析(含旧别名回退)更快也少锁竞争。
+    pub(crate) async fn load_user_settings_map_with(
+        pool: &SqlitePool,
+    ) -> std::collections::HashMap<String, String> {
+        sqlx::query_as::<_, (String, String)>("SELECT key, value FROM user_settings")
+            .fetch_all(pool)
+            .await
+            .map(|rows| rows.into_iter().collect())
+            .unwrap_or_default()
+    }
+
     /// 把旧版 Windows 写下的 camelCase 设置键并到规范 snake_case 键上。
     /// 无别名行时零成本; 幂等。
     pub(crate) async fn migrate_setting_keys(pool: &SqlitePool) {

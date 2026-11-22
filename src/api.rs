@@ -245,8 +245,16 @@ pub struct Settings {
 
 impl Settings {
     /// 宽松解析:推送方只发部分字段(旧 sync_settings_panel 只发 12 项)。
+    ///
+    /// D12: 快照由 core settings_snapshot 单源构建;构建失败时 FFI 返回
+    /// {"error": ...}(永不 NULL)。这里直接拒绝该帧 —— 旧实现是返回 NULL
+    /// (面板拿不到快照), 不能让宽松解析把错误帧当成"全是缺省值"推给面板。
     fn from_json(json: &str) -> Option<Settings> {
         let v: serde_json::Value = serde_json::from_str(json).ok()?;
+        if v.get("error").is_some() {
+            tracing::warn!("设置快照构建失败: {json}");
+            return None;
+        }
         // 布尔容忍数字:ObjC 侧个别键历史上以 @(int) 序列化成 1/0
         let b = |k: &str| {
             v.get(k)

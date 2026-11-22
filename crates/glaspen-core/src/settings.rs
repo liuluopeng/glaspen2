@@ -2,10 +2,11 @@
 //!
 //! 背景: 设置曾经有四份手工副本 —— macOS ObjC 的 set_setting 分支、Windows
 //! 命名管道的 getSettings/setSetting 分支、`api.rs` 的 `Settings` 结构体、
-//! Flutter 面板的 `_settingsToMap`。任何一方新增/改名都可能让另一平台静默
-//! 丢设置。本文件是这四处的**契约**: 键、落库键、类型、平台可用性只在这里写,
-//! `tests` 里用 include_str! 扫描四个源文件, 少一个/多一个都会让 `cargo test`
-//! 失败(在 macOS 与 Windows CI 上都会跑)。
+//! Flutter 面板的 `_settingsToMap`。D1 把 setSetting 的解析/钳制/落库收口到
+//! `settings_apply`, D12 把设置快照的形状/顺序/类型/缺省值/DB 回退收口到
+//! `settings_snapshot`;本文件继续作为**契约**: 键、落库键、类型、平台可用性
+//! 只在这里写, `tests` 里用 include_str! 扫描 Flutter 映射与 `api.rs` 结构体,
+//! 少一个/多一个都会让 `cargo test` 失败(在 macOS 与 Windows CI 上都会跑)。
 //!
 //! 规则:
 //! - 新增设置项 → 只在这里加一行 + 真正实现的两个平台 effect;
@@ -435,46 +436,6 @@ mod tests {
         out
     }
 
-    /// Windows 管道 `getSettings` 响应里的键(排除协议字段)。
-    fn pipe_get_settings_keys() -> Vec<String> {
-        let src = include_str!("../../../crates/glaspen-windows/src/overlay/pipe.rs");
-        let start = src
-            .find("getSettings_response")
-            .expect("找不到 getSettings_response");
-        let seg = &src[start..(start + 6000).min(src.len())];
-        let bytes = seg.as_bytes();
-        let mut out = Vec::new();
-        let mut i = 0;
-        while i + 1 < bytes.len() {
-            // 形如 \"key\": —— 开引号后是标识符, 闭引号后紧跟冒号。
-            if bytes[i] == b'\\' && bytes[i + 1] == b'"' {
-                let key_start = i + 2;
-                let mut j = key_start;
-                while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
-                    j += 1;
-                }
-                if j > key_start
-                    && j + 2 < bytes.len()
-                    && bytes[j] == b'\\'
-                    && bytes[j + 1] == b'"'
-                    && bytes[j + 2] == b':'
-                {
-                    out.push(String::from_utf8_lossy(&bytes[key_start..j]).into_owned());
-                    i = j + 3;
-                    continue;
-                }
-            }
-            i += 1;
-        }
-        let protocol = [
-            "type", "reqId", "data", "ok", "error", "message", "done", "path", "received", "total",
-        ];
-        out.retain(|k| !protocol.contains(&k.as_str()));
-        out.sort();
-        out.dedup();
-        out
-    }
-
     #[test]
     fn registry_is_well_formed() {
         let mut keys = std::collections::HashSet::new();
@@ -521,22 +482,6 @@ mod tests {
                 .collect(),
         );
         assert_eq!(api, expected, "api.rs Settings 与设置登记表不一致");
-    }
-
-    /// Windows 管道的 getSettings 响应必须覆盖登记表里的 win 键。
-    #[test]
-    fn windows_pipe_snapshot_matches_contract() {
-        let pipe = sorted(pipe_get_settings_keys());
-        let expected = sorted(
-            keys_for(Platform::Windows)
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
-        );
-        assert_eq!(
-            pipe, expected,
-            "Windows 管道 getSettings 与设置登记表不一致"
-        );
     }
 
     // ── D1a: setSetting effect 覆盖闸门 ──

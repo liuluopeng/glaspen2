@@ -884,75 +884,51 @@ static NSString *gl_shortcut_action_for_key(unsigned short kc, NSUInteger mods) 
     return g_shortcut_lookup[[parts componentsJoinedByString:@"+"]];
 }
 
+/// D12: 设置快照的运行时专属值(其余字段/缺省值/DB 回退单源在
+/// core/settings_snapshot.rs)。这里只放不在 user_settings 或不能直接读 DB 的值:
+/// - launchAtLogin: LaunchAgent plist 的真实状态;
+/// - shortcuts: 生效表(含默认补齐/保留组合/冲突消解, 端点在 gl_shortcuts_*);
+/// - flipEffect: 可被 GLASPEN2_FLIP_EFFECT 调试环境变量覆盖, 以运行时为准;
+/// - language: 以运行时 g_lang 为准(DB 落库值由 core 兜底)。
+/// 返回 malloc 的 UTF-8 JSON(调用方 free), 失败 NULL。
+static char *gl_settings_snapshot_overrides_json(void) {
+    NSDictionary *overrides = @{
+        @"launchAtLogin": @((BOOL)(glaspen2_is_launch_at_login() != 0)),
+        @"shortcuts": gl_shortcuts_effective_json(),
+        @"flipEffect": @(g_flip_effect),
+        @"language": (g_lang == 1 ? @"en" : @"zh"),
+    };
+    NSData *data = [NSJSONSerialization dataWithJSONObject:overrides options:0 error:nil];
+    if (!data) return NULL;
+    NSString *s = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (!s) return NULL;
+    const char *cs = s.UTF8String;
+    if (!cs) return NULL;
+    size_t n = strlen(cs);
+    char *buf = (char *)malloc(n + 1);
+    if (!buf) return NULL;
+    memcpy(buf, cs, n + 1);
+    return buf;
+}
+
 /// 当前设置的 JSON 快照;调用方用 glaspen2_macos_free_c_string 释放。
+///
+/// D12: 字段集合/顺序/类型/缺省值/DB 回退唯一实现在 core
+/// settings_snapshot::snapshot_json;本函数只收运行时专属值并转发 FFI。
+/// FFI 永不返回 NULL;内部错误以 {"error": ...} 形式传给 api.rs(它会拒绝该帧,
+/// 等价于旧实现"拿不到快照")。
 char *glaspen2_macos_settings_json(void) {
     __block char *out = NULL;
     gl_run_on_main_sync(^{
-        // 气泡重播设置(纯面板自用, 落库读取): 速度缺省 1, 停末帧缺省开。
-        // @() 装箱不能包语句块, 先算成局部变量再进字典。
-        char *vsp = glaspen2_load_string_setting("bubble_replay_speed");
-        int replay_speed = vsp ? atoi(vsp) : 1;
-        glaspen2_free_c_string(vsp);
-        if (replay_speed < 1) replay_speed = 1;
-        if (replay_speed > 8) replay_speed = 8;
-        char *vhl = glaspen2_load_string_setting("bubble_replay_hold_last");
-        BOOL replay_hold = vhl ? (atoi(vhl) != 0) : YES;
-        glaspen2_free_c_string(vhl);
-        NSDictionary *d = @{
-            @"color": @(g_selectedColorIndex),
-            @"width": @(g_selected_width_index),
-            @"launchAtLogin": @(glaspen2_is_launch_at_login()),
-            @"frostedGlass": @(g_glass_enabled),
-            @"grid": @(g_show_grid),
-            @"gridFollowStrokes": @(g_grid_follow_strokes),
-            @"glassFollowStrokes": @(g_glass_follow_strokes),
-            @"notebookStyle": @(glaspen2_load_bool_setting("notebook_style") != 0),
-            @"panelTransparent": @(glaspen2_load_bool_setting("panel_transparent") != 0),
-            @"softShadow": @(g_soft_shadow),
-            @"invertInk": @(g_invert_ink),
-            @"invertFps": @(g_invert_fps),
-            @"pressureMonitor": @(g_pressure_monitor),
-            @"outline": @(g_outline_enabled),
-            @"infiniteCanvas": @(g_infinite_canvas),
-            @"minimap": @(g_minimap_enabled),
-            @"gridSize": @(g_grid_size),
-            @"gridDivider": @(g_grid_divider),
-            @"flipEffect": @(g_flip_effect),
-            @"gifFps": @(g_gif_fps),
-            @"gifResolution": @(g_gif_resolution),
-            @"gifSpeed": @(g_gif_speed),
-            @"gifEndMode": @(g_gif_end_mode),
-            // 涂鸦身份:密码本体永不进快照,只回是否已保存
-            @"chatApiBase": gl_string_setting("chat_api_base"),
-            @"chatUser":    gl_string_setting("chat_user"),
-            @"chatHasPassword": @([gl_string_setting("chat_password") length] > 0),
-            @"chatIntegration": @(g_chat_integration),
-            // 注意:load_bool_setting 返回 c_int,@() 会序列化成 JSON 数字 1/0,
-            // Rust 侧 as_bool() 解析不出 → 永远 false。必须转成 BOOL(YES/NO)
-            // 让 NSJSONSerialization 输出 true/false。
-            @"showFreeCanvas": @(glaspen2_load_bool_setting("show_free_canvas") != 0),
-            @"showBubbleTab": @(glaspen2_load_bool_setting("show_bubble_tab") != 0),
-            // 气泡消息重播: 速度倍率(缺省 1)/ 停在最后一帧(缺省开)/ 自动重播(缺省关)
-            @"bubbleReplaySpeed": @(replay_speed),
-            @"bubbleReplayHoldLast": @(replay_hold),
-            @"bubbleReplayAuto": @(glaspen2_load_bool_setting("bubble_replay_auto") != 0),
-            @"bubbleAutoNewPage": @(glaspen2_load_bool_setting("bubble_auto_new_page") != 0),
-            @"nasUrl": gl_string_setting("nas_url"),
-            @"shareCanvas": @(glaspen2_load_bool_setting("share_ink") != 0),
-            // 语言由面板选择器决定, 不再跟随系统; 缺省中文
-            @"language": (g_lang == 1 ? @"en" : @"zh"),
-            // 可配置快捷键: 动作 id → chord 的 JSON 字符串(含默认补齐)
-            @"shortcuts": gl_shortcuts_effective_json(),
-        };
-        NSData *json = [NSJSONSerialization dataWithJSONObject:d options:0 error:nil];
+        char *overrides = gl_settings_snapshot_overrides_json();
+        if (!overrides) return;
+        char *json = glaspen2_settings_snapshot_json(overrides);
+        free(overrides);
         if (!json) return;
-        NSString *s = [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
-        const char *cs = s.UTF8String;
-        if (!cs) return;
-        size_t n = strlen(cs);
+        size_t n = strlen(json);
         char *buf = (char *)malloc(n + 1);
-        if (!buf) return;
-        memcpy(buf, cs, n + 1);
+        if (buf) memcpy(buf, json, n + 1);
+        glaspen2_free_c_string(json);
         out = buf;
     });
     return out;

@@ -1241,6 +1241,39 @@ pub extern "C" fn glaspen2_settings_apply(
 }
 
 // ---------------------------------------------------------------------------
+// 面板设置快照桥(D12 单源;只服务 macOS ObjC, Windows 同进程直接调 Rust)
+// ---------------------------------------------------------------------------
+
+/// 构建面板设置快照(字段集合/顺序/类型/缺省值/DB 回退单源在
+/// crate::settings_snapshot)。
+///
+/// 参数 = 运行时专属值 JSON 对象(macOS 必须含 launchAtLogin/shortcuts;
+/// 可选 flipEffect/language;见 crate::settings_snapshot::RUNTIME_ONLY_KEYS)。
+/// 返回完整快照单行 JSON;失败返回 {"error":"..."};永不 NULL。
+/// 返回值用 glaspen2_free_c_string 释放。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_settings_snapshot_json(overrides_json: *const c_char) -> *mut c_char {
+    let error = |msg: String| return_c_string(serde_json::json!({ "error": msg }).to_string());
+    let Some(raw) = (unsafe { borrow_cstr(overrides_json) }) else {
+        return error("settings_snapshot 缺少 overrides_json".to_string());
+    };
+    let overrides = match serde_json::from_str::<serde_json::Value>(raw) {
+        Ok(serde_json::Value::Object(map)) => map,
+        Ok(other) => {
+            return error(format!(
+                "overrides_json 必须是 JSON 对象, 收到 {}",
+                if other.is_null() { "null" } else { "非对象" }
+            ));
+        }
+        Err(e) => return error(format!("overrides_json 不是合法 JSON: {e}")),
+    };
+    match crate::settings_snapshot::snapshot_json(crate::ui::Platform::Macos, None, &overrides) {
+        Ok(json) => return_c_string(json),
+        Err(e) => error(e.to_string()),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 笔预设与设置数值约束(presets 模块的 FFI 面;macOS/Windows 共用单一事实源)
 // ---------------------------------------------------------------------------
 
@@ -2611,6 +2644,71 @@ mod tests {
         let ptr = glaspen2_settings_apply(std::ptr::null(), std::ptr::null());
         assert!(!ptr.is_null());
         glaspen2_free_c_string(ptr);
+    }
+
+    /// D12 设置快照桥 FFI: macOS ObjC 依赖的完整快照(字段集合/类型/单行)与
+    /// 错误 JSON;adapter 只提供运行时专属值 + 覆盖即可, 不再拼设置字典。
+    #[test]
+    fn settings_snapshot_ffi_roundtrip() {
+        let call = |overrides: &str| -> String {
+            let overrides = CString::new(overrides).unwrap();
+            let ptr = glaspen2_settings_snapshot_json(overrides.as_ptr());
+            assert!(!ptr.is_null(), "FFI 应返回 JSON 字符串(永不 NULL)");
+            let text = unsafe { CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .into_owned();
+            glaspen2_free_c_string(ptr);
+            text
+        };
+
+        // 正常路径: 完整快照 = macOS 登记表全部字段(含 flipEffect, 无 ethereal)。
+        let text = call(
+            r#"{"launchAtLogin":true,"shortcuts":"{\"quit\":\"cmd+ctrl+Q\"}","flipEffect":1,"language":"en"}"#,
+        );
+        assert!(!text.contains('\n'), "快照必须是单行: {text}");
+        let value: serde_json::Value = serde_json::from_str(&text).expect("快照必须是合法 JSON");
+        let object = value.as_object().expect("快照必须是 JSON 对象");
+        let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        let mut expected = crate::settings::keys_for(crate::ui::Platform::Macos);
+        expected.sort_unstable();
+        assert_eq!(keys, expected, "FFI 快照字段集合与登记表不一致");
+        assert!(
+            !object.contains_key("ethereal"),
+            "macOS 快照不含 Windows 专属字段"
+        );
+        // 运行时覆盖生效。
+        assert_eq!(object["launchAtLogin"], serde_json::json!(true));
+        assert_eq!(object["flipEffect"], serde_json::json!(1));
+        assert_eq!(object["language"], serde_json::json!("en"));
+        assert!(
+            object["shortcuts"].is_string(),
+            "shortcuts 必须是 JSON 字符串"
+        );
+        // 类型契约(值取决于全局库是否已被其它测试初始化, 这里只锁类型)。
+        assert!(object["grid"].is_boolean());
+        assert!(object["gridSize"].is_number());
+        assert!(object["chatHasPassword"].is_boolean());
+        assert!(!text.contains("ethereal"));
+
+        // 错误路径: 非法参数一律 {"error": ...}, 单行, 永不 NULL。
+        for bad in ["{}", "not json", "[]", "null"] {
+            let text = call(bad);
+            assert!(!text.contains('\n'), "error JSON 必须单行: {text}");
+            let value: serde_json::Value =
+                serde_json::from_str(&text).expect("error 也必须是合法 JSON");
+            assert!(
+                value["error"].is_string(),
+                "{bad} 应返回 error JSON: {text}"
+            );
+        }
+        let ptr = glaspen2_settings_snapshot_json(std::ptr::null());
+        assert!(!ptr.is_null(), "null 入参也必须返回 error JSON");
+        let text = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        glaspen2_free_c_string(ptr);
+        assert!(text.contains("error"));
     }
 
     /// D3b 动作 effect 桥 FFI: macOS ObjC 依赖的 JSON 形状。

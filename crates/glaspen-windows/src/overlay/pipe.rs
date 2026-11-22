@@ -301,6 +301,23 @@ fn render_overview_json(ow: i32, oh: i32) -> String {
     )
 }
 
+/// D12: 设置快照的运行时专属值(其余字段/顺序/类型/缺省值/DB 回退单源在
+/// core settings_snapshot)。这里只放"不是持久化设置"的值:
+/// - launchAtLogin: HKCU Run 注册表才是平台存储, 不落 user_settings;
+/// - shortcuts: 生效表(含默认补齐/保留组合/冲突消解), 由热键注册表在运行时算出。
+fn settings_snapshot_overrides() -> serde_json::Map<String, serde_json::Value> {
+    let mut overrides = serde_json::Map::new();
+    overrides.insert(
+        "launchAtLogin".to_string(),
+        serde_json::Value::Bool(glaspen_core::export::glaspen2_is_launch_at_login() == 1),
+    );
+    overrides.insert(
+        "shortcuts".to_string(),
+        serde_json::Value::String(effective_json()),
+    );
+    overrides
+}
+
 fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
     use std::io::Write;
 
@@ -743,178 +760,32 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         }
         let _ = writer.flush();
     } else if msg_type == "getSettings" {
-        // Respond with current settings from DB
-        let (r, g, b, w) = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_settings())
-            .unwrap_or((1.0, 0.0, 0.0, 1.0));
-        let color = closest_color_index(r, g, b);
-        let width = closest_width_index(w);
-        let outline = if OUTLINE_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
-            1
-        } else {
-            0
-        };
-        let grid = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("grid"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
-        let frosted = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("frostedGlass"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
-        let pressure_monitor = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("pressureMonitor"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
-        let grid_follow = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("gridFollowStrokes"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
-        let glass_follow = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("glassFollowStrokes"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(1); // 缺省 = 跟随(macOS 历史行为)
-        let panel_transparent = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("panelTransparent"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
-        let notebook_style = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("notebookStyle"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0); // 缺省 = 笔记纸(macOS load_bool_setting 缺省 0)
-        let invert_fps = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("invertFps"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(30);
-        let invert_ink = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("invertInk"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
-        let soft_shadow = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("softShadow"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
-        let ethereal = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("ethereal"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
-        let grid_divider = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("grid_divider"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
-        let chat_integration = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("chat_integration"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
-        let share_canvas = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("share_ink"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
-        let chat_api_base = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("chat_api_base"))
-            .unwrap_or_default();
-        let chat_user = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("chat_user"))
-            .unwrap_or_default();
-        let grid_size_v = grid_size();
-        let minimap = if MINIMAP_ENABLED.load(std::sync::atomic::Ordering::SeqCst) {
-            1
-        } else {
-            0
-        };
-        let show_free_canvas = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("show_free_canvas"))
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0);
-        let chat_has_password = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("chat_password"))
-            .map(|v| !v.is_empty())
-            .unwrap_or(false);
-        let language = glaspen_core::runtime()
-            .block_on(glaspen_core::db::load_setting("language"))
-            .unwrap_or_else(|| "zh".to_string());
-        let language = if language == "en" { "en" } else { "zh" };
-        let infinite_canvas = if infinite_on() { 1 } else { 0 };
-        let (gfps, gres, gspd, gem) = gif_settings();
-        // 注册表即存储(macOS 是 LaunchAgent plist), 回读真实状态
-        let launch =
-            glaspen_core::export::glaspen2_is_launch_at_login() == 1;
-        // 密码本体不回读,只回是否已保存(macOS 同款)
-        // shortcuts: 生效表(action → chord 的 JSON 字符串, 已补默认/去冲突),
-        // 形状与 macOS settings_json 完全一致; 面板 _decodeShortcuts 直接解。
-        let shortcuts_json = json_escape(&effective_json());
-        let resp = format!(
-            "{{\"type\":\"getSettings_response\",\"data\":{{\"color\":{},\"width\":{},\"outline\":{},\"grid\":{},\"gridDivider\":{},\"gridSize\":{:.0},\"minimap\":{},\"gridFollowStrokes\":{},\"glassFollowStrokes\":{},\"softShadow\":{},\"invertInk\":{},\"invertFps\":{},\"notebookStyle\":{},\"panelTransparent\":{},\"frostedGlass\":{},\"pressureMonitor\":{},\"ethereal\":{},\"infiniteCanvas\":{},\"gifFps\":{},\"gifResolution\":{:.2},\"gifSpeed\":{:.2},\"gifEndMode\":{},\"launchAtLogin\":{},\"chatIntegration\":{},\"shareCanvas\":{},\"showFreeCanvas\":{},\"showBubbleTab\":{},\"bubbleReplaySpeed\":{},\"bubbleReplayHoldLast\":{},\"bubbleReplayAuto\":{},\"bubbleAutoNewPage\":{},\"nasUrl\":\"{}\",\"chatHasPassword\":{},\"chatApiBase\":\"{}\",\"chatUser\":\"{}\",\"language\":\"{}\",\"shortcuts\":\"{}\"}}}}\n",
-            color,
-            width,
-            outline,
-            grid,
-            grid_divider.clamp(0, 4),
-            grid_size_v,
-            minimap,
-            grid_follow,
-            // JSON 必须是 bool: 面板按 bool 解析(以前直接塞 int, setState 里的
-            // `as bool?` 抛异常 → 整份设置加载失败, 面板永远拿不到当前模式)
-            if glass_follow != 0 { "true" } else { "false" },
-            soft_shadow,
-            invert_ink,
-            invert_fps,
-            notebook_style,
-            panel_transparent,
-            frosted,
-            pressure_monitor,
-            ethereal,
-            infinite_canvas,
-            gfps,
-            gres,
-            gspd,
-            gem,
-            if launch { "true" } else { "false" },
-            chat_integration,
-            share_canvas,
-            show_free_canvas,
-            glaspen_core::runtime()
-                .block_on(glaspen_core::db::load_setting("show_bubble_tab"))
-                .and_then(|v| v.parse::<i32>().ok())
-                .unwrap_or(0)
-                != 0,
-            // 气泡重播: 速度(缺省 1)/ 停在最后一帧(缺省开)/ 自动重播(缺省关)
-            {
-                let sp = glaspen_core::runtime()
-                    .block_on(glaspen_core::db::load_setting("bubble_replay_speed"))
-                    .and_then(|v| v.parse::<i32>().ok())
-                    .unwrap_or(1);
-                sp.clamp(1, 8)
-            },
-            {
-                let h = glaspen_core::runtime()
-                    .block_on(glaspen_core::db::load_setting("bubble_replay_hold_last"))
-                    .and_then(|v| v.parse::<i32>().ok());
-                h.map(|n| n != 0).unwrap_or(true) // 缺省 = 开
-            },
-            glaspen_core::runtime()
-                .block_on(glaspen_core::db::load_setting("bubble_replay_auto"))
-                .and_then(|v| v.parse::<i32>().ok())
-                .unwrap_or(0)
-                != 0,
-            glaspen_core::runtime()
-                .block_on(glaspen_core::db::load_setting("bubble_auto_new_page"))
-                .and_then(|v| v.parse::<i32>().ok())
-                .unwrap_or(0)
-                != 0,
-            json_escape(
-                &glaspen_core::runtime()
-                    .block_on(glaspen_core::db::load_setting("nas_url"))
-                    .unwrap_or_default(),
-            ),
-            if chat_has_password { "true" } else { "false" },
-            json_escape(&chat_api_base),
-            json_escape(&chat_user),
-            language,
-            shortcuts_json,
-        );
-        let _ = writer.write_all(resp.as_bytes());
-        let _ = writer.flush();
+        // D12: 面板设置快照单源在 core settings_snapshot —— 字段集合/顺序/类型/
+        // 缺省值/DB 回退都在那里; 覆盖层只提供运行时专属值(launchAtLogin /
+        // shortcuts, 见 settings_snapshot_overrides)。帧形状与旧实现一致:
+        // {"type":"getSettings_response","data":{...}}\n。
+        let overrides = settings_snapshot_overrides();
+        match glaspen_core::settings_snapshot::snapshot_json(
+            glaspen_core::ui::Platform::Windows,
+            None,
+            &overrides,
+        ) {
+            Ok(data) => {
+                let resp =
+                    format!("{{\"type\":\"getSettings_response\",\"data\":{data}}}\n");
+                let _ = writer.write_all(resp.as_bytes());
+                let _ = writer.flush();
+            }
+            Err(e) => {
+                // 旧实现永远能拼出 JSON; core 报错只可能是 adapter 的 overrides
+                // 坏了 —— 记录并回协议错误帧, 不交付半份快照。
+                tracing::warn!("getSettings 快照构建失败: {e}");
+                let _ = writer.write_all(
+                    glaspen_core::protocol::error_line(0, "getSettings", &e.to_string()).as_bytes(),
+                );
+                let _ = writer.flush();
+            }
+        }
     } else if msg_type == "setSetting" {
         // D1:设置 apply 单源。core settings_apply::apply_setting 负责宽容解析 +
         // 区间钳制 + 落库(规范 DB 键);本分支只做 Windows 运行时副作用
