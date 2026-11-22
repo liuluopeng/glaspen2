@@ -604,6 +604,7 @@ class _NamedPipeBridge extends SettingsBridge {
     }
   }
 
+
   void _handleMessage(String line) {
     try {
       final msg = jsonDecode(line) as Map<String, dynamic>;

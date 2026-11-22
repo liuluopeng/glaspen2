@@ -18,6 +18,8 @@ extension _SettingsStateUi on _SettingsPageState {
     bool b(String key, bool cur) => has(key) ? _b(s[key]) : cur;
     int i(String key, int cur) => (s[key] as num?)?.toInt() ?? cur;
     double d(String key, double cur) => (s[key] as num?)?.toDouble() ?? cur;
+    final wasInfinite = _infiniteCanvas;
+    final wasFreeTab = _showFreeCanvas;
     setState(() {
       _selectedColor = i('color', _selectedColor);
       _selectedWidth = i('width', _selectedWidth);
@@ -25,8 +27,7 @@ extension _SettingsStateUi on _SettingsPageState {
       _launchAtLogin = b('launchAtLogin', _launchAtLogin);
       _showGrid = b('grid', _showGrid);
       _gridFollowStrokes = b('gridFollowStrokes', _gridFollowStrokes);
-      _glassFollowStrokes =
-          s['glassFollowStrokes'] as bool? ?? _glassFollowStrokes;
+      _glassFollowStrokes = _bOr(s['glassFollowStrokes'], _glassFollowStrokes);
       _softShadow = b('softShadow', _softShadow);
       _invertInk = b('invertInk', _invertInk);
       _invertFps = i('invertFps', _invertFps);
@@ -43,12 +44,11 @@ extension _SettingsStateUi on _SettingsPageState {
       _showFreeCanvas = b('showFreeCanvas', _showFreeCanvas);
       _showBubbleTab = b('showBubbleTab', _showBubbleTab);
       _bubbleReplaySpeed = i('bubbleReplaySpeed', _bubbleReplaySpeed).clamp(1, 8);
-      _bubbleReplayHoldLast =
-          s['bubbleReplayHoldLast'] as bool? ?? _bubbleReplayHoldLast;
+      _bubbleReplayHoldLast = _bOr(s['bubbleReplayHoldLast'], _bubbleReplayHoldLast);
       _bubbleReplayAuto = b('bubbleReplayAuto', _bubbleReplayAuto);
       _bubbleAutoNewPage = b('bubbleAutoNewPage', _bubbleAutoNewPage);
       _shareCanvas = b('shareCanvas', _shareCanvas);
-      _notebookGlass = s['notebookStyle'] as bool? ?? _notebookGlass;
+      _notebookGlass = _bOr(s['notebookStyle'], _notebookGlass);
       _panelTransparent = b('panelTransparent', _panelTransparent);
       if (has('language')) {
         _language = (s['language'] as String?) == 'en' ? 'en' : 'zh';
@@ -58,6 +58,12 @@ extension _SettingsStateUi on _SettingsPageState {
       }
       _syncTabCount();
     });
+    // 画布模式被外部改(快捷键切自由涂鸦/覆盖层推设置)时, TabBar 选中项必须
+    // 跟着走 —— 否则"玻璃在自由涂鸦、面板停在活页本", 用户再点活页本就会
+    // 把自由涂鸦关掉(用户报的严重错位)。
+    if (wasInfinite != _infiniteCanvas || wasFreeTab != _showFreeCanvas) {
+      _syncTabToCanvasMode(force: true);
+    }
     _applyLanguage(_language);
   }
 
@@ -68,14 +74,15 @@ extension _SettingsStateUi on _SettingsPageState {
       // 等待期间用户改过设置 / 收到推送 → 丢弃这份过期快照
       if (gen != _settingsLoadGen) return;
       if (mounted && settings.isNotEmpty) {
+        final wasInfinite = _infiniteCanvas;
+        final wasFreeTab = _showFreeCanvas;
         setState(() {
           _selectedColor = (settings['color'] as num?)?.toInt() ?? 0;
           _selectedWidth = (settings['width'] as num?)?.toInt() ?? 2;
           _pressureMonitor = _b(settings['pressureMonitor']);
           _showGrid = _b(settings['grid']);
           _gridFollowStrokes = _b(settings['gridFollowStrokes']);
-          _glassFollowStrokes =
-              settings['glassFollowStrokes'] as bool? ?? _glassFollowStrokes;
+          _glassFollowStrokes = _bOr(settings['glassFollowStrokes'], _glassFollowStrokes);
           _softShadow = _b(settings['softShadow']);
           _invertInk = _b(settings['invertInk']);
           _invertFps = (settings['invertFps'] as num?)?.toInt() ?? _invertFps;
@@ -98,8 +105,7 @@ extension _SettingsStateUi on _SettingsPageState {
           _bubbleReplaySpeed =
               ((settings['bubbleReplaySpeed'] as num?)?.toInt() ?? 1)
                   .clamp(1, 8);
-          _bubbleReplayHoldLast =
-              settings['bubbleReplayHoldLast'] as bool? ?? true;
+          _bubbleReplayHoldLast = _bOr(settings['bubbleReplayHoldLast'], true);
           _bubbleReplayAuto = _b(settings['bubbleReplayAuto']);
           _bubbleAutoNewPage = _b(settings['bubbleAutoNewPage']);
           _shareCanvas = _b(settings['shareCanvas']);
@@ -109,6 +115,14 @@ extension _SettingsStateUi on _SettingsPageState {
           _shortcuts = _decodeShortcuts(settings['shortcuts']);
           _syncTabCount();
         });
+        // 首次拿到设置: 直接把面板停在当前画布模式对应的 tab(自由涂鸦/活页本),
+        // 让"面板选的模式"和"玻璃实际模式"一致; 不是首次则只在模式变化时跟随。
+        if (!_initialTabApplied) {
+          _initialTabApplied = true;
+          _syncTabToCanvasMode(force: true);
+        } else if (wasInfinite != _infiniteCanvas || wasFreeTab != _showFreeCanvas) {
+          _syncTabToCanvasMode(force: true);
+        }
         _applyLanguage(_language);
         // 设置就绪后顺手预取活页本首屏缩略图(一次批量往返),
         // 等用户切到活页本时直接就有图,连加载态都不用出现。

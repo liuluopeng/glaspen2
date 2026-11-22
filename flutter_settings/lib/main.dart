@@ -237,6 +237,16 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
   bool _showFreeCanvas = false;
   bool _showBubbleTab = false;
+  /// 容错读取 bool 字段: Windows 管道历史上会把布尔字段发成 int(0/1),
+  /// 直接 `as bool?` 会抛异常并让整份设置加载失败(面板拿不到画布模式)。
+  bool _bOr(dynamic v, bool cur) =>
+      v == null ? cur : (v is bool ? v : ((v as num).toInt() != 0));
+
+  /// 程序性切换 tab 时置位: 避免同步 TabBar 选中项时又触发 _onTabChanged
+  /// 反向发一轮 setSetting(会把画布模式来回切)。
+  bool _syncingTabs = false;
+  /// 首次拿到设置后是否已把 TabBar 落到当前画布模式对应的 tab。
+  bool _initialTabApplied = false;
   /// 设置页渐进披露: 高级项收进「更多设置」, **默认展开**(用户明确要求:
   /// 打开设置就能看到外观/活页本/导出/备份/语言/快捷键, 不用先点一次)。
   bool _showAdvanced = true;
@@ -418,6 +428,8 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   }
 
   void _onTabChanged() {
+    // 由 _syncTabToCanvasMode 程序性切换: 只同步显示/加载, 不再反向发设置
+    if (_syncingTabs) return;
     final idx = _tabController.index;
     // 切 tab 同时切换画布模式:活页本=翻页模式,自由涂鸦=无限画布。
     // 本地状态必须立即更新:否则再点回原 tab 时,Flutter 以为模式没变而不发消息。
@@ -428,6 +440,11 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
       setState(() => _infiniteCanvas = true);
       _setSetting('infiniteCanvas', true);
     }
+    _afterTabActivated(idx);
+  }
+
+  /// tab 被选中后的内容加载(手动点击与程序性同步共用)。
+  void _afterTabActivated(int idx) {
     if (idx == 1 && _pages.isEmpty && !_pagesLoading) {
       _loadPages();
     }
@@ -443,13 +460,42 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     }
   }
 
+  /// 当前画布模式对应的 tab 下标: 自由涂鸦 = 2(存在时), 否则活页本 = 1。
+  int _desiredModeTabIndex() {
+    if (_showFreeCanvas && _infiniteCanvas) return 2;
+    return 1;
+  }
+
+  /// 让 TabBar 选中项跟随画布模式(玻璃 → 面板方向的同步)。
+  ///
+  /// 画布模式可以从外部改(快捷键切换自由涂鸦、覆盖层推设置), 面板不能只更新
+  /// 本地字段而不动 TabBar —— 否则会出现"玻璃在自由涂鸦、面板停在活页本"的
+  /// 错位, 用户再点活页本就会把自由涂鸦关掉。设置/气泡 tab 不是画布模式选择,
+  /// 非 force 时尽量不把用户从那里拽走。
+  void _syncTabToCanvasMode({bool force = false}) {
+    if (!mounted) return;
+    final target = _desiredModeTabIndex();
+    if (target >= _tabController.length) return;
+    if (_tabController.index == target) return;
+    final freeIdx = _showFreeCanvas ? 2 : -1;
+    final onCanvasTab = _tabController.index == 1 || _tabController.index == freeIdx;
+    if (!force && !onCanvasTab) return;
+    _syncingTabs = true;
+    _tabController.index = target;
+    _syncingTabs = false;
+    // 程序性同步也要加载对应内容(否则自由涂鸦 tab 打开后总览一直空/活页本不加载)
+    _afterTabActivated(target);
+  }
+
   /// tab 数量跟随「自由涂鸦」开关(开 = 3 个;默认关 = 2 个:设置+活页本)。
   /// 长度变化必须重建 controller,否则 TabBar/TabBarView 断言崩溃。
   void _syncTabCount() {
     final want = 2 + (_showFreeCanvas ? 1 : 0) + (_showBubbleTab ? 1 : 0);
     if (_tabController.length == want) return;
     final old = _tabController;
-    _tabController = TabController(length: want, vsync: this);
+    // 保留用户当前所在 tab(数量变化时夹到合法范围), 不要无条件跳回设置页
+    final keepIndex = old.index.clamp(0, want - 1);
+    _tabController = TabController(length: want, vsync: this, initialIndex: keepIndex);
     _tabController.addListener(() {
       if (!mounted) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {

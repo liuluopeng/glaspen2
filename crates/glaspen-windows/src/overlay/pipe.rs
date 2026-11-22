@@ -48,7 +48,7 @@ fn run_settings_pipe_server(hwnd: isize) {
         // 每个连接一个线程继续接受下一个: 面板是独立进程, 旧面板/手动双击开的
         // 面板可能占着前一个连接 —— 单线程服务会让"后来那个看得见的面板"
         // 永远连不上(它的改设置/切画布模式全部静默丢失)。多客户端彼此独立,
-        // 回推帧发给"最新连接"的面板(PANEL_WRITER)。
+        // 回推帧广播给所有连接(真正的面板 + 调试客户端; 见 PANEL_WRITERS)。
         std::thread::spawn(move || {
             handle_pipe_client(pipe, hwnd);
             tracing::info!("Flutter settings client disconnected");
@@ -75,7 +75,10 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
         Ok(clone) => {
             let conn_gen = PANEL_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             my_gen = Some(conn_gen);
-            *PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner()) = Some((conn_gen, clone));
+            PANEL_WRITERS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push((conn_gen, clone));
         }
         Err(e) => tracing::warn!("面板回推通道创建失败: {e}"),
     }
@@ -83,8 +86,32 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
     let mut buf = [0u8; 4096];
     let mut line_buf = Vec::new();
 
+    // **不要在这个线程上挂一个阻塞的 ReadFile**: 同步(非 OVERLAPPED)命名管道在
+    // 有挂起读的时候, 另一个线程(panel-push)的 WriteFile 会被一起卡住 ——
+    // 回推 onSettingsChanged 就永远写不出去(面板 tab/开关不同步的根因)。
+    // 这里改成 PeekNamedPipe 轮询, 只有确认有数据才 ReadFile(瞬时返回)。
     loop {
-        let n = match stream.read(&mut buf) {
+        let mut avail: u32 = 0;
+        let peek_ok = unsafe {
+            PeekNamedPipe(
+                HANDLE(pipe as *mut _),
+                None,
+                0,
+                None,
+                Some(&mut avail as *mut u32),
+                None,
+            )
+        };
+        if peek_ok.is_err() {
+            tracing::info!("Flutter settings client peek 断开");
+            break;
+        }
+        if avail == 0 {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            continue;
+        }
+        let to_read = (avail as usize).min(buf.len());
+        let n = match stream.read(&mut buf[..to_read]) {
             Ok(0) => break,
             Ok(n) => n,
             Err(e) => {
@@ -108,12 +135,12 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
 
     // Prevent File from closing the handle; we close it ourselves
     let _ = stream.into_raw_handle();
-    // 只清掉"自己这一代"的回推句柄: 多客户端时其它连接可能已经接管
+    // 只移除"自己这一代"的回推句柄: 广播表里其它连接(如真正的面板)不动
     if let Some(conn_gen) = my_gen {
-        let mut guard = PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner());
-        if guard.as_ref().map(|(g, _)| *g) == Some(conn_gen) {
-            *guard = None;
-        }
+        PANEL_WRITERS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|(g, _)| *g != conn_gen);
     }
     close_pipe(pipe);
     // 面板进程断开: 若当时正在录制快捷键, 立即恢复全局热键
@@ -130,9 +157,12 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
 // **写必须在独立线程做**: 面板若是暂停读(忙碌/挂起/被杀但句柄未断),
 // 窗口线程上的 write_all 会阻塞 → 整个消息循环卡死 → 通知不消失、热键失灵。
 // 所以窗口线程只往队列里投帧, 由 panel-push 线程负责真正的阻塞写。
-/// 当前面板连接:(连接代号, 写句柄)。代号用于"写失败时别误清新连接"。
-static PANEL_WRITER: std::sync::LazyLock<std::sync::Mutex<Option<(u64, std::fs::File)>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+/// 当前所有连接的写句柄(连接代号, 句柄)。回推采用**广播**: 每个连接都推,
+/// 断开时按代号只移除自己那份。
+/// 以前只保留"最新连接"的句柄: 调试客户端/第二个面板断开时会把它清掉, 真正的
+/// 面板从此收不到 onSettingsChanged —— 表现就是面板 tab/圆点与玻璃不同步。
+static PANEL_WRITERS: std::sync::LazyLock<std::sync::Mutex<Vec<(u64, std::fs::File)>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
 static PANEL_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// 回推帧队列(有界): 窗口线程 try_send 永不阻塞; 面板不读时最多积压 64 帧,
@@ -145,22 +175,27 @@ static PANEL_TX: std::sync::LazyLock<std::sync::mpsc::SyncSender<String>> =
             .spawn(move || {
                 use std::io::Write;
                 for frame in rx {
-                    // 取一份句柄克隆后**立即放锁**: 阻塞写不能占着锁
+                    // 取所有连接句柄的克隆后**立即放锁**: 阻塞写不能占着锁
                     // (否则面板重连时管道线程会卡在 lock 上)
-                    let conn = {
-                        let guard = PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner());
+                    let conns: Vec<(u64, std::fs::File)> = {
+                        let guard =
+                            PANEL_WRITERS.lock().unwrap_or_else(|e| e.into_inner());
                         guard
-                            .as_ref()
-                            .and_then(|(g, f)| f.try_clone().ok().map(|c| (*g, c)))
+                            .iter()
+                            .filter_map(|(g, f)| f.try_clone().ok().map(|c| (*g, c)))
+                            .collect()
                     };
-                    let Some((conn_gen, mut f)) = conn else { continue };
-                    if f.write_all(frame.as_bytes()).is_err() || f.flush().is_err() {
-                        // 写失败 = 面板已断开; 只清掉自己那一代连接
-                        let mut guard =
-                            PANEL_WRITER.lock().unwrap_or_else(|e| e.into_inner());
-                        if guard.as_ref().map(|(g, _)| *g) == Some(conn_gen) {
-                            *guard = None;
+                    let mut dead: Vec<u64> = Vec::new();
+                    for (conn_gen, mut f) in conns {
+                        if f.write_all(frame.as_bytes()).is_err() || f.flush().is_err() {
+                            dead.push(conn_gen); // 写失败 = 该连接已断开
                         }
+                    }
+                    if !dead.is_empty() {
+                        PANEL_WRITERS
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .retain(|(g, _)| !dead.contains(g));
                     }
                 }
             })
@@ -808,7 +843,9 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             grid_size_v,
             minimap,
             grid_follow,
-            glass_follow,
+            // JSON 必须是 bool: 面板按 bool 解析(以前直接塞 int, setState 里的
+            // `as bool?` 抛异常 → 整份设置加载失败, 面板永远拿不到当前模式)
+            if glass_follow != 0 { "true" } else { "false" },
             soft_shadow,
             invert_ink,
             invert_fps,
