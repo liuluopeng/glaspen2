@@ -732,6 +732,17 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             .as_bytes(),
         );
         let _ = writer.flush();
+    } else if msg_type == "uiConfig" {
+        // 面板启动时拉一次性平台配置: 与 macOS(FRB)是 core 同一份
+        // `glaspen_core::ui` schema, Windows 走命名管道取。
+        // 响应行由 core 的 `pipe_ui_config_response_json` 统一生成 —— 字段
+        // 形状/内嵌对象/末尾 '\n'(面板按行分帧)都在 core 单测里锁住,
+        // 这里不手拼 JSON。
+        // 没有 reqId 时沿用其它命令的约定(reqId = 0)。
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let resp = glaspen_core::ui::pipe_ui_config_response_json(req_id);
+        let _ = writer.write_all(resp.as_bytes());
+        let _ = writer.flush();
     } else if msg_type == "getSettings" {
         // Respond with current settings from DB
         let (r, g, b, w) = glaspen_core::runtime()

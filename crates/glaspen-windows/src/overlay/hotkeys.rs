@@ -2,9 +2,10 @@
 //
 // chord 规范与 macOS 完全一致: cmd+ctrl+alt+shift+<Key>, 顺序固定, 至少含
 // ctrl 或 alt; 空串 = 该动作未绑定。Windows 上 cmd 令牌 = Win 键。
-// 动作 id 与 macOS 共用一张表(设置面板 main.shortcuts.dart); 默认值按平台
-// 给: Windows 保持 0.5/0.6 既有的 Ctrl+Alt+Z / ` / 1 等组合(实体键与 macOS
-// 不同, 不照搬 ⌘⌃)。
+// **动作 id / Windows 默认键 / 保留组合 / 强制绑定动作的唯一来源是
+// `glaspen_core::ui`**(与 macOS 壳、Flutter 面板共用同一份 schema); 本文件
+// 只保留历史迁移表(旧版本默认值), 不再维护第二份现行默认键表。
+// 实体键与 macOS 不同: 核心用 Ctrl+Alt, 镜头用 Win+Alt, 不照搬 ⌘⌃。
 //
 // 实现差异: macOS 用 CGEventTap 自己匹配 chord; Windows 用 RegisterHotKey
 // 让系统匹配(不挂低级键盘钩子 —— 钩子会同步卡系统输入管线)。因此:
@@ -16,54 +17,38 @@
 // 直接改, 不用 PostMessage 中转。必须要求"与 macOS 同 id 同语义":
 // 面板保存的是 action → chord 的完整表。
 
-/// 动作表与 Windows 默认组合(顺序 = 面板显示顺序, 与 macOS 同序)。
+use glaspen_core::ui;
+
+/// 本壳只跑 Windows; core 的 UI schema 按平台分列。
+const UI_PLATFORM: ui::Platform = ui::Platform::Windows;
+
+/// 生效绑定表的动作顺序 + Windows 默认 chord。
 ///
-/// Windows 默认**全动作都有键**、字母与 macOS 尽量一致, 按修饰键分两条家族:
-///   - 核心/开关类 → **Ctrl+Alt**: Z/`/1/V、D 设置、⇧Q 退出、C 清空、G 导出、
-///     S 复制 SVG、B 磨砂、X 飘渺、I 自由涂鸦、⇧C 换色、⇧W 换粗细;
-///   - 镜头/缩放 → **Win+Alt**: W/A/S/D 平移、X 放大 / Z 缩小。
-/// 镜头键只在自由涂鸦模式注册; 若 Win+Alt+某键被其它软件占用(实测 W/D 很常见),
-/// 注册时自动降级为 Alt+Shift+同键并把实际生效值回推面板(见 registration_fallback)。
-const HOTKEY_ACTIONS: [(&str, &str); 20] = [
-    ("undo", "ctrl+alt+Z"),
-    ("page_prev", "ctrl+alt+`"),
-    ("page_next", "ctrl+alt+1"),
-    ("color_swap", "ctrl+alt+shift+C"),
-    // 换粗细 Ctrl+Alt+T(thickness): 不用 Shift(3 键不好按)
-    ("width_swap", "ctrl+alt+T"),
-    ("toggle_draw", "ctrl+alt+V"),
-    ("toggle_free_canvas", "ctrl+alt+I"),
-    // 左手镜头: Win+Alt + WASD(W/D 被占用时自动降级 Alt+Shift)
-    ("canvas_pan_left", "cmd+alt+A"),
-    ("canvas_pan_right", "cmd+alt+D"),
-    ("canvas_pan_up", "cmd+alt+W"),
-    ("canvas_pan_down", "cmd+alt+S"),
-    // 缩放: Win+Alt + X 放大 / Z 缩小
-    ("canvas_zoom_in", "cmd+alt+X"),
-    ("canvas_zoom_out", "cmd+alt+Z"),
-    ("clear", "ctrl+alt+C"),
-    ("export", "ctrl+alt+G"),
-    ("copy_svg", "ctrl+alt+S"),
-    ("toggle_glass", "ctrl+alt+B"),
-    ("toggle_ethereal", "ctrl+alt+X"),
-    // 打开设置: Ctrl+Alt+D
-    ("settings", "ctrl+alt+D"),
-    // 彻底退出: Ctrl+Alt+Shift+Q(Windows 上没有菜单栏/托盘, 不可解绑)
-    ("quit", "ctrl+alt+shift+Q"),
-];
+/// 动作清单来自 `ui::ACTIONS`(顺序 = 面板显示顺序), 默认值来自
+/// `ui::default_chord(Windows, action)` —— 加动作/改默认键只改 core, 本文件
+/// 不再维护第二份默认键表。
+fn hotkey_actions() -> Vec<(&'static str, &'static str)> {
+    ui::ACTIONS
+        .iter()
+        .map(|a| {
+            let default = ui::default_chord(UI_PLATFORM, a.id).unwrap_or("");
+            (a.id, default)
+        })
+        .collect()
+}
 
 /// 可配置动作的热键 id 基址(id = 基址 + 动作表下标)。
 const HOTKEY_ID_ACTION_BASE: i32 = 100;
 /// 固定热键(不进可配置表, 与 macOS 的"保留组合"对应): 三个按住类。
-/// 退出已迁入可配置动作表(见 HOTKEY_ACTIONS 的 "quit"), 不再是固定 id。
+/// 退出已迁入可配置动作表(见 core `ui::ACTIONS` 的 "quit"), 不再是固定 id。
 const HOTKEY_ID_GIF: i32 = 16;
 const HOTKEY_ID_DRAFT: i32 = 17;
 const HOTKEY_ID_SEND: i32 = 18;
 
 /// Windows 保留组合: 按住类(录 GIF / 手写草稿 / 手写直发)。
-/// 用户不能用这些组合绑普通动作, 与 macOS 的保留表语义一致。
+/// 唯一来源是 `ui::reserved(Platform::Windows)`(与 macOS 的保留表同源),
+/// 本文件不再维护副本; 用户不能用这些组合绑普通动作。
 /// 退出默认键 Ctrl+Alt+Q 不在此列 —— 它属于「彻底退出」动作本身, 可以改键。
-const RESERVED_CHORDS: [&str; 3] = ["ctrl+alt+R", "ctrl+alt+2", "ctrl+alt+3"];
 
 /// "默认键位方案"版本(user_settings 里的标记): 旧库没有这个键 = 1。
 /// 2 = 主键(字母)与 macOS 对齐的第一版(个别键额外 Shift);
@@ -219,8 +204,9 @@ fn parse_chord(chord: &str) -> Option<(u32, u32)> {
     Some((mods, vk_for_key(key)?))
 }
 
+/// 该组合是否被系统/按住类功能保留(唯一来源: core 的 `ui::reserved`)。
 fn is_reserved(chord: &str) -> bool {
-    RESERVED_CHORDS.contains(&chord)
+    ui::reserved(UI_PLATFORM).contains(&chord)
 }
 
 #[derive(Default)]
@@ -256,9 +242,10 @@ fn lock_registry() -> std::sync::MutexGuard<'static, HotkeyRegistry> {
     HOTKEYS.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Windows 上没有菜单栏/托盘兜底、必须始终可用的动作(见 build_effective)。
+/// Windows 上没有菜单栏/托盘兜底、必须始终可用的动作。
+/// 唯一来源: core 的 `ui::force_bound`(当前 = settings / quit)。
 fn force_bound(action: &str) -> bool {
-    matches!(action, "settings" | "quit")
+    ui::force_bound(UI_PLATFORM).contains(&action)
 }
 
 /// 旧 Windows 默认 → 新默认(与 macOS `gl_shortcut_migrate_saved` 同思路):
@@ -361,7 +348,7 @@ fn migrate_legacy_defaults(saved: &mut HashMap<String, String>) -> usize {
 fn build_effective(saved: &HashMap<String, String>) -> Vec<(&'static str, String)> {
     let mut out: Vec<(&'static str, String)> = Vec::new();
     let mut used: Vec<String> = Vec::new();
-    for (action, default) in HOTKEY_ACTIONS {
+    for (action, default) in hotkey_actions() {
         let mut chord = match saved.get(action) {
             Some(raw) => {
                 let norm = normalize_chord(raw);
@@ -874,7 +861,7 @@ fn dispatch_hotkey(state: &mut OverlayState, id: i32) {
         }
         _ => {
             let idx = (id - HOTKEY_ID_ACTION_BASE) as usize;
-            let action = HOTKEY_ACTIONS.get(idx).map(|(a, _)| *a).unwrap_or("");
+            let action = ui::ACTIONS.get(idx).map(|a| a.id).unwrap_or("");
             if action.is_empty() {
                 return;
             }
@@ -1024,7 +1011,7 @@ mod tests {
         for (action, chord) in expected {
             assert_eq!(chord_of(&effective, action), chord, "动作 {action} 默认键");
         }
-        assert_eq!(HOTKEY_ACTIONS.len(), effective.len());
+        assert_eq!(ui::ACTIONS.len(), effective.len());
         // v4: 默认表里不再有"未绑定"的动作
         assert!(
             effective.iter().all(|(_, c)| !c.is_empty()),
@@ -1036,8 +1023,8 @@ mod tests {
     /// 降级后应得到 alt+shift+同一字母(整套一致)。
     #[test]
     fn camera_defaults_share_one_family() {
-        let camera: Vec<_> = HOTKEY_ACTIONS
-            .iter()
+        let camera: Vec<_> = hotkey_actions()
+            .into_iter()
             .filter(|(a, _)| a.starts_with("canvas_"))
             .collect();
         assert_eq!(camera.len(), 6);
@@ -1234,5 +1221,56 @@ mod tests {
                 seen.push(chord.as_str());
             }
         }
+    }
+
+    /// core 的 `ui::ACTIONS` 是动作/默认值的唯一来源: 生效表必须逐条覆盖 core
+    /// 的全部动作, 默认值逐字等于 `ui::default_chord(Windows, action)`, 保留组合
+    /// 不进默认表; 强制绑定集合与 core 完全一致(settings/quit)。
+    /// core 加了动作而 Windows 壳没跟上时, 这个测试必须失败。
+    #[test]
+    fn core_catalog_drives_effective_table() {
+        let effective = build_effective_saved(&HashMap::new());
+        // 顺序 = 面板显示顺序 = core 顺序(HOTKEY_ID_ACTION_BASE + 下标依赖它)
+        let expected_ids: Vec<&str> = hotkey_actions().into_iter().map(|(a, _)| a).collect();
+        let actual_ids: Vec<&str> = effective.iter().map(|(a, _)| *a).collect();
+        assert_eq!(actual_ids, expected_ids);
+
+        for action in ui::ACTIONS {
+            let chord = chord_of(&effective, action.id);
+            assert_eq!(
+                chord,
+                ui::default_chord(UI_PLATFORM, action.id).unwrap_or(""),
+                "{} 的默认值必须来自 core",
+                action.id
+            );
+            assert!(!chord.is_empty(), "{} 在 Windows 必须有默认键", action.id);
+            assert!(
+                !is_reserved(&chord),
+                "{} 的默认键 {chord} 不能是保留组合",
+                action.id
+            );
+        }
+
+        // 强制绑定动作: core 说是哪些就必须正好是哪些(不能漏也不能多)
+        let mut forced: Vec<&str> = ui::force_bound(UI_PLATFORM);
+        forced.sort_unstable();
+        let mut ours: Vec<&str> = effective
+            .iter()
+            .filter(|(action, _)| force_bound(action))
+            .map(|(action, _)| *action)
+            .collect();
+        ours.sort_unstable();
+        assert_eq!(ours, forced);
+        assert!(force_bound("settings"));
+        assert!(force_bound("quit"));
+
+        // 保留组合表与 core 同源(按住类三个), 且都不是可配置动作的默认键
+        assert!(!ui::reserved(UI_PLATFORM).is_empty());
+        for &chord in ui::reserved(UI_PLATFORM) {
+            assert!(is_reserved(chord), "{chord} 应被 is_reserved 拦下");
+        }
+        // 用户把保留组合绑给普通动作 → 回退默认(core 的保留表真的生效)
+        let rebound = build_effective_saved(&saved(&[("undo", "ctrl+alt+R")]));
+        assert_eq!(chord_of(&rebound, "undo"), "ctrl+alt+Z");
     }
 }
