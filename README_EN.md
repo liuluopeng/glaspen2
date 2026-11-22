@@ -110,7 +110,7 @@ On macOS only the core actions and the free-doodle camera keys are bound by
 default. **Windows binds every action**: ethereal `Ctrl+Alt+X`, free doodle
 `Ctrl+Alt+I`, clear `Ctrl+Alt+C`, export `Ctrl+Alt+G`, copy SVG `Ctrl+Alt+S`,
 frosted glass `Ctrl+Alt+B`, color swap `Ctrl+Alt+Shift+C`, width swap
-`Ctrl+Alt+Shift+W`.
+`Ctrl+Alt+Shift+T`.
 
 Windows uses the same configurable shortcut system: Settings → More settings →
 Shortcuts lets you record / clear / reset each action, and the on-screen keyboard
@@ -121,11 +121,11 @@ modifiers follow the Zoom-in action after rebinding.
 Quit is `⌘⌃⇧Q` on macOS (`⌘⌃Q` is the system lock screen, so it cannot be used)
 and `Ctrl+Alt+Shift+Q` on Windows. Windows defaults use two families: core/toggle
 actions = `Ctrl+Alt+letter` (Z/`/1/V, D settings, ⇧Q quit, C clear, G export,
-S copy, B glass, X ethereal, I free doodle, ⇧C color, ⇧W width) and camera/zoom =
+S copy, B glass, X ethereal, I free doodle, ⇧C color, ⇧T width) and camera/zoom =
 `Win+Alt+W/A/S/D` plus `X` zoom-in / `Z` zoom-out. If any `Win+Alt` chord is taken
 by another app (W/D commonly are), the **whole camera family** falls back to
-`Alt+Shift` + same key (never a half-mixed set) and the panel shows the effective
-chords.
+`Ctrl+Alt+Shift` + same key (never a half-mixed set; `Alt+Shift` is avoided because
+it is the Windows input-language hotkey) and the panel shows the effective chords.
 Quitting flushes queued stroke points, checkpoints
 the WAL and also terminates the settings-panel process (a separate process on
 Windows), so nothing is left behind for the next launch to clean up.

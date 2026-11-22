@@ -29,7 +29,8 @@ const HOTKEY_ACTIONS: [(&str, &str); 20] = [
     ("page_prev", "ctrl+alt+`"),
     ("page_next", "ctrl+alt+1"),
     ("color_swap", "ctrl+alt+shift+C"),
-    ("width_swap", "ctrl+alt+shift+W"),
+    // 换粗细 ⇧T(thickness): ⇧W 要让给镜头键降级(Win+Alt+W 被占用时落到 ⇧W)
+    ("width_swap", "ctrl+alt+shift+T"),
     ("toggle_draw", "ctrl+alt+V"),
     ("toggle_free_canvas", "ctrl+alt+I"),
     // 左手镜头: Win+Alt + WASD(W/D 被占用时自动降级 Alt+Shift)
@@ -70,9 +71,12 @@ const RESERVED_CHORDS: [&str; 3] = ["ctrl+alt+R", "ctrl+alt+2", "ctrl+alt+3"];
 /// 4 = 全动作默认都有键: 镜头 Win+Alt+WASD/XZ(占用时降级 Alt+Shift), 其余 Ctrl+Alt 字母。
 /// 5 = 镜头键"整套降级"版: 把 v4 可能已写进库的半套 Alt+Shift 镜头值归一回 Win+Alt,
 ///     启动时若主组合被占用再由注册逻辑整套降级(保证 A/S 与 W/D 修饰键一致)。
+/// 6 = 降级组合改用 Ctrl+Alt+Shift(不再用会触发输入法语言切换的 Alt+Shift);
+///     把 v5 落库的 Alt+Shift 镜头值同样归一回 Win+Alt。
+/// 7 = 换粗细默认从 ⇧W 改成 ⇧T(⇧W 要让给镜头降级 Ctrl+Alt+Shift+W)。
 /// 迁移只做一次 —— 用户之后自己改回旧组合, 不会在每次启动被反复改写。
 const SHORTCUTS_DEFAULTS_VERSION_KEY: &str = "shortcuts_defaults_v";
-const SHORTCUTS_DEFAULTS_VERSION: i32 = 5;
+const SHORTCUTS_DEFAULTS_VERSION: i32 = 7;
 
 /// 能当全局热键的按键名(与 macOS gl_keycode_names / Dart _hidKeyNames 对齐)。
 /// 只收录用来当快捷键的键; 面板录制端也用同一张表(经 Dart 侧映射)。
@@ -317,7 +321,11 @@ fn legacy_default_target(action: &str, chord: &str) -> Option<&'static str> {
         },
         // v4 起这些动作默认也有键(旧版本默认未绑定 = 空串)
         "color_swap" => (chord.is_empty()).then_some("ctrl+alt+shift+C"),
-        "width_swap" => (chord.is_empty()).then_some("ctrl+alt+shift+W"),
+        // v7: 换粗细改 ⇧T(⇧W 让给镜头降级); 旧默认的空绑定与 ⇧W 都迁过去
+        "width_swap" => match chord {
+            "" | "ctrl+alt+shift+W" => Some("ctrl+alt+shift+T"),
+            _ => None,
+        },
         "toggle_free_canvas" => (chord.is_empty()).then_some("ctrl+alt+I"),
         "clear" => (chord.is_empty()).then_some("ctrl+alt+C"),
         "export" => (chord.is_empty()).then_some("ctrl+alt+G"),
@@ -445,13 +453,16 @@ fn unregister_fixed(hwnd: HWND) {
 }
 
 /// 注册失败时的降级组合: 镜头键的 Win+Alt+键 在不少机器上被常驻软件占用
-/// (实测 Win+Alt+W/D 会返回 1409), 换 Alt+Shift+同键, 字母不变。
+/// (实测 Win+Alt+W/D 会返回 1409), 整套换 **Ctrl+Alt+Shift+同键**。
+///
+/// 不用 Alt+Shift: 那是 Windows 默认「切换输入语言」热键 —— 按住 Alt+Shift
+/// 就会切一次中/英输入法(鼠标抓手/滚轮也要按住 Modifier, 每次镜头操作都切)。
 fn registration_fallback(action: &str, chord: &str) -> Option<String> {
     if !action.starts_with("canvas_") {
         return None;
     }
     let key = chord.strip_prefix("cmd+alt+")?;
-    Some(format!("alt+shift+{key}"))
+    Some(format!("ctrl+alt+shift+{key}"))
 }
 
 /// 注销并重新注册可配置动作的热键(固定热键不动)。
@@ -1016,7 +1027,7 @@ mod tests {
             ("page_prev", "ctrl+alt+`"),
             ("page_next", "ctrl+alt+1"),
             ("color_swap", "ctrl+alt+shift+C"),
-            ("width_swap", "ctrl+alt+shift+W"),
+            ("width_swap", "ctrl+alt+shift+T"),
             ("toggle_draw", "ctrl+alt+V"),
             ("toggle_free_canvas", "ctrl+alt+I"),
             ("canvas_pan_left", "cmd+alt+A"),
@@ -1060,22 +1071,23 @@ mod tests {
             );
             let alt = registration_fallback(action, chord).expect("镜头应有降级组合");
             assert!(
-                alt.starts_with("alt+shift+"),
-                "降级 {action}={alt} 不是 alt+shift"
+                alt.starts_with("ctrl+alt+shift+"),
+                "降级 {action}={alt} 不是 ctrl+alt+shift(避开 Alt+Shift 输入法切换)"
             );
         }
     }
 
-    /// 镜头键被占用时降级到 Alt+Shift+同键; 非镜头动作不降级。
+    /// 镜头键被占用时整套降级到 Ctrl+Alt+Shift+同键(不能用 Alt+Shift:
+    /// 那是 Windows 默认的语言切换热键); 非镜头动作不降级。
     #[test]
     fn camera_fallback_chords() {
         assert_eq!(
             registration_fallback("canvas_pan_up", "cmd+alt+W").as_deref(),
-            Some("alt+shift+W")
+            Some("ctrl+alt+shift+W")
         );
         assert_eq!(
             registration_fallback("canvas_zoom_out", "cmd+alt+Z").as_deref(),
-            Some("alt+shift+Z")
+            Some("ctrl+alt+shift+Z")
         );
         assert_eq!(registration_fallback("undo", "ctrl+alt+Z"), None);
         assert_eq!(registration_fallback("canvas_pan_up", "ctrl+alt+W"), None);
@@ -1098,7 +1110,7 @@ mod tests {
         assert_eq!(migrate_legacy_defaults(&mut unbound), 8);
         let effective_u = build_effective_saved(&unbound);
         assert_eq!(chord_of(&effective_u, "color_swap"), "ctrl+alt+shift+C");
-        assert_eq!(chord_of(&effective_u, "width_swap"), "ctrl+alt+shift+W");
+        assert_eq!(chord_of(&effective_u, "width_swap"), "ctrl+alt+shift+T");
         assert_eq!(chord_of(&effective_u, "toggle_free_canvas"), "ctrl+alt+I");
         assert_eq!(chord_of(&effective_u, "clear"), "ctrl+alt+C");
         assert_eq!(chord_of(&effective_u, "export"), "ctrl+alt+G");

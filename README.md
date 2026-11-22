@@ -114,14 +114,15 @@ macOS 默认未绑定(可在设置里绑): 换色 / 换粗细 / 新建画布 / �
 复制 SVG / 磨砂玻璃 / 飘渺画布 / 切换自由涂鸦。**Windows 这些也都有默认键**:
 飘渺 `Ctrl+Alt+X`、自由涂鸦 `Ctrl+Alt+I`、清空 `Ctrl+Alt+C`、导出 `Ctrl+Alt+G`、
 复制 SVG `Ctrl+Alt+S`、磨砂玻璃 `Ctrl+Alt+B`、换色 `Ctrl+Alt+Shift+C`、
-换粗细 `Ctrl+Alt+Shift+W`。
+换粗细 `Ctrl+Alt+Shift+T`。
 
 彻底退出默认 `⌘⌃⇧Q`(`⌘⌃Q` 是 macOS 系统锁屏, 不能占用); Windows 为 `Ctrl+Alt+Shift+Q`。
 Windows 默认键分两条家族: 核心/开关类 = `Ctrl+Alt+字母`(Z/`/1/V、D 设置、⇧Q 退出、
-C 清空、G 导出、S 复制、B 磨砂、X 飘渺、I 自由涂鸦、⇧C 换色、⇧W 换粗细),
+C 清空、G 导出、S 复制、B 磨砂、X 飘渺、I 自由涂鸦、⇧C 换色、⇧T 换粗细),
 镜头/缩放 = `Win+Alt+W/A/S/D`、`X` 放大 / `Z` 缩小; 镜头键只在自由涂鸦模式生效,
 鼠标平移/滚轮缩放跟着镜头键走。若 `Win+Alt` 的任一键被其它软件占用(实测 W/D 很常见),
-**整套镜头键**统一降级为 `Alt+Shift+同键`(不会出现半套), 面板里显示实际生效的组合。
+**整套镜头键**统一降级为 `Ctrl+Alt+Shift+同键`(不会出现半套, 也不用会切输入法的
+`Alt+Shift`), 面板里显示实际生效的组合。
 退出会写完排队点、checkpoint WAL, 并结束设置面板进程(Windows 面板是独立进程,
 不会留一个"关不掉的设置窗口"给下次启动清理)。
 
