@@ -303,6 +303,20 @@ pub fn get(key: &str) -> Option<&'static SettingDef> {
     SETTINGS.iter().find(|s| s.key == key)
 }
 
+/// 只读/非 setSetting 项: 只出现在设置快照里, 面板不会通过 setSetting 写。
+/// apply 分支覆盖闸门据此排除; 新增只读字段必须登记到这里。
+pub const READONLY_KEYS: &[&str] = &[
+    // 密码本体永不进快照, chatHasPassword 只是"是否已保存"的派生值。
+    "chatHasPassword",
+    // Windows 壳的飘渺运行时状态(面板不消费, 也不是可设置项)。
+    "ethereal",
+];
+
+/// 是否应由 setSetting 分派处理(快照里的可设置项)。
+pub fn is_settable(key: &str) -> bool {
+    get(key).is_some() && !READONLY_KEYS.contains(&key)
+}
+
 /// 面板协议键 → 落库键; 未登记键原样返回(旧代码/迁移期的宽进)。
 pub fn canonical_db_key(key: &str) -> &str {
     get(key).map(|s| s.db_key).unwrap_or(key)
@@ -518,6 +532,108 @@ mod tests {
             pipe, expected,
             "Windows 管道 getSettings 与设置登记表不一致"
         );
+    }
+
+    // ── D1a: setSetting apply 分支覆盖闸门 ──
+    //
+    // 设置项 key/类型/平台可用性已单源(E3), 但"改设置时到底做什么"仍由两端
+    // 各写一份 switch。完整 effect 单源是 D1b;在那之前, 这里先锁住最低要求:
+    // **每个"可设置且该平台可用"的 key, 两端的 setSetting 都必须有分支**,
+    // 否则就是"macOS 定义了、Windows 没实现"的温床(反之亦然)。
+
+    fn brace_body(src: &str, at: usize) -> Option<&str> {
+        let open = at + src[at..].find('{')?;
+        let mut depth = 0i32;
+        for (k, ch) in src[open..].char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(&src[open..=open + k]);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    fn quoted_after(body: &str, needle: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut rest = body;
+        while let Some(i) = rest.find(needle) {
+            let tail = &rest[i + needle.len()..];
+            match tail.find('"') {
+                Some(end) => {
+                    out.push(tail[..end].to_string());
+                    rest = &tail[end..];
+                }
+                None => break,
+            }
+        }
+        out
+    }
+
+    fn mac_apply_keys(src: &str) -> Vec<String> {
+        let mut best = Vec::new();
+        let mut idx = 0;
+        while let Some(p) = src[idx..].find("glaspen2_macos_set_setting") {
+            let abs = idx + p;
+            if let Some(body) = brace_body(src, abs) {
+                let keys = quoted_after(body, "isEqualToString:@\"");
+                if keys.len() > best.len() {
+                    best = keys;
+                }
+            }
+            idx = abs + 1;
+        }
+        best
+    }
+
+    fn windows_apply_keys(src: &str) -> Vec<String> {
+        let needle = "msg_type == \"setSetting\"";
+        let at = src.find(needle).expect("Windows 管道缺 setSetting 分支");
+        let body = brace_body(src, at).expect("setSetting 分支体不完整");
+        quoted_after(body, "key == \"")
+    }
+
+    #[test]
+    fn apply_dispatch_covers_every_settable_key() {
+        let mac_src = include_str!("../../../src/macos/parts/menu.m");
+        let win_src = include_str!("../../../crates/glaspen-windows/src/overlay/pipe.rs");
+        let mac: std::collections::HashSet<String> = mac_apply_keys(mac_src).into_iter().collect();
+        let win: std::collections::HashSet<String> =
+            windows_apply_keys(win_src).into_iter().collect();
+        assert!(
+            mac.len() >= 30,
+            "macOS setSetting 分支解析异常: {}",
+            mac.len()
+        );
+        assert!(
+            win.len() >= 30,
+            "Windows setSetting 分支解析异常: {}",
+            win.len()
+        );
+
+        for (label, mac_platform, branches) in [("macOS", true, &mac), ("Windows", false, &win)] {
+            let missing: Vec<&str> = SETTINGS
+                .iter()
+                .filter(|s| {
+                    let available = if mac_platform {
+                        s.platforms.mac
+                    } else {
+                        s.platforms.win
+                    };
+                    available && is_settable(s.key) && !branches.contains(s.key)
+                })
+                .map(|s| s.key)
+                .collect();
+            assert!(
+                missing.is_empty(),
+                "{label} 的 setSetting 缺少这些可设置项的分支(另一平台已定义): {missing:?}"
+            );
+        }
     }
 
     /// 规范落库键必须唯一(同一数据库行不被两个面板键写两份值)。
