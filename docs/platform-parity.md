@@ -190,6 +190,8 @@ macOS 写 snake_case，Windows 写面板 camelCase：
   入口、管道/FRB 返回 `UnsupportedError`, **禁止半实现或静默空壳**; 真实缺口因此
   在真机上一眼可见, 而不是"看起来有按钮、点了没反应"。
 
-尚未单源化的债务(按优先级): 设置 effect 分派(目前仍是 mac ObjC/Windows 管道各
-一份 apply 分支)、面板协议(FRB 与管道仍各自手写 JSON 形状)、camera/grid/页信息/
-录制 FSM 等行为状态机、双渲染实现。下一步按 §7 的 Phase A/B 推进。
+尚未单源化的债务: 见 **[`duplication-backlog.md`](duplication-backlog.md)**
+(带 ID 的持久清单 + 进度记录;每项含证据/单源方案/验收标准/状态)。
+设置 effect 分派(D1)、动作语义(D3)、chord(D2)、页信息(D4)、camera(D5)、
+grid(D6)、minimap(D7)、录制 FSM(D8)、模型器/绘制(D9)、i18n(D10)、
+Flutter 设置表单(D11)、快照构建(D12)、死代码(D13)。

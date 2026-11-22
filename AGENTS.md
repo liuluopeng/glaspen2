@@ -238,5 +238,5 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
 | `chat/` | glaspen-chat:gRPC 客户端 + proto 生成 + mock |
 | `proto/glaspen/chat/v1/chat.proto` | 与 axum 的协议契约(唯一) |
 | `flutter_settings/` | 设置面板(Flutter;macOS 走 FRB,Windows 走命名管道) |
-| `docs/` | axum-chat-store / ink-draft-grpc / canvas-share-grpc / grpc-auth 等 |
+| `docs/` | axum-chat-store / ink-draft-grpc / canvas-share-grpc / grpc-auth 等;`duplication-backlog.md` = 跨平台重复实现清单(带 ID/状态/进度,改动前先看) |
 | `installer/` `scripts/` | 打包(DMG/安装器)与构建辅助(lipo-shim 等) |
