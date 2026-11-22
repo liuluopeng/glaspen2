@@ -37,6 +37,7 @@ pub mod pdf;
 pub mod presets;
 pub mod protocol;
 pub mod settings;
+pub mod settings_apply;
 pub mod state;
 pub mod ui;
 pub mod update;
