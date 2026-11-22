@@ -22,6 +22,12 @@ pub fn win_main() {}
 static SETTINGS_CHILDREN: std::sync::Mutex<Vec<std::process::Child>> =
     std::sync::Mutex::new(Vec::new());
 
+/// 每次"用户要求显示面板"(热键/新拉起)自增。失焦隐藏监视线程读到新值时
+/// 重置"已激活过"状态 —— 否则后台进程抢不到前台时, 窗口刚 Show 出来就被
+/// 监视线程当成"失焦"又藏回去(热键唤不出面板的 bug)。
+#[cfg(windows)]
+static PANEL_SHOW_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// 设置面板(独立进程)的单实例查询/置顶/拉起。
 ///
 /// **面板必须单实例**: 设置管道同一时刻只服务一个客户端。若同时存在两个面板,
@@ -117,10 +123,14 @@ fn find_settings_window(pid: u32) -> Option<windows::Win32::Foundation::HWND> {
 /// 激活。它仍是透明覆盖层下面的一层, 所以覆盖层透明时面板照常可见、可点。
 #[cfg(windows)]
 fn activate_settings_window(hwnd: windows::Win32::Foundation::HWND, pid: u32) {
+    use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
     use windows::Win32::UI::WindowsAndMessaging::{
-        HWND_NOTOPMOST, SW_SHOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetForegroundWindow,
-        SetWindowPos, ShowWindow, SwitchToThisWindow,
+        GetForegroundWindow, GetWindowThreadProcessId, HWND_NOTOPMOST, HWND_TOP, SW_SHOW,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetForegroundWindow, SetWindowPos, ShowWindow,
+        SwitchToThisWindow,
     };
+    // 用户主动要求显示(热键/新拉起): 先记一笔, 让失焦监视线程重置"已激活过"
+    PANEL_SHOW_SEQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     unsafe {
         // 确保没有残留的置顶标记(旧版本升上来时窗口可能还是 topmost)
         let _ = SetWindowPos(
@@ -133,10 +143,30 @@ fn activate_settings_window(hwnd: windows::Win32::Foundation::HWND, pid: u32) {
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
         );
         let _ = ShowWindow(hwnd, SW_SHOW);
-        // 覆盖层不抢焦点, 正常能被提到前台; 失败也不影响显示(只是不激活)。
+        // 普通窗口也要提到其它普通窗口最前(用户点了别的全屏程序时, ShowWindow
+        // 只是可见, 不一定在最前)。
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOP),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+        // 后台进程抢前台会被系统拒绝; AttachThreadInput 到当前前台线程再
+        // SetForegroundWindow 是通用的绕过方式(用户按热键就是要看面板)。
+        let foreground = GetForegroundWindow();
+        let foreground_thread = GetWindowThreadProcessId(foreground, None) as u32;
+        let current_thread = GetCurrentThreadId();
+        let attached = foreground_thread != 0
+            && foreground_thread != current_thread
+            && AttachThreadInput(current_thread, foreground_thread, true).as_bool();
         let _ = SetForegroundWindow(hwnd);
-        // SetForegroundWindow 在"后台进程"里常被系统拒绝; SwitchToThisWindow 更强势
-        // (用户按热键就是要看面板), 保证监视线程能把它认作"已激活过"。
+        if attached {
+            let _ = AttachThreadInput(current_thread, foreground_thread, false);
+        }
+        // SetForegroundWindow 仍可能失败; SwitchToThisWindow 更强势。
         SwitchToThisWindow(hwnd, true);
     }
     tracing::info!("设置面板窗口已激活(普通窗口, pid={pid})");
@@ -198,11 +228,21 @@ fn monitor_settings_panel(pid: u32) {
     let opened = std::time::Instant::now();
     let mut ever_active = false;
     let mut hidden = false;
+    let mut seen_show_seq = 0u64;
     loop {
         std::thread::sleep(std::time::Duration::from_millis(250));
         let Some(hwnd) = find_settings_window(pid) else {
             return; // 面板进程已退出
         };
+        // 用户刚按热键要求显示: 重置状态, 给它成为前台的机会 —— 否则后台进程
+        // 抢前台失败时, 窗口刚显示就被这里当成"失焦"藏着(热键唤不出面板)。
+        let show_seq = PANEL_SHOW_SEQ.load(std::sync::atomic::Ordering::SeqCst);
+        if show_seq != seen_show_seq {
+            seen_show_seq = show_seq;
+            ever_active = false;
+            hidden = false;
+            continue;
+        }
         let foreground = unsafe { GetForegroundWindow() };
         if foreground == hwnd {
             ever_active = true;
