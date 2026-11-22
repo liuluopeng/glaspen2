@@ -70,6 +70,8 @@ pub(crate) fn show_settings_window() {
                 .push(child);
             // 覆盖层是置顶窗口, 面板会被压在玻璃下面: 等 Flutter 窗口出现后置顶。
             std::thread::spawn(move || raise_settings_window(pid));
+            // 失焦自动隐藏: 用户点了别的软件窗口后, 面板不要一直挡在最上层。
+            std::thread::spawn(move || monitor_settings_panel(pid));
         }
         Err(e) => tracing::warn!("拉起设置面板失败({}): {e}", p.display()),
     }
@@ -116,7 +118,7 @@ fn find_settings_window(pid: u32) -> Option<windows::Win32::Foundation::HWND> {
 fn activate_settings_window(hwnd: windows::Win32::Foundation::HWND, pid: u32) {
     use windows::Win32::UI::WindowsAndMessaging::{
         HWND_TOPMOST, SW_SHOW, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SetForegroundWindow,
-        SetWindowPos, ShowWindow,
+        SetWindowPos, ShowWindow, SwitchToThisWindow,
     };
     unsafe {
         let _ = SetWindowPos(
@@ -131,6 +133,9 @@ fn activate_settings_window(hwnd: windows::Win32::Foundation::HWND, pid: u32) {
         let _ = ShowWindow(hwnd, SW_SHOW);
         // 覆盖层不抢焦点, 正常能被提到前台; 失败也不影响显示(只是不激活)。
         let _ = SetForegroundWindow(hwnd);
+        // SetForegroundWindow 在"后台进程"里常被系统拒绝; SwitchToThisWindow 更强势
+        // (用户按热键就是要看面板), 保证监视线程能把它认作"已激活过"。
+        SwitchToThisWindow(hwnd, true);
     }
     tracing::info!("设置面板窗口已置顶并激活(pid={pid})");
 }
@@ -146,6 +151,103 @@ fn raise_settings_window(pid: u32) {
         }
     }
     tracing::warn!("设置面板窗口 6s 内未出现, 无法置顶(pid={pid})");
+}
+
+/// 当前活着的面板窗口(隐藏的也算; 可能 0/1 个)。
+#[cfg(windows)]
+fn panel_windows() -> Vec<windows::Win32::Foundation::HWND> {
+    let pids: Vec<u32> = {
+        let mut children = SETTINGS_CHILDREN.lock().unwrap_or_else(|e| e.into_inner());
+        children.retain_mut(|c| !matches!(c.try_wait(), Ok(Some(_))));
+        children.iter().map(std::process::Child::id).collect()
+    };
+    pids.into_iter().filter_map(find_settings_window).collect()
+}
+
+/// 笔落下时把覆盖层挪到"置顶组最前", 抬笔再让面板回到覆盖层上面。
+///
+/// 数位板驱动会把笔合成为鼠标事件: 面板在覆盖层上面时, 笔尖/悬停会被面板当成
+/// 鼠标(点按钮、悬停效果)—— 即"在 Flutter 面板里笔变成了鼠标"。覆盖层本来就
+/// 持有全局笔输入(Raw HID)且落笔时会拦截合成鼠标(清 WS_EX_TRANSPARENT), 只要
+/// 落笔期间把它临时抬到面板上面, 合成事件就被覆盖层吃掉, 面板保持纯鼠标交互。
+#[cfg(windows)]
+pub(crate) fn set_overlay_above_panel(overlay: windows::Win32::Foundation::HWND, above: bool) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
+    };
+    static ABOVE: AtomicBool = AtomicBool::new(false);
+    if ABOVE.swap(above, Ordering::SeqCst) == above {
+        return;
+    }
+    unsafe {
+        if above {
+            let _ = SetWindowPos(
+                overlay,
+                Some(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        } else {
+            for hwnd in panel_windows() {
+                let _ = SetWindowPos(
+                    hwnd,
+                    Some(HWND_TOPMOST),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            }
+        }
+    }
+}
+
+/// 面板失焦(用户点了别的软件窗口)后自动隐藏: 它是置顶窗口, 不处理会一直挡在
+/// 所有程序最上层。隐藏后按设置热键可再次唤出(show_settings_window 走 raise 路径)。
+#[cfg(windows)]
+fn monitor_settings_panel(pid: u32) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, HWND_NOTOPMOST, SW_HIDE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        SetWindowPos, ShowWindow,
+    };
+    let opened = std::time::Instant::now();
+    let mut ever_active = false;
+    let mut hidden = false;
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        let Some(hwnd) = find_settings_window(pid) else {
+            return; // 面板进程已退出
+        };
+        let foreground = unsafe { GetForegroundWindow() };
+        if foreground == hwnd {
+            ever_active = true;
+            hidden = false;
+            continue;
+        }
+        // 刚打开的前 2 秒不判失焦(窗口创建/置前还没稳定)
+        if !ever_active || opened.elapsed() < std::time::Duration::from_secs(2) || hidden {
+            continue;
+        }
+        unsafe {
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_NOTOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+            let _ = ShowWindow(hwnd, SW_HIDE);
+        }
+        tracing::info!("设置面板失焦, 已隐藏(pid={pid})");
+        hidden = true;
+    }
 }
 
 /// 彻底退出:结束所有由本进程拉起的设置面板进程。

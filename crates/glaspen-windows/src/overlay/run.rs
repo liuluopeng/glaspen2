@@ -376,6 +376,11 @@ fn set_input_blocking(hwnd: HWND, blocking: bool, why: &str) {
         let want_transparent = !blocking;
         let has_transparent = (style & (WS_EX_TRANSPARENT.0 as isize)) != 0;
         INPUT_BLOCKED.store(blocking, std::sync::atomic::Ordering::SeqCst);
+        // 面板在覆盖层上面时, 数位板驱动合成的鼠标事件会被 Flutter 面板当成
+        // 鼠标(点按钮/悬停)—— 笔落下或镜头交互(拦截态)期间把覆盖层抬到面板
+        // 上面: 合成鼠标被覆盖层吃掉, 面板保持纯鼠标交互。放行后再把面板放回
+        // 上面(没有面板时是无害的空操作)。
+        crate::set_overlay_above_panel(hwnd, blocking);
         if want_transparent == has_transparent {
             // 样式未变化时不调用 SetWindowLongPtr:书写中每个笔事件都走到这里,
             // 200 次/秒的冗余 win32k 调用会加剧输入管线压力(卡顿嫌疑之一)

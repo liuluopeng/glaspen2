@@ -272,11 +272,10 @@ pub extern "C" fn glaspen2_free_rust_bytes(ptr: *mut c_uchar, len: c_int) {
     }
 }
 
-/// 无限画布总览:把当前 STROKES 按包围盒 [bx,by,bw,bh] 适配进
-/// out_w×out_h(居中、透明底),返回 PNG 字节,由 glaspen2_free_rust_bytes
-/// 释放。失败返回 NULL 且 *out_len = 0。
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_render_canvas_overview(
+/// 总览渲染的公共实现:把一组笔迹按包围盒 [bx,by,bw,bh] 适配进 out_w×out_h
+/// (居中、透明底),返回 PNG 字节(由 glaspen2_free_rust_bytes 释放)。
+/// strokes 每项 = (r, g, b, points[(x,y,width,time)])。
+fn render_overview_rows(
     bx: c_double,
     by: c_double,
     bw: c_double,
@@ -284,6 +283,7 @@ pub extern "C" fn glaspen2_render_canvas_overview(
     out_w: c_int,
     out_h: c_int,
     out_len: *mut c_int,
+    strokes: &[(f64, f64, f64, &[(f64, f64, f64, f64)])],
 ) -> *mut c_uchar {
     if out_len.is_null() || out_w <= 0 || out_h <= 0 || bw <= 0.0 || bh <= 0.0 {
         if !out_len.is_null() {
@@ -303,16 +303,14 @@ pub extern "C" fn glaspen2_render_canvas_overview(
         return std::ptr::null_mut();
     };
     r.clear();
-    let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
-    for s in strokes.iter() {
-        let pts = &s.points;
+    for &(cr, cg, cb, pts) in strokes {
         if pts.len() < 2 {
             continue;
         }
         let color = (
-            (s.r.clamp(0.0, 1.0) * 255.0) as u8,
-            (s.g.clamp(0.0, 1.0) * 255.0) as u8,
-            (s.b.clamp(0.0, 1.0) * 255.0) as u8,
+            (cr.clamp(0.0, 1.0) * 255.0) as u8,
+            (cg.clamp(0.0, 1.0) * 255.0) as u8,
+            (cb.clamp(0.0, 1.0) * 255.0) as u8,
         );
         for i in 0..pts.len() {
             let (x, y, w, _t) = pts[i];
@@ -334,7 +332,6 @@ pub extern "C" fn glaspen2_render_canvas_overview(
             }
         }
     }
-    drop(strokes);
     r.flush();
 
     let bits = r.bits();
@@ -351,6 +348,88 @@ pub extern "C" fn glaspen2_render_canvas_overview(
         *out_len = len;
     }
     ptr
+}
+
+/// 无限画布总览:把当前 STROKES 按包围盒 [bx,by,bw,bh] 适配进
+/// out_w×out_h(居中、透明底),返回 PNG 字节,由 glaspen2_free_rust_bytes
+/// 释放。失败返回 NULL 且 *out_len = 0。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_render_canvas_overview(
+    bx: c_double,
+    by: c_double,
+    bw: c_double,
+    bh: c_double,
+    out_w: c_int,
+    out_h: c_int,
+    out_len: *mut c_int,
+) -> *mut c_uchar {
+    ffi_guard(std::ptr::null_mut(), || {
+        let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
+        let rows: Vec<(f64, f64, f64, &[(f64, f64, f64, f64)])> = strokes
+            .iter()
+            .map(|s| (s.r, s.g, s.b, s.points.as_slice()))
+            .collect();
+        render_overview_rows(bx, by, bw, bh, out_w, out_h, out_len, &rows)
+    })
+}
+
+/// 无限画布总览(面板「自由涂鸦」tab): **直接从数据库 infinite_* 表取笔迹**渲染。
+///
+/// 不能用内存 STROKES: 面板切 tab 与覆盖层切画布模式是异步的, 覆盖层可能还停在
+/// 活页本, STROKES 是页笔迹 —— 结果就是"库里明明有无限画布笔迹, 面板总览却是
+/// 空的/画的是活页本内容"(用户在 Windows 上踩到的现象)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_render_infinite_canvas_overview(
+    bx: c_double,
+    by: c_double,
+    bw: c_double,
+    bh: c_double,
+    out_w: c_int,
+    out_h: c_int,
+    out_len: *mut c_int,
+) -> *mut c_uchar {
+    ffi_guard(std::ptr::null_mut(), || {
+        let strokes = runtime().block_on(db::load_infinite_strokes());
+        let rows: Vec<(f64, f64, f64, &[(f64, f64, f64, f64)])> = strokes
+            .iter()
+            .map(|s| (s.r, s.g, s.b, s.points.as_slice()))
+            .collect();
+        render_overview_rows(bx, by, bw, bh, out_w, out_h, out_len, &rows)
+    })
+}
+
+/// 无限画布(直接查库)的笔迹包围盒: 1=有笔迹(写入 out 的 4 个 double),
+/// 0=空画布/参数非法。与 glaspen2_stroke_bbox 同语义, 但不依赖 STROKES。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_infinite_canvas_bbox(out: *mut c_double) -> c_int {
+    ffi_guard(0, || {
+        if out.is_null() {
+            return 0;
+        }
+        let strokes = runtime().block_on(db::load_infinite_strokes());
+        let (mut x0, mut y0) = (f64::MAX, f64::MAX);
+        let (mut x1, mut y1) = (f64::MIN, f64::MIN);
+        let mut any = false;
+        for s in &strokes {
+            for &(x, y, _w, _t) in &s.points {
+                any = true;
+                x0 = x0.min(x);
+                y0 = y0.min(y);
+                x1 = x1.max(x);
+                y1 = y1.max(y);
+            }
+        }
+        if !any {
+            return 0;
+        }
+        unsafe {
+            *out = x0;
+            *out.add(1) = y0;
+            *out.add(2) = x1;
+            *out.add(3) = y1;
+        }
+        1
+    })
 }
 
 /// Encode RGBA pixel data as PNG bytes.
