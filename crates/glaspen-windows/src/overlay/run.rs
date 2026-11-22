@@ -286,7 +286,7 @@ pub fn run() {
 
         tracing::info!("全屏透明涂鸦已启动(WM_INPUT + ink-stroke-modeler + cairo)。");
         tracing::info!(
-            "快捷键: 面板「设置 → 快捷键」可逐动作录制;默认主键与 macOS 一致 —— 核心动作 Ctrl+Alt+Z 撤销 / `·1 翻页 / V 开关 / Shift+D 设置 / Shift+Q 退出, 无限画布镜头 Ctrl+Alt+W/A/S/D、Ctrl+Alt+X 放大 / Ctrl+Alt+Shift+Z 缩小;R 按住录 GIF / 2·3 按住手写消息(集成开时)为固定保留组合;镜头修饰键+滚轮缩放"
+            "快捷键: 面板「设置 → 快捷键」可逐动作录制;默认字母与 macOS 一致 —— 核心动作 Ctrl+Alt+Z 撤销 / `·1 翻页 / V 开关 / D 设置(无 Shift) / Shift+Q 退出, 无限画布镜头整套 Ctrl+Alt+Shift+W/A/S/D、Ctrl+Alt+Shift+X 放大 / Ctrl+Alt+Shift+Z 缩小;R 按住录 GIF / 2·3 按住手写消息(集成开时)为固定保留组合;镜头修饰键+滚轮缩放"
         );
         // Windows 没有菜单栏/托盘: 设置面板只能靠 settings 热键呼出。启动时把
         // 当前键位提示一下(1 秒), 免得用户看到"只有玻璃"以为面板不见了 ——

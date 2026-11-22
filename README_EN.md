@@ -98,13 +98,13 @@ Settings · Notebook · Free doodle"]
 | Toggle drawing | `⌘ + ⌃ + V` | `Ctrl + Alt + V` |
 | Undo last stroke | `⌘ + ⌃ + Z` | `Ctrl + Alt + Z` |
 | Previous / next page (whole page) | ``⌘ + ⌃ + ` `` / `⌘ + ⌃ + 1` | ``Ctrl + Alt + ` `` / `Ctrl + Alt + 1` |
-| Open settings | `⌘ + ⌃ + D` | `Ctrl + Alt + Shift + D` |
+| Open settings | `⌘ + ⌃ + D` | `Ctrl + Alt + D` |
 | Quit completely | `⌘ + ⌃ + ⇧ + Q` | `Ctrl + Alt + Shift + Q` |
 | Quick GIF recording (hold) | `⌘ + ⌃ + R` | `Ctrl + Alt + R` (hold) |
-| Infinite canvas: pan (four directions) | `⌃⌥ + W / A / S / D` | `Ctrl + Alt + W / A / S / D` |
-| Infinite canvas: mouse pan | `⌃⌥ + left-drag` | `Ctrl + Alt + left-drag` |
-| Infinite canvas: keyboard zoom | `⌃⌥ + Z / X` | `Ctrl + Alt + X` / `Ctrl + Alt + Shift + Z` |
-| Infinite canvas: zoom (cursor anchored) | `⌃⌥ + scroll` | `Ctrl + Alt + scroll` |
+| Infinite canvas: pan (four directions) | `⌃⌥ + W / A / S / D` | `Ctrl + Alt + Shift + W / A / S / D` |
+| Infinite canvas: mouse pan | `⌃⌥ + left-drag` | `Ctrl + Alt + Shift + left-drag` |
+| Infinite canvas: keyboard zoom | `⌃⌥ + Z / X` | `Ctrl + Alt + Shift + Z / X` |
+| Infinite canvas: zoom (cursor anchored) | `⌃⌥ + scroll` | `Ctrl + Alt + Shift + scroll` |
 
 Only the core actions and the free-doodle camera keys are bound by default;
 color swap, width swap, new canvas, SVG/GIF export, copy SVG, frosted glass,
@@ -117,10 +117,9 @@ above; global hotkeys are suspended while recording, and the scroll-wheel zoom
 modifiers follow the Zoom-in action after rebinding.
 
 Quit is `⌘⌃⇧Q` on macOS (`⌘⌃Q` is the system lock screen, so it cannot be used)
-and `Ctrl+Alt+Shift+Q` on Windows. Windows defaults now use the **same main keys**
-as macOS (camera W/A/S/D + X/Z, quit ⇧Q); Windows only has one safe two-modifier
-family, so two chords macOS keeps separate collide there and get an extra Shift:
-camera pan-right owns D (settings → ⇧D) and undo owns Z (zoom out → ⇧Z).
+and `Ctrl+Alt+Shift+Q` on Windows. Windows defaults now use the **same letter keys**
+as macOS with two modifier families mapped 1:1: core `⌘⌃` → `Ctrl+Alt` (Z/`/1/V,
+settings D, quit ⇧Q) and camera/zoom `⌃⌥` → `Ctrl+Alt+Shift` (W/A/S/D, zoom X/Z).
 Quitting flushes queued stroke points, checkpoints
 the WAL and also terminates the settings-panel process (a separate process on
 Windows), so nothing is left behind for the next launch to clean up.

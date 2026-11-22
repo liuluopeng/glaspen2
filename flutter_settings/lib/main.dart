@@ -237,8 +237,9 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
   bool _showFreeCanvas = false;
   bool _showBubbleTab = false;
-  /// 设置页渐进披露: 默认只显示「笔」和「关于」, 其余折叠进「更多设置」。
-  bool _showAdvanced = false;
+  /// 设置页渐进披露: 高级项收进「更多设置」, **默认展开**(用户明确要求:
+  /// 打开设置就能看到外观/活页本/导出/备份/语言/快捷键, 不用先点一次)。
+  bool _showAdvanced = true;
   bool _bubblesLoading = false;
   List<Map<String, dynamic>> _bubbleMsgs = const [];
   final ScrollController _bubbleScroll = ScrollController();

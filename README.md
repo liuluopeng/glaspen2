@@ -102,20 +102,21 @@ PDF / SVG / GIF / XOJ"]
 | 开启/关闭涂鸦                         | `⌘ + ⌃ + V`              | `Ctrl + Alt + V`                  |
 | 撤销上一笔                            | `⌘ + ⌃ + Z`              | `Ctrl + Alt + Z`                  |
 | 上一页 / 下一页 (整页翻页)            | ``⌘ + ⌃ + ` `` / `⌘ + ⌃ + 1` | ``Ctrl + Alt + ` `` / `Ctrl + Alt + 1` |
-| 打开设置                              | `⌘ + ⌃ + D`              | `Ctrl + Alt + Shift + D`          |
+| 打开设置                              | `⌘ + ⌃ + D`              | `Ctrl + Alt + D`                  |
 | 彻底退出玻璃笔记                      | `⌘ + ⌃ + ⇧ + Q`          | `Ctrl + Alt + Shift + Q`          |
 | 快捷录制 GIF (按住)                   | `⌘ + ⌃ + R`              | `Ctrl + Alt + R` (按住)           |
-| 无限画布: 镜头四向平移                | `⌃⌥ + W / A / S / D`      | `Ctrl + Alt + W / A / S / D`      |
-| 无限画布: 鼠标平移                    | `⌃⌥ + 左键拖动`            | `Ctrl + Alt + 左键拖动`           |
-| 无限画布: 键盘缩放                    | `⌃⌥ + Z / X`              | `Ctrl + Alt + X` / `Ctrl + Alt + Shift + Z` |
-| 无限画布: 缩放 (光标为锚)             | `⌃⌥ + 滚轮`               | `Ctrl + Alt + 滚轮`               |
+| 无限画布: 镜头四向平移                | `⌃⌥ + W / A / S / D`      | `Ctrl + Alt + Shift + W / A / S / D` |
+| 无限画布: 鼠标平移                    | `⌃⌥ + 左键拖动`            | `Ctrl + Alt + Shift + 左键拖动`   |
+| 无限画布: 键盘缩放                    | `⌃⌥ + Z / X`              | `Ctrl + Alt + Shift + Z / X`      |
+| 无限画布: 缩放 (光标为锚)             | `⌃⌥ + 滚轮`               | `Ctrl + Alt + Shift + 滚轮`       |
 
 默认未绑定(可在设置里绑): 换色 / 换粗细 / 新建画布 / 导出 SVG+GIF / 复制 SVG /
 磨砂玻璃 / 飘渺画布 / 切换自由涂鸦。
 
 彻底退出默认 `⌘⌃⇧Q`(`⌘⌃Q` 是 macOS 系统锁屏, 不能占用); Windows 为 `Ctrl+Alt+Shift+Q`。
-Windows 默认**主键与 macOS 一致**(镜头 W/A/S/D + X/Z 等); Windows 只有一套安全的
-双修饰键, 镜头右移的 D 与设置冲突、缩小的 Z 与撤销冲突, 这两处各加一个 Shift 区分。
+Windows 默认**字母键与 macOS 完全一致**, 两条修饰键家族一一对应: 核心动作
+`⌘⌃` → `Ctrl+Alt`(Z/`/1/V、设置 D、退出 ⇧Q), 镜头/缩放 `⌃⌥` → `Ctrl+Alt+Shift`
+(W/A/S/D、放大 X、缩小 Z); 镜头键只在自由涂鸦模式生效, 鼠标平移/滚轮缩放跟着镜头键走。
 退出会写完排队点、checkpoint WAL, 并结束设置面板进程(Windows 面板是独立进程,
 不会留一个"关不掉的设置窗口"给下次启动清理)。
 
