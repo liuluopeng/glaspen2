@@ -27,6 +27,8 @@ pub mod action_effect;
 
 // Cairo 渲染:唯一实现是 cairo_dl(动态加载 libcairo,源自 wAPItry 已验证原型)
 pub mod cairo_dl;
+// 无限画布镜头数学(pan/zoom/锚点/限幅/居中/持久化格式, D5a)
+pub mod camera;
 pub mod chord;
 
 pub mod db;
