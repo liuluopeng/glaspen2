@@ -18,6 +18,77 @@ struct OverlayCanvas {
     color: (u8, u8, u8),
 }
 
+/// 网格一层线段 → DIB:轴对齐线段写 1px 列/行(旧 draw_grid 的直写样式)。
+/// 越界线段跳过(旧代码同款 `gx >= 0 && gx < w`)。几何来自 core::grid。
+unsafe fn grid_blit_layer(
+    bits: *mut u8,
+    w: i32,
+    h: i32,
+    segments: &[Segment],
+    gr: u8,
+    ga: u8,
+) {
+    for seg in segments {
+        if seg.is_vertical() {
+            grid_blit_column(bits, w, h, seg.x0.round() as i32, gr, ga);
+        } else if seg.is_horizontal() {
+            grid_blit_row(bits, w, h, seg.y0.round() as i32, gr, ga);
+        }
+    }
+}
+
+/// 分栏参考线:主列全 alpha + 邻列半 alpha(旧 draw_col/draw_row 同款 1.5px 覆盖)。
+unsafe fn grid_blit_divider(
+    bits: *mut u8,
+    w: i32,
+    h: i32,
+    segments: &[Segment],
+    main_gr: u8,
+    main_ga: u8,
+    half_gr: u8,
+    half_ga: u8,
+) {
+    for seg in segments {
+        if seg.is_vertical() {
+            let gx = seg.x0.round() as i32;
+            grid_blit_column(bits, w, h, gx, main_gr, main_ga);
+            grid_blit_column(bits, w, h, gx + 1, half_gr, half_ga);
+        } else if seg.is_horizontal() {
+            let gy = seg.y0.round() as i32;
+            grid_blit_row(bits, w, h, gy, main_gr, main_ga);
+            grid_blit_row(bits, w, h, gy + 1, half_gr, half_ga);
+        }
+    }
+}
+
+/// 一列像素填色(越界整体跳过;直线坐标已由 core 给出、这里只取整)。
+unsafe fn grid_blit_column(bits: *mut u8, w: i32, h: i32, gx: i32, gr: u8, ga: u8) {
+    if !(0..w).contains(&gx) {
+        return;
+    }
+    for y in 0..h {
+        let i = ((y as usize) * (w as usize) + gx as usize) * 4;
+        *bits.add(i) = gr;
+        *bits.add(i + 1) = gr;
+        *bits.add(i + 2) = gr;
+        *bits.add(i + 3) = ga;
+    }
+}
+
+/// 一行像素填色。
+unsafe fn grid_blit_row(bits: *mut u8, w: i32, h: i32, gy: i32, gr: u8, ga: u8) {
+    if !(0..h).contains(&gy) {
+        return;
+    }
+    for x in 0..w {
+        let i = ((gy as usize) * (w as usize) + x as usize) * 4;
+        *bits.add(i) = gr;
+        *bits.add(i + 1) = gr;
+        *bits.add(i + 2) = gr;
+        *bits.add(i + 3) = ga;
+    }
+}
+
 impl OverlayCanvas {
     fn create(hwnd: HWND) -> Self {
         unsafe {
@@ -316,21 +387,18 @@ impl OverlayCanvas {
         self.present_all();
     }
 
-    /// 绘制网格线(与 macOS 一致:40px 间距、50% 灰半透明、画在笔画下方)。
-    /// macOS 为 colorWithWhite:0.5 alpha:0.15 → premultiplied 像素
-    /// RGB = 128*0.15 ≈ 19,alpha = 38。
-    /// 网格画在画布坐标系:无限画布下跟随镜头平移/缩放,并在「屏幕尺寸」
-    /// 整数倍处加粗(每屏一条参考线);翻页模式 pan=0、zoom=1,与从前一致。
-    /// `show_grid`:显示网格开关,只门控细网格 + 屏幕分界线两层;
-    /// `divider`:分栏参考线(独立开关, 与 macOS 同款)——0=无 1=左右两栏
-    /// 2=上下两栏 3=九宫格 4=康奈尔(竖线 30% 线索栏 + 横线 75% 总结栏);
-    /// 切分点吸附到最近的网格线(网格关闭时仍按网格大小吸附),线宽 1.5px
-    /// (主列全 alpha + 邻列半 alpha)。两个开关互不依赖, 各画各层。
+    /// 绘制网格线(几何唯一来源 = core `grid::compute»;本函数只做像素样式)。
+    ///
+    /// 与 macOS 同一张线段表:细网格/屏幕分界线各 1px 直写预乘 BGRA,分栏线主列 +
+    /// 邻列半 alpha(约 2px)。颜色常量保持旧值:
+    /// 细网格 colorWithWhite:0.5 alpha:0.15 → 预乘 RGB=19/alpha=38;
+    /// 屏幕分界线 alpha:0.55 → 70/140(仅无限画布, macOS 两种画布模式都画);
+    /// 分栏 alpha:0.65 → 83/166,邻列 ~半覆盖。两个开关互不依赖, 各画各层,
+    /// 绘制顺序 = 细网格 → 屏幕分界线 → 分栏(后画覆盖先画, 旧实现同序)。
+    /// 几何(间距/吸附/屏幕单位/pan/zoom 变换)全部在 core::grid, 这里不再算。
     fn draw_grid(&mut self, show_grid: bool, divider: i32) {
-        // 网格尺寸:面板「网格大小」20/40/80,10..200 钳制(macOS 同键)
-        let GAP: f64 = grid_size();
         const GA: u8 = 38; // 0.15 * 255
-        const GR: u8 = 19; // 0.5 * 0.15 * 255 (50% 灰,premultiplied)
+        const GR: u8 = 19; // 0.5 * 0.15 * 255 (50% 灰, premultiplied)
         // 加粗参考线(仅无限画布):colorWithWhite:0.5 alpha:0.55
         const BOLD_GA: u8 = 140; // 0.55 * 255
         const BOLD_GR: u8 = 70; // 0.5 * 0.55 * 255
@@ -341,167 +409,39 @@ impl OverlayCanvas {
         const DIV_HALF_GR: u8 = 41;
 
         let infinite = infinite_on();
-        let cam = if infinite { camera() } else { Camera::HOME };
-        let (pan_x, pan_y, zoom) = (cam.pan_x, cam.pan_y, cam.zoom);
         let w = self.w;
         let h = self.h;
-        // 可见画布范围(view = (canvas − pan) × zoom)
-        let cx0 = pan_x;
-        let cx1 = pan_x + w as f64 / zoom;
-        let cy0 = pan_y;
-        let cy1 = pan_y + h as f64 / zoom;
+        // 翻页模式镜头恒为原点 + 100%(macOS 同款);屏幕单位 = 画布尺寸
+        // (macOS 用 g_screen_w/h, 窗口 = 屏幕, 口径一致)。屏幕分界线仅无限
+        // 画布生成(两端真实差异 1, 见 core/grid.rs 模块文档)。
+        let cam = if infinite { camera() } else { Camera::HOME };
+        let lines = glaspen_core::grid::compute(&glaspen_core::grid::GridParams {
+            view_w: w as f64,
+            view_h: h as f64,
+            camera: cam,
+            grid_size: grid_size(),
+            divider,
+            show_grid,
+            screen_w: w as f64,
+            screen_h: h as f64,
+            screen_lines: infinite,
+            clip: None,
+        });
 
         unsafe {
             let bits = self.bits;
-
-            if show_grid {
-                // 细网格:每 GAP 一格,统一淡细线
-                let kx0 = (cx0 / GAP).floor() as i64 - 1;
-                let kx1 = (cx1 / GAP).floor() as i64 + 1;
-                let mut k = kx0;
-                while k <= kx1 {
-                    let gx = ((k as f64 * GAP - pan_x) * zoom).round() as i32;
-                    if gx >= 0 && gx < w {
-                        for y in 0..h {
-                            let i = ((y as usize) * (w as usize) + gx as usize) * 4;
-                            *bits.add(i) = GR; // B
-                            *bits.add(i + 1) = GR; // G
-                            *bits.add(i + 2) = GR; // R
-                            *bits.add(i + 3) = GA; // A
-                        }
-                    }
-                    k += 1;
-                }
-                let ky0 = (cy0 / GAP).floor() as i64 - 1;
-                let ky1 = (cy1 / GAP).floor() as i64 + 1;
-                let mut k = ky0;
-                while k <= ky1 {
-                    let gy = ((k as f64 * GAP - pan_y) * zoom).round() as i32;
-                    if gy >= 0 && gy < h {
-                        for x in 0..w {
-                            let i = ((gy as usize) * (w as usize) + x as usize) * 4;
-                            *bits.add(i) = GR;
-                            *bits.add(i + 1) = GR;
-                            *bits.add(i + 2) = GR;
-                            *bits.add(i + 3) = GA;
-                        }
-                    }
-                    k += 1;
-                }
-
-                // 分界线:只在「屏幕尺寸」整数倍处加深加粗(无限画布 = 每屏一条参考线)
-                if infinite {
-                    let bw = w as f64;
-                    let bh = h as f64;
-                    let mut k = ((cx0 / bw).floor() as i64) - 1;
-                    while k <= ((cx1 / bw).floor() as i64) + 1 {
-                        let gx = ((k as f64 * bw - pan_x) * zoom).round() as i32;
-                        if gx >= 0 && gx < w {
-                            for y in 0..h {
-                                let i = ((y as usize) * (w as usize) + gx as usize) * 4;
-                                *bits.add(i) = BOLD_GR;
-                                *bits.add(i + 1) = BOLD_GR;
-                                *bits.add(i + 2) = BOLD_GR;
-                                *bits.add(i + 3) = BOLD_GA;
-                            }
-                        }
-                        k += 1;
-                    }
-                    let mut k = ((cy0 / bh).floor() as i64) - 1;
-                    while k <= ((cy1 / bh).floor() as i64) + 1 {
-                        let gy = ((k as f64 * bh - pan_y) * zoom).round() as i32;
-                        if gy >= 0 && gy < h {
-                            for x in 0..w {
-                                let i = ((gy as usize) * (w as usize) + x as usize) * 4;
-                                *bits.add(i) = BOLD_GR;
-                                *bits.add(i + 1) = BOLD_GR;
-                                *bits.add(i + 2) = BOLD_GR;
-                                *bits.add(i + 3) = BOLD_GA;
-                            }
-                        }
-                        k += 1;
-                    }
-                }
-            }
-
-            // 分栏参考线(纯视觉,macOS 同款):左右两栏/上下两栏 = 每屏单位
-            // 1/2 处,九宫格 = 1/3、2/3 处。切分点吸附到最近的网格线(保证
-            // 加粗的永远是真实网格线),每屏单位各自吸附;两种画布模式都画。
-            if divider > 0 {
-                let halves: [f64; 1] = [0.5];
-                let thirds: [f64; 2] = [1.0 / 3.0, 2.0 / 3.0];
-                // 康奈尔笔记法: 竖线 30% = 线索栏右缘, 横线 75% = 总结栏上缘
-                let cornell_x: [f64; 1] = [0.3];
-                let cornell_y: [f64; 1] = [0.75];
-                let (fx, fy): (&[f64], &[f64]) = match divider {
-                    1 => (&halves[..], &[][..]),
-                    2 => (&[][..], &halves[..]),
-                    4 => (&cornell_x[..], &cornell_y[..]),
-                    _ => (&thirds[..], &thirds[..]),
-                };
-                let bw = w as f64;
-                let bh = h as f64;
-                let draw_col = |bits: *mut u8, gx: i32, main_ga: u8, main_gr: u8, half_ga: u8, half_gr: u8| {
-                    if gx >= 0 && gx < w {
-                        for y in 0..h {
-                            let i = ((y as usize) * (w as usize) + gx as usize) * 4;
-                            *bits.add(i) = main_gr;
-                            *bits.add(i + 1) = main_gr;
-                            *bits.add(i + 2) = main_gr;
-                            *bits.add(i + 3) = main_ga;
-                        }
-                    }
-                    // 1.5px 线宽:邻列 ~半覆盖
-                    if gx + 1 >= 0 && gx + 1 < w {
-                        for y in 0..h {
-                            let i = ((y as usize) * (w as usize) + (gx + 1) as usize) * 4;
-                            *bits.add(i) = half_gr;
-                            *bits.add(i + 1) = half_gr;
-                            *bits.add(i + 2) = half_gr;
-                            *bits.add(i + 3) = half_ga;
-                        }
-                    }
-                };
-                let draw_row = |bits: *mut u8, gy: i32, main_ga: u8, main_gr: u8, half_ga: u8, half_gr: u8| {
-                    if gy >= 0 && gy < h {
-                        for x in 0..w {
-                            let i = ((gy as usize) * (w as usize) + x as usize) * 4;
-                            *bits.add(i) = main_gr;
-                            *bits.add(i + 1) = main_gr;
-                            *bits.add(i + 2) = main_gr;
-                            *bits.add(i + 3) = main_ga;
-                        }
-                    }
-                    if gy + 1 >= 0 && gy + 1 < h {
-                        for x in 0..w {
-                            let i = (((gy + 1) as usize) * (w as usize) + x as usize) * 4;
-                            *bits.add(i) = half_gr;
-                            *bits.add(i + 1) = half_gr;
-                            *bits.add(i + 2) = half_gr;
-                            *bits.add(i + 3) = half_ga;
-                        }
-                    }
-                };
-                for frac in fx {
-                    let mut i = ((cx0 / bw).floor() as i64) - 1;
-                    while i <= ((cx1 / bw).floor() as i64) + 1 {
-                        // 吸附到最近的网格线(macOS lround 同款)
-                        let k = ((i as f64 * bw + bw * frac) / GAP).round() as i64;
-                        let gx = ((k as f64 * GAP - pan_x) * zoom).round() as i32;
-                        draw_col(bits, gx, DIV_GA, DIV_GR, DIV_HALF_GA, DIV_HALF_GR);
-                        i += 1;
-                    }
-                }
-                for frac in fy {
-                    let mut i = ((cy0 / bh).floor() as i64) - 1;
-                    while i <= ((cy1 / bh).floor() as i64) + 1 {
-                        let k = ((i as f64 * bh + bh * frac) / GAP).round() as i64;
-                        let gy = ((k as f64 * GAP - pan_y) * zoom).round() as i32;
-                        draw_row(bits, gy, DIV_GA, DIV_GR, DIV_HALF_GA, DIV_HALF_GR);
-                        i += 1;
-                    }
-                }
-            }
+            grid_blit_layer(bits, w, h, &lines.minor, GR, GA);
+            grid_blit_layer(bits, w, h, &lines.screen, BOLD_GR, BOLD_GA);
+            grid_blit_divider(
+                bits,
+                w,
+                h,
+                &lines.divider,
+                DIV_GR,
+                DIV_GA,
+                DIV_HALF_GR,
+                DIV_HALF_GA,
+            );
         }
     }
 

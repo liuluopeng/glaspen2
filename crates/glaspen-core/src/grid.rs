@@ -69,6 +69,15 @@
 //! 5. **脏矩形**: macOS 只算与 `clipRect» 相交的线(笔迹脏区只有十几像素);
 //!    Windows 每次全画布重算。→ [GridParams::clip](Windows 传 `None»)。
 //!
+//! # 异常输入(边界)
+//!
+//! - 「视口/pan/zoom/grid_size」非有限或非正 → [compute_checked] 回 [GridError],
+//!   [compute] 回空表: 不 panic、绝不产出 NaN/Inf。两端设置层已做钳制/兜底
+//!   (macOS 网格 zoom 0.05 兜底、Windows `grid_size()` 40 兜底), 正常运行时不可达;
+//!   旧实现遇到局部变量被污染时会画出随机线(甚至 C long 转换 UB), 这里选择不画。
+//! - 线数超过防御上限(单轴 10 万条, 只可能来自非法 view/zoom 组合)→ 同上,
+//!   防止一次绘制扫出百万条线卡死进程。
+//!
 //! # "网格跟随涂鸦"(grid follows strokes)
 //!
 //! 两端**都没有几何影响**: 它只是可见性门控 —— 飘渺画布隐藏笔迹时网格是否
@@ -836,5 +845,214 @@ mod tests {
         assert!(!lines.minor.is_empty());
 
         assert_eq!(DEFAULT_GRID_SIZE, 40.0);
+    }
+
+    // ── D6: 两端 adapter 网格几何残留闸门 ──
+    //
+    // core::grid 是网格/分栏几何(间距/屏幕单位/分栏吸附/pan+zoom 变换/脏矩形
+    // 裁剪)的唯一来源: macOS 经 export::glaspen2_grid_json(*_clipped) FFI,
+    // Windows 同进程直接 grid::compute。本闸门按文本扫描两端 adapter, 两类断言:
+    //
+    // 1) **必须**出现 core 网格入口 token(接线被退回/删调用即红);
+    // 2) 旧行内几何的"指纹"**不得**出现(有人把公式抄回 adapter 即红)。
+    //
+    // 扫描范围 = 真正画网格/分栏/声明 FFI 的文件:
+    //   macOS  glaspen2.m(FFI 声明) + parts/{run,menu,panel}.m;
+    //   Windows overlay/{canvas,actions,state}.rs(canvas = 绘制, actions = 开关
+    //   分派, state = 网格尺寸/设置状态)。
+    // 有意排除(不是 D6 的重复项):
+    //   - 网格设置键/落库/启动恢复(macOS run.m:3069-3135 / Windows state.rs,
+    //     设置契约归 D1/E3), 这里只要求不出现几何公式;
+    //   - "网格跟随涂鸦"可见性门控(两端 adapter 行为, 与几何无关);
+    //   - 绘制样式(颜色/线宽/alpha/像素取整), 按设计留在 adapter;
+    //   - minimap 条带布局的 MM_GAP(actions.rs, D7)。
+    #[test]
+    fn adapter_grid_geometry_uses_core() {
+        // 行注释剥掉再做匹配(注释里允许出现旧公式的说明; ObjC/Rust 的 // 都适用)。
+        fn code_lines(src: &str) -> String {
+            src.lines()
+                .map(|line| match line.find("//") {
+                    Some(at) => &line[..at],
+                    None => line,
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+
+        fn violations(name: &str, src: &str, forbidden: &[&str]) -> Vec<String> {
+            let code = code_lines(src);
+            forbidden
+                .iter()
+                .filter_map(|pat| {
+                    code.find(pat).map(|at| {
+                        format!(
+                            "{name}:{} 仍含行内网格几何 {:?}",
+                            code[..at].matches('\n').count() + 1,
+                            pat
+                        )
+                    })
+                })
+                .collect()
+        }
+
+        fn must_contain(name: &str, src: &str, tokens: &[&str]) -> Vec<String> {
+            tokens
+                .iter()
+                .filter(|token| !src.contains(**token))
+                .map(|token| format!("{name} 缺少 core 网格入口 {token:?}"))
+                .collect()
+        }
+
+        let mac_main = include_str!("../../../src/macos/glaspen2.m");
+        let mac_run = include_str!("../../../src/macos/parts/run.m");
+        let mac_menu = include_str!("../../../src/macos/parts/menu.m");
+        let mac_panel = include_str!("../../../src/macos/parts/panel.m");
+        let win_canvas = include_str!("../../../crates/glaspen-windows/src/overlay/canvas.rs");
+        let win_actions = include_str!("../../../crates/glaspen-windows/src/overlay/actions.rs");
+        let win_state = include_str!("../../../crates/glaspen-windows/src/overlay/state.rs");
+        // include_str! 指错文件/文件被清空时闸门不能静默变绿。
+        for (name, src) in [
+            ("glaspen2.m", mac_main),
+            ("run.m", mac_run),
+            ("menu.m", mac_menu),
+            ("panel.m", mac_panel),
+            ("canvas.rs", win_canvas),
+            ("actions.rs", win_actions),
+            ("state.rs", win_state),
+        ] {
+            assert!(
+                src.len() > 500,
+                "闸门扫到的 {name} 过短, include_str! 路径可疑"
+            );
+        }
+
+        // ── macOS 旧行内几何指纹(旧 run.m 内联的三段 drawRect 循环) ──
+        let mac_forbidden = [
+            // 索引范围: floor((pan + clip/z) / spacing) ± 1
+            "floor((pan_x +",
+            "floor((pan_y +",
+            "double bw = (g_screen_w > 0)",
+            "double bh = (g_screen_h > 0)",
+            "long kx0",
+            "long kx1",
+            "long ky0",
+            "long ky1",
+            "long jx0",
+            "long jx1",
+            "long jy0",
+            "long jy1",
+            "for (long k = kx0",
+            "for (long k = ky0",
+            "for (long i = jx0",
+            "for (long i = jy0",
+            // 线坐标变换: (k * spacing − pan) * zoom
+            "(k * gs - pan_x)",
+            "(k * gs - pan_y)",
+            "(k * bw - pan_x)",
+            "(k * bh - pan_y)",
+            "(k * bw + bw *",
+            "(k * bh + bh *",
+            // 分栏吸附 + 比例表
+            "lround((i * bw",
+            "lround((i * bh",
+            "kHalf[",
+            "kThirds[",
+            "kCornellX",
+            "kCornellY",
+            // 屏幕单位兜底 / 绘制循环坐标
+            "gs * 4.0",
+            "CGFloat gx = (",
+            "CGFloat gy = bounds.size.height - (",
+            // 旧「网格尺寸 * 常数」公式写法
+            "g_grid_size * ",
+        ];
+
+        // ── Windows 旧行内几何指纹(旧 canvas.rs draw_grid) ──
+        let win_canvas_forbidden = [
+            // 可见画布范围 + 索引循环
+            "let cx0 = pan_x",
+            "let cx1 =",
+            "let cy0 = pan_y",
+            "let cy1 =",
+            "let GAP: f64",
+            "GAP",
+            "(cx0 / GAP)",
+            "(cy0 / GAP)",
+            "let kx0",
+            "let ky0",
+            "while k <= kx1",
+            // 线坐标变换: (k * GAP − pan) * zoom
+            "(k as f64 * GAP - pan_x)",
+            "(k as f64 * GAP - pan_y)",
+            // 分栏比例表 + 吸附
+            "let halves",
+            "let thirds",
+            "cornell_x",
+            "cornell_y",
+            "i as f64 * bw + bw * frac",
+            "i as f64 * bh + bh * frac",
+            "(i as f64 * bw",
+            // 旧像素写列/行闭包(几何+样式耦合; 样式现由 grid_blit_* 承担)
+            "draw_col(",
+            "draw_row(",
+        ];
+        // actions.rs / state.rs 只做开关分派与设置状态(D1/E3 已单源), 不该出现
+        // 画布范围/索引/吸附这些几何量; minimap 的 MM_GAP 是 D7, 不在此列。
+        let win_other_forbidden = ["cx0", "cy0", "(k as f64 * GAP", "draw_col(", "draw_row("];
+
+        let mut problems = Vec::new();
+        problems.extend(violations("glaspen2.m", mac_main, &mac_forbidden));
+        problems.extend(violations("run.m", mac_run, &mac_forbidden));
+        problems.extend(violations("menu.m", mac_menu, &mac_forbidden));
+        problems.extend(violations("panel.m", mac_panel, &mac_forbidden));
+        problems.extend(violations("canvas.rs", win_canvas, &win_canvas_forbidden));
+        problems.extend(violations("actions.rs", win_actions, &win_other_forbidden));
+        problems.extend(violations("state.rs", win_state, &win_other_forbidden));
+
+        // ── 必须接 core 网格入口(mac 经 FFI / Windows 直接调 grid::compute) ──
+        for (name, src, tokens) in [
+            (
+                "glaspen2.m",
+                mac_main,
+                &[
+                    "extern char* glaspen2_grid_json(",
+                    "glaspen2_grid_json_clipped",
+                ][..],
+            ),
+            (
+                "run.m",
+                mac_run,
+                &[
+                    "glaspen2_grid_json(",
+                    "glaspen2_grid_json_clipped(",
+                    "draw_grid_lines(ctx",
+                    "grid_stroke_layer(",
+                ][..],
+            ),
+            (
+                "canvas.rs",
+                win_canvas,
+                &[
+                    "glaspen_core::grid::compute(",
+                    "GridParams",
+                    "grid_blit_layer(",
+                    "grid_blit_divider(",
+                ][..],
+            ),
+            ("actions.rs", win_actions, &["draw_grid("][..]),
+            (
+                "state.rs",
+                win_state,
+                &["fn grid_size() -> f64", "pub grid_divider: i32"][..],
+            ),
+        ] {
+            problems.extend(must_contain(name, src, tokens));
+        }
+
+        assert!(
+            problems.is_empty(),
+            "D6 网格几何接线闸门失败(两端必须只用 core::grid 几何):\n{}",
+            problems.join("\n")
+        );
     }
 }

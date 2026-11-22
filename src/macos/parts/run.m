@@ -38,6 +38,122 @@ static void flush_tunnel_to_layer(void) {
     [g_draw_view setNeedsDisplay:YES];
 }
 
+// ── 网格/分栏绘制(D6: 几何唯一来源 = core::grid,经 FFI 下发线段表) ──
+//
+// 本文件不再算任何网格几何(旧 run.m 内联的三段循环已删): 视图尺寸/镜头/网格
+// 设置经 glaspen2_grid_json(_clipped) 交给 core, 这里只把 core 算好的线段按原有
+// CGContext 样式描边(颜色/线宽/alpha/绘制顺序全部保持)。
+// 绘制顺序 = 细网格 → 屏幕分界线 → 分栏参考线(后画的覆盖先画的, 与旧代码同序)。
+
+// 一层线段 → CG 路径 + 单次 StrokePath(与旧实现一样整层一条路径: 交叉点只
+// 合成一次 alpha)。线段是视图坐标(y 向下), CGContext 是 y 向上, 这里翻转 y。
+static void grid_stroke_layer(CGContextRef ctx, NSArray *segments, double view_h,
+                              CGFloat white, CGFloat alpha, CGFloat line_width) {
+  if (![segments isKindOfClass:[NSArray class]] || segments.count == 0) return;
+  CGContextSetStrokeColorWithColor(
+      ctx, [[NSColor colorWithWhite:white alpha:alpha] CGColor]);
+  CGContextSetLineWidth(ctx, line_width);
+  for (id item in segments) {
+    if (![item isKindOfClass:[NSDictionary class]]) continue;
+    NSDictionary *seg = item;
+    NSNumber *x0 = seg[@"x0"], *y0 = seg[@"y0"], *x1 = seg[@"x1"], *y1 = seg[@"y1"];
+    if (![x0 isKindOfClass:[NSNumber class]] || ![y0 isKindOfClass:[NSNumber class]] ||
+        ![x1 isKindOfClass:[NSNumber class]] || ![y1 isKindOfClass:[NSNumber class]])
+      continue;
+    CGContextMoveToPoint(ctx, [x0 doubleValue], view_h - [y0 doubleValue]);
+    CGContextAddLineToPoint(ctx, [x1 doubleValue], view_h - [y1 doubleValue]);
+  }
+  CGContextStrokePath(ctx);
+}
+
+// core 网格 FFI JSON → 字典;失败/error JSON 只记一次日志(避免每帧刷屏)并回 nil。
+static NSDictionary *grid_json_dict(char *json) {
+  static BOOL s_grid_ffi_warned = NO;
+  if (!json) {
+    if (!s_grid_ffi_warned) {
+      s_grid_ffi_warned = YES;
+      NSLog(@"[grid] core 网格 FFI 返回 NULL");
+    }
+    return nil;
+  }
+  NSData *data = [NSData dataWithBytes:json length:strlen(json)];
+  glaspen2_free_c_string(json);
+  id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+  if (![parsed isKindOfClass:[NSDictionary class]]) {
+    if (!s_grid_ffi_warned) {
+      s_grid_ffi_warned = YES;
+      NSLog(@"[grid] core 网格 JSON 无法解析");
+    }
+    return nil;
+  }
+  NSDictionary *dict = parsed;
+  if (dict[@"error"]) {
+    if (!s_grid_ffi_warned) {
+      s_grid_ffi_warned = YES;
+      NSLog(@"[grid] core 网格 FFI 错误: %@", dict[@"error"]);
+    }
+    return nil;
+  }
+  return dict;
+}
+
+// 网格 + 分栏参考线:门控与视图←画布变换保持旧 drawRect 逐字一致。
+// clipRect = 本次 drawRect 的脏矩形(非翻转视图坐标, y 向上), 只向 core 要相交的
+// 线(旧实现同样的省遍历);视图尺寸 = bounds(macOS 窗口 = 屏幕 frame)。
+static void draw_grid_lines(CGContextRef ctx, NSRect bounds, NSRect clipRect) {
+  // 显示网格(细网格+屏幕分界线)与分栏参考线是两个独立设置, 各画各层;
+  // 网格跟随涂鸦 on 时两者都随笔迹隐藏(飘渺画布涂鸦模式)。
+  if (!((g_show_grid || g_grid_divider > 0) && !s_tun_active &&
+        (g_strokes_visible || !g_grid_follow_strokes)))
+    return;
+  double view_w = bounds.size.width, view_h = bounds.size.height;
+  if (!(view_w > 0.0) || !(view_h > 0.0)) return;
+
+  // 两种模式统一:视图 = (画布 − 镜头偏移) × 缩放。
+  // 无限画布:偏移=pan、缩放=zoom(旧代码同款 0.05 兜底, 见 camera.rs 差异 3);
+  // 活页本:偏移=−滚动偏移、缩放=1(整页翻页后滚动偏移恒 0)。
+  double pan_x = 0.0, pan_y = 0.0, z = 1.0;
+  if (g_infinite_canvas) {
+    pan_x = g_pan_x;
+    pan_y = g_pan_y;
+    z = (g_zoom > 0.05) ? g_zoom : 0.05;
+  } else {
+    pan_x = -g_page_off_x;
+    pan_y = -g_page_off_y;
+  }
+
+  // clipRect 是非翻转视图坐标(y 向上)→ core 视图坐标(y 向下)。
+  double clip_x0 = NSMinX(clipRect), clip_x1 = NSMaxX(clipRect);
+  double clip_y0 = view_h - NSMaxY(clipRect), clip_y1 = view_h - NSMinY(clipRect);
+  int follow = g_grid_follow_strokes ? 1 : 0;
+  int divider = (int)g_grid_divider;
+
+  char *json;
+  if (!g_show_grid) {
+    // 只开分栏: 分栏线每屏单位 1–4 条, 全视口算, 不需要脏矩形裁剪。
+    json = glaspen2_grid_json_clipped(view_w, view_h, pan_x, pan_y, z,
+                                      g_grid_size, divider, /*show_grid=*/0,
+                                      0.0, 0.0, view_w, view_h);
+  } else if (clip_x0 <= 0.0 && clip_y0 <= 0.0 && clip_x1 >= view_w &&
+             clip_y1 >= view_h) {
+    // 整屏重绘: 规范入口(屏幕单位 = 视口尺寸 = macOS 视图/屏幕一致)。
+    json = glaspen2_grid_json(view_w, view_h, pan_x, pan_y, z, g_grid_size,
+                              divider, follow);
+  } else {
+    // 笔迹脏矩形: 只请求与 clip 相交的线(旧实现只算脏区, 省整屏遍历)。
+    json = glaspen2_grid_json_clipped(view_w, view_h, pan_x, pan_y, z,
+                                      g_grid_size, divider, /*show_grid=*/1,
+                                      clip_x0, clip_y0, clip_x1, clip_y1);
+  }
+  NSDictionary *lines = grid_json_dict(json);
+  if (!lines) return;
+  // 样式与旧代码逐值一致: 0.5pt/0.5/alpha0.15;1.0pt/0.5/alpha0.55;
+  // 1.5pt/0.5/alpha0.65。
+  grid_stroke_layer(ctx, lines[@"minor"], view_h, 0.5, 0.15, 0.5);
+  grid_stroke_layer(ctx, lines[@"screen"], view_h, 0.5, 0.55, 1.0);
+  grid_stroke_layer(ctx, lines[@"divider"], view_h, 0.5, 0.65, 1.5);
+}
+
 // --- Drawing view ---
 
 @interface GlaspenDrawView : NSView
@@ -102,132 +218,9 @@ static void flush_tunnel_to_layer(void) {
     return;
   }
 
-  // Grid + divider lines — drawn directly in the view behind the strokes.
-  // 显示网格(细网格+屏幕分界线)与分栏参考线是两个独立设置, 各画各层;
-  // 网格跟随涂鸦 on 时两者都随笔迹隐藏(飘渺画布涂鸦模式)。
-  if ((g_show_grid || g_grid_divider > 0) && !s_tun_active &&
-      (g_strokes_visible || !g_grid_follow_strokes)) {
-    NSRect bounds = [self bounds];
-    // 两种模式统一:视图 = (画布 − 镜头偏移) × 缩放。
-    // 无限画布:偏移=pan、缩放=zoom;活页本:偏移=−滚动偏移、缩放=1。
-    double pan_x = 0.0, pan_y = 0.0, z = 1.0;
-    if (g_infinite_canvas) {
-      pan_x = g_pan_x;
-      pan_y = g_pan_y;
-      z = (g_zoom > 0.05) ? g_zoom : 0.05;
-    } else {
-      pan_x = -g_page_off_x;
-      pan_y = -g_page_off_y;
-    }
-    double gs = g_grid_size;
-
-    // 只算与本次重绘区(clipRect)相交的线: 笔迹一段的脏区只有十几像素,
-    // 省掉整屏遍历。clipRect 是全屏时退化为原来的算法。
-    double vx0 = NSMinX(clipRect), vx1 = NSMaxX(clipRect);
-    double vy0 = NSMinY(clipRect), vy1 = NSMaxY(clipRect);
-    long kx0 = (long)floor((pan_x + vx0 / z) / gs) - 1;
-    long kx1 = (long)floor((pan_x + vx1 / z) / gs) + 1;
-    long ky0 = (long)floor((pan_y + (bounds.size.height - vy1) / z) / gs) - 1;
-    long ky1 = (long)floor((pan_y + (bounds.size.height - vy0) / z) / gs) + 1;
-
-    // 屏幕单位索引(分界线与分栏吸附共用):
-    // 活页本 = 页边界;无限画布 = 每屏一条参考线。
-    double bw = (g_screen_w > 0) ? (double)g_screen_w : gs * 4.0;
-    double bh = (g_screen_h > 0) ? (double)g_screen_h : gs * 4.0;
-    long jx0 = (long)floor((pan_x + vx0 / z) / bw) - 1;
-    long jx1 = (long)floor((pan_x + vx1 / z) / bw) + 1;
-    long jy0 = (long)floor((pan_y + (bounds.size.height - vy1) / z) / bh) - 1;
-    long jy1 = (long)floor((pan_y + (bounds.size.height - vy0) / z) / bh) + 1;
-
-    if (g_show_grid) {
-      // 细网格:每 gs 一格,统一淡细线(不再每 4 格加粗)。
-      CGContextSetStrokeColorWithColor(
-          ctx, [[NSColor colorWithWhite:0.5 alpha:0.15] CGColor]);
-      CGContextSetLineWidth(ctx, 0.5);
-      for (long k = kx0; k <= kx1; k++) {
-        CGFloat gx = (k * gs - pan_x) * z;
-        CGContextMoveToPoint(ctx, gx, 0);
-        CGContextAddLineToPoint(ctx, gx, bounds.size.height);
-      }
-      for (long k = ky0; k <= ky1; k++) {
-        CGFloat gy = bounds.size.height - ((k * gs - pan_y) * z);
-        CGContextMoveToPoint(ctx, 0, gy);
-        CGContextAddLineToPoint(ctx, bounds.size.width, gy);
-      }
-      CGContextStrokePath(ctx);
-
-      // 分界线:只在"屏幕尺寸"为单位处加深加粗。
-      CGContextSetStrokeColorWithColor(
-          ctx, [[NSColor colorWithWhite:0.5 alpha:0.55] CGColor]);
-      CGContextSetLineWidth(ctx, 1.0);
-      for (long k = jx0; k <= jx1; k++) {
-        CGFloat gx = (k * bw - pan_x) * z;
-        CGContextMoveToPoint(ctx, gx, 0);
-        CGContextAddLineToPoint(ctx, gx, bounds.size.height);
-      }
-      for (long k = jy0; k <= jy1; k++) {
-        CGFloat gy = bounds.size.height - ((k * bh - pan_y) * z);
-        CGContextMoveToPoint(ctx, 0, gy);
-        CGContextAddLineToPoint(ctx, bounds.size.width, gy);
-      }
-      CGContextStrokePath(ctx);
-    }
-
-    // 分栏参考线(纯视觉, 独立于显示网格开关):左右两栏/上下两栏 =
-    // 每屏单位 1/2 处,九宫格 = 1/3、2/3 处。切分点吸附到最近的网格线
-    // (保证加粗的永远是真实网格线; 网格关闭时仍按网格大小吸附,
-    // 重开网格不会错位),每屏单位各自吸附,线宽比分界线粗半档。
-    if (g_grid_divider > 0) {
-      static const double kHalf[1] = {0.5};
-      static const double kThirds[2] = {1.0 / 3.0, 2.0 / 3.0};
-      // 康奈尔笔记法: 竖线 30% = 线索栏右缘, 横线 75% = 总结栏上缘
-      static const double kCornellX[1] = {0.3};
-      static const double kCornellY[1] = {0.75};
-      const double *fx = NULL;
-      int nx = 0;
-      const double *fy = NULL;
-      int ny = 0;
-      if (g_grid_divider == 1) {
-        fx = kHalf;
-        nx = 1;
-      } else if (g_grid_divider == 2) {
-        fy = kHalf;
-        ny = 1;
-      } else if (g_grid_divider == 4) {
-        fx = kCornellX;
-        nx = 1;
-        fy = kCornellY;
-        ny = 1;
-      } else {
-        fx = kThirds;
-        nx = 2;
-        fy = kThirds;
-        ny = 2;
-      }
-
-      CGContextSetStrokeColorWithColor(
-          ctx, [[NSColor colorWithWhite:0.5 alpha:0.65] CGColor]);
-      CGContextSetLineWidth(ctx, 1.5);
-      CGContextBeginPath(ctx);
-      for (int f = 0; f < nx; f++) {
-        for (long i = jx0; i <= jx1; i++) {
-          long k = (long)lround((i * bw + bw * fx[f]) / gs);
-          CGFloat gx = (k * gs - pan_x) * z;
-          CGContextMoveToPoint(ctx, gx, 0);
-          CGContextAddLineToPoint(ctx, gx, bounds.size.height);
-        }
-      }
-      for (int f = 0; f < ny; f++) {
-        for (long i = jy0; i <= jy1; i++) {
-          long k = (long)lround((i * bh + bh * fy[f]) / gs);
-          CGFloat gy = bounds.size.height - ((k * gs - pan_y) * z);
-          CGContextMoveToPoint(ctx, 0, gy);
-          CGContextAddLineToPoint(ctx, bounds.size.width, gy);
-        }
-      }
-      CGContextStrokePath(ctx);
-    }
-  }
+  // 网格 + 分栏参考线: 几何唯一来源 = core::grid(经 FFI 线段表),
+  // 本函数只保持原有门控与 CGContext 样式/绘制顺序(D6)。
+  draw_grid_lines(ctx, [self bounds], clipRect);
 
   // Reuse the cached CGImage; it wraps the live cairo buffer, so it is
   // only rebuilt when the surface itself changes.

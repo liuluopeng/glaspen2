@@ -43,6 +43,7 @@ use windows::core::PCWSTR;
 
 use glaspen_core::cairo_dl::CairoRenderer;
 use glaspen_core::camera::{Camera, ZoomOutcome};
+use glaspen_core::grid::Segment;
 
 // ── 文件拆分(纯文本 include, 编译期等价于原单文件; 无 Windows 编译环境,
 //    用 include! 保证拆分零语义变化; 错误行号仍指向真实子文件)──

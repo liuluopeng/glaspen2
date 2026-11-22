@@ -97,6 +97,14 @@ extern double glaspen2_camera_step_zoom(double zoom);
 extern double glaspen2_camera_keyboard_pan_step(double zoom);
 // 回原点 + 100%(out 参数可传 NULL)。
 extern void glaspen2_camera_home(double *pan_x, double *pan_y, double *zoom);
+// D6 网格/分栏几何桥(core/grid.rs): 输入视图尺寸/镜头/网格设置, 返回 core 算好的
+// 线段表 JSON({"minor":[...],"screen":[...],"divider":[...],"follow":bool} 或
+// {"error":"..."}), 线段是视图坐标(原点左上, y 向下), ObjC 只按既有 CGContext
+// 样式描边。glaspen2_grid_json = 全视口规范入口(屏幕单位=视口尺寸, macOS 两种画布
+// 模式都画屏幕分界线); glaspen2_grid_json_clipped = 笔迹脏矩形热路径(只算与 clip
+// 相交的线, 额外带 show_grid 开关)。永不 NULL;调用方用 glaspen2_free_c_string 释放。
+extern char* glaspen2_grid_json(double view_w, double view_h, double pan_x, double pan_y, double zoom, double grid_size, int divider, int follow);
+extern char* glaspen2_grid_json_clipped(double view_w, double view_h, double pan_x, double pan_y, double zoom, double grid_size, int divider, int show_grid, double clip_x0, double clip_y0, double clip_x1, double clip_y1);
 extern void glaspen2_chat_auth_reload(void); // 设置/启动时把 DB 账号配置推给 Rust auth
 extern void glaspen2_share_ink_set_active(int active); // 共享画布上行开关(export.rs)
 // (共享画布上行已无 ObjC 入口:生命周期完全由面板 tab 驱动,FRB 直达 Rust)
