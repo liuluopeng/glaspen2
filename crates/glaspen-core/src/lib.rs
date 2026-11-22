@@ -30,6 +30,7 @@ pub mod device;
 pub mod export;
 pub mod modeler;
 pub mod ocr;
+pub mod pageinfo;
 pub mod pagerender;
 pub mod pdf;
 pub mod presets;

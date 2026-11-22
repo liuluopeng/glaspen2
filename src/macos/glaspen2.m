@@ -126,7 +126,7 @@ extern void glaspen2_free_rust_bytes(unsigned char *ptr, int len);
 /// 由 Rust 推给订阅了设置流的 Dart 侧(取代旧的 MethodChannel 回调)。
 extern void glaspen2_notify_settings_changed(void);
 extern int glaspen2_delete_screen(long long screen_id);
-extern char* glaspen2_page_info_json(long long screen_id);
+extern char* glaspen2_page_info_text(long long screen_id, const char *lang);
 extern int glaspen2_chat_send_strokes(int start_index, int end_index);
 // 手写消息草稿通道(⌘⌃2):开启/关闭 DraftInk gRPC 流,实现见 export.rs
 extern int glaspen2_ink_draft_start(int canvas_w, int canvas_h);
@@ -503,43 +503,14 @@ static void show_notification(NSString *text) {
     dispatch_resume(g_notification_timer);
 }
 
-// Date label for the page notification: 今天 / 昨天 / YYYY-MM-DD (local time).
-static NSString *page_date_label(double created) {
-    NSDate *d = [NSDate dateWithTimeIntervalSince1970:created];
-    NSCalendar *cal = [NSCalendar currentCalendar];
-    NSUInteger units = NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay;
-    NSDateComponents *dc = [cal components:units fromDate:d];
-    NSDateComponents *nc = [cal components:units fromDate:[NSDate date]];
-    if (dc.year == nc.year && dc.month == nc.month && dc.day == nc.day) {
-        return L(@"今天", @"Today");
-    }
-    NSDate *yesterday = [cal dateByAddingUnit:NSCalendarUnitDay value:-1
-                                       toDate:[NSDate date] options:0];
-    NSDateComponents *yc = [cal components:units fromDate:yesterday];
-    if (dc.year == yc.year && dc.month == yc.month && dc.day == yc.day) {
-        return L(@"昨天", @"Yesterday");
-    }
-    return [NSString stringWithFormat:@"%04ld-%02ld-%02ld",
-            (long)dc.year, (long)dc.month, (long)dc.day];
-}
-
 // Show "今天 第2页  第3/5页" for the given screen.
+// 文案与日期比较的唯一实现在 core::pageinfo(两端共用), 这里只负责显示。
 static void show_page_info(long long screen_id) {
-    char *json = glaspen2_page_info_json(screen_id);
-    if (!json) return;
-    NSString *s = [NSString stringWithUTF8String:json];
-    glaspen2_free_c_string(json);
-    NSData *data = [s dataUsingEncoding:NSUTF8StringEncoding];
-    NSDictionary *d = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-    if (!d) return;
-    long nth = [d[@"nth"] longValue];
-    long pos = [d[@"pos"] longValue];
-    long total = [d[@"total"] longValue];
-    double created = [d[@"created"] doubleValue];
-    NSString *label = page_date_label(created);
-    show_notification([NSString stringWithFormat:L(@"%@ 第%ld页  第%ld/%ld页",
-                                                   @"%@ page %ld (%ld/%ld)"),
-                       label, nth, pos, total]);
+    char *text = glaspen2_page_info_text(screen_id, g_lang == 1 ? "en" : "zh");
+    if (!text) return;
+    NSString *s = [NSString stringWithUTF8String:text];
+    glaspen2_free_c_string(text);
+    if (s.length) show_notification(s);
 }
 
 static void save_drawing_only(void) {

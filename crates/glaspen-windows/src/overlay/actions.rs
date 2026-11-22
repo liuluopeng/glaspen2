@@ -583,26 +583,11 @@ fn peek_lens_change(state: &mut OverlayState) {
     peek_strokes(state, 1.0);
 }
 
-/// 页数+日期通知文本,如 "今天 第2页  第3/5页"(与 macOS 一致)
+/// 页数+日期通知文本,如 "今天 第2页  第3/5页"。
+/// 文案/日期比较单源在 core::pageinfo(macOS 走同一实现), 这里只负责显示。
 fn page_info_text(screen_id: i64) -> String {
-    let ptr = glaspen_core::export::glaspen2_page_info_json(screen_id);
-    if ptr.is_null() {
-        return format!("第 {} 页", screen_id);
-    }
-    let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
-        .to_string_lossy()
-        .to_string();
-    glaspen_core::export::glaspen2_free_c_string(ptr);
-    let v: serde_json::Value = match serde_json::from_str(&s) {
-        Ok(v) => v,
-        Err(_) => return format!("第 {} 页", screen_id),
-    };
-    let nth = v["nth"].as_i64().unwrap_or(screen_id);
-    let pos = v["pos"].as_i64().unwrap_or(0);
-    let total = v["total"].as_i64().unwrap_or(0);
-    let created = v["created"].as_f64().unwrap_or(0.0) as u64;
-    let label = date_label(created);
-    format!("{} 第{}页  第{}/{}页", label, nth, pos, total)
+    glaspen_core::pageinfo::page_info_text(screen_id, "zh")
+        .unwrap_or_else(|| format!("第 {} 页", screen_id))
 }
 
 /// 飘渺模式:隐藏笔迹(保留数据,仅清空显示;网格按"网格跟随涂鸦"决定)

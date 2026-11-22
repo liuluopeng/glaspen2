@@ -5,28 +5,6 @@ const HUD_PM_H: i32 = 32;
 const HUD_NOTIF_TIMER: usize = 10;
 const HUD_NOTIF_MS: u32 = 1000;
 
-/// 日期标签:今天 / 昨天 / YYYY-MM-DD(本地时区,chrono 计算)
-fn date_label(unix_secs: u64) -> String {
-    use chrono::{Local, TimeZone};
-    let now = Local::now();
-    let ts = Local
-        .timestamp_opt(unix_secs as i64, 0)
-        .single()
-        .unwrap_or(now);
-    if ts.date_naive() == now.date_naive() {
-        "今天".to_string()
-    } else if now
-        .date_naive()
-        .signed_duration_since(ts.date_naive())
-        .num_days()
-        == 1
-    {
-        "昨天".to_string()
-    } else {
-        ts.format("%Y-%m-%d").to_string()
-    }
-}
-
 // ── GDI+ 文字渲染(灰度抗锯齿,消除 GDI 文本的颗粒感) ──
 
 use libloading::{Library, Symbol};

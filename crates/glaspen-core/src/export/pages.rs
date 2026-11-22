@@ -855,26 +855,18 @@ fn parse_ids_csv(csv: *const c_char) -> Option<Vec<i64>> {
     )
 }
 
-/// Page info JSON for the 新建画布/翻页 notification:
-/// {"nth":n,"date_total":m,"pos":x,"total":y,"created":unix_ts}
-/// Caller frees with glaspen2_free_c_string. NULL when the page is unknown.
+/// 页信息文案("今天 第2页  第3/5页")。文案/日期比较的唯一实现在
+/// `crate::pageinfo`; caller frees with glaspen2_free_c_string. NULL when unknown.
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_page_info_json(screen_id: i64) -> *mut c_char {
-    let Some((nth, date_total, pos, total, created)) = runtime().block_on(db::page_info(screen_id))
-    else {
-        return std::ptr::null_mut();
-    };
-    let json = serde_json::json!({
-        "nth": nth,
-        "date_total": date_total,
-        "pos": pos,
-        "total": total,
-        "created": created,
-    })
-    .to_string();
-    match CString::new(json) {
-        Ok(cs) => cs.into_raw(),
-        Err(_) => std::ptr::null_mut(),
+pub extern "C" fn glaspen2_page_info_text(screen_id: i64, lang: *const c_char) -> *mut c_char {
+    let lang = unsafe { lang.as_ref() }
+        .and_then(|p| unsafe { CStr::from_ptr(p) }.to_str().ok())
+        .unwrap_or("zh");
+    match crate::pageinfo::page_info_text(screen_id, lang) {
+        Some(text) => CString::new(text)
+            .map(CString::into_raw)
+            .unwrap_or(std::ptr::null_mut()),
+        None => std::ptr::null_mut(),
     }
 }
 
