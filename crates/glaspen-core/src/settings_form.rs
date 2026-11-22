@@ -2023,7 +2023,74 @@ mod tests {
         assert_eq!(arr[arr.len() - 1]["id"], "shortcuts");
     }
 
-    // ── 9. 每个平台的表单可见项(与 registry 平台标记叠加) ──
+    // ── 9. uiConfig 集成: 表单元数据随 settings / settingsSections 下发 ──
+
+    #[test]
+    fn ui_config_exposes_form_metadata() {
+        for platform in [crate::ui::Platform::Macos, crate::ui::Platform::Windows] {
+            let label = format!("{platform:?}");
+            let cfg: serde_json::Value =
+                serde_json::from_str(&crate::ui::ui_config_json(platform)).expect("uiConfig JSON");
+            assert_eq!(
+                cfg["protocolVersion"],
+                crate::protocol::PROTOCOL_VERSION,
+                "{label}: 纯增量字段不应升协议版本"
+            );
+            let settings = cfg["settings"].as_array().expect("settings 数组");
+            assert_eq!(
+                settings.len(),
+                crate::settings::SETTINGS.len(),
+                "{label}: settings 条数变了"
+            );
+            for entry in settings {
+                let key = entry["key"].as_str().expect("settings 条目必须有 key");
+                let form = entry
+                    .get("form")
+                    .unwrap_or_else(|| panic!("{label}: {key} 缺 form 分类"));
+                if let Some(meta) = meta_for(key) {
+                    assert_eq!(form["labelId"], meta.label_id, "{label}: {key} labelId");
+                    assert_eq!(form["section"], meta.section, "{label}: {key} section");
+                    assert_eq!(form["order"], meta.order, "{label}: {key} order");
+                    assert_eq!(
+                        form["control"],
+                        meta.control.as_str(),
+                        "{label}: {key} control"
+                    );
+                } else {
+                    let non_form =
+                        non_form_meta(key).unwrap_or_else(|| panic!("{label}: {key} 没有任何分类"));
+                    assert_eq!(
+                        form["control"],
+                        non_form.control.as_str(),
+                        "{label}: {key} 分类"
+                    );
+                    assert!(
+                        form.get("section").is_none(),
+                        "{label}: {key} 非表单项不该有 section"
+                    );
+                }
+            }
+            let sections = cfg["settingsSections"]
+                .as_array()
+                .expect("settingsSections 数组");
+            assert_eq!(sections.len(), SECTIONS.len(), "{label}: 分区数");
+            for (i, s) in SECTIONS.iter().enumerate() {
+                assert_eq!(sections[i]["id"], s.id, "{label}: 第 {i} 个分区 id");
+                assert_eq!(sections[i]["labelId"], s.label_id);
+                assert_eq!(sections[i]["advanced"], s.advanced);
+                assert_eq!(sections[i]["order"], i as u64);
+            }
+            // 旧字段仍在(form 是追加的, 没有挤掉平台可用性标记)。
+            let flip = settings
+                .iter()
+                .find(|e| e["key"] == "flipEffect")
+                .expect("flipEffect 契约");
+            assert_eq!(flip["mac"], true);
+            assert_eq!(flip["win"], false);
+        }
+    }
+
+    // ── 10. 每个平台的表单可见项(与 registry 平台标记叠加) ──
 
     #[test]
     fn form_visibility_follows_platform_registry() {

@@ -313,6 +313,37 @@ fn modifier_row(platform: Platform) -> Value {
     })
 }
 
+/// 设置契约 + 表单控件元数据(uiConfig `settings`)。
+///
+/// D11a 起在原有登记表字段(键/落库键/类型/平台可用性)之外**追加** `form`:
+/// - 表单可见项 = `settings_form::meta_for(key).form_json()`(分区/顺序/l10n 键/
+///   控件/单位/范围/档位/features 门控/advanced);
+/// - 非表单项(implicit/readOnly/hidden)= `{"control": "<分类>"}`, 面板可据此
+///   跳过渲染(见 settings_form 模块文档的盘点)。
+///
+/// 纯增量: 旧字段一个不改、不升 protocolVersion(Dart 旧代码忽略未知字段),
+/// 面板仍是旧的手写表单; D11b 才让 Dart 按这份 metadata 渲染。
+fn settings_schema_with_form() -> Value {
+    let mut schema = crate::settings::schema_value();
+    for entry in schema
+        .as_array_mut()
+        .expect("settings schema 必须是数组")
+        .iter_mut()
+    {
+        let key = entry
+            .get("key")
+            .and_then(Value::as_str)
+            .expect("settings schema 条目必须有 key")
+            .to_string();
+        if let Some(meta) = crate::settings_form::meta_for(&key) {
+            entry["form"] = meta.form_json();
+        } else if let Some(non_form) = crate::settings_form::non_form_meta(&key) {
+            entry["form"] = json!({ "control": non_form.control.as_str() });
+        }
+    }
+    schema
+}
+
 /// 面板启动时拉取的一次性平台配置(JSON)。字段名即 Dart 侧 `_UiConfig` 的契约。
 pub fn ui_config_json(platform: Platform) -> String {
     let win = platform.is_windows();
@@ -352,8 +383,12 @@ pub fn ui_config_json(platform: Platform) -> String {
         // 面板 ↔ 后端协议版本(独立 exe 面板防新旧混跑; 见 core/protocol.rs)。
         "protocolVersion": crate::protocol::PROTOCOL_VERSION,
         "modifierRow": modifier_row(platform),
-        // 设置项契约(键/类型/落库键/平台可用性), 面板启动时据此自检后端是否漏项。
-        "settings": crate::settings::schema_value(),
+        // 设置项契约(键/类型/落库键/平台可用性 + D11a 表单元数据),
+        // 面板启动时据此自检后端是否漏项。
+        "settings": settings_schema_with_form(),
+        // 表单分区表(显示顺序/l10n 键/advanced), D11a 起随 settings[].form 一起下发;
+        // 纯增量字段, 旧面板忽略。D11b 让 Dart 按它生成设置页。
+        "settingsSections": crate::settings_form::sections_json(),
         // 面板按钮的可用性由后端声明, Flutter 不再按平台隐藏。
         // Windows 侧尚未接入的导出/OCR 一律显式置 false(UI 隐藏, 杜绝静默空壳)。
         "features": {
@@ -455,6 +490,7 @@ mod tests {
                 "modifierRow",
                 "features",
                 "settings",
+                "settingsSections",
                 "protocolVersion",
             ] {
                 assert!(v.get(key).is_some(), "{label} 缺字段 {key}");
@@ -511,6 +547,42 @@ mod tests {
                 .count(),
             crate::settings::keys_for(Platform::Windows).len()
         );
+
+        // D11a: 表单 metadata 随设置契约下发(纯增量, 旧字段仍在上面逐项断言)。
+        assert_eq!(
+            mac["settingsSections"].as_array().unwrap().len(),
+            crate::settings_form::SECTIONS.len()
+        );
+        for entry in mac["settings"].as_array().unwrap() {
+            assert!(entry.get("form").is_some(), "设置项缺 form 分类: {entry}");
+        }
+        let form_of = |v: &Value, key: &str| -> Value {
+            v["settings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["key"] == key)
+                .unwrap_or_else(|| panic!("设置契约缺 {key}"))["form"]
+                .clone()
+        };
+        assert_eq!(form_of(&mac, "color")["control"], "colorGrid");
+        assert_eq!(form_of(&mac, "invertFps")["unit"], "hz");
+        assert_eq!(
+            form_of(&mac, "flipEffect")["visibleWhenFeature"],
+            "pageFlipEffect"
+        );
+        assert_eq!(form_of(&mac, "shortcuts")["control"], "shortcuts");
+        // 非表单项只有分类(与 settings_form 的盘点一致)。
+        assert_eq!(form_of(&mac, "infiniteCanvas")["control"], "implicit");
+        assert_eq!(form_of(&mac, "chatHasPassword")["control"], "readOnly");
+        assert_eq!(form_of(&mac, "frostedGlass")["control"], "hidden");
+        assert_eq!(form_of(&mac, "ethereal")["control"], "hidden");
+        assert_eq!(mac["settingsSections"].as_array().unwrap()[0]["id"], "pen");
+        assert_eq!(
+            mac["settingsSections"].as_array().unwrap()[0]["advanced"],
+            false
+        );
+
         assert_eq!(mac["protocolVersion"], crate::protocol::PROTOCOL_VERSION);
         assert_eq!(win["protocolVersion"], crate::protocol::PROTOCOL_VERSION);
     }
