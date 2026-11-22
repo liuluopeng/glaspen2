@@ -22,6 +22,9 @@ pub fn runtime() -> &'static tokio::runtime::Runtime {
 // Module declarations
 // ---------------------------------------------------------------------------
 
+// 可配置动作的语义 effect 层(动作 id → 平台无关副作用, D3a)
+pub mod action_effect;
+
 // Cairo 渲染:唯一实现是 cairo_dl(动态加载 libcairo,源自 wAPItry 已验证原型)
 pub mod cairo_dl;
 pub mod chord;
