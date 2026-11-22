@@ -584,6 +584,24 @@ class _NamedPipeBridge extends SettingsBridge {
     }
 
     calloc.free(buf);
+
+    // 兜底: 服务端某帧若漏了换行符(历史 bug: 气泡/NAS 备份响应), 按行分帧
+    // 会永远等不到换行符, 请求 completer 只能超时 —— 表现是"一直转圈"。
+    // 这里在缓冲区恰好是一整个合法 JSON 对象时直接派发, 不再依赖换行。
+    if (_buffer.isNotEmpty) {
+      final line = utf8.decode(_buffer, allowMalformed: true);
+      if (line.startsWith('{') && line.endsWith('}')) {
+        try {
+          final decoded = jsonDecode(line);
+          if (decoded is Map) {
+            _buffer.clear();
+            _handleMessage(line);
+          }
+        } catch (_) {
+          // 半帧(还没收全)继续等下一个 chunk
+        }
+      }
+    }
   }
 
   void _handleMessage(String line) {

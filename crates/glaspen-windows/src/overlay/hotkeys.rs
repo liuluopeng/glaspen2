@@ -926,12 +926,12 @@ fn perform_action(state: &mut OverlayState, action: &str) {
             }
             apply_infinite_canvas(state, !infinite_on(), true);
         }
-        // 方向语义与 macOS 一致: 按键方向 = 视野移动方向(canvas_pan_by 内部
-        // pan -= d)。v0.6 之前 Windows 侧方向是反的, 这里一并对齐。
-        "canvas_pan_left" => pan_step(state, 1.0, 0.0),
-        "canvas_pan_right" => pan_step(state, -1.0, 0.0),
-        "canvas_pan_up" => pan_step(state, 0.0, 1.0),
-        "canvas_pan_down" => pan_step(state, 0.0, -1.0),
+        // 方向按用户直觉: 按左 = 画面内容向左移动(内容跟着键走), 上下同理。
+        // (2026-11: 用户反馈旧方向反直觉, WASD / 鼠标抓手 / 滚轮缩放统一取反。)
+        "canvas_pan_left" => pan_step(state, -1.0, 0.0),
+        "canvas_pan_right" => pan_step(state, 1.0, 0.0),
+        "canvas_pan_up" => pan_step(state, 0.0, -1.0),
+        "canvas_pan_down" => pan_step(state, 0.0, 1.0),
         "canvas_zoom_in" => zoom_step(state, 1.15),
         "canvas_zoom_out" => zoom_step(state, 1.0 / 1.15),
         "clear" => handle_command(state, CMD_CLEAR_SCREEN, usize::MAX),

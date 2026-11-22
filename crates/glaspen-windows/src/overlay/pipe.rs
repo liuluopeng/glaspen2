@@ -626,8 +626,10 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         // 气泡消息: 全部已完结消息 JSON(先惰性过期)。体量小(折线点列), 直接内嵌 JSON 回复
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
         let json = glaspen_core::export::bubbles::messages_json();
+        // 必须以 \n 结尾: 面板按行(\n)分帧解析, 少了换行这帧永远留在缓冲区,
+        // 请求 completer 只能等 15s 超时 —— 表现就是「气泡消息一直转圈」。
         let resp = format!(
-            "{{\"type\":\"getBubbles_response\",\"reqId\":{},\"data\":{}}}",
+            "{{\"type\":\"getBubbles_response\",\"reqId\":{},\"data\":{}}}\n",
             req_id, json
         );
         let _ = writer.write_all(resp.as_bytes());
@@ -636,7 +638,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
         glaspen_core::export::bubbles::flush_now();
         let resp = format!(
-            "{{\"type\":\"flushBubbles_response\",\"reqId\":{}}}",
+            "{{\"type\":\"flushBubbles_response\",\"reqId\":{}}}\n",
             req_id
         );
         let _ = writer.write_all(resp.as_bytes());
@@ -646,8 +648,9 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         // 失败原因在返回 JSON 里, 面板直接展示)
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
         let json = glaspen_core::export::nas_backup::backup_now();
+        // 同样要 \n 结尾(面板按行分帧), 否则 NAS 备份完成的响应也收不到。
         let resp = format!(
-            "{{\"type\":\"nasBackup_response\",\"reqId\":{},\"data\":{}}}",
+            "{{\"type\":\"nasBackup_response\",\"reqId\":{},\"data\":{}}}\n",
             req_id, json
         );
         let _ = writer.write_all(resp.as_bytes());

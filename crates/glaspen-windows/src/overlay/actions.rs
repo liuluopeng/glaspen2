@@ -670,7 +670,8 @@ fn canvas_apply_transform(state: &mut OverlayState) {
     }
 }
 
-/// 镜头平移(⌘⌃方向键同款:Ctrl+Alt+方向键)。书写中忽略(模型器坐标系不能中途跳变)
+/// 镜头平移(键盘镜头键/鼠标抓手共用; 方向由调用方按"直觉"取号)。书写中忽略
+/// (模型器坐标系不能中途跳变)
 fn canvas_pan_by(state: &mut OverlayState, dx: f64, dy: f64) {
     if state.in_stroke {
         return;

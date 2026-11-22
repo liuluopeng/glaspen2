@@ -158,10 +158,11 @@ unsafe fn handle_mouse_raw(buf: &[u64], state: &mut OverlayState) -> bool {
         if dx != 0.0 || dy != 0.0 {
             let (_, _, z) = cam();
             let z = if z > ZOOM_MIN { z } else { 1.0 };
-            // 内容跟随鼠标(macOS 同款): 向右拖 → 画布右移, 向下拖 → 画布下移。
-            // canvas_pan_by 内部 pan -= d, 所以两个轴都直接取正的屏幕位移。
-            state.camera_pending_dx += dx / z;
-            state.camera_pending_dy += dy / z;
+            // 方向按用户 2026-11 要求取反(与键盘镜头同一套取反): 鼠标向右拖 →
+            // 镜头向右移(画面内容向左)；canvas_pan_by 内部 pan -= d, 所以这里
+            // 传负的屏幕位移。
+            state.camera_pending_dx -= dx / z;
+            state.camera_pending_dy -= dy / z;
             if !state.camera_pan_timer {
                 state.camera_pan_timer = true;
                 let _ = SetTimer(
@@ -190,11 +191,9 @@ unsafe fn handle_mouse_raw(buf: &[u64], state: &mut OverlayState) -> bool {
     if delta == 0 || !camera_available(state) || !camera_mods_match() {
         return false;
     }
-    // 方向对齐 macOS 默认"自然滚动": macOS 的 scrollingDeltaY 已被系统按
-    // 自然滚动偏好反转, 其代码里 dy>0 → 放大 等价于"物理前滚 → 缩小"。
-    // Windows Raw Input 的 usButtonData 是物理方向(正=前滚, 无反转),
-    // 所以要取反: 前滚(正) → 缩小, 后滚(负) → 放大。
-    let factor = if delta < 0 { 1.1 } else { 1.0 / 1.1 };
+    // 滚轮方向按用户直觉(2026-11 要求取反): 前滚(正, 远离自己) → 放大,
+    // 后滚(负) → 缩小。
+    let factor = if delta > 0 { 1.1 } else { 1.0 / 1.1 };
     // 光标屏幕坐标(虚拟桌面) → 视图坐标(虚拟屏左上为原点)
     let mut pt = POINT::default();
     let _ = GetCursorPos(&mut pt);
