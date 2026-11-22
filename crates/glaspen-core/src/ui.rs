@@ -195,6 +195,12 @@ pub fn hold_hotkeys(platform: Platform) -> HoldHotkeys {
     }
 }
 
+/// 动作 id 列表(JSON 数组, 面板/壳按此顺序展示; macOS 壳解析用)。
+pub fn action_ids_json() -> String {
+    serde_json::to_string(&ACTIONS.iter().map(|a| a.id).collect::<Vec<_>>())
+        .unwrap_or_else(|_| "[]".to_string())
+}
+
 pub fn actions() -> &'static [ActionDef] {
     ACTIONS
 }

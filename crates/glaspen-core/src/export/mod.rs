@@ -1437,6 +1437,71 @@ pub extern "C" fn glaspen2_free_c_string(ptr: *mut c_char) {
     }
 }
 
+// ── chord 单源 FFI(D2): macOS 壳经此使用 core::chord; Windows 直接调 Rust ──
+
+unsafe fn borrow_cstr<'a>(p: *const c_char) -> Option<&'a str> {
+    if p.is_null() {
+        return None;
+    }
+    unsafe { CStr::from_ptr(p) }.to_str().ok()
+}
+
+fn return_c_string(s: String) -> *mut c_char {
+    match CString::new(s) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// 规范化 chord; null = 非法, 空串 = 未绑定。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_chord_normalize(raw: *const c_char) -> *mut c_char {
+    let Some(raw) = (unsafe { borrow_cstr(raw) }) else {
+        return std::ptr::null_mut();
+    };
+    match crate::chord::normalize(raw) {
+        Some(s) => return_c_string(s),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// 旧默认迁移; null = 无需迁移(保持原值)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_chord_migrate_value(
+    action: *const c_char,
+    raw: *const c_char,
+) -> *mut c_char {
+    let (Some(action), Some(raw)) = (unsafe { borrow_cstr(action) }, unsafe { borrow_cstr(raw) })
+    else {
+        return std::ptr::null_mut();
+    };
+    match crate::chord::migrate_value(crate::ui::Platform::Macos, action, raw) {
+        Some(s) => return_c_string(s),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// 该 chord 是否为 macOS 保留组合。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_chord_reserved(chord: *const c_char) -> c_int {
+    let Some(chord) = (unsafe { borrow_cstr(chord) }) else {
+        return 0;
+    };
+    crate::chord::is_reserved(crate::ui::Platform::Macos, chord) as c_int
+}
+
+/// 默认 chord 表(JSON 对象, action -> chord)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_chord_defaults_json() -> *mut c_char {
+    return_c_string(crate::chord::defaults_json(crate::ui::Platform::Macos))
+}
+
+/// 动作 id 列表(JSON 数组, 顺序 = 面板显示顺序)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_chord_actions_json() -> *mut c_char {
+    return_c_string(crate::ui::action_ids_json())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

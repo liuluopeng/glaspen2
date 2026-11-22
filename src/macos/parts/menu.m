@@ -666,45 +666,30 @@ static NSString *gl_string_setting(const char *key) {
 // 空串 = 该动作未绑定。按键名走物理位置(与布局无关), 与事件 tap 的
 // kVK_* keycode 一一对应。
 static NSArray<NSString *> *gl_shortcut_actions(void) {
-    return @[
-        @"undo", @"page_prev", @"page_next", @"color_swap", @"width_swap",
-        @"toggle_draw", @"toggle_free_canvas",
-        @"canvas_pan_left", @"canvas_pan_right", @"canvas_pan_up",
-        @"canvas_pan_down", @"canvas_zoom_in", @"canvas_zoom_out",
-        @"clear", @"export", @"copy_svg",
-        @"toggle_glass", @"toggle_ethereal", @"settings", @"quit",
-    ];
+    static NSArray<NSString *> *actions;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        char *json = glaspen2_chord_actions_json();
+        NSData *data = [NSData dataWithBytes:json length:strlen(json)];
+        id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        actions = [obj isKindOfClass:[NSArray class]] ? obj : @[];
+        glaspen2_free_c_string(json);
+    });
+    return actions;
 }
 
 static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) {
-    return @{
-        @"undo": @"cmd+ctrl+Z",
-        @"page_prev": @"cmd+ctrl+`",
-        @"page_next": @"cmd+ctrl+1",
-        // 默认只绑核心动作(含新增的彻底退出) + 自由涂鸦镜头 6 个键。
-        // 其余动作默认不绑(仍可在 设置 → 快捷键 里绑定): 新用户不被
-        // 一堆全局热键打扰, 也少占系统按键。
-        @"color_swap": @"",
-        @"width_swap": @"",
-        @"toggle_draw": @"cmd+ctrl+V",
-        @"toggle_free_canvas": @"",
-        // 左手镜头: 小指 ⌃ + 拇指 ⌥ + WASD/ZX。选冷门组合避开微信 ⌘⌃W
-        // 与常见 ⌥+字母; 注意 ⌃⌥ 也是 VoiceOver 修饰键(未开 VO 时无冲突)。
-        @"canvas_pan_left": @"ctrl+alt+A",
-        @"canvas_pan_right": @"ctrl+alt+D",
-        @"canvas_pan_up": @"ctrl+alt+W",
-        @"canvas_pan_down": @"ctrl+alt+S",
-        @"canvas_zoom_in": @"ctrl+alt+X",
-        @"canvas_zoom_out": @"ctrl+alt+Z",
-        @"clear": @"",
-        @"export": @"",
-        @"copy_svg": @"",
-        @"toggle_glass": @"",
-        @"toggle_ethereal": @"",
-        @"settings": @"cmd+ctrl+D",
-        // 彻底退出: ⌘⌃Q 是 macOS 系统锁屏(保留组合), 加 ⇧ 区分。
-        @"quit": @"cmd+ctrl+shift+Q",
-    };
+    // 默认键位单源在 core/ui.rs(经 FFI 下发, 与 Windows 同一张表)。
+    static NSDictionary<NSString *, NSString *> *defaults;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        char *json = glaspen2_chord_defaults_json();
+        NSData *data = [NSData dataWithBytes:json length:strlen(json)];
+        id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        defaults = [obj isKindOfClass:[NSDictionary class]] ? obj : @{};
+        glaspen2_free_c_string(json);
+    });
+    return defaults;
 }
 
 /// keycode → 规范按键名。只收录能当全局快捷键的键; 其它键录制时拒绝。
@@ -749,88 +734,21 @@ static NSDictionary<NSNumber *, NSString *> *gl_keycode_names(void) {
     return m;
 }
 
-static NSSet<NSString *> *gl_keyname_set(void) {
-    static NSSet *s;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        s = [NSSet setWithArray:gl_keycode_names().allValues];
-    });
+/// 规范化用户/存档 chord; 空串 = 未绑定; 非法返回 nil。
+static NSString *gl_normalize_chord(NSString *raw) {
+    // 规范化规则单源在 core/chord.rs(经 FFI, 与 Windows 同一实现)。
+    if (![raw isKindOfClass:[NSString class]]) return nil;
+    char *out = glaspen2_chord_normalize(raw.UTF8String);
+    if (!out) return nil;
+    NSString *s = [NSString stringWithUTF8String:out];
+    glaspen2_free_c_string(out);
     return s;
 }
 
-/// 规范按键名(大小写/别名容忍); 不支持返回 nil。
-static NSString *gl_normalize_key_token(NSString *token) {
-    NSString *t = [token stringByTrimmingCharactersInSet:
-                              [NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if (t.length == 0) return nil;
-    if (t.length == 1) {
-        NSString *up = [t uppercaseString];
-        if ([gl_keyname_set() containsObject:up]) return up;
-        if ([gl_keyname_set() containsObject:t]) return t;
-    }
-    for (NSString *cand in gl_keyname_set()) {
-        if ([cand caseInsensitiveCompare:t] == NSOrderedSame) return cand;
-    }
-    return nil;
-}
-
-/// 规范化用户/存档 chord; 空串 = 未绑定; 非法返回 nil。
-static NSString *gl_normalize_chord(NSString *raw) {
-    if (![raw isKindOfClass:[NSString class]]) return nil;
-    NSString *s = [raw stringByTrimmingCharactersInSet:
-                            [NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if (s.length == 0) return @"";
-    NSArray<NSString *> *parts = [s componentsSeparatedByString:@"+"];
-    if (parts.count < 2) return nil;
-    NSString *key = gl_normalize_key_token(parts.lastObject);
-    if (!key) return nil;
-    NSMutableSet<NSString *> *mods = [NSMutableSet set];
-    for (NSUInteger i = 0; i + 1 < parts.count; i++) {
-        NSString *m = [[parts[i] stringByTrimmingCharactersInSet:
-                                   [NSCharacterSet whitespaceAndNewlineCharacterSet]]
-            lowercaseString];
-        if ([m isEqualToString:@"cmd"] || [m isEqualToString:@"command"] ||
-            [m isEqualToString:@"meta"]) {
-            m = @"cmd";
-        } else if ([m isEqualToString:@"ctrl"] || [m isEqualToString:@"control"]) {
-            m = @"ctrl";
-        } else if ([m isEqualToString:@"alt"] || [m isEqualToString:@"option"] ||
-                   [m isEqualToString:@"opt"]) {
-            m = @"alt";
-        } else if ([m isEqualToString:@"shift"]) {
-            m = @"shift";
-        } else {
-            return nil;
-        }
-        if ([mods containsObject:m]) return nil;
-        [mods addObject:m];
-    }
-    // 只按 ⌘ 或 ⇧ 的全局键太容易和系统/菜单冲突; 录制端也按这条规则拦。
-    if (![mods containsObject:@"ctrl"] && ![mods containsObject:@"alt"]) return nil;
-    NSMutableArray<NSString *> *out = [NSMutableArray array];
-    for (NSString *m in @[ @"cmd", @"ctrl", @"alt", @"shift" ]) {
-        if ([mods containsObject:m]) [out addObject:m];
-    }
-    [out addObject:key];
-    return [out componentsJoinedByString:@"+"];
-}
-
 /// 保留组合: 按住类功能、系统锁屏、常用 App 默认不能被普通动作占用。
+/// 列表单源在 core/ui.rs(经 FFI), 不再在 ObjC 里维护第二份。
 static BOOL gl_shortcut_reserved(NSString *chord) {
-    static NSSet *r;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        r = [NSSet setWithArray:@[
-            @"cmd+ctrl+Q", // macOS 锁屏
-            @"cmd+ctrl+R", // 按住录 GIF
-            @"cmd+ctrl+2", // 按住手写草稿
-            @"cmd+ctrl+3", // 按住手写消息
-            @"cmd+ctrl+W", // 微信 显示/隐藏主面板
-            @"cmd+ctrl+A", // 微信 截图
-            @"cmd+ctrl+F", // macOS 全屏
-        ]];
-    });
-    return [r containsObject:chord];
+    return glaspen2_chord_reserved(chord.UTF8String) != 0;
 }
 
 static NSMutableDictionary<NSString *, NSString *> *g_shortcut_values;
@@ -857,44 +775,15 @@ static NSUInteger gl_shortcut_modifier_mask_for(NSString *action) {
 static BOOL g_hotkey_recording = NO;
 static NSUInteger g_hotkey_recording_gen = 0;
 
-/// 旧默认值迁移表: 只迁移"仍等于旧默认"的存档, 用户自定义组合不动。
-/// 镜头从 ⌥⌘方向键/PgUp/PgDn 改为左手 ⌥WASD/ZX; 宽度的旧默认
-/// ⌘⌃W 与微信显示/隐藏冲突, 改为 ⌘⌃T。
-static NSArray<NSString *> *gl_shortcut_legacy_defaults(NSString *action) {
-    if ([action isEqualToString:@"width_swap"]) {
-        return @[ @"cmd+ctrl+W" ];
-    }
-    if ([action isEqualToString:@"canvas_pan_left"]) {
-        return @[ @"cmd+alt+Left", @"cmd+ctrl+Left", @"alt+A" ];
-    }
-    if ([action isEqualToString:@"canvas_pan_right"]) {
-        return @[ @"cmd+alt+Right", @"cmd+ctrl+Right", @"alt+D" ];
-    }
-    if ([action isEqualToString:@"canvas_pan_up"]) {
-        return @[ @"cmd+alt+Up", @"cmd+ctrl+Up", @"alt+W" ];
-    }
-    if ([action isEqualToString:@"canvas_pan_down"]) {
-        return @[ @"cmd+alt+Down", @"cmd+ctrl+Down", @"alt+S" ];
-    }
-    if ([action isEqualToString:@"canvas_zoom_in"]) {
-        return @[ @"cmd+alt+PageUp", @"cmd+ctrl+PageUp", @"alt+X" ];
-    }
-    if ([action isEqualToString:@"canvas_zoom_out"]) {
-        return @[ @"cmd+alt+PageDown", @"cmd+ctrl+PageDown", @"alt+Z" ];
-    }
-    return nil;
-}
-
+/// 旧默认迁移单源在 core/chord.rs(D2): 历史默认表 + "只迁仍等于旧默认的项"。
 static id gl_shortcut_migrate_saved(NSString *action, id raw) {
     if (![raw isKindOfClass:[NSString class]]) return raw;
-    NSArray<NSString *> *legacy = gl_shortcut_legacy_defaults(action);
-    if (!legacy) return raw;
-    NSString *norm = gl_normalize_chord(raw);
-    if (!norm || ![legacy containsObject:norm]) return raw;
-    // 宽度动作的新默认已改为"不绑定", 但老用户明确用过的宽度热键
-    // 迁到 ⌘⌃T 而不是直接丢掉; 镜头动作的目标就是当前默认值。
-    if ([action isEqualToString:@"width_swap"]) return @"cmd+ctrl+T";
-    return gl_shortcut_defaults()[action];
+    char *migrated = glaspen2_chord_migrate_value(action.UTF8String,
+                                                  [(NSString *)raw UTF8String]);
+    if (!migrated) return raw;
+    NSString *s = [NSString stringWithUTF8String:migrated];
+    glaspen2_free_c_string(migrated);
+    return s ?: raw;
 }
 
 static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved) {

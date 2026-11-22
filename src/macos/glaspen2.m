@@ -127,6 +127,12 @@ extern void glaspen2_free_rust_bytes(unsigned char *ptr, int len);
 extern void glaspen2_notify_settings_changed(void);
 extern int glaspen2_delete_screen(long long screen_id);
 extern char* glaspen2_page_info_text(long long screen_id, const char *lang);
+// chord 单源(core/chord.rs, D2): 动作表/默认值/规范化/保留/旧默认迁移
+extern char* glaspen2_chord_actions_json(void);
+extern char* glaspen2_chord_defaults_json(void);
+extern char* glaspen2_chord_normalize(const char *raw);
+extern char* glaspen2_chord_migrate_value(const char *action, const char *raw);
+extern int glaspen2_chord_reserved(const char *chord);
 extern int glaspen2_chat_send_strokes(int start_index, int end_index);
 // 手写消息草稿通道(⌘⌃2):开启/关闭 DraftInk gRPC 流,实现见 export.rs
 extern int glaspen2_ink_draft_start(int canvas_w, int canvas_h);

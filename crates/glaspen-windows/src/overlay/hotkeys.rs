@@ -66,71 +66,10 @@ const HOTKEY_ID_SEND: i32 = 18;
 const SHORTCUTS_DEFAULTS_VERSION_KEY: &str = "shortcuts_defaults_v";
 const SHORTCUTS_DEFAULTS_VERSION: i32 = 8;
 
-/// 能当全局热键的按键名(与 macOS gl_keycode_names / Dart _hidKeyNames 对齐)。
-/// 只收录用来当快捷键的键; 面板录制端也用同一张表(经 Dart 侧映射)。
-const KEY_NAMES: [&str; 73] = [
-    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
-    "T", "U", "V", "W", "X", "Y", "Z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "-", "=",
-    "[", "]", "\\", ";", "'", "`", ",", ".", "/", "Left", "Right", "Up", "Down", "PageUp",
-    "PageDown", "Home", "End", "Delete", "Backspace", "Return", "Escape", "Tab", "Space", "F1",
-    "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
-];
-
-/// 规范化按键名(大小写/别名容忍); 不支持返回 None。
-fn normalize_key_token(token: &str) -> Option<String> {
-    let t = token.trim();
-    if t.is_empty() {
-        return None;
-    }
-    let up = t.to_ascii_uppercase();
-    if KEY_NAMES.contains(&up.as_str()) {
-        return Some(up);
-    }
-    KEY_NAMES
-        .iter()
-        .find(|k| k.eq_ignore_ascii_case(t))
-        .map(|k| (*k).to_string())
-}
-
-/// 规范化 chord(与 macOS gl_normalize_chord 同规则):
+/// 规范化 chord: 规则/按键名表/错误分支的唯一实现在 `glaspen_core::chord`(D2)。
 /// 空串 = 未绑定; 合法返回固定顺序 cmd→ctrl→alt→shift→Key; 非法返回 None。
 fn normalize_chord(raw: &str) -> Option<String> {
-    let s = raw.trim();
-    if s.is_empty() {
-        return Some(String::new());
-    }
-    let parts: Vec<&str> = s.split('+').map(str::trim).collect();
-    if parts.len() < 2 {
-        return None;
-    }
-    let key = normalize_key_token(parts.last()?)?;
-    let mut seen: Vec<&str> = Vec::new();
-    for m in &parts[..parts.len() - 1] {
-        let m = m.to_ascii_lowercase();
-        let canonical = match m.as_str() {
-            "cmd" | "command" | "meta" | "win" => "cmd",
-            "ctrl" | "control" => "ctrl",
-            "alt" | "option" | "opt" => "alt",
-            "shift" => "shift",
-            _ => return None,
-        };
-        if seen.contains(&canonical) {
-            return None; // 重复修饰键
-        }
-        seen.push(canonical);
-    }
-    // 只按住 Win/Shift 的全局键太容易和系统/菜单冲突; 录制端也按这条拦。
-    if !seen.contains(&"ctrl") && !seen.contains(&"alt") {
-        return None;
-    }
-    let mut out: Vec<&str> = Vec::new();
-    for m in ["cmd", "ctrl", "alt", "shift"] {
-        if seen.contains(&m) {
-            out.push(m);
-        }
-    }
-    out.push(&key);
-    Some(out.join("+"))
+    glaspen_core::chord::normalize(raw)
 }
 
 /// 按键名 → Win32 虚拟键码(RegisterHotKey 用)。字母/数字用 ASCII 惯用值,
@@ -257,87 +196,16 @@ fn force_bound(action: &str) -> bool {
 ///   v3: 字母与 macOS 完全一致 —— 核心 Ctrl+Alt+同字母, 镜头整套 Ctrl+Alt+Shift;
 ///   v4: 镜头 Win+Alt+WASD/XZ, 其余动作全部补上 Ctrl+Alt 字母默认。
 ///
-/// 注意: v1~v3 里这些开关动作默认是"空串(未绑定)", v4 起有默认值 ——
-/// 空串无法区分"旧默认"与"用户手动解绑", 一律按旧默认迁移一次(只迁一次)。
-fn legacy_default_target(action: &str, chord: &str) -> Option<&'static str> {
-    match action {
-        // 镜头: v1 方向键/PgUp·PgDn / v2 Ctrl+Alt+字母 / v3 Ctrl+Alt+Shift+字母
-        // → v4 Win+Alt+字母
-        // 注意: v4 的"半套降级"会把个别镜头值写成 alt+shift+字母; 一律归一回
-        // cmd+alt, 让启动注册时按"整套有无占用"重新决定(保证修饰键一致)。
-        "canvas_pan_left" => match chord {
-            "ctrl+alt+Left" | "ctrl+alt+A" | "ctrl+alt+shift+A" | "alt+shift+A" => {
-                Some("cmd+alt+A")
-            }
-            _ => None,
-        },
-        "canvas_pan_right" => match chord {
-            "ctrl+alt+Right" | "ctrl+alt+D" | "ctrl+alt+shift+D" | "alt+shift+D" => {
-                Some("cmd+alt+D")
-            }
-            _ => None,
-        },
-        "canvas_pan_up" => match chord {
-            "ctrl+alt+Up" | "ctrl+alt+W" | "ctrl+alt+shift+W" | "alt+shift+W" => {
-                Some("cmd+alt+W")
-            }
-            _ => None,
-        },
-        "canvas_pan_down" => match chord {
-            "ctrl+alt+Down" | "ctrl+alt+S" | "ctrl+alt+shift+S" | "alt+shift+S" => {
-                Some("cmd+alt+S")
-            }
-            _ => None,
-        },
-        "canvas_zoom_in" => match chord {
-            "ctrl+alt+PageUp" | "ctrl+alt+X" | "ctrl+alt+shift+X" | "alt+shift+X" => {
-                Some("cmd+alt+X")
-            }
-            _ => None,
-        },
-        "canvas_zoom_out" => match chord {
-            "ctrl+alt+PageDown" | "ctrl+alt+shift+Z" | "alt+shift+Z" => Some("cmd+alt+Z"),
-            _ => None,
-        },
-        // v2 的设置是 ⇧D; v3/v4 回到 D
-        "settings" => match chord {
-            "ctrl+alt+shift+D" => Some("ctrl+alt+D"),
-            _ => None,
-        },
-        // v1 的退出默认没有 Shift
-        "quit" => match chord {
-            "ctrl+alt+Q" => Some("ctrl+alt+shift+Q"),
-            _ => None,
-        },
-        // v4 起这些动作默认也有键(旧版本默认未绑定 = 空串)
-        "color_swap" => (chord.is_empty()).then_some("ctrl+alt+shift+C"),
-        // v8: 换粗细回到 2 修饰键 Ctrl+Alt+T; 旧默认(空/⇧W/⇧T)一并迁过去
-        "width_swap" => match chord {
-            "" | "ctrl+alt+shift+W" | "ctrl+alt+shift+T" => Some("ctrl+alt+T"),
-            _ => None,
-        },
-        "toggle_free_canvas" => (chord.is_empty()).then_some("ctrl+alt+I"),
-        "clear" => (chord.is_empty()).then_some("ctrl+alt+C"),
-        "export" => (chord.is_empty()).then_some("ctrl+alt+G"),
-        "copy_svg" => (chord.is_empty()).then_some("ctrl+alt+S"),
-        "toggle_glass" => (chord.is_empty()).then_some("ctrl+alt+B"),
-        "toggle_ethereal" => (chord.is_empty()).then_some("ctrl+alt+X"),
-        _ => None,
-    }
-}
-
 /// 对整张存档表做旧默认迁移, 返回迁移条数(启动时调用一次, 见 init)。
+/// 历史默认表与"只迁仍等于旧默认的项"规则单源在 `core::chord`(D2)。
 fn migrate_legacy_defaults(saved: &mut HashMap<String, String>) -> usize {
     let mut changed = 0;
     for (action, raw) in saved.iter_mut() {
-        let Some(old) = normalize_chord(raw) else {
+        let Some(new) = glaspen_core::chord::migrate_value(UI_PLATFORM, action, raw) else {
             continue;
         };
-        let Some(new) = legacy_default_target(action, &old) else {
-            continue;
-        };
-        tracing::info!("[hotkey] 旧默认 {action}={old} 迁移为 {new}");
-        *raw = new.to_string();
+        tracing::info!("[hotkey] 旧默认 {action}={raw} 迁移为 {new}");
+        *raw = new;
         changed += 1;
     }
     changed

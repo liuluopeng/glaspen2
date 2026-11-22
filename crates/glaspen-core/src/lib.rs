@@ -24,6 +24,7 @@ pub fn runtime() -> &'static tokio::runtime::Runtime {
 
 // Cairo 渲染:唯一实现是 cairo_dl(动态加载 libcairo,源自 wAPItry 已验证原型)
 pub mod cairo_dl;
+pub mod chord;
 
 pub mod db;
 pub mod device;
