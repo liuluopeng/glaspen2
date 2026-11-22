@@ -386,9 +386,13 @@ pub fn ui_config_json(platform: Platform) -> String {
         // 设置项契约(键/类型/落库键/平台可用性 + D11a 表单元数据),
         // 面板启动时据此自检后端是否漏项。
         "settings": settings_schema_with_form(),
-        // 表单分区表(显示顺序/l10n 键/advanced), D11a 起随 settings[].form 一起下发;
-        // 纯增量字段, 旧面板忽略。D11b 让 Dart 按它生成设置页。
-        "settingsSections": crate::settings_form::sections_json(),
+        // 表单分区表(显示顺序/l10n 键/advanced/整节条件), D11a 起随
+        // settings[].form 一起下发; 纯增量字段, 旧面板忽略。D11b 让 Dart 按它
+        // 生成设置页(标题 l10n 键已按平台选好, Flutter 不做平台分支)。
+        "settingsSections": crate::settings_form::sections_json(platform),
+        // 分区内**非设置项**的自定义区块(命令按钮/登录/关于/快捷键编辑器):
+        // core 只定位(分区/顺序/条件), 控件由 Dart 按稳定 id 手写。
+        "settingsBlocks": crate::settings_form::blocks_json(),
         // 面板按钮的可用性由后端声明, Flutter 不再按平台隐藏。
         // Windows 侧尚未接入的导出/OCR 一律显式置 false(UI 隐藏, 杜绝静默空壳)。
         "features": {
@@ -491,6 +495,7 @@ mod tests {
                 "features",
                 "settings",
                 "settingsSections",
+                "settingsBlocks",
                 "protocolVersion",
             ] {
                 assert!(v.get(key).is_some(), "{label} 缺字段 {key}");
@@ -572,6 +577,77 @@ mod tests {
             "pageFlipEffect"
         );
         assert_eq!(form_of(&mac, "shortcuts")["control"], "shortcuts");
+        // D11b 第一步: 条件显示/可用与布局提示随 form 下发。
+        assert_eq!(
+            form_of(&mac, "bubbleReplaySpeed")["visibleWhenSetting"],
+            json!({"key": "showBubbleTab", "equals": true})
+        );
+        assert_eq!(
+            form_of(&mac, "bubbleReplaySpeed")["layout"],
+            "inlineSegmented"
+        );
+        assert_eq!(form_of(&mac, "bubbleReplaySpeed")["indented"], true);
+        assert_eq!(
+            form_of(&mac, "panelTransparent")["enabledWhenSetting"],
+            json!({"key": "notebookStyle", "equals": true})
+        );
+        assert_eq!(form_of(&mac, "gifFps")["layout"], "chips");
+        assert_eq!(form_of(&mac, "language")["showLabel"], false);
+        assert_eq!(
+            form_of(&mac, "invertFps")["descriptionId"],
+            "invertTrackingFpsCap"
+        );
+        assert_eq!(form_of(&mac, "chatApiBase")["hintId"], "eGHttps192");
+        // 整节条件: sharedCanvas 只在 chatIntegration 打开时出现。
+        let sections = mac["settingsSections"].as_array().unwrap();
+        let shared = sections
+            .iter()
+            .find(|s| s["id"] == "sharedCanvas")
+            .expect("sharedCanvas 分区");
+        assert_eq!(
+            shared["visibleWhenSetting"],
+            json!({"key": "chatIntegration", "equals": true})
+        );
+        // 快捷键分区标题按平台选 ARB 键(core 决定, Flutter 不做平台分支)。
+        let shortcut_label = |v: &Value| -> String {
+            v["settingsSections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["id"] == "shortcuts")
+                .expect("shortcuts 分区")["labelId"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(shortcut_label(&mac), "hotkeys");
+        assert_eq!(shortcut_label(&win), "hotkeysCtrlAlt");
+        // 自定义区块: 分区/顺序/条件, 由 Dart 按 id 渲染。
+        let blocks = mac["settingsBlocks"]
+            .as_array()
+            .expect("settingsBlocks 数组");
+        assert_eq!(
+            blocks.len(),
+            crate::settings_form::CUSTOM_BLOCKS.len(),
+            "自定义区块数"
+        );
+        let login = blocks
+            .iter()
+            .find(|b| b["id"] == "loginActions")
+            .expect("登录自定义区块");
+        assert_eq!(login["section"], "doodleIdentity");
+        assert_eq!(login["order"], 3);
+        assert_eq!(
+            login["visibleWhenSetting"],
+            json!({"key": "chatIntegration", "equals": true})
+        );
+        assert!(blocks.iter().any(|b| b["id"] == "about"));
+        assert!(
+            blocks.iter().all(|b| crate::settings_form::SECTIONS
+                .iter()
+                .any(|s| Some(s.id) == b["section"].as_str())),
+            "自定义区块的分区必须存在"
+        );
         // 非表单项只有分类(与 settings_form 的盘点一致)。
         assert_eq!(form_of(&mac, "infiniteCanvas")["control"], "implicit");
         assert_eq!(form_of(&mac, "chatHasPassword")["control"], "readOnly");
