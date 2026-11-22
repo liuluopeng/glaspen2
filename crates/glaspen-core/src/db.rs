@@ -3592,6 +3592,27 @@ mod tests {
             assert!(keys.contains(&"glass_enabled".to_string()));
             assert!(!keys.contains(&"frostedGlass".to_string()));
 
+            // D1: core 统一落库按面板键写规范 snake 键; 两端启动恢复读取的是
+            // snake 字面量(如 "grid_size"), 必须能读到, 否则重启丢设置。
+            for (panel_key, restore_key, value) in [
+                ("gridSize", "grid_size", "40"),
+                ("gifFps", "gif_fps", "15"),
+                ("chatApiBase", "chat_api_base", "http://127.0.0.1:1"),
+                ("showFreeCanvas", "show_free_canvas", "1"),
+            ] {
+                save_setting_with(&pool, panel_key, value).await;
+                assert_eq!(
+                    load_setting_with(&pool, restore_key).await.as_deref(),
+                    Some(value),
+                    "面板键 {panel_key} 落库后, 恢复路径读 {restore_key} 应拿到同一个值"
+                );
+                assert_eq!(
+                    load_setting_with(&pool, panel_key).await.as_deref(),
+                    Some(value),
+                    "面板键 {panel_key} 本身也应可读(协议层兼容)"
+                );
+            }
+
             // 模拟 0.5.x Windows 旧库: 只有别名行; 启动迁移后并入规范键
             sqlx::query(
                 "INSERT OR REPLACE INTO user_settings (key, value) VALUES ('invertInk', '1')",

@@ -66,34 +66,39 @@ pub struct SettingDef {
 }
 
 /// 唯一登记表(按 key 排序, 方便 diff)。
+///
+/// `db_key` 是两端口径一致的 `user_settings` 行键, 必须是 snake_case 规范键
+/// (两端启动恢复/快照读取用的就是这些字面量, 如 mac `grid_size` / Windows
+/// `gif_fps`)。core 落库(`settings_apply::apply_to_db`)与 db 的旧别名迁移都
+/// 以它为准;camelCase 面板键只在协议层使用, 由 `canonical_db_key` 映射过来。
 pub const SETTINGS: &[SettingDef] = &[
     SettingDef {
         key: "bubbleAutoNewPage",
-        db_key: "bubbleAutoNewPage",
+        db_key: "bubble_auto_new_page",
         kind: Kind::Bool,
         platforms: BOTH,
     },
     SettingDef {
         key: "bubbleReplayAuto",
-        db_key: "bubbleReplayAuto",
+        db_key: "bubble_replay_auto",
         kind: Kind::Bool,
         platforms: BOTH,
     },
     SettingDef {
         key: "bubbleReplayHoldLast",
-        db_key: "bubbleReplayHoldLast",
+        db_key: "bubble_replay_hold_last",
         kind: Kind::Bool,
         platforms: BOTH,
     },
     SettingDef {
         key: "bubbleReplaySpeed",
-        db_key: "bubbleReplaySpeed",
+        db_key: "bubble_replay_speed",
         kind: Kind::Int,
         platforms: BOTH,
     },
     SettingDef {
         key: "chatApiBase",
-        db_key: "chatApiBase",
+        db_key: "chat_api_base",
         kind: Kind::Str,
         platforms: BOTH,
     },
@@ -105,13 +110,13 @@ pub const SETTINGS: &[SettingDef] = &[
     },
     SettingDef {
         key: "chatIntegration",
-        db_key: "chatIntegration",
+        db_key: "chat_integration",
         kind: Kind::Bool,
         platforms: BOTH,
     },
     SettingDef {
         key: "chatUser",
-        db_key: "chatUser",
+        db_key: "chat_user",
         kind: Kind::Str,
         platforms: BOTH,
     },
@@ -131,7 +136,7 @@ pub const SETTINGS: &[SettingDef] = &[
     // 翻页动效: 只有 macOS 有时光隧道实现; Windows 面板隐藏(故意空缺)。
     SettingDef {
         key: "flipEffect",
-        db_key: "flipEffect",
+        db_key: "flip_effect",
         kind: Kind::Int,
         platforms: MAC,
     },
@@ -143,25 +148,25 @@ pub const SETTINGS: &[SettingDef] = &[
     },
     SettingDef {
         key: "gifEndMode",
-        db_key: "gifEndMode",
+        db_key: "gif_end_mode",
         kind: Kind::Int,
         platforms: BOTH,
     },
     SettingDef {
         key: "gifFps",
-        db_key: "gifFps",
+        db_key: "gif_fps",
         kind: Kind::Int,
         platforms: BOTH,
     },
     SettingDef {
         key: "gifResolution",
-        db_key: "gifResolution",
+        db_key: "gif_resolution",
         kind: Kind::Float,
         platforms: BOTH,
     },
     SettingDef {
         key: "gifSpeed",
-        db_key: "gifSpeed",
+        db_key: "gif_speed",
         kind: Kind::Float,
         platforms: BOTH,
     },
@@ -179,7 +184,7 @@ pub const SETTINGS: &[SettingDef] = &[
     },
     SettingDef {
         key: "gridDivider",
-        db_key: "gridDivider",
+        db_key: "grid_divider",
         kind: Kind::Int,
         platforms: BOTH,
     },
@@ -191,13 +196,13 @@ pub const SETTINGS: &[SettingDef] = &[
     },
     SettingDef {
         key: "gridSize",
-        db_key: "gridSize",
+        db_key: "grid_size",
         kind: Kind::Float,
         platforms: BOTH,
     },
     SettingDef {
         key: "infiniteCanvas",
-        db_key: "infiniteCanvas",
+        db_key: "infinite_canvas",
         kind: Kind::Bool,
         platforms: BOTH,
     },
@@ -221,7 +226,7 @@ pub const SETTINGS: &[SettingDef] = &[
     },
     SettingDef {
         key: "launchAtLogin",
-        db_key: "launchAtLogin",
+        db_key: "launch_at_login",
         kind: Kind::Bool,
         platforms: BOTH,
     },
@@ -233,7 +238,7 @@ pub const SETTINGS: &[SettingDef] = &[
     },
     SettingDef {
         key: "nasUrl",
-        db_key: "nasUrl",
+        db_key: "nas_url",
         kind: Kind::Str,
         platforms: BOTH,
     },
@@ -263,7 +268,7 @@ pub const SETTINGS: &[SettingDef] = &[
     },
     SettingDef {
         key: "shareCanvas",
-        db_key: "shareCanvas",
+        db_key: "share_ink",
         kind: Kind::Bool,
         platforms: BOTH,
     },
@@ -275,13 +280,13 @@ pub const SETTINGS: &[SettingDef] = &[
     },
     SettingDef {
         key: "showBubbleTab",
-        db_key: "showBubbleTab",
+        db_key: "show_bubble_tab",
         kind: Kind::Bool,
         platforms: BOTH,
     },
     SettingDef {
         key: "showFreeCanvas",
-        db_key: "showFreeCanvas",
+        db_key: "show_free_canvas",
         kind: Kind::Bool,
         platforms: BOTH,
     },
@@ -534,12 +539,16 @@ mod tests {
         );
     }
 
-    // ── D1a: setSetting apply 分支覆盖闸门 ──
+    // ── D1a: setSetting effect 覆盖闸门 ──
     //
-    // 设置项 key/类型/平台可用性已单源(E3), 但"改设置时到底做什么"仍由两端
-    // 各写一份 switch。完整 effect 单源是 D1b;在那之前, 这里先锁住最低要求:
-    // **每个"可设置且该平台可用"的 key, 两端的 setSetting 都必须有分支**,
-    // 否则就是"macOS 定义了、Windows 没实现"的温床(反之亦然)。
+    // D1 之后两端 setSetting 不再按键名分支: core `effect_for` 产出
+    // SettingEffect, macOS ObjC 按 effect JSON 的 kind 字符串分派, Windows
+    // 直接 `match SettingEffect` 变体执行。本闸门防止漂移:
+    // **每个"可设置且该平台可用"的 key 生成的 effect 变体, 必须在该平台
+    //   adapter 的 apply 函数体里出现**(特殊键 chatPassword/hotkeyRecording
+    //   不在登记表, 单独纳管)。任一端漏执行/重构成 catch-all 即红。
+    //
+    // Windows 侧 match 穷举由编译器兜底, 这里额外防"改成 `_ => {{}}`".
 
     fn brace_body(src: &str, at: usize) -> Option<&str> {
         let open = at + src[at..].find('{')?;
@@ -559,79 +568,86 @@ mod tests {
         None
     }
 
-    fn quoted_after(body: &str, needle: &str) -> Vec<String> {
-        let mut out = Vec::new();
-        let mut rest = body;
-        while let Some(i) = rest.find(needle) {
-            let tail = &rest[i + needle.len()..];
-            match tail.find('"') {
-                Some(end) => {
-                    out.push(tail[..end].to_string());
-                    rest = &tail[end..];
-                }
-                None => break,
-            }
-        }
-        out
+    /// macOS setSetting 函数体(menu.m 里的定义, 不是 glaspen2.m 的 extern 声明)。
+    fn mac_apply_body(src: &str) -> &str {
+        let at = src
+            .find("void glaspen2_macos_set_setting(")
+            .expect("menu.m 缺 glaspen2_macos_set_setting 定义");
+        brace_body(src, at).expect("gl_set_setting 函数体不完整")
     }
 
-    fn mac_apply_keys(src: &str) -> Vec<String> {
-        let mut best = Vec::new();
-        let mut idx = 0;
-        while let Some(p) = src[idx..].find("glaspen2_macos_set_setting") {
-            let abs = idx + p;
-            if let Some(body) = brace_body(src, abs) {
-                let keys = quoted_after(body, "isEqualToString:@\"");
-                if keys.len() > best.len() {
-                    best = keys;
-                }
-            }
-            idx = abs + 1;
-        }
-        best
-    }
-
-    fn windows_apply_keys(src: &str) -> Vec<String> {
+    /// Windows 管道 setSetting 分支体。
+    fn windows_apply_body(src: &str) -> &str {
         let needle = "msg_type == \"setSetting\"";
         let at = src.find(needle).expect("Windows 管道缺 setSetting 分支");
-        let body = brace_body(src, at).expect("setSetting 分支体不完整");
-        quoted_after(body, "key == \"")
+        brace_body(src, at).expect("setSetting 分支体不完整")
     }
 
     #[test]
-    fn apply_dispatch_covers_every_settable_key() {
+    fn apply_dispatch_covers_every_effect_variant() {
         let mac_src = include_str!("../../../src/macos/parts/menu.m");
         let win_src = include_str!("../../../crates/glaspen-windows/src/overlay/pipe.rs");
-        let mac: std::collections::HashSet<String> = mac_apply_keys(mac_src).into_iter().collect();
-        let win: std::collections::HashSet<String> =
-            windows_apply_keys(win_src).into_iter().collect();
-        assert!(
-            mac.len() >= 30,
-            "macOS setSetting 分支解析异常: {}",
-            mac.len()
-        );
-        assert!(
-            win.len() >= 30,
-            "Windows setSetting 分支解析异常: {}",
-            win.len()
-        );
+        let mac_body = mac_apply_body(mac_src);
+        let win_body = windows_apply_body(win_src);
 
-        for (label, mac_platform, branches) in [("macOS", true, &mac), ("Windows", false, &win)] {
-            let missing: Vec<&str> = SETTINGS
-                .iter()
-                .filter(|s| {
-                    let available = if mac_platform {
-                        s.platforms.mac
-                    } else {
-                        s.platforms.win
-                    };
-                    available && is_settable(s.key) && !branches.contains(s.key)
-                })
-                .map(|s| s.key)
-                .collect();
+        // (平台, 适配器函数体, 变体名前的锚, 变体名后的锚)
+        let cases = [
+            ("macOS", true, mac_body, "isEqualToString:@\"", "\""),
+            ("Windows", false, win_body, "SettingEffect::", "("),
+        ];
+        for (label, mac_platform, body, prefix, suffix) in cases {
+            let mut expected = 0usize;
+            let mut missing = Vec::new();
+            for def in SETTINGS.iter().filter(|s| is_settable(s.key)) {
+                let available = if mac_platform {
+                    def.platforms.mac
+                } else {
+                    def.platforms.win
+                };
+                if !available {
+                    continue; // 该平台没有这个设置项(宁可空缺, 不写半实现)
+                }
+                let effect = crate::settings_apply::effect_for(
+                    def.key,
+                    &crate::settings_apply::sample_value(def.key),
+                )
+                .unwrap_or_else(|e| panic!("{}: {e}", def.key));
+                let variant = effect.variant_name();
+                if !body.contains(&format!("{prefix}{variant}{suffix}")) {
+                    missing.push(format!("{} ({variant})", def.key));
+                }
+                expected += 1;
+            }
+            // 特殊键:不在登记表, 但两端 setSetting 都必须处理。
+            for variant in ["ChatPassword", "HotkeyRecording"] {
+                if !body.contains(&format!("{prefix}{variant}{suffix}")) {
+                    missing.push(format!("(特殊键 {variant})"));
+                }
+                expected += 1;
+            }
+            assert!(
+                expected >= 30,
+                "{label} 覆盖检查异常: 只期望了 {expected} 个 effect(登记表被改坏?)"
+            );
             assert!(
                 missing.is_empty(),
-                "{label} 的 setSetting 缺少这些可设置项的分支(另一平台已定义): {missing:?}"
+                "{label} 的 setSetting 没有执行这些 effect(另一平台/登记表已定义): {missing:?}"
+            );
+        }
+    }
+
+    /// 落库键必须是 snake_case 规范键: D1 前这里有一批 camelCase 值, core 统一
+    /// 落库时会写出一行两端恢复路径都不读的“孤儿设置”(表现为重启丢设置)。
+    #[test]
+    fn settable_db_keys_are_snake_case() {
+        for s in SETTINGS.iter().filter(|s| is_settable(s.key)) {
+            assert!(
+                s.db_key
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'),
+                "{} 的落库键 {} 不是 snake_case(两端恢复读取的键对不上)",
+                s.key,
+                s.db_key
             );
         }
     }

@@ -38,7 +38,6 @@ static void perf_log_summary(void);
 static void gl_quit_app(void); // 定义在 parts/menu.m(彻底退出, 菜单/快捷键共用)
 static void gl_settings_set_launch(BOOL on);
 static void gl_settings_set_glass_enabled(BOOL on);
-static void gl_settings_set_glass_opacity(double alpha);
 static void gl_settings_set_grid(BOOL on);
 static void gl_settings_set_pressure_monitor(BOOL on);
 static void pm_ensure_window(void);
@@ -77,6 +76,10 @@ extern void glaspen2_save_bool_setting(const char *key, int val);
 extern int  glaspen2_load_bool_setting(const char *key);
 extern void glaspen2_save_string_setting(const char *key, const char *value);
 extern char* glaspen2_load_string_setting(const char *key);
+// D1 设置 effect 桥(core/settings_apply.rs): 解析 + 钳制 + 落库一次完成,
+// 返回 effect JSON({"kind":..., "bool"/"int"/"float"/"str"/"json":...} 或 {"error":...});
+// 调用方用 glaspen2_free_c_string 释放。ObjC 只按 kind 做平台运行时副作用。
+extern char* glaspen2_settings_apply(const char *key, const char *value_json);
 extern void glaspen2_chat_auth_reload(void); // 设置/启动时把 DB 账号配置推给 Rust auth
 extern void glaspen2_share_ink_set_active(int active); // 共享画布上行开关(export.rs)
 // (共享画布上行已无 ObjC 入口:生命周期完全由面板 tab 驱动,FRB 直达 Rust)

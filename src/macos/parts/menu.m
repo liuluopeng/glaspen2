@@ -970,203 +970,142 @@ static void gl_settings_set_chat_integration(BOOL on) {
     }
 }
 
-/// 解析 Dart 传来的 JSON 标量(true / 3 / 2.5)。
+/// 写入一项设置(D1:解析 / 钳制 / 落库单源在 core)。
 ///
-/// 必须带 NSJSONReadingFragmentsAllowed:JSONObjectWithData 默认只接受顶层
-/// 容器,裸标量会直接报错返回 nil —— 那样每个设置都会退化成 [nil boolValue]
-/// = NO / [nil intValue] = 0,Dart 侧的表现就是"按了按钮没反应"。
-static id gl_parse_setting_value(const char *json) {
-    if (!json) return nil;
-    NSData *data = [NSData dataWithBytes:json length:strlen(json)];
-    NSError *err = nil;
-    id value = [NSJSONSerialization JSONObjectWithData:data
-                                               options:NSJSONReadingFragmentsAllowed
-                                                 error:&err];
-    if (!value) {
-        NSLog(@"[settings] 无法解析 value_json=\"%s\": %@", json, err.localizedDescription);
-    }
-    return value;
-}
-
-/// 写入一项设置。`value_json` 是 JSON 标量(true / 3 / 2.5),按 key 解析后
-/// 交给与菜单、快捷键共用的 gl_settings_set_* 和全局状态。
+/// core `settings_apply::apply_setting` 完成宽容解析(面板历史上发过裸标量
+/// true / 3 / 2.5 / 数字字符串)+ 区间钳制 + user_settings 落库, 返回平台无关
+/// effect JSON: {"kind":"GridSize","float":40} / {"kind":"Shortcuts","json":{...}},
+/// 失败返回 {"error":"..."}。本函数只按 kind 执行 macOS 运行时副作用(菜单/
+/// 窗口/重绘/向主线程投任务), 不再自己解析标量、不再逐键钳制或落库。
 void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
-    if (!key_c) return;
-    NSString *key = @(key_c);
-    id value = gl_parse_setting_value(value_json);
-    // 解析不出来就什么都不做:宁可这一项不生效,也不要静默写成 false/0
-    if (!value) return;
+    if (!key_c || !value_json) return;
+    char *effect_c = glaspen2_settings_apply(key_c, value_json);
+    if (!effect_c) return;
+    NSData *effect_data = [NSData dataWithBytes:effect_c length:strlen(effect_c)];
+    glaspen2_free_c_string(effect_c);
+    id parsed = [NSJSONSerialization JSONObjectWithData:effect_data options:0 error:nil];
+    if (![parsed isKindOfClass:[NSDictionary class]]) return;
+    NSDictionary *effect = parsed;
+    NSString *kind = effect[@"kind"];
+    if (![kind isKindOfClass:[NSString class]]) {
+        // 未知/只读键、值类型不合法、invertFps 不在白名单等: 记录并跳过,
+        // 等价于旧实现的“这一项不生效”, 但不再静默。
+        NSLog(@"[settings] %s 应用失败: %@", key_c, effect[@"error"]);
+        return;
+    }
+    // 每个 kind 只有一个载荷字段(core SettingEffect::to_json 保证); 取错字段
+    // 只会得到 0/空, 不会崩。全部在进入主线程前取好, block 只捕获值。
+    BOOL boolValue = [effect[@"bool"] boolValue];
+    NSInteger intValue = [effect[@"int"] integerValue];
+    double floatValue = [effect[@"float"] doubleValue];
+    NSString *strValue = [effect[@"str"] isKindOfClass:[NSString class]] ? effect[@"str"] : @"";
+    id jsonValue = effect[@"json"];
+
     gl_run_on_main_sync(^{
-        if ([key isEqualToString:@"color"]) {
-            gl_settings_set_color([value intValue]);
-        } else if ([key isEqualToString:@"width"]) {
-            gl_settings_set_width([value intValue]);
-        } else if ([key isEqualToString:@"launchAtLogin"]) {
-            gl_settings_set_launch([value boolValue]);
-        } else if ([key isEqualToString:@"frostedGlass"]) {
-            gl_settings_set_glass_enabled([value boolValue]);
-        } else if ([key isEqualToString:@"opacity"]) {
-            gl_settings_set_glass_opacity([value doubleValue]);
-            if (!g_glass_enabled) gl_settings_set_glass_enabled(YES);
-        } else if ([key isEqualToString:@"grid"]) {
-            gl_settings_set_grid([value boolValue]);
-        } else if ([key isEqualToString:@"gridFollowStrokes"]) {
-            g_grid_follow_strokes = [value boolValue];
-            glaspen2_save_bool_setting("grid_follow_strokes", g_grid_follow_strokes ? 1 : 0);
+        // ── 纯面板设置:core 已落库, macOS 运行时无副作用 ──
+        if ([kind isEqualToString:@"BubbleAutoNewPage"] ||
+            [kind isEqualToString:@"BubbleReplayAuto"] ||
+            [kind isEqualToString:@"BubbleReplayHoldLast"] ||
+            [kind isEqualToString:@"BubbleReplaySpeed"] ||
+            [kind isEqualToString:@"NasUrl"] ||
+            [kind isEqualToString:@"NotebookStyle"] ||
+            [kind isEqualToString:@"ShowFreeCanvas"]) {
+            return;
+        }
+        if ([kind isEqualToString:@"Color"]) {
+            gl_settings_set_color((int)intValue);
+        } else if ([kind isEqualToString:@"Width"]) {
+            gl_settings_set_width((int)intValue);
+        } else if ([kind isEqualToString:@"LaunchAtLogin"]) {
+            gl_settings_set_launch(boolValue);
+        } else if ([kind isEqualToString:@"FrostedGlass"]) {
+            gl_settings_set_glass_enabled(boolValue);
+        } else if ([kind isEqualToString:@"Grid"]) {
+            gl_settings_set_grid(boolValue);
+        } else if ([kind isEqualToString:@"GridFollowStrokes"]) {
+            g_grid_follow_strokes = boolValue;
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
-        } else if ([key isEqualToString:@"glassFollowStrokes"]) {
-            g_glass_follow_strokes = [value boolValue];
-            glaspen2_save_bool_setting("glass_follow_strokes", g_glass_follow_strokes ? 1 : 0);
+        } else if ([kind isEqualToString:@"GlassFollowStrokes"]) {
+            g_glass_follow_strokes = boolValue;
             gl_glass_apply(); // 立即按新规则重估玻璃可见性(含飘渺隐藏态)
-        } else if ([key isEqualToString:@"softShadow"]) {
-            g_soft_shadow = [value boolValue];
-            glaspen2_save_bool_setting("soft_shadow", g_soft_shadow ? 1 : 0);
-            glaspen2_set_soft_shadow(g_soft_shadow ? 1 : 0);
+        } else if ([kind isEqualToString:@"SoftShadow"]) {
+            g_soft_shadow = boolValue;
+            glaspen2_set_soft_shadow(boolValue ? 1 : 0);
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
-        } else if ([key isEqualToString:@"invertInk"]) {
-            g_invert_ink = [value boolValue];
-            glaspen2_save_bool_setting("invert_ink", g_invert_ink ? 1 : 0);
-            invert_ink_apply(g_invert_ink ? 1 : 0);
-        } else if ([key isEqualToString:@"invertFps"]) {
-            int fps = [value intValue];
-            if (fps == 10 || fps == 30 || fps == 60 || fps == 100) {
-                g_invert_fps = fps;
-                char fpsStr[16];
-                snprintf(fpsStr, sizeof(fpsStr), "%d", g_invert_fps);
-                glaspen2_save_string_setting("invert_fps", fpsStr);
-                if (g_invert_ink) invert_stream_restart(); // 用新帧率重启捕获流
-            }
-        } else if ([key isEqualToString:@"panelTransparent"]) {
-            glaspen2_save_bool_setting("panel_transparent", [value boolValue] ? 1 : 0);
-            gl_panel_transparent_apply_full([value boolValue] ? YES : NO);
-        } else if ([key isEqualToString:@"notebookStyle"]) {
-            glaspen2_save_bool_setting("notebook_style", [value boolValue] ? 1 : 0);
-        } else if ([key isEqualToString:@"outline"]) {
-            apply_outline([value boolValue]);
-        } else if ([key isEqualToString:@"infiniteCanvas"]) {
-            apply_infinite_canvas([value boolValue], NO);
-        } else if ([key isEqualToString:@"minimap"]) {
-            g_minimap_enabled = [value boolValue];
-            glaspen2_save_bool_setting("minimap", g_minimap_enabled ? 1 : 0);
+        } else if ([kind isEqualToString:@"InvertInk"]) {
+            g_invert_ink = boolValue;
+            invert_ink_apply(boolValue ? 1 : 0);
+        } else if ([kind isEqualToString:@"InvertFps"]) {
+            g_invert_fps = (int)intValue;
+            if (g_invert_ink) invert_stream_restart(); // 用新帧率重启捕获流
+        } else if ([kind isEqualToString:@"PanelTransparent"]) {
+            gl_panel_transparent_apply_full(boolValue);
+        } else if ([kind isEqualToString:@"Outline"]) {
+            apply_outline(boolValue);
+        } else if ([kind isEqualToString:@"InfiniteCanvas"]) {
+            apply_infinite_canvas(boolValue, NO);
+        } else if ([kind isEqualToString:@"Minimap"]) {
+            g_minimap_enabled = boolValue;
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
-        } else if ([key isEqualToString:@"gridSize"]) {
-            double gs = glaspen2_clamp_setting_double("gridSize", [value doubleValue]);
-            g_grid_size = gs;
-            NSString *gsStr = [NSString stringWithFormat:@"%.0f", gs];
-            glaspen2_save_string_setting("grid_size", [gsStr UTF8String]);
+        } else if ([kind isEqualToString:@"GridSize"]) {
+            g_grid_size = floatValue;
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
-        } else if ([key isEqualToString:@"gridDivider"]) {
-            NSInteger dv = [value integerValue];
-            if (dv < 0) dv = 0;
-            if (dv > 4) dv = 4;
-            g_grid_divider = dv;
-            NSString *dvStr = [NSString stringWithFormat:@"%ld", (long)dv];
-            glaspen2_save_string_setting("grid_divider", [dvStr UTF8String]);
+        } else if ([kind isEqualToString:@"GridDivider"]) {
+            g_grid_divider = (int)intValue;
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
-        } else if ([key isEqualToString:@"flipEffect"]) {
-            NSInteger fe = [value integerValue];
-            if (fe < 0) fe = 0;
-            if (fe > 1) fe = 1;
-            g_flip_effect = fe;
-            NSString *feStr = [NSString stringWithFormat:@"%ld", (long)fe];
-            glaspen2_save_string_setting("flip_effect", [feStr UTF8String]);
-        } else if ([key isEqualToString:@"pressureMonitor"]) {
-            gl_settings_set_pressure_monitor([value boolValue]);
-        } else if ([key isEqualToString:@"gifFps"]) {
-            g_gif_fps = glaspen2_clamp_setting_int("gifFps", [value intValue]);
-            NSString *s = [NSString stringWithFormat:@"%d", g_gif_fps];
-            glaspen2_save_string_setting("gif_fps", [s UTF8String]);
-        } else if ([key isEqualToString:@"gifResolution"]) {
-            g_gif_resolution = glaspen2_clamp_setting_double("gifResolution", [value doubleValue]);
-            NSString *s = [NSString stringWithFormat:@"%.4f", g_gif_resolution];
-            glaspen2_save_string_setting("gif_resolution", [s UTF8String]);
-        } else if ([key isEqualToString:@"gifSpeed"]) {
-            g_gif_speed = glaspen2_clamp_setting_double("gifSpeed", [value doubleValue]);
-            NSString *s = [NSString stringWithFormat:@"%.4f", g_gif_speed];
-            glaspen2_save_string_setting("gif_speed", [s UTF8String]);
-        } else if ([key isEqualToString:@"gifEndMode"]) {
-            g_gif_end_mode = glaspen2_clamp_setting_int("gifEndMode", [value intValue]);
-            NSString *s = [NSString stringWithFormat:@"%d", g_gif_end_mode];
-            glaspen2_save_string_setting("gif_end_mode", [s UTF8String]);
-        } else if ([key isEqualToString:@"chatApiBase"] || [key isEqualToString:@"chatUser"]) {
-            // 涂鸦身份(手写消息登录):落盘 + 立即推给 Rust auth 模块
-            NSString *s = [NSString stringWithFormat:@"%@", value];
-            const char *dbKey = [key isEqualToString:@"chatApiBase"] ? "chat_api_base" : "chat_user";
-            glaspen2_save_string_setting(dbKey, [s UTF8String]);
+        } else if ([kind isEqualToString:@"FlipEffect"]) {
+            g_flip_effect = (int)intValue;
+        } else if ([kind isEqualToString:@"PressureMonitor"]) {
+            gl_settings_set_pressure_monitor(boolValue);
+        } else if ([kind isEqualToString:@"GifFps"]) {
+            g_gif_fps = (int)intValue;
+        } else if ([kind isEqualToString:@"GifResolution"]) {
+            g_gif_resolution = floatValue;
+        } else if ([kind isEqualToString:@"GifSpeed"]) {
+            g_gif_speed = floatValue;
+        } else if ([kind isEqualToString:@"GifEndMode"]) {
+            g_gif_end_mode = (int)intValue;
+        } else if ([kind isEqualToString:@"ChatApiBase"] ||
+                   [kind isEqualToString:@"ChatUser"]) {
+            // DB 已由 core 写入(chat_api_base / chat_user), 这里只重载 auth 缓存
             glaspen2_chat_auth_reload();
-        } else if ([key isEqualToString:@"chatPassword"]) {
-            // 空串 = 保持已存密码不变(面板回显时不发密码)
-            NSString *s = [NSString stringWithFormat:@"%@", value];
-            if (s.length > 0) {
-                glaspen2_save_string_setting("chat_password", [s UTF8String]);
+        } else if ([kind isEqualToString:@"ChatPassword"]) {
+            // 密码本体不进 settings 快照, core 不落库: 空串 = 保持已存密码
+            if (strValue.length > 0) {
+                glaspen2_save_string_setting("chat_password", strValue.UTF8String);
                 glaspen2_chat_auth_reload();
             }
-        } else if ([key isEqualToString:@"chatIntegration"]) {
-            gl_settings_set_chat_integration([value boolValue]);
-        } else if ([key isEqualToString:@"showBubbleTab"]) {
-            // 「气泡消息」tab 显隐(默认关; 与 showFreeCanvas 同款纯面板开关)
-            // tab 关闭时同时关掉气泡捕获: 不占笔事件 CPU、不落库。
-            glaspen2_save_bool_setting("show_bubble_tab", [value boolValue] ? 1 : 0);
-            glaspen2_bubble_set_capture([value boolValue] ? 1 : 0);
-        } else if ([key isEqualToString:@"bubbleReplaySpeed"]) {
-            // 气泡重播速度倍率(1/2/4, 钳 1..8; 纯面板自用设置)
-            NSInteger sp = [value integerValue];
-            if (sp < 1) sp = 1;
-            if (sp > 8) sp = 8;
-            glaspen2_save_string_setting("bubble_replay_speed",
-                                         [[NSString stringWithFormat:@"%ld", (long)sp] UTF8String]);
-        } else if ([key isEqualToString:@"bubbleReplayHoldLast"]) {
-            // 气泡重播播完停在最后一帧(默认开; 关 = 循环重播)
-            glaspen2_save_bool_setting("bubble_replay_hold_last", [value boolValue] ? 1 : 0);
-        } else if ([key isEqualToString:@"bubbleReplayAuto"]) {
-            // 打开气泡 tab 自动重播最新一条(默认关)
-            glaspen2_save_bool_setting("bubble_replay_auto", [value boolValue] ? 1 : 0);
-        } else if ([key isEqualToString:@"bubbleAutoNewPage"]) {
-            // 写完消息自动新建一页(默认关; core 落笔时消费, 见 bubbles.rs)
-            glaspen2_save_bool_setting("bubble_auto_new_page", [value boolValue] ? 1 : 0);
-        } else if ([key isEqualToString:@"nasUrl"]) {
-            // NAS 备份: axum 服务地址, 空 = 未启用(见 export/nas_backup.rs)
-            NSString *s = [NSString stringWithFormat:@"%@", value];
-            glaspen2_save_string_setting("nas_url", [s UTF8String]);
-        } else if ([key isEqualToString:@"showFreeCanvas"]) {
-            // 「自由涂鸦」tab 显隐(默认关:最小面板只有 设置+活页本)
-            glaspen2_save_bool_setting("show_free_canvas", [value boolValue] ? 1 : 0);
-        } else if ([key isEqualToString:@"shareCanvas"]) {
-            // 共享画布上行开关(活页本 tab):仅集成开启时真正生效
-            BOOL on = [value boolValue];
-            glaspen2_save_bool_setting("share_ink", on ? 1 : 0);
-            if (g_chat_integration || !on) {
-                glaspen2_share_ink_set_active((g_chat_integration && on) ? 1 : 0);
+        } else if ([kind isEqualToString:@"ChatIntegration"]) {
+            gl_settings_set_chat_integration(boolValue);
+        } else if ([kind isEqualToString:@"ShowBubbleTab"]) {
+            // tab 关闭时同时关掉气泡捕获: 不占笔事件 CPU、不落库(捕获状态是运行态)
+            glaspen2_bubble_set_capture(boolValue ? 1 : 0);
+        } else if ([kind isEqualToString:@"ShareCanvas"]) {
+            // 共享上行开关: 仅集成开启时真正生效(macOS 旧语义: 关闭时即便集成
+            // 已关也要确保流停掉)
+            if (g_chat_integration || !boolValue) {
+                glaspen2_share_ink_set_active((g_chat_integration && boolValue) ? 1 : 0);
             }
-        } else if ([key isEqualToString:@"language"]) {
-            // 面板语言选择器: 同时改 macOS 原生菜单, 并落盘
-            NSString *s = [NSString stringWithFormat:@"%@", value];
-            g_lang = [s isEqualToString:@"en"] ? 1 : 0;
-            glaspen2_save_string_setting("language", g_lang == 1 ? "en" : "zh");
+        } else if ([kind isEqualToString:@"Language"]) {
+            // core 已把落库值归一为 en/zh; 这里同步原生菜单并通知面板
+            g_lang = [strValue isEqualToString:@"en"] ? 1 : 0;
             update_menu_texts();
             glaspen2_notify_settings_changed();
-        } else if ([key isEqualToString:@"shortcuts"]) {
-            // 面板发来整张 action→chord 表; 后端规范化/补默认/挡冲突后落库
-            NSDictionary *map = nil;
-            if ([value isKindOfClass:[NSDictionary class]]) {
-                map = value;
-            } else if ([value isKindOfClass:[NSString class]]) {
-                id obj = [NSJSONSerialization JSONObjectWithData:
-                                          [(NSString *)value dataUsingEncoding:NSUTF8StringEncoding]
-                                                      options:0
-                                                        error:nil];
-                if ([obj isKindOfClass:[NSDictionary class]]) map = obj;
-            }
-            if (map) {
-                gl_shortcuts_apply(map);
-                NSString *json = gl_shortcuts_effective_json();
-                if (json.length)
-                    glaspen2_save_string_setting("shortcuts", json.UTF8String);
-                sync_settings_panel();
-            }
-        } else if ([key isEqualToString:@"hotkeyRecording"]) {
-            // 录制期间放行键盘给面板; 不落库, 20s 自动恢复
-            gl_set_hotkey_recording([value boolValue]);
+        } else if ([kind isEqualToString:@"Shortcuts"]) {
+            // 规范化/补默认/挡冲突仍在 gl_shortcuts_apply; 落库值 = 规范化生效表
+            // (core 先按原表写了一次, 这里用生效表覆盖, 与旧实现最终 DB 值一致)
+            NSDictionary *map =
+                [jsonValue isKindOfClass:[NSDictionary class]] ? jsonValue : @{};
+            gl_shortcuts_apply(map);
+            NSString *json = gl_shortcuts_effective_json();
+            if (json.length) glaspen2_save_string_setting("shortcuts", json.UTF8String);
+            sync_settings_panel();
+        } else if ([kind isEqualToString:@"HotkeyRecording"]) {
+            // 录制期间放行键盘给面板; 不落库, 超时自动恢复
+            gl_set_hotkey_recording(boolValue);
+        } else {
+            // core 新增了 effect 但这里忘了执行: 记录, 方便 D1a 闸门之外的人工排障
+            NSLog(@"[settings] %s: 未处理的 effect kind=%@", key_c, kind);
         }
     });
 }
@@ -1485,12 +1424,6 @@ static void gl_glass_apply(void) {
 static void gl_settings_set_glass_enabled(BOOL on) {
     g_glass_enabled = on;
     glaspen2_save_bool_setting("glass_enabled", on ? 1 : 0);
-    gl_glass_apply();
-}
-
-static void gl_settings_set_glass_opacity(double alpha) {
-    g_glass_opacity = alpha;
-    glaspen2_save_bool_setting("glass_alpha", (int)(alpha * 1000));
     gl_glass_apply();
 }
 

@@ -1201,6 +1201,38 @@ pub extern "C" fn glaspen2_load_string_setting(key: *const c_char) -> *mut c_cha
 }
 
 // ---------------------------------------------------------------------------
+// setSetting effect 桥(D1 单源;只服务 macOS ObjC, Windows 直接调 Rust)
+// ---------------------------------------------------------------------------
+
+/// 解析 + 钳制 + 落库一次完成, 返回平台无关的 effect JSON 字符串。
+///
+/// 形状: `{"kind":"<变体名>", "bool"|"int"|"float"|"str"|"json": ...}`;
+/// 失败: `{"error":"..."}`(未知/只读键、值不合法、value_json 不是 JSON)。
+/// ObjC 侧只按 `kind` 做本平台运行时副作用, 不再自己解析标量/钳制/落库。
+/// 返回值用 `glaspen2_free_c_string` 释放(NULL = 参数为空)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_settings_apply(
+    key: *const c_char,
+    value_json: *const c_char,
+) -> *mut c_char {
+    let error = |msg: String| return_c_string(serde_json::json!({ "error": msg }).to_string());
+    let Some(key) = (unsafe { borrow_cstr(key) }) else {
+        return error("setSetting 缺少 key".to_string());
+    };
+    let Some(raw) = (unsafe { borrow_cstr(value_json) }) else {
+        return error("setSetting 缺少 value_json".to_string());
+    };
+    let value: serde_json::Value = match serde_json::from_str(raw) {
+        Ok(value) => value,
+        Err(e) => return error(format!("value_json 不是合法 JSON: {e}")),
+    };
+    match crate::settings_apply::apply_setting(key, &value) {
+        Ok(effect) => return_c_string(effect.to_json().to_string()),
+        Err(e) => error(e),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 笔预设与设置数值约束(presets 模块的 FFI 面;macOS/Windows 共用单一事实源)
 // ---------------------------------------------------------------------------
 
@@ -2023,5 +2055,50 @@ mod tests {
             "max_size <= 0 must be rejected"
         );
         assert_eq!(len, 0);
+    }
+
+    /// D1 effect 桥 FFI: macOS ObjC 依赖的 JSON 形状(成功 = kind+类型字段,
+    /// 失败 = error)。这里直接调 FFI, 不依赖 ObjC 宿主(测试环境 DB 未初始化,
+    /// 落库是 no-op)。
+    #[test]
+    fn settings_apply_ffi_roundtrip() {
+        let call = |key: &str, value: &str| {
+            let key = CString::new(key).unwrap();
+            let value = CString::new(value).unwrap();
+            let ptr = glaspen2_settings_apply(key.as_ptr(), value.as_ptr());
+            assert!(!ptr.is_null(), "FFI 应返回 JSON 字符串");
+            let text = unsafe { CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .into_owned();
+            glaspen2_free_c_string(ptr);
+            serde_json::from_str::<serde_json::Value>(&text)
+                .unwrap_or_else(|e| panic!("effect JSON 不合法: {e}: {text}"))
+        };
+
+        let effect = call("gifFps", "15");
+        assert_eq!(effect["kind"], "GifFps");
+        assert_eq!(effect["int"], 15);
+        let effect = call("gridSize", "40.0");
+        assert_eq!(effect["kind"], "GridSize");
+        assert_eq!(effect["float"], 40.0);
+        let effect = call("frostedGlass", "true");
+        assert_eq!(effect["kind"], "FrostedGlass");
+        assert_eq!(effect["bool"], true);
+        let effect = call("chatUser", "\"alice\"");
+        assert_eq!(effect["kind"], "ChatUser");
+        assert_eq!(effect["str"], "alice");
+        // shortcuts 载荷是 JSON 对象(不是字符串)
+        let effect = call("shortcuts", "{\"prevPage\":\"cmd+ctrl+`\"}");
+        assert_eq!(effect["kind"], "Shortcuts");
+        assert_eq!(effect["json"]["prevPage"], "cmd+ctrl+`");
+
+        // 失败:未知键 / 非法值 → {"error": "..."}
+        assert!(call("noSuchSetting", "1")["error"].is_string());
+        assert!(call("grid", "\"yes\"")["error"].is_string());
+        assert!(call("invertFps", "25")["error"].is_string());
+        // null 指针: 安全返回 error JSON, 不崩
+        let ptr = glaspen2_settings_apply(std::ptr::null(), std::ptr::null());
+        assert!(!ptr.is_null());
+        glaspen2_free_c_string(ptr);
     }
 }

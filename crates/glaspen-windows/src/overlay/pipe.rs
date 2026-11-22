@@ -914,50 +914,29 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         let _ = writer.write_all(resp.as_bytes());
         let _ = writer.flush();
     } else if msg_type == "setSetting" {
-        let key = json_get_str(line, "key");
-        if key == "shortcuts" {
-            // 面板保存整表(action → chord)。管道发的是**内联 JSON 对象**
-            // (不是字符串), 所以必须解析整行而不是 json_get_str。
-            // 应用(补默认/挡保留/去冲突) → 落库 → 回推规范化结果, 保证面板
-            // 显示与真正生效的表一致(与 macOS sync_settings_panel 同义)。
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-                let saved: HashMap<String, String> = v
-                    .get("value")
-                    .and_then(|x| {
-                        x.as_object().cloned().or_else(|| {
-                            // 兼容 FRB 式"JSON 字符串"形状(macOS 走这条路,
-                            // Windows 管道理论上不会, 但别静默失败)。
-                            x.as_str()
-                                .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
-                                .and_then(|y| y.as_object().cloned())
-                        })
-                    })
-                    .map(|o| {
-                        o.into_iter()
-                            .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                if !saved.is_empty() {
-                    apply_saved_map(HWND(hwnd as *mut std::ffi::c_void), &saved);
-                    let frame = format!(
-                        "{{\"type\":\"onSettingsChanged\",\"data\":{{\"shortcuts\":\"{}\"}}}}\n",
-                        json_escape(&effective_json())
-                    );
-                    let _ = writer.write_all(frame.as_bytes());
-                    let _ = writer.flush();
-                } else {
-                    tracing::warn!("[hotkey] shortcuts 保存消息里没有可解析的 value");
-                }
+        // D1:设置 apply 单源。core settings_apply::apply_setting 负责宽容解析 +
+        // 区间钳制 + 落库(规范 DB 键);本分支只做 Windows 运行时副作用
+        // (PostMessage 到消息循环 / 状态原子量 / 热键注册 / auth 重载)。
+        let req: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("setSetting 请求不是合法 JSON: {e}");
+                let _ = writer.write_all(
+                    glaspen_core::protocol::error_line(0, "setSetting", "请求不是合法 JSON").as_bytes(),
+                );
+                let _ = writer.flush();
+                return;
             }
-        } else if key == "hotkeyRecording" {
-            // 录制期间注销全部全局热键: RegisterHotKey 注册即吞键, 不注销
-            // 面板根本收不到组合键。60s 兜底与面板断开自动恢复见
-            // hotkeys::set_recording / handle_pipe_client。
-            if let Some(on) = json_get_bool(line, "value") {
-                set_recording(HWND(hwnd as *mut std::ffi::c_void), on);
-            }
-        } else if key == "save_drawing" {
+        };
+        let key = req
+            .get("key")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let req_id = req.get("reqId").and_then(|v| v.as_i64()).unwrap_or(0);
+
+        // ① 命令型 key(不是设置项, 但仍走 setSetting 通道): 保持旧实现。
+        if key == "save_drawing" {
             let _ = unsafe {
                 PostMessageW(
                     Some(HWND(hwnd as *mut _)),
@@ -1022,303 +1001,172 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
             } else {
                 "PDF 导出失败".to_string()
             });
-        } else if key == "color" {
-            if let Some(val) = json_get_i64(line, "value") {
-                let idx = val as usize;
-                let cmd = CMD_SELECT_COLOR + idx;
-                let _ = unsafe {
-                    PostMessageW(
-                        Some(HWND(hwnd as *mut _)),
-                        WM_TRAY_COMMAND,
-                        WPARAM(cmd),
-                        LPARAM(0),
-                    )
-                };
+        } else {
+            // ② 设置项 + 控制键: core effect 单源。
+            let mut value = req.get("value").cloned().unwrap_or(serde_json::Value::Null);
+            // 旧行为(保留): invertFps 缺 value 时按 30 处理
+            // (旧代码 json_get_int(line, "value").unwrap_or(30))。
+            if value.is_null() && key == "invertFps" {
+                value = serde_json::json!(30);
             }
-        } else if key == "width" {
-            if let Some(val) = json_get_i64(line, "value") {
-                let idx = val as usize;
-                let cmd = CMD_SELECT_WIDTH + idx;
-                let _ = unsafe {
-                    PostMessageW(
-                        Some(HWND(hwnd as *mut _)),
-                        WM_TRAY_COMMAND,
-                        WPARAM(cmd),
-                        LPARAM(0),
-                    )
-                };
-            }
-        } else if key == "outline" {
-            if let Some(on) = json_get_bool(line, "value") {
-                let cmd = CMD_TOGGLE_OUTLINE;
-                let _ = unsafe {
-                    PostMessageW(
-                        Some(HWND(hwnd as *mut _)),
-                        WM_TRAY_COMMAND,
-                        WPARAM(cmd),
-                        LPARAM(if on { 1 } else { 0 }),
-                    )
-                };
-            }
-        } else if key == "grid" {
-            if let Some(on) = json_get_bool(line, "value") {
-                let cmd = CMD_TOGGLE_GRID;
-                let _ = unsafe {
-                    PostMessageW(
-                        Some(HWND(hwnd as *mut _)),
-                        WM_TRAY_COMMAND,
-                        WPARAM(cmd),
-                        LPARAM(if on { 1 } else { 0 }),
-                    )
-                };
-            }
-        } else if key == "gridDivider" {
-            // 分栏:0=无 1=左右 2=上下 3=九宫格 4=康奈尔,经消息循环改状态 + 落库 + 重绘(与 macOS 同键)
-            if let Some(v) = json_get_i64(line, "value") {
-                let _ = unsafe {
-                    PostMessageW(
-                        Some(HWND(hwnd as *mut _)),
-                        WM_TRAY_COMMAND,
-                        WPARAM(CMD_SET_GRID_DIVIDER),
-                        LPARAM(v.clamp(0, 4) as isize),
-                    )
-                };
-            }
-        } else if key == "chatIntegration" {
-            // 手写消息集成总开关:经消息循环改状态(终止进行中会话/恢复共享上行)
-            if let Some(on) = json_get_bool(line, "value") {
-                let _ = unsafe {
-                    PostMessageW(
-                        Some(HWND(hwnd as *mut _)),
-                        WM_TRAY_COMMAND,
-                        WPARAM(CMD_TOGGLE_CHAT_INTEGRATION),
-                        LPARAM(if on { 1 } else { 0 }),
-                    )
-                };
-            }
-        } else if key == "shareCanvas" {
-            // 共享画布上行开关:落库 + 仅在集成开启时生效(与 macOS 同规则)
-            if let Some(on) = json_get_bool(line, "value") {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "share_ink",
-                    if on { "1" } else { "0" },
-                ));
-                let integration_on = glaspen_core::runtime()
-                    .block_on(glaspen_core::db::load_setting("chat_integration"))
-                    .and_then(|v| v.parse::<i32>().ok())
-                    .unwrap_or(0)
-                    != 0;
-                if integration_on {
-                    glaspen_core::export::glaspen2_share_ink_set_active(if on { 1 } else { 0 });
+            let effect = match glaspen_core::settings_apply::apply_setting(&key, &value) {
+                Ok(effect) => effect,
+                Err(e) => {
+                    // 未知/只读键、非法值: 明确回错误帧, 不再静默吞掉。
+                    tracing::warn!("setSetting 未应用: {key}={value}: {e}");
+                    let _ = writer.write_all(
+                        glaspen_core::protocol::error_line(req_id, "setSetting", &e).as_bytes(),
+                    );
+                    let _ = writer.flush();
+                    return;
                 }
-            }
-        } else if key == "chatApiBase" || key == "chatUser" || key == "chatPassword" {
-            // 涂鸦身份配置:落库(键名与 macOS 一致)+ 重载 auth 缓存
-            let value = json_get_str(line, "value").to_string();
-            let db_key = match key {
-                "chatApiBase" => "chat_api_base",
-                "chatUser" => "chat_user",
-                _ => "chat_password",
             };
-            glaspen_core::runtime().block_on(glaspen_core::db::save_setting(db_key, &value));
-            glaspen_core::export::glaspen2_chat_auth_reload();
-        } else if key == "gridSize" {
-            // 网格尺寸:20/40/80,core presets 钳制后经消息循环改状态+落库+重绘
-            if let Some(v) = json_get_f64(line, "value") {
-                let _ = unsafe {
-                    PostMessageW(
-                        Some(HWND(hwnd as *mut _)),
-                        WM_TRAY_COMMAND,
-                        WPARAM(CMD_SET_GRID_SIZE),
-                        LPARAM(v as isize),
-                    )
-                };
-            }
-        } else if key == "minimap" {
-            // 页面缩略图条开关(仅活页本模式绘制)
-            if let Some(on) = json_get_bool(line, "value") {
-                let _ = unsafe {
-                    PostMessageW(
-                        Some(HWND(hwnd as *mut _)),
-                        WM_TRAY_COMMAND,
-                        WPARAM(CMD_TOGGLE_MINIMAP),
-                        LPARAM(if on { 1 } else { 0 }),
-                    )
-                };
-            }
-        } else if key == "launchAtLogin" {
-            // 开机自启: HKCU Run 注册表即存储, 不落 DB(macOS 是 LaunchAgent plist)
-            if let Some(on) = json_get_bool(line, "value") {
-                glaspen_core::export::glaspen2_set_launch_at_login(if on { 1 } else { 0 });
-            }
-        } else if key == "showFreeCanvas" {
-            // 「自由涂鸦」tab 开关:纯面板可见性设置,落库即可(macOS 同键)
-            if let Some(on) = json_get_bool(line, "value") {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "show_free_canvas",
-                    if on { "1" } else { "0" },
-                ));
-            }
-        } else if key == "showBubbleTab" {
-            // 「气泡消息」tab 开关:落库 + 开/关 core 的气泡捕获
-            // (macOS setSetting showBubbleTab 会调 glaspen2_bubble_set_capture;
-            //  Windows 之前只落库 → CAPTURE 恒 false, 气泡 tab 永远空)
-            if let Some(on) = json_get_bool(line, "value") {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "show_bubble_tab",
-                    if on { "1" } else { "0" },
-                ));
-                glaspen_core::export::glaspen2_bubble_set_capture(on as i32);
-            }
-        } else if key == "bubbleReplaySpeed" {
-            // 气泡重播速度倍率:落库即可(钳 1..8, macOS 同键)
-            if let Some(v) = json_get_i64(line, "value") {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "bubble_replay_speed",
-                    &v.clamp(1, 8).to_string(),
-                ));
-            }
-        } else if key == "bubbleReplayHoldLast" {
-            // 播完停在最后一帧(默认开):落库即可
-            if let Some(on) = json_get_bool(line, "value") {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "bubble_replay_hold_last",
-                    if on { "1" } else { "0" },
-                ));
-            }
-        } else if key == "bubbleReplayAuto" {
-            // 打开 tab 自动重播最新一条(默认关):落库即可
-            if let Some(on) = json_get_bool(line, "value") {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "bubble_replay_auto",
-                    if on { "1" } else { "0" },
-                ));
-            }
-        } else if key == "bubbleAutoNewPage" {
-            // 写完消息自动新建一页(默认关):落库即可, core 落笔时消费
-            if let Some(on) = json_get_bool(line, "value") {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "bubble_auto_new_page",
-                    if on { "1" } else { "0" },
-                ));
-            }
-        } else if key == "nasUrl" {
-            // NAS 备份: axum 服务地址, 空 = 未启用(macOS 同键)
-            let value = json_get_str(line, "value").to_string();
-            glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                "nas_url",
-                &value,
-            ));
-        } else if key == "frostedGlass" {
-            if let Some(on) = json_get_bool(line, "value") {
-                let cmd = CMD_TOGGLE_FROSTED;
-                let _ = unsafe {
-                    PostMessageW(
-                        Some(HWND(hwnd as *mut _)),
-                        WM_TRAY_COMMAND,
-                        WPARAM(cmd),
-                        LPARAM(if on { 1 } else { 0 }),
-                    )
-                };
-            }
-        } else if key == "language" {
-            // 面板语言:落库即可(Windows 面板是独立进程, 自己重读)
-            let value = json_get_str(line, "value").to_string();
-            let lang = if value == "en" { "en" } else { "zh" };
-            glaspen_core::runtime().block_on(glaspen_core::db::save_setting("language", lang));
-        } else if key == "gridFollowStrokes" {
-            // 运行态立即生效(macOS setSetting 同款): 交给消息循环线程改状态+落库
-            if let Some(on) = json_get_bool(line, "value") {
-                post_tray_command(hwnd, CMD_SET_GRID_FOLLOW, on as usize);
-            }
-        } else if key == "softShadow" {
-            if let Some(on) = json_get_bool(line, "value") {
-                post_tray_command(hwnd, CMD_SET_SOFT_SHADOW, on as usize);
-            }
-        } else if key == "invertInk" {
-            if let Some(on) = json_get_bool(line, "value") {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "invertInk",
-                    if on { "1" } else { "0" },
-                ));
-            }
-        } else if key == "notebookStyle" {
-            if let Some(on) = json_get_bool(line, "value") {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "notebookStyle",
-                    if on { "1" } else { "0" },
-                ));
-            }
-        } else if key == "panelTransparent" {
-            if let Some(on) = json_get_bool(line, "value") {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "panelTransparent",
-                    if on { "1" } else { "0" },
-                ));
-            }
-        } else if key == "invertFps" {
-            let fps = json_get_int(line, "value").unwrap_or(30);
-            if matches!(fps, 10 | 30 | 60 | 100) {
-                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                    "invertFps",
-                    &fps.to_string(),
-                ));
-            }
-        } else if key == "glassFollowStrokes" {
-            if let Some(on) = json_get_bool(line, "value") {
-                post_tray_command(hwnd, CMD_SET_GLASS_FOLLOW, on as usize);
-            }
-        } else if key == "pressureMonitor" {
-            if let Some(on) = json_get_bool(line, "value") {
-                let cmd = CMD_TOGGLE_PRESSURE_MONITOR;
-                let _ = unsafe {
-                    PostMessageW(
-                        Some(HWND(hwnd as *mut _)),
-                        WM_TRAY_COMMAND,
-                        WPARAM(cmd),
-                        LPARAM(if on { 1 } else { 0 }),
-                    )
-                };
-            }
-        } else if key == "infiniteCanvas" {
-            // 模式 tab 切换:活页本 ↔ 无限画布(参数 0/1 显式设置)
-            tracing::info!(
-                "面板请求切换画布模式: {}",
-                if json_get_bool(line, "value").unwrap_or(false) {
-                    "无限画布"
-                } else {
-                    "活页本"
+            use glaspen_core::settings_apply::SettingEffect;
+            match effect {
+                // 纯落库项: core 已写 user_settings, Windows 运行时无副作用。
+                // (invertInk/invertFps/notebookStyle/panelTransparent 旧实现也只落库;
+                //  flipEffect 是 macOS 专属键, 面板不会发给 Windows。)
+                SettingEffect::BubbleAutoNewPage(_)
+                | SettingEffect::BubbleReplayAuto(_)
+                | SettingEffect::BubbleReplayHoldLast(_)
+                | SettingEffect::BubbleReplaySpeed(_)
+                | SettingEffect::NasUrl(_)
+                | SettingEffect::NotebookStyle(_)
+                | SettingEffect::ShowFreeCanvas(_)
+                | SettingEffect::InvertInk(_)
+                | SettingEffect::InvertFps(_)
+                | SettingEffect::PanelTransparent(_)
+                | SettingEffect::FlipEffect(_) => {}
+                SettingEffect::Color(idx) => {
+                    // 越界按预设表忽略(与 macOS gl_settings_set_color 一致;
+                    // 旧实现把 idx 直接当命令号, 越界值可能撞到别的命令)。
+                    if idx >= 0 && (idx as usize) < glaspen_core::presets::COLOR_PRESETS.len() {
+                        post_tray_command(hwnd, CMD_SELECT_COLOR + idx as usize, 0);
+                    }
                 }
-            );
-            if let Some(on) = json_get_bool(line, "value") {
-                let _ = unsafe {
-                    PostMessageW(
-                        Some(HWND(hwnd as *mut _)),
-                        WM_TRAY_COMMAND,
-                        WPARAM(CMD_TOGGLE_INFINITE_CANVAS),
-                        LPARAM(if on { 1 } else { 0 }),
-                    )
-                };
-            }
-        } else if key == "gifFps" {
-            if let Some(v) = json_get_i64(line, "value") {
-                let (_, res, spd, em) = gif_settings();
-                persist_gif_settings(v as i32, res, spd, em);
-            }
-        } else if key == "gifResolution" {
-            if let Some(v) = json_get_f64(line, "value") {
-                let (fps, _, spd, em) = gif_settings();
-                persist_gif_settings(fps, v, spd, em);
-            }
-        } else if key == "gifSpeed" {
-            if let Some(v) = json_get_f64(line, "value") {
-                let (fps, res, _, em) = gif_settings();
-                persist_gif_settings(fps, res, v, em);
-            }
-        } else if key == "gifEndMode" {
-            if let Some(v) = json_get_i64(line, "value") {
-                let (fps, res, spd, _) = gif_settings();
-                persist_gif_settings(fps, res, spd, v as i32);
+                SettingEffect::Width(idx) => {
+                    if idx >= 0 && (idx as usize) < glaspen_core::presets::WIDTH_PRESETS.len() {
+                        post_tray_command(hwnd, CMD_SELECT_WIDTH + idx as usize, 0);
+                    }
+                }
+                SettingEffect::Grid(on) => {
+                    post_tray_command(hwnd, CMD_TOGGLE_GRID, on as usize);
+                }
+                SettingEffect::GridDivider(v) => {
+                    post_tray_command(hwnd, CMD_SET_GRID_DIVIDER, v as usize);
+                }
+                SettingEffect::GridSize(v) => {
+                    post_tray_command(hwnd, CMD_SET_GRID_SIZE, v as usize);
+                }
+                SettingEffect::GridFollowStrokes(on) => {
+                    post_tray_command(hwnd, CMD_SET_GRID_FOLLOW, on as usize);
+                }
+                SettingEffect::GlassFollowStrokes(on) => {
+                    post_tray_command(hwnd, CMD_SET_GLASS_FOLLOW, on as usize);
+                }
+                SettingEffect::SoftShadow(on) => {
+                    post_tray_command(hwnd, CMD_SET_SOFT_SHADOW, on as usize);
+                }
+                SettingEffect::Minimap(on) => {
+                    post_tray_command(hwnd, CMD_TOGGLE_MINIMAP, on as usize);
+                }
+                SettingEffect::FrostedGlass(on) => {
+                    post_tray_command(hwnd, CMD_TOGGLE_FROSTED, on as usize);
+                }
+                SettingEffect::PressureMonitor(on) => {
+                    post_tray_command(hwnd, CMD_TOGGLE_PRESSURE_MONITOR, on as usize);
+                }
+                SettingEffect::ChatIntegration(on) => {
+                    post_tray_command(hwnd, CMD_TOGGLE_CHAT_INTEGRATION, on as usize);
+                }
+                SettingEffect::Outline(on) => {
+                    post_tray_command(hwnd, CMD_TOGGLE_OUTLINE, on as usize);
+                }
+                SettingEffect::LaunchAtLogin(on) => {
+                    // HKCU Run 注册表即平台存储, 不落 DB(macOS 是 LaunchAgent plist)
+                    glaspen_core::export::glaspen2_set_launch_at_login(if on { 1 } else { 0 });
+                }
+                SettingEffect::ShowBubbleTab(on) => {
+                    glaspen_core::export::glaspen2_bubble_set_capture(if on { 1 } else { 0 });
+                }
+                SettingEffect::InfiniteCanvas(on) => {
+                    tracing::info!(
+                        "面板请求切换画布模式: {}",
+                        if on { "无限画布" } else { "活页本" }
+                    );
+                    post_tray_command(hwnd, CMD_TOGGLE_INFINITE_CANVAS, on as usize);
+                }
+                SettingEffect::ShareCanvas(on) => {
+                    // core 已写 share_ink; 仅集成开启时真正启停上行(旧 Windows 语义)
+                    let integration_on = glaspen_core::runtime()
+                        .block_on(glaspen_core::db::load_setting("chat_integration"))
+                        .and_then(|v| v.parse::<i32>().ok())
+                        .unwrap_or(0)
+                        != 0;
+                    if integration_on {
+                        glaspen_core::export::glaspen2_share_ink_set_active(if on { 1 } else { 0 });
+                    }
+                }
+                SettingEffect::ChatApiBase(_) | SettingEffect::ChatUser(_) => {
+                    // core 已写 chat_api_base / chat_user; 这里只重载 auth 缓存
+                    glaspen_core::export::glaspen2_chat_auth_reload();
+                }
+                SettingEffect::ChatPassword(password) => {
+                    // 密码本体不进 settings 快照, core 不落库; Windows 旧语义 = 空串也写
+                    glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                        "chat_password",
+                        &password,
+                    ));
+                    glaspen_core::export::glaspen2_chat_auth_reload();
+                }
+                SettingEffect::Language(_) => {
+                    // core 已把语言归一落库; Windows 面板是独立进程, 自己重读
+                }
+                SettingEffect::GifFps(v) => {
+                    let (_, res, spd, em) = gif_settings();
+                    persist_gif_settings(v as i32, res, spd, em);
+                }
+                SettingEffect::GifResolution(v) => {
+                    let (fps, _, spd, em) = gif_settings();
+                    persist_gif_settings(fps, v, spd, em);
+                }
+                SettingEffect::GifSpeed(v) => {
+                    let (fps, res, _, em) = gif_settings();
+                    persist_gif_settings(fps, res, v, em);
+                }
+                SettingEffect::GifEndMode(v) => {
+                    let (fps, res, spd, _) = gif_settings();
+                    persist_gif_settings(fps, res, spd, v as i32);
+                }
+                SettingEffect::Shortcuts(table) => {
+                    let saved: HashMap<String, String> = table
+                        .as_object()
+                        .map(|obj| {
+                            obj.iter()
+                                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    if saved.is_empty() {
+                        // 旧 Windows 语义: 空表 = 忽略(不回默认、不落库);
+                        // core 也不会为空表落库(见 settings_apply::apply_to_db)。
+                        tracing::warn!("[hotkey] shortcuts 保存消息里没有可解析的 value");
+                    } else {
+                        // 应用(补默认/挡保留/去冲突) → 落库生效表 → 回推面板
+                        apply_saved_map(HWND(hwnd as *mut std::ffi::c_void), &saved);
+                        let frame = format!(
+                            "{{\"type\":\"onSettingsChanged\",\"data\":{{\"shortcuts\":\"{}\"}}}}\n",
+                            json_escape(&effective_json())
+                        );
+                        let _ = writer.write_all(frame.as_bytes());
+                        let _ = writer.flush();
+                    }
+                }
+                SettingEffect::HotkeyRecording(on) => {
+                    // 录制期间注销全部全局热键: RegisterHotKey 注册即吞键, 不注销
+                    // 面板根本收不到组合键。60s 兜底与面板断开恢复见 hotkeys.rs。
+                    set_recording(HWND(hwnd as *mut std::ffi::c_void), on);
+                }
             }
         }
     } else if msg_type == "appVersion" {
@@ -1567,24 +1415,6 @@ fn json_get_i64_array(json: &str, key: &str) -> Vec<i64> {
         .and_then(|v| v.get(key)?.as_array().cloned())
         .map(|a| a.iter().filter_map(|x| x.as_i64()).collect())
         .unwrap_or_default()
-}
-
-/// 解析 JSON 数值(整数或小数;gifResolution/gifSpeed 用)
-fn json_get_f64(json: &str, key: &str) -> Option<f64> {
-    let pattern = format!("\"{}\":", key);
-    let start = json.find(&pattern)?;
-    let rest = json[start + pattern.len()..].trim_start();
-    let end = rest
-        .find(|c: char| !c.is_ascii_digit() && c != '-' && c != '.')
-        .unwrap_or(rest.len());
-    if end > 0 {
-        return rest[..end].parse::<f64>().ok();
-    }
-    None
-}
-
-fn json_get_int(json: &str, key: &str) -> Option<i32> {
-    json_get_f64(json, key).map(|v| v as i32)
 }
 
 /// 解析 JSON bool 值(Flutter 发送的开关为 true/false)
