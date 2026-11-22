@@ -134,8 +134,11 @@ bool Win32Window::Create(const std::wstring& title,
   UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
   double scale_factor = dpi / 96.0;
 
-  HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
+  // 设置面板 = **工具窗口**: 不占任务栏按钮、不进 Alt-Tab —— 与 macOS 设置面板
+  // 没有独立 Dock 图标的行为一致。以前用 CreateWindow(WS_OVERLAPPEDWINDOW) 会
+  // 让面板在任务栏多出一个自己的图标(Flutter 默认图标), 和 glaspen2 图标分开。
+  HWND window = CreateWindowEx(
+      WS_EX_TOOLWINDOW, window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
