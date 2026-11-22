@@ -34,6 +34,8 @@ pub mod chord;
 pub mod db;
 pub mod device;
 pub mod export;
+// 网格/分栏几何(细网格 + 屏幕分界线 + 分栏参考线线段表, D6)
+pub mod grid;
 pub mod modeler;
 pub mod ocr;
 pub mod pageinfo;

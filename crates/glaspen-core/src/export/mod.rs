@@ -10,6 +10,7 @@
 //! 开机自启、公共小工具(free_c_string / leak_png 等)。
 
 use crate::camera::{Camera, ZoomOutcome};
+use crate::grid::{GridLines, GridParams, Segment};
 pub(crate) use crate::{
     RAW_STROKE_START, Stroke, desktop_path, modeler, pressure_to_width, runtime, state,
     timestamped_name, timestamped_path,
@@ -1713,6 +1714,127 @@ pub extern "C" fn glaspen2_camera_home(
     }
 }
 
+// ── 网格/分栏几何单源 FFI(D6): macOS 壳经此使用 core::grid ──
+//
+// 与 D1b/D3b/D5b 同形: ObjC 侧持有视图尺寸/镜头/网格设置, 输出是 core 算好的
+// 线段表 JSON(单行, NSJSONSerialization 解析); macOS 只按本平台既有样式描边
+// (CGContext 线宽/颜色/alpha/CG 抗锯齿不变), 不再算任何几何。
+// 永不返回 NULL: 非法/非有限输入回 {"error": ...}(ObjC 记日志并跳过本帧)。
+// Windows 同进程直接调 grid::compute, 不经这些 JSON 入口。
+//
+// 两个入口:
+// - glaspen2_grid_json: 规范入口(D6 约定签名), 全视口重绘用。屏幕单位 = 视口
+//   尺寸(macOS 视图 = 屏幕 frame, 与旧 g_screen_w/h 一致), 屏幕分界线两种画布
+//   模式都生成(macOS 现状), 细网格恒生成(调用方只在"显示网格"时走此入口)。
+//   follow 只回显: 网格跟随涂鸦是可见性门控, 不参与几何(见 grid.rs 模块文档)。
+// - glaspen2_grid_json_clipped: macOS 笔迹脏矩形热路径(旧实现只算与 clipRect
+//   相交的线, 这里保留同一优化); 额外带 show_grid 开关, 只开分栏时不算细网格。
+
+fn grid_segment_json(seg: &Segment) -> serde_json::Value {
+    serde_json::json!({
+        "x0": seg.x0,
+        "y0": seg.y0,
+        "x1": seg.x1,
+        "y1": seg.y1,
+    })
+}
+
+fn grid_lines_json(lines: &GridLines) -> serde_json::Value {
+    let mut value = serde_json::json!({
+        "minor": lines.minor.iter().map(grid_segment_json).collect::<Vec<_>>(),
+        "screen": lines.screen.iter().map(grid_segment_json).collect::<Vec<_>>(),
+        "divider": lines.divider.iter().map(grid_segment_json).collect::<Vec<_>>(),
+    });
+    value["follow"] = serde_json::Value::Bool(false);
+    value
+}
+
+fn grid_error_json(err: &crate::grid::GridError) -> *mut c_char {
+    return_c_string(serde_json::json!({ "error": err.to_string() }).to_string())
+}
+
+/// 网格线段表 JSON(规范入口): 形状
+/// `{"minor":[{"x0","y0","x1","y1"},...],"screen":[...],"divider":[...],"follow":bool}»。
+///
+/// - 参数顺序 = D6 约定: 视图宽高、镜头三值、网格尺寸、分栏模式、网格跟随涂鸦;
+/// - 线段是视图坐标(原点左上, y 向下; macOS adapter 描边时翻转 y),
+///   竖线 x0==x1、y0=0/y1=view_h, 横线 y0==y1、x0=0/x1=view_w;
+/// - 绘制顺序 = minor → screen → divider(两端旧实现同序);
+/// - follow 仅回显(几何与它无关, 两端现状都只是可见性门控);
+/// - 非法/非有限输入 → {"error": "..."};永不 NULL。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_grid_json(
+    view_w: c_double,
+    view_h: c_double,
+    pan_x: c_double,
+    pan_y: c_double,
+    zoom: c_double,
+    grid_size: c_double,
+    divider: c_int,
+    follow: c_int,
+) -> *mut c_char {
+    let params = GridParams {
+        view_w,
+        view_h,
+        camera: Camera::new(pan_x, pan_y, zoom),
+        grid_size,
+        divider,
+        show_grid: true,
+        screen_w: view_w,
+        screen_h: view_h,
+        screen_lines: true,
+        clip: None,
+    };
+    match crate::grid::compute_checked(&params) {
+        Ok(lines) => {
+            let mut value = grid_lines_json(&lines);
+            value["follow"] = serde_json::Value::Bool(follow != 0);
+            return_c_string(value.to_string())
+        }
+        Err(err) => grid_error_json(&err),
+    }
+}
+
+/// 网格线段表 JSON(脏矩形热路径): 同 [glaspen2_grid_json] 形状, 但只生成与
+/// `(clip_x0, clip_y0, clip_x1, clip_y1)»(视图坐标, y 向下)相交的线。
+///
+/// `show_grid != 0» 才生成细网格 + 屏幕分界线; 分栏线独立生成(与"显示网格"
+/// 开关无关, 两端同款)。屏幕单位仍 = 视口尺寸(不是脏区尺寸)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_grid_json_clipped(
+    view_w: c_double,
+    view_h: c_double,
+    pan_x: c_double,
+    pan_y: c_double,
+    zoom: c_double,
+    grid_size: c_double,
+    divider: c_int,
+    show_grid: c_int,
+    clip_x0: c_double,
+    clip_y0: c_double,
+    clip_x1: c_double,
+    clip_y1: c_double,
+) -> *mut c_char {
+    let params = GridParams {
+        view_w,
+        view_h,
+        camera: Camera::new(pan_x, pan_y, zoom),
+        grid_size,
+        divider,
+        show_grid: show_grid != 0,
+        screen_w: view_w,
+        screen_h: view_h,
+        screen_lines: true,
+        clip: Some(crate::grid::ViewRect::new(
+            clip_x0, clip_y0, clip_x1, clip_y1,
+        )),
+    };
+    match crate::grid::compute_checked(&params) {
+        Ok(lines) => return_c_string(grid_lines_json(&lines).to_string()),
+        Err(err) => grid_error_json(&err),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2492,5 +2614,127 @@ mod tests {
             "载入输出必须是有限数"
         );
         assert!(pz > 0.0, "载入 zoom 必须 > 0(FFI 已做 from_db_values 兜底)");
+    }
+
+    /// D6 网格几何 FFI: macOS ObjC 依赖的 JSON 形状 + 数值语义。
+    ///
+    /// - 线段表与 core `grid::compute» 同一公式(已知向量 + 与 core 计数对照);
+    /// - 三层绘制顺序 minor → screen → divider, 线段轴对齐且画满视口;
+    /// - 分栏 0/1/2/3/4 位置与 core 快照一致;脏矩形入口只回相交线;
+    /// - `follow» 仅回显(网格跟随涂鸦不参与几何);
+    /// - 非法输入回 {"error":...}, 永不 NULL / NaN, 输出单行合法 JSON。
+    #[test]
+    fn grid_ffi_roundtrip() {
+        fn take(ptr: *mut c_char) -> serde_json::Value {
+            assert!(!ptr.is_null(), "网格 FFI 必须返回 JSON 字符串, 不能 NULL");
+            let text = unsafe { CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .into_owned();
+            glaspen2_free_c_string(ptr);
+            assert!(!text.contains('\n'), "网格 JSON 必须单行: {text}");
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("网格 JSON 不合法: {e}: {text}"))
+        }
+        fn seg(value: &serde_json::Value) -> [f64; 4] {
+            [
+                value["x0"].as_f64().expect("x0 数字"),
+                value["y0"].as_f64().expect("y0 数字"),
+                value["x1"].as_f64().expect("x1 数字"),
+                value["y1"].as_f64().expect("y1 数字"),
+            ]
+        }
+        fn array_len(value: &serde_json::Value) -> usize {
+            value.as_array().expect("线段数组").len()
+        }
+
+        // 回原点 800x600 / 间距 40: 细网格 23 竖 + 18 横;屏幕分界线 4+4;无分栏。
+        let v = take(glaspen2_grid_json(800.0, 600.0, 0.0, 0.0, 1.0, 40.0, 0, 0));
+        assert_eq!(array_len(&v["minor"]), 23 + 18);
+        assert_eq!(array_len(&v["screen"]), 4 + 4);
+        assert_eq!(array_len(&v["divider"]), 0);
+        assert_eq!(v["follow"], false);
+        assert_eq!(seg(&v["minor"][0]), [-40.0, 0.0, -40.0, 600.0]);
+        assert_eq!(seg(&v["screen"][1]), [0.0, 0.0, 0.0, 600.0]);
+        // 与 core 同一条公式(防止 FFI 入口另写一份)。
+        let core = crate::grid::compute(&crate::grid::GridParams::view(
+            800.0,
+            600.0,
+            Camera::HOME,
+            40.0,
+        ));
+        assert_eq!(array_len(&v["minor"]), core.minor.len());
+        assert_eq!(array_len(&v["screen"]), core.screen.len());
+
+        // 分栏模式位置(1=左右两栏, 吸附到最近网格线)。
+        let v = take(glaspen2_grid_json(800.0, 600.0, 0.0, 0.0, 1.0, 40.0, 1, 0));
+        assert_eq!(array_len(&v["divider"]), 4);
+        assert_eq!(seg(&v["divider"][0]), [-400.0, 0.0, -400.0, 600.0]);
+
+        // follow 只回显: 传 0/1 的三层线段完全相同(可见性门控, 不参与几何)。
+        let a = take(glaspen2_grid_json(800.0, 600.0, 0.0, 0.0, 1.0, 40.0, 3, 0));
+        let b = take(glaspen2_grid_json(800.0, 600.0, 0.0, 0.0, 1.0, 40.0, 3, 1));
+        assert_eq!(a["minor"], b["minor"]);
+        assert_eq!(a["screen"], b["screen"]);
+        assert_eq!(a["divider"], b["divider"]);
+        assert_eq!(
+            (a["follow"].clone(), b["follow"].clone()),
+            (false.into(), true.into())
+        );
+
+        // 脏矩形入口: 只回与 clip 相交的线(macOS 旧实现的省遍历优化)。
+        let v = take(glaspen2_grid_json_clipped(
+            800.0, 600.0, 0.0, 0.0, 1.0, 40.0, 0, 1, 100.0, 100.0, 200.0, 200.0,
+        ));
+        assert_eq!(array_len(&v["minor"]), 6 + 6);
+        assert_eq!(array_len(&v["screen"]), 3 + 3);
+        // 反向 clip 端点归一; 非有限 clip 忽略(按全视口算), 都不报错。
+        let swapped = take(glaspen2_grid_json_clipped(
+            800.0, 600.0, 0.0, 0.0, 1.0, 40.0, 0, 1, 200.0, 200.0, 100.0, 100.0,
+        ));
+        assert_eq!(swapped["minor"], v["minor"]);
+        let nan_clip = take(glaspen2_grid_json_clipped(
+            800.0,
+            600.0,
+            0.0,
+            0.0,
+            1.0,
+            40.0,
+            0,
+            1,
+            f64::NAN,
+            0.0,
+            1.0,
+            1.0,
+        ));
+        assert_eq!(array_len(&nan_clip["minor"]), 23 + 18);
+        // 只开分栏(show_grid=0): 不算细网格/屏幕分界线, 分栏线照画。
+        let v = take(glaspen2_grid_json_clipped(
+            800.0, 600.0, 0.0, 0.0, 1.0, 40.0, 3, 0, 0.0, 0.0, 800.0, 600.0,
+        ));
+        assert_eq!(array_len(&v["minor"]), 0);
+        assert_eq!(array_len(&v["screen"]), 0);
+        assert_eq!(array_len(&v["divider"]), 8 + 8);
+
+        // 非法输入 → error JSON(不 NULL、不 panic、不含 NaN)。
+        for v in [
+            take(glaspen2_grid_json(0.0, 600.0, 0.0, 0.0, 1.0, 40.0, 0, 0)),
+            take(glaspen2_grid_json(
+                800.0,
+                600.0,
+                f64::NAN,
+                0.0,
+                1.0,
+                40.0,
+                0,
+                0,
+            )),
+            take(glaspen2_grid_json(800.0, 600.0, 0.0, 0.0, 0.0, 40.0, 0, 0)),
+            take(glaspen2_grid_json(800.0, 600.0, 0.0, 0.0, 1.0, 0.0, 0, 0)),
+            take(glaspen2_grid_json_clipped(
+                800.0, 600.0, 0.0, 0.0, 1.0, -5.0, 0, 1, 0.0, 0.0, 800.0, 600.0,
+            )),
+        ] {
+            let error = v["error"].as_str().unwrap_or_default();
+            assert!(error.contains("网格"), "error JSON 应说明网格非法: {v}");
+        }
     }
 }
