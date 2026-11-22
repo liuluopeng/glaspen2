@@ -18,38 +18,36 @@
 
 /// 动作表与 Windows 默认组合(顺序 = 面板显示顺序, 与 macOS 同序)。
 ///
-/// Windows 默认**字母键与 macOS 完全一致**, 两条修饰键家族一一对应:
-///   - macOS ⌘⌃(核心动作) → Windows **Ctrl+Alt**;
-///   - macOS ⌃⌥(镜头/缩放) → Windows **Ctrl+Alt+Shift**(整套多按一个 Shift)。
-/// 核心: Z/`/1/V、设置 D(=macOS ⌘⌃D)、退出 ⇧Q(=macOS ⌘⌃⇧Q);
-/// 镜头: W/A/S/D、放大 X / 缩小 Z —— 字母与 macOS 逐个相同, 不再有"个别键
-/// 额外加 Shift"的特例。镜头键只在自由涂鸦模式注册, 不影响其它应用。
-/// 其余没绑过的动作默认不绑(与 macOS「新用户不占一堆全局键」一致)。
+/// Windows 默认**全动作都有键**、字母与 macOS 尽量一致, 按修饰键分两条家族:
+///   - 核心/开关类 → **Ctrl+Alt**: Z/`/1/V、D 设置、⇧Q 退出、C 清空、G 导出、
+///     S 复制 SVG、B 磨砂、X 飘渺、I 自由涂鸦、⇧C 换色、⇧W 换粗细;
+///   - 镜头/缩放 → **Win+Alt**: W/A/S/D 平移、X 放大 / Z 缩小。
+/// 镜头键只在自由涂鸦模式注册; 若 Win+Alt+某键被其它软件占用(实测 W/D 很常见),
+/// 注册时自动降级为 Alt+Shift+同键并把实际生效值回推面板(见 registration_fallback)。
 const HOTKEY_ACTIONS: [(&str, &str); 20] = [
     ("undo", "ctrl+alt+Z"),
     ("page_prev", "ctrl+alt+`"),
     ("page_next", "ctrl+alt+1"),
-    ("color_swap", ""),
-    ("width_swap", ""),
+    ("color_swap", "ctrl+alt+shift+C"),
+    ("width_swap", "ctrl+alt+shift+W"),
     ("toggle_draw", "ctrl+alt+V"),
-    ("toggle_free_canvas", ""),
-    // 左手镜头(macOS ⌃⌥WASD → Ctrl+Alt+Shift + WASD)
-    ("canvas_pan_left", "ctrl+alt+shift+A"),
-    ("canvas_pan_right", "ctrl+alt+shift+D"),
-    ("canvas_pan_up", "ctrl+alt+shift+W"),
-    ("canvas_pan_down", "ctrl+alt+shift+S"),
-    // 缩放(macOS ⌃⌥X/Z → Ctrl+Alt+Shift + X/Z)
-    ("canvas_zoom_in", "ctrl+alt+shift+X"),
-    ("canvas_zoom_out", "ctrl+alt+shift+Z"),
-    ("clear", ""),
-    ("export", ""),
-    ("copy_svg", ""),
-    ("toggle_glass", ""),
-    ("toggle_ethereal", ""),
-    // 打开设置: 与 macOS 同为 D(⌘⌃D → Ctrl+Alt+D)
+    ("toggle_free_canvas", "ctrl+alt+I"),
+    // 左手镜头: Win+Alt + WASD(W/D 被占用时自动降级 Alt+Shift)
+    ("canvas_pan_left", "cmd+alt+A"),
+    ("canvas_pan_right", "cmd+alt+D"),
+    ("canvas_pan_up", "cmd+alt+W"),
+    ("canvas_pan_down", "cmd+alt+S"),
+    // 缩放: Win+Alt + X 放大 / Z 缩小
+    ("canvas_zoom_in", "cmd+alt+X"),
+    ("canvas_zoom_out", "cmd+alt+Z"),
+    ("clear", "ctrl+alt+C"),
+    ("export", "ctrl+alt+G"),
+    ("copy_svg", "ctrl+alt+S"),
+    ("toggle_glass", "ctrl+alt+B"),
+    ("toggle_ethereal", "ctrl+alt+X"),
+    // 打开设置: Ctrl+Alt+D
     ("settings", "ctrl+alt+D"),
-    // 彻底退出: 与 macOS 同为 ⇧Q(⌘⌃⇧Q → Ctrl+Alt+Shift+Q)
-    // (可录制改键, 但 Windows 上没有菜单栏/托盘, 不可解绑)
+    // 彻底退出: Ctrl+Alt+Shift+Q(Windows 上没有菜单栏/托盘, 不可解绑)
     ("quit", "ctrl+alt+shift+Q"),
 ];
 
@@ -68,10 +66,11 @@ const RESERVED_CHORDS: [&str; 3] = ["ctrl+alt+R", "ctrl+alt+2", "ctrl+alt+3"];
 
 /// "默认键位方案"版本(user_settings 里的标记): 旧库没有这个键 = 1。
 /// 2 = 主键(字母)与 macOS 对齐的第一版(个别键额外 Shift);
-/// 3 = 与 macOS 字母完全一致: 核心 Ctrl+Alt+同字母, 镜头整套 Ctrl+Alt+Shift。
+/// 3 = 与 macOS 字母完全一致: 核心 Ctrl+Alt+同字母, 镜头整套 Ctrl+Alt+Shift;
+/// 4 = 全动作默认都有键: 镜头 Win+Alt+WASD/XZ(占用时降级 Alt+Shift), 其余 Ctrl+Alt 字母。
 /// 迁移只做一次 —— 用户之后自己改回旧组合, 不会在每次启动被反复改写。
 const SHORTCUTS_DEFAULTS_VERSION_KEY: &str = "shortcuts_defaults_v";
-const SHORTCUTS_DEFAULTS_VERSION: i32 = 3;
+const SHORTCUTS_DEFAULTS_VERSION: i32 = 4;
 
 /// 能当全局热键的按键名(与 macOS gl_keycode_names / Dart _hidKeyNames 对齐)。
 /// 只收录用来当快捷键的键; 面板录制端也用同一张表(经 Dart 侧映射)。
@@ -259,34 +258,40 @@ fn force_bound(action: &str) -> bool {
 /// 版本沿革(一个动作可能有多个旧默认, 都要能迁到最终值):
 ///   v1: 镜头=方向键/PgUp·PgDn, 设置/退出无 Shift;
 ///   v2: 镜头 WASD/XZ, 设置 ⇧D、缩小 ⇧Z(个别键额外 Shift);
-///   v3: 字母与 macOS 完全一致 —— 核心 Ctrl+Alt+同字母, 镜头整套 Ctrl+Alt+Shift。
+///   v3: 字母与 macOS 完全一致 —— 核心 Ctrl+Alt+同字母, 镜头整套 Ctrl+Alt+Shift;
+///   v4: 镜头 Win+Alt+WASD/XZ, 其余动作全部补上 Ctrl+Alt 字母默认。
+///
+/// 注意: v1~v3 里这些开关动作默认是"空串(未绑定)", v4 起有默认值 ——
+/// 空串无法区分"旧默认"与"用户手动解绑", 一律按旧默认迁移一次(只迁一次)。
 fn legacy_default_target(action: &str, chord: &str) -> Option<&'static str> {
     match action {
+        // 镜头: v1 方向键/PgUp·PgDn / v2 Ctrl+Alt+字母 / v3 Ctrl+Alt+Shift+字母
+        // → v4 Win+Alt+字母
         "canvas_pan_left" => match chord {
-            "ctrl+alt+Left" | "ctrl+alt+A" => Some("ctrl+alt+shift+A"),
+            "ctrl+alt+Left" | "ctrl+alt+A" | "ctrl+alt+shift+A" => Some("cmd+alt+A"),
             _ => None,
         },
         "canvas_pan_right" => match chord {
-            "ctrl+alt+Right" | "ctrl+alt+D" => Some("ctrl+alt+shift+D"),
+            "ctrl+alt+Right" | "ctrl+alt+D" | "ctrl+alt+shift+D" => Some("cmd+alt+D"),
             _ => None,
         },
         "canvas_pan_up" => match chord {
-            "ctrl+alt+Up" | "ctrl+alt+W" => Some("ctrl+alt+shift+W"),
+            "ctrl+alt+Up" | "ctrl+alt+W" | "ctrl+alt+shift+W" => Some("cmd+alt+W"),
             _ => None,
         },
         "canvas_pan_down" => match chord {
-            "ctrl+alt+Down" | "ctrl+alt+S" => Some("ctrl+alt+shift+S"),
+            "ctrl+alt+Down" | "ctrl+alt+S" | "ctrl+alt+shift+S" => Some("cmd+alt+S"),
             _ => None,
         },
         "canvas_zoom_in" => match chord {
-            "ctrl+alt+PageUp" | "ctrl+alt+X" => Some("ctrl+alt+shift+X"),
+            "ctrl+alt+PageUp" | "ctrl+alt+X" | "ctrl+alt+shift+X" => Some("cmd+alt+X"),
             _ => None,
         },
         "canvas_zoom_out" => match chord {
-            "ctrl+alt+PageDown" => Some("ctrl+alt+shift+Z"),
+            "ctrl+alt+PageDown" | "ctrl+alt+shift+Z" => Some("cmd+alt+Z"),
             _ => None,
         },
-        // v2 的设置是 ⇧D, v3 回到与 macOS 同字母的 D
+        // v2 的设置是 ⇧D; v3/v4 回到 D
         "settings" => match chord {
             "ctrl+alt+shift+D" => Some("ctrl+alt+D"),
             _ => None,
@@ -296,6 +301,15 @@ fn legacy_default_target(action: &str, chord: &str) -> Option<&'static str> {
             "ctrl+alt+Q" => Some("ctrl+alt+shift+Q"),
             _ => None,
         },
+        // v4 起这些动作默认也有键(旧版本默认未绑定 = 空串)
+        "color_swap" => (chord.is_empty()).then_some("ctrl+alt+shift+C"),
+        "width_swap" => (chord.is_empty()).then_some("ctrl+alt+shift+W"),
+        "toggle_free_canvas" => (chord.is_empty()).then_some("ctrl+alt+I"),
+        "clear" => (chord.is_empty()).then_some("ctrl+alt+C"),
+        "export" => (chord.is_empty()).then_some("ctrl+alt+G"),
+        "copy_svg" => (chord.is_empty()).then_some("ctrl+alt+S"),
+        "toggle_glass" => (chord.is_empty()).then_some("ctrl+alt+B"),
+        "toggle_ethereal" => (chord.is_empty()).then_some("ctrl+alt+X"),
         _ => None,
     }
 }
@@ -416,12 +430,25 @@ fn unregister_fixed(hwnd: HWND) {
     }
 }
 
+/// 注册失败时的降级组合: 镜头键的 Win+Alt+键 在不少机器上被常驻软件占用
+/// (实测 Win+Alt+W/D 会返回 1409), 换 Alt+Shift+同键, 字母不变。
+fn registration_fallback(action: &str, chord: &str) -> Option<String> {
+    if !action.starts_with("canvas_") {
+        return None;
+    }
+    let key = chord.strip_prefix("cmd+alt+")?;
+    Some(format!("alt+shift+{key}"))
+}
+
 /// 注销并重新注册可配置动作的热键(固定热键不动)。
 fn register_actions_locked(reg: &mut HotkeyRegistry, hwnd: HWND) {
     for id in reg.registered.drain(..) {
         let _ = unsafe { UnregisterHotKey(Some(hwnd), id) };
     }
-    for (idx, (action, chord)) in reg.effective.iter().enumerate() {
+    // 拷贝一份再遍历: 降级注册时要改写 reg.effective[idx](面板/日志显示实际值)
+    let effective = reg.effective.clone();
+    let mut fallback_used = false;
+    for (idx, (action, chord)) in effective.iter().enumerate() {
         if chord.is_empty() {
             continue;
         }
@@ -456,9 +483,36 @@ fn register_actions_locked(reg: &mut HotkeyRegistry, hwnd: HWND) {
         let id = HOTKEY_ID_ACTION_BASE + idx as i32;
         match unsafe { RegisterHotKey(Some(hwnd), id, flags, vk) } {
             Ok(()) => reg.registered.push(id),
-            Err(e) => tracing::warn!(
-                "[hotkey] {action}={chord} 注册失败(被系统/其它程序占用?): {e}"
-            ),
+            Err(e) => {
+                // 镜头键被其它程序占用(Win+Alt+W/D 很常见): 降级 Alt+Shift+同键
+                let fallback = registration_fallback(action, chord)
+                    .filter(|alt| parse_chord(alt).is_some());
+                let Some(alt) = fallback else {
+                    tracing::warn!(
+                        "[hotkey] {action}={chord} 注册失败(被系统/其它程序占用?): {e}"
+                    );
+                    continue;
+                };
+                let (mods2, vk2) = parse_chord(&alt).expect("fallback 已在上面校验");
+                let flags2 = if repeatable {
+                    HOT_KEY_MODIFIERS(mods2)
+                } else {
+                    HOT_KEY_MODIFIERS(mods2 | MOD_NOREPEAT.0 as u32)
+                };
+                match unsafe { RegisterHotKey(Some(hwnd), id, flags2, vk2) } {
+                    Ok(()) => {
+                        tracing::info!(
+                            "[hotkey] {action}={chord} 被占用, 自动降级为 {alt}"
+                        );
+                        reg.effective[idx].1 = alt;
+                        reg.registered.push(id);
+                        fallback_used = true;
+                    }
+                    Err(e2) => tracing::warn!(
+                        "[hotkey] {action}={chord} 注册失败, 降级 {alt} 也失败: {e2}"
+                    ),
+                }
+            }
         }
     }
     // 生效表(含未绑定)写进日志, 排障时一眼看到底注册了什么
@@ -474,6 +528,13 @@ fn register_actions_locked(reg: &mut HotkeyRegistry, hwnd: HWND) {
         })
         .collect();
     tracing::info!("[hotkey] 生效快捷键: {}", summary.join(" "));
+    if fallback_used {
+        // 回推实际生效表: 否则面板"恢复默认/保存"后仍显示默认值, 和真实热键不一致
+        let table = effective_json_locked(reg);
+        if let Ok(quoted) = serde_json::to_string(&table) {
+            push_settings_changed(&format!("\"shortcuts\":{quoted}"));
+        }
+    }
 }
 
 fn effective_json_locked(reg: &HotkeyRegistry) -> String {
@@ -893,22 +954,30 @@ mod tests {
             .clone()
     }
 
-    /// Windows 默认**字母键与 macOS 完全一致**: 核心 = Ctrl+Alt+同字母
-    /// (设置 D、退出 ⇧Q), 镜头整套 = Ctrl+Alt+Shift+W/A/S/D/X/Z。
+    /// v4 默认: **所有动作都有键**。核心/开关 = Ctrl+Alt+字母,
+    /// 镜头/缩放 = Win+Alt+W/A/S/D、X/Z。
     #[test]
-    fn windows_defaults_match_macos_main_keys() {
+    fn windows_defaults_cover_all_actions() {
         let effective = build_effective_saved(&HashMap::new());
         let expected = [
             ("undo", "ctrl+alt+Z"),
             ("page_prev", "ctrl+alt+`"),
             ("page_next", "ctrl+alt+1"),
+            ("color_swap", "ctrl+alt+shift+C"),
+            ("width_swap", "ctrl+alt+shift+W"),
             ("toggle_draw", "ctrl+alt+V"),
-            ("canvas_pan_left", "ctrl+alt+shift+A"),
-            ("canvas_pan_right", "ctrl+alt+shift+D"),
-            ("canvas_pan_up", "ctrl+alt+shift+W"),
-            ("canvas_pan_down", "ctrl+alt+shift+S"),
-            ("canvas_zoom_in", "ctrl+alt+shift+X"),
-            ("canvas_zoom_out", "ctrl+alt+shift+Z"),
+            ("toggle_free_canvas", "ctrl+alt+I"),
+            ("canvas_pan_left", "cmd+alt+A"),
+            ("canvas_pan_right", "cmd+alt+D"),
+            ("canvas_pan_up", "cmd+alt+W"),
+            ("canvas_pan_down", "cmd+alt+S"),
+            ("canvas_zoom_in", "cmd+alt+X"),
+            ("canvas_zoom_out", "cmd+alt+Z"),
+            ("clear", "ctrl+alt+C"),
+            ("export", "ctrl+alt+G"),
+            ("copy_svg", "ctrl+alt+S"),
+            ("toggle_glass", "ctrl+alt+B"),
+            ("toggle_ethereal", "ctrl+alt+X"),
             ("settings", "ctrl+alt+D"),
             ("quit", "ctrl+alt+shift+Q"),
         ];
@@ -916,25 +985,54 @@ mod tests {
             assert_eq!(chord_of(&effective, action), chord, "动作 {action} 默认键");
         }
         assert_eq!(HOTKEY_ACTIONS.len(), effective.len());
-        // 与 macOS 一样: 这些动作默认不绑定
-        for action in [
-            "color_swap",
-            "width_swap",
-            "toggle_free_canvas",
-            "clear",
-            "export",
-            "copy_svg",
-            "toggle_glass",
-            "toggle_ethereal",
-        ] {
-            assert_eq!(chord_of(&effective, action), "", "{action} 应默认未绑定");
-        }
+        // v4: 默认表里不再有"未绑定"的动作
+        assert!(
+            effective.iter().all(|(_, c)| !c.is_empty()),
+            "默认表不应有空绑定: {effective:?}"
+        );
     }
 
-    /// 两代旧默认都能一次性迁到 v3(字母与 macOS 一致); 迁移幂等。
+    /// 镜头键被占用时降级到 Alt+Shift+同键; 非镜头动作不降级。
+    #[test]
+    fn camera_fallback_chords() {
+        assert_eq!(
+            registration_fallback("canvas_pan_up", "cmd+alt+W").as_deref(),
+            Some("alt+shift+W")
+        );
+        assert_eq!(
+            registration_fallback("canvas_zoom_out", "cmd+alt+Z").as_deref(),
+            Some("alt+shift+Z")
+        );
+        assert_eq!(registration_fallback("undo", "ctrl+alt+Z"), None);
+        assert_eq!(registration_fallback("canvas_pan_up", "ctrl+alt+W"), None);
+    }
+
+    /// 各代旧默认(含"未绑定 = 空串")都能一次性迁到 v4; 迁移幂等。
     #[test]
     fn legacy_windows_defaults_are_migrated() {
-        // v1: 镜头=方向键/PgUp·PgDn, 设置/退出无 Shift
+        // v1~v3 的那 8 个"默认未绑定"动作: 空串 → v4 默认键
+        let mut unbound = saved(&[
+            ("color_swap", ""),
+            ("width_swap", ""),
+            ("toggle_free_canvas", ""),
+            ("clear", ""),
+            ("export", ""),
+            ("copy_svg", ""),
+            ("toggle_glass", ""),
+            ("toggle_ethereal", ""),
+        ]);
+        assert_eq!(migrate_legacy_defaults(&mut unbound), 8);
+        let effective_u = build_effective_saved(&unbound);
+        assert_eq!(chord_of(&effective_u, "color_swap"), "ctrl+alt+shift+C");
+        assert_eq!(chord_of(&effective_u, "width_swap"), "ctrl+alt+shift+W");
+        assert_eq!(chord_of(&effective_u, "toggle_free_canvas"), "ctrl+alt+I");
+        assert_eq!(chord_of(&effective_u, "clear"), "ctrl+alt+C");
+        assert_eq!(chord_of(&effective_u, "export"), "ctrl+alt+G");
+        assert_eq!(chord_of(&effective_u, "copy_svg"), "ctrl+alt+S");
+        assert_eq!(chord_of(&effective_u, "toggle_glass"), "ctrl+alt+B");
+        assert_eq!(chord_of(&effective_u, "toggle_ethereal"), "ctrl+alt+X");
+
+        // v1: 镜头=方向键/PgUp·PgDn, 退出无 Shift
         let mut v1 = saved(&[
             ("canvas_pan_left", "ctrl+alt+Left"),
             ("canvas_pan_right", "ctrl+alt+Right"),
@@ -947,50 +1045,51 @@ mod tests {
         assert_eq!(migrate_legacy_defaults(&mut v1), 7);
         assert_eq!(migrate_legacy_defaults(&mut v1), 0); // 幂等
         let effective = build_effective_saved(&v1);
-        assert_eq!(chord_of(&effective, "canvas_pan_left"), "ctrl+alt+shift+A");
-        assert_eq!(chord_of(&effective, "canvas_pan_right"), "ctrl+alt+shift+D");
-        assert_eq!(chord_of(&effective, "canvas_pan_up"), "ctrl+alt+shift+W");
-        assert_eq!(chord_of(&effective, "canvas_pan_down"), "ctrl+alt+shift+S");
-        assert_eq!(chord_of(&effective, "canvas_zoom_in"), "ctrl+alt+shift+X");
-        assert_eq!(chord_of(&effective, "canvas_zoom_out"), "ctrl+alt+shift+Z");
+        assert_eq!(chord_of(&effective, "canvas_pan_left"), "cmd+alt+A");
+        assert_eq!(chord_of(&effective, "canvas_pan_right"), "cmd+alt+D");
+        assert_eq!(chord_of(&effective, "canvas_pan_up"), "cmd+alt+W");
+        assert_eq!(chord_of(&effective, "canvas_pan_down"), "cmd+alt+S");
+        assert_eq!(chord_of(&effective, "canvas_zoom_in"), "cmd+alt+X");
+        assert_eq!(chord_of(&effective, "canvas_zoom_out"), "cmd+alt+Z");
         assert_eq!(chord_of(&effective, "quit"), "ctrl+alt+shift+Q");
         assert_eq!(chord_of(&effective, "settings"), "ctrl+alt+D");
 
-        // v2: 镜头 WASD/XZ(无 Shift), 设置 ⇧D; 也应迁到 v3
-        let mut v2 = saved(&[
-            ("canvas_pan_left", "ctrl+alt+A"),
-            ("canvas_pan_right", "ctrl+alt+D"),
-            ("canvas_pan_up", "ctrl+alt+W"),
-            ("canvas_pan_down", "ctrl+alt+S"),
-            ("canvas_zoom_in", "ctrl+alt+X"),
+        // v3: 镜头 Ctrl+Alt+Shift+字母 → v4 Win+Alt+字母
+        let mut v3 = saved(&[
+            ("canvas_pan_left", "ctrl+alt+shift+A"),
+            ("canvas_pan_right", "ctrl+alt+shift+D"),
+            ("canvas_pan_up", "ctrl+alt+shift+W"),
+            ("canvas_pan_down", "ctrl+alt+shift+S"),
+            ("canvas_zoom_in", "ctrl+alt+shift+X"),
             ("canvas_zoom_out", "ctrl+alt+shift+Z"),
-            ("settings", "ctrl+alt+shift+D"),
+            ("settings", "ctrl+alt+D"),
             ("quit", "ctrl+alt+shift+Q"),
         ]);
-        // v2 里缩小/退出两个值已等于 v3 默认, 不算迁移 → 6 条
-        assert_eq!(migrate_legacy_defaults(&mut v2), 6);
-        let effective2 = build_effective_saved(&v2);
-        assert_eq!(chord_of(&effective2, "canvas_pan_left"), "ctrl+alt+shift+A");
-        assert_eq!(chord_of(&effective2, "canvas_pan_right"), "ctrl+alt+shift+D");
-        assert_eq!(chord_of(&effective2, "canvas_zoom_in"), "ctrl+alt+shift+X");
-        assert_eq!(chord_of(&effective2, "canvas_zoom_out"), "ctrl+alt+shift+Z");
-        assert_eq!(chord_of(&effective2, "settings"), "ctrl+alt+D");
-        assert_eq!(chord_of(&effective2, "quit"), "ctrl+alt+shift+Q");
+        assert_eq!(migrate_legacy_defaults(&mut v3), 6);
+        let effective3 = build_effective_saved(&v3);
+        assert_eq!(chord_of(&effective3, "canvas_pan_left"), "cmd+alt+A");
+        assert_eq!(chord_of(&effective3, "canvas_pan_right"), "cmd+alt+D");
+        assert_eq!(chord_of(&effective3, "canvas_zoom_in"), "cmd+alt+X");
+        assert_eq!(chord_of(&effective3, "canvas_zoom_out"), "cmd+alt+Z");
+        assert_eq!(chord_of(&effective3, "settings"), "ctrl+alt+D");
+        assert_eq!(chord_of(&effective3, "quit"), "ctrl+alt+shift+Q");
     }
 
     /// 只有"仍等于旧默认"的存档才迁移, 用户自己配的组合不动。
     #[test]
     fn custom_chords_are_not_migrated() {
         let mut map = saved(&[
-            ("canvas_pan_left", "ctrl+alt+shift+A"),
-            ("settings", "ctrl+alt+Q"), // 用户自定义, 不是旧默认
+            ("canvas_pan_left", "alt+shift+A"), // 自定义(可能是降级值), 不是旧默认
+            ("settings", "ctrl+alt+Q"),         // 用户自定义, 不是旧默认
             ("quit", "ctrl+alt+E"),
+            ("toggle_ethereal", "ctrl+alt+U"),
         ]);
         assert_eq!(migrate_legacy_defaults(&mut map), 0);
         let effective = build_effective_saved(&map);
-        assert_eq!(chord_of(&effective, "canvas_pan_left"), "ctrl+alt+shift+A");
+        assert_eq!(chord_of(&effective, "canvas_pan_left"), "alt+shift+A");
         assert_eq!(chord_of(&effective, "settings"), "ctrl+alt+Q");
         assert_eq!(chord_of(&effective, "quit"), "ctrl+alt+E");
+        assert_eq!(chord_of(&effective, "toggle_ethereal"), "ctrl+alt+U");
     }
 
     /// Windows 没有菜单栏/托盘: 退出与打开设置都是强制绑定, 解绑必须回退默认。

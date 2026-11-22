@@ -101,14 +101,16 @@ Settings · Notebook · Free doodle"]
 | Open settings | `⌘ + ⌃ + D` | `Ctrl + Alt + D` |
 | Quit completely | `⌘ + ⌃ + ⇧ + Q` | `Ctrl + Alt + Shift + Q` |
 | Quick GIF recording (hold) | `⌘ + ⌃ + R` | `Ctrl + Alt + R` (hold) |
-| Infinite canvas: pan (four directions) | `⌃⌥ + W / A / S / D` | `Ctrl + Alt + Shift + W / A / S / D` |
-| Infinite canvas: mouse pan | `⌃⌥ + left-drag` | `Ctrl + Alt + Shift + left-drag` |
-| Infinite canvas: keyboard zoom | `⌃⌥ + Z / X` | `Ctrl + Alt + Shift + Z / X` |
-| Infinite canvas: zoom (cursor anchored) | `⌃⌥ + scroll` | `Ctrl + Alt + Shift + scroll` |
+| Infinite canvas: pan (four directions) | `⌃⌥ + W / A / S / D` | `Win + Alt + W / A / S / D` |
+| Infinite canvas: mouse pan | `⌃⌥ + left-drag` | `Win + Alt + left-drag` |
+| Infinite canvas: keyboard zoom | `⌃⌥ + Z / X` | `Win + Alt + Z / X` |
+| Infinite canvas: zoom (cursor anchored) | `⌃⌥ + scroll` | `Win + Alt + scroll` |
 
-Only the core actions and the free-doodle camera keys are bound by default;
-color swap, width swap, new canvas, SVG/GIF export, copy SVG, frosted glass,
-ethereal canvas and the free-doodle toggle can be bound in Settings → Shortcuts.
+On macOS only the core actions and the free-doodle camera keys are bound by
+default. **Windows binds every action**: ethereal `Ctrl+Alt+X`, free doodle
+`Ctrl+Alt+I`, clear `Ctrl+Alt+C`, export `Ctrl+Alt+G`, copy SVG `Ctrl+Alt+S`,
+frosted glass `Ctrl+Alt+B`, color swap `Ctrl+Alt+Shift+C`, width swap
+`Ctrl+Alt+Shift+W`.
 
 Windows uses the same configurable shortcut system: Settings → More settings →
 Shortcuts lets you record / clear / reset each action, and the on-screen keyboard
@@ -117,9 +119,12 @@ above; global hotkeys are suspended while recording, and the scroll-wheel zoom
 modifiers follow the Zoom-in action after rebinding.
 
 Quit is `⌘⌃⇧Q` on macOS (`⌘⌃Q` is the system lock screen, so it cannot be used)
-and `Ctrl+Alt+Shift+Q` on Windows. Windows defaults now use the **same letter keys**
-as macOS with two modifier families mapped 1:1: core `⌘⌃` → `Ctrl+Alt` (Z/`/1/V,
-settings D, quit ⇧Q) and camera/zoom `⌃⌥` → `Ctrl+Alt+Shift` (W/A/S/D, zoom X/Z).
+and `Ctrl+Alt+Shift+Q` on Windows. Windows defaults use two families: core/toggle
+actions = `Ctrl+Alt+letter` (Z/`/1/V, D settings, ⇧Q quit, C clear, G export,
+S copy, B glass, X ethereal, I free doodle, ⇧C color, ⇧W width) and camera/zoom =
+`Win+Alt+W/A/S/D` plus `X` zoom-in / `Z` zoom-out. If a `Win+Alt` chord is taken by
+another app (W/D commonly are), it falls back to `Alt+Shift` + same key and the
+panel shows the effective chord.
 Quitting flushes queued stroke points, checkpoints
 the WAL and also terminates the settings-panel process (a separate process on
 Windows), so nothing is left behind for the next launch to clean up.

@@ -105,18 +105,23 @@ PDF / SVG / GIF / XOJ"]
 | 打开设置                              | `⌘ + ⌃ + D`              | `Ctrl + Alt + D`                  |
 | 彻底退出玻璃笔记                      | `⌘ + ⌃ + ⇧ + Q`          | `Ctrl + Alt + Shift + Q`          |
 | 快捷录制 GIF (按住)                   | `⌘ + ⌃ + R`              | `Ctrl + Alt + R` (按住)           |
-| 无限画布: 镜头四向平移                | `⌃⌥ + W / A / S / D`      | `Ctrl + Alt + Shift + W / A / S / D` |
-| 无限画布: 鼠标平移                    | `⌃⌥ + 左键拖动`            | `Ctrl + Alt + Shift + 左键拖动`   |
-| 无限画布: 键盘缩放                    | `⌃⌥ + Z / X`              | `Ctrl + Alt + Shift + Z / X`      |
-| 无限画布: 缩放 (光标为锚)             | `⌃⌥ + 滚轮`               | `Ctrl + Alt + Shift + 滚轮`       |
+| 无限画布: 镜头四向平移                | `⌃⌥ + W / A / S / D`      | `Win + Alt + W / A / S / D`       |
+| 无限画布: 鼠标平移                    | `⌃⌥ + 左键拖动`            | `Win + Alt + 左键拖动`            |
+| 无限画布: 键盘缩放                    | `⌃⌥ + Z / X`              | `Win + Alt + Z / X`               |
+| 无限画布: 缩放 (光标为锚)             | `⌃⌥ + 滚轮`               | `Win + Alt + 滚轮`                |
 
-默认未绑定(可在设置里绑): 换色 / 换粗细 / 新建画布 / 导出 SVG+GIF / 复制 SVG /
-磨砂玻璃 / 飘渺画布 / 切换自由涂鸦。
+macOS 默认未绑定(可在设置里绑): 换色 / 换粗细 / 新建画布 / 导出 SVG+GIF /
+复制 SVG / 磨砂玻璃 / 飘渺画布 / 切换自由涂鸦。**Windows 这些也都有默认键**:
+飘渺 `Ctrl+Alt+X`、自由涂鸦 `Ctrl+Alt+I`、清空 `Ctrl+Alt+C`、导出 `Ctrl+Alt+G`、
+复制 SVG `Ctrl+Alt+S`、磨砂玻璃 `Ctrl+Alt+B`、换色 `Ctrl+Alt+Shift+C`、
+换粗细 `Ctrl+Alt+Shift+W`。
 
 彻底退出默认 `⌘⌃⇧Q`(`⌘⌃Q` 是 macOS 系统锁屏, 不能占用); Windows 为 `Ctrl+Alt+Shift+Q`。
-Windows 默认**字母键与 macOS 完全一致**, 两条修饰键家族一一对应: 核心动作
-`⌘⌃` → `Ctrl+Alt`(Z/`/1/V、设置 D、退出 ⇧Q), 镜头/缩放 `⌃⌥` → `Ctrl+Alt+Shift`
-(W/A/S/D、放大 X、缩小 Z); 镜头键只在自由涂鸦模式生效, 鼠标平移/滚轮缩放跟着镜头键走。
+Windows 默认键分两条家族: 核心/开关类 = `Ctrl+Alt+字母`(Z/`/1/V、D 设置、⇧Q 退出、
+C 清空、G 导出、S 复制、B 磨砂、X 飘渺、I 自由涂鸦、⇧C 换色、⇧W 换粗细),
+镜头/缩放 = `Win+Alt+W/A/S/D`、`X` 放大 / `Z` 缩小; 镜头键只在自由涂鸦模式生效,
+鼠标平移/滚轮缩放跟着镜头键走。若 `Win+Alt+某键` 被其它软件占用(实测 W/D 很常见),
+自动降级为 `Alt+Shift+同键`, 面板里显示实际生效的组合。
 退出会写完排队点、checkpoint WAL, 并结束设置面板进程(Windows 面板是独立进程,
 不会留一个"关不掉的设置窗口"给下次启动清理)。
 
