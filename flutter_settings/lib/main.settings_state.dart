@@ -75,6 +75,11 @@ extension _SettingsStateUi on _SettingsPageState {
     final UiConfig cfg;
     try {
       cfg = UiConfig.fromJson(await _bridge.uiConfig());
+      if (cfg.protocolVersion != kPanelProtocolVersion) {
+        throw FormatException(
+            '面板协议版本不一致: 面板 v$kPanelProtocolVersion, 后端 v${cfg.protocolVersion}'
+            '(Windows 独立面板 exe 与覆盖层新旧混跑; 重启面板或重装即可)');
+      }
     } catch (e) {
       // 管道没连上/后端版本不匹配:保留 fallback,面板照常渲染
       debugPrint('[UiConfig] load failed — using fallback defaults: $e');

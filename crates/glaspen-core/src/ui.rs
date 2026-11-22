@@ -343,6 +343,8 @@ pub fn ui_config_json(platform: Platform) -> String {
         "defaults": defaults,
         "actionOrder": ACTIONS.iter().map(|a| a.id).collect::<Vec<_>>(),
         "holdHotkeys": {"gif": hold.gif, "draft": hold.draft, "send": hold.send},
+        // 面板 ↔ 后端协议版本(独立 exe 面板防新旧混跑; 见 core/protocol.rs)。
+        "protocolVersion": crate::protocol::PROTOCOL_VERSION,
         "modifierRow": modifier_row(platform),
         // 设置项契约(键/类型/落库键/平台可用性), 面板启动时据此自检后端是否漏项。
         "settings": crate::settings::schema_value(),
@@ -447,6 +449,7 @@ mod tests {
                 "modifierRow",
                 "features",
                 "settings",
+                "protocolVersion",
             ] {
                 assert!(v.get(key).is_some(), "{label} 缺字段 {key}");
             }
@@ -502,6 +505,8 @@ mod tests {
                 .count(),
             crate::settings::keys_for(Platform::Windows).len()
         );
+        assert_eq!(mac["protocolVersion"], crate::protocol::PROTOCOL_VERSION);
+        assert_eq!(win["protocolVersion"], crate::protocol::PROTOCOL_VERSION);
     }
 
     /// 命名管道的响应协议形状(主机上可测, 不依赖 Windows 真机)。

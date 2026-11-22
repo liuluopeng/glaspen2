@@ -913,7 +913,8 @@ class _NamedPipeBridge extends SettingsBridge {
 
   @override
   Future<Map<String, dynamic>> uiConfig() async {
-    final r = await _request('uiConfig', null);
+    final r = await _request(
+        'uiConfig', {'panelProtocolVersion': kPanelProtocolVersion});
     // 常规 *_response:data 即配置对象;个别后端会把对象再包一层 data,两种都认。
     final data = r['data'] is Map ? r['data'] : r;
     if (data is! Map) {
@@ -1011,6 +1012,10 @@ class _NamedPipeBridge extends SettingsBridge {
     }
   }
 }
+
+/// 面板 ↔ 后端协议版本; 必须与 core/protocol.rs 的 PROTOCOL_VERSION 同步
+/// (cargo test 会扫描校验)。Windows 面板是独立 exe, 新旧混跑时后端会明确拒绝。
+const int kPanelProtocolVersion = 1;
 
 /// Create the appropriate bridge for the current platform.
 SettingsBridge createBridge() {

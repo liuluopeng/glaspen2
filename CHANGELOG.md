@@ -25,6 +25,11 @@
   契约测试扫描 Flutter 面板、macOS 设置结构体与 Windows 管道快照, 任一方漏项即
   测试失败(顺带修掉面板漏映射 `nasUrl` 导致 NAS 地址回显为空的 bug)。旧 Windows
   的 camelCase 键在启动时并入规范键, 跨平台备份恢复不再丢设置。
+- **面板协议唯一契约**: 新增 `core/protocol.rs` —— 命令表/请求解析/响应帧(统一
+  换行与转义)/协议版本一处定义; Windows 管道拒绝未登记命令, 面板与后端用
+  `protocolVersion` 握手(独立 exe 新旧混跑时明确报错并回退), 不再出现"少换行/
+  少 reqId/int-vs-bool"这类手写协议 bug。契约测试扫描管道与 Flutter 请求集合,
+  任何一方漏实现/多发命令都会让 `cargo test` 失败。
 - **Windows CI 从"能编译"升级为"跑行为"**: 补跑 Windows-only 单测、core 设置/
   UI 契约测试、`flutter build windows` 与 Windows 上的 `flutter test`; 另加
   `scripts/check-platform-parity.sh`(无平台分支/无静默空壳/无 todo! 半实现/版本

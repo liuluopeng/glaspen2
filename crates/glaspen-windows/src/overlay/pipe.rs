@@ -304,6 +304,17 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
 
     let msg_type = json_get_str(line, "type");
 
+    // 协议契约(core/protocol.rs): 未登记的命令直接回错误。
+    // 新增面板命令必须先进 COMMANDS 表, 否则这里拒绝 —— 不再静默丢弃。
+    if !glaspen_core::protocol::known(&msg_type) {
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
+        let _ = writer.write_all(
+            glaspen_core::protocol::error_line(req_id, &msg_type, "未知面板命令").as_bytes(),
+        );
+        let _ = writer.flush();
+        return;
+    }
+
     if msg_type == "listPages" {
         // 页面列表(内容 tab)
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
@@ -740,8 +751,18 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
         // 这里不手拼 JSON。
         // 没有 reqId 时沿用其它命令的约定(reqId = 0)。
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        let resp = glaspen_core::ui::pipe_ui_config_response_json(req_id);
-        let _ = writer.write_all(resp.as_bytes());
+        // 独立 exe 面板可能与覆盖层版本错位: 版本不一致时明确报错, 让面板
+        // 走 fallback 日志, 而不是拿着不认识的协议继续跑。
+        let payload: serde_json::Value =
+            serde_json::from_str(line.trim_end()).unwrap_or(serde_json::Value::Null);
+        if let Err(msg) = glaspen_core::protocol::check_panel_version(&payload) {
+            let _ = writer.write_all(
+                glaspen_core::protocol::error_line(req_id, "uiConfig", &msg).as_bytes(),
+            );
+        } else {
+            let resp = glaspen_core::ui::pipe_ui_config_response_json(req_id);
+            let _ = writer.write_all(resp.as_bytes());
+        }
         let _ = writer.flush();
     } else if msg_type == "getSettings" {
         // Respond with current settings from DB

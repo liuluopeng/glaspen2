@@ -167,6 +167,8 @@ class UiConfig {
   final Map<String, bool> features;
   /// 设置项契约(core/settings.rs 登记表): 面板据此检查后端快照是否漏项。
   final List<UiSettingSpec> settings;
+  /// 面板↔后端协议版本(core/protocol.rs); Windows 独立 exe 防新旧混跑。
+  final int protocolVersion;
 
   const UiConfig({
     required this.platform,
@@ -184,6 +186,7 @@ class UiConfig {
     required this.modifierRow,
     required this.features,
     this.settings = const [],
+    this.protocolVersion = 0,
   });
 
   /// 解析后端 JSON;字段缺失/形状不对时抛 [FormatException],由调用方回退。
@@ -212,6 +215,7 @@ class UiConfig {
       modifierRow: UiModifierRow.fromJson(json['modifierRow']),
       features: _uiBoolMap(json['features']),
       settings: UiSettingSpec._list(json['settings']),
+      protocolVersion: (json['protocolVersion'] as num?)?.toInt() ?? 0,
     );
   }
 

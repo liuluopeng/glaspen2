@@ -181,6 +181,11 @@ macOS 写 snake_case，Windows 写面板 camelCase：
   测试、`flutter build windows`、`flutter test`(Windows)。macOS job 追加
   `scripts/check-platform-parity.sh`(无平台分支/无静默空壳/无 todo!/unimplemented!/
   版本一致)。
+- **面板协议唯一契约**: `crates/glaspen-core/src/protocol.rs` 定义命令表、请求
+  解析、响应帧(单行 + 换行)与 `PROTOCOL_VERSION`; Windows 管道拒绝未登记命令,
+  `uiConfig` 做面板版本握手(独立 exe 新旧混跑时明确报错, 不再静默错乱)。`cargo test`
+  扫描管道 dispatch 与 Flutter 请求, 少一方/多一方都失败; Flutter 的
+  `kPanelProtocolVersion` 也被测试锁定必须与 core 一致。
 - **故意空缺原则**: 某平台未实现的能力必须由 `ui_config_json` 的 `features` 隐藏
   入口、管道/FRB 返回 `UnsupportedError`, **禁止半实现或静默空壳**; 真实缺口因此
   在真机上一眼可见, 而不是"看起来有按钮、点了没反应"。
