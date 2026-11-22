@@ -29,8 +29,8 @@ const HOTKEY_ACTIONS: [(&str, &str); 20] = [
     ("page_prev", "ctrl+alt+`"),
     ("page_next", "ctrl+alt+1"),
     ("color_swap", "ctrl+alt+shift+C"),
-    // 换粗细 ⇧T(thickness): ⇧W 要让给镜头键降级(Win+Alt+W 被占用时落到 ⇧W)
-    ("width_swap", "ctrl+alt+shift+T"),
+    // 换粗细 Ctrl+Alt+T(thickness): 不用 Shift(3 键不好按)
+    ("width_swap", "ctrl+alt+T"),
     ("toggle_draw", "ctrl+alt+V"),
     ("toggle_free_canvas", "ctrl+alt+I"),
     // 左手镜头: Win+Alt + WASD(W/D 被占用时自动降级 Alt+Shift)
@@ -72,11 +72,14 @@ const RESERVED_CHORDS: [&str; 3] = ["ctrl+alt+R", "ctrl+alt+2", "ctrl+alt+3"];
 /// 5 = 镜头键"整套降级"版: 把 v4 可能已写进库的半套 Alt+Shift 镜头值归一回 Win+Alt,
 ///     启动时若主组合被占用再由注册逻辑整套降级(保证 A/S 与 W/D 修饰键一致)。
 /// 6 = 降级组合改用 Ctrl+Alt+Shift(不再用会触发输入法语言切换的 Alt+Shift);
+///     (该方案因 4 键难按在 v8 回退)
 ///     把 v5 落库的 Alt+Shift 镜头值同样归一回 Win+Alt。
 /// 7 = 换粗细默认从 ⇧W 改成 ⇧T(⇧W 要让给镜头降级 Ctrl+Alt+Shift+W)。
+/// 8 = 镜头键回到 Win+Alt(不再整套 Ctrl+Alt+Shift); 个别键被占时**单键**降级
+///     Alt+Shift+同键(不做 4 键组合)。v7 落库的镜头值归一回 Win+Alt 重新决定。
 /// 迁移只做一次 —— 用户之后自己改回旧组合, 不会在每次启动被反复改写。
 const SHORTCUTS_DEFAULTS_VERSION_KEY: &str = "shortcuts_defaults_v";
-const SHORTCUTS_DEFAULTS_VERSION: i32 = 7;
+const SHORTCUTS_DEFAULTS_VERSION: i32 = 8;
 
 /// 能当全局热键的按键名(与 macOS gl_keycode_names / Dart _hidKeyNames 对齐)。
 /// 只收录用来当快捷键的键; 面板录制端也用同一张表(经 Dart 侧映射)。
@@ -321,9 +324,9 @@ fn legacy_default_target(action: &str, chord: &str) -> Option<&'static str> {
         },
         // v4 起这些动作默认也有键(旧版本默认未绑定 = 空串)
         "color_swap" => (chord.is_empty()).then_some("ctrl+alt+shift+C"),
-        // v7: 换粗细改 ⇧T(⇧W 让给镜头降级); 旧默认的空绑定与 ⇧W 都迁过去
+        // v8: 换粗细回到 2 修饰键 Ctrl+Alt+T; 旧默认(空/⇧W/⇧T)一并迁过去
         "width_swap" => match chord {
-            "" | "ctrl+alt+shift+W" => Some("ctrl+alt+shift+T"),
+            "" | "ctrl+alt+shift+W" | "ctrl+alt+shift+T" => Some("ctrl+alt+T"),
             _ => None,
         },
         "toggle_free_canvas" => (chord.is_empty()).then_some("ctrl+alt+I"),
@@ -453,16 +456,17 @@ fn unregister_fixed(hwnd: HWND) {
 }
 
 /// 注册失败时的降级组合: 镜头键的 Win+Alt+键 在不少机器上被常驻软件占用
-/// (实测 Win+Alt+W/D 会返回 1409), 整套换 **Ctrl+Alt+Shift+同键**。
+/// (实测 Win+Alt+W/D 会返回 1409), 单独换成 Alt+Shift+同键。
 ///
-/// 不用 Alt+Shift: 那是 Windows 默认「切换输入语言」热键 —— 按住 Alt+Shift
-/// 就会切一次中/英输入法(鼠标抓手/滚轮也要按住 Modifier, 每次镜头操作都切)。
+/// 只降级失败的那个键, 不做"整套降级": 整套要么得用 Ctrl+Alt+Shift(4 个键,
+/// 手按不动), 要么全用 Alt+Shift(按住会切输入法)。鼠标手势另用 Win+Alt 掩码,
+/// 不依赖被降级的键, 所以不会因为 W/D 降级而把语言切走。
 fn registration_fallback(action: &str, chord: &str) -> Option<String> {
     if !action.starts_with("canvas_") {
         return None;
     }
     let key = chord.strip_prefix("cmd+alt+")?;
-    Some(format!("ctrl+alt+shift+{key}"))
+    Some(format!("alt+shift+{key}"))
 }
 
 /// 注销并重新注册可配置动作的热键(固定热键不动)。
@@ -473,9 +477,6 @@ fn register_actions_locked(reg: &mut HotkeyRegistry, hwnd: HWND) {
     // 拷贝一份再遍历: 降级注册时要改写 reg.effective[idx](面板/日志显示实际值)
     let effective = reg.effective.clone();
     let mut fallback_used = false;
-    // 镜头动作: 先按主组合登记, 最后按"整套一致"决定是否统一降级。
-    // (idx, action, 主组合, 是否重复触发, 主组合是否注册成功)
-    let mut camera_plan: Vec<(usize, &'static str, String, bool, bool)> = Vec::new();
     for (idx, (action, chord)) in effective.iter().enumerate() {
         if chord.is_empty() {
             continue;
@@ -509,73 +510,38 @@ fn register_actions_locked(reg: &mut HotkeyRegistry, hwnd: HWND) {
             HOT_KEY_MODIFIERS(mods | MOD_NOREPEAT.0 as u32)
         };
         let id = HOTKEY_ID_ACTION_BASE + idx as i32;
-        if action.starts_with("canvas_") {
-            match unsafe { RegisterHotKey(Some(hwnd), id, flags, vk) } {
-                Ok(()) => {
-                    reg.registered.push(id);
-                    camera_plan.push((idx, action, chord.clone(), repeatable, true));
-                }
-                Err(e) => {
-                    tracing::info!(
-                        "[hotkey] {action}={chord} 注册失败({e}), 镜头键将整套降级"
-                    );
-                    camera_plan.push((idx, action, chord.clone(), repeatable, false));
-                }
-            }
-            continue;
-        }
         match unsafe { RegisterHotKey(Some(hwnd), id, flags, vk) } {
             Ok(()) => reg.registered.push(id),
             Err(e) => {
-                tracing::warn!("[hotkey] {action}={chord} 注册失败(被系统/其它程序占用?): {e}");
-            }
-        }
-    }
-    // 镜头键必须**整套用同一对修饰键**: Win+Alt+W/D 这类被常驻软件占用的机器上
-    // 只降级个别键会出现"A/S 用 Win+Alt、W/D 用 Alt+Shift"的半套, 用户按不对
-    // 修饰键 → 看起来"镜头快捷键没反应"。这里只要有任意一个主组合注册失败,
-    // 就把整套镜头键统一降级成 Alt+Shift+同键, 并回推面板显示实际值。
-    if camera_plan.iter().any(|p| !p.4) {
-        for (idx, _a, _c, _r, ok) in &camera_plan {
-            if *ok {
-                let id = HOTKEY_ID_ACTION_BASE + *idx as i32;
-                let _ = unsafe { UnregisterHotKey(Some(hwnd), id) };
-                reg.registered.retain(|x| *x != id);
-            }
-        }
-        let mut degraded: Vec<String> = Vec::new();
-        for (idx, action, chord, repeatable, _ok) in &camera_plan {
-            let id = HOTKEY_ID_ACTION_BASE + *idx as i32;
-            let use_chord = registration_fallback(action, chord).unwrap_or_else(|| chord.clone());
-            let Some((mods, vk)) = parse_chord(&use_chord) else {
-                tracing::warn!("[hotkey] {action} 降级组合 {use_chord} 解析失败");
-                continue;
-            };
-            let flags = if *repeatable {
-                HOT_KEY_MODIFIERS(mods)
-            } else {
-                HOT_KEY_MODIFIERS(mods | MOD_NOREPEAT.0 as u32)
-            };
-            match unsafe { RegisterHotKey(Some(hwnd), id, flags, vk) } {
-                Ok(()) => {
-                    reg.effective[*idx].1 = use_chord.clone();
-                    reg.registered.push(id);
-                    if use_chord != *chord {
+                // 镜头键被其它程序占用(Win+Alt+W/D 很常见): 单键降级 Alt+Shift+同键
+                let fallback = registration_fallback(action, chord)
+                    .filter(|alt| parse_chord(alt).is_some());
+                let Some(alt) = fallback else {
+                    tracing::warn!(
+                        "[hotkey] {action}={chord} 注册失败(被系统/其它程序占用?): {e}"
+                    );
+                    continue;
+                };
+                let (mods2, vk2) = parse_chord(&alt).expect("fallback 已在上面校验");
+                let flags2 = if repeatable {
+                    HOT_KEY_MODIFIERS(mods2)
+                } else {
+                    HOT_KEY_MODIFIERS(mods2 | MOD_NOREPEAT.0 as u32)
+                };
+                match unsafe { RegisterHotKey(Some(hwnd), id, flags2, vk2) } {
+                    Ok(()) => {
+                        tracing::info!(
+                            "[hotkey] {action}={chord} 被占用, 单独降级为 {alt}"
+                        );
+                        reg.effective[idx].1 = alt;
+                        reg.registered.push(id);
                         fallback_used = true;
-                        degraded.push(format!("{action}={use_chord}"));
                     }
+                    Err(e2) => tracing::warn!(
+                        "[hotkey] {action}={chord} 注册失败, 降级 {alt} 也失败: {e2}"
+                    ),
                 }
-                Err(e) => tracing::warn!(
-                    "[hotkey] {action} 降级组合 {use_chord} 注册也失败: {e}"
-                ),
             }
-        }
-        if fallback_used {
-            tracing::info!(
-                "[hotkey] 镜头键整套降级({} 个): {}",
-                degraded.len(),
-                degraded.join(" ")
-            );
         }
     }
     // 生效表(含未绑定)写进日志, 排障时一眼看到底注册了什么
@@ -792,6 +758,17 @@ pub(crate) fn chord_display(action: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("+")
+}
+
+/// 某动作当前生效的 chord 文本(未绑定/未知返回空串)。
+/// 鼠标镜头手势用它判断"主组合家族"是不是 Win+Alt。
+pub(crate) fn effective_chord(action: &str) -> String {
+    let reg = lock_registry();
+    reg.effective
+        .iter()
+        .find(|(a, _)| *a == action)
+        .map(|(_, c)| c.clone())
+        .unwrap_or_default()
 }
 
 /// 某动作当前组合的修饰键掩码(MOD_*); 未绑定/非法返回 0。
@@ -1027,7 +1004,7 @@ mod tests {
             ("page_prev", "ctrl+alt+`"),
             ("page_next", "ctrl+alt+1"),
             ("color_swap", "ctrl+alt+shift+C"),
-            ("width_swap", "ctrl+alt+shift+T"),
+            ("width_swap", "ctrl+alt+T"),
             ("toggle_draw", "ctrl+alt+V"),
             ("toggle_free_canvas", "ctrl+alt+I"),
             ("canvas_pan_left", "cmd+alt+A"),
@@ -1071,23 +1048,23 @@ mod tests {
             );
             let alt = registration_fallback(action, chord).expect("镜头应有降级组合");
             assert!(
-                alt.starts_with("ctrl+alt+shift+"),
-                "降级 {action}={alt} 不是 ctrl+alt+shift(避开 Alt+Shift 输入法切换)"
+                alt.starts_with("alt+shift+"),
+                "降级 {action}={alt} 应为单键 Alt+Shift(不再用 4 键组合)"
             );
         }
     }
 
-    /// 镜头键被占用时整套降级到 Ctrl+Alt+Shift+同键(不能用 Alt+Shift:
-    /// 那是 Windows 默认的语言切换热键); 非镜头动作不降级。
+    /// 镜头键被占用时**单键**降级到 Alt+Shift+同键(2 个修饰键, 不做 4 键整套);
+    /// 非镜头动作不降级。
     #[test]
     fn camera_fallback_chords() {
         assert_eq!(
             registration_fallback("canvas_pan_up", "cmd+alt+W").as_deref(),
-            Some("ctrl+alt+shift+W")
+            Some("alt+shift+W")
         );
         assert_eq!(
             registration_fallback("canvas_zoom_out", "cmd+alt+Z").as_deref(),
-            Some("ctrl+alt+shift+Z")
+            Some("alt+shift+Z")
         );
         assert_eq!(registration_fallback("undo", "ctrl+alt+Z"), None);
         assert_eq!(registration_fallback("canvas_pan_up", "ctrl+alt+W"), None);
@@ -1110,7 +1087,7 @@ mod tests {
         assert_eq!(migrate_legacy_defaults(&mut unbound), 8);
         let effective_u = build_effective_saved(&unbound);
         assert_eq!(chord_of(&effective_u, "color_swap"), "ctrl+alt+shift+C");
-        assert_eq!(chord_of(&effective_u, "width_swap"), "ctrl+alt+shift+T");
+        assert_eq!(chord_of(&effective_u, "width_swap"), "ctrl+alt+T");
         assert_eq!(chord_of(&effective_u, "toggle_free_canvas"), "ctrl+alt+I");
         assert_eq!(chord_of(&effective_u, "clear"), "ctrl+alt+C");
         assert_eq!(chord_of(&effective_u, "export"), "ctrl+alt+G");

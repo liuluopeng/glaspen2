@@ -75,15 +75,15 @@ const Map<String, String> _shortcutDefaultsMac = {
 ///   - 核心/开关类 → **Ctrl+Alt**: Z/`/1/V、D 设置、⇧Q 退出、C 清空、G 导出、
 ///     S 复制 SVG、B 磨砂、X 飘渺、I 自由涂鸦、⇧C 换色、⇧W 换粗细;
 ///   - 镜头/缩放 → **Win+Alt**: W/A/S/D 平移、X 放大 / Z 缩小。
-/// 镜头键被其它软件占用时(Win+Alt+W/D 很常见)由 Rust 侧**整套**降级为
-/// Ctrl+Alt+Shift+同键(避免半套; 也不用 Alt+Shift —— 那是 Windows 语言切换热键,
-/// 按住会切输入法), 并把实际生效值回推, 面板显示真实组合。
+/// 镜头键被其它软件占用时(Win+Alt+W/D 很常见)由 Rust 侧只把**该键**降级为
+/// Alt+Shift+同键(其余保持 Win+Alt; 不做 4 键组合), 并把实际生效值回推,
+/// 面板显示真实组合。鼠标抓手/滚轮缩放固定用 Win+Alt 掩码, 不会切输入法。
 const Map<String, String> _shortcutDefaultsWindows = {
   'undo': 'ctrl+alt+Z',
   'page_prev': 'ctrl+alt+`',
   'page_next': 'ctrl+alt+1',
   'color_swap': 'ctrl+alt+shift+C',
-  'width_swap': 'ctrl+alt+shift+T',
+  'width_swap': 'ctrl+alt+T',
   'toggle_draw': 'ctrl+alt+V',
   'toggle_free_canvas': 'ctrl+alt+I',
   'canvas_pan_left': 'cmd+alt+A',

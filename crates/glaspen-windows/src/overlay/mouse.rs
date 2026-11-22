@@ -44,12 +44,29 @@ fn camera_zoom_mods() -> u32 {
     modifier_mask_for("canvas_zoom_in")
 }
 
-/// 镜头手势(抓手拖动 / 滚轮缩放)的修饰键判定: 平移与缩放是同一套镜头键,
-/// 但用户可能只改了其中一个动作的组合(Win+Alt 被占用时还会整套降级 Alt+Shift),
-/// 所以**两套掩码任一匹配**都算镜头修饰键 —— 否则会出现"按住面板显示的修饰键
-/// 却拖不动/缩不了"的情况。
+/// 镜头手势(抓手拖动 / 滚轮缩放)用的修饰键掩码: **固定取主组合家族
+/// (Win+Alt)**, 不取被降级的 Alt+Shift —— Alt+Shift 是 Windows 语言切换热键,
+/// 按住拖/滚会切输入法。个别镜头键被别人占用时只降级键盘键, 鼠标手势仍用
+/// 主组合家族; 若用户把每个镜头键都改得没有主组合了, 再退回缩放键的掩码。
+fn camera_gesture_mods() -> u32 {
+    for action in [
+        "canvas_zoom_in",
+        "canvas_pan_up",
+        "canvas_pan_left",
+        "canvas_pan_right",
+        "canvas_pan_down",
+        "canvas_zoom_out",
+    ] {
+        if crate::overlay::effective_chord(action).starts_with("cmd+alt+") {
+            return modifier_mask_for(action);
+        }
+    }
+    camera_zoom_mods()
+}
+
+/// 镜头手势判定: 修饰键恰好等于手势掩码(与 macOS 一样, 多按不算)。
 fn camera_mods_match() -> bool {
-    mods_match_exact(camera_pan_mods()) || mods_match_exact(camera_zoom_mods())
+    mods_match_exact(camera_gesture_mods())
 }
 
 /// 镜头操作可用条件(macOS: g_infinite_canvas && g_enabled && !g_stroke_active)

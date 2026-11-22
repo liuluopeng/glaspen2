@@ -286,7 +286,7 @@ pub fn run() {
 
         tracing::info!("全屏透明涂鸦已启动(WM_INPUT + ink-stroke-modeler + cairo)。");
         tracing::info!(
-            "快捷键: 面板「设置 → 快捷键」可逐动作录制;核心/开关类 Ctrl+Alt+字母 —— Z 撤销 / `·1 翻页 / V 开关 / D 设置 / Shift+Q 退出 / C 清空 / G 导出 / S 复制 / B 磨砂 / X 飘渺 / I 自由涂鸦 / Shift+C 换色 / Shift+W 换粗细, 无限画布镜头 Win+Alt+W/A/S/D、X 放大 / Z 缩小(Win+Alt 任一键被其它软件占用时镜头整套降级 Ctrl+Alt+Shift+同键 —— 不用 Alt+Shift, 那是 Windows 语言切换热键; 面板显示实际值);R 按住录 GIF / 2·3 按住手写消息(集成开时)为固定保留组合"
+            "快捷键: 面板「设置 → 快捷键」可逐动作录制;核心/开关类 Ctrl+Alt+字母 —— Z 撤销 / `·1 翻页 / V 开关 / D 设置 / Shift+Q 退出 / C 清空 / G 导出 / S 复制 / B 磨砂 / X 飘渺 / I 自由涂鸦 / Shift+C 换色 / T 换粗细, 无限画布镜头 Win+Alt+W/A/S/D、X 放大 / Z 缩小(某个键被其它软件占用时只把该键降级为 Alt+Shift+同键, 其余仍是 Win+Alt; 鼠标手势固定用 Win+Alt, 不会切输入法; 面板显示实际值);R 按住录 GIF / 2·3 按住手写消息(集成开时)为固定保留组合"
         );
         // Windows 没有菜单栏/托盘: 设置面板只能靠 settings 热键呼出。启动时把
         // 当前键位提示一下(1 秒), 免得用户看到"只有玻璃"以为面板不见了 ——
