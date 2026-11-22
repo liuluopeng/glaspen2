@@ -136,6 +136,8 @@ class _FrbBridge extends SettingsBridge {
       'bubbleReplayHoldLast': s.bubbleReplayHoldLast,
       'bubbleReplayAuto': s.bubbleReplayAuto,
       'bubbleAutoNewPage': s.bubbleAutoNewPage,
+      // nas_url 曾漏映射 → macOS 面板 NAS 地址永远回显空(由 core settings 契约测试发现)。
+      'nasUrl': s.nasUrl,
       'shareCanvas': s.shareCanvas,
       'language': s.language,
       'shortcuts': s.shortcuts,

@@ -344,6 +344,8 @@ pub fn ui_config_json(platform: Platform) -> String {
         "actionOrder": ACTIONS.iter().map(|a| a.id).collect::<Vec<_>>(),
         "holdHotkeys": {"gif": hold.gif, "draft": hold.draft, "send": hold.send},
         "modifierRow": modifier_row(platform),
+        // 设置项契约(键/类型/落库键/平台可用性), 面板启动时据此自检后端是否漏项。
+        "settings": crate::settings::schema_value(),
         // 面板按钮的可用性由后端声明, Flutter 不再按平台隐藏。
         // Windows 侧尚未接入的导出/OCR 一律显式置 false(UI 隐藏, 杜绝静默空壳)。
         "features": {
@@ -444,6 +446,7 @@ mod tests {
                 "holdHotkeys",
                 "modifierRow",
                 "features",
+                "settings",
             ] {
                 assert!(v.get(key).is_some(), "{label} 缺字段 {key}");
             }
@@ -463,6 +466,42 @@ mod tests {
         assert_eq!(win["features"]["invertInk"], false);
         // 面板/壳必须看到同一套动作 id。
         assert_eq!(mac["actionOrder"], win["actionOrder"]);
+        // 设置契约: 两个平台拿到同一份登记表, 各自平台标记可用项。
+        assert_eq!(
+            mac["settings"].as_array().unwrap().len(),
+            crate::settings::SETTINGS.len()
+        );
+        assert_eq!(
+            win["settings"].as_array().unwrap().len(),
+            crate::settings::SETTINGS.len()
+        );
+        for (label, v, flag) in [("macos", &mac, "mac"), ("windows", &win, "win")] {
+            let n = v["settings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|s| s[flag] == true)
+                .count();
+            assert!(n > 0, "{label} 没有任何可用设置?");
+        }
+        assert_eq!(
+            mac["settings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|s| s["mac"] == true)
+                .count(),
+            crate::settings::keys_for(Platform::Macos).len()
+        );
+        assert_eq!(
+            win["settings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|s| s["win"] == true)
+                .count(),
+            crate::settings::keys_for(Platform::Windows).len()
+        );
     }
 
     /// 命名管道的响应协议形状(主机上可测, 不依赖 Windows 真机)。

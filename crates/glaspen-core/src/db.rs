@@ -2447,29 +2447,10 @@ mod platform {
         Some((x, y, z))
     }
 
-    /// 跨平台设置键别名: 面板协议键(Windows 侧 camelCase) → 规范键(macOS 侧
-    /// snake_case)。两个平台共用同一个 `user_settings` 表, 过去各写各的键,
-    /// 导致「把 macOS 的备份恢复到 Windows 会静默丢 9 项设置」。
-    /// 现在读写都归一到规范键; `migrate_setting_keys` 在启动时把旧行并过去。
-    pub(crate) const SETTING_KEY_ALIASES: &[(&str, &str)] = &[
-        ("frostedGlass", "glass_enabled"),
-        ("glassFollowStrokes", "glass_follow_strokes"),
-        ("gridFollowStrokes", "grid_follow_strokes"),
-        ("softShadow", "soft_shadow"),
-        ("invertInk", "invert_ink"),
-        ("invertFps", "invert_fps"),
-        ("pressureMonitor", "pressure_monitor"),
-        ("notebookStyle", "notebook_style"),
-        ("panelTransparent", "panel_transparent"),
-    ];
-
-    /// 面板/壳传进来的键 → 落库规范键。非别名原样返回。
+    /// 面板/壳传进来的键 → 落库规范键(唯一来源: `crate::settings`)。
+    /// 非登记键原样返回(迁移期宽进)。
     pub(crate) fn canonical_setting_key(key: &str) -> &str {
-        SETTING_KEY_ALIASES
-            .iter()
-            .find(|(alias, _)| *alias == key)
-            .map(|(_, canonical)| *canonical)
-            .unwrap_or(key)
+        crate::settings::canonical_db_key(key)
     }
 
     async fn load_setting_raw(pool: &SqlitePool, key: &str) -> Option<String> {
@@ -2520,9 +2501,10 @@ mod platform {
                 r = load_setting_raw(pool, key).await;
             }
             if r.is_none() {
-                for (alias, canon) in SETTING_KEY_ALIASES {
-                    if *canon == canonical && *alias != canonical {
-                        r = load_setting_raw(pool, alias).await;
+                // 反向别名: 用规范键读, 但旧库只存了面板键(如 glass_enabled ← frostedGlass)。
+                for def in crate::settings::SETTINGS {
+                    if def.db_key == canonical && def.key != canonical {
+                        r = load_setting_raw(pool, def.key).await;
                         if r.is_some() {
                             break;
                         }
@@ -2543,7 +2525,12 @@ mod platform {
     /// 无别名行时零成本; 幂等。
     pub(crate) async fn migrate_setting_keys(pool: &SqlitePool) {
         let mut moved = 0usize;
-        for (alias, canonical) in SETTING_KEY_ALIASES {
+        for def in crate::settings::SETTINGS {
+            if def.key == def.db_key {
+                continue;
+            }
+            let alias = def.key;
+            let canonical = def.db_key;
             let Some(value) = load_setting_raw(pool, alias).await else {
                 continue;
             };

@@ -33,6 +33,7 @@ pub mod ocr;
 pub mod pagerender;
 pub mod pdf;
 pub mod presets;
+pub mod settings;
 pub mod state;
 pub mod ui;
 pub mod update;

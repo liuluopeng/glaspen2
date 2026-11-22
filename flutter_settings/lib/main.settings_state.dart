@@ -91,6 +91,22 @@ extension _SettingsStateUi on _SettingsPageState {
     });
   }
 
+  /// 设置契约自检: 后端下发的键必须覆盖 `uiConfig.settings` 中当前平台可用的
+  /// 全部项。少一项 = 该平台漏实现/漏下发 —— 这是"macOS 定义了、Windows 没实现"
+  /// 最早的信号, 在面板启动时就打日志并 debug 断言, 不等真机手点才发现。
+  void _validateSettingsContract(Map<dynamic, dynamic> settings) {
+    final specs = uiConfig.settings;
+    if (specs.isEmpty || settings.isEmpty) return;
+    final missing = <String>[
+      for (final s in specs)
+        if ((uiConfig.isWindows ? s.win : s.mac) && !settings.containsKey(s.key))
+          s.key,
+    ];
+    if (missing.isEmpty) return;
+    debugPrint('[UiConfig] 后端设置快照缺少契约项: $missing');
+    assert(missing.isEmpty, '后端设置快照缺少契约项: $missing');
+  }
+
   Future<void> _loadSettings() async {
     final gen = ++_settingsLoadGen;
     try {
@@ -98,6 +114,8 @@ extension _SettingsStateUi on _SettingsPageState {
       // 等待期间用户改过设置 / 收到推送 → 丢弃这份过期快照
       if (gen != _settingsLoadGen) return;
       if (mounted && settings.isNotEmpty) {
+        // 快照契约自检(只在完整快照上做; 覆盖层局部推送不适用)。
+        _validateSettingsContract(settings);
         final wasInfinite = _infiniteCanvas;
         final wasFreeTab = _showFreeCanvas;
         setState(() {

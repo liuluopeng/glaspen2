@@ -103,6 +103,42 @@ class UiModifierRow {
 }
 
 /// 后端 ui_config_json 的 Dart 侧模型(字段契约见 crates/glaspen-core/src/ui.rs)。
+/// 一条设置项契约(来自 core/src/settings.rs 的登记表)。
+/// 面板启动时用它自检后端快照是否漏项; 平台可用的项由后端 `mac/win` 标记决定,
+/// Flutter 不猜平台。
+class UiSettingSpec {
+  final String key;
+  final String dbKey;
+  final String kind;
+  final bool mac;
+  final bool win;
+  const UiSettingSpec({
+    required this.key,
+    required this.dbKey,
+    required this.kind,
+    required this.mac,
+    required this.win,
+  });
+
+  static List<UiSettingSpec> _list(dynamic raw) {
+    if (raw is! List) return const [];
+    final out = <UiSettingSpec>[];
+    for (final e in raw) {
+      if (e is! Map) continue;
+      final key = e['key'];
+      if (key is! String || key.isEmpty) continue;
+      out.add(UiSettingSpec(
+        key: key,
+        dbKey: e['dbKey'] is String ? e['dbKey'] as String : key,
+        kind: e['kind'] is String ? e['kind'] as String : 'str',
+        mac: e['mac'] == true,
+        win: e['win'] == true,
+      ));
+    }
+    return out;
+  }
+}
+
 class UiConfig {
   /// "macos" | "windows"
   final String platform;
@@ -129,6 +165,8 @@ class UiConfig {
   final UiModifierRow modifierRow;
   /// 功能可用性:invertInk / pageFlipEffect / pageExport / ocrSearch。
   final Map<String, bool> features;
+  /// 设置项契约(core/settings.rs 登记表): 面板据此检查后端快照是否漏项。
+  final List<UiSettingSpec> settings;
 
   const UiConfig({
     required this.platform,
@@ -145,6 +183,7 @@ class UiConfig {
     required this.actionOrder,
     required this.modifierRow,
     required this.features,
+    this.settings = const [],
   });
 
   /// 解析后端 JSON;字段缺失/形状不对时抛 [FormatException],由调用方回退。
@@ -172,6 +211,7 @@ class UiConfig {
       actionOrder: actionOrder,
       modifierRow: UiModifierRow.fromJson(json['modifierRow']),
       features: _uiBoolMap(json['features']),
+      settings: UiSettingSpec._list(json['settings']),
     );
   }
 
