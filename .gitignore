@@ -25,3 +25,8 @@ installer/target/
 # Local dev tooling (protoc, pipe probes)
 .tools/
 .zcodeignore
+
+# 本地 OCR 模型 / 临时测试输出 / installer 独立构建产生的 lock
+/models/
+/python_test/
+installer/Cargo.lock
