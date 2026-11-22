@@ -1082,6 +1082,12 @@ abstract class AppLocalizations {
   /// **'NAS 地址'**
   String get nasBackupUrl;
 
+  /// No description provided for @nasUrlExample.
+  ///
+  /// In zh, this message translates to:
+  /// **'http://192.168.1.10:8080'**
+  String get nasUrlExample;
+
   /// No description provided for @nasBackupNow.
   ///
   /// In zh, this message translates to:

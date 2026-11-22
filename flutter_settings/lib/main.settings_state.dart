@@ -225,84 +225,59 @@ extension _SettingsStateUi on _SettingsPageState {
     }
   }
 
-  Widget _buildChatAuthSection() {
+  /// 自定义区块 loginActions: 密码输入 + 保存/测试登录按钮 + 登录状态 + 作者
+  /// 归属说明。服务器地址/用户名是 schema 文本控件(共用 _chatApiBase/_chatUser
+  /// 控制器); 只有密码是协议特殊键 chatPassword(不在 settings 登记表)。
+  Widget _buildLoginActions() {
     const faint12 = TextStyle(fontSize: 12, color: _inkFaint);
-    // 总开关:关 = 只剩开关本身;⌘⌃2/⌘⌃3 直通,不显登录与共享。
-    final master = _tile(SwitchListTile(
-      title: Text(AppLocalizations.of(context)!.enableHandwrittenMessagesSharing,
-          style: TextStyle(fontSize: 14)),
-      subtitle: Text(AppLocalizations.of(context)!.whenOff23,
-          style: TextStyle(fontSize: 12)),
-      value: _vBool('chatIntegration'),
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      onChanged: (v) => _writeSetting('chatIntegration', v),
-    ));
-    if (!_vBool('chatIntegration')) {
-      return Column(crossAxisAlignment: CrossAxisAlignment.start,
-          children: [master]);
-    }
-
     const faint = TextStyle(fontSize: 13, color: _inkFaint);
-    InputDecoration deco(String label, String hint) => InputDecoration(
-          labelText: label,
-          hintText: hint,
-          isDense: true,
-          border: const OutlineInputBorder(),
-        );
     final Widget status;
     if (_chatLoginBusy) {
       status = Row(children: [
-        SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+        SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2)),
         SizedBox(width: 8),
         Text(AppLocalizations.of(context)!.signingIn, style: faint),
       ]);
     } else if (_chatLoginMsg.isNotEmpty) {
-      final ok = _chatLoginMsg.startsWith(AppLocalizations.of(context)!.signedIn);
+      final ok =
+          _chatLoginMsg.startsWith(AppLocalizations.of(context)!.signedIn);
       status = Text(_chatLoginMsg,
           style: TextStyle(
               fontSize: 12.5, color: ok ? const Color(0xFF00B16E) : _penRed));
     } else if (_chatHasPassword) {
-      status = Text(AppLocalizations.of(context)!.accountConfigured23,
-          style: faint);
+      status =
+          Text(AppLocalizations.of(context)!.accountConfigured23, style: faint);
     } else {
-      status = Text(AppLocalizations.of(context)!.notConfiguredMessagingStill,
+      status = Text(
+          AppLocalizations.of(context)!.notConfiguredMessagingStill,
           style: faint);
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        master,
-        const SizedBox(height: 4),
-        TextField(
-          controller: _chatApiBase,
-          decoration: deco(AppLocalizations.of(context)!.serverAddress, AppLocalizations.of(context)!.eGHttps192),
-          style: const TextStyle(fontSize: 13),
-          autocorrect: false,
-          keyboardType: TextInputType.url,
-          onSubmitted: (_) => _testChatLogin(),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _chatUser,
-          decoration: deco(AppLocalizations.of(context)!.username, ''),
-          style: const TextStyle(fontSize: 13),
-          autocorrect: false,
-          onSubmitted: (_) => _testChatLogin(),
-        ),
-        const SizedBox(height: 8),
         TextField(
           controller: _chatPassword,
           obscureText: true,
-          decoration: deco(AppLocalizations.of(context)!.password, _chatHasPassword ? AppLocalizations.of(context)!.savedLeaveBlankTo : ''),
           style: const TextStyle(fontSize: 13),
+          decoration: InputDecoration(
+            labelText: AppLocalizations.of(context)!.password,
+            hintText: _chatHasPassword
+                ? AppLocalizations.of(context)!.savedLeaveBlankTo
+                : '',
+            isDense: true,
+            border: const OutlineInputBorder(),
+          ),
           onSubmitted: (_) => _testChatLogin(),
         ),
         const SizedBox(height: 10),
         Row(children: [
           OutlinedButton(
             onPressed: _chatLoginBusy ? null : _testChatLogin,
-            child: Text(AppLocalizations.of(context)!.saveTestSignIn, style: TextStyle(fontSize: 13)),
+            child: Text(AppLocalizations.of(context)!.saveTestSignIn,
+                style: TextStyle(fontSize: 13)),
           ),
           const SizedBox(width: 12),
           Expanded(child: status),

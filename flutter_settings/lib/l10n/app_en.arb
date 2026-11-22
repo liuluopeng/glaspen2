@@ -163,6 +163,7 @@
   "refreshBubbles": "Refresh",
   "nasBackup": "NAS backup",
   "nasBackupUrl": "NAS address",
+  "nasUrlExample": "http://192.168.1.10:8080",
   "nasBackupNow": "Back up to NAS now",
   "nasBackupSub": "Pushes a whole-database snapshot to the axum service on your NAS (file on disk + Postgres registry). Leave empty to disable",
   "nasBackupDone": "Backed up to NAS",

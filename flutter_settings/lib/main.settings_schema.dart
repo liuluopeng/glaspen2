@@ -17,8 +17,8 @@ part of 'main.dart';
 // 4. 控件全部通用渲染, 不再按设置键写 widget —— 新增设置项只改 core registry
 //    + 本文件不需要动(除非新增控件类型/布局)。
 //
-// 迁移期(第二步)只接管已迁移分区;未迁移分区仍用旧 builder 兜底, uiConfig
-// 拿不到时整页回退旧表单(见 main.dart _legacySettingsChildren)。
+// D11b 完成后设置页全部由 schema 生成; uiConfig 拿不到(后端未连接/协议
+// 不匹配)时只显示"未连接到主程序"占位, 不再凭空造一份可能过时的表单。
 
 // ── schema 模型 ─────────────────────────────────────────────
 
@@ -91,6 +91,7 @@ class UiFormMeta {
   final String layout;
   final bool showLabel;
   final bool indented;
+  final bool dividerBefore;
   final String? unit;
   final UiFormRange? range;
   final List<UiFormOption> options;
@@ -110,6 +111,7 @@ class UiFormMeta {
     required this.layout,
     required this.showLabel,
     required this.indented,
+    this.dividerBefore = false,
     this.unit,
     this.range,
     this.options = const [],
@@ -138,6 +140,7 @@ class UiFormMeta {
       layout: raw['layout'] is String ? raw['layout'] as String : '',
       showLabel: raw['showLabel'] != false,
       indented: raw['indented'] == true,
+      dividerBefore: raw['dividerBefore'] == true,
       unit: raw['unit'] is String ? raw['unit'] as String : null,
       range: UiFormRange.tryParse(raw['range']),
       options: UiFormOption.list(raw['options']),
@@ -217,16 +220,6 @@ class UiCustomBlock {
   }
 }
 
-/// schema 第二步已接管的分区(其余分区暂用旧 builder 兜底;第三步清空)。
-/// 只用于迁移期, 不是平台分支。
-const _schemaSectionMigrated = <String>{
-  'pen',
-  'canvasLook',
-  'systemAndAssist',
-  'language',
-  'sharedCanvas',
-};
-
 // ── l10n 键解析 ─────────────────────────────────────────────
 //
 // gen-l10n 只有静态 getter, 没有"按字符串查文案"的入口; schema 给的是 ARB 键,
@@ -302,6 +295,7 @@ extension _SettingsSchemaUi on _SettingsPageState {
       case 'pushedToThePeer': return l.pushedToThePeer;
       case 'whenOff23': return l.whenOff23;
       case 'eGHttps192': return l.eGHttps192;
+      case 'nasUrlExample': return l.nasUrlExample;
       // 档位
       case 'cRed': return l.cRed;
       case 'cOrange': return l.cOrange;
@@ -376,7 +370,7 @@ extension _SettingsSchemaUi on _SettingsPageState {
 
   // ── 分区/控件渲染 ──────────────────────────────────────────
 
-  /// 用 schema 渲染设置页(第二步: 只接管已迁移分区, 其余走旧 builder)。
+  /// 用 schema 渲染设置页: 分区/顺序/条件/控件/自定义区块全部来自后端。
   Widget _buildSchemaSettingsTab() {
     final sections = uiConfig.settingsSections;
     final children = <Widget>[];
@@ -395,15 +389,11 @@ extension _SettingsSchemaUi on _SettingsPageState {
         }
         if (!_showAdvanced) continue;
       }
-      final widget = _schemaSectionMigrated.contains(s.id)
-          ? _buildSchemaSection(s)
-          : _legacySectionFor(s.id);
-      if (widget == null) continue;
       if (children.isNotEmpty) {
         children.add(SizedBox(height: afterToggle && s.advanced ? 12 : 16));
       }
       afterToggle = false;
-      children.add(widget);
+      children.add(_buildSchemaSection(s));
     }
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -429,6 +419,14 @@ extension _SettingsSchemaUi on _SettingsPageState {
       if (cond != null && !cond.holds(_settingValues)) continue;
       items.add((f.order, _buildSchemaControl(f)));
     }
+    // 自定义区块(按钮/登录/关于): core 只给分区/顺序/条件, 控件由 Dart 手写。
+    for (final b in uiConfig.settingsBlocks) {
+      if (b.section != s.id) continue;
+      final cond = b.visibleWhenSetting;
+      if (cond != null && !cond.holds(_settingValues)) continue;
+      final widget = _buildCustomBlock(b.id);
+      if (widget != null) items.add((b.order, widget));
+    }
     items.sort((a, b) => a.$1.compareTo(b.$1));
     return _buildSection(
       _l10n(s.labelId),
@@ -439,7 +437,40 @@ extension _SettingsSchemaUi on _SettingsPageState {
     );
   }
 
+  /// 自定义区块 id → 手写控件。id 来自 core settings_form::CUSTOM_BLOCKS,
+  /// 覆盖闸门见 core 测试(每个 id 必须在 Dart 里有 case)。
+  Widget? _buildCustomBlock(String id) {
+    switch (id) {
+      case 'gifHoldHint':
+        return _buildGifHoldHint();
+      case 'gifEstimate':
+        return _buildGifEstimate();
+      case 'exportActions':
+        return _buildExportActions();
+      case 'backupActions':
+        return _buildBackupActions();
+      case 'nasHeader':
+        return _buildNasHeader();
+      case 'nasActions':
+        return _buildNasActions();
+      case 'loginActions':
+        return _buildLoginActions();
+      case 'about':
+        return _buildAboutSection();
+      default:
+        debugPrint('[Settings] 未知自定义区块 id: $id');
+        return null;
+    }
+  }
+
   Widget _buildSchemaControl(UiFormMeta f) {
+    final control = _buildSchemaControlBody(f);
+    if (!f.dividerBefore) return control;
+    // 旧「活页本外观」用 Divider(height: 20) 给几行分组。
+    return Column(children: [const Divider(height: 20), control]);
+  }
+
+  Widget _buildSchemaControlBody(UiFormMeta f) {
     switch (f.control) {
       case 'toggle':
         return _buildSchemaToggle(f);
@@ -541,6 +572,46 @@ extension _SettingsSchemaUi on _SettingsPageState {
             button,
             if (footnote != null) const SizedBox(height: 2),
             ?footnote,
+          ],
+        );
+      case 'chips':
+        // GIF 档位: 固定宽度标签列 + 换行 ChoiceChip。
+        content = Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 60,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(_l10n(f.labelId),
+                    style: const TextStyle(fontSize: 14)),
+              ),
+            ),
+            Expanded(
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  for (final o in f.options)
+                    ChoiceChip(
+                      label: Text(_schemaOptionLabel(f, o)),
+                      selected: _schemaSelectedValue(f) == o.value,
+                      onSelected: enabled
+                          ? (_) => _writeSetting(f.key, o.value)
+                          : null,
+                      showCheckmark: false,
+                      labelStyle: TextStyle(
+                        fontSize: 13,
+                        color: _schemaSelectedValue(f) == o.value
+                            ? Colors.white
+                            : Colors.black87,
+                      ),
+                      selectedColor: Colors.blueGrey.shade600,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
+              ),
+            ),
           ],
         );
       default: // intrinsicSegmented(语言: 不放标签)

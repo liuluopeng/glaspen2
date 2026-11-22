@@ -163,6 +163,7 @@
   "refreshBubbles": "刷新",
   "nasBackup": "NAS 备份",
   "nasBackupUrl": "NAS 地址",
+  "nasUrlExample": "http://192.168.1.10:8080",
   "nasBackupNow": "立即备份到 NAS",
   "nasBackupSub": "整库快照推送到 NAS 的 axum 服务(文件落盘 + Postgres 登记);留空 = 关闭",
   "nasBackupDone": "已备份到 NAS",

@@ -4,7 +4,9 @@ import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:glaspen2_settings/main.dart'
-    show GlaspenSettingsApp, UiConfig, appLocale, uiConfigNotifier;
+    show GlaspenSettingsApp, appLocale;
+
+import 'ui_config_fixture.dart';
 
 void main() {
   testWidgets('settings page builds', (WidgetTester tester) async {
@@ -31,6 +33,7 @@ void main() {
     addTearDown(tester.view.reset);
     appLocale.value = const Locale('zh');
     addTearDown(() => appLocale.value = const Locale('zh'));
+    useUiConfigFixture();
 
     await tester.pumpWidget(const GlaspenSettingsApp());
     await tester.pump(const Duration(seconds: 1));
@@ -48,49 +51,8 @@ void main() {
     tester.view.physicalSize = const Size(1600, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    final fallback = UiConfig.fallback();
-    // 模拟 Windows 后端 JSON(管道测试进程连不上, 直接注入全局配置):
-    // features 全 false = 反色/翻页动效/页面导出/OCR 都应从界面消失。
-    uiConfigNotifier.value = UiConfig.fromJson(<String, dynamic>{
-      'platform': 'windows',
-      'isWindows': true,
-      'fontScale': 1.0,
-      'chordSeparator': '+',
-      'chordNames': {'cmd': 'Win', 'ctrl': 'Ctrl', 'alt': 'Alt', 'shift': 'Shift'},
-      'modifierWord': 'Alt',
-      'messages': {
-        'requireModifier': {
-          'zh': '需要同时按 Ctrl 或 Alt',
-          'en': 'Must include Ctrl or Alt',
-        },
-        'reserved': {'zh': '已被系统或按住类功能保留', 'en': 'Reserved'},
-      },
-      'reserved': ['ctrl+alt+R'],
-      'forceBound': ['settings', 'quit'],
-      'defaults': fallback.defaults,
-      'actionOrder': fallback.actionOrder,
-      'holdHotkeys': {
-        'gif': 'ctrl+alt+R',
-        'draft': 'ctrl+alt+2',
-        'send': 'ctrl+alt+3',
-      },
-      'features': {
-        'invertInk': false,
-        'pageFlipEffect': false,
-        'pageExport': false,
-        'ocrSearch': false,
-      },
-      'modifierRow': {
-        'left': [
-          {'name': 'ctrl', 'label': 'ctrl', 'width': 1.25, 'modifier': true},
-        ],
-        'space': [
-          {'name': 'space', 'label': 'Space', 'width': 5.0, 'modifier': false},
-        ],
-        'right': <dynamic>[],
-      },
-    });
-    addTearDown(() => uiConfigNotifier.value = UiConfig.fallback());
+    // 真实 Windows schema 固定样例: features 全 false + 完整表单。
+    useUiConfigFixture('windows');
 
     await tester.pumpWidget(const GlaspenSettingsApp(locale: Locale('zh')));
     await tester.pump(const Duration(seconds: 1));

@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:glaspen2_settings/l10n/app_localizations.dart';
 import 'package:glaspen2_settings/main.dart' show SettingsPage;
 
+import 'ui_config_fixture.dart';
+
 Widget _host(Locale locale) => MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
@@ -13,6 +15,8 @@ Widget _host(Locale locale) => MaterialApp(
 
 void main() {
   testWidgets('zh(默认模板)与 en 各自渲染', (tester) async {
+    // 设置页由后端 schema 生成; 测试注入 core 输出的真实 macOS uiConfig。
+    useUiConfigFixture();
     await tester.pumpWidget(_host(const Locale('zh')));
     await tester.pump();
     expect(find.text('设置'), findsWidgets);

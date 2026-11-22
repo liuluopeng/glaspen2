@@ -33,10 +33,11 @@
 //! language / shortcuts; 另有 `about`(版本/检查更新)分区 —— 不含设置项,
 //! 内容全是 [`CUSTOM_BLOCKS`] 里的自定义区块, 但同样由 schema 定位/排序。
 //!
-//! ── 条件显示 / 条件可用 / 布局 / 自定义区块(D11b 第一步补齐)──
+//! ── 条件显示 / 条件可用 / 布局 / 自定义区块(全部由 schema 描述)──
 //!
-//! 旧的 Dart 表单里有一批**由设置当前值驱动**的结构, 之前的 schema 只能表达
-//! `uiConfig.features` 门控, 无法表达它们; 现在统一成通用字段:
+//! 旧手写 Dart 表单里有一批**由设置当前值驱动**的结构, 早期 schema 只能表达
+//! `uiConfig.features` 门控, 无法表达它们; 现在统一成通用字段(D11b 完成后
+//! 面板完全按这份 schema 渲染, 不再有逐键手写控件):
 //!
 //! - [`FormMeta::visible_when_setting`]: `{key, equals}` —— 该控件只在
 //!   `settings[key] == equals` 时渲染。用于:
@@ -53,7 +54,7 @@
 //!   (标签在上/无标签 + 脚注)、chips 行(GIF 档位)、文本输入、色板/粗细网格。
 //! - [`CUSTOM_BLOCKS`]: 不是设置项、但属于某个分区内容的自定义区块(命令按钮/
 //!   登录按钮与状态/快捷键编辑器/关于区)。core 只给**稳定 id + 分区 + 顺序 +
-//!   条件**, 具体控件仍由 Dart 手写(动态 UI, 见 D11b 交付说明)。
+//!   条件**, 具体控件仍由 Dart 手写(动态 UI: 动作表/命令调用/输入控制器)。
 //!
 //! `order` 的口径: 分区内 **控件与自定义区块共享同一序号空间**(0 起连续),
 //! 渲染时按 order 合并排序。D11a 只有控件时序号恰好 0..n-1, 现在插入区块的
@@ -63,8 +64,8 @@
 //! ── 协议特殊键(不是设置项)──
 //! - `chatPassword`: 只写不读的协议特殊键(密码本体永不进快照, 见
 //!   `settings_apply::effect_for` 的 `SettingEffect::ChatPassword`)。它**不在**
-//!   `settings::SETTINGS` 登记表, 面板只在登录区块里渲染密码输入框。D11b 第一步
-//!   给它在 [`SPECIAL_KEYS`] 里一个明确分类(`Control::ProtocolOnly`), 防止
+//!   `settings::SETTINGS` 登记表, 面板只在登录自定义区块里渲染密码输入框。
+//!   它在 [`SPECIAL_KEYS`] 里有一个明确分类(`Control::ProtocolOnly`), 防止
 //!   "没登记也没分类"的静默遗漏; 具体控件留在登录自定义区块里手写。
 //! - `hotkeyRecording`: 同样只写不读的瞬时信号(录制热键时暂停全局拦截),
 //!   面板没有对应控件, 也不进 schema。
@@ -83,34 +84,15 @@
 //!    (Ctrl+Alt+…)两条键一直没用。现在分区按平台选键: macOS `hotkeys`,
 //!    Windows `hotkeysCtrlAlt`([`Section::win_label_id`]), 由 core 决定
 //!    (Flutter 不做平台分支); 标题从「快捷键」变成「快捷键 (⌘⌃…)」是**有意**
-//!    的, 顺带告诉用户该节的组合键前缀。D11b 渲染时直接用后端 `labelId`。
+//!    的, 顺带告诉用户该节的组合键前缀。面板直接用后端 `labelId` 解析文案。
 //! 6. 颜色/粗细显示名: Flutter ARB(`cRed`…/`wUltraFine`…) 与 core i18n
 //!    (`Msg::ColorRed`…/`WidthHair`…) 各有一份。D11a 的 label_id 指向面板
 //!    l10n(表单由 Dart 渲染); 颜色/宽度档位顺序与 `presets::COLOR_PRESETS` /
-//!    `WIDTH_PRESETS` 一致(测试锁定), D11b 再评估是否由 core i18n 供面板复用。
+//!    `WIDTH_PRESETS` 一致(测试锁定); 面板继续用 ARB(core i18n 供覆盖层)。
 //! 7. 除 shortcuts 分区标题外, Dart 表单的 label/description 都走 ARB, 无缺键。
 //!
-//! ── 盘点中发现的差异(D11a 只记录, 不改行为)──
-//! 1. `gridSize`: registry `Kind::Float`、core 钳制 10..200, 但表单只给
-//!    20/40/80 三档整数。元数据按**表单**登记整数档位; registry 的 Float 口径
-//!    不改(快照/落库类型由 D12 决定)。
-//! 2. `bubbleReplaySpeed`: core 钳制 1..8, 表单只给 1/2/4 三档。
-//! 3. `gifFps` / `gifResolution` / `gifSpeed`: 表单档位是 core 钳制区间的
-//!    **子集**(10..50 / 0.25..1.0 / 0.5..20); 测试断言所有档位经 core 钳制后
-//!    不变。
-//! 4. `invertFps`: 表单 10/30/60/100 与 `settings_apply` 白名单完全一致。
-//! 5. `shortcuts` 分区标题: Dart `_shortcutSectionTitle()` 硬编码
-//!    「快捷键 / Shortcuts」, 没走 l10n; ARB 里已有 `hotkeys`(⌘⌃…)/
-//!    `hotkeysCtrlAlt`(Ctrl+Alt+…) 两条**未被使用**的键。本文件分区 label_id
-//!    记 `hotkeys`(稳定键), D11b 应统一标题并决定用哪条(或补一条
-//!    `shortcutsTitle`)。
-//! 6. 颜色/粗细显示名: Flutter ARB(`cRed`…/`wUltraFine`…) 与 core i18n
-//!    (`Msg::ColorRed`…/`WidthHair`…) 各有一份。D11a 的 label_id 指向面板
-//!    l10n(表单由 Dart 渲染); 颜色/宽度档位顺序与 `presets::COLOR_PRESETS` /
-//!    `WIDTH_PRESETS` 一致(测试锁定), D11b 再评估是否由 core i18n 供面板复用。
-//! 7. 除 shortcuts 分区标题外, Dart 表单的 label/description 都走 ARB, 无缺键。
-//!
-//! 新增/修改分区或控件: 只改本文件 + 测试里的 EXPECTED 迁移表(见 tests),
+//! 新增/修改分区或控件: 只改本文件(Dart 侧自动跟随; 新文案键需要同步
+//! Flutter ARB + main.settings_schema.dart 的 l10n 解析表, 测试会报缺键),
 //! 不要把 label 文案搬进来。
 
 use serde_json::{Value, json};
@@ -365,8 +347,10 @@ pub struct FormMeta {
     /// 是否把 label 渲染成控件标签(开关/文本/网格/chips 恒为 true;
     /// 整宽分段按钮可关掉, 如 `invertFps` 只显示脚注)。
     pub show_label: bool,
-    /// 条件显示的分段控件是否左缩进(旧表单里嵌在开关下的行)。
+    /// 条件显示的分段控件是否左缩进(旧表单里嵌在开关下的行/左右留白行)。
     pub indented: bool,
+    /// 控件上方是否渲染一条分隔线(旧「活页本外观」分区的分组方式)。
+    pub divider_before: bool,
     pub unit: Option<Unit>,
     pub range: Option<Range>,
     pub options: &'static [FormOption],
@@ -394,6 +378,7 @@ impl FormMeta {
             "layout": self.layout.as_str(),
             "showLabel": self.show_label,
             "indented": self.indented,
+            "dividerBefore": self.divider_before,
             "unit": self.unit.map(Unit::as_str),
             "range": self.range.map(Range::to_json),
             "options": self
@@ -684,6 +669,7 @@ const fn toggle(
         layout: Layout::Switch,
         show_label: true,
         indented: false,
+        divider_before: false,
         unit: None,
         range: None,
         options: &[],
@@ -718,6 +704,7 @@ const fn select(
         layout: Layout::InlineSegmented,
         show_label: true,
         indented: false,
+        divider_before: false,
         unit,
         range,
         options,
@@ -747,6 +734,7 @@ const fn text(
         layout: Layout::TextField,
         show_label: true,
         indented: false,
+        divider_before: false,
         unit: None,
         range: None,
         options: &[],
@@ -775,6 +763,7 @@ const fn shortcuts(
         layout: Layout::Custom,
         show_label: true,
         indented: false,
+        divider_before: false,
         unit: None,
         range: None,
         options: &[],
@@ -806,6 +795,7 @@ const fn grid(
         layout: Layout::LabeledGrid,
         show_label: true,
         indented: false,
+        divider_before: false,
         unit: None,
         range: Some(Range::new(0.0, (options.len() - 1) as f64, 1.0)),
         options,
@@ -844,6 +834,12 @@ const fn enabled_when(mut m: FormMeta, key: &'static str, equals: OptionValue) -
 /// 文本输入框的 placeholder l10n 键。
 const fn hint(mut m: FormMeta, hint_id: &'static str) -> FormMeta {
     m.hint_id = Some(hint_id);
+    m
+}
+
+/// 控件上方渲染一条分隔线(旧表单的分组方式)。
+const fn divider(mut m: FormMeta) -> FormMeta {
+    m.divider_before = true;
     m
 }
 
@@ -1077,7 +1073,7 @@ pub const FORM_META: &[FormMeta] = &[
         None,
         true,
     ),
-    select(
+    divider(select(
         "flipEffect",
         "notebookLook",
         1,
@@ -1088,8 +1084,8 @@ pub const FORM_META: &[FormMeta] = &[
         None,
         Some("pageFlipEffect"),
         true,
-    ),
-    toggle(
+    )),
+    divider(toggle(
         "minimap",
         "notebookLook",
         2,
@@ -1097,8 +1093,8 @@ pub const FORM_META: &[FormMeta] = &[
         Some("verticalMinimapOnThe"),
         None,
         true,
-    ),
-    enabled_when(
+    )),
+    divider(enabled_when(
         toggle(
             "panelTransparent",
             "notebookLook",
@@ -1110,7 +1106,7 @@ pub const FORM_META: &[FormMeta] = &[
         ),
         "notebookStyle",
         OptionValue::Bool(true),
-    ),
+    )),
     // ── recordExport(录制与导出)──
     layout(
         select(
@@ -1181,7 +1177,10 @@ pub const FORM_META: &[FormMeta] = &[
         false,
     ),
     // ── dataBackup(数据备份)──
-    text("nasUrl", "dataBackup", 2, "nasBackupUrl", None, true),
+    hint(
+        text("nasUrl", "dataBackup", 2, "nasBackupUrl", None, true),
+        "nasUrlExample",
+    ),
     // ── sharedCanvas(共享画布; 依赖 chatIntegration 打开)──
     toggle(
         "shareCanvas",
@@ -1339,778 +1338,29 @@ pub fn blocks_json() -> Value {
 
 #[cfg(test)]
 mod tests {
-    //! D11a 漂移闸门。
+    //! D11b 终态闸门(schema 是唯一事实源, 迁移 oracle 已删除)。
     //!
-    //! 本模块里的 EXPECTED_SECTIONS / EXPECTED 是**当前 Dart 表单的盘点快照**
-    //! (分区、分区内顺序、label/description l10n 键、控件、单位、范围、档位、
-    //! features 门控), 逐项抄自 main.settings_widgets.dart /
-    //! main.settings_state.dart / main.dart / main.shortcuts.dart。
-    //! 它是 D11b 的**迁移 oracle**; D11b 第一步新增的条件显示/条件可用/布局/
-    //! 自定义区块用 EXPECTED_CONDITIONS / EXPECTED_LAYOUTS / EXPECTED_ORDER
-    //! 三张独立小表对照 Dart 旧表单(不动原来的逐项快照, 减少 churn)。
-    //! - 改 FORM_META(数据结构) → 必须同步改 EXPECTED, 并确认 Dart 表单也变了
-    //!   (迁移期两边一起动);
-    //! - 只改 Dart 表单(删控件/换档位/改文案键) → form_meta_matches_dart_inventory
-    //!   或 dart_form_fingerprints_still_match 变红, 提示同步 core;
-    //! - D11b 完成后 Dart 从 schema 渲染, 这个表即可删掉(oracle 完成使命)。
+    //! 主要断言:
+    //! - 分区/控件/条件/布局/自定义区块的**语义自洽**(键存在/类型/顺序/预算);
+    //! - label/description/hint/档位文案键都在 Flutter ARB 里(en/zh 同步);
+    //! - 档位是 core 钳制区间的子集, 颜色/粗细与 presets 同源;
+    //! - uiConfig JSON 形状稳定(settings[].form / settingsSections /
+    //!   settingsBlocks), 且 Dart 的 schema 渲染器覆盖全部控件类型/区块 id/
+    //!   文案键 —— 「Dart 只按 schema 渲染, 无逐键手写控件」由
+    //!   `dart_renders_settings_from_schema_only` 把关;
+    //! - fixture(test/fixtures/ui_config_*.json)与 core 输出逐字段一致。
     //!
     //! 负向验证(交付说明里记录): 临时改 FORM_META 的某个 order 或 range 值,
-    //! cargo test -p glaspen-core settings_form:: 必须变红且精确报出键名;
-    //! 还原后绿。
+    //! 对应语义测试变红并精确报出键名; 还原后绿。
 
     use super::*;
     use std::collections::HashSet;
 
-    // ── 迁移 oracle: 当前 Dart 表单的盘点快照(按展示顺序) ──
-    // 注意: 这是**独立副本**, 不从 FORM_META 派生; 两边不一致即漂移。
-
-    struct ExpectedMeta {
-        key: &'static str,
-        section: &'static str,
-        order: u16,
-        label_id: &'static str,
-        description_id: Option<&'static str>,
-        control: Control,
-        unit: Option<Unit>,
-        range: Option<(f64, f64, f64)>,
-        options: &'static [(OptionValue, &'static str)],
-        feature: Option<&'static str>,
-        advanced: bool,
-    }
-
-    const fn etoggle(
-        key: &'static str,
-        section: &'static str,
-        order: u16,
-        label_id: &'static str,
-        description_id: Option<&'static str>,
-        feature: Option<&'static str>,
-        advanced: bool,
-    ) -> ExpectedMeta {
-        ExpectedMeta {
-            key,
-            section,
-            order,
-            label_id,
-            description_id,
-            control: Control::Toggle,
-            unit: None,
-            range: None,
-            options: &[],
-            feature,
-            advanced,
-        }
-    }
-
-    const fn eselect(
-        key: &'static str,
-        section: &'static str,
-        order: u16,
-        label_id: &'static str,
-        description_id: Option<&'static str>,
-        options: &'static [(OptionValue, &'static str)],
-        range: Option<(f64, f64, f64)>,
-        unit: Option<Unit>,
-        feature: Option<&'static str>,
-        advanced: bool,
-    ) -> ExpectedMeta {
-        ExpectedMeta {
-            key,
-            section,
-            order,
-            label_id,
-            description_id,
-            control: Control::Select,
-            unit,
-            range,
-            options,
-            feature,
-            advanced,
-        }
-    }
-
-    const fn etext(
-        key: &'static str,
-        section: &'static str,
-        order: u16,
-        label_id: &'static str,
-        description_id: Option<&'static str>,
-        advanced: bool,
-    ) -> ExpectedMeta {
-        ExpectedMeta {
-            key,
-            section,
-            order,
-            label_id,
-            description_id,
-            control: Control::Text,
-            unit: None,
-            range: None,
-            options: &[],
-            feature: None,
-            advanced,
-        }
-    }
-
-    const fn eshortcuts(
-        key: &'static str,
-        section: &'static str,
-        order: u16,
-        label_id: &'static str,
-        advanced: bool,
-    ) -> ExpectedMeta {
-        ExpectedMeta {
-            key,
-            section,
-            order,
-            label_id,
-            description_id: None,
-            control: Control::Shortcuts,
-            unit: None,
-            range: None,
-            options: &[],
-            feature: None,
-            advanced,
-        }
-    }
-
-    const fn egrid(
-        key: &'static str,
-        section: &'static str,
-        order: u16,
-        label_id: &'static str,
-        options: &'static [(OptionValue, &'static str)],
-        control: Control,
-        advanced: bool,
-    ) -> ExpectedMeta {
-        ExpectedMeta {
-            key,
-            section,
-            order,
-            label_id,
-            description_id: None,
-            control,
-            unit: None,
-            // 索引档位范围 = 0..档位数-1(与 FORM_META 的 grid() 同口径)
-            range: Some((0.0, (options.len() - 1) as f64, 1.0)),
-            options,
-            feature: None,
-            advanced,
-        }
-    }
-
-    const EXP_COLOR: &[(OptionValue, &str)] = &[
-        (OptionValue::Int(0), "cRed"),
-        (OptionValue::Int(1), "cOrange"),
-        (OptionValue::Int(2), "cYellow"),
-        (OptionValue::Int(3), "cGreen"),
-        (OptionValue::Int(4), "cCyan"),
-        (OptionValue::Int(5), "cBlue"),
-        (OptionValue::Int(6), "cPurple"),
-        (OptionValue::Int(7), "cPink"),
-        (OptionValue::Int(8), "cWhite"),
-        (OptionValue::Int(9), "cBlack"),
-    ];
-
-    const EXP_WIDTH: &[(OptionValue, &str)] = &[
-        (OptionValue::Int(0), "wUltraFine"),
-        (OptionValue::Int(1), "wVeryFine"),
-        (OptionValue::Int(2), "wFine"),
-        (OptionValue::Int(3), "wMedium"),
-        (OptionValue::Int(4), "wThick"),
-        (OptionValue::Int(5), "wVeryThick"),
-        (OptionValue::Int(6), "wExtraThick"),
-        (OptionValue::Int(7), "wUltraThick"),
-    ];
-
-    const EXP_BUBBLE_REPLAY_SPEED: &[(OptionValue, &str)] = &[
-        (OptionValue::Int(1), ""),
-        (OptionValue::Int(2), ""),
-        (OptionValue::Int(4), ""),
-    ];
-
-    const EXP_GRID_SIZE: &[(OptionValue, &str)] = &[
-        (OptionValue::Int(20), ""),
-        (OptionValue::Int(40), ""),
-        (OptionValue::Int(80), ""),
-    ];
-
-    const EXP_GRID_DIVIDER: &[(OptionValue, &str)] = &[
-        (OptionValue::Int(0), "none"),
-        (OptionValue::Int(1), "twoColumnsSideBy"),
-        (OptionValue::Int(2), "twoColumnsStacked"),
-        (OptionValue::Int(3), "grid3x3"),
-        (OptionValue::Int(4), "cornell"),
-    ];
-
-    const EXP_INVERT_FPS: &[(OptionValue, &str)] = &[
-        (OptionValue::Int(10), ""),
-        (OptionValue::Int(30), ""),
-        (OptionValue::Int(60), ""),
-        (OptionValue::Int(100), ""),
-    ];
-
-    const EXP_NOTEBOOK_STYLE: &[(OptionValue, &str)] = &[
-        (OptionValue::Bool(true), "skeuoGlass"),
-        (OptionValue::Bool(false), "notePaper"),
-    ];
-
-    const EXP_FLIP_EFFECT: &[(OptionValue, &str)] = &[
-        (OptionValue::Int(0), "systemAnimation"),
-        (OptionValue::Int(1), "timeTunnel"),
-    ];
-
-    const EXP_GIF_FPS: &[(OptionValue, &str)] = &[
-        (OptionValue::Int(10), ""),
-        (OptionValue::Int(15), ""),
-        (OptionValue::Int(20), ""),
-        (OptionValue::Int(24), ""),
-        (OptionValue::Int(30), ""),
-        (OptionValue::Int(50), ""),
-    ];
-
-    const EXP_GIF_RESOLUTION: &[(OptionValue, &str)] = &[
-        (OptionValue::Float(0.25), ""),
-        (OptionValue::Float(0.5), ""),
-        (OptionValue::Float(0.75), ""),
-        (OptionValue::Float(1.0), ""),
-    ];
-
-    const EXP_GIF_SPEED: &[(OptionValue, &str)] = &[
-        (OptionValue::Float(0.5), ""),
-        (OptionValue::Float(1.0), ""),
-        (OptionValue::Float(2.0), ""),
-        (OptionValue::Float(3.0), ""),
-        (OptionValue::Float(4.0), ""),
-        (OptionValue::Float(8.0), ""),
-        (OptionValue::Float(10.0), ""),
-        (OptionValue::Float(15.0), ""),
-        (OptionValue::Float(20.0), ""),
-    ];
-
-    const EXP_GIF_END_MODE: &[(OptionValue, &str)] = &[
-        (OptionValue::Int(0), "stopOnLastFrame"),
-        (OptionValue::Int(1), "hold1SThen"),
-        (OptionValue::Int(2), "loopImmediately"),
-    ];
-
-    const EXP_LANGUAGE: &[(OptionValue, &str)] = &[
-        (OptionValue::Str("zh"), "chinese"),
-        (OptionValue::Str("en"), "english"),
-    ];
-
-    /// 分区盘点(数组顺序 = main.dart 里的显示顺序)。
-    ///
-    /// 第 2 项 = macOS/默认标题 l10n 键; 第 3 项 = Windows 专用标题键(旧 Dart
-    /// 硬编码「快捷键」, schema 用 ARB 已有的 hotkeys/hotkeysCtrlAlt 两条键);
-    /// 第 4 项 = 是否在「更多设置」折叠区; 第 5 项 = 整节条件显示。
-    const EXPECTED_SECTIONS: &[(&str, &str, Option<&str>, bool, Option<(&str, bool)>)] = &[
-        ("pen", "pen", None, false, None),
-        ("canvasLook", "canvasLook", None, true, None),
-        ("notebookLook", "notebookLook", None, true, None),
-        ("recordExport", "recordExport", None, true, None),
-        ("dataBackup", "dataBackup", None, true, None),
-        (
-            "sharedCanvas",
-            "sharedCanvas",
-            None,
-            true,
-            Some(("chatIntegration", true)),
-        ),
-        ("doodleIdentity", "doodleIdentity", None, true, None),
-        ("systemAndAssist", "systemAndAssist", None, true, None),
-        ("language", "language", None, true, None),
-        // 旧 Dart 里该分区标题由 _shortcutSectionTitle() 硬编码; schema 改为
-        // 按平台选 ARB 键(core 决定, Flutter 不做平台分支)。
-        ("shortcuts", "hotkeys", Some("hotkeysCtrlAlt"), true, None),
-        // 关于区(版本/检查更新): 无设置项, 内容全是自定义区块; 旧 Dart 把它
-        // 放在「更多设置」折叠之外(始终显示), 所以 advanced=false。
-        ("about", "about", None, false, None),
-    ];
-
-    const EXPECTED: &[ExpectedMeta] = &[
-        // ── pen ──
-        egrid(
-            "color",
-            "pen",
-            0,
-            "color",
-            EXP_COLOR,
-            Control::ColorGrid,
-            false,
-        ),
-        egrid(
-            "width",
-            "pen",
-            1,
-            "width",
-            EXP_WIDTH,
-            Control::WidthGrid,
-            false,
-        ),
-        // ── canvasLook ──
-        etoggle(
-            "showFreeCanvas",
-            "canvasLook",
-            0,
-            "freeDoodleMode",
-            Some("showTheFreeDoodle"),
-            None,
-            true,
-        ),
-        etoggle(
-            "showBubbleTab",
-            "canvasLook",
-            1,
-            "bubbleTab",
-            Some("showBubbleTabSub"),
-            None,
-            true,
-        ),
-        eselect(
-            "bubbleReplaySpeed",
-            "canvasLook",
-            2,
-            "bubbleReplaySpeed",
-            None,
-            EXP_BUBBLE_REPLAY_SPEED,
-            Some((1.0, 4.0, 0.0)),
-            // 旧 Dart 气泡重播速度显示 `1×`(乘号), GIF 速度显示 `2x`。
-            Some(Unit::TimesCross),
-            None,
-            true,
-        ),
-        etoggle(
-            "bubbleReplayHoldLast",
-            "canvasLook",
-            3,
-            "bubbleReplayHoldLast",
-            Some("bubbleReplayHoldLastSub"),
-            None,
-            true,
-        ),
-        etoggle(
-            "bubbleReplayAuto",
-            "canvasLook",
-            4,
-            "bubbleReplayAuto",
-            Some("bubbleReplayAutoSub"),
-            None,
-            true,
-        ),
-        etoggle(
-            "bubbleAutoNewPage",
-            "canvasLook",
-            5,
-            "bubbleAutoNewPage",
-            Some("bubbleAutoNewPageSub"),
-            None,
-            true,
-        ),
-        etoggle(
-            "grid",
-            "canvasLook",
-            6,
-            "showGrid",
-            Some("helpsAlignWhileDoodling"),
-            None,
-            true,
-        ),
-        eselect(
-            "gridSize",
-            "canvasLook",
-            7,
-            "gridSize",
-            None,
-            EXP_GRID_SIZE,
-            Some((20.0, 80.0, 0.0)),
-            None,
-            None,
-            true,
-        ),
-        eselect(
-            "gridDivider",
-            "canvasLook",
-            8,
-            "columns",
-            None,
-            EXP_GRID_DIVIDER,
-            Some((0.0, 4.0, 1.0)),
-            None,
-            None,
-            true,
-        ),
-        etoggle(
-            "gridFollowStrokes",
-            "canvasLook",
-            9,
-            "gridFollowsDoodles",
-            Some("whenOnTheGrid"),
-            None,
-            true,
-        ),
-        etoggle(
-            "glassFollowStrokes",
-            "canvasLook",
-            10,
-            "glassFollowsDoodles",
-            Some("whenOnTheGlass"),
-            None,
-            true,
-        ),
-        etoggle(
-            "outline",
-            "canvasLook",
-            11,
-            "inkOutline",
-            Some("dashedContrastOutlineVisible"),
-            None,
-            true,
-        ),
-        etoggle(
-            "softShadow",
-            "canvasLook",
-            12,
-            "softShadow",
-            Some("softDarkShadowUnder"),
-            None,
-            true,
-        ),
-        etoggle(
-            "invertInk",
-            "canvasLook",
-            13,
-            "invertedInk",
-            Some("strokesTakeThePer"),
-            Some("invertInk"),
-            true,
-        ),
-        eselect(
-            "invertFps",
-            "canvasLook",
-            14,
-            "invertTrackingFpsCap",
-            // 旧 Dart 在分段按钮下方显示这句 11px 脚注(不是标签)。
-            Some("invertTrackingFpsCap"),
-            EXP_INVERT_FPS,
-            Some((10.0, 100.0, 0.0)),
-            Some(Unit::Hz),
-            Some("invertInk"),
-            true,
-        ),
-        // ── notebookLook ──
-        eselect(
-            "notebookStyle",
-            "notebookLook",
-            0,
-            "style",
-            None,
-            EXP_NOTEBOOK_STYLE,
-            None,
-            None,
-            None,
-            true,
-        ),
-        eselect(
-            "flipEffect",
-            "notebookLook",
-            1,
-            "pageFlipEffect",
-            None,
-            EXP_FLIP_EFFECT,
-            Some((0.0, 1.0, 1.0)),
-            None,
-            Some("pageFlipEffect"),
-            true,
-        ),
-        etoggle(
-            "minimap",
-            "notebookLook",
-            2,
-            "show10NearbyPages",
-            Some("verticalMinimapOnThe"),
-            None,
-            true,
-        ),
-        etoggle(
-            "panelTransparent",
-            "notebookLook",
-            3,
-            "truePassThroughExperimental",
-            Some("cardsRevealTheDesktop"),
-            None,
-            true,
-        ),
-        // ── recordExport ──
-        eselect(
-            "gifFps",
-            "recordExport",
-            1,
-            "frameRate",
-            None,
-            EXP_GIF_FPS,
-            Some((10.0, 50.0, 0.0)),
-            Some(Unit::Fps),
-            None,
-            true,
-        ),
-        eselect(
-            "gifResolution",
-            "recordExport",
-            2,
-            "resolution",
-            None,
-            EXP_GIF_RESOLUTION,
-            Some((0.25, 1.0, 0.25)),
-            Some(Unit::Percent),
-            None,
-            true,
-        ),
-        eselect(
-            "gifSpeed",
-            "recordExport",
-            3,
-            "speed",
-            None,
-            EXP_GIF_SPEED,
-            Some((0.5, 20.0, 0.0)),
-            Some(Unit::Times),
-            None,
-            true,
-        ),
-        eselect(
-            "gifEndMode",
-            "recordExport",
-            4,
-            "ending",
-            None,
-            EXP_GIF_END_MODE,
-            Some((0.0, 2.0, 1.0)),
-            None,
-            None,
-            true,
-        ),
-        // ── dataBackup ──
-        // 控件与自定义区块共用分区内序号: backupActions(0)/nasHeader(1) 在
-        // 输入框之前, nasActions(3) 在之后 —— 视觉顺序不变, 序号后移。
-        etext("nasUrl", "dataBackup", 2, "nasBackupUrl", None, true),
-        // ── sharedCanvas ──
-        etoggle(
-            "shareCanvas",
-            "sharedCanvas",
-            0,
-            "streamDoodlesLive",
-            Some("pushedToThePeer"),
-            None,
-            true,
-        ),
-        // ── doodleIdentity ──
-        etoggle(
-            "chatIntegration",
-            "doodleIdentity",
-            0,
-            "enableHandwrittenMessagesSharing",
-            Some("whenOff23"),
-            None,
-            true,
-        ),
-        // 旧 Dart 把 eGHttps192 当输入框 hintText(不是 subtitle), schema 记
-        // 在 hint_id; 这里 description 为 None。hint 由 EXPECTED_HINTS 锁定。
-        etext(
-            "chatApiBase",
-            "doodleIdentity",
-            1,
-            "serverAddress",
-            None,
-            true,
-        ),
-        etext("chatUser", "doodleIdentity", 2, "username", None, true),
-        // ── systemAndAssist ──
-        etoggle(
-            "pressureMonitor",
-            "systemAndAssist",
-            0,
-            "pressureMonitor",
-            None,
-            None,
-            true,
-        ),
-        etoggle(
-            "launchAtLogin",
-            "systemAndAssist",
-            1,
-            "launchAtLogin",
-            None,
-            None,
-            true,
-        ),
-        // ── language ──
-        eselect(
-            "language",
-            "language",
-            0,
-            "language",
-            None,
-            EXP_LANGUAGE,
-            None,
-            None,
-            None,
-            true,
-        ),
-        // ── shortcuts ──
-        eshortcuts("shortcuts", "shortcuts", 0, "hotkeys", true),
-    ];
-
-    /// 旧 Dart 里作为输入框 hintText 的 l10n 键(仅 chatApiBase; nasUrl 的
-    /// URL 示例 hint 在 D11b 第二步随 ARB 键补)。
-    const EXPECTED_HINTS: &[(&str, &str)] = &[("chatApiBase", "eGHttps192")];
-
-    // ── 1. 迁移 oracle: FORM_META/SECTIONS == Dart 表单盘点 ──
+    // ── 1. 条件/布局/自定义区块的语义自洽(渲染验收由 Dart widget 测试覆盖) ──
 
     #[test]
-    fn form_meta_matches_dart_inventory() {
-        assert_eq!(FORM_META.len(), EXPECTED.len(), "表单项数漂移");
-        assert_eq!(FORM_META.len(), 34, "当前 Dart 表单可见设置项应为 34 条");
-        for (i, (meta, exp)) in FORM_META.iter().zip(EXPECTED.iter()).enumerate() {
-            assert_eq!(
-                meta.key, exp.key,
-                "第 {i} 项的键/顺序与 Dart 表单盘点不一致"
-            );
-            assert_eq!(meta.section, exp.section, "{}: 分区漂移", exp.key);
-            assert_eq!(meta.order, exp.order, "{}: 分区内顺序漂移", exp.key);
-            assert_eq!(meta.label_id, exp.label_id, "{}: label_id 漂移", exp.key);
-            assert_eq!(
-                meta.description_id, exp.description_id,
-                "{}: description_id 漂移",
-                exp.key
-            );
-            assert_eq!(meta.control, exp.control, "{}: 控件类型漂移", exp.key);
-            assert_eq!(meta.unit, exp.unit, "{}: 单位漂移", exp.key);
-            assert_eq!(
-                meta.range.map(|r| (r.min, r.max, r.step)),
-                exp.range,
-                "{}: 范围漂移",
-                exp.key
-            );
-            let got: Vec<(OptionValue, &'static str)> =
-                meta.options.iter().map(|o| (o.value, o.label_id)).collect();
-            assert_eq!(got.as_slice(), exp.options, "{}: 档位漂移", exp.key);
-            assert_eq!(
-                meta.visible_when_feature, exp.feature,
-                "{}: features 门控漂移",
-                exp.key
-            );
-            assert_eq!(meta.advanced, exp.advanced, "{}: advanced 漂移", exp.key);
-        }
-        // hint 只有 chatApiBase 一条(旧 Dart 的输入框 hintText)。
-        let mut hints = 0usize;
-        for m in FORM_META {
-            let exp = EXPECTED_HINTS.iter().find(|(k, _)| *k == m.key);
-            match (m.hint_id, exp) {
-                (None, None) => {}
-                (Some(h), Some((_, e))) => {
-                    assert_eq!(h, *e, "{}: hint 漂移", m.key);
-                    hints += 1;
-                }
-                (got, _) => panic!("{}: hint 盘点漂移: {got:?}", m.key),
-            }
-        }
-        assert_eq!(hints, EXPECTED_HINTS.len(), "hint 表有孤儿条目");
-    }
-
-    // ── 迁移 oracle 续: 条件显示/条件可用/布局/自定义区块(对照旧 Dart) ──
-
-    /// 旧 Dart 表单里的条件显示/可用(逐条抄自 main.dart / settings_widgets.dart /
-    /// settings_state.dart):
-    /// - `if (_showBubbleTab)` → 4 个气泡重播控件;
-    /// - `if (_showGrid)` → 网格尺寸;
-    /// - `if (features['invertInk'] == true && _invertInk)` → 反色帧率;
-    /// - `if (_chatIntegration)` → 登录服务器/用户名(密码+按钮在登录区块),
-    ///   以及 sharedCanvas 整节;
-    /// - `onChanged: _notebookGlass ? ... : null` → panelTransparent 条件可用。
-    const EXPECTED_CONDITIONS: &[(&str, Option<(&str, bool)>, Option<(&str, bool)>)] = &[
-        ("bubbleReplaySpeed", Some(("showBubbleTab", true)), None),
-        ("bubbleReplayHoldLast", Some(("showBubbleTab", true)), None),
-        ("bubbleReplayAuto", Some(("showBubbleTab", true)), None),
-        ("bubbleAutoNewPage", Some(("showBubbleTab", true)), None),
-        ("gridSize", Some(("grid", true)), None),
-        ("invertFps", Some(("invertInk", true)), None),
-        ("chatApiBase", Some(("chatIntegration", true)), None),
-        ("chatUser", Some(("chatIntegration", true)), None),
-        ("panelTransparent", None, Some(("notebookStyle", true))),
-    ];
-
-    /// 旧 Dart 表单里非默认排法的控件(其余按控件类型的默认布局):
-    /// 行内分段 / 整宽分段+标签 / 整宽分段+脚注(无标签) / chips / 语言无标签。
-    const EXPECTED_LAYOUT_OVERRIDES: &[(&str, Layout, bool, bool)] = &[
-        ("bubbleReplaySpeed", Layout::InlineSegmented, true, true),
-        ("gridSize", Layout::InlineSegmented, true, true),
-        ("gridDivider", Layout::StackedSegmented, true, true),
-        ("invertFps", Layout::StackedSegmented, false, true),
-        ("gifFps", Layout::Chips, true, false),
-        ("gifResolution", Layout::Chips, true, false),
-        ("gifSpeed", Layout::Chips, true, false),
-        ("gifEndMode", Layout::Chips, true, false),
-        ("language", Layout::IntrinsicSegmented, false, false),
-    ];
-
-    /// 合并排序后的分区渲染顺序(控件 key 与区块 id 混排); 对照旧 Dart 的
-    /// 视觉顺序 —— 序号变了, 顺序不变。
-    const EXPECTED_RENDER_ORDER: &[(&str, &[&str])] = &[
-        (
-            "recordExport",
-            &[
-                "gifHoldHint",
-                "gifFps",
-                "gifResolution",
-                "gifSpeed",
-                "gifEndMode",
-                "gifEstimate",
-                "exportActions",
-            ],
-        ),
-        (
-            "dataBackup",
-            &["backupActions", "nasHeader", "nasUrl", "nasActions"],
-        ),
-        (
-            "doodleIdentity",
-            &["chatIntegration", "chatApiBase", "chatUser", "loginActions"],
-        ),
-        ("shortcuts", &["shortcuts"]),
-        ("about", &["about"]),
-    ];
-
-    #[test]
-    fn conditions_match_dart_conditional_rendering() {
-        // 表里每一条都必须与 FORM_META 一致(不多不少)。
-        let mut seen = 0usize;
-        for m in FORM_META {
-            let got_visible = m.visible_when_setting.map(|c| (c.key, c.equals));
-            let got_enabled = m.enabled_when_setting.map(|c| (c.key, c.equals));
-            let exp = EXPECTED_CONDITIONS.iter().find(|(k, _, _)| *k == m.key);
-            if got_visible.is_none() && got_enabled.is_none() {
-                assert!(exp.is_none(), "{} 的 EXPECTED_CONDITIONS 多余", m.key);
-                continue;
-            }
-            let (_, exp_visible, exp_enabled) =
-                exp.unwrap_or_else(|| panic!("{} 有条件但 oracle 没登记", m.key));
-            seen += 1;
-            assert_eq!(
-                got_visible,
-                exp_visible.map(|(k, v)| (k, OptionValue::Bool(v))),
-                "{} 的条件显示与旧 Dart 不一致",
-                m.key
-            );
-            assert_eq!(
-                got_enabled,
-                exp_enabled.map(|(k, v)| (k, OptionValue::Bool(v))),
-                "{} 的条件可用与旧 Dart 不一致",
-                m.key
-            );
-        }
-        assert_eq!(seen, EXPECTED_CONDITIONS.len(), "条件表有孤儿条目");
-        // 条件键必须是登记表里可设置的 bool 项(不能引用只读/隐藏/自身)。
+    fn condition_metadata_is_sound() {
+        // 条件键必须是登记表里可设置的 bool 项, 且被引用的控件取得到该值。
         let mut checked = 0usize;
         for m in FORM_META {
             for c in [m.visible_when_setting, m.enabled_when_setting]
@@ -2138,8 +1388,6 @@ mod tests {
                     "{} 的条件值目前只用于开关",
                     m.key
                 );
-                // 被引用的控件本身必须是表单可见项, 且能取到条件值(开关或
-                // 带该 bool 档位的选择控件, 如 notebookStyle)。
                 let target = meta_for(c.key)
                     .unwrap_or_else(|| panic!("{} 的条件键 {} 必须是表单可见项", m.key, c.key));
                 let can_equal = target.control == Control::Toggle
@@ -2156,79 +1404,117 @@ mod tests {
         // 4 个气泡控件 + gridSize + invertFps + 2 个登录字段 = 8 个条件显示,
         // panelTransparent = 1 个条件可用, 共 9 条。
         assert_eq!(checked, 9, "条件条数漂移");
-        // 整节条件: sharedCanvas 受 chatIntegration 门控, 且 tick 与旧 Dart 一致。
-        for s in SECTIONS {
-            let exp = EXPECTED_SECTIONS
-                .iter()
-                .find(|(id, ..)| *id == s.id)
-                .unwrap();
-            let got = s.visible_when_setting.map(|c| (c.key, c.equals));
-            assert_eq!(
-                got,
-                exp.4.map(|(k, v)| (k, OptionValue::Bool(v))),
-                "分区 {} 的整节条件漂移",
-                s.id
-            );
+        // 整节条件: 只有 sharedCanvas 受 chatIntegration 门控。
+        let gated: Vec<&str> = SECTIONS
+            .iter()
+            .filter(|s| s.visible_when_setting.is_some())
+            .map(|s| s.id)
+            .collect();
+        assert_eq!(gated, vec!["sharedCanvas"]);
+        let cond = SECTIONS
+            .iter()
+            .find(|s| s.id == "sharedCanvas")
+            .unwrap()
+            .visible_when_setting
+            .unwrap();
+        assert_eq!(cond.key, "chatIntegration");
+        assert_eq!(cond.equals, OptionValue::Bool(true));
+        // 自定义区块的条件也必须是可设置的 bool 开关。
+        for b in CUSTOM_BLOCKS {
+            let Some(c) = b.visible_when_setting else {
+                continue;
+            };
+            let def = crate::settings::get(c.key)
+                .unwrap_or_else(|| panic!("区块 {} 的条件引用未登记键 {}", b.id, c.key));
+            assert_eq!(def.kind, crate::settings::Kind::Bool);
+            assert!(crate::settings::is_settable(c.key));
+            assert_eq!(c.equals, OptionValue::Bool(true));
         }
     }
 
     #[test]
-    fn layouts_match_dart_presentations() {
-        for m in FORM_META {
-            let (layout, show_label, indented) = EXPECTED_LAYOUT_OVERRIDES
-                .iter()
-                .find(|(k, ..)| *k == m.key)
-                .map(|(_, l, s, i)| (*l, *s, *i))
-                .unwrap_or_else(|| match m.control {
-                    Control::Toggle => (Layout::Switch, true, false),
-                    Control::Select => (Layout::InlineSegmented, true, false),
-                    Control::Text => (Layout::TextField, true, false),
-                    Control::ColorGrid | Control::WidthGrid => (Layout::LabeledGrid, true, false),
-                    Control::Shortcuts => (Layout::Custom, true, false),
-                    other => panic!("{} 的控件类型没有默认布局: {other:?}", m.key),
-                });
-            assert_eq!(m.layout, layout, "{} 的布局提示漂移", m.key);
-            assert_eq!(m.show_label, show_label, "{} 的 show_label 漂移", m.key);
-            assert_eq!(m.indented, indented, "{} 的 indented 漂移", m.key);
-        }
-        // 覆盖表没有孤儿(键都真有表单项)。
-        for (key, ..) in EXPECTED_LAYOUT_OVERRIDES {
-            assert!(meta_for(key).is_some(), "{key} 不在 FORM_META");
-        }
-        // 布局/条件与控件类型的语义约束。
+    fn layouts_are_well_formed() {
         for m in FORM_META {
             match m.control {
-                Control::Toggle => assert_eq!(m.layout, Layout::Switch),
-                Control::Text => assert_eq!(m.layout, Layout::TextField),
-                Control::Shortcuts => assert_eq!(m.layout, Layout::Custom),
-                _ => {}
+                Control::Toggle => assert_eq!(m.layout, Layout::Switch, "{}", m.key),
+                Control::Text => assert_eq!(m.layout, Layout::TextField, "{}", m.key),
+                Control::Shortcuts => assert_eq!(m.layout, Layout::Custom, "{}", m.key),
+                Control::ColorGrid | Control::WidthGrid => {
+                    assert_eq!(m.layout, Layout::LabeledGrid, "{}", m.key)
+                }
+                Control::Select => assert!(
+                    matches!(
+                        m.layout,
+                        Layout::InlineSegmented
+                            | Layout::IntrinsicSegmented
+                            | Layout::StackedSegmented
+                            | Layout::Chips
+                    ),
+                    "{} 的 select 布局非法",
+                    m.key
+                ),
+                other => panic!("{} 是非表单控件: {other:?}", m.key),
             }
-            // indented 是纯视觉内缩(条件嵌套行 + 旧表单里左右留白的行),
-            // 不强制绑定条件; 由 EXPECTED_LAYOUT_OVERRIDES 逐条锁定。
-            let _ = m.indented;
+            // 分隔线只出现在「活页本外观」的三条分组行(渲染验收见 widget 测试)。
+            let want_divider = matches!(m.key, "flipEffect" | "minimap" | "panelTransparent");
+            assert_eq!(
+                m.divider_before, want_divider,
+                "{} 的 divider_before 漂移",
+                m.key
+            );
+            // chips 只用于数值档位的选择控件; 无标签的整宽分段按钮只有反色帧率。
+            if m.layout == Layout::Chips {
+                assert_eq!(m.control, Control::Select, "{}", m.key);
+                assert!(
+                    m.options.iter().all(|o| o.value.as_f64().is_some()),
+                    "{} 的 chips 档位必须是数值",
+                    m.key
+                );
+            }
+            if m.layout == Layout::IntrinsicSegmented {
+                assert!(!m.show_label, "{} 的布局不应显示标签", m.key);
+            }
         }
+        // 与旧表单同形的排法(具体像素观感由 Dart widget 测试验收)。
+        for (key, layout, show_label, indented, divider) in [
+            (
+                "bubbleReplaySpeed",
+                Layout::InlineSegmented,
+                true,
+                true,
+                false,
+            ),
+            ("gridSize", Layout::InlineSegmented, true, true, false),
+            ("gridDivider", Layout::StackedSegmented, true, true, false),
+            ("invertFps", Layout::StackedSegmented, false, true, false),
+            ("gifFps", Layout::Chips, true, false, false),
+            ("gifResolution", Layout::Chips, true, false, false),
+            ("gifSpeed", Layout::Chips, true, false, false),
+            ("gifEndMode", Layout::Chips, true, false, false),
+            ("language", Layout::IntrinsicSegmented, false, false, false),
+            ("flipEffect", Layout::InlineSegmented, true, false, true),
+            ("minimap", Layout::Switch, true, false, true),
+            ("panelTransparent", Layout::Switch, true, false, true),
+        ] {
+            let m = meta_for(key).unwrap_or_else(|| panic!("{key} 缺表单元数据"));
+            assert_eq!(
+                (m.layout, m.show_label, m.indented, m.divider_before),
+                (layout, show_label, indented, divider),
+                "{key} 的渲染元数据漂移"
+            );
+        }
+        // 文本输入框的 label/hint 键。
+        assert_eq!(meta_for("nasUrl").unwrap().hint_id, Some("nasUrlExample"));
+        assert_eq!(meta_for("chatApiBase").unwrap().hint_id, Some("eGHttps192"));
+        assert_eq!(
+            meta_for("invertFps").unwrap().description_id,
+            Some("invertTrackingFpsCap")
+        );
     }
 
     #[test]
-    fn custom_blocks_interleave_in_dart_order() {
-        // 每个分区的合并渲染顺序 == 旧 Dart 视觉顺序。
-        for (section, expected) in EXPECTED_RENDER_ORDER {
-            let mut seq: Vec<(u16, &'static str)> = FORM_META
-                .iter()
-                .filter(|m| m.section == *section)
-                .map(|m| (m.order, m.key))
-                .chain(
-                    CUSTOM_BLOCKS
-                        .iter()
-                        .filter(|b| b.section == *section)
-                        .map(|b| (b.order, b.id)),
-                )
-                .collect();
-            seq.sort_by_key(|(o, _)| *o);
-            let got: Vec<&str> = seq.into_iter().map(|(_, id)| id).collect();
-            assert_eq!(&got, expected, "分区 {section} 的渲染顺序漂移");
-        }
-        // 区块 id 唯一、分区存在、条件合法。
+    fn custom_blocks_are_well_formed() {
+        // 区块 id 唯一、分区存在、order 与控件共用一个连续序号空间。
         let mut ids = HashSet::new();
         for b in CUSTOM_BLOCKS {
             assert!(ids.insert(b.id), "自定义区块 id 重复: {}", b.id);
@@ -2238,15 +1524,71 @@ mod tests {
                 b.id,
                 b.section
             );
-            if let Some(c) = b.visible_when_setting {
-                let def = crate::settings::get(c.key)
-                    .unwrap_or_else(|| panic!("区块 {} 的条件引用未登记键 {}", b.id, c.key));
-                assert_eq!(def.kind, crate::settings::Kind::Bool);
-                assert!(crate::settings::is_settable(c.key));
-                assert_eq!(c.equals, OptionValue::Bool(true));
-            }
         }
-        // 旧 Dart 里分区内的自定义内容都登记了(防漏: 增减按钮/关于区必须改这里)。
+        for s in SECTIONS {
+            let mut orders: Vec<u16> = FORM_META
+                .iter()
+                .filter(|m| m.section == s.id)
+                .map(|m| m.order)
+                .chain(
+                    CUSTOM_BLOCKS
+                        .iter()
+                        .filter(|b| b.section == s.id)
+                        .map(|b| b.order),
+                )
+                .collect();
+            orders.sort_unstable();
+            if orders.is_empty() {
+                panic!("分区 {} 既没有设置项也没有自定义区块", s.id);
+            }
+            assert_eq!(
+                orders,
+                (0..orders.len() as u16).collect::<Vec<_>>(),
+                "分区 {} 的 order(控件+区块)不连续/重复",
+                s.id
+            );
+        }
+        // 分区渲染顺序(schema 设计): 控件与区块按 order 混排。
+        for (section, expected) in [
+            (
+                "recordExport",
+                vec![
+                    "gifHoldHint",
+                    "gifFps",
+                    "gifResolution",
+                    "gifSpeed",
+                    "gifEndMode",
+                    "gifEstimate",
+                    "exportActions",
+                ],
+            ),
+            (
+                "dataBackup",
+                vec!["backupActions", "nasHeader", "nasUrl", "nasActions"],
+            ),
+            (
+                "doodleIdentity",
+                vec!["chatIntegration", "chatApiBase", "chatUser", "loginActions"],
+            ),
+            ("shortcuts", vec!["shortcuts"]),
+            ("about", vec!["about"]),
+        ] {
+            let mut seq: Vec<(u16, &'static str)> = FORM_META
+                .iter()
+                .filter(|m| m.section == section)
+                .map(|m| (m.order, m.key))
+                .chain(
+                    CUSTOM_BLOCKS
+                        .iter()
+                        .filter(|b| b.section == section)
+                        .map(|b| (b.order, b.id)),
+                )
+                .collect();
+            seq.sort_by_key(|(o, _)| *o);
+            let got: Vec<&str> = seq.into_iter().map(|(_, id)| id).collect();
+            assert_eq!(got, expected, "分区 {section} 的渲染顺序漂移");
+        }
+        // 分区内的自定义内容都登记了(防漏: 增减按钮/关于区必须改这里)。
         for (section, want) in [
             (
                 "recordExport",
@@ -2296,46 +1638,36 @@ mod tests {
         );
     }
 
+    // ── 2. 分区表: 顺序/标题/折叠区/整节条件 ──
+
     #[test]
-    fn sections_match_dart_display_order() {
-        assert_eq!(SECTIONS.len(), EXPECTED_SECTIONS.len());
-        for (i, (s, (id, label_id, win_label, advanced, visible))) in
-            SECTIONS.iter().zip(EXPECTED_SECTIONS.iter()).enumerate()
-        {
-            assert_eq!(s.id, *id, "第 {i} 个分区 id/顺序漂移");
-            assert_eq!(s.label_id, *label_id, "分区 {} 的 label_id 漂移", s.id);
-            assert_eq!(
-                s.win_label_id, *win_label,
-                "分区 {} 的 Windows 标题键漂移",
-                s.id
-            );
-            assert_eq!(s.advanced, *advanced, "分区 {} 的 advanced 漂移", s.id);
-            assert_eq!(
-                s.visible_when_setting.map(|c| (c.key, c.equals)),
-                visible.map(|(k, v)| (k, OptionValue::Bool(v))),
-                "分区 {} 的整节条件漂移",
-                s.id
-            );
+    fn sections_are_well_formed() {
+        let mut ids = HashSet::new();
+        for s in SECTIONS {
+            assert!(ids.insert(s.id), "分区 id 重复: {}", s.id);
+            assert!(!s.label_id.is_empty(), "分区 {} 缺标题键", s.id);
         }
+        // 显示顺序(旧面板: 笔在最上, 关于在最下)。
+        assert_eq!(SECTIONS.first().map(|s| s.id), Some("pen"));
+        assert_eq!(SECTIONS.last().map(|s| s.id), Some("about"));
+        // 「更多设置」折叠之外只有 pen 与 about(旧面板: 关于区始终显示)。
         assert_eq!(
             SECTIONS
                 .iter()
                 .filter(|s| !s.advanced)
                 .map(|s| s.id)
                 .collect::<Vec<_>>(),
-            vec!["pen", "about"],
-            "只有 pen 与 about 在折叠区外(与旧 Dart 装配一致)"
+            vec!["pen", "about"]
         );
-        // 分区标题 l10n 键按平台选择: 只有 shortcuts 有 Windows 变体。
+        // 标题按平台选键: 只有 shortcuts 有 Windows 变体(hotkeysCtrlAlt)。
         for s in SECTIONS {
-            let mac = s.label_id_for(crate::ui::Platform::Macos);
+            assert_eq!(s.label_id_for(crate::ui::Platform::Macos), s.label_id);
             let win = s.label_id_for(crate::ui::Platform::Windows);
-            assert_eq!(mac, s.label_id, "macOS 标题键必须是 label_id");
             if s.id == "shortcuts" {
                 assert_eq!(win, "hotkeysCtrlAlt");
-                assert_ne!(win, mac);
+                assert_ne!(win, s.label_id);
             } else {
-                assert_eq!(win, mac, "仅 shortcuts 按平台选标题键");
+                assert_eq!(win, s.label_id, "仅 shortcuts 按平台选标题键");
             }
         }
     }
@@ -2802,7 +2134,7 @@ mod tests {
         assert!(shortcuts["options"].as_array().unwrap().is_empty());
         assert!(shortcuts["range"].is_null());
 
-        // D11b 第一步字段的具体取值(条件/布局/提示)。
+        // 条件/布局/提示字段的具体取值。
         let grid_size = meta_for("gridSize").unwrap().form_json();
         assert_eq!(grid_size["layout"], "inlineSegmented");
         assert_eq!(grid_size["indented"], true);
@@ -2984,152 +2316,110 @@ mod tests {
         );
     }
 
-    // ── 10. Dart 源码指纹: 控件/档位/分区标题仍与盘点一致 ──
+    // ── 10. Dart 侧终态闸门: 设置页只由 schema 渲染, 无逐键手写控件 ──
 
     #[test]
-    fn dart_form_fingerprints_still_match() {
-        let state = include_str!("../../../flutter_settings/lib/main.settings_state.dart");
-        let widgets = include_str!("../../../flutter_settings/lib/main.settings_widgets.dart");
+    fn dart_renders_settings_from_schema_only() {
+        let schema = include_str!("../../../flutter_settings/lib/main.settings_schema.dart");
         let main = include_str!("../../../flutter_settings/lib/main.dart");
-        let shortcuts_src = include_str!("../../../flutter_settings/lib/main.shortcuts.dart");
-        let controls = format!("{main}\n{widgets}\n{state}\n{shortcuts_src}");
-
-        // 分区标题以 l10n getter 出现在 main.dart, 出现顺序 = SECTIONS 顺序。
-        let mut last = 0usize;
-        for s in SECTIONS.iter().filter(|s| s.id != "shortcuts") {
-            let needle = format!("AppLocalizations.of(context)!.{}", s.label_id);
-            let at = main
-                .find(&needle)
-                .unwrap_or_else(|| panic!("main.dart 里找不到分区 {} 的标题", s.id));
+        let widgets = include_str!("../../../flutter_settings/lib/main.settings_widgets.dart");
+        let state = include_str!("../../../flutter_settings/lib/main.settings_state.dart");
+        let all = format!("{main}\n{widgets}\n{state}\n{schema}");
+        // 1) 迁移期逐键/逐分区手写控件与兜底装配全部删除。
+        for dead in [
+            "_buildPenSection",
+            "_buildAppearanceSection",
+            "_buildSystemSection",
+            "_buildGifSettings",
+            "_buildRecordExportSection",
+            "_buildBackupButtons",
+            "_buildChatAuthSection",
+            "_legacySettingsChildren",
+            "_legacySectionFor",
+            "_legacyNotebookLookContent",
+            "_legacySettingsScroll",
+            "_shortcutSectionTitle",
+        ] {
             assert!(
-                at >= last,
-                "分区 {} 在 main.dart 里的出现顺序与 SECTIONS 不一致",
-                s.id
-            );
-            last = at;
-        }
-        // shortcuts 分区标题是硬编码 helper(模块文档差异 5)。
-        assert!(
-            main.contains("_shortcutSectionTitle(),"),
-            "main.dart 不再用 _shortcutSectionTitle() 作 shortcuts 分区标题"
-        );
-        assert!(
-            shortcuts_src.contains("String _shortcutSectionTitle() =>"),
-            "main.shortcuts.dart 缺少 _shortcutSectionTitle()"
-        );
-
-        // 「更多设置」折叠: pen 在折叠器之前, 其余分区都在折叠区内。
-        let pen_at = main
-            .find("AppLocalizations.of(context)!.pen")
-            .expect("缺 pen 分区");
-        let adv_at = main
-            .find("if (_showAdvanced) ...[")
-            .expect("main.dart 缺「更多设置」折叠器");
-        assert!(pen_at < adv_at, "pen 分区应始终显示(在折叠器之前)");
-        for s in SECTIONS
-            .iter()
-            .filter(|s| s.advanced && s.id != "shortcuts")
-        {
-            let needle = format!("AppLocalizations.of(context)!.{}", s.label_id);
-            let at = main.find(&needle).expect("高级分区标题必须存在");
-            assert!(
-                at > adv_at,
-                "分区 {} 不在「更多设置」折叠区内(advanced 标记漂移)",
-                s.id
+                !all.contains(dead),
+                "D11b 迁移后仍残留手写控件/兜底装配: {dead}"
             );
         }
-
-        // 每个表单控件仍从同一处写设置(控件被删/改名则此处红)。
-        // D11b 第二步起, schema 渲染的控件走通用 _writeSetting(key, v),
-        // 迁移期的旧控件同样改为 _writeSetting(不再逐键 setState);
-        // 两条路径都必须能从 Dart 源码里看到键字面量。
-        for m in FORM_META {
-            let a = format!("_writeSetting('{}'", m.key);
-            let b = format!("setSetting('{}'", m.key);
-            assert!(
-                controls.contains(&a) || controls.contains(&b),
-                "Dart 表单里找不到 {} 的设置写入调用(控件被删/改名?)",
-                m.key
-            );
-        }
-        // D11b 第二步: 设置页装配已改为读 schema(settingsSections)并交给
-        // schema 渲染器; 旧手写页面只剩"uiConfig 不可用"的兜底。
+        // 2) 设置页必须走 schema 渲染入口; uiConfig 缺失时只显示提示。
         assert!(
-            main.contains("_buildSettingsTab()"),
-            "main.dart 的设置 tab 不再走 _buildSettingsTab()(schema 装配入口)"
+            main.contains("_buildSchemaSettingsTab()"),
+            "设置页不再由 schema 渲染"
         );
         assert!(
             main.contains("uiConfig.settingsSections.isEmpty"),
-            "main.dart 不再按 settingsSections 决定 schema/兜底路径"
+            "设置页不再按 schema 可用性分流"
         );
-        let schema_src = include_str!("../../../flutter_settings/lib/main.settings_schema.dart");
-        for needle in [
-            "class UiFormSection",
-            "class UiFormMeta",
-            "uiConfig.settingsSections",
-            "visibleWhenSetting",
-            "enabledWhenSetting",
-            "_buildSchemaControl",
-            "_buildSchemaSettingsTab",
-        ] {
+        assert!(
+            main.contains("_buildSettingsUnavailable"),
+            "缺 uiConfig 时的占位提示被删"
+        );
+        // 3) 每种表单控件类型都有通用渲染分支。
+        let mut controls: Vec<&str> = FORM_META.iter().map(|m| m.control.as_str()).collect();
+        controls.sort_unstable();
+        controls.dedup();
+        for control in controls {
             assert!(
-                schema_src.contains(needle),
-                "schema 渲染器缺 {needle}(D11b 第二步被回退?)"
+                schema.contains(&format!("case '{control}':")),
+                "schema 渲染器缺控件类型分支: {control}"
             );
         }
-
-        // 档位字面量指纹(保守几处: 故意改档位而不改 core 时能发现)。
-        for (label, needle) in [
-            (
-                "gif fps 档位",
-                "const fpsOptions = [10, 15, 20, 24, 30, 50];",
-            ),
-            (
-                "gif 分辨率档位",
-                "const resOptions = [0.25, 0.5, 0.75, 1.0];",
-            ),
-            (
-                "gif 速度档位",
-                "const speedOptions = [0.5, 1.0, 2.0, 3.0, 4.0, 8.0, 10.0, 15.0, 20.0];",
-            ),
-            (
-                "网格尺寸档位",
-                "[20, 40, 80].map((v) => ButtonSegment(value: v",
-            ),
-            (
-                "气泡重播速度档位",
-                "[1, 2, 4].map((v) => ButtonSegment(value: v",
-            ),
-            (
-                "invert fps 档位 10",
-                "ButtonSegment(value: 10, label: Text('10Hz'))",
-            ),
-            (
-                "invert fps 档位 100",
-                "ButtonSegment(value: 100, label: Text('100Hz'))",
-            ),
-            (
-                "颜色名 ARB 引用",
-                "[l.cRed, l.cOrange, l.cYellow, l.cGreen, l.cCyan, l.cBlue, l.cPurple, l.cPink, l.cWhite, l.cBlack]",
-            ),
-            (
-                "粗细名 ARB 引用",
-                "[l.wUltraFine, l.wVeryFine, l.wFine, l.wMedium, l.wThick, l.wVeryThick, l.wExtraThick, l.wUltraThick]",
-            ),
-            (
-                "invertInk 特性门控",
-                "uiConfig.features['invertInk'] == true",
-            ),
-            (
-                "pageFlipEffect 特性门控",
-                "uiConfig.features['pageFlipEffect'] == true",
-            ),
-            // D11b 第二步起旧兜底表单改用通用取值器(条件键字面量不变)。
-            ("气泡 tab 条件显示", "if (_showBubbleTab)"),
-            ("网格尺寸条件显示", "if (_vBool('grid'))"),
-            ("聊天集成条件显示", "if (_vBool('chatIntegration'))"),
-        ] {
-            assert!(controls.contains(needle), "Dart 表单指纹漂移: {label}");
+        // 4) 每个自定义区块 id 都有 Dart 渲染分支。
+        for b in CUSTOM_BLOCKS {
+            assert!(
+                schema.contains(&format!("case '{}':", b.id)),
+                "自定义区块 {} 在 Dart 里没有渲染分支",
+                b.id
+            );
         }
+        // 5) schema 产出的每个 l10n 键都在 _l10n 解析表里(否则页面出现 [key])。
+        let mut l10n_ids: Vec<&str> = Vec::new();
+        for s in SECTIONS {
+            l10n_ids.push(s.label_id);
+            if let Some(win) = s.win_label_id {
+                l10n_ids.push(win);
+            }
+        }
+        for m in FORM_META {
+            l10n_ids.push(m.label_id);
+            l10n_ids.extend(m.description_id);
+            l10n_ids.extend(m.hint_id);
+            for o in m.options {
+                if !o.label_id.is_empty() {
+                    l10n_ids.push(o.label_id);
+                }
+            }
+        }
+        for id in l10n_ids {
+            assert!(
+                schema.contains(&format!("'{id}'")),
+                "schema 渲染器的 l10n 表缺键: {id}"
+            );
+        }
+        // 6) 动态 UI(快捷键编辑器/登录表单/命令按钮/关于/颜色粗细)保留手写。
+        for keep in [
+            "_buildShortcutEditor",
+            "_buildLoginActions",
+            "_buildExportButtons",
+            "_buildBackupActions",
+            "_buildNasActions",
+            "_buildAboutSection",
+            "_buildColorGrid",
+            "_buildWidthRow",
+        ] {
+            assert!(all.contains(keep), "迁移时误删动态 UI: {keep}");
+        }
+        // 7) 控件分派按"控件类型"而不是设置键写死: 新增设置项只要复用已有
+        //    控件类型 + 已有 ARB 键就不需要改 Dart(新文案键要补 l10n 表)。
+        assert!(schema.contains("uiConfig.settings"));
+        assert!(schema.contains("switch (f.control)"));
+        assert!(
+            !schema.contains("switch (f.key)"),
+            "schema 渲染器按设置键分派(退化为逐键手写)"
+        );
     }
 }

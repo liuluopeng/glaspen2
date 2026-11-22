@@ -235,9 +235,6 @@ String? _captureShortcutChord(KeyDownEvent event) {
 extension _SettingsShortcutsUi on _SettingsPageState {
   String _shortcutText(String zh, String en) => _language == 'en' ? en : zh;
 
-  String _shortcutSectionTitle() =>
-      _shortcutText('快捷键', 'Shortcuts');
-
   /// 当前所有绑定里用到的修饰键/主键, 供键盘示意图高亮。
   Widget _buildShortcutKeyboard() {
     final usedModifiers = <String>{};

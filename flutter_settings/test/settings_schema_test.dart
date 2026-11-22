@@ -103,10 +103,15 @@ void main() {
       ]) {
         expect(texts, contains(t), reason: '缺控件标签 $t');
       }
-      // 未迁移分区仍由旧 builder 渲染(第二步的兜底;第三步全部接管)。
-      // 注意: shortcuts 分区标题此时仍是旧硬编码「快捷键」(第三步改用
-      // schema 的 hotkeys/hotkeysCtrlAlt 键)。
-      for (final t in ['活页本外观', '录制与导出', '数据备份', '涂鸦身份', '快捷键']) {
+      // 全部分区(含第三步迁移的活页本/录制导出/数据备份/涂鸦身份/快捷键/关于)
+      // 都由 schema 装配; 快捷键标题用 ARB hotkeys(⌘⌃…) 而不是硬编码。
+      for (final t in [
+        '活页本外观',
+        '录制与导出',
+        '数据备份',
+        '涂鸦身份',
+        '快捷键 (⌘⌃…)',
+      ]) {
         expect(texts, contains(t), reason: '缺分区标题 $t');
       }
       // 语言档位(select 通用渲染)。
@@ -219,38 +224,67 @@ void main() {
     });
   });
 
-  group('与旧手写表单一致性', () {
-    /// 降级(无 schema)走旧手写表单; 已迁移分区的标签集合必须与 schema 版一致。
-    testWidgets('迁移分区在旧表单/schema 表单里渲染出同一组标签', (tester) async {
-      const migrated = [
-        '颜色', '粗细', '自由涂鸦模式', '气泡消息', '显示网格', '分栏',
-        '网格跟随涂鸦', '磨砂玻璃跟随涂鸦', '笔迹描边', '软阴影', '反色突出',
-        '压力监控', '开机自启', '中文', 'English',
-      ];
-      await _pumpPanel(tester, UiConfig.fallback());
-      final legacy = _texts(tester);
-      for (final t in migrated) {
-        expect(legacy, contains(t), reason: '旧表单缺 $t');
-      }
-      // 条件项默认都不显示(两边默认一致)。
-      expect(legacy, isNot(contains('重播速度')));
-      expect(legacy, isNot(contains('网格大小')));
-
-      // 切到 schema 版: 同一组标签都在。
+  group('第三步:剩余分区的 schema 迁移', () {
+    testWidgets('活页本/录制导出/数据备份/涂鸦身份/快捷键全部由 schema 渲染', (tester) async {
       await _pumpPanel(tester, _fixture('macos'));
-      final schema = _texts(tester);
-      for (final t in migrated) {
-        expect(schema, contains(t), reason: 'schema 表单缺 $t');
+      final texts = _texts(tester);
+      for (final t in [
+        // notebookLook
+        '风格', '翻页动效', '显示附近 10 页', '真穿透(实验)',
+        // recordExport(GIF 档位 + 体积估算 + 导出按钮)
+        '帧率', '分辨率', '速度', '结束时',
+        '将全部页面的笔迹导出为 PDF 保存到桌面。', '导出全部页面为 PDF',
+        // dataBackup(备份按钮 + NAS 小标题/地址/按钮)
+        '备份全部数据', '从最新备份恢复', 'NAS 备份', 'NAS 地址', '立即备份到 NAS',
+        // shortcuts(分区标题来自 core 的平台键)
+        '快捷键 (⌘⌃…)',
+        // about
+        '当前版本', '检查更新',
+      ]) {
+        expect(texts, contains(t), reason: '缺 \$t');
       }
-      expect(schema, isNot(contains('重播速度')));
-      expect(schema, isNot(contains('网格大小')));
+      // GIF 档位是 chips: 10/15/20/24/30/50 fps + 分辨率 + 速度 + 结束方式。
+      for (final t in ['10 fps', '50 fps', '25%', '100%', '0.5x', '20.0x', '停在最后', '停1秒后循环']) {
+        expect(texts, contains(t), reason: '缺 GIF 档位 \$t');
+      }
+      // NAS 地址输入框有 placeholder(ARB nasUrlExample 经 hintId 渲染;
+      // Material 在未聚焦时只显示 label, 所以直接检查 InputDecoration)。
+      final nasField = tester.widget<TextField>(find.ancestor(
+        of: find.text('NAS 地址'),
+        matching: find.byType(TextField),
+      ));
+      expect(nasField.decoration?.hintText, 'http://192.168.1.10:8080');
+      // 没有 [key] 占位。
+      expect(texts.where((t) => t.startsWith('[') && t.endsWith(']')), isEmpty);
     });
 
-    testWidgets('无 schema 时整页回退旧表单(保证后端未连时仍可操作)', (tester) async {
+    testWidgets('涂鸦身份: 总开关打开后 服务地址/用户名/密码/按钮 出现', (tester) async {
+      await _pumpPanel(tester, _fixture('macos'));
+      // 默认关: 只有总开关。
+      expect(find.text('服务地址'), findsNothing);
+      expect(find.text('用户名'), findsNothing);
+      expect(find.text('密码'), findsNothing);
+      await _toggle(tester, '启用手写消息与共享');
+      expect(find.text('服务地址'), findsOneWidget);
+      expect(find.text('用户名'), findsOneWidget);
+      expect(find.text('密码'), findsOneWidget);
+      expect(find.text('保存并测试登录'), findsOneWidget);
+      expect(find.textContaining('作者归属'), findsOneWidget);
+      // 服务器地址的 hint 来自 ARB(eGHttps192)。
+      expect(
+        find.ancestor(
+          of: find.textContaining('https://192'),
+          matching: find.byType(TextField),
+        ),
+        findsWidgets,
+      );
+    });
+
+    testWidgets('无 schema(后端未连接)时显示未连接提示, 不再凭空造表单', (tester) async {
       await _pumpPanel(tester, UiConfig.fallback());
-      expect(find.text('界面语言'), findsOneWidget);
-      expect(find.text('活页本外观'), findsOneWidget);
-      expect(find.text('录制与导出'), findsOneWidget);
+      expect(find.text('未连接到主程序'), findsOneWidget);
+      expect(find.text('界面语言'), findsNothing);
+      expect(find.text('颜色'), findsNothing);
     });
   });
 }

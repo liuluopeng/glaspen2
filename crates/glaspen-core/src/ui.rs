@@ -577,7 +577,7 @@ mod tests {
             "pageFlipEffect"
         );
         assert_eq!(form_of(&mac, "shortcuts")["control"], "shortcuts");
-        // D11b 第一步: 条件显示/可用与布局提示随 form 下发。
+        // D11b: 条件显示/可用与布局提示随 form 下发。
         assert_eq!(
             form_of(&mac, "bubbleReplaySpeed")["visibleWhenSetting"],
             json!({"key": "showBubbleTab", "equals": true})

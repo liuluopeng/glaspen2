@@ -557,6 +557,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get nasBackupUrl => 'NAS address';
 
   @override
+  String get nasUrlExample => 'http://192.168.1.10:8080';
+
+  @override
   String get nasBackupNow => 'Back up to NAS now';
 
   @override

@@ -519,7 +519,7 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   late TabController _tabController;
   // ── 设置值(D11b: 表单的唯一数据源)──
   //
-  // schema 渲染出的控件与迁移期的旧控件都读写这张表, 键 = 后端设置键;
+  // schema 渲染出的控件都读写这张表, 键 = 后端设置键;
   // 读取/加载/推送全部按 registry 的类型走, 不再为每个设置项加一个字段。
   // 初值 = 旧字段初值(与 core settings_snapshot 的缺省一致), 快照到达前
   // 面板就能渲染合法的表单。
@@ -574,7 +574,7 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     return v is String ? v : '';
   }
 
-  /// 动态 UI(内容 tab/气泡重播/共享/旧控件)用的只读视图;
+  /// 动态 UI(内容 tab/气泡重播/共享/自定义区块)用的只读视图;
   /// 写值一律走 [_writeSetting] 或 [_setLanguage]。
   bool get _infiniteCanvas => _vBool('infiniteCanvas');
   bool get _showFreeCanvas => _vBool('showFreeCanvas');
@@ -590,9 +590,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   int get _gifFps => _vInt('gifFps', 15);
   double get _gifResolution => _vDouble('gifResolution', 0.5);
   double get _gifSpeed => _vDouble('gifSpeed', 2.0);
-  int get _gifEndMode => _vInt('gifEndMode', 1);
-  bool get _minimapEnabled => _vBool('minimap');
-  int get _flipEffect => _vInt('flipEffect', 0);
 
   // 可配置快捷键: action id → chord(空串 = 未绑定)。后端 settings_json 的
   // shortcuts 字段是这张表的 JSON 字符串; 面板负责展示/录制/校验。
@@ -759,7 +756,7 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
 
   /// 写一个设置项: 更新本地值 → 通知后端 → 跑动态 UI 的副作用。
   ///
-  /// 这是"通用 setter": schema 渲染的控件、迁移期旧控件、tab 切换都走这里,
+  /// 这是"通用 setter": schema 渲染的控件、自定义区块、tab 切换都走这里,
   /// 不再逐键 setState + setSetting。
   void _writeSetting(String key, dynamic value) {
     final previous = _settingValues[key];
@@ -786,9 +783,6 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
         _applyLanguage(_language);
     }
   }
-
-  void _setLanguage(String code) =>
-      _writeSetting('language', code == 'en' ? 'en' : 'zh');
 
   /// 只改 UI 语言, 不写库(加载/原生菜单推送时用)。
   void _applyLanguage(String code) {
@@ -932,165 +926,34 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     old.dispose();
   }
 
-  /// 设置页装配: 有 schema 时按后端 uiConfig 渲染(迁移期未迁移分区走旧
-  /// builder 兜底); uiConfig 拿不到(管道未连/测试降级)时整页回退旧手写表单。
+  /// 设置页: 完全由后端 schema(settingsSections + settings[].form +
+  /// settingsBlocks)生成; 后端 uiConfig 未到达时显示"未连接"提示
+  /// (而不是凭空造一份可能过时的表单)。
   Widget _buildSettingsTab() {
-    if (uiConfig.settingsSections.isEmpty) return _legacySettingsScroll();
+    if (uiConfig.settingsSections.isEmpty) return _buildSettingsUnavailable();
     return _buildSchemaSettingsTab();
   }
 
-  /// 旧手写设置页(迁移期兜底; uiConfig 不可用时保证面板仍可操作)。
-  Widget _legacySettingsScroll() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        key: _columnKey,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: _legacySettingsChildren(),
+  /// uiConfig 不可用(后端未连接/协议不匹配)时的占位。
+  Widget _buildSettingsUnavailable() {
+    final l = AppLocalizations.of(context)!;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.settings_ethernet, size: 40, color: _inkFaint),
+            const SizedBox(height: 12),
+            Text(
+              l.notConnectedToThe,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: _inkFaint),
+            ),
+          ],
+        ),
       ),
     );
-  }
-
-  /// 未迁移分区(第三步清空): 复用旧手写内容, 只由 schema 决定分区位置/标题。
-  Widget? _legacySectionFor(String id) {
-    final l = AppLocalizations.of(context)!;
-    switch (id) {
-      case 'notebookLook':
-        return _buildSection(l.notebookLook, _legacyNotebookLookContent());
-      case 'recordExport':
-        return _buildSection(l.recordExport, _buildRecordExportSection());
-      case 'dataBackup':
-        return _buildSection(l.dataBackup, _buildBackupButtons());
-      case 'doodleIdentity':
-        return _buildSection(l.doodleIdentity, _buildChatAuthSection());
-      case 'shortcuts':
-        return _buildSection(_shortcutSectionTitle(), _buildShortcutEditor());
-      case 'about':
-        return _buildSection(l.about, _buildAboutSection());
-      default:
-        return null;
-    }
-  }
-
-  /// 旧「活页本外观」内容(第三步由 schema 控件替换)。
-  Widget _legacyNotebookLookContent() {
-    return Column(children: [
-Row(children: [
-        Text(AppLocalizations.of(context)!.style, style: TextStyle(fontSize: 13)),
-        const Spacer(),
-        SegmentedButton<bool>(
-          segments: [
-            ButtonSegment(value: true, label: Text(AppLocalizations.of(context)!.skeuoGlass)),
-            ButtonSegment(value: false, label: Text(AppLocalizations.of(context)!.notePaper)),
-          ],
-          selected: {_notebookGlass},
-          showSelectedIcon: false,
-          onSelectionChanged: (s2) => _writeSetting('notebookStyle', s2.first),
-        ),
-      ]),
-      if (uiConfig.features['pageFlipEffect'] == true) ...[
-        const Divider(height: 20),
-        Row(children: [
-          Text(AppLocalizations.of(context)!.pageFlipEffect,
-              style: TextStyle(fontSize: 13, color: _inkFaint)),
-          const Spacer(),
-          SegmentedButton<int>(
-            showSelectedIcon: false,
-            style: const ButtonStyle(
-              visualDensity: VisualDensity(horizontal: -2, vertical: -2),
-            ),
-            segments: [
-              ButtonSegment(value: 0, label: Text(AppLocalizations.of(context)!.systemAnimation)),
-              ButtonSegment(value: 1, label: Text(AppLocalizations.of(context)!.timeTunnel)),
-            ],
-            selected: {_flipEffect},
-            onSelectionChanged: (sel) => _writeSetting('flipEffect', sel.first),
-          ),
-        ]),
-      ],
-      const Divider(height: 20),
-      _tile(SwitchListTile(
-        title: Text(AppLocalizations.of(context)!.show10NearbyPages, style: TextStyle(fontSize: 14)),
-        subtitle: Text(AppLocalizations.of(context)!.verticalMinimapOnThe, style: TextStyle(fontSize: 12)),
-        value: _minimapEnabled,
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-        onChanged: (v) => _writeSetting('minimap', v),
-      )),
-      const Divider(height: 20),
-      _tile(SwitchListTile(
-        title: Text(AppLocalizations.of(context)!.truePassThroughExperimental, style: TextStyle(fontSize: 14)),
-        subtitle: Text(AppLocalizations.of(context)!.cardsRevealTheDesktop, style: TextStyle(fontSize: 12)),
-        value: _panelTransparent && _notebookGlass,
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-        onChanged: _notebookGlass ? (v) => _writeSetting('panelTransparent', v) : null,
-      )),
-    ]);
-  }
-
-  /// 旧手写设置页的 children(迁移期兜底; 第三步删除)。
-  List<Widget> _legacySettingsChildren() {
-    return [
-// ── 书写: 最常用的放最前 ──
-      _buildSection(AppLocalizations.of(context)!.pen, _buildPenSection()),
-      const SizedBox(height: 16),
-      _buildMoreSettingsToggle(),
-      if (_showAdvanced) ...[
-        const SizedBox(height: 12),
-        _buildSection(AppLocalizations.of(context)!.canvasLook, _buildAppearanceSection()),
-        const SizedBox(height: 16),
-        // ── 活页本: 外观 / 翻页动效 / 缩略图 / 真穿透 ──
-        _buildSection(AppLocalizations.of(context)!.notebookLook, _legacyNotebookLookContent()),
-        const SizedBox(height: 16),
-        // ── 录制与导出 ──
-        _buildSection(AppLocalizations.of(context)!.recordExport, _buildRecordExportSection()),
-        const SizedBox(height: 16),
-        _buildSection(AppLocalizations.of(context)!.dataBackup, _buildBackupButtons()),
-        const SizedBox(height: 16),
-        if (_vBool('chatIntegration'))
-          _buildSection(AppLocalizations.of(context)!.sharedCanvas, _tile(SwitchListTile(
-            title: Text(AppLocalizations.of(context)!.streamDoodlesLive, style: TextStyle(fontSize: 14)),
-            subtitle: Text(AppLocalizations.of(context)!.pushedToThePeer,
-                style: TextStyle(fontSize: 12)),
-            value: _vBool('shareCanvas'),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (v) => _writeSetting('shareCanvas', v),
-          ))),
-        if (_vBool('chatIntegration')) const SizedBox(height: 16),
-        _buildSection(AppLocalizations.of(context)!.doodleIdentity, _buildChatAuthSection()),
-        const SizedBox(height: 16),
-        // ── 系统与辅助 ──
-        _buildSection(AppLocalizations.of(context)!.systemAndAssist, _buildSystemSection()),
-        const SizedBox(height: 16),
-        // ── 少用的放最后: 语言 / 快捷键 ──
-        _buildSection(
-          AppLocalizations.of(context)!.language,
-          SegmentedButton<String>(
-            segments: [
-              ButtonSegment(
-                  value: 'zh',
-                  label: Text(AppLocalizations.of(context)!.chinese)),
-              ButtonSegment(
-                  value: 'en',
-                  label: Text(AppLocalizations.of(context)!.english)),
-            ],
-            selected: {_language},
-            showSelectedIcon: false,
-            onSelectionChanged: (sel) => _setLanguage(sel.first),
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildSection(
-          _shortcutSectionTitle(),
-          _buildShortcutEditor(),
-        ),
-      ],
-      const SizedBox(height: 16),
-      // 一般软件的「检查更新」都在最底部: 关于区(版本 + 检查更新)放最后
-      _buildSection(AppLocalizations.of(context)!.about, _buildAboutSection()),
-    ];
   }
 
   @override

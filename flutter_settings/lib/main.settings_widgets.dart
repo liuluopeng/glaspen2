@@ -103,83 +103,6 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     );
   }
 
-  /// GIF quality/speed settings for ⌘⌃R 快捷录制. The gray estimate refreshes
-  /// as the sliders/chips change (rough per-second-of-recording file size).
-  Widget _buildGifSettings() {
-    const fpsOptions = [10, 15, 20, 24, 30, 50];
-    const resOptions = [0.25, 0.5, 0.75, 1.0];
-    const speedOptions = [0.5, 1.0, 2.0, 3.0, 4.0, 8.0, 10.0, 15.0, 20.0];
-
-    Widget chips<T>(
-        String label, List<T> options, T current, String Function(T) fmt,
-        void Function(T) onPick) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 60,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(label, style: const TextStyle(fontSize: 14)),
-            ),
-          ),
-          Expanded(
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: options.map((v) {
-                final sel = v == current;
-                return ChoiceChip(
-                  label: Text(fmt(v)),
-                  selected: sel,
-                  onSelected: (_) {
-                    setState(() => onPick(v));
-                  },
-                  showCheckmark: false,
-                  labelStyle: TextStyle(
-                    fontSize: 13,
-                    color: sel ? Colors.white : Colors.black87,
-                  ),
-                  selectedColor: Colors.blueGrey.shade600,
-                  visualDensity: VisualDensity.compact,
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        chips<int>(AppLocalizations.of(context)!.frameRate, fpsOptions, _gifFps,
-            (v) => '$v fps', (v) => _writeSetting('gifFps', v)),
-        const SizedBox(height: 8),
-        chips<double>(
-            AppLocalizations.of(context)!.resolution,
-            resOptions,
-            _gifResolution,
-            (v) => '${(v * 100).round()}%',
-            (v) => _writeSetting('gifResolution', v)),
-        const SizedBox(height: 8),
-        chips<double>(AppLocalizations.of(context)!.speed, speedOptions, _gifSpeed,
-            (v) => '${v}x', (v) => _writeSetting('gifSpeed', v)),
-        const SizedBox(height: 8),
-        chips<int>(AppLocalizations.of(context)!.ending, [0, 1, 2], _gifEndMode,
-            (v) => v == 0
-                ? AppLocalizations.of(context)!.stopOnLastFrame
-                : v == 1
-                    ? AppLocalizations.of(context)!.hold1SThen
-                    : AppLocalizations.of(context)!.loopImmediately,
-            (v) => _writeSetting('gifEndMode', v)),
-        const SizedBox(height: 10),
-        Text(AppLocalizations.of(context)!.estimatedSizeP1(_estimateGifSize()),
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-      ],
-    );
-  }
-
   /// Rough estimate of the GIF file size per second of recording, driven by
   /// frame rate, resolution and playback speed. Uses a reference doodle
   /// window (~720×450 logical points) and a palette-GIF compression factor.
@@ -199,24 +122,6 @@ extension _SettingsWidgetsUi on _SettingsPageState {
       return '≈ ${(bytesPerSec / (1024 * 1024)).toStringAsFixed(1)} MB/s';
     }
     return '≈ ${(bytesPerSec / 1024).round()} KB/s';
-  }
-
-  // ── 笔:颜色 + 粗细 ──
-  Widget _buildPenSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(AppLocalizations.of(context)!.color,
-            style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        _buildColorGrid(),
-        const SizedBox(height: 14),
-        Text(AppLocalizations.of(context)!.width,
-            style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        _buildWidthRow(),
-      ],
-    );
   }
 
   /// 卡片(_buildSection 的 DecoratedBox)里直接放 ListTile 会触发框架断言
@@ -262,277 +167,37 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     ));
   }
 
-  // ── 画布外观: 自由涂鸦 tab 显隐 + 网格 + 跟随 + 笔迹风格(描边/阴影/反色) ──
-  Widget _buildAppearanceSection() {
-    return Column(
-      children: [
-        _tile(SwitchListTile(
-          title: Text(AppLocalizations.of(context)!.freeDoodleMode, style: TextStyle(fontSize: 15)),
-          subtitle: Text(AppLocalizations.of(context)!.showTheFreeDoodle,
-              style: TextStyle(fontSize: 12)),
-          value: _showFreeCanvas,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            _writeSetting('showFreeCanvas', v);
-          },
-        )),
-        _tile(SwitchListTile(
-          title: Text(AppLocalizations.of(context)!.bubbleTab, style: TextStyle(fontSize: 15)),
-          subtitle: Text(AppLocalizations.of(context)!.showBubbleTabSub, style: TextStyle(fontSize: 12)),
-          value: _showBubbleTab,
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            _writeSetting('showBubbleTab', v);
-          },
-        )),
-        // 气泡重播设置(嵌套在气泡 tab 开关下; 纯面板自用, 三处同步)
-        if (_showBubbleTab)
-          Padding(
-            padding: const EdgeInsets.only(left: 16, bottom: 4),
-            child: Row(
-              children: [
-                Text(AppLocalizations.of(context)!.bubbleReplaySpeed, style: TextStyle(fontSize: 13, color: _inkFaint)),
-                const Spacer(),
-                SegmentedButton<int>(
-                  showSelectedIcon: false,
-                  style: const ButtonStyle(
-                    visualDensity: VisualDensity(horizontal: -2, vertical: -2),
-                  ),
-                  segments: [
-                    ...[1, 2, 4].map((v) => ButtonSegment(value: v, label: Text('$v\u00d7'))),
-                  ],
-                  selected: {_bubbleReplaySpeed},
-                  onSelectionChanged: (s) {
-                    _writeSetting('bubbleReplaySpeed', s.first);
-                  },
-                ),
-              ],
-            ),
-          ),
-        if (_showBubbleTab)
-          _tile(SwitchListTile(
-            title: Text(AppLocalizations.of(context)!.bubbleReplayHoldLast, style: TextStyle(fontSize: 15)),
-            subtitle: Text(AppLocalizations.of(context)!.bubbleReplayHoldLastSub, style: TextStyle(fontSize: 12)),
-            value: _bubbleReplayHoldLast,
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (v) {
-              _writeSetting('bubbleReplayHoldLast', v);
-            },
-          )),
-        if (_showBubbleTab)
-          _tile(SwitchListTile(
-            title: Text(AppLocalizations.of(context)!.bubbleReplayAuto, style: TextStyle(fontSize: 15)),
-            subtitle: Text(AppLocalizations.of(context)!.bubbleReplayAutoSub, style: TextStyle(fontSize: 12)),
-            value: _bubbleReplayAuto,
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (v) {
-              _writeSetting('bubbleReplayAuto', v);
-            },
-          )),
-        if (_showBubbleTab)
-          _tile(SwitchListTile(
-            title: Text(AppLocalizations.of(context)!.bubbleAutoNewPage, style: TextStyle(fontSize: 15)),
-            subtitle: Text(AppLocalizations.of(context)!.bubbleAutoNewPageSub, style: TextStyle(fontSize: 12)),
-            value: _vBool('bubbleAutoNewPage'),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (v) {
-              _writeSetting('bubbleAutoNewPage', v);
-            },
-          )),
-        _tile(SwitchListTile(
-          title: Text(AppLocalizations.of(context)!.showGrid, style: TextStyle(fontSize: 15)),
-          subtitle: Text(AppLocalizations.of(context)!.helpsAlignWhileDoodling, style: TextStyle(fontSize: 12)),
-          value: _vBool('grid'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            _writeSetting('grid', v);
-          },
-        )),
-        if (_vBool('grid'))
-          Padding(
-            padding: const EdgeInsets.only(left: 16, bottom: 4),
-            child: Row(
-              children: [
-                Text(AppLocalizations.of(context)!.gridSize, style: TextStyle(fontSize: 13, color: _inkFaint)),
-                const Spacer(),
-                SegmentedButton<int>(
-                  showSelectedIcon: false,
-                  style: const ButtonStyle(
-                    visualDensity: VisualDensity(horizontal: -2, vertical: -2),
-                  ),
-                  segments: [
-                    ...[20, 40, 80].map((v) => ButtonSegment(value: v, label: Text('$v'))),
-                  ],
-                  selected: {_vInt('gridSize', 40)},
-                  onSelectionChanged: (s) {
-                    _writeSetting('gridSize', s.first);
-                  },
-                ),
-              ],
-            ),
-          ),
-        // 分栏独立于「显示网格」: 两者并列, 各自控制(关网格仍可单独分栏)
-        Padding(
-          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(AppLocalizations.of(context)!.columns, style: TextStyle(fontSize: 13, color: _inkFaint)),
-              const SizedBox(height: 4),
-              SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<int>(
-                  showSelectedIcon: false,
-                  style: const ButtonStyle(
-                    visualDensity: VisualDensity(horizontal: -2, vertical: -2),
-                  ),
-                  segments: [
-                    ButtonSegment(value: 0, label: Text(AppLocalizations.of(context)!.none)),
-                    ButtonSegment(value: 1, label: Text(AppLocalizations.of(context)!.twoColumnsSideBy)),
-                    ButtonSegment(value: 2, label: Text(AppLocalizations.of(context)!.twoColumnsStacked)),
-                    ButtonSegment(value: 3, label: Text(AppLocalizations.of(context)!.grid3x3)),
-                    ButtonSegment(value: 4, label: Text(AppLocalizations.of(context)!.cornell)),
-                  ],
-                  selected: {_vInt('gridDivider', 0)},
-                  onSelectionChanged: (s) {
-                    _writeSetting('gridDivider', s.first);
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-        _tile(SwitchListTile(
-          title: Text(AppLocalizations.of(context)!.gridFollowsDoodles, style: TextStyle(fontSize: 15)),
-          subtitle: Text(AppLocalizations.of(context)!.whenOnTheGrid, style: TextStyle(fontSize: 12)),
-          value: _vBool('gridFollowStrokes'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            _writeSetting('gridFollowStrokes', v);
-          },
-        )),
-        _tile(SwitchListTile(
-          title: Text(AppLocalizations.of(context)!.glassFollowsDoodles, style: TextStyle(fontSize: 15)),
-          subtitle: Text(AppLocalizations.of(context)!.whenOnTheGlass, style: TextStyle(fontSize: 12)),
-          value: _vBool('glassFollowStrokes'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            _writeSetting('glassFollowStrokes', v);
-          },
-        )),
-        _tile(SwitchListTile(
-          title: Text(AppLocalizations.of(context)!.inkOutline, style: TextStyle(fontSize: 15)),
-          subtitle: Text(AppLocalizations.of(context)!.dashedContrastOutlineVisible, style: TextStyle(fontSize: 12)),
-          value: _vBool('outline'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            _writeSetting('outline', v);
-          },
-        )),
-        _tile(SwitchListTile(
-          title: Text(AppLocalizations.of(context)!.softShadow, style: TextStyle(fontSize: 15)),
-          subtitle: Text(AppLocalizations.of(context)!.softDarkShadowUnder, style: TextStyle(fontSize: 12)),
-          value: _vBool('softShadow'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            _writeSetting('softShadow', v);
-          },
-        )),
-        // 反色突出是 macOS 专属实现(SCK 持续截屏反相);可用性由后端
-        // uiConfig.features 声明,不可用时整块不展示(不做假开关)。
-        if (uiConfig.features['invertInk'] == true)
-          _tile(SwitchListTile(
-            title: Text(AppLocalizations.of(context)!.invertedInk, style: TextStyle(fontSize: 15)),
-            subtitle: Text(AppLocalizations.of(context)!.strokesTakeThePer, style: TextStyle(fontSize: 12)),
-            value: _vBool('invertInk'),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (v) {
-              _writeSetting('invertInk', v);
-            },
-          )),
-        // 帧率上限只在反色可用且开启时有意义: 关着时不再占一整行
-        if (uiConfig.features['invertInk'] == true && _vBool('invertInk')) ...[
-          _tile(Padding(
-            padding: const EdgeInsets.only(left: 16, top: 4),
-            child: SizedBox(
-              width: double.infinity,
-              child: SegmentedButton<int>(
-                segments: const [
-                  ButtonSegment(value: 10, label: Text('10Hz')),
-                  ButtonSegment(value: 30, label: Text('30Hz')),
-                  ButtonSegment(value: 60, label: Text('60Hz')),
-                  ButtonSegment(value: 100, label: Text('100Hz')),
-                ],
-                selected: {_vInt('invertFps', 30)},
-                showSelectedIcon: false,
-                onSelectionChanged: (s2) {
-                  _writeSetting('invertFps', s2.first);
-                },
-              ),
-            ),
-          )),
-          _tile(Padding(
-            padding: EdgeInsets.only(left: 20, bottom: 8),
-            child: Text(AppLocalizations.of(context)!.invertTrackingFpsCap, style: TextStyle(fontSize: 11, color: Colors.grey)),
-          )),
-        ],
-        // 页面缩略图(minimap)开关已移到「活页本」tab
-        // 无限画布模式由 tab 承载:活页本=翻页模式,自由涂鸦=无限画布
-        // (选中 tab 的红线下方,模式 tab 上有一颗小圆点)
-      ],
+  // ── 自定义区块(schema settingsBlocks 按 id 渲染; 内容是动态 UI)──
+
+  /// gifHoldHint: 按住类热键提示(组合串来自 uiConfig.holdHotkeys)。
+  Widget _buildGifHoldHint() {
+    // GIF 是按住类热键: 组合串由后端 uiConfig.holdHotkeys 给出, 用统一的
+    // chord 格式化器显示(不再按平台选两条不同文案)。
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(
+          AppLocalizations.of(context)!.gifAnimationHoldP1(_prettyShortcut(
+              uiConfig.holdHotkeys['gif'] ?? '', _language == 'en')),
+          style: TextStyle(
+              fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
     );
   }
 
-  // ── 系统与辅助: 压力监控 + 开机自启 ──
-  Widget _buildSystemSection() {
-    return Column(
-      children: [
-        _tile(SwitchListTile(
-          title: Text(AppLocalizations.of(context)!.pressureMonitor, style: TextStyle(fontSize: 15)),
-          value: _vBool('pressureMonitor'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            _writeSetting('pressureMonitor', v);
-          },
-        )),
-        _tile(SwitchListTile(
-          title: Text(AppLocalizations.of(context)!.launchAtLogin, style: TextStyle(fontSize: 15)),
-          value: _vBool('launchAtLogin'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) {
-            _writeSetting('launchAtLogin', v);
-          },
-        )),
-      ],
+  /// gifEstimate: 每秒录制体积粗估(随 GIF 档位实时刷新)。
+  Widget _buildGifEstimate() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Text(
+          AppLocalizations.of(context)!.estimatedSizeP1(_estimateGifSize()),
+          style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
     );
   }
 
-  // ── 录制与导出: GIF 参数 + 整库 PDF 导出 ──
-  Widget _buildRecordExportSection() {
+  /// exportActions: 整库 PDF 导出(分隔线 + 说明 + 按钮)。
+  Widget _buildExportActions() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // GIF 是按住类热键: 组合串由后端 uiConfig.holdHotkeys 给出, 用统一的
-        // chord 格式化器显示(不再按平台选两条不同文案)。
-        Text(
-            AppLocalizations.of(context)!.gifAnimationHoldP1(_prettyShortcut(
-                uiConfig.holdHotkeys['gif'] ?? '', _language == 'en')),
-            style: TextStyle(fontSize: 13, color: _inkFaint, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 10),
-        _buildGifSettings(),
         const Divider(height: 24),
         _buildExportButtons(),
       ],
@@ -564,13 +229,14 @@ extension _SettingsWidgetsUi on _SettingsPageState {
   }
 
 
-  Widget _buildBackupButtons() {
+  /// backupActions: 备份/回导说明 + 两个命令按钮(动态 UI)。
+  Widget _buildBackupActions() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           AppLocalizations.of(context)!.backupIsOneDb +
-          AppLocalizations.of(context)!.restoreMergesItNever,
+              AppLocalizations.of(context)!.restoreMergesItNever,
           style: TextStyle(fontSize: 12, color: Colors.grey),
         ),
         const SizedBox(height: 8),
@@ -585,7 +251,9 @@ extension _SettingsWidgetsUi on _SettingsPageState {
                           strokeWidth: 2, color: Colors.white),
                     )
                   : const Icon(Icons.save_alt, size: 18),
-              label: Text(_backupBusy ? AppLocalizations.of(context)!.working : AppLocalizations.of(context)!.backUpAllData),
+              label: Text(_backupBusy
+                  ? AppLocalizations.of(context)!.working
+                  : AppLocalizations.of(context)!.backUpAllData),
               onPressed: _backupBusy ? null : _backupNow,
             ),
             const SizedBox(width: 8),
@@ -597,7 +265,16 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           ],
         ),
         const SizedBox(height: 14),
-        // NAS 备份: 整库快照推送到 NAS 的 axum(文件落盘 + Postgres 登记)
+      ],
+    );
+  }
+
+  /// nasHeader: NAS 备份小标题 + 说明(地址输入框由 schema 文本控件渲染)。
+  Widget _buildNasHeader() {
+    // NAS 备份: 整库快照推送到 NAS 的 axum(文件落盘 + Postgres 登记)
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         Text(
           AppLocalizations.of(context)!.nasBackup,
           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
@@ -608,40 +285,29 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           style: TextStyle(fontSize: 12, color: Colors.grey),
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: _nasUrl,
-          style: const TextStyle(fontSize: 13),
-          keyboardType: TextInputType.url,
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: 'http://192.168.1.10:8080',
-            border: const OutlineInputBorder(),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            labelText: AppLocalizations.of(context)!.nasBackupUrl,
-          ),
-          onSubmitted: (v) => _setSetting('nasUrl', v.trim()),
-        ),
-        const SizedBox(height: 8),
-        FilledButton.icon(
-          icon: _nasBusy
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
-                )
-              : const Icon(Icons.cloud_upload, size: 18),
-          label: Text(AppLocalizations.of(context)!.nasBackupNow),
-          onPressed: _nasBusy ? null : _nasBackupNow,
-        ),
       ],
+    );
+  }
+
+  /// nasActions: 「立即备份到 NAS」按钮(动态命令)。
+  Widget _buildNasActions() {
+    return FilledButton.icon(
+      icon: _nasBusy
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child:
+                  CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            )
+          : const Icon(Icons.cloud_upload, size: 18),
+      label: Text(AppLocalizations.of(context)!.nasBackupNow),
+      onPressed: _nasBusy ? null : _nasBackupNow,
     );
   }
 
   /// NAS 备份: 先落地址(输入框可能还没提交), 再跑整库快照 + 上传。
   Future<void> _nasBackupNow() async {
-    _setSetting('nasUrl', _nasUrl.text.trim());
+    _writeSetting('nasUrl', _nasUrl.text.trim());
     setState(() => _nasBusy = true);
     try {
       final (ok, message) = await _bridge.nasBackupNow();

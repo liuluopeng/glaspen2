@@ -544,6 +544,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get nasBackupUrl => 'NAS 地址';
 
   @override
+  String get nasUrlExample => 'http://192.168.1.10:8080';
+
+  @override
   String get nasBackupNow => '立即备份到 NAS';
 
   @override
