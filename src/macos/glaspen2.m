@@ -80,6 +80,10 @@ extern char* glaspen2_load_string_setting(const char *key);
 // 返回 effect JSON({"kind":..., "bool"/"int"/"float"/"str"/"json":...} 或 {"error":...});
 // 调用方用 glaspen2_free_c_string 释放。ObjC 只按 kind 做平台运行时副作用。
 extern char* glaspen2_settings_apply(const char *key, const char *value_json);
+// D3b 动作 effect 桥(core/action_effect.rs): action id → 平台无关 effect JSON
+// ({"kind":"<ActionEffect 变体名>"} 或 {"error":"..."}); 调用方用
+// glaspen2_free_c_string 释放。ObjC 只按 kind 做本平台运行时副作用。
+extern char* glaspen2_action_effect_json(const char *action);
 extern void glaspen2_chat_auth_reload(void); // 设置/启动时把 DB 账号配置推给 Rust auth
 extern void glaspen2_share_ink_set_active(int active); // 共享画布上行开关(export.rs)
 // (共享画布上行已无 ObjC 入口:生命周期完全由面板 tab 驱动,FRB 直达 Rust)

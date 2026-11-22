@@ -15,7 +15,14 @@
 //! [`effect_for_action`] 取到同一个强类型结果, 再各自执行本平台副作用
 //! (窗口显隐/剪贴板/持久化/消息循环投递), 不再各写一份 action 字符串分派。
 //!
-//! 边界(本切片只落 core, 不接线两端):
+//! 接线现状(D3b): Windows `perform_action` 直接 `match ActionEffect`(无
+//! catch-all, 编译器保证穷举); macOS `perform_action` 经 FFI
+//! `glaspen2_action_effect_json` 拿到 `{"kind":"<变体名>"}` 后按 kind 字符串
+//! 分派(ObjC 无字符串 switch)。两端 adapter 只执行副作用, action id → 语义
+//! 的映射只有 [`effect_for_action`] 一份; 覆盖闸门见本模块测试
+//! `adapter_dispatch_covers_every_effect_variant`。
+//!
+//! 边界(D3b 接线后仍然成立):
 //! - **只表达语义, 不带实现数值**: 镜头步长(80px / 1.15 倍)、末页 5 秒内
 //!   二按新建页、颜色/粗细无历史时的索引回退、提示文案等仍属 adapter 或后续
 //!   切片; 本层只给"做什么"与方向/种类。
@@ -24,11 +31,11 @@
 //!   文档), 本切片不改行为。
 //! - **不统一已存在的两端行为差异**: 镜头平移方向符号、设置面板宿主形式
 //!   (macOS 进程内嵌 Flutter 视图 / Windows 独立面板进程)等差异只记录在
-//!   变体文档里, 接线切片(backlog D3b)按平台保留现状。
+//!   变体文档里, 两端 adapter(D3b 已接线)按平台保留现状。
 //!
 //! 当前 20 个 action 全部可共享语义, 没有"仅单端"条目(所以没有 ⛔ 保留变体);
-//! [`ActionEffect::variant_name`] 给每个 action 一个稳定名字, 供未来 adapter
-//! 覆盖闸门(与 `settings.rs` 的 D1a 同形)按名字匹配两端分派代码。
+//! [`ActionEffect::variant_name`] 给每个 action 一个稳定名字, adapter 覆盖闸门
+//! (与 `settings.rs` 的 D1a 同形)按名字扫描两端分派代码, 任一端漏执行即红。
 
 /// 自由画布镜头平移方向: 语义方向 = 用户按下的动作方向
 /// (`canvas_pan_left` → `Left`)。
@@ -308,8 +315,9 @@ pub fn effect_for_action(action: &str) -> Result<ActionEffect, String> {
 impl ActionEffect {
     /// 变体名(与具体 action 的语义一一对应, 含镜头方向后缀)。
     ///
-    /// 用途: ①未来 adapter 覆盖闸门按名字扫描两端分派代码(与 `settings.rs`
-    /// 的 D1a 同形); ②日志/排障时要一个稳定且可读的标识。
+    /// 用途: ①D3b adapter 覆盖闸门按名字扫描两端分派代码(与 `settings.rs`
+    /// 的 D1a 同形; macOS 的 effect JSON kind 字段就是这个名字); ②日志/排障
+    /// 时要一个稳定且可读的标识。
     ///
     /// 稳定性是契约: `variant_names_are_stable` 测试固定了 20 个 action 的
     /// 期望名字, 改名 = 有意的接口变更。
@@ -484,5 +492,149 @@ mod tests {
         assert_eq!(Down.name(), "Down");
         assert_eq!(In.name(), "In");
         assert_eq!(Out.name(), "Out");
+    }
+
+    // ── D3b: 两端 adapter 分派覆盖闸门 ──
+    //
+    // core 是 action id → 语义的唯一来源, 两端 perform_action 只执行本平台
+    // 副作用。防漂移:
+    //  - Windows: `match ActionEffect` 的穷举由编译器保证(本文件仍扫描函数体,
+    //    防止有人加 catch-all 或删分支);
+    //  - macOS: ObjC 没有字符串 switch, 只能按 FFI 下发的 kind 字符串 if/else,
+    //    编译器管不到 —— 用 brace-matching 扫描 run.m 的 perform_action 函数体,
+    //    断言 20 个 variant_name 都作为带引号字符串出现; 任一端漏一个 effect 即红。
+
+    /// 从 `at` 处向后找第一个 `{` 并做括号配对, 返回含花括号的函数体。
+    fn brace_body(src: &str, at: usize) -> Option<&str> {
+        let open = at + src[at..].find('{')?;
+        let mut depth = 0i32;
+        for (k, ch) in src[open..].char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(&src[open..=open + k]);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// macOS `run.m` 的 perform_action 函数体。
+    ///
+    /// 文件里有多处 "perform_action("(注释、事件 tap 调用点、定义),
+    /// 取**包含 action effect FFI 调用**的那个函数体; 找不到 = 适配器退回了
+    /// 旧的 action 字符串链(或根本没接线), 直接失败。
+    fn mac_perform_action_body(src: &str) -> &str {
+        let needle = "perform_action(";
+        let mut best: Option<&str> = None;
+        let mut from = 0usize;
+        while let Some(pos) = src[from..].find(needle) {
+            let at = from + pos;
+            if let Some(body) = brace_body(src, at)
+                && body.contains("glaspen2_action_effect_json")
+                && best.is_none_or(|b| body.len() > b.len())
+            {
+                best = Some(body);
+            }
+            from = at + needle.len();
+        }
+        best.expect("run.m 的 perform_action 必须经 glaspen2_action_effect_json 按 kind 分派(D3b)")
+    }
+
+    /// Windows `hotkeys.rs` 的 perform_action 函数体(定义不是调用点)。
+    fn windows_perform_action_body(src: &str) -> &str {
+        let at = src
+            .find("fn perform_action(")
+            .expect("hotkeys.rs 缺 perform_action 定义");
+        brace_body(src, at).expect("hotkeys.rs 的 perform_action 函数体不完整")
+    }
+
+    /// 两端 adapter 必须与 core 的 20 个 effect 一一对应。
+    ///
+    /// 新增 ActionEffect 变体/动作时: Windows 靠穷举 match 编译失败, macOS 靠
+    /// 本闸门变红 —— 不允许任何一端静默漏执行。
+    #[test]
+    fn adapter_dispatch_covers_every_effect_variant() {
+        let mac_src = include_str!("../../../src/macos/parts/run.m");
+        let win_src = include_str!("../../../crates/glaspen-windows/src/overlay/hotkeys.rs");
+        let mac_body = mac_perform_action_body(mac_src);
+        let win_body = windows_perform_action_body(win_src);
+
+        // 20 个 action 的稳定变体名(镜头带方向后缀)。
+        let names: Vec<&str> = ACTIONS
+            .iter()
+            .map(|def| effect(def.id).variant_name())
+            .collect();
+        assert_eq!(names.len(), 20, "动作数变了, 同步两端 adapter 与闸门");
+
+        // macOS: 每个 variant_name 必须以 "VariantName" 形式出现在 kind 分派里。
+        let missing: Vec<&str> = names
+            .iter()
+            .copied()
+            .filter(|name| !mac_body.contains(&format!("\"{name}\"")))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "macOS perform_action 没有执行这些 effect(另一平台/core 已定义): {missing:?}"
+        );
+        // macOS 必须经过 core effect 桥, 不能退回 action 字符串链。
+        assert!(
+            mac_body.contains("glaspen2_action_effect_json"),
+            "macOS perform_action 未接 core 的 action effect FFI"
+        );
+        // 旧 action id 字符串比较不应回到 perform_action(门控/菜单在别处)。
+        for def in ACTIONS {
+            assert!(
+                !mac_body.contains(&format!("\"{}\"", def.id)),
+                "macOS perform_action 仍按 action id {:?} 分派(D3b 要求改用 kind)",
+                def.id
+            );
+        }
+
+        // Windows: 必须 match ActionEffect, 且 16 个枚举变体 token 全在。
+        assert!(
+            win_body.contains("ActionEffect::"),
+            "Windows perform_action 未 match ActionEffect"
+        );
+        for token in [
+            "Undo",
+            "PagePrev",
+            "PageNext",
+            "ColorSwap",
+            "WidthSwap",
+            "ToggleDraw",
+            "ToggleFreeCanvas",
+            "CameraPan",
+            "CameraZoom",
+            "Clear",
+            "Export",
+            "CopySvg",
+            "ToggleGlass",
+            "ToggleEthereal",
+            "OpenSettings",
+            "Quit",
+        ] {
+            assert!(
+                win_body.contains(&format!("ActionEffect::{token}")),
+                "Windows perform_action 缺 ActionEffect::{token} 分支"
+            );
+        }
+        // 不允许 catch-all: 编译器穷举是主门, 这里防退回 `_ => {{}}` 静默吞变体。
+        assert!(
+            !win_body.contains("_ =>"),
+            "Windows perform_action 不允许 catch-all 分支(D3b: 穷举 match)"
+        );
+        // 旧 action id 字符串分派不应回到 perform_action。
+        for def in ACTIONS {
+            assert!(
+                !win_body.contains(&format!("\"{}\"", def.id)),
+                "Windows perform_action 仍按 action id {:?} 分派(D3b 要求改用变体)",
+                def.id
+            );
+        }
     }
 }

@@ -17,6 +17,7 @@
 // 直接改, 不用 PostMessage 中转。必须要求"与 macOS 同 id 同语义":
 // 面板保存的是 action → chord 的完整表。
 
+use glaspen_core::action_effect::{effect_for_action, ActionEffect, CameraDir, ZoomDir};
 use glaspen_core::ui;
 
 /// 本壳只跑 Windows; core 的 UI schema 按平台分列。
@@ -739,21 +740,36 @@ fn dispatch_hotkey(state: &mut OverlayState, id: i32) {
 }
 
 /// 执行一个可配置动作(macOS perform_action 的 Windows 对照实现)。
+///
+/// D3b: action id → 语义的唯一来源是 core `action_effect::effect_for_action`;
+/// 本函数不再按 action 字符串分支, 只 match `ActionEffect` 变体执行 Windows
+/// 侧副作用(门控/镜头方向符号/提示文案按平台保留, 与旧字符串链一致)。
+/// match 无 catch-all: core 新增变体时这里必须同步, 否则编译失败。
 fn perform_action(state: &mut OverlayState, action: &str) {
+    let effect = match effect_for_action(action) {
+        Ok(effect) => effect,
+        Err(err) => {
+            // 旧实现静默忽略未识别的 action; 现在记一条日志, 行为等价。
+            tracing::warn!("[hotkey] {err}");
+            return;
+        }
+    };
     // 自由涂鸦镜头动作只在无限画布 + 涂鸦开启时生效(旧硬编码同规则)
-    if (action.starts_with("canvas_pan_") || action.starts_with("canvas_zoom_"))
-        && (!infinite_on() || !state.draw.enabled)
+    if matches!(
+        effect,
+        ActionEffect::CameraPan(_) | ActionEffect::CameraZoom(_)
+    ) && (!infinite_on() || !state.draw.enabled)
     {
         return;
     }
-    match action {
-        "undo" => undo_last_stroke(state),
-        "page_prev" => navigate_page(state, false),
-        "page_next" => navigate_page(state, true),
-        "color_swap" => color_swap(state),
-        "width_swap" => width_swap(state),
-        "toggle_draw" => toggle_enabled(state),
-        "toggle_free_canvas" => {
+    match effect {
+        ActionEffect::Undo => undo_last_stroke(state),
+        ActionEffect::PagePrev => navigate_page(state, false),
+        ActionEffect::PageNext => navigate_page(state, true),
+        ActionEffect::ColorSwap => color_swap(state),
+        ActionEffect::WidthSwap => width_swap(state),
+        ActionEffect::ToggleDraw => toggle_enabled(state),
+        ActionEffect::ToggleFreeCanvas => {
             // 与 macOS 一致: 顺手把面板「自由涂鸦模式」打开, 否则面板没有
             // 自由涂鸦 tab, 模式切换既看不见落点又容易被 tab 逻辑推回去。
             if !infinite_on() {
@@ -770,26 +786,27 @@ fn perform_action(state: &mut OverlayState, action: &str) {
             apply_infinite_canvas(state, !infinite_on(), true);
         }
         // 方向按用户直觉: 按左 = 画面内容向左移动(内容跟着键走), 上下同理。
-        // (2026-11: 用户反馈旧方向反直觉, WASD / 鼠标抓手 / 滚轮缩放统一取反。)
-        "canvas_pan_left" => pan_step(state, -1.0, 0.0),
-        "canvas_pan_right" => pan_step(state, 1.0, 0.0),
-        "canvas_pan_up" => pan_step(state, 0.0, -1.0),
-        "canvas_pan_down" => pan_step(state, 0.0, 1.0),
-        "canvas_zoom_in" => zoom_step(state, 1.15),
-        "canvas_zoom_out" => zoom_step(state, 1.0 / 1.15),
-        "clear" => handle_command(state, CMD_CLEAR_SCREEN, usize::MAX),
-        "export" => export_svg_gif_clipboard(state),
-        "copy_svg" => copy_svg_to_clipboard(state),
-        "toggle_glass" => toggle_frosted(state),
-        "toggle_ethereal" => handle_command(state, CMD_TOGGLE_ETHEREAL, usize::MAX),
-        "settings" => crate::show_settings_window(),
+        // (2026-11: 用户反馈旧方向反直觉, WASD / 鼠标抓手 / 滚轮缩放统一取反。
+        //  macOS 用"视野移动"方向, 与本平台符号相反是既有行为, 见 ActionEffect
+        //  的 CameraPan 文档。)
+        ActionEffect::CameraPan(CameraDir::Left) => pan_step(state, -1.0, 0.0),
+        ActionEffect::CameraPan(CameraDir::Right) => pan_step(state, 1.0, 0.0),
+        ActionEffect::CameraPan(CameraDir::Up) => pan_step(state, 0.0, -1.0),
+        ActionEffect::CameraPan(CameraDir::Down) => pan_step(state, 0.0, 1.0),
+        ActionEffect::CameraZoom(ZoomDir::In) => zoom_step(state, 1.15),
+        ActionEffect::CameraZoom(ZoomDir::Out) => zoom_step(state, 1.0 / 1.15),
+        ActionEffect::Clear => handle_command(state, CMD_CLEAR_SCREEN, usize::MAX),
+        ActionEffect::Export => export_svg_gif_clipboard(state),
+        ActionEffect::CopySvg => copy_svg_to_clipboard(state),
+        ActionEffect::ToggleGlass => toggle_frosted(state),
+        ActionEffect::ToggleEthereal => handle_command(state, CMD_TOGGLE_ETHEREAL, usize::MAX),
+        ActionEffect::OpenSettings => crate::show_settings_window(),
         // 彻底退出: 与 macOS 菜单「退出」同语义 —— 收尾(写完排队点 +
         // checkpoint WAL, 见 wndproc WM_DESTROY → win_main)后整个进程退出,
         // 并结束设置面板进程(见 lib.rs kill_settings_processes)。
-        "quit" => unsafe {
+        ActionEffect::Quit => unsafe {
             let _ = DestroyWindow(state.canvas.hwnd);
         },
-        _ => {}
     }
 }
 
