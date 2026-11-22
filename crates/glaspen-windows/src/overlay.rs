@@ -44,6 +44,11 @@ use windows::core::PCWSTR;
 use glaspen_core::cairo_dl::CairoRenderer;
 use glaspen_core::camera::{Camera, ZoomOutcome};
 use glaspen_core::grid::Segment;
+// D10b 文案单源: 两端共享的用户可见文案只许查 core::i18n(与 macOS 同一张表)。
+// Windows 覆盖层目前只有中文 HUD("language" 设置只影响独立的 Flutter 设置面板
+// 进程, 覆盖层没有语言状态/切换入口), 所以各处固定 Lang::Zh; 键名占位符
+// ({keys}) 由 adapter 传本平台键位(Ctrl+Alt+…)。
+use glaspen_core::i18n::{self, Lang, Msg};
 
 // ── 文件拆分(纯文本 include, 编译期等价于原单文件; 无 Windows 编译环境,
 //    用 include! 保证拆分零语义变化; 错误行号仍指向真实子文件)──

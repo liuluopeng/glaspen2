@@ -60,9 +60,21 @@ pub const CMD_UNDO: usize = 800;
 pub const CMD_QUIT: usize = 999;
 
 // ── 颜色 & 线宽预设 ──
-// 数值单源在 glaspen-core presets(macOS 同一实现);这里的常量是本平台
-// UI 字符串(中文 HUD/菜单名)。
+// 数值单源在 glaspen-core presets(macOS 同一实现);显示名文案单源在
+// core::i18n(D10b, 与 macOS 同一张表, 顺序同 COLOR_PRESETS/WIDTH_PRESETS)。
 pub use glaspen_core::presets::{COLOR_PRESETS, WIDTH_PRESETS};
-pub const COLOR_NAMES_ZH: [&str; 10] = ["红", "橙", "黄", "绿", "青", "蓝", "紫", "粉", "白", "黑"];
-pub const WIDTH_NAMES_ZH: [&str; 8] = ["极细", "很细", "细", "中", "粗", "很粗", "超粗", "极粗"];
+
+/// 颜色显示名(索引 = COLOR_PRESETS 下标)。Windows 覆盖层目前只有中文 HUD
+/// ("language" 只影响独立的 Flutter 面板进程, 覆盖层没有语言状态/切换入口),
+/// 因此固定 Lang::Zh; 将来加英文只需改这里的运行时语言。
+pub fn color_name(idx: usize) -> &'static str {
+    let idx = idx.min(i18n::COLOR_NAMES.len() - 1);
+    i18n::text(Lang::Zh, &i18n::COLOR_NAMES[idx])
+}
+
+/// 粗细显示名(索引 = WIDTH_PRESETS 下标; 语言约定同 color_name)。
+pub fn width_name(idx: usize) -> &'static str {
+    let idx = idx.min(i18n::WIDTH_NAMES.len() - 1);
+    i18n::text(Lang::Zh, &i18n::WIDTH_NAMES[idx])
+}
 

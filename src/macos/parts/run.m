@@ -411,10 +411,8 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
   event_tap_reinstall();
   sync_settings_panel(); // Flutter 面板的开关/圆点同步
   if (notify) {
-    show_notification(
-        on ? L(@"无限画布已开启 (镜头键可在设置 → 快捷键中查看)",
-               @"Infinite canvas on (camera keys are in Settings → Shortcuts)")
-           : L(@"无限画布已关闭", @"Infinite canvas off"));
+    show_notification(on ? gl_text(@"canvas.infinite_on")
+                         : gl_text(@"canvas.infinite_off"));
   }
 }
 
@@ -514,7 +512,7 @@ static void canvas_zoom_apply(NSDictionary *result) {
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
     if (now - last_hint > 1.5) {
       last_hint = now;
-      show_notification(L(@"已达最大缩放 100%", @"Max zoom 100%"));
+      show_notification(gl_text(@"zoom.max_100"));
     }
   }
   if (!camera_assign(result, YES))
@@ -1491,7 +1489,7 @@ static BOOL bubble_auto_page_flip(void) {
                     pageview_update(); },
                  ^{ replay_strokes_from_memory(); });
   show_page_info(page);
-  show_notification(L(@"已自动新建一页", @"Auto-created a new page"));
+  show_notification(gl_text(@"page.auto_created"));
   return YES;
 }
 
@@ -1602,9 +1600,7 @@ static BOOL perform_hotkey(unsigned short kc) {
     finish_active_stroke(); // don't strand an in-flight stroke
     if (g_infinite_canvas) {
       // 无限画布不清空(内容多,误清损失大):新建请走设置面板
-      show_notification(
-          L(@"无限画布不会被清除 · 新建请到设置面板手动新建",
-            @"Infinite canvas is kept — create a new one in settings"));
+      show_notification(gl_text(@"canvas.infinite_kept"));
       return YES;
     }
     clear_screen();
@@ -1614,8 +1610,7 @@ static BOOL perform_hotkey(unsigned short kc) {
     return YES;
   } else if (kc == 0x32) { // ` — previous page
     if (g_infinite_canvas) {
-      show_notification(
-          L(@"无限画布只有一个画布", @"Infinite canvas has a single canvas"));
+      show_notification(gl_text(@"canvas.single_canvas_warning"));
       return YES;
     }
     finish_active_stroke();
@@ -1634,13 +1629,12 @@ static BOOL perform_hotkey(unsigned short kc) {
       peek_strokes(1.0); // show the page briefly in ethereal mode
       show_page_info(target);
     } else {
-      show_notification(L(@"没有上一页", @"No previous page"));
+      show_notification(gl_text(@"page.no_previous"));
     }
     return YES;
   } else if (kc == 0x12) { // 1 — next page
     if (g_infinite_canvas) {
-      show_notification(
-          L(@"无限画布只有一个画布", @"Infinite canvas has a single canvas"));
+      show_notification(gl_text(@"canvas.single_canvas_warning"));
       return YES;
     }
     finish_active_stroke();
@@ -1665,8 +1659,7 @@ static BOOL perform_hotkey(unsigned short kc) {
       BOOL secondPress = (nowTs - lastNoNextAt) < 5.0;
       lastNoNextAt = nowTs;
       if (!secondPress) {
-        show_notification(
-            L(@"没有下一页(再按一次新建)", @"No next page (press again to create)"));
+        show_notification(gl_text(@"page.no_next"));
         return YES;
       }
       // core 建页时会顺手把 current 切到新页; 翻页前的页必须先抓下来,
@@ -1686,11 +1679,11 @@ static BOOL perform_hotkey(unsigned short kc) {
             });
         peek_strokes(1.0);
         show_page_info(pageId);
-        show_notification(L(@"已新建了一页", @"A new page was created"));
+        show_notification(gl_text(@"page.created"));
       } else if (pageId == before) {
-        show_notification(L(@"已是最新一页", @"Already on the latest page"));
+        show_notification(gl_text(@"page.already_latest"));
       } else {
-        show_notification(L(@"新建页失败", @"Could not create a page"));
+        show_notification(gl_text(@"page.create_failed"));
       }
     }
     return YES;
@@ -1725,22 +1718,22 @@ static BOOL perform_hotkey(unsigned short kc) {
           [pb clearContents];
           [pb writeObjects:@[ [NSURL fileURLWithPath:newestGif] ]];
         }
-        show_notification(L(@"已导出 SVG + GIF", @"SVG + GIF saved"));
+        show_notification(gl_text(@"export.svg_gif_saved"));
       } else {
-        show_notification(L(@"导出失败", @"Export failed"));
+        show_notification(gl_text(@"export.failed"));
       }
     }
     return YES;
   } else if (kc == kVK_ANSI_Z) {
     if (g_stroke_active) {
-      show_notification(L(@"正在书写中", @"Stroke in progress"));
+      show_notification(gl_text(@"draw.stroke_in_progress"));
     } else {
       int remaining = glaspen2_undo_last_stroke();
       if (remaining < 0) {
-        show_notification(L(@"没有可撤销的笔画", @"Nothing to undo"));
+        show_notification(gl_text(@"draw.nothing_to_undo"));
       } else {
         rebuild_surface_from_strokes();
-        show_notification(L(@"撤销成功", @"Undo"));
+        show_notification(gl_text(@"draw.undone"));
       }
     }
     return YES;
@@ -1757,9 +1750,9 @@ static BOOL perform_hotkey(unsigned short kc) {
       [pb clearContents];
       [pb setString:htmlTag forType:NSPasteboardTypeString];
       glaspen2_free_c_string(svg);
-      show_notification(L(@"SVG 已复制到剪贴板", @"SVG copied to clipboard"));
+      show_notification(gl_text(@"export.svg_copied"));
     } else {
-      show_notification(L(@"没有笔迹可复制", @"No strokes to copy"));
+      show_notification(gl_text(@"export.no_strokes_to_copy"));
     }
     return YES;
   } else if (kc == kVK_ANSI_B) {
@@ -1880,8 +1873,8 @@ static BOOL perform_action(NSString *action) {
       prev = (g_selectedColorIndex == 0) ? 9 : 0; // 无历史时给红/黑另一端
     }
     gl_settings_set_color(prev);
-    show_notification([NSString stringWithFormat:L(@"颜色: %@", @"Color: %@"),
-                                                 gl_color_display_name(prev)]);
+    show_notification(gl_textf(@"hud.color_changed",
+                               @{@"color" : gl_color_display_name(prev)}));
     return YES;
   }
   if ([kind isEqualToString:@"WidthSwap"]) {
@@ -1890,8 +1883,8 @@ static BOOL perform_action(NSString *action) {
       prev = (g_selected_width_index <= 3) ? 6 : 2; // 无历史时给细/粗另一端
     }
     gl_settings_set_width(prev);
-    show_notification([NSString stringWithFormat:L(@"粗细: %@", @"Width: %@"),
-                                                 gl_width_display_name(prev)]);
+    show_notification(gl_textf(@"hud.width_changed",
+                               @{@"width" : gl_width_display_name(prev)}));
     return YES;
   }
   NSLog(@"[action] %@ 的 effect kind %@ 未在 macOS 适配器实现", action, kind);
@@ -1926,7 +1919,7 @@ static void copy_gif_data_to_clipboard(unsigned char *gif, int len) {
 //   1) 键按下/抬起时先 finish_active_stroke 再取笔画数, 拼事件 JSON 喂状态机;
 //   2) 按返回的 effects 顺序执行本平台 OS 动作(通知/编码/剪贴板/gRPC);
 //   3) 后台结果 dispatch 回主线程后作为结果事件喂回, 再执行新 effects。
-// HUD 文案与键名留本平台(D10 再统一); 空窗口/模式不匹配/重复按下/总开关
+// HUD 文案单源在 core::i18n(D10b), 键名由 adapter 传参; 空窗口/模式不匹配/重复按下/总开关
 // 门控等判定全部在 core(旧的逐模式 stop 分支与三个会话标志位已删除)。
 
 #define REC_SLOT_GIF 0
@@ -2002,56 +1995,52 @@ static void rec_release(int slot, NSString *mode) {
 // GIF 编码结果回主线程后待写剪贴板的字节(Clipboard effect 消费)。
 static NSData *s_pending_gif = nil;
 
-// HUD 语义 → 本平台文案(键名/语言留在 adapter, 与 D10 的边界一致)。
+// HUD 语义 → 平台文案: 文案单源在 core::i18n(D10b, 按稳定 key 查),
+// 只有 {keys} 的键名差异(⌘⌃3/⌘⌃2)由本函数作为参数传入。
 static void rec_show_hud(NSDictionary *effect) {
   NSString *hud = effect[@"hud"];
   if (![hud isKindOfClass:[NSString class]])
     return;
   if ([hud isEqualToString:@"GifStartHint"]) {
-    show_notification(
-        L(@"按住绘制, 松开生成 GIF", @"Hold & draw, release to make GIF"));
+    show_notification(gl_text(@"recording.gif_start_hint"));
   } else if ([hud isEqualToString:@"SendStartHint"]) {
-    show_notification(L(@"书写手写消息… 松开 ⌘⌃3 发送",
-                        @"Writing handwriting… release ⌘⌃3 to send"));
+    // {keys} 是平台键名(macOS ⌘⌃3 ↔ Windows Ctrl+Alt+3), 由 adapter 传参。
+    show_notification(gl_textf(@"recording.send_start_hint", @{@"keys" : @"⌘⌃3"}));
   } else if ([hud isEqualToString:@"DraftStartHint"]) {
-    show_notification(L(@"书写手写消息(草稿)… 松开 ⌘⌃2 交给对方",
-                        @"Writing handwriting draft… release ⌘⌃2 to hand over"));
+    show_notification(gl_textf(@"recording.draft_start_hint", @{@"keys" : @"⌘⌃2"}));
   } else if ([hud isEqualToString:@"DraftStartFailed"]) {
-    show_notification(
-        L(@"手写通道开启失败", @"Failed to open handwriting draft channel"));
+    show_notification(gl_text(@"recording.draft_start_failed"));
   } else if ([hud isEqualToString:@"GifCopied"]) {
-    show_notification(L(@"GIF 已复制到剪贴板", @"GIF copied to clipboard"));
+    show_notification(gl_text(@"recording.gif_copied"));
   } else if ([hud isEqualToString:@"GifNoStrokesOrExportFailed"]) {
-    show_notification(L(@"没有笔迹或导出失败", @"No strokes or export failed"));
+    show_notification(gl_text(@"recording.gif_no_strokes_or_export_failed"));
   } else if ([hud isEqualToString:@"GifClipboardFailed"]) {
     // 仅 Windows 会走到(两平台差异 3);macOS 剪贴板失败只 NSLog 仍提示成功,
     // 这里保留文案兜底, 不让未知 HUD 静默。
-    show_notification(L(@"GIF 复制失败", @"Failed to copy GIF"));
+    show_notification(gl_text(@"recording.gif_clipboard_failed"));
   } else if ([hud isEqualToString:@"SendNoStrokes"]) {
-    show_notification(L(@"没有新手写内容", @"No new strokes"));
+    show_notification(gl_text(@"recording.send_no_strokes"));
   } else if ([hud isEqualToString:@"SendSucceeded"]) {
-    show_notification([NSString
-        stringWithFormat:L(@"手写消息已发送 (%d 笔)",
-                           @"Handwriting sent (%d strokes)"),
-                         [effect[@"strokes"] intValue]]);
+    // {n} = 本次发送笔数。
+    show_notification(gl_textf(@"recording.send_succeeded", @{
+        @"n" : [NSString stringWithFormat:@"%d", [effect[@"strokes"] intValue]]
+    }));
   } else if ([hud isEqualToString:@"SendFailed"]) {
-    show_notification(L(@"手写消息发送失败", @"Handwriting send failed"));
+    show_notification(gl_text(@"recording.send_failed"));
   } else if ([hud isEqualToString:@"DraftAccepted"]) {
-    show_notification([NSString
-        stringWithFormat:L(@"对方已接收手写草稿 (%d 笔)",
-                           @"Handwriting draft accepted (%d strokes)"),
-                         [effect[@"strokes"] intValue]]);
+    // {n} = 对方已接收的草稿笔数。
+    show_notification(gl_textf(@"recording.draft_accepted", @{
+        @"n" : [NSString stringWithFormat:@"%d", [effect[@"strokes"] intValue]]
+    }));
   } else if ([hud isEqualToString:@"DraftDeclined"]) {
-    show_notification(
-        L(@"对方未采用这份手写草稿", @"Handwriting draft declined"));
+    show_notification(gl_text(@"recording.draft_declined"));
   } else if ([hud isEqualToString:@"DraftFailed"]) {
     // detail = glaspen2_ink_draft_last_error 的可读原因(空则用通用文案)。
     NSString *detail = effect[@"detail"];
     if ([detail isKindOfClass:[NSString class]] && detail.length > 0) {
       show_notification(detail);
     } else {
-      show_notification(L(@"手写通道失败(未连接或中断)",
-                          @"Handwriting channel failed (not connected or broken)"));
+      show_notification(gl_text(@"recording.draft_failed"));
     }
   } else {
     NSLog(@"[recording] 未实现的 HUD 文案: %@", hud);
@@ -3143,13 +3132,13 @@ void glaspen2_run(void) {
       it.target = g_menuHandler;
       it.tag = 667;
       it.state = NSControlStateValueOff;
-      it = [moreMenu addItemWithTitle:L(@"无限画布", @"Infinite canvas")
+      it = [moreMenu addItemWithTitle:gl_text(@"canvas.mode_infinite")
                                action:@selector(toggleInfiniteCanvas)
                         keyEquivalent:@""];
       it.target = g_menuHandler;
       it.tag = 668;
       it.state = NSControlStateValueOff;
-      it = [moreMenu addItemWithTitle:L(@"固定画布涂鸦模式", @"Fixed canvas mode")
+      it = [moreMenu addItemWithTitle:gl_text(@"canvas.fixed_mode")
                                action:@selector(toggleCanvasMode)
                         keyEquivalent:@""];
       it.target = g_menuHandler;
@@ -3313,8 +3302,8 @@ void glaspen2_run(void) {
         [ethRestoreItem setState:g_ethereal_canvas ? NSControlStateValueOn
                                                    : NSControlStateValueOff];
         [ethRestoreItem setTitle:g_ethereal_canvas
-            ? L(@"固定画布涂鸦模式", @"Fixed canvas mode")
-            : L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];
+            ? gl_text(@"canvas.fixed_mode")
+            : gl_text(@"canvas.ethereal_mode")];
       }
     }
     NSMenuItem *infiniteRestoreItem = gl_menu_item_with_tag(668);
@@ -3332,7 +3321,7 @@ void glaspen2_run(void) {
 
     // Canvas mode starts in 固定画布涂鸦模式; menu item shows the switch target
     [gl_menu_item_with_tag(778)
-        setTitle:L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];
+        setTitle:gl_text(@"canvas.ethereal_mode")];
 
     // Restore pressure monitor setting
     g_pressure_monitor = glaspen2_load_bool_setting("pressure_monitor") != 0;

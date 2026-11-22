@@ -186,7 +186,7 @@ fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) ->
         if auto_page > 0 {
             glaspen_core::export::glaspen2_load_strokes_for_screen(auto_page);
             redraw_from_strokes(state);
-            hud_notify("已自动新建一页");
+            hud_notify(i18n::text(Lang::Zh, &Msg::PageAutoCreated));
         }
         glaspen_core::export::glaspen2_begin_stroke(
             state.draw.pen_r,

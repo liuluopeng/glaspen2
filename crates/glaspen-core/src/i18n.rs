@@ -1,19 +1,25 @@
-//! 用户可见文案表(中/英)的唯一来源 —— D10 第一步(**只建表 + FFI, 两端尚未接线**)。
+//! 用户可见文案表(中/英)的唯一来源: **D10a 建表 + FFI, D10b 两端接线完成**。
 //!
-//! 背景: 两端现在各自硬编码用户可见文案 —— macOS `src/macos/**/*.m` 里
+//! 背景: 两端曾各自硬编码用户可见文案 —— macOS `src/macos/**/*.m` 里
 //! `L(@"中文", @"English")` 共 105 对(去重 77 组); Windows
 //! `crates/glaspen-windows/src/overlay/*.rs` 里 161 条唯一中文字面量
 //! (多数是 tracing 日志, 用户可见约 60–70 条)且只有中文。本模块把
-//! **两壳真正共享的语义文案**收成一张表; D10b 再把两端改成只查这张表。
+//! **两壳真正共享的语义文案**收成一张表; 两端现在只查这张表。
 //!
-//! ## 本切片(2026-11-22)
-//! - 表 + 查表 API + 审计 FFI(`glaspen2_i18n` / `glaspen2_i18n_catalog_json`,
-//!   按既有分工放在 FFI 大本营 `export/mod.rs`, 本模块只管纯数据/纯函数)。
-//! - 两端继续用各自的硬编码字符串, **用户可见行为零变化**; 因此本切片
-//!   只有 core 新增文件/FFI, 不改 adapter。
-//! - 闸门 `catalog_source_inventory_covers_both_shells` 反向校验表里的每条
-//!   文案确实还在两端源码里出现(剥注释扫描, 防"表里造词/孤儿 key");
-//!   D10b 接线后这条源扫描闸门应换成"adapter 只许走 i18n"的正向闸门。
+//! ## 切片记录
+//! - D10a(2026-11-22): 表 + 查表 API + 审计 FFI(`glaspen2_i18n` /
+//!   `glaspen2_i18n_catalog_json`, 按既有分工放在 FFI 大本营 `export/mod.rs`,
+//!   本模块只管纯数据/纯函数); 当时两端仍用硬编码, 反向源清单闸门校验表里
+//!   每条文案都真实存在于两端源码(防"表里造词/孤儿 key")。
+//! - D10b(2026-11-22): 两端接线 —— macOS 加 `gl_text`/`gl_textf`(经 FFI
+//!   `glaspen2_i18n` 按 key 现查, 语言现读 `g_lang`, **不缓存文案**),
+//!   Windows overlay 直接 `i18n::text`/`i18n::format`(覆盖层只有中文 HUD,
+//!   固定 `Lang::Zh`; 面板语言设置只影响独立的 Flutter 面板进程); `{keys}`
+//!   由 adapter 传平台键名(⌘⌃3 ↔ Ctrl+Alt+3)。反向闸门同时换成正向闸门
+//!   `adapters_take_shared_messages_only_from_i18n`: 60 条共享文案的
+//!   zh(两端)/en(两端)不得再以硬编码字面量出现在 adapter, 且两端必须引用
+//!   core i18n 入口; 豁免只限登记在闸门 ALLOWLIST 的非用户文案(内部 wire
+//!   名 / Windows 日志串)。
 //!
 //! ## house style: 枚举 + 稳定 key
 //! 与 `action_effect::ActionEffect` / `recording::RecordingHud` 一致:
@@ -38,22 +44,24 @@
 //! 中文 —— 与 `crate::settings_apply` 的语言归一(`language_from`)及两端现状
 //! 严格一致(macOS `g_lang` 默认中文; 未知设置值按默认中文)。
 //!
-//! ## 收录边界(D10a)
+//! ## 收录边界
 //! 只收**两壳都有、语义相同**的文案, 共 60 条: 录制 HUD(13 个
 //! `RecordingHud` 变体)、页/画布 HUD、涂鸦开关/撤销、导出/保存通知、
 //! 颜色/粗细显示名。
 //!
-//! 未收录(D10b 处理; 都是单端独有或两端文案有意不同):
+//! 未收录(**故意留在 adapter**, D10b 接线时逐条保持原样; 都是单端独有或
+//! 两端文案有意不同):
 //! - macOS 菜单栏独有(Windows 没有菜单栏/托盘, 已读码确认): 保存(含背景)/
 //!   保存(涂鸦)/新建画布/导出/保存笔记 (Xournal)/导出无限画布 PDF/SVG/
 //!   设置.../更多/开机自启/磨砂玻璃/笔迹描边/开启|关闭涂鸦/English|中文/退出
 //!   等 ~17 条菜单项。
-//! - macOS 独有的截图失败/导出到桌面/辅助功能权限/单实例提示等。
+//! - macOS 独有的截图失败/导出到桌面/辅助功能权限/单实例提示/清空无限画布
+//!   提示等。
 //! - Windows 独有的压力监控/模糊背景开关提示、"自由涂鸦只有一张画布"、
 //!   "PDF 已保存到桌面"/"动画 GIF 已保存到桌面"/页切换调试串等。
 //! - 两端语义相同但文案**有意不同**的("动画 GIF 已保存并复制到剪贴板" mac
-//!   vs "动画 GIF 已保存到桌面" Windows; 带路径/条数等 adapter 拼接串),
-//!   等 D10b 决定是拆 key 还是加占位符。
+//!   vs "动画 GIF 已保存到桌面" Windows; 带路径等 adapter 拼接串)——
+//!   保留各自文案, 不拆 key。
 //! - 键名整段嵌在文案里的三条录制提示已用 `{keys}` 占位符解决平台差异。
 //! - `pageinfo.rs`(页信息/日期)已经是 core 单源, 不重复收。
 
@@ -223,7 +231,7 @@ pub enum Msg {
 }
 
 /// 颜色预设显示名, 索引 = [crate::presets::COLOR_PRESETS] 下标(两端菜单/HUD 同序)。
-/// D10b 接线后 macOS 的 zh[]/en[] 与 Windows 的 COLOR_NAMES_ZH 都应改为引用这里。
+/// macOS 只保留稳定 key 表、经 `gl_text` 查这里; Windows 经 `i18n::text` 直取。
 pub const COLOR_NAMES: [Msg; 10] = [
     Msg::ColorRed,
     Msg::ColorOrange,
@@ -238,6 +246,7 @@ pub const COLOR_NAMES: [Msg; 10] = [
 ];
 
 /// 粗细预设显示名, 索引 = [crate::presets::WIDTH_PRESETS] 下标(两端菜单/HUD 同序)。
+/// macOS 只保留稳定 key 表、经 `gl_text` 查这里; Windows 经 `i18n::text` 直取。
 pub const WIDTH_NAMES: [Msg; 8] = [
     Msg::WidthHair,
     Msg::WidthVeryFine,
@@ -608,13 +617,14 @@ mod tests {
     }
 
     /// 抽取源码里的字符串字面量(剥注释; ObjC @"..." 与 C/Rust "..." 同形)。
+    /// 返回 (起始字节偏移, 字面量); 偏移只给闸门报行号用。
     ///
     /// 只服务本闸门, 不是完整词法分析: 认识 //、/* */、普通字符串(带反斜杠
     /// 转义)与字符字面量('"' / '\n' / 生命周期 'a 不会误吞后续代码);
     /// 仓库里这两棵 adapter 树没有 raw string, 需要时再补。
-    fn string_literals(src: &str) -> Vec<String> {
+    fn string_literals(src: &str) -> Vec<(usize, String)> {
         let bytes = src.as_bytes();
-        let mut out = Vec::new();
+        let mut out: Vec<(usize, String)> = Vec::new();
         let mut i = 0;
         while i < bytes.len() {
             match bytes[i] {
@@ -639,6 +649,7 @@ mod tests {
                     }
                 }
                 b'"' => {
+                    let start = i;
                     i += 1;
                     let mut lit = String::new();
                     while i < bytes.len() {
@@ -659,7 +670,7 @@ mod tests {
                             break;
                         }
                     }
-                    out.push(lit);
+                    out.push((start, lit));
                 }
                 _ => i += 1,
             }
@@ -667,7 +678,7 @@ mod tests {
         out
     }
 
-    /// text 按 {} 拆成静态片段(占位符可替换, 片段必须原样出现在源码里)。
+    /// 文案按 {} 拆成静态片段(占位符可替换; 片段按序出现在旧格式串里)。
     fn template_segments(text: &str) -> Vec<&str> {
         let mut out = Vec::new();
         let mut rest = text;
@@ -684,8 +695,87 @@ mod tests {
         out.into_iter().filter(|s| !s.is_empty()).collect()
     }
 
-    fn contains_segment(literals: &[String], segment: &str) -> bool {
-        literals.iter().any(|lit| lit.contains(segment))
+    /// 旧 adapter 硬编码格式串是否命中模板: 首段开头 + 其余片段按序出现。
+    /// (要求"首段开头"才能避开 Windows 日志里"…({count} 笔)"这类子串误报。)
+    fn matches_template(literal: &str, segments: &[&str]) -> bool {
+        let Some((first, rest_segments)) = segments.split_first() else {
+            return false;
+        };
+        let Some(mut rest) = literal.strip_prefix(first) else {
+            return false;
+        };
+        for segment in rest_segments {
+            let Some(pos) = rest.find(segment) else {
+                return false;
+            };
+            rest = &rest[pos + segment.len()..];
+        }
+        true
+    }
+
+    /// 字节偏移 → 1-based 行号(闸门报错定位用)。
+    fn line_of(src: &str, offset: usize) -> usize {
+        src.as_bytes()[..offset]
+            .iter()
+            .filter(|b| **b == b'\n')
+            .count()
+            + 1
+    }
+
+    /// 剥注释后的源码(字符串内部原样保留, 不把 URL/正则里的 // 当注释)。
+    /// 只给"必须引用 core i18n 入口"的 token 断言用 —— 注释里提到不算。
+    fn strip_comments(src: &str) -> String {
+        let bytes = src.as_bytes();
+        let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+        let mut i = 0;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'/' if bytes.get(i + 1) == Some(&b'/') => {
+                    while i < bytes.len() && bytes[i] != b'\n' {
+                        i += 1;
+                    }
+                }
+                b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                    i += 2;
+                    while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                        i += 1;
+                    }
+                    i = (i + 2).min(bytes.len());
+                }
+                b'"' => {
+                    let start = i;
+                    i += 1;
+                    while i < bytes.len() {
+                        match bytes[i] {
+                            b'\\' => i += 2,
+                            b'"' => {
+                                i += 1;
+                                break;
+                            }
+                            _ => i += 1,
+                        }
+                    }
+                    out.extend_from_slice(&bytes[start..i.min(bytes.len())]);
+                }
+                b'\'' => {
+                    // 字符字面量 / 生命周期: 原样保留(与 string_literals 同一判定)。
+                    let skip =
+                        if bytes.get(i + 1) == Some(&b'\\') || bytes.get(i + 2) == Some(&b'\'') {
+                            3
+                        } else {
+                            1
+                        };
+                    let end = (i + skip).min(bytes.len());
+                    out.extend_from_slice(&bytes[i..end]);
+                    i = end;
+                }
+                b => {
+                    out.push(b);
+                    i += 1;
+                }
+            }
+        }
+        String::from_utf8(out).unwrap_or_default()
     }
 
     #[test]
@@ -828,19 +918,62 @@ mod tests {
         assert_eq!(keys, sorted, "审计 JSON 的 key 应字典序稳定");
     }
 
-    /// D10a 源清单闸门: 表里每条文案都必须真的还在两端源码里出现
-    /// (剥注释后按字符串字面量匹配), 防止"表里造词/孤儿 key"。
+    /// 正向闸门: 两端 adapter 只许通过 core i18n 入口显示 60 条共享文案。
     ///
-    /// 规则:
-    /// - 无占位符 key: zh 必须在 **macOS 与 Windows 两棵树都出现**(真共享);
-    ///   en 至少一端出现(Windows 目前只有中文, en 先在 macOS 侧有)。
-    /// - 带占位符 key: 每个静态片段在两棵树都出现(片段替换掉平台键名/数字)。
+    /// 与 D10a 的反向源清单闸门相反:
+    /// - 共享文案的 zh/en 均不得再以硬编码字面量出现在 adapter(Windows 覆盖层
+    ///   没有英文 UI, 但 en 也一起查: 将来加英文 UI 时同样必须走 i18n);
+    /// - 无占位符文案按整串字面量相等判定; 带占位符的旧格式串(如
+    ///   `颜色: %@` / `颜色: {}` / `手写消息已发送 (%d 笔)`)按模板判定:
+    ///   首段开头 + 其余静态片段按序出现在同一字面量里(Windows 日志里
+    ///   `…({count} 笔)` 这类子串不会误报);
+    /// - 两端必须真的引用 core i18n 入口(macOS `glaspen2_i18n`/`gl_text`/
+    ///   `gl_textf`; Windows `i18n::text`/`i18n::format`), 且调用点数量有下限;
+    /// - macOS 的 key 是字符串(编译器不查), 再断言 60 个 key 全部以字面量出现
+    ///   在 macOS 源码, 且"区域.名字"形状的字面量都能被 [by_key] 查到;
+    /// - 豁免只在 [ALLOWLIST] 显式登记(文件后缀 + 字面量 + 原因)。
     ///
-    /// D10b 接线后 adapter 的字面量会被替掉, 这条闸门应改为"adapter 只许走
-    /// i18n"的正向闸门。
+    /// 自检: 扫描器必须抽到已知的**未收录**文案(两端各一条), 证明扫描不是
+    /// 空跑; 文件数/入口调用点都有下限。
     #[test]
-    fn catalog_source_inventory_covers_both_shells() {
-        use std::path::Path;
+    fn adapters_take_shared_messages_only_from_i18n() {
+        use std::path::{Path, PathBuf};
+
+        /// 闸门豁免: 只放过"非用户文案"的内部字符串, 必须写清原因。
+        const ALLOWLIST: &[(&str, &str, &str)] = &[
+            (
+                "src/macos/parts/run.m",
+                "Undo",
+                "action_effect 的 wire kind 名(内部协议, 不是用户文案)",
+            ),
+            (
+                "crates/glaspen-windows/src/overlay/pipe.rs",
+                "无限画布",
+                "tracing 日志里的画布模式名(非用户可见 HUD, 且不等于 canvas.mode_infinite 的用途)",
+            ),
+        ];
+
+        /// 递归收集 (workspace 相对路径, 源码); 目录结构固定。
+        fn collect_sources(root: &Path, dir: &Path, ext: &str, out: &mut Vec<(String, String)>) {
+            let entries = std::fs::read_dir(dir).unwrap_or_else(|e| {
+                panic!("i18n 闸门: 无法扫描 {}: {e}", dir.display());
+            });
+            for entry in entries {
+                let path: PathBuf = entry.expect("目录项").path();
+                if path.is_dir() {
+                    collect_sources(root, &path, ext, out);
+                } else if path.extension().and_then(|e| e.to_str()) == Some(ext) {
+                    let rel = path
+                        .strip_prefix(root)
+                        .expect("源码在 workspace 内")
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    let src = std::fs::read_to_string(&path)
+                        .unwrap_or_else(|e| panic!("i18n 闸门: 读 {} 失败: {e}", path.display()));
+                    out.push((rel, src));
+                }
+            }
+        }
 
         let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -849,121 +982,190 @@ mod tests {
             .expect("workspace 根")
             .to_path_buf();
 
-        /// 递归收集某个目录下指定扩展名的源码文件(只扫 2 层, 目录结构固定)。
-        fn collect_sources(dir: &Path, ext: &str, out: &mut Vec<(String, String)>) {
-            let entries = std::fs::read_dir(dir).unwrap_or_else(|e| {
-                panic!("源清单闸门: 无法扫描 {}: {e}", dir.display());
-            });
-            for entry in entries {
-                let path = entry.expect("目录项").path();
-                if path.is_dir() {
-                    let mut nested = Vec::new();
-                    collect_sources(&path, ext, &mut nested);
-                    out.extend(nested);
-                } else if path.extension().and_then(|e| e.to_str()) == Some(ext) {
-                    let name = path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("?")
-                        .to_string();
-                    let src = std::fs::read_to_string(&path)
-                        .unwrap_or_else(|e| panic!("源清单闸门: 读 {} 失败: {e}", path.display()));
-                    out.push((name, src));
-                }
-            }
-        }
-
-        fn literals_of(files: &[(String, String)]) -> Vec<String> {
-            let mut out = Vec::new();
-            for (name, src) in files {
-                assert!(src.len() > 500, "源清单闸门: {name} 过短, 扫描路径可疑");
-                out.extend(string_literals(src));
-            }
-            out
-        }
-
-        let mac_dir = workspace.join("src/macos");
-        let win_dir = workspace.join("crates/glaspen-windows/src/overlay");
         let mut mac_files: Vec<(String, String)> = Vec::new();
-        collect_sources(&mac_dir, "m", &mut mac_files);
+        collect_sources(
+            &workspace,
+            &workspace.join("src/macos"),
+            "m",
+            &mut mac_files,
+        );
         let mut win_files: Vec<(String, String)> = Vec::new();
-        collect_sources(&win_dir, "rs", &mut win_files);
+        collect_sources(
+            &workspace,
+            &workspace.join("crates/glaspen-windows/src/overlay"),
+            "rs",
+            &mut win_files,
+        );
         assert!(
             mac_files.len() >= 4,
-            "源清单闸门: macOS 树只扫到 {} 个 .m 文件, 路径可疑",
+            "i18n 闸门: macOS 树只扫到 {} 个 .m 文件, 路径可疑",
             mac_files.len()
         );
         assert!(
             win_files.len() >= 14,
-            "源清单闸门: Windows 树只扫到 {} 个 .rs 文件, 路径可疑",
+            "i18n 闸门: Windows 树只扫到 {} 个 .rs 文件, 路径可疑",
             win_files.len()
         );
-        let mut mac_lits = literals_of(&mac_files);
-        let mut win_lits = literals_of(&win_files);
-        mac_lits.sort_unstable();
-        win_lits.sort_unstable();
-        mac_lits.dedup();
-        win_lits.dedup();
 
+        // 逐文件抽字面量(带文件/行号), 同时拼出剥注释源码供入口 token 断言。
+        let scan = |files: &[(String, String)]| -> (Vec<(String, usize, String)>, String) {
+            let mut lits = Vec::new();
+            let mut code = String::new();
+            for (rel, src) in files {
+                assert!(src.len() > 500, "i18n 闸门: {rel} 过短, 扫描路径可疑");
+                for (offset, lit) in string_literals(src) {
+                    lits.push((rel.clone(), line_of(src, offset), lit));
+                }
+                code.push_str(&strip_comments(src));
+                code.push('\n');
+            }
+            (lits, code)
+        };
+        let (mac_lits, mac_code) = scan(&mac_files);
+        let (win_lits, win_code) = scan(&win_files);
+        let allowlisted = |rel: &str, literal: &str| -> bool {
+            ALLOWLIST
+                .iter()
+                .any(|(file, lit, _)| rel.ends_with(file) && *lit == literal)
+        };
+
+        // 1) 两端都不许再硬编码共享文案(zh + en, 剥注释后按字面量查)。
         let mut problems = Vec::new();
         for msg in Msg::ALL {
             let templated = !msg.placeholders().is_empty();
-            let zh_needles = if templated {
-                template_segments(msg.zh())
-            } else {
-                vec![msg.zh()]
-            };
-            for needle in &zh_needles {
-                if !contains_segment(&mac_lits, needle) {
-                    problems.push(format!("{}: 中文 {:?} 不在 macOS 源码", msg.key(), needle));
+            for (lang, text) in [("zh", msg.zh()), ("en", msg.en())] {
+                let segments = if templated {
+                    template_segments(text)
+                } else {
+                    vec![text]
+                };
+                for (rel, line, literal) in &mac_lits {
+                    let hit = if templated {
+                        matches_template(literal, &segments)
+                    } else {
+                        literal == text
+                    };
+                    if hit && !allowlisted(rel, literal) {
+                        problems.push(format!(
+                            "{}: macOS 还硬编码 {lang} 文案 {literal:?} ({rel}:{line})",
+                            msg.key()
+                        ));
+                    }
                 }
-                if !contains_segment(&win_lits, needle) {
-                    problems.push(format!(
-                        "{}: 中文 {:?} 不在 Windows 源码",
-                        msg.key(),
-                        needle
-                    ));
-                }
-            }
-            let en_needles = if templated {
-                template_segments(msg.en())
-            } else {
-                vec![msg.en()]
-            };
-            for needle in &en_needles {
-                if !contains_segment(&mac_lits, needle) && !contains_segment(&win_lits, needle) {
-                    problems.push(format!(
-                        "{}: 英文 {:?} 不在任何一端源码(表里造词)",
-                        msg.key(),
-                        needle
-                    ));
+                for (rel, line, literal) in &win_lits {
+                    let hit = if templated {
+                        matches_template(literal, &segments)
+                    } else {
+                        literal == text
+                    };
+                    if hit && !allowlisted(rel, literal) {
+                        problems.push(format!(
+                            "{}: Windows 还硬编码 {lang} 文案 {literal:?} ({rel}:{line})",
+                            msg.key()
+                        ));
+                    }
                 }
             }
         }
         assert!(
             problems.is_empty(),
-            "D10a 源清单闸门失败(表里的文案必须真实存在于两端源码):\n{}",
+            "D10b 正向闸门失败(adapter 只许走 core i18n):\n{}",
             problems.join("\n")
         );
 
-        // 反向自检: 扫描器确实在工作(否则空表也能"通过")。
+        // 2) macOS key 是字符串(编译器不查): 60 个 key 必须全部出现在源码里,
+        //    且 key 形状的字面量都必须真的在表里(拼错 key 运行时会原样显示)。
+        let mac_literals: BTreeSet<&str> =
+            mac_lits.iter().map(|(_, _, lit)| lit.as_str()).collect();
+        let missing_keys: Vec<&str> = Msg::ALL
+            .iter()
+            .map(|msg| msg.key())
+            .filter(|key| !mac_literals.contains(key))
+            .collect();
         assert!(
-            mac_lits.iter().any(|lit| lit == "截图成功"),
-            "源清单闸门: macOS 扫描器没抽到已知文案, 实现有 bug"
+            missing_keys.is_empty(),
+            "i18n 闸门: macOS 源码未引用这些 key: {missing_keys:?}"
+        );
+        let regions: BTreeSet<&str> = Msg::ALL
+            .iter()
+            .filter_map(|msg| msg.key().split('.').next())
+            .collect();
+        for (rel, line, literal) in &mac_lits {
+            let Some(first) = literal.split('.').next() else {
+                continue;
+            };
+            if !regions.contains(first) {
+                continue;
+            }
+            let key_shaped = literal.len() < 64
+                && literal.split('.').count() >= 2
+                && literal.split('.').all(|part| {
+                    !part.is_empty()
+                        && part
+                            .bytes()
+                            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+                });
+            if key_shaped && by_key(literal).is_none() {
+                problems.push(format!(
+                    "macOS 出现了表里没有的 i18n key 形状字面量 {literal:?} ({rel}:{line})"
+                ));
+            }
+        }
+        assert!(
+            problems.is_empty(),
+            "i18n 闸门: macOS key 字面量有问题:\n{}",
+            problems.join("\n")
+        );
+
+        // 3) 入口与调用点下限: 两端必须真的在查 core i18n(不是只剩几个字面量)。
+        let mac_calls =
+            mac_code.matches("gl_text(").count() + mac_code.matches("gl_textf(").count();
+        let win_calls =
+            win_code.matches("i18n::text(").count() + win_code.matches("i18n::format(").count();
+        assert!(
+            mac_code.contains("glaspen2_i18n("),
+            "i18n 闸门: macOS 未引用 FFI glaspen2_i18n"
         );
         assert!(
-            win_lits.iter().any(|lit| lit == "截图成功"),
-            "源清单闸门: Windows 扫描器没抽到已知文案, 实现有 bug"
-        );
-        // 占位符模板里的平台键名差异已在 adapter 侧: 确认两棵树的录制提示
-        // 确实带不同的键名(mac ⌘⌃ / Windows Ctrl+Alt+), D10b 才能靠 {keys} 单源。
-        assert!(
-            mac_lits.iter().any(|lit| lit.contains("⌘⌃3")),
-            "macOS 源码应含 ⌘⌃3 录制提示"
+            mac_code.contains("gl_textf("),
+            "i18n 闸门: macOS 未引用占位符入口 gl_textf"
         );
         assert!(
-            win_lits.iter().any(|lit| lit.contains("Ctrl+Alt+3")),
-            "Windows 源码应含 Ctrl+Alt+3 录制提示"
+            mac_calls >= 40,
+            "i18n 闸门: macOS 只找到 {mac_calls} 个 gl_text/gl_textf 调用点, 少于预期"
+        );
+        assert!(
+            win_code.contains("i18n::text("),
+            "i18n 闸门: Windows 未引用 i18n::text"
+        );
+        assert!(
+            win_code.contains("i18n::format("),
+            "i18n 闸门: Windows 未引用 i18n::format"
+        );
+        assert!(
+            win_calls >= 30,
+            "i18n 闸门: Windows 只找到 {win_calls} 个 i18n::text/format 调用点, 少于预期"
+        );
+
+        // 4) 自检: 扫描器确实抽到未收录的单端文案(故意留下), 证明扫描不是空跑;
+        //    平台键名确实由 adapter 作为 {keys} 参数传入, 没有写进 core 表。
+        assert!(
+            mac_lits.iter().any(|(_, _, lit)| lit.contains("截图失败")),
+            "i18n 闸门: macOS 扫描器没抽到已知的未收录文案"
+        );
+        assert!(
+            win_lits
+                .iter()
+                .any(|(_, _, lit)| lit.contains("自由涂鸦只有一张画布")),
+            "i18n 闸门: Windows 扫描器没抽到已知的未收录文案"
+        );
+        assert!(
+            mac_lits.iter().any(|(_, _, lit)| lit == "⌘⌃3"),
+            "macOS 源码应含 ⌘⌃3 键名(作为 {{keys}} 参数)"
+        );
+        assert!(
+            win_lits.iter().any(|(_, _, lit)| lit == "Ctrl+Alt+3"),
+            "Windows 源码应含 Ctrl+Alt+3 键名(作为 {{keys}} 参数)"
         );
     }
 }

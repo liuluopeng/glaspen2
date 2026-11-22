@@ -59,8 +59,17 @@ static void update_menu_texts(void) {
         [[moreMenu itemAtIndex:0] setTitle:L(@"开机自启", @"Launch at login")];
         [[moreMenu itemAtIndex:1] setTitle:L(@"磨砂玻璃", @"Frosted Glass")];
         [[moreMenu itemAtIndex:2] setTitle:L(@"笔迹描边", @"Stroke outline")];
-        [[moreMenu itemAtIndex:3] setTitle:L(@"无限画布", @"Infinite canvas")];
-        // 第 4 项(固定/飘渺模式)的标题由模式切换逻辑动态维护, 这里不覆盖
+        [[moreMenu itemAtIndex:3] setTitle:gl_text(@"canvas.mode_infinite")];
+        // 第 4 项(固定/飘渺模式): 标题 = 当前状态对应的共享文案(canvas.fixed_mode/
+        // canvas.ethereal_mode)。模式切换逻辑也会维护它; 这里一并刷新是为了
+        // 语言切换后旧文案不残留。状态位 = g_ethereal_canvas(切换/启动恢复都同步),
+        // 所以不必在此处引用后文才定义的 g_ethereal_canvas。
+        NSMenuItem *modeItem = gl_menu_item_with_tag(778);
+        if (modeItem) {
+            [modeItem setTitle:(modeItem.state == NSControlStateValueOn)
+                ? gl_text(@"canvas.fixed_mode")
+                : gl_text(@"canvas.ethereal_mode")];
+        }
     }
     // Update toggle item title based on state
     NSMenuItem *toggleItem = gl_menu_item_with_tag(888);
@@ -116,20 +125,24 @@ static NSAttributedString* gl_menu_text(NSImage *icon, NSString *name) {
     return s;
 }
 
+// 颜色/粗细显示名(D10b): 文案单源在 core::i18n(COLOR_NAMES/WIDTH_NAMES 同序),
+// 这里只保留稳定 key 表; 中/英由 gl_text 现读 g_lang 决定(语言切换即时生效)。
 static NSString *gl_color_display_name(NSInteger idx) {
-    static NSString *zh[] = {@"红", @"橙", @"黄", @"绿", @"青", @"蓝", @"紫", @"粉", @"白", @"黑"};
+    static const char *keys[] = {
+        "color.red", "color.orange", "color.yellow", "color.green", "color.cyan",
+        "color.blue", "color.purple", "color.pink", "color.white", "color.black",
+    };
     if (idx < 0 || idx >= g_color_preset_count) return @"";
-    return (g_lang == 0)
-        ? zh[idx]
-        : [NSString stringWithUTF8String:g_color_presets[idx].name];
+    return gl_text([NSString stringWithUTF8String:keys[idx]]);
 }
 
 static NSString *gl_width_display_name(NSInteger idx) {
-    static NSString *zh[] = {@"极细", @"很细", @"细", @"中", @"粗", @"很粗", @"超粗", @"极粗"};
-    static NSString *en[] = {@"Hair", @"Very fine", @"Fine", @"Medium",
-                             @"Thick", @"Very thick", @"Extra thick", @"Boldest"};
+    static const char *keys[] = {
+        "width.hair", "width.very_fine", "width.fine", "width.medium",
+        "width.thick", "width.very_thick", "width.extra_thick", "width.boldest",
+    };
     if (idx < 0 || idx >= g_width_preset_count) return @"";
-    return (g_lang == 0) ? zh[idx] : en[idx];
+    return gl_text([NSString stringWithUTF8String:keys[idx]]);
 }
 
 static NSAttributedString* gl_color_item_text(NSInteger idx) {
@@ -303,8 +316,8 @@ static void toggle_enabled(void) {
     }
     update_status_icon_state();
     show_notification(g_enabled
-        ? L(@"涂鸦已开启", @"Drawing enabled")
-        : L(@"涂鸦已关闭", @"Drawing disabled"));
+        ? gl_text(@"draw.enabled")
+        : gl_text(@"draw.disabled"));
     // Update menu item
     NSMenuItem *item = gl_menu_item_with_tag(888);
     if (item) {
@@ -419,7 +432,7 @@ static void toggle_canvas_mode(void) {
         if (g_glass_follow_strokes && g_glass_view) g_glass_view.hidden = YES;
         if (g_pressure_monitor) pm_hide();
         [g_draw_view setNeedsDisplay:YES];
-        show_notification(L(@"飘渺画布涂鸦模式 (悬空/落笔显示)", @"Ethereal canvas mode (hover/down to show)"));
+        show_notification(gl_text(@"canvas.ethereal_mode"));
     } else {
         // → 固定画布涂鸦模式: show the strokes and keep them visible
         g_ethereal_canvas = NO;
@@ -427,15 +440,15 @@ static void toggle_canvas_mode(void) {
         gl_glass_apply();
         if (g_pressure_monitor) pm_show();
         [g_draw_view setNeedsDisplay:YES];
-        show_notification(L(@"固定画布涂鸦模式", @"Fixed canvas mode"));
+        show_notification(gl_text(@"canvas.fixed_mode"));
     }
     // Sync the menu item (title shows the mode you switch TO, like toggleDraw)
     NSMenuItem *item = gl_menu_item_with_tag(778);
     if (item) {
         [item setState:g_ethereal_canvas ? NSControlStateValueOn : NSControlStateValueOff];
         [item setTitle:g_ethereal_canvas
-            ? L(@"固定画布涂鸦模式", @"Fixed canvas mode")
-            : L(@"飘渺画布涂鸦模式", @"Ethereal canvas mode")];
+            ? gl_text(@"canvas.fixed_mode")
+            : gl_text(@"canvas.ethereal_mode")];
     }
     // 持久化(与 Windows 同键 "ethereal"): 启动恢复在 run.m 设置装载段
     glaspen2_save_bool_setting("ethereal", g_ethereal_canvas ? 1 : 0);
@@ -472,7 +485,7 @@ static void gl_quit_app(void) {
 
 - (void)saveXoj {
     glaspen2_save_xoj();
-    show_notification(L(@"笔记已保存", @"Notes saved"));
+    show_notification(gl_text(@"export.notes_saved"));
 }
 
 - (void)toggleLanguage {
@@ -1335,7 +1348,7 @@ int glaspen2_macos_export_gif(void) {
                 show_notification(
                     L(@"动画 GIF 已保存并复制到剪贴板", @"Animated GIF saved & copied"));
             } else {
-                show_notification(L(@"没有笔迹或导出失败", @"No strokes or export failed"));
+                show_notification(gl_text(@"recording.gif_no_strokes_or_export_failed"));
             }
         });
     });

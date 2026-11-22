@@ -78,15 +78,15 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
         match cmd {
             x if x == CMD_SAVE_WITH_BG => {
                 save_with_bg(state);
-                hud_notify("截图成功(含背景)");
+                hud_notify(i18n::text(Lang::Zh, &Msg::ScreenshotWithBackgroundSaved));
             }
             x if x == CMD_SAVE_DRAWING => {
                 save_drawing(state);
-                hud_notify("截图成功");
+                hud_notify(i18n::text(Lang::Zh, &Msg::ScreenshotSaved));
             }
             x if x == CMD_SAVE_XOJ => {
                 glaspen_core::export::glaspen2_save_xoj();
-                hud_notify("笔记已保存");
+                hud_notify(i18n::text(Lang::Zh, &Msg::NotesSaved));
             }
             x if x == CMD_CLEAR_SCREEN => clear_screen(state),
             x if x == CMD_UNDO => undo_last_stroke(state),
@@ -229,10 +229,10 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                 ));
                 if on {
                     hide_strokes(state);
-                    hud_notify("飘渺画布涂鸦模式 (悬空/落笔显示)");
+                    hud_notify(i18n::text(Lang::Zh, &Msg::EtherealCanvasMode));
                 } else {
                     show_strokes(state);
-                    hud_notify("固定画布涂鸦模式");
+                    hud_notify(i18n::text(Lang::Zh, &Msg::FixedCanvasMode));
                 }
                 push_settings_changed(&format!("{{\"ethereal\":{on}}}"));
             }
@@ -325,7 +325,7 @@ fn clear_screen(state: &mut OverlayState) {
     finish_active_stroke(state);
     // 无限画布不清空(内容多,误清损失大):新建走设置面板的「新建画布」
     if infinite_on() {
-        hud_notify("无限画布不会被清除 · 新建请到设置面板手动新建");
+        hud_notify(i18n::text(Lang::Zh, &Msg::InfiniteCanvasKept));
         return;
     }
     state.pen_path.clear();
@@ -341,7 +341,7 @@ fn clear_screen(state: &mut OverlayState) {
     let created = glaspen_core::export::glaspen2_clear_strokes(state.canvas.w, state.canvas.h);
     if created == 0 {
         // 当前页从未涂鸦:不能连续创建空白画布(macOS 同款提示)
-        hud_notify("不能连续创建空白画布, 请先涂鸦");
+        hud_notify(i18n::text(Lang::Zh, &Msg::BlankCanvasGuard));
     } else {
         // macOS 成功后显示页信息("今天 第2页 第3/5页"), 不另发"已新建"
         let cur = glaspen_core::export::glaspen2_get_current_screen_id();
@@ -387,26 +387,26 @@ fn toggle_enabled(state: &mut OverlayState) {
     // 只留 启停涂鸦/自由涂鸦/打开设置 三个。
     on_draw_enabled_changed(hwnd, state.draw.enabled);
     hud_notify(if state.draw.enabled {
-        "涂鸦已开启"
+        i18n::text(Lang::Zh, &Msg::DrawingEnabled)
     } else {
-        "涂鸦已关闭"
+        i18n::text(Lang::Zh, &Msg::DrawingDisabled)
     });
 }
 
 fn undo_last_stroke(state: &mut OverlayState) {
     // macOS: 书写中按下只提示, 不动库
     if state.in_stroke {
-        hud_notify("正在书写中");
+        hud_notify(i18n::text(Lang::Zh, &Msg::StrokeInProgress));
         return;
     }
     let remaining = glaspen_core::export::glaspen2_undo_last_stroke();
     if remaining < 0 {
-        hud_notify("没有可撤销的笔画");
+        hud_notify(i18n::text(Lang::Zh, &Msg::NothingToUndo));
         return;
     }
     // 清空画布,从 STROKES 重绘全部剩余笔画
     redraw_from_strokes(state);
-    hud_notify("撤销成功");
+    hud_notify(i18n::text(Lang::Zh, &Msg::Undone));
 }
 
 /// 清空画布并从 STROKES 重绘全部笔画(撤销/翻页/网格开关后使用)
@@ -475,7 +475,7 @@ const NO_NEXT_SECONDS: std::time::Duration = std::time::Duration::from_secs(5);
 /// - 末页再按: 5 秒内二次按 = 新建一页并翻过去。
 fn navigate_page(state: &mut OverlayState, next: bool) {
     if infinite_on() {
-        hud_notify("无限画布只有一个画布");
+        hud_notify(i18n::text(Lang::Zh, &Msg::SingleInfiniteCanvas));
         return;
     }
     finish_active_stroke(state);
@@ -492,7 +492,7 @@ fn navigate_page(state: &mut OverlayState, next: bool) {
         return;
     }
     if !next {
-        hud_notify("没有上一页");
+        hud_notify(i18n::text(Lang::Zh, &Msg::NoPreviousPage));
         return;
     }
     // 没有下一页: 5 秒内再按一次 = 新建一页并翻过去(写完接着写)
@@ -503,7 +503,7 @@ fn navigate_page(state: &mut OverlayState, next: bool) {
         .unwrap_or(false);
     state.last_no_next = Some(now);
     if !second {
-        hud_notify("没有下一页(再按一次新建)");
+        hud_notify(i18n::text(Lang::Zh, &Msg::NoNextPage));
         return;
     }
     // core 建页时会顺手把 current 切到新页; 翻页前的页必须先抓下来
@@ -519,11 +519,11 @@ fn navigate_page(state: &mut OverlayState, next: bool) {
         peek_strokes(state, 1.0);
         // macOS 先报页信息再报"已新建了一页"(HUD 后一条覆盖前一条)
         hud_notify(&page_info_text(page_id));
-        hud_notify("已新建了一页");
+        hud_notify(i18n::text(Lang::Zh, &Msg::PageCreated));
     } else if page_id == before {
-        hud_notify("已是最新一页");
+        hud_notify(i18n::text(Lang::Zh, &Msg::PageAlreadyLatest));
     } else {
-        hud_notify("新建页失败");
+        hud_notify(i18n::text(Lang::Zh, &Msg::PageCreateFailed));
     }
 }
 
@@ -685,7 +685,7 @@ fn apply_camera_zoom(state: &mut OverlayState, cam: Camera, out: ZoomOutcome) {
             {
                 LAST_HINT.store(now, std::sync::atomic::Ordering::Relaxed);
                 hud_notify(if out.hit_max {
-                    "已达最大缩放 100%"
+                    i18n::text(Lang::Zh, &Msg::ZoomMax100)
                 } else {
                     "已达最小缩放 5%"
                 });
@@ -780,9 +780,9 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool, notify: bool) {
     // macOS: 从面板切换是静默的(NO), 只有热键/菜单切换才提示
     if notify {
         hud_notify(if on {
-            "无限画布已开启 (镜头键可在设置 → 快捷键中查看)"
+            i18n::text(Lang::Zh, &Msg::InfiniteCanvasOn)
         } else {
-            "无限画布已关闭"
+            i18n::text(Lang::Zh, &Msg::InfiniteCanvasOff)
         });
     }
 }
@@ -975,10 +975,10 @@ fn export_svg_gif_clipboard(state: &mut OverlayState) {
                 tracing::info!("已导出 SVG + GIF: {}", path.display());
             }
         }
-        hud_notify("已导出 SVG + GIF");
+        hud_notify(i18n::text(Lang::Zh, &Msg::SvgGifSaved));
     } else {
         tracing::warn!("GIF 导出失败(没有笔迹?)");
-        hud_notify("导出失败");
+        hud_notify(i18n::text(Lang::Zh, &Msg::ExportFailed));
     }
 }
 
@@ -1007,13 +1007,13 @@ fn newest_desktop_gif() -> Option<std::path::PathBuf> {
 fn copy_svg_to_clipboard(state: &mut OverlayState) {
     let ptr = glaspen_core::export::glaspen2_get_cropped_svg();
     if ptr.is_null() {
-        hud_notify("没有笔迹可复制");
+        hud_notify(i18n::text(Lang::Zh, &Msg::NoStrokesToCopy));
         return;
     }
     let svg = unsafe { std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned() };
     glaspen_core::export::glaspen2_free_c_string(ptr);
     if svg.is_empty() {
-        hud_notify("没有笔迹可复制");
+        hud_notify(i18n::text(Lang::Zh, &Msg::NoStrokesToCopy));
         return;
     }
     let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, svg.as_bytes());
@@ -1043,7 +1043,7 @@ fn copy_svg_to_clipboard(state: &mut OverlayState) {
         CloseClipboard();
     }
     tracing::info!("SVG(data-URI img) 已复制到剪贴板 ({} 字节)", svg.len());
-    hud_notify("SVG 已复制到剪贴板");
+    hud_notify(i18n::text(Lang::Zh, &Msg::SvgCopied));
 }
 
 /// 应用/取消模糊背景(磨砂玻璃)。SetWindowCompositionAttribute 是

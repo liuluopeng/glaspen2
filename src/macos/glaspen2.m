@@ -135,6 +135,10 @@ extern int glaspen2_stroke_bbox(double *x_min, double *y_min, double *x_max, dou
 extern void glaspen2_save_svg(void);
 extern char* glaspen2_get_cropped_svg(void);
 extern void glaspen2_free_c_string(char *ptr);
+// D10b 文案桥(core/i18n.rs): 按稳定 key 取当前语言文案, 未知 key 回显 key
+// 本身(便于发现拼错), 返回缓冲用 glaspen2_free_c_string 释放; 每次调用现查
+// 语言, 因此切换语言后新提示/菜单立即生效(见 gl_text/gl_textf)。
+extern char* glaspen2_i18n(const char *msg_key, const char *lang);
 extern int glaspen2_save_gif_cropped(const unsigned char *surface_data, int w, int h, int stride, double surface_scale);
 extern int glaspen2_save_animated_gif(int fps, double resolution, double speed, int end_mode);
 extern unsigned char * glaspen2_gif_record_end(int start_index, int end_index, int fps, double resolution, double speed, int end_mode, int *out_len);
@@ -549,13 +553,10 @@ static BOOL g_glass_enabled = NO;  // frosted glass ON/OFF
 static double g_glass_opacity = 0.45; // opacity level (used only when enabled)
 
 // Color presets
-typedef struct { const char *name; double r, g, b; } ColorPreset;
-// RGB 单源在 glaspen-core presets;name 是菜单英文显示(平台 UI 字符串),
-// RGB 启动时经 FFI 填充。core 测试守着色值与数量一致。
-static ColorPreset g_color_presets[10] = {
-    {"Red"}, {"Orange"}, {"Yellow"}, {"Green"}, {"Cyan"},
-    {"Blue"}, {"Purple"}, {"Pink"}, {"White"}, {"Black"},
-};
+typedef struct { double r, g, b; } ColorPreset;
+// RGB 单源在 glaspen-core presets, 启动时经 FFI 填充(core 测试守着色值与
+// 数量一致); 显示名文案单源在 core::i18n(D10b, 经 gl_text 按 key 取)。
+static ColorPreset g_color_presets[10];
 static const int g_color_preset_count = 10;
 
 // Notification state
@@ -570,6 +571,40 @@ static int g_lang = 0;
 
 static NSString *L(NSString *zh, NSString *en) {
     return g_lang == 0 ? zh : en;
+}
+
+// ── D10b 共享文案接线: 两端语义相同的用户可见文案单源在 core i18n 表 ──
+// 遗留的 L(@"zh", @"en") 只用于单平台独有/两端有意不同的字符串(见
+// i18n.rs 模块文档的收录边界); 共享文案一律走 gl_text/gl_textf, 由稳定 key
+// 现查表。
+
+/// 当前语言代码(只有 "en" 是英文, 其余中文; 与 core::i18n::Lang 一致)。
+static const char *gl_lang_code(void) {
+    return g_lang == 1 ? "en" : "zh";
+}
+
+/// 稳定 key → 本地化文案(共享文案的唯一入口)。
+/// 不缓存文案: 每次调用现读 g_lang, 语言切换后菜单重建/新提示立即是新语言。
+static NSString *gl_text(NSString *key) {
+    const char *c_key = [key UTF8String];
+    if (!c_key) return key;
+    char *c_text = glaspen2_i18n(c_key, gl_lang_code());
+    if (!c_text) return key;
+    NSString *text = [NSString stringWithUTF8String:c_text];
+    glaspen2_free_c_string(c_text);
+    return text.length ? text : key;
+}
+
+/// 带占位符的文案: {name} 按字典替换(未提供的占位符原样保留, 与
+/// core::i18n::Msg::format 同语义)。平台键名等差异由调用方作为参数传入。
+static NSString *gl_textf(NSString *key, NSDictionary<NSString *, NSString *> *args) {
+    NSString *text = gl_text(key);
+    for (NSString *name in args) {
+        text = [text stringByReplacingOccurrencesOfString:
+                     [NSString stringWithFormat:@"{%@}", name]
+                                               withString:args[name]];
+    }
+    return text;
 }
 
 static void show_notification(NSString *text) {
@@ -597,7 +632,7 @@ static void show_notification(NSString *text) {
 // Show "今天 第2页  第3/5页" for the given screen.
 // 文案与日期比较的唯一实现在 core::pageinfo(两端共用), 这里只负责显示。
 static void show_page_info(long long screen_id) {
-    char *text = glaspen2_page_info_text(screen_id, g_lang == 1 ? "en" : "zh");
+    char *text = glaspen2_page_info_text(screen_id, gl_lang_code());
     if (!text) return;
     NSString *s = [NSString stringWithUTF8String:text];
     glaspen2_free_c_string(text);
@@ -612,7 +647,7 @@ static void save_drawing_only(void) {
     int h = cairo_image_surface_get_height(g_surface);
     int stride = cairo_image_surface_get_stride(g_surface);
     glaspen2_save_drawing(data, w, h, stride);
-    show_notification(L(@"截图成功", @"Saved"));
+    show_notification(gl_text(@"export.screenshot_saved"));
 }
 
 /// 当前覆盖层所在屏幕的 CGDirectDisplayID。
@@ -703,7 +738,7 @@ static void composite_and_save(CGImageRef image, unsigned char *drawingCopy,
     CGImageRelease(p3Image);
     CGImageRelease(p3DrawImage);
     dispatch_async(dispatch_get_main_queue(), ^{
-        show_notification(L(@"截图成功(含背景)", @"Saved (with background)"));
+        show_notification(gl_text(@"export.screenshot_with_bg_saved"));
     });
 }
 
@@ -804,8 +839,7 @@ static void save_with_background(void) {
 static void clear_screen(void) {
     if (g_infinite_canvas) {
         // 无限画布只能手动新建,菜单/快捷键不清空
-        show_notification(L(@"无限画布不会被清除 · 新建请到设置面板手动新建",
-                            @"Infinite canvas is kept — create a new one in settings"));
+        show_notification(gl_text(@"canvas.infinite_kept"));
         return;
     }
     if (!g_surface) return;
@@ -833,7 +867,7 @@ static void clear_screen(void) {
         show_page_info(glaspen2_get_current_screen_id());
     } else {
         // The current canvas was never edited — don't allow blank-on-blank.
-        show_notification(L(@"不能连续创建空白画布, 请先涂鸦", @"Canvas is blank — draw something first"));
+        show_notification(gl_text(@"canvas.blank_guard"));
     }
 }
 

@@ -6,7 +6,7 @@
 //   2) 按返回的 effects 顺序执行 Windows 侧动作(HUD 文案/编码/剪贴板/gRPC);
 //   3) 后台结果 PostMessage 回窗口线程, 再作为结果事件喂回并执行新 effects。
 //
-// HUD 文案与键名留 adapter(D10 再统一);空窗口/重复按下/模式不匹配/总开关
+// HUD 文案单源在 core::i18n(D10b), 键名由 adapter 传参;空窗口/重复按下/模式不匹配/总开关
 // 门控等判定全部在 core。旧的 gif_recording / msg_record_start /
 // ink_draft_active 会话标志位与逐模式 start/stop 分派已删除。
 //
@@ -89,27 +89,43 @@ fn recording_chat_integration_changed(state: &mut OverlayState, enabled: bool) {
     );
 }
 
-/// HUD 语义 → Windows 文案(键名/语言留 adapter, 与 macOS 差异保留到 D10)。
+/// HUD 语义 → Windows 文案: 文案单源在 core::i18n(D10b, 与 macOS 同一张表),
+/// 只有 {keys} 的键名差异(Ctrl+Alt+3 / Ctrl+Alt+2)由本函数作为参数传入。
 fn recording_hud_text(hud: &RecordingHud) -> String {
+    let text = |msg: &Msg| i18n::text(Lang::Zh, msg).to_string();
     match hud {
-        RecordingHud::GifStartHint => "按住绘制, 松开生成 GIF".to_string(),
-        RecordingHud::SendStartHint => "书写手写消息… 松开 Ctrl+Alt+3 发送".to_string(),
-        RecordingHud::DraftStartHint => {
-            "书写手写消息(草稿)… 松开 Ctrl+Alt+2 交给对方".to_string()
-        }
-        RecordingHud::DraftStartFailed => "手写通道开启失败".to_string(),
-        RecordingHud::GifCopied => "GIF 已复制到剪贴板".to_string(),
-        RecordingHud::GifNoStrokesOrExportFailed => "没有笔迹或导出失败".to_string(),
-        RecordingHud::GifClipboardFailed => "GIF 复制失败".to_string(),
-        RecordingHud::SendNoStrokes => "没有新手写内容".to_string(),
-        RecordingHud::SendSucceeded { strokes } => format!("手写消息已发送 ({strokes} 笔)"),
-        RecordingHud::SendFailed => "手写消息发送失败".to_string(),
-        RecordingHud::DraftAccepted { strokes } => format!("对方已接收手写草稿 ({strokes} 笔)"),
-        RecordingHud::DraftDeclined => "对方未采用这份手写草稿".to_string(),
+        RecordingHud::GifStartHint => text(&Msg::GifStartHint),
+        RecordingHud::SendStartHint => i18n::format(
+            Lang::Zh,
+            &Msg::SendStartHint,
+            &[("keys", "Ctrl+Alt+3")],
+        ),
+        RecordingHud::DraftStartHint => i18n::format(
+            Lang::Zh,
+            &Msg::DraftStartHint,
+            &[("keys", "Ctrl+Alt+2")],
+        ),
+        RecordingHud::DraftStartFailed => text(&Msg::DraftStartFailed),
+        RecordingHud::GifCopied => text(&Msg::GifCopied),
+        RecordingHud::GifNoStrokesOrExportFailed => text(&Msg::GifNoStrokesOrExportFailed),
+        RecordingHud::GifClipboardFailed => text(&Msg::GifClipboardFailed),
+        RecordingHud::SendNoStrokes => text(&Msg::SendNoStrokes),
+        RecordingHud::SendSucceeded { strokes } => i18n::format(
+            Lang::Zh,
+            &Msg::SendSucceeded,
+            &[("n", &strokes.to_string())],
+        ),
+        RecordingHud::SendFailed => text(&Msg::SendFailed),
+        RecordingHud::DraftAccepted { strokes } => i18n::format(
+            Lang::Zh,
+            &Msg::DraftAccepted,
+            &[("n", &strokes.to_string())],
+        ),
+        RecordingHud::DraftDeclined => text(&Msg::DraftDeclined),
         RecordingHud::DraftFailed { detail } => detail
             .clone()
             .filter(|d| !d.is_empty())
-            .unwrap_or_else(|| "手写通道失败(未连接或中断)".to_string()),
+            .unwrap_or_else(|| text(&Msg::DraftFailed)),
     }
 }
 

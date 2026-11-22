@@ -825,7 +825,11 @@ fn color_swap(state: &mut OverlayState) {
         prev = if cur == 0 { COLOR_PRESETS.len() - 1 } else { 0 };
     }
     handle_command(state, CMD_SELECT_COLOR + prev, usize::MAX);
-    hud_notify(&format!("颜色: {}", COLOR_NAMES_ZH[prev.min(COLOR_NAMES_ZH.len() - 1)]));
+    hud_notify(&i18n::format(
+        Lang::Zh,
+        &Msg::ColorChanged,
+        &[("color", color_name(prev))],
+    ));
 }
 
 /// 换回上一粗细(macOS width_swap 同语义: 无历史时给细/粗另一端)
@@ -836,7 +840,11 @@ fn width_swap(state: &mut OverlayState) {
         prev = if cur <= 3 { 6.min(WIDTH_PRESETS.len() - 1) } else { 2 };
     }
     handle_command(state, CMD_SELECT_WIDTH + prev, usize::MAX);
-    hud_notify(&format!("粗细: {}", WIDTH_NAMES_ZH[prev.min(WIDTH_NAMES_ZH.len() - 1)]));
+    hud_notify(&i18n::format(
+        Lang::Zh,
+        &Msg::WidthChanged,
+        &[("width", width_name(prev))],
+    ));
 }
 
 
