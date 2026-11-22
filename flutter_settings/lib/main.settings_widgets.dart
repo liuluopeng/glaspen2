@@ -48,8 +48,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           height: 30,
           child: OutlinedButton(
             onPressed: () {
-              setState(() => _selectedColor = i);
-              _setSetting('color', i);
+              _writeSetting('color', i);
             },
             style: OutlinedButton.styleFrom(
               backgroundColor: Color(_colorValues[i]).withValues(alpha: 0.15),
@@ -85,8 +84,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           height: 30,
           child: OutlinedButton(
             onPressed: () {
-              setState(() => _selectedWidth = i);
-              _setSetting('width', i);
+              _writeSetting('width', i);
             },
             style: OutlinedButton.styleFrom(
               backgroundColor: selected ? Colors.blueGrey.shade100 : null,
@@ -155,31 +153,26 @@ extension _SettingsWidgetsUi on _SettingsPageState {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        chips<int>(AppLocalizations.of(context)!.frameRate, fpsOptions, _gifFps, (v) => '$v fps', (v) {
-          _gifFps = v;
-          _setSetting('gifFps', v);
-        }),
+        chips<int>(AppLocalizations.of(context)!.frameRate, fpsOptions, _gifFps,
+            (v) => '$v fps', (v) => _writeSetting('gifFps', v)),
         const SizedBox(height: 8),
-        chips<double>(AppLocalizations.of(context)!.resolution, resOptions, _gifResolution, (v) => '${(v * 100).round()}%',
-            (v) {
-          _gifResolution = v;
-          _setSetting('gifResolution', v);
-        }),
+        chips<double>(
+            AppLocalizations.of(context)!.resolution,
+            resOptions,
+            _gifResolution,
+            (v) => '${(v * 100).round()}%',
+            (v) => _writeSetting('gifResolution', v)),
         const SizedBox(height: 8),
-        chips<double>(AppLocalizations.of(context)!.speed, speedOptions, _gifSpeed, (v) => '${v}x', (v) {
-          _gifSpeed = v;
-          _setSetting('gifSpeed', v);
-        }),
+        chips<double>(AppLocalizations.of(context)!.speed, speedOptions, _gifSpeed,
+            (v) => '${v}x', (v) => _writeSetting('gifSpeed', v)),
         const SizedBox(height: 8),
         chips<int>(AppLocalizations.of(context)!.ending, [0, 1, 2], _gifEndMode,
             (v) => v == 0
                 ? AppLocalizations.of(context)!.stopOnLastFrame
                 : v == 1
                     ? AppLocalizations.of(context)!.hold1SThen
-                    : AppLocalizations.of(context)!.loopImmediately, (v) {
-          _gifEndMode = v;
-          _setSetting('gifEndMode', v);
-        }),
+                    : AppLocalizations.of(context)!.loopImmediately,
+            (v) => _writeSetting('gifEndMode', v)),
         const SizedBox(height: 10),
         Text(AppLocalizations.of(context)!.estimatedSizeP1(_estimateGifSize()),
             style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
@@ -281,16 +274,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           dense: true,
           contentPadding: EdgeInsets.zero,
           onChanged: (v) {
-            setState(() {
-              _showFreeCanvas = v;
-              _syncTabCount();
-              if (!v && _infiniteCanvas) {
-                // tab 移除后只剩活页本:模式同步回翻页
-                _infiniteCanvas = false;
-                _setSetting('infiniteCanvas', false);
-              }
-            });
-            _setSetting('showFreeCanvas', v);
+            _writeSetting('showFreeCanvas', v);
           },
         )),
         _tile(SwitchListTile(
@@ -300,11 +284,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           dense: true,
           contentPadding: EdgeInsets.zero,
           onChanged: (v) {
-            setState(() {
-              _showBubbleTab = v;
-              _syncTabCount();
-            });
-            _setSetting('showBubbleTab', v);
+            _writeSetting('showBubbleTab', v);
           },
         )),
         // 气泡重播设置(嵌套在气泡 tab 开关下; 纯面板自用, 三处同步)
@@ -325,8 +305,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
                   ],
                   selected: {_bubbleReplaySpeed},
                   onSelectionChanged: (s) {
-                    setState(() => _bubbleReplaySpeed = s.first);
-                    _setSetting('bubbleReplaySpeed', s.first);
+                    _writeSetting('bubbleReplaySpeed', s.first);
                   },
                 ),
               ],
@@ -340,8 +319,7 @@ extension _SettingsWidgetsUi on _SettingsPageState {
             dense: true,
             contentPadding: EdgeInsets.zero,
             onChanged: (v) {
-              setState(() => _bubbleReplayHoldLast = v);
-              _setSetting('bubbleReplayHoldLast', v);
+              _writeSetting('bubbleReplayHoldLast', v);
             },
           )),
         if (_showBubbleTab)
@@ -352,34 +330,31 @@ extension _SettingsWidgetsUi on _SettingsPageState {
             dense: true,
             contentPadding: EdgeInsets.zero,
             onChanged: (v) {
-              setState(() => _bubbleReplayAuto = v);
-              _setSetting('bubbleReplayAuto', v);
+              _writeSetting('bubbleReplayAuto', v);
             },
           )),
         if (_showBubbleTab)
           _tile(SwitchListTile(
             title: Text(AppLocalizations.of(context)!.bubbleAutoNewPage, style: TextStyle(fontSize: 15)),
             subtitle: Text(AppLocalizations.of(context)!.bubbleAutoNewPageSub, style: TextStyle(fontSize: 12)),
-            value: _bubbleAutoNewPage,
+            value: _vBool('bubbleAutoNewPage'),
             dense: true,
             contentPadding: EdgeInsets.zero,
             onChanged: (v) {
-              setState(() => _bubbleAutoNewPage = v);
-              _setSetting('bubbleAutoNewPage', v);
+              _writeSetting('bubbleAutoNewPage', v);
             },
           )),
         _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.showGrid, style: TextStyle(fontSize: 15)),
           subtitle: Text(AppLocalizations.of(context)!.helpsAlignWhileDoodling, style: TextStyle(fontSize: 12)),
-          value: _showGrid,
+          value: _vBool('grid'),
           dense: true,
           contentPadding: EdgeInsets.zero,
           onChanged: (v) {
-            setState(() => _showGrid = v);
-            _setSetting('grid', v);
+            _writeSetting('grid', v);
           },
         )),
-        if (_showGrid)
+        if (_vBool('grid'))
           Padding(
             padding: const EdgeInsets.only(left: 16, bottom: 4),
             child: Row(
@@ -394,10 +369,9 @@ extension _SettingsWidgetsUi on _SettingsPageState {
                   segments: [
                     ...[20, 40, 80].map((v) => ButtonSegment(value: v, label: Text('$v'))),
                   ],
-                  selected: {_gridSizeValue},
+                  selected: {_vInt('gridSize', 40)},
                   onSelectionChanged: (s) {
-                    setState(() => _gridSizeValue = s.first);
-                    _setSetting('gridSize', s.first);
+                    _writeSetting('gridSize', s.first);
                   },
                 ),
               ],
@@ -425,10 +399,9 @@ extension _SettingsWidgetsUi on _SettingsPageState {
                     ButtonSegment(value: 3, label: Text(AppLocalizations.of(context)!.grid3x3)),
                     ButtonSegment(value: 4, label: Text(AppLocalizations.of(context)!.cornell)),
                   ],
-                  selected: {_gridDividerValue},
+                  selected: {_vInt('gridDivider', 0)},
                   onSelectionChanged: (s) {
-                    setState(() => _gridDividerValue = s.first);
-                    _setSetting('gridDivider', s.first);
+                    _writeSetting('gridDivider', s.first);
                   },
                 ),
               ),
@@ -438,45 +411,41 @@ extension _SettingsWidgetsUi on _SettingsPageState {
         _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.gridFollowsDoodles, style: TextStyle(fontSize: 15)),
           subtitle: Text(AppLocalizations.of(context)!.whenOnTheGrid, style: TextStyle(fontSize: 12)),
-          value: _gridFollowStrokes,
+          value: _vBool('gridFollowStrokes'),
           dense: true,
           contentPadding: EdgeInsets.zero,
           onChanged: (v) {
-            setState(() => _gridFollowStrokes = v);
-            _setSetting('gridFollowStrokes', v);
+            _writeSetting('gridFollowStrokes', v);
           },
         )),
         _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.glassFollowsDoodles, style: TextStyle(fontSize: 15)),
           subtitle: Text(AppLocalizations.of(context)!.whenOnTheGlass, style: TextStyle(fontSize: 12)),
-          value: _glassFollowStrokes,
+          value: _vBool('glassFollowStrokes'),
           dense: true,
           contentPadding: EdgeInsets.zero,
           onChanged: (v) {
-            setState(() => _glassFollowStrokes = v);
-            _setSetting('glassFollowStrokes', v);
+            _writeSetting('glassFollowStrokes', v);
           },
         )),
         _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.inkOutline, style: TextStyle(fontSize: 15)),
           subtitle: Text(AppLocalizations.of(context)!.dashedContrastOutlineVisible, style: TextStyle(fontSize: 12)),
-          value: _outlineEnabled,
+          value: _vBool('outline'),
           dense: true,
           contentPadding: EdgeInsets.zero,
           onChanged: (v) {
-            setState(() => _outlineEnabled = v);
-            _setSetting('outline', v);
+            _writeSetting('outline', v);
           },
         )),
         _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.softShadow, style: TextStyle(fontSize: 15)),
           subtitle: Text(AppLocalizations.of(context)!.softDarkShadowUnder, style: TextStyle(fontSize: 12)),
-          value: _softShadow,
+          value: _vBool('softShadow'),
           dense: true,
           contentPadding: EdgeInsets.zero,
           onChanged: (v) {
-            setState(() => _softShadow = v);
-            _setSetting('softShadow', v);
+            _writeSetting('softShadow', v);
           },
         )),
         // 反色突出是 macOS 专属实现(SCK 持续截屏反相);可用性由后端
@@ -485,16 +454,15 @@ extension _SettingsWidgetsUi on _SettingsPageState {
           _tile(SwitchListTile(
             title: Text(AppLocalizations.of(context)!.invertedInk, style: TextStyle(fontSize: 15)),
             subtitle: Text(AppLocalizations.of(context)!.strokesTakeThePer, style: TextStyle(fontSize: 12)),
-            value: _invertInk,
+            value: _vBool('invertInk'),
             dense: true,
             contentPadding: EdgeInsets.zero,
             onChanged: (v) {
-              setState(() => _invertInk = v);
-              _setSetting('invertInk', v);
+              _writeSetting('invertInk', v);
             },
           )),
         // 帧率上限只在反色可用且开启时有意义: 关着时不再占一整行
-        if (uiConfig.features['invertInk'] == true && _invertInk) ...[
+        if (uiConfig.features['invertInk'] == true && _vBool('invertInk')) ...[
           _tile(Padding(
             padding: const EdgeInsets.only(left: 16, top: 4),
             child: SizedBox(
@@ -506,11 +474,10 @@ extension _SettingsWidgetsUi on _SettingsPageState {
                   ButtonSegment(value: 60, label: Text('60Hz')),
                   ButtonSegment(value: 100, label: Text('100Hz')),
                 ],
-                selected: {_invertFps},
+                selected: {_vInt('invertFps', 30)},
                 showSelectedIcon: false,
                 onSelectionChanged: (s2) {
-                  setState(() => _invertFps = s2.first);
-                  _setSetting('invertFps', s2.first);
+                  _writeSetting('invertFps', s2.first);
                 },
               ),
             ),
@@ -533,22 +500,20 @@ extension _SettingsWidgetsUi on _SettingsPageState {
       children: [
         _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.pressureMonitor, style: TextStyle(fontSize: 15)),
-          value: _pressureMonitor,
+          value: _vBool('pressureMonitor'),
           dense: true,
           contentPadding: EdgeInsets.zero,
           onChanged: (v) {
-            setState(() => _pressureMonitor = v);
-            _setSetting('pressureMonitor', v);
+            _writeSetting('pressureMonitor', v);
           },
         )),
         _tile(SwitchListTile(
           title: Text(AppLocalizations.of(context)!.launchAtLogin, style: TextStyle(fontSize: 15)),
-          value: _launchAtLogin,
+          value: _vBool('launchAtLogin'),
           dense: true,
           contentPadding: EdgeInsets.zero,
           onChanged: (v) {
-            setState(() => _launchAtLogin = v);
-            _setSetting('launchAtLogin', v);
+            _writeSetting('launchAtLogin', v);
           },
         )),
       ],

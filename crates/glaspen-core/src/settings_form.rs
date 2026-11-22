@@ -183,8 +183,10 @@ impl Control {
 pub enum Unit {
     Fps,
     Percent,
-    /// 倍率(`2x` / `2×`)。
+    /// 倍率(`2x`, GIF 速度)。
     Times,
+    /// 倍率(乘号 `2×`, 气泡重播速度)。
+    TimesCross,
     Hz,
 }
 
@@ -194,6 +196,7 @@ impl Unit {
             Unit::Fps => "fps",
             Unit::Percent => "percent",
             Unit::Times => "x",
+            Unit::TimesCross => "timesCross",
             Unit::Hz => "hz",
         }
     }
@@ -483,7 +486,10 @@ pub const SECTIONS: &[Section] = &[
     },
     // 关于区(版本/检查更新): 没有设置项, 内容全是自定义区块, 但同样由 schema
     // 定位 —— 这样「设置页 = schema」, Dart 不再按分区写装配代码。
-    section("about", "about", None, true),
+    // 注意: 旧 Dart 的关于区在「更多设置」折叠**之外**(始终显示), 所以
+    // advanced=false; 装配规则 = 按数组顺序渲染非 advanced 分区, 遇到第一个
+    // advanced 分区时插入「更多设置」开关并按折叠状态跳过其余 advanced 分区。
+    section("about", "about", None, false),
 ];
 
 /// 非设置项的自定义区块: 属于某个分区、但内容由 Dart 手写(动态 UI)。
@@ -892,7 +898,7 @@ pub const FORM_META: &[FormMeta] = &[
                 None,
                 BUBBLE_REPLAY_SPEED_OPTIONS,
                 Some(Range::new(1.0, 4.0, 0.0)),
-                Some(Unit::Times),
+                Some(Unit::TimesCross),
                 None,
                 true,
             ),
@@ -986,8 +992,10 @@ pub const FORM_META: &[FormMeta] = &[
             true,
         ),
         Layout::StackedSegmented,
+        // 旧表单里分栏那一行左右各留 16(其余行贴边), 渲染器把 indented 当作
+        // 水平内缩统一处理(与条件嵌套行的左缩进同字段)。
         true,
-        false,
+        true,
     ),
     toggle(
         "gridFollowStrokes",
@@ -1615,8 +1623,9 @@ mod tests {
         // 旧 Dart 里该分区标题由 _shortcutSectionTitle() 硬编码; schema 改为
         // 按平台选 ARB 键(core 决定, Flutter 不做平台分支)。
         ("shortcuts", "hotkeys", Some("hotkeysCtrlAlt"), true, None),
-        // 关于区(版本/检查更新): 无设置项, 内容全是自定义区块。
-        ("about", "about", None, true, None),
+        // 关于区(版本/检查更新): 无设置项, 内容全是自定义区块; 旧 Dart 把它
+        // 放在「更多设置」折叠之外(始终显示), 所以 advanced=false。
+        ("about", "about", None, false, None),
     ];
 
     const EXPECTED: &[ExpectedMeta] = &[
@@ -1666,7 +1675,8 @@ mod tests {
             None,
             EXP_BUBBLE_REPLAY_SPEED,
             Some((1.0, 4.0, 0.0)),
-            Some(Unit::Times),
+            // 旧 Dart 气泡重播速度显示 `1×`(乘号), GIF 速度显示 `2x`。
+            Some(Unit::TimesCross),
             None,
             true,
         ),
@@ -2035,7 +2045,7 @@ mod tests {
     const EXPECTED_LAYOUT_OVERRIDES: &[(&str, Layout, bool, bool)] = &[
         ("bubbleReplaySpeed", Layout::InlineSegmented, true, true),
         ("gridSize", Layout::InlineSegmented, true, true),
-        ("gridDivider", Layout::StackedSegmented, true, false),
+        ("gridDivider", Layout::StackedSegmented, true, true),
         ("invertFps", Layout::StackedSegmented, false, true),
         ("gifFps", Layout::Chips, true, false),
         ("gifResolution", Layout::Chips, true, false),
@@ -2193,13 +2203,9 @@ mod tests {
                 Control::Shortcuts => assert_eq!(m.layout, Layout::Custom),
                 _ => {}
             }
-            if m.indented {
-                assert!(
-                    m.visible_when_setting.is_some() || m.enabled_when_setting.is_some(),
-                    "{} 缩进但没有条件(旧表单里缩进行都在条件块下)",
-                    m.key
-                );
-            }
+            // indented 是纯视觉内缩(条件嵌套行 + 旧表单里左右留白的行),
+            // 不强制绑定条件; 由 EXPECTED_LAYOUT_OVERRIDES 逐条锁定。
+            let _ = m.indented;
         }
     }
 
@@ -2312,9 +2318,13 @@ mod tests {
             );
         }
         assert_eq!(
-            SECTIONS.iter().filter(|s| !s.advanced).count(),
-            1,
-            "只有 pen 常在首屏"
+            SECTIONS
+                .iter()
+                .filter(|s| !s.advanced)
+                .map(|s| s.id)
+                .collect::<Vec<_>>(),
+            vec!["pen", "about"],
+            "只有 pen 与 about 在折叠区外(与旧 Dart 装配一致)"
         );
         // 分区标题 l10n 键按平台选择: 只有 shortcuts 有 Windows 变体。
         for s in SECTIONS {
@@ -3030,12 +3040,41 @@ mod tests {
         }
 
         // 每个表单控件仍从同一处写设置(控件被删/改名则此处红)。
+        // D11b 第二步起, schema 渲染的控件走通用 _writeSetting(key, v),
+        // 迁移期的旧控件同样改为 _writeSetting(不再逐键 setState);
+        // 两条路径都必须能从 Dart 源码里看到键字面量。
         for m in FORM_META {
-            let needle = format!("setSetting('{}'", m.key);
+            let a = format!("_writeSetting('{}'", m.key);
+            let b = format!("setSetting('{}'", m.key);
             assert!(
-                controls.contains(&needle),
-                "Dart 表单里找不到 {} 的 setSetting 调用(控件被删/改名?)",
+                controls.contains(&a) || controls.contains(&b),
+                "Dart 表单里找不到 {} 的设置写入调用(控件被删/改名?)",
                 m.key
+            );
+        }
+        // D11b 第二步: 设置页装配已改为读 schema(settingsSections)并交给
+        // schema 渲染器; 旧手写页面只剩"uiConfig 不可用"的兜底。
+        assert!(
+            main.contains("_buildSettingsTab()"),
+            "main.dart 的设置 tab 不再走 _buildSettingsTab()(schema 装配入口)"
+        );
+        assert!(
+            main.contains("uiConfig.settingsSections.isEmpty"),
+            "main.dart 不再按 settingsSections 决定 schema/兜底路径"
+        );
+        let schema_src = include_str!("../../../flutter_settings/lib/main.settings_schema.dart");
+        for needle in [
+            "class UiFormSection",
+            "class UiFormMeta",
+            "uiConfig.settingsSections",
+            "visibleWhenSetting",
+            "enabledWhenSetting",
+            "_buildSchemaControl",
+            "_buildSchemaSettingsTab",
+        ] {
+            assert!(
+                schema_src.contains(needle),
+                "schema 渲染器缺 {needle}(D11b 第二步被回退?)"
             );
         }
 
@@ -3085,9 +3124,10 @@ mod tests {
                 "pageFlipEffect 特性门控",
                 "uiConfig.features['pageFlipEffect'] == true",
             ),
+            // D11b 第二步起旧兜底表单改用通用取值器(条件键字面量不变)。
             ("气泡 tab 条件显示", "if (_showBubbleTab)"),
-            ("网格尺寸条件显示", "if (_showGrid)"),
-            ("聊天集成条件显示", "if (_chatIntegration)"),
+            ("网格尺寸条件显示", "if (_vBool('grid'))"),
+            ("聊天集成条件显示", "if (_vBool('chatIntegration'))"),
         ] {
             assert!(controls.contains(needle), "Dart 表单指纹漂移: {label}");
         }

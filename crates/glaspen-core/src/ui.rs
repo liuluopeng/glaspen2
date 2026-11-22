@@ -663,6 +663,38 @@ mod tests {
         assert_eq!(win["protocolVersion"], crate::protocol::PROTOCOL_VERSION);
     }
 
+    /// Flutter widget 测试用的 uiConfig 固定样例必须与本模块输出逐字段一致。
+    ///
+    /// 面板的 schema 渲染器不在 `flutter test` 里连后端(FRB 符号不可用), 所以
+    /// Dart 测试读 `test/fixtures/ui_config_{macos,windows}.json` 当"真实
+    /// schema"; 这里是它的漂移闸门 —— core 改了 schema 而忘记重新生成 fixture
+    /// 时, 这个测试直接红(生成方式见 fixtures 目录旁 README)。
+    #[test]
+    fn flutter_schema_fixtures_match_core_output() {
+        for (name, platform, fixture) in [
+            (
+                "macos",
+                Platform::Macos,
+                include_str!("../../../flutter_settings/test/fixtures/ui_config_macos.json"),
+            ),
+            (
+                "windows",
+                Platform::Windows,
+                include_str!("../../../flutter_settings/test/fixtures/ui_config_windows.json"),
+            ),
+        ] {
+            let want: Value =
+                serde_json::from_str(&ui_config_json(platform)).expect("core uiConfig JSON");
+            let got: Value = serde_json::from_str(fixture)
+                .unwrap_or_else(|e| panic!("fixture ui_config_{name}.json 不是合法 JSON: {e}"));
+            assert_eq!(
+                got, want,
+                "fixture ui_config_{name}.json 与 core 输出不一致;重新生成:
+                 cargo run -q -p glaspen-core --example dump_ui_config 后按 @@MACOS@@/@@WINDOWS@@ 拆行"
+            );
+        }
+    }
+
     /// 命名管道的响应协议形状(主机上可测, 不依赖 Windows 真机)。
     #[test]
     fn pipe_ui_config_response_is_line_framed_object() {

@@ -4,61 +4,26 @@ part of 'main.dart';
 // State.@protected 的可见性按类外判定, 对同库 part 是误报。
 // ignore_for_file: invalid_use_of_protected_member
 
-// ── 设置同步与聊天集成状态 ──
+// ── 设置同步与聊天集成状态(D11b: 通用快照合并)──
+//
+// 旧实现是逐键字段 + 逐键 setState(38 条登记项各写两遍: 首帧加载 + 覆盖层
+// 推送)。D11b 起设置值只有一份 Map(_settingValues), 键/类型/平台可用性全部
+// 来自后端 uiConfig 的登记表契约, 所以加载/推送是同一段通用代码。
+
+/// 文本类设置键: 用户可能正在输入, 覆盖层局部推送不能回写输入框(旧行为)。
+const _textSettingKeys = <String>{'chatApiBase', 'chatUser', 'nasUrl'};
 
 extension _SettingsStateUi on _SettingsPageState {
   /// 覆盖层推送的设置更新: **只覆盖帧里出现的字段**, 其余保持当前值。
   /// 覆盖层(Windows 管道 / macOS FRB)可能只推局部字段(如只推 shortcuts /
-  /// infiniteCanvas), 若对缺失字段用 `_b(null)=false` 兜底, 一次推送就会把
-  /// 面板其它开关全部清成关、tab 数也算错。
+  /// infiniteCanvas), 若对缺失字段用 false 兜底, 一次推送就会把面板其它开关
+  /// 全部清成关、tab 数也算错。
   void _onSettingsChanged(Map<dynamic, dynamic> s) {
     _settingsLoadGen++; // 服务端推送视为最新状态, 作废在途的旧加载
     if (!mounted) return;
-    final has = s.containsKey;
-    bool b(String key, bool cur) => has(key) ? _b(s[key]) : cur;
-    int i(String key, int cur) => (s[key] as num?)?.toInt() ?? cur;
-    double d(String key, double cur) => (s[key] as num?)?.toDouble() ?? cur;
     final wasInfinite = _infiniteCanvas;
     final wasFreeTab = _showFreeCanvas;
-    setState(() {
-      _selectedColor = i('color', _selectedColor);
-      _selectedWidth = i('width', _selectedWidth);
-      _pressureMonitor = b('pressureMonitor', _pressureMonitor);
-      _launchAtLogin = b('launchAtLogin', _launchAtLogin);
-      _showGrid = b('grid', _showGrid);
-      _gridFollowStrokes = b('gridFollowStrokes', _gridFollowStrokes);
-      _glassFollowStrokes = _bOr(s['glassFollowStrokes'], _glassFollowStrokes);
-      _softShadow = b('softShadow', _softShadow);
-      _invertInk = b('invertInk', _invertInk);
-      _invertFps = i('invertFps', _invertFps);
-      _outlineEnabled = b('outline', _outlineEnabled);
-      _infiniteCanvas = b('infiniteCanvas', _infiniteCanvas);
-      _minimapEnabled = b('minimap', _minimapEnabled);
-      _gridSizeValue = i('gridSize', _gridSizeValue);
-      _gridDividerValue = i('gridDivider', _gridDividerValue);
-      _gifFps = i('gifFps', _gifFps);
-      _gifResolution = d('gifResolution', _gifResolution);
-      _gifSpeed = d('gifSpeed', _gifSpeed);
-      _gifEndMode = i('gifEndMode', _gifEndMode);
-      _flipEffect = i('flipEffect', _flipEffect);
-      _showFreeCanvas = b('showFreeCanvas', _showFreeCanvas);
-      _showBubbleTab = b('showBubbleTab', _showBubbleTab);
-      _bubbleReplaySpeed = i('bubbleReplaySpeed', _bubbleReplaySpeed).clamp(1, 8);
-      _bubbleReplayHoldLast = _bOr(s['bubbleReplayHoldLast'], _bubbleReplayHoldLast);
-      _bubbleReplayAuto = b('bubbleReplayAuto', _bubbleReplayAuto);
-      _bubbleAutoNewPage = b('bubbleAutoNewPage', _bubbleAutoNewPage);
-      _shareCanvas = b('shareCanvas', _shareCanvas);
-      _notebookGlass = _bOr(s['notebookStyle'], _notebookGlass);
-      _panelTransparent = b('panelTransparent', _panelTransparent);
-      if (has('language')) {
-        _language = (s['language'] as String?) == 'en' ? 'en' : 'zh';
-      }
-      if (has('shortcuts')) {
-        _shortcutsRaw = s['shortcuts'];
-        _shortcuts = _decodeShortcuts(_shortcutsRaw);
-      }
-      _syncTabCount();
-    });
+    setState(() => _mergeSettingsSnapshot(s, full: false));
     // 画布模式被外部改(快捷键切自由涂鸦/覆盖层推设置)时, TabBar 选中项必须
     // 跟着走 —— 否则"玻璃在自由涂鸦、面板停在活页本", 用户再点活页本就会
     // 把自由涂鸦关掉(用户报的严重错位)。
@@ -66,6 +31,79 @@ extension _SettingsStateUi on _SettingsPageState {
       _syncTabToCanvasMode(force: true);
     }
     _applyLanguage(_language);
+  }
+
+  /// 把一份设置快照合并进 [_settingValues]。
+  ///
+  /// - 键集合/JSON 类型按 uiConfig.settings(后端登记表契约)走, 不再逐键写;
+  /// - 只覆盖快照里**出现**的键(局部推送语义);
+  /// - full = 完整快照(首帧 getSettings): 文本输入框跟随回显; 推送则不覆盖
+  ///   用户正在编辑的内容。
+  void _mergeSettingsSnapshot(Map<dynamic, dynamic> s, {required bool full}) {
+    if (uiConfig.settings.isEmpty) {
+      // 平台契约还没到(Windows 首连/降级): 按当前值的类型做同样的宽容解析,
+      // 保留旧的"推送立即生效"行为; 契约到达后再按登记表类型归一。
+      for (final key in _settingValues.keys.toList()) {
+        if (!s.containsKey(key)) continue;
+        if (!full && _textSettingKeys.contains(key)) continue;
+        final value = _coerceByCurrentType(key, s[key]);
+        if (value != null) _settingValues[key] = value;
+      }
+    } else {
+      for (final spec in uiConfig.settings) {
+        if (!uiConfig.settingAvailable(spec)) continue;
+        if (!s.containsKey(spec.key)) continue;
+        if (!full && _textSettingKeys.contains(spec.key)) continue;
+        final value = _coerceSetting(spec.kind, s[spec.key]);
+        if (value != null) _settingValues[spec.key] = value;
+      }
+    }
+    if (s.containsKey('chatHasPassword')) {
+      _chatHasPassword = _b(s['chatHasPassword']);
+    }
+    if (s.containsKey('shortcuts')) {
+      _shortcutsRaw = s['shortcuts'];
+      _shortcuts = _decodeShortcuts(_shortcutsRaw);
+    }
+    if (full) _syncTextControllers();
+    // 归一化: 面板档位是合法子集, 旧库/旧端可能存区间内其它值。
+    _settingValues['bubbleReplaySpeed'] = _vInt('bubbleReplaySpeed', 1).clamp(1, 8);
+  }
+
+  /// 按登记表类型把 JSON 标量转成面板值; 类型不符返回 null(跳过该键)。
+  dynamic _coerceSetting(String kind, dynamic v) {
+    switch (kind) {
+      case 'bool':
+        return v == null ? null : _b(v);
+      case 'int':
+        return v is num ? v.toInt() : null;
+      case 'float':
+        return v is num ? v.toDouble() : null;
+      case 'str':
+        return v is String ? v : null;
+      default:
+        return null;
+    }
+  }
+
+  /// 契约缺失时的宽容解析: 以当前值的运行时类型为准(旧行为: bool 字段
+  /// 历史上可能发成 int 0/1)。
+  dynamic _coerceByCurrentType(String key, dynamic v) {
+    final cur = _settingValues[key];
+    if (cur is bool) return v == null ? null : _b(v);
+    if (cur is int) return v is num ? v.toInt() : null;
+    if (cur is double) return v is num ? v.toDouble() : null;
+    if (cur is String) return v is String ? v : null;
+    return v;
+  }
+
+  /// 完整快照到达后把文本设置回显到输入框(登录/NAS 备份)。
+  void _syncTextControllers() {
+    for (final key in _textSettingKeys) {
+      final controller = _settingTextController(key);
+      final text = _vStr(key);
+      if (controller.text != text) controller.text = text;
+    }
   }
 
   /// 拉取一次后端平台 UI 配置(macOS 立即;Windows 管道连上后由 onConnected
@@ -96,7 +134,7 @@ extension _SettingsStateUi on _SettingsPageState {
     });
   }
 
-  /// 设置契约自检: 后端下发的键必须覆盖 `uiConfig.settings` 中当前平台可用的
+  /// 设置契约自检: 后端下发的键必须覆盖 uiConfig.settings 中当前平台可用的
   /// 全部项。少一项 = 该平台漏实现/漏下发 —— 这是"macOS 定义了、Windows 没实现"
   /// 最早的信号, 在面板启动时就打日志并 debug 断言, 不等真机手点才发现。
   void _validateSettingsContract(Map<dynamic, dynamic> settings) {
@@ -104,8 +142,7 @@ extension _SettingsStateUi on _SettingsPageState {
     if (specs.isEmpty || settings.isEmpty) return;
     final missing = <String>[
       for (final s in specs)
-        if ((uiConfig.isWindows ? s.win : s.mac) && !settings.containsKey(s.key))
-          s.key,
+        if (uiConfig.settingAvailable(s) && !settings.containsKey(s.key)) s.key,
     ];
     if (missing.isEmpty) return;
     debugPrint('[UiConfig] 后端设置快照缺少契约项: $missing');
@@ -118,67 +155,30 @@ extension _SettingsStateUi on _SettingsPageState {
       final settings = await _bridge.getSettings();
       // 等待期间用户改过设置 / 收到推送 → 丢弃这份过期快照
       if (gen != _settingsLoadGen) return;
-      if (mounted && settings.isNotEmpty) {
-        // 快照契约自检(只在完整快照上做; 覆盖层局部推送不适用)。
-        _validateSettingsContract(settings);
-        final wasInfinite = _infiniteCanvas;
-        final wasFreeTab = _showFreeCanvas;
-        setState(() {
-          _selectedColor = (settings['color'] as num?)?.toInt() ?? 0;
-          _selectedWidth = (settings['width'] as num?)?.toInt() ?? 2;
-          _pressureMonitor = _b(settings['pressureMonitor']);
-          _showGrid = _b(settings['grid']);
-          _gridFollowStrokes = _b(settings['gridFollowStrokes']);
-          _glassFollowStrokes = _bOr(settings['glassFollowStrokes'], _glassFollowStrokes);
-          _softShadow = _b(settings['softShadow']);
-          _invertInk = _b(settings['invertInk']);
-          _invertFps = (settings['invertFps'] as num?)?.toInt() ?? _invertFps;
-          _infiniteCanvas = _b(settings['infiniteCanvas']);
-          _minimapEnabled = _b(settings['minimap']);
-          _gridSizeValue = (settings['gridSize'] as num?)?.toInt() ?? _gridSizeValue;
-          _gridDividerValue = (settings['gridDivider'] as num?)?.toInt() ?? _gridDividerValue;
-          _gifFps = (settings['gifFps'] as num?)?.toInt() ?? 15;
-          _gifResolution = (settings['gifResolution'] as num?)?.toDouble() ?? 0.5;
-          _gifSpeed = (settings['gifSpeed'] as num?)?.toDouble() ?? 2.0;
-          _gifEndMode = (settings['gifEndMode'] as num?)?.toInt() ?? 1;
-          _flipEffect = (settings['flipEffect'] as num?)?.toInt() ?? _flipEffect;
-          _nasUrl.text = (settings['nasUrl'] as String?) ?? '';
-          _chatApiBase.text = (settings['chatApiBase'] as String?) ?? '';
-          _chatUser.text = (settings['chatUser'] as String?) ?? '';
-          _chatHasPassword = _b(settings['chatHasPassword']);
-          _chatIntegration = _b(settings['chatIntegration']);
-          _showFreeCanvas = _b(settings['showFreeCanvas']);
-          _showBubbleTab = _b(settings['showBubbleTab']);
-          _bubbleReplaySpeed =
-              ((settings['bubbleReplaySpeed'] as num?)?.toInt() ?? 1)
-                  .clamp(1, 8);
-          _bubbleReplayHoldLast = _bOr(settings['bubbleReplayHoldLast'], true);
-          _bubbleReplayAuto = _b(settings['bubbleReplayAuto']);
-          _bubbleAutoNewPage = _b(settings['bubbleAutoNewPage']);
-          _shareCanvas = _b(settings['shareCanvas']);
-          _notebookGlass = _b(settings['notebookStyle']);
-          _panelTransparent = _b(settings['panelTransparent']);
-          _language = (settings['language'] as String?) == 'en' ? 'en' : 'zh';
-          _shortcutsRaw = settings['shortcuts'];
-          _shortcuts = _decodeShortcuts(_shortcutsRaw);
-          _syncTabCount();
-        });
-        // 首次拿到设置: 直接把面板停在当前画布模式对应的 tab(自由涂鸦/活页本),
-        // 让"面板选的模式"和"玻璃实际模式"一致; 不是首次则只在模式变化时跟随。
-        if (!_initialTabApplied) {
-          _initialTabApplied = true;
-          _syncTabToCanvasMode(force: true);
-        } else if (wasInfinite != _infiniteCanvas || wasFreeTab != _showFreeCanvas) {
-          _syncTabToCanvasMode(force: true);
-        }
-        _applyLanguage(_language);
-        // 设置就绪后顺手预取活页本首屏缩略图(一次批量往返),
-        // 等用户切到活页本时直接就有图,连加载态都不用出现。
-        if (_pages.isEmpty && !_pagesLoading) unawaited(_loadPages());
-      } else if (mounted) {
+      if (!mounted || settings.isEmpty) {
         // Windows 管道未就绪时 getSettings 返回空:稍后重试
-        _reloadTimer = Timer(const Duration(seconds: 2), _loadSettings);
+        if (mounted) {
+          _reloadTimer = Timer(const Duration(seconds: 2), _loadSettings);
+        }
+        return;
       }
+      // 快照契约自检(只在完整快照上做; 覆盖层局部推送不适用)。
+      _validateSettingsContract(settings);
+      final wasInfinite = _infiniteCanvas;
+      final wasFreeTab = _showFreeCanvas;
+      setState(() => _mergeSettingsSnapshot(settings, full: true));
+      // 首次拿到设置: 直接把面板停在当前画布模式对应的 tab(自由涂鸦/活页本),
+      // 让"面板选的模式"和"玻璃实际模式"一致; 不是首次则只在模式变化时跟随。
+      if (!_initialTabApplied) {
+        _initialTabApplied = true;
+        _syncTabToCanvasMode(force: true);
+      } else if (wasInfinite != _infiniteCanvas || wasFreeTab != _showFreeCanvas) {
+        _syncTabToCanvasMode(force: true);
+      }
+      _applyLanguage(_language);
+      // 设置就绪后顺手预取活页本首屏缩略图(一次批量往返),
+      // 等用户切到活页本时直接就有图,连加载态都不用出现。
+      if (_pages.isEmpty && !_pagesLoading) unawaited(_loadPages());
     } catch (e) {
       // 桥不可用时退回默认值;FRB 初始化失败也会走这里,打日志便于定位
       // (Rust 符号没导出、库没链接等都会在首次调用时暴露出来)
@@ -191,7 +191,7 @@ extension _SettingsStateUi on _SettingsPageState {
     _settingsLoadGen++;
     // 这是"发出去就不管"的写入:失败只记日志,不该因为桥异常打断 UI
     _bridge.setSetting(key, value).catchError((Object e) {
-      debugPrint('[Settings] set "$key" failed: $e');
+      debugPrint('[Settings] set $key failed: $e');
     });
   }
 
@@ -233,15 +233,12 @@ extension _SettingsStateUi on _SettingsPageState {
           style: TextStyle(fontSize: 14)),
       subtitle: Text(AppLocalizations.of(context)!.whenOff23,
           style: TextStyle(fontSize: 12)),
-      value: _chatIntegration,
+      value: _vBool('chatIntegration'),
       dense: true,
       contentPadding: EdgeInsets.zero,
-      onChanged: (v) {
-        setState(() => _chatIntegration = v);
-        _setSetting('chatIntegration', v);
-      },
+      onChanged: (v) => _writeSetting('chatIntegration', v),
     ));
-    if (!_chatIntegration) {
+    if (!_vBool('chatIntegration')) {
       return Column(crossAxisAlignment: CrossAxisAlignment.start,
           children: [master]);
     }
