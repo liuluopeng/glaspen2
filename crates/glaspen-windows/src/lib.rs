@@ -109,26 +109,28 @@ fn find_settings_window(pid: u32) -> Option<windows::Win32::Foundation::HWND> {
     ctx.1
 }
 
-/// 把面板窗口提到置顶并激活。
+/// 激活面板窗口 —— **它就是普通窗口, 不置顶**。
 ///
-/// 覆盖层是 `WS_EX_TOPMOST` 全屏窗口, 而设置面板(独立进程的普通窗口)默认会被
-/// 压在它下面 —— 开磨砂玻璃时面板直接看不清/点不到, 用户会以为"只有玻璃、
-/// 面板没出来"。
+/// 覆盖层(笔迹层)是 `WS_EX_TOPMOST` 全屏窗口, 永远盖在面板上面: 这样涂鸦能画在
+/// 面板之上、飘渺模式隐藏笔迹也是全屏一致(用户要求「把 Flutter 面板当成普通窗口,
+/// 不要遮挡涂鸦」)。面板本身只做"正常窗口"该做的事: 显示 + 提到其它普通窗口前面 +
+/// 激活。它仍是透明覆盖层下面的一层, 所以覆盖层透明时面板照常可见、可点。
 #[cfg(windows)]
 fn activate_settings_window(hwnd: windows::Win32::Foundation::HWND, pid: u32) {
     use windows::Win32::UI::WindowsAndMessaging::{
-        HWND_TOPMOST, SW_SHOW, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SetForegroundWindow,
+        HWND_NOTOPMOST, SW_SHOW, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetForegroundWindow,
         SetWindowPos, ShowWindow, SwitchToThisWindow,
     };
     unsafe {
+        // 确保没有残留的置顶标记(旧版本升上来时窗口可能还是 topmost)
         let _ = SetWindowPos(
             hwnd,
-            Some(HWND_TOPMOST),
+            Some(HWND_NOTOPMOST),
             0,
             0,
             0,
             0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
         );
         let _ = ShowWindow(hwnd, SW_SHOW);
         // 覆盖层不抢焦点, 正常能被提到前台; 失败也不影响显示(只是不激活)。
@@ -137,10 +139,10 @@ fn activate_settings_window(hwnd: windows::Win32::Foundation::HWND, pid: u32) {
         // (用户按热键就是要看面板), 保证监视线程能把它认作"已激活过"。
         SwitchToThisWindow(hwnd, true);
     }
-    tracing::info!("设置面板窗口已置顶并激活(pid={pid})");
+    tracing::info!("设置面板窗口已激活(普通窗口, pid={pid})");
 }
 
-/// 新拉起的面板: Flutter 窗口要等首帧就绪才创建, 轮询等它出现再置顶(最多 6s)。
+/// 新拉起的面板: Flutter 窗口要等首帧就绪才创建, 轮询等它出现再激活(最多 6s)。
 #[cfg(windows)]
 fn raise_settings_window(pid: u32) {
     for _ in 0..60 {
@@ -150,26 +152,16 @@ fn raise_settings_window(pid: u32) {
             return;
         }
     }
-    tracing::warn!("设置面板窗口 6s 内未出现, 无法置顶(pid={pid})");
+    tracing::warn!("设置面板窗口 6s 内未出现, 无法激活(pid={pid})");
 }
 
-/// 当前活着的面板窗口(隐藏的也算; 可能 0/1 个)。
-#[cfg(windows)]
-fn panel_windows() -> Vec<windows::Win32::Foundation::HWND> {
-    let pids: Vec<u32> = {
-        let mut children = SETTINGS_CHILDREN.lock().unwrap_or_else(|e| e.into_inner());
-        children.retain_mut(|c| !matches!(c.try_wait(), Ok(Some(_))));
-        children.iter().map(std::process::Child::id).collect()
-    };
-    pids.into_iter().filter_map(find_settings_window).collect()
-}
-
-/// 笔落下时把覆盖层挪到"置顶组最前", 抬笔再让面板回到覆盖层上面。
+/// 笔/镜头交互状态变化时同步覆盖层与面板的层级 —— **覆盖层永远在面板上面**。
 ///
-/// 数位板驱动会把笔合成为鼠标事件: 面板在覆盖层上面时, 笔尖/悬停会被面板当成
-/// 鼠标(点按钮、悬停效果)—— 即"在 Flutter 面板里笔变成了鼠标"。覆盖层本来就
-/// 持有全局笔输入(Raw HID)且落笔时会拦截合成鼠标(清 WS_EX_TRANSPARENT), 只要
-/// 落笔期间把它临时抬到面板上面, 合成事件就被覆盖层吃掉, 面板保持纯鼠标交互。
+/// 用户要求: 面板只是普通窗口, 不能遮挡涂鸦; 飘渺模式隐藏笔迹也必须是全屏一致。
+/// 所以这里只在"落笔/悬停"时把覆盖层重新提到置顶组最前(防止被别的 topmost 窗口
+/// 压住), **任何情况下都不再把面板抬到覆盖层上面** —— 面板现在不置顶(见
+/// activate_settings_window), 覆盖层(笔迹层)永远盖着它。
+/// 笔的合成鼠标事件仍由拦截态(清 WS_EX_TRANSPARENT)吃掉, 不依赖 z-order。
 #[cfg(windows)]
 pub(crate) fn set_overlay_above_panel(overlay: windows::Win32::Foundation::HWND, above: bool) {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -180,8 +172,8 @@ pub(crate) fn set_overlay_above_panel(overlay: windows::Win32::Foundation::HWND,
     if ABOVE.swap(above, Ordering::SeqCst) == above {
         return;
     }
-    unsafe {
-        if above {
+    if above {
+        unsafe {
             let _ = SetWindowPos(
                 overlay,
                 Some(HWND_TOPMOST),
@@ -191,24 +183,12 @@ pub(crate) fn set_overlay_above_panel(overlay: windows::Win32::Foundation::HWND,
                 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             );
-        } else {
-            for hwnd in panel_windows() {
-                let _ = SetWindowPos(
-                    hwnd,
-                    Some(HWND_TOPMOST),
-                    0,
-                    0,
-                    0,
-                    0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
-                );
-            }
         }
     }
 }
 
-/// 面板失焦(用户点了别的软件窗口)后自动隐藏: 它是置顶窗口, 不处理会一直挡在
-/// 所有程序最上层。隐藏后按设置热键可再次唤出(show_settings_window 走 raise 路径)。
+/// 面板失焦(用户点了别的软件窗口)后自动隐藏: 用户要求它像普通窗口一样,
+/// 点到别的程序就隐去, 不要一直挡在最上层。隐藏后按设置热键可再次唤出。
 #[cfg(windows)]
 fn monitor_settings_panel(pid: u32) {
     use windows::Win32::UI::WindowsAndMessaging::{
