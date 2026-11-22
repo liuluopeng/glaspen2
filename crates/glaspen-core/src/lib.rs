@@ -51,6 +51,8 @@ pub mod protocol;
 pub mod recording;
 pub mod settings;
 pub mod settings_apply;
+// 设置面板表单元数据(分区/顺序/l10n 键/控件/档位/范围, D11a)
+pub mod settings_form;
 // 面板设置快照构建单源(字段集合/顺序/类型/缺省值/DB 回退, D12)
 pub mod settings_snapshot;
 pub mod state;
