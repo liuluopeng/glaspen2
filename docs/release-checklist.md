@@ -33,9 +33,11 @@ sh scripts/lint.sh
 
 Windows 侧（有真机时）：
 
-- [ ] `cargo check --workspace --exclude glaspen2_installer --all-targets`
+- [ ] `cargo check --workspace --exclude glaspen2_installer --all-targets`（本地/CI 双绿）
 - [ ] 真机跑一遍：面板打开/关闭/重开、笔压、翻页、导出、更新
-- [ ] CI 的 `windows-check` 连续绿后，删除 `continue-on-error`
+- [ ] CI 的 `windows-check` 是**硬门**（已移除 `continue-on-error`）：
+      它红了就说明 cfg(windows) 代码编不过，**不允许打 tag** —— 历史上 v0.6.0
+      的 Windows 侧就是这样带着编译错误发出去的
 
 ## 2. 功能冒烟
 

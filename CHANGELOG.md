@@ -6,6 +6,24 @@
 
 ## 未发布
 
+### 跨平台一致性(单一数据源 + 硬门)
+
+- **面板平台差异单源化**: Flutter 设置面板不再包含任何平台行为分支(default
+  键位/保留组合/强制绑定/修饰键与键盘示意图/字号/功能可用性)。数据统一由
+  `crates/glaspen-core/src/ui.rs` 下发: macOS 走 FRB `uiConfigJson`, Windows 走
+  命名管道 `uiConfig`, 同一份 JSON;新增 `platform_parity_test.dart` 守卫
+  (除桥工厂外出现 `Platform.` 或静默空壳即测试失败)。
+- **Windows 热键表改从 core 取**: `overlay/hotkeys.rs` 删除第二份默认键/保留
+  组合/强制绑定表, 与面板同源; 管道响应由 core 的
+  `pipe_ui_config_response_json` 生成(单测锁住换行/字段形状)。
+- **跨平台设置键归一**: 9 个历史上 Windows 以 camelCase 落库的键统一到 macOS
+  的 snake_case 规范键, 启动时自动合并旧行 —— 跨平台备份/恢复不再静默丢设置。
+- **面板未接入功能显式隐藏**: Windows 尚未实现的反色/翻页动效/页面 PNG·SVG
+  导出/所选 PDF/OCR 搜索由 `uiConfig.features` 隐藏入口, 桥层改为
+  `UnsupportedError`, 杜绝静默 no-op。
+- **Windows 编译硬门**: CI `windows-check` 移除 `continue-on-error`(cfg(windows)
+  代码在 macOS 上根本不编译); 另加 `workflow_dispatch` 便于按分支单独验证。
+
 - **Windows 默认快捷键: 所有动作都有键, 按修饰键分两条家族**
   - 核心/开关类 → `Ctrl+Alt+字母`(两个修饰键, 好按): Z/`/1/V、**设置 D**、
     **退出 ⇧Q**、清空 C、导出 G、复制 SVG S、磨砂玻璃 B、**飘渺画布 X**、

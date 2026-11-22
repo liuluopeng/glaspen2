@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # 手动触发(选分支) —— 只有 main/PR 才会自动跑; 发版前需要单独验证某个分支时用。
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -136,9 +138,9 @@ jobs:
   windows-check:
     runs-on: windows-latest
     timeout-minutes: 45
-    # 新增且尚未在真实 runner 上验证(本机没有 Windows 工具链)。首次跑通后
-    # 请删掉这一行, 让它成为真正的门。
-    continue-on-error: true
+    # **硬门**: Windows 是发布平台之一, cfg(windows) 代码在 macOS 上根本不编译,
+    # 所以这条一旦红了必须修, 不允许 continue-on-error(历史上它红着放过了
+    # 一个 Windows 编不过的 v0.6.0 tag)。
     steps:
       - uses: actions/checkout@v4
 
