@@ -1,3 +1,7 @@
+use glaspen_core::draw_spec::{Dash, DrawCommand, DrawPlan, PaintPass};
+
+use crate::paint_plan;
+
 static STATE: AtomicPtr<OverlayState> = AtomicPtr::new(std::ptr::null_mut());
 
 // ── 全屏透明 overlay 画布(UpdateLayeredWindowIndirect + 32bit BGRA DIB) ──
@@ -174,6 +178,8 @@ impl OverlayCanvas {
     /// 黑白相间虚线段(marching ants 描边, macOS 同款): 黑偶相位白奇相位
     /// 各描一遍, 平头(圆帽会把相邻 1px 黑白段互相吞掉);
     /// offset = 段起点处整笔累计弧长(cairo 每次 stroke 重置相位, 逐段拨)。
+    /// `dash_len` 来自 core DrawPlan 的 [Dash](glaspen_core::draw_spec::Dash)
+    /// (Windows 恒 1.0 视图像素), 本函数只做 cairo 调用。
     fn stroke_outline_seg(
         &mut self,
         x0: f32,
@@ -181,8 +187,12 @@ impl OverlayCanvas {
         x1: f32,
         y1: f32,
         width: f64,
-        offset: f64,
+        dash: Dash,
     ) -> RECT {
+        let Dash {
+            len: dash_len,
+            phase: offset,
+        } = dash;
         let half = (width * 0.5) as f32;
         let rect = RECT {
             left: (x0.min(x1) - half - 1.0).max(0.0) as i32,
@@ -191,11 +201,10 @@ impl OverlayCanvas {
             bottom: (y0.max(y1) + half + 2.0).min(self.h as f32) as i32,
         };
         if let Some(c) = &self.cairo {
-            const DASH: f64 = 1.0;
             c.set_line_cap_butt();
-            c.set_dash(DASH, offset.rem_euclid(2.0 * DASH));
+            c.set_dash(dash_len, offset.rem_euclid(2.0 * dash_len));
             c.stroke_line(x0, y0, x1, y1, width as f32, (0, 0, 0));
-            c.set_dash(DASH, (offset + DASH).rem_euclid(2.0 * DASH));
+            c.set_dash(dash_len, (offset + dash_len).rem_euclid(2.0 * dash_len));
             c.stroke_line(x0, y0, x1, y1, width as f32, (255, 255, 255));
             c.set_dash(0.0, 0.0); // 墨迹本体绝不能被虚线化
             c.set_line_cap_round();
@@ -253,6 +262,84 @@ impl OverlayCanvas {
         }
         let _ = self.draw_soft_line(cx, cy, cx, cy, r.max(0.5));
         dirty
+    }
+
+    /// 执行 core DrawPlan —— **pass 顺序/宽度/透明度/颜色的唯一来源**。
+    ///
+    /// 本函数不再决定「三档阴影 → 描边 → 墨迹」的顺序与宽度(D9c:计划由
+    /// core `draw_spec::plan` 产出,Windows 参数见 crate::paint_plan),只把
+    /// 每条命令翻译成本文件的画法原语。Windows 光栅化差异保留在执行层:
+    /// - 差异 D 描边取相邻两点较粗者(paint_plan::outline_segment_width);
+    /// - 差异 F 墨迹仍是 build_outline 法线轮廓 + 一次填充 + 端点圆点;
+    /// - 差异 K 半径下限 0.5px(paint_plan::command_path);
+    /// - 差异 O 无 cairo 回退仍由各原语内部近似(plan 不驱动回退路径)。
+    fn execute_plan(&mut self, plan: &DrawPlan) {
+        for layer in &plan.layers {
+            // 旧行为:每笔开始处把 canvas.color 设为该笔颜色(无 cairo 回退
+            // 路径的软线用它)。颜色来源 = 计划里该笔的 Fill 命令。
+            if let Some(fill) = layer.iter().find(|c| c.pass == PaintPass::Fill) {
+                self.color = paint_plan::color_u8(fill.color);
+            }
+            for cmd in layer {
+                self.execute_command(plan, cmd);
+            }
+        }
+    }
+
+    /// 执行一条计划命令:点列/宽度/透明度/虚线全部来自计划。
+    fn execute_command(&mut self, plan: &DrawPlan, cmd: &DrawCommand) {
+        let path = paint_plan::command_path(plan, cmd);
+        match cmd.pass {
+            // 阴影层:三档 spread/alpha 由计划的 3 条 Shadow 命令给出
+            // (差异 B:Windows spread 固定视图像素,不随 zoom 缩放)。
+            PaintPass::Shadow => {
+                // < 2 点在旧 fill_stroke_path 里整笔早退(实时首点圆点由 Fill 画)。
+                if path.len() >= 2 {
+                    let spread = paint_plan::shadow_spread(cmd);
+                    let _ = self.stroke_shadow_pass(&path, spread, cmd.alpha);
+                }
+            }
+            // 描边层:相位沿整笔累计弧长连续(cairo 每次 stroke 重置相位)。
+            PaintPass::Outline => {
+                if path.len() < 2 {
+                    return;
+                }
+                let dash = paint_plan::dash(cmd);
+                let mut cum = dash.phase;
+                for i in 1..path.len() {
+                    let Some(width) = paint_plan::outline_segment_width(plan, cmd, i) else {
+                        break;
+                    };
+                    let (x0, y0, _) = path[i - 1];
+                    let (x1, y1, _) = path[i];
+                    let seg_dash = Dash {
+                        len: dash.len,
+                        phase: cum,
+                    };
+                    let _ = self.stroke_outline_seg(x0, y0, x1, y1, width, seg_dash);
+                    let (dx, dy) = (x1 - x0, y1 - y0);
+                    cum += ((dx * dx + dy * dy) as f64).sqrt();
+                }
+            }
+            // 墨迹本体:多边形一次填充 + 首尾圆点(差异 F,Windows 光栅化算法)。
+            // 1 点路径(实时首份报告)只画圆点 = 旧实现的初始点 fill_dot。
+            PaintPass::Fill => {
+                self.color = paint_plan::color_u8(cmd.color);
+                let outline = build_outline(&path);
+                if outline.len() >= 3 {
+                    let _ = self.fill_outline(&outline);
+                }
+                if let Some(&(cx, cy, r)) = path.first() {
+                    let _ = self.fill_dot(cx, cy, r);
+                }
+                if let Some(&(cx, cy, r)) = path.last() {
+                    let _ = self.fill_dot(cx, cy, r);
+                }
+            }
+            // Windows 全仓无橡皮输入路径(审计差异 H);core 的 Erase 只服务
+            // macOS 实时 CLEAR,本 adapter 不会收到。
+            PaintPass::Erase => {}
+        }
     }
 
     /// 填充实心矩形

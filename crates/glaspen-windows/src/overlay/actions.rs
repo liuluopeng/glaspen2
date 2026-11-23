@@ -432,30 +432,26 @@ fn redraw_from_strokes(state: &mut OverlayState) {
     // 网格与分栏是两个独立开关, draw_grid 内部各画各层(无条件调用)
     state.canvas
         .draw_grid(state.draw.show_grid, state.draw.grid_divider);
-    let ol = if state.draw.outline_enabled { 1.0 } else { 0.0 };
-    let z = if infinite_on() { camera().zoom as f32 } else { 1.0 };
-    {
-        let strokes = glaspen_core::STROKES.lock().unwrap_or_else(|e| e.into_inner());
-        for s in strokes.iter() {
-            if s.points.is_empty() {
-                continue;
-            }
-            state.canvas.color = (
-                (s.r * 255.0) as u8,
-                (s.g * 255.0) as u8,
-                (s.b * 255.0) as u8,
-            );
-            // 笔迹存画布坐标:重绘时经镜头变换到视图,线宽同步缩放
-            let path: Vec<(f32, f32, f32)> = s
-                .points
-                .iter()
-                .map(|&(x, y, w, _)| {
-                    let (vx, vy) = view_from_canvas(x, y);
-                    (vx as f32, vy as f32, ((w as f32 * 0.5) * z).max(0.5))
-                })
-                .collect();
-            fill_stroke_path(&mut state.canvas, &path, state.draw.soft_shadow, ol);
-        }
+    // D9c:整页重建的 pass 顺序(逐笔三档阴影 → 描边 → 墨迹)/宽度/透明度/
+    // 颜色全部由 core DrawPlan 决定(Windows 参数见 crate::paint_plan);
+    // 本函数不再自己分层。计划在 STROKES 锁内生成、锁外执行 —— 落笔线程
+    // 不用等一整轮 cairo 光栅化。
+    let plan = {
+        let strokes = glaspen_core::STROKES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        paint_plan::rebuild_plan(
+            &strokes,
+            paint_plan::view(infinite_on(), camera()),
+            state.canvas.w as f64,
+            state.canvas.h as f64,
+            state.draw.soft_shadow,
+            state.draw.outline_enabled,
+        )
+    };
+    match plan {
+        Ok(plan) => state.canvas.execute_plan(&plan),
+        Err(e) => tracing::warn!("整页重建计划生成失败: {e}"),
     }
     draw_minimap(state);
     state.canvas.set_bg_alpha(BG_BLOCK);

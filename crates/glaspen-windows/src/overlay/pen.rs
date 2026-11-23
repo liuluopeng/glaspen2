@@ -44,93 +44,56 @@ fn merge_rect(dirty: &mut Option<RECT>, r: &RECT) {
     }
 }
 
-/// 用给定点列填充整笔轮廓 + 端点圆帽(带可选描边),返回脏矩形
-fn fill_stroke_path(
-    canvas: &mut OverlayCanvas,
-    path: &[(f32, f32, f32)],
-    shadow: bool,
-    ol: f32,
-) -> Option<RECT> {
-    if path.len() < 2 {
-        return None;
-    }
-    let mut dirty: Option<RECT> = None;
-
-    // 软阴影层(最底, macOS 同参数): 三档加宽递减 alpha 的黑影
-    if shadow {
-        const STEPS: [(f64, f64); 3] = [(1.5, 0.20), (3.0, 0.13), (5.0, 0.07)];
-        for (spread, sa) in STEPS {
-            // 无 cairo 回退时不支持半透明, shadow pass 直接返回 None
-            if let Some(rect) = canvas.stroke_shadow_pass(path, spread, sa) {
-                merge_rect(&mut dirty, &rect);
-            }
-        }
-    }
-
-    // 描边层: 黑白相间 1px 虚线(marching ants, macOS 同款)。
-    // 相位沿整笔累计弧长连续 —— 任何背景上恒有一半虚线可见。
-    if ol > 0.0 {
-        let mut cum = 0.0f64;
-        for w in path.windows(2) {
-            let (x0, y0, r0) = w[0];
-            let (x1, y1, r1) = w[1];
-            // 描边直径 = 墨迹直径 + 2·ol(取相邻两点较粗者, 避免细段露墨)
-            let segw = (r0.max(r1) + ol) * 2.0;
-            let rect = canvas.stroke_outline_seg(x0, y0, x1, y1, segw as f64, cum);
-            merge_rect(&mut dirty, &rect);
-            cum += (((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) as f64).sqrt();
-        }
-    }
-
-    // 主体
-    let outline = build_outline(path);
-    if outline.len() >= 3 {
-        let rect = canvas.fill_outline(&outline);
-        merge_rect(&mut dirty, &rect);
-    }
-    if let Some(&(cx, cy, r)) = path.first() {
-        let rect = canvas.fill_dot(cx, cy, r);
-        merge_rect(&mut dirty, &rect);
-    }
-    if let Some(&(cx, cy, r)) = path.last() {
-        let rect = canvas.fill_dot(cx, cy, r);
-        merge_rect(&mut dirty, &rect);
-    }
-    dirty
-}
-
-/// 整笔轮廓重填 + 端点圆帽,返回脏矩形(仅新增段区域)
+/// 整笔轮廓重填 + 端点圆帽,返回脏矩形(仅新增段区域)。
+///
+/// D9c:pass 顺序/三档阴影/描边宽度/虚线相位/颜色全部由 core DrawPlan 决定
+/// (见 crate::paint_plan),本函数只负责两件 adapter 的事:
+/// 1. 把整条在写路径喂给计划 —— 与旧实现一致,每次报告重填整条路径
+///    (在写笔迹尚未进 STROKES,计划里只有 `live` 一笔);
+/// 2. 保留旧增量脏区语义 —— 公式仍是 core `PlanScope::WindowsLive`,adapter
+///    只决定「传新增点 + 前一个衔接点」这一小段,不重刷旧区域。
+///
+/// 初始点圆帽(首份报告只有 1 点时旧实现的 fill_dot)现在由计划的 Fill 命令
+/// 统一画出:阴影/描边命令在 < 2 点时由执行层跳过,Fill 画首尾圆点。
 fn redraw_pen(state: &mut OverlayState, new_pts: &[(f32, f32, f32)]) -> Option<RECT> {
-    let ol = if state.draw.outline_enabled { 1.0 } else { 0.0 };
-
-    if state.pen_path.is_empty() && !new_pts.is_empty() {
-        let (cx, cy, r) = new_pts[0];
-        let _ = state.canvas.fill_dot(cx, cy, r);
-    }
     let new_start = state.pen_path.len();
     state.pen_path.extend_from_slice(new_pts);
     let new_end = state.pen_path.len();
 
-    // 整笔轮廓填充(单轮廓,非零环绕)+ 可选描边层
-    let sh = state.draw.soft_shadow;
-    fill_stroke_path(&mut state.canvas, &state.pen_path, sh, ol);
-
-    // dirty 只保留新增段区域(旧区域内容未变)
-    let mut new_dirty: Option<RECT> = None;
-    for &(px, py, r) in &state.pen_path[new_start.saturating_sub(1)..new_end] {
-        // 脏区含软阴影余量(最宽一档 spread=5):少了它阴影外缘不会刷新,
-        // 书写中阴影会残缺(抬笔后整页重绘才补齐)
-        let shadow_pad = if state.draw.soft_shadow { 5 } else { 0 };
-        let rr = r.ceil() as i32 + 1 + ol as i32 + shadow_pad;
-        let rect = RECT {
-            left: (px as i32 - rr).max(0),
-            top: (py as i32 - rr).max(0),
-            right: (px as i32 + rr + 1).min(state.canvas.w),
-            bottom: (py as i32 + rr + 1).min(state.canvas.h),
-        };
-        merge_rect(&mut new_dirty, &rect);
+    let shadow = state.draw.soft_shadow;
+    let outline = state.draw.outline_enabled;
+    // 旧 canvas.color 的笔色来源(实时路径尚未提交,颜色不在 Stroke 里)。
+    let color = (state.draw.pen_r, state.draw.pen_g, state.draw.pen_b);
+    // pen_path 是「视图坐标 + 半径」;plan 要「视图坐标 + 直径」,恒等视图映射。
+    let points = paint_plan::view_points(&state.pen_path);
+    match paint_plan::live_plan(
+        &points,
+        color,
+        state.canvas.w,
+        state.canvas.h,
+        shadow,
+        outline,
+    ) {
+        Ok(plan) => state.canvas.execute_plan(&plan),
+        Err(e) => tracing::warn!("实时笔迹计划生成失败: {e}"),
     }
-    new_dirty
+
+    // dirty 只保留新增段区域(旧区域内容未变)。第 3 参数起 = 新增点 + 前一个
+    // 衔接点,与旧实现 `[new_start.saturating_sub(1)..new_end]` 完全同段。
+    let from = new_start.saturating_sub(1);
+    paint_plan::live_dirty(
+        &points[from..new_end],
+        state.canvas.w,
+        state.canvas.h,
+        shadow,
+        outline,
+    )
+    .map(|d| RECT {
+        left: d.left,
+        top: d.top,
+        right: d.right,
+        bottom: d.bottom,
+    })
 }
 
 /// 处理一个采样点:喂 core 模型器会话(D9b 单源),输出平滑点列后轮廓填充。

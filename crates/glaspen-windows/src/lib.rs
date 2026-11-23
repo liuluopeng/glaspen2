@@ -6,6 +6,11 @@ pub mod overlay;
 /// 包装。不依赖 Win32,故在 macOS 上也能编译并跑单测。
 pub mod pen_modeler;
 
+/// Windows 覆盖层的绘制计划适配层(D9c 第一步):把 core `draw_spec::plan`
+/// 的 Windows 参数与「计划 → 画法原语」的纯映射集中在这里(不依赖 Win32,
+/// 可在 macOS 上单测命令序列/几何)。overlay 的 canvas/pen/actions 只执行计划。
+pub mod paint_plan;
+
 /// 「立即更新」待安装的安装包路径(管道 applyUpdate 记录,进程收尾时消费)
 #[cfg(windows)]
 static PENDING_INSTALLER: std::sync::Mutex<Option<std::path::PathBuf>> =
