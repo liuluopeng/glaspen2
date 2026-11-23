@@ -81,38 +81,6 @@ static void update_menu_texts(void) {
 // 内嵌附件图(attributedTitle + NSTextAttachment)任何系统版本都画。
 // 颜色 = 圆点色块(一眼可见);粗细 = 横线粗细(粗细预设的直观映射)。
 
-static NSImage* gl_color_dot_image_legacy(NSColor *color) {
-    const CGFloat s = 13.0;
-    NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(s, s)];
-    [image lockFocus];
-    NSBezierPath *dot = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(0.5, 0.5, s - 1, s - 1)];
-    [color setFill];
-    [dot fill];
-    // 细描边:白/浅色圆点在白色菜单上也有一圈轮廓
-    [[NSColor colorWithWhite:0 alpha:0.3] setStroke];
-    [dot setLineWidth:1.0];
-    [dot stroke];
-    [image unlockFocus];
-    return image;
-}
-
-static NSImage* gl_width_line_image_legacy(double scale) {
-    const CGFloat w = 16.0, h = 13.0;
-    NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(w, h)];
-    [image lockFocus];
-    // 预设 0.15x..3.5x → 线宽 1.5..5.5pt(开方缓增,细档之间也能看出差别)
-    CGFloat lineW = (CGFloat)MIN(5.5, MAX(1.5, 1.3 + sqrt(scale) * 2.2));
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    [path setLineWidth:lineW];
-    [path setLineCapStyle:NSLineCapStyleRound];
-    [path moveToPoint:NSMakePoint(2, h / 2)];
-    [path lineToPoint:NSMakePoint(w - 2, h / 2)];
-    [[[NSColor labelColor] colorWithAlphaComponent:0.9] setStroke];
-    [path stroke];
-    [image unlockFocus];
-    return image;
-}
-
 static NSAttributedString* gl_menu_text(NSImage *icon, NSString *name) {
     NSTextAttachment *att = [[NSTextAttachment alloc] init];
     att.image = icon;
@@ -1485,21 +1453,3 @@ static void sync_settings_panel(void) {
     glaspen2_notify_settings_changed();
 }
 
-
-// S3b-1 临时 parity 探针: 逐字节比较旧 ObjC 图标与 Swift 图标(TIFF 表示)。
-// 旧 *_legacy 函数仅供本探针使用, S3b-2 删除; 正常启动路径零调用。
-int glaspen2_macos_swift_icon_parity(void) {
-    NSColor *color = [NSColor redColor];
-    NSImage *oldDot = gl_color_dot_image_legacy(color);
-    NSImage *newDot = [MenuIconFactory colorDotWithColor:color];
-    NSImage *oldLine = gl_width_line_image_legacy(1.0);
-    NSImage *newLine = [MenuIconFactory widthLineWithScale:1.0];
-    NSData *a = [oldDot TIFFRepresentation];
-    NSData *b = [newDot TIFFRepresentation];
-    NSData *c = [oldLine TIFFRepresentation];
-    NSData *d = [newLine TIFFRepresentation];
-    BOOL dotSame = (a != nil && b != nil && [a isEqualToData:b]);
-    BOOL lineSame = (c != nil && d != nil && [c isEqualToData:d]);
-    NSLog(@"[swift-s3b-probe] colorDot same=%d widthLine same=%d", dotSame, lineSame);
-    return (dotSame && lineSame) ? 0 : 1;
-}
