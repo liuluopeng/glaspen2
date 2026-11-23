@@ -140,6 +140,11 @@ extern int glaspen2_stroke_bbox(double *x_min, double *y_min, double *x_max, dou
 extern void glaspen2_save_svg(void);
 extern char* glaspen2_get_cropped_svg(void);
 extern void glaspen2_free_c_string(char *ptr);
+// D9c 实时绘制计划桥(core export/mod.rs): 本段笔迹 JSON → 单行 DrawPlan JSON
+// (commands / dirty / seam; 或 {"error":...}), 永不 NULL;
+// 返回值用 glaspen2_free_c_string 释放。ObjC 侧光栅化见 parts/panel.m 的
+// gl_live_plan_draw_segment(失败回退旧逐段自绘)。
+extern char* glaspen2_live_plan_json(const char *input);
 // D10b 文案桥(core/i18n.rs): 按稳定 key 取当前语言文案, 未知 key 回显 key
 // 本身(便于发现拼错), 返回缓冲用 glaspen2_free_c_string 释放; 每次调用现查
 // 语言, 因此切换语言后新提示/菜单立即生效(见 gl_text/gl_textf)。
