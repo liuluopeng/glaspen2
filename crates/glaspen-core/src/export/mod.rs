@@ -11,8 +11,9 @@
 
 use crate::camera::{Camera, ZoomOutcome};
 use crate::draw_spec::{
-    Dash, DrawCommand, DrawPlan, OUTLINE_COLORS, OutlineParams, PaintPass, PassOrder, PlanError,
-    PlanParams, PlanScope, Rect, ShadowParams, Vec2, ViewTransform, plan as draw_plan,
+    Color, Dash, DrawCommand, DrawPlan, LiveStroke, OUTLINE_COLORS, OutlineParams, PaintPass,
+    PassOrder, PlanError, PlanParams, PlanScope, Rect, ShadowParams, Vec2, ViewTransform,
+    plan as draw_plan,
 };
 use crate::grid::{GridLines, GridParams, Segment};
 pub(crate) use crate::{
@@ -788,6 +789,348 @@ fn rasterize_macos_command(
         }
         // 整页重建计划里不会出现 Erase(被擦除的笔迹此时已从 STROKES 删除)。
         PaintPass::Erase => {}
+    }
+}
+
+// ── macOS 实时绘制计划 FFI(D9c 剩余:core 出计划, ObjC 光栅化) ────────
+//
+// macOS 实时路径(panel.m raw_draw_dot/raw_draw_segment)目前逐段自绘;D9c 把
+// 它接到 core `draw_spec::plan(MacosLive)` 需要一条 JSON 边界。本函数是该边界
+// 的 **core 侧半成品**:只产出计划(命令 / 脏区 / 接缝几何),不接线 ObjC、
+// 不改像素;光栅化与接缝重画仍由 adapter 执行(见 draw_spec 模块文档
+// 「plan 不建模的」第 1 条)。Windows 同进程直调 core,不经此 JSON。
+//
+// 输入(单个 UTF-8 JSON 字符串;NULL / 非法 UTF-8 / 非法 JSON / 字段不合法
+// 都回 `{"error":"..."}`):
+//
+// ```text
+// {
+//   "points": [[x, y, width], ...],  // 必填;本次要画的实时点列(画布/视图逻辑
+//                                    // 坐标 + 墨迹直径,逻辑点)。也接受
+//                                    // [x,y,width,t] 四元组(t 本层忽略);
+//                                    // width 必须有限且 >= 0。
+//   "seam": [x, y],                  // 可选;上上采样点 P_{i-2}(逻辑坐标),配合
+//                                    // points 首点 P_{i-1} 产出接缝重绘几何
+//                                    // (见输出 seam)。不传时从点列自身推导。
+//   "params": {                      // 必填对象(含必填 viewport)
+//     "viewport": [w, h],            // 必填;表面尺寸(表面像素),脏区上限
+//     "scale": 2.0,                  // 表面倍率(backingScaleFactor;> 0,缺省 1)
+//     "zoom": 1.0,                   // 视图缩放(> 0;缺省 1;实时路径通常 1)
+//     "pan": [0.0, 0.0],             // 视图平移(逻辑点;缺省 [0, 0])
+//     "shadow": true,                // 软阴影三档(缺省 false)
+//     "outline": true,               // marching ants 描边(缺省 false)
+//     "eraser": false,               // 实时橡皮(缺省 false)
+//     "alpha": 1.0,                  // 整体不透明度(缺省 1;plan 内钳到 0..=1)
+//     "arc_len_start": 7.5,          // 整笔已画弧长(逻辑点;× scale = 描边起始
+//                                    // 相位;缺省 0)
+//     "color": [0.1, 0.2, 0.3]       // 落笔色 0..1(缺省黑;逐通道钳制)
+//   }
+// }
+// ```
+//
+// 输出(单行 JSON,永不 NULL):
+//
+// ```text
+// {
+//   "commands": [                    // DrawPlan::layers 按层展开;数组顺序即绘制
+//                                    // 顺序(层边界见 PassOrder::MacosCommitted)
+//     {"layer": 0, "pass": "shadow|outline|fill|erase",
+//      "stroke_index": 0, "stroke_id": 0, "live": true,
+//      "color": [r, g, b], "alpha": 0.2, "width_delta": 3.0,
+//      "dash": null,                // 仅 outline:{"len": 2.0, "phase": 15.0}
+//      "points": [[x, y, 有效宽度], ...]}   // 表面像素;有效宽度 = 点宽 +
+//                                           // width_delta(Shadow/Outline 已含)
+//   ],
+//   "dirty": {"x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0},  // 表面像素;MacosLive
+//                                    // 增量脏区(plan 单源公式,已并集 + 截到视口)
+//   "seam": null | {"from": [x, y], "to": [x, y], "width": w}
+//                                    // 表面像素;接缝重绘(panel.m:797-806):
+//                                    // 用墨迹色把 from→to(宽 width)重画一遍,
+//                                    // 盖回描边压在已干墨迹上的痕迹。
+//                                    // 仅描边开启且存在上一段时给出。
+// }
+// ```
+
+/// 实时计划输入解析结果(JSON → core 类型;不把 serde 渗进 draw_spec)。
+struct MacosLiveInput {
+    points: Vec<(f64, f64, f64, f64)>,
+    seam: Option<(f64, f64)>,
+    view: ViewTransform,
+    viewport: Rect,
+    shadow: bool,
+    outline: bool,
+    eraser: bool,
+    alpha: f64,
+    arc_len_start: f64,
+    color: Color,
+}
+
+fn live_plan_number(value: &serde_json::Value, what: &str) -> Result<f64, String> {
+    value
+        .as_f64()
+        .filter(|number| number.is_finite())
+        .ok_or_else(|| format!("{what} 必须是有限数字"))
+}
+
+fn live_plan_pair(value: &serde_json::Value, what: &str) -> Result<(f64, f64), String> {
+    let array = value
+        .as_array()
+        .filter(|array| array.len() == 2)
+        .ok_or_else(|| format!("{what} 必须是 [x, y] 二元数组"))?;
+    Ok((
+        live_plan_number(&array[0], &format!("{what}[0]"))?,
+        live_plan_number(&array[1], &format!("{what}[1]"))?,
+    ))
+}
+
+fn live_plan_bool(
+    params: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<bool, String> {
+    match params.get(key) {
+        None => Ok(false),
+        Some(value) => value
+            .as_bool()
+            .ok_or_else(|| format!("params.{key} 必须是布尔值")),
+    }
+}
+
+/// 把 FFI 输入 JSON 解析为 [MacosLiveInput];schema 见 [glaspen2_live_plan_json] 注释。
+fn parse_macos_live_input(input: &str) -> Result<MacosLiveInput, String> {
+    let root: serde_json::Value =
+        serde_json::from_str(input).map_err(|err| format!("输入不是合法 JSON: {err}"))?;
+    let object = root
+        .as_object()
+        .ok_or_else(|| "输入必须是 JSON 对象".to_string())?;
+
+    let points = object
+        .get("points")
+        .ok_or_else(|| "缺少 points 点列".to_string())?
+        .as_array()
+        .ok_or_else(|| "points 必须是数组".to_string())?
+        .iter()
+        .enumerate()
+        .map(|(index, point)| {
+            let array = point
+                .as_array()
+                .filter(|array| array.len() == 3 || array.len() == 4)
+                .ok_or_else(|| format!("points[{index}] 必须是 [x,y,width] 或 [x,y,width,t]"))?;
+            let width = live_plan_number(&array[2], &format!("points[{index}].width"))?;
+            if width < 0.0 {
+                return Err(format!("points[{index}].width 不能为负"));
+            }
+            let time = match array.get(3) {
+                Some(value) => live_plan_number(value, &format!("points[{index}].t"))?,
+                None => 0.0,
+            };
+            Ok((
+                live_plan_number(&array[0], &format!("points[{index}].x"))?,
+                live_plan_number(&array[1], &format!("points[{index}].y"))?,
+                width,
+                time,
+            ))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let seam = match object.get("seam") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(value) => Some(live_plan_pair(value, "seam")?),
+    };
+
+    let params = object
+        .get("params")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "缺少 params 对象(至少要有 viewport)".to_string())?;
+    let viewport = params
+        .get("viewport")
+        .ok_or_else(|| "缺少 params.viewport 表面尺寸".to_string())?;
+    let (viewport_w, viewport_h) = live_plan_pair(viewport, "params.viewport")?;
+    if viewport_w < 0.0 || viewport_h < 0.0 {
+        return Err("params.viewport 尺寸不能为负".to_string());
+    }
+
+    let number = |key: &str, default: f64| -> Result<f64, String> {
+        match params.get(key) {
+            None => Ok(default),
+            Some(value) => live_plan_number(value, &format!("params.{key}")),
+        }
+    };
+    let scale = number("scale", 1.0)?;
+    let zoom = number("zoom", 1.0)?;
+    if scale <= 0.0 {
+        return Err("params.scale 必须 > 0".to_string());
+    }
+    if zoom <= 0.0 {
+        return Err("params.zoom 必须 > 0".to_string());
+    }
+    let pan = match params.get("pan") {
+        None => (0.0, 0.0),
+        Some(value) => live_plan_pair(value, "params.pan")?,
+    };
+    let alpha = number("alpha", 1.0)?;
+    let arc_len_start = number("arc_len_start", 0.0)?;
+    let color = match params.get("color") {
+        None => Color::BLACK,
+        Some(value) => {
+            let array = value
+                .as_array()
+                .filter(|array| array.len() == 3)
+                .ok_or_else(|| "params.color 必须是 [r, g, b] 三元数组".to_string())?;
+            let channel = |index: usize, name: &str| -> Result<f64, String> {
+                Ok(
+                    live_plan_number(&array[index], &format!("params.color.{name}"))?
+                        .clamp(0.0, 1.0),
+                )
+            };
+            Color::new(channel(0, "r")?, channel(1, "g")?, channel(2, "b")?)
+        }
+    };
+
+    Ok(MacosLiveInput {
+        points,
+        seam,
+        view: ViewTransform::new(Vec2::new(pan.0, pan.1), zoom, scale),
+        viewport: Rect::new(0.0, 0.0, viewport_w, viewport_h),
+        shadow: live_plan_bool(params, "shadow")?,
+        outline: live_plan_bool(params, "outline")?,
+        eraser: live_plan_bool(params, "eraser")?,
+        alpha,
+        arc_len_start,
+        color,
+    })
+}
+
+fn macos_live_pass_name(pass: PaintPass) -> &'static str {
+    match pass {
+        PaintPass::Shadow => "shadow",
+        PaintPass::Outline => "outline",
+        PaintPass::Fill => "fill",
+        PaintPass::Erase => "erase",
+    }
+}
+
+/// 接缝重绘几何(plan 不建模,见 draw_spec 模块文档「plan 不建模的」第 1 条)。
+///
+/// 语义 = panel.m:797-806:每画完一段,把**上一段**墨迹按该段终点宽度重画一遍,
+/// 恢复「描边垫底、墨迹在上」的层级。显式 seam(P_{i-2})时上一段 = seam→points[0]
+/// (本次点列至少 2 点,即画的是线段而不是落笔圆点);否则点列自身为完整笔迹时
+/// 取 points[n-3]→points[n-2]。输出表面像素。
+fn macos_live_seam_json(plan: &DrawPlan, parsed: &MacosLiveInput) -> serde_json::Value {
+    if parsed.eraser || !parsed.outline {
+        return serde_json::Value::Null;
+    }
+    let points = &plan.points;
+    let pair = match parsed.seam {
+        Some((x, y)) if points.len() >= 2 => {
+            let from = parsed.view.map(Vec2::new(x, y));
+            from.is_finite().then(|| (from, points[0]))
+        }
+        None if points.len() >= 3 => Some((points[points.len() - 3].pos, points[points.len() - 2])),
+        _ => None,
+    };
+    let Some((from, to)) = pair else {
+        return serde_json::Value::Null;
+    };
+    serde_json::json!({
+        "from": [from.x, from.y],
+        "to": [to.pos.x, to.pos.y],
+        "width": to.width,
+    })
+}
+
+/// DrawPlan → 单行 JSON(命令流展开 / 脏区 / 接缝几何;schema 见 FFI 注释)。
+fn macos_live_plan_json(plan: &DrawPlan, parsed: &MacosLiveInput) -> String {
+    let mut commands = Vec::with_capacity(plan.command_count());
+    for (layer, layer_commands) in plan.layers.iter().enumerate() {
+        for command in layer_commands {
+            let points: Vec<serde_json::Value> = plan.points[command.points.clone()]
+                .iter()
+                .map(|point| {
+                    serde_json::json!([point.pos.x, point.pos.y, point.width + command.width_delta])
+                })
+                .collect();
+            commands.push(serde_json::json!({
+                "layer": layer,
+                "pass": macos_live_pass_name(command.pass),
+                "stroke_index": command.stroke_index,
+                "stroke_id": command.stroke_id,
+                "live": command.live,
+                "color": [command.color.r, command.color.g, command.color.b],
+                "alpha": command.alpha,
+                "width_delta": command.width_delta,
+                "dash": match command.dash {
+                    Some(dash) => serde_json::json!({ "len": dash.len, "phase": dash.phase }),
+                    None => serde_json::Value::Null,
+                },
+                "points": points,
+            }));
+        }
+    }
+    serde_json::json!({
+        "commands": commands,
+        "dirty": {
+            "x": plan.dirty.x,
+            "y": plan.dirty.y,
+            "w": plan.dirty.w,
+            "h": plan.dirty.h,
+        },
+        "seam": macos_live_seam_json(plan, parsed),
+    })
+    .to_string()
+}
+
+/// 输入 JSON → MacosLive 计划单行 JSON;失败返回 error 文本描述。
+fn macos_live_plan_text(input: &str) -> Result<String, String> {
+    let parsed = parse_macos_live_input(input)?;
+    let mut params = PlanParams::new(parsed.view, parsed.viewport);
+    params.order = PassOrder::MacosCommitted;
+    params.scope = PlanScope::MacosLive;
+    params.alpha = parsed.alpha;
+    params.eraser = parsed.eraser;
+    if parsed.shadow {
+        params.shadow = Some(ShadowParams::macos(&parsed.view));
+    }
+    if parsed.outline {
+        params.outline = Some(OutlineParams::macos_live(
+            parsed.view.scale,
+            parsed.arc_len_start,
+        ));
+    }
+    params.live = Some(LiveStroke {
+        points: &parsed.points,
+        color: parsed.color,
+    });
+    let plan = draw_plan(&[], &params).map_err(|err| format!("计划生成失败: {err}"))?;
+    Ok(macos_live_plan_json(&plan, &parsed))
+}
+
+/// 返回 JSON 字符串的 C 指针;serde_json 输出不含 NUL,真正失败时回静态 error。
+fn return_json_c_string(text: String) -> *mut c_char {
+    match CString::new(text) {
+        Ok(string) => string.into_raw(),
+        Err(_) => CString::new(r#"{"error":"实时绘制计划响应编码失败"}"#)
+            .expect("静态 error JSON 不含 NUL")
+            .into_raw(),
+    }
+}
+
+/// macOS 实时绘制计划:输入 JSON → 单行计划 JSON(schema 见上方注释)。
+///
+/// 单 C 参数,永不返回 NULL:NULL / 非法 UTF-8 / 非法 JSON / 非法字段 / plan
+/// 拒绝(如 scale 非正)一律回 `{"error":"..."}`。返回值用
+/// [glaspen2_free_c_string] 释放;ObjC 侧接线(光栅化 + 接缝重画)尚未做,
+/// 本函数暂时只有测试调用方。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_live_plan_json(input: *const c_char) -> *mut c_char {
+    let Some(input) = (unsafe { borrow_cstr(input) }) else {
+        return return_json_c_string(
+            serde_json::json!({ "error": "实时绘制计划缺少 JSON 输入(或不是合法 UTF-8)" })
+                .to_string(),
+        );
+    };
+    match macos_live_plan_text(input) {
+        Ok(text) => return_json_c_string(text),
+        Err(message) => return_json_c_string(serde_json::json!({ "error": message }).to_string()),
     }
 }
 
@@ -2472,6 +2815,197 @@ mod tests {
         .unwrap();
         assert!(plan.layers.is_empty());
         assert!(plan.points.is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // D9c 剩余:macOS 实时计划 FFI(core 出计划;ObjC 接线仍未做)
+    // ------------------------------------------------------------------
+
+    fn live_plan_text(input: &str) -> String {
+        let input = CString::new(input).expect("测试 JSON 不含 NUL");
+        let pointer = glaspen2_live_plan_json(input.as_ptr());
+        assert!(!pointer.is_null(), "FFI 必须永不返回 NULL");
+        let text = unsafe { CStr::from_ptr(pointer) }
+            .to_string_lossy()
+            .into_owned();
+        glaspen2_free_c_string(pointer);
+        text
+    }
+
+    fn live_plan_value(input: &str) -> serde_json::Value {
+        let text = live_plan_text(input);
+        serde_json::from_str(&text).unwrap_or_else(|err| panic!("计划 JSON 不合法: {err}: {text}"))
+    }
+
+    fn live_plan_approx(actual: &serde_json::Value, expected: f64) {
+        let actual = actual
+            .as_f64()
+            .unwrap_or_else(|| panic!("不是数字: {actual}"));
+        assert!(
+            (actual - expected).abs() < 1e-9,
+            "actual={actual} expected={expected}"
+        );
+    }
+
+    /// 3 点实时序列:命令流形状(层序 / pass 序 / 点表 / 有效宽度)、脏区、接缝几何。
+    #[test]
+    fn live_plan_ffi_roundtrip_three_point_sequence() {
+        let value = live_plan_value(
+            r#"{"points":[[10,10,4],[20,10,4],[30,10,4]],"params":{"viewport":[200,100],"scale":2.0,"shadow":true,"outline":true,"arc_len_start":7.5,"color":[1,0,0]}}"#,
+        );
+        let commands = value["commands"].as_array().expect("commands 必须是数组");
+        // MacosCommitted:层 0 = 三档阴影(实时只有一笔),层 1 = 描边 + 墨迹。
+        assert_eq!(commands.len(), 5);
+        let passes: Vec<&str> = commands
+            .iter()
+            .map(|command| command["pass"].as_str().expect("pass 必须是字符串"))
+            .collect();
+        assert_eq!(passes, ["shadow", "shadow", "shadow", "outline", "fill"]);
+        let layers: Vec<u64> = commands
+            .iter()
+            .map(|command| command["layer"].as_u64().expect("layer 必须是整数"))
+            .collect();
+        assert_eq!(layers, [0, 0, 0, 1, 1]);
+        // 每个命令都是实时命令,带同一组 3 个表面点(scale 2 → 20/40/60)。
+        for command in commands {
+            assert_eq!(command["live"], true);
+            assert_eq!(command["stroke_index"], 0);
+            assert_eq!(command["stroke_id"], 0);
+            let points = command["points"].as_array().expect("points 必须是数组");
+            assert_eq!(points.len(), 3);
+            live_plan_approx(&points[0][0], 20.0);
+            live_plan_approx(&points[0][1], 20.0);
+            live_plan_approx(&points[2][0], 60.0);
+        }
+        // 阴影:width_delta = 2 × spread(spread = 档位 × factor 2);点宽 8。
+        for (command, expected) in commands[..3].iter().zip([6.0, 12.0, 20.0]) {
+            live_plan_approx(&command["width_delta"], expected);
+            live_plan_approx(&command["points"][0][2], 8.0 + expected);
+        }
+        // 脏区 = 三点按「半宽 4 + (AA 1.5 + 阴影 5) × 2 = 17」外扩后的并集。
+        let dirty = &value["dirty"];
+        live_plan_approx(&dirty["x"], 3.0);
+        live_plan_approx(&dirty["y"], 3.0);
+        live_plan_approx(&dirty["w"], 74.0);
+        live_plan_approx(&dirty["h"], 34.0);
+        // 墨迹:颜色透传、无虚线;描边:相位接续 = arc_len_start(7.5)× scale 2。
+        let outline = &commands[3];
+        live_plan_approx(&outline["width_delta"], 4.0);
+        live_plan_approx(&outline["dash"]["len"], 2.0);
+        live_plan_approx(&outline["dash"]["phase"], 15.0);
+        let fill = &commands[4];
+        assert_eq!(fill["color"], serde_json::json!([1.0, 0.0, 0.0]));
+        live_plan_approx(&fill["alpha"], 1.0);
+        live_plan_approx(&fill["width_delta"], 0.0);
+        assert_eq!(fill["dash"], serde_json::Value::Null);
+        // 接缝重绘:3 点自身 → 上一段 = P0→P1,宽 = P1 墨迹宽(表面 8)。
+        let seam = &value["seam"];
+        assert_eq!(seam["from"], serde_json::json!([20.0, 20.0]));
+        assert_eq!(seam["to"], serde_json::json!([40.0, 20.0]));
+        live_plan_approx(&seam["width"], 8.0);
+    }
+
+    /// 相位接续参数透传 + 显式 seam(P_{i-2});无描边时 seam 恒 null。
+    #[test]
+    fn live_plan_ffi_phase_passthrough_and_explicit_seam() {
+        let value = live_plan_value(
+            r#"{"points":[[10,10,4],[20,10,4]],"seam":[4,5],"params":{"viewport":[200,100],"scale":2.0,"outline":true,"arc_len_start":7.5}}"#,
+        );
+        let commands = value["commands"].as_array().expect("commands 必须是数组");
+        assert_eq!(commands.len(), 2, "只有描边 + 墨迹两层命令");
+        let outline = &commands[0];
+        assert_eq!(outline["pass"], "outline");
+        // pad / dash_len 都 × scale;起始相位 = 已画弧长 7.5 × scale 2。
+        live_plan_approx(&outline["width_delta"], 4.0);
+        live_plan_approx(&outline["dash"]["len"], 2.0);
+        live_plan_approx(&outline["dash"]["phase"], 15.0);
+        // 显式 seam = P_{i-2}(4,5)→表面 (8,10);to = 首点 P_{i-1},宽 = P_{i-1} 墨迹宽。
+        let seam = &value["seam"];
+        assert_eq!(seam["from"], serde_json::json!([8.0, 10.0]));
+        assert_eq!(seam["to"], serde_json::json!([20.0, 20.0]));
+        live_plan_approx(&seam["width"], 8.0);
+
+        // 描边关闭:没有接缝重绘,只剩墨迹命令。
+        let value = live_plan_value(
+            r#"{"points":[[10,10,4],[20,10,4]],"seam":[4,5],"params":{"viewport":[200,100],"scale":2.0}}"#,
+        );
+        assert_eq!(value["commands"].as_array().expect("数组").len(), 1);
+        assert_eq!(value["commands"][0]["pass"], "fill");
+        assert_eq!(value["seam"], serde_json::Value::Null);
+    }
+
+    /// 非法输入一律 error JSON、永不 NULL、不 panic、单行合法 JSON。
+    #[test]
+    fn live_plan_ffi_invalid_input_returns_error_json() {
+        let invalid_inputs = [
+            "not json",
+            r#"{"points":[[NaN,10,4]],"params":{"viewport":[200,100]}}"#,
+            r#"{"points":[[10,Infinity,4]],"params":{"viewport":[200,100]}}"#,
+            r#"{"points":[[1e400,10,4]],"params":{"viewport":[200,100]}}"#,
+            r#"{"points":[[10,10,-4]],"params":{"viewport":[200,100]}}"#,
+            r#"{"points":{},"params":{"viewport":[200,100]}}"#,
+            r#"{"points":[[10,10]],"params":{"viewport":[200,100]}}"#,
+            r#"{"points":[]}"#,
+            r#"{"points":[[10,10,4]],"params":{}}"#,
+            r#"{"points":[[10,10,4]],"params":{"viewport":[200,100],"scale":0}}"#,
+            r#"{"points":[[10,10,4]],"params":{"viewport":[200,100],"zoom":-1}}"#,
+            r#"{"points":[[10,10,4]],"params":{"viewport":[200,100],"alpha":"1"}}"#,
+            "[]",
+        ];
+        for input in invalid_inputs {
+            let text = live_plan_text(input);
+            assert!(!text.contains('\n'), "error JSON 也必须单行: {text}");
+            let value: serde_json::Value = serde_json::from_str(&text)
+                .unwrap_or_else(|err| panic!("error JSON 非法: {err}: {text}"));
+            assert!(
+                value["error"].is_string(),
+                "非法输入必须回 error JSON: input={input} output={text}"
+            );
+        }
+
+        // NULL 指针 / 非 UTF-8 输入:同样 error JSON,不 NULL、不崩溃。
+        let pointer = glaspen2_live_plan_json(std::ptr::null());
+        assert!(!pointer.is_null(), "NULL 输入也必须返回 error JSON");
+        let text = unsafe { CStr::from_ptr(pointer) }
+            .to_string_lossy()
+            .into_owned();
+        glaspen2_free_c_string(pointer);
+        assert!(text.contains("error"), "NULL 输入应回 error: {text}");
+
+        let invalid_utf8 = CString::new(vec![0xff, b'{', b'}']).expect("无 NUL");
+        let pointer = glaspen2_live_plan_json(invalid_utf8.as_ptr());
+        assert!(!pointer.is_null(), "非 UTF-8 输入也必须返回 error JSON");
+        let text = unsafe { CStr::from_ptr(pointer) }
+            .to_string_lossy()
+            .into_owned();
+        glaspen2_free_c_string(pointer);
+        assert!(text.contains("error"), "非 UTF-8 输入应回 error: {text}");
+    }
+
+    /// 成功/失败输出都是单行 JSON;空点列是合法输入(空计划、空脏区、无接缝)。
+    #[test]
+    fn live_plan_ffi_output_is_single_line() {
+        let inputs = [
+            r#"{"points":[],"params":{"viewport":[200,100]}}"#,
+            r#"{"points":[[10,10,4]],"params":{"viewport":[200,100],"scale":2.0,"shadow":true,"outline":true}}"#,
+            r#"{"points":[[10,10,4]],"params":{"viewport":[200,100],"eraser":true}}"#,
+            "not json",
+        ];
+        for input in inputs {
+            let text = live_plan_text(input);
+            assert!(!text.contains('\n'), "必须是单行 JSON: {text}");
+            let value: serde_json::Value = serde_json::from_str(&text)
+                .unwrap_or_else(|err| panic!("JSON 非法: {err}: {text}"));
+            assert!(value.is_object(), "输出必须是 JSON 对象: {text}");
+        }
+
+        let value = live_plan_value(r#"{"points":[],"params":{"viewport":[200,100]}}"#);
+        assert_eq!(value["commands"], serde_json::json!([]));
+        assert_eq!(
+            value["dirty"],
+            serde_json::json!({"x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0})
+        );
+        assert_eq!(value["seam"], serde_json::Value::Null);
     }
 
     /// 笔迹 → STROKE 消息:颜色转 0xRRGGBB,点列保序,不带作者/设备。
