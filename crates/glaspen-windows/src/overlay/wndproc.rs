@@ -87,16 +87,16 @@ unsafe extern "system" fn wnd_proc(
             //    让驱动为笔合成的鼠标事件被覆盖层吃掉, 不会点穿到下层窗口;
             //  - 笔静止悬停/搁在板上(驱动即使仍在发报告) → 不刷新 activity,
             //    计时器到期就恢复穿透, 系统鼠标照常工作(键鼠/笔分离)。
-            // 恢复计时器**每份报告都要重新武装**: 抬笔报告的 in_stroke 已经是
-            // false, 若只在书写中武装, 上面两行 KillTimer 就会把唯一一次恢复
+            // 恢复计时器**每份报告都要重新武装**: 抬笔报告的会话阶段已经是
+            // Idle, 若只在书写中武装, 上面两行 KillTimer 就会把唯一一次恢复
             // 穿透的机会杀掉 —— 全屏窗口从此不透明(v0.6.0 的"鼠标卡死", 见 44fac24)。
             let state = &mut *STATE.load(Ordering::SeqCst);
-            let active = state.in_stroke || state.last_activity.elapsed() < PEN_ACTIVE_WINDOW;
+            let active = state.in_stroke() || state.last_activity.elapsed() < PEN_ACTIVE_WINDOW;
             if active {
                 set_input_blocking(
                     hwnd,
                     true,
-                    if state.in_stroke {
+                    if state.in_stroke() {
                         "pen-down"
                     } else {
                         "pen-hover-move"
@@ -116,7 +116,7 @@ unsafe extern "system" fn wnd_proc(
                     // auto_hide_now 体验对齐。悬空移动时报告不断, 笔迹保持可见。
                     if state.draw.ethereal
                         && state.strokes_visible
-                        && !state.in_stroke
+                        && !state.in_stroke()
                         && state.last_report.elapsed().as_millis() as u64
                             >= ETHEREAL_LEAVE_MS as u64
                     {
@@ -124,8 +124,8 @@ unsafe extern "system" fn wnd_proc(
                     }
                     // 笔还按着但报告停了(按住不动): 续一个计时器继续拦截。
                     // 超过 STALE_STROKE 没有报告 = 抬笔报告丢了/笔离开了感应区,
-                    // 强制收笔, 绝不让 in_stroke 卡在 true 把鼠标永久拦住。
-                    if state.in_stroke {
+                    // 强制收笔, 绝不让会话卡在 Active 把鼠标永久拦住。
+                    if state.in_stroke() {
                         if state.last_report.elapsed() < STALE_STROKE {
                             let _ = SetTimer(Some(hwnd), TIMER_UNBLOCK, UNBLOCK_DELAY_MS, None);
                             return LRESULT(0);
@@ -164,7 +164,7 @@ unsafe extern "system" fn wnd_proc(
                     let _ = KillTimer(Some(hwnd), TIMER_PEEK);
                     state.peek_active = false;
                     // 飘渺模式 peek 到期(翻页/镜头):无笔活动时隐藏
-                    if state.draw.ethereal && !state.in_stroke && state.strokes_visible {
+                    if state.draw.ethereal && !state.in_stroke() && state.strokes_visible {
                         hide_strokes(state);
                     }
                 }

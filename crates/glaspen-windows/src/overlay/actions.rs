@@ -329,10 +329,7 @@ fn clear_screen(state: &mut OverlayState) {
         return;
     }
     state.pen_path.clear();
-    state.in_stroke = false;
-    let params = modeler_params();
-    let _ = state.stroke_modeler.reset_w_params(params);
-    state.start_time = Instant::now();
+    state.reset_pen();
     state.canvas.clear();
     // 网格与分栏是两个独立开关, draw_grid 内部各画各层(无条件调用)
     state.canvas
@@ -395,7 +392,7 @@ fn toggle_enabled(state: &mut OverlayState) {
 
 fn undo_last_stroke(state: &mut OverlayState) {
     // macOS: 书写中按下只提示, 不动库
-    if state.in_stroke {
+    if state.in_stroke() {
         hud_notify(i18n::text(Lang::Zh, &Msg::StrokeInProgress));
         return;
     }
@@ -416,7 +413,9 @@ fn redraw_from_strokes(state: &mut OverlayState) {
     // 切模式/镜头移动等"重建类操作"都会把整片笔迹重新露出来。
     if state.draw.ethereal && !state.strokes_visible {
         state.pen_path.clear();
-        state.in_stroke = false;
+        // 重建路径作废进行中的笔(会话阶段是唯一来源;旧实现只清 in_stroke
+        // 标志、留下模型器状态,本笔后续报告会失效)。
+        state.pen.reset();
         state.canvas.clear();
         if !state.draw.grid_follow_strokes {
             state.canvas
@@ -428,10 +427,7 @@ fn redraw_from_strokes(state: &mut OverlayState) {
         return;
     }
     state.pen_path.clear();
-    state.in_stroke = false;
-    let params = modeler_params();
-    let _ = state.stroke_modeler.reset_w_params(params);
-    state.start_time = Instant::now();
+    state.reset_pen();
     state.canvas.clear();
     // 网格与分栏是两个独立开关, draw_grid 内部各画各层(无条件调用)
     state.canvas
@@ -657,7 +653,7 @@ fn canvas_apply_transform(state: &mut OverlayState) {
 /// 镜头平移(键盘镜头键/鼠标抓手共用; 方向由调用方按"直觉"取号)。书写中忽略
 /// (模型器坐标系不能中途跳变)。数学(pan -= d)单源在 core Camera::pan_by。
 fn canvas_pan_by(state: &mut OverlayState, dx: f64, dy: f64) {
-    if state.in_stroke {
+    if state.in_stroke() {
         return;
     }
     let mut cam = camera();
@@ -703,7 +699,7 @@ fn apply_camera_zoom(state: &mut OverlayState, cam: Camera, out: ZoomOutcome) {
 /// 锚点的画布坐标在缩放前后保持同一屏幕位置(view = (canvas−pan)×zoom);
 /// 数学(锚点不变/限幅/hit 标记)单源在 core Camera::zoom_at。
 fn canvas_zoom_at(state: &mut OverlayState, factor: f64, vx: f64, vy: f64) {
-    if state.in_stroke {
+    if state.in_stroke() {
         return;
     }
     let mut cam = camera();
@@ -713,7 +709,7 @@ fn canvas_zoom_at(state: &mut OverlayState, factor: f64, vx: f64, vy: f64) {
 
 /// 以视口中心为锚缩放(键盘镜头缩放两端同款; 数学单源 core zoom_at_center)。
 fn canvas_zoom_at_center(state: &mut OverlayState, factor: f64) {
-    if state.in_stroke {
+    if state.in_stroke() {
         return;
     }
     let mut cam = camera();
@@ -791,16 +787,13 @@ fn apply_infinite_canvas(state: &mut OverlayState, on: bool, notify: bool) {
 
 /// 提交在写的笔画并复位模型器(录制边界必须落在笔画边界上)
 fn finish_active_stroke(state: &mut OverlayState) {
-    if state.in_stroke {
+    if state.in_stroke() {
         glaspen_core::export::glaspen2_end_stroke();
         glaspen_core::export::glaspen2_decimate_last_stroke();
         // 抬笔扇出(草稿/共享/OCR):与 pen.rs 的正常抬笔路径一致
         glaspen_core::export::glaspen2_notify_stroke_committed();
-        state.in_stroke = false;
         state.pen_path.clear();
-        let params = modeler_params();
-        let _ = state.stroke_modeler.reset_w_params(params);
-        state.start_time = Instant::now();
+        state.reset_pen();
     }
 }
 
@@ -922,7 +915,7 @@ unsafe fn handle_keyboard_raw(buf: &[u64], state: &mut OverlayState) {
         && is_modifier
         && infinite_on()
         && state.draw.enabled
-        && !state.in_stroke
+        && !state.in_stroke()
         && !state.camera_blocked
         && (mods_match_exact(camera_pan_mods()) || mods_match_exact(camera_zoom_mods()))
     {

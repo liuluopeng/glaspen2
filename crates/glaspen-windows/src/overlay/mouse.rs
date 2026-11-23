@@ -71,7 +71,7 @@ fn camera_mods_match() -> bool {
 
 /// 镜头操作可用条件(macOS: g_infinite_canvas && g_enabled && !g_stroke_active)
 fn camera_available(state: &OverlayState) -> bool {
-    infinite_on() && state.draw.enabled && !state.in_stroke
+    infinite_on() && state.draw.enabled && !state.in_stroke()
 }
 
 /// 清空并应用累积的镜头拖动位移(每 16ms 合并一次, 与 macOS 节流一致)
@@ -95,7 +95,7 @@ fn cancel_camera_drag(state: &mut OverlayState) {
     state.camera_dragging = false;
     state.camera_pending_dx = 0.0;
     state.camera_pending_dy = 0.0;
-    if state.camera_blocked && !state.in_stroke {
+    if state.camera_blocked && !state.in_stroke() {
         set_input_blocking(state.canvas.hwnd, false, "camera-cancel");
         state.camera_blocked = false;
     }

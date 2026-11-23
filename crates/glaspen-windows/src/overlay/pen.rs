@@ -1,11 +1,3 @@
-/// 线宽半径(线性压力映射 × 线宽倍率):(0.75 + p*1.75) * scale(直径 1.5..5px × scale)
-fn width_r(p: f32, scale: f32) -> f32 {
-    // 半径版包装:单源直径公式在 core(macOS 同一二次曲线 —— 轻压极细、
-    // 重压粗,27 倍动态范围)。本地线性式 (0.75+p*1.75)*scale 与它漂移:
-    // 下限粗 2.5 倍、范围仅 3.3 倍,轻压看起来像一根不变的最细线。
-    (glaspen_core::modeler::pressure_to_width(p as f64, scale.max(0.05) as f64) * 0.5) as f32
-}
-
 /// 由中心线点列(x, y, 半径)构建可变宽度轮廓:
 /// 每点沿法线 ±偏移半径,返回闭合轮廓点列(左边界正向 + 右边界反向)。
 /// 法线用中点差分(前后点方向),保证相邻带在共享点处偏移一致,无缝衔接。
@@ -141,45 +133,39 @@ fn redraw_pen(state: &mut OverlayState, new_pts: &[(f32, f32, f32)]) -> Option<R
     new_dirty
 }
 
-/// 处理一个采样点:喂给 ink-stroke-modeler,输出平滑点列后轮廓填充。
+/// 处理一个采样点:喂 core 模型器会话(D9b 单源),输出平滑点列后轮廓填充。
 /// x/y 为画布坐标(无限画布下 = 视图坐标经镜头逆变换);笔迹以画布坐标
 /// 入库,绘制时再经镜头变换回视图。
+///
+/// 事件语义与旧自研模型器版本逐分支一致:
+/// - 落笔报告且未落笔 = 新笔(begin,会话 Down 恒 1 点);
+/// - 落笔报告且书写中 = Move;
+/// - 非落笔报告且书写中 = Up(收笔);
+/// - 非落笔报告且未落笔 = 悬空,忽略(旧实现喂 Up 被模型器拒绝,等价)。
 fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) -> Option<RECT> {
     // 气泡消息冷启动分段: 每个 HID 报告(含悬空)都算笔活动心跳, 悬停构思
     // 不拆消息; Windows 无显式"笔离开"信号, 冷启动由"笔静默超阈值"覆盖。
     glaspen_core::export::glaspen2_bubble_pen_activity();
-    // 模型器要求首事件 Down,后续 Move,抬起 Up
-    let event_type = if !down {
-        ModelerInputEventType::Up
-    } else if state.in_stroke {
-        ModelerInputEventType::Move
-    } else {
-        ModelerInputEventType::Down
-    };
-    let input = ModelerInput {
-        event_type,
-        pos: (x as f64, y as f64),
-        time: state.start_time.elapsed().as_secs_f64(),
-        pressure: p as f64,
-    };
-    let results = match state.stroke_modeler.update(input) {
-        Ok(r) => r,
-        Err(_) => return None, // Duplicate/负时间等,忽略
-    };
 
-    // 落笔时确定笔迹颜色; 同时结束任何进行中的鼠标镜头拖动
-    // (macOS: g_stroke_active 时镜头操作一律忽略, 抓手也会被取消)
-    if down && !state.in_stroke {
+    let sample = pen_modeler::sample(
+        x as f64,
+        y as f64,
+        p as f64,
+        state.stroke_origin.elapsed().as_secs_f64(),
+        state.draw.width_scale,
+    );
+
+    // 落笔边沿的 adapter 副作用(旧实现顺序: 取消镜头抓手 → 定色 →
+    // 气泡自动建页 → DB 起笔)。放在喂会话之前: 气泡自动建页会走
+    // redraw_from_strokes(取消进行中的笔), 先喂 Down 会被清掉、本笔后续
+    // Move 全部丢失(旧自研模型器的潜在缺陷, 这里顺手规避)。
+    if down && !state.in_stroke() {
         cancel_camera_drag(state);
         state.canvas.color = (
             (state.draw.pen_r * 255.0) as u8,
             (state.draw.pen_g * 255.0) as u8,
             (state.draw.pen_b * 255.0) as u8,
         );
-    }
-
-    // 记录笔画到 STROKES/DB(用于撤销、导出、XOJ 保存)
-    if down && !state.in_stroke {
         // 气泡「写完自动新建一页」: 这笔若开新消息(冷启动/静默超时), 先建页
         // 载入再重绘 —— 笔画落在新页, 消息边界 = 页边界(设置 × 气泡 tab 开启)
         let auto_page = glaspen_core::export::glaspen2_bubble_auto_page_if_due();
@@ -195,68 +181,62 @@ fn handle_point(state: &mut OverlayState, x: f32, y: f32, p: f32, down: bool) ->
             state.draw.width_scale,
         );
     }
-    if !results.is_empty() {
-        let scale = state.draw.width_scale as f32;
-        for r in &results {
-            // 相对时间必须带上:GIF 回放时间线按它展开,t=0 会让导出永远为空
-            glaspen_core::export::glaspen2_add_point_t(
-                r.pos.0,
-                r.pos.1,
-                (width_r(r.pressure as f32, scale) * 2.0) as f64,
-                r.time,
-            );
-        }
+
+    // 喂会话:错误(重复点/负时间差/间隔过大)整条报告忽略,保持旧策略。
+    let report = match state.pen.feed(down, sample) {
+        Ok(report) => report,
+        Err(_) => return None,
+    };
+    let (points, finished) = match &report {
+        PenReport::Ignored => return None,
+        PenReport::Began(points) | PenReport::Moved(points) => (points.as_slice(), false),
+        PenReport::Finished(finished) => (finished.points.as_slice(), true),
+    };
+
+    // 记录笔画到 STROKES/DB(用于撤销、导出、XOJ 保存)。宽度走旧 f32 收窄,
+    // 时间就是会话输出(与旧 Windows 模型器 r.time 同轴: GIF 回放时间线按它
+    // 展开, t=0 会让导出永远为空; adapter 时间原点由 stroke_origin 保证)。
+    for point in points {
+        glaspen_core::export::glaspen2_add_point_t(
+            point.x,
+            point.y,
+            pen_modeler::db_width(point.width),
+            point.time,
+        );
     }
+
     let z = if infinite_on() { camera().zoom as f32 } else { 1.0 };
     // 模型器输出是画布坐标;绘制前经镜头变换回视图,线宽同步缩放
-    let pts: Vec<(f32, f32, f32)> = results
+    let pts: Vec<(f32, f32, f32)> = points
         .iter()
-        .map(|r| {
-            let (vx, vy) = view_from_canvas(r.pos.0, r.pos.1);
+        .map(|point| {
+            let (vx, vy) = view_from_canvas(point.x, point.y);
             (
                 vx as f32,
                 vy as f32,
-                (width_r(r.pressure as f32, state.draw.width_scale as f32) * z).max(0.5),
+                pen_modeler::view_radius(point.width, z),
             )
         })
         .collect();
 
-    if !down {
-        // 抬起:补最后一段轮廓 + 终点圆帽,清空并重置模型器
-        state.in_stroke = false;
+    if finished {
+        // 抬起:补最后一段轮廓 + 终点圆帽,清空并复位模型器会话
         let dirty = redraw_pen(state, &pts);
         end_stroke_cleanup(state);
         return dirty;
     }
-
-    state.in_stroke = true;
     redraw_pen(state, &pts)
 }
 
-/// 收笔收尾(DB 落笔 + 抬笔扇出 + 模型器重置)。
+/// 收笔收尾(DB 落笔 + 抬笔扇出 + 模型器会话复位)。
 /// 正常抬笔走这里;抬笔报告丢失(笔离开感应区)时由穿透计时器超时强制调用,
-/// 否则 in_stroke 会永远停在 true,全屏覆盖层一直拦截鼠标。
+/// 否则会话会永远停在 Active,全屏覆盖层一直拦截鼠标。
 fn end_stroke_cleanup(state: &mut OverlayState) {
-    state.in_stroke = false;
     glaspen_core::export::glaspen2_end_stroke();
     // 长笔点列抽稀(macOS 在 modeler_commit_to_strokes 内部做同样的事)
     glaspen_core::export::glaspen2_decimate_last_stroke();
     // 抬笔扇出:草稿推送/共享上行/OCR 登记(macOS 在 modeler_commit 里做)
     glaspen_core::export::glaspen2_notify_stroke_committed();
     state.pen_path.clear();
-    let params = modeler_params();
-    let _ = state.stroke_modeler.reset_w_params(params);
-    state.start_time = Instant::now();
+    state.reset_pen();
 }
-
-fn modeler_params() -> ModelerParams {
-    ModelerParams {
-        sampling_min_output_rate: 120.0,
-        sampling_end_of_stroke_stopping_distance: 0.01,
-        sampling_end_of_stroke_max_iterations: 20,
-        sampling_max_outputs_per_call: 200,
-        stylus_state_modeler_max_input_samples: 20,
-        ..ModelerParams::suggested()
-    }
-}
-

@@ -217,12 +217,17 @@ struct OverlayState {
     draw: DrawState,
     /// 当前笔的曲线点列(像素坐标 + 半径),用于轮廓填充
     pen_path: Vec<(f32, f32, f32)>,
-    /// ink-stroke-modeler(位置/压力平滑 + 120Hz 重采样)
-    stroke_modeler: StrokeModeler,
-    start_time: Instant,
+    /// 单笔模型器(D9b):位置/压力平滑 + 120Hz 重采样 + 压感→笔宽全部单源在
+    /// core modeler_session;这里只是 Windows adapter 的薄包装(事件判定 +
+    /// 落库宽度 f32 收窄 + 绘制半径缩放),不再持有本地模型器实例。
+    pen: PenModeler,
+    /// 模型器时间原点:Windows 用自己的单调时钟,报告时间 = elapsed。
+    /// 会话以落笔时刻为原点换算相对时间,输出绝对时间与旧 Windows 模型器的
+    /// r.time 完全同轴(收笔/清屏/重建时重置)。
+    stroke_origin: Instant,
     /// 最近一份笔 HID 报告的时间。穿透计时器用它判断"笔还在活动":
-    /// 抬笔报告丢失时(笔直接离开感应区)没有新的 in_stroke=false 报告,
-    /// 超时后必须强制收笔并恢复鼠标穿透,否则全屏覆盖层会一直吃掉鼠标点击。
+    /// 抬笔报告丢失时(笔直接离开感应区)没有新的收笔报告,超时后必须强制
+    /// 收笔并恢复鼠标穿透,否则全屏覆盖层会一直吃掉鼠标点击。
     last_report: Instant,
     /// 最近一次"笔真的在动"的时间(落笔,或悬空移动超过阈值)。
     /// 用于"落地前先拦截合成鼠标": 笔悬空移动时提前清 WS_EX_TRANSPARENT,
@@ -231,8 +236,6 @@ struct OverlayState {
     last_activity: Instant,
     /// 上一份悬空报告的屏幕坐标(判断悬空移动距离)
     last_hover: Option<(f32, f32)>,
-    /// 当前是否处于笔画中(首事件必须发 Down)
-    in_stroke: bool,
     /// 笔迹当前是否可见(飘渺模式)
     strokes_visible: bool,
     /// 飘渺 peek 计时器是否在跑(macOS g_peek_timer 同义): 镜头移动时判断
@@ -261,4 +264,19 @@ struct OverlayState {
     /// GIF 编码完成、等待窗口线程写剪贴板的字节(两步顺序:
     /// GifEncodeSucceeded → Clipboard, 见 D8b backlog ①)。
     pending_gif_bytes: Vec<u8>,
+}
+
+impl OverlayState {
+    /// 是否有进行中的笔。唯一来源 = core 模型器会话阶段(旧 in_stroke 字段
+    /// 已删除,不再维护第二份笔画状态)。
+    fn in_stroke(&self) -> bool {
+        self.pen.is_active()
+    }
+
+    /// 取消进行中的笔并重置模型器时间原点(旧本地模型器 reset + 时间原点
+    /// 重置的组合;清屏/翻页/隐藏/重建路径使用)。
+    fn reset_pen(&mut self) {
+        self.pen.reset();
+        self.stroke_origin = Instant::now();
+    }
 }

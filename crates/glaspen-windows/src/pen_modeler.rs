@@ -551,4 +551,119 @@ mod tests {
         // 0 压力(鼠标/无压感设备):宽度退回固定最细档,不是 0。
         assert!(db_width(begin_points[0].width) > 0.0);
     }
+
+    // ------------------------------------------------------------------
+    // 残留闸门(D9b 第二步):Windows 只能走 core 会话,不许再出现第二套模型器
+    // ------------------------------------------------------------------
+
+    fn manifest_src(rel: &str) -> String {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(rel);
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {}: {e}", path.display()))
+    }
+
+    /// Windows 壳(src/overlay.rs + src/overlay/*.rs)禁止再出现本地模型器指纹
+    /// (参数表/输入类型/本地会话),且笔链必须经 pen_modeler 适配层 + core 会话。
+    /// 本适配层自己的文件被有意排除(它就是唯一允许提到旧路径的地方)。
+    #[test]
+    fn adapters_use_core_modeler_session_only() {
+        let mut sources = vec![("src/overlay.rs".to_string(), manifest_src("src/overlay.rs"))];
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/overlay");
+        let mut names: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap_or_else(|e| panic!("读不到 {}: {e}", dir.display()))
+            .filter_map(|entry| {
+                let path = entry.ok()?.path();
+                if path.extension()? != "rs" {
+                    return None;
+                }
+                Some(path.file_name()?.to_string_lossy().into_owned())
+            })
+            .collect();
+        names.sort();
+        for name in names {
+            sources.push((
+                format!("src/overlay/{name}"),
+                manifest_src(&format!("src/overlay/{name}")),
+            ));
+        }
+
+        // 旧本地模型器的代码指纹:一份都不许再有(参数/输入类型/本地会话/参数表)。
+        const FORBIDDEN: [&str; 6] = [
+            "ink_stroke_modeler",
+            "StrokeModeler",
+            "ModelerParams",
+            "ModelerInput",
+            "modeler_params",
+            "reset_w_params",
+        ];
+        for (path, body) in &sources {
+            for token in FORBIDDEN {
+                assert!(
+                    !body.contains(token),
+                    "{path} 仍含本地模型器指纹 {token}(D9b 单源回退, 应改用 core modeler_session)"
+                );
+            }
+        }
+
+        // 笔链必须经适配层 + core 会话:输入构造/宽度映射/绘制半径 + 四种报告
+        // 分支 + 会话阶段派生的 in_stroke()/reset_pen()。
+        let pen = manifest_src("src/overlay/pen.rs");
+        for token in [
+            "pen_modeler::sample",
+            "pen_modeler::db_width",
+            "pen_modeler::view_radius",
+            "PenReport::Ignored",
+            "PenReport::Began",
+            "PenReport::Moved",
+            "PenReport::Finished",
+            "state.pen.feed",
+        ] {
+            assert!(
+                pen.contains(token),
+                "overlay/pen.rs 缺少 core 会话适配点 {token}"
+            );
+        }
+        let state = manifest_src("src/overlay/state.rs");
+        for token in [
+            "PenModeler",
+            "stroke_origin",
+            "fn in_stroke",
+            "fn reset_pen",
+        ] {
+            assert!(state.contains(token), "overlay/state.rs 缺少 {token}");
+        }
+
+        // Cargo.toml 不再直接依赖 ink-stroke-modeler-rs(会话/参数只在 core)。
+        let cargo = manifest_src("Cargo.toml");
+        assert!(
+            !cargo.contains("ink-stroke-modeler"),
+            "glaspen-windows 不应再直接依赖 ink-stroke-modeler-rs(参数与会话单源在 core)"
+        );
+    }
+
+    /// 抬笔顺序闸门(D9b 验收):收笔仍必须是
+    /// end_stroke → decimate_last_stroke → notify_stroke_committed,
+    /// 正常抬笔(pen.rs)与录制/隐藏/切页的强制收笔(actions.rs)一致。
+    #[test]
+    fn stroke_commit_hook_order_is_preserved() {
+        fn order(body: &str, file: &str) {
+            let tokens = [
+                "glaspen2_end_stroke()",
+                "glaspen2_decimate_last_stroke()",
+                "glaspen2_notify_stroke_committed()",
+            ];
+            let mut last = 0usize;
+            for token in tokens {
+                let pos = body
+                    .find(token)
+                    .unwrap_or_else(|| panic!("{file} 缺少 {token}"));
+                assert!(pos >= last, "{file} 抬笔顺序漂移:{token} 出现在前一步之前");
+                last = pos;
+            }
+        }
+        order(&manifest_src("src/overlay/pen.rs"), "overlay/pen.rs");
+        order(
+            &manifest_src("src/overlay/actions.rs"),
+            "overlay/actions.rs",
+        );
+    }
 }

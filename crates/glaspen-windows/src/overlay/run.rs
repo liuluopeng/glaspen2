@@ -200,12 +200,11 @@ pub fn run() {
             canvas,
             draw,
             pen_path: Vec::new(),
-            stroke_modeler: StrokeModeler::default(),
-            start_time: Instant::now(),
+            pen: PenModeler::new(),
+            stroke_origin: Instant::now(),
             last_report: Instant::now(),
             last_activity: Instant::now(),
             last_hover: None,
-            in_stroke: false,
             strokes_visible: true,
             peek_active: false,
             last_no_next: None,
@@ -220,7 +219,6 @@ pub fn run() {
             chat_machine: glaspen_core::recording::RecordingMachine::new(chat_integration),
             pending_gif_bytes: Vec::new(),
         };
-        let _ = state.stroke_modeler.reset_w_params(modeler_params());
         // 按当前画布模式绘制网格与笔迹(无限画布重启后恢复镜头与内容)
         redraw_from_strokes(&mut state);
         // 飘渺模式: 启动就落位到"隐藏"态(macOS gl_ethereal_restore_now 同款),

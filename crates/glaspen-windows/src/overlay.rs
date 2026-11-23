@@ -5,8 +5,9 @@
 //!   - 输入:WM_INPUT(Raw Input)手工解析 HID 报告,任何窗口状态都能收到;
 //!     量程按 hDevice 从 HID value caps 动态读取(驱动更新后虚拟数位板
 //!     VID_00FF/BACC 归一化到 32767x32767,写死 XP-Pen 量程会笔迹偏移)
-//!   - 笔迹:ink-stroke-modeler(位置/压力双平滑 + 120Hz 重采样)→ 可变宽度轮廓
-//!     (法线偏移 + cairo 抗锯齿填充 + 端点圆帽)
+//!   - 笔迹:core modeler_session(位置/压力双平滑 + 120Hz 重采样)→ 可变宽度轮廓
+//!     (法线偏移 + cairo 抗锯齿填充 + 端点圆帽);Windows 只剩薄适配层
+//!     src/pen_modeler.rs(D9b)
 //!   - 拦截:笔事件到达清除 WS_EX_TRANSPARENT,笔离开 500ms 后恢复穿透
 //!   - 集成 glaspen2 功能:Flutter 设置管道、撤销/清屏/保存导出、热键
 //!
@@ -21,7 +22,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 use std::time::Instant;
 
-use ink_stroke_modeler_rs::{ModelerInput, ModelerInputEventType, ModelerParams, StrokeModeler};
+use crate::pen_modeler::{self, PenModeler, PenReport};
 use windows::Win32::Devices::HumanInterfaceDevice::{
     HIDP_VALUE_CAPS, HidD_GetPreparsedData, HidP_GetValueCaps, HidP_Input, PHIDP_PREPARSED_DATA,
 };

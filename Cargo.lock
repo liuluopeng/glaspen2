@@ -1339,7 +1339,6 @@ dependencies = [
  "chrono",
  "glaspen-core",
  "image",
- "ink-stroke-modeler-rs",
  "libloading",
  "serde_json",
  "tracing",
