@@ -52,6 +52,24 @@ fn main() {
         std::process::exit(2);
     }
 
+    // S3b-2b-3 完整菜单构建自检(隐藏调试入口, 不启动 GUI): Swift
+    // MenuBuilder 按真实建菜单顺序(颜色→分隔符→粗细→顶层其余项+子菜单)
+    // 建出整份菜单, 校验项数/分隔符位置/顶层 action·tag·state·target/两个子
+    // 菜单后退出。普通启动/用户路径不经过这里。验证命令:
+    //     target/debug/glaspen2 --swift-menu-full-probe
+    if args.get(1).map(String::as_str) == Some("--swift-menu-full-probe") {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            unsafe extern "C" {
+                fn glaspen2_macos_swift_menu_full_selftest() -> i32;
+            }
+            let code = glaspen2_macos_swift_menu_full_selftest();
+            std::process::exit(code);
+        }
+        #[cfg(not(target_os = "macos"))]
+        std::process::exit(2);
+    }
+
     // S3a 状态栏创建自检(隐藏调试入口, 不启动 GUI): Swift 创建一个 NSStatusItem
     // 并检查 button/image 后退出。菜单构建仍由 ObjC 负责(S3b)。
     if args.get(1).map(String::as_str) == Some("--swift-statusbar-probe") {
