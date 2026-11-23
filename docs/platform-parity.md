@@ -98,13 +98,14 @@ macOS 写 snake_case，Windows 写面板 camelCase：
 而 Windows 代码注释写着"键名与 macOS 一致，设置数据库可互换"（`state.rs:138`、
 `pipe.rs:615`）——这正是需要杜绝的"假共享"。
 
-**(b) Windows 笔迹渲染与模型器是独立第二实现**
+**(b) Windows 笔迹渲染仍是独立第二实现(模型器已单源,D9b)**
 
 - core 的 `paint_strokes_into`（阴影/描边/填充/alpha 合成）只服务 macOS，注释
   自己写明"Windows 用覆盖层自己的实现"；
 - Windows 在 `canvas.rs` 用 cairo（同一份 `cairo_dl`）又画了一遍同样的 pass；
-- 模型器：macOS 走 core `glaspen2_modeler_*`，Windows 直接 new 了一个
-  `ink_stroke_modeler` 实例（`state.rs:214`），平滑/点列的接入逻辑各写一次。
+- 模型器：已单源（D9b）—— macOS 走 core `glaspen2_modeler_*`（其全局 STATE
+  内部委托 `modeler_session`），Windows 走同一 `ModelerSession` 的薄适配层
+  `pen_modeler.rs`；平滑数学不再有第二份，adapter 只保留事件判定与展示映射。
 
 **(c) Flutter 面板在 Windows 上是"半壳"**
 
