@@ -1,5 +1,4 @@
-// S3b-1: 菜单小图标(颜色圆点/粗细横线)绘制迁 Swift;
-// 旧 ObjC 实现暂时保留为 * _legacy 仅供 parity 探针, S3b-2 删除。
+// S3b: 菜单小图标(颜色圆点/粗细横线)与图标+文字 attributedTitle 构造,已从 menu.m 迁入 Swift。
 import AppKit
 
 @objc public final class MenuIconFactory: NSObject {
@@ -34,5 +33,16 @@ import AppKit
         path.stroke()
         image.unlockFocus()
         return image
+    }
+
+    @objc(menuTextWithIcon:name:)
+    public static func menuText(icon: NSImage, name: String) -> NSAttributedString {
+        let attachment = NSTextAttachment()
+        attachment.image = icon
+        attachment.bounds = NSRect(x: 0, y: -2.5, width: icon.size.width, height: icon.size.height)
+        let result = NSMutableAttributedString(attributedString: NSAttributedString(attachment: attachment))
+        let font = NSFont.menuFont(ofSize: 14)
+        result.append(NSAttributedString(string: "   " + name, attributes: [.font: font]))
+        return result
     }
 }

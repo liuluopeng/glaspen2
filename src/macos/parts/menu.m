@@ -81,18 +81,6 @@ static void update_menu_texts(void) {
 // 内嵌附件图(attributedTitle + NSTextAttachment)任何系统版本都画。
 // 颜色 = 圆点色块(一眼可见);粗细 = 横线粗细(粗细预设的直观映射)。
 
-static NSAttributedString* gl_menu_text(NSImage *icon, NSString *name) {
-    NSTextAttachment *att = [[NSTextAttachment alloc] init];
-    att.image = icon;
-    att.bounds = NSMakeRect(0, -2.5, icon.size.width, icon.size.height);
-    NSMutableAttributedString *s = [[NSMutableAttributedString alloc]
-        initWithAttributedString:[NSAttributedString attributedStringWithAttachment:att]];
-    [s appendAttributedString:[[NSAttributedString alloc]
-        initWithString:[@"   " stringByAppendingString:name]
-            attributes:@{NSFontAttributeName: [NSFont menuFontOfSize:14]}]];
-    return s;
-}
-
 // 颜色/粗细显示名(D10b): 文案单源在 core::i18n(COLOR_NAMES/WIDTH_NAMES 同序),
 // 这里只保留稳定 key 表; 中/英由 gl_text 现读 g_lang 决定(语言切换即时生效)。
 static NSString *gl_color_display_name(NSInteger idx) {
@@ -118,12 +106,13 @@ static NSAttributedString* gl_color_item_text(NSInteger idx) {
                                  green:g_color_presets[idx].g
                                   blue:g_color_presets[idx].b
                                  alpha:1.0];
-    return gl_menu_text([MenuIconFactory colorDotWithColor:c], gl_color_display_name(idx));
+    return [MenuIconFactory menuTextWithIcon:[MenuIconFactory colorDotWithColor:c]
+                                      name:gl_color_display_name(idx)];
 }
 
 static NSAttributedString* gl_width_item_text(NSInteger idx) {
-    return gl_menu_text([MenuIconFactory widthLineWithScale:g_width_presets[idx]],
-                        gl_width_display_name(idx));
+    return [MenuIconFactory menuTextWithIcon:[MenuIconFactory widthLineWithScale:g_width_presets[idx]]
+                                      name:gl_width_display_name(idx)];
 }
 
 // ── 菜单栏图标: 一支斜放的马克笔, 把当前关键状态画进 18pt 里 ──
