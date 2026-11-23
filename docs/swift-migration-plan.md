@@ -10,6 +10,7 @@
 提升可读性/安全性;用户可见行为不变。
 
 非目标(明确不做):
+
 - 不改 Flutter 设置面板(Dart 继续跨平台单一代码库);
 - 不改 glaspen-core 的 Rust 逻辑/算法/单源数据;
 - 不重写 cairo 绘制算法(DrawPlan 仍由 core 产出);
@@ -45,17 +46,17 @@ Rust↔macOS 的 C ABI 不变,契约测试与 parity 脚本全绿。
 
 ## 3. 阶段表
 
-| ID | 阶段 | 范围/涉及文件 | 验收 | 估时 | 状态 |
-|---|---|---|---|---|---|
-| S0 | spike:状态栏菜单 | 分支 spike/swift-status-item;新 Swift 文件实现 NSStatusItem+NSMenu+3 项+attributedTitle 图标+target/action;与 ObjC 并存(env flag),不合并 | 能显示/点击/语言重建;记录 LOC、桥接点、build.rs 改动、AppKit 缺口;给出 keep/stop 结论 | 1–2 d | ⬜ TODO |
-| S1 | 构建集成 + C ABI 桥 | build.rs 加 swiftc 编 .swift→.o 并链接;Bridging-Header;选 1 个无状态 shim(如 glaspen2_macos_open_url)用 Swift @_cdecl 重实现,符号不变 | cargo build 通过;Rust 调 Swift 行为一致;记录 swiftc 版本/部署目标/rpath;可回滚 | 2–4 d | ⬜ TODO |
-| S2 | 边界设计 | 定义 @objc 兼容 API 白名单(类/selector/回调/C 类型);禁止 Swift-only 类型跨界;ObjC→Swift 文件映射;事件 tap 的 @convention(c)+Unmanaged 方案 | 编译通过:空 Swift 类被 ObjC 调用 + Swift 调 ObjC 函数;设计写入本文件 | 1–2 d | ⬜ TODO |
-| S3 | 菜单栏迁移 | menu.m:状态栏项/菜单构建/动作/动态重建/语言切换/图标;保留 C shim;旧实现 fallback 一个版本 | 菜单项/图标/深浅色/语言/点击/快捷键与旧版逐项一致(截图);flag off 可回滚 | 3–5 d | ⬜ TODO |
-| S4 | HUD/通知/面板辅助 | show_notification/HUD/alert/beep 等;文案继续来自 core i18n | 文案/时长/位置/中英切换与旧版一致 | 3–5 d | ⬜ TODO |
-| S5 | 窗口/覆盖层搭建 | NSWindow 创建/层级/透明/点击穿透/多屏/全屏/显示器变更防抖;不含 event tap;cairo 绘制不变 | 窗口 checklist 逐项(层级/穿透/多屏/全屏/锁屏唤醒)与旧版一致 | 1–2 w | ⬜ TODO |
-| S6 | 事件 tap 迁移(最后) | CGEventTap 回调/笔鼠标键盘路由/热键/录制暂停/穿透;先双实现并行日志对比再切 | 全动作回归 + 笔输入延迟无退化;flag 可回滚 | 1–2 w | ⬜ TODO |
-| S7 | 清理 ObjC | 删除 ObjC 源文件/头;剩余 C shim 用 Swift;build.rs 只留 swiftc(+cairo C) | git grep 无 ObjC 应用源;全测试/parity 通过;包大小/启动对比 | 3–5 d | ⬜ TODO |
-| S8 | 文档收口 | 更新 AGENTS.md 架构/命令/踩坑;本计划标记完成或归档 | 新人按 AGENTS 能 build/run | 1 d | ⬜ TODO |
+| ID  | 阶段                | 范围/涉及文件                                                                                                                              | 验收                                                                                  | 估时  | 状态    |
+| --- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | ----- | ------- |
+| S0  | spike:状态栏菜单    | 分支 spike/swift-status-item;新 Swift 文件实现 NSStatusItem+NSMenu+3 项+attributedTitle 图标+target/action;与 ObjC 并存(env flag),不合并   | 能显示/点击/语言重建;记录 LOC、桥接点、build.rs 改动、AppKit 缺口;给出 keep/stop 结论 | 1–2 d | ✅ DONE(docs/swift-s0-spike-report.md;分支 spike/swift-status-item @ 228213a;结论 GO S1) |
+| S1  | 构建集成 + C ABI 桥 | build.rs 加 swiftc 编 .swift→.o 并链接;Bridging-Header;选 1 个无状态 shim(如 glaspen2_macos_open_url)用 Swift @_cdecl 重实现,符号不变      | cargo build 通过;Rust 调 Swift 行为一致;记录 swiftc 版本/部署目标/rpath;可回滚        | 2–4 d | ⬜ TODO |
+| S2  | 边界设计            | 定义 @objc 兼容 API 白名单(类/selector/回调/C 类型);禁止 Swift-only 类型跨界;ObjC→Swift 文件映射;事件 tap 的 @convention(c)+Unmanaged 方案 | 编译通过:空 Swift 类被 ObjC 调用 + Swift 调 ObjC 函数;设计写入本文件                  | 1–2 d | ⬜ TODO |
+| S3  | 菜单栏迁移          | menu.m:状态栏项/菜单构建/动作/动态重建/语言切换/图标;保留 C shim;旧实现 fallback 一个版本                                                  | 菜单项/图标/深浅色/语言/点击/快捷键与旧版逐项一致(截图);flag off 可回滚               | 3–5 d | ⬜ TODO |
+| S4  | HUD/通知/面板辅助   | show_notification/HUD/alert/beep 等;文案继续来自 core i18n                                                                                 | 文案/时长/位置/中英切换与旧版一致                                                     | 3–5 d | ⬜ TODO |
+| S5  | 窗口/覆盖层搭建     | NSWindow 创建/层级/透明/点击穿透/多屏/全屏/显示器变更防抖;不含 event tap;cairo 绘制不变                                                    | 窗口 checklist 逐项(层级/穿透/多屏/全屏/锁屏唤醒)与旧版一致                           | 1–2 w | ⬜ TODO |
+| S6  | 事件 tap 迁移(最后) | CGEventTap 回调/笔鼠标键盘路由/热键/录制暂停/穿透;先双实现并行日志对比再切                                                                 | 全动作回归 + 笔输入延迟无退化;flag 可回滚                                             | 1–2 w | ⬜ TODO |
+| S7  | 清理 ObjC           | 删除 ObjC 源文件/头;剩余 C shim 用 Swift;build.rs 只留 swiftc(+cairo C)                                                                    | git grep 无 ObjC 应用源;全测试/parity 通过;包大小/启动对比                            | 3–5 d | ⬜ TODO |
+| S8  | 文档收口            | 更新 AGENTS.md 架构/命令/踩坑;本计划标记完成或归档                                                                                         | 新人按 AGENTS 能 build/run                                                            | 1 d   | ⬜ TODO |
 
 ## 4. 每阶段验收模板(复制到进度记录)
 
@@ -79,9 +80,9 @@ Rust↔macOS 的 C ABI 不变,契约测试与 parity 脚本全绿。
 
 ## 6. 进度记录(append-only)
 
-| 日期 | 阶段 | 进度/决定 | 验证 | commit |
-|---|---|---|---|---|
-| 2026-11-23 | 计划创建 | 以 v0.7.0(ce525db)为基线;迁移未开始;建议先 S0 spike 再决定是否继续 | - | 本提交 |
+| 日期       | 阶段     | 进度/决定                                                          | 验证 | commit |
+| ---------- | -------- | ------------------------------------------------------------------ | ---- | ------ |
+| 2026-11-23 | 计划创建 | 以 v0.7.0(ce525db)为基线;迁移未开始;建议先 S0 spike 再决定是否继续 | -    | 本提交 |
 
 ## 7. 相关文档
 
@@ -89,3 +90,4 @@ Rust↔macOS 的 C ABI 不变,契约测试与 parity 脚本全绿。
 - docs/duplication-backlog.md(D14 防重复架构、各单源模块)
 - docs/d9d-verification.md(绘制验证与 Windows 延期记录)
 - AGENTS.md(仓库规则/构建/踩坑)
+| 2026-11-23 | S0 | 状态栏菜单 Swift 原型完成(NSStatusItem/NSMenu/attributedTitle 图标/target-action);编译 0.82s、71 行、60KB 独立产物,运行输出全部成功(3 菜单项/图标长度 1/selector 响应/action save 触发);未接 build.rs/ObjC 互调/动态重建(留 S1/S3) | swiftc -O 编译 + 2s 运行验证;报告 docs/swift-s0-spike-report.md | spike 分支 228213a |
