@@ -1,5 +1,6 @@
 #include <dlfcn.h>
 #import <Cocoa/Cocoa.h>
+#import "glaspen2_macos_swift-Swift.h" // S1/S2: swiftc 生成头(构建时 -I OUT_DIR)
 #import <QuartzCore/QuartzCore.h>
 #import <Carbon/Carbon.h>
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
