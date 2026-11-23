@@ -35,6 +35,21 @@ fn main() {
         std::process::exit(0);
     }
 
+    // S3a 状态栏创建自检(隐藏调试入口, 不启动 GUI): Swift 创建一个 NSStatusItem
+    // 并检查 button/image 后退出。菜单构建仍由 ObjC 负责(S3b)。
+    if args.get(1).map(String::as_str) == Some("--swift-statusbar-probe") {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            unsafe extern "C" {
+                fn glaspen2_macos_swift_statusbar_selftest() -> i32;
+            }
+            let code = glaspen2_macos_swift_statusbar_selftest();
+            std::process::exit(code);
+        }
+        #[cfg(not(target_os = "macos"))]
+        std::process::exit(2);
+    }
+
     #[cfg(target_os = "macos")]
     glaspen2::macos::macos_run();
 

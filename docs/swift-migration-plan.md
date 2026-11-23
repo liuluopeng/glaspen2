@@ -51,7 +51,8 @@ Rust↔macOS 的 C ABI 不变,契约测试与 parity 脚本全绿。
 | S0  | spike:状态栏菜单    | 分支 spike/swift-status-item;新 Swift 文件实现 NSStatusItem+NSMenu+3 项+attributedTitle 图标+target/action;与 ObjC 并存(env flag),不合并   | 能显示/点击/语言重建;记录 LOC、桥接点、build.rs 改动、AppKit 缺口;给出 keep/stop 结论 | 1–2 d | ✅ DONE(docs/swift-s0-spike-report.md;分支 spike/swift-status-item @ 228213a;结论 GO S1) |
 | S1  | 构建集成 + C ABI 桥 | build.rs 加 swiftc 编 .swift→.o 并链接;Bridging-Header;选 1 个无状态 shim(如 glaspen2_macos_open_url)用 Swift @_cdecl 重实现,符号不变      | cargo build 通过;Rust 调 Swift 行为一致;记录 swiftc 版本/部署目标/rpath;可回滚        | 2–4 d | ✅ DONE(2026-11-23,分支 feat/swift-s1:build.rs 已接 swiftc,open_url 由 Swift 接管;反向互调按任务允许留 S2;实测见 §8) |
 | S2  | 边界设计            | 定义 @objc 兼容 API 白名单(类/selector/回调/C 类型);禁止 Swift-only 类型跨界;ObjC→Swift 文件映射;事件 tap 的 @convention(c)+Unmanaged 方案 | 编译通过:空 Swift 类被 ObjC 调用 + Swift 调 ObjC 函数;设计写入本文件                  | 1–2 d | ✅ DONE(2026-11-23,分支 feat/swift-s2:桥接头 + 生成头 + 双向互调探针;规则与 S3+ 文件映射在 docs/swift-boundary.md;实测见 §9) |
-| S3  | 菜单栏迁移          | menu.m:状态栏项/菜单构建/动作/动态重建/语言切换/图标;保留 C shim;旧实现 fallback 一个版本                                                  | 菜单项/图标/深浅色/语言/点击/快捷键与旧版逐项一致(截图);flag off 可回滚               | 3–5 d | ⬜ TODO |
+| S3a | 状态栏项创建(已做)  | src/macos/swift/status_bar.swift: StatusBarFactory.createItem(icon:) + @_cdecl selftest;Rust --swift-statusbar-probe;菜单仍由 ObjC 构建 | Swift 在真实 app 二进制内创建 NSStatusItem/button/image,probe 输出 OK;构建/测试/parity 绿 | 0.5 d | ✅ DONE(见进度记录) |
+| S3b | 菜单构建/动作迁移    | menu.m:菜单项/动作/动态重建/语言切换/图标;保留 C shim;旧实现 fallback 一个版本 | 菜单项/图标/深浅色/语言/点击/快捷键与旧版逐项一致(截图);flag off 可回滚 | 3–5 d | ⬜ TODO |
 | S4  | HUD/通知/面板辅助   | show_notification/HUD/alert/beep 等;文案继续来自 core i18n                                                                                 | 文案/时长/位置/中英切换与旧版一致                                                     | 3–5 d | ⬜ TODO |
 | S5  | 窗口/覆盖层搭建     | NSWindow 创建/层级/透明/点击穿透/多屏/全屏/显示器变更防抖;不含 event tap;cairo 绘制不变                                                    | 窗口 checklist 逐项(层级/穿透/多屏/全屏/锁屏唤醒)与旧版一致                           | 1–2 w | ⬜ TODO |
 | S6  | 事件 tap 迁移(最后) | CGEventTap 回调/笔鼠标键盘路由/热键/录制暂停/穿透;先双实现并行日志对比再切                                                                 | 全动作回归 + 笔输入延迟无退化;flag 可回滚                                             | 1–2 w | ⬜ TODO |
@@ -234,3 +235,4 @@ revert 本分支 S1 commit(菜单/shim 符号回到 ObjC)即可;build.rs 的 Swi
 revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe`/env 探针
 默认 no-op,不回滚也不影响用户)。桥接头/生成头顺序是强制的:只删一个文件会
 让 build.rs 断言失败。
+| 2026-11-23 | S3a | 状态栏项创建迁 Swift:新增 src/macos/swift/status_bar.swift(StatusBarFactory.createItem(icon:) + @_cdecl glaspen2_macos_swift_statusbar_selftest);Rust 新增 --swift-statusbar-probe(不启动 GUI),Swift 在真实 app 二进制内创建 NSStatusItem/button/image 并自检;菜单构建/动作仍留 ObjC(S3b) | target/debug/glaspen2 --swift-statusbar-probe -> SWIFT_STATUSBAR_OK/IMAGE ok,exit 0,nm 1 处符号;cargo build/tests/parity/clippy 全绿 | 本提交 |
