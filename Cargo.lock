@@ -1291,7 +1291,7 @@ checksum = "5ca63cb2488b847c12d1ca56034ba0f15613972c0dc0f8a957f525707567b23d"
 
 [[package]]
 name = "glaspen-chat"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "prost",
  "serde_json",
@@ -1305,7 +1305,7 @@ dependencies = [
 
 [[package]]
 name = "glaspen-core"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -1333,7 +1333,7 @@ dependencies = [
 
 [[package]]
 name = "glaspen-windows"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -1347,7 +1347,7 @@ dependencies = [
 
 [[package]]
 name = "glaspen2"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "cc",
  "flutter_rust_bridge",
@@ -1367,7 +1367,7 @@ dependencies = [
 
 [[package]]
 name = "glaspen2_installer"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "flate2",
  "winresource",

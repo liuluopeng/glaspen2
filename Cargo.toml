@@ -7,7 +7,7 @@ members = ["installer", "chat", "crates/glaspen-core", "crates/glaspen-windows"]
 default-members = [".", "crates/glaspen-core", "crates/glaspen-windows"]
 
 [workspace.package]
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/liuluopeng/glaspen2"
