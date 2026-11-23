@@ -1118,9 +1118,8 @@ fn return_json_c_string(text: String) -> *mut c_char {
 ///
 /// 单 C 参数,永不返回 NULL:NULL / 非法 UTF-8 / 非法 JSON / 非法字段 / plan
 /// 拒绝(如 scale 非正)一律回 `{"error":"..."}`。返回值用
-/// [glaspen2_free_c_string] 释放;ObjC 侧接线: `raw_draw_segment` 已消费
-/// (d0924a5, 命令流 + 接缝重画 + 脏区), `raw_draw_dot` 仍走旧路径(单点小尾巴),
-/// 本函数暂时只有测试调用方。
+/// [glaspen2_free_c_string] 释放;ObjC 侧接线: `raw_draw_segment`(d0924a5)与
+/// `raw_draw_dot`(单点圆点)都已消费(命令流 + 接缝重画 + 脏区;失败回退旧自绘)。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_live_plan_json(input: *const c_char) -> *mut c_char {
     let Some(input) = (unsafe { borrow_cstr(input) }) else {

@@ -688,41 +688,50 @@ static void pen_draw(double x, double y, double width) {
 // 都会把虚线相位重置到路径起点, 分段增量绘制时用 offset 拨回接续点。
 static const double kOutlineDash = 1.0; // 虚线段长(逻辑 px, 黑白各一段)
 
+// D9c: 首点计划绘制定义在下方 gl_live_plan_* 区, raw_draw_dot 先于它使用,
+// C99 需前向声明。返回 NO = FFI/JSON 失败, 调用方回退旧分档自绘。
+static BOOL gl_live_plan_draw_dot(cairo_t *cr, double x, double y, double width);
+
 // Raw drawing — surface only, no STROKES/DB side effects.
 // Uses g_active_cr (set up by stroke_begin) for the duration of the stroke.
 // Marks the affected pixel area as dirty so only that region is repainted.
 static void raw_draw_dot(double x, double y, double width) {
     if (!g_surface) return;
     cairo_t *cr = g_active_cr ? g_active_cr : cairo_create_scaled();
-    if (g_eraser_mode) cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-    else cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+    // D9c: 首点先走 core 计划(单点: 无前一点/无接缝); 仅 FFI/JSON 失败时回落
+    // 下面的旧分档自绘。
+    BOOL planned = gl_live_plan_draw_dot(cr, x, y, width);
+    if (!planned) {
+        if (g_eraser_mode) cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+        else cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
-    // 软阴影层(最底): 三档加宽递减 alpha 的圆头黑影
-    if (g_soft_shadow && !g_eraser_mode) {
-        static const double kSteps[3][2] = {{1.5, 0.20}, {3.0, 0.13}, {5.0, 0.07}};
-        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-        for (int si = 0; si < 3; si++) {
-            cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, kSteps[si][1]);
-            cairo_arc(cr, x, y, width * 0.5 + kSteps[si][0], 0, 2 * M_PI);
+        // 软阴影层(最底): 三档加宽递减 alpha 的圆头黑影
+        if (g_soft_shadow && !g_eraser_mode) {
+            static const double kSteps[3][2] = {{1.5, 0.20}, {3.0, 0.13}, {5.0, 0.07}};
+            cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+            for (int si = 0; si < 3; si++) {
+                cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, kSteps[si][1]);
+                cairo_arc(cr, x, y, width * 0.5 + kSteps[si][0], 0, 2 * M_PI);
+                cairo_fill(cr);
+            }
+        }
+
+        // 描边层(垫底): 起笔圆头垫一圈黑(相位 0 = 黑虚段起点)
+        if (g_outline_enabled && !g_eraser_mode) {
+            cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
+            cairo_arc(cr, x, y, width * 0.5 + kOutlinePad, 0, 2 * M_PI);
             cairo_fill(cr);
         }
-    }
 
-    // 描边层(垫底): 起笔圆头垫一圈黑(相位 0 = 黑虚段起点)
-    if (g_outline_enabled && !g_eraser_mode) {
-        cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
-        cairo_arc(cr, x, y, width * 0.5 + kOutlinePad, 0, 2 * M_PI);
+        cairo_pattern_t *ipat = invert_ink_source(cr);
+        if (!ipat) cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
+        cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
         cairo_fill(cr);
+        if (ipat) cairo_pattern_destroy(ipat);
+        double pad = width * 0.5 + 1.5 + (g_soft_shadow ? 5.0 : 0.0); // AA+shadow
+        dirty_include_surface_point(x, y, pad);
     }
-
-    cairo_pattern_t *ipat = invert_ink_source(cr);
-    if (!ipat) cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
-    cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
-    cairo_fill(cr);
-    if (ipat) cairo_pattern_destroy(ipat);
     if (!g_active_cr) cairo_destroy(cr);
-    double pad = width * 0.5 + 1.5 + (g_soft_shadow ? 5.0 : 0.0); // AA+shadow
-    dirty_include_surface_point(x, y, pad);
     flush_dirty_to_layer();
 }
 
@@ -761,6 +770,16 @@ static void gl_live_plan_command(cairo_t *cr, NSDictionary *command, double inv_
 
     if ([pass isEqualToString:@"shadow"]) {
         gl_live_plan_source(cr, command[@"color"], alpha);
+        if (points.count == 1) {
+            // 首点计划: 单点 = 圆心, 计划点宽已含阴影展宽(2 × spread), 半径
+            // = 有效宽度 / 2(与旧 raw_draw_dot 的三档实心圆一致)。
+            NSArray *p = points[0];
+            if (p.count < 3) return;
+            cairo_arc(cr, [p[0] doubleValue] * inv_scale, [p[1] doubleValue] * inv_scale,
+                      [p[2] doubleValue] * 0.5 * inv_scale, 0, 2 * M_PI);
+            cairo_fill(cr);
+            return;
+        }
         for (NSUInteger i = 1; i < points.count; i++) {
             NSArray *a = points[i - 1], *b = points[i];
             if (a.count < 3 || b.count < 3) continue;
@@ -772,6 +791,18 @@ static void gl_live_plan_command(cairo_t *cr, NSDictionary *command, double inv_
         return;
     }
     if ([pass isEqualToString:@"outline"]) {
+        if (points.count == 1) {
+            // 首点计划: 垫底圈是实心(无边运行情), 半径 = 有效宽度 / 2
+            // (计划点宽已含 2 × pad), 与旧 raw_draw_dot 一致。
+            NSArray *p = points[0];
+            if (p.count < 3) return;
+            cairo_set_dash(cr, NULL, 0, 0);
+            cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, alpha);
+            cairo_arc(cr, [p[0] doubleValue] * inv_scale, [p[1] doubleValue] * inv_scale,
+                      [p[2] doubleValue] * 0.5 * inv_scale, 0, 2 * M_PI);
+            cairo_fill(cr);
+            return;
+        }
         if (points.count < 2) return;
         NSDictionary *dash_info =
             [command[@"dash"] isKindOfClass:[NSDictionary class]] ? command[@"dash"] : nil;
@@ -831,6 +862,17 @@ static void gl_live_plan_command(cairo_t *cr, NSDictionary *command, double inv_
     // fill: 反色突出用背景 pattern(与旧实现同源), 否则用计划给的落笔色。
     cairo_pattern_t *invert_pat = invert_ink_source(cr);
     if (!invert_pat) gl_live_plan_source(cr, command[@"color"], alpha);
+    if (points.count == 1) {
+        // 首点计划: 单点墨迹圆点(半径 = 宽度 / 2), 与旧 raw_draw_dot 一致。
+        NSArray *p = points[0];
+        if (p.count >= 3) {
+            cairo_arc(cr, [p[0] doubleValue] * inv_scale, [p[1] doubleValue] * inv_scale,
+                      [p[2] doubleValue] * 0.5 * inv_scale, 0, 2 * M_PI);
+            cairo_fill(cr);
+        }
+        if (invert_pat) cairo_pattern_destroy(invert_pat);
+        return;
+    }
     for (NSUInteger i = 1; i < points.count; i++) {
         NSArray *a = points[i - 1], *b = points[i];
         if (a.count < 3 || b.count < 3) continue;
@@ -964,6 +1006,104 @@ static BOOL gl_live_plan_draw_segment(cairo_t *cr, double x, double y, double wi
         dirty_include_surface_point(x, y, pad);
         dirty_include_surface_point(g_raw_last_x, g_raw_last_y,
                                     g_raw_last_w * 0.5 + 1.5 + (g_soft_shadow ? 5.0 : 0.0));
+    }
+    return YES;
+}
+
+// 首点实时绘制入口: 单点(无前一点/无接缝)喂 core 计划 → 光栅化命令 + 脏区。
+// 返回 NO 时调用方回退旧 raw_draw_dot 分档自绘; 日志只记一次避免高频落笔刷屏。
+static BOOL gl_live_plan_draw_dot(cairo_t *cr, double x, double y, double width) {
+    static BOOL s_failure_logged = NO;
+    if (!g_surface || !cr) return NO;
+    if (!isfinite(x) || !isfinite(y) || !isfinite(width) ||
+        !isfinite(g_pen_r) || !isfinite(g_pen_g) || !isfinite(g_pen_b)) {
+        return NO;
+    }
+    double scale = (g_scale > 0.0) ? g_scale : 1.0;
+    int surface_w = cairo_image_surface_get_width(g_surface);
+    int surface_h = cairo_image_surface_get_height(g_surface);
+    if (surface_w <= 0 || surface_h <= 0) return NO;
+
+    // 单点输入: 没有上一采样点, 也就没有 seam; arc_len_start = 0(整笔起点)。
+    NSDictionary *input = @{
+        @"points": @[@[@(x), @(y), @(width)]],
+        @"params": @{
+            @"viewport": @[@(surface_w), @(surface_h)],
+            @"scale": @(scale),
+            @"zoom": @(1.0),
+            @"pan": @[@(0.0), @(0.0)],
+            @"shadow": (g_soft_shadow ? @YES : @NO),
+            @"outline": (g_outline_enabled ? @YES : @NO),
+            @"eraser": (g_eraser_mode ? @YES : @NO),
+            @"alpha": @(1.0),
+            @"arc_len_start": @(0.0),
+            @"color": @[@(g_pen_r), @(g_pen_g), @(g_pen_b)],
+        },
+    };
+
+    NSError *error = nil;
+    NSData *input_data = [NSJSONSerialization dataWithJSONObject:input options:0 error:&error];
+    if (!input_data) {
+        if (!s_failure_logged) {
+            s_failure_logged = YES;
+            NSLog(@"[d9c] 首点绘制计划入参序列化失败, 回退旧分档绘制: %@", error);
+        }
+        return NO;
+    }
+    NSString *input_text = [[NSString alloc] initWithData:input_data encoding:NSUTF8StringEncoding];
+    if (!input_text) return NO;
+    char *output_raw = glaspen2_live_plan_json(input_text.UTF8String);
+    if (!output_raw) {
+        if (!s_failure_logged) {
+            s_failure_logged = YES;
+            NSLog(@"[d9c] glaspen2_live_plan_json 返回 NULL(首点), 回退旧分档绘制");
+        }
+        return NO;
+    }
+    NSString *output_text = [NSString stringWithUTF8String:output_raw];
+    glaspen2_free_c_string(output_raw);
+    NSData *output_data = [output_text dataUsingEncoding:NSUTF8StringEncoding];
+    id root = output_data ? [NSJSONSerialization JSONObjectWithData:output_data options:0 error:&error] : nil;
+    if (![root isKindOfClass:[NSDictionary class]]) {
+        if (!s_failure_logged) {
+            s_failure_logged = YES;
+            NSLog(@"[d9c] 首点绘制计划 JSON 解析失败, 回退旧分档绘制: %@", error);
+        }
+        return NO;
+    }
+    NSDictionary *plan = (NSDictionary *)root;
+    if (plan[@"error"]) {
+        if (!s_failure_logged) {
+            s_failure_logged = YES;
+            NSLog(@"[d9c] 首点绘制计划返回错误, 回退旧分档绘制: %@", plan[@"error"]);
+        }
+        return NO;
+    }
+    NSArray *commands = [plan[@"commands"] isKindOfClass:[NSArray class]] ? plan[@"commands"] : nil;
+    NSDictionary *dirty = [plan[@"dirty"] isKindOfClass:[NSDictionary class]] ? plan[@"dirty"] : nil;
+    if (!commands || !dirty) return NO;
+
+    double inv_scale = 1.0 / scale;
+    cairo_save(cr);
+    for (id command in commands) {
+        if ([command isKindOfClass:[NSDictionary class]]) {
+            gl_live_plan_command(cr, (NSDictionary *)command, inv_scale);
+        }
+    }
+    cairo_restore(cr);
+
+    // 计划脏区 = 表面像素(y 向下); 换算回视图逻辑点(原点左上)后交既有脏区
+    // 跟踪; MacosLive 外扩公式已含 AA(1.5) 与最宽软阴影(5.0), 与旧 dot 的
+    // pad 同源(D9a 差异 L)。
+    double dx = [dirty[@"x"] doubleValue] * inv_scale;
+    double dy = [dirty[@"y"] doubleValue] * inv_scale;
+    double dw = [dirty[@"w"] doubleValue] * inv_scale;
+    double dh = [dirty[@"h"] doubleValue] * inv_scale;
+    if (isfinite(dx) && isfinite(dy) && isfinite(dw) && isfinite(dh) && dw > 0.0 && dh > 0.0) {
+        dirty_include_surface_rect(dx, dy, dw, dh);
+    } else {
+        double pad = width * 0.5 + 1.5 + (g_soft_shadow ? 5.0 : 0.0);
+        dirty_include_surface_point(x, y, pad);
     }
     return YES;
 }
