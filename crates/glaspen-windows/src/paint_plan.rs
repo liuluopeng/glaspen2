@@ -246,16 +246,12 @@ pub fn dash(cmd: &DrawCommand) -> Dash {
     })
 }
 
-/// 命令颜色 → Windows 画法原语的 (R,G,B) **u8** 量化(两端同一规则 (v×255) as u8)。
+/// 命令颜色 → Windows 画法原语的 (R,G,B) **u8** 量化。
+///
+/// 规则单源在 core [Color::to_rgb8](glaspen_core::draw_spec::Color::to_rgb8)
+/// (两端同一 (v×255) as u8;旧 Windows 画布逐笔 (r*255) as u8 对合法笔色同值)。
 pub fn color_u8(color: Color) -> (u8, u8, u8) {
-    fn channel(v: f64) -> u8 {
-        if v.is_finite() {
-            (v.clamp(0.0, 1.0) * 255.0) as u8
-        } else {
-            0
-        }
-    }
-    (channel(color.r), channel(color.g), channel(color.b))
+    color.to_rgb8()
 }
 
 #[cfg(test)]

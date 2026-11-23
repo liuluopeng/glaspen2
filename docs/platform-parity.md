@@ -60,7 +60,7 @@
 | # | 重复项 | macOS 证据 | Windows 证据 | 估算可删 | 做法 | 风险 |
 |---|---|---|---|---|---|---|
 | 1 | **设置 schema / 键分派 / 快照 / 启动恢复** | `menu.m:975-1046`（37 键快照）、`menu.m:1094-1273`（40 分支）、`run.m:2979-3152`（恢复） | `pipe.rs:521-687`（手写 40 键 JSON）、`pipe.rs:688-1043`（30 分支）、`run.rs:14-125`（恢复）；第三份 `api.rs:187-319` | Win −500，root −150，ObjC −150 | core 定义 `Settings{key, db_key, ty, default, clamp}` + `snapshot_json()` + `apply(key,val)->Effect`；两端只做 effect | 中高；顺带修 §4 的 DB 键漂移 |
-| 2 | **笔迹光栅化** | 走 core `glaspen2_draw_rebuild_view` → `paint_strokes_into`（`export/mod.rs`，显式标注"仅 macOS 消费；Windows 用覆盖层自己的实现"） | `canvas.rs:71-270`（阴影/描边/填充/圆点）、`pen.rs` 轮廓、`actions.rs:292` 全量重绘 | Win −250~300 | Windows 把 DIB 的 cairo surface 交给 core 渲染入口（或抽出共享的逐段绘制原语） | 中；增量绘制性能需 Windows 真机实测 |
+| 2 | **笔迹光栅化** | ✅ D9c（2026-11-23）已收口：macOS 走 core `glaspen2_draw_rebuild_view` → `paint_strokes_into`，pass 顺序/宽度/透明度/虚线由 core `draw_spec::plan(MacosCommitted)` 决定，`export/mod.rs` 只做 cairo 光栅化 | ✅ D9c：Windows 新增 `paint_plan.rs`（Windows 参数 + plan→画法原语），`redraw_from_strokes`/`redraw_pen` 只执行 plan，旧 `fill_stroke_path` pass 循环已删 | 两端 adapter 只留光栅器；重复 pass 逻辑已删 | 两端同 strokes → 同命令序列由 D9a 快照 + adapter 特征化测试保证；macOS 离屏像素回归逐字节 0 差异（`export::tests::plan_rasterization_matches_legacy_pixels`）；Windows 真机像素/帧时间待 D9d | 低（剩余重复 = 各平台光栅化算法，见 `draw_spec` 审计差异 D/F/K/O，有意保留）；增量绘制性能需 Windows 真机实测 |
 | 3 | **网格 + 分栏几何** | `run.m:110-230`（细网格/分界线/半屏/九宫格/康奈尔、吸附、粗细） | `canvas.rs:329-505`（同参数：GA/GR、140/70、166/83、0.3/0.75） | 约 −120（合计） | core `grid::lines(pan,zoom,w,h,grid,divider,screen)` 返回线段表，两端只画 | 低 |
 | 4 | **镜头（camera）+ 无限画布切换** | `run.m:387-540`（pan/zoom/锚点/持久化/鼠标拖动） | `state.rs:81-98`、`actions.rs:428-538` | 约 −130（合计） | core 持有 pan/zoom/钳制/锚点，`pan_by/zoom_at/home/center`；两端只重绘 | 低中；注意两端线程模型（主线程 vs 消息循环） |
 | 5 | **动作目录 + 快捷键 chord** | `menu.m:652-972`（19 动作、默认 chord、解析/规范化/迁移/保留键） | `run.rs:210-233` 硬编码 19 个 `RegisterHotKey`；面板 `main.shortcuts.dart:332` 直接禁用编辑 | Win −200，ObjC −250 | core/共享层定义动作表（id、默认 chord、显示名）；Dart 经 FRB/管道取；Windows 补注册逻辑 | 中；同时补上 Windows"可配置快捷键"缺口 |
@@ -98,14 +98,17 @@ macOS 写 snake_case，Windows 写面板 camelCase：
 而 Windows 代码注释写着"键名与 macOS 一致，设置数据库可互换"（`state.rs:138`、
 `pipe.rs:615`）——这正是需要杜绝的"假共享"。
 
-**(b) Windows 笔迹渲染仍是独立第二实现(模型器已单源,D9b)**
+**(b) Windows 笔迹渲染曾是独立第二实现(模型器 D9b、绘制 pass D9c 已单源)**
 
-- core 的 `paint_strokes_into`（阴影/描边/填充/alpha 合成）只服务 macOS，注释
-  自己写明"Windows 用覆盖层自己的实现"；
-- Windows 在 `canvas.rs` 用 cairo（同一份 `cairo_dl`）又画了一遍同样的 pass；
 - 模型器：已单源（D9b）—— macOS 走 core `glaspen2_modeler_*`（其全局 STATE
   内部委托 `modeler_session`），Windows 走同一 `ModelerSession` 的薄适配层
   `pen_modeler.rs`；平滑数学不再有第二份，adapter 只保留事件判定与展示映射。
+- 绘制 pass：D9c 后两端都消费 core `draw_spec::plan` —— pass 顺序/宽度/
+  透明度/虚线/脏区公式不再各写一份：macOS `paint_strokes_into` 按
+  `MacosCommitted` 计划光栅化；Windows `paint_plan.rs` 出 `WindowsPerStroke`
+  参数并逐命令执行（`fill_stroke_path` 已删）。**仍然保留的差异是有意为之**：
+  描边取宽（当前点 vs 相邻较粗）、光栅化算法（逐段圆头 vs 法线多边形）、
+  最小半径、无 cairo 回退（`draw_spec` 审计差异 D/F/K/O）。
 
 **(c) Flutter 面板在 Windows 上是"半壳"**
 

@@ -295,6 +295,18 @@ impl Color {
             b: Self::channel(s.b),
         }
     }
+
+    /// 量化到 8 位 RGB(两端光栅器同一规则:(v × 255) as u8;非有限通道按 0)。
+    ///
+    /// D9c:macOS 整页重建与 Windows 覆盖层的画法原语都从这里取颜色,
+    /// 不再各写一份量化(取值与旧两端 `(r.clamp(0.0,1.0) * 255.0) as u8`
+    /// / `(r * 255.0) as u8` 对合法笔色逐位一致)。
+    pub fn to_rgb8(self) -> (u8, u8, u8) {
+        fn channel_u8(v: f64) -> u8 {
+            (Color::channel(v) * 255.0) as u8
+        }
+        (channel_u8(self.r), channel_u8(self.g), channel_u8(self.b))
+    }
 }
 
 /// 画布坐标 → 表面像素的仿射变换(只有平移 + 等比缩放,两端公式一致):
@@ -1274,6 +1286,15 @@ mod tests {
         approx(outline.width_delta, 2.0);
         approx(outline.dash.unwrap().len, 1.0);
         assert_eq!(OUTLINE_COLORS, [Color::BLACK, Color::WHITE]);
+    }
+
+    #[test]
+    fn color_quantizes_to_rgb8_with_shared_rule() {
+        assert_eq!(Color::new(1.0, 0.0, 0.0).to_rgb8(), (255, 0, 0));
+        assert_eq!(Color::new(0.0, 0.0, 1.0).to_rgb8(), (0, 0, 255));
+        assert_eq!(Color::new(0.5, 0.5, 0.5).to_rgb8(), (127, 127, 127));
+        // 越界/NaN 按既有通道规则饱和(NaN → 0),不产出未定义 u8。
+        assert_eq!(Color::new(f64::NAN, -1.0, 2.0).to_rgb8(), (0, 0, 255));
     }
 
     #[test]

@@ -10,6 +10,10 @@
 //! 开机自启、公共小工具(free_c_string / leak_png 等)。
 
 use crate::camera::{Camera, ZoomOutcome};
+use crate::draw_spec::{
+    Dash, DrawCommand, DrawPlan, OUTLINE_COLORS, OutlineParams, PaintPass, PassOrder, PlanError,
+    PlanParams, PlanScope, Rect, ShadowParams, Vec2, ViewTransform, plan as draw_plan,
+};
 use crate::grid::{GridLines, GridParams, Segment};
 pub(crate) use crate::{
     RAW_STROKE_START, Stroke, desktop_path, modeler, pressure_to_width, runtime, state,
@@ -155,9 +159,9 @@ pub extern "C" fn glaspen2_end_stroke() {
 /// 描边(轮廓)渲染开关 —— 纯渲染设置,只在内存,不落库、重启即恢复关闭。
 static STROKE_OUTLINE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// 描边比笔迹宽出的半径(px)。描边层 = 同路径加宽 2×OUTLINE 后置于笔迹之下。
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 渲染/导出路径消费; Windows 用覆盖层自己的实现
-const OUTLINE_PAD: f64 = 1.0;
+// 描边比笔迹宽出的半径不再是本文件的常量:pad = 1.0 逻辑 px 已单源在
+// core draw_spec::OutlineParams::macos_committed(随视图缩放,差异 C),
+// 本文件只按计划光栅化。pagerender 的软件路径暂时保留自己的 OUTLINE_PAD。
 
 /// 按笔色亮度选对比描边色(BT.601, 阈值 0.5)。marching ants 虚线描边
 /// 实验期间未接线, 保留备用(若回退"自适应对比色实线描边"直接接回)。
@@ -439,7 +443,7 @@ fn draw_rebuild_impl(
         let strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
         paint_strokes_into(
             &r,
-            &strokes.iter().map(stroke_points).collect::<Vec<_>>(),
+            strokes.as_slice(),
             pan_x_eff,
             pan_y_eff,
             zoom_eff,
@@ -486,7 +490,7 @@ fn draw_rebuild_impl(
         for (dy, group) in &neighbors {
             paint_strokes_into(
                 &r,
-                &group.iter().map(stroke_points).collect::<Vec<_>>(),
+                group.as_slice(),
                 pan_x_eff,
                 pan_y_eff,
                 zoom_eff,
@@ -609,35 +613,47 @@ pub(crate) fn render_page_into(
     1
 }
 
-/// 一条笔迹的可渲染视图:(颜色, 点列)。点列 = (x, y, width, t)。
-/// 用 &[(f64,f64,f64,f64)] 切片做统一源 —— STROKES / 邻页 / 页预览缓冲
-/// 三种来源都能零拷贝或一次收集后走同一条绘制管线。
-pub(crate) struct StrokeView<'a> {
-    pub(crate) r: f64,
-    pub(crate) g: f64,
-    pub(crate) b: f64,
-    pub(crate) points: &'a [(f64, f64, f64, f64)],
-}
-
-/// `Stroke` → [`StrokeView`](零拷贝)。
-pub(crate) fn stroke_points(s: &Stroke) -> StrokeView<'_> {
-    StrokeView {
-        r: s.r,
-        g: s.g,
-        b: s.b,
-        points: &s.points,
+/// macOS 整页重建的计划参数(D9c 第二步):阴影**全局先画**,之后逐笔
+/// 「描边 → 墨迹」——D9a 审计差异 A 的 macOS 侧;pad/虚线随视图缩放
+/// (差异 C)。计划本身仍是平台无关的 core 纯函数,这里只选平台参数。
+fn macos_paint_plan(
+    strokes: &[Stroke],
+    view: ViewTransform,
+    viewport: Rect,
+    shadow: bool,
+    outline: bool,
+) -> Result<DrawPlan, PlanError> {
+    let mut params = PlanParams::new(view, viewport);
+    params.order = PassOrder::MacosCommitted;
+    params.scope = PlanScope::Rebuild;
+    if shadow {
+        params.shadow = Some(ShadowParams::macos(&view));
     }
+    if outline {
+        params.outline = Some(OutlineParams::macos_committed(&view));
+    }
+    draw_plan(strokes, &params)
 }
 
 /// 把一组笔迹画到 renderer 上(支持跨页 y 偏移、描边层与整体不透明度)。
 ///
-/// 坐标管线:像素 = (画布坐标 − pan) × zoom × scale + y_shift。
-/// `alpha < 1` 时逐段软件合成(cairo 的 set_source_rgba 在同一表面的多次
-/// 绘制间不累积 alpha, 隧道卡片的渐显/渐隐只能在像素上做)。
+/// D9c 第二步:**pass 顺序 / 每点宽度 / 透明度 / 虚线 / 颜色全部来自
+/// core `draw_spec::plan`**(平台参数见 [macos_paint_plan]);本函数只填
+/// macOS 视图参数(Retina scale、页 fit 折叠后的 pan/zoom)并光栅化。
+///
+/// 坐标管线:像素 = (画布坐标 − pan) × zoom × scale + y_shift。y_shift 是
+/// 画布坐标里的页偏移(随 zoom 缩放),ViewTransform 没有对应字段 → 折进
+/// pan.y: `y + shift − pan ≡ y − (pan − shift)`(见 D9a 差异 M:邻页由调用方
+/// 用不同视图多次 plan)。与原式相比只有 f64 舍入级差异(ULL 级),不影响像素。
+///
+/// `alpha < 1` 时仍走旧的软件合成路径 [paint_strokes_soft](未迁移:该路径是
+/// pagerender 的「全部阴影 → 全部描边 → 全部墨迹」分层,与不透明快路径不同,
+/// D9a 差异 I;本次保持原实现)。plan 的 clear/dirty 不在这里使用:整页重建
+/// 的清屏/裁剪由 draw_rebuild_impl 事先完成(cairo clear/clip_rect)。
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 渲染/导出路径消费; Windows 用覆盖层自己的实现
 pub(crate) fn paint_strokes_into(
     r: &crate::cairo_dl::CairoRenderer,
-    strokes: &[StrokeView<'_>],
+    strokes: &[Stroke],
     pan_x: f64,
     pan_y: f64,
     zoom: f64,
@@ -660,107 +676,130 @@ pub(crate) fn paint_strokes_into(
         );
         return;
     }
-    // 软阴影层: 全部笔迹的阴影先画(压在网格上、不压任何墨迹), 三档
-    // 加宽递减透明度模拟柔边。这是"同色背景保底可见"的结构解: 亮度
-    // 分离不依赖笔色与背景的对比。
-    if shadow {
-        const STEPS: [(f64, f64); 3] = [(1.5, 0.20), (3.0, 0.13), (5.0, 0.07)];
-        for (spread, sa) in STEPS {
-            for s in strokes {
-                let pts = s.points;
-                if pts.len() < 2 {
-                    continue;
-                }
-                for i in 1..pts.len() {
-                    let (x, y, w, _t) = pts[i];
-                    let (px, py, _pw, _pt) = pts[i - 1];
-                    r.stroke_line_alpha(
-                        ((px - pan_x) * zoom * scale) as f32,
-                        ((py + y_shift - pan_y) * zoom * scale) as f32,
-                        ((x - pan_x) * zoom * scale) as f32,
-                        ((y + y_shift - pan_y) * zoom * scale) as f32,
-                        ((w + spread * 2.0) * zoom * scale) as f32,
-                        (0, 0, 0),
-                        alpha * sa,
-                    );
-                }
-            }
-        }
-    }
-    for s in strokes {
-        let pts = s.points;
-        if pts.len() < 2 {
-            continue;
-        }
-        let color = (
-            (s.r.clamp(0.0, 1.0) * 255.0) as u8,
-            (s.g.clamp(0.0, 1.0) * 255.0) as u8,
-            (s.b.clamp(0.0, 1.0) * 255.0) as u8,
-        );
-        // 反色模式: 墨迹主体用 pattern source(描边/阴影仍是实体色),
-        // 描边层的 stroke_line 会重设 source, 故每笔在墨迹前重新挂上。
-        if let Some(p) = invert {
+    let view = ViewTransform::new(Vec2::new(pan_x, pan_y - y_shift), zoom, scale);
+    let viewport = Rect::new(0.0, 0.0, r.w.max(0) as f64, r.h.max(0) as f64);
+    let Ok(plan) = macos_paint_plan(strokes, view, viewport, shadow, outline) else {
+        return;
+    };
+    rasterize_macos_plan(r, &plan, invert);
+}
+
+/// 按 core DrawPlan 光栅化 macOS 整页重建。
+///
+/// 光栅化算法保持旧实现(逐段圆头描线 + 首点实心圆点;差异 F:不是 Windows
+/// 的多边形轮廓),这里只消费计划给的顺序/点列/宽度/透明度/颜色/虚线。
+fn rasterize_macos_plan(
+    r: &crate::cairo_dl::CairoRenderer,
+    plan: &DrawPlan,
+    invert: Option<&crate::cairo_dl::CairoPattern>,
+) {
+    for layer in &plan.layers {
+        // 反色 pattern 只在「逐笔层」(描边/墨迹)挂:旧实现就是每笔在描边前
+        // 重新挂 pattern(阴影层是实体黑,不消费 pattern)。
+        let per_stroke = layer.iter().any(|c| c.pass != PaintPass::Shadow);
+        if per_stroke && let Some(p) = invert {
             r.set_source_pattern(p);
         }
-        // 描边层:黑白相间 1px 虚线(marching ants),先画(垫在笔迹之下)。
-        // 黑偶相位、白奇相位各描一遍,相位按累计弧长连续(每次 stroke()
-        // 都会重置虚线相位,逐段用 set_dash 拨回去);平头避免 1px 虚段
-        // 被圆帽互相吞掉。任何背景上恒有一半虚线可见。
-        if outline {
-            const OL_BLACK: (u8, u8, u8) = (0, 0, 0);
-            const OL_WHITE: (u8, u8, u8) = (255, 255, 255);
-            let d = (zoom * scale).max(1.0);
-            r.set_line_cap_butt();
-            let mut cum = 0.0f64;
+        for cmd in layer {
+            rasterize_macos_command(r, plan, cmd, invert.is_some());
+        }
+    }
+}
+
+/// 执行一条计划命令(只调 cairo;不决定任何顺序/宽度规则)。
+fn rasterize_macos_command(
+    r: &crate::cairo_dl::CairoRenderer,
+    plan: &DrawPlan,
+    cmd: &DrawCommand,
+    invert_on: bool,
+) {
+    let pts = &plan.points[cmd.points.clone()];
+    match cmd.pass {
+        // 软阴影层:全部笔迹先画(macOS 分层,差异 A);宽度 = 计划给的
+        // 每点墨迹直径 + 该档 width_delta(= 2 × spread × factor,差异 B)。
+        PaintPass::Shadow => {
             for i in 1..pts.len() {
-                let (x, y, w, _t) = pts[i];
-                let (px, py, _pw, _pt) = pts[i - 1];
-                let x0 = ((px - pan_x) * zoom * scale) as f32;
-                let y0 = ((py + y_shift - pan_y) * zoom * scale) as f32;
-                let x1 = ((x - pan_x) * zoom * scale) as f32;
-                let y1 = ((y + y_shift - pan_y) * zoom * scale) as f32;
-                let segw = ((w + OUTLINE_PAD * 2.0) * zoom * scale) as f32;
-                let off = cum.rem_euclid(2.0 * d);
-                r.set_dash(d, off);
-                r.stroke_line(x0, y0, x1, y1, segw, OL_BLACK);
-                r.set_dash(d, (off + d).rem_euclid(2.0 * d));
-                r.stroke_line(x0, y0, x1, y1, segw, OL_WHITE);
+                let (a, b) = (&pts[i - 1], &pts[i]);
+                r.stroke_line_alpha(
+                    a.pos.x as f32,
+                    a.pos.y as f32,
+                    b.pos.x as f32,
+                    b.pos.y as f32,
+                    (b.width + cmd.width_delta) as f32,
+                    (0, 0, 0),
+                    cmd.alpha,
+                );
+            }
+        }
+        // 描边层:黑白相间虚线(颜色 = OUTLINE_COLORS,core 单源常量),
+        // 相位沿整笔累计弧长连续;平头避免 1px 虚段被圆帽吞掉。
+        PaintPass::Outline => {
+            if pts.len() < 2 {
+                return;
+            }
+            let dash = cmd.dash.unwrap_or(Dash {
+                len: 1.0,
+                phase: 0.0,
+            });
+            r.set_line_cap_butt();
+            let mut cum = dash.phase;
+            for i in 1..pts.len() {
+                let (a, b) = (&pts[i - 1], &pts[i]);
+                let (x0, y0) = (a.pos.x as f32, a.pos.y as f32);
+                let (x1, y1) = (b.pos.x as f32, b.pos.y as f32);
+                // 差异 D:macOS 整页重建的描边宽度取**当前点**宽度
+                // (Windows 取相邻较粗者,见 paint_plan 适配层)。
+                let segw = (b.width + cmd.width_delta) as f32;
+                let off = cum.rem_euclid(2.0 * dash.len);
+                r.set_dash(dash.len, off);
+                r.stroke_line(x0, y0, x1, y1, segw, OUTLINE_COLORS[0].to_rgb8());
+                r.set_dash(dash.len, (off + dash.len).rem_euclid(2.0 * dash.len));
+                r.stroke_line(x0, y0, x1, y1, segw, OUTLINE_COLORS[1].to_rgb8());
                 let (dx, dy) = (x1 - x0, y1 - y0);
                 cum += ((dx * dx + dy * dy) as f64).sqrt();
             }
             r.set_dash(0.0, 0.0);
             r.set_line_cap_round();
         }
-        for i in 0..pts.len() {
-            let (x, y, w, _t) = pts[i];
-            if i == 0 {
-                // 起点实心圆点(圆帽)
-                r.fill_circle_opt(
-                    ((x - pan_x) * zoom * scale) as f32,
-                    ((y + y_shift - pan_y) * zoom * scale) as f32,
-                    (w * 0.5 * zoom * scale) as f32,
-                    invert.is_none().then_some(color),
-                );
-            } else {
-                let (px, py, _pw, _pt) = pts[i - 1];
-                r.stroke_line_opt(
-                    ((px - pan_x) * zoom * scale) as f32,
-                    ((py + y_shift - pan_y) * zoom * scale) as f32,
-                    ((x - pan_x) * zoom * scale) as f32,
-                    ((y + y_shift - pan_y) * zoom * scale) as f32,
-                    (w * zoom * scale) as f32,
-                    invert.is_none().then_some(color),
-                );
+        // 墨迹本体:逐段圆头描线 + 首点实心圆点(差异 F:macOS 光栅化算法)。
+        PaintPass::Fill => {
+            let color = cmd.color.to_rgb8();
+            for i in 0..pts.len() {
+                let p = &pts[i];
+                if i == 0 {
+                    r.fill_circle_opt(
+                        p.pos.x as f32,
+                        p.pos.y as f32,
+                        (p.width * 0.5) as f32,
+                        (!invert_on).then_some(color),
+                    );
+                } else {
+                    let prev = &pts[i - 1];
+                    r.stroke_line_opt(
+                        prev.pos.x as f32,
+                        prev.pos.y as f32,
+                        p.pos.x as f32,
+                        p.pos.y as f32,
+                        p.width as f32,
+                        (!invert_on).then_some(color),
+                    );
+                }
             }
         }
+        // 整页重建计划里不会出现 Erase(被擦除的笔迹此时已从 STROKES 删除)。
+        PaintPass::Erase => {}
     }
 }
 
 /// 整体不透明度合成:笔迹画进独立缓冲(逐段软件 alpha 混合), 再 blit 到
 /// 目标表面。描边层同样按 alpha 合成, 保持与不透明渲染一致的层次。
+///
+/// D9c 未迁移:该路径走 pagerender 的软件光栅化(平台无关),与不透明快路径
+/// 的「全局阴影 → 逐笔描边/墨迹」分层不同(D9a 差异 I);保持原实现以免改变
+/// 渐显/隧道卡片的像素。
 fn paint_strokes_soft(
     r: &crate::cairo_dl::CairoRenderer,
-    strokes: &[StrokeView<'_>],
+    strokes: &[Stroke],
     pan_x: f64,
     pan_y: f64,
     zoom: f64,
@@ -780,7 +819,7 @@ fn paint_strokes_soft(
             r: s.r,
             g: s.g,
             b: s.b,
-            points: s.points,
+            points: &s.points,
         })
         .collect();
     {
@@ -2137,6 +2176,302 @@ mod tests {
         assert_eq!(outline_contrast_color(1.0, 1.0, 1.0), (0, 0, 0)); // 白
         assert_eq!(outline_contrast_color(0.11, 0.44, 0.85), (255, 255, 255)); // 蓝
         assert_eq!(outline_contrast_color(0.0, 0.0, 0.0), (255, 255, 255)); // 黑
+    }
+
+    // ------------------------------------------------------------------
+    // D9c 第二步像素回归:plan 光栅化 vs 旧实现(测试内 oracle)
+    // ------------------------------------------------------------------
+
+    /// 旧 paint_strokes_into 的不透明快路径(D9c 前的实现,逐字复刻;
+    /// 仅把 StrokeView 换成 Stroke、OUTLINE_PAD 内联为 1.0)。作为像素基准,
+    /// 防止之后有人"顺手统一"掉 macOS 的分层/取宽规则。
+    fn legacy_paint_strokes_into(
+        r: &crate::cairo_dl::CairoRenderer,
+        strokes: &[Stroke],
+        pan_x: f64,
+        pan_y: f64,
+        zoom: f64,
+        scale: f64,
+        y_shift: f64,
+        shadow: bool,
+        outline: bool,
+    ) {
+        const OUTLINE_PAD: f64 = 1.0;
+        if shadow {
+            const STEPS: [(f64, f64); 3] = [(1.5, 0.20), (3.0, 0.13), (5.0, 0.07)];
+            for (spread, sa) in STEPS {
+                for s in strokes {
+                    let pts = &s.points;
+                    if pts.len() < 2 {
+                        continue;
+                    }
+                    for i in 1..pts.len() {
+                        let (x, y, w, _t) = pts[i];
+                        let (px, py, _pw, _pt) = pts[i - 1];
+                        r.stroke_line_alpha(
+                            ((px - pan_x) * zoom * scale) as f32,
+                            ((py + y_shift - pan_y) * zoom * scale) as f32,
+                            ((x - pan_x) * zoom * scale) as f32,
+                            ((y + y_shift - pan_y) * zoom * scale) as f32,
+                            ((w + spread * 2.0) * zoom * scale) as f32,
+                            (0, 0, 0),
+                            sa,
+                        );
+                    }
+                }
+            }
+        }
+        for s in strokes {
+            let pts = &s.points;
+            if pts.len() < 2 {
+                continue;
+            }
+            let color = (
+                (s.r.clamp(0.0, 1.0) * 255.0) as u8,
+                (s.g.clamp(0.0, 1.0) * 255.0) as u8,
+                (s.b.clamp(0.0, 1.0) * 255.0) as u8,
+            );
+            if outline {
+                const OL_BLACK: (u8, u8, u8) = (0, 0, 0);
+                const OL_WHITE: (u8, u8, u8) = (255, 255, 255);
+                let d = (zoom * scale).max(1.0);
+                r.set_line_cap_butt();
+                let mut cum = 0.0f64;
+                for i in 1..pts.len() {
+                    let (x, y, w, _t) = pts[i];
+                    let (px, py, _pw, _pt) = pts[i - 1];
+                    let x0 = ((px - pan_x) * zoom * scale) as f32;
+                    let y0 = ((py + y_shift - pan_y) * zoom * scale) as f32;
+                    let x1 = ((x - pan_x) * zoom * scale) as f32;
+                    let y1 = ((y + y_shift - pan_y) * zoom * scale) as f32;
+                    let segw = ((w + OUTLINE_PAD * 2.0) * zoom * scale) as f32;
+                    let off = cum.rem_euclid(2.0 * d);
+                    r.set_dash(d, off);
+                    r.stroke_line(x0, y0, x1, y1, segw, OL_BLACK);
+                    r.set_dash(d, (off + d).rem_euclid(2.0 * d));
+                    r.stroke_line(x0, y0, x1, y1, segw, OL_WHITE);
+                    let (dx, dy) = (x1 - x0, y1 - y0);
+                    cum += ((dx * dx + dy * dy) as f64).sqrt();
+                }
+                r.set_dash(0.0, 0.0);
+                r.set_line_cap_round();
+            }
+            for i in 0..pts.len() {
+                let (x, y, w, _t) = pts[i];
+                if i == 0 {
+                    r.fill_circle_opt(
+                        ((x - pan_x) * zoom * scale) as f32,
+                        ((y + y_shift - pan_y) * zoom * scale) as f32,
+                        (w * 0.5 * zoom * scale) as f32,
+                        Some(color),
+                    );
+                } else {
+                    let (px, py, _pw, _pt) = pts[i - 1];
+                    r.stroke_line_opt(
+                        ((px - pan_x) * zoom * scale) as f32,
+                        ((py + y_shift - pan_y) * zoom * scale) as f32,
+                        ((x - pan_x) * zoom * scale) as f32,
+                        ((y + y_shift - pan_y) * zoom * scale) as f32,
+                        (w * zoom * scale) as f32,
+                        Some(color),
+                    );
+                }
+            }
+        }
+    }
+
+    fn surface_bytes(r: &crate::cairo_dl::CairoRenderer) -> Vec<u8> {
+        r.flush();
+        unsafe { std::slice::from_raw_parts(r.bits(), (r.w * r.h * 4) as usize).to_vec() }
+    }
+
+    fn pixel_fixture_strokes() -> Vec<Stroke> {
+        vec![
+            Stroke {
+                id: 1,
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                points: vec![
+                    (60.0, 80.0, 4.0, 0.0),
+                    (90.0, 96.0, 10.0, 0.05),
+                    (130.0, 110.0, 2.5, 0.1),
+                    (160.0, 120.0, 14.0, 0.15),
+                ],
+            },
+            Stroke {
+                id: 2,
+                r: 1.0,
+                g: 0.0,
+                b: 0.0,
+                points: vec![
+                    (70.0, 130.0, 6.0, 0.2),
+                    (110.0, 140.0, 3.0, 0.25),
+                    (170.0, 100.0, 18.0, 0.3),
+                ],
+            },
+            Stroke {
+                id: 3,
+                r: 0.2,
+                g: 0.6,
+                b: 1.0,
+                points: vec![(200.0, 200.0, 12.0, 0.0), (210.0, 210.0, 12.0, 0.02)],
+            },
+            // 单点笔迹:两端整页重建都不画(计划跳过 < 2 点)。
+            Stroke {
+                id: 4,
+                r: 0.0,
+                g: 1.0,
+                b: 0.0,
+                points: vec![(40.0, 40.0, 8.0, 0.0)],
+            },
+        ]
+    }
+
+    /// 同一组笔迹走旧实现与 plan 光栅化,离屏表面逐字节比对。
+    ///
+    /// 无 cairo 的动态加载环境(非 macOS CI/裸机)自动跳过:与两端渲染入口
+    /// 的 cairo 缺失降级一致。
+    #[test]
+    fn plan_rasterization_matches_legacy_pixels() {
+        use crate::cairo_dl::CairoRenderer;
+        const W: i32 = 320;
+        const H: i32 = 400;
+        let strokes = pixel_fixture_strokes();
+        let fixtures: [(&str, f64, f64, f64, f64, f64, bool, bool); 5] = [
+            // (名称, pan_x, pan_y, zoom, scale, y_shift, shadow, outline)
+            ("retina+全部 pass", 30.0, 40.0, 1.0, 2.0, 0.0, true, true),
+            ("zoom<1", 12.5, 22.25, 0.7, 2.0, 0.0, true, true),
+            ("仅描边", 30.0, 40.0, 1.0, 2.0, 0.0, false, true),
+            ("仅阴影", 30.0, 40.0, 1.0, 2.0, 0.0, true, false),
+            ("邻页 y_shift", 30.0, 40.0, 1.0, 2.0, 150.0, true, true),
+        ];
+        for (name, pan_x, pan_y, zoom, scale, y_shift, shadow, outline) in fixtures {
+            let Some(legacy) = CairoRenderer::create_owned(W, H) else {
+                // 无 cairo 的动态加载环境(裸机/Windows CI)自动跳过 —— 与两端
+                // 真实渲染入口在 cairo 缺失时的降级一致。
+                return;
+            };
+            legacy_paint_strokes_into(
+                &legacy, &strokes, pan_x, pan_y, zoom, scale, y_shift, shadow, outline,
+            );
+            let want = surface_bytes(&legacy);
+            let Some(planned) = CairoRenderer::create_owned(W, H) else {
+                return;
+            };
+            paint_strokes_into(
+                &planned, &strokes, pan_x, pan_y, zoom, scale, y_shift, shadow, outline, 1.0, None,
+            );
+            let got = surface_bytes(&planned);
+            assert_eq!(want.len(), got.len(), "{name}: 缓冲尺寸");
+            let diff = want.iter().zip(got.iter()).filter(|(a, b)| a != b).count();
+            assert_eq!(
+                diff,
+                0,
+                "{name}: plan 光栅化与旧实现出现 {diff} 字节像素差异({}/{})",
+                diff,
+                want.len()
+            );
+        }
+    }
+
+    /// D9c 第二步:macOS 整页重建的生产参数([macos_paint_plan])必须复现
+    /// D9a 锁定的 macOS 命令序列(阴影层全局先行 → 逐笔「描边 → 墨迹」),
+    /// 即本文件 paint_strokes_into 现在执行的计划。
+    #[test]
+    fn macos_paint_plan_matches_d9a_characterization_snapshot() {
+        let strokes = [
+            Stroke {
+                id: 11,
+                r: 1.0,
+                g: 0.0,
+                b: 0.0,
+                points: vec![(10.0, 20.0, 4.0, 0.0), (20.0, 30.0, 6.0, 0.1)],
+            },
+            Stroke {
+                id: 12,
+                r: 0.0,
+                g: 0.0,
+                b: 1.0,
+                points: vec![(30.0, 40.0, 2.0, 0.0), (40.0, 50.0, 2.0, 0.1)],
+            },
+        ];
+        // 与 draw_spec 特征化测试同一视图:zoom 0.5 × scale 2 → factor 1、pan (10,20)。
+        let view = ViewTransform::new(Vec2::new(10.0, 20.0), 0.5, 2.0);
+        let viewport = Rect::new(0.0, 0.0, 200.0, 100.0);
+        let plan = macos_paint_plan(&strokes, view, viewport, true, true).expect("plan");
+        let mut got = Vec::new();
+        for (li, layer) in plan.layers.iter().enumerate() {
+            for c in layer {
+                let dash = match &c.dash {
+                    None => "-".to_string(),
+                    Some(d) => format!("{:.2}/{:.2}", d.len, d.phase),
+                };
+                got.push(format!(
+                    "L{li} {:?} stroke={} live={} pts={}..{} dw={:.2} a={:.2} dash={}",
+                    c.pass,
+                    c.stroke_index,
+                    c.live,
+                    c.points.start,
+                    c.points.end,
+                    c.width_delta,
+                    c.alpha,
+                    dash
+                ));
+            }
+        }
+        // 与 draw_spec::tests::characterization_macos_committed_command_sequence
+        // 逐字相同(D9a 快照;D9c 不允许改变命令序列)。
+        assert_eq!(
+            got,
+            vec![
+                "L0 Shadow stroke=0 live=false pts=0..2 dw=3.00 a=0.20 dash=-",
+                "L0 Shadow stroke=1 live=false pts=2..4 dw=3.00 a=0.20 dash=-",
+                "L0 Shadow stroke=0 live=false pts=0..2 dw=6.00 a=0.13 dash=-",
+                "L0 Shadow stroke=1 live=false pts=2..4 dw=6.00 a=0.13 dash=-",
+                "L0 Shadow stroke=0 live=false pts=0..2 dw=10.00 a=0.07 dash=-",
+                "L0 Shadow stroke=1 live=false pts=2..4 dw=10.00 a=0.07 dash=-",
+                "L1 Outline stroke=0 live=false pts=0..2 dw=2.00 a=1.00 dash=1.00/0.00",
+                "L1 Fill stroke=0 live=false pts=0..2 dw=0.00 a=1.00 dash=-",
+                "L2 Outline stroke=1 live=false pts=2..4 dw=2.00 a=1.00 dash=1.00/0.00",
+                "L2 Fill stroke=1 live=false pts=2..4 dw=0.00 a=1.00 dash=-",
+            ]
+        );
+        // 相邻页/页偏移:y_shift 折进视图 pan,映射结果等于旧公式。
+        let shifted = macos_paint_plan(
+            &[strokes[0].clone()],
+            ViewTransform::new(Vec2::new(5.0, 7.0 - 300.0), 0.5, 2.0),
+            viewport,
+            false,
+            false,
+        )
+        .expect("plan");
+        // 旧公式:(y + 300 − 7) × 0.5 × 2 = y + 293
+        assert!((shifted.points[0].pos.y - 313.0).abs() < 1e-9);
+        assert!((shifted.points[1].pos.y - 323.0).abs() < 1e-9);
+        assert!((shifted.points[0].pos.x - 5.0).abs() < 1e-9);
+    }
+
+    /// 整页重建计划跳过不足 2 点的笔迹(旧 paint_strokes_into 的 len()<2 早退)。
+    #[test]
+    fn macos_paint_plan_skips_single_point_strokes() {
+        let strokes = [Stroke {
+            id: 1,
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            points: vec![(5.0, 5.0, 2.0, 0.0)],
+        }];
+        let plan = macos_paint_plan(
+            &strokes,
+            ViewTransform::IDENTITY,
+            Rect::new(0.0, 0.0, 100.0, 100.0),
+            true,
+            true,
+        )
+        .unwrap();
+        assert!(plan.layers.is_empty());
+        assert!(plan.points.is_empty());
     }
 
     /// 笔迹 → STROKE 消息:颜色转 0xRRGGBB,点列保序,不带作者/设备。
