@@ -13,6 +13,14 @@ import AppKit
         }
         return item
     }
+
+    /// 与 ObjC 原实现一致: 方形长度状态栏项; 图标由调用方随后设置。
+    @objc(createSquareItem)
+    public static func createSquareItem() -> NSStatusItem? {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.button?.title = ""
+        return item
+    }
 }
 
 /// 隐藏自检入口:目标文件 build.rs 已自动编入;由 Rust --swift-statusbar-probe 调用。

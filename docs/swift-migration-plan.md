@@ -239,3 +239,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-23 | S3b-1 | 菜单小图标迁 Swift:新增 src/macos/swift/menu_icons.swift(MenuIconFactory.colorDot/widthLine);ObjC 调用点改为生成头调用,旧函数改名 *_legacy 仅 parity 探针使用(S3b-2 删除);新增 --swift-icon-probe 逐字节比较 TIFF | probe: colorDot same=1 widthLine same=1, exit 0;cargo build/tests/parity/clippy 全绿 | 本提交 |
 | 2026-11-23 | S3b-1 收尾 | 删除临时 ObjC *_legacy 图标实现、--swift-icon-probe 与探针函数;Swift MenuIconFactory 成为颜色/粗细图标唯一实现 | grep legacy=0;cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-23 | S3b-2a | 菜单富文本构造函数 gl_menu_text 迁 Swift(MenuIconFactory.menuTextWithIcon:name:),ObjC 调用点改为生成头调用,旧函数删除;颜色/粗细图标与富文本均不再在 ObjC 绘制/构造 | cargo build/tests/parity 全绿;menu.m 中 gl_menu_text=0 | 本提交 |
+| 2026-11-23 | S3b-2b-0 | 真实启动路径的状态栏项创建改用 Swift StatusBarFactory.createSquareItem(方形长度,与旧一致);ObjC 保留 nil fallback;菜单构建/动作仍在 run.m(S3b-2b 继续) | cargo build/tests/parity 全绿;--swift-statusbar-probe OK | 本提交 |

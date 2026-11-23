@@ -3020,9 +3020,13 @@ void glaspen2_run(void) {
     }
 
     // Create status bar menu
-    g_statusItem = [[NSStatusBar systemStatusBar]
-        statusItemWithLength:NSSquareStatusItemLength];
-    [g_statusItem.button setTitle:@""]; // 纯图标, 不带文字(状态都画在图里)
+    // S3b-2b: 状态栏项创建改由 Swift StatusBarFactory 负责; ObjC 保留 fallback。
+    g_statusItem = [StatusBarFactory createSquareItem];
+    if (!g_statusItem) {
+        g_statusItem = [[NSStatusBar systemStatusBar]
+            statusItemWithLength:NSSquareStatusItemLength];
+        [g_statusItem.button setTitle:@""];
+    }
 
     g_menuHandler = [[GlaspenMenuHandler alloc] init];
     [NSApp setDelegate:g_menuHandler];

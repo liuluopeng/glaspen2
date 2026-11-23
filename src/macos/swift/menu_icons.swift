@@ -1,4 +1,4 @@
-// S3b: 菜单小图标(颜色圆点/粗细横线)与图标+文字 attributedTitle 构造,已从 menu.m 迁入 Swift。
+// S3b: 菜单小图标与富文本构造(颜色圆点/粗细横线/图标+文字),已从 ObjC 迁入 Swift。
 import AppKit
 
 @objc public final class MenuIconFactory: NSObject {
