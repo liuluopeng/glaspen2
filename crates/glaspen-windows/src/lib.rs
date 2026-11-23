@@ -1,6 +1,11 @@
 #[cfg(windows)]
 pub mod overlay;
 
+/// Windows 覆盖层的单笔模型器适配层(D9b):平滑/参数/笔宽公式单源在
+/// glaspen-core::modeler_session,这里只保留 Windows 的事件判定与落库/绘制
+/// 包装。不依赖 Win32,故在 macOS 上也能编译并跑单测。
+pub mod pen_modeler;
+
 /// 「立即更新」待安装的安装包路径(管道 applyUpdate 记录,进程收尾时消费)
 #[cfg(windows)]
 static PENDING_INSTALLER: std::sync::Mutex<Option<std::path::PathBuf>> =
