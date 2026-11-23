@@ -9,17 +9,13 @@ struct StrokeModelerState {
 
 static STATE: Mutex<Option<StrokeModelerState>> = Mutex::new(None);
 
+// 模型器参数/笔宽公式的唯一实现在 modeler_session(D9b);这里只做转发,
+// 全局 STATE 路径在 D9b 第三步也改成走 ModelerSession。
 fn modeler_params() -> ModelerParams {
-    // Match rnote's exact params — default spring/drag/wobble, only override sampling
-    ModelerParams {
-        sampling_min_output_rate: 120.0,
-        sampling_end_of_stroke_stopping_distance: 0.01,
-        sampling_end_of_stroke_max_iterations: 20,
-        sampling_max_outputs_per_call: 200,
-        stylus_state_modeler_max_input_samples: 20,
-        ..ModelerParams::suggested()
-    }
+    crate::modeler_session::modeler_params()
 }
+
+pub use crate::modeler_session::pressure_to_width;
 
 /// Initialize the modeler for a new stroke. Called on pen down.
 pub fn begin_stroke(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f64) {
@@ -213,16 +209,6 @@ pub fn smooth_points(points: &[(f64, f64, f64)]) -> Vec<(f64, f64, f64, f64)> {
     result
 }
 
-/// 压感→笔宽的唯一实现;presets::pressure_raw_width 与根 crate re-export
-/// 都指向这里,平台层(ObjC 落笔即时反馈点)经 FFI 复用,不再留公式拷贝。
-pub fn pressure_to_width(pressure: f64, width_scale: f64) -> f64 {
-    if pressure > 0.01 {
-        (0.3 + pressure * pressure * 7.7) * width_scale
-    } else {
-        1.0 * width_scale
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,6 +250,10 @@ mod tests {
 
     #[test]
     fn test_modeler_begin_end_buffer_cleared() {
+        // 全局 STATE 是进程级状态: 与 modeler_session 的特征化测试串行。
+        let _guard = crate::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _ = STATE.lock().unwrap_or_else(|e| e.into_inner()).take();
         begin_stroke(0.0, 0.0, 0.5, 0.0, 1.0);
         let buf = take_buffer();
