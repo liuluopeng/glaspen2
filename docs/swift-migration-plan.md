@@ -49,7 +49,7 @@ Rust↔macOS 的 C ABI 不变,契约测试与 parity 脚本全绿。
 | ID  | 阶段                | 范围/涉及文件                                                                                                                              | 验收                                                                                  | 估时  | 状态    |
 | --- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | ----- | ------- |
 | S0  | spike:状态栏菜单    | 分支 spike/swift-status-item;新 Swift 文件实现 NSStatusItem+NSMenu+3 项+attributedTitle 图标+target/action;与 ObjC 并存(env flag),不合并   | 能显示/点击/语言重建;记录 LOC、桥接点、build.rs 改动、AppKit 缺口;给出 keep/stop 结论 | 1–2 d | ✅ DONE(docs/swift-s0-spike-report.md;分支 spike/swift-status-item @ 228213a;结论 GO S1) |
-| S1  | 构建集成 + C ABI 桥 | build.rs 加 swiftc 编 .swift→.o 并链接;Bridging-Header;选 1 个无状态 shim(如 glaspen2_macos_open_url)用 Swift @_cdecl 重实现,符号不变      | cargo build 通过;Rust 调 Swift 行为一致;记录 swiftc 版本/部署目标/rpath;可回滚        | 2–4 d | ⬜ TODO |
+| S1  | 构建集成 + C ABI 桥 | build.rs 加 swiftc 编 .swift→.o 并链接;Bridging-Header;选 1 个无状态 shim(如 glaspen2_macos_open_url)用 Swift @_cdecl 重实现,符号不变      | cargo build 通过;Rust 调 Swift 行为一致;记录 swiftc 版本/部署目标/rpath;可回滚        | 2–4 d | ✅ DONE(2026-11-23,分支 feat/swift-s1:build.rs 已接 swiftc,open_url 由 Swift 接管;反向互调按任务允许留 S2;实测见 §8) |
 | S2  | 边界设计            | 定义 @objc 兼容 API 白名单(类/selector/回调/C 类型);禁止 Swift-only 类型跨界;ObjC→Swift 文件映射;事件 tap 的 @convention(c)+Unmanaged 方案 | 编译通过:空 Swift 类被 ObjC 调用 + Swift 调 ObjC 函数;设计写入本文件                  | 1–2 d | ⬜ TODO |
 | S3  | 菜单栏迁移          | menu.m:状态栏项/菜单构建/动作/动态重建/语言切换/图标;保留 C shim;旧实现 fallback 一个版本                                                  | 菜单项/图标/深浅色/语言/点击/快捷键与旧版逐项一致(截图);flag off 可回滚               | 3–5 d | ⬜ TODO |
 | S4  | HUD/通知/面板辅助   | show_notification/HUD/alert/beep 等;文案继续来自 core i18n                                                                                 | 文案/时长/位置/中英切换与旧版一致                                                     | 3–5 d | ⬜ TODO |
@@ -91,3 +91,79 @@ Rust↔macOS 的 C ABI 不变,契约测试与 parity 脚本全绿。
 - docs/d9d-verification.md(绘制验证与 Windows 延期记录)
 - AGENTS.md(仓库规则/构建/踩坑)
 | 2026-11-23 | S0 | 状态栏菜单 Swift 原型完成(NSStatusItem/NSMenu/attributedTitle 图标/target-action);编译 0.82s、71 行、60KB 独立产物,运行输出全部成功(3 菜单项/图标长度 1/selector 响应/action save 触发);未接 build.rs/ObjC 互调/动态重建(留 S1/S3) | swiftc -O 编译 + 2s 运行验证;报告 docs/swift-s0-spike-report.md | spike 分支 228213a |
+| 2026-11-23 | S1 | 构建集成 + 第一个 Swift shim 完成:build.rs 用 xcrun swiftc 把 src/macos/swift/*.swift 编进 libglaspen2_objc.a(部署目标 12.0;工具链兼容库 + SDK/tbd + /usr/lib/swift 搜索路径;rpath /usr/lib/swift);glaspen2_macos_open_url 改由 Swift @_cdecl 实现,menu.m 删除 ObjC 定义;C ABI/签名不变。反向互调(bridging header)按任务允许留 S2 | cargo build + cargo build --release 通过;nm 仅 1 处 T _glaspen2_macos_open_url;cargo test --workspace --exclude glaspen2_installer 通过;check-platform-parity.sh 通过;独立 C 探针 NULL/非法 URL 日志与返回正确 | feat/swift-s1(构建 20913ce + 本提交) |
+
+## 8. S1 实现备注(构建集成 + 第一个 Swift shim)
+
+完成于 2026-11-23,分支 `feat/swift-s1`(未合并 main)。
+
+### 8.1 改动
+
+- `build.rs`(macOS 分支):
+  - `xcrun swiftc -c -parse-as-library -module-name glaspen2_macos_swift
+    -swift-version 5 -target <arch>-apple-macosx12.0 -sdk <SDK> -O [-g(debug)]
+    src/macos/swift/*.swift`,目标文件写入 `OUT_DIR/swift/`,与 `glaspen2.o`
+    一起 `ar crus` 进同一个 `libglaspen2_objc.a`,最终链进同一个可执行文件。
+  - 链接搜索:`<toolchain>/usr/lib/swift/macosx`(部署目标 12.0 所需
+    libswiftCompatibility56.a 等兼容库只在这里)、`<SDK>/usr/lib/swift`
+    (libswift*.tbd 链接桩)、`/usr/lib/swift`;外加
+    `-Wl,-rpath,/usr/lib/swift`。
+  - 刻意不手写 `-lswiftCore/-lswiftFoundation`:Swift 目标文件的
+    LC_LINKER_OPTION autolink 会按 `import` 自动补库/framework;已用探针确认
+    从静态归档成员里被拉出的 Swift 目标文件同样生效。
+  - 监视 `src/macos/swift`(目录级 rerun-if-changed)。
+  - 归档先删除再重建:避免 `ar crus` 在 Swift 文件重命名/删除后留下旧成员。
+- `src/macos/swift/open_url.swift`:S1 唯一迁移的 C shim,
+  `@_cdecl("glaspen2_macos_open_url")`,签名 `void(const char *)` 不变:
+  用 `NSURL(string:)` 解析(等价 `[NSURL URLWithString:]`);主线程直接执行,
+  非主线程 `DispatchQueue.main.sync`(对应 ObjC `gl_run_on_main_sync`);
+  解析失败/打开失败都 NSLog(Rust 侧 http/https 白名单假定不变)。
+- `src/macos/parts/menu.m`:删除原 ObjC 定义;Rust 侧 extern 声明与调用点零改动。
+- `src/api.rs`:注释指向新实现。
+
+### 8.2 环境与实测
+
+- Swift: Apple Swift 6.4.2(swift-driver 1.168.6);SDK macOS 27.2;ld 27106.1。
+- 部署目标 **12.0**:与 `scripts/build-dmg.sh` 的 LSMinimumSystemVersion 一致
+  (README 也是 macOS 12+)。aarch64 理论下限 11.0;13.0 起编译器不再需要兼容库,
+  若产品最低系统抬到 13.0 可删掉工具链 `-L`。
+- `cargo build`:通过(52.45s,含 build.rs 的 flutter framework 步骤)。
+- `nm target/debug/glaspen2 | grep glaspen2_macos_open_url`:
+  `000000010024e6d8 T _glaspen2_macos_open_url` —— 全局代码定义仅 1 处。
+- `otool -L`:libswiftCore/libswiftDispatch/libswiftFoundation 等按 autolink 链接,
+  另有 AppKit/Foundation framework;`LC_RPATH` 含 `/usr/lib/swift`;
+  二进制 minos 仍为 11.0(Rust 侧链接参数决定,Swift 目标文件的 12.0 没有抬高
+  产品最低系统,因为代码只用 10.x API)。
+- 独立 C 探针(真实 `open_url.swift` + C main):`NULL` 无操作;
+  `"http://exa mple.com"` → NSLog 解析失败;`"://bad"` → NSURL 可解析但
+  NSWorkspace 打开失败 → NSLog 失败日志;进程正常返回 0(两条失败路径都不崩)。
+- `cargo test --workspace --exclude glaspen2_installer`:通过
+  (29+307+31+11+3 … 全部 ok,0 failed)。
+- `sh scripts/check-platform-parity.sh`:通过。
+- `cargo build --release`:通过(38.22s;release 走同一套 swiftc `-O` 编译与链接参数)。
+
+### 8.3 未做 / 留给 S2
+
+- **ObjC→Swift 反向互调(bridging header / `-emit-objc-header` / @objc 类被
+  ObjC 调用)未做**:任务允许作为 stretch,且 S2 验收本就包含"空 Swift 类被 ObjC
+  调用 + Swift 调 ObjC 函数"。加它需多一条 `-emit-objc-header-path`、clang
+  `-I` 与 ObjC 侧 import 生成头,避免在 S1 引入只能靠运行时验证的启动路径。
+- 真实 app 手测「设置 → 检查更新 → 打开下载页」未做(会拉起浏览器;按任务要求
+  不留 GUI 进程),行为等价由"逐行对照 + 独立探针"证明。
+- 真机 macOS 12.0 未验证:兼容库是编译器按部署目标 12.0 的标准做法,但本机是
+  27.2;旧系统回归留给 S2/发版前。
+- DMG 打包未跑(需要签名证书);release 链接已通过,打包脚本无需 Swift 专属步骤
+  (macOS 12+ 系统自带 Swift 运行时,不必内嵌 dylib)。
+
+### 8.4 回滚
+
+revert 本分支 S1 commit(菜单/shim 符号回到 ObjC)即可;build.rs 的 Swift 步骤
+没有 feature flag,所以不要只删 `src/macos/swift/`(build.rs 会断言失败),
+要整 commit revert。
+
+### 8.5 下一步(S2)
+
+1. 定义并写入边界白名单:C 类型/selector/回调/@convention(c)+Unmanaged 规则,
+   禁止 Swift-only 类型跨界;
+2. 加 bridging header + `-emit-objc-header`,完成双向互调最小验证(空 Swift 类被
+   ObjC 调用 + Swift 调一个现有 ObjC 函数),然后按阶段表进入 S3 菜单栏。
