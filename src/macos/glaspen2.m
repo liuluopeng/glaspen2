@@ -114,6 +114,8 @@ extern char* glaspen2_grid_json(double view_w, double view_h, double pan_x, doub
 extern char* glaspen2_grid_json_clipped(double view_w, double view_h, double pan_x, double pan_y, double zoom, double grid_size, int divider, int show_grid, double clip_x0, double clip_y0, double clip_x1, double clip_y1);
 extern void glaspen2_chat_auth_reload(void); // 设置/启动时把 DB 账号配置推给 Rust auth
 extern void glaspen2_share_ink_set_active(int active); // 共享画布上行开关(export.rs)
+// S2 双向互调探针(env 门控, 默认 no-op; 定义在 src/macos/swift/InteropProbe.m)
+extern void glaspen2_macos_swift_probe_maybe(void);
 // (共享画布上行已无 ObjC 入口:生命周期完全由面板 tab 驱动,FRB 直达 Rust)
 
 // Modeler FFI

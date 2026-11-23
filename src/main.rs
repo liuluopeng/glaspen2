@@ -20,6 +20,21 @@ fn main() {
         std::process::exit(glaspen2::updater::updater_main(&args[2..]));
     }
 
+    // S2 Swift↔ObjC 互调自检(隐藏调试入口, 不启动 GUI): 只跑一次双向探针
+    // (ObjC→Swift→ObjC, 各打一行 NSLog)后退出。正常启动/用户路径不经过这里。
+    // 定义在 src/macos/swift/InteropProbe.m;验证命令:
+    //     target/debug/glaspen2 --swift-probe
+    if args.get(1).map(String::as_str) == Some("--swift-probe") {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            unsafe extern "C" {
+                fn glaspen2_macos_swift_probe_selftest();
+            }
+            glaspen2_macos_swift_probe_selftest();
+        }
+        std::process::exit(0);
+    }
+
     #[cfg(target_os = "macos")]
     glaspen2::macos::macos_run();
 

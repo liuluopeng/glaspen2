@@ -2980,6 +2980,11 @@ static BOOL another_glaspen2_running(void) {
 
 void glaspen2_run(void) {
   @autoreleasepool {
+    // S2 双向互调探针: GLASPEN2_SWIFT_PROBE=1 时在启动早期跑一次
+    // ObjC→Swift→ObjC(只打日志);不设环境变量时 getenv 一次即返回,
+    // 正常启动行为零变化。定义在 src/macos/swift/InteropProbe.m。
+    glaspen2_macos_swift_probe_maybe();
+
     // 单实例守卫先于一切初始化: 第二个实例直接弹窗退出
     int lock_fd = instance_lock_acquire();
     if (lock_fd == -1 || another_glaspen2_running()) {

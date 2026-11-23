@@ -13,6 +13,8 @@ fn main() {
         }
         // Swift 迁移层(S1):目录级监视,cargo 会递归扫目录,新增/改 .swift 都会重跑
         println!("cargo:rerun-if-changed=src/macos/swift");
+        // 桥接头/Swift 头生成输入(S2):目录监视已覆盖,显式列一条防未来挪目录漏掉
+        println!("cargo:rerun-if-changed=src/macos/swift/Bridging.h");
         println!("cargo:rerun-if-changed=flutter_settings/lib/main.dart");
         // main.dart 的 part 文件(main.*.dart)也是 Dart 源: 只盯 main.dart
         // 会在改 part 时不重建 App.framework, 面板改动静默失效。
@@ -155,30 +157,6 @@ fn main() {
             .probe("cairo")
             .expect("cairo not found via pkg-config (brew install cairo)");
 
-        let mut clang = std::process::Command::new("clang");
-        clang.args(["-c", "src/macos/glaspen2.m", "-o", &obj_path]);
-        clang.args(["-fobjc-arc", "-O2", "-Wall"]);
-        // debug 构建带上调试信息:否则 lldb 只能按符号名下断点,
-        // 看不到 glaspen2.m 的行号(backtrace 也只有地址)。
-        if std::env::var("PROFILE").as_deref() == Ok("debug") {
-            clang.arg("-g");
-        }
-        for p in &cairo.include_paths {
-            clang.arg(format!("-I{}", p.display()));
-            // glaspen2.m 用 <cairo/cairo.h> 风格: pkg-config 给的是 .../include/cairo,
-            // 需要父目录 .../include 才能解析 <cairo/...>。
-            if let Some(parent) = p.parent() {
-                clang.arg(format!("-I{}", parent.display()));
-            }
-        }
-        clang.arg(format!(
-            "-F{}/FlutterMacOS.xcframework/macos-arm64_x86_64",
-            flutter_fw_dir
-        ));
-        let status = clang.status().expect("Failed to run clang");
-
-        assert!(status.success(), "clang failed to compile glaspen2.m");
-
         // ── Swift 原生层(S1):src/macos/swift/*.swift → .o,与 ObjC 同一个归档 ──
         // 部署目标取发布包 Info.plist 的 LSMinimumSystemVersion = 12.0
         // (scripts/build-dmg.sh;README 也写 macOS 12+)。S0 报告要求显式设置:
@@ -237,6 +215,25 @@ fn main() {
 
         let swift_obj_dir = std::path::Path::new(&out_dir).join("swift");
         std::fs::create_dir_all(&swift_obj_dir).expect("创建 Swift 目标文件目录失败");
+
+        // ── S2: 双向互调的两块拼图 ──
+        // 1) bridging header: Swift 侧 import ObjC/C 声明
+        //    (-import-objc-header src/macos/swift/Bridging.h);
+        // 2) 生成的 ObjC 头: swiftc 把本模块 @objc 面 emit 成
+        //    OUT_DIR/glaspen2_macos_swift-Swift.h, ObjC(InteropProbe.m)用
+        //    -I $OUT_DIR #import 它 → ObjC 可调 Swift @objc 类/方法。
+        // 注意顺序: 头必须先由 swiftc 生成, 才轮到下面的 clang 编 ObjC。
+        let bridging_header = std::path::Path::new(&manifest_dir)
+            .join("src")
+            .join("macos")
+            .join("swift")
+            .join("Bridging.h");
+        assert!(
+            bridging_header.exists(),
+            "缺少 Swift 桥接头 {}(Swift 调 ObjC 声明的唯一入口)",
+            bridging_header.display()
+        );
+        let swift_header_path = std::path::Path::new(&out_dir).join("glaspen2_macos_swift-Swift.h");
         let swift_target = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
             Ok("aarch64") => format!("arm64-apple-macosx{SWIFT_DEPLOYMENT_TARGET}"),
             Ok("x86_64") => format!("x86_64-apple-macosx{SWIFT_DEPLOYMENT_TARGET}"),
@@ -258,6 +255,11 @@ fn main() {
             ])
             .args(["-target", &swift_target])
             .args(["-sdk", &sdk_path])
+            // S2 桥接: 导入 ObjC/C 声明, 并 emit ObjC 可 import 的 Swift 头。
+            .arg("-import-objc-header")
+            .arg(&bridging_header)
+            .args(["-emit-objc-header", "-emit-objc-header-path"])
+            .arg(&swift_header_path)
             .arg("-O")
             .current_dir(&swift_obj_dir);
         if std::env::var("PROFILE").as_deref() == Ok("debug") {
@@ -285,6 +287,57 @@ fn main() {
             })
             .collect();
 
+        // swiftc 没生成 -Swift.h 时 ObjC 侧会报找不到头; 提前给出清晰断言。
+        assert!(
+            swift_header_path.exists(),
+            "swiftc 未生成 ObjC 头 {}(-emit-objc-header-path 失败?)",
+            swift_header_path.display()
+        );
+
+        // ── ObjC 编译(在 Swift 头生成之后): glaspen2.m 主单元 + S2 探针单元 ──
+        // -I $OUT_DIR: 让 #import "glaspen2_macos_swift-Swift.h" 能找到生成的 Swift 头。
+        let probe_obj_path = format!("{}/InteropProbe.o", out_dir);
+        // 每个 .m 独立一次 clang 调用(各自 -c -o): 探针编译错误能直接归因,
+        // 也不会把两个翻译单元的参数混在一起。
+        let compile_objc = |src: &str, obj: &str| {
+            let mut clang = std::process::Command::new("clang");
+            clang.args(["-fobjc-arc", "-O2", "-Wall"]);
+            clang.arg(format!("-I{}", out_dir));
+            // debug 构建带上调试信息:否则 lldb 只能按符号名下断点,
+            // 看不到 glaspen2.m 的行号(backtrace 也只有地址)。
+            if std::env::var("PROFILE").as_deref() == Ok("debug") {
+                clang.arg("-g");
+            }
+            for p in &cairo.include_paths {
+                clang.arg(format!("-I{}", p.display()));
+                // glaspen2.m 用 <cairo/cairo.h> 风格: pkg-config 给的是 .../include/cairo,
+                // 需要父目录 .../include 才能解析 <cairo/...>。
+                if let Some(parent) = p.parent() {
+                    clang.arg(format!("-I{}", parent.display()));
+                }
+            }
+            clang.arg(format!(
+                "-F{}/FlutterMacOS.xcframework/macos-arm64_x86_64",
+                flutter_fw_dir
+            ));
+            clang
+                .arg("-c")
+                .arg(src)
+                .arg("-o")
+                .arg(obj)
+                .status()
+                .expect("Failed to run clang")
+                .success()
+        };
+        assert!(
+            compile_objc("src/macos/glaspen2.m", &obj_path),
+            "clang failed to compile glaspen2.m"
+        );
+        assert!(
+            compile_objc("src/macos/swift/InteropProbe.m", &probe_obj_path),
+            "clang failed to compile src/macos/swift/InteropProbe.m"
+        );
+
         // Tell cargo about the object file
         println!("cargo:rustc-link-search=native={}", out_dir);
         println!("cargo:rustc-link-lib=static=glaspen2_objc");
@@ -297,7 +350,10 @@ fn main() {
         // 先删档保证成员集合与当前源码一致。
         let _ = std::fs::remove_file(&lib_path);
         let mut ar = std::process::Command::new("ar");
-        ar.arg("crus").arg(&lib_path).arg(&obj_path);
+        ar.arg("crus")
+            .arg(&lib_path)
+            .arg(&obj_path)
+            .arg(&probe_obj_path);
         for obj in &swift_objects {
             ar.arg(obj);
         }
