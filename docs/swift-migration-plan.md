@@ -50,7 +50,7 @@ Rust↔macOS 的 C ABI 不变,契约测试与 parity 脚本全绿。
 | --- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | ----- | ------- |
 | S0  | spike:状态栏菜单    | 分支 spike/swift-status-item;新 Swift 文件实现 NSStatusItem+NSMenu+3 项+attributedTitle 图标+target/action;与 ObjC 并存(env flag),不合并   | 能显示/点击/语言重建;记录 LOC、桥接点、build.rs 改动、AppKit 缺口;给出 keep/stop 结论 | 1–2 d | ✅ DONE(docs/swift-s0-spike-report.md;分支 spike/swift-status-item @ 228213a;结论 GO S1) |
 | S1  | 构建集成 + C ABI 桥 | build.rs 加 swiftc 编 .swift→.o 并链接;Bridging-Header;选 1 个无状态 shim(如 glaspen2_macos_open_url)用 Swift @_cdecl 重实现,符号不变      | cargo build 通过;Rust 调 Swift 行为一致;记录 swiftc 版本/部署目标/rpath;可回滚        | 2–4 d | ✅ DONE(2026-11-23,分支 feat/swift-s1:build.rs 已接 swiftc,open_url 由 Swift 接管;反向互调按任务允许留 S2;实测见 §8) |
-| S2  | 边界设计            | 定义 @objc 兼容 API 白名单(类/selector/回调/C 类型);禁止 Swift-only 类型跨界;ObjC→Swift 文件映射;事件 tap 的 @convention(c)+Unmanaged 方案 | 编译通过:空 Swift 类被 ObjC 调用 + Swift 调 ObjC 函数;设计写入本文件                  | 1–2 d | ⬜ TODO |
+| S2  | 边界设计            | 定义 @objc 兼容 API 白名单(类/selector/回调/C 类型);禁止 Swift-only 类型跨界;ObjC→Swift 文件映射;事件 tap 的 @convention(c)+Unmanaged 方案 | 编译通过:空 Swift 类被 ObjC 调用 + Swift 调 ObjC 函数;设计写入本文件                  | 1–2 d | ✅ DONE(2026-11-23,分支 feat/swift-s2:桥接头 + 生成头 + 双向互调探针;规则与 S3+ 文件映射在 docs/swift-boundary.md;实测见 §9) |
 | S3  | 菜单栏迁移          | menu.m:状态栏项/菜单构建/动作/动态重建/语言切换/图标;保留 C shim;旧实现 fallback 一个版本                                                  | 菜单项/图标/深浅色/语言/点击/快捷键与旧版逐项一致(截图);flag off 可回滚               | 3–5 d | ⬜ TODO |
 | S4  | HUD/通知/面板辅助   | show_notification/HUD/alert/beep 等;文案继续来自 core i18n                                                                                 | 文案/时长/位置/中英切换与旧版一致                                                     | 3–5 d | ⬜ TODO |
 | S5  | 窗口/覆盖层搭建     | NSWindow 创建/层级/透明/点击穿透/多屏/全屏/显示器变更防抖;不含 event tap;cairo 绘制不变                                                    | 窗口 checklist 逐项(层级/穿透/多屏/全屏/锁屏唤醒)与旧版一致                           | 1–2 w | ⬜ TODO |
@@ -83,15 +83,17 @@ Rust↔macOS 的 C ABI 不变,契约测试与 parity 脚本全绿。
 | 日期       | 阶段     | 进度/决定                                                          | 验证 | commit |
 | ---------- | -------- | ------------------------------------------------------------------ | ---- | ------ |
 | 2026-11-23 | 计划创建 | 以 v0.7.0(ce525db)为基线;迁移未开始;建议先 S0 spike 再决定是否继续 | -    | 本提交 |
+| 2026-11-23 | S0 | 状态栏菜单 Swift 原型完成(NSStatusItem/NSMenu/attributedTitle 图标/target-action);编译 0.82s、71 行、60KB 独立产物,运行输出全部成功(3 菜单项/图标长度 1/selector 响应/action save 触发);未接 build.rs/ObjC 互调/动态重建(留 S1/S3) | swiftc -O 编译 + 2s 运行验证;报告 docs/swift-s0-spike-report.md | spike 分支 228213a |
+| 2026-11-23 | S1 | 构建集成 + 第一个 Swift shim 完成:build.rs 用 xcrun swiftc 把 src/macos/swift/*.swift 编进 libglaspen2_objc.a(部署目标 12.0;工具链兼容库 + SDK/tbd + /usr/lib/swift 搜索路径;rpath /usr/lib/swift);glaspen2_macos_open_url 改由 Swift @_cdecl 实现,menu.m 删除 ObjC 定义;C ABI/签名不变。反向互调(bridging header)按任务允许留 S2 | cargo build + cargo build --release 通过;nm 仅 1 处 T _glaspen2_macos_open_url;cargo test --workspace --exclude glaspen2_installer 通过;check-platform-parity.sh 通过;独立 C 探针 NULL/非法 URL 日志与返回正确 | feat/swift-s1(构建 20913ce + 本提交) |
+| 2026-11-23 | S2 | 边界设计 + 反向互调验证完成:build.rs 加 bridging header(-import-objc-header)与生成头(-emit-objc-header -emit-objc-header-path $OUT_DIR/glaspen2_macos_swift-Swift.h;clang -I $OUT_DIR);新增 @objc SwiftInteropProbe.ping() + ObjC 探针单元 InteropProbe.m(ObjC→Swift 与 Swift→ObjC 双跳均落日志);--swift-probe 无 GUI 自检 + GLASPEN2_SWIFT_PROBE=1 启动门控(默认 no-op);边界白名单/回调/字符串所有权/命名/Swift 5 并发策略/S3+ 文件映射写入 docs/swift-boundary.md | cargo build(干净 22.7s + 增量 + release 23.4s)、cargo test --workspace --exclude glaspen2_installer、check-platform-parity.sh、cargo clippy -p glaspen2 -- -D warnings 全通过;target/debug/glaspen2 --swift-probe 打出 4 行双向互调日志(ObjC 探针返回 1442=0x5A2) | feat/swift-s2(构建 b780331 + 文档提交) |
 
 ## 7. 相关文档
 
 - docs/architecture.svg(当前架构)
 - docs/duplication-backlog.md(D14 防重复架构、各单源模块)
 - docs/d9d-verification.md(绘制验证与 Windows 延期记录)
+- docs/swift-boundary.md(S2 边界规则:白名单/回调/字符串所有权/命名/Swift 5 策略/S3+ 文件映射)
 - AGENTS.md(仓库规则/构建/踩坑)
-| 2026-11-23 | S0 | 状态栏菜单 Swift 原型完成(NSStatusItem/NSMenu/attributedTitle 图标/target-action);编译 0.82s、71 行、60KB 独立产物,运行输出全部成功(3 菜单项/图标长度 1/selector 响应/action save 触发);未接 build.rs/ObjC 互调/动态重建(留 S1/S3) | swiftc -O 编译 + 2s 运行验证;报告 docs/swift-s0-spike-report.md | spike 分支 228213a |
-| 2026-11-23 | S1 | 构建集成 + 第一个 Swift shim 完成:build.rs 用 xcrun swiftc 把 src/macos/swift/*.swift 编进 libglaspen2_objc.a(部署目标 12.0;工具链兼容库 + SDK/tbd + /usr/lib/swift 搜索路径;rpath /usr/lib/swift);glaspen2_macos_open_url 改由 Swift @_cdecl 实现,menu.m 删除 ObjC 定义;C ABI/签名不变。反向互调(bridging header)按任务允许留 S2 | cargo build + cargo build --release 通过;nm 仅 1 处 T _glaspen2_macos_open_url;cargo test --workspace --exclude glaspen2_installer 通过;check-platform-parity.sh 通过;独立 C 探针 NULL/非法 URL 日志与返回正确 | feat/swift-s1(构建 20913ce + 本提交) |
 
 ## 8. S1 实现备注(构建集成 + 第一个 Swift shim)
 
@@ -172,3 +174,63 @@ revert 本分支 S1 commit(菜单/shim 符号回到 ObjC)即可;build.rs 的 Swi
    禁止 Swift-only 类型跨界;
 2. 加 bridging header + `-emit-objc-header`,完成双向互调最小验证(空 Swift 类被
    ObjC 调用 + Swift 调一个现有 ObjC 函数),然后按阶段表进入 S3 菜单栏。
+
+→ 以上两项 S2 已完成(2026-11-23,分支 feat/swift-s2),实测与实现备注见 §9。
+
+## 9. S2 实现备注(边界设计 + 反向互调)
+
+完成于 2026-11-23,分支 `feat/swift-s2`(未合并 main)。完整边界规则/白名单/回调约定/
+字符串所有权/S3+ 文件映射见 **docs/swift-boundary.md**;这里只记实施与实测要点。
+
+### 9.1 改动(构建 + 探针)
+
+- `build.rs`(macOS 分支):
+  - Swift 编译提前到 ObjC 之前(ObjC 要 import Swift 生成头,顺序不能反);
+  - 新增 `-import-objc-header src/macos/swift/Bridging.h`(Swift 侧 import ObjC/C 声明);
+  - 新增 `-emit-objc-header -emit-objc-header-path $OUT_DIR/glaspen2_macos_swift-Swift.h`;
+  - clang 编 ObjC 时加 `-I$OUT_DIR`(可 `#import "glaspen2_macos_swift-Swift.h"`);
+    ObjC 拆成 `glaspen2.m` 与 `src/macos/swift/InteropProbe.m` 两个单元分别编译,
+    一起 `ar crus` 进 `libglaspen2_objc.a`;
+  - swiftc 后断言生成头存在;部署目标/链接/rpath 参数原样保留。
+- `src/macos/swift/Bridging.h`(新文件):桥接头,当前声明探针 C 入口;
+- `src/macos/swift/interop_probe.swift`(新文件):`@objc public final class
+  SwiftInteropProbe: NSObject`,`@objc public static func ping() -> String`,
+  内部经桥接头调 ObjC `glaspen2_macos_objc_probe("swift-s2")` 并返回
+  `"swift-pong-<code>"`;
+- `src/macos/swift/InteropProbe.m`(新文件):ObjC 侧探针单元。
+  `#import "glaspen2_macos_swift-Swift.h"` 后 `[SwiftInteropProbe ping]`(ObjC→Swift);
+  实现 `glaspen2_macos_objc_probe`(Swift→ObjC 目标,只打日志 + 返回 0x5A2);
+  `GLASPEN2_SWIFT_PROBE=1` 时启动早期跑一次,默认 no-op;
+- `src/macos/parts/run.m` + `src/macos/glaspen2.m`:启动早期调用 env 门控入口
+  (不设变量时仅一次 getenv,用户可见行为零变化);
+- `src/main.rs`:`glaspen2 --swift-probe` 隐藏调试入口,不启动 GUI、跑完即退。
+
+### 9.2 实测(无 GUI)
+
+- `target/debug/glaspen2 --swift-probe` 输出 4 行:
+  `objc->swift: calling [SwiftInteropProbe ping]` /
+  `objc<-swift OK: glaspen2_macos_objc_probe(swift-s2)` /
+  `swift->objc OK: ... returned 1442` / `objc->swift OK: ping returned swift-pong-1442`
+  (1442 = 0x5A2,证明真的执行到 C 函数体);
+- 归档成员:`glaspen2.o InteropProbe.o interop_probe.o open_url.o`;
+- `nm`:`SwiftInteropProbe` 以 ObjC 类符号出现;`glaspen2_macos_open_url` 仍只有
+  1 处全局定义(S1 行为未变);
+- 干净构建 22.7s(`cargo clean -p glaspen2`)、增量/rerun-if-changed 生效、
+  release 23.4s 且 release 二进制同样跑通探针;
+- `cargo test --workspace --exclude glaspen2_installer`(29+307+31+11+3,0 failed)、
+  `sh scripts/check-platform-parity.sh`、`cargo clippy -p glaspen2 -- -D warnings` 全通过。
+
+### 9.3 未做 / 留给 S3
+
+- 启动路径 env 门控(GUI 内)未实跑(按任务要求不启动 GUI);调用的是同一
+  `glaspen2_macos_swift_probe_selftest()`,命令行入口已覆盖;
+- macOS 12.0 真机未验证(同 S1,本机 27.2);
+- S3 第一件事:按 docs/swift-boundary.md §8 的映射把 `parts/menu.m` + 建菜单段
+  迁到 `menu_bar.swift`/`menu_actions.swift`/`menu_icons.swift`,旧 ObjC 保留
+  fallback(`GLASPEN2_SWIFT_MENU=1` 切换),验收后再改默认。
+
+### 9.4 回滚
+
+revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe`/env 探针
+默认 no-op,不回滚也不影响用户)。桥接头/生成头顺序是强制的:只删一个文件会
+让 build.rs 断言失败。
