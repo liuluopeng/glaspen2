@@ -8,9 +8,27 @@
 //! 把「真实不同的部分」显式做成参数(PassOrder / PlanScope / ShadowParams /
 //! OutlineParams),留给 D9c 让 adapter 选择 —— **不静默统一、不改变任何像素**。
 //!
-//! 本切片(D9a)只产出:类型 + plan() 纯函数 + 单元/表驱动/特征化测试。两端
-//! adapter、FFI、像素常量一律未动;D9b(模型器单源)、D9c(adapter 消费 DrawPlan)、
-//! D9d(真机视觉/性能回归)的方案见 docs/duplication-backlog.md。
+//! D9a 切片只产出:类型 + plan() 纯函数 + 单元/表驱动/特征化测试;两端 adapter、
+//! FFI、像素常量当时未动。
+//!
+//! # D9c 接线状态(2026-11-23)
+//!
+//! - **Windows**(commit 8b34ffb):`crates/glaspen-windows/src/paint_plan.rs` 用
+//!   [`PassOrder::WindowsPerStroke`] / [`PlanScope::Rebuild`|WindowsLive] /
+//!   [`ShadowParams::windows`] / [`OutlineParams::windows`] 生成计划,
+//!   `overlay/actions.rs::redraw_from_strokes` 与 `overlay/pen.rs::redraw_pen`
+//!   只调用 `canvas.rs::execute_plan` 执行;旧的逐笔 pass 循环
+//!   `fill_stroke_path` 已删除。
+//! - **macOS 整页重建**(commit db2575b):`core export/mod.rs::paint_strokes_into`
+//!   用 [`PassOrder::MacosCommitted`] + macOS 参数生成计划并逐层 cairo 光栅化
+//!   (`rasterize_macos_plan`);内联三层 pass 循环已删除。alpha<1 的软件合成
+//!   (pagerender)与邻页拼接保持原实现(本模块审计差异 I/M)。
+//! - **未接**:macOS 实时 `panel.m raw_draw_dot/raw_draw_segment` 仍逐段自绘
+//!   (本模块「plan 不建模的」第 1/2 条:接缝重绘、整笔虚线相位推进);
+//!   D9d 真机像素/性能回归未做。详见 docs/duplication-backlog.md D9c/D9d。
+//!
+//! 下方审计段落的行号/函数名记录的是 **D9a 提交时**的两端实现(其中 Windows
+//! `fill_stroke_path`、macOS 内联 pass 循环已被 D9c 删除),保留作差异出处。
 //!
 //! # 模型
 //!
@@ -532,7 +550,8 @@ pub enum PassOrder {
     /// macOS 整页重建(core export/mod.rs:638 paint_strokes_into):
     /// 层 0 = 全部软阴影(档位外层、笔迹内层),之后每笔一层(描边 → 墨迹)。
     MacosCommitted,
-    /// Windows 整页重建/实时(overlay/pen.rs:56 fill_stroke_path):
+    /// Windows 整页重建/实时(D9a 证据:overlay/pen.rs:56 fill_stroke_path,
+    /// D9c 后由 crates/glaspen-windows/src/paint_plan.rs 生成):
     /// 每笔一层(三档阴影 → 描边 → 墨迹)。
     WindowsPerStroke,
 }
@@ -546,7 +565,8 @@ pub enum PlanScope {
     /// 外扩后并集(glaspen2.m:385 dirty_include_surface_point + panel.m:725)。
     MacosLive,
     /// Windows 实时:只画在写路径;脏区 = 新点按「ceil(半径) + 1 + 描边(0/1)
-    /// + 软阴影 5」外扩、截断到画布(pen.rs:111-145)。
+    /// + 软阴影 5」外扩、截断到画布(D9a 证据 pen.rs:111-145;D9c 后公式由
+    ///   本模块拥有,Windows adapter 经 `paint_plan::live_dirty` 只取新增点段)。
     WindowsLive,
 }
 
