@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
+<marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ca8a04"/></marker>
+</defs>
+<style>
+.bg{fill:#f8fafc}
+.t{font-family:"PingFang SC","Hiragino Sans GB",Helvetica,Arial,sans-serif}
+.h1{font-size:23px;font-weight:700;fill:#0f172a}
+.h2{font-size:13px;fill:#475569}
+.boxt{font-size:14px;font-weight:600;fill:#0f172a}
+.sub{font-size:11.5px;fill:#475569}
+.chip{fill:#ffffff;stroke:#93c5fd;stroke-width:1;rx:6}
+.chipt{font-size:12px;fill:#1e40af;font-weight:600}
+.note{font-size:11px;fill:#9a3412}
+.line{stroke:#94a3b8;stroke-width:1.5;fill:none;marker-end:url(#arrow)}
+.dash{stroke:#94a3b8;stroke-width:1.2;stroke-dasharray:5 4;fill:none;marker-end:url(#arrow)}
+.gate{stroke:#ca8a04;stroke-width:1.2;stroke-dasharray:5 4;fill:none;marker-end:url(#arrow2)}
+.label{font-size:11px;fill:#475569}
+.mac{fill:#ede9fe;stroke:#7c3aed;stroke-width:1.5}
+.win{fill:#dcfce7;stroke:#16a34a;stroke-width:1.5}
+.core{fill:#e0f2fe;stroke:#0284c7;stroke-width:1.8}
+.os{fill:#fff7ed;stroke:#ea580c;stroke-width:1.3;stroke-dasharray:6 4}
+.ext{fill:#f1f5f9;stroke:#64748b;stroke-width:1.2}
+.ci{fill:#fef9c3;stroke:#ca8a04;stroke-width:1.5}
+.grouplabel{font-size:12px;font-weight:600;fill:#0369a1}
+</style>
+<rect class="bg" x="0" y="0" width="1600" height="1040"/>
+<text class="t h1" x="36" y="44">glaspen2 当前架构(2026-11 · 跨平台单源重构后)</text>
+<text class="t h2" x="36" y="72">core 拥有全部平台无关规则;macOS/Windows 壳只保留 OS adapter;两端通过 FFI / 同进程直调 / 契约闸门对齐</text>
+
+<!-- macOS shell -->
+<rect class="mac" x="36" y="96" width="474" height="340" rx="10"/>
+<text class="t boxt" x="56" y="124">macOS 壳 · glaspen2(ObjC + Rust 入口)</text>
+<rect class="ext" x="56" y="132" width="434" height="60" rx="7"/>
+<text class="t boxt" x="70" y="155" font-size="12.5">事件 / 窗口 / 菜单(ObjC)</text>
+<text class="t sub" x="70" y="176">CGEventTap · 覆盖层窗口 · 菜单栏 · 翻页系统动效</text>
+<rect class="ext" x="56" y="200" width="434" height="56" rx="7"/>
+<text class="t boxt" x="70" y="222" font-size="12.5">实时绘制 · panel.m</text>
+<text class="t sub" x="70" y="243">raw_draw_dot/segment → 增量 DrawPlan(FFI 下发)</text>
+<rect class="ext" x="56" y="264" width="434" height="50" rx="7"/>
+<text class="t boxt" x="70" y="285" font-size="12.5">面板桥 · FRB 同进程</text>
+<text class="t sub" x="70" y="304">api.rs ↔ Flutter 设置面板(DynamicLibrary.process)</text>
+<rect class="os" x="56" y="322" width="434" height="96" rx="7"/>
+<text class="t boxt" x="70" y="344" font-size="12.5">OS-only(合法两份,不合并)</text>
+<text class="t sub" x="70" y="365">AppKit / CoreGraphics / 剪贴板 / 辅助功能权限</text>
+<text class="t sub" x="70" y="385">DMG 安装器 · 更新解包 · 系统菜单动效</text>
+<text class="t note" x="70" y="406">arch: adapter 层只允许做"翻译",不允许再放规则</text>
+
+<!-- Flutter panel -->
+<rect class="ext" x="36" y="456" width="474" height="84" rx="10"/>
+<text class="t boxt" x="56" y="482">flutter_settings(Dart · 单一代码库)</text>
+<text class="t sub" x="56" y="504">schema 驱动表单 · 无 Platform. 分支 · 只经桥工厂区分平台</text>
+<text class="t sub" x="56" y="524">macOS 走 FRB;Windows 走命名管道(同一 UI 契约)</text>
+<line class="line" x1="273" y1="456" x2="273" y2="440"/>
+<text class="t label" x="281" y="452">FRB</text>
+
+<!-- Windows shell -->
+<rect class="win" x="1090" y="96" width="474" height="340" rx="10"/>
+<text class="t boxt" x="1110" y="124">Windows 壳 · glaspen-windows(Rust / Win32)</text>
+<rect class="ext" x="1110" y="132" width="434" height="60" rx="7"/>
+<text class="t boxt" x="1124" y="155" font-size="12.5">Raw HID / 窗口</text>
+<text class="t sub" x="1124" y="176">WM_INPUT · wndproc · 覆盖层窗口 · 托盘</text>
+<rect class="ext" x="1110" y="200" width="434" height="56" rx="7"/>
+<text class="t boxt" x="1124" y="222" font-size="12.5">实时绘制</text>
+<text class="t sub" x="1124" y="243">pen_modeler + paint_plan → DrawPlan(直调 core)</text>
+<rect class="ext" x="1110" y="264" width="434" height="50" rx="7"/>
+<text class="t boxt" x="1124" y="285" font-size="12.5">命名管道服务</text>
+<text class="t sub" x="1124" y="304">\\.\pipe\glaspen2_settings(面板独立进程)</text>
+<rect class="os" x="1110" y="322" width="434" height="96" rx="7"/>
+<text class="t boxt" x="1124" y="344" font-size="12.5">OS-only(合法两份,不合并)</text>
+<text class="t sub" x="1124" y="365">Win32 / GDI+DIB / RegisterHotKey 注册与占用降级</text>
+<text class="t sub" x="1124" y="385">EXE 安装器 · 更新解包 · 焦点/Z-order/DPI</text>
+<text class="t note" x="1124" y="406">arch: 与 macOS 的差异显式化,不静默统一</text>
+
+<!-- Windows settings exe -->
+<rect class="ext" x="1090" y="456" width="474" height="84" rx="10"/>
+<text class="t boxt" x="1110" y="482">glaspen2_settings.exe(Flutter · 独立进程)</text>
+<text class="t sub" x="1110" y="504">命名管道读写设置 / 热键 / 缩略图 / 页操作</text>
+<text class="t sub" x="1110" y="524">与覆盖层同生命周期;面板不直接碰 DB</text>
+<line class="line" x1="1327" y1="456" x2="1327" y2="440"/>
+<text class="t label" x="1335" y="452">pipe</text>
+
+<!-- core -->
+<rect class="core" x="545" y="96" width="510" height="600" rx="12"/>
+<text class="t boxt" x="565" y="124">glaspen-core(平台无关 · 唯一来源)</text>
+<text class="t sub" x="565" y="143">13 个单源模块 · 307 个测试 · 只暴露 FFI/类型边界</text>
+<rect class="chip" x="565" y="152" width="470" height="44" rx="7"/>
+<text class="t chipt" x="577" y="172">export/ · FFI 面</text>
+<text class="t sub" x="577" y="188">mod · pages · chat_glue · media · thumbs(只做翻译,不做规则)</text>
+
+<text class="t grouplabel" x="565" y="222">单一来源规则(D1–D12)</text>
+<g>
+<rect class="chip" x="565" y="232" width="150" height="26" rx="6"/><text class="t chipt" x="577" y="250">ui</text>
+<rect class="chip" x="725" y="232" width="150" height="26" rx="6"/><text class="t chipt" x="737" y="250">settings</text>
+<rect class="chip" x="885" y="232" width="150" height="26" rx="6"/><text class="t chipt" x="897" y="250">settings_apply</text>
+<rect class="chip" x="565" y="266" width="150" height="26" rx="6"/><text class="t chipt" x="577" y="284">settings_form</text>
+<rect class="chip" x="725" y="266" width="150" height="26" rx="6"/><text class="t chipt" x="737" y="284">settings_snapshot</text>
+<rect class="chip" x="885" y="266" width="150" height="26" rx="6"/><text class="t chipt" x="897" y="284">protocol</text>
+<rect class="chip" x="565" y="300" width="150" height="26" rx="6"/><text class="t chipt" x="577" y="318">chord</text>
+<rect class="chip" x="725" y="300" width="150" height="26" rx="6"/><text class="t chipt" x="737" y="318">action_effect</text>
+<rect class="chip" x="885" y="300" width="150" height="26" rx="6"/><text class="t chipt" x="897" y="318">pageinfo</text>
+<rect class="chip" x="565" y="334" width="150" height="26" rx="6"/><text class="t chipt" x="577" y="352">camera</text>
+<rect class="chip" x="725" y="334" width="150" height="26" rx="6"/><text class="t chipt" x="737" y="352">grid</text>
+<rect class="chip" x="885" y="334" width="150" height="26" rx="6"/><text class="t chipt" x="897" y="352">minimap</text>
+<rect class="chip" x="565" y="368" width="150" height="26" rx="6"/><text class="t chipt" x="577" y="386">recording</text>
+<rect class="chip" x="725" y="368" width="150" height="26" rx="6"/><text class="t chipt" x="737" y="386">i18n</text>
+</g>
+
+<text class="t grouplabel" x="565" y="420">绘制 / 模型(D9)</text>
+<g>
+<rect class="chip" x="565" y="430" width="150" height="26" rx="6"/><text class="t chipt" x="577" y="448">draw_spec</text>
+<rect class="chip" x="725" y="430" width="150" height="26" rx="6"/><text class="t chipt" x="737" y="448">modeler_session</text>
+<rect class="chip" x="885" y="430" width="150" height="26" rx="6"/><text class="t chipt" x="897" y="448">modeler</text>
+</g>
+
+<text class="t grouplabel" x="565" y="482">数据 / 运行时</text>
+<g>
+<rect class="chip" x="565" y="492" width="150" height="26" rx="6"/><text class="t chipt" x="577" y="510">db</text>
+<rect class="chip" x="725" y="492" width="150" height="26" rx="6"/><text class="t chipt" x="737" y="510">state</text>
+<rect class="chip" x="885" y="492" width="150" height="26" rx="6"/><text class="t chipt" x="897" y="510">device</text>
+<rect class="chip" x="565" y="526" width="150" height="26" rx="6"/><text class="t chipt" x="577" y="544">presets</text>
+<rect class="chip" x="725" y="526" width="150" height="26" rx="6"/><text class="t chipt" x="737" y="544">ocr</text>
+<rect class="chip" x="885" y="526" width="150" height="26" rx="6"/><text class="t chipt" x="897" y="544">pdf</text>
+<rect class="chip" x="565" y="560" width="150" height="26" rx="6"/><text class="t chipt" x="577" y="578">pagerender</text>
+<rect class="chip" x="725" y="560" width="150" height="26" rx="6"/><text class="t chipt" x="737" y="578">lib</text>
+<rect class="chip" x="885" y="560" width="150" height="26" rx="6"/><text class="t chipt" x="897" y="578">cairo_dl</text>
+</g>
+
+<text class="t grouplabel" x="565" y="610">更新</text>
+<g>
+<rect class="chip" x="565" y="620" width="150" height="26" rx="6"/><text class="t chipt" x="577" y="638">update</text>
+<rect class="chip" x="725" y="620" width="150" height="26" rx="6"/><text class="t chipt" x="737" y="638">updater</text>
+</g>
+<text class="t sub" x="565" y="678">规则只写一次;两端只在 adapter 层执行"状态赋值 / OS 调用 / 样式常量"</text>
+
+<!-- arrows adapters -> core -->
+<line class="line" x1="510" y1="246" x2="545" y2="246"/>
+<text class="t label" x="420" y="234">C FFI(glaspen2_*)</text>
+<line class="line" x1="1090" y1="246" x2="1055" y2="246"/>
+<text class="t label" x="1002" y="234">Rust 直调</text>
+
+<!-- DB -->
+<path d="M700 812 V750 A100 22 0 0 1 900 750 V812 A100 22 0 0 1 700 812 Z" fill="#e2e8f0" stroke="#64748b" stroke-width="1.2"/>
+<ellipse cx="800" cy="750" rx="100" ry="22" fill="#f1f5f9" stroke="#64748b" stroke-width="1.2"/>
+<text class="t boxt" x="726" y="780" font-size="13">SQLite · user_settings</text>
+<text class="t sub" x="712" y="800">screens · strokes · points · 设置键值</text>
+<line class="line" x1="800" y1="696" x2="800" y2="750"/>
+<text class="t label" x="808" y="724">rusqlite</text>
+
+<!-- raster -->
+<rect class="ext" x="36" y="600" width="474" height="56" rx="8"/>
+<text class="t boxt" x="56" y="622" font-size="12.5">cairo 光栅化(macOS)</text>
+<text class="t sub" x="56" y="642">整页重建 + 实时命令流共用同一 DrawPlan</text>
+<rect class="ext" x="1090" y="600" width="474" height="56" rx="8"/>
+<text class="t boxt" x="1110" y="622" font-size="12.5">GDI / DIB 光栅化(Windows)</text>
+<text class="t sub" x="1110" y="642">同样只执行 DrawPlan 命令;样式常量留 adapter</text>
+<line class="line" x1="530" y1="612" x2="510" y2="628"/>
+<text class="t label" x="470" y="606">cairo_dl</text>
+<line class="line" x1="1327" y1="540" x2="1327" y2="600"/>
+<text class="t label" x="1335" y="574">GDI</text>
+
+<!-- chat -->
+<rect class="ext" x="36" y="730" width="474" height="84" rx="8"/>
+<text class="t boxt" x="56" y="756">glaspen-chat(gRPC 客户端)</text>
+<text class="t sub" x="56" y="778">DraftInk / AppendMessages / ShareInk · mock 模式</text>
+<text class="t sub" x="56" y="798">协议契约:proto/glaspen/chat/v1/chat.proto(唯一)</text>
+<rect class="ext" x="1090" y="730" width="474" height="84" rx="8"/>
+<text class="t boxt" x="1110" y="756">axum / kongde(ChatStore)</text>
+<text class="t sub" x="1110" y="778">登录 / 草稿 / 直发 / 共享画布上行</text>
+<text class="t sub" x="1110" y="798">独立服务,不可用时静默降级,不阻断涂鸦</text>
+<path class="dash" d="M273 814 V836 H1327 V814"/>
+<text class="t label" x="620" y="830">gRPC 127.0.0.1:50051 · proto 唯一契约</text>
+<line class="line" x1="545" y1="660" x2="510" y2="742"/>
+<text class="t label" x="470" y="710">chat_glue</text>
+
+<!-- CI band -->
+<rect class="ci" x="36" y="850" width="1528" height="150" rx="10"/>
+<text class="t boxt" x="56" y="880">契约闸门 &amp; CI(防止再次写两份)</text>
+<text class="t sub" x="56" y="906">• scripts/check-platform-parity.sh:无 Platform. 分支 / 无空壳 / 无 todo!/unimplemented! / 版本一致</text>
+<text class="t sub" x="56" y="928">• core 契约测试(带负向验证):设置·动作·热键·协议·i18n·表单·快照·绘制·录制·camera/grid/minimap</text>
+<text class="t sub" x="56" y="950">• Windows CI 阻塞门:cargo test + flutter build/test;lint 先跑 parity;两端改动必须同 PR</text>
+<text class="t sub" x="56" y="972">• docs/duplication-backlog.md:19 项台账,仅 D9d 真机像素/性能待做;新增功能按 D14 规则先进 core</text>
+<line class="gate" x1="273" y1="850" x2="273" y2="540"/>
+<line class="gate" x1="1000" y1="850" x2="1000" y2="696"/>
+<line class="gate" x1="1327" y1="850" x2="1327" y2="540"/>
+<text class="t label" x="1008" y="800">source-scan gates</text>
+
+<!-- legend -->
+<rect x="1150" y="880" width="380" height="104" rx="8" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+<text class="t" x="1166" y="902" font-size="12" font-weight="600" fill="#92400e">图例</text>
+<rect x="1166" y="912" width="16" height="12" fill="#e0f2fe" stroke="#0284c7"/><text class="t sub" x="1190" y="922">core:平台无关 · 唯一来源</text>
+<rect x="1166" y="932" width="16" height="12" fill="#ede9fe" stroke="#7c3aed"/><text class="t sub" x="1190" y="942">macOS adapter</text>
+<rect x="1166" y="952" width="16" height="12" fill="#dcfce7" stroke="#16a34a"/><text class="t sub" x="1190" y="962">Windows adapter</text>
+<rect x="1360" y="912" width="16" height="12" fill="#fff7ed" stroke="#ea580c" stroke-dasharray="4 2"/><text class="t sub" x="1384" y="922">OS-only(合法两份)</text>
+<rect x="1360" y="932" width="16" height="12" fill="#f1f5f9" stroke="#64748b"/><text class="t sub" x="1384" y="942">外部/传输/第三方</text>
+<line x1="1360" y1="952" x2="1376" y2="952" stroke="#ca8a04" stroke-dasharray="4 3" stroke-width="1.5"/><text class="t sub" x="1384" y="956">契约闸门</text>
+</svg>
