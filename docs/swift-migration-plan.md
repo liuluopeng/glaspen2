@@ -141,6 +141,11 @@ Rust↔macOS 的 C ABI 不变,契约测试与 parity 脚本全绿。
   (29+307+31+11+3 … 全部 ok,0 failed)。
 - `sh scripts/check-platform-parity.sh`:通过。
 - `cargo build --release`:通过(38.22s;release 走同一套 swiftc `-O` 编译与链接参数)。
+- 干净构建:`cargo clean -p glaspen2 && cargo build` 通过(18.36s,Swift 目标从零生成)。
+- 增量/rerun-if-changed:改 `src/macos/swift/*.swift` 后 build.rs 会重跑并重链接;
+  注意 Swift 6.4 驱动对"内容没变的 touch"会跳过重编(不刷新 .o,属 no-op 优化),
+  真改代码才重编。端到端用 sentinel 字符串实测:改源码 → `cargo build` →
+  `strings target/debug/glaspen2` 里出现 sentinel;revert → 消失,符号仍仅 1 处。
 
 ### 8.3 未做 / 留给 S2
 
