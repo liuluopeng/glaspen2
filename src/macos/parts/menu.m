@@ -5,18 +5,7 @@ static GlaspenMenuHandler *g_menuHandler = nil;
 static NSStatusItem *g_statusItem = nil;
 static NSMenu *g_menu = nil;
 
-/// 按 tag 找菜单项(含一层子菜单)。菜单把低频项收进子菜单后, 原先
-/// `[g_menu itemWithTag:]` 找不到子菜单里的项, 统一走这个入口。
-static NSMenuItem *gl_menu_item_with_tag(NSInteger tag) {
-    if (!g_menu) return nil;
-    NSMenuItem *found = [g_menu itemWithTag:tag];
-    if (found) return found;
-    for (NSMenuItem *item in [g_menu itemArray]) {
-        NSMenuItem *inner = item.submenu ? [item.submenu itemWithTag:tag] : nil;
-        if (inner) return inner;
-    }
-    return nil;
-}
+
 static int g_selectedColorIndex = 0; // 0=red (default)
 // 换回上一色/上一粗细的交换键用; 重新选色时更新, 初值给一个可用的另一端。
 static int g_prev_color_index = 9;   // black
@@ -64,7 +53,7 @@ static void update_menu_texts(void) {
         // canvas.ethereal_mode)。模式切换逻辑也会维护它; 这里一并刷新是为了
         // 语言切换后旧文案不残留。状态位 = g_ethereal_canvas(切换/启动恢复都同步),
         // 所以不必在此处引用后文才定义的 g_ethereal_canvas。
-        NSMenuItem *modeItem = gl_menu_item_with_tag(778);
+        NSMenuItem *modeItem = [MenuLookup itemWithTag:778 inMenu:g_menu];
         if (modeItem) {
             [modeItem setTitle:(modeItem.state == NSControlStateValueOn)
                 ? gl_text(@"canvas.fixed_mode")
@@ -72,7 +61,7 @@ static void update_menu_texts(void) {
         }
     }
     // Update toggle item title based on state
-    NSMenuItem *toggleItem = gl_menu_item_with_tag(888);
+    NSMenuItem *toggleItem = [MenuLookup itemWithTag:888 inMenu:g_menu];
     if (toggleItem) [toggleItem setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
 }
 
@@ -276,7 +265,7 @@ static void toggle_enabled(void) {
         ? gl_text(@"draw.enabled")
         : gl_text(@"draw.disabled"));
     // Update menu item
-    NSMenuItem *item = gl_menu_item_with_tag(888);
+    NSMenuItem *item = [MenuLookup itemWithTag:888 inMenu:g_menu];
     if (item) {
         [item setState:g_enabled ? NSControlStateValueOn : NSControlStateValueOff];
         [item setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
@@ -400,7 +389,7 @@ static void toggle_canvas_mode(void) {
         show_notification(gl_text(@"canvas.fixed_mode"));
     }
     // Sync the menu item (title shows the mode you switch TO, like toggleDraw)
-    NSMenuItem *item = gl_menu_item_with_tag(778);
+    NSMenuItem *item = [MenuLookup itemWithTag:778 inMenu:g_menu];
     if (item) {
         [item setState:g_ethereal_canvas ? NSControlStateValueOn : NSControlStateValueOff];
         [item setTitle:g_ethereal_canvas
@@ -1332,7 +1321,7 @@ static void gl_settings_set_grid(BOOL on) {
 
 static void gl_settings_set_launch(BOOL on) {
     glaspen2_set_launch_at_login(on ? 1 : 0);
-    NSMenuItem *item = gl_menu_item_with_tag(777);
+    NSMenuItem *item = [MenuLookup itemWithTag:777 inMenu:g_menu];
     [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
     sync_settings_panel();
 }
@@ -1348,7 +1337,7 @@ static void gl_glass_apply(void) {
         g_glass_view.alphaValue = visual * 2.0; // map to visible range
         g_glass_view.hidden = !g_glass_enabled || hidden_by_ethereal;
     }
-    NSMenuItem *gi = gl_menu_item_with_tag(444);
+    NSMenuItem *gi = [MenuLookup itemWithTag:444 inMenu:g_menu];
     [gi setState:g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff];
     if (g_glass_toggle) g_glass_toggle.state = g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff;
     g_glass_buttons[0].state = (fabs(g_glass_opacity - 0.50) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
@@ -1362,7 +1351,7 @@ static void gl_settings_set_glass_enabled(BOOL on) {
 
 static void gl_settings_set_enabled(BOOL on) {
     g_enabled = on;
-    NSMenuItem *item = gl_menu_item_with_tag(888);
+    NSMenuItem *item = [MenuLookup itemWithTag:888 inMenu:g_menu];
     [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
     [item setTitle:on ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
     update_status_icon_state();

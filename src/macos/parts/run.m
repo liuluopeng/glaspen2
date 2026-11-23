@@ -387,7 +387,7 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
     canvas_infinite_persist(); // 离开无限画布前存镜头
   g_infinite_canvas = on;
   glaspen2_save_bool_setting("infinite_canvas", on ? 1 : 0);
-  NSMenuItem *item = gl_menu_item_with_tag(668);
+  NSMenuItem *item = [MenuLookup itemWithTag:668 inMenu:g_menu];
   if (item)
     [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
   update_status_icon_state(); // 无限画布 = 图标右下角的 ∞ 徽标
@@ -424,7 +424,7 @@ static void apply_outline(BOOL on) {
   g_outline_enabled = on;
   glaspen2_set_stroke_outline(on ? 1 : 0);
   glaspen2_save_bool_setting("outline", on ? 1 : 0);
-  NSMenuItem *item = gl_menu_item_with_tag(667);
+  NSMenuItem *item = [MenuLookup itemWithTag:667 inMenu:g_menu];
   if (item)
     [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
   // 立即对已有笔迹生效(重绘 = 从 STROKES 按当前描边开关重建)
@@ -3250,7 +3250,7 @@ void glaspen2_run(void) {
     g_outline_enabled = glaspen2_load_bool_setting("outline") != 0;
     glaspen2_set_stroke_outline(g_outline_enabled ? 1 : 0);
     {
-      NSMenuItem *oi = gl_menu_item_with_tag(667);
+      NSMenuItem *oi = [MenuLookup itemWithTag:667 inMenu:g_menu];
       if (oi)
         [oi setState:g_outline_enabled ? NSControlStateValueOn
                                        : NSControlStateValueOff];
@@ -3306,7 +3306,7 @@ void glaspen2_run(void) {
     // gl_ethereal_restore_now() 统一落位(下方 window ready 之后)。
     g_ethereal_canvas = glaspen2_load_bool_setting("ethereal") != 0;
     {
-      NSMenuItem *ethRestoreItem = gl_menu_item_with_tag(778);
+      NSMenuItem *ethRestoreItem = [MenuLookup itemWithTag:778 inMenu:g_menu];
       if (ethRestoreItem) {
         [ethRestoreItem setState:g_ethereal_canvas ? NSControlStateValueOn
                                                    : NSControlStateValueOff];
@@ -3315,7 +3315,7 @@ void glaspen2_run(void) {
             : gl_text(@"canvas.ethereal_mode")];
       }
     }
-    NSMenuItem *infiniteRestoreItem = gl_menu_item_with_tag(668);
+    NSMenuItem *infiniteRestoreItem = [MenuLookup itemWithTag:668 inMenu:g_menu];
     if (infiniteRestoreItem) {
       [infiniteRestoreItem setState:g_infinite_canvas ? NSControlStateValueOn
                                                       : NSControlStateValueOff];
@@ -3329,7 +3329,7 @@ void glaspen2_run(void) {
     }
 
     // Canvas mode starts in 固定画布涂鸦模式; menu item shows the switch target
-    [gl_menu_item_with_tag(778)
+    [[MenuLookup itemWithTag:778 inMenu:g_menu]
         setTitle:gl_text(@"canvas.ethereal_mode")];
 
     // Restore pressure monitor setting
