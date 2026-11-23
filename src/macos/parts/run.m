@@ -3035,29 +3035,32 @@ void glaspen2_run(void) {
     [g_menu setDelegate:g_menuHandler];
     [g_menu setAutoenablesItems:NO];
 
-    // Color items with swatch images and names
-    // Color items: inline color dot + name (attributed — see
-    // gl_color_item_text)
+    // Color items: inline color dot + name (attributed — see gl_color_item_text)
+    // S3b-2b-2: 建项循环(建项/attributedTitle/target/tag)已迁 Swift
+    // MenuBuilder; ObjC 只预构富文本标题(图标/文案单源仍在
+    // MenuIconFactory + core i18n, selectColor:/selectWidth: selector 不变)。
+    NSMutableArray<NSAttributedString *> *colorTitles =
+        [NSMutableArray arrayWithCapacity:g_color_preset_count];
     for (int i = 0; i < g_color_preset_count; i++) {
-      NSMenuItem *item = [g_menu addItemWithTitle:@""
-                                           action:@selector(selectColor:)
-                                    keyEquivalent:@""];
-      item.attributedTitle = gl_color_item_text(i);
-      item.target = g_menuHandler;
-      item.tag = i;
+      [colorTitles addObject:gl_color_item_text(i)];
     }
+    [MenuBuilder addColorItemsToMenu:g_menu
+                             handler:g_menuHandler
+                               count:g_color_preset_count
+                              titles:colorTitles];
 
     [g_menu addItem:[NSMenuItem separatorItem]];
 
     // Width items: inline line-thickness icon + name
+    NSMutableArray<NSAttributedString *> *widthTitles =
+        [NSMutableArray arrayWithCapacity:g_width_preset_count];
     for (int i = 0; i < g_width_preset_count; i++) {
-      NSMenuItem *item = [g_menu addItemWithTitle:@""
-                                           action:@selector(selectWidth:)
-                                    keyEquivalent:@""];
-      item.attributedTitle = gl_width_item_text(i);
-      item.target = g_menuHandler;
-      item.tag = i;
+      [widthTitles addObject:gl_width_item_text(i)];
     }
+    [MenuBuilder addWidthItemsToMenu:g_menu
+                             handler:g_menuHandler
+                               count:g_width_preset_count
+                              titles:widthTitles];
 
     [g_menu addItem:[NSMenuItem separatorItem]];
     // 高频动作留在顶层; 低频导出/实验开关收进子菜单, 首屏不再铺满 30+ 行。

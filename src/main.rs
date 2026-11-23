@@ -35,6 +35,23 @@ fn main() {
         std::process::exit(0);
     }
 
+    // S3b-2b-2 菜单构建自检(隐藏调试入口, 不启动 GUI): Swift MenuBuilder
+    // 在空 NSMenu 上批量建颜色/粗细条目, 校验 count/tag/action/target/标题
+    // 后退出。普通启动/用户路径不经过这里。验证命令:
+    //     target/debug/glaspen2 --swift-menu-probe
+    if args.get(1).map(String::as_str) == Some("--swift-menu-probe") {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            unsafe extern "C" {
+                fn glaspen2_macos_swift_menu_selftest() -> i32;
+            }
+            let code = glaspen2_macos_swift_menu_selftest();
+            std::process::exit(code);
+        }
+        #[cfg(not(target_os = "macos"))]
+        std::process::exit(2);
+    }
+
     // S3a 状态栏创建自检(隐藏调试入口, 不启动 GUI): Swift 创建一个 NSStatusItem
     // 并检查 button/image 后退出。菜单构建仍由 ObjC 负责(S3b)。
     if args.get(1).map(String::as_str) == Some("--swift-statusbar-probe") {
