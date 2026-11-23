@@ -102,7 +102,7 @@ pub(crate) mod shim {
         unsafe { glaspen2_macos_export_gif() != 0 }
     }
 
-    /// 用系统默认浏览器打开 URL(实现见 src/macos/glaspen2.m)。
+    /// 用系统默认浏览器打开 URL(实现见 src/macos/swift/open_url.swift,Swift @_cdecl)。
     pub fn open_url(url: &str) {
         if let Ok(u) = std::ffi::CString::new(url) {
             unsafe { glaspen2_macos_open_url(u.as_ptr()) };

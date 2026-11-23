@@ -11,6 +11,8 @@ fn main() {
         for part in ["menu.m", "panel.m", "run.m"] {
             println!("cargo:rerun-if-changed=src/macos/parts/{part}");
         }
+        // Swift 迁移层(S1):目录级监视,cargo 会递归扫目录,新增/改 .swift 都会重跑
+        println!("cargo:rerun-if-changed=src/macos/swift");
         println!("cargo:rerun-if-changed=flutter_settings/lib/main.dart");
         // main.dart 的 part 文件(main.*.dart)也是 Dart 源: 只盯 main.dart
         // 会在改 part 时不重建 App.framework, 面板改动静默失效。
@@ -177,16 +179,129 @@ fn main() {
 
         assert!(status.success(), "clang failed to compile glaspen2.m");
 
+        // ── Swift 原生层(S1):src/macos/swift/*.swift → .o,与 ObjC 同一个归档 ──
+        // 部署目标取发布包 Info.plist 的 LSMinimumSystemVersion = 12.0
+        // (scripts/build-dmg.sh;README 也写 macOS 12+)。S0 报告要求显式设置:
+        // swiftc 默认 target 是宿主系统版本(这里 27.2),不设会让产物只能在
+        // 开发机上跑。注意 aarch64 macOS 的理论下限是 11.0,12.0 与产品一致。
+        // 代价:12.0 早于 Swift 5.6 runtime(12.3),新编译器会自动 force_load
+        // libswiftCompatibility56 等兼容静态库 —— 它们只在工具链的
+        // lib/swift/macosx 下,所以链接时必须带该 -L(见下方)。若将来把最低系统
+        // 抬到 13.0,兼容库会消失,那几行 -L 可以精简。
+        const SWIFT_DEPLOYMENT_TARGET: &str = "12.0";
+
+        fn run_xcrun(args: &[&str]) -> String {
+            let out = std::process::Command::new("xcrun")
+                .args(args)
+                .output()
+                .unwrap_or_else(|e| panic!("xcrun {args:?} 执行失败: {e}"));
+            assert!(
+                out.status.success(),
+                "xcrun {args:?} 失败: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        }
+
+        let sdk_path = run_xcrun(&["--show-sdk-path"]);
+        let swiftc = run_xcrun(&["-f", "swiftc"]);
+        // 工具链根: .../XcodeDefault.xctoolchain/usr/bin/swiftc → .../usr
+        let toolchain_usr = std::path::PathBuf::from(&swiftc)
+            .parent()
+            .and_then(|p| p.parent())
+            .unwrap_or_else(|| panic!("无法从 swiftc 路径推导工具链目录: {swiftc}"))
+            .to_path_buf();
+        let swift_runtime_dir = toolchain_usr.join("lib").join("swift").join("macosx");
+        assert!(
+            swift_runtime_dir.exists(),
+            "找不到 Swift 运行时库目录 {}(Xcode 工具链不完整?)",
+            swift_runtime_dir.display()
+        );
+
+        let swift_src_dir = std::path::Path::new(&manifest_dir)
+            .join("src")
+            .join("macos")
+            .join("swift");
+        let mut swift_sources: Vec<std::path::PathBuf> = std::fs::read_dir(&swift_src_dir)
+            .unwrap_or_else(|e| panic!("读取 {} 失败: {e}", swift_src_dir.display()))
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "swift"))
+            .collect();
+        swift_sources.sort();
+        assert!(
+            !swift_sources.is_empty(),
+            "{} 下没有 .swift 文件(Swift 迁移层不应为空)",
+            swift_src_dir.display()
+        );
+
+        let swift_obj_dir = std::path::Path::new(&out_dir).join("swift");
+        std::fs::create_dir_all(&swift_obj_dir).expect("创建 Swift 目标文件目录失败");
+        let swift_target = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
+            Ok("aarch64") => format!("arm64-apple-macosx{SWIFT_DEPLOYMENT_TARGET}"),
+            Ok("x86_64") => format!("x86_64-apple-macosx{SWIFT_DEPLOYMENT_TARGET}"),
+            other => panic!("不支持的 macOS 架构 {other:?}"),
+        };
+        let mut swiftc_cmd = std::process::Command::new(&swiftc);
+        // 一次编整个模块(-c 多文件):将来多文件之间的符号/类型可直接互引,
+        // 目标文件按源文件名落到 OUT_DIR/swift。固定 -module-name 避免模块名
+        // 随文件名漂移。刻意钉 -swift-version 5:不让 CI 换新版 Swift 时默认
+        // 切到 Swift 6 语言模式(Swift 6 并发检查是 S2+ 的独立决策)。
+        swiftc_cmd
+            .args([
+                "-c",
+                "-parse-as-library",
+                "-module-name",
+                "glaspen2_macos_swift",
+                "-swift-version",
+                "5",
+            ])
+            .args(["-target", &swift_target])
+            .args(["-sdk", &sdk_path])
+            .arg("-O")
+            .current_dir(&swift_obj_dir);
+        if std::env::var("PROFILE").as_deref() == Ok("debug") {
+            swiftc_cmd.arg("-g");
+        }
+        swiftc_cmd.args(&swift_sources);
+        let status = swiftc_cmd.status().expect("Failed to run swiftc");
+        assert!(
+            status.success(),
+            "swiftc failed to compile src/macos/swift/*.swift"
+        );
+
+        let swift_objects: Vec<std::path::PathBuf> = swift_sources
+            .iter()
+            .map(|src| {
+                let stem = src.file_stem().expect("swift 源文件没有文件名");
+                let obj = swift_obj_dir.join(format!("{}.o", stem.to_string_lossy()));
+                assert!(
+                    obj.exists(),
+                    "swiftc 未产出目标文件 {}(源自 {})",
+                    obj.display(),
+                    src.display()
+                );
+                obj
+            })
+            .collect();
+
         // Tell cargo about the object file
         println!("cargo:rustc-link-search=native={}", out_dir);
         println!("cargo:rustc-link-lib=static=glaspen2_objc");
 
-        // Create an archive from the object file using ar
+        // Create one archive from the ObjC + Swift objects. Swift 目标文件里带
+        // LC_LINKER_OPTION autolink 信息,从归档成员里拉出来时链接器也会处理
+        // (已用独立探针验证过),因此无需手写 -lswift* 列表。
         let lib_path = format!("{}/libglaspen2_objc.a", out_dir);
-        let status = std::process::Command::new("ar")
-            .args(["crus", &lib_path, &obj_path])
-            .status()
-            .expect("Failed to run ar");
+        // ar crus 只增改不删:Swift 源文件重命名/删除后旧成员会残留在归档里,
+        // 先删档保证成员集合与当前源码一致。
+        let _ = std::fs::remove_file(&lib_path);
+        let mut ar = std::process::Command::new("ar");
+        ar.arg("crus").arg(&lib_path).arg(&obj_path);
+        for obj in &swift_objects {
+            ar.arg(obj);
+        }
+        let status = ar.status().expect("Failed to run ar");
 
         assert!(status.success(), "ar failed to create archive");
 
@@ -221,6 +336,25 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=IOSurface");
         println!("cargo:rustc-link-lib=framework=Carbon");
         println!("cargo:rustc-link-lib=framework=ApplicationServices");
+
+        // Swift 运行时链接(与上面 ObjC 产物链进同一个可执行文件):
+        // - 工具链 lib/swift/macosx:部署目标 12.0 所需 libswiftCompatibility56.a
+        //   等兼容库只在这里;缺了会报 undefined __swift_FORCE_LOAD_$_swiftCompatibility56。
+        // - SDK/usr/lib/swift:libswiftCore/Foundation/AppKit 的 .tbd 链接桩。
+        // - /usr/lib/swift:旧系统上 Swift 运行时 dylib 的实际目录。
+        // Swift 对象自带的 autolink 会按 import 自动补 -lswiftCore /
+        // -lswiftFoundation / -framework AppKit,这里刻意不手写库列表,
+        // 避免库清单与 Swift 源码 import 漂移;只提供搜索路径 + rpath。
+        println!(
+            "cargo:rustc-link-search=native={}",
+            swift_runtime_dir.display()
+        );
+        println!("cargo:rustc-link-search=native={sdk_path}/usr/lib/swift");
+        println!("cargo:rustc-link-search=native=/usr/lib/swift");
+        // 现代 macOS 的 Swift dylib 在 dyld shared cache 里,该 rpath 主要是
+        // 兼容老系统/非标准运行时;保留它可避免未来 Swift 版本要求 rpath 时
+        // 才发现产物起不来。
+        println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
     }
 
     if is_windows {

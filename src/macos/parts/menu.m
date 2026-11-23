@@ -1208,22 +1208,6 @@ void glaspen2_macos_hotkey(const char *key_c) {
     });
 }
 
-/// 设置面板「检查更新 → 打开下载页」:用系统默认浏览器打开 URL。
-/// http/https 白名单已在 Rust 侧(src/api.rs open_url_checked)挡过;
-/// NSWorkspace 必须在主线程调用, 由 gl_run_on_main_sync 负责切换。
-void glaspen2_macos_open_url(const char *url_c) {
-    if (!url_c) return;
-    NSString *s = @(url_c);
-    gl_run_on_main_sync(^{
-        NSURL *url = [NSURL URLWithString:s];
-        if (url) {
-            [[NSWorkspace sharedWorkspace] openURL:url];
-        } else {
-            NSLog(@"[glaspen2] open_url: URL 解析失败: %@", s);
-        }
-    });
-}
-
 /// 无限画布总览:action 0=当前 1=镜头回原点 2=居中内容 3=新建(清空)。
 /// 返回 PNG 缓冲区(用 glaspen2_macos_free_bytes 释放)。rect_out 必须指向
 /// 8 个 double: [0..3] 视口矩形, [4..7] 渲染内容包围盒 [bx,by,bw,bh]
