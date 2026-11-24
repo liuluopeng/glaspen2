@@ -155,34 +155,7 @@ static void invert_stream_invalidate(void); // 分辨率变化: 停流弃缓存,
 
 // Handle display configuration changes (resolution, arrangement, etc.)
 // 分辨率变化的实际处理(经 2.5s 防抖后调用, 分辨率已稳定)。
-static void display_change_apply(int new_w, int new_h) {
-    NSLog(@"[glaspen2] display changed: %dx%d -> %dx%d", g_screen_w, g_screen_h, new_w, new_h);
-    invert_stream_invalidate(); // 反色捕获: 停流+弃缓存, 下轮按新几何重建
-    g_screen_w = new_w;
-    g_screen_h = new_h;
-    // Only start a new page when the current one has strokes (no silent page switch).
-    glaspen2_on_display_change(g_screen_w, g_screen_h);
-    // 关键: 建页/切页后必须重载当前页笔迹 —— core 只建页并切 current id,
-    // 不动 STROKES 内存; 不重载的话下面的 rebuild_surface 会把旧页内容
-    // 画到新页上, 表现为"相邻两页内容重复/翻页像只翻了一部分"。
-    glaspen2_load_strokes_for_screen(glaspen2_get_current_screen_id());
-    glaspen2_smooth_loaded_strokes();
-    pageview_update(); // 新页几何可能 ≠ 屏幕
-
-    NSRect newFrame = NSMakeRect(0, 0, new_w, new_h);
-    if (g_window) {
-        [g_window setFrame:newFrame display:YES];
-        NSView *cv = [g_window contentView];
-        if (cv) [cv setFrame:NSMakeRect(0, 0, new_w, new_h)];
-    }
-    if (g_glass_view) [g_glass_view setFrame:newFrame];
-    if (g_draw_view) {
-        [g_draw_view setFrame:newFrame];
-        ensure_surface(g_draw_view);
-        rebuild_surface_from_strokes();
-        [g_draw_view setNeedsDisplay:YES];
-    }
-}
+static void display_change_apply(int new_w, int new_h) { [OverlayWindowFactory applyDisplayChangeWidth:new_w height:new_h]; }
 
 // S5-3: 防抖/重读逻辑已迁 Swift(DisplayChangeMonitor); 这里只留 apply/size 桥。
 void glaspen2_display_size(int *w, int *h) {

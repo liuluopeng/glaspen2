@@ -2477,3 +2477,11 @@ void glaspen2_router_perf_notes(const char *name, const char *notes, uint64_t t0
   if (!g_perf_log) return;
   perf_log_event_notes(name, elapsed_us(t0), notes);
 }
+
+// S7bu: 显示器几何变更的薄桥
+void glaspen2_router_invert_invalidate(void) { invert_stream_invalidate(); }
+void glaspen2_router_set_screen_size(int w, int h) {
+  g_screen_w = w;
+  g_screen_h = h;
+}
+id glaspen2_router_draw_view(void) { return g_draw_view; }
