@@ -1212,9 +1212,8 @@ static void gl_glass_apply(void) {
 }
 
 static void gl_settings_set_glass_enabled(BOOL on) {
-    g_glass_enabled = on;
-    glaspen2_save_bool_setting("glass_enabled", on ? 1 : 0);
-    gl_glass_apply();
+    // S7j: 逻辑已迁 Swift(MenuHandler.setGlassEnabled)。
+    [MenuHandler setGlassEnabled:on];
 }
 
 static void gl_settings_set_enabled(BOOL on) {
@@ -1332,3 +1331,7 @@ void glaspen2_router_apply_color(int idx) {
   g_pen_b = g_color_presets[idx].b;
   g_selectedColorIndex = idx;
 }
+
+// S7j: 磨砂玻璃开关的 Swift 薄桥
+void glaspen2_router_set_glass_state(int on) { g_glass_enabled = on != 0; }
+void glaspen2_router_glass_apply(void) { gl_glass_apply(); }

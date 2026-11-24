@@ -61,6 +61,16 @@ import AppKit
         glaspen2_menu_notify(glaspen2_menu_l10n("export.notes_saved"))
     }
 
+    /// 磨砂玻璃开关: 状态/落库/应用。
+    @objc(setGlassEnabled:)
+    public static func setGlassEnabled(enabled: Bool) {
+        glaspen2_router_set_glass_state(enabled ? 1 : 0)
+        "glass_enabled".withCString { key in
+            glaspen2_save_bool_setting(key, enabled ? 1 : 0)
+        }
+        glaspen2_router_glass_apply()
+    }
+
     /// 颜色设置: 书写中暂存, 否则应用并刷新菜单/状态图标/面板。
     @objc(setColorIndex:)
     public static func setColor(index: Int32) {
