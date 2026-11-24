@@ -405,3 +405,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7am(续跑第57轮) | 修 ObjC 编译警告: 页面缩略图边框色把属性 getter 当副作用用, 改为显式 NSColor 变量 + setStroke; 构建不再出现 "property access result unused" 警告 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7an(续跑第58轮) | 快捷键录制状态迁 Swift: 新增 hotkey_recorder.swift(HotkeyRecorder: recording/generation + 60s 兜底), EventRouter 直接读 Swift 状态; settings 分派调用点直调 Swift; 删除 ObjC 状态全局/函数/桥 | cargo build/tests/parity 全绿;录制快捷键需真机验证 | 本提交 |
 | 2026-11-24 | S7ao(续跑第59轮) | 单实例文件锁迁 Swift: 新增 instance_lock.swift(InstanceLock.acquire: GLASPEN2_ALLOW_MULTI 旁路 + 临时目录 flock, 拿到锁故意不 close), 启动调用点直调 Swift; 删除 ObjC 实现/声明 | cargo build/tests/parity 全绿;双开/多开需真机验证 | 本提交 |
+| 2026-11-24 | S7ap(续跑第60轮) | 键盘平移镜头迁 Swift: 新增 canvas_camera.swift(CanvasCamera.panBy: 书写中忽略 → core::camera FFI → CameraState 应用 → canvas 变换/peek), ObjC canvas_pan_by 变一行转发; 新增 5 个薄桥+FFI 声明; D5b 闸门扩展扫描 canvas_camera.swift | cargo build/tests/parity 全绿;键盘平移/peek 需真机验证 | 本提交 |

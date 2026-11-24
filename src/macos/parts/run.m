@@ -220,16 +220,7 @@ static void canvas_apply_transform(void) {
 // 键盘平移镜头(滚轮缩放走 canvas_zoom_at; 书写中忽略)。
 // D5b: 数学(pan -= d)单源在 core Camera::pan_by, 经 FFI 拿回三值;
 // 门控/重绘/0.5s 持久化节流/飘渺 peek 仍在本文件(adapter)。
-static void canvas_pan_by(double dx, double dy) {
-  if (g_stroke_active)
-    return;
-  NSDictionary *result = camera_result_json(
-      glaspen2_camera_pan(g_pan_x, g_pan_y, g_zoom, dx, dy));
-  if (!camera_assign(result, YES))
-    return;
-  canvas_apply_transform();
-  peek_lens_change(); // 飘渺模式下短暂露出笔迹, 让镜头移动可见
-}
+static void canvas_pan_by(double dx, double dy) { [CanvasCamera panByDX:dx dy:dy]; }
 
 /// 鼠标拖动平移: 高频事件只累积位移, 每帧最多真正重建一次 surface。
 static void camera_mouse_flush_pan(void) {
@@ -2868,3 +2859,10 @@ void glaspen2_router_set_camera(double panX, double panY, double zoom, int assig
   g_pan_y = panY;
   if (assignZoom) g_zoom = zoom;
 }
+
+// S7ap: 键盘平移镜头的 Swift 薄桥
+double glaspen2_router_pan_x(void) { return g_pan_x; }
+double glaspen2_router_pan_y(void) { return g_pan_y; }
+double glaspen2_router_zoom(void) { return g_zoom; }
+void glaspen2_router_canvas_apply_transform(void) { canvas_apply_transform(); }
+void glaspen2_router_peek_lens_change(void) { peek_lens_change(); }

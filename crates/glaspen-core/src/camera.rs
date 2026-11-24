@@ -618,6 +618,9 @@ mod tests {
         }
 
         let mac_run = include_str!("../../../src/macos/parts/run.m");
+let mac_cam_swift = include_str!("../../../src/macos/swift/canvas_camera.swift");
+let mac_run_cam = format!("{mac_run}
+{mac_cam_swift}");
         let mac_menu = include_str!("../../../src/macos/parts/menu.m");
         let win_actions = include_str!("../../../crates/glaspen-windows/src/overlay/actions.rs");
         let win_hotkeys = include_str!("../../../crates/glaspen-windows/src/overlay/hotkeys.rs");
@@ -705,8 +708,8 @@ mod tests {
         // ── 必须接 core 镜头入口(mac 经 FFI / Windows 直接调 Camera) ──
         for (name, src, tokens) in [
             (
-                "run.m",
-                mac_run,
+                "run.m+canvas_camera.swift",
+                mac_run_cam.as_str(),
                 &[
                     "glaspen2_camera_pan(",
                     "glaspen2_camera_zoom_at(",
