@@ -16,55 +16,7 @@ static int g_pending_width_index = -1;
 
 static NSAttributedString* gl_color_item_text(NSInteger idx);
 static NSAttributedString* gl_width_item_text(NSInteger idx);
-static void update_menu_texts(void) {
-    // S3b-2b-5: 索引/子菜单/状态刷新在 Swift(MenuUpdater); 文案仍由这里的
-    // L()/gl_text/gl_color_item_text 预先算好传入(菜单专属文案不进 core i18n)。
-    NSMutableArray<NSAttributedString *> *colorTitles = [NSMutableArray array];
-    for (int i = 0; i < g_color_preset_count; i++) {
-        [colorTitles addObject:gl_color_item_text(i)];
-    }
-    NSMutableArray<NSAttributedString *> *widthTitles = [NSMutableArray array];
-    for (int i = 0; i < g_width_preset_count; i++) {
-        [widthTitles addObject:gl_width_item_text(i)];
-    }
-    NSArray<NSString *> *topTitles = @[
-        L(@"保存(含背景)", @"Save (with bg)"),
-        L(@"保存(涂鸦)", @"Save (drawing)"),
-        L(@"新建画布", @"New canvas"),
-        L(@"导出", @"Export"),
-        @"",
-        @"",
-        L(@"设置...", @"Settings..."),
-        L(@"更多", @"More"),
-        @"",
-        L(@"English", @"中文"),
-        L(@"退出", @"Quit"),
-    ];
-    NSArray<NSString *> *exportTitles = @[
-        L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)"),
-        L(@"导出无限画布 PDF (分页)", @"Export infinite canvas PDF (paged)"),
-        L(@"导出无限画布 SVG (整幅)", @"Export infinite canvas SVG (whole)"),
-    ];
-    NSArray<NSString *> *moreTitles = @[
-        L(@"开机自启", @"Launch at login"),
-        L(@"磨砂玻璃", @"Frosted Glass"),
-        L(@"笔迹描边", @"Stroke outline"),
-    ];
-    NSMenuItem *modeItem = [MenuLookup itemWithTag:778 inMenu:g_menu];
-    NSString *modeTitle = (modeItem.state == NSControlStateValueOn)
-        ? gl_text(@"canvas.fixed_mode")
-        : gl_text(@"canvas.ethereal_mode");
-    NSString *toggleTitle = g_enabled ? L(@"关闭涂鸦", @"Disable Drawing")
-                                      : L(@"开启涂鸦", @"Enable Drawing");
-    [MenuUpdater updateTextsInMenu:g_menu
-                       colorTitles:colorTitles
-                       widthTitles:widthTitles
-                        topTitles:topTitles
-                     exportTitles:exportTitles
-                       moreTitles:moreTitles
-                        modeTitle:modeTitle
-                      toggleTitle:toggleTitle];
-}
+static void update_menu_texts(void) { [MenuTextUpdater update]; }
 
 // ── 颜色/粗细菜单条目的富文本:内嵌小图标 + 名称 ──
 // NSMenuItem.image 在新版系统菜单里不渲染(实测菜单全是字), 而正文里
@@ -1096,3 +1048,12 @@ void glaspen2_router_set_ethereal(int on) { g_ethereal_canvas = on != 0; }
 void glaspen2_router_set_strokes_visible(int on) { g_strokes_visible = on != 0; }
 int glaspen2_router_glass_follow(void) { return g_glass_follow_strokes ? 1 : 0; }
 id glaspen2_router_glass_view(void) { return g_glass_view; }
+
+// S7bq: 菜单文案/状态薄桥
+id glaspen2_router_menu(void) { return g_menu; }
+int glaspen2_router_menu_state(int tag) {
+  NSMenuItem *item = [MenuLookup itemWithTag:tag inMenu:g_menu];
+  return (item && item.state == NSControlStateValueOn) ? 1 : 0;
+}
+NSAttributedString *glaspen2_router_color_item_title(int idx) { return gl_color_item_text(idx); }
+NSAttributedString *glaspen2_router_width_item_title(int idx) { return gl_width_item_text(idx); }
