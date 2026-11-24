@@ -402,23 +402,29 @@ static void gl_quit_app(void) {
     return NSTerminateNow;
 }
 
-- (void)quitApp {
-    gl_quit_app();
-}
-
-// NSMenuDelegate
-- (void)menuWillOpen:(NSMenu *)menu {
+// S3b-2b-7a: quitApp/menuWillOpen:/menuDidClose: 已迁 Swift(menu_handler.swift),
+// 这里保留 delegate 需要的薄桥; g_event_tap 是本文件翻译单元内的静态全局。
+void glaspen2_menu_will_open_bridge(void) {
     update_status_icon_color();
     update_menu_checkmarks();
 }
 
-- (void)menuDidClose:(NSMenu *)menu {
+void glaspen2_menu_did_close_bridge(void) {
     update_status_icon_state();
     // Re-enable CGEventTap after menu closes
     if (g_event_tap) {
         CGEventTapEnable(g_event_tap, true);
     }
 }
+
+void glaspen2_menu_quit_bridge(void) {
+    gl_quit_app();
+}
+
+// ObjC 侧保留薄 delegate 方法(仅转发给 Swift MenuHandler); 业务逻辑在 Swift。
+- (void)quitApp { [MenuHandler quitApp]; }
+- (void)menuWillOpen:(NSMenu *)menu { [MenuHandler menuWillOpen]; }
+- (void)menuDidClose:(NSMenu *)menu { [MenuHandler menuDidClose]; }
 
 @end
 

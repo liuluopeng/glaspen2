@@ -1020,7 +1020,10 @@ mod tests {
             let mut lits = Vec::new();
             let mut code = String::new();
             for (rel, src) in files {
-                assert!(src.len() > 500, "i18n 闸门: {rel} 过短, 扫描路径可疑");
+                // Swift 文件可能是很小的 helper(如 delegate 转发), 600 字节下限
+                // 只对 ObjC 这种大文件防"路径扫错"; Swift 只要非空即可。
+                let min_len = if rel.ends_with(".swift") { 1 } else { 500 };
+                assert!(src.len() > min_len, "i18n 闸门: {rel} 过短, 扫描路径可疑");
                 for (offset, lit) in string_literals(src) {
                     lits.push((rel.clone(), line_of(src, offset), lit));
                 }
