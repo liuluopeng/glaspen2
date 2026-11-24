@@ -432,12 +432,7 @@ static NSWindow *g_settings_window = nil;
 static void show_settings_panel(void);
 static void sync_settings_panel(void);
 
-// --- Legacy settings panel stubs (no longer used, kept for sync_settings_panel) ---
-static NSButton *g_color_buttons[10];
-static NSButton *g_width_buttons[5];
-static NSButton *g_launch_toggle = nil;
-static NSButton *g_glass_toggle = nil;
-static NSButton *g_glass_buttons[1];
+// S7x: 遗留设置面板按钮 stub 已彻底删除(桌面面板早已移除)。
 
 // 无限画布总览载荷:渲染当前页包围盒适配图 + 当前视口矩形。
 // 返回 nil 表示空画布(无笔迹)。
@@ -1188,8 +1183,6 @@ static void gl_glass_apply(void) {
     }
     NSMenuItem *gi = [MenuLookup itemWithTag:444 inMenu:g_menu];
     [gi setState:g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff];
-    if (g_glass_toggle) g_glass_toggle.state = g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff;
-    g_glass_buttons[0].state = (fabs(g_glass_opacity - 0.50) < 0.001) ? NSControlStateValueOn : NSControlStateValueOff;
 }
 
 static void gl_settings_set_glass_enabled(BOOL on) {
