@@ -860,73 +860,9 @@ static BOOL bubble_auto_page_flip(void) {
 // --- CGEventTap callback ---
 
 // Performance logging (set g_perf_log=YES to enable)
-static FILE *g_perf_file = NULL;
-static uint64_t g_perf_total_calls = 0;
-static uint64_t g_perf_slow_calls = 0;
 
-static void perf_log_begin(void) {
-  if (!g_perf_file) {
-    NSString *dir = [NSSearchPathForDirectoriesInDomains(
-        NSLibraryDirectory, NSUserDomainMask, YES) firstObject];
-    NSString *logDir = [dir stringByAppendingPathComponent:@"Logs/glaspen2"];
-    NSError *err = nil;
-    [[NSFileManager defaultManager] createDirectoryAtPath:logDir
-                              withIntermediateDirectories:YES
-                                               attributes:nil
-                                                    error:&err];
-    if (err)
-      NSLog(@"[glaspen2] perf log dir error: %@", err);
-    NSString *path = [logDir stringByAppendingPathComponent:@"perf.log"];
-    g_perf_file = fopen([path UTF8String], "w");
-    if (g_perf_file) {
-      NSLog(@"[glaspen2] performance log: %@", path);
-      fprintf(g_perf_file, "ts_ms\ttype\tdur_us\tnotes\n");
-      fflush(g_perf_file);
-    } else {
-      NSLog(@"[glaspen2] perf log open failed: %@", path);
-    }
-  }
-}
-
-static mach_timebase_info_data_t g_tb;
-static BOOL g_tb_inited = NO;
-
-static uint64_t elapsed_us(uint64_t start) {
-  if (!g_tb_inited) {
-    mach_timebase_info(&g_tb);
-    g_tb_inited = YES;
-  }
-  return (mach_absolute_time() - start) * g_tb.numer / g_tb.denom / 1000;
-}
 
 // GLASPEN2_PERF_LOG=1 打开性能日志(写 ~/Library/Logs/glaspen2/perf.log)
-static void perf_log_init_from_env(void) {
-  const char *v = getenv("GLASPEN2_PERF_LOG");
-  if (v && *v && strcmp(v, "0") != 0) {
-    g_perf_log = YES;
-    if (!g_perf_file)
-      perf_log_begin();
-  }
-}
-
-static void perf_log_event_notes(const char *evtype, uint64_t dur_us,
-                                 const char *notes) {
-  if (!g_perf_log || !g_perf_file)
-    return;
-  g_perf_total_calls++;
-  if (dur_us > 16000)
-    g_perf_slow_calls++; // >16ms = frame drop
-  if (!g_tb_inited) {
-    mach_timebase_info(&g_tb);
-    g_tb_inited = YES;
-  }
-  double ts_ms = (double)mach_absolute_time() * g_tb.numer / g_tb.denom / 1e6;
-  fprintf(g_perf_file, "%.3f\t%s\t%llu\t%s\n", ts_ms, evtype, dur_us,
-          notes ? notes : (dur_us > 16000 ? "SLOW" : ""));
-  if (g_perf_total_calls % 100 == 0)
-    fflush(g_perf_file);
-}
-
 // Execute a hotkey action by key code. Returns YES if handled.
 // Used by the physical shortcut (event tap) and the settings-panel buttons.
 static BOOL perform_hotkey(unsigned short kc) {
@@ -1458,18 +1394,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
 }
 
 // Call this at app exit to dump stats
-static void perf_log_summary(void) {
-  if (!g_perf_file)
-    return;
-  fprintf(g_perf_file, "\n# SUMMARY: total=%llu slow=%llu (%.1f%%)\n",
-          g_perf_total_calls, g_perf_slow_calls,
-          g_perf_total_calls > 0
-              ? 100.0 * g_perf_slow_calls / g_perf_total_calls
-              : 0);
-  fclose(g_perf_file);
-  g_perf_file = NULL;
-}
-
 // --- App ---
 
 // ---------------------------------------------------------------------------
@@ -2082,7 +2006,7 @@ void glaspen2_run(void) {
     }
 
     // 调试开关(环境变量):性能日志 / 虚拟笔, 默认都关
-    perf_log_init_from_env();
+    [PerfLog initFromEnv];
     virtual_pen_maybe_start();
     flip_probe_maybe_start();
 
@@ -2173,7 +2097,7 @@ void glaspen2_router_cursor_show(int on) {
 }
 int glaspen2_router_pen_cursor_visible(void) { return g_cursor_visible ? 1 : 0; }
 int glaspen2_router_cursor_flush_due(void) {
-  if (!g_stroke_active && elapsed_us(g_last_cursor_flush) >= 16000) {
+  if (!g_stroke_active && [PerfLog elapsedUsSince:g_last_cursor_flush] >= 16000) {
     g_last_cursor_flush = mach_absolute_time();
     return 1;
   }
@@ -2352,7 +2276,7 @@ void glaspen2_router_clear_raw_state(void) {
 id glaspen2_router_main_window(void) { return g_window; }
 
 // S7: 退出前 perf 汇总薄桥(perf_log_summary 在本文件)
-void glaspen2_router_perf_summary(void) { perf_log_summary(); }
+void glaspen2_router_perf_summary(void) { [PerfLog summary]; }
 
 // S7m: 网格层状态快照桥(供 Swift OverlayGridRenderer 读)
 NSDictionary *glaspen2_router_grid_state(void) {
@@ -2455,14 +2379,15 @@ NSDictionary *glaspen2_router_draw_state(void) {
   d[@"showGrid"] = @(g_show_grid ? YES : NO);
   d[@"minimapEnabled"] = @(g_minimap_enabled ? YES : NO);
   d[@"infinite"] = @(g_infinite_canvas ? YES : NO);
-  d[@"perfEnabled"] = @(g_perf_log ? YES : NO);
+  d[@"perfEnabled"] = @([PerfLog isEnabled] ? YES : NO);
   return d;
 }
 
 // S7bl: drawRect perf 打点薄桥
 void glaspen2_router_perf_notes(const char *name, const char *notes, uint64_t t0) {
-  if (!g_perf_log) return;
-  perf_log_event_notes(name, elapsed_us(t0), notes);
+  [PerfLog recordName:[NSString stringWithUTF8String:name ? name : ""]
+               durUs:[PerfLog elapsedUsSince:t0]
+               notes:notes ? [NSString stringWithUTF8String:notes] : nil];
 }
 
 // S7bu: 显示器几何变更的薄桥
@@ -2587,3 +2512,8 @@ void glaspen2_router_settings_apply_transparent(void) {
   gl_panel_transparent_apply(YES);
   if (g_flutter_vc.view.layer) g_flutter_vc.view.layer.opaque = NO;
 }
+
+// S7cf: 性能日志薄桥
+int glaspen2_router_perf_enabled(void) { return [PerfLog isEnabled] ? 1 : 0; }
+uint64_t glaspen2_router_elapsed_us(uint64_t start) { return [PerfLog elapsedUsSince:start]; }
+void glaspen2_router_perf_init(void) { [PerfLog initFromEnv]; }

@@ -270,8 +270,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
 // S6-3-3: 判定逻辑已迁 Swift(EventRouter.isVirtualPenEvent); 常量经薄桥暴露。
 // 性能日志(drawRect 用得到, 实现在文件后部)
 static BOOL g_perf_log = NO;
-static void perf_log_event_notes(const char *evtype, uint64_t dur_us, const char *notes);
-static uint64_t elapsed_us(uint64_t start);
 static void event_tap_reinstall(void);
 static NSWindow *g_window = nil;
 static NSWindow *g_settings_window; // 定义在 parts/menu.m(设置面板窗口)

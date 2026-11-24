@@ -187,6 +187,8 @@ int glaspen2_router_selected_width_index(void);
 NSString *glaspen2_router_shortcuts_effective_json(void);
 int glaspen2_router_flip_effect(void);
 int glaspen2_router_lang(void);
+int glaspen2_router_perf_enabled(void);
+extern uint64_t glaspen2_router_elapsed_us(uint64_t start);
 extern int glaspen2_is_launch_at_login(void);
 void glaspen2_router_invert_invalidate(void);
 void glaspen2_router_set_screen_size(int w, int h);
