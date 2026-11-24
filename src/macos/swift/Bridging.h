@@ -156,6 +156,7 @@ double glaspen2_router_screen_w(void);
 double glaspen2_router_screen_h(void);
 void glaspen2_router_reset_page_offsets(void);
 int glaspen2_router_pageview_pw(void);
+NSString *glaspen2_router_shortcut_chord(NSString *action);
 extern char *glaspen2_minimap_layout_json(long long current_screen_id, double view_w, double view_h, int geometry_width);
 extern unsigned char *glaspen2_render_thumbnail(long long screen_id, int w, int h, int max_size, int *out_len);
 extern void glaspen2_free_rust_bytes(unsigned char *ptr, int len);

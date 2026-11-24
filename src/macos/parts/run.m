@@ -2212,7 +2212,7 @@ void glaspen2_event_tap_note_scroll(int on) {
 
 // S6-3-1: 事件路由薄桥
 NSUInteger glaspen2_router_camera_mods(void) {
-  return gl_shortcut_modifier_mask_for(@"canvas_zoom_in");
+  return [ShortcutMask maskForAction:@"canvas_zoom_in"];
 }
 
 int glaspen2_router_state(void) {
@@ -2405,7 +2405,7 @@ void glaspen2_router_camera_start(double x, double y) {
   g_camera_mouse_last = NSMakePoint(x, y);
 }
 NSUInteger glaspen2_router_camera_pan_mods(void) {
-  return gl_shortcut_modifier_mask_for(@"canvas_pan_up");
+  return [ShortcutMask maskForAction:@"canvas_pan_up"];
 }
 
 // S6-3-3d: 压感监视器薄桥

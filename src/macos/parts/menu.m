@@ -582,20 +582,6 @@ static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved);
 /// 某镜头动作当前的修饰键位掩码; 鼠标滚轮/拖动按这套修饰键工作,
 /// 改键后鼠标自动跟随(默认 ⌃⌥).
 /// 未绑定/非法返回 0 —— 鼠标不控制镜头, 与键盘动作保持一致。
-static NSUInteger gl_shortcut_modifier_mask_for(NSString *action) {
-    if (!g_shortcut_values) gl_shortcuts_apply(@{});
-    NSString *chord = g_shortcut_values[action];
-    if (chord.length == 0) return 0;
-    NSUInteger mask = 0;
-    for (NSString *part in [chord componentsSeparatedByString:@"+"]) {
-        if ([part isEqualToString:@"cmd"]) mask |= NSEventModifierFlagCommand;
-        else if ([part isEqualToString:@"ctrl"]) mask |= NSEventModifierFlagControl;
-        else if ([part isEqualToString:@"alt"]) mask |= NSEventModifierFlagOption;
-        else if ([part isEqualToString:@"shift"]) mask |= NSEventModifierFlagShift;
-    }
-    return mask;
-}
-
 /// 旧默认迁移单源在 core/chord.rs(D2): 历史默认表 + "只迁仍等于旧默认的项"。
 static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved) {
     NSDictionary<NSString *, NSString *> *defaults = gl_shortcut_defaults();
@@ -1238,4 +1224,10 @@ void glaspen2_router_set_color_preset(int idx, double r, double g, double b) {
 }
 void glaspen2_router_set_width_preset(int idx, double value) {
   g_width_presets[idx] = value;
+}
+
+// S7bk: 快捷键 chord 查询薄桥
+NSString *glaspen2_router_shortcut_chord(NSString *action) {
+  if (!g_shortcut_values) gl_shortcuts_apply(@{});
+  return g_shortcut_values[action];
 }
