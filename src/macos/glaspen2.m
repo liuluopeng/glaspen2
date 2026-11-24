@@ -302,19 +302,12 @@ static double g_last_x = -1, g_last_y = -1;
 static NSView *g_draw_view = nil;
 
 // Raw drawing state (for responsive real-time feedback during stroke)
-static double g_raw_last_x = 0, g_raw_last_y = 0;
-static BOOL g_raw_has_last = NO;
 // 描边接缝重画用: 上上点(P_{i-2})与上一段墨迹宽(w_{i-1})。第 i 段的
 // 描边圆帽(r_i+pad)会压在已画的第 i-1 段墨迹上, 压力变细时在笔迹里
 // 蚀出对比色环(竹节虫)—— 重画第 i-1 段墨迹盖回去。
-static double g_raw_prev_x = 0, g_raw_prev_y = 0;
-static double g_raw_last_w = 0;
-static BOOL g_raw_has_prev = NO;
 // 整笔累计弧长(逻辑 px): 黑白虚线描边的相位接续用, 起笔清零
-static double g_raw_path_len = 0;
 
 // Track if a stroke is active (modeler has been initialized)
-static BOOL g_stroke_active = NO;
 
 // D8b: GIF / ⌘⌃2 草稿 / ⌘⌃3 直发的会话状态与起止窗口已上收 core
 // recording::RecordingMachine(经 glaspen2_recording_* FFI 的两个槽位驱动),
@@ -332,16 +325,13 @@ static double g_gif_speed = 2.0;
 static int g_gif_end_mode = 1;
 
 // Eraser (back end of pen) mode — clears pixels instead of drawing ink
-static BOOL g_eraser_mode = NO;
 
 // 最近一次 proximity 进入时的设备身份。M808 类驱动把落笔包在鼠标事件里
 // (pointingDeviceType 恒为 other), 笔键 "Pen/Eraser" 切换只体现在
 // proximity 事件的设备类型上 —— 落笔时用它判橡皮。
-static NSInteger g_prox_dev = 0; // NSPointingDeviceType(全局处枚举不可见, 用数值)
 // 本会话见过 stylus proximity 事件 = 平台有显式"笔离开"信号。之后真鼠标
 // 移动不能再当成笔离开的证据(否则笔还悬在板上、动一下鼠标就会给气泡
 // 分段设冷); 只在完全没有 proximity 的平板上才走鼠标回退。
-static BOOL g_has_tablet_proximity = NO;
 
 // Active cairo context (reused across pen events during a stroke).
 // Created on pen-down, destroyed on pen-up. Avoids per-event malloc/free

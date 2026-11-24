@@ -316,7 +316,7 @@ NSUInteger glaspen2_router_camera_mods(void) {
 }
 
 int glaspen2_router_state(void) {
-  return (g_enabled ? 1 : 0) | ((g_stroke_active ? 1 : 0) << 1) |
+  return (g_enabled ? 1 : 0) | ((sw_stroke_active() ? 1 : 0) << 1) |
          ((g_infinite_canvas ? 1 : 0) << 2);
 }
 
@@ -330,9 +330,9 @@ void glaspen2_router_zoom_at(double factor, double x, double y) {
 
 // S6-3-2: 非笔 mouseMoved 隐藏光标所需的薄桥
 int glaspen2_router_cursor_flags(void) {
-  return (sw_cursor_visible() ? 1 : 0) | ((g_stroke_active ? 1 : 0) << 1) |
+  return (sw_cursor_visible() ? 1 : 0) | ((sw_stroke_active() ? 1 : 0) << 1) |
          ((g_ethereal_canvas ? 1 : 0) << 2) |
-         ((g_has_tablet_proximity ? 1 : 0) << 3);
+         ((sw_tablet_proximity() ? 1 : 0) << 3);
 }
 
 void glaspen2_router_cursor_invalidate(void) {
@@ -349,7 +349,7 @@ int64_t glaspen2_virtual_pen_user_data(void) {
 
 // S6-3-3b: 笔光标更新的状态/动作薄桥
 int glaspen2_router_pen_state(void) {
-  return (g_strokes_visible ? 1 : 0) | ((g_stroke_active ? 1 : 0) << 1) |
+  return (g_strokes_visible ? 1 : 0) | ((sw_stroke_active() ? 1 : 0) << 1) |
          ((sw_cursor_visible() ? 1 : 0) << 2);
 }
 
@@ -367,7 +367,7 @@ void glaspen2_router_cursor_show(int on) {
   if (on) sw_cursor_show();
 }
 int glaspen2_router_cursor_flush_due(void) {
-  if (!g_stroke_active && [PerfLog elapsedUsSince:g_last_cursor_flush] >= 16000) {
+  if (!sw_stroke_active() && [PerfLog elapsedUsSince:g_last_cursor_flush] >= 16000) {
     g_last_cursor_flush = mach_absolute_time();
     return 1;
   }
@@ -410,10 +410,8 @@ void glaspen2_router_tap_menu_bar_interaction(void) {
 }
 
 // S6-3-3d: 橡皮态切换薄桥
-int glaspen2_router_eraser_mode(void) { return g_eraser_mode ? 1 : 0; }
-void glaspen2_router_set_eraser_mode(int on) { g_eraser_mode = on != 0; }
 void glaspen2_router_update_status_icon_state(void) {
-  [StatusIconUpdater applyToStatusItem:g_statusItem eraser:g_eraser_mode
+  [StatusIconUpdater applyToStatusItem:g_statusItem eraser:(sw_eraser_mode() != 0)
                                enabled:g_enabled ethereal:g_ethereal_canvas
                               infinite:g_infinite_canvas widthScale:g_width_scale
                                   penRed:g_pen_r penGreen:g_pen_g penBlue:g_pen_b];
@@ -421,62 +419,12 @@ void glaspen2_router_update_status_icon_state(void) {
 
 // S6-3-3d: 落笔入口薄桥
 void glaspen2_router_bubble_auto_page_flip(void) { bubble_auto_page_flip(); }
-void glaspen2_router_modeler_begin(double x, double y, double pressure, double timestamp) {
-  glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(x),
-                         canvas_input_y(y), pressure, timestamp, g_width_scale);
-}
-void glaspen2_router_stroke_begin(void) { stroke_begin(); }
-void glaspen2_router_raw_draw_dot(double x, double y, double rawWidth) {
-  raw_draw_dot(x, y, rawWidth);
-}
-void glaspen2_router_pen_down_state(double x, double y, double rawWidth) {
-  g_stroke_active = YES;
-  sw_cursor_set(x, y, 1);
-  g_raw_last_x = x;
-  g_raw_last_y = y;
-  g_raw_last_w = rawWidth;
-  g_raw_has_last = YES;
-  g_raw_path_len = 0;
-}
-
 // S6-3-3d: 拖动实时段薄桥
-void glaspen2_router_modeler_move(double x, double y, double pressure, double timestamp) {
-  glaspen2_modeler_move(canvas_input_x(x), canvas_input_y(y), pressure, timestamp,
-                        g_width_scale);
-}
-void glaspen2_router_raw_draw_segment(double x, double y, double rawWidth) {
-  raw_draw_segment(x, y, rawWidth);
-}
-
 // S6-3-3d: 抬笔薄桥
-int glaspen2_router_stroke_active(void) { return g_stroke_active ? 1 : 0; }
-void glaspen2_router_set_stroke_active(int on) { g_stroke_active = on != 0; }
-void glaspen2_router_modeler_erase_finish(void) { glaspen2_modeler_erase_finish(); }
-void glaspen2_router_modeler_end(double x, double y, double pressure, double timestamp) {
-  glaspen2_modeler_end(canvas_input_x(x), canvas_input_y(y), pressure, timestamp,
-                       g_width_scale);
-}
-void glaspen2_router_commit_to_strokes(void) {
-  glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
-}
-void glaspen2_router_stroke_end(void) { stroke_end(); }
 void glaspen2_router_apply_pending_color_width(void) {
   gl_settings_apply_pending_color_width();
 }
-void glaspen2_router_pen_up_state(void) {
-  g_raw_has_last = NO;
-  g_raw_has_prev = NO;
-  g_raw_path_len = 0;
-  sw_cursor_show();
-  dirty_include_point(sw_cursor_x(), sw_cursor_y(), 14.0);
-  flush_dirty_to_layer();
-}
-
 // S6-3-3d: proximity 分支薄桥
-void glaspen2_router_mark_tablet_proximity(void) { g_has_tablet_proximity = YES; }
-void glaspen2_router_set_prox_device(int device) {
-  g_prox_dev = (NSPointingDeviceType)device;
-}
 void glaspen2_router_bubble_pen_back(void) { glaspen2_bubble_pen_back(); }
 int glaspen2_router_ethereal(void) { return g_ethereal_canvas ? 1 : 0; }
 
@@ -521,23 +469,12 @@ void glaspen2_router_reenable_tap(void) {
 double glaspen2_router_raw_width(double pressure) {
   return glaspen2_pressure_raw_width(pressure, g_width_scale) * g_zoom;
 }
-int glaspen2_router_prox_is_eraser(void) {
-  return g_prox_dev == NSEraserPointingDevice ? 1 : 0;
-}
 int glaspen2_router_strokes_hidden(void) { return g_strokes_visible ? 0 : 1; }
 
 // 页信息 HUD: 语言代码薄桥(Swift 调 core::pageinfo)
 const char *glaspen2_router_lang_code(void) { return gl_lang_code(); }
 
 // S7: finish_active_stroke 迁 Swift 所需薄桥
-double glaspen2_router_last_raw_x(void) { return g_raw_last_x; }
-double glaspen2_router_last_raw_y(void) { return g_raw_last_y; }
-void glaspen2_router_clear_raw_state(void) {
-  g_raw_has_last = NO;
-  g_raw_has_prev = NO;
-  g_raw_path_len = 0;
-}
-
 // S7: 覆盖层窗口引用薄桥(供 Swift 取截图目标屏)
 id glaspen2_router_main_window(void) { return g_window; }
 
@@ -639,31 +576,6 @@ void glaspen2_router_dirty_include_surface_point(double x, double y, double pad)
 }
 
 // S7bz: 实时段绘制薄桥
-NSDictionary *glaspen2_router_raw_state(void) {
-  return @{
-    @"last_x" : @(g_raw_last_x),
-    @"last_y" : @(g_raw_last_y),
-    @"last_w" : @(g_raw_last_w),
-    @"has_last" : @(g_raw_has_last ? YES : NO),
-    @"has_prev" : @(g_raw_has_prev ? YES : NO),
-    @"prev_x" : @(g_raw_prev_x),
-    @"prev_y" : @(g_raw_prev_y),
-    @"path_len" : @(g_raw_path_len),
-  };
-}
-void glaspen2_router_update_raw_after_segment(double x, double y, double width) {
-  if (g_raw_has_last) {
-    double dx = x - g_raw_last_x, dy = y - g_raw_last_y;
-    g_raw_path_len += sqrt(dx * dx + dy * dy);
-  }
-  g_raw_prev_x = g_raw_last_x;
-  g_raw_prev_y = g_raw_last_y;
-  g_raw_has_prev = YES;
-  g_raw_last_x = x;
-  g_raw_last_y = y;
-  g_raw_last_w = width;
-  g_raw_has_last = YES;
-}
 int glaspen2_router_live_plan_segment(cairo_t *cr, double x, double y, double width) {
   return [LivePlan drawSegmentContext:(void *)cr x:x y:y width:width] ? 1 : 0;
 }
@@ -677,11 +589,6 @@ cairo_t *glaspen2_router_take_active_ctx(void) {
   g_active_cr = NULL;
   return ctx;
 }
-void glaspen2_router_reset_raw_stroke(void) {
-  g_raw_has_prev = NO;
-  g_raw_path_len = 0;
-}
-
 // S7cb: 飘渺模式薄桥
 
 
@@ -900,3 +807,6 @@ int glaspen2_router_minimap_enabled(void) { return g_minimap_enabled ? 1 : 0; }
 int glaspen2_router_show_grid(void) { return g_show_grid ? 1 : 0; }
 
 int glaspen2_router_perf_enabled(void) { return [PerfLog isEnabled] ? 1 : 0; }
+
+// S7dq: 宽度倍率桥
+double glaspen2_router_width_scale(void) { return g_width_scale; }

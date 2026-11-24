@@ -48,13 +48,10 @@ import AppKit
         guard SurfaceStore.current != nil else { return }
         var owned: Int32 = 0
         guard let cr = glaspen2_router_acquire_cr(&owned) else { return }
-        let st = glaspen2_router_raw_state() as NSDictionary
-        func num(_ key: String) -> Double { (st[key] as? NSNumber)?.doubleValue ?? 0 }
-        func flag(_ key: String) -> Bool { (st[key] as? NSNumber)?.boolValue ?? false }
-        let hasLast = flag("has_last")
-        let hasPrev = flag("has_prev")
-        let lastX = num("last_x"), lastY = num("last_y")
-        let lastW = num("last_w"), pathLen = num("path_len")
+        let hasLast = PenState.rawHasLast
+        let hasPrev = PenState.rawHasPrev
+        let lastX = PenState.rawLastX, lastY = PenState.rawLastY
+        let lastW = PenState.rawLastW, pathLen = PenState.rawPathLen
         let planned = glaspen2_router_live_plan_segment(cr, x, y, width) != 0
         if !planned {
             let eraser = glaspen2_router_eraser_mode() != 0
@@ -129,7 +126,7 @@ import AppKit
                                       glaspen2_router_pen_g(),
                                       glaspen2_router_pen_b(), 1.0)
                 cairo_set_line_width(cr, lastW)
-                cairo_move_to(cr, num("prev_x"), num("prev_y"))
+                cairo_move_to(cr, PenState.rawPrevX, PenState.rawPrevY)
                 cairo_line_to(cr, lastX, lastY)
                 cairo_stroke(cr)
             }
@@ -140,7 +137,7 @@ import AppKit
             glaspen2_router_dirty_include_surface_point(x, y, pad)
         }
         if owned != 0 { cairo_destroy(cr) }
-        glaspen2_router_update_raw_after_segment(x, y, width)
+        PenState.updateAfterSegment(x, y, width)
         OverlayLayerFlush.flushDirty()
     }
 }

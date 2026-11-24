@@ -290,16 +290,13 @@ import AppKit
     public static func drawSegment(context: UnsafeMutableRawPointer, x: Double, y: Double,
                                    width: Double) -> Bool {
         guard SurfaceStore.current != nil else { return false }
-        let st = glaspen2_router_raw_state() as NSDictionary
-        func num(_ k: String) -> Double { (st[k] as? NSNumber)?.doubleValue ?? 0 }
-        func flag(_ k: String) -> Bool { (st[k] as? NSNumber)?.boolValue ?? false }
-        guard flag("has_last") else { return false }
+        guard PenState.rawHasLast else { return false }
         guard x.isFinite, y.isFinite, width.isFinite,
-              num("last_x").isFinite, num("last_y").isFinite,
-              num("last_w").isFinite, num("path_len").isFinite,
+              PenState.rawLastX.isFinite, PenState.rawLastY.isFinite,
+              PenState.rawLastW.isFinite, PenState.rawPathLen.isFinite,
               glaspen2_router_pen_r().isFinite, glaspen2_router_pen_g().isFinite,
               glaspen2_router_pen_b().isFinite,
-              num("prev_x").isFinite, num("prev_y").isFinite else { return false }
+              PenState.rawPrevX.isFinite, PenState.rawPrevY.isFinite else { return false }
         let scale = max(SurfaceStore.scaleFactor, 0.0001)
         guard let surface = SurfaceStore.current else { return false }
         let surfaceW = Int(cairo_image_surface_get_width(surface))
@@ -307,7 +304,7 @@ import AppKit
         if surfaceW <= 0 || surfaceH <= 0 { return false }
         let cr = OpaquePointer(context)
         var input: [String: Any] = [
-            "points": [[num("last_x"), num("last_y"), num("last_w")], [x, y, width]],
+            "points": [[PenState.rawLastX, PenState.rawLastY, PenState.rawLastW], [x, y, width]],
             "params": [
                 "viewport": [surfaceW, surfaceH],
                 "scale": scale,
@@ -317,18 +314,18 @@ import AppKit
                 "outline": glaspen2_router_outline_enabled() != 0,
                 "eraser": glaspen2_router_eraser_mode() != 0,
                 "alpha": 1.0,
-                "arc_len_start": num("path_len"),
+                "arc_len_start": PenState.rawPathLen,
                 "color": [glaspen2_router_pen_r(), glaspen2_router_pen_g(),
                           glaspen2_router_pen_b()],
             ],
         ]
-        if flag("has_prev") {
-            input["seam"] = [num("prev_x"), num("prev_y")]
+        if PenState.rawHasPrev {
+            input["seam"] = [PenState.rawPrevX, PenState.rawPrevY]
         }
         let shadowPad = glaspen2_router_soft_shadow() != 0 ? 5.0 : 0.0
         let pad = width * 0.5 + 1.5 + shadowPad
-        let lastPad = num("last_w") * 0.5 + 1.5 + shadowPad
+        let lastPad = PenState.rawLastW * 0.5 + 1.5 + shadowPad
         return runPlan(cr, input, 1.0 / scale, dot: false,
-                       fallback: [(x, y, pad), (num("last_x"), num("last_y"), lastPad)])
+                       fallback: [(x, y, pad), (PenState.rawLastX, PenState.rawLastY, lastPad)])
     }
 }
