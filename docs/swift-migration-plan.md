@@ -363,3 +363,17 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7m drawRect 第2片(续跑第28轮) | draw_grid_lines 整体迁 Swift: OverlayGridRenderer.drawGrid(门控、pan/zoom 换算、clip→视图坐标、core::grid 全屏/脏矩形入口、JSON 解析错误处理、三段样式绘制), ObjC 函数变一行转发; 状态经网格快照桥一次性传入; D6 闸门扩展扫描 overlay_grid.swift | cargo build/tests/parity 全绿;网格视觉需真机/截图像素验证 | 本提交 |
 | 2026-11-24 | S7n drawRect 第3片(续跑第29轮) | 光标十字层迁 Swift: OverlayCursorRenderer.drawCursor(白/红圈、中心点、四向线, 颜色/线宽/几何逐值一致), ObjC drawRect 内 ~45 行块删除, 状态经快照桥一次性传入 | cargo build/tests/parity 全绿;光标像素需真机/截图验证 | 本提交 |
 | 2026-11-24 | S7o(续跑第30轮) | 清理网格迁移后的 ObjC 死代码: 删除无调用的 grid_json_dict(JSON 解析已在 Swift)与 grid_stroke_layer(线段绘制已在 Swift); D6 闸门移除已不存在的 grid_stroke_layer 记号, 保留 draw_grid_lines/core::grid 入口校验 | cargo build/tests/parity 全绿 | 本提交 |
+
+## 迁移审计补充(2026-11-24,第31轮)
+
+- 对 `src/macos/*.m` 重新做 static 函数引用扫描:除 9 个 `glaspen2_macos_*` C ABI 入口
+  (由 Rust/FRB 侧调用,本地仅 1 处定义属正常)外,无未引用的 static 函数;S7 死代码清理已到位。
+- 当前剩余迁移均为“大块/需像素或真机验证”的代码:
+  - `run.m -drawRect:` 的笔迹 surface 合成(CGImage 缓存 + 脏矩形子图 + 反色路径)、
+    minimap 缩略图、时光隧道动效;
+  - `panel.m` 设置窗口/Flutter engine 宿主/压感监视器窗口;
+  - `menu.m` 设置 setter 余项与 selector 转发类;
+  - `glaspen2.m` 设置分派/DB 初始化/C ABI shim(保留符号名,可换 Swift 实现)。
+- 这些块单函数 100–188 行,迁移后必须做截图/像素对比与真机验收,建议在上下文充足时
+  按 40–60 行一片推进;无 GUI 环境不应盲改。
+| 2026-11-24 | S8 审计补充(续跑第31轮) | 重新扫描 static 死代码: 仅剩 9 个 Rust 调用的 C ABI 入口(本地单引用属正常), 无真死代码; 记录剩余大块迁移门槛(需像素/真机验证, 建议 40–60 行一片) | 文档同步, 无代码变更; 构建/测试保持全绿 | 本提交 |
