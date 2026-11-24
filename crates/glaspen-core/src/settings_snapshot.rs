@@ -1010,6 +1010,8 @@ mod tests {
     #[test]
     fn adapters_build_panel_snapshot_only_in_core() {
         let mac_code = strip_comments(MAC_MENU_SRC);
+        // overrides 组装已迁 Swift(menu_glue.swift), 闸门同时扫描两边。
+        let mac_glue_swift = include_str!("../../../src/macos/swift/menu_glue.swift");
         let win_code = strip_comments(WIN_PIPE_SRC);
         let mac_snapshot = body_after(&mac_code, "char *glaspen2_macos_settings_json(void)")
             .expect("macOS 缺 glaspen2_macos_settings_json 定义");
@@ -1046,8 +1048,9 @@ mod tests {
         //    设置键 = 又在一处"手工回填", 应改 core settings_snapshot。
         const ALLOWED_OVERRIDES: &[&str] =
             &["launchAtLogin", "shortcuts", "flipEffect", "language"];
-        let mac_overrides = body_after(&mac_code, "gl_settings_snapshot_overrides_json(void)")
+        let mac_overrides_owner = body_after(&mac_code, "gl_settings_snapshot_overrides_json(void)")
             .expect("macOS 缺 gl_settings_snapshot_overrides_json");
+        let mac_overrides = format!("{mac_overrides_owner}\n{mac_glue_swift}");
         let win_overrides = body_after(&win_code, "fn settings_snapshot_overrides")
             .expect("Windows 缺 settings_snapshot_overrides");
         let mut problems = Vec::new();
@@ -1055,8 +1058,11 @@ mod tests {
             if ALLOWED_OVERRIDES.contains(&def.key) {
                 continue;
             }
-            if mac_overrides.contains(def.key) {
+            if mac_overrides_owner.contains(def.key) {
                 problems.push(format!("macOS overrides 夹带了持久化设置 {}", def.key));
+            }
+            if mac_glue_swift.contains(&format!("\"{}\":", def.key)) {
+                problems.push(format!("macOS Swift overrides 夹带了持久化设置 {}", def.key));
             }
             if win_overrides.contains(def.key) {
                 problems.push(format!("Windows overrides 夹带了持久化设置 {}", def.key));

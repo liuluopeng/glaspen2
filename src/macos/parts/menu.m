@@ -55,14 +55,7 @@ static NSAttributedString* gl_width_item_text(NSInteger idx) {
 static BOOL g_ethereal_canvas; // 定义在下方(飘渺画布涂鸦模式), 图标要用
 
 
-static void update_menu_checkmarks(void) {
-    // S3b-2b-4a: 勾选刷新逻辑在 Swift(MenuUpdater);这里只传当前状态。
-    [MenuUpdater updateCheckmarksInMenu:g_menu
-                             colorCount:g_color_preset_count
-                             widthCount:g_width_preset_count
-                             colorIndex:g_selectedColorIndex
-                             widthIndex:g_selected_width_index];
-}
+static void update_menu_checkmarks(void) { [MenuGlue updateCheckmarks]; }
 
 static void toggle_enabled(void) { [DrawMode toggleEnabled]; }
 
@@ -359,25 +352,7 @@ NSString *glaspen2_router_action_for_chord(NSString *chord) {
 /// - flipEffect: 可被 GLASPEN2_FLIP_EFFECT 调试环境变量覆盖, 以运行时为准;
 /// - language: 以运行时 g_lang 为准(DB 落库值由 core 兜底)。
 /// 返回 malloc 的 UTF-8 JSON(调用方 free), 失败 NULL。
-static char *gl_settings_snapshot_overrides_json(void) {
-    NSDictionary *overrides = @{
-        @"launchAtLogin": @((BOOL)(glaspen2_is_launch_at_login() != 0)),
-        @"shortcuts": gl_shortcuts_effective_json(),
-        @"flipEffect": @(g_flip_effect),
-        @"language": (g_lang == 1 ? @"en" : @"zh"),
-    };
-    NSData *data = [NSJSONSerialization dataWithJSONObject:overrides options:0 error:nil];
-    if (!data) return NULL;
-    NSString *s = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    if (!s) return NULL;
-    const char *cs = s.UTF8String;
-    if (!cs) return NULL;
-    size_t n = strlen(cs);
-    char *buf = (char *)malloc(n + 1);
-    if (!buf) return NULL;
-    memcpy(buf, cs, n + 1);
-    return buf;
-}
+static char *gl_settings_snapshot_overrides_json(void) { return (char *)[MenuGlue snapshotOverridesJSON]; }
 
 /// 当前设置的 JSON 快照;调用方用 glaspen2_macos_free_c_string 释放。
 ///
@@ -921,3 +896,12 @@ void glaspen2_router_set_shortcut_tables(NSDictionary *values, NSDictionary *loo
   g_shortcut_values = [values mutableCopy];
   g_shortcut_lookup = [lookup mutableCopy];
 }
+
+// S7ce: 菜单勾选/设置快照薄桥
+int glaspen2_router_selected_color_index(void) { return g_selectedColorIndex; }
+int glaspen2_router_selected_width_index(void) { return g_selected_width_index; }
+NSString *glaspen2_router_shortcuts_effective_json(void) {
+  return gl_shortcuts_effective_json();
+}
+int glaspen2_router_flip_effect(void) { return g_flip_effect; }
+int glaspen2_router_lang(void) { return g_lang; }
