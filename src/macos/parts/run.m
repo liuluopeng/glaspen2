@@ -225,113 +225,9 @@ static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
 // 一帧:相机沿页距推进(缓入缓出), 卡片按隧道坐标摆位;
 // 深处的先画、近处的后画 —— 层叠顺序即页序。
 static void tunnel_frame(double p) {
-  if (!s_tun_surface || s_tun_cards == 0)
-    return;
+  if (!s_tun_surface || s_tun_cards == 0) return;
   s_tun_frames++;
-  double e = p < 0.5 ? 4.0 * p * p * p : 1.0 - pow(-2.0 * p + 2.0, 3.0) / 2.0;
-  // 相机沿深度轴移动:回溯旧页(向前翻, s_tun_back) = cam 0→+1 深入页列,
-  // 旧页从深处迎面而来, 目标页(prev, 深度+1)落定 zc=0 满屏;
-  // 去往新页(向后翻) = cam 0→−1 退出, 新页(next, 深度−1)从镜头前方
-  // 罩下来落定 zc=0。深度轴语义:正=旧(深处), 负=新(镜头前方)。
-  double cam = e * s_tun_travel * (s_tun_back ? 1.0 : -1.0);
-
-  cairo_t *cr = cairo_create(s_tun_surface);
-  // 背景:深色磨砂玻璃(隧道的"洞")—— 让卡片的半透明玻璃有参照,
-  // 同时遮住桌面, 层次/透视一眼可读。动效结束即恢复普通透明玻璃。
-  cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-  cairo_set_source_rgba(cr, 0, 0, 0, 0); // 全透明: 只留玻璃片与其叠加
-  cairo_paint(cr);
-  cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
-
-  // 按隧道坐标从深到浅排序画(卡片数 ≤ 5, 插入排序足够)
-  int order[TUNNEL_MAX_CARDS];
-  for (int i = 0; i < s_tun_cards; i++)
-    order[i] = i;
-  for (int i = 1; i < s_tun_cards; i++) {
-    int key = order[i];
-    int j = i - 1;
-    while (j >= 0 && s_tun_depth[order[j]] < s_tun_depth[key]) {
-      order[j + 1] = order[j];
-      j--;
-    }
-    order[j + 1] = key;
-  }
-  // 落定帧: 只画当前/目标页, 不叠其余玻璃片 —— 保证与真实页一致。
-  // (zc≈0 的那张卡就是此刻的"真实页")
-  for (int i = 0; i < s_tun_cards; i++) {
-    int slot = order[i];
-    double zc = (double)s_tun_depth[slot] - cam;
-    if (fabs(zc) < 0.005) {
-      double cx, cy, w, h, a;
-      if (tunnel_place(zc, &cx, &cy, &w, &h, &a)) {
-        tunnel_draw_card(cr, slot, cx, cy, w, h, a, zc);
-        cairo_destroy(cr);
-        flush_tunnel_to_layer();
-        return;
-      }
-    }
-  }
-  // 非落定帧: **不铺全屏底色**。旧实现铺 42% 深色, 屏幕外围一圈都
-  // 变灰, 看起来像给整个桌面蒙了层滤镜。现在只画玻璃本身, 玻璃组成的
-  // 透视区域之外保持透明(桌面/窗口原样), 只有玻璃是灰的。
-  // 焦点 = 最靠前且已经可见的卡片; 它画清晰, 后面的页先画到 1/3
-  // 缓冲再放大(磨砂模糊)。这样近页的笔迹不会和远页的笔迹叠成重影。
-  double focus_zc = 1e9;
-  for (int i = 0; i < s_tun_cards; i++) {
-    int slot = order[i];
-    double zc = (double)s_tun_depth[slot] - cam;
-    double cx, cy, w, h, a;
-    if (!tunnel_place(zc, &cx, &cy, &w, &h, &a))
-      continue;
-    if (a >= 0.30 && zc < focus_zc)
-      focus_zc = zc;
-  }
-  if (focus_zc > 1e8)
-    focus_zc = 0.0;
-
-  if (s_tun_blur) {
-    int bw = cairo_image_surface_get_width(s_tun_blur);
-    int bh = cairo_image_surface_get_height(s_tun_blur);
-    cairo_t *bcr = cairo_create(s_tun_blur);
-    cairo_set_operator(bcr, CAIRO_OPERATOR_SOURCE);
-    cairo_set_source_rgba(bcr, 0, 0, 0, 0);
-    cairo_paint(bcr);
-    cairo_set_operator(bcr, CAIRO_OPERATOR_OVER);
-    cairo_scale(bcr, (double)bw / (double)s_tun_surf_w,
-                (double)bh / (double)s_tun_surf_h);
-    for (int i = 0; i < s_tun_cards; i++) {
-      int slot = order[i];
-      double zc = (double)s_tun_depth[slot] - cam;
-      if (zc <= focus_zc + 1e-6)
-        continue;
-      double cx, cy, w, h, a;
-      if (!tunnel_place(zc, &cx, &cy, &w, &h, &a))
-        continue;
-      tunnel_draw_card(bcr, slot, cx, cy, w, h, a, zc);
-    }
-    cairo_destroy(bcr);
-    // 放大回主表面(双线性 = 磨砂)。
-    cairo_save(cr);
-    cairo_scale(cr, (double)s_tun_surf_w / (double)bw,
-                (double)s_tun_surf_h / (double)bh);
-    cairo_set_source_surface(cr, s_tun_blur, 0, 0);
-    cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
-    cairo_paint(cr);
-    cairo_restore(cr);
-  }
-
-  for (int i = 0; i < s_tun_cards; i++) {
-    int slot = order[i];
-    double zc = (double)s_tun_depth[slot] - cam;
-    if (s_tun_blur && zc > focus_zc + 1e-6)
-      continue;
-    double cx, cy, w, h, a;
-    if (!tunnel_place(zc, &cx, &cy, &w, &h, &a))
-      continue;
-    tunnel_draw_card(cr, slot, cx, cy, w, h, a, zc);
-  }
-  cairo_destroy(cr);
-  flush_tunnel_to_layer();
+  [TunnelFrameRenderer renderWithP:p state:glaspen2_router_tunnel_state()];
 }
 
 static void tunnel_finish(void) {
@@ -1693,3 +1589,28 @@ double glaspen2_router_tunnel_k(void) { return s_tun_k; }
 int glaspen2_router_tunnel_surf_w(void) { return s_tun_surf_w; }
 int glaspen2_router_tunnel_surf_h(void) { return s_tun_surf_h; }
 double glaspen2_router_tunnel_travel(void) { return s_tun_travel; }
+
+// S7cu: 隧道帧渲染桥
+void glaspen2_router_flush_tunnel(void) { flush_tunnel_to_layer(); }
+NSDictionary *glaspen2_router_tunnel_state(void) {
+  NSMutableArray *cards = [NSMutableArray arrayWithCapacity:(NSUInteger)s_tun_cards];
+  for (int i = 0; i < s_tun_cards; i++) {
+    if (!s_tun_card[i]) continue;
+    NSMutableDictionary *c = [NSMutableDictionary dictionary];
+    c[@"depth"] = @(s_tun_depth[i]);
+    c[@"card"] = [NSValue valueWithPointer:s_tun_card[i]];
+    if (s_tun_card_mip[i]) c[@"mip"] = [NSValue valueWithPointer:s_tun_card_mip[i]];
+    [cards addObject:c];
+  }
+  NSMutableDictionary *d = [NSMutableDictionary dictionary];
+  d[@"surface"] = [NSValue valueWithPointer:s_tun_surface];
+  if (s_tun_blur) d[@"blur"] = [NSValue valueWithPointer:s_tun_blur];
+  d[@"cards"] = cards;
+  d[@"surfW"] = @(s_tun_surf_w);
+  d[@"surfH"] = @(s_tun_surf_h);
+  d[@"travel"] = @(s_tun_travel);
+  d[@"back"] = @(s_tun_back ? YES : NO);
+  d[@"thick"] = @(s_tun_thick);
+  d[@"paneA"] = @(s_tun_pane_a);
+  return d;
+}
