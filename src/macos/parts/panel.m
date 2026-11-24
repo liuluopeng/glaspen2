@@ -215,46 +215,18 @@ static void display_change_apply(int new_w, int new_h) {
     }
 }
 
-// 源静态持有(局部变量会被 ARC 释放, 定时器永远不触发)
-static dispatch_source_t s_display_debounce;
-static int s_pending_w = 0, s_pending_h = 0;
+// S5-3: 防抖/重读逻辑已迁 Swift(DisplayChangeMonitor); 这里只留 apply/size 桥。
+void glaspen2_display_size(int *w, int *h) {
+    if (w) *w = g_screen_w;
+    if (h) *h = g_screen_h;
+}
+
+void glaspen2_display_apply(int w, int h) {
+    display_change_apply(w, h);
+}
 
 static void on_display_changed(void) {
-    NSScreen *screen = [NSScreen mainScreen];
-    NSRect newFrame = [screen frame];
-    int new_w = (int)newFrame.size.width;
-    int new_h = (int)newFrame.size.height;
-    // 无论是否早退, 先用最新读数刷新 pending —— 否则早退会把先前记录的
-    // 瞬态值留在 pending 里, 2.5s 后被到期 handler 照搬应用(锁屏唤醒即中招:
-    // 瞬态 1920 事件 → 协商回 3440 的事件触发早退 → pending 仍是 1920 →
-    // 到期把正常屏幕强改 1920, 之后没有新事件, 永远停在错误分辨率)。
-    s_pending_w = new_w;
-    s_pending_h = new_h;
-    if (new_w == g_screen_w && new_h == g_screen_h) return;
-
-    // 显示器上电/唤醒时 macOS 会先报默认分辨率(如 1920x1080)再协商出
-    // 真实分辨率, 重配置事件成串到达。防抖 2.5s: 期间的新事件只重置
-    // 计时器, 稳定后才处理 —— 协商回原分辨率则到期重读后什么都不发生,
-    // 不再为瞬态模式凭空建页(库里曾有 71 页 1920x1080 由此而来)。
-    NSLog(@"[glaspen2] display reconfig: %dx%d -> %dx%d (防抖 2.5s)", g_screen_w, g_screen_h, new_w, new_h);
-    if (!s_display_debounce) {
-        s_display_debounce = dispatch_source_create(
-            DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
-        dispatch_source_set_event_handler(s_display_debounce, ^{
-            // 到期重读真实几何: pending 只当"有过变化"的信号, 绝不照搬 ——
-            // 最后一个事件可能携带着瞬态读数。
-            NSScreen *s = [NSScreen mainScreen];
-            NSRect f = [s frame];
-            int w = (int)f.size.width, h = (int)f.size.height;
-            if (w == g_screen_w && h == g_screen_h) return;
-            display_change_apply(w, h);
-        });
-        dispatch_resume(s_display_debounce);
-    }
-    dispatch_source_set_timer(
-        s_display_debounce,
-        dispatch_time(DISPATCH_TIME_NOW, (int64_t)2.5 * NSEC_PER_SEC),
-        DISPATCH_TIME_FOREVER, (int64_t)0.2 * NSEC_PER_SEC);
+    [DisplayChangeMonitor onDisplayChanged];
 }
 
 // ── 反色突出(实验) ──

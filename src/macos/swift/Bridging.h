@@ -63,6 +63,10 @@ void glaspen2_menu_select_width(int idx);
 void glaspen2_menu_save_xoj_raw(void);
 void glaspen2_menu_notify(NSString *text);
 
+// S5-3: 显示器防抖所需的当前几何读取与应用桥(实现留在 panel.m)
+void glaspen2_display_size(int *w, int *h);
+void glaspen2_display_apply(int w, int h);
+
 // S4: 通知 presenter 的 redraw 桥(实现留在 glaspen2.m; Swift 通知状态变化时调用)
 void glaspen2_notification_redraw(void);
 
