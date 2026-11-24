@@ -1,6 +1,4 @@
 // 鼠标 ⌃⌥ + 左键拖动镜头(临时抓手)状态; 由 event tap 维护。
-static BOOL g_camera_mouse_dragging = NO;
-static NSPoint g_camera_mouse_last = {0, 0};
 // 鼠标拖动平移是高频事件; 累积位移, 每 ~16ms 只重建一次 surface.
 static void camera_mouse_cancel_pan(void);
 
@@ -384,7 +382,7 @@ void glaspen2_router_show_system_cursor(void) {
 
 // S6-3-4: 停用涂鸦时非键盘事件的清理+放行薄桥
 void glaspen2_router_disable_cleanup(void) {
-  g_camera_mouse_dragging = NO;
+  glaspen2_router_clear_camera_dragging();
   [CameraMousePan cancel];
   [EventRouter restoreSystemCursor];
 }
@@ -429,24 +427,6 @@ void glaspen2_router_bubble_pen_back(void) { glaspen2_bubble_pen_back(); }
 int glaspen2_router_ethereal(void) { return g_ethereal_canvas ? 1 : 0; }
 
 // S6-3-3d: 相机临时抓手薄桥
-int glaspen2_router_camera_dragging(void) { return g_camera_mouse_dragging ? 1 : 0; }
-double glaspen2_router_camera_step_zoom(void) { return glaspen2_camera_step_zoom(g_zoom); }
-void glaspen2_router_camera_queue_pan(double dx, double dy) { [CameraMousePan queueDX:dx dy:dy]; }
-void glaspen2_router_camera_set_last(double x, double y) {
-  g_camera_mouse_last = NSMakePoint(x, y);
-}
-double glaspen2_router_camera_last_x(void) { return g_camera_mouse_last.x; }
-double glaspen2_router_camera_last_y(void) { return g_camera_mouse_last.y; }
-void glaspen2_router_camera_flush(void) { [CameraMousePan flush]; }
-void glaspen2_router_camera_clear_dragging(void) { g_camera_mouse_dragging = NO; }
-void glaspen2_router_camera_start(double x, double y) {
-  g_camera_mouse_dragging = YES;
-  g_camera_mouse_last = NSMakePoint(x, y);
-}
-NSUInteger glaspen2_router_camera_pan_mods(void) {
-  return [ShortcutMask maskForAction:@"canvas_pan_up"];
-}
-
 // S6-3-3d: 压感监视器薄桥
 int glaspen2_router_pm_enabled(void) { return g_pressure_monitor ? 1 : 0; }
 void glaspen2_router_pm_update(int inRange, int pressure, double x, double y,
@@ -467,7 +447,7 @@ void glaspen2_router_reenable_tap(void) {
   if (g_event_tap) CGEventTapEnable(g_event_tap, true);
 }
 double glaspen2_router_raw_width(double pressure) {
-  return glaspen2_pressure_raw_width(pressure, g_width_scale) * g_zoom;
+  return glaspen2_pressure_raw_width(pressure, glaspen2_router_width_scale()) * glaspen2_router_zoom();
 }
 int glaspen2_router_strokes_hidden(void) { return g_strokes_visible ? 0 : 1; }
 
@@ -497,16 +477,7 @@ void glaspen2_router_set_outline_state(int on) { g_outline_enabled = on != 0; }
 void glaspen2_router_rebuild_surface(void) { rebuild_surface_from_strokes(); }
 
 // S7ak: 镜头状态应用薄桥
-void glaspen2_router_set_camera(double panX, double panY, double zoom, int assignZoom) {
-  g_pan_x = panX;
-  g_pan_y = panY;
-  if (assignZoom) g_zoom = zoom;
-}
-
 // S7ap: 键盘平移镜头的 Swift 薄桥
-double glaspen2_router_pan_x(void) { return g_pan_x; }
-double glaspen2_router_pan_y(void) { return g_pan_y; }
-double glaspen2_router_zoom(void) { return g_zoom; }
 void glaspen2_router_canvas_apply_transform(void) { [CanvasCamera applyTransform]; }
 void glaspen2_router_peek_lens_change(void) { peek_lens_change(); }
 
@@ -515,15 +486,9 @@ double glaspen2_router_screen_w(void) { return g_screen_w; }
 double glaspen2_router_screen_h(void) { return g_screen_h; }
 
 // S7bg: 翻页模式镜头重置前清 page 偏移
-void glaspen2_router_reset_page_offsets(void) {
-  g_page_off_x = 0.0;
-  g_page_off_y = 0.0;
-}
-
 // S7: 画布模式切换的 Swift 薄桥
 int glaspen2_router_infinite(void) { return g_infinite_canvas ? 1 : 0; }
 void glaspen2_router_set_infinite_state(int on) { g_infinite_canvas = on != 0; }
-void glaspen2_router_clear_camera_dragging(void) { g_camera_mouse_dragging = NO; }
 void glaspen2_router_event_tap_reinstall(void) { event_tap_reinstall(); }
 
 // S7: minimap 状态薄桥
@@ -778,9 +743,6 @@ void glaspen2_router_install_signals(void) {
 }
 
 // S7di: 页面偏移桥
-double glaspen2_router_page_off_x(void) { return g_page_off_x; }
-double glaspen2_router_page_off_y(void) { return g_page_off_y; }
-
 // S7dk: 带背景保存桥
 int glaspen2_router_window_sharing_type(void) { return (int)[g_window sharingType]; }
 
@@ -791,11 +753,11 @@ NSDictionary *glaspen2_router_grid_state(void) {
     @"strokesVisible" : @(g_strokes_visible ? YES : NO),
     @"gridFollow" : @(g_grid_follow_strokes ? YES : NO),
     @"infinite" : @(g_infinite_canvas ? YES : NO),
-    @"panX" : @(g_pan_x),
-    @"panY" : @(g_pan_y),
-    @"zoom" : @(g_zoom),
-    @"pageOffX" : @(g_page_off_x),
-    @"pageOffY" : @(g_page_off_y),
+    @"panX" : @(glaspen2_router_pan_x()),
+    @"panY" : @(glaspen2_router_pan_y()),
+    @"zoom" : @(glaspen2_router_zoom()),
+    @"pageOffX" : @(glaspen2_router_page_off_x()),
+    @"pageOffY" : @(glaspen2_router_page_off_y()),
     @"gridSize" : @(g_grid_size),
   };
 }

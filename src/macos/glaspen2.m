@@ -280,6 +280,10 @@ extern void *cairo_create_scaled(void); // Swift @_cdecl, 返回 cairo_t*
 extern double canvas_input_x(double view_x);
 extern double canvas_input_y(double view_y);
 extern void save_and_exit(int sig);
+double glaspen2_router_zoom(void);
+double glaspen2_router_width_scale(void);
+double glaspen2_router_pan_x(void);
+double glaspen2_router_pan_y(void);
 static BOOL g_perf_log = NO;
 static void event_tap_reinstall(void);
 static NSWindow *g_window = nil;
@@ -397,11 +401,8 @@ static BOOL g_minimap_enabled = NO;
 // 画布坐标 = 视口坐标 + pan(pan = 视口左上角在画布坐标系中的位置)。
 // 模式开启时 ⌘⌃滚轮移动镜头,笔迹以画布坐标存储(可为负/超界)。
 static BOOL g_infinite_canvas = NO;
-static double g_pan_x = 0.0, g_pan_y = 0.0;
-static double g_zoom = 1.0; // 视图缩放,(0,1],上限 100%
 // 翻页模式的滚动偏移:整页翻页后恒为 0(变量保留,canvas_input/drawRect
 // 的变换式以此为恒等项;不再有任何滑动写入路径)。
-static double g_page_off_x = 0.0, g_page_off_y = 0.0;
 // ── D5b: 镜头数学唯一来源是 core::camera(经 FFI);本文件只持有状态 ──
 //
 // 下面的 helper 只做两件事: 释放 Rust 缓冲区 + 把 core 算好的三值写回全局。

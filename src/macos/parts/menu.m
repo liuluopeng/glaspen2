@@ -385,7 +385,7 @@ unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *r
                 NSDictionary *result =
                     [CameraState resultFromJSON:glaspen2_camera_centered(
                         bx, by, bx2, by2, (double)g_screen_w, (double)g_screen_h,
-                        g_zoom)];
+                        glaspen2_router_zoom())];
                 if ([CameraState assignResult:result assignZoom:NO])
                     [CanvasCamera applyTransform];
             }
