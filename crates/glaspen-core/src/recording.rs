@@ -1883,22 +1883,14 @@ mod tests {
         let mut mac_required: Vec<String> =
             effect_kinds.iter().map(|n| format!("@\"{n}\"")).collect();
 
-        // NSJSONSerialization 生成的键名(事件/effects 载荷)也要在 adapter 出现。
-        mac_required.extend(
-            [
-                "\"type\"",
-                "\"mode\"",
-                "\"kind\"",
-                "\"hud\"",
-                "\"stroke_count\"",
-            ]
-            .iter()
-            .map(|s| (*s).to_string()),
-        );
+
         let mac_required_refs: Vec<&str> = mac_required.iter().map(String::as_str).collect();
         problems.extend(gate_missing("run.m(变体覆盖)", mac_run, &mac_required_refs));
         // 事件名现由 run.m 与 recording_keys.swift 共同出现(Swift 侧为裸字面量)。
-        let event_refs: Vec<&str> = event_types.to_vec();
+        let mut event_refs: Vec<&str> = event_types.to_vec();
+        // NSJSONSerialization 载荷键名: run.m(effects 解析)或 Swift(事件构造)都可能出现。
+        let payload_keys = ["\"type\"", "\"mode\"", "\"kind\"", "\"hud\"", "\"stroke_count\""];
+        event_refs.extend(payload_keys.iter());
         problems.extend(gate_missing(
             "run.m+recording_keys.swift(事件覆盖)",
             mac_combined.as_str(),

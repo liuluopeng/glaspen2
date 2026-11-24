@@ -1926,13 +1926,7 @@ static NSString *rec_json(NSDictionary *fields) {
               : nil;
 }
 
-static NSString *rec_key_event(NSString *type, NSString *mode, int strokes) {
-  return rec_json(@{
-    @"type" : type,
-    @"mode" : mode,
-    @"stroke_count" : @(strokes),
-  });
-}
+// S7c: rec_key_event 已随录制热键迁移删除(事件 JSON 由 Swift 生成)。
 
 static NSString *rec_simple_event(NSString *type) {
   return rec_json(@{@"type" : type});
