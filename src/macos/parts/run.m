@@ -474,7 +474,9 @@ static void draw_minimap(CGContextRef ctx, NSRect bounds) {
       }
       NSBezierPath *border = [NSBezierPath bezierPathWithRect:rect];
       border.lineWidth = isCur ? 2.0 : 1.0;
-      (isCur ? NSColor.systemRedColor : NSColor.systemGrayColor).setStroke;
+      NSColor *strokeColor =
+          isCur ? NSColor.systemRedColor : NSColor.systemGrayColor;
+      [strokeColor setStroke];
       [border stroke];
       // 页号 = core 下发的全列表 1 基序号(label);位置/字体/颜色逐字保持
       NSString *num = item[@"label"];
