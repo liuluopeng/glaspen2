@@ -417,3 +417,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7ax(续跑第69轮) | GIF 剪贴板写入迁 Swift: 新增 gif_clipboard.swift(GifClipboard.copyData:length: 原子写临时 GIF + NSPasteboard 文件 URL), GIF 编码回调调用点直调 Swift; 删除 ObjC 实现/声明 | cargo build/tests/parity 全绿;GIF 复制到剪贴板需真机验证 | 本提交 |
 | 2026-11-24 | S7ay(续跑第70轮) | 镜头变换应用迁 Swift: CanvasCamera.applyTransform(set_view_transform + rebuild_surface + 0.5s 节流 persist), ObjC canvas_apply_transform 变一行转发; 构建暴露 menu.m 前向声明缺失, 已在 glaspen2.m 补回 | cargo build/tests/parity 全绿;镜头变换/节流持久化需真机验证 | 本提交 |
 | 2026-11-24 | S7az(续跑第71轮) | 笔色/笔宽预设加载迁 Swift: 新增 pen_presets.swift(PenPresets.loadPresets: 数量不一致告警 + 逐项 FFI 读入经薄桥写表), ObjC gl_load_pen_presets 一行转发; 修复 Swift 禁止类方法 load 的命名冲突; 新增 2 个写表桥 + 4 个 FFI 声明 | cargo build/tests/parity 全绿;颜色/宽度预设需真机验证 | 本提交 |
+| 2026-11-24 | S7ba(续跑第72轮) | 删除笔色/笔宽预设加载的 ObjC 转发: 唯一调用点直调 [PenPresets loadPresets](Swift), run.m wrapper 与 glaspen2.m 声明删除 | cargo build/tests/parity 全绿 | 本提交 |

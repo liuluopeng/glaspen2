@@ -1950,8 +1950,6 @@ static void flip_probe_maybe_start(void) {
 
 // 颜色/粗细预设表从 glaspen-core presets 填充(RGB 单源;名字是本平台
 // UI 字符串)。须在任何读表代码(建菜单/恢复设置)之前调用。
-static void gl_load_pen_presets(void) { [PenPresets loadPresets]; }
-
 // 单实例守卫: 两个实例 = 两套全屏窗口叠加显示 + 同一全局热键同时翻
 // 两套页, 表现为"笔迹重复/翻页只翻了一部分"。flock 随进程生死自动
 // 释放, 崩溃也不会留下死锁。GLASPEN2_ALLOW_MULTI=1 可并行调试。
@@ -1992,7 +1990,7 @@ void glaspen2_run(void) {
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 
     // 预设表先于建菜单/恢复设置填充(单一事实源在 core)
-    gl_load_pen_presets();
+    [PenPresets loadPresets];
 
     // Request accessibility permission (needed for CGEventTap)
     NSDictionary *opts = @{(__bridge id)kAXTrustedCheckOptionPrompt : @YES};
