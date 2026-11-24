@@ -2399,10 +2399,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       return NULL; // begin already recorded this point, don't feed duplicate to
                    // modeler
     }
-    // Feed modeler, draw raw segment for responsive real-time feedback
-    glaspen2_modeler_move(canvas_input_x(px), canvas_input_y(py), pressure, ts,
-                          g_width_scale);
-    raw_draw_segment(px, py, raw_w);
+    // S6-3-3d: 拖动实时段(模型器 move + raw segment)已迁 Swift。
+    [EventRouter penMoveWithX:px y:py pressure:pressure timestamp:ts rawWidth:raw_w];
     perf_log_event("pen_move", elapsed_us(t0));
     return NULL;
   }
@@ -3290,4 +3288,13 @@ void glaspen2_router_pen_down_state(double x, double y, double rawWidth) {
   g_raw_last_w = rawWidth;
   g_raw_has_last = YES;
   g_raw_path_len = 0;
+}
+
+// S6-3-3d: 拖动实时段薄桥
+void glaspen2_router_modeler_move(double x, double y, double pressure, double timestamp) {
+  glaspen2_modeler_move(canvas_input_x(x), canvas_input_y(y), pressure, timestamp,
+                        g_width_scale);
+}
+void glaspen2_router_raw_draw_segment(double x, double y, double rawWidth) {
+  raw_draw_segment(x, y, rawWidth);
 }

@@ -81,6 +81,14 @@ import AppKit
         glaspen2_router_pen_down_state(x, y, rawWidth)
     }
 
+    /// S6-3-3d: 拖动实时段: 模型器 move + raw segment(响应式反馈)。
+    @objc(penMoveWithX:y:pressure:timestamp:rawWidth:)
+    public static func penMove(x: Double, y: Double, pressure: Double,
+                               timestamp: Double, rawWidth: Double) {
+        glaspen2_router_modeler_move(x, y, pressure, timestamp)
+        glaspen2_router_raw_draw_segment(x, y, rawWidth)
+    }
+
     /// S6-3-3d: 橡皮态切换 + 状态图标刷新(落笔/拖动自动补 begin/抬笔共用)。
     @objc(updateEraserState:)
     public static func updateEraserState(isEraser: Bool) {

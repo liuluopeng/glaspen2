@@ -95,6 +95,8 @@ void glaspen2_router_modeler_begin(double x, double y, double pressure, double t
 void glaspen2_router_stroke_begin(void);
 void glaspen2_router_raw_draw_dot(double x, double y, double rawWidth);
 void glaspen2_router_pen_down_state(double x, double y, double rawWidth);
+void glaspen2_router_modeler_move(double x, double y, double pressure, double timestamp);
+void glaspen2_router_raw_draw_segment(double x, double y, double rawWidth);
 NSString *glaspen2_router_keycode_name(unsigned short keyCode);
 NSString *glaspen2_router_action_for_chord(NSString *chord);
 void glaspen2_router_perform_action(NSString *action);
