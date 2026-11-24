@@ -540,45 +540,7 @@ static BOOL gl_live_plan_draw_dot(cairo_t *cr, double x, double y, double width)
 // Raw drawing — surface only, no STROKES/DB side effects.
 // Uses g_active_cr (set up by stroke_begin) for the duration of the stroke.
 // Marks the affected pixel area as dirty so only that region is repainted.
-static void raw_draw_dot(double x, double y, double width) {
-    if (!g_surface) return;
-    cairo_t *cr = g_active_cr ? g_active_cr : cairo_create_scaled();
-    // D9c: 首点先走 core 计划(单点: 无前一点/无接缝); 仅 FFI/JSON 失败时回落
-    // 下面的旧分档自绘。
-    BOOL planned = gl_live_plan_draw_dot(cr, x, y, width);
-    if (!planned) {
-        if (g_eraser_mode) cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-        else cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
-
-        // 软阴影层(最底): 三档加宽递减 alpha 的圆头黑影
-        if (g_soft_shadow && !g_eraser_mode) {
-            static const double kSteps[3][2] = {{1.5, 0.20}, {3.0, 0.13}, {5.0, 0.07}};
-            cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-            for (int si = 0; si < 3; si++) {
-                cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, kSteps[si][1]);
-                cairo_arc(cr, x, y, width * 0.5 + kSteps[si][0], 0, 2 * M_PI);
-                cairo_fill(cr);
-            }
-        }
-
-        // 描边层(垫底): 起笔圆头垫一圈黑(相位 0 = 黑虚段起点)
-        if (g_outline_enabled && !g_eraser_mode) {
-            cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
-            cairo_arc(cr, x, y, width * 0.5 + kOutlinePad, 0, 2 * M_PI);
-            cairo_fill(cr);
-        }
-
-        cairo_pattern_t *ipat = invert_ink_source(cr);
-        if (!ipat) cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
-        cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
-        cairo_fill(cr);
-        if (ipat) cairo_pattern_destroy(ipat);
-        double pad = width * 0.5 + 1.5 + (g_soft_shadow ? 5.0 : 0.0); // AA+shadow
-        dirty_include_surface_point(x, y, pad);
-    }
-    if (!g_active_cr) cairo_destroy(cr);
-    flush_dirty_to_layer();
-}
+static void raw_draw_dot(double x, double y, double width) { [RawDrawing drawDotWithX:x y:y width:width]; }
 
 // ── D9c 实时分段绘制: 消费 core DrawPlan ─────────────────────────────────
 // raw_draw_segment 每段把「上一采样点 → 本点」喂给 core glaspen2_live_plan_json

@@ -2486,3 +2486,25 @@ void glaspen2_router_install_surface(cairo_surface_t *surface) { g_surface = sur
 void glaspen2_router_install_scale(double scale) { g_scale = scale; }
 void glaspen2_router_set_has_last(int has) { g_has_last = has != 0; }
 void glaspen2_router_surface_cache_invalidate(void) { surface_image_cache_invalidate(); }
+
+// S7by: 首点实时绘制薄桥
+cairo_surface_t *glaspen2_router_surface(void) { return g_surface; }
+cairo_t *glaspen2_router_acquire_cr(int *owned) {
+  if (g_active_cr) { if (owned) *owned = 0; return g_active_cr; }
+  if (owned) *owned = 1;
+  return cairo_create_scaled();
+}
+int glaspen2_router_soft_shadow(void) { return g_soft_shadow ? 1 : 0; }
+double glaspen2_router_outline_pad(void) { return kOutlinePad; }
+double glaspen2_router_pen_r(void) { return g_pen_r; }
+double glaspen2_router_pen_g(void) { return g_pen_g; }
+double glaspen2_router_pen_b(void) { return g_pen_b; }
+int glaspen2_router_live_plan_dot(cairo_t *cr, double x, double y, double width) {
+  return gl_live_plan_draw_dot(cr, x, y, width) ? 1 : 0;
+}
+cairo_pattern_t *glaspen2_router_invert_ink_source(cairo_t *cr) {
+  return invert_ink_source(cr);
+}
+void glaspen2_router_dirty_include_surface_point(double x, double y, double pad) {
+  dirty_include_surface_point(x, y, pad);
+}
