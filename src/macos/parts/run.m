@@ -395,95 +395,7 @@ static void pageview_update(void) { [PageViewOps update]; }
 // 帮手与主程序同名, 更新窗口期内手动启动会误报, 属可接受的罕见边角。
 void glaspen2_run(void) {
   @autoreleasepool {
-    // S2 双向互调探针: GLASPEN2_SWIFT_PROBE=1 时在启动早期跑一次
-    // ObjC→Swift→ObjC(只打日志);不设环境变量时 getenv 一次即返回,
-    // 正常启动行为零变化。定义在 src/macos/swift/InteropProbe.m。
-    glaspen2_macos_swift_probe_maybe();
-
-    // 单实例守卫先于一切初始化: 第二个实例直接弹窗退出
-    int lock_fd = [InstanceLock acquire];
-    if (lock_fd == -1 || [AppInstanceGuard anotherInstanceRunning]) {
-      [NSApplication sharedApplication];
-      [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-      NSAlert *a = [[NSAlert alloc] init];
-      a.messageText = L(@"glaspen2 已在运行", @"glaspen2 is already running");
-      a.informativeText =
-          L(@"检测到另一个 glaspen2 "
-            @"实例(菜单栏图标)。两个实例的笔迹窗口会叠加显示, "
-            @"全局热键会同时翻两套页 —— "
-            @"看起来像“笔迹重复/只翻了一部分”。本次启动退出; "
-            @"开发时如需并行调试, 设 GLASPEN2_ALLOW_MULTI=1。",
-            @"Another glaspen2 instance is running (menu bar icon). Two "
-            @"overlays stack and global hotkeys flip both — it looks like "
-            @"duplicated strokes or a partial page flip. This launch exits; "
-            @"set GLASPEN2_ALLOW_MULTI=1 to debug in parallel.");
-      [a addButtonWithTitle:L(@"好", @"OK")];
-      [a runModal];
-      return;
-    }
-
-    [NSApplication sharedApplication];
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-
-    // 预设表先于建菜单/恢复设置填充(单一事实源在 core)
-    [PenPresets loadPresets];
-
-    // Request accessibility permission (needed for CGEventTap)
-    NSDictionary *opts = @{(__bridge id)kAXTrustedCheckOptionPrompt : @YES};
-    if (!AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)opts)) {
-      NSLog(@"[glaspen2] Accessibility permission not granted");
-    }
-
-    // Create status bar menu
-    // S3b-2b: 状态栏项创建改由 Swift StatusBarFactory 负责; ObjC 保留 fallback。
-    g_statusItem = [StatusBarFactory createSquareItem];
-    if (!g_statusItem) {
-        g_statusItem = [[NSStatusBar systemStatusBar]
-            statusItemWithLength:NSSquareStatusItemLength];
-        [g_statusItem.button setTitle:@""];
-    }
-
-    g_menuHandler = [[GlaspenMenuHandler alloc] init];
-    [NSApp setDelegate:g_menuHandler];
-
-    g_menu = [MainMenuBuilder buildWithHandler:g_menuHandler
-                                             statusItem:g_statusItem
-                                         launchAtLoginOn:(glaspen2_is_launch_at_login() ? YES : NO)
-                                                glassOn:g_glass_enabled];
-
-    NSScreen *screen = [NSScreen mainScreen];
-    NSRect screenFrame = [screen frame];
-
-    // Store screen dimensions for DB
-    g_screen_w = (int)screenFrame.size.width;
-    g_screen_h = (int)screenFrame.size.height;
-    glaspen2_init_db(g_screen_w, g_screen_h);
-    [StartupSettings restorePartA];
-
-    [StartupSettingsB restorePartB];
-
-    [StartupWindow create];
-
-    // Register signal handlers for graceful exit
-    signal(SIGINT, save_and_exit);  // Ctrl+C
-    signal(SIGTERM, save_and_exit); // kill command
-
-    // Listen for display changes (resolution, arrangement, etc.)
-    [[NSNotificationCenter defaultCenter]
-        addObserverForName:NSApplicationDidChangeScreenParametersNotification
-                    object:nil
-                     queue:[NSOperationQueue mainQueue]
-                usingBlock:^(NSNotification *note) {
-                  on_display_changed();
-                }];
-
-    // CGEventTap: intercept events at system level before dispatch
-    event_tap_reinstall();
-
-    [AccessibilityAlert presentIfNeeded];
-
-    [StartupRunLoop begin];
-
+    if (![AppBootstrap start]) return;
     [NSApp run];
   }
 }
@@ -1209,4 +1121,13 @@ void glaspen2_router_set_grid_divider(int divider) { g_grid_divider = divider; }
 void glaspen2_router_set_flip(int effect) { g_flip_effect = effect; }
 void glaspen2_router_set_gif(int fps, double res, double speed, int endMode) {
   g_gif_fps = fps; g_gif_resolution = res; g_gif_speed = speed; g_gif_end_mode = endMode;
+}
+
+// S7df: 启动编排桥
+void glaspen2_router_set_status_item(id item) { g_statusItem = item; }
+void glaspen2_router_set_menu_handler(id handler) { g_menuHandler = handler; [NSApp setDelegate:handler]; }
+void glaspen2_router_set_menu(id menu) { g_menu = menu; }
+void glaspen2_router_install_signals(void) {
+  signal(SIGINT, save_and_exit);
+  signal(SIGTERM, save_and_exit);
 }
