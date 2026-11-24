@@ -2025,3 +2025,11 @@ void glaspen2_router_page_flip(int forward, dispatch_block_t prepare, dispatch_b
 void glaspen2_router_page_flip_from(int forward, long from, dispatch_block_t prepare, dispatch_block_t commit) {
   page_flip_swap_from(forward != 0, from, prepare, commit);
 }
+
+// S7cn: 页视图/重放薄桥
+int glaspen2_router_pageview_is_fit(void) { return g_pageview_fit ? 1 : 0; }
+double glaspen2_router_pageview_paper_ox(void) { return g_pageview_ox; }
+double glaspen2_router_pageview_paper_oy(void) { return g_pageview_oy; }
+double glaspen2_router_pageview_paper_scale(void) { return g_pageview_scale; }
+double glaspen2_router_pageview_page_w(void) { return g_pageview_pw; }
+double glaspen2_router_pageview_page_h(void) { return g_pageview_ph; }

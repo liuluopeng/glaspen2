@@ -801,39 +801,10 @@ static void clear_screen(void) {
     }
 }
 
-static void pageview_frame_draw(void);
 // 快照观看的页框: 页外区域压暗 + 页边界细线(物理像素坐标, 不吃变换)。
-static void pageview_frame_draw(void) {
-    if (!g_pageview_fit || !g_surface) return;
-    cairo_t *cr = cairo_create(g_surface);
-    double x = g_pageview_ox * g_scale, y = g_pageview_oy * g_scale;
-    double w = g_pageview_pw * g_pageview_scale * g_scale;
-    double h = g_pageview_ph * g_pageview_scale * g_scale;
-    cairo_set_source_rgba(cr, 0, 0, 0, 0.42);
-    cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD);
-    cairo_rectangle(cr, 0, 0,
-                    cairo_image_surface_get_width(g_surface),
-                    cairo_image_surface_get_height(g_surface));
-    cairo_rectangle(cr, x, y, w, h);
-    cairo_fill(cr);
-    cairo_set_source_rgba(cr, 1, 1, 1, 0.55);
-    cairo_set_line_width(cr, 1.0);
-    cairo_rectangle(cr, x + 0.5, y + 0.5, w - 1, h - 1);
-    cairo_stroke(cr);
-    cairo_destroy(cr);
-}
-
-static void replay_strokes_from_memory(void) {
-    if (!g_surface) return;
-    // Same as rebuild: clear + redraw all strokes via Rust (带页视图变换)
-    glaspen2_draw_rebuild_view((void *)g_surface, g_scale,
-                               g_pageview_ox, g_pageview_oy, g_pageview_scale);
-    pageview_frame_draw();
-
-    cairo_surface_flush(g_surface);
-    g_has_last = NO;
-    flush_to_layer();
-}
+static void pageview_frame_draw(void) { [SurfaceReplay drawPageFrame]; }
+static void pageview_frame_draw(void);
+static void replay_strokes_from_memory(void) { [SurfaceReplay replay]; }
 
 static void save_and_exit(int sig) {
     (void)sig;
