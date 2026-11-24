@@ -46,11 +46,6 @@ static void flush_tunnel_to_layer(void) {
 // 网格 + 分栏参考线:门控与视图←画布变换保持旧 drawRect 逐字一致。
 // clipRect = 本次 drawRect 的脏矩形(非翻转视图坐标, y 向上), 只向 core 要相交的
 // 线(旧实现同样的省遍历);视图尺寸 = bounds(macOS 窗口 = 屏幕 frame)。
-static void draw_grid_lines(CGContextRef ctx, NSRect bounds, NSRect clipRect) {
-  // S7m: 逻辑已迁 Swift(OverlayGridRenderer.drawGridWithContext:bounds:clipRect:)。
-  [OverlayGridRenderer drawGridWithContext:ctx bounds:bounds clipRect:clipRect];
-}
-
 // --- Drawing view ---
 
 @interface GlaspenDrawView : NSView
@@ -74,8 +69,6 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) { [CanvasMode applyInfin
 
 // 应用描边开关(菜单与 Flutter 设置面板共用的唯一入口)。
 // S7ac: 逻辑已迁 Swift(MenuHandler.setOutlineEnabled)。
-static void apply_outline(BOOL on) { [MenuHandler setOutlineEnabled:on]; }
-
 // ── 无限画布:镜头平移(全局唯一画布) ──
 
 // 把当前镜头变换应用到渲染 + 节流持久化(0.5s 一次)
@@ -934,10 +927,6 @@ static void perf_log_event_notes(const char *evtype, uint64_t dur_us,
           notes ? notes : (dur_us > 16000 ? "SLOW" : ""));
   if (g_perf_total_calls % 100 == 0)
     fflush(g_perf_file);
-}
-
-static inline void perf_log_event(const char *evtype, uint64_t dur_us) {
-  perf_log_event_notes(evtype, dur_us, NULL);
 }
 
 // Execute a hotkey action by key code. Returns YES if handled.

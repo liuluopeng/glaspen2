@@ -528,32 +528,6 @@ static cairo_pattern_t *invert_ink_source(cairo_t *cr) {
     return pat;
 }
 
-static void pen_draw(double x, double y, double width) {
-    if (!g_surface) return;
-    cairo_t *cr = cairo_create_scaled();
-    cairo_set_source_rgba(cr, g_pen_r, g_pen_g, g_pen_b, 1.0);
-    cairo_set_line_width(cr, width);
-    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-
-    if (g_has_last) {
-        cairo_move_to(cr, g_last_x, g_last_y);
-        cairo_line_to(cr, x, y);
-        cairo_stroke(cr);
-    } else {
-        cairo_arc(cr, x, y, width * 0.5, 0, 2 * M_PI);
-        cairo_fill(cr);
-    }
-    cairo_destroy(cr);
-
-    g_last_x = x;
-    g_last_y = y;
-    g_has_last = YES;
-    glaspen2_add_point(x, y, width);
-    flush_to_layer();
-}
-
-
 // 描边 = 黑白相间 1px 虚线(marching ants): 黑偶相位、白奇相位各描一遍,
 // 任何背景上恒有一半可见。相位按整笔累计弧长连续 —— cairo 每次 stroke()
 // 都会把虚线相位重置到路径起点, 分段增量绘制时用 offset 拨回接续点。

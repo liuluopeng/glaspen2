@@ -343,8 +343,6 @@ static NSString *gl_string_setting(const char *key) {
 // (只按 ⌘/⇧ 的组合容易和 App 菜单/系统快捷键冲突, 且录制时会被菜单先吃掉)。
 // 空串 = 该动作未绑定。按键名走物理位置(与布局无关), 与事件 tap 的
 // kVK_* keycode 一一对应。
-static NSArray<NSString *> *gl_shortcut_actions(void) { return (NSArray *)[ShortcutTable actions]; }
-
 static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) { return (NSDictionary *)[ShortcutTable defaults]; }
 
 /// keycode → 规范按键名。只收录能当全局快捷键的键; 其它键录制时拒绝。
