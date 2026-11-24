@@ -377,3 +377,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 - 这些块单函数 100–188 行,迁移后必须做截图/像素对比与真机验收,建议在上下文充足时
   按 40–60 行一片推进;无 GUI 环境不应盲改。
 | 2026-11-24 | S8 审计补充(续跑第31轮) | 重新扫描 static 死代码: 仅剩 9 个 Rust 调用的 C ABI 入口(本地单引用属正常), 无真死代码; 记录剩余大块迁移门槛(需像素/真机验证, 建议 40–60 行一片) | 文档同步, 无代码变更; 构建/测试保持全绿 | 本提交 |
+| 2026-11-24 | S7p drawRect 第4片(续跑第32轮) | 笔迹 surface 合成绘制迁 Swift: OverlaySurfaceRenderer.drawSurfaceImage(小脏矩形→物理像素裁剪(含 Y 翻转)、CGImage 失败回退全图、全图绘制), ObjC ~30 行块删除; CGImage 缓存构造仍 ObjC(下一片) | cargo build/tests/parity 全绿;笔迹像素/脏矩形需真机/截图验证 | 本提交 |

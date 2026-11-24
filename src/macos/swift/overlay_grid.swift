@@ -118,3 +118,28 @@ import CoreGraphics
         ctx.strokePath()
     }
 }
+
+// S7: 笔迹 surface 合成: 小脏矩形裁子图(视图点→物理像素, Y 翻转), 失败回退全图。
+@objc public final class OverlaySurfaceRenderer: NSObject {
+    @objc(drawSurfaceImage:inContext:rect:bounds:scale:)
+    public static func drawSurface(_ image: CGImage, in ctx: CGContext,
+                                   rect: NSRect, bounds: NSRect, scale: Double) {
+        let smallDirty = !NSEqualRects(rect, bounds)
+            && (rect.size.width < bounds.size.width
+                || rect.size.height < bounds.size.height)
+        if smallDirty {
+            let sx = rect.origin.x * scale
+            let sy = (bounds.size.height - (rect.origin.y + rect.size.height)) * scale
+            let phys = CGRect(x: sx, y: sy,
+                              width: rect.size.width * scale,
+                              height: rect.size.height * scale)
+            if let sub = image.cropping(to: phys) {
+                ctx.draw(sub, in: rect)
+            } else {
+                ctx.draw(image, in: CGRect(origin: .zero, size: bounds.size))
+            }
+        } else {
+            ctx.draw(image, in: CGRect(origin: .zero, size: bounds.size))
+        }
+    }
+}

@@ -151,38 +151,12 @@ static void draw_grid_lines(CGContextRef ctx, NSRect bounds, NSRect clipRect) {
   // The strokes can be hidden independently (飘渺画布涂鸦模式) — skip the
   // surface image, but keep drawing the notification and crosshair below.
   if (image && g_strokes_visible) {
-    // If only a small dirty rect was requested, extract just that sub-image
-    // from the surface (in physical pixel coords) to avoid scaling the
-    // whole 3840×2160 surface each frame.
-    BOOL small_dirty = !NSEqualRects(rect, [self bounds]) &&
-                       (rect.size.width < [self bounds].size.width ||
-                        rect.size.height < [self bounds].size.height);
-
-    if (small_dirty) {
-      // Map view points → physical pixels. Surface is top-left origin;
-      // view rect is bottom-left origin (non-flipped), so flip Y too.
-      CGFloat sx = rect.origin.x * g_scale;
-      CGFloat sy =
-          ([self bounds].size.height - (rect.origin.y + rect.size.height)) *
-          g_scale;
-      CGFloat sw = rect.size.width * g_scale;
-      CGFloat sh = rect.size.height * g_scale;
-      CGRect phys = CGRectMake(sx, sy, sw, sh);
-      CGImageRef sub = CGImageCreateWithImageInRect(image, phys);
-      if (sub) {
-        CGContextDrawImage(ctx, NSRectToCGRect(rect), sub);
-        CGImageRelease(sub);
-      } else {
-        NSRect bounds = [self bounds];
-        CGContextDrawImage(
-            ctx, CGRectMake(0, 0, bounds.size.width, bounds.size.height),
-            image);
-      }
-    } else {
-      NSRect bounds = [self bounds];
-      CGContextDrawImage(
-          ctx, CGRectMake(0, 0, bounds.size.width, bounds.size.height), image);
-    }
+    // S7: 子图裁剪/全图回退绘制已迁 Swift(OverlaySurfaceRenderer)。
+    [OverlaySurfaceRenderer drawSurfaceImage:image
+                                 inContext:ctx
+                                      rect:rect
+                                    bounds:[self bounds]
+                                     scale:g_scale];
     // image is the cached surface image — NOT released here.
   }
 
