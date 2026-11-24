@@ -460,104 +460,7 @@ void glaspen2_run(void) {
     glaspen2_init_db(g_screen_w, g_screen_h);
     [StartupSettings restorePartA];
 
-    // Restore canvas mode and load the matching independent store.
-    // 翻页/无限两套存储互不影响:无限画布全局仅一个。
-    g_infinite_canvas = glaspen2_load_bool_setting("infinite_canvas") != 0;
-    g_minimap_enabled = glaspen2_load_bool_setting("minimap") != 0;
-    // 飘渺画布模式(⌘⌃X): 与 Windows 共用 "ethereal" 键, toggle_canvas_mode 落盘。
-    // 此处只恢复标志 + 同步菜单; 笔迹/玻璃的显隐在视图就绪后由
-    // gl_ethereal_restore_now() 统一落位(下方 window ready 之后)。
-    g_ethereal_canvas = glaspen2_load_bool_setting("ethereal") != 0;
-    {
-      NSMenuItem *ethRestoreItem = [MenuLookup itemWithTag:778 inMenu:g_menu];
-      if (ethRestoreItem) {
-        [ethRestoreItem setState:g_ethereal_canvas ? NSControlStateValueOn
-                                                   : NSControlStateValueOff];
-        [ethRestoreItem setTitle:g_ethereal_canvas
-            ? gl_text(@"canvas.fixed_mode")
-            : gl_text(@"canvas.ethereal_mode")];
-      }
-    }
-    NSMenuItem *infiniteRestoreItem = [MenuLookup itemWithTag:668 inMenu:g_menu];
-    if (infiniteRestoreItem) {
-      [infiniteRestoreItem setState:g_infinite_canvas ? NSControlStateValueOn
-                                                      : NSControlStateValueOff];
-    }
-    glaspen2_set_canvas_kind(g_infinite_canvas ? 1 : 0);
-    if (g_infinite_canvas) {
-      glaspen2_load_infinite_strokes();
-      [CanvasCamera loadInfinite];
-    } else {
-      [CanvasCamera resetLens];
-    }
-
-    // Canvas mode starts in 固定画布涂鸦模式; menu item shows the switch target
-    [[MenuLookup itemWithTag:778 inMenu:g_menu]
-        setTitle:gl_text(@"canvas.ethereal_mode")];
-
-    // Restore pressure monitor setting
-    g_pressure_monitor = glaspen2_load_bool_setting("pressure_monitor") != 0;
-    if (g_pressure_monitor) {
-      dispatch_async(dispatch_get_main_queue(), ^{
-        pm_ensure_window();
-        pm_show();
-        pm_update();
-      });
-    }
-
-    // Restore GIF quality/speed settings
-    char *vfps = glaspen2_load_string_setting("gif_fps");
-    if (vfps) {
-      g_gif_fps = atoi(vfps);
-      glaspen2_free_c_string(vfps);
-    }
-    char *vres = glaspen2_load_string_setting("gif_resolution");
-    if (vres) {
-      g_gif_resolution = atof(vres);
-      glaspen2_free_c_string(vres);
-    }
-    char *vspeed = glaspen2_load_string_setting("gif_speed");
-    if (vspeed) {
-      g_gif_speed = atof(vspeed);
-      glaspen2_free_c_string(vspeed);
-    }
-    char *vend = glaspen2_load_string_setting("gif_end_mode");
-    if (vend) {
-      g_gif_end_mode = atoi(vend);
-      glaspen2_free_c_string(vend);
-    }
-    // 区间单源在 core(与 Windows 同表)
-    g_gif_fps = glaspen2_clamp_setting_int("gifFps", g_gif_fps);
-    g_gif_resolution =
-        glaspen2_clamp_setting_double("gifResolution", g_gif_resolution);
-    g_gif_speed = glaspen2_clamp_setting_double("gifSpeed", g_gif_speed);
-    g_gif_end_mode = glaspen2_clamp_setting_int("gifEndMode", g_gif_end_mode);
-
-    // 图标反映的状态(颜色/宽度/无限画布)到这里才全部恢复完, 补刷一次
-    // (恢复流程更早处的刷新发生在 infinite_canvas 恢复之前, ∞ 徽标会丢)
-    glaspen2_router_update_status_icon_state();
-
-    // 涂鸦身份:DB 里的账号配置(若用户在面板配过)推给 Rust auth 模块
-    glaspen2_chat_auth_reload();
-
-    // 手写消息集成总开关(默认关;关 = 热键直通、面板收起)
-    g_chat_integration = glaspen2_load_bool_setting("chat_integration") != 0;
-    // D8b: 两个录制状态机按当前总开关初始化(必须在 g_chat_integration 恢复后)
-    gl_recording_init();
-    // 共享画布上行:集成开 + 开关此前为开 → 恢复上行
-    if (g_chat_integration && glaspen2_load_bool_setting("share_ink")) {
-      glaspen2_share_ink_set_active(YES);
-    }
-
-    // Apply glass visual on startup (skip if the user already started drawing)
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 300 * NSEC_PER_MSEC),
-                   dispatch_get_main_queue(), ^{
-                     if (g_stroke_active)
-                       return;
-                     if (!g_surface && g_draw_view)
-                       ensure_surface(g_draw_view);
-                     rebuild_surface_from_strokes();
-                   });
+    [StartupSettingsB restorePartB];
 
     // S5-1: 窗口创建/层级/透明/穿透/集合行为与光标已迁 Swift。
     g_window = [OverlayWindowFactory makeWindowWithFrame:screenFrame];
@@ -1367,3 +1270,16 @@ void glaspen2_router_startup_invert(int fps, int ink) {
 }
 void glaspen2_router_startup_flip(int effect) { g_flip_effect = effect; }
 void glaspen2_router_invert_apply(int on) { invert_ink_apply(on); }
+
+// S7cz: 启动恢复后半桥
+void glaspen2_router_restore_canvas_flags(int infinite, int minimap, int ethereal) {
+  g_infinite_canvas = infinite != 0;
+  g_minimap_enabled = minimap != 0;
+  g_ethereal_canvas = ethereal != 0;
+}
+void glaspen2_router_restore_pressure(int on) { g_pressure_monitor = on != 0; }
+void glaspen2_router_restore_gif_settings(int fps, double res, double speed, int endMode) {
+  g_gif_fps = fps; g_gif_resolution = res; g_gif_speed = speed; g_gif_end_mode = endMode;
+}
+void glaspen2_router_restore_chat_integration(int on) { g_chat_integration = on != 0; }
+void glaspen2_router_rec_init(void) { gl_recording_init(); }
