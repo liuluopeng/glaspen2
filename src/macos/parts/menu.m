@@ -721,18 +721,18 @@ static void gl_set_hotkey_recording(BOOL on) {
 }
 
 /// 事件 tap 用: keycode + 修饰键 → 规范 chord → action id。
-static NSString *gl_shortcut_action_for_key(unsigned short kc, NSUInteger mods) {
+// S6-3-4b: 键名/查找薄桥(Swift EventRouter 调; 逻辑在 Swift)
+NSString *glaspen2_router_keycode_name(unsigned short kc) {
+    return gl_keycode_names()[@(kc)];
+}
+
+NSString *glaspen2_router_action_for_chord(NSString *chord) {
     if (!g_shortcut_lookup) gl_shortcuts_apply(@{});
-    NSString *key = gl_keycode_names()[@(kc)];
-    if (!key) return nil;
-    NSMutableArray<NSString *> *parts = [NSMutableArray array];
-    if (mods & NSEventModifierFlagCommand) [parts addObject:@"cmd"];
-    if (mods & NSEventModifierFlagControl) [parts addObject:@"ctrl"];
-    if (mods & NSEventModifierFlagOption) [parts addObject:@"alt"];
-    if (mods & NSEventModifierFlagShift) [parts addObject:@"shift"];
-    if (![parts containsObject:@"ctrl"] && ![parts containsObject:@"alt"]) return nil;
-    [parts addObject:key];
-    return g_shortcut_lookup[[parts componentsJoinedByString:@"+"]];
+    return g_shortcut_lookup[chord];
+}
+
+static NSString *gl_shortcut_action_for_key(unsigned short kc, NSUInteger mods) {
+    return [EventRouter actionForHotkeyWithKeyCode:kc modifiers:mods];
 }
 
 /// D12: 设置快照的运行时专属值(其余字段/缺省值/DB 回退单源在

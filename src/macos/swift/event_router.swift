@@ -63,6 +63,21 @@ import AppKit
         }
     }
 
+    /// S6-3-4b: 键盘事件 → 已绑定 action(键名/查找分别走薄桥)。
+    @objc(actionForHotkeyWithKeyCode:modifiers:)
+    public static func actionForHotkey(keyCode: UInt16, modifiers: UInt) -> String? {
+        guard let key = glaspen2_router_keycode_name(keyCode) else { return nil }
+        let mods = NSEvent.ModifierFlags(rawValue: modifiers)
+        var parts: [String] = []
+        if mods.contains(.command) { parts.append("cmd") }
+        if mods.contains(.control) { parts.append("ctrl") }
+        if mods.contains(.option) { parts.append("alt") }
+        if mods.contains(.shift) { parts.append("shift") }
+        if !parts.contains("ctrl") && !parts.contains("alt") { return nil }
+        parts.append(key)
+        return glaspen2_router_action_for_chord(parts.joined(separator: "+"))
+    }
+
     /// ObjC 侧复用同一笔事件判定(避免两处公式各自维护)。
     @objc(isPenForEvent:)
     public static func isPenForEvent(_ event: CGEvent) -> Bool {
