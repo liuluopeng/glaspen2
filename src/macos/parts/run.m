@@ -1985,50 +1985,10 @@ static void rec_show_hud(NSDictionary *effect) {
   NSString *hud = effect[@"hud"];
   if (![hud isKindOfClass:[NSString class]])
     return;
-  if ([hud isEqualToString:@"GifStartHint"]) {
-    show_notification(gl_text(@"recording.gif_start_hint"));
-  } else if ([hud isEqualToString:@"SendStartHint"]) {
-    // {keys} 是平台键名(macOS ⌘⌃3 ↔ Windows Ctrl+Alt+3), 由 adapter 传参。
-    show_notification(gl_textf(@"recording.send_start_hint", @{@"keys" : @"⌘⌃3"}));
-  } else if ([hud isEqualToString:@"DraftStartHint"]) {
-    show_notification(gl_textf(@"recording.draft_start_hint", @{@"keys" : @"⌘⌃2"}));
-  } else if ([hud isEqualToString:@"DraftStartFailed"]) {
-    show_notification(gl_text(@"recording.draft_start_failed"));
-  } else if ([hud isEqualToString:@"GifCopied"]) {
-    show_notification(gl_text(@"recording.gif_copied"));
-  } else if ([hud isEqualToString:@"GifNoStrokesOrExportFailed"]) {
-    show_notification(gl_text(@"recording.gif_no_strokes_or_export_failed"));
-  } else if ([hud isEqualToString:@"GifClipboardFailed"]) {
-    // 仅 Windows 会走到(两平台差异 3);macOS 剪贴板失败只 NSLog 仍提示成功,
-    // 这里保留文案兜底, 不让未知 HUD 静默。
-    show_notification(gl_text(@"recording.gif_clipboard_failed"));
-  } else if ([hud isEqualToString:@"SendNoStrokes"]) {
-    show_notification(gl_text(@"recording.send_no_strokes"));
-  } else if ([hud isEqualToString:@"SendSucceeded"]) {
-    // {n} = 本次发送笔数。
-    show_notification(gl_textf(@"recording.send_succeeded", @{
-        @"n" : [NSString stringWithFormat:@"%d", [effect[@"strokes"] intValue]]
-    }));
-  } else if ([hud isEqualToString:@"SendFailed"]) {
-    show_notification(gl_text(@"recording.send_failed"));
-  } else if ([hud isEqualToString:@"DraftAccepted"]) {
-    // {n} = 对方已接收的草稿笔数。
-    show_notification(gl_textf(@"recording.draft_accepted", @{
-        @"n" : [NSString stringWithFormat:@"%d", [effect[@"strokes"] intValue]]
-    }));
-  } else if ([hud isEqualToString:@"DraftDeclined"]) {
-    show_notification(gl_text(@"recording.draft_declined"));
-  } else if ([hud isEqualToString:@"DraftFailed"]) {
-    // detail = glaspen2_ink_draft_last_error 的可读原因(空则用通用文案)。
-    NSString *detail = effect[@"detail"];
-    if ([detail isKindOfClass:[NSString class]] && detail.length > 0) {
-      show_notification(detail);
-    } else {
-      show_notification(gl_text(@"recording.draft_failed"));
-    }
-  } else {
-    NSLog(@"[recording] 未实现的 HUD 文案: %@", hud);
-  }
+  int strokes = [effect[@"strokes"] intValue];
+  NSString *detail = effect[@"detail"];
+  // S6/S8: 文案映射已迁 Swift(RecHudPresenter); 这里只解包 effect。
+  [RecHudPresenter presentHud:hud strokes:strokes detail:detail];
 }
 
 // 按状态机下发的顺序执行单个 effect。
