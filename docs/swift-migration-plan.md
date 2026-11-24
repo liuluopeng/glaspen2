@@ -423,3 +423,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7bd(续跑第75轮) | 删除 canvas_apply_transform 的 ObjC 转发: 全部调用点(居中/编辑动作/桥)直调 [CanvasCamera applyTransform](Swift), wrapper 与前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7be(续跑第76轮) | 删除相机鼠标平移三个 ObjC 包装(queue/flush/cancel): 桥与调用点直调 [CameraMousePan ...](Swift), wrapper 与 glaspen2.m 声明删除 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7bf(续跑第77轮) | 镜头回原点迁 Swift: CanvasCamera.home(FFI home → 状态应用 → applyTransform) 与 resetLens(仅设置变换), 三处调用点(编辑动作/清空/翻页重置)直调 Swift; 删除重复的 home+set_view/rebuild 序列; D5b menu.m 令牌改为 [CanvasCamera home]; 补 glaspen2_camera_home FFI 声明 | cargo build/tests/parity 全绿;镜头回原点需真机验证 | 本提交 |
+| 2026-11-24 | S8 检查点(续跑第78轮) | 78 轮检查点: 全量测试/parity 全绿; 死代码与死桥扫描均无输出(无未引用 static / 桥); 输入、镜头、设置、工具层已全部 Swift 化; 剩余仅大型功能体(infinite canvas 切换、draw_minimap、dirty 合成余量、panel.m 宿主、menu.m selector 转发、glaspen2.m shim), 迁移必须配合真机/截图验证, 不宜低上下文盲改 | 无代码变更 | 本提交 |
