@@ -801,7 +801,7 @@ cairo_surface_t *glaspen2_router_surface(void) { return g_surface; }
 cairo_t *glaspen2_router_acquire_cr(int *owned) {
   if (g_active_cr) { if (owned) *owned = 0; return g_active_cr; }
   if (owned) *owned = 1;
-  return cairo_create_scaled();
+  return (cairo_t *)cairo_create_scaled();
 }
 int glaspen2_router_soft_shadow(void) { return g_soft_shadow ? 1 : 0; }
 double glaspen2_router_outline_pad(void) { return kOutlinePad; }
@@ -1131,3 +1131,7 @@ void glaspen2_router_install_signals(void) {
   signal(SIGINT, save_and_exit);
   signal(SIGTERM, save_and_exit);
 }
+
+// S7di: 页面偏移桥
+double glaspen2_router_page_off_x(void) { return g_page_off_x; }
+double glaspen2_router_page_off_y(void) { return g_page_off_y; }

@@ -284,6 +284,10 @@ double gl_dirty_rect_x(void);
 double gl_dirty_rect_y(void);
 double gl_dirty_rect_w(void);
 double gl_dirty_rect_h(void);
+extern void *cairo_create_scaled(void); // Swift @_cdecl, 返回 cairo_t*
+extern double canvas_input_x(double view_x);
+extern double canvas_input_y(double view_y);
+extern void save_and_exit(int sig);
 static BOOL g_perf_log = NO;
 static void event_tap_reinstall(void);
 static NSWindow *g_window = nil;
@@ -306,16 +310,6 @@ static void pageview_update(void);
 // Create a cairo context with the backing scale factor applied.
 // All drawing coordinates remain in logical points; Cairo renders
 // at physical pixel resolution.
-static inline cairo_t *cairo_create_scaled(void) {
-    cairo_t *cr = cairo_create(g_surface);
-    cairo_scale(cr, g_scale, g_scale);
-    if (g_pageview_fit) { // pageview_update 保证无限画布时恒为 NO
-        cairo_translate(cr, g_pageview_ox * g_scale, g_pageview_oy * g_scale);
-        cairo_scale(cr, g_pageview_scale, g_pageview_scale);
-    }
-    return cr;
-}
-
 static double g_last_x = -1, g_last_y = -1;
 static BOOL g_has_last = NO;
 static NSView *g_draw_view = nil;
@@ -459,17 +453,6 @@ static double g_page_off_x = 0.0, g_page_off_y = 0.0;
 // 渲染是 view = (canvas − pan) × zoom,所以 canvas = view / zoom + pan。
 // 翻页模式渲染时镜头恒为原点(page_off 恒 0,整页翻页不滚动),无限画布则是 g_pan。
 // 注意:此前输入写成 `+ g_page_off`,符号反了 —— 在两张之间涂鸦后一移动就跳位。
-static inline double canvas_input_x(double view_x) {
-    if (g_infinite_canvas) return view_x / g_zoom + g_pan_x;
-    if (g_pageview_fit) return (view_x - g_page_off_x - g_pageview_ox) / g_pageview_scale;
-    return view_x - g_page_off_x; // 翻页模式 zoom 恒为 1
-}
-static inline double canvas_input_y(double view_y) {
-    if (g_infinite_canvas) return view_y / g_zoom + g_pan_y;
-    if (g_pageview_fit) return (view_y - g_page_off_y - g_pageview_oy) / g_pageview_scale;
-    return view_y - g_page_off_y; // 翻页模式 zoom 恒为 1
-}
-
 // Grid overlay toggle (default off)
 static BOOL g_show_grid = NO;
 
@@ -571,11 +554,6 @@ static void save_drawing_only(void) { [SurfaceOps saveDrawingOnly]; }
 /// 当前覆盖层所在屏幕的 CGDirectDisplayID。
 /// 截图曾经永远取 `content.displays.firstObject` —— 多屏时会把副屏的
 /// 桌面合成进主屏的笔迹里。
-static CGDirectDisplayID window_display_id(void) {
-    // S7: 已迁 Swift(OverlayWindowFactory.windowDisplayId)。
-    return [OverlayWindowFactory windowDisplayId];
-}
-
 /// macOS 12/13 的桌面截图回退。
 ///
 /// SDK 从 macOS 15 起把 CGWindowListCreateImage 标成 unavailable(运行时
@@ -711,7 +689,7 @@ static void save_with_background(void) {
         }
 
         SCDisplay *display = content.displays.firstObject;
-        CGDirectDisplayID want = window_display_id();
+        CGDirectDisplayID want = [OverlayWindowFactory windowDisplayId];
         for (SCDisplay *d in content.displays) {
             if (d.displayID == want) {
                 display = d;
@@ -759,14 +737,6 @@ static void clear_screen(void) { [SurfaceOps clearScreen]; }
 static void pageview_frame_draw(void) { [SurfaceReplay drawPageFrame]; }
 static void pageview_frame_draw(void);
 static void replay_strokes_from_memory(void) { [SurfaceReplay replay]; }
-
-static void save_and_exit(int sig) {
-    (void)sig;
-    glaspen2_shutdown(); // 写完排队点 + WAL checkpoint
-    pm_destroy();
-    CGDisplayShowCursor(kCGDirectMainDisplay);
-    exit(0);
-}
 
 // ── 文件拆分: #include 文本包含(同一编译单元, clang 报错行号直指子文件);
 //    拆分为纯移动, 行为零变化。构建仍只编译 glaspen2.m 这一个入口。──
