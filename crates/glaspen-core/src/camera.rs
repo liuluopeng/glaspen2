@@ -717,7 +717,7 @@ let mac_run_cam = format!("{mac_run}
                     "glaspen2_camera_keyboard_pan_step(",
                     "glaspen2_camera_step_zoom(",
                     "glaspen2_camera_home(",
-                    "camera_assign(",
+                    "CameraState.assign(",
                 ][..],
             ),
             (

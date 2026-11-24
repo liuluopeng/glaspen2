@@ -263,24 +263,8 @@ static void camera_mouse_cancel_pan(void) {
 // 命中上限的判定用 core 的 hit_max(钳制前的请求越过 100%), 因此到达 100%
 // 后继续放大仍会提示, 不会静默。
 static void canvas_zoom_apply(NSDictionary *result) {
-  if (!result)
-    return;
-  BOOL hit_max = [result[@"hit_max"] boolValue];
-  BOOL changed = [result[@"changed"] boolValue];
-  if (hit_max) {
-    static CFAbsoluteTime last_hint = 0.0;
-    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-    if (now - last_hint > 1.5) {
-      last_hint = now;
-      show_notification(gl_text(@"zoom.max_100"));
-    }
-  }
-  if (!camera_assign(result, YES))
-    return;
-  if (!changed)
-    return; // 已在缩放边界/无变化: 不白 flash
-  canvas_apply_transform();
-  peek_lens_change(); // 飘渺模式下短暂露出笔迹, 让缩放变化可见
+  if (!result) return;
+  [CanvasCamera applyZoomResult:result];
 }
 
 // 缩放镜头(滚轮):以视口点 (vx, vy) 为锚,zoom ∈ (0.05, 1.0]。
