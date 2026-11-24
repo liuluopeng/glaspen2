@@ -150,11 +150,6 @@ static void stroke_end(void) {
 
 /// Properly finish an in-flight stroke (used by hotkeys / re-entrant pen-down
 /// so an interrupted stroke is committed or erased instead of silently lost).
-static void finish_active_stroke(void) {
-    // S7: 逻辑已迁 Swift EventRouter.finishActiveStroke。
-    [EventRouter finishActiveStroke];
-}
-
 // ── 反色突出: 前置声明(状态与实现都在下方"反色突出"区) ──
 static void invert_stream_invalidate(void); // 分辨率变化: 停流弃缓存, 下轮重建
 

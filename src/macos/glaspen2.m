@@ -258,7 +258,6 @@ extern int glaspen2_undo_last_stroke(void);
 
 // Forward declarations
 static void rebuild_surface_from_strokes(void);
-static void finish_active_stroke(void);
 static void ensure_surface(NSView *view);
 static BOOL perform_hotkey(unsigned short keyCode);
 static void apply_outline(BOOL on);

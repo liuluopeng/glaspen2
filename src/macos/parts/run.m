@@ -165,7 +165,7 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
     return;
   g_camera_mouse_dragging = NO; // 模式切换时结束任何鼠标抓手
   camera_mouse_cancel_pan();
-  finish_active_stroke(); // 先把在写的笔画落库到"旧"存储
+  [EventRouter finishActiveStroke]; // 先把在写的笔画落库到"旧"存储
   if (g_infinite_canvas)
     canvas_infinite_persist(); // 离开无限画布前存镜头
   g_infinite_canvas = on;
@@ -1362,7 +1362,7 @@ static inline void perf_log_event(const char *evtype, uint64_t dur_us) {
 // Used by the physical shortcut (event tap) and the settings-panel buttons.
 static BOOL perform_hotkey(unsigned short kc) {
   if (kc == kVK_ANSI_C) {
-    finish_active_stroke(); // don't strand an in-flight stroke
+    [EventRouter finishActiveStroke]; // don't strand an in-flight stroke
     if (g_infinite_canvas) {
       // 无限画布不清空(内容多,误清损失大):新建请走设置面板
       show_notification(gl_text(@"canvas.infinite_kept"));
@@ -1378,7 +1378,7 @@ static BOOL perform_hotkey(unsigned short kc) {
       show_notification(gl_text(@"canvas.single_canvas_warning"));
       return YES;
     }
-    finish_active_stroke();
+    [EventRouter finishActiveStroke];
     long target = glaspen2_prev_screen_id();
     if (target > 0) {
       page_flip_swap(
@@ -1402,7 +1402,7 @@ static BOOL perform_hotkey(unsigned short kc) {
       show_notification(gl_text(@"canvas.single_canvas_warning"));
       return YES;
     }
-    finish_active_stroke();
+    [EventRouter finishActiveStroke];
     long target = glaspen2_next_screen_id();
     if (target > 0) {
       page_flip_swap(
@@ -1693,7 +1693,7 @@ static void copy_gif_data_to_clipboard(unsigned char *gif, int len) {
 // 在写笔画先落定再取计数: 事件里的 stroke_count 必须是提交之后的计数,
 // 否则窗口会漏掉正在写的那一笔(与两端旧顺序一致)。
 static int rec_finish_and_count(void) {
-  finish_active_stroke();
+  [EventRouter finishActiveStroke];
   return glaspen2_stroke_count();
 }
 
@@ -1815,7 +1815,7 @@ static void rec_exec_effect(int slot, NSDictionary *effect) {
   if ([kind isEqualToString:@"StopChatDraft"]) {
     // 提交在写笔画, 再后台 half-close + 取裁决;结果回主线程作为
     // ChatDraftFinished 喂回状态机(裁决映射单源在 DraftOutcome::from_ffi_code)。
-    finish_active_stroke();
+    [EventRouter finishActiveStroke];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
       int r = glaspen2_ink_draft_stop();
       // 失败原因在后台线程取好再回主线程, 避免与下一次会话的写入竞争。

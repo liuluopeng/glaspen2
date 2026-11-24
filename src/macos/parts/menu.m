@@ -133,7 +133,7 @@ static void toggle_enabled(void) {
         // 关闭涂鸦: 临时隐藏整个 glaspen 覆盖层(笔迹/方格/磨砂玻璃),
         // 以便干净地使用其他绘图软件。
         restore_system_cursor();
-        finish_active_stroke();
+        [EventRouter finishActiveStroke];
         if (g_window) [g_window orderOut:nil];
         if (g_pressure_monitor) pm_hide();
     } else {
@@ -180,7 +180,7 @@ static BOOL g_strokes_visible = YES; // strokes drawn on the overlay?
 // Hide the strokes (飘渺 mode). Returns YES if it actually hid them.
 static void ethereal_hide_now(void) {
     if (!g_ethereal_canvas || !g_strokes_visible) return;
-    finish_active_stroke(); // don't strand an in-flight stroke
+    [EventRouter finishActiveStroke]; // don't strand an in-flight stroke
     g_strokes_visible = NO;
     if (g_glass_follow_strokes && g_glass_view) g_glass_view.hidden = YES;
     if (g_pressure_monitor) pm_hide();
@@ -263,7 +263,7 @@ static void toggle_canvas_mode(void) {
     if (!g_ethereal_canvas) {
         // → 飘渺画布涂鸦模式: hide the strokes, peek rules take over
         g_ethereal_canvas = YES;
-        finish_active_stroke(); // commit any in-flight stroke before hiding
+        [EventRouter finishActiveStroke]; // commit any in-flight stroke before hiding
         g_strokes_visible = NO;
         if (g_glass_follow_strokes && g_glass_view) g_glass_view.hidden = YES;
         if (g_pressure_monitor) pm_hide();
@@ -1060,7 +1060,7 @@ unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *r
                     canvas_apply_transform();
             }
         } else if (action == 3) {
-            finish_active_stroke();
+            [EventRouter finishActiveStroke];
             glaspen2_clear_strokes(g_screen_w, g_screen_h);
             glaspen2_camera_home(&g_pan_x, &g_pan_y, &g_zoom);
             glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
