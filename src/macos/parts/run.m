@@ -192,9 +192,6 @@ static void apply_outline(BOOL on) { [MenuHandler setOutlineEnabled:on]; }
 // 性能要点:缩略图在专属串行低优先级队列逐张渲染(避免并发全屏渲染打爆 CPU),
 // 每帧只把合成好的整条 strip 图贴一次(而不是逐张画 10 次);布局 JSON 只在
 // 当前页/视图尺寸/几何组过滤宽度变化时重取(同旧 id 列表缓存策略)。
-static NSImage *g_minimap_strip = nil;        // 合成好的整条(含边框/页号)
-static NSInteger g_minimap_strip_key = -1;    // 条带指纹:(当前页, 取图版本)
-static NSInteger g_minimap_fetch_version = 0; // 每完成一张取图 +1
 
 // core minimap 布局 FFI JSON → 字典;失败/error JSON 只记一次日志(避免每帧
 // 刷屏)并回 nil。
