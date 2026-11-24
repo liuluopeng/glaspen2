@@ -1238,10 +1238,11 @@ static void pm_hide(void) {
 
 static void pm_update(void) {
     if (!g_pm_window || !g_pm_label) return;
-    NSString *typeStr = g_pm_evtype ? g_pm_evtype : @"---";
-    [g_pm_label setStringValue:[NSString stringWithFormat:@"P=%-5d  %@  (%d,%d)",
-                                 g_pm_pressure, typeStr,
-                                 (int)g_pm_x, (int)g_pm_y]];
+    // S7y: 标签格式化已迁 Swift(MenuHandler.updatePressureLabel)。
+    [MenuHandler updatePressureLabelWithPressure:g_pm_pressure
+                                            type:g_pm_evtype
+                                               x:g_pm_x
+                                               y:g_pm_y];
 }
 
 static void pm_destroy(void) {
@@ -1324,3 +1325,8 @@ void glaspen2_router_set_menu_title(int tag, NSString *title) {
 
 // S7w: 手写消息总开关状态薄桥
 void glaspen2_router_set_chat_integration(int on) { g_chat_integration = on != 0; }
+
+// S7y: 压感监视器标签设置薄桥
+void glaspen2_router_set_pm_label(NSString *text) {
+  if (g_pm_label) [g_pm_label setStringValue:text];
+}

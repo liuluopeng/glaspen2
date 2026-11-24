@@ -136,6 +136,7 @@ extern int glaspen2_load_bool_setting(const char *key);
 extern void glaspen2_share_ink_set_active(int active);
 void glaspen2_router_set_chat_integration(int on);
 void glaspen2_router_rec_chat_integration_changed(int on);
+void glaspen2_router_set_pm_label(NSString *text);
 void glaspen2_router_pm_show(void);
 void glaspen2_router_pm_hide(void);
 void glaspen2_router_pm_refresh(void);

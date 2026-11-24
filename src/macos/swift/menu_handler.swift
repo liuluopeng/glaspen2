@@ -61,6 +61,16 @@ import AppKit
         glaspen2_menu_notify(glaspen2_menu_l10n("export.notes_saved"))
     }
 
+    /// 压感监视器标签格式化(P=压力 事件 坐标)。
+    @objc(updatePressureLabelWithPressure:type:x:y:)
+    public static func updatePressureLabel(pressure: Int32, type: String?,
+                                           x: Double, y: Double) {
+        let typeString = type ?? "---"
+        let text = String(format: "P=%-5d  ", pressure) + typeString
+            + String(format: "  (%d,%d)", Int(x), Int(y))
+        glaspen2_router_set_pm_label(text)
+    }
+
     /// 手写消息集成总开关: 状态/落库/录制状态机通知/共享上行恢复。
     @objc(setChatIntegration:)
     public static func setChatIntegration(enabled: Bool) {
