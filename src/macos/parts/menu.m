@@ -545,7 +545,7 @@ int glaspen2_router_enabled(void) { return g_enabled ? 1 : 0; }
 int glaspen2_router_pressure_monitor(void) { return g_pressure_monitor ? 1 : 0; }
 int glaspen2_router_strokes_visible(void) { return g_strokes_visible ? 1 : 0; }
 void glaspen2_router_ensure_surface(void) {
-  if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
+  if (g_draw_view) ensure_surface(g_draw_view);
 }
 
 // S7bp: 画布模式切换的 Swift 薄桥

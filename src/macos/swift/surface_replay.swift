@@ -3,22 +3,21 @@ import AppKit
 
 @objc public final class SurfaceReplay: NSObject {
     @objc public static func replay() {
-        guard let surface = glaspen2_router_surface() else { return }
+        guard let surface = SurfaceStore.current else { return }
         glaspen2_draw_rebuild_view(UnsafeMutableRawPointer(surface),
-                                   glaspen2_router_scale(),
+                                   SurfaceStore.scaleFactor,
                                    PageViewOps.paperOx,
                                    PageViewOps.paperOy,
                                    PageViewOps.paperScale)
         drawPageFrame()
         cairo_surface_flush(surface)
-        glaspen2_router_set_has_last(0)
-        OverlayLayerFlush.flush()
+                OverlayLayerFlush.flush()
     }
 
     private static func pageviewFrameDraw(_ surface: OpaquePointer) {
         if !PageViewOps.isFit { return }
         guard let cr = cairo_create(surface) else { return }
-        let scale = glaspen2_router_scale()
+        let scale = SurfaceStore.scaleFactor
         let x = PageViewOps.paperOx * scale
         let y = PageViewOps.paperOy * scale
         let w = Double(PageViewOps.pageW) * PageViewOps.paperScale * scale
@@ -39,7 +38,7 @@ import AppKit
 
     /// 快照观看页框(供 ObjC 侧重建/删除页后调用)。
     @objc public static func drawPageFrame() {
-        guard let surface = glaspen2_router_surface() else { return }
+        guard let surface = SurfaceStore.current else { return }
         pageviewFrameDraw(surface)
     }
 

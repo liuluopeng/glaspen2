@@ -8,7 +8,7 @@ import Darwin
                             screenId: Int64) -> NSDictionary? {
         let screenW = Int(glaspen2_router_screen_w())
         let screenH = Int(glaspen2_router_screen_h())
-        let gScale = glaspen2_router_scale()
+        let gScale = SurfaceStore.scaleFactor
         var pscale = 1.0, ox = 0.0, oy = 0.0
         var pw: Int32 = Int32(screenW), ph: Int32 = Int32(screenH)
         if !isCurrent {
@@ -36,7 +36,7 @@ import Darwin
                 let f = cardScale / max(gScale, 0.0001)
                 cairo_scale(cr, f, f)
                 cairo_set_operator(cr, cairo_operator_t(1))
-                if let current = glaspen2_router_surface() {
+                if let current = SurfaceStore.current {
                     cairo_set_source_surface(cr, current, 0, 0)
                     cairo_paint(cr)
                 }

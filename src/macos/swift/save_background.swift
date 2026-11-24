@@ -6,7 +6,7 @@ import Darwin
 
 @objc public final class SaveBackground: NSObject {
     @objc public static func save() {
-        guard let surface = glaspen2_router_surface() else { return }
+        guard let surface = SurfaceStore.current else { return }
         cairo_surface_flush(surface)
         let dw = Int(cairo_image_surface_get_width(surface))
         let dh = Int(cairo_image_surface_get_height(surface))

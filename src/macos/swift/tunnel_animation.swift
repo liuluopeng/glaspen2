@@ -10,13 +10,13 @@ import Darwin
         if TunnelState.active { return false }
         let screenW = glaspen2_router_screen_w()
         let screenH = glaspen2_router_screen_h()
-        guard glaspen2_router_surface() != nil, screenW > 0, screenH > 0 else { return false }
+        guard SurfaceStore.current != nil, screenW > 0, screenH > 0 else { return false }
         let cur = Int(curPage)
         let target = goingNext ? glaspen2_page_neighbor(cur, 1)
                                : glaspen2_page_neighbor(cur, -1)
         if target <= 0 { return false }
         TunnelLifecycle.freeCards()
-        let scale = glaspen2_router_scale()
+        let scale = SurfaceStore.scaleFactor
         let sW = Int(Double(screenW) * scale * 0.5)
         let sH = Int(Double(screenH) * scale * 0.5)
         if sW <= 0 || sH <= 0 { return false }

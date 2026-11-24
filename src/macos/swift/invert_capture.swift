@@ -70,7 +70,7 @@ import ScreenCaptureKit
         guard glaspen2_router_invert_enabled() != 0,
               invW > 0, let surf = surfs[presentSlot] else { return nil }
         guard let pat = cairo_pattern_create_for_surface(surf) else { return nil }
-        let scale = max(glaspen2_router_scale(), 0.0001)
+        let scale = max(SurfaceStore.scaleFactor, 0.0001)
         var m = cairo_matrix_t()
         cairo_matrix_init_scale(&m, 1.0 / scale, 1.0 / scale)
         cairo_pattern_set_matrix(pat, &m)
@@ -264,7 +264,7 @@ import ScreenCaptureKit
 
     private static func tick() {
         if glaspen2_router_invert_enabled() == 0 { return }
-        guard let surface = glaspen2_router_surface() else {
+        guard let surface = SurfaceStore.current else {
             schedule(0.5)
             return
         }

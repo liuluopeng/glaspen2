@@ -256,13 +256,13 @@ import AppKit
     @objc(drawDotContext:x:y:width:)
     public static func drawDot(context: UnsafeMutableRawPointer, x: Double, y: Double,
                                width: Double) -> Bool {
-        guard glaspen2_router_surface() != nil else { return false }
+        guard SurfaceStore.current != nil else { return false }
         let cr = OpaquePointer(context)
         guard x.isFinite, y.isFinite, width.isFinite,
               glaspen2_router_pen_r().isFinite, glaspen2_router_pen_g().isFinite,
               glaspen2_router_pen_b().isFinite else { return false }
-        let scale = max(glaspen2_router_scale(), 0.0001)
-        guard let surface = glaspen2_router_surface() else { return false }
+        let scale = max(SurfaceStore.scaleFactor, 0.0001)
+        guard let surface = SurfaceStore.current else { return false }
         let surfaceW = Int(cairo_image_surface_get_width(surface))
         let surfaceH = Int(cairo_image_surface_get_height(surface))
         if surfaceW <= 0 || surfaceH <= 0 { return false }
@@ -289,7 +289,7 @@ import AppKit
     @objc(drawSegmentContext:x:y:width:)
     public static func drawSegment(context: UnsafeMutableRawPointer, x: Double, y: Double,
                                    width: Double) -> Bool {
-        guard glaspen2_router_surface() != nil else { return false }
+        guard SurfaceStore.current != nil else { return false }
         let st = glaspen2_router_raw_state() as NSDictionary
         func num(_ k: String) -> Double { (st[k] as? NSNumber)?.doubleValue ?? 0 }
         func flag(_ k: String) -> Bool { (st[k] as? NSNumber)?.boolValue ?? false }
@@ -300,8 +300,8 @@ import AppKit
               glaspen2_router_pen_r().isFinite, glaspen2_router_pen_g().isFinite,
               glaspen2_router_pen_b().isFinite,
               num("prev_x").isFinite, num("prev_y").isFinite else { return false }
-        let scale = max(glaspen2_router_scale(), 0.0001)
-        guard let surface = glaspen2_router_surface() else { return false }
+        let scale = max(SurfaceStore.scaleFactor, 0.0001)
+        guard let surface = SurfaceStore.current else { return false }
         let surfaceW = Int(cairo_image_surface_get_width(surface))
         let surfaceH = Int(cairo_image_surface_get_height(surface))
         if surfaceW <= 0 || surfaceH <= 0 { return false }

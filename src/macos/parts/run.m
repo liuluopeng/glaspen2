@@ -619,19 +619,14 @@ void glaspen2_router_set_screen_size(int w, int h) {
 id glaspen2_router_draw_view(void) { return g_draw_view; }
 
 // S7bv: 图层面刷新的薄桥(dirty tracker 在 panel.m)
-int glaspen2_router_has_surface(void) { return g_surface ? 1 : 0; }
 void glaspen2_router_dirty_reset(void) { dirty_reset(); }
 int glaspen2_router_dirty_has(void) { return gl_dirty_has_state(); }
 NSRect glaspen2_router_dirty_rect(void) { return NSMakeRect(gl_dirty_rect_x(), gl_dirty_rect_y(), gl_dirty_rect_w(), gl_dirty_rect_h()); }
 
 // S7bw: surface 生命周期薄桥
-void glaspen2_router_install_surface(cairo_surface_t *surface) { g_surface = surface; }
-void glaspen2_router_install_scale(double scale) { g_scale = scale; }
-void glaspen2_router_set_has_last(int has) { g_has_last = has != 0; }
 void glaspen2_router_surface_cache_invalidate(void) { surface_image_cache_invalidate(); }
 
 // S7by: 首点实时绘制薄桥
-cairo_surface_t *glaspen2_router_surface(void) { return g_surface; }
 cairo_t *glaspen2_router_acquire_cr(int *owned) {
   if (g_active_cr) { if (owned) *owned = 0; return g_active_cr; }
   if (owned) *owned = 1;
@@ -684,7 +679,6 @@ int glaspen2_router_live_plan_segment(cairo_t *cr, double x, double y, double wi
 double glaspen2_router_outline_dash(void) { return kOutlineDash; }
 
 // S7ca: 实时笔画上下文薄桥
-double glaspen2_router_scale(void) { return g_scale; }
 int glaspen2_router_active_ctx_present(void) { return g_active_cr ? 1 : 0; }
 void glaspen2_router_install_active_ctx(cairo_t *ctx) { g_active_cr = ctx; }
 cairo_t *glaspen2_router_take_active_ctx(void) {
@@ -919,20 +913,9 @@ NSDictionary *glaspen2_router_cursor_draw_state(void) {
   };
 }
 
-NSDictionary *glaspen2_router_draw_state(void) {
-  NSMutableDictionary *d = [NSMutableDictionary dictionary];
-  d[@"hasSurface"] = @(g_surface ? YES : NO);
-  if (g_surface) {
-    d[@"surfaceData"] = [NSValue valueWithPointer:cairo_image_surface_get_data(g_surface)];
-    d[@"surfaceW"] = @(cairo_image_surface_get_width(g_surface));
-    d[@"surfaceH"] = @(cairo_image_surface_get_height(g_surface));
-    d[@"surfaceStride"] = @(cairo_image_surface_get_stride(g_surface));
-  }
-  d[@"scale"] = @(g_scale);
-  d[@"strokesVisible"] = @(g_strokes_visible ? YES : NO);
-  d[@"showGrid"] = @(g_show_grid ? YES : NO);
-  d[@"minimapEnabled"] = @(g_minimap_enabled ? YES : NO);
-  d[@"infinite"] = @(g_infinite_canvas ? YES : NO);
-  d[@"perfEnabled"] = @([PerfLog isEnabled] ? YES : NO);
-  return d;
-}
+
+// S7do: 绘制标志桥
+int glaspen2_router_minimap_enabled(void) { return g_minimap_enabled ? 1 : 0; }
+int glaspen2_router_show_grid(void) { return g_show_grid ? 1 : 0; }
+
+int glaspen2_router_perf_enabled(void) { return [PerfLog isEnabled] ? 1 : 0; }

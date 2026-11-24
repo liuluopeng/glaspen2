@@ -80,7 +80,7 @@ import AppKit
             return true
         case 0x05: // G — export SVG/GIF
             glaspen2_save_svg()
-            if let surface = glaspen2_router_surface() {
+            if let surface = SurfaceStore.current {
                 cairo_surface_flush(surface)
                 let w = Int(cairo_image_surface_get_width(surface))
                 let h = Int(cairo_image_surface_get_height(surface))
@@ -88,7 +88,7 @@ import AppKit
                 let data = cairo_image_surface_get_data(surface)
                 let ok = glaspen2_save_gif_cropped(data, Int32(w), Int32(h),
                                                    Int32(stride),
-                                                   glaspen2_router_scale())
+                                                   SurfaceStore.scaleFactor)
                 if ok != 0 {
                     copyNewestGifToPasteboard()
                     notify("export.svg_gif_saved")

@@ -6,9 +6,9 @@ import AppKit
 
     @objc public static func begin() {
         if active != nil || glaspen2_router_active_ctx_present() != 0 { return }
-        guard let surface = glaspen2_router_surface() else { return }
+        guard let surface = SurfaceStore.current else { return }
         guard let ctx = cairo_create(surface) else { return }
-        cairo_scale(ctx, glaspen2_router_scale(), glaspen2_router_scale())
+        cairo_scale(ctx, SurfaceStore.scaleFactor, SurfaceStore.scaleFactor)
         active = ctx
         glaspen2_router_install_active_ctx(ctx)
         glaspen2_router_reset_raw_stroke()

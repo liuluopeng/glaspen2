@@ -23,7 +23,6 @@ static int g_screen_w = 1920;
 static int g_screen_h = 1080;
 
 // Backing scale factor for Retina rendering (1.0 = non-Retina, 2.0 = Retina)
-static CGFloat g_scale = 1.0;
 
 // Forward declarations
 static void flush_to_layer(void);
@@ -288,7 +287,6 @@ static NSWindow *g_settings_window; // 定义在 parts/menu.m(设置面板窗口
 static NSVisualEffectView *g_glass_view = nil;
 
 // --- Drawing state ---
-static cairo_surface_t *g_surface = NULL;
 
 // 页视图变换(scale-to-fit): 当前页几何 ≠ 屏幕时, 等比缩放居中观看该页
 // (页 = 某时刻玻璃的几何快照); 同几何时恒为恒等 —— 纯玻璃, 严格 1:1。
@@ -301,7 +299,6 @@ static void pageview_update(void);
 // All drawing coordinates remain in logical points; Cairo renders
 // at physical pixel resolution.
 static double g_last_x = -1, g_last_y = -1;
-static BOOL g_has_last = NO;
 static NSView *g_draw_view = nil;
 
 // Raw drawing state (for responsive real-time feedback during stroke)

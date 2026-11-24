@@ -10,14 +10,13 @@ import AppKit
             }
             return
         }
-        guard let surface = glaspen2_router_surface() else { return }
+        guard let surface = SurfaceStore.current else { return }
         if let cr = makeScaledContext(surface) {
             cairo_set_operator(cr, cairo_operator_t(3)) // CLEAR
             cairo_paint(cr)
             cairo_destroy(cr)
         }
-        glaspen2_router_set_has_last(0)
-        let created = glaspen2_clear_strokes(Int32(glaspen2_router_screen_w()),
+                let created = glaspen2_clear_strokes(Int32(glaspen2_router_screen_w()),
                                              Int32(glaspen2_router_screen_h()))
         PageViewOps.update()
         OverlayLayerFlush.flush()
@@ -30,7 +29,7 @@ import AppKit
 
     /// 保存纯涂鸦 PNG(不含背景)。
     @objc public static func saveDrawingOnly() {
-        guard let surface = glaspen2_router_surface() else { return }
+        guard let surface = SurfaceStore.current else { return }
         cairo_surface_flush(surface)
         let w = Int32(cairo_image_surface_get_width(surface))
         let h = Int32(cairo_image_surface_get_height(surface))
@@ -45,7 +44,7 @@ import AppKit
     /// 与 ObjC cairo_create_scaled 等价: 创建 context 并应用 scale + 页视图变换。
     private static func makeScaledContext(_ surface: OpaquePointer) -> OpaquePointer? {
         guard let cr = cairo_create(surface) else { return nil }
-        let scale = glaspen2_router_scale()
+        let scale = SurfaceStore.scaleFactor
         cairo_scale(cr, scale, scale)
         if PageViewOps.isFit {
             cairo_translate(cr, PageViewOps.paperOx * scale,

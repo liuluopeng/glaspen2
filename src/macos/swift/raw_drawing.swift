@@ -4,7 +4,7 @@ import AppKit
 @objc public final class RawDrawing: NSObject {
     @objc(drawDotWithX:y:width:)
     public static func drawDot(x: Double, y: Double, width: Double) {
-        guard glaspen2_router_surface() != nil else { return }
+        guard SurfaceStore.current != nil else { return }
         var owned: Int32 = 0
         guard let cr = glaspen2_router_acquire_cr(&owned) else { return }
         let planned = glaspen2_router_live_plan_dot(cr, x, y, width) != 0
@@ -45,7 +45,7 @@ import AppKit
     /// 拖动实时段: 计划优先, 失败回落旧逐段 pass(阴影/虚线描边/接缝重画/反色)。
     @objc(drawSegmentWithX:y:width:)
     public static func drawSegment(x: Double, y: Double, width: Double) {
-        guard glaspen2_router_surface() != nil else { return }
+        guard SurfaceStore.current != nil else { return }
         var owned: Int32 = 0
         guard let cr = glaspen2_router_acquire_cr(&owned) else { return }
         let st = glaspen2_router_raw_state() as NSDictionary

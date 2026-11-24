@@ -5,9 +5,9 @@ import Darwin
 
 @_cdecl("cairo_create_scaled")
 public func cairoCreateScaled() -> OpaquePointer? {
-    guard let surface = glaspen2_router_surface() else { return nil }
+    guard let surface = SurfaceStore.current else { return nil }
     guard let cr = cairo_create(surface) else { return nil }
-    let scale = glaspen2_router_scale()
+    let scale = SurfaceStore.scaleFactor
     cairo_scale(cr, scale, scale)
     if PageViewOps.isFit {
         cairo_translate(cr, PageViewOps.paperOx * scale,
