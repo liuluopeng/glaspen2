@@ -1962,19 +1962,7 @@ static BOOL rec_feed(int slot, NSString *event_json) {
   return YES;
 }
 
-// 开始一次录制: 先提交在写笔画再喂 StartPressed。键按下分支无条件消费按键
-// (与旧实现一致); 状态机自己的"已在录制"守卫会忽略重复按下。
-static void rec_start(int slot, NSString *mode) {
-  int strokes = rec_finish_and_count();
-  rec_feed(slot, rec_key_event(@"StartPressed", mode, strokes));
-}
-
-// 结束一次录制: 先提交在写笔画再喂 ReleasePressed; 调用方已用
-// glaspen2_recording_mode 确认本槽位正处于该模式。
-static void rec_release(int slot, NSString *mode) {
-  int strokes = rec_finish_and_count();
-  rec_feed(slot, rec_key_event(@"ReleasePressed", mode, strokes));
-}
+// S6/S7: rec_start/rec_release 已并入 Swift RecordingHotkeys(事件 JSON 由 Swift 生成)。
 
 // GIF 编码结果回主线程后待写剪贴板的字节(Clipboard effect 消费)。
 static NSData *s_pending_gif = nil;

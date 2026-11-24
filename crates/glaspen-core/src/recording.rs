@@ -1733,6 +1733,9 @@ mod tests {
         // S6/S8: 录制 HUD 文案映射已迁 Swift, 闸门必须同时扫 Swift 源。
         let mac_recording_swift =
             include_str!("../../../src/macos/swift/recording_hud.swift");
+        let mac_recording_keys =
+            include_str!("../../../src/macos/swift/recording_keys.swift");
+        let mac_combined = format!("{mac_run}\n{mac_recording_keys}");
         // Windows: recording.rs = 接线/effects 分派; state.rs = 两个状态机字段;
         // actions.rs = Raw Input/总开关入口; hotkeys.rs = WM_HOTKEY; wndproc =
         // 后台结果回窗口线程; cmds.rs = 自定义消息。
@@ -1879,7 +1882,7 @@ mod tests {
         ];
         let mut mac_required: Vec<String> =
             effect_kinds.iter().map(|n| format!("@\"{n}\"")).collect();
-        mac_required.extend(event_types.iter().map(|n| format!("@\"{n}\"")));
+
         // NSJSONSerialization 生成的键名(事件/effects 载荷)也要在 adapter 出现。
         mac_required.extend(
             [
@@ -1894,6 +1897,13 @@ mod tests {
         );
         let mac_required_refs: Vec<&str> = mac_required.iter().map(String::as_str).collect();
         problems.extend(gate_missing("run.m(变体覆盖)", mac_run, &mac_required_refs));
+        // 事件名现由 run.m 与 recording_keys.swift 共同出现(Swift 侧为裸字面量)。
+        let event_refs: Vec<&str> = event_types.to_vec();
+        problems.extend(gate_missing(
+            "run.m+recording_keys.swift(事件覆盖)",
+            mac_combined.as_str(),
+            &event_refs,
+        ));
         // HUD 文案映射在 Swift: 变体名以普通字符串字面量出现。
         let swift_hud: Vec<String> = hud_names.iter().map(|n| format!("\"{n}\"")).collect();
         let swift_hud_refs: Vec<&str> = swift_hud.iter().map(String::as_str).collect();

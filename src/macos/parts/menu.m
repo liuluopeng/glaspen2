@@ -731,9 +731,7 @@ NSString *glaspen2_router_action_for_chord(NSString *chord) {
     return g_shortcut_lookup[chord];
 }
 
-static NSString *gl_shortcut_action_for_key(unsigned short kc, NSUInteger mods) {
-    return [EventRouter actionForHotkeyWithKeyCode:kc modifiers:mods];
-}
+// S6/S7: 热键查找已直接由 Swift EventRouter 使用, 旧 ObjC 包装删除。
 
 /// D12: 设置快照的运行时专属值(其余字段/缺省值/DB 回退单源在
 /// core/settings_snapshot.rs)。这里只放不在 user_settings 或不能直接读 DB 的值:
