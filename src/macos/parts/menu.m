@@ -167,7 +167,7 @@ void glaspen2_menu_set_launch(int on) {
 }
 
 int glaspen2_menu_glass_enabled(void) {
-    return g_glass_enabled ? 1 : 0;
+    return glaspen2_router_glass_enabled();
 }
 
 void glaspen2_menu_set_glass(int on) {
@@ -175,7 +175,7 @@ void glaspen2_menu_set_glass(int on) {
 }
 
 int glaspen2_menu_outline_enabled(void) {
-    return g_outline_enabled ? 1 : 0;
+    return glaspen2_router_outline_enabled();
 }
 
 void glaspen2_menu_apply_outline(int on) {
@@ -476,7 +476,6 @@ void glaspen2_router_apply_color(int idx) {
 }
 
 // S7j: 磨砂玻璃开关的 Swift 薄桥
-void glaspen2_router_set_glass_state(int on) { g_glass_enabled = on != 0; }
 void glaspen2_router_glass_apply(void) { [MenuHandler applyGlass]; }
 
 // S7k: 菜单项勾选状态薄桥(按 tag 查菜单)
@@ -505,15 +504,6 @@ void glaspen2_router_set_chat_integration(int on) { g_chat_integration = on != 0
 // S7y: 压感监视器标签设置薄桥
 
 // S7z: 磨砂玻璃应用的 Swift 薄桥
-NSDictionary *glaspen2_router_glass_state(void) {
-  return @{
-    @"enabled" : @(g_glass_enabled ? YES : NO),
-    @"opacity" : @(g_glass_opacity),
-    @"ethereal" : @(g_ethereal_canvas ? YES : NO),
-    @"follow" : @(g_glass_follow_strokes ? YES : NO),
-    @"strokesVisible" : @(glaspen2_router_strokes_visible() ? YES : NO),
-  };
-}
 void glaspen2_router_apply_glass_view(double alpha, BOOL hidden) {
   if (g_glass_view) {
     g_glass_view.alphaValue = alpha;
@@ -546,7 +536,6 @@ void glaspen2_router_ensure_surface(void) {
 
 // S7bp: 画布模式切换的 Swift 薄桥
 void glaspen2_router_set_ethereal(int on) { g_ethereal_canvas = on != 0; }
-int glaspen2_router_glass_follow(void) { return g_glass_follow_strokes ? 1 : 0; }
 id glaspen2_router_glass_view(void) { return g_glass_view; }
 
 // S7bq: 菜单文案/状态薄桥
@@ -573,7 +562,6 @@ int glaspen2_router_selected_width_index(void) { return g_selected_width_index; 
 NSString *glaspen2_router_shortcuts_effective_json(void) {
   return gl_shortcuts_effective_json();
 }
-int glaspen2_router_flip_effect(void) { return g_flip_effect; }
 int glaspen2_router_lang(void) { return g_lang; }
 
 // S7cj: 快捷键生效表薄桥

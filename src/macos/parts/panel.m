@@ -119,7 +119,6 @@ static void raw_draw_dot(double x, double y, double width) { [RawDrawing drawDot
 // 返回 NO 时调用方回退旧 raw_draw_dot 分档自绘; 日志只记一次避免高频落笔刷屏。
 static void raw_draw_segment(double x, double y, double width) { [RawDrawing drawSegmentWithX:x y:y width:width]; }
 // S7dj: 反色捕获桥(实现已在 Swift InvertCapture, 12.3+ 才启用)
-int glaspen2_router_invert_fps(void) { return g_invert_fps; }
 void glaspen2_router_set_window_sharing_none(void) {
   [g_window setSharingType:NSWindowSharingNone];
   if (g_settings_window) [g_settings_window setSharingType:NSWindowSharingNone];

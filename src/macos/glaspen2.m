@@ -295,7 +295,6 @@ static NSVisualEffectView *g_glass_view = nil;
 // (页 = 某时刻玻璃的几何快照); 同几何时恒为恒等 —— 纯玻璃, 严格 1:1。
 // pageview_update() 定义在 parts/run.m, 每次载入某页后调用。
 // 翻页动效: 0=macOS 系统动效(默认) 1=时光隧道(自定义, 见 parts/run.m)
-static int g_flip_effect = 0;
 static void pageview_update(void);
 
 // Create a cairo context with the backing scale factor applied.
@@ -430,25 +429,18 @@ static int g_selected_width_index = 3; // default: 1.0x
 // When YES the frosted-glass backdrop is hidden with the strokes by
 // 飘渺画布涂鸦模式 (X) — the historical behavior. When NO the glass stays
 // visible regardless of stroke visibility. Controlled by the Flutter panel.
-static BOOL g_glass_follow_strokes = YES;
 
 // 笔迹描边(渲染设置):仅在内存,不落库,重启恢复关闭。
-static BOOL g_outline_enabled = NO;
 // 软阴影(独立于描边可叠加): 笔迹下方三档加宽递减 alpha 的黑影,
 // 同色背景上靠亮度分离保底可见。Controlled by the Flutter settings panel.
-static BOOL g_soft_shadow = NO;
 // 反色突出(实验): 墨迹逐像素取背景反色。背景由 SCScreenshotManager 持续
 // 捕获(排除自身窗口)并反相, 经 cairo pattern 作为墨迹 source。
-static BOOL g_invert_ink = NO;
 // 反色追踪帧率上限(10/30/60/100): SCStream minimumFrameInterval。
 // 流本身只在画面变化时送帧, 此值只是上限; 静态背景零帧零开销。
-static int g_invert_fps = 30;
 // 描边比笔迹宽出的半径(逻辑 px),与 Rust OUTLINE_PAD 保持一致。
 static const double kOutlinePad = 1.0;
 
 // Glass overlay opacity (0.0 = off, 0.0-0.3 range)
-static BOOL g_glass_enabled = NO;  // frosted glass ON/OFF
-static double g_glass_opacity = 0.45; // opacity level (used only when enabled)
 
 // Color presets
 typedef struct { double r, g, b; } ColorPreset;

@@ -473,8 +473,6 @@ void glaspen2_router_redraw_draw_view(void) {
 void glaspen2_router_rec_chat_integration_changed(int on) { gl_recording_chat_integration_changed(on != 0); }
 
 // S7ac: 描边开关的 Swift 薄桥
-int glaspen2_router_outline_enabled(void) { return g_outline_enabled ? 1 : 0; }
-void glaspen2_router_set_outline_state(int on) { g_outline_enabled = on != 0; }
 void glaspen2_router_rebuild_surface(void) { rebuild_surface_from_strokes(); }
 
 // S7ak: 镜头状态应用薄桥
@@ -524,7 +522,6 @@ cairo_t *glaspen2_router_acquire_cr(int *owned) {
   if (owned) *owned = 1;
   return (cairo_t *)cairo_create_scaled();
 }
-int glaspen2_router_soft_shadow(void) { return g_soft_shadow ? 1 : 0; }
 double glaspen2_router_outline_pad(void) { return kOutlinePad; }
 double glaspen2_router_pen_r(void) { return g_pen_r; }
 double glaspen2_router_pen_g(void) { return g_pen_g; }
@@ -609,7 +606,6 @@ int glaspen2_router_prev_color_index(void) { return g_prev_color_index; }
 int glaspen2_router_prev_width_index(void) { return g_prev_width_index; }
 
 // S7cm: 快捷键分发薄桥
-int glaspen2_router_glass_enabled(void) { return g_glass_enabled ? 1 : 0; }
 void glaspen2_router_clear_screen(void) { clear_screen(); }
 void glaspen2_router_replay_strokes(void) { replay_strokes_from_memory(); }
 void glaspen2_router_page_flip(int forward, dispatch_block_t prepare, dispatch_block_t commit) {
@@ -672,17 +668,6 @@ void glaspen2_router_startup_apply_pen(double r, double g, double b, double widt
   g_pen_r = r; g_pen_g = g; g_pen_b = b; g_width_scale = width;
   g_selectedColorIndex = colorIdx; g_selected_width_index = widthIdx;
 }
-void glaspen2_router_startup_glass(double opacity, int enabled) {
-  g_glass_opacity = opacity; g_glass_enabled = enabled != 0;
-}
-void glaspen2_router_startup_set_glass_follow(int on) { g_glass_follow_strokes = on != 0; }
-void glaspen2_router_startup_shadow(int on) { g_soft_shadow = on != 0; }
-void glaspen2_router_startup_outline(int on) { g_outline_enabled = on != 0; }
-void glaspen2_router_startup_invert(int fps, int ink) {
-  if (fps == 10 || fps == 30 || fps == 60 || fps == 100) g_invert_fps = fps;
-  g_invert_ink = ink != 0;
-}
-void glaspen2_router_startup_flip(int effect) { g_flip_effect = effect; }
 void glaspen2_router_invert_apply(int on) { invert_ink_apply(on); }
 
 // S7cz: 启动恢复后半桥
@@ -699,7 +684,6 @@ void glaspen2_router_restore_chat_integration(int on) { g_chat_integration = on 
 void glaspen2_router_rec_init(void) { gl_recording_init(); }
 
 // S7da: 启动窗口/告警桥
-double glaspen2_router_glass_opacity(void) { return g_glass_opacity; }
 void glaspen2_router_set_startup_window(id window) { g_window = window; }
 void glaspen2_router_set_draw_view(id view) { g_draw_view = view; }
 void glaspen2_router_set_glass_view(id view) { g_glass_view = view; }
@@ -710,14 +694,8 @@ int glaspen2_router_event_tap_enabled(void) { return (g_event_tap && CGEventTapI
 void glaspen2_router_event_tap_enable(void) { if (g_event_tap) CGEventTapEnable(g_event_tap, true); }
 
 // S7dc: 设置应用分派桥
-void glaspen2_router_set_glass_follow(int on) { g_glass_follow_strokes = on != 0; }
-void glaspen2_router_set_soft_shadow_flag(int on) { g_soft_shadow = on != 0; }
-void glaspen2_router_invert_set_ink(int on) { g_invert_ink = on != 0; }
-void glaspen2_router_invert_set_fps(int fps) { g_invert_fps = fps; }
 void glaspen2_router_invert_restart(void) { invert_stream_restart(); }
-int glaspen2_router_invert_enabled(void) { return g_invert_ink ? 1 : 0; }
 void glaspen2_router_panel_transparent_full(int on) { gl_panel_transparent_apply_full(on != 0); }
-void glaspen2_router_set_flip(int effect) { g_flip_effect = effect; }
 void glaspen2_router_set_gif(int fps, double res, double speed, int endMode) {
   g_gif_fps = fps; g_gif_resolution = res; g_gif_speed = speed; g_gif_end_mode = endMode;
 }
