@@ -2335,9 +2335,9 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
   NSEventType etype = [nsevent type];
   CGFloat pressure = [nsevent pressure];
 
-  BOOL isPen =
-      (devType == NSPenPointingDevice || devType == NSEraserPointingDevice ||
-       subtype == 1 || subtype == 2);
+  // S6-3-3d-2: 笔事件判定单源在 Swift(EventRouter.isPenForEvent:),
+  // 这里保留 devType/subtype 供后续橡皮/日志判断使用。
+  BOOL isPen = [EventRouter isPenForEvent:event];
 
   // ⌃⌥ + 左键拖动 = 临时抓手; 与镜头键位用同一套修饰键。
   // 正常鼠标左键(无修饰键)仍然原样放行给下层 App。

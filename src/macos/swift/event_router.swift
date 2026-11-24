@@ -63,6 +63,12 @@ import AppKit
         }
     }
 
+    /// ObjC 侧复用同一笔事件判定(避免两处公式各自维护)。
+    @objc(isPenForEvent:)
+    public static func isPenForEvent(_ event: CGEvent) -> Bool {
+        isPenEvent(event)
+    }
+
     private static func isPenEvent(_ event: CGEvent) -> Bool {
         guard let ev = NSEvent(cgEvent: event) else { return false }
         return isPen(ev)

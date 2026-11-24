@@ -279,3 +279,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S6-3-3c | 笔书写系统光标隐藏/恢复块迁 Swift: EventRouter.penSystemCursor(按下/拖动时首次隐藏系统光标并置 pen_drawing, 任意 up 恢复系统光标+隐藏十字+invalidate+flush); ObjC 原 20 行块删除; 新增 4 个薄桥 | cargo build/tests/parity 全绿;真机笔/鼠标光标语义需验证 | 本提交 |
 | 2026-11-24 | S6-3-3d-1 | restore_system_cursor 本体迁 Swift: EventRouter.restoreSystemCursor(仅 pen_drawing 时 show+清标记), ObjC restore_system_cursor 改为一行转发; 薄桥 restore 替换为 show_system_cursor, 新增 show 桥 | cargo build/tests/parity 全绿;真机光标语义需验证 | 本提交 |
 | 2026-11-24 | S6-3-4a | 停用涂鸦时非键盘/非滚轮事件清理+放行迁 Swift: EventRouter 判断 state&1==0 时调 glaspen2_router_disable_cleanup(camera drag 取消 + restore cursor)并返回 1; ObjC 原 8 行块删除; 键盘/滚轮保持原路径 | cargo build/tests/parity 全绿;需真机验证停用态鼠标/笔行为 | 本提交 |
+| 2026-11-24 | S6-3-3d-2 | 笔事件判定去重: EventRouter.isPenForEvent 暴露给 ObjC, run.m 的 isPen 公式改为调用 Swift(devType/subtype 仍保留给橡皮/日志判断); 笔主处理(落笔/拖动/抬笔)尚未迁移, 下一片继续 | cargo build/tests/parity 全绿 | 本提交 |
