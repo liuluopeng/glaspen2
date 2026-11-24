@@ -39,7 +39,6 @@ static void pm_hide(void);
 static void pm_destroy(void);
 static void pm_update(void);
 static void gl_ethereal_restore_now(void); // 定义在 parts/menu.m(启动恢复飘渺落位)
-static void toggle_enabled(void);
 // D8b 录制状态机接线: 总开关变化时把事件喂给手写消息槽并执行 effects
 // (定义在 parts/run.m 录制区), 菜单/设置面板切换总开关时调用。
 static void gl_recording_chat_integration_changed(BOOL on);

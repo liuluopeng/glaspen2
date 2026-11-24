@@ -1129,8 +1129,11 @@ mod tests {
         );
 
         // 3) 入口与调用点下限: 两端必须真的在查 core i18n(不是只剩几个字面量)。
-        let mac_calls =
-            mac_code.matches("gl_text(").count() + mac_code.matches("gl_textf(").count();
+        // Swift 侧经 glaspen2_menu_l10n(_pair) 桥查 core i18n, 同样计入调用点。
+        let mac_calls = mac_code.matches("gl_text(").count()
+            + mac_code.matches("gl_textf(").count()
+            + mac_code.matches("glaspen2_menu_l10n(").count()
+            + mac_code.matches("glaspen2_menu_l10n_pair(").count();
         let win_calls =
             win_code.matches("i18n::text(").count() + win_code.matches("i18n::format(").count();
         assert!(

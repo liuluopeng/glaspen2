@@ -112,40 +112,7 @@ static void update_menu_checkmarks(void) {
                              widthIndex:g_selected_width_index];
 }
 
-static void toggle_enabled(void) {
-    g_enabled = !g_enabled;
-    if (!g_enabled) {
-        // 关闭涂鸦: 临时隐藏整个 glaspen 覆盖层(笔迹/方格/磨砂玻璃),
-        // 以便干净地使用其他绘图软件。
-        [EventRouter restoreSystemCursor];
-        [EventRouter finishActiveStroke];
-        if (g_window) [g_window orderOut:nil];
-        if (g_pressure_monitor) pm_hide();
-    } else {
-        if (g_window) {
-            if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
-            // 飘渺模式的隐藏态:V 重新启用后维持隐藏(窗口不出场)
-            if (g_ethereal_canvas && !g_strokes_visible) {
-                rebuild_surface_from_strokes();
-                [g_window setIsVisible:NO];
-            } else {
-                [g_window orderFrontRegardless];
-                rebuild_surface_from_strokes();
-            }
-        }
-        if (g_pressure_monitor) pm_show();
-    }
-    glaspen2_router_update_status_icon_state();
-    show_notification(g_enabled
-        ? gl_text(@"draw.enabled")
-        : gl_text(@"draw.disabled"));
-    // Update menu item
-    NSMenuItem *item = [MenuLookup itemWithTag:888 inMenu:g_menu];
-    if (item) {
-        [item setState:g_enabled ? NSControlStateValueOn : NSControlStateValueOff];
-        [item setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
-    }
-}
+static void toggle_enabled(void) { [DrawMode toggleEnabled]; }
 
 // Two canvas drawing modes, switched by ⌘⌃X:
 //   - 固定画布涂鸦模式 (fixed canvas mode): the canvas is always visible;
@@ -1145,4 +1112,12 @@ void glaspen2_router_set_width_preset(int idx, double value) {
 NSString *glaspen2_router_shortcut_chord(NSString *action) {
   if (!g_shortcut_values) gl_shortcuts_apply(@{});
   return g_shortcut_values[action];
+}
+
+// S7bo: 涂鸦启停的 Swift 薄桥
+int glaspen2_router_enabled(void) { return g_enabled ? 1 : 0; }
+int glaspen2_router_pressure_monitor(void) { return g_pressure_monitor ? 1 : 0; }
+int glaspen2_router_strokes_visible(void) { return g_strokes_visible ? 1 : 0; }
+void glaspen2_router_ensure_surface(void) {
+  if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
 }
