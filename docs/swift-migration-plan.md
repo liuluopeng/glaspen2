@@ -393,3 +393,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7ab(续跑第45轮) | 继续删除已迁 Swift 的设置 setter 转发(launch/glass/chat/color/width): 调用点(设置分派/快捷键/撤销恢复/菜单选择桥)全部直调 MenuHandler, 删除 5 个 ObjC 转发函数与 glaspen2.m 前向声明 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7ac(续跑第46轮) | 描边开关迁 Swift: MenuHandler.setOutlineEnabled(状态/FFI/落库/菜单勾选/finish+rebuild/本地化提示), ObjC apply_outline 变一行转发(调用点不变); 新增 3 个薄桥 + set_stroke_outline FFI 声明 | cargo build/tests/parity 全绿;描边视觉需真机验证 | 本提交 |
 | 2026-11-24 | S7ad(续跑第47轮) | 删除 finish_active_stroke 的 ObjC 转发: 全部调用点直调 [EventRouter finishActiveStroke](Swift), panel.m 转发函数与 glaspen2.m 前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
+| 2026-11-24 | S7ae(续跑第48轮) | 删除 gl_quit_app 的 ObjC 转发: 菜单退出/设置面板退出/快捷键退出三处调用点直调 [MenuHandler quitAppNow](Swift), menu.m 转发函数与 glaspen2.m 前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |

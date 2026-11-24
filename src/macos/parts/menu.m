@@ -295,11 +295,6 @@ static void toggle_canvas_mode(void) {
 /// 路径 —— 先记性能汇总、把光标还给系统, 再 terminate。terminate 会同步走
 /// applicationShouldTerminate 把排队点写完并 checkpoint WAL(见下), 进程里
 /// 没有其它需要单独收尾的子进程(设置面板是内嵌 Flutter 视图, 不是独立进程)。
-static void gl_quit_app(void) {
-    // S7: 退出逻辑已迁 Swift(MenuHandler.quitAppNow)。
-    [MenuHandler quitAppNow];
-}
-
 @implementation GlaspenMenuHandler
 
 - (void)saveWithBg { [MenuHandler saveWithBg]; }
@@ -344,7 +339,7 @@ void glaspen2_menu_did_close_bridge(void) {
 }
 
 void glaspen2_menu_quit_bridge(void) {
-    gl_quit_app();
+    [MenuHandler quitAppNow];
 }
 
 // S3b-2b-7b: 语言切换的薄桥(g_lang 在本翻译单元; 刷新逻辑仍用原函数)
@@ -1014,7 +1009,7 @@ void glaspen2_macos_hotkey(const char *key_c) {
         // Q(彻底退出)不走 perform_hotkey: 退出是独立动作, 且必须和菜单「退出」
         // 共用同一条收尾路径(⌘⌃Q 本体留给 macOS 锁屏, 见 gl_shortcut_defaults)。
         if ([key isEqualToString:@"Q"]) {
-            gl_quit_app();
+            [MenuHandler quitAppNow];
             return;
         }
         unsigned short kc = 0;

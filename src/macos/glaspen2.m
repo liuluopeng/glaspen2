@@ -34,7 +34,6 @@ static void rebuild_surface_from_strokes(void);
 static void show_settings_panel(void);
 static void sync_settings_panel(void);
 static void perf_log_summary(void);
-static void gl_quit_app(void); // 定义在 parts/menu.m(彻底退出, 菜单/快捷键共用)
 static void pm_ensure_window(void);
 static void pm_show(void);
 static void pm_hide(void);

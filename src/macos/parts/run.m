@@ -1628,7 +1628,7 @@ static BOOL perform_action(NSString *action) {
     // 同步 terminate 会把 DB 收尾卡在回调栈上, 放到下一 tick 更稳; 本事件仍吞掉,
     // 不让组合键漏给前台 App。
     dispatch_async(dispatch_get_main_queue(), ^{
-      gl_quit_app();
+      [MenuHandler quitAppNow];
     });
     return YES;
   }
