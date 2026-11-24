@@ -2382,20 +2382,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       // S6-3-3d: 橡皮态切换/图标刷新已迁 Swift。
       [EventRouter updateEraserState:(devType == NSEraserPointingDevice) ||
                                      (g_prox_dev == NSEraserPointingDevice)];
-      bubble_auto_page_flip(); // 同落笔分支: 补 begin 前先翻页
-      glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(px),
-                             canvas_input_y(py), pressure, ts, g_width_scale);
-      g_stroke_active = YES;
-      g_cursor_visible = YES;
-      g_cursor_x = px;
-      g_cursor_y = py;
-      stroke_begin();
-      raw_draw_dot(px, py, raw_w);
-      g_raw_last_x = px;
-      g_raw_last_y = py;
-      g_raw_last_w = raw_w;
-      g_raw_has_last = YES;
-      g_raw_path_len = 0;
+      // S6-3-3d: 自动补 begin 复用 Swift 落笔入口(翻页/begin/context/raw dot/状态)。
+      [EventRouter penDownWithX:px y:py pressure:pressure timestamp:ts rawWidth:raw_w];
       return NULL; // begin already recorded this point, don't feed duplicate to
                    // modeler
     }
