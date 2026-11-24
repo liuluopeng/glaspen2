@@ -2279,47 +2279,14 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       BOOL hasCmdCtrl = (mods & NSEventModifierFlagCommand) &&
                         (mods & NSEventModifierFlagControl);
       unsigned short kc = [keyEvent keyCode];
-      // 长按自动重复只认第一次 key-down。翻页键若跟着 repeat 走, 按住
-      // 一秒会翻十几页(隧道/系统淡入淡出还会叠起来), 这是"翻页不好用"
-      // 最直接的来源之一。
-      BOOL isRepeat =
-          (type == kCGEventKeyDown) &&
-          CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat) != 0;
+      // 长按重复判定已迁 Swift(S6-3-4b-2b)。
       // 录制会话(GIF/⌘⌃2 草稿/⌘⌃3 直发)的起止全部交给 core 状态机:
       // 这里只做按键匹配与"抬起是否属于本槽位"的预判。
       // 抬起不验修饰键: 先松 ⌘/⌃ 也不会把会话卡死(与旧实现一致);
       // 抬起只在状态机确实处于该模式时消费, 普通 r/2/3 抬键照常放行。
       if (handle_recording_hotkeys(type, kc, hasCmdCtrl)) return NULL;
-      // 自由画布的镜头平移/缩放已并入可配置动作(canvas_pan_* / canvas_zoom_*),
-      // 默认组合见 menu.m 的 gl_shortcut_defaults(); 不再在此硬编码。
-      // 可配置快捷键: 按 chord 精确匹配(菜单层已按物理键名+修饰键建表)。
-      // 长按重复: 镜头平移/缩放跟随键盘重复, 其余一次性动作只消费不执行;
-      // 停用涂鸦时只保留"重新启用"一键(及自由涂鸦模式切换), 其余 chord
-      // 放行给系统 —— 不把总开关关掉后还霸占全局按键。
-      if (type == kCGEventKeyDown) {
-        NSString *action = gl_shortcut_action_for_key(kc, mods);
-        if (action) {
-          // 停用涂鸦时只保留"重新启用/自由涂鸦/彻底退出":
-          // 退出是逃生键, 不能因为涂鸦停用就按不出来(Windows 侧退出热键
-          // 在停用涂鸦时同样保持注册, 见 hotkeys.rs register_actions_locked)。
-          if (!g_enabled && ![action isEqualToString:@"toggle_draw"] &&
-              ![action isEqualToString:@"toggle_free_canvas"] &&
-              ![action isEqualToString:@"quit"])
-            return event;
-          // 自由涂鸦镜头动作只在无限画布模式、且未在书写时生效; 其它情况
-          // 把组合放行给系统(与旧的硬编码镜头分支一致)。
-          if ([action hasPrefix:@"canvas_"] &&
-              (!g_infinite_canvas || g_stroke_active))
-            return event;
-          // 一次性动作忽略长按重复; 镜头平移/缩放跟随键盘重复连续生效。
-          BOOL repeatable = [action hasPrefix:@"canvas_pan_"] ||
-                            [action isEqualToString:@"canvas_zoom_in"] ||
-                            [action isEqualToString:@"canvas_zoom_out"];
-          if (!isRepeat || repeatable)
-            perform_action(action);
-          return NULL;
-        }
-      }
+      // S6-3-4b-2b: 普通 chord 门控已迁 Swift; 返回 2 = 消费。
+      if ([EventRouter handleChordKeyEvent:event] == 2) return NULL;
     }
     // Not a hotkey — pass through to system
     return event;
@@ -3399,3 +3366,6 @@ void glaspen2_router_disable_cleanup(void) {
   camera_mouse_cancel_pan();
   restore_system_cursor();
 }
+
+// S6-3-4b-2b: chord 门控的 perform_action 薄桥
+void glaspen2_router_perform_action(NSString *action) { perform_action(action); }

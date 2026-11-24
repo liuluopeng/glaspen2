@@ -63,6 +63,32 @@ import AppKit
         }
     }
 
+    /// S6-3-4b-2b: 普通 chord 门控(录制热键由 ObjC 函数先行处理)。
+    /// 返回 1 = 放行, 2 = 消费(返回 NULL)。
+    @objc(handleChordKeyEvent:)
+    public static func handleChordKeyEvent(_ event: CGEvent) -> Int32 {
+        guard let ev = NSEvent(cgEvent: event) else { return 1 }
+        guard ev.type == .keyDown else { return 1 }
+        guard let action = actionForHotkey(keyCode: ev.keyCode,
+                                           modifiers: ev.modifierFlags.rawValue) else {
+            return 1
+        }
+        let st = state()
+        if (st & 1) == 0
+            && action != "toggle_draw" && action != "toggle_free_canvas"
+            && action != "quit" {
+            return 1
+        }
+        if action.hasPrefix("canvas_") && ((st & 4) == 0 || (st & 2) != 0) {
+            return 1
+        }
+        let repeatable = action.hasPrefix("canvas_pan_")
+            || action == "canvas_zoom_in" || action == "canvas_zoom_out"
+        let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        if !isRepeat || repeatable { glaspen2_router_perform_action(action) }
+        return 2
+    }
+
     /// S6-3-4b: 键盘事件 → 已绑定 action(键名/查找分别走薄桥)。
     @objc(actionForHotkeyWithKeyCode:modifiers:)
     public static func actionForHotkey(keyCode: UInt16, modifiers: UInt) -> String? {
