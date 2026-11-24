@@ -563,10 +563,12 @@ mod tests {
             include_str!("../../../src/macos/swift/action_dispatch.swift")
         );
         let win_src = include_str!("../../../crates/glaspen-windows/src/overlay/hotkeys.rs");
-        let mac_action_swift =
-            include_str!("../../../src/macos/swift/action_dispatch.swift");
-        let mac_body = format!("{}
-{mac_action_swift}", mac_perform_action_body(mac_src));
+        let mac_action_swift = include_str!("../../../src/macos/swift/action_dispatch.swift");
+        let mac_body = format!(
+            "{}
+{mac_action_swift}",
+            mac_perform_action_body(mac_src)
+        );
         let win_body = windows_perform_action_body(win_src);
 
         // 20 个 action 的稳定变体名(镜头带方向后缀)。

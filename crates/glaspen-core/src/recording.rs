@@ -1727,25 +1727,25 @@ mod tests {
     fn adapters_drive_core_recording_machine() {
         // macOS: run.m = 热键/事件 tap/effects 执行; glaspen2.m = FFI 声明 +
         // (已删除的)会话标志位; menu.m = 总开关关闭收尾。
-        let mac_main = concat!(include_str!("../../../src/macos/swift/rust_ffi.h"), include_str!("../../../src/macos/swift/run_glue.swift"));
-        let mac_effects_swift =
-            include_str!("../../../src/macos/swift/recording_effects.swift");
+        let mac_main = concat!(
+            include_str!("../../../src/macos/swift/rust_ffi.h"),
+            include_str!("../../../src/macos/swift/run_glue.swift")
+        );
+        let mac_effects_swift = include_str!("../../../src/macos/swift/recording_effects.swift");
         let mac_run = concat!(
             include_str!("../../../src/macos/swift/run_glue.swift"),
-            include_str!("../../../src/macos/swift/recording_effects.swift")
-            , include_str!("../../../src/macos/swift/recording_keys.swift")
+            include_str!("../../../src/macos/swift/recording_effects.swift"),
+            include_str!("../../../src/macos/swift/recording_keys.swift")
         );
         let mac_run_effects = format!("{mac_run}\n{mac_effects_swift}");
         let mac_menu = concat!(
             include_str!("../../../src/macos/swift/menu_runtime.swift"),
-            include_str!("../../../src/macos/swift/settings_api_glue.swift"));
+            include_str!("../../../src/macos/swift/settings_api_glue.swift")
+        );
         // S6/S8: 录制 HUD 文案映射已迁 Swift, 闸门必须同时扫 Swift 源。
-        let mac_recording_swift =
-            include_str!("../../../src/macos/swift/recording_hud.swift");
-        let mac_recording_keys =
-            include_str!("../../../src/macos/swift/recording_keys.swift");
-        let mac_menu_handler =
-            include_str!("../../../src/macos/swift/menu_handler.swift");
+        let mac_recording_swift = include_str!("../../../src/macos/swift/recording_hud.swift");
+        let mac_recording_keys = include_str!("../../../src/macos/swift/recording_keys.swift");
+        let mac_menu_handler = include_str!("../../../src/macos/swift/menu_handler.swift");
         let mac_combined = format!("{mac_run}\n{mac_recording_keys}\n{mac_effects_swift}");
         let mac_menu_swift = format!("{mac_menu}\n{mac_menu_handler}");
         // Windows: recording.rs = 接线/effects 分派; state.rs = 两个状态机字段;
@@ -1892,16 +1892,24 @@ mod tests {
             "ChatSendSucceeded",
             "ChatSendFailed",
         ];
-        let mut mac_required: Vec<String> =
-            effect_kinds.iter().map(|n| format!("\"{n}\"")).collect();
-
+        let mac_required: Vec<String> = effect_kinds.iter().map(|n| format!("\"{n}\"")).collect();
 
         let mac_required_refs: Vec<&str> = mac_required.iter().map(String::as_str).collect();
-        problems.extend(gate_missing("run.m+recording_effects.swift(变体覆盖)", mac_run_effects.as_str(), &mac_required_refs));
+        problems.extend(gate_missing(
+            "run.m+recording_effects.swift(变体覆盖)",
+            mac_run_effects.as_str(),
+            &mac_required_refs,
+        ));
         // 事件名现由 run.m 与 recording_keys.swift 共同出现(Swift 侧为裸字面量)。
         let mut event_refs: Vec<&str> = event_types.to_vec();
         // NSJSONSerialization 载荷键名: run.m(effects 解析)或 Swift(事件构造)都可能出现。
-        let payload_keys = ["\"type\"", "\"mode\"", "\"kind\"", "\"hud\"", "\"stroke_count\""];
+        let payload_keys = [
+            "\"type\"",
+            "\"mode\"",
+            "\"kind\"",
+            "\"hud\"",
+            "\"stroke_count\"",
+        ];
         event_refs.extend(payload_keys.iter());
         problems.extend(gate_missing(
             "run.m+recording_keys.swift(事件覆盖)",

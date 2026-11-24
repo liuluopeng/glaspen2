@@ -98,7 +98,6 @@ fn main() {
         // (pressure is read from CGEvent tablet fields). -O2 gives a large
         // speedup to the per-event ObjC hot path.
         let out_dir = std::env::var("OUT_DIR").unwrap();
-        let obj_path = format!("{}/glaspen2.o", out_dir);
 
         // flutter_rust_bridge 的 C 入口。Rust 是以 rlib 静态链进主可执行文件
         // 的:没有任何引用的归档成员会被链接器丢掉,而这些符号**只**由 Dart 侧

@@ -904,9 +904,10 @@ mod tests {
     // 负向验证见 docs/duplication-backlog.md D12 进度记录。
 
     const MAC_MENU_SRC: &str = concat!(
-    include_str!("../../../src/macos/swift/menu_runtime.swift"),
-    include_str!("../../../src/macos/swift/settings_api_glue.swift"),
-    include_str!("../../../src/macos/swift/settings_dispatcher.swift"));
+        include_str!("../../../src/macos/swift/menu_runtime.swift"),
+        include_str!("../../../src/macos/swift/settings_api_glue.swift"),
+        include_str!("../../../src/macos/swift/settings_dispatcher.swift")
+    );
     const WIN_PIPE_SRC: &str = include_str!("../../../crates/glaspen-windows/src/overlay/pipe.rs");
 
     /// 去注释(保留字符串字面量; 支持 // 与 /* */; 处理 Rust 字符字面量与
@@ -1020,13 +1021,14 @@ mod tests {
         let fn_at = mac_snapshot_glue
             .find("func settingsApiJSON")
             .expect("settings_api_glue.swift 缺 settingsApiJSON");
-        let rel_end = mac_snapshot_glue[fn_at..].find('}').expect("settingsApiJSON 不完整");
+        let rel_end = mac_snapshot_glue[fn_at..]
+            .find('}')
+            .expect("settingsApiJSON 不完整");
         let mac_snapshot = &mac_snapshot_glue[fn_at..fn_at + rel_end];
         let win_snapshot = pipe_branch(&win_code, "msg_type == \"getSettings\"")
             .expect("Windows 管道缺 getSettings 分支");
 
-        let mac_api_swift =
-            include_str!("../../../src/macos/swift/macos_api.swift");
+        let mac_api_swift = include_str!("../../../src/macos/swift/macos_api.swift");
         assert!(
             mac_snapshot.contains("glaspen2_settings_snapshot_json")
                 || mac_api_swift.contains("glaspen2_settings_snapshot_json"),
@@ -1073,7 +1075,10 @@ mod tests {
                 problems.push(format!("macOS overrides 夹带了持久化设置 {}", def.key));
             }
             if mac_glue_swift.contains(&format!("\"{}\":", def.key)) {
-                problems.push(format!("macOS Swift overrides 夹带了持久化设置 {}", def.key));
+                problems.push(format!(
+                    "macOS Swift overrides 夹带了持久化设置 {}",
+                    def.key
+                ));
             }
             if win_overrides.contains(def.key) {
                 problems.push(format!("Windows overrides 夹带了持久化设置 {}", def.key));

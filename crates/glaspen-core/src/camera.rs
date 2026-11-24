@@ -618,15 +618,16 @@ mod tests {
         }
 
         let mac_run = include_str!("../../../src/macos/swift/run_glue.swift");
-let mac_cam_swift = include_str!("../../../src/macos/swift/canvas_camera.swift");
-let mac_cam_store_swift =
-    include_str!("../../../src/macos/swift/camera_state_store.swift");
-let mac_action_swift =
-    include_str!("../../../src/macos/swift/action_dispatch.swift");
-let mac_run_cam = format!("{mac_run}\n{mac_cam_swift}\n{mac_action_swift}\n{mac_cam_store_swift}");
-        let mac_menu = format!("{}{}",
+        let mac_cam_swift = include_str!("../../../src/macos/swift/canvas_camera.swift");
+        let mac_cam_store_swift = include_str!("../../../src/macos/swift/camera_state_store.swift");
+        let mac_action_swift = include_str!("../../../src/macos/swift/action_dispatch.swift");
+        let mac_run_cam =
+            format!("{mac_run}\n{mac_cam_swift}\n{mac_action_swift}\n{mac_cam_store_swift}");
+        let mac_menu = format!(
+            "{}{}",
             include_str!("../../../src/macos/swift/menu_runtime.swift"),
-            include_str!("../../../src/macos/swift/settings_api_glue.swift"));
+            include_str!("../../../src/macos/swift/settings_api_glue.swift")
+        );
         let win_actions = include_str!("../../../crates/glaspen-windows/src/overlay/actions.rs");
         let win_hotkeys = include_str!("../../../crates/glaspen-windows/src/overlay/hotkeys.rs");
         let win_mouse = include_str!("../../../crates/glaspen-windows/src/overlay/mouse.rs");

@@ -1,4 +1,8 @@
 # Swift 迁移边界规则(OBJC ⇄ SWIFT)与 S3+ 文件映射
+> **状态更新(2026-11-25, S7ei)**:macOS 应用层 ObjC 已全部迁 Swift,仓库内不再有
+> `.m/.mm` 实现。本文档作为历史约束保留(解释为何边界这样设计、回调/类型规则
+> 为何如此);当前跨语言面只剩 `Bridging.h` + `rust_ffi.h` 的 **C ABI/FFI 声明**,
+> 不再有 ObjC↔Swift 双向消息面。新增原生代码一律写 Swift,经 C ABI 与 Rust 交互。
 
 > 阶段:S2(边界设计 + 反向互调验证)。基线:main @ 3f60b96(S1 已合并)。
 > 分支:`feat/swift-s2`。姊妹文档:`docs/swift-migration-plan.md`(台账)、

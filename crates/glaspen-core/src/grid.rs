@@ -903,16 +903,21 @@ mod tests {
                 .collect()
         }
 
-        let mac_main = concat!(include_str!("../../../src/macos/swift/rust_ffi.h"), include_str!("../../../src/macos/swift/run_glue.swift"));
+        let mac_main = concat!(
+            include_str!("../../../src/macos/swift/rust_ffi.h"),
+            include_str!("../../../src/macos/swift/run_glue.swift")
+        );
         let mac_run = include_str!("../../../src/macos/swift/run_glue.swift");
         let mac_menu = include_str!("../../../src/macos/swift/menu_runtime.swift");
-        let mac_panel = format!("{}{}",
+        let mac_panel = format!(
+            "{}{}",
             include_str!("../../../src/macos/swift/panel_glue.swift"),
-            include_str!("../../../src/macos/swift/raw_drawing.swift"));
+            include_str!("../../../src/macos/swift/raw_drawing.swift")
+        );
         // S7m: 网格层绘制已迁 Swift, 闸门须同时扫 Swift 源(几何仍走 core::grid)。
         let mac_grid_swift = include_str!("../../../src/macos/swift/overlay_grid.swift");
         let mac_drawing_swift = include_str!("../../../src/macos/swift/overlay_drawing.swift");
-let mac_run_grid = format!("{mac_run}\n{mac_grid_swift}\n{mac_drawing_swift}");
+        let mac_run_grid = format!("{mac_run}\n{mac_grid_swift}\n{mac_drawing_swift}");
         let win_canvas = include_str!("../../../crates/glaspen-windows/src/overlay/canvas.rs");
         let win_actions = include_str!("../../../crates/glaspen-windows/src/overlay/actions.rs");
         let win_state = include_str!("../../../crates/glaspen-windows/src/overlay/state.rs");

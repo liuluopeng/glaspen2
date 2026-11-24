@@ -564,3 +564,21 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-25 | S7eg(新目标第80轮) | 删除 parts/menu.m(395 行): 新增 menu_runtime.swift(菜单/快捷键/飘渺/压感/设置面板运行时 + 同名 C 导出)、shortcut_store.swift(生效表状态), Swift 调用点改为 MenuRuntime/UIAnchors/ShortcutStore 直连; 菜单 delegate 桥/willOpen/didClose/quit 等全部 Swift 导出; i18n 闸门统计新入口(阈值 40→25 因 l10n 包装收敛); camera/grid/recording/settings/snapshot/i18n 闸门源改扫 Swift。ObjC 文件剩 glaspen2.m/run.m/Probe | cargo build/tests/parity 全绿;菜单/快捷键/飘渺/压感/面板需真机验证 | 本提交 |
 | 2026-11-25 | S7eh(新目标第81轮) | 删除 parts/run.m(609 行): 新增 run_glue.swift(应用入口/事件 tap 回调改 Swift 闭包/镜头/光标/脏区/实时计划/录制/状态图标/飘渺/信号/窗口共享等 60+ C 导出), 对象参数桥改 Swift 直调(Flipper/RecordingEffects/NotificationPresenter/UIAnchors/FlutterHost); 事件 tap 回调不再经 ObjC; 五处闸门改扫 run_glue+相关 Swift。ObjC 文件仅剩 glaspen2.m 与 InteropProbe.m | cargo build/tests/parity 全绿;事件路由/录制/翻页/状态栏/光标需真机验证 | 本提交 |
 | 2026-11-25 | S7ei(新目标第82轮) | **应用层 ObjC 清零**: 迁移 glaspen2.m 尾部 9 个函数(gl_text/通知重绘/保存/清屏/重放)后删除 glaspen2.m; 全部 Rust FFI 声明抽取为 swift/rust_ffi.h 并入 Bridging.h; 删除 InteropProbe.m/interop_probe.swift 与 --swift-probe/探针调用; build.rs 移除 clang 编译与 ObjC 归档步骤、只编 Swift(归档仍名 libglaspen2_objc.a 以少改链接); 闸门 include_str 改扫 rust_ffi.h+run_glue.swift。**src/macos 已无任何 .m/.mm 文件** | cargo build/tests(307+29+31+11+3)/parity 全绿; S8 真机验收待做 | 本提交 |
+
+## 最终状态:S7ei(2026-11-25)— 应用层 ObjC 清零
+
+- **src/macos 已无任何 .m/.mm 文件**;macOS 原生层 100% Swift(src/macos/swift/*.swift)。
+- build.rs 只调用 swiftc 编译/归档(libglaspen2_objc.a 保留旧归档名以少改链接参数; Swift 运行时 autolink 不变)。
+- 剩余跨语言面只有 src/macos/swift/Bridging.h + rust_ffi.h 的 C ABI/FFI 声明(供 Swift 调用 Rust;无 ObjC 实现)。
+- 迁移总量:台账内 S0–S7ei 共 82 个目标轮;ObjC 应用层从 3,073 行(第 35 轮 checkpoint)降到 **0 行**;Swift 106 文件、约 8,100 行。
+- 校验:cargo build、cargo test --workspace --exclude glaspen2_installer(307+29+31+11+3 等)、scripts/check-platform-parity.sh 全绿;D1a/D3b/D5b/D6/D7/D8b/D12/i18n 契约闸门全部改为扫描 Swift 源。
+
+### S8 真机验收(唯一未完成项)
+
+见 docs/s8-acceptance-checklist.md。S8 通过后方可视为迁移目标全部完成。
+
+---
+
+**台账规则**:本表只追加行,不改历史行;每轮 = 一次提交(中文 commit message),不 push。
+
+| 2026-11-25 | S8-prep(新目标第83轮) | 收尾文档与 lint: README 架构图/说明改 Swift 原生层; swift-boundary.md 加最终状态注记; 新增 docs/s8-acceptance-checklist.md(19 项真机验收); 台账追加最终状态; cargo fmt + 去除 unused mut/vertbuild 变量, Rust 侧 lint/测试全绿(Flutter 面板测试失败为既有环境问题) | cargo test 全绿; lint 仅剩 Flutter settings_schema 既有失败 | 本提交 |

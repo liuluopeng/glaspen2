@@ -532,8 +532,11 @@ mod tests {
         let win_src = include_str!("../../../crates/glaspen-windows/src/overlay/pipe.rs");
         let mac_dispatcher_swift =
             include_str!("../../../src/macos/swift/settings_dispatcher.swift");
-        let mac_body = format!("{}
-{mac_dispatcher_swift}", mac_apply_body(mac_src));
+        let mac_body = format!(
+            "{}
+{mac_dispatcher_swift}",
+            mac_apply_body(mac_src)
+        );
         let win_body = windows_apply_body(win_src);
 
         // (平台, 适配器函数体, 变体名前的锚, 变体名后的锚)

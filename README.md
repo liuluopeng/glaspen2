@@ -67,7 +67,7 @@
 flowchart LR
     subgraph native["原生层"]
         MAC["macOS 壳
-ObjC: 全局笔/键鼠事件
+Swift: 全局笔/键鼠事件
 透明覆盖层 · 菜单栏"]
         WIN["Windows 覆盖层
 Win32 窗口 · Raw HID 笔输入"]
@@ -87,7 +87,7 @@ PDF / SVG / GIF / XOJ"]
     PANEL <-. "FRB 直调" .-> core
 ```
 
-- **原生层**:macOS 是 ObjC(全局事件 + 覆盖层窗口),Windows 是纯 Rust Win32;涂鸦体验全部由这一层实现.
+- **原生层**:macOS 是 Swift(全局事件 + 覆盖层窗口, 仅保留 `Bridging.h` 的 C ABI/FFI 边界),Windows 是纯 Rust Win32;涂鸦体验全部由这一层实现.
 - **glaspen-core**:平台无关的共享核心 —— 存储、平滑、渲染、导出、更新的 FFI.
 - **设置面板**:Flutter, 与 Rust 同进程 FRB 直调; 默认只显示「设置 + 活页本」两个 tab, 设置页首屏只留「笔」和「关于」, 其余折叠在「更多设置」, 进阶能力按需打开.
 

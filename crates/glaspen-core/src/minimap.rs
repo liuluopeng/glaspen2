@@ -631,13 +631,16 @@ mod tests {
                 .collect()
         }
 
-        let mac_main = concat!(include_str!("../../../src/macos/swift/rust_ffi.h"), include_str!("../../../src/macos/swift/run_glue.swift"));
+        let mac_main = concat!(
+            include_str!("../../../src/macos/swift/rust_ffi.h"),
+            include_str!("../../../src/macos/swift/run_glue.swift")
+        );
         let mac_run = concat!(
             include_str!("../../../src/macos/swift/run_glue.swift"),
             include_str!("../../../src/macos/swift/minimap.swift")
         );
-let mac_minimap_swift = include_str!("../../../src/macos/swift/minimap.swift");
-let mac_run_minimap = format!("{mac_run}\n{mac_minimap_swift}");
+        let mac_minimap_swift = include_str!("../../../src/macos/swift/minimap.swift");
+        let mac_run_minimap = format!("{mac_run}\n{mac_minimap_swift}");
         let win_actions = include_str!("../../../crates/glaspen-windows/src/overlay/actions.rs");
         let win_state = include_str!("../../../crates/glaspen-windows/src/overlay/state.rs");
         // include_str! 指错文件/文件被清空时闸门不能静默变绿。
@@ -699,9 +702,7 @@ let mac_run_minimap = format!("{mac_run}\n{mac_minimap_swift}");
             (
                 "glaspen2.m",
                 mac_main,
-                &[
-                    "extern char* glaspen2_minimap_layout_json(",
-                ][..],
+                &["extern char* glaspen2_minimap_layout_json("][..],
             ),
             (
                 "run.m+minimap.swift",
