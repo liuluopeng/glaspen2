@@ -202,8 +202,6 @@ static void apply_outline(BOOL on) { [MenuHandler setOutlineEnabled:on]; }
 // ── 无限画布:镜头平移(全局唯一画布) ──
 
 // 把当前镜头变换应用到渲染 + 节流持久化(0.5s 一次)
-static void canvas_apply_transform(void) { [CanvasCamera applyTransform]; }
-
 // 键盘平移镜头(滚轮缩放走 canvas_zoom_at; 书写中忽略)。
 // D5b: 数学(pan -= d)单源在 core Camera::pan_by, 经 FFI 拿回三值;
 // 门控/重绘/0.5s 持久化节流/飘渺 peek 仍在本文件(adapter)。
@@ -2735,7 +2733,7 @@ void glaspen2_router_set_camera(double panX, double panY, double zoom, int assig
 double glaspen2_router_pan_x(void) { return g_pan_x; }
 double glaspen2_router_pan_y(void) { return g_pan_y; }
 double glaspen2_router_zoom(void) { return g_zoom; }
-void glaspen2_router_canvas_apply_transform(void) { canvas_apply_transform(); }
+void glaspen2_router_canvas_apply_transform(void) { [CanvasCamera applyTransform]; }
 void glaspen2_router_peek_lens_change(void) { peek_lens_change(); }
 
 // S7av: 屏幕尺寸薄桥

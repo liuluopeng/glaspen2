@@ -420,3 +420,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7ba(续跑第72轮) | 删除笔色/笔宽预设加载的 ObjC 转发: 唯一调用点直调 [PenPresets loadPresets](Swift), run.m wrapper 与 glaspen2.m 声明删除 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7bb(续跑第73轮) | 死代码扫描: canvas_zoom_apply 在缩放 helper 迁 Swift 后已无调用(唯一无引用 static), 删除 wrapper 与声明 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7bc(续跑第74轮) | 删除最后两个镜头转发(camera_result_json/camera_assign): 唯一调用点直调 [CameraState resultFromJSON/assignResult](Swift), ObjC 实现与声明删除; D5b 闸门令牌按语言拆分(run.m 列表用 Swift 的 CameraState.assign(, menu.m 列表用 ObjC 的 CameraState assignResult:) | cargo build/tests/parity 全绿;居中镜头需真机验证 | 本提交 |
+| 2026-11-24 | S7bd(续跑第75轮) | 删除 canvas_apply_transform 的 ObjC 转发: 全部调用点(居中/编辑动作/桥)直调 [CanvasCamera applyTransform](Swift), wrapper 与前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
