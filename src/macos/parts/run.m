@@ -160,7 +160,7 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
   if (g_infinite_canvas == on)
     return;
   g_camera_mouse_dragging = NO; // 模式切换时结束任何鼠标抓手
-  camera_mouse_cancel_pan();
+  [CameraMousePan cancel];
   [EventRouter finishActiveStroke]; // 先把在写的笔画落库到"旧"存储
   if (g_infinite_canvas)
     [CanvasCamera persistInfinite]; // 离开无限画布前存镜头
@@ -206,12 +206,9 @@ static void apply_outline(BOOL on) { [MenuHandler setOutlineEnabled:on]; }
 // D5b: 数学(pan -= d)单源在 core Camera::pan_by, 经 FFI 拿回三值;
 // 门控/重绘/0.5s 持久化节流/飘渺 peek 仍在本文件(adapter)。
 /// 鼠标拖动平移: 高频事件只累积位移, 每帧最多真正重建一次 surface。
-static void camera_mouse_flush_pan(void) { [CameraMousePan flush]; }
 
-static void camera_mouse_queue_pan(double dx, double dy) { [CameraMousePan queueDX:dx dy:dy]; }
 
 /// 模式切换/停用涂鸦时调用: 丢弃未应用的鼠标拖动位移。
-static void camera_mouse_cancel_pan(void) { [CameraMousePan cancel]; }
 
 // 缩放结果统一处理(鼠标锚点/键盘中心共用): 100% 上限提示(1.5s 节流)、
 // 无变化早退、写回 + 应用变换/peek。
@@ -2520,7 +2517,7 @@ void glaspen2_router_show_system_cursor(void) {
 // S6-3-4: 停用涂鸦时非键盘事件的清理+放行薄桥
 void glaspen2_router_disable_cleanup(void) {
   g_camera_mouse_dragging = NO;
-  camera_mouse_cancel_pan();
+  [CameraMousePan cancel];
   [EventRouter restoreSystemCursor];
 }
 
@@ -2620,13 +2617,13 @@ int glaspen2_router_ethereal(void) { return g_ethereal_canvas ? 1 : 0; }
 // S6-3-3d: 相机临时抓手薄桥
 int glaspen2_router_camera_dragging(void) { return g_camera_mouse_dragging ? 1 : 0; }
 double glaspen2_router_camera_step_zoom(void) { return glaspen2_camera_step_zoom(g_zoom); }
-void glaspen2_router_camera_queue_pan(double dx, double dy) { camera_mouse_queue_pan(dx, dy); }
+void glaspen2_router_camera_queue_pan(double dx, double dy) { [CameraMousePan queueDX:dx dy:dy]; }
 void glaspen2_router_camera_set_last(double x, double y) {
   g_camera_mouse_last = NSMakePoint(x, y);
 }
 double glaspen2_router_camera_last_x(void) { return g_camera_mouse_last.x; }
 double glaspen2_router_camera_last_y(void) { return g_camera_mouse_last.y; }
-void glaspen2_router_camera_flush(void) { camera_mouse_flush_pan(); }
+void glaspen2_router_camera_flush(void) { [CameraMousePan flush]; }
 void glaspen2_router_camera_clear_dragging(void) { g_camera_mouse_dragging = NO; }
 void glaspen2_router_camera_start(double x, double y) {
   g_camera_mouse_dragging = YES;
