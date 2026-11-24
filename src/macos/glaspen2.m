@@ -193,6 +193,10 @@ extern int glaspen2_recording_reset(int slot);
 extern int glaspen2_recording_mode(int slot);
 extern void glaspen2_set_stroke_outline(int enabled);
 static void apply_infinite_canvas(BOOL on, BOOL notify);
+double glaspen2_router_tunnel_k(void);
+int glaspen2_router_tunnel_surf_w(void);
+int glaspen2_router_tunnel_surf_h(void);
+double glaspen2_router_tunnel_travel(void);
 
 // S7ak: 镜头 JSON 逻辑已迁 Swift(CameraState), 以下为 ObjC 转发。
 // ObjC 侧使用的 Swift 薄桥前向声明(Bridging.h 只给 Swift 编译单元)

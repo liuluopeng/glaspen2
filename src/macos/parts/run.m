@@ -191,35 +191,19 @@ static void tunnel_free_cards(void) {
 // 一眼可读(上/右侧面 = 你正看着玻璃的截面)。
 static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
                          double *out_w, double *out_h, double *out_alpha) {
-  if (zc < -TUNNEL_SPAN || zc > TUNNEL_FRONT)
-    return NO;
-  double s = 1.0 / (1.0 + s_tun_k * zc);
-  if (s <= 0.06 || s > 2.4)
-    return NO;
-  double W = (double)s_tun_surf_w, H = (double)s_tun_surf_h;
-  double w = W * s;
-  double h = H * s;
-  // 轻微透视偏移: 越深越靠上/靠右, 层间边缘可读; 落定 zc=0 时正好居中。
-  double cx = W * 0.5 + W * 0.0045 * zc;
-  double cy = H * 0.5 - H * 0.027 * zc;
-  double a;
-  if (zc < 0.0) {
-    // 目标页从镜头前方飞入: 在 zc=-travel 处完全不可见, 避免首帧有一张
-    // 半透明大页盖在当前页上。
-    a = 1.0 + zc / s_tun_travel;
-    if (a < 0.0)
-      a = 0.0;
-  } else {
-    // 深度雾: 远页快速变淡(比 1/z 更陡), 只留 2-3 层可读。
-    a = 1.0 / (1.0 + 0.90 * zc);
-  }
-  if (a > 1.0)
-    a = 1.0;
-  *out_cx = cx;
-  *out_cy = cy;
-  *out_w = w;
-  *out_h = h;
-  *out_alpha = a;
+  NSArray *r = [TunnelGeometry placeWithZC:zc
+                                      span:TUNNEL_SPAN
+                                     front:TUNNEL_FRONT
+                                         k:glaspen2_router_tunnel_k()
+                                    surfW:(double)glaspen2_router_tunnel_surf_w()
+                                    surfH:(double)glaspen2_router_tunnel_surf_h()
+                                    travel:glaspen2_router_tunnel_travel()];
+  if (!r || r.count != 5) return NO;
+  *out_cx = [r[0] doubleValue];
+  *out_cy = [r[1] doubleValue];
+  *out_w = [r[2] doubleValue];
+  *out_h = [r[3] doubleValue];
+  *out_alpha = [r[4] doubleValue];
   return YES;
 }
 
@@ -1778,3 +1762,9 @@ void glaspen2_router_pageview_set(int fit, double scale, double ox, double oy, i
   g_pageview_pw = pw;
   g_pageview_ph = ph;
 }
+
+// S7cs: 隧道几何薄桥
+double glaspen2_router_tunnel_k(void) { return s_tun_k; }
+int glaspen2_router_tunnel_surf_w(void) { return s_tun_surf_w; }
+int glaspen2_router_tunnel_surf_h(void) { return s_tun_surf_h; }
+double glaspen2_router_tunnel_travel(void) { return s_tun_travel; }

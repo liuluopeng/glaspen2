@@ -504,3 +504,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 - S8 真机验收仍未完成(不标完成): 笔迹像素与延迟、翻页/隧道动效、多屏/锁屏唤醒、菜单视觉 zh/en、热键/录制、玻璃、缩略图条。
 | 2026-11-24 | S7cq(新目标第36轮) | 主菜单构建块迁 Swift: 新增 main_menu.swift(MainMenuBuilder.build: delegate/autoenable、颜色与粗细富文本项、顶层/导出/更多/语言文案字典、调用 MenuBuilder、挂到状态栏), run.m 原 ~120 行构建块替换为一次 Swift 调用 | cargo build/tests/parity 全绿;菜单构建/文案需真机验证 | 本提交 |
 | 2026-11-24 | S7cr(新目标第37轮) | 时光隧道卡片绘制迁 Swift: 新增 tunnel_card.swift(TunnelCardRenderer.draw: 落定帧/玻璃厚度与阴影/上下侧面渐变/前脸磨砂+快照/扫光/棱线), ObjC tunnel_draw_card 变参数适配转发(保留 mip 选择与全局读取); 逐项保留颜色/alpha/线宽 | cargo build/tests/parity 全绿;隧道动效像素需真机验证 | 本提交 |
+| 2026-11-24 | S7cs(新目标第38轮) | 隧道卡片放置几何迁 Swift: 新增 tunnel_geometry.swift(TunnelGeometry.place: 页距→中心/尺寸/透明度的单源公式), ObjC tunnel_place 变参数适配转发(读取 k/surf/travel 经薄桥); 补 4 个前向声明修正隐式声明错误 | cargo build/tests/parity 全绿;隧道层叠观感需真机验证 | 本提交 |
