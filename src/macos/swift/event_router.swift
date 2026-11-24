@@ -11,6 +11,10 @@ import AppKit
             glaspen2_router_disable_cleanup()
             return 1
         }
+        if type == .tabletProximity {
+            routeProximity(event)
+            return 1
+        }
         // 点菜单栏(非笔): 临时停 tap, 让菜单能收到点击; 5s 兜底恢复。
         if type == .leftMouseDown, let ev = NSEvent(cgEvent: event), !isPen(ev) {
             if event.location.y < 30 {
@@ -67,6 +71,31 @@ import AppKit
         if glaspen2_router_pen_drawing() != 0 {
             glaspen2_router_show_system_cursor()
             glaspen2_router_set_pen_drawing(0)
+        }
+    }
+
+    /// S6-3-3d: 笔 proximity 进入/离开: 悬停显示/离开隐藏, 飘渺模式联动。
+    private static func routeProximity(_ event: CGEvent) {
+        guard let prox = NSEvent(cgEvent: event) else { return }
+        let dev = prox.pointingDeviceType
+        guard dev == .pen || dev == .eraser else { return }
+        glaspen2_router_mark_tablet_proximity()
+        let enter = event.getIntegerValueField(.tabletProximityEventEnterProximity) == 1
+        let label = enter ? (dev == .eraser ? "橡皮进入" : "悬浮进入") : "悬浮离开"
+        NSLog("[pen] \(label) (proximity \(enter ? "enter" : "exit"))")
+        if enter {
+            glaspen2_router_set_prox_device(Int32(dev.rawValue))
+            glaspen2_router_peek_cancel()
+            glaspen2_router_bubble_pen_back()
+            if glaspen2_router_ethereal() != 0 { glaspen2_router_pen_auto_show() }
+        } else {
+            glaspen2_router_bubble_pen_gone()
+            if (glaspen2_router_cursor_flags() & 1) != 0 {
+                glaspen2_router_cursor_invalidate()
+                glaspen2_router_cursor_hide()
+                glaspen2_router_flush()
+            }
+            if glaspen2_router_ethereal() != 0 { glaspen2_router_auto_hide() }
         }
     }
 

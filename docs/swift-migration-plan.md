@@ -317,3 +317,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S6-3-3d-3(续跑第3轮) | 拖动实时段迁 Swift: EventRouter.penMove(模型器 move + raw segment)一行调用; ObjC perf 打点保留; 新增 2 个薄桥 | cargo build/tests/parity 全绿;拖动/响应延迟需真机验证 | 本提交 |
 | 2026-11-24 | S6-3-3d-4(续跑第4轮) | 抬笔收尾迁 Swift: EventRouter.penUp(erase_finish / end+commit、stroke_end、pending 颜色粗细生效、raw 状态/cursor/dirty/flush 复位); ObjC 只保留 NSLog + perf; 新增 8 个薄桥 | cargo build/tests/parity 全绿;抬笔提交/橡皮需真机验证 | 本提交 |
 | 2026-11-24 | S6-3-3d-5(续跑第5轮) | 拖动自动补 begin 分支复用 Swift penDown 入口: 删除 ObjC 重复的 begin/context/raw dot/状态初始化 14 行,只剩一行调用; 行为与原分支一致 | cargo build/tests/parity 全绿;笔检测滞后场景需真机验证 | 本提交 |
+| 2026-11-24 | S6-3-3d-6(续跑第6轮) | tablet proximity 进入/离开迁 Swift: EventRouter.routeProximity(悬浮进入/橡皮进入日志、prox 设备记录、peek 取消、bubble back、飘渺 auto_show;离开: bubble gone、光标 invalidate/hide/flush、飘渺 auto_hide), ObjC 原 45 行分支删除; 新增 4 个薄桥 | cargo build/tests/parity 全绿;笔 hover/飘渺联动需真机验证 | 本提交 |

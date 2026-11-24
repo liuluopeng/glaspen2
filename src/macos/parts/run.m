@@ -2136,49 +2136,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     return event;
   }
 
-  // Pen proximity (hover in/out): the crosshair tracks the pen itself —
-  // it appears with hover moves and is hidden on leave regardless of the
-  // canvas mode. In 飘渺画布涂鸦模式 hovering also shows the strokes and
-  // pen-leave hides them.
-  if (type == kCGEventTabletProximity) {
-    NSEvent *proxEvent = [NSEvent eventWithCGEvent:event];
-    BOOL isStylus =
-        proxEvent && ([proxEvent pointingDeviceType] == NSPenPointingDevice ||
-                      [proxEvent pointingDeviceType] == NSEraserPointingDevice);
-    if (isStylus) {
-      g_has_tablet_proximity = YES; // 平台有显式离开信号, 关掉鼠标回退
-      int64_t proxState = CGEventGetIntegerValueField(
-          event, kCGTabletProximityEventEnterProximity);
-      NSLog(@"[pen] %@ (proximity %@)",
-            proxState == 1
-                ? ([proxEvent pointingDeviceType] == NSEraserPointingDevice
-                       ? @"橡皮进入"
-                       : @"悬浮进入")
-                : @"悬浮离开",
-            proxState == 1 ? @"enter" : @"exit");
-      if (proxState == 1) {
-        g_prox_dev = [proxEvent pointingDeviceType]; // 笔键 Pen/Eraser 切换的证据链
-        peek_cancel_timer(); // pen is back — the peek stays
-        glaspen2_bubble_pen_back(); // 极近的退+进 = 笔↔橡皮切换, 撤销气泡冷标记
-        if (g_ethereal_canvas)
-          auto_show_canvas();
-      } else {
-        // Pen left the screen: hide the crosshair right away instead
-        // of leaving a frozen ghost over the hidden strokes.
-        glaspen2_bubble_pen_gone(); // 气泡冷启动: 笔离开, 下一次落笔开新消息
-        if (g_cursor_visible) {
-          dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
-          g_cursor_visible = NO;
-          flush_dirty_to_layer();
-        }
-        if (g_ethereal_canvas) {
-          NSLog(@"[pen] 悬浮离开 → 隐藏笔迹");
-          auto_hide_now();
-        }
-      }
-    }
-    return event;
-  }
+  // S6-3-3d: tablet proximity 进入/离开分支已迁 Swift EventRouter。
+
 
   // 滚轮缩放(S6-3-1: 已迁 Swift EventRouter; 这里不再处理)
 
@@ -3289,3 +3248,11 @@ void glaspen2_router_pen_up_state(void) {
   dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
   flush_dirty_to_layer();
 }
+
+// S6-3-3d: proximity 分支薄桥
+void glaspen2_router_mark_tablet_proximity(void) { g_has_tablet_proximity = YES; }
+void glaspen2_router_set_prox_device(int device) {
+  g_prox_dev = (NSPointingDeviceType)device;
+}
+void glaspen2_router_bubble_pen_back(void) { glaspen2_bubble_pen_back(); }
+int glaspen2_router_ethereal(void) { return g_ethereal_canvas ? 1 : 0; }
