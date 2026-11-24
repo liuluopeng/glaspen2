@@ -2685,20 +2685,15 @@ void glaspen2_run(void) {
     g_glass_view = [OverlayWindowFactory makeGlassViewWithFrame:screenFrame
                                                         enabled:g_glass_enabled
                                                         opacity:g_glass_opacity];
-    [contentView addSubview:g_glass_view];
-
     // Drawing view on top
     GlaspenDrawView *drawView =
         [[GlaspenDrawView alloc] initWithFrame:screenFrame];
-    [drawView setWantsLayer:YES];
-    CALayer *layer = [drawView layer];
-    if (layer) {
-      [OverlayWindowFactory configureClearLayer:layer]; // S5-2
-    }
-    [contentView addSubview:drawView];
 
-    // S5-4: 挂载 + orderFront 已迁 Swift。
-    [OverlayWindowFactory attachContent:contentView toWindow:g_window];
+    // 组装(玻璃在下/绘制视图在上/layer 透明/挂载+orderFront)已迁 Swift。
+    [OverlayWindowFactory assembleContent:contentView
+                                  glass:g_glass_view
+                               drawView:drawView
+                               inWindow:g_window];
 
     g_draw_view = drawView;
     ensure_surface(drawView);

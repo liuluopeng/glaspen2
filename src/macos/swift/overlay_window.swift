@@ -72,6 +72,17 @@ import AppKit
         return view
     }
 
+    /// 组装覆盖层内容: 玻璃在下、绘制视图在上(透明 layer), 最后挂到窗口并 orderFront。
+    @objc(assembleContent:glass:drawView:inWindow:)
+    public static func assembleContent(_ content: NSView, glass: NSView,
+                                       drawView: NSView, in window: NSWindow) {
+        content.addSubview(glass)
+        drawView.wantsLayer = true
+        if let layer = drawView.layer { configureClearLayer(layer) }
+        content.addSubview(drawView)
+        attachContent(content, to: window)
+    }
+
     /// S5-4: 挂载内容视图并 orderFront(与原 setContentView/orderFront 顺序一致)。
     @objc(attachContent:toWindow:)
     public static func attachContent(_ view: NSView, to window: NSWindow) {
