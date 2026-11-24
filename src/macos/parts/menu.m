@@ -224,17 +224,12 @@ static void update_status_icon_state(void) {
 }
 
 static void update_menu_checkmarks(void) {
-    // Update checkmarks on color items
-    for (int i = 0; i < g_color_preset_count; i++) {
-        NSMenuItem *item = [g_menu itemAtIndex:i];
-        [item setState:(i == g_selectedColorIndex) ? NSControlStateValueOn : NSControlStateValueOff];
-    }
-    // Update checkmarks on width items
-    int widthOffset = g_color_preset_count + 1; // after colors + separator
-    for (int i = 0; i < g_width_preset_count; i++) {
-        NSMenuItem *item = [g_menu itemAtIndex:widthOffset + i];
-        [item setState:(i == g_selected_width_index) ? NSControlStateValueOn : NSControlStateValueOff];
-    }
+    // S3b-2b-4a: 勾选刷新逻辑在 Swift(MenuUpdater);这里只传当前状态。
+    [MenuUpdater updateCheckmarksInMenu:g_menu
+                             colorCount:g_color_preset_count
+                             widthCount:g_width_preset_count
+                             colorIndex:g_selectedColorIndex
+                             widthIndex:g_selected_width_index];
 }
 
 static void toggle_enabled(void) {
