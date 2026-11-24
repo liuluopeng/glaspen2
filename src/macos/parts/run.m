@@ -2559,3 +2559,31 @@ int glaspen2_router_tunnel_active(void) { return s_tun_active ? 1 : 0; }
 void glaspen2_router_dirty_include_surface_rect(double x, double y, double w, double h) {
   dirty_include_surface_rect(x, y, w, h);
 }
+
+// S7cd: 设置面板宿主薄桥(Flutter 对象仍在 ObjC 创建)
+id glaspen2_router_settings_engine(void) {
+  if (!g_flutter_engine) {
+    g_flutter_engine = [[FlutterEngine alloc] initWithName:@"glaspen_settings"
+                                                    project:nil];
+    [g_flutter_engine runWithEntrypoint:nil];
+  }
+  return g_flutter_engine;
+}
+id glaspen2_router_settings_vc(void) {
+  if (!g_flutter_vc) {
+    g_flutter_vc = [[FlutterViewController alloc] initWithEngine:g_flutter_engine
+                                                         nibName:nil
+                                                          bundle:nil];
+  }
+  return g_flutter_vc;
+}
+id glaspen2_router_settings_delegate(void) {
+  if (!g_settings_delegate) g_settings_delegate = [[SettingsWindowDelegate alloc] init];
+  return g_settings_delegate;
+}
+id glaspen2_router_settings_window(void) { return g_settings_window; }
+void glaspen2_router_set_settings_window(id window) { g_settings_window = window; }
+void glaspen2_router_settings_apply_transparent(void) {
+  gl_panel_transparent_apply(YES);
+  if (g_flutter_vc.view.layer) g_flutter_vc.view.layer.opaque = NO;
+}

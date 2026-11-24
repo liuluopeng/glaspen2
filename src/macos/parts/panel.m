@@ -11,61 +11,7 @@
 
 static SettingsWindowDelegate *g_settings_delegate = nil;
 
-static void show_settings_panel(void) {
-    // If window already exists, just bring it forward
-    if (g_settings_window) {
-        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-        [NSApp activateIgnoringOtherApps:YES];
-        [g_settings_window makeKeyAndOrderFront:nil];
-        return;
-    }
-
-    // Create Flutter engine (singleton)
-    if (!g_flutter_engine) {
-        g_flutter_engine = [[FlutterEngine alloc] initWithName:@"glaspen_settings"
-                                                      project:nil];
-        [g_flutter_engine runWithEntrypoint:nil];
-    }
-
-    // 面板与 Rust 的通信全部走 flutter_rust_bridge(Dart 侧
-    // ExternalLibrary.process() 直接解析本进程内的 Rust 符号),
-    // 这里不再建立 FlutterMethodChannel。
-
-    // Create FlutterViewController
-    g_flutter_vc = [[FlutterViewController alloc] initWithEngine:g_flutter_engine
-                                                         nibName:nil
-                                                          bundle:nil];
-
-    // Create window — large enough for the 1.4× scaled UI on the big screen.
-    NSRect frame = NSMakeRect(0, 0, 900, 1200);
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
-        styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
-        backing:NSBackingStoreBuffered defer:NO];
-    [window setTitle:L(@"玻璃涂鸦", @"glaspen2")];
-    [window setMinSize:NSMakeSize(600, 800)];
-    [window setReleasedWhenClosed:NO];
-
-    // Set delegate to switch back to Accessory when window closes
-    g_settings_delegate = [[SettingsWindowDelegate alloc] init];
-    [window setDelegate:g_settings_delegate];
-
-    // Standard embedding: FlutterViewController owns the content view so the
-    // device pixel ratio / backing scale is applied correctly.
-    window.contentViewController = g_flutter_vc;
-
-    // Switch to Regular mode so the window can get focus
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-    [NSApp activateIgnoringOtherApps:YES];
-    [window center];
-    [window makeKeyAndOrderFront:nil];
-    g_settings_window = window;
-    // 真穿透(实验): 拟物玻璃卡片的透明窟窿需要窗口可透明。
-    // Flutter view 的 layer 默认不透明, 透窗必须一并关掉。
-    if (glaspen2_load_bool_setting("panel_transparent")) {
-        gl_panel_transparent_apply(YES);
-        if (g_flutter_vc.view.layer) g_flutter_vc.view.layer.opaque = NO;
-    }
-}
+static void show_settings_panel(void) { [SettingsPanel show]; }
 
 // Drop the cached surface image (call before the surface is destroyed).
 // S7: CGImage 缓存已迁 Swift(OverlaySurfaceImageCache, Swift 持有)。
