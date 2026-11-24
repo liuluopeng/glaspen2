@@ -82,72 +82,25 @@ static BOOL g_ethereal_canvas = NO; // YES = 飘渺画布涂鸦模式
 static BOOL g_strokes_visible = YES; // strokes drawn on the overlay?
 
 // Hide the strokes (飘渺 mode). Returns YES if it actually hid them.
-static void ethereal_hide_now(void) {
-    if (!g_ethereal_canvas || !g_strokes_visible) return;
-    [EventRouter finishActiveStroke]; // don't strand an in-flight stroke
-    g_strokes_visible = NO;
-    if (g_glass_follow_strokes && g_glass_view) g_glass_view.hidden = YES;
-    if (g_pressure_monitor) pm_hide();
-    [g_draw_view setNeedsDisplay:YES]; // 笔离开数位板: 立即隐藏(无动效)
-}
+static void ethereal_hide_now(void) { (void)[EtherealMode hideNow]; }
 
 /// 飘渺隐藏: 笔离开数位板立即隐藏(无动效, 无延迟)。
-static BOOL auto_hide_now(void) {
-    // 翻页动效(时光隧道)期间绝不能藏笔迹: hideNow 会把玻璃一起隐藏,
-    // 整个隧道画面就"消失"了(表现为动画期间屏幕一片空白)。
-    if (s_tun_active) return NO;
-    if (!g_ethereal_canvas) return NO;
-    if (!g_strokes_visible) return NO;
-    ethereal_hide_now();
-    return YES;
-}
+static BOOL auto_hide_now(void) { return [EtherealMode hideNow] ? YES : NO; }
 
 /// 启动恢复飘渺模式(run.m 在视图就绪后调用)。hideNow 以"笔迹可见"为前置,
 /// 先归位再落位, 落位路径与 toggle 进入飘渺完全一致(玻璃跟随/压强计一并处理)。
-void gl_ethereal_restore_now(void) {
-    if (!g_ethereal_canvas) return;
-    g_strokes_visible = YES;
-    ethereal_hide_now();
-}
+void gl_ethereal_restore_now(void) { [EtherealMode restoreNow]; }
 
 // Show the strokes because the pen came back (飘渺 mode).
-static void auto_show_canvas(void) {
-    if (!g_ethereal_canvas) return;
-    if (!g_strokes_visible) {
-        g_strokes_visible = YES;
-        [MenuHandler applyGlass]; // restore the glass per its own toggle
-        if (g_pressure_monitor) pm_show();
-        [g_draw_view setNeedsDisplay:YES];
-        NSLog(@"[ethereal] 笔迹重现");
-    }
-}
+static void auto_show_canvas(void) { [EtherealMode autoShow]; }
 
 // ── Page-navigation / lens peek (ethereal mode) ──
 // 翻页载入笔迹、无限画布平移/缩放镜头时, 笔迹是隐藏的; 短暂显示让用户
 // 看见新页面/新镜头, 然后按 `seconds` 隐回去(笔互动会取消隐藏计时器)。
-static NSTimer *g_peek_timer = nil;
 
-static void peek_cancel_timer(void) {
-    [g_peek_timer invalidate];
-    g_peek_timer = nil;
-}
+static void peek_cancel_timer(void) { [EtherealMode cancelTimer]; }
 
-static void peek_strokes(double seconds) {
-    if (!g_ethereal_canvas) return; // fixed mode: strokes are always visible
-    peek_cancel_timer();
-    if (!g_strokes_visible) {
-        g_strokes_visible = YES;
-        [MenuHandler applyGlass];
-        if (g_pressure_monitor) pm_show();
-        [g_draw_view setNeedsDisplay:YES];
-    }
-    g_peek_timer = [NSTimer scheduledTimerWithTimeInterval:seconds repeats:NO block:^(NSTimer *timer) {
-        g_peek_timer = nil;
-        if (g_ethereal_canvas && !g_stroke_active) {
-            auto_hide_now();
-        }
-    }];
-}
+static void peek_strokes(double seconds) { [EtherealMode peekForSeconds:seconds]; }
 
 /// 飘渺模式下镜头平移/缩放时, 笔迹本身是隐藏的, 用户看不到画面变化。
 /// 短暂 peek 一下, 让新镜头下的笔迹/网格露出来再隐回去。
@@ -155,11 +108,7 @@ static void peek_strokes(double seconds) {
 /// 笔正悬停(笔迹已经可见、且没有 peek 计时器)时不要启动隐藏计时器,
 /// 否则悬浮看画会被 1 秒后自动隐藏。已有 peek 计时器时重新计时, 让连续
 /// 平移/缩放期间笔迹保持可见, 松手后再隐。
-static void peek_lens_change(void) {
-    if (!g_ethereal_canvas || !g_infinite_canvas) return;
-    if (g_strokes_visible && g_peek_timer == nil) return; // 悬停可见, 保持
-    peek_strokes(1.0);
-}
+static void peek_lens_change(void) { [EtherealMode peekLensChange]; }
 
 // Switch between 固定画布涂鸦模式 and 飘渺画布涂鸦模式. Shortcut: ⌘ + ⌃ + X
 static void toggle_canvas_mode(void) { [DrawMode toggleCanvasMode]; }

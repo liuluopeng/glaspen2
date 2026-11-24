@@ -201,6 +201,8 @@ int glaspen2_router_active_ctx_present(void);
 void glaspen2_router_install_active_ctx(cairo_t *ctx);
 cairo_t *glaspen2_router_take_active_ctx(void);
 void glaspen2_router_reset_raw_stroke(void);
+int glaspen2_router_tunnel_active(void);
+int glaspen2_router_stroke_active(void);
 extern void glaspen2_on_display_change(int screen_w, int screen_h);
 extern void glaspen2_smooth_loaded_strokes(void);
 NSAttributedString *glaspen2_router_color_item_title(int idx);
@@ -264,7 +266,7 @@ void glaspen2_router_raw_draw_dot(double x, double y, double rawWidth);
 void glaspen2_router_pen_down_state(double x, double y, double rawWidth);
 void glaspen2_router_modeler_move(double x, double y, double pressure, double timestamp);
 void glaspen2_router_raw_draw_segment(double x, double y, double rawWidth);
-int glaspen2_router_stroke_active(void);
+
 void glaspen2_router_set_stroke_active(int on);
 void glaspen2_router_modeler_erase_finish(void);
 void glaspen2_router_modeler_end(double x, double y, double pressure, double timestamp);

@@ -2551,3 +2551,6 @@ void glaspen2_router_reset_raw_stroke(void) {
   g_raw_has_prev = NO;
   g_raw_path_len = 0;
 }
+
+// S7cb: 飘渺模式薄桥
+int glaspen2_router_tunnel_active(void) { return s_tun_active ? 1 : 0; }
