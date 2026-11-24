@@ -2685,7 +2685,7 @@ void glaspen2_router_show_system_cursor(void) {
 void glaspen2_router_disable_cleanup(void) {
   g_camera_mouse_dragging = NO;
   camera_mouse_cancel_pan();
-  restore_system_cursor();
+  [EventRouter restoreSystemCursor];
 }
 
 // S6-3-4b-2b: chord 门控的 perform_action 薄桥

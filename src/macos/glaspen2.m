@@ -401,11 +401,6 @@ static uint64_t g_last_cursor_flush = 0;
 static BOOL g_pen_drawing = NO;
 
 // Restore the system cursor if it is currently hidden by pen drawing.
-static void restore_system_cursor(void) {
-    // S6-3-3d: 实现在 Swift(EventRouter.restoreSystemCursor), 这里只转发。
-    [EventRouter restoreSystemCursor];
-}
-
 // Pressure monitor
 static BOOL g_pressure_monitor = NO;
 static NSWindow *g_pm_window = nil;

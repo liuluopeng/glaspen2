@@ -132,7 +132,7 @@ static void toggle_enabled(void) {
     if (!g_enabled) {
         // 关闭涂鸦: 临时隐藏整个 glaspen 覆盖层(笔迹/方格/磨砂玻璃),
         // 以便干净地使用其他绘图软件。
-        restore_system_cursor();
+        [EventRouter restoreSystemCursor];
         [EventRouter finishActiveStroke];
         if (g_window) [g_window orderOut:nil];
         if (g_pressure_monitor) pm_hide();
