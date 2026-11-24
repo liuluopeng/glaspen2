@@ -2718,6 +2718,10 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
 /// 测试工具绝不能抢用户的鼠标。
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                      CGEventRef event, void *refcon) {
+  // S6-3-0: Swift 路由骨架先行; 返回 0 表示仍走 ObjC 内层(行为不变)。
+  int32_t route = [EventRouter routeEventOfType:type event:event];
+  if (route == 2) return NULL;
+  if (route == 1) return virtual_pen_is_event(event) ? NULL : event;
   CGEventRef out = event_tap_callback_inner(proxy, type, event, refcon);
   return virtual_pen_is_event(event) ? NULL : out;
 }
