@@ -4,10 +4,6 @@
 static BOOL g_camera_mouse_dragging = NO;
 static NSPoint g_camera_mouse_last = {0, 0};
 // 鼠标拖动平移是高频事件; 累积位移, 每 ~16ms 只重建一次 surface.
-static double g_camera_pan_pending_dx = 0.0;
-static double g_camera_pan_pending_dy = 0.0;
-static BOOL g_camera_pan_scheduled = NO;
-static uint64_t g_camera_pan_gen = 0;
 static void camera_mouse_cancel_pan(void);
 
 static void pageview_frame_draw(void);
@@ -223,39 +219,12 @@ static void canvas_apply_transform(void) {
 static void canvas_pan_by(double dx, double dy) { [CanvasCamera panByDX:dx dy:dy]; }
 
 /// 鼠标拖动平移: 高频事件只累积位移, 每帧最多真正重建一次 surface。
-static void camera_mouse_flush_pan(void) {
-  g_camera_pan_scheduled = NO;
-  ++g_camera_pan_gen; // 作废已排队的 block
-  double dx = g_camera_pan_pending_dx;
-  double dy = g_camera_pan_pending_dy;
-  g_camera_pan_pending_dx = 0.0;
-  g_camera_pan_pending_dy = 0.0;
-  if ((dx != 0.0 || dy != 0.0) && g_infinite_canvas && g_enabled &&
-      !g_stroke_active) {
-    canvas_pan_by(dx, dy);
-  }
-}
+static void camera_mouse_flush_pan(void) { [CameraMousePan flush]; }
 
-static void camera_mouse_queue_pan(double dx, double dy) {
-  g_camera_pan_pending_dx += dx;
-  g_camera_pan_pending_dy += dy;
-  if (g_camera_pan_scheduled) return;
-  g_camera_pan_scheduled = YES;
-  uint64_t gen = ++g_camera_pan_gen;
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(16 * NSEC_PER_MSEC)),
-                 dispatch_get_main_queue(), ^{
-                   if (gen != g_camera_pan_gen) return;
-                   camera_mouse_flush_pan();
-                 });
-}
+static void camera_mouse_queue_pan(double dx, double dy) { [CameraMousePan queueDX:dx dy:dy]; }
 
 /// 模式切换/停用涂鸦时调用: 丢弃未应用的鼠标拖动位移。
-static void camera_mouse_cancel_pan(void) {
-  g_camera_pan_pending_dx = 0.0;
-  g_camera_pan_pending_dy = 0.0;
-  g_camera_pan_scheduled = NO;
-  ++g_camera_pan_gen;
-}
+static void camera_mouse_cancel_pan(void) { [CameraMousePan cancel]; }
 
 // 缩放结果统一处理(鼠标锚点/键盘中心共用): 100% 上限提示(1.5s 节流)、
 // 无变化早退、写回 + 应用变换/peek。
