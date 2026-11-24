@@ -11,6 +11,11 @@ import AppKit
             glaspen2_router_disable_cleanup()
             return 1
         }
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            glaspen2_router_reenable_tap()
+            NSLog("[glaspen2] TAP DISABLED (timeout/userinput) — re-enabled")
+            return 1
+        }
         if type == .keyDown || type == .keyUp {
             return routeKeyboardEvent(type: type, event: event)
         }
@@ -48,7 +53,29 @@ import AppKit
             penCursorUpdate(type: type, event: event)
             penSystemCursor(type: type)
         }
-        return 0
+        // 笔事件: 坐标/压力/raw_w 在本层计算, 再交 pen 分派(原 inner 逻辑)。
+        if let ev = NSEvent(cgEvent: event), isPen(ev) {
+            let loc = ev.locationInWindow
+            let px = Double(loc.x)
+            let py = glaspen2_router_draw_height() - Double(loc.y)
+            let pressure = Double(ev.pressure)
+            let ts = ev.timestamp
+            updatePressureMonitor(event: event, type: type, x: px, y: py, pressure: pressure)
+            let rawW = glaspen2_router_raw_width(pressure)
+            if glaspen2_router_strokes_hidden() != 0
+                && (type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown
+                    || type == .leftMouseDragged || type == .rightMouseDragged
+                    || type == .otherMouseDragged) {
+                glaspen2_router_pen_auto_show()
+            }
+            let isEraser = ev.pointingDeviceType == .eraser
+                || glaspen2_router_prox_is_eraser() != 0
+            if handlePenEvent(type: type, x: px, y: py, pressure: pressure,
+                              timestamp: ts, rawWidth: rawW, isEraser: isEraser) == 2 {
+                return 2
+            }
+        }
+        return 1
     }
 
     private static func isPen(_ ev: NSEvent) -> Bool {

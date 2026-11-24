@@ -2117,112 +2117,16 @@ static BOOL handle_recording_hotkeys(CGEventType type, unsigned short kc,
   return [RecordingHotkeys handleWithType:type keyCode:kc hasCmdCtrl:hasCmdCtrl];
 }
 
-static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
-                                           CGEventType type, CGEventRef event,
-                                           void *refcon) {
-  if (g_perf_log && !g_perf_file)
-    perf_log_begin();
-
-  uint64_t t0 = mach_absolute_time();
-
-  // Re-enable tap if it gets disabled by timeout/user
-  if (type == kCGEventTapDisabledByTimeout ||
-      type == kCGEventTapDisabledByUserInput) {
-    NSLog(@"[glaspen2] TAP DISABLED (timeout=%d, userinput=%d)",
-          type == kCGEventTapDisabledByTimeout,
-          type == kCGEventTapDisabledByUserInput);
-    CGEventTapEnable(g_event_tap, true);
-    perf_log_event("tap_disabled", elapsed_us(t0));
-    return event;
-  }
-
-  // S6-3-3d: tablet proximity 进入/离开分支已迁 Swift EventRouter。
-
-
-  // 滚轮缩放(S6-3-1: 已迁 Swift EventRouter; 这里不再处理)
-
-  // S6-3-4: 键盘事件(录制键 + chord)已迁 Swift EventRouter。
-
-  // S6-3-4: 停用涂鸦时的清理/放行已迁 Swift EventRouter。
-
-
-  // Convert to NSEvent to check pen properties
-  NSEvent *nsevent = [NSEvent eventWithCGEvent:event];
-  if (!nsevent)
-    return event;
-
-  NSPointingDeviceType devType = [nsevent pointingDeviceType];
-  NSInteger subtype = [nsevent subtype];
-  NSEventType etype = [nsevent type];
-  CGFloat pressure = [nsevent pressure];
-
-  // S6-3-3d-2: 笔事件判定单源在 Swift(EventRouter.isPenForEvent:),
-  // 这里保留 devType/subtype 供后续橡皮/日志判断使用。
-  BOOL isPen = [EventRouter isPenForEvent:event];
-
-  // ⌃⌥ + 左键拖动 = 临时抓手; 与镜头键位用同一套修饰键。
-  // 正常鼠标左键(无修饰键)仍然原样放行给下层 App。
-  // S6-3-3d: 相机临时抓手(开始/拖动/结束)已迁 Swift EventRouter。
-
-  // S6-3-3d: 菜单栏点击的 tap 暂停/恢复已迁 Swift EventRouter。
-
-
-  // Draw on pen contact/drag events — routed through stroke modeler
-  NSPoint loc = [nsevent locationInWindow];
-  CGFloat view_h = [g_draw_view bounds].size.height;
-  double px = loc.x;
-  double py = view_h - loc.y;
-  double ts = [nsevent timestamp]; // NSTimeInterval (seconds since boot)
-
-  // Track if a stroke is active (modeler has been initialized)
-
-  // Width from pressure (公式单源在 core modeler::pressure_to_width)
-  double raw_w = glaspen2_pressure_raw_width(pressure, g_width_scale);
-  raw_w *= g_zoom; // 屏幕呈现宽度随缩放
-
-  // S6-3-3d: 压感监视器更新已迁 Swift。
-  if (isPen) {
-    [EventRouter updatePressureMonitorWithEvent:event
-                                         type:type
-                                            x:px
-                                            y:py
-                                     pressure:pressure];
-  }
-
-  // Strokes hidden (飘渺画布涂鸦模式): touching down always re-shows them
-  // and the stroke proceeds below. The pen is swallowed so it never acts
-  // as a mouse while drawing mode (V) is enabled.
-  if (!g_strokes_visible && isPen &&
-      (etype == NSEventTypeLeftMouseDown ||
-       etype == NSEventTypeRightMouseDown ||
-       etype == NSEventTypeOtherMouseDown ||
-       etype == NSEventTypeLeftMouseDragged ||
-       etype == NSEventTypeRightMouseDragged ||
-       etype == NSEventTypeOtherMouseDragged)) {
-    auto_show_canvas(); // show (and draw) — fallback for tablets without hover
-  }
-
-  // S6-3-3d: 笔事件分派(落笔/拖动/抬笔)已迁 Swift EventRouter。
-  int32_t penRoute = [EventRouter handlePenEventOfType:type x:px y:py pressure:pressure
-                                         timestamp:ts rawWidth:raw_w
-                                           isEraser:(devType == NSEraserPointingDevice) ||
-                                                    (g_prox_dev == NSEraserPointingDevice)];
-  if (penRoute == 2) return NULL;
-
-  perf_log_event("tick", elapsed_us(t0));
-  return event;
-}
-
 /// 合成事件(虚拟笔)处理完一律吞掉: 落笔/拖动本来就是 return NULL, 但**悬停
 /// 走的是放行路径** —— 不拦住的话虚拟笔的 hover 流会真的移动用户光标。
 /// 测试工具绝不能抢用户的鼠标。
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                      CGEventRef event, void *refcon) {
-  // S6-3-0: Swift 路由骨架先行; 返回 0 表示仍走 ObjC 内层(行为不变)。
+  // S6: 事件路由全部在 Swift; 这里只按结果放行/吞掉。
+  (void)proxy;
+  (void)refcon;
   int32_t route = [EventRouter routeEventOfType:type event:event];
-  if (route == 2) return NULL;
-  if (route == 1) return [EventRouter isVirtualPenEvent:event] ? NULL : event;
-  CGEventRef out = event_tap_callback_inner(proxy, type, event, refcon);
+  CGEventRef out = (route == 2) ? NULL : event;
   return [EventRouter isVirtualPenEvent:event] ? NULL : out;
 }
 
@@ -3136,3 +3040,15 @@ void glaspen2_router_pm_update(int inRange, int pressure, double x, double y,
 
 // S6-3-4: 键盘录制放行标志薄桥
 int glaspen2_router_hotkey_recording(void) { return g_hotkey_recording ? 1 : 0; }
+
+// S6-3-3d: callback 内层收尾薄桥
+void glaspen2_router_reenable_tap(void) {
+  if (g_event_tap) CGEventTapEnable(g_event_tap, true);
+}
+double glaspen2_router_raw_width(double pressure) {
+  return glaspen2_pressure_raw_width(pressure, g_width_scale) * g_zoom;
+}
+int glaspen2_router_prox_is_eraser(void) {
+  return g_prox_dev == NSEraserPointingDevice ? 1 : 0;
+}
+int glaspen2_router_strokes_hidden(void) { return g_strokes_visible ? 0 : 1; }
