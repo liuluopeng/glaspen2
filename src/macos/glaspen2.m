@@ -279,9 +279,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
 // 虚拟笔合成事件的标记。这类事件投在 HID 事件口上, 一旦放行就会被系统当
 // 鼠标用(悬停移动光标、点击落到前台应用) —— 处理完必须一律吞掉。
 #define kVirtualPenUserData 0x56504E31LL
-static inline BOOL virtual_pen_is_event(CGEventRef event) {
-    return CGEventGetIntegerValueField(event, kCGEventSourceUserData) == kVirtualPenUserData;
-}
+// S6-3-3: 判定逻辑已迁 Swift(EventRouter.isVirtualPenEvent); 常量经薄桥暴露。
 static void draw_minimap(CGContextRef ctx, NSRect bounds);
 static void canvas_reset_lens(void);
 static void canvas_apply_transform(void);

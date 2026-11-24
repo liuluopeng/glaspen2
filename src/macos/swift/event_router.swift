@@ -27,6 +27,12 @@ import AppKit
         return ev.subtype == .tabletPoint || ev.subtype == .tabletProximity
     }
 
+    /// 虚拟笔(GLASPEN2_VIRTUAL_PEN)合成事件判定(S6-3-3 最小件)。
+    @objc(isVirtualPenEvent:)
+    public static func isVirtualPenEvent(_ event: CGEvent) -> Bool {
+        event.getIntegerValueField(.eventSourceUserData) == glaspen2_virtual_pen_user_data()
+    }
+
     private static func state() -> Int32 { glaspen2_router_state() }
 
     private static func routeScrollZoom(_ cgEvent: CGEvent) -> Int32 {

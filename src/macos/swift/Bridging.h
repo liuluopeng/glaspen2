@@ -69,6 +69,7 @@ NSUInteger glaspen2_router_camera_mods(void);
 int glaspen2_router_state(void);
 double glaspen2_router_draw_height(void);
 void glaspen2_router_zoom_at(double factor, double x, double y);
+int64_t glaspen2_virtual_pen_user_data(void);
 int glaspen2_router_cursor_flags(void);
 void glaspen2_router_cursor_invalidate(void);
 void glaspen2_router_cursor_hide(void);

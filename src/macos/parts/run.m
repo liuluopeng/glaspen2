@@ -2667,9 +2667,9 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
   // S6-3-0: Swift 路由骨架先行; 返回 0 表示仍走 ObjC 内层(行为不变)。
   int32_t route = [EventRouter routeEventOfType:type event:event];
   if (route == 2) return NULL;
-  if (route == 1) return virtual_pen_is_event(event) ? NULL : event;
+  if (route == 1) return [EventRouter isVirtualPenEvent:event] ? NULL : event;
   CGEventRef out = event_tap_callback_inner(proxy, type, event, refcon);
-  return virtual_pen_is_event(event) ? NULL : out;
+  return [EventRouter isVirtualPenEvent:event] ? NULL : out;
 }
 
 // Call this at app exit to dump stats
@@ -3410,3 +3410,7 @@ void glaspen2_router_cursor_hide(void) { g_cursor_visible = NO; }
 void glaspen2_router_auto_hide(void) { auto_hide_now(); }
 void glaspen2_router_bubble_pen_gone(void) { glaspen2_bubble_pen_gone(); }
 void glaspen2_router_flush(void) { flush_dirty_to_layer(); }
+
+int64_t glaspen2_virtual_pen_user_data(void) {
+  return (int64_t)kVirtualPenUserData;
+}
