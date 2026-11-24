@@ -624,14 +624,10 @@ static void show_notification(NSString *text) {
     [NotificationPresenter showText:text];
 }
 
-// Show "今天 第2页  第3/5页" for the given screen.
-// 文案与日期比较的唯一实现在 core::pageinfo(两端共用), 这里只负责显示。
+// 页信息 HUD: 已迁 Swift(NotificationPresenter.showPageInfoWithScreenId:);
+// 文案与日期比较单源仍在 core::pageinfo。
 static void show_page_info(long long screen_id) {
-    char *text = glaspen2_page_info_text(screen_id, gl_lang_code());
-    if (!text) return;
-    NSString *s = [NSString stringWithUTF8String:text];
-    glaspen2_free_c_string(text);
-    if (s.length) show_notification(s);
+    [NotificationPresenter showPageInfoWithScreenId:(int64_t)screen_id];
 }
 
 static void save_drawing_only(void) {

@@ -3046,3 +3046,6 @@ int glaspen2_router_prox_is_eraser(void) {
   return g_prox_dev == NSEraserPointingDevice ? 1 : 0;
 }
 int glaspen2_router_strokes_hidden(void) { return g_strokes_visible ? 0 : 1; }
+
+// 页信息 HUD: 语言代码薄桥(Swift 调 core::pageinfo)
+const char *glaspen2_router_lang_code(void) { return gl_lang_code(); }

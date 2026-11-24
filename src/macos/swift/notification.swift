@@ -28,6 +28,16 @@ import AppKit
         t.resume()
     }
 
+    /// 页信息 HUD: 文案与日期比较单源在 core::pageinfo, 这里只负责显示。
+    @objc(showPageInfoWithScreenId:)
+    public static func showPageInfo(screenId: Int64) {
+        let lang = glaspen2_router_lang_code()
+        guard let c = glaspen2_page_info_text(screenId, lang) else { return }
+        defer { glaspen2_free_c_string(c) }
+        let text = String(cString: c)
+        if !text.isEmpty { show(text: text) }
+    }
+
     /// S4-2: 通知文字绘制(36pt 等宽 + 阴影 + 视图内居中)。由 ObjC drawRect 调用,
     /// 使用当前图形上下文; 样式与原 ObjC 实现逐项一致。
     @objc(drawInBounds:)
