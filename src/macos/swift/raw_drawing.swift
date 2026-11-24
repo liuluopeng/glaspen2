@@ -8,7 +8,7 @@ import AppKit
         var owned: Int32 = 0
         guard let crRaw = glaspen2_router_acquire_cr(&owned) else { return }
         let cr = OpaquePointer(crRaw)
-        let planned = glaspen2_router_live_plan_dot(cr, x, y, width) != 0
+        let planned = glaspen2_router_live_plan_dot(UnsafeMutableRawPointer(cr), x, y, width) != 0
         if !planned {
             let eraser = glaspen2_router_eraser_mode() != 0
             cairo_set_operator(cr, cairo_operator_t(eraser ? 3 : 2))
@@ -54,7 +54,7 @@ import AppKit
         let hasPrev = PenState.rawHasPrev
         let lastX = PenState.rawLastX, lastY = PenState.rawLastY
         let lastW = PenState.rawLastW, pathLen = PenState.rawPathLen
-        let planned = glaspen2_router_live_plan_segment(cr, x, y, width) != 0
+        let planned = glaspen2_router_live_plan_segment(UnsafeMutableRawPointer(cr), x, y, width) != 0
         if !planned {
             let eraser = glaspen2_router_eraser_mode() != 0
             cairo_set_operator(cr, cairo_operator_t(eraser ? 3 : 2))

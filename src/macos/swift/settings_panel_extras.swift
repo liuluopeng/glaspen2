@@ -5,7 +5,7 @@ import AppKit
     /// 设置窗口透明开关(真穿透只改窗口属性; Flutter layer 由调用方处理)。
     @objc(applyPanelTransparent:)
     public static func applyPanelTransparent(on: Bool) {
-        guard let window = glaspen2_router_settings_window() as? NSWindow else {
+        guard let window = UIAnchors.settingsWindow else {
             return
         }
         SettingsGlue.runOnMainSync {

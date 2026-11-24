@@ -71,7 +71,7 @@ import AppKit
             }
             MenuHandler.setColor(index: Int32(prev))
             let name = MenuNames.colorDisplayName(index: prev)
-            glaspen2_router_show_notification(
+            NotificationPresenter.show(text:
                 I18nText.textf("hud.color_changed", ["color": name]))
             return true
         }
@@ -83,7 +83,7 @@ import AppKit
             }
             MenuHandler.setWidth(index: Int32(prev))
             let name = MenuNames.widthDisplayName(index: prev)
-            glaspen2_router_show_notification(
+            NotificationPresenter.show(text:
                 I18nText.textf("hud.width_changed", ["width": name]))
             return true
         }

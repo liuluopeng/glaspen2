@@ -21,7 +21,7 @@ import ApplicationServices
                 let text = MenuRuntime.pair(
                     "辅助功能权限已失效, 涂鸦/热键暂停 — 请到系统设置重新勾选",
                     "Accessibility permission lost — re-enable it in System Settings")
-                glaspen2_router_show_notification(text)
+                NotificationPresenter.show(text:text)
             }
             return
         }

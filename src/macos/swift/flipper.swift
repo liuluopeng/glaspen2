@@ -9,7 +9,7 @@ import AppKit
         if TunnelState.active {
             TunnelLifecycle.finish()
         }
-        guard let window = glaspen2_router_main_window() as? NSWindow else {
+        guard let window = UIAnchors.mainWindow else {
             prepare()
             commit()
             return

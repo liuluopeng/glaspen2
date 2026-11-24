@@ -93,7 +93,7 @@ import Darwin
         TunnelState.t0 = TunnelState.now()
         TunnelState.frames = 0
         TunnelFrameRenderer.render(p: 0.0)
-        if let view = glaspen2_router_draw_view() as? NSView {
+        if let view = UIAnchors.drawView {
             view.displayIfNeeded()
         }
         let timer = DispatchSource.makeTimerSource(queue: .main)
@@ -107,7 +107,7 @@ import Darwin
                 return
             }
             TunnelFrameRenderer.render(p: p)
-            if TunnelState.active, let view = glaspen2_router_draw_view() as? NSView {
+            if TunnelState.active, let view = UIAnchors.drawView {
                 view.displayIfNeeded()
             }
         }

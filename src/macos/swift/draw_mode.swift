@@ -5,7 +5,7 @@ import AppKit
     @objc public static func toggleEnabled() {
         let enabled = glaspen2_router_enabled() == 0
         glaspen2_router_set_enabled_state(enabled ? 1 : 0)
-        let window = glaspen2_router_main_window() as? NSWindow
+        let window = UIAnchors.mainWindow
         if !enabled {
             EventRouter.restoreSystemCursor()
             EventRouter.finishActiveStroke()

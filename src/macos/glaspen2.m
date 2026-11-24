@@ -286,7 +286,7 @@ double glaspen2_router_screen_h(void);
 int glaspen2_router_lang(void);
 void glaspen2_router_set_lang(int value);
 void glaspen2_router_set_screen_size(int w, int h);
-id glaspen2_router_draw_view(void);
+void *glaspen2_router_draw_view(void);
 id glaspen2_router_menu(void);
 id glaspen2_router_glass_view(void);
 id glaspen2_router_main_window(void);
@@ -467,7 +467,7 @@ static NSString *gl_text(NSString *key) {
 
 // S4: presenter redraw 桥(Swift 通知状态变化时调用)
 void glaspen2_notification_redraw(void) {
-    [(NSView *)glaspen2_router_draw_view() setNeedsDisplay:YES];
+    [(__bridge NSView *)glaspen2_router_draw_view() setNeedsDisplay:YES];
 }
 
 static void show_notification(NSString *text) {
@@ -498,4 +498,3 @@ static void replay_strokes_from_memory(void) { [SurfaceReplay replay]; }
 
 // ── 文件拆分: #include 文本包含(同一编译单元, clang 报错行号直指子文件);
 //    拆分为纯移动, 行为零变化。构建仍只编译 glaspen2.m 这一个入口。──
-#include "parts/run.m"

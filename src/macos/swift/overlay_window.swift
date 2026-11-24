@@ -55,7 +55,7 @@ import AppKit
     /// 截图目标屏: 取覆盖层窗口所在屏, 退回主屏(多屏时勿用 displays.first)。
     @objc(windowDisplayId)
     public static func windowDisplayID() -> UInt32 {
-        let window = glaspen2_router_main_window() as? NSWindow
+        let window = UIAnchors.mainWindow
         let screen = window?.screen ?? NSScreen.main
         let key = NSDeviceDescriptionKey("NSScreenNumber")
         if let n = screen?.deviceDescription[key] as? NSNumber {
@@ -101,12 +101,12 @@ import AppKit
         glaspen2_smooth_loaded_strokes()
         PageViewOps.update()
         let frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height))
-        if let window = glaspen2_router_main_window() as? NSWindow {
+        if let window = UIAnchors.mainWindow {
             window.setFrame(frame, display: true)
             window.contentView?.frame = frame
         }
         (UIAnchors.glassView as? NSView)?.frame = frame
-        if let drawView = glaspen2_router_draw_view() as? NSView {
+        if let drawView = UIAnchors.drawView {
             drawView.frame = frame
             MenuRuntime.ensureSurface()
             glaspen2_router_rebuild_surface()

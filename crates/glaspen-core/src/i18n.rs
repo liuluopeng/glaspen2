@@ -942,7 +942,7 @@ mod tests {
         /// 闸门豁免: 只放过"非用户文案"的内部字符串, 必须写清原因。
         const ALLOWLIST: &[(&str, &str, &str)] = &[
             (
-                "src/macos/parts/run.m",
+                "src/macos/swift/run_glue.swift",
                 "Undo",
                 "action_effect 的 wire kind 名(内部协议, 不是用户文案)",
             ),

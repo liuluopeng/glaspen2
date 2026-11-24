@@ -1730,7 +1730,11 @@ mod tests {
         let mac_main = include_str!("../../../src/macos/glaspen2.m");
         let mac_effects_swift =
             include_str!("../../../src/macos/swift/recording_effects.swift");
-        let mac_run = include_str!("../../../src/macos/parts/run.m");
+        let mac_run = concat!(
+            include_str!("../../../src/macos/swift/run_glue.swift"),
+            include_str!("../../../src/macos/swift/recording_effects.swift")
+            , include_str!("../../../src/macos/swift/recording_keys.swift")
+        );
         let mac_run_effects = format!("{mac_run}\n{mac_effects_swift}");
         let mac_menu = concat!(
             include_str!("../../../src/macos/swift/menu_runtime.swift"),
@@ -1841,10 +1845,10 @@ mod tests {
             &[
                 "glaspen2_recording_event_json(",
                 "glaspen2_recording_mode(",
-                "gl_recording_init(",
-                "rec_finish_and_count(",
+                "runRecInit(",
+                "runRecFinishAndCount(",
                 "execEffect(",
-                "gl_recording_chat_integration_changed(",
+                "runRecChatChanged(",
             ],
         ));
         // macOS effects/HUD 分派必须覆盖 core 的每个 kind/hud 名字(D3b 同款:

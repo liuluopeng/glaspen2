@@ -38,7 +38,7 @@ import ApplicationServices
             statusItem?.button?.title = ""
         }
         guard let statusItem else { return false }
-        glaspen2_router_set_status_item(statusItem)
+        UIAnchors.statusItem = statusItem
 
         let handler = AppDelegate()
         AppDelegate.shared = handler
@@ -47,7 +47,7 @@ import ApplicationServices
         let menu = MainMenuBuilder.build(handler: handler, statusItem: statusItem,
                                          launchAtLoginOn: glaspen2_is_launch_at_login() != 0,
                                          glassOn: glaspen2_router_glass_enabled() != 0)
-        glaspen2_router_set_menu(menu)
+        UIAnchors.menu = menu
 
         let frame = NSScreen.main?.frame ?? .zero
         glaspen2_router_set_screen_size(Int32(frame.size.width), Int32(frame.size.height))

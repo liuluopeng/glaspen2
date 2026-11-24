@@ -632,7 +632,10 @@ mod tests {
         }
 
         let mac_main = include_str!("../../../src/macos/glaspen2.m");
-        let mac_run = include_str!("../../../src/macos/parts/run.m");
+        let mac_run = concat!(
+            include_str!("../../../src/macos/swift/run_glue.swift"),
+            include_str!("../../../src/macos/swift/minimap.swift")
+        );
 let mac_minimap_swift = include_str!("../../../src/macos/swift/minimap.swift");
 let mac_run_minimap = format!("{mac_run}\n{mac_minimap_swift}");
         let win_actions = include_str!("../../../crates/glaspen-windows/src/overlay/actions.rs");

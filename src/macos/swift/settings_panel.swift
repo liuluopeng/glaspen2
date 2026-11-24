@@ -3,14 +3,14 @@ import AppKit
 
 @objc public final class SettingsPanel: NSObject {
     @objc public static func show() {
-        if glaspen2_router_settings_window() != nil {
+        if UIAnchors.settingsWindow != nil {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
-            (glaspen2_router_settings_window() as? NSWindow)?.makeKeyAndOrderFront(nil)
+            UIAnchors.settingsWindow?.makeKeyAndOrderFront(nil)
             return
         }
-        _ = glaspen2_router_settings_engine()
-        guard let vc = glaspen2_router_settings_vc() as? NSViewController else { return }
+        _ = FlutterHost.ensureEngine()
+        let vc = FlutterHost.ensureViewController()
         let frame = NSRect(x: 0, y: 0, width: 900, height: 1200)
         let window = NSWindow(contentRect: frame,
                               styleMask: [.titled, .closable, .resizable],
@@ -27,7 +27,7 @@ import AppKit
         NSApp.activate(ignoringOtherApps: true)
         window.center()
         window.makeKeyAndOrderFront(nil)
-        glaspen2_router_set_settings_window(window)
+        UIAnchors.settingsWindow = window
         if "panel_transparent".withCString({ glaspen2_load_bool_setting($0) }) != 0 {
             glaspen2_router_settings_apply_transparent()
         }

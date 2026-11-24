@@ -6,7 +6,7 @@ import AppKit
     @objc public static func clearScreen() {
         if glaspen2_router_infinite() != 0 {
             if let text = Optional(MenuRuntime.l10n("canvas.infinite_kept")) {
-                glaspen2_router_show_notification(text)
+                NotificationPresenter.show(text:text)
             }
             return
         }
@@ -23,7 +23,7 @@ import AppKit
         if created != 0 {
             NotificationPresenter.showPageInfo(screenId: Int64(glaspen2_get_current_screen_id()))
         } else if let text = Optional(MenuRuntime.l10n("canvas.blank_guard")) {
-            glaspen2_router_show_notification(text)
+            NotificationPresenter.show(text:text)
         }
     }
 
@@ -37,7 +37,7 @@ import AppKit
         let data = cairo_image_surface_get_data(surface)
         glaspen2_save_drawing(data, w, h, stride)
         if let text = Optional(MenuRuntime.l10n("export.screenshot_saved")) {
-            glaspen2_router_show_notification(text)
+            NotificationPresenter.show(text:text)
         }
     }
 

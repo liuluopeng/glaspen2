@@ -27,16 +27,16 @@ import AppKit
     @objc public static func bubbleAutoPageFlip() -> Bool {
         let page = glaspen2_bubble_auto_page_if_due()
         if page <= 0 { return false }
-        glaspen2_router_page_flip(1, {
+        Flipper.swap(goingNext: true, prepare: {
             glaspen2_load_strokes_for_screen(page)
             glaspen2_smooth_loaded_strokes()
             PageViewOps.update()
-        }, {
+        }, commit: {
             glaspen2_router_replay_strokes()
         })
         NotificationPresenter.showPageInfo(screenId: Int64(page))
         if let text = Optional(MenuRuntime.l10n("page.auto_created")) {
-            glaspen2_router_show_notification(text)
+            NotificationPresenter.show(text:text)
         }
         return true
     }

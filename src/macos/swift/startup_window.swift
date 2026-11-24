@@ -15,9 +15,9 @@ import AppKit
         let drawView = GlaspenDrawView(frame: frame)
         OverlayWindowFactory.assembleContent(content, glass: glass,
                                              drawView: drawView, in: window)
-        glaspen2_router_set_startup_window(window)
-        glaspen2_router_set_draw_view(drawView)
-        glaspen2_router_set_glass_view(glass)
+        UIAnchors.mainWindow = window
+        UIAnchors.drawView = drawView
+        UIAnchors.glassView = glass
         CursorState.blankCursor = blank
         CursorState.arrowCursor = arrow
         MenuRuntime.ensureSurface()

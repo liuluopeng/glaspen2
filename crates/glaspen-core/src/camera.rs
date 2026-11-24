@@ -617,7 +617,7 @@ mod tests {
                 .collect()
         }
 
-        let mac_run = include_str!("../../../src/macos/parts/run.m");
+        let mac_run = include_str!("../../../src/macos/swift/run_glue.swift");
 let mac_cam_swift = include_str!("../../../src/macos/swift/canvas_camera.swift");
 let mac_cam_store_swift =
     include_str!("../../../src/macos/swift/camera_state_store.swift");

@@ -167,7 +167,7 @@ import AppKit
         case .otherMouseDragged: name = "O_DRAG"
         default: name = tipDown ? "DOWN" : "MOVE"
         }
-        glaspen2_router_pm_update(1, Int32(pmPressure), x, y, tipDown ? 1 : 0, name)
+        name.withCString { sw_pm_update(1, Int32(pmPressure), x, y, tipDown ? 1 : 0, $0) }
     }
 
     /// S6-3-3d: 笔事件分派(落笔/拖动/抬笔); 返回 2 = 消费事件。
@@ -327,7 +327,7 @@ import AppKit
         let repeatable = action.hasPrefix("canvas_pan_")
             || action == "canvas_zoom_in" || action == "canvas_zoom_out"
         let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-        if !isRepeat || repeatable { glaspen2_router_perform_action(action) }
+        if !isRepeat || repeatable { ActionDispatch.perform(action: action) }
         return 2
     }
 

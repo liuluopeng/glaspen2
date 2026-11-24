@@ -35,7 +35,7 @@ import Darwin
             free(drawingCopy)
             DispatchQueue.main.async {
                 if !message.isEmpty {
-                    glaspen2_router_show_notification(MenuRuntime.pair(message, message))
+                    NotificationPresenter.show(text:MenuRuntime.pair(message, message))
                 }
                 SurfaceOps.saveDrawingOnly()
             }
@@ -99,7 +99,7 @@ import Darwin
         guard let handle = dlopen(nil, RTLD_LAZY),
               let sym = dlsym(handle, "CGWindowListCreateImage") else { return nil }
         let fn = unsafeBitCast(sym, to: CaptureFn.self)
-        guard let window = glaspen2_router_main_window() as? NSWindow else { return nil }
+        guard let window = UIAnchors.mainWindow else { return nil }
         return fn(.null, .optionOnScreenBelowWindow,
                   CGWindowID(window.windowNumber), CGWindowImageOption(rawValue: 0))?.takeRetainedValue()
     }
@@ -160,7 +160,7 @@ import Darwin
         free(drawingCopy)
         if let message = Optional(MenuRuntime.l10n("export.screenshot_with_bg_saved")) {
             DispatchQueue.main.async {
-                glaspen2_router_show_notification(message)
+                NotificationPresenter.show(text:message)
             }
         }
     }

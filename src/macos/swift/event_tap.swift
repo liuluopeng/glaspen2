@@ -20,9 +20,11 @@ import CoreGraphics
     @objc(installWithScroll:)
     public static func install(includeScroll: Bool) {
         let mask = eventMask(includeScroll: includeScroll)
-        guard let callback = glaspen2_event_tap_callback_ptr() else {
-            glaspen2_event_tap_store(nil)
-            return
+        let callback: CGEventTapCallBack = { _, type, event, _ in
+            let route = EventRouter.route(type: type, event: event)
+            if route == 2 { return nil }
+            if EventRouter.isVirtualPenEvent(event) { return nil }
+            return Unmanaged.passUnretained(event)
         }
         guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap,
                                           place: .headInsertEventTap,

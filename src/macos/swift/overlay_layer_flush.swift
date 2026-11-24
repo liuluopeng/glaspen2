@@ -4,14 +4,14 @@ import AppKit
 @objc public final class OverlayLayerFlush: NSObject {
     @objc public static func flush() {
         guard SurfaceStore.current != nil,
-              let view = glaspen2_router_draw_view() as? NSView else { return }
+              let view = UIAnchors.drawView else { return }
         glaspen2_router_dirty_reset()
         view.needsDisplay = true
     }
 
     @objc public static func flushDirty() {
         guard SurfaceStore.current != nil,
-              let view = glaspen2_router_draw_view() as? NSView else { return }
+              let view = UIAnchors.drawView else { return }
         if glaspen2_router_dirty_has() == 0 {
             view.needsDisplay = true
             return

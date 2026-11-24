@@ -26,11 +26,11 @@ import AppKit
             EventRouter.finishActiveStroke()
             let target = glaspen2_prev_screen_id()
             if target > 0 {
-                glaspen2_router_page_flip(0, {
+                Flipper.swap(goingNext: false, prepare: {
                     glaspen2_load_strokes_for_screen(target)
                     glaspen2_smooth_loaded_strokes()
                     PageViewOps.update()
-                }, { glaspen2_router_replay_strokes() })
+                }, commit: { glaspen2_router_replay_strokes() })
                 EtherealMode.peek(seconds: 1.0)
                 NotificationPresenter.showPageInfo(screenId: Int64(target))
             } else {
@@ -45,11 +45,11 @@ import AppKit
             EventRouter.finishActiveStroke()
             let target = glaspen2_next_screen_id()
             if target > 0 {
-                glaspen2_router_page_flip(1, {
+                Flipper.swap(goingNext: true, prepare: {
                     glaspen2_load_strokes_for_screen(target)
                     glaspen2_smooth_loaded_strokes()
                     PageViewOps.update()
-                }, { glaspen2_router_replay_strokes() })
+                }, commit: { glaspen2_router_replay_strokes() })
                 EtherealMode.peek(seconds: 1.0)
                 NotificationPresenter.showPageInfo(screenId: Int64(target))
                 return true
@@ -64,11 +64,11 @@ import AppKit
             let before = glaspen2_get_current_screen_id()
             let pageId = glaspen2_create_next_page(before)
             if pageId > 0 && pageId != before {
-                glaspen2_router_page_flip_from(1, before, {
+                Flipper.swapFrom(goingNext: true, fromPage: Int64(before), prepare: {
                     glaspen2_load_strokes_for_screen(pageId)
                     glaspen2_smooth_loaded_strokes()
                     PageViewOps.update()
-                }, { glaspen2_router_replay_strokes() })
+                }, commit: { glaspen2_router_replay_strokes() })
                 EtherealMode.peek(seconds: 1.0)
                 NotificationPresenter.showPageInfo(screenId: Int64(pageId))
                 notify("page.created")
@@ -140,7 +140,7 @@ import AppKit
 
     private static func notify(_ key: String) {
         if let text = Optional(MenuRuntime.l10n(key)) {
-            glaspen2_router_show_notification(text)
+            NotificationPresenter.show(text:text)
         }
     }
 

@@ -74,7 +74,7 @@ import Darwin
     }
 
     private static func flush() {
-        if let view = glaspen2_router_draw_view() as? NSView {
+        if let view = UIAnchors.drawView {
             view.needsDisplay = true
         }
     }
