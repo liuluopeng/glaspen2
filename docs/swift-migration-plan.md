@@ -329,3 +329,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S4/S7(续跑第13轮) | 页信息 HUD 迁 Swift: NotificationPresenter.showPageInfoWithScreenId(直接调 core::pageinfo FFI + 释放 C 字符串 + 显示), ObjC show_page_info 变一行转发; 新增 lang_code 薄桥与 FFI 声明 | cargo build/tests/parity 全绿;页信息文案需真机验证 | 本提交 |
 | 2026-11-24 | S8 台账同步(续跑第14轮) | 状态总览更新: S6 事件 tap 全链路标记完成(event_tap_callback_inner 已删、ObjC 回调变薄壳, perf 打点缺口已记), S7 标为进行中(死代码/死桥已清, 主体未删), Swift 文件清单补全 | 无代码变更;构建/测试保持全绿 | 本提交 |
 | 2026-11-24 | S7e(续跑第15轮) | finish_active_stroke 迁 Swift: EventRouter.finishActiveStroke(橡皮 finish / 正常 end+commit、stroke_end、pending 颜色粗细、raw 状态复位; 不动光标/不刷新, 与 penUp 区分), ObjC 函数变一行转发; 新增 3 个薄桥 | cargo build/tests/parity 全绿;退出/切页时收尾需真机验证 | 本提交 |
+| 2026-11-24 | S5/S7(续跑第16轮) | 截图目标屏判定迁 Swift: OverlayWindowFactory.windowDisplayId(取覆盖层窗口所在屏, 退回主屏, 多屏正确), ObjC window_display_id 变一行转发; 新增 main_window 薄桥 | cargo build/tests/parity 全绿;多屏截图需真机验证 | 本提交 |

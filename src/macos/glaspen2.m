@@ -645,9 +645,8 @@ static void save_drawing_only(void) {
 /// 截图曾经永远取 `content.displays.firstObject` —— 多屏时会把副屏的
 /// 桌面合成进主屏的笔迹里。
 static CGDirectDisplayID window_display_id(void) {
-    NSScreen *screen = g_window.screen ?: [NSScreen mainScreen];
-    NSNumber *n = screen.deviceDescription[@"NSScreenNumber"];
-    return n ? (CGDirectDisplayID)n.unsignedIntValue : CGMainDisplayID();
+    // S7: 已迁 Swift(OverlayWindowFactory.windowDisplayId)。
+    return [OverlayWindowFactory windowDisplayId];
 }
 
 /// macOS 12/13 的桌面截图回退。

@@ -3058,3 +3058,6 @@ void glaspen2_router_clear_raw_state(void) {
   g_raw_has_prev = NO;
   g_raw_path_len = 0;
 }
+
+// S7: 覆盖层窗口引用薄桥(供 Swift 取截图目标屏)
+id glaspen2_router_main_window(void) { return g_window; }

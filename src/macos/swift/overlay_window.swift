@@ -52,6 +52,18 @@ import AppKit
         layer.backgroundColor = NSColor.clear.cgColor
     }
 
+    /// 截图目标屏: 取覆盖层窗口所在屏, 退回主屏(多屏时勿用 displays.first)。
+    @objc(windowDisplayId)
+    public static func windowDisplayID() -> UInt32 {
+        let window = glaspen2_router_main_window() as? NSWindow
+        let screen = window?.screen ?? NSScreen.main
+        let key = NSDeviceDescriptionKey("NSScreenNumber")
+        if let n = screen?.deviceDescription[key] as? NSNumber {
+            return n.uint32Value
+        }
+        return CGMainDisplayID()
+    }
+
     /// S5-4: 内容容器视图(layer-backed), 由 ObjC 继续往里加玻璃/绘制视图。
     @objc(makeContentViewWithFrame:)
     public static func makeContentView(frame: NSRect) -> NSView {
