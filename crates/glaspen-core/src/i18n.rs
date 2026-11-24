@@ -989,6 +989,14 @@ mod tests {
             "m",
             &mut mac_files,
         );
+        // S3 起 macOS adapter 含 Swift 源; 文案闸门必须同时扫描 .swift,
+        // 否则 key 表迁到 Swift 后会被误判为"macOS 未引用"。
+        collect_sources(
+            &workspace,
+            &workspace.join("src/macos"),
+            "swift",
+            &mut mac_files,
+        );
         let mut win_files: Vec<(String, String)> = Vec::new();
         collect_sources(
             &workspace,

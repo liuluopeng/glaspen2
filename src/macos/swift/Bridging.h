@@ -24,6 +24,9 @@ extern "C" {
 // 验证 Swift→ObjC 方向。
 int glaspen2_macos_objc_probe(const char *tag);
 
+// S3b-2b-4b: 菜单文案桥(实现留在 menu.m, 内部调 gl_text; Swift 只按 key 取名)
+NSString *glaspen2_menu_l10n(NSString *key);
+
 // S2 探针入口(ObjC 实现, 供 glaspen2_run / Rust --swift-probe 调用):
 // 内部经生成的 glaspen2_macos_swift-Swift.h 调 [SwiftInteropProbe ping],
 // 验证 ObjC→Swift 方向。普通迁移代码不需要这类"Swift 反向入口"。

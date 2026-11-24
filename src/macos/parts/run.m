@@ -1874,7 +1874,7 @@ static BOOL perform_action(NSString *action) {
     }
     gl_settings_set_color(prev);
     show_notification(gl_textf(@"hud.color_changed",
-                               @{@"color" : gl_color_display_name(prev)}));
+                               @{@"color" : [MenuNames colorDisplayNameWithIndex:prev]}));
     return YES;
   }
   if ([kind isEqualToString:@"WidthSwap"]) {
@@ -1884,7 +1884,7 @@ static BOOL perform_action(NSString *action) {
     }
     gl_settings_set_width(prev);
     show_notification(gl_textf(@"hud.width_changed",
-                               @{@"width" : gl_width_display_name(prev)}));
+                               @{@"width" : [MenuNames widthDisplayNameWithIndex:prev]}));
     return YES;
   }
   NSLog(@"[action] %@ 的 effect kind %@ 未在 macOS 适配器实现", action, kind);

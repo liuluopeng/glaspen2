@@ -70,24 +70,10 @@ static void update_menu_texts(void) {
 // 内嵌附件图(attributedTitle + NSTextAttachment)任何系统版本都画。
 // 颜色 = 圆点色块(一眼可见);粗细 = 横线粗细(粗细预设的直观映射)。
 
-// 颜色/粗细显示名(D10b): 文案单源在 core::i18n(COLOR_NAMES/WIDTH_NAMES 同序),
-// 这里只保留稳定 key 表; 中/英由 gl_text 现读 g_lang 决定(语言切换即时生效)。
-static NSString *gl_color_display_name(NSInteger idx) {
-    static const char *keys[] = {
-        "color.red", "color.orange", "color.yellow", "color.green", "color.cyan",
-        "color.blue", "color.purple", "color.pink", "color.white", "color.black",
-    };
-    if (idx < 0 || idx >= g_color_preset_count) return @"";
-    return gl_text([NSString stringWithUTF8String:keys[idx]]);
-}
-
-static NSString *gl_width_display_name(NSInteger idx) {
-    static const char *keys[] = {
-        "width.hair", "width.very_fine", "width.fine", "width.medium",
-        "width.thick", "width.very_thick", "width.extra_thick", "width.boldest",
-    };
-    if (idx < 0 || idx >= g_width_preset_count) return @"";
-    return gl_text([NSString stringWithUTF8String:keys[idx]]);
+// 颜色/粗细显示名已迁 Swift(MenuNames); 文案仍由 ObjC gl_text/core i18n 决定。
+// S3b-2b-4b: Swift 经 Bridging.h 的 C 桥按稳定 key 取名。
+NSString *glaspen2_menu_l10n(NSString *key) {
+    return gl_text(key);
 }
 
 static NSAttributedString* gl_color_item_text(NSInteger idx) {
@@ -96,12 +82,12 @@ static NSAttributedString* gl_color_item_text(NSInteger idx) {
                                   blue:g_color_presets[idx].b
                                  alpha:1.0];
     return [MenuIconFactory menuTextWithIcon:[MenuIconFactory colorDotWithColor:c]
-                                      name:gl_color_display_name(idx)];
+                                      name:[MenuNames colorDisplayNameWithIndex:idx]];
 }
 
 static NSAttributedString* gl_width_item_text(NSInteger idx) {
     return [MenuIconFactory menuTextWithIcon:[MenuIconFactory widthLineWithScale:g_width_presets[idx]]
-                                      name:gl_width_display_name(idx)];
+                                      name:[MenuNames widthDisplayNameWithIndex:idx]];
 }
 
 // ── 菜单栏图标: 一支斜放的马克笔, 把当前关键状态画进 18pt 里 ──
