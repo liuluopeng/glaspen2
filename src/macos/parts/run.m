@@ -3049,3 +3049,12 @@ int glaspen2_router_strokes_hidden(void) { return g_strokes_visible ? 0 : 1; }
 
 // 页信息 HUD: 语言代码薄桥(Swift 调 core::pageinfo)
 const char *glaspen2_router_lang_code(void) { return gl_lang_code(); }
+
+// S7: finish_active_stroke 迁 Swift 所需薄桥
+double glaspen2_router_last_raw_x(void) { return g_raw_last_x; }
+double glaspen2_router_last_raw_y(void) { return g_raw_last_y; }
+void glaspen2_router_clear_raw_state(void) {
+  g_raw_has_last = NO;
+  g_raw_has_prev = NO;
+  g_raw_path_len = 0;
+}

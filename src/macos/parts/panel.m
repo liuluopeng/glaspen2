@@ -163,22 +163,8 @@ static void stroke_end(void) {
 /// Properly finish an in-flight stroke (used by hotkeys / re-entrant pen-down
 /// so an interrupted stroke is committed or erased instead of silently lost).
 static void finish_active_stroke(void) {
-    if (!g_stroke_active) return;
-    double ts = [[NSProcessInfo processInfo] systemUptime];
-    if (g_eraser_mode) {
-        glaspen2_modeler_erase_finish();
-        g_eraser_mode = NO;
-        update_status_icon_state(); // 橡皮块换回笔尖
-    } else {
-        glaspen2_modeler_end(canvas_input_x(g_raw_last_x), canvas_input_y(g_raw_last_y), 0.0, ts, g_width_scale);
-        glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
-    }
-    stroke_end();
-    g_stroke_active = NO;
-    gl_settings_apply_pending_color_width();
-    g_raw_has_last = NO;
-    g_raw_has_prev = NO;
-    g_raw_path_len = 0;
+    // S7: 逻辑已迁 Swift EventRouter.finishActiveStroke。
+    [EventRouter finishActiveStroke];
 }
 
 // ── 反色突出: 前置声明(状态与实现都在下方"反色突出"区) ──

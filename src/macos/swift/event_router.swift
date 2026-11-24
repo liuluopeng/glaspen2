@@ -110,6 +110,25 @@ import AppKit
         }
     }
 
+    /// 收尾在写笔画(退出/切页/丢 pen-up 时共用), 与 penUp 的区别是不动光标/不刷新。
+    @objc(finishActiveStroke)
+    public static func finishActiveStroke() {
+        guard glaspen2_router_stroke_active() != 0 else { return }
+        let ts = ProcessInfo.processInfo.systemUptime
+        if glaspen2_router_eraser_mode() != 0 {
+            glaspen2_router_modeler_erase_finish()
+            updateEraserState(isEraser: false)
+        } else {
+            glaspen2_router_modeler_end(glaspen2_router_last_raw_x(),
+                                        glaspen2_router_last_raw_y(), 0.0, ts)
+            glaspen2_router_commit_to_strokes()
+        }
+        glaspen2_router_stroke_end()
+        glaspen2_router_set_stroke_active(0)
+        glaspen2_router_apply_pending_color_width()
+        glaspen2_router_clear_raw_state()
+    }
+
     /// S6-3-4: 键盘事件: 录制热键 → 普通 chord; 返回 1 放行 / 2 消费。
     private static func routeKeyboardEvent(type: CGEventType, event: CGEvent) -> Int32 {
         if glaspen2_router_hotkey_recording() != 0 { return 1 }
