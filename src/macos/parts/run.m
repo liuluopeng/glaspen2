@@ -150,30 +150,7 @@ static inline double tunnel_now(void) {
   return [NSDate timeIntervalSinceReferenceDate];
 }
 
-static void tunnel_free_cards(void) {
-  for (int i = 0; i < TUNNEL_MAX_CARDS; i++) {
-    if (s_tun_card[i]) {
-      cairo_surface_destroy(s_tun_card[i]);
-      s_tun_card[i] = NULL;
-    }
-    if (s_tun_card_mip[i]) {
-      cairo_surface_destroy(s_tun_card_mip[i]);
-      s_tun_card_mip[i] = NULL;
-    }
-    s_tun_depth[i] = 0;
-  }
-  if (s_tun_blur) {
-    cairo_surface_destroy(s_tun_blur);
-    s_tun_blur = NULL;
-  }
-  // 先放掉引用表面数据的 CGImage 缓存, 再销毁表面(Swift 持有缓存)。
-  [OverlayTunnelRenderer clear];
-  if (s_tun_surface) {
-    cairo_surface_destroy(s_tun_surface);
-    s_tun_surface = NULL;
-  }
-  s_tun_cards = 0;
-}
+static void tunnel_free_cards(void) { [TunnelLifecycle freeCards]; }
 
 // 卡片在画面里的位置与缩放。返回 NO = 飞出画面外。
 // zc = 页距 − 相机位置(负 = 已越过镜头, 正 = 在隧道里)。
@@ -230,32 +207,7 @@ static void tunnel_frame(double p) {
   [TunnelFrameRenderer renderWithP:p state:glaspen2_router_tunnel_state()];
 }
 
-static void tunnel_finish(void) {
-  if (s_tun_timer) {
-    dispatch_source_cancel(s_tun_timer);
-    s_tun_timer = NULL;
-  }
-  tunnel_frame(1.0); // 最后一帧: 目标页满屏, 与真实页一模一样
-  if (getenv("GLASPEN2_FLIP_FPS")) {
-    double secs = tunnel_now() - s_tun_t0;
-    NSLog(@"[flip] 实测 %.1f fps (%llu 帧 / %.3fs)",
-          secs > 0.001 ? (double)s_tun_frames / secs : 0.0,
-          (unsigned long long)s_tun_frames, secs);
-  }
-  tunnel_free_cards();
-  s_tun_active = NO;
-  // 动效结束:回到普通工作态 —— 表面重绘真实页 + 磨砂玻璃恢复自身开关
-  // (透明玻璃或用户设定的磨砂), 由 commit 的 replay 重画表面。
-  [MenuHandler applyGlass];
-  if (s_tun_prepare) {
-    s_tun_prepare();
-    s_tun_prepare = NULL;
-  } // 可为 NULL
-  if (s_tun_commit) {
-    s_tun_commit();
-    s_tun_commit = NULL;
-  }
-}
+static void tunnel_finish(void) { [TunnelLifecycle finish]; }
 
 // 造一张卡片:某页的快照渲染到独立缓冲(与画布一致的 scale-to-fit 变换);
 // 当前页直接拷贝玻璃表面, 保证第 0 帧无跳变。cache_slot = 预热缓存里的序号。
@@ -1614,3 +1566,28 @@ NSDictionary *glaspen2_router_tunnel_state(void) {
   d[@"paneA"] = @(s_tun_pane_a);
   return d;
 }
+
+// S7cv: 隧道生命周期桥
+void *glaspen2_router_tunnel_take_card(int idx) {
+  if (idx < 0 || idx >= TUNNEL_MAX_CARDS) return NULL;
+  void *p = s_tun_card[idx]; s_tun_card[idx] = NULL; return p;
+}
+void *glaspen2_router_tunnel_take_mip(int idx) {
+  if (idx < 0 || idx >= TUNNEL_MAX_CARDS) return NULL;
+  void *p = s_tun_card_mip[idx]; s_tun_card_mip[idx] = NULL; return p;
+}
+void *glaspen2_router_tunnel_take_blur(void) { void *p = s_tun_blur; s_tun_blur = NULL; return p; }
+void *glaspen2_router_tunnel_take_surface(void) { void *p = s_tun_surface; s_tun_surface = NULL; return p; }
+void glaspen2_router_tunnel_set_cards(int count) { s_tun_cards = count; }
+void glaspen2_router_tunnel_cancel_timer(void) {
+  if (s_tun_timer) { dispatch_source_cancel(s_tun_timer); s_tun_timer = NULL; }
+}
+void glaspen2_router_tunnel_render_final(void) { tunnel_frame(1.0); }
+void glaspen2_router_tunnel_set_active(int active) { s_tun_active = active != 0; }
+void glaspen2_router_tunnel_run_callbacks(void) {
+  if (s_tun_prepare) { s_tun_prepare(); s_tun_prepare = NULL; }
+  if (s_tun_commit) { s_tun_commit(); s_tun_commit = NULL; }
+}
+double glaspen2_router_tunnel_now(void) { return tunnel_now(); }
+double glaspen2_router_tunnel_t0(void) { return s_tun_t0; }
+uint64_t glaspen2_router_tunnel_frames(void) { return s_tun_frames; }
