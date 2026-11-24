@@ -11,6 +11,9 @@
 #import <Foundation/Foundation.h>
 #include <stdlib.h>
 
+#import <ScreenCaptureKit/ScreenCaptureKit.h>
+#import <CoreMedia/CoreMedia.h>
+#import <CoreVideo/CoreVideo.h>
 #import "Bridging.h"
 // build.rs 传 -I $OUT_DIR;头由 swiftc -emit-objc-header-path 生成。
 #import "glaspen2_macos_swift-Swift.h"
