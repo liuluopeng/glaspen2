@@ -17,52 +17,53 @@ static int g_pending_width_index = -1;
 static NSAttributedString* gl_color_item_text(NSInteger idx);
 static NSAttributedString* gl_width_item_text(NSInteger idx);
 static void update_menu_texts(void) {
-    // 颜色/粗细条目:重建富文本(内嵌图标 + 名称;setTitle 会清掉它)
+    // S3b-2b-5: 索引/子菜单/状态刷新在 Swift(MenuUpdater); 文案仍由这里的
+    // L()/gl_text/gl_color_item_text 预先算好传入(菜单专属文案不进 core i18n)。
+    NSMutableArray<NSAttributedString *> *colorTitles = [NSMutableArray array];
     for (int i = 0; i < g_color_preset_count; i++) {
-        [[g_menu itemAtIndex:i] setAttributedTitle:gl_color_item_text(i)];
+        [colorTitles addObject:gl_color_item_text(i)];
     }
-    int wBase = g_color_preset_count + 1;
+    NSMutableArray<NSAttributedString *> *widthTitles = [NSMutableArray array];
     for (int i = 0; i < g_width_preset_count; i++) {
-        [[g_menu itemAtIndex:wBase + i] setAttributedTitle:gl_width_item_text(i)];
+        [widthTitles addObject:gl_width_item_text(i)];
     }
-    // 顶层布局(颜色/粗细之后): 保存×2 / 新建画布 / 导出▸ / sep /
-    // 涂鸦开关 / 设置 / 更多▸ / sep / 语言 / 退出。
-    int base = g_color_preset_count + 1 + g_width_preset_count + 1;
-    [[g_menu itemAtIndex:base + 0] setTitle:L(@"保存(含背景)", @"Save (with bg)")];
-    [[g_menu itemAtIndex:base + 1] setTitle:L(@"保存(涂鸦)", @"Save (drawing)")];
-    [[g_menu itemAtIndex:base + 2] setTitle:L(@"新建画布", @"New canvas")];
-    [[g_menu itemAtIndex:base + 3] setTitle:L(@"导出", @"Export")];
-    [[g_menu itemAtIndex:base + 6] setTitle:L(@"设置...", @"Settings...")];
-    [[g_menu itemAtIndex:base + 7] setTitle:L(@"更多", @"More")];
-    [[g_menu itemAtIndex:base + 9] setTitle:L(@"English", @"中文")];
-    [[g_menu itemAtIndex:base + 10] setTitle:L(@"退出", @"Quit")];
-    // 子菜单条目也要跟着语言走(索引与 run.m 的构建顺序一致)
-    NSMenu *exportMenu = [[g_menu itemAtIndex:base + 3] submenu];
-    if (exportMenu) {
-        [[exportMenu itemAtIndex:0] setTitle:L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)")];
-        [[exportMenu itemAtIndex:1] setTitle:L(@"导出无限画布 PDF (分页)", @"Export infinite canvas PDF (paged)")];
-        [[exportMenu itemAtIndex:2] setTitle:L(@"导出无限画布 SVG (整幅)", @"Export infinite canvas SVG (whole)")];
-    }
-    NSMenu *moreMenu = [[g_menu itemAtIndex:base + 7] submenu];
-    if (moreMenu) {
-        [[moreMenu itemAtIndex:0] setTitle:L(@"开机自启", @"Launch at login")];
-        [[moreMenu itemAtIndex:1] setTitle:L(@"磨砂玻璃", @"Frosted Glass")];
-        [[moreMenu itemAtIndex:2] setTitle:L(@"笔迹描边", @"Stroke outline")];
-        [[moreMenu itemAtIndex:3] setTitle:gl_text(@"canvas.mode_infinite")];
-        // 第 4 项(固定/飘渺模式): 标题 = 当前状态对应的共享文案(canvas.fixed_mode/
-        // canvas.ethereal_mode)。模式切换逻辑也会维护它; 这里一并刷新是为了
-        // 语言切换后旧文案不残留。状态位 = g_ethereal_canvas(切换/启动恢复都同步),
-        // 所以不必在此处引用后文才定义的 g_ethereal_canvas。
-        NSMenuItem *modeItem = [MenuLookup itemWithTag:778 inMenu:g_menu];
-        if (modeItem) {
-            [modeItem setTitle:(modeItem.state == NSControlStateValueOn)
-                ? gl_text(@"canvas.fixed_mode")
-                : gl_text(@"canvas.ethereal_mode")];
-        }
-    }
-    // Update toggle item title based on state
-    NSMenuItem *toggleItem = [MenuLookup itemWithTag:888 inMenu:g_menu];
-    if (toggleItem) [toggleItem setTitle:g_enabled ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
+    NSArray<NSString *> *topTitles = @[
+        L(@"保存(含背景)", @"Save (with bg)"),
+        L(@"保存(涂鸦)", @"Save (drawing)"),
+        L(@"新建画布", @"New canvas"),
+        L(@"导出", @"Export"),
+        @"",
+        @"",
+        L(@"设置...", @"Settings..."),
+        L(@"更多", @"More"),
+        @"",
+        L(@"English", @"中文"),
+        L(@"退出", @"Quit"),
+    ];
+    NSArray<NSString *> *exportTitles = @[
+        L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)"),
+        L(@"导出无限画布 PDF (分页)", @"Export infinite canvas PDF (paged)"),
+        L(@"导出无限画布 SVG (整幅)", @"Export infinite canvas SVG (whole)"),
+    ];
+    NSArray<NSString *> *moreTitles = @[
+        L(@"开机自启", @"Launch at login"),
+        L(@"磨砂玻璃", @"Frosted Glass"),
+        L(@"笔迹描边", @"Stroke outline"),
+    ];
+    NSMenuItem *modeItem = [MenuLookup itemWithTag:778 inMenu:g_menu];
+    NSString *modeTitle = (modeItem.state == NSControlStateValueOn)
+        ? gl_text(@"canvas.fixed_mode")
+        : gl_text(@"canvas.ethereal_mode");
+    NSString *toggleTitle = g_enabled ? L(@"关闭涂鸦", @"Disable Drawing")
+                                      : L(@"开启涂鸦", @"Enable Drawing");
+    [MenuUpdater updateTextsInMenu:g_menu
+                       colorTitles:colorTitles
+                       widthTitles:widthTitles
+                        topTitles:topTitles
+                     exportTitles:exportTitles
+                       moreTitles:moreTitles
+                        modeTitle:modeTitle
+                      toggleTitle:toggleTitle];
 }
 
 // ── 颜色/粗细菜单条目的富文本:内嵌小图标 + 名称 ──
