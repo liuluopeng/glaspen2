@@ -61,6 +61,17 @@ import AppKit
         glaspen2_menu_notify(glaspen2_menu_l10n("export.notes_saved"))
     }
 
+    /// 网格开关: 状态/落库/面板同步/重绘。
+    @objc(setGridEnabled:)
+    public static func setGridEnabled(enabled: Bool) {
+        glaspen2_router_set_grid_state(enabled ? 1 : 0)
+        "grid".withCString { key in
+            glaspen2_save_bool_setting(key, enabled ? 1 : 0)
+        }
+        glaspen2_router_sync_settings_panel()
+        glaspen2_router_redraw_draw_view()
+    }
+
     /// 开机自启开关: 系统设置 + 菜单勾选 + 面板同步。
     @objc(setLaunchAtLogin:)
     public static func setLaunchAtLogin(enabled: Bool) {

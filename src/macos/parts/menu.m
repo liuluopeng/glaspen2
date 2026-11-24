@@ -1176,11 +1176,8 @@ static void gl_settings_apply_pending_color_width(void) {
 }
 
 static void gl_settings_set_grid(BOOL on) {
-    g_show_grid = on;
-    glaspen2_save_bool_setting("grid", on ? 1 : 0);
-    sync_settings_panel();
-    // The grid is drawn by drawRect per frame (own toggle) — just redraw.
-    if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
+    // S7t: 逻辑已迁 Swift(MenuHandler.setGridEnabled)。
+    [MenuHandler setGridEnabled:on];
 }
 
 static void gl_settings_set_launch(BOOL on) {
@@ -1335,3 +1332,6 @@ void glaspen2_router_update_menu_state(int tag, int state) {
   NSMenuItem *item = [MenuLookup itemWithTag:tag inMenu:g_menu];
   [item setState:state ? NSControlStateValueOn : NSControlStateValueOff];
 }
+
+// S7t: 网格开关状态薄桥
+void glaspen2_router_set_grid_state(int on) { g_show_grid = on != 0; }

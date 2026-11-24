@@ -2882,3 +2882,8 @@ NSDictionary *glaspen2_router_cursor_draw_state(void) {
     @"eraser" : @(g_eraser_mode ? YES : NO),
   };
 }
+
+// S7t: 触发绘制视图重绘薄桥
+void glaspen2_router_redraw_draw_view(void) {
+  if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
+}
