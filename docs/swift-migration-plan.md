@@ -9,10 +9,12 @@
 > - ✅ S0 原型、S1 build.rs+swiftc+open_url、S2 桥接头+双向互调、S3 状态栏/菜单
 >   (构建/图标/富文本/查找/名称/刷新/勾选/handler 动作/导出/退出)、S4 通知
 >   presenter+绘制、S5 窗口/玻璃/内容视图/显示器防抖。
-> - 🟨 S6 进行中:掩码(S6-1)、CGEventTap 创建(S6-2)、路由骨架+滚轮缩放(S6-3-0/1)
->   已迁 Swift;剩 S6-3-2 鼠标/光标+tablet 笔、S6-3-3 键盘/热键。
-> - ⬜ S7 删除 ObjC 应用源;S8 文档收口。**真机验收(笔/多屏/菜单/玻璃)全部待补**。
-> - 当前 Swift 文件: src/macos/swift/{open_url,interop_probe,status_bar,menu_icons,menu_lookup,menu_builder,menu_builder_full,menu_updater,menu_names,menu_handler,notification,overlay_window,display_monitor,event_tap,event_router}.swift + Bridging.h。
+> - ✅ S6(2026-11-24 收口):掩码、CGEventTap 创建、路由骨架,滚轮/键盘/录制键/proximity/
+  相机抓手/笔 down·move·up/压感监视器全部迁 Swift;`event_tap_callback_inner` 已删除,
+  ObjC 回调只剩"Swift 结果 → NULL/event"。已知缺口:perf_log_event 打点未迁。
+> - 🟨 S7 删除 ObjC 应用源(S7a–S7d 已清死代码/死桥;主体 window/draw view/panel/menu 仍在);
+  S8 文档与真机验收待收口。**真机验收(笔/多屏/菜单/玻璃)全部待补**。
+> - 当前 Swift 文件: src/macos/swift/{open_url,interop_probe,status_bar,menu_icons,menu_lookup,menu_builder,menu_builder_full,menu_updater,menu_names,menu_handler,notification,recording_hud,recording_keys,overlay_window,display_monitor,event_tap,event_router}.swift + Bridging.h。
 
 ## 0. 目标 / 非目标
 
@@ -325,3 +327,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S6 收尾(续跑第11轮) | 删除 event_tap_callback_inner: tap-disabled 恢复、笔坐标/压力/raw_w 计算、飘渺 touchdown、压感监视器、pen 分派全部收进 Swift EventRouter.route; ObjC 回调只剩"Swift 路由结果 → NULL/event"与虚拟笔吞事件; 新增 4 个薄桥;**perf_log_event 打点整体移除(已知缺口, 后续可加 perf 桥)** | cargo build/tests/parity 全绿;事件全链路需真机验证 | 本提交 |
 | 2026-11-24 | S7d(续跑第12轮) | 死代码扫描: 脚本遍历 src/macos/*.m 的 static 函数并统计全仓引用, 仅 handle_recording_hotkeys 无人调用(键盘路由已迁 Swift), 删除该转发函数; 其余 static 函数均有调用 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S4/S7(续跑第13轮) | 页信息 HUD 迁 Swift: NotificationPresenter.showPageInfoWithScreenId(直接调 core::pageinfo FFI + 释放 C 字符串 + 显示), ObjC show_page_info 变一行转发; 新增 lang_code 薄桥与 FFI 声明 | cargo build/tests/parity 全绿;页信息文案需真机验证 | 本提交 |
+| 2026-11-24 | S8 台账同步(续跑第14轮) | 状态总览更新: S6 事件 tap 全链路标记完成(event_tap_callback_inner 已删、ObjC 回调变薄壳, perf 打点缺口已记), S7 标为进行中(死代码/死桥已清, 主体未删), Swift 文件清单补全 | 无代码变更;构建/测试保持全绿 | 本提交 |
