@@ -1,5 +1,3 @@
-}
-
 // 鼠标 ⌃⌥ + 左键拖动镜头(临时抓手)状态; 由 event tap 维护。
 static BOOL g_camera_mouse_dragging = NO;
 static NSPoint g_camera_mouse_last = {0, 0};
@@ -2508,3 +2506,34 @@ cairo_pattern_t *glaspen2_router_invert_ink_source(cairo_t *cr) {
 void glaspen2_router_dirty_include_surface_point(double x, double y, double pad) {
   dirty_include_surface_point(x, y, pad);
 }
+
+// S7bz: 实时段绘制薄桥
+NSDictionary *glaspen2_router_raw_state(void) {
+  return @{
+    @"last_x" : @(g_raw_last_x),
+    @"last_y" : @(g_raw_last_y),
+    @"last_w" : @(g_raw_last_w),
+    @"has_last" : @(g_raw_has_last ? YES : NO),
+    @"has_prev" : @(g_raw_has_prev ? YES : NO),
+    @"prev_x" : @(g_raw_prev_x),
+    @"prev_y" : @(g_raw_prev_y),
+    @"path_len" : @(g_raw_path_len),
+  };
+}
+void glaspen2_router_update_raw_after_segment(double x, double y, double width) {
+  if (g_raw_has_last) {
+    double dx = x - g_raw_last_x, dy = y - g_raw_last_y;
+    g_raw_path_len += sqrt(dx * dx + dy * dy);
+  }
+  g_raw_prev_x = g_raw_last_x;
+  g_raw_prev_y = g_raw_last_y;
+  g_raw_has_prev = YES;
+  g_raw_last_x = x;
+  g_raw_last_y = y;
+  g_raw_last_w = width;
+  g_raw_has_last = YES;
+}
+int glaspen2_router_live_plan_segment(cairo_t *cr, double x, double y, double width) {
+  return gl_live_plan_draw_segment(cr, x, y, width) ? 1 : 0;
+}
+double glaspen2_router_outline_dash(void) { return kOutlineDash; }
