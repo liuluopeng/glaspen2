@@ -116,7 +116,6 @@ void glaspen2_router_set_pending_width(int idx);
 void glaspen2_router_apply_width(int idx);
 void glaspen2_router_save_pen_settings(void);
 void glaspen2_router_update_checkmarks(void);
-void glaspen2_router_update_status_icon_state(void);
 void glaspen2_router_sync_settings_panel(void);
 int glaspen2_router_color_preset_count(void);
 int glaspen2_router_selected_color(void);

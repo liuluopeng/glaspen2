@@ -118,10 +118,6 @@ static void update_status_icon_color(void) {
 
 
 
-static void update_status_icon_state(void) {
-    update_status_icon_color();
-}
-
 static void update_menu_checkmarks(void) {
     // S3b-2b-4a: 勾选刷新逻辑在 Swift(MenuUpdater);这里只传当前状态。
     [MenuUpdater updateCheckmarksInMenu:g_menu
@@ -154,7 +150,7 @@ static void toggle_enabled(void) {
         }
         if (g_pressure_monitor) pm_show();
     }
-    update_status_icon_state();
+    update_status_icon_color();
     show_notification(g_enabled
         ? gl_text(@"draw.enabled")
         : gl_text(@"draw.disabled"));
@@ -292,7 +288,7 @@ static void toggle_canvas_mode(void) {
     }
     // 持久化(与 Windows 同键 "ethereal"): 启动恢复在 run.m 设置装载段
     glaspen2_save_bool_setting("ethereal", g_ethereal_canvas ? 1 : 0);
-    update_status_icon_state(); // 飘渺画布 = 图标左上角的 ghost 圆环徽标
+    update_status_icon_color(); // 飘渺画布 = 图标左上角的 ghost 圆环徽标
 }
 
 /// 彻底退出:菜单「退出」、可配置快捷键 quit、设置面板/自动更新流程共用**同一条**
@@ -340,7 +336,7 @@ void glaspen2_menu_will_open_bridge(void) {
 }
 
 void glaspen2_menu_did_close_bridge(void) {
-    update_status_icon_state();
+    update_status_icon_color();
     // Re-enable CGEventTap after menu closes
     if (g_event_tap) {
         CGEventTapEnable(g_event_tap, true);
@@ -1219,7 +1215,7 @@ static void gl_settings_set_enabled(BOOL on) {
     NSMenuItem *item = [MenuLookup itemWithTag:888 inMenu:g_menu];
     [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
     [item setTitle:on ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
-    update_status_icon_state();
+    update_status_icon_color();
 }
 
 // --- Pressure monitor (top-left info window) ---
