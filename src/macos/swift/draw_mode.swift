@@ -33,4 +33,34 @@ import AppKit
         let en = enabled ? "Disable Drawing" : "Enable Drawing"
         glaspen2_router_set_menu_title(888, glaspen2_menu_l10n_pair(zh, en))
     }
+
+    /// 飘渺画布 ↔ 固定画布: 笔迹显隐/玻璃跟随/压感窗/菜单文案/落库/图标。
+    @objc public static func toggleCanvasMode() {
+        glaspen2_router_peek_cancel()
+        if glaspen2_router_ethereal() == 0 {
+            glaspen2_router_set_ethereal(1)
+            EventRouter.finishActiveStroke()
+            glaspen2_router_set_strokes_visible(0)
+            if glaspen2_router_glass_follow() != 0,
+               let glass = glaspen2_router_glass_view() as? NSView {
+                glass.isHidden = true
+            }
+            if glaspen2_router_pressure_monitor() != 0 { PressureMonitorWindow.hide() }
+            glaspen2_router_redraw_draw_view()
+            glaspen2_menu_notify(glaspen2_menu_l10n("canvas.ethereal_mode"))
+        } else {
+            glaspen2_router_set_ethereal(0)
+            glaspen2_router_set_strokes_visible(1)
+            MenuHandler.applyGlass()
+            if glaspen2_router_pressure_monitor() != 0 { PressureMonitorWindow.show() }
+            glaspen2_router_redraw_draw_view()
+            glaspen2_menu_notify(glaspen2_menu_l10n("canvas.fixed_mode"))
+        }
+        let ethereal = glaspen2_router_ethereal() != 0
+        glaspen2_router_update_menu_state(778, ethereal ? 1 : 0)
+        glaspen2_router_set_menu_title(778,
+            glaspen2_menu_l10n(ethereal ? "canvas.fixed_mode" : "canvas.ethereal_mode"))
+        "ethereal".withCString { glaspen2_save_bool_setting($0, ethereal ? 1 : 0) }
+        glaspen2_router_update_status_icon_state()
+    }
 }

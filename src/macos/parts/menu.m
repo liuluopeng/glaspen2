@@ -210,38 +210,7 @@ static void peek_lens_change(void) {
 }
 
 // Switch between 固定画布涂鸦模式 and 飘渺画布涂鸦模式. Shortcut: ⌘ + ⌃ + X
-static void toggle_canvas_mode(void) {
-    peek_cancel_timer(); // a pending page-peek hide must not fire after a mode switch
-    if (!g_ethereal_canvas) {
-        // → 飘渺画布涂鸦模式: hide the strokes, peek rules take over
-        g_ethereal_canvas = YES;
-        [EventRouter finishActiveStroke]; // commit any in-flight stroke before hiding
-        g_strokes_visible = NO;
-        if (g_glass_follow_strokes && g_glass_view) g_glass_view.hidden = YES;
-        if (g_pressure_monitor) pm_hide();
-        [g_draw_view setNeedsDisplay:YES];
-        show_notification(gl_text(@"canvas.ethereal_mode"));
-    } else {
-        // → 固定画布涂鸦模式: show the strokes and keep them visible
-        g_ethereal_canvas = NO;
-        g_strokes_visible = YES;
-        [MenuHandler applyGlass];
-        if (g_pressure_monitor) pm_show();
-        [g_draw_view setNeedsDisplay:YES];
-        show_notification(gl_text(@"canvas.fixed_mode"));
-    }
-    // Sync the menu item (title shows the mode you switch TO, like toggleDraw)
-    NSMenuItem *item = [MenuLookup itemWithTag:778 inMenu:g_menu];
-    if (item) {
-        [item setState:g_ethereal_canvas ? NSControlStateValueOn : NSControlStateValueOff];
-        [item setTitle:g_ethereal_canvas
-            ? gl_text(@"canvas.fixed_mode")
-            : gl_text(@"canvas.ethereal_mode")];
-    }
-    // 持久化(与 Windows 同键 "ethereal"): 启动恢复在 run.m 设置装载段
-    glaspen2_save_bool_setting("ethereal", g_ethereal_canvas ? 1 : 0);
-    glaspen2_router_update_status_icon_state(); // 飘渺画布 = 图标左上角的 ghost 圆环徽标
-}
+static void toggle_canvas_mode(void) { [DrawMode toggleCanvasMode]; }
 
 /// 彻底退出:菜单「退出」、可配置快捷键 quit、设置面板/自动更新流程共用**同一条**
 /// 路径 —— 先记性能汇总、把光标还给系统, 再 terminate。terminate 会同步走
@@ -1121,3 +1090,9 @@ int glaspen2_router_strokes_visible(void) { return g_strokes_visible ? 1 : 0; }
 void glaspen2_router_ensure_surface(void) {
   if (!g_surface && g_draw_view) ensure_surface(g_draw_view);
 }
+
+// S7bp: 画布模式切换的 Swift 薄桥
+void glaspen2_router_set_ethereal(int on) { g_ethereal_canvas = on != 0; }
+void glaspen2_router_set_strokes_visible(int on) { g_strokes_visible = on != 0; }
+int glaspen2_router_glass_follow(void) { return g_glass_follow_strokes ? 1 : 0; }
+id glaspen2_router_glass_view(void) { return g_glass_view; }
