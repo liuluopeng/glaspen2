@@ -166,39 +166,6 @@ static void tunnel_free_cards(void) { [TunnelLifecycle freeCards]; }
 // 直角玻璃: 前脸是矩形, 只有**上侧和右侧**挤出厚度, 形成侧视图。
 // 旧版圆角+四边厚板像一块平板; 侧视图能让每片玻璃的方向和前后关系
 // 一眼可读(上/右侧面 = 你正看着玻璃的截面)。
-static BOOL tunnel_place(double zc, double *out_cx, double *out_cy,
-                         double *out_w, double *out_h, double *out_alpha) {
-  NSArray *r = [TunnelGeometry placeWithZC:zc
-                                      span:TUNNEL_SPAN
-                                     front:TUNNEL_FRONT
-                                         k:glaspen2_router_tunnel_k()
-                                    surfW:(double)glaspen2_router_tunnel_surf_w()
-                                    surfH:(double)glaspen2_router_tunnel_surf_h()
-                                    travel:glaspen2_router_tunnel_travel()];
-  if (!r || r.count != 5) return NO;
-  *out_cx = [r[0] doubleValue];
-  *out_cy = [r[1] doubleValue];
-  *out_w = [r[2] doubleValue];
-  *out_h = [r[3] doubleValue];
-  *out_alpha = [r[4] doubleValue];
-  return YES;
-}
-
-static void tunnel_draw_card(cairo_t *cr, int slot, double cx, double cy,
-                             double w, double h, double alpha, double zc) {
-  cairo_surface_t *surf = s_tun_card[slot];
-  if (s_tun_card_mip[slot] && w < cairo_image_surface_get_width(surf) * 0.70) {
-    surf = s_tun_card_mip[slot];
-  }
-  if (!surf) return;
-  [TunnelCardRenderer drawWithCR:(void *)cr surf:(void *)surf
-                              nw:cairo_image_surface_get_width(surf)
-                              nh:cairo_image_surface_get_height(surf)
-                              cx:cx cy:cy w:w h:h alpha:alpha zc:zc
-                            surfW:s_tun_surf_w surfH:s_tun_surf_h
-                            thick:s_tun_thick paneA:s_tun_pane_a];
-}
-
 // 一帧:相机沿页距推进(缓入缓出), 卡片按隧道坐标摆位;
 // 深处的先画、近处的后画 —— 层叠顺序即页序。
 static void tunnel_frame(double p) {
@@ -307,11 +274,6 @@ static NSString *rec_json(NSDictionary *fields) {
 }
 
 // S7c: rec_key_event 已随录制热键迁移删除(事件 JSON 由 Swift 生成)。
-
-static NSString *rec_simple_event(NSString *type) {
-  return rec_json(@{@"type" : type});
-}
-
 
 // 喂一个事件并执行返回的 effects(在调用线程 = 主 runloop 上同步执行)。
 // 返回事件是否产生了 effects; key-up 分支据此决定是否消费按键。
@@ -900,10 +862,6 @@ void glaspen2_router_settings_apply_transparent(void) {
 }
 
 // S7cf: 性能日志薄桥
-int glaspen2_router_perf_enabled(void) { return [PerfLog isEnabled] ? 1 : 0; }
-uint64_t glaspen2_router_elapsed_us(uint64_t start) { return [PerfLog elapsedUsSince:start]; }
-void glaspen2_router_perf_init(void) { [PerfLog initFromEnv]; }
-
 // S7ci: 诊断探针薄桥
 int glaspen2_router_perform_hotkey(unsigned short keyCode) {
   return perform_hotkey(keyCode) ? 1 : 0;

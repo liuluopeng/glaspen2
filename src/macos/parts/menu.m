@@ -83,8 +83,6 @@ static void auto_show_canvas(void) { [EtherealMode autoShow]; }
 
 static void peek_cancel_timer(void) { [EtherealMode cancelTimer]; }
 
-static void peek_strokes(double seconds) { [EtherealMode peekForSeconds:seconds]; }
-
 /// 飘渺模式下镜头平移/缩放时, 笔迹本身是隐藏的, 用户看不到画面变化。
 /// 短暂 peek 一下, 让新镜头下的笔迹/网格露出来再隐回去。
 ///
@@ -254,8 +252,6 @@ static void gl_run_on_main_sync(dispatch_block_t block) { [SettingsGlue runOnMai
 
 /// 读一条字符串设置(DB),转成 NSString(未设置为空串)。调用方持有返回值。
 /// 仅用于 settings_json 等非热路径;SQLite 单行读取在主线程也足够快。
-static NSString *gl_string_setting(const char *key) { return [SettingsGlue loadStringWithKey:[NSString stringWithUTF8String:key]]; }
-
 // ── 可配置快捷键 ─────────────────────────────────────────────────────
 // 动作 id 与默认组合; 真正的动作执行在 run.m 的 perform_action()。本区只
 // 负责 "chord → action" 映射、持久化、录制期间暂停全局拦截。
@@ -289,8 +285,6 @@ static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved) { [ShortcutA
 static NSString *gl_shortcuts_effective_json(void) { return [SettingsGlue effectiveShortcutJSON]; }
 
 /// 启动时从 user_settings 恢复; 必须在 event tap 安装前调用。
-static void gl_shortcuts_load(void) { [SettingsGlue loadShortcuts]; }
-
 /// 录制快捷键期间放行所有键盘事件给设置面板; 60s 兜底, 防止面板异常退出
 /// 后全局热键永久失效。
 /// 事件 tap 用: keycode + 修饰键 → 规范 chord → action id。
@@ -313,8 +307,6 @@ NSString *glaspen2_router_action_for_chord(NSString *chord) {
 /// - flipEffect: 可被 GLASPEN2_FLIP_EFFECT 调试环境变量覆盖, 以运行时为准;
 /// - language: 以运行时 g_lang 为准(DB 落库值由 core 兜底)。
 /// 返回 malloc 的 UTF-8 JSON(调用方 free), 失败 NULL。
-static char *gl_settings_snapshot_overrides_json(void) { return (char *)[MenuGlue snapshotOverridesJSON]; }
-
 /// 当前设置的 JSON 快照;调用方用 glaspen2_macos_free_c_string 释放。
 ///
 /// D12: 字段集合/顺序/类型/缺省值/DB 回退唯一实现在 core

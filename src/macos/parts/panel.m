@@ -57,10 +57,6 @@ void glaspen2_display_apply(int w, int h) {
     display_change_apply(w, h);
 }
 
-static void on_display_changed(void) {
-    [DisplayChangeMonitor onDisplayChanged];
-}
-
 // ── 反色突出(实验) ──
 // SCStream 连续捕获"自身窗口以下的屏幕"(自家窗口 sharingType=None 拒绝
 // 共享像素, 从源头排除反馈), 帧到后逐像素反相写入双缓冲之一, 主线程

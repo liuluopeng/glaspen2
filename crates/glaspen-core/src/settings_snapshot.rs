@@ -1051,8 +1051,9 @@ mod tests {
         //    设置键 = 又在一处"手工回填", 应改 core settings_snapshot。
         const ALLOWED_OVERRIDES: &[&str] =
             &["launchAtLogin", "shortcuts", "flipEffect", "language"];
-        let mac_overrides_owner = body_after(&mac_code, "gl_settings_snapshot_overrides_json(void)")
-            .expect("macOS 缺 gl_settings_snapshot_overrides_json");
+        // overrides 组装已迁 Swift(menu_glue.swift); ObjC 转发可选。
+        let mac_overrides_owner =
+            body_after(&mac_code, "gl_settings_snapshot_overrides_json(void)").unwrap_or("");
         let mac_overrides = format!("{mac_overrides_owner}\n{mac_glue_swift}");
         let win_overrides = body_after(&win_code, "fn settings_snapshot_overrides")
             .expect("Windows 缺 settings_snapshot_overrides");
