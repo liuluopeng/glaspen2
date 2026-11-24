@@ -41,6 +41,16 @@ void glaspen2_menu_refresh_texts(void);
 void glaspen2_save_string_setting(const char *key, const char *value);
 void glaspen2_notify_settings_changed(void);
 
+// S3b-2b-7c: 开关类菜单动作的 getter/setter 薄桥(实现留在 menu.m)
+int glaspen2_menu_launch_at_login(void);
+void glaspen2_menu_set_launch(int on);
+int glaspen2_menu_glass_enabled(void);
+void glaspen2_menu_set_glass(int on);
+int glaspen2_menu_outline_enabled(void);
+void glaspen2_menu_apply_outline(int on);
+int glaspen2_menu_infinite_enabled(void);
+void glaspen2_menu_apply_infinite(int on);
+
 // S2 探针入口(ObjC 实现, 供 glaspen2_run / Rust --swift-probe 调用):
 // 内部经生成的 glaspen2_macos_swift-Swift.h 调 [SwiftInteropProbe ping],
 // 验证 ObjC→Swift 方向。普通迁移代码不需要这类"Swift 反向入口"。

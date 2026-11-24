@@ -339,21 +339,10 @@ static void gl_quit_app(void) {
     toggle_canvas_mode();
 }
 
-- (void)toggleLaunch {
-    gl_settings_set_launch(!glaspen2_is_launch_at_login());
-}
-
-- (void)toggleGlass {
-    gl_settings_set_glass_enabled(!g_glass_enabled);
-}
-
-- (void)toggleOutline {
-    apply_outline(!g_outline_enabled);
-}
-
-- (void)toggleInfiniteCanvas {
-    apply_infinite_canvas(!g_infinite_canvas, YES);
-}
+- (void)toggleLaunch { [MenuHandler toggleLaunch]; }
+- (void)toggleGlass { [MenuHandler toggleGlass]; }
+- (void)toggleOutline { [MenuHandler toggleOutline]; }
+- (void)toggleInfiniteCanvas { [MenuHandler toggleInfiniteCanvas]; }
 
 // 无限画布 → 分页 PDF(按当前屏幕尺寸切页)
 - (void)exportInfinitePdf {
@@ -426,6 +415,39 @@ void glaspen2_menu_set_lang(int value) {
 
 void glaspen2_menu_refresh_texts(void) {
     update_menu_texts();
+}
+
+// S3b-2b-7c: 开关类动作 getter/setter 薄桥(逻辑在 Swift MenuHandler)
+int glaspen2_menu_launch_at_login(void) {
+    return glaspen2_is_launch_at_login();
+}
+
+void glaspen2_menu_set_launch(int on) {
+    gl_settings_set_launch(on != 0);
+}
+
+int glaspen2_menu_glass_enabled(void) {
+    return g_glass_enabled ? 1 : 0;
+}
+
+void glaspen2_menu_set_glass(int on) {
+    gl_settings_set_glass_enabled(on != 0);
+}
+
+int glaspen2_menu_outline_enabled(void) {
+    return g_outline_enabled ? 1 : 0;
+}
+
+void glaspen2_menu_apply_outline(int on) {
+    apply_outline(on != 0);
+}
+
+int glaspen2_menu_infinite_enabled(void) {
+    return g_infinite_canvas ? 1 : 0;
+}
+
+void glaspen2_menu_apply_infinite(int on) {
+    apply_infinite_canvas(on != 0, YES);
 }
 
 // ObjC 侧保留薄 delegate 方法(仅转发给 Swift MenuHandler); 业务逻辑在 Swift。

@@ -6,7 +6,6 @@ import AppKit
     @objc public static func menuWillOpen() { glaspen2_menu_will_open_bridge() }
     @objc public static func menuDidClose() { glaspen2_menu_did_close_bridge() }
 
-    /// 语言切换: 状态读写经薄桥, 落库/刷新/通知面板仍走既有 C FFI。
     @objc(toggleLanguage)
     public static func toggleLanguage() {
         let next = glaspen2_menu_lang() == 1 ? 0 : 1
@@ -19,5 +18,25 @@ import AppKit
         }
         glaspen2_menu_refresh_texts()
         glaspen2_notify_settings_changed()
+    }
+
+    @objc(toggleLaunch)
+    public static func toggleLaunch() {
+        glaspen2_menu_set_launch(glaspen2_menu_launch_at_login() == 0 ? 1 : 0)
+    }
+
+    @objc(toggleGlass)
+    public static func toggleGlass() {
+        glaspen2_menu_set_glass(glaspen2_menu_glass_enabled() == 0 ? 1 : 0)
+    }
+
+    @objc(toggleOutline)
+    public static func toggleOutline() {
+        glaspen2_menu_apply_outline(glaspen2_menu_outline_enabled() == 0 ? 1 : 0)
+    }
+
+    @objc(toggleInfiniteCanvas)
+    public static func toggleInfiniteCanvas() {
+        glaspen2_menu_apply_infinite(glaspen2_menu_infinite_enabled() == 0 ? 1 : 0)
     }
 }
