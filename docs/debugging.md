@@ -38,14 +38,16 @@ flutter: [Settings] load failed: Invalid argument(s): Failed to lookup symbol ..
 
 ## 3. 断点 (lldb)
 
-Rust 与 ObjC **都带行号**。ObjC 的调试信息来自 `build.rs` 在 debug 构建里给
-`clang` 加的 `-g`; DWARF 本身由 cargo 的 unpacked 模式留在 `.o` 里, lldb 通过
+Rust 与 Swift **都带行号**。Swift 的调试信息来自 `build.rs` 在 debug 构建里给
+`swiftc` 加的 `-g`; DWARF 本身由 cargo 的 unpacked 模式留在 `.o` 里, lldb 通过
 二进制里的 OSO 记录自动加载(所以 `dwarfdump` 直接看二进制会以为没有)。
+
+> 2026-11 起 macOS 应用层已无 ObjC(`src/macos` 只有 `.swift` + `Bridging.h`/`rust_ffi.h`), 断点一律打在 Swift 源或 Rust 符号上。
 
 ```bash
 lldb target/debug/glaspen2
-(lldb) b glaspen2_macos_settings_json            # ObjC: glaspen2.m:1050
-(lldb) b src/macos/glaspen2.m:1050               # 文件:行 —— 要带目录, 裸文件名不解析
+(lldb) b src/macos/swift/settings_api_glue.swift:14   # Swift 文件:行(要带目录)
+(lldb) b glaspen2_macos_settings_json            # C ABI 符号(@_cdecl 导出)也行
 (lldb) b glaspen2::export::page_thumbnails_blob  # Rust: export.rs:2371
 (lldb) b glaspen2_render_thumbnail               # no_mangle 的 C 入口也行
 (lldb) run
@@ -60,9 +62,8 @@ lldb target/debug/glaspen2
 - 因为本项目所有 FFI 入口内部都用 `runtime().block_on` 桥接 async SQLite,
   在 tokio 上下文里再 `block_on` 会 panic, 所以 `api::run_blocking` 会把阻塞
   工作换到一个**新线程**上执行 → 断在 `export::*` 里常常是这个无名线程;
-- 真正碰 AppKit 的部分由 ObjC shim 切到**主线程**执行
-  (`gl_run_on_main_sync`) → 断在 `canvas_overview_payload` /
-  `rebuild_surface_from_strokes` 这类代码里应该在主线程。
+- 真正碰 AppKit 的部分由 Swift `SettingsGlue.runOnMainSync` 切到**主线程**执行
+  → 断在 `CanvasOverview.payload` / `PageViewOps.rebuildSurface` 这类代码里应该在主线程。
 
 ---
 
@@ -112,7 +113,7 @@ Cannot start a runtime from within a runtime
 ```
 
 含义: 某个 FFI 入口在 tokio 运行时上下文里调了 `runtime().block_on`。
-**新加 FRB 接口时, 只要它会转到同步 FFI/ObjC, 就要经 `api::run_blocking`。**
+**新加 FRB 接口时, 只要它会转到同步 FFI/主线程 Swift, 就要经 `api::run_blocking`。**
 
 ---
 
@@ -140,8 +141,9 @@ cd flutter_settings && fvm flutter attach --debug-url=<上面打印的地址>
 
 ## 8. 发版前 GUI 冒烟清单
 
-自动化覆盖不到"必须在主线程的 AppKit 行为"(以及所有真实的输入/权限行为),
-所以打 DMG 之前手点一遍, 约 3 分钟。装刚打出来的包, 或直接 `cargo run`。
+先跑 `sh scripts/smoke-macos.sh`(菜单/状态栏探针 + 冷启动/tap/DB/优雅退出自动化冒烟);
+它覆盖不到"必须在主线程的 AppKit 行为"(以及所有真实输入/权限行为), 所以打 DMG
+之前仍要手点一遍。完整清单见 `docs/s8-acceptance-checklist.md`。
 
 1. 启动后笔能画、橡皮能用(⌃⌘X 切换), 压力显示正常
 2. 打开设置面板 → 右上角**没有**云朵断联图标
