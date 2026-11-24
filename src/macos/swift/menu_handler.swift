@@ -102,7 +102,7 @@ import AppKit
         let typeString = type ?? "---"
         let text = String(format: "P=%-5d  ", pressure) + typeString
             + String(format: "  (%d,%d)", Int(x), Int(y))
-        glaspen2_router_set_pm_label(text)
+        PressureMonitorWindow.updateLabel(text)
     }
 
     /// 手写消息集成总开关: 状态/落库/录制状态机通知/共享上行恢复。

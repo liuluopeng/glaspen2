@@ -1076,61 +1076,21 @@ static void gl_settings_apply_pending_color_width(void) {
 
 // --- Pressure monitor (top-left info window) ---
 
-static void pm_ensure_window(void) {
-    if (g_pm_window) return;
-    NSScreen *screen = [NSScreen mainScreen];
-    NSRect screenFrame = [screen frame];
-    NSRect frame = NSMakeRect(10, screenFrame.size.height - 40, 220, 30);
-    g_pm_window = [[NSWindow alloc] initWithContentRect:frame
-                                              styleMask:NSWindowStyleMaskBorderless
-                                                backing:NSBackingStoreBuffered
-                                                  defer:NO];
-    [g_pm_window setLevel:kCGMaximumWindowLevel];
-    [g_pm_window setOpaque:YES];
-    [g_pm_window setBackgroundColor:[NSColor colorWithWhite:0.12 alpha:1.0]];
-    [g_pm_window setIgnoresMouseEvents:YES];
-    [g_pm_window setTitle:@"Pressure"];
-    [g_pm_window setReleasedWhenClosed:NO];
+static void pm_ensure_window(void) { [PressureMonitorWindow ensureWindow]; }
 
-    g_pm_label = [[NSTextField alloc] initWithFrame:NSMakeRect(4, 2, 212, 26)];
-    g_pm_evtype = nil;
-    [g_pm_label setStringValue:@"P=-----  ---  (---,---)"];
-    [g_pm_label setTextColor:[NSColor whiteColor]];
-    [g_pm_label setFont:[NSFont fontWithName:@"Menlo" size:12]];
-    [g_pm_label setBezeled:NO];
-    [g_pm_label setDrawsBackground:NO];
-    [g_pm_label setEditable:NO];
-    [g_pm_label setSelectable:NO];
-    [[g_pm_window contentView] addSubview:g_pm_label];
-}
+static void pm_show(void) { [PressureMonitorWindow show]; }
 
-static void pm_show(void) {
-    pm_ensure_window();
-    [g_pm_window orderFront:nil];
-}
-
-static void pm_hide(void) {
-    if (g_pm_window) {
-        [g_pm_window orderOut:nil];
-    }
-}
+static void pm_hide(void) { [PressureMonitorWindow hide]; }
 
 static void pm_update(void) {
-    if (!g_pm_window || !g_pm_label) return;
-    // S7y: 标签格式化已迁 Swift(MenuHandler.updatePressureLabel)。
+    // S7y: 标签格式化已迁 Swift(MenuHandler.updatePressureLabel); 窗口/标签在 Swift 内判空。
     [MenuHandler updatePressureLabelWithPressure:g_pm_pressure
                                             type:g_pm_evtype
                                                x:g_pm_x
                                                y:g_pm_y];
 }
 
-static void pm_destroy(void) {
-    if (g_pm_window) {
-        [g_pm_window close];
-        g_pm_window = nil;
-        g_pm_label = nil;
-    }
-}
+static void pm_destroy(void) { [PressureMonitorWindow destroy]; }
 
 // S7: 暂存颜色/粗细状态薄桥(变量在 menu.m)
 int glaspen2_router_pending_color(void) { return g_pending_color_index; }
@@ -1195,9 +1155,6 @@ void glaspen2_router_set_menu_title(int tag, NSString *title) {
 void glaspen2_router_set_chat_integration(int on) { g_chat_integration = on != 0; }
 
 // S7y: 压感监视器标签设置薄桥
-void glaspen2_router_set_pm_label(NSString *text) {
-  if (g_pm_label) [g_pm_label setStringValue:text];
-}
 
 // S7z: 磨砂玻璃应用的 Swift 薄桥
 NSDictionary *glaspen2_router_glass_state(void) {

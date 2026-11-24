@@ -402,8 +402,6 @@ static BOOL g_pen_drawing = NO;
 // Restore the system cursor if it is currently hidden by pen drawing.
 // Pressure monitor
 static BOOL g_pressure_monitor = NO;
-static NSWindow *g_pm_window = nil;
-static NSTextField *g_pm_label = nil;
 static int g_pm_pressure = 0;
 static NSString *g_pm_evtype = nil;
 static BOOL g_pm_tip_down = NO;
