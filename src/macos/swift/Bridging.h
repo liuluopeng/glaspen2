@@ -262,6 +262,7 @@ extern void glaspen2_modeler_end(double x, double y, double pressure, double tim
 extern void glaspen2_modeler_erase_finish(void);
 extern void glaspen2_modeler_commit_to_strokes(double r, double g, double b);
 double glaspen2_router_width_scale(void);
+extern void glaspen2_save_settings(double r, double g, double b, double width_scale);
 extern void glaspen2_shutdown(void);
 NSDictionary *glaspen2_router_pressure_state(void);
 void glaspen2_router_set_menu_handler(id handler);

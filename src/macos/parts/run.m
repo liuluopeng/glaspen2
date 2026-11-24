@@ -414,8 +414,8 @@ void glaspen2_router_tap_menu_bar_interaction(void) {
 void glaspen2_router_update_status_icon_state(void) {
   [StatusIconUpdater applyToStatusItem:g_statusItem eraser:(sw_eraser_mode() != 0)
                                enabled:g_enabled ethereal:g_ethereal_canvas
-                              infinite:glaspen2_router_infinite() != 0 widthScale:g_width_scale
-                                  penRed:g_pen_r penGreen:g_pen_g penBlue:g_pen_b];
+                              infinite:glaspen2_router_infinite() != 0 widthScale:glaspen2_router_width_scale()
+                                  penRed:glaspen2_router_pen_r() penGreen:glaspen2_router_pen_g() penBlue:glaspen2_router_pen_b()];
 }
 
 // S6-3-3d: 落笔入口薄桥
@@ -523,9 +523,6 @@ cairo_t *glaspen2_router_acquire_cr(int *owned) {
   return (cairo_t *)cairo_create_scaled();
 }
 double glaspen2_router_outline_pad(void) { return kOutlinePad; }
-double glaspen2_router_pen_r(void) { return g_pen_r; }
-double glaspen2_router_pen_g(void) { return g_pen_g; }
-double glaspen2_router_pen_b(void) { return g_pen_b; }
 int glaspen2_router_live_plan_dot(cairo_t *cr, double x, double y, double width) {
   return [LivePlan drawDotContext:(void *)cr x:x y:y width:width] ? 1 : 0;
 }
@@ -602,9 +599,6 @@ int glaspen2_router_gif_end_mode(void) { return g_gif_end_mode; }
 void glaspen2_router_apply_infinite_canvas(int on) { apply_infinite_canvas(on != 0, YES); }
 void glaspen2_router_show_notification(NSString *text) { show_notification(text); }
 NSString *glaspen2_router_textf(NSString *key, NSDictionary *args) { return gl_textf(key, args); }
-int glaspen2_router_prev_color_index(void) { return g_prev_color_index; }
-int glaspen2_router_prev_width_index(void) { return g_prev_width_index; }
-
 // S7cm: 快捷键分发薄桥
 void glaspen2_router_clear_screen(void) { clear_screen(); }
 void glaspen2_router_replay_strokes(void) { replay_strokes_from_memory(); }
@@ -665,8 +659,7 @@ void glaspen2_router_page_flip_from(int forward, long from, dispatch_block_t pre
 void glaspen2_router_startup_set_lang(int lang) { g_lang = lang; }
 void glaspen2_router_startup_apply_pen(double r, double g, double b, double width,
                                        int colorIdx, int widthIdx) {
-  g_pen_r = r; g_pen_g = g; g_pen_b = b; g_width_scale = width;
-  g_selectedColorIndex = colorIdx; g_selected_width_index = widthIdx;
+  sw_set_pen_settings(r, g, b, width, colorIdx, widthIdx);
 }
 void glaspen2_router_invert_apply(int on) { invert_ink_apply(on); }
 
@@ -720,4 +713,3 @@ int glaspen2_router_window_sharing_type(void) { return (int)[g_window sharingTyp
 int glaspen2_router_perf_enabled(void) { return [PerfLog isEnabled] ? 1 : 0; }
 
 // S7dq: 宽度倍率桥
-double glaspen2_router_width_scale(void) { return g_width_scale; }

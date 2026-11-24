@@ -6,13 +6,8 @@ static NSStatusItem *g_statusItem = nil;
 static NSMenu *g_menu = nil;
 
 
-static int g_selectedColorIndex = 0; // 0=red (default)
 // 换回上一色/上一粗细的交换键用; 重新选色时更新, 初值给一个可用的另一端。
-static int g_prev_color_index = 9;   // black
-static int g_prev_width_index = 2;   // fine (current default is 3/medium)
 // 书写中按了换色/换粗细: 等抬笔后再应用, 避免污染正在写的那一笔。
-static int g_pending_color_index = -1;
-static int g_pending_width_index = -1;
 
 static NSAttributedString* gl_color_item_text(NSInteger idx);
 static NSAttributedString* gl_width_item_text(NSInteger idx);
@@ -443,38 +438,13 @@ static void pm_update(void) { [SettingsPanelExtras refreshPressureLabel]; }
 static void pm_destroy(void) { [PressureMonitorWindow destroy]; }
 
 // S7: 暂存颜色/粗细状态薄桥(变量在 menu.m)
-int glaspen2_router_pending_color(void) { return g_pending_color_index; }
-int glaspen2_router_pending_width(void) { return g_pending_width_index; }
-void glaspen2_router_clear_pending_color(void) { g_pending_color_index = -1; }
-void glaspen2_router_clear_pending_width(void) { g_pending_width_index = -1; }
-
 // S7h: 粗细设置的 Swift 薄桥(状态/刷新函数都在 menu.m)
 int glaspen2_router_width_preset_count(void) { return g_width_preset_count; }
-int glaspen2_router_selected_width(void) { return g_selected_width_index; }
-void glaspen2_router_set_prev_width(int idx) { g_prev_width_index = idx; }
-void glaspen2_router_set_pending_width(int idx) { g_pending_width_index = idx; }
-void glaspen2_router_apply_width(int idx) {
-  g_width_scale = g_width_presets[idx];
-  g_selected_width_index = idx;
-}
-void glaspen2_router_save_pen_settings(void) {
-  glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
-}
 void glaspen2_router_update_checkmarks(void) { update_menu_checkmarks(); }
 void glaspen2_router_sync_settings_panel(void) { glaspen2_notify_settings_changed(); }
 
 // S7i: 颜色设置的 Swift 薄桥
 int glaspen2_router_color_preset_count(void) { return g_color_preset_count; }
-int glaspen2_router_selected_color(void) { return g_selectedColorIndex; }
-void glaspen2_router_set_prev_color(int idx) { g_prev_color_index = idx; }
-void glaspen2_router_set_pending_color(int idx) { g_pending_color_index = idx; }
-void glaspen2_router_apply_color(int idx) {
-  g_pen_r = g_color_presets[idx].r;
-  g_pen_g = g_color_presets[idx].g;
-  g_pen_b = g_color_presets[idx].b;
-  g_selectedColorIndex = idx;
-}
-
 // S7j: 磨砂玻璃开关的 Swift 薄桥
 void glaspen2_router_glass_apply(void) { [MenuHandler applyGlass]; }
 
@@ -557,8 +527,6 @@ void glaspen2_router_set_shortcut_tables(NSDictionary *values, NSDictionary *loo
 }
 
 // S7ce: 菜单勾选/设置快照薄桥
-int glaspen2_router_selected_color_index(void) { return g_selectedColorIndex; }
-int glaspen2_router_selected_width_index(void) { return g_selected_width_index; }
 NSString *glaspen2_router_shortcuts_effective_json(void) {
   return gl_shortcuts_effective_json();
 }

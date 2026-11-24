@@ -370,15 +370,12 @@ static BOOL g_pm_in_range = NO;
 static CGFloat g_pm_x = 0, g_pm_y = 0;
 
 // Pen color state
-static double g_pen_r = 1.0, g_pen_g = 0.0, g_pen_b = 0.0;
 
 // Width scale presets
-static double g_width_scale = 1.0;
 // 8 档线宽倍率:数值单源在 glaspen-core presets,启动时经 FFI 填充
 // (g_width_preset_count 须与 core WIDTH_PRESETS 一致,core 测试守着)。
 static double g_width_presets[8];
 static const int g_width_preset_count = 8;
-static int g_selected_width_index = 3; // default: 1.0x
 
 // 网格大小(逻辑 px),设置面板可调,默认 40
 
