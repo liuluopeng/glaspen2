@@ -1188,10 +1188,8 @@ static void gl_settings_set_grid(BOOL on) {
 }
 
 static void gl_settings_set_launch(BOOL on) {
-    glaspen2_set_launch_at_login(on ? 1 : 0);
-    NSMenuItem *item = [MenuLookup itemWithTag:777 inMenu:g_menu];
-    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
-    sync_settings_panel();
+    // S7k: 逻辑已迁 Swift(MenuHandler.setLaunchAtLogin)。
+    [MenuHandler setLaunchAtLogin:on];
 }
 
 static void gl_glass_apply(void) {
@@ -1335,3 +1333,9 @@ void glaspen2_router_apply_color(int idx) {
 // S7j: 磨砂玻璃开关的 Swift 薄桥
 void glaspen2_router_set_glass_state(int on) { g_glass_enabled = on != 0; }
 void glaspen2_router_glass_apply(void) { gl_glass_apply(); }
+
+// S7k: 菜单项勾选状态薄桥(按 tag 查菜单)
+void glaspen2_router_update_menu_state(int tag, int state) {
+  NSMenuItem *item = [MenuLookup itemWithTag:tag inMenu:g_menu];
+  [item setState:state ? NSControlStateValueOn : NSControlStateValueOff];
+}

@@ -126,6 +126,8 @@ void glaspen2_router_apply_color(int idx);
 void glaspen2_router_set_glass_state(int on);
 void glaspen2_router_glass_apply(void);
 extern void glaspen2_save_bool_setting(const char *key, int value);
+void glaspen2_router_update_menu_state(int tag, int state);
+extern void glaspen2_set_launch_at_login(int on);
 double glaspen2_router_last_raw_x(void);
 double glaspen2_router_last_raw_y(void);
 void glaspen2_router_clear_raw_state(void);
