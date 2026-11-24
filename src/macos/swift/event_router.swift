@@ -80,6 +80,37 @@ import AppKit
         }
     }
 
+    /// S6-3-3d: 笔事件分派(落笔/拖动/抬笔); 返回 2 = 消费事件。
+    @objc(handlePenEventOfType:x:y:pressure:timestamp:rawWidth:isEraser:)
+    public static func handlePenEvent(type: CGEventType, x: Double, y: Double,
+                                      pressure: Double, timestamp: Double,
+                                      rawWidth: Double, isEraser: Bool) -> Int32 {
+        let downTypes: [CGEventType] = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        let dragTypes: [CGEventType] = [.leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        let upTypes: [CGEventType] = [.leftMouseUp, .rightMouseUp, .otherMouseUp]
+        if downTypes.contains(type) {
+            updateEraserState(isEraser: isEraser)
+            NSLog("[glaspen2] pen DOWN p=%.2f ts=%.3f", pressure, timestamp)
+            penDown(x: x, y: y, pressure: pressure, timestamp: timestamp, rawWidth: rawWidth)
+            return 2
+        }
+        if dragTypes.contains(type) {
+            if glaspen2_router_stroke_active() == 0 {
+                updateEraserState(isEraser: isEraser)
+                penDown(x: x, y: y, pressure: pressure, timestamp: timestamp, rawWidth: rawWidth)
+            } else {
+                penMove(x: x, y: y, pressure: pressure, timestamp: timestamp, rawWidth: rawWidth)
+            }
+            return 2
+        }
+        if upTypes.contains(type) {
+            NSLog("[pen] 抬笔 (pen up)")
+            penUp(x: x, y: y, pressure: pressure, timestamp: timestamp)
+            return 2
+        }
+        return 0
+    }
+
     /// S6-3-3d: 相机临时抓手(⌃⌥+左键拖动)开始/拖动/结束; 返回 true = 消费事件。
     private static func routeCameraMouse(type: CGEventType, ev: NSEvent) -> Bool {
         let st = state()

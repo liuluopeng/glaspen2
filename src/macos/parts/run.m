@@ -2268,60 +2268,12 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     auto_show_canvas(); // show (and draw) — fallback for tablets without hover
   }
 
-  if (isPen && (etype == NSEventTypeLeftMouseDown ||
-                etype == NSEventTypeRightMouseDown ||
-                etype == NSEventTypeOtherMouseDown)) {
-    // Pen down: start modeler, draw raw dot immediately (no lag)
-    // If a previous stroke was never ended (missed pen-up), finish it first.
-    if (g_stroke_active) {
-      finish_active_stroke();
-    }
-    // S6-3-3d: 橡皮态切换/图标刷新已迁 Swift。
-    [EventRouter updateEraserState:(devType == NSEraserPointingDevice) ||
-                                   (g_prox_dev == NSEraserPointingDevice)];
-    NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f tool=%@/%@",
-          px, py, pressure, ts,
-          devType == NSEraserPointingDevice   ? @"ERASER"
-          : devType == NSPenPointingDevice    ? @"pen"
-                                              : @"other",
-          g_prox_dev == NSEraserPointingDevice ? @"eraser-prox"
-          : g_prox_dev == NSPenPointingDevice  ? @"pen-prox"
-                                               : @"other-prox");
-    // S6-3-3d: 落笔入口(翻页/begin/context/raw dot/状态)已迁 Swift。
-    [EventRouter penDownWithX:px y:py pressure:pressure timestamp:ts rawWidth:raw_w];
-    perf_log_event("pen_down", elapsed_us(t0));
-    return NULL;
-  }
-  if (isPen && (etype == NSEventTypeLeftMouseDragged ||
-                etype == NSEventTypeRightMouseDragged ||
-                etype == NSEventTypeOtherMouseDragged)) {
-    // If no DOWN event was seen (pen detection lag), auto-initialize
-    if (!g_stroke_active) {
-      // S6-3-3d: 橡皮态切换/图标刷新已迁 Swift。
-      [EventRouter updateEraserState:(devType == NSEraserPointingDevice) ||
-                                     (g_prox_dev == NSEraserPointingDevice)];
-      // S6-3-3d: 自动补 begin 复用 Swift 落笔入口(翻页/begin/context/raw dot/状态)。
-      [EventRouter penDownWithX:px y:py pressure:pressure timestamp:ts rawWidth:raw_w];
-      return NULL; // begin already recorded this point, don't feed duplicate to
-                   // modeler
-    }
-    // S6-3-3d: 拖动实时段(模型器 move + raw segment)已迁 Swift。
-    [EventRouter penMoveWithX:px y:py pressure:pressure timestamp:ts rawWidth:raw_w];
-    perf_log_event("pen_move", elapsed_us(t0));
-    return NULL;
-  }
-  if (isPen &&
-      (etype == NSEventTypeLeftMouseUp || etype == NSEventTypeRightMouseUp ||
-       etype == NSEventTypeOtherMouseUp)) {
-    // Pen up: finalize modeler, commit smoothed points (or erase)
-    NSLog(@"[pen] 抬笔 (pen up)");
-    if (g_stroke_active) {
-      // S6-3-3d: 抬笔收尾(erase/end/commit/context/状态)已迁 Swift。
-      [EventRouter penUpWithX:px y:py pressure:pressure timestamp:ts];
-      perf_log_event("pen_up", elapsed_us(t0));
-    }
-    return NULL;
-  }
+  // S6-3-3d: 笔事件分派(落笔/拖动/抬笔)已迁 Swift EventRouter。
+  int32_t penRoute = [EventRouter handlePenEventOfType:type x:px y:py pressure:pressure
+                                         timestamp:ts rawWidth:raw_w
+                                           isEraser:(devType == NSEraserPointingDevice) ||
+                                                    (g_prox_dev == NSEraserPointingDevice)];
+  if (penRoute == 2) return NULL;
 
   perf_log_event("tick", elapsed_us(t0));
   return event;
