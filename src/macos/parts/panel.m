@@ -95,16 +95,7 @@ static void ensure_surface(NSView *view) {
     g_has_last = NO;
 }
 
-static void flush_to_layer(void) {
-    if (!g_surface || !g_draw_view) return;
-    dirty_reset();
-    [g_draw_view setNeedsDisplay:YES];
-    // Note: deliberately NOT calling displayIfNeeded here.  The display
-    // will happen on the next vsync via the runloop, batching all pending
-    // pen events into a single frame.  This cuts CPU from ~20 % to ~8-10 %
-    // without perceptible latency because the vsync cadence (60/120 Hz) is
-    // far slower than raw pen events (200+ Hz).
-}
+static void flush_to_layer(void) { [OverlayLayerFlush flush]; }
 
 
 /// Update the active cairo context's source and stroke/fill helpers using
@@ -113,21 +104,7 @@ static void flush_to_layer(void) {
 
 /// Flush only the currently-marked dirty rect to the screen.
 /// Called by per-event raw_draw_dot/raw_draw_segment during a stroke.
-static void flush_dirty_to_layer(void) {
-    if (!g_surface || !g_draw_view) return;
-    if (!g_dirty_has) { [g_draw_view setNeedsDisplay:YES]; return; }
-    // Clip dirty rect to view bounds; if empty, fall back to full refresh.
-    NSRect bounds = [g_draw_view bounds];
-    NSRect dr = NSIntersectionRect(g_dirty_rect, bounds);
-    if (NSIsEmptyRect(dr)) {
-        dirty_reset();
-        [g_draw_view setNeedsDisplay:YES];
-        return;
-    }
-    // Reset dirty tracker; AppKit will deliver drawRect with this rect.
-    dirty_reset();
-    [g_draw_view setNeedsDisplayInRect:dr];
-}
+static void flush_dirty_to_layer(void) { [OverlayLayerFlush flushDirty]; }
 
 /// Set up the shared cairo context for the duration of a stroke.
 /// Idempotent: safe to call if g_active_cr is already set.
