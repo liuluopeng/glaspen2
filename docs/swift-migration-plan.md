@@ -518,3 +518,20 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7dd(新目标第50轮) | 剩余 Rust→macOS C ABI 主体迁 Swift: 新增 macos_api.swift(MacosApi: 设置快照 JSON/页刷新/无限刷新/页导航/删除页(邻居预取+切页或清屏)/热键键名分派/PDF 导出/GIF 导出+剪贴板+提示), menu.m 八个导出函数全部变一行转发; 新增 5 FFI 声明; D12 快照闸门并入 macos_api.swift | cargo build/tests/parity 全绿;面板快照/页删除/导出需真机验证 | 本提交 |
 | 2026-11-24 | S7de(新目标第51轮) | 颜色/粗细菜单富文本标题迁 Swift: 新增 menu_preset_titles.swift(MenuPresetTitles: 预设色圆点/粗细横线图标 + MenuNames 名称组装), ObjC gl_color_item_text/gl_width_item_text 一行转发; 新增 2 预设数据桥 | cargo build/tests/parity 全绿;菜单图标/名称需真机验证 | 本提交 |
 | 2026-11-24 | S7df(新目标第52轮) | 启动编排迁 Swift: 新增 app_bootstrap.swift(AppBootstrap.start: 探针/单实例守卫与本地化弹窗/NSApp 策略/预设/辅助功能请求/状态栏项/菜单处理器与主菜单/屏幕尺寸与 DB/两段设置恢复/窗口创建/信号安装/显示器变更观察/tap 重装/权限告警/运行期钩子), glaspen2_run 变为 start + [NSApp run] 两行; 新增 5 全局桥与 3 FFI 声明 | cargo build/tests/parity 全绿;完整启动路径需真机验证 | 本提交 |
+
+### 迁移收尾盘点(第53轮, 2026-11-24)
+
+| 类别 | 行数 | 说明 |
+|---|---|---|
+| ObjC 总计 | 3,073 | `glaspen2.m` 785 / `menu.m` 623 / `panel.m` 495 / `run.m` 1,212(含声明与注释) |
+| `glaspen2_router_*` / `glaspen2_menu_*` 桥 | ~773 | Swift/ObjC 互调与 C ABI 薄桥(功能实现均已在 Swift) |
+| ScreenCaptureKit 路径 | ~331 | `save_with_background`/`capture_below_own_window`、`invert_*` 捕获子系统 |
+| 小胶水(≤5 行) | ~227 | 状态 setter/getter、转发函数 |
+| 剩余逻辑(>5 行) | ~92 | `cairo_create_scaled`/`gl_text(f)`/dirty tracker/`save_and_exit`/`rec_json`/`event_tap_store`/`gl_panel_transparent_apply`/`pm_update`/`gl_string_setting`/录制集成回调等 |
+| 其余 | ~1,650 | 全局状态声明、extern/前向声明、宏、注释 |
+
+- 应用层**业务逻辑**已基本迁完(启动/事件/菜单/设置/画布/绘制/翻页/隧道/录制/导出/性能日志);
+- 待决策: ScreenCaptureKit 需 macOS 12.3, 当前 Swift 部署目标 12.0(与 DMG `LSMinimumSystemVersion` 对齐)。
+  若允许抬到 12.3, `invert_*` 与 `save_with_background` 两个子系统(~331 行)可整体迁 Swift;
+  否则它们作为**平台例外**保留并写入 `docs/swift-boundary.md`。
+- 彻底无 `.m`: 还需把剩余 ~773 行 C 桥与全局状态所有权逐步移入 Swift(@_cdecl 导出或去桥), 预计 10–15 轮。
