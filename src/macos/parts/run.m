@@ -202,16 +202,7 @@ static void apply_outline(BOOL on) { [MenuHandler setOutlineEnabled:on]; }
 // ── 无限画布:镜头平移(全局唯一画布) ──
 
 // 把当前镜头变换应用到渲染 + 节流持久化(0.5s 一次)
-static void canvas_apply_transform(void) {
-  glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
-  rebuild_surface_from_strokes();
-  static CFAbsoluteTime last_save = 0.0;
-  CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-  if (now - last_save > 0.5) {
-    last_save = now;
-    [CanvasCamera persistInfinite];
-  }
-}
+static void canvas_apply_transform(void) { [CanvasCamera applyTransform]; }
 
 // 键盘平移镜头(滚轮缩放走 canvas_zoom_at; 书写中忽略)。
 // D5b: 数学(pan -= d)单源在 core Camera::pan_by, 经 FFI 拿回三值;

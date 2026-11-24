@@ -14,6 +14,21 @@ import AppKit
         glaspen2_router_peek_lens_change()
     }
 
+    private static var lastTransformSave: TimeInterval = 0
+
+    /// 应用镜头变换 + 重建 surface, 0.5s 节流持久化。
+    @objc public static func applyTransform() {
+        glaspen2_set_view_transform(glaspen2_router_pan_x(),
+                                     glaspen2_router_pan_y(),
+                                     glaspen2_router_zoom())
+        glaspen2_router_rebuild_surface()
+        let now = ProcessInfo.processInfo.systemUptime
+        if now - lastTransformSave > 0.5 {
+            lastTransformSave = now
+            persistInfinite()
+        }
+    }
+
     /// 以视口点 (vx,vy) 为锚缩放(数学在 core Camera::zoom_at)。
     @objc(zoomAtFactor:vx:vy:)
     public static func zoomAt(factor: Double, vx: Double, vy: Double) {

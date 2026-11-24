@@ -193,6 +193,7 @@ extern char* glaspen2_recording_event_json(int slot, const char *event_json);
 extern int glaspen2_recording_reset(int slot);
 extern int glaspen2_recording_mode(int slot);
 extern void glaspen2_set_stroke_outline(int enabled);
+static void canvas_apply_transform(void);
 
 // S7ak: 镜头 JSON 逻辑已迁 Swift(CameraState), 以下为 ObjC 转发。
 static BOOL camera_assign(NSDictionary *result, BOOL assign_zoom) {
@@ -277,7 +278,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
 // S6-3-3: 判定逻辑已迁 Swift(EventRouter.isVirtualPenEvent); 常量经薄桥暴露。
 static void draw_minimap(CGContextRef ctx, NSRect bounds);
 static void canvas_reset_lens(void);
-static void canvas_apply_transform(void);
 // 性能日志(drawRect 用得到, 实现在文件后部)
 static BOOL g_perf_log = NO;
 static void perf_log_event_notes(const char *evtype, uint64_t dur_us, const char *notes);
