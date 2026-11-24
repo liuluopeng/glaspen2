@@ -336,22 +336,7 @@ static char *gl_settings_snapshot_overrides_json(void) { return (char *)[MenuGlu
 /// settings_snapshot::snapshot_json;本函数只收运行时专属值并转发 FFI。
 /// FFI 永不返回 NULL;内部错误以 {"error": ...} 形式传给 api.rs(它会拒绝该帧,
 /// 等价于旧实现"拿不到快照")。
-char *glaspen2_macos_settings_json(void) {
-    __block char *out = NULL;
-    gl_run_on_main_sync(^{
-        char *overrides = gl_settings_snapshot_overrides_json();
-        if (!overrides) return;
-        char *json = glaspen2_settings_snapshot_json(overrides);
-        free(overrides);
-        if (!json) return;
-        size_t n = strlen(json);
-        char *buf = (char *)malloc(n + 1);
-        if (buf) memcpy(buf, json, n + 1);
-        glaspen2_free_c_string(json);
-        out = buf;
-    });
-    return out;
-}
+char *glaspen2_macos_settings_json(void) { return (char *)[MacosApi settingsJSON]; }
 
 void glaspen2_macos_free_c_string(char *p) {
     if (p) free(p);
@@ -379,35 +364,7 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
 }
 
 /// 删除一页;返回 1 表示成功。删除当前页时自动切到相邻页。
-int glaspen2_macos_delete_page(long long screen_id) {
-    __block int ok = 0;
-    // delete_screen 会把 current 置 0; 邻居必须在**删除前**按当前页取好,
-    // 否则删完 current=0, next/prev 都查不到, 外壳永远进不了切页分支。
-    BOOL was_current = (screen_id == glaspen2_get_current_screen_id());
-    int64_t next_id = was_current ? glaspen2_next_screen_id() : 0;
-    int64_t prev_id = was_current ? glaspen2_prev_screen_id() : 0;
-    dispatch_sync(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        ok = glaspen2_delete_screen(screen_id);
-        gl_run_on_main_sync(^{
-            if (g_infinite_canvas) {
-                // 无限画布独立存储,不受页存储的删除影响
-                rebuild_surface_from_strokes();
-                return;
-            }
-            if (ok && was_current) {
-                int64_t target = next_id != 0 ? next_id : prev_id;
-                if (target != 0) {
-                    glaspen2_load_strokes_for_screen(target);
-                    pageview_update(); // 相邻页几何可能 ≠ 屏幕
-                    rebuild_surface_from_strokes();
-                } else {
-                    clear_screen();
-                }
-            }
-        });
-    });
-    return ok;
-}
+int glaspen2_macos_delete_page(long long screen_id) { return [MacosApi deletePageWithScreenId:screen_id]; }
 
 /// 面板窗口真穿透(实验): 拟物玻璃卡片的"透明窟窿"需要窗口本身可透明。
 /// 只动 NSWindow(不透明→透明+清底); Flutter view 的 layer 部分在 panel.m。
@@ -422,68 +379,16 @@ void gl_panel_transparent_apply(BOOL on) {
 
 /// 面板页面详情改动了当前页的数据(圈选移动/粘贴/删除) → 重建玻璃。
 /// core 的 refresh hook 在后台线程调用; surface 操作必须回主线程。
-void glaspen2_macos_refresh_page(long long screen_id) {
-    if (screen_id <= 0) return;
-    gl_run_on_main_sync(^{
-        if (g_infinite_canvas) return; // 无限画布不受页数据操作影响
-        if (screen_id != glaspen2_get_current_screen_id()) return;
-        glaspen2_load_strokes_for_screen(screen_id);
-        rebuild_surface_from_strokes();
-        flush_to_layer();
-    });
-}
+void glaspen2_macos_refresh_page(long long screen_id) { [MacosApi refreshPageWithScreenId:screen_id]; }
 
 /// 面板自由涂鸦编辑(圈选移动/粘贴/删除)改动了无限画布 → 重载并重建玻璃。
-void glaspen2_macos_refresh_infinite(void) {
-    gl_run_on_main_sync(^{
-        if (!g_infinite_canvas) return;
-        glaspen2_load_infinite_strokes();
-        rebuild_surface_from_strokes();
-        flush_to_layer();
-    });
-}
+void glaspen2_macos_refresh_infinite(void) { [MacosApi refreshInfinite]; }
 
 /// 跳转到指定页继续绘画。
-void glaspen2_macos_navigate_to_page(long long screen_id) {
-    if (screen_id <= 0) return;
-    // 从无限画布跳转到某一页:先切回翻页模式(否则会把页笔迹塞进无限画布内存)
-    if (g_infinite_canvas) {
-        gl_run_on_main_sync(^{
-            apply_infinite_canvas(NO, NO);
-        });
-    }
-    dispatch_sync(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        glaspen2_load_strokes_for_screen(screen_id);
-        pageview_update();
-        gl_run_on_main_sync(^{
-            rebuild_surface_from_strokes();
-        });
-    });
-}
+void glaspen2_macos_navigate_to_page(long long screen_id) { [MacosApi navigateToPageWithScreenId:screen_id]; }
 
 /// 设置面板快捷键按钮 → 执行与物理快捷键相同的动作。
-void glaspen2_macos_hotkey(const char *key_c) {
-    if (!key_c) return;
-    NSString *key = @(key_c);
-    gl_run_on_main_sync(^{
-        // Q(彻底退出)不走 perform_hotkey: 退出是独立动作, 且必须和菜单「退出」
-        // 共用同一条收尾路径(⌘⌃Q 本体留给 macOS 锁屏, 见 gl_shortcut_defaults)。
-        if ([key isEqualToString:@"Q"]) {
-            [MenuHandler quitAppNow];
-            return;
-        }
-        unsigned short kc = 0;
-        if ([key isEqualToString:@"G"]) kc = kVK_ANSI_G;
-        else if ([key isEqualToString:@"`"]) kc = 0x32; // ` — 上一页
-        else if ([key isEqualToString:@"1"]) kc = 0x12; // 1 — 下一页
-        else if ([key isEqualToString:@"Z"]) kc = kVK_ANSI_Z;
-        else if ([key isEqualToString:@"X"]) kc = kVK_ANSI_X;
-        else if ([key isEqualToString:@"C"]) kc = kVK_ANSI_C;
-        else if ([key isEqualToString:@"V"]) kc = kVK_ANSI_V;
-        else if ([key isEqualToString:@"B"]) kc = kVK_ANSI_B;
-        if (kc) perform_hotkey(kc);
-    });
-}
+void glaspen2_macos_hotkey(const char *key_c) { if (!key_c) return; [MacosApi hotkeyWithKey:[NSString stringWithUTF8String:key_c]]; }
 
 /// 无限画布总览:action 0=当前 1=镜头回原点 2=居中内容 3=新建(清空)。
 /// 返回 PNG 缓冲区(用 glaspen2_macos_free_bytes 释放)。rect_out 必须指向
@@ -543,53 +448,10 @@ unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *r
     return result_png;
 }
 
-int glaspen2_macos_export_pdf(void) {
-    __block int ok = 0;
-    dispatch_sync(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        ok = glaspen2_export_pdf();
-    });
-    return ok;
-}
+int glaspen2_macos_export_pdf(void) { return [MacosApi exportPDF]; }
 
 /// 导出动画 GIF:后台渲染,完成后回主线程复制到剪贴板并提示。
-int glaspen2_macos_export_gif(void) {
-    __block int ok = 0;
-    dispatch_sync(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        ok = glaspen2_save_animated_gif(g_gif_fps, g_gif_resolution, g_gif_speed,
-                                        g_gif_end_mode);
-        gl_run_on_main_sync(^{
-            if (ok) {
-                NSString *desktop = [NSSearchPathForDirectoriesInDomains(
-                    NSDesktopDirectory, NSUserDomainMask, YES) firstObject];
-                NSFileManager *fm = [NSFileManager defaultManager];
-                NSArray *files = [fm contentsOfDirectoryAtPath:desktop error:nil];
-                NSString *newestGif = nil;
-                NSDate *newestDate = nil;
-                for (NSString *f in files) {
-                    if ([f hasPrefix:@"glaspen2_"] && [f hasSuffix:@".gif"]) {
-                        NSString *full = [desktop stringByAppendingPathComponent:f];
-                        NSDictionary *attr = [fm attributesOfItemAtPath:full error:nil];
-                        NSDate *d = attr[NSFileModificationDate];
-                        if (!newestDate || [d compare:newestDate] == NSOrderedDescending) {
-                            newestDate = d;
-                            newestGif = full;
-                        }
-                    }
-                }
-                if (newestGif) {
-                    NSPasteboard *pb = [NSPasteboard generalPasteboard];
-                    [pb clearContents];
-                    [pb writeObjects:@[ [NSURL fileURLWithPath:newestGif] ]];
-                }
-                show_notification(
-                    L(@"动画 GIF 已保存并复制到剪贴板", @"Animated GIF saved & copied"));
-            } else {
-                show_notification(gl_text(@"recording.gif_no_strokes_or_export_failed"));
-            }
-        });
-    });
-    return ok;
-}
+int glaspen2_macos_export_gif(void) { return [MacosApi exportGIF]; }
 
 // --- Unified settings functions (single source of truth) ---
 

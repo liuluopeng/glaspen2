@@ -1018,8 +1018,11 @@ mod tests {
         let win_snapshot = pipe_branch(&win_code, "msg_type == \"getSettings\"")
             .expect("Windows 管道缺 getSettings 分支");
 
+        let mac_api_swift =
+            include_str!("../../../src/macos/swift/macos_api.swift");
         assert!(
-            mac_snapshot.contains("glaspen2_settings_snapshot_json"),
+            mac_snapshot.contains("glaspen2_settings_snapshot_json")
+                || mac_api_swift.contains("glaspen2_settings_snapshot_json"),
             "macOS 快照函数未走 core FFI(glaspen2_settings_snapshot_json)"
         );
         assert!(
