@@ -21,8 +21,8 @@ import AppKit
         glaspen2_router_set_startup_window(window)
         glaspen2_router_set_draw_view(drawView)
         glaspen2_router_set_glass_view(glass)
-        glaspen2_router_set_blank_cursor(blank)
-        glaspen2_router_set_arrow_cursor(arrow)
+        CursorState.blankCursor = blank
+        CursorState.arrowCursor = arrow
         glaspen2_router_ensure_surface()
         if glaspen2_router_ethereal() != 0 { EtherealMode.restoreNow() }
         NSLog("[glaspen2] window ready %dx%d, ignoresMouseEvents=%d",

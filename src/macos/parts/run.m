@@ -330,16 +330,15 @@ void glaspen2_router_zoom_at(double factor, double x, double y) {
 
 // S6-3-2: 非笔 mouseMoved 隐藏光标所需的薄桥
 int glaspen2_router_cursor_flags(void) {
-  return (g_cursor_visible ? 1 : 0) | ((g_stroke_active ? 1 : 0) << 1) |
+  return (sw_cursor_visible() ? 1 : 0) | ((g_stroke_active ? 1 : 0) << 1) |
          ((g_ethereal_canvas ? 1 : 0) << 2) |
          ((g_has_tablet_proximity ? 1 : 0) << 3);
 }
 
 void glaspen2_router_cursor_invalidate(void) {
-  dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
+  dirty_include_point(sw_cursor_x(), sw_cursor_y(), 14.0);
 }
 
-void glaspen2_router_cursor_hide(void) { g_cursor_visible = NO; }
 void glaspen2_router_auto_hide(void) { auto_hide_now(); }
 void glaspen2_router_bubble_pen_gone(void) { glaspen2_bubble_pen_gone(); }
 void glaspen2_router_flush(void) { flush_dirty_to_layer(); }
@@ -351,7 +350,7 @@ int64_t glaspen2_virtual_pen_user_data(void) {
 // S6-3-3b: 笔光标更新的状态/动作薄桥
 int glaspen2_router_pen_state(void) {
   return (g_strokes_visible ? 1 : 0) | ((g_stroke_active ? 1 : 0) << 1) |
-         ((g_cursor_visible ? 1 : 0) << 2);
+         ((sw_cursor_visible() ? 1 : 0) << 2);
 }
 
 void glaspen2_router_pen_bubble(int back) {
@@ -361,16 +360,12 @@ void glaspen2_router_pen_bubble(int back) {
 
 void glaspen2_router_pen_auto_show(void) { auto_show_canvas(); }
 void glaspen2_router_peek_cancel(void) { peek_cancel_timer(); }
-double glaspen2_router_cursor_x(void) { return g_cursor_x; }
-double glaspen2_router_cursor_y(void) { return g_cursor_y; }
 void glaspen2_router_cursor_set(double x, double y) {
-  g_cursor_x = x;
-  g_cursor_y = y;
+  sw_cursor_set(x, y, 0);
 }
 void glaspen2_router_cursor_show(int on) {
-  if (on) g_cursor_visible = YES;
+  if (on) sw_cursor_show();
 }
-int glaspen2_router_pen_cursor_visible(void) { return g_cursor_visible ? 1 : 0; }
 int glaspen2_router_cursor_flush_due(void) {
   if (!g_stroke_active && [PerfLog elapsedUsSince:g_last_cursor_flush] >= 16000) {
     g_last_cursor_flush = mach_absolute_time();
@@ -380,8 +375,6 @@ int glaspen2_router_cursor_flush_due(void) {
 }
 
 // S6-3-3c: 笔书写系统光标隐藏/恢复薄桥
-int glaspen2_router_pen_drawing(void) { return g_pen_drawing ? 1 : 0; }
-void glaspen2_router_set_pen_drawing(int on) { g_pen_drawing = on != 0; }
 void glaspen2_router_hide_system_cursor(void) {
   CGDisplayHideCursor(kCGDirectMainDisplay);
 }
@@ -438,9 +431,7 @@ void glaspen2_router_raw_draw_dot(double x, double y, double rawWidth) {
 }
 void glaspen2_router_pen_down_state(double x, double y, double rawWidth) {
   g_stroke_active = YES;
-  g_cursor_visible = YES;
-  g_cursor_x = x;
-  g_cursor_y = y;
+  sw_cursor_set(x, y, 1);
   g_raw_last_x = x;
   g_raw_last_y = y;
   g_raw_last_w = rawWidth;
@@ -476,8 +467,8 @@ void glaspen2_router_pen_up_state(void) {
   g_raw_has_last = NO;
   g_raw_has_prev = NO;
   g_raw_path_len = 0;
-  g_cursor_visible = YES;
-  dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
+  sw_cursor_show();
+  dirty_include_point(sw_cursor_x(), sw_cursor_y(), 14.0);
   flush_dirty_to_layer();
 }
 
@@ -847,8 +838,6 @@ double glaspen2_router_glass_opacity(void) { return g_glass_opacity; }
 void glaspen2_router_set_startup_window(id window) { g_window = window; }
 void glaspen2_router_set_draw_view(id view) { g_draw_view = view; }
 void glaspen2_router_set_glass_view(id view) { g_glass_view = view; }
-void glaspen2_router_set_blank_cursor(id cursor) { g_blank_cursor = cursor; }
-void glaspen2_router_set_arrow_cursor(id cursor) { g_arrow_cursor = cursor; }
 int glaspen2_router_event_tap_ok(void) { return g_event_tap ? 1 : 0; }
 
 // S7db: tap 看门狗桥
@@ -904,14 +893,6 @@ NSDictionary *glaspen2_router_grid_state(void) {
   };
 }
 
-NSDictionary *glaspen2_router_cursor_draw_state(void) {
-  return @{
-    @"visible" : @(g_cursor_visible ? YES : NO),
-    @"x" : @(g_cursor_x),
-    @"y" : @(g_cursor_y),
-    @"eraser" : @(g_eraser_mode ? YES : NO),
-  };
-}
 
 
 // S7do: 绘制标志桥

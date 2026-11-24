@@ -360,10 +360,6 @@ static BOOL g_tap_has_scroll = NO;
 // The view is non-flipped (origin bottom-left), so flip Y first.
 // 表面像素坐标的矩形 → view 坐标脏区(反色局部重绘的 blit 用)
 // Cursor state
-static double g_cursor_x = -100, g_cursor_y = -100;
-static BOOL g_cursor_visible = NO;
-static NSCursor *g_blank_cursor = nil;
-static NSCursor *g_arrow_cursor = nil;
 
 // Crosshair hover redraw throttle: flush at most every ~16 ms; the dirty
 // rect accumulates intermediate positions so no ghost trails appear.
@@ -371,7 +367,6 @@ static uint64_t g_last_cursor_flush = 0;
 
 // System cursor hidden while pen is drawing (file scope so toggle_enabled
 // can restore it when the app is disabled mid-stroke).
-static BOOL g_pen_drawing = NO;
 
 // Restore the system cursor if it is currently hidden by pen drawing.
 // Pressure monitor

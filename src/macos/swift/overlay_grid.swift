@@ -87,12 +87,10 @@ import CoreGraphics
 @objc public final class OverlayCursorRenderer: NSObject {
     @objc(drawCursorWithContext:)
     public static func drawCursor(_ ctx: CGContext) {
-        let st = glaspen2_router_cursor_draw_state() as NSDictionary
-        func num(_ key: String) -> NSNumber? { st[key] as? NSNumber }
-        guard num("visible")?.boolValue ?? false,
-              let x = num("x")?.doubleValue, x >= 0,
-              let y = num("y")?.doubleValue else { return }
-        let eraser = num("eraser")?.boolValue ?? false
+        guard CursorState.visible, CursorState.x >= 0 else { return }
+        let x = CursorState.x
+        let y = CursorState.y
+        let eraser = glaspen2_router_eraser_mode() != 0
         let radius = 8.0
         let ring = eraser ? NSColor(calibratedRed: 1.0, green: 0.25, blue: 0.2, alpha: 0.95)
                           : NSColor(white: 1.0, alpha: 0.8)
