@@ -192,7 +192,7 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
   rebuild_surface_from_strokes();
   // 滚轮劫持的根治:翻页模式重装不含滚轮的 tap,系统滚轮零拦截
   event_tap_reinstall();
-  sync_settings_panel(); // Flutter 面板的开关/圆点同步
+  glaspen2_notify_settings_changed(); // Flutter 面板的开关/圆点同步
   if (notify) {
     show_notification(on ? gl_text(@"canvas.infinite_on")
                          : gl_text(@"canvas.infinite_off"));
@@ -934,7 +934,7 @@ static void tunnel_finish(void) {
   s_tun_active = NO;
   // 动效结束:回到普通工作态 —— 表面重绘真实页 + 磨砂玻璃恢复自身开关
   // (透明玻璃或用户设定的磨砂), 由 commit 的 replay 重画表面。
-  gl_glass_apply();
+  [MenuHandler applyGlass];
   if (s_tun_prepare) {
     s_tun_prepare();
     s_tun_prepare = NULL;
@@ -2277,7 +2277,7 @@ void glaspen2_run(void) {
     if (glass_milli > 0)
       g_glass_opacity = glass_milli / 1000.0;
     g_glass_enabled = glaspen2_load_bool_setting("glass_enabled") != 0;
-    gl_glass_apply();
+    [MenuHandler applyGlass];
 
     // Restore grid setting
     g_show_grid = glaspen2_load_bool_setting("grid") != 0;

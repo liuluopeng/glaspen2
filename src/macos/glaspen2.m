@@ -32,14 +32,12 @@ static BOOL s_tun_active = NO;
 static void clear_screen(void);
 static void rebuild_surface_from_strokes(void);
 static void show_settings_panel(void);
-static void sync_settings_panel(void);
 static void perf_log_summary(void);
 static void pm_ensure_window(void);
 static void pm_show(void);
 static void pm_hide(void);
 static void pm_destroy(void);
 static void pm_update(void);
-static void gl_glass_apply(void);
 static void gl_ethereal_restore_now(void); // 定义在 parts/menu.m(启动恢复飘渺落位)
 static void toggle_enabled(void);
 // D8b 录制状态机接线: 总开关变化时把事件喂给手写消息槽并执行 effects
@@ -259,7 +257,6 @@ extern int glaspen2_undo_last_stroke(void);
 static void rebuild_surface_from_strokes(void);
 static void ensure_surface(NSView *view);
 static BOOL perform_hotkey(unsigned short keyCode);
-static void apply_outline(BOOL on);
 static void apply_infinite_canvas(BOOL on, BOOL notify);
 static void canvas_infinite_load(void);
 static void canvas_infinite_persist(void);

@@ -211,7 +211,7 @@ static void auto_show_canvas(void) {
     if (!g_ethereal_canvas) return;
     if (!g_strokes_visible) {
         g_strokes_visible = YES;
-        gl_glass_apply(); // restore the glass per its own toggle
+        [MenuHandler applyGlass]; // restore the glass per its own toggle
         if (g_pressure_monitor) pm_show();
         [g_draw_view setNeedsDisplay:YES];
         NSLog(@"[ethereal] 笔迹重现");
@@ -233,7 +233,7 @@ static void peek_strokes(double seconds) {
     peek_cancel_timer();
     if (!g_strokes_visible) {
         g_strokes_visible = YES;
-        gl_glass_apply();
+        [MenuHandler applyGlass];
         if (g_pressure_monitor) pm_show();
         [g_draw_view setNeedsDisplay:YES];
     }
@@ -273,7 +273,7 @@ static void toggle_canvas_mode(void) {
         // → 固定画布涂鸦模式: show the strokes and keep them visible
         g_ethereal_canvas = NO;
         g_strokes_visible = YES;
-        gl_glass_apply();
+        [MenuHandler applyGlass];
         if (g_pressure_monitor) pm_show();
         [g_draw_view setNeedsDisplay:YES];
         show_notification(gl_text(@"canvas.fixed_mode"));
@@ -377,7 +377,7 @@ int glaspen2_menu_outline_enabled(void) {
 }
 
 void glaspen2_menu_apply_outline(int on) {
-    apply_outline(on != 0);
+    [MenuHandler setOutlineEnabled:(on != 0)];
 }
 
 int glaspen2_menu_infinite_enabled(void) {
@@ -835,7 +835,7 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
         } else if ([kind isEqualToString:@"GlassFollowStrokes"]) {
             g_glass_follow_strokes = boolValue;
-            gl_glass_apply(); // 立即按新规则重估玻璃可见性(含飘渺隐藏态)
+            [MenuHandler applyGlass]; // 立即按新规则重估玻璃可见性(含飘渺隐藏态)
         } else if ([kind isEqualToString:@"SoftShadow"]) {
             g_soft_shadow = boolValue;
             glaspen2_set_soft_shadow(boolValue ? 1 : 0);
@@ -849,7 +849,7 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
         } else if ([kind isEqualToString:@"PanelTransparent"]) {
             gl_panel_transparent_apply_full(boolValue);
         } else if ([kind isEqualToString:@"Outline"]) {
-            apply_outline(boolValue);
+            [MenuHandler setOutlineEnabled:boolValue];
         } else if ([kind isEqualToString:@"InfiniteCanvas"]) {
             apply_infinite_canvas(boolValue, NO);
         } else if ([kind isEqualToString:@"Minimap"]) {
@@ -907,7 +907,7 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             gl_shortcuts_apply(map);
             NSString *json = gl_shortcuts_effective_json();
             if (json.length) glaspen2_save_string_setting("shortcuts", json.UTF8String);
-            sync_settings_panel();
+            glaspen2_notify_settings_changed();
         } else if ([kind isEqualToString:@"HotkeyRecording"]) {
             // 录制期间放行键盘给面板; 不落库, 超时自动恢复
             gl_set_hotkey_recording(boolValue);
@@ -1140,11 +1140,6 @@ static void gl_settings_apply_pending_color_width(void) {
     [MenuHandler applyPendingColorWidth];
 }
 
-static void gl_glass_apply(void) {
-    // S7z: 逻辑已迁 Swift(MenuHandler.applyGlass)。
-    [MenuHandler applyGlass];
-}
-
 // --- Pressure monitor (top-left info window) ---
 
 static void pm_ensure_window(void) {
@@ -1203,12 +1198,6 @@ static void pm_destroy(void) {
     }
 }
 
-static void sync_settings_panel(void) {
-    // 菜单/快捷键改了状态 → 推给订阅了 FRB 设置流的设置面板
-    glaspen2_notify_settings_changed();
-}
-
-
 // S7: 暂存颜色/粗细状态薄桥(变量在 menu.m)
 int glaspen2_router_pending_color(void) { return g_pending_color_index; }
 int glaspen2_router_pending_width(void) { return g_pending_width_index; }
@@ -1228,7 +1217,7 @@ void glaspen2_router_save_pen_settings(void) {
   glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
 }
 void glaspen2_router_update_checkmarks(void) { update_menu_checkmarks(); }
-void glaspen2_router_sync_settings_panel(void) { sync_settings_panel(); }
+void glaspen2_router_sync_settings_panel(void) { glaspen2_notify_settings_changed(); }
 
 // S7i: 颜色设置的 Swift 薄桥
 int glaspen2_router_color_preset_count(void) { return g_color_preset_count; }
@@ -1244,7 +1233,7 @@ void glaspen2_router_apply_color(int idx) {
 
 // S7j: 磨砂玻璃开关的 Swift 薄桥
 void glaspen2_router_set_glass_state(int on) { g_glass_enabled = on != 0; }
-void glaspen2_router_glass_apply(void) { gl_glass_apply(); }
+void glaspen2_router_glass_apply(void) { [MenuHandler applyGlass]; }
 
 // S7k: 菜单项勾选状态薄桥(按 tag 查菜单)
 void glaspen2_router_update_menu_state(int tag, int state) {
