@@ -405,35 +405,7 @@ static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved);
 /// 改键后鼠标自动跟随(默认 ⌃⌥).
 /// 未绑定/非法返回 0 —— 鼠标不控制镜头, 与键盘动作保持一致。
 /// 旧默认迁移单源在 core/chord.rs(D2): 历史默认表 + "只迁仍等于旧默认的项"。
-static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved) {
-    NSDictionary<NSString *, NSString *> *defaults = gl_shortcut_defaults();
-    NSMutableDictionary<NSString *, NSString *> *values = [NSMutableDictionary dictionary];
-    NSMutableDictionary<NSString *, NSString *> *lookup = [NSMutableDictionary dictionary];
-    for (NSString *action in gl_shortcut_actions()) {
-        id raw = [ChordNormalizer migrateSavedAction:action raw:saved[action]];
-        NSString *chord = nil;
-        if ([raw isKindOfClass:[NSString class]]) {
-            chord = [ChordNormalizer normalizeRaw:raw];
-            if (!chord && [(NSString *)raw length] > 0) {
-                NSLog(@"[hotkey] 非法组合 %@=%@, 回退默认", action, raw);
-            }
-        }
-        if (!chord) chord = defaults[action]; // 缺失/非法 → 默认
-        if (chord.length && gl_shortcut_reserved(chord)) {
-            NSLog(@"[hotkey] 保留组合 %@=%@, 回退默认", action, chord);
-            chord = defaults[action];
-        }
-        if (chord.length && lookup[chord]) {
-            NSLog(@"[hotkey] 冲突 %@ 与 %@ 都是 %@; 后者解绑",
-                  lookup[chord], action, chord);
-            chord = @"";
-        }
-        values[action] = chord ?: @"";
-        if (chord.length) lookup[chord] = action;
-    }
-    g_shortcut_values = values;
-    g_shortcut_lookup = lookup;
-}
+static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved) { [ShortcutApply applySaved:saved]; }
 
 /// 当前生效表(含默认补齐)的 JSON; settings_json / 面板回显用。
 static NSString *gl_shortcuts_effective_json(void) {
@@ -1034,3 +1006,12 @@ int glaspen2_router_menu_state(int tag) {
 }
 NSAttributedString *glaspen2_router_color_item_title(int idx) { return gl_color_item_text(idx); }
 NSAttributedString *glaspen2_router_width_item_title(int idx) { return gl_width_item_text(idx); }
+
+// S7bs: 快捷键生效表薄桥
+int glaspen2_router_shortcut_reserved(NSString *chord) {
+  return gl_shortcut_reserved(chord) ? 1 : 0;
+}
+void glaspen2_router_set_shortcut_tables(NSDictionary *values, NSDictionary *lookup) {
+  g_shortcut_values = [values mutableCopy];
+  g_shortcut_lookup = [lookup mutableCopy];
+}
