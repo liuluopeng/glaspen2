@@ -398,3 +398,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7ag(续跑第50轮) | 删除 restore_system_cursor 的 ObjC 包装: 调用点直调 [EventRouter restoreSystemCursor](Swift, 仅 pen_drawing 时 show+清标记); glaspen2.m 包装与前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7ah(续跑第51轮) | 删除 show_page_info 的 ObjC 包装: 5 处调用点(翻页/新建页/气泡翻页)直调 [NotificationPresenter showPageInfoWithScreenId](Swift); glaspen2.m 包装与前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7ai(续跑第52轮) | 删除 update_status_icon_color 包装: 全部调用点直调桥 glaspen2_router_update_status_icon_state(), 桥实现直接调 Swift StatusIconUpdater; 桥在 ObjC 侧补前向声明(Bridging.h 仅对 Swift 可见); 期间修正自递归与未声明错误 | cargo build/tests/parity 全绿 | 本提交 |
+| 2026-11-24 | S8 检查点(续跑第53轮) | 53 轮检查点: 全量测试/parity 全绿; 设置层与状态图标/页信息/光标恢复/退出等 ObjC 包装均已删除, 调用直指 Swift; 剩余为大型功能体(无限画布切换、draw_minimap、dirty 合成余量、panel.m 设置宿主、menu.m selector 转发、glaspen2.m shim), 单函数 100–188 行且需真机/截图验证, 不宜在低上下文下盲改 | 无代码变更, 验证通过 | 本提交 |
