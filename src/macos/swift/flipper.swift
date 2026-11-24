@@ -17,11 +17,11 @@ import AppKit
         if glaspen2_router_flip_effect() == 1 && glaspen2_router_infinite() == 0
             && SurfaceStore.current != nil
             && glaspen2_router_stroke_active() == 0 {
-            let curBefore: Int = fromPage > 0 ? Int(fromPage) : glaspen2_get_current_screen_id()
+            let curBefore: Int64 = fromPage > 0 ? fromPage : glaspen2_get_current_screen_id()
             let tp0 = Date().timeIntervalSinceReferenceDate
             prepare()
             let tp1 = Date().timeIntervalSinceReferenceDate
-            let tunneled = TunnelAnimation.start(goingNext: goingNext, curPage: curBefore,
+            let tunneled = TunnelAnimation.start(goingNext: goingNext, curPage: Int(curBefore),
                                                  prepare: prepare, commit: commit)
             if tunneled {
                 NSLog("[flip] 卡顿账: prepare %.0fms", (tp1 - tp0) * 1000.0)

@@ -903,7 +903,7 @@ mod tests {
                 .collect()
         }
 
-        let mac_main = include_str!("../../../src/macos/glaspen2.m");
+        let mac_main = concat!(include_str!("../../../src/macos/swift/rust_ffi.h"), include_str!("../../../src/macos/swift/run_glue.swift"));
         let mac_run = include_str!("../../../src/macos/swift/run_glue.swift");
         let mac_menu = include_str!("../../../src/macos/swift/menu_runtime.swift");
         let mac_panel = format!("{}{}",

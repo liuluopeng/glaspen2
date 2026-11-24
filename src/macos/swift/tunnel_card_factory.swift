@@ -12,7 +12,7 @@ import Darwin
         var pscale = 1.0, ox = 0.0, oy = 0.0
         var pw: Int32 = Int32(screenW), ph: Int32 = Int32(screenH)
         if !isCurrent {
-            glaspen2_page_dims(Int(screenId), &pw, &ph)
+            glaspen2_page_dims(screenId, &pw, &ph)
             if pw <= 0 || ph <= 0 { pw = Int32(screenW); ph = Int32(screenH) }
             if Int(pw) != screenW || Int(ph) != screenH {
                 pscale = min(Double(screenW) / Double(pw), Double(screenH) / Double(ph))

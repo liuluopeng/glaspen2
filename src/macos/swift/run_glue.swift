@@ -288,3 +288,8 @@ public func runDrawViewPtr() -> UnsafeMutableRawPointer? {
 
 @_cdecl("glaspen2_router_invert_invalidate")
 public func runInvertInvalidate() { panelInvertInvalidate() }
+
+@_cdecl("glaspen2_notification_redraw")
+public func runNotificationRedraw() {
+    UIAnchors.drawView?.needsDisplay = true
+}

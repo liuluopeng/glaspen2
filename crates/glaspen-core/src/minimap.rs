@@ -631,7 +631,7 @@ mod tests {
                 .collect()
         }
 
-        let mac_main = include_str!("../../../src/macos/glaspen2.m");
+        let mac_main = concat!(include_str!("../../../src/macos/swift/rust_ffi.h"), include_str!("../../../src/macos/swift/run_glue.swift"));
         let mac_run = concat!(
             include_str!("../../../src/macos/swift/run_glue.swift"),
             include_str!("../../../src/macos/swift/minimap.swift")

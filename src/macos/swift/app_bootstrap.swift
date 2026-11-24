@@ -6,7 +6,6 @@ import ApplicationServices
     private static var displayObserver: Any?
 
     @objc public static func start() -> Bool {
-        glaspen2_macos_swift_probe_maybe()
 
         let lockFd = InstanceLock.acquire()
         if lockFd == -1 || AppInstanceGuard.anotherInstanceRunning() {

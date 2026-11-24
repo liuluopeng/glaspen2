@@ -23,21 +23,6 @@ fn main() {
     // S2 Swift↔ObjC 互调自检(隐藏调试入口, 不启动 GUI): 只跑一次双向探针
     // (ObjC→Swift→ObjC, 各打一行 NSLog)后退出。正常启动/用户路径不经过这里。
     // 定义在 src/macos/swift/InteropProbe.m;验证命令:
-    //     target/debug/glaspen2 --swift-probe
-    if args.get(1).map(String::as_str) == Some("--swift-probe") {
-        #[cfg(target_os = "macos")]
-        unsafe {
-            unsafe extern "C" {
-                fn glaspen2_macos_swift_probe_selftest();
-            }
-            glaspen2_macos_swift_probe_selftest();
-        }
-        std::process::exit(0);
-    }
-
-    // S3b-2b-2 菜单构建自检(隐藏调试入口, 不启动 GUI): Swift MenuBuilder
-    // 在空 NSMenu 上批量建颜色/粗细条目, 校验 count/tag/action/target/标题
-    // 后退出。普通启动/用户路径不经过这里。验证命令:
     //     target/debug/glaspen2 --swift-menu-probe
     if args.get(1).map(String::as_str) == Some("--swift-menu-probe") {
         #[cfg(target_os = "macos")]

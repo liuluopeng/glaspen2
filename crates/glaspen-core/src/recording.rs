@@ -1727,7 +1727,7 @@ mod tests {
     fn adapters_drive_core_recording_machine() {
         // macOS: run.m = 热键/事件 tap/effects 执行; glaspen2.m = FFI 声明 +
         // (已删除的)会话标志位; menu.m = 总开关关闭收尾。
-        let mac_main = include_str!("../../../src/macos/glaspen2.m");
+        let mac_main = concat!(include_str!("../../../src/macos/swift/rust_ffi.h"), include_str!("../../../src/macos/swift/run_glue.swift"));
         let mac_effects_swift =
             include_str!("../../../src/macos/swift/recording_effects.swift");
         let mac_run = concat!(

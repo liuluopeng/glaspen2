@@ -12,8 +12,8 @@ import Darwin
         let screenH = glaspen2_router_screen_h()
         guard SurfaceStore.current != nil, screenW > 0, screenH > 0 else { return false }
         let cur = Int(curPage)
-        let target = goingNext ? glaspen2_page_neighbor(cur, 1)
-                               : glaspen2_page_neighbor(cur, -1)
+        let target = goingNext ? glaspen2_page_neighbor(Int64(cur), 1)
+                               : glaspen2_page_neighbor(Int64(cur), -1)
         if target <= 0 { return false }
         TunnelLifecycle.freeCards()
         let scale = SurfaceStore.scaleFactor
@@ -29,7 +29,7 @@ import Darwin
         }
         TunnelState.surface = surface
         let tb0 = TunnelState.now()
-        var n = glaspen2_preload_flip_pages(cur, goingNext ? 1 : 0, 4, 1)
+        var n = glaspen2_preload_flip_pages(Int64(cur), goingNext ? 1 : 0, 4, 1)
         let tc1 = TunnelState.now()
         if n <= 0 { return false }
         if Int(n) > TunnelState.maxCards { n = Int32(TunnelState.maxCards) }

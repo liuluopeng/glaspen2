@@ -4,13 +4,8 @@ fn main() {
     let is_macos = target.contains("apple");
 
     if is_macos {
-        // Watch sources for incremental rebuild
-        println!("cargo:rerun-if-changed=src/macos/glaspen2.m");
-        // 文件拆分的子文件是 #include 文本包含, 不监视的话改 parts/*.m
-        // 不会重跑本脚本 → clang 不重编 → ObjC 改动静默失效
-        for part in ["menu.m", "panel.m", "run.m"] {
-            println!("cargo:rerun-if-changed=src/macos/parts/{part}");
-        }
+        // Watch sources for incremental rebuild (macOS 层已全 Swift)。
+
         // Swift 迁移层(S1):目录级监视,cargo 会递归扫目录,新增/改 .swift 都会重跑
         println!("cargo:rerun-if-changed=src/macos/swift");
         // 桥接头/Swift 头生成输入(S2):目录监视已覆盖,显式列一条防未来挪目录漏掉
@@ -307,71 +302,20 @@ fn main() {
             swift_header_path.display()
         );
 
-        // ── ObjC 编译(在 Swift 头生成之后): glaspen2.m 主单元 + S2 探针单元 ──
-        // -I $OUT_DIR: 让 #import "glaspen2_macos_swift-Swift.h" 能找到生成的 Swift 头。
-        let probe_obj_path = format!("{}/InteropProbe.o", out_dir);
-        // 每个 .m 独立一次 clang 调用(各自 -c -o): 探针编译错误能直接归因,
-        // 也不会把两个翻译单元的参数混在一起。
-        let compile_objc = |src: &str, obj: &str| {
-            let mut clang = std::process::Command::new("clang");
-            clang.args(["-fobjc-arc", "-O2", "-Wall"]);
-            clang.arg(format!("-I{}", out_dir));
-            // debug 构建带上调试信息:否则 lldb 只能按符号名下断点,
-            // 看不到 glaspen2.m 的行号(backtrace 也只有地址)。
-            if std::env::var("PROFILE").as_deref() == Ok("debug") {
-                clang.arg("-g");
-            }
-            for p in &cairo.include_paths {
-                clang.arg(format!("-I{}", p.display()));
-                // glaspen2.m 用 <cairo/cairo.h> 风格: pkg-config 给的是 .../include/cairo,
-                // 需要父目录 .../include 才能解析 <cairo/...>。
-                if let Some(parent) = p.parent() {
-                    clang.arg(format!("-I{}", parent.display()));
-                }
-            }
-            clang.arg(format!(
-                "-F{}/FlutterMacOS.xcframework/macos-arm64_x86_64",
-                flutter_fw_dir
-            ));
-            clang
-                .arg("-c")
-                .arg(src)
-                .arg("-o")
-                .arg(obj)
-                .status()
-                .expect("Failed to run clang")
-                .success()
-        };
-        assert!(
-            compile_objc("src/macos/glaspen2.m", &obj_path),
-            "clang failed to compile glaspen2.m"
-        );
-        assert!(
-            compile_objc("src/macos/swift/InteropProbe.m", &probe_obj_path),
-            "clang failed to compile src/macos/swift/InteropProbe.m"
-        );
-
         // Tell cargo about the object file
         println!("cargo:rustc-link-search=native={}", out_dir);
         println!("cargo:rustc-link-lib=static=glaspen2_objc");
 
-        // Create one archive from the ObjC + Swift objects. Swift 目标文件里带
-        // LC_LINKER_OPTION autolink 信息,从归档成员里拉出来时链接器也会处理
-        // (已用独立探针验证过),因此无需手写 -lswift* 列表。
+        // Create one archive from the Swift objects. Swift 目标文件里带
+        // LC_LINKER_OPTION autolink 信息, 从归档成员里拉出来时链接器也会处理.
         let lib_path = format!("{}/libglaspen2_objc.a", out_dir);
-        // ar crus 只增改不删:Swift 源文件重命名/删除后旧成员会残留在归档里,
-        // 先删档保证成员集合与当前源码一致。
         let _ = std::fs::remove_file(&lib_path);
         let mut ar = std::process::Command::new("ar");
-        ar.arg("crus")
-            .arg(&lib_path)
-            .arg(&obj_path)
-            .arg(&probe_obj_path);
+        ar.arg("crus").arg(&lib_path);
         for obj in &swift_objects {
             ar.arg(obj);
         }
         let status = ar.status().expect("Failed to run ar");
-
         assert!(status.success(), "ar failed to create archive");
 
         // Link Flutter frameworks

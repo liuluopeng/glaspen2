@@ -22,7 +22,7 @@ import Darwin
         SettingsGlue.runOnMainSync {
             if glaspen2_router_infinite() != 0 { return }
             if screenId != Int64(glaspen2_get_current_screen_id()) { return }
-            glaspen2_load_strokes_for_screen(Int(screenId))
+            glaspen2_load_strokes_for_screen(screenId)
             PageViewOps.rebuildSurface()
             OverlayLayerFlush.flush()
         }
@@ -46,7 +46,7 @@ import Darwin
             }
         }
         DispatchQueue.global(qos: .userInitiated).sync {
-            glaspen2_load_strokes_for_screen(Int(screenId))
+            glaspen2_load_strokes_for_screen(screenId)
             PageViewOps.update()
             SettingsGlue.runOnMainSync {
                 PageViewOps.rebuildSurface()
@@ -70,7 +70,7 @@ import Darwin
                 if ok != 0 && wasCurrent {
                     let target = nextId != 0 ? nextId : prevId
                     if target != 0 {
-                        glaspen2_load_strokes_for_screen(Int(target))
+                        glaspen2_load_strokes_for_screen(target)
                         PageViewOps.update()
                         PageViewOps.rebuildSurface()
                     } else {
