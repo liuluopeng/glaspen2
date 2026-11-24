@@ -98,6 +98,7 @@ int glaspen2_router_camera_dragging(void);
 double glaspen2_router_camera_step_zoom(void);
 void glaspen2_router_camera_queue_pan(double dx, double dy);
 int glaspen2_router_pm_enabled(void);
+int glaspen2_router_hotkey_recording(void);
 void glaspen2_router_pm_update(int inRange, int pressure, double x, double y, int tipDown, NSString *evtype);
 void glaspen2_router_camera_set_last(double x, double y);
 double glaspen2_router_camera_last_x(void);

@@ -11,6 +11,9 @@ import AppKit
             glaspen2_router_disable_cleanup()
             return 1
         }
+        if type == .keyDown || type == .keyUp {
+            return routeKeyboardEvent(type: type, event: event)
+        }
         if type == .tabletProximity {
             routeProximity(event)
             return 1
@@ -78,6 +81,20 @@ import AppKit
             glaspen2_router_show_system_cursor()
             glaspen2_router_set_pen_drawing(0)
         }
+    }
+
+    /// S6-3-4: 键盘事件: 录制热键 → 普通 chord; 返回 1 放行 / 2 消费。
+    private static func routeKeyboardEvent(type: CGEventType, event: CGEvent) -> Int32 {
+        if glaspen2_router_hotkey_recording() != 0 { return 1 }
+        guard let ev = NSEvent(cgEvent: event) else { return 1 }
+        let hasCmdCtrl = ev.modifierFlags.contains(.command)
+            && ev.modifierFlags.contains(.control)
+        // 录制键的 keyDown/keyUp 都要交给状态机(抬起用于结束会话)。
+        if RecordingHotkeys.handle(type: type, keyCode: ev.keyCode, hasCmdCtrl: hasCmdCtrl) {
+            return 2
+        }
+        if handleChordKeyEvent(event) == 2 { return 2 }
+        return 1
     }
 
     /// S6-3-3d: 压感监视器状态更新(是否在压感区/压力/坐标/tip down/事件名)。

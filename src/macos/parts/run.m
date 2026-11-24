@@ -2141,29 +2141,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
 
   // 滚轮缩放(S6-3-1: 已迁 Swift EventRouter; 这里不再处理)
 
-  // Handle keyboard events separately — always intercept hotkeys
-  if (type == kCGEventKeyDown || type == kCGEventKeyUp) {
-    // 设置面板正在录制快捷键: 全部放行给 Flutter, 由面板捕获键帽。
-    // (60s 兜底在 menu.m 的 gl_set_hotkey_recording 里)
-    if (g_hotkey_recording) return event;
-    NSEvent *keyEvent = [NSEvent eventWithCGEvent:event];
-    if (keyEvent) {
-      NSUInteger mods = [keyEvent modifierFlags];
-      BOOL hasCmdCtrl = (mods & NSEventModifierFlagCommand) &&
-                        (mods & NSEventModifierFlagControl);
-      unsigned short kc = [keyEvent keyCode];
-      // 长按重复判定已迁 Swift(S6-3-4b-2b)。
-      // 录制会话(GIF/⌘⌃2 草稿/⌘⌃3 直发)的起止全部交给 core 状态机:
-      // 这里只做按键匹配与"抬起是否属于本槽位"的预判。
-      // 抬起不验修饰键: 先松 ⌘/⌃ 也不会把会话卡死(与旧实现一致);
-      // 抬起只在状态机确实处于该模式时消费, 普通 r/2/3 抬键照常放行。
-      if (handle_recording_hotkeys(type, kc, hasCmdCtrl)) return NULL;
-      // S6-3-4b-2b: 普通 chord 门控已迁 Swift; 返回 2 = 消费。
-      if ([EventRouter handleChordKeyEvent:event] == 2) return NULL;
-    }
-    // Not a hotkey — pass through to system
-    return event;
-  }
+  // S6-3-4: 键盘事件(录制键 + chord)已迁 Swift EventRouter。
 
   // S6-3-4: 停用涂鸦时的清理/放行已迁 Swift EventRouter。
 
@@ -3155,3 +3133,6 @@ void glaspen2_router_pm_update(int inRange, int pressure, double x, double y,
   g_pm_evtype = evtype;
   pm_update();
 }
+
+// S6-3-4: 键盘录制放行标志薄桥
+int glaspen2_router_hotkey_recording(void) { return g_hotkey_recording ? 1 : 0; }
