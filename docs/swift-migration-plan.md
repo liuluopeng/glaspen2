@@ -332,3 +332,23 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S5/S7(续跑第16轮) | 截图目标屏判定迁 Swift: OverlayWindowFactory.windowDisplayId(取覆盖层窗口所在屏, 退回主屏, 多屏正确), ObjC window_display_id 变一行转发; 新增 main_window 薄桥 | cargo build/tests/parity 全绿;多屏截图需真机验证 | 本提交 |
 | 2026-11-24 | S7f(续跑第17轮) | 退出动作迁 Swift: MenuHandler.quitAppNow(perf 汇总 + 恢复系统光标 + NSApp terminate), ObjC gl_quit_app 变一行转发; 新增 perf_summary 薄桥 | cargo build/tests/parity 全绿;真实退出需真机验证(perf 汇总文件无则无副作用) | 本提交 |
 | 2026-11-24 | S5/S7(续跑第18轮) | 覆盖层内容组装迁 Swift: OverlayWindowFactory.assembleContent:glass:drawView:inWindow:(玻璃在下、绘制视图 layer 透明、addSubview 顺序、挂载+orderFront), ObjC 原 addSubview/wantsLayer/layer 配置/attach 调用收敛为一次调用 | cargo build/tests/parity 全绿;窗口层级/透明度需真机验证 | 本提交 |
+
+## 剩余 ObjC 清单与建议迁移顺序(2026-11-24 审计)
+
+| 文件 | 行数 | static 函数 | ObjC 方法 | 类 |
+|---|---:|---:|---:|---:|
+| `glaspen2.m` | 910 | 152 | 0 | 0 |
+| `parts/menu.m` | 1,335 | 75 | 20 | 1 |
+| `parts/panel.m` | 1,169 | 54 | 2 | 2 |
+| `parts/run.m` | 3,061 | 100 | 2 | 1 |
+
+- 最大单函数:`run.m` 的 `drawRect:`(188 行,笔迹/网格/小地图/HUD/反色合成)。
+- 建议顺序:
+  1. `drawRect` 按图层切片(笔迹 surface → 网格 → 小地图 → 反色合成 → 光标),每片做
+     像素/截图 parity 后再删 ObjC;
+  2. `run.m` 窗口/相机/导出辅助(已迁组装与光标,剩 surface/导出/隧道动效);
+  3. `panel.m` 设置窗口/Flutter engine 宿主/压感监视器 HUD;
+  4. `menu.m` 设置 setter 与图标刷新(selector 必须保留的转发类最后处理);
+  5. `glaspen2.m` 剩余 i18n/设置分派/DB 初始化 shim(保留 C ABI 名,可换 Swift 实现)。
+- 每片都跑 `cargo build`/全量测试/parity;真机验收清单见各阶段记录。
+| 2026-11-24 | S8 审计(续跑第19轮) | 生成剩余 ObjC 清单(行数/static/方法/类)与建议迁移顺序(drawRect 分图层→run.m 辅助→panel.m→menu.m→glaspen2.m shim); 单函数最大 drawRect 188 行 | 文档同步, 无代码变更 | 本提交 |
