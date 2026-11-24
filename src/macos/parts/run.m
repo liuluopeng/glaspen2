@@ -2184,48 +2184,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
 
   // ⌃⌥ + 左键拖动 = 临时抓手; 与镜头键位用同一套修饰键。
   // 正常鼠标左键(无修饰键)仍然原样放行给下层 App。
-  const NSUInteger cameraRelevantMods = NSEventModifierFlagCommand |
-                                        NSEventModifierFlagControl |
-                                        NSEventModifierFlagOption |
-                                        NSEventModifierFlagShift;
-  if (!isPen && g_camera_mouse_dragging &&
-      (etype == NSEventTypeLeftMouseDragged || etype == NSEventTypeLeftMouseUp)) {
-    if (etype == NSEventTypeLeftMouseDragged) {
-      if (g_infinite_canvas && g_enabled && !g_stroke_active) {
-        NSPoint loc = [nsevent locationInWindow];
-        // 抓手折算用的 zoom 兜底(> 0.05 否则 1.0)单源在 core(D5b)
-        double z = glaspen2_camera_step_zoom(g_zoom);
-        // 内容跟随鼠标: 向右/向上拖 → 画布向右/向上移动。
-        // Y 取反: locationInWindow 是 AppKit 左下原点(向上为正), 画布/视图
-        // 是左上原点(向下为正); 不取反时上下拖动会像 macOS「自然滚动」
-        // 一样与鼠标相反。
-        camera_mouse_queue_pan((loc.x - g_camera_mouse_last.x) / z,
-                               (g_camera_mouse_last.y - loc.y) / z);
-        g_camera_mouse_last = loc;
-      }
-    } else {
-      camera_mouse_flush_pan();
-      g_camera_mouse_dragging = NO;
-    }
-    return NULL;
-  }
-  if (!isPen && g_infinite_canvas && g_enabled && !g_stroke_active &&
-      etype == NSEventTypeLeftMouseDown) {
-    NSUInteger cameraMods = gl_shortcut_modifier_mask_for(@"canvas_pan_up");
-    NSUInteger smods = [nsevent modifierFlags];
-    if (cameraMods != 0 && (smods & cameraRelevantMods) == cameraMods) {
-      g_camera_mouse_dragging = YES;
-      g_camera_mouse_last = [nsevent locationInWindow];
-      return NULL;
-    }
-  }
-
-  // S6-3-2: 非笔 mouseMoved 隐藏光标已迁 Swift EventRouter。
-
-  // S6-3-3b: 笔光标更新已迁 Swift EventRouter。
-
-  // S6-3-3c: 笔书写系统光标隐藏/恢复已迁 Swift EventRouter。
-
+  // S6-3-3d: 相机临时抓手(开始/拖动/结束)已迁 Swift EventRouter。
 
   // S6-3-3d: 菜单栏点击的 tap 暂停/恢复已迁 Swift EventRouter。
 
@@ -3256,3 +3215,22 @@ void glaspen2_router_set_prox_device(int device) {
 }
 void glaspen2_router_bubble_pen_back(void) { glaspen2_bubble_pen_back(); }
 int glaspen2_router_ethereal(void) { return g_ethereal_canvas ? 1 : 0; }
+
+// S6-3-3d: 相机临时抓手薄桥
+int glaspen2_router_camera_dragging(void) { return g_camera_mouse_dragging ? 1 : 0; }
+double glaspen2_router_camera_step_zoom(void) { return glaspen2_camera_step_zoom(g_zoom); }
+void glaspen2_router_camera_queue_pan(double dx, double dy) { camera_mouse_queue_pan(dx, dy); }
+void glaspen2_router_camera_set_last(double x, double y) {
+  g_camera_mouse_last = NSMakePoint(x, y);
+}
+double glaspen2_router_camera_last_x(void) { return g_camera_mouse_last.x; }
+double glaspen2_router_camera_last_y(void) { return g_camera_mouse_last.y; }
+void glaspen2_router_camera_flush(void) { camera_mouse_flush_pan(); }
+void glaspen2_router_camera_clear_dragging(void) { g_camera_mouse_dragging = NO; }
+void glaspen2_router_camera_start(double x, double y) {
+  g_camera_mouse_dragging = YES;
+  g_camera_mouse_last = NSMakePoint(x, y);
+}
+NSUInteger glaspen2_router_camera_pan_mods(void) {
+  return gl_shortcut_modifier_mask_for(@"canvas_pan_up");
+}

@@ -15,6 +15,12 @@ import AppKit
             routeProximity(event)
             return 1
         }
+        // 相机临时抓手: 非笔拖/放 或 ⌃⌥+左键按下(须在菜单栏判定之前)。
+        if type == .leftMouseDragged || type == .leftMouseUp || type == .leftMouseDown {
+            if let ev = NSEvent(cgEvent: event), !isPen(ev), routeCameraMouse(type: type, ev: ev) {
+                return 2
+            }
+        }
         // 点菜单栏(非笔): 临时停 tap, 让菜单能收到点击; 5s 兜底恢复。
         if type == .leftMouseDown, let ev = NSEvent(cgEvent: event), !isPen(ev) {
             if event.location.y < 30 {
@@ -72,6 +78,39 @@ import AppKit
             glaspen2_router_show_system_cursor()
             glaspen2_router_set_pen_drawing(0)
         }
+    }
+
+    /// S6-3-3d: 相机临时抓手(⌃⌥+左键拖动)开始/拖动/结束; 返回 true = 消费事件。
+    private static func routeCameraMouse(type: CGEventType, ev: NSEvent) -> Bool {
+        let st = state()
+        if glaspen2_router_camera_dragging() != 0
+            && (type == .leftMouseDragged || type == .leftMouseUp) {
+            if type == .leftMouseDragged {
+                if (st & 4) != 0 && (st & 1) != 0 && (st & 2) == 0 {
+                    let loc = ev.locationInWindow
+                    let z = glaspen2_router_camera_step_zoom()
+                    glaspen2_router_camera_queue_pan(
+                        (Double(loc.x) - glaspen2_router_camera_last_x()) / z,
+                        (glaspen2_router_camera_last_y() - Double(loc.y)) / z)
+                    glaspen2_router_camera_set_last(Double(loc.x), Double(loc.y))
+                }
+            } else {
+                glaspen2_router_camera_flush()
+                glaspen2_router_camera_clear_dragging()
+            }
+            return true
+        }
+        if (st & 4) != 0 && (st & 1) != 0 && (st & 2) == 0 && type == .leftMouseDown {
+            let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
+            let mods = ev.modifierFlags.intersection(relevant)
+            let cameraMods = UInt(glaspen2_router_camera_pan_mods())
+            if cameraMods != 0 && mods.rawValue == cameraMods {
+                let loc = ev.locationInWindow
+                glaspen2_router_camera_start(Double(loc.x), Double(loc.y))
+                return true
+            }
+        }
+        return false
     }
 
     /// S6-3-3d: 笔 proximity 进入/离开: 悬停显示/离开隐藏, 飘渺模式联动。
