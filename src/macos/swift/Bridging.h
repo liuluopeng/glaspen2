@@ -64,6 +64,12 @@ void glaspen2_menu_select_width(int idx);
 void glaspen2_menu_save_xoj_raw(void);
 void glaspen2_menu_notify(NSString *text);
 
+// S6-3-1: 事件路由所需的只读状态/动作薄桥(实现留在 run.m)
+NSUInteger glaspen2_router_camera_mods(void);
+int glaspen2_router_state(void);
+double glaspen2_router_draw_height(void);
+void glaspen2_router_zoom_at(double factor, double x, double y);
+
 // S6-2: 事件 tap 回调函数指针 / tap 存储 / 滚轮标记桥(实现留在 run.m)
 CGEventTapCallBack glaspen2_event_tap_callback_ptr(void);
 void glaspen2_event_tap_store(CFMachPortRef tap);

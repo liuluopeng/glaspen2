@@ -2229,42 +2229,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     return event;
   }
 
-  // 滚轮缩放使用当前 canvas_zoom_in 动作的修饰键(默认 ⌃⌥), 与键盘镜头
-  // 同一套方案; 改键后鼠标自动跟随。书写中忽略(模型器坐标系不能中途跳变);
-  // 未按这套修饰键/未绑定缩放时滚轮原样放行给系统。
-  if (type == kCGEventScrollWheel && g_infinite_canvas) {
-    NSEvent *scrollEvent = [NSEvent eventWithCGEvent:event];
-    if (scrollEvent) {
-      NSUInteger smods = [scrollEvent modifierFlags];
-      const NSUInteger relevantMods = NSEventModifierFlagCommand |
-                                      NSEventModifierFlagControl |
-                                      NSEventModifierFlagOption |
-                                      NSEventModifierFlagShift;
-      NSUInteger cameraMods = gl_shortcut_modifier_mask_for(@"canvas_zoom_in");
-      BOOL sHasCameraMods = cameraMods != 0 &&
-                            (smods & relevantMods) == cameraMods;
-      if (sHasCameraMods && g_enabled && !g_stroke_active) {
-        // 滚轮缩放:以鼠标位置为中心(上限 100%)。
-        // 修饰键来自 canvas_zoom_in; 平移用 canvas_pan_* 键位动作。
-        double dy = [scrollEvent scrollingDeltaY];
-        double factor;
-        if ([scrollEvent hasPreciseScrollingDeltas]) {
-          factor = exp(-dy * 0.0015); // 触控板连续缩放
-        } else {
-          factor = (dy > 0) ? 1.1 : ((dy < 0) ? 1.0 / 1.1 : 1.0);
-        }
-        // 鼠标位置 → 绘图坐标(与笔事件同约定:窗口原点在左下)
-        NSPoint mloc = [scrollEvent locationInWindow];
-        double vh = [g_draw_view bounds].size.height;
-        double mx = mloc.x;
-        double my = vh - mloc.y;
-        canvas_zoom_at(factor, mx, my);
-        perf_log_event("scroll_zoom", elapsed_us(t0));
-        return NULL; // 吞掉,避免下层 app 同时滚动/缩放
-      }
-    }
-    return event;
-  }
+  // 滚轮缩放(S6-3-1: 已迁 Swift EventRouter; 这里不再处理)
 
   // Handle keyboard events separately — always intercept hotkeys
   if (type == kCGEventKeyDown || type == kCGEventKeyUp) {
@@ -3429,4 +3394,22 @@ void glaspen2_event_tap_note_scroll(int on) {
 
 void glaspen2_event_tap_enable(CFMachPortRef tap, int on) {
   if (tap) CGEventTapEnable(tap, on != 0);
+}
+
+// S6-3-1: 事件路由薄桥
+NSUInteger glaspen2_router_camera_mods(void) {
+  return gl_shortcut_modifier_mask_for(@"canvas_zoom_in");
+}
+
+int glaspen2_router_state(void) {
+  return (g_enabled ? 1 : 0) | ((g_stroke_active ? 1 : 0) << 1) |
+         ((g_infinite_canvas ? 1 : 0) << 2);
+}
+
+double glaspen2_router_draw_height(void) {
+  return g_draw_view ? [g_draw_view bounds].size.height : 0.0;
+}
+
+void glaspen2_router_zoom_at(double factor, double x, double y) {
+  canvas_zoom_at(factor, x, y);
 }
