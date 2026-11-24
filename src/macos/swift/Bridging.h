@@ -158,6 +158,8 @@ void glaspen2_router_reset_page_offsets(void);
 int glaspen2_router_pageview_pw(void);
 NSString *glaspen2_router_shortcut_chord(NSString *action);
 extern char *glaspen2_chord_defaults_json(void);
+extern char *glaspen2_live_plan_json(const char *input);
+void glaspen2_router_dirty_include_surface_rect(double x, double y, double w, double h);
 extern char *glaspen2_chord_actions_json(void);
 int glaspen2_router_shortcut_reserved(NSString *chord);
 void glaspen2_router_set_shortcut_tables(NSDictionary *values, NSDictionary *lookup);

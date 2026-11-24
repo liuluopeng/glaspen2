@@ -2498,7 +2498,7 @@ double glaspen2_router_pen_r(void) { return g_pen_r; }
 double glaspen2_router_pen_g(void) { return g_pen_g; }
 double glaspen2_router_pen_b(void) { return g_pen_b; }
 int glaspen2_router_live_plan_dot(cairo_t *cr, double x, double y, double width) {
-  return gl_live_plan_draw_dot(cr, x, y, width) ? 1 : 0;
+  return [LivePlan drawDotContext:(void *)cr x:x y:y width:width] ? 1 : 0;
 }
 cairo_pattern_t *glaspen2_router_invert_ink_source(cairo_t *cr) {
   return invert_ink_source(cr);
@@ -2534,7 +2534,7 @@ void glaspen2_router_update_raw_after_segment(double x, double y, double width) 
   g_raw_has_last = YES;
 }
 int glaspen2_router_live_plan_segment(cairo_t *cr, double x, double y, double width) {
-  return gl_live_plan_draw_segment(cr, x, y, width) ? 1 : 0;
+  return [LivePlan drawSegmentContext:(void *)cr x:x y:y width:width] ? 1 : 0;
 }
 double glaspen2_router_outline_dash(void) { return kOutlineDash; }
 
@@ -2554,3 +2554,8 @@ void glaspen2_router_reset_raw_stroke(void) {
 
 // S7cb: 飘渺模式薄桥
 int glaspen2_router_tunnel_active(void) { return s_tun_active ? 1 : 0; }
+
+// S7cc: 计划脏区薄桥
+void glaspen2_router_dirty_include_surface_rect(double x, double y, double w, double h) {
+  dirty_include_surface_rect(x, y, w, h);
+}
