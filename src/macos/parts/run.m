@@ -381,52 +381,13 @@ static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
 
 static void page_flip_swap_from(BOOL going_next, long from_page,
                                 void (^prepare)(void), void (^commit)(void)) {
-  // 上一段隧道还没落定时先让它收尾(commit 旧目标页), 再开始新的翻页。
-  // 否则 tunnel_free_cards() 会在旧 timer 仍在跑时销毁表面, 旧 timer 也
-  // 永远不会被 cancel(表现为翻页越来越快/卡顿/漏帧)。
-  if (s_tun_active) {
-    tunnel_finish();
-  }
-  if (!g_window) {
-    prepare();
-    commit();
-    return;
-  }
-
-  // 时光隧道(自定义动效): 玻璃窗口不隐藏, 在自己的表面上逐帧绘制隧道
-  // —— 页卡片按透视缩进深处, 目标页从尽头飞出落到满屏, 落定瞬间无缝
-  // 换成真实页内容。快照建卡在主线程做(几百 ms 内), 期间先把目标页
-  // 载入 STROKES 并平滑好 —— 落定那一下只是重绘, 不会卡。
-  if (g_flip_effect == 1 && !g_infinite_canvas && g_surface &&
-      !g_stroke_active) {
-    // 新建页/气泡自动翻页的 current 可能已经被 core 切到目标页, 调用方
-    // 可显式传入翻页**前**的页; 0 = 读当前页(普通上一页/下一页)。
-    long cur_before =
-        from_page > 0 ? from_page : glaspen2_get_current_screen_id();
-    double tp0 = [NSDate timeIntervalSinceReferenceDate];
-    prepare(); // 载入 + 平滑(目标页), 与建卡共用一次 DB 访问
-    double tp1 = [NSDate timeIntervalSinceReferenceDate];
-    if (page_flip_tunnel(going_next, cur_before, NULL, commit)) {
-      NSLog(@"[flip] 卡顿账: prepare %.0fms", (tp1 - tp0) * 1000.0);
-      return;
-    }
-  }
-
-  double t0 = [NSDate timeIntervalSinceReferenceDate];
-  [g_window setIsVisible:NO];
-  prepare();
-  dispatch_async(dispatch_get_main_queue(), ^{
-    commit();
-    [g_window setIsVisible:YES];
-    double t1 = [NSDate timeIntervalSinceReferenceDate];
-    NSLog(@"[flip] 隐藏间隙 %.0fms", (t1 - t0) * 1000.0);
-  });
+  [Flipper swapFromNext:going_next fromPage:from_page prepare:prepare commit:commit];
 }
 
 /// 普通翻页: 翻页前的当前页 = 调用时的 current。
 static void page_flip_swap(BOOL going_next, void (^prepare)(void),
                            void (^commit)(void)) {
-  page_flip_swap_from(going_next, 0, prepare, commit);
+  [Flipper swapNext:going_next prepare:prepare commit:commit];
 }
 
 /// 气泡「写完自动新建一页」: 落笔瞬间(笔画尚未开始)若这一笔将开新消息
@@ -1591,3 +1552,11 @@ void glaspen2_router_tunnel_run_callbacks(void) {
 double glaspen2_router_tunnel_now(void) { return tunnel_now(); }
 double glaspen2_router_tunnel_t0(void) { return s_tun_t0; }
 uint64_t glaspen2_router_tunnel_frames(void) { return s_tun_frames; }
+
+// S7cw: 翻页编排薄桥
+void glaspen2_router_tunnel_finish(void) { tunnel_finish(); }
+int glaspen2_router_page_flip_tunnel(int going_next, long cur_page,
+                                     dispatch_block_t prepare,
+                                     dispatch_block_t commit) {
+  return page_flip_tunnel(going_next != 0, cur_page, prepare, commit) ? 1 : 0;
+}
