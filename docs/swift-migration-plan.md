@@ -358,3 +358,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7i(续跑第23轮) | 颜色设置迁 Swift: MenuHandler.setColorIndex(书写中暂存 pending;否则应用 preset rgb→落库→勾选/状态图标/面板刷新), ObjC gl_settings_set_color 变一行转发; 新增 5 个薄桥(颜色预设计数/选中/prev/pending/apply) | cargo build/tests/parity 全绿;颜色切换需真机验证 | 本提交 |
 | 2026-11-24 | S7j(续跑第24轮) | 磨砂玻璃开关迁 Swift: MenuHandler.setGlassEnabled(状态/落库 bool/应用), ObjC gl_settings_set_glass_enabled 变一行转发; 新增 2 个薄桥 + 既有 save_bool_setting FFI 声明; 复用 save_pen_settings/同步桥 | cargo build/tests/parity 全绿;玻璃视觉效果需真机验证 | 本提交 |
 | 2026-11-24 | S7k(续跑第25轮) | 开机自启开关迁 Swift: MenuHandler.setLaunchAtLogin(系统设置 + 菜单勾选 tag=777 + 面板同步), ObjC gl_settings_set_launch 变一行转发; 新增菜单状态薄桥 + set_launch_at_login FFI 声明 | cargo build/tests/parity 全绿;开机自启需真机验证 | 本提交 |
+| 2026-11-24 | 质量验证(续跑第26轮) | 严格验证: cargo clippy -p glaspen2 --all-targets -- -D warnings 通过(仅 linker 旧 -ld_classic 提示, 不属警告失败), 全量测试 307+29+31+0 全绿, parity 通过; 确认 26 轮迁移无质量回退 | — | 本提交 |
