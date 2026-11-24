@@ -1171,18 +1171,8 @@ static void gl_settings_set_launch(BOOL on) {
 }
 
 static void gl_glass_apply(void) {
-    // Combine enabled + opacity into visual effect
-    // 飘渺模式且「玻璃跟随涂鸦」开: 笔迹隐藏时玻璃一起藏(历史行为);
-    // 关则玻璃只听自己的开关, 常驻背景。
-    BOOL hidden_by_ethereal =
-        g_ethereal_canvas && g_glass_follow_strokes && !g_strokes_visible;
-    double visual = g_glass_enabled ? g_glass_opacity : 0.0;
-    if (g_glass_view) {
-        g_glass_view.alphaValue = visual * 2.0; // map to visible range
-        g_glass_view.hidden = !g_glass_enabled || hidden_by_ethereal;
-    }
-    NSMenuItem *gi = [MenuLookup itemWithTag:444 inMenu:g_menu];
-    [gi setState:g_glass_enabled ? NSControlStateValueOn : NSControlStateValueOff];
+    // S7z: 逻辑已迁 Swift(MenuHandler.applyGlass)。
+    [MenuHandler applyGlass];
 }
 
 static void gl_settings_set_glass_enabled(BOOL on) {
@@ -1329,4 +1319,21 @@ void glaspen2_router_set_chat_integration(int on) { g_chat_integration = on != 0
 // S7y: 压感监视器标签设置薄桥
 void glaspen2_router_set_pm_label(NSString *text) {
   if (g_pm_label) [g_pm_label setStringValue:text];
+}
+
+// S7z: 磨砂玻璃应用的 Swift 薄桥
+NSDictionary *glaspen2_router_glass_state(void) {
+  return @{
+    @"enabled" : @(g_glass_enabled ? YES : NO),
+    @"opacity" : @(g_glass_opacity),
+    @"ethereal" : @(g_ethereal_canvas ? YES : NO),
+    @"follow" : @(g_glass_follow_strokes ? YES : NO),
+    @"strokesVisible" : @(g_strokes_visible ? YES : NO),
+  };
+}
+void glaspen2_router_apply_glass_view(double alpha, BOOL hidden) {
+  if (g_glass_view) {
+    g_glass_view.alphaValue = alpha;
+    g_glass_view.hidden = hidden;
+  }
 }
