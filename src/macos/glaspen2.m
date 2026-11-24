@@ -608,10 +608,6 @@ static void show_notification(NSString *text) {
 
 // 页信息 HUD: 已迁 Swift(NotificationPresenter.showPageInfoWithScreenId:);
 // 文案与日期比较单源仍在 core::pageinfo。
-static void show_page_info(long long screen_id) {
-    [NotificationPresenter showPageInfoWithScreenId:(int64_t)screen_id];
-}
-
 static void save_drawing_only(void) {
     if (!g_surface) return;
     cairo_surface_flush(g_surface);
@@ -836,7 +832,7 @@ static void clear_screen(void) {
     }
     flush_to_layer();
     if (created) {
-        show_page_info(glaspen2_get_current_screen_id());
+        [NotificationPresenter showPageInfoWithScreenId:glaspen2_get_current_screen_id()];
     } else {
         // The current canvas was never edited — don't allow blank-on-blank.
         show_notification(gl_text(@"canvas.blank_guard"));

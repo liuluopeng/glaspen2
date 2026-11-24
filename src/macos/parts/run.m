@@ -1253,7 +1253,7 @@ static BOOL bubble_auto_page_flip(void) {
                     glaspen2_smooth_loaded_strokes();
                     pageview_update(); },
                  ^{ replay_strokes_from_memory(); });
-  show_page_info(page);
+  [NotificationPresenter showPageInfoWithScreenId:page];
   show_notification(gl_text(@"page.auto_created"));
   return YES;
 }
@@ -1392,7 +1392,7 @@ static BOOL perform_hotkey(unsigned short kc) {
             replay_strokes_from_memory();
           });
       peek_strokes(1.0); // show the page briefly in ethereal mode
-      show_page_info(target);
+      [NotificationPresenter showPageInfoWithScreenId:target];
     } else {
       show_notification(gl_text(@"page.no_previous"));
     }
@@ -1416,7 +1416,7 @@ static BOOL perform_hotkey(unsigned short kc) {
             replay_strokes_from_memory();
           });
       peek_strokes(1.0); // show the page briefly in ethereal mode
-      show_page_info(target);
+      [NotificationPresenter showPageInfoWithScreenId:target];
     } else {
       // 没有下一页: 5 秒内再按一次 = 新建一页并翻过去(写完接着写)
       static NSTimeInterval lastNoNextAt = 0;
@@ -1443,7 +1443,7 @@ static BOOL perform_hotkey(unsigned short kc) {
               replay_strokes_from_memory();
             });
         peek_strokes(1.0);
-        show_page_info(pageId);
+        [NotificationPresenter showPageInfoWithScreenId:pageId];
         show_notification(gl_text(@"page.created"));
       } else if (pageId == before) {
         show_notification(gl_text(@"page.already_latest"));

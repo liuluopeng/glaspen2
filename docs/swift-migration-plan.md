@@ -396,3 +396,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7ae(续跑第48轮) | 删除 gl_quit_app 的 ObjC 转发: 菜单退出/设置面板退出/快捷键退出三处调用点直调 [MenuHandler quitAppNow](Swift), menu.m 转发函数与 glaspen2.m 前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7af(续跑第49轮) | 继续删转发: gl_glass_apply 调用点/桥直调 [MenuHandler applyGlass]; apply_outline 调用点/桥直调 setOutlineEnabled; sync_settings_panel 全部调用点直调 glaspen2_notify_settings_changed; 三个 ObjC 包装与前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7ag(续跑第50轮) | 删除 restore_system_cursor 的 ObjC 包装: 调用点直调 [EventRouter restoreSystemCursor](Swift, 仅 pen_drawing 时 show+清标记); glaspen2.m 包装与前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
+| 2026-11-24 | S7ah(续跑第51轮) | 删除 show_page_info 的 ObjC 包装: 5 处调用点(翻页/新建页/气泡翻页)直调 [NotificationPresenter showPageInfoWithScreenId](Swift); glaspen2.m 包装与前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
