@@ -1,4 +1,4 @@
-// S6-3: 事件路由。S6-3-1 滚轮缩放;S6-3-2 非笔 mouseMoved 隐藏光标。
+// S6: 事件路由。滚轮缩放(3-1)、非笔光标隐藏(3-2)、笔光标更新(3-3b)。
 import AppKit
 
 @objc public final class EventRouter: NSObject {
@@ -18,6 +18,9 @@ import AppKit
                 glaspen2_router_flush()
             }
         }
+        if type != .tabletProximity, isPenEvent(event) {
+            penCursorUpdate(type: type, event: event)
+        }
         return 0
     }
 
@@ -27,7 +30,37 @@ import AppKit
         return ev.subtype == .tabletPoint || ev.subtype == .tabletProximity
     }
 
-    /// 虚拟笔(GLASPEN2_VIRTUAL_PEN)合成事件判定(S6-3-3 最小件)。
+    private static func isPenEvent(_ event: CGEvent) -> Bool {
+        guard let ev = NSEvent(cgEvent: event) else { return false }
+        return isPen(ev)
+    }
+
+    private static func penCursorUpdate(type: CGEventType, event: CGEvent) {
+        guard let ev = NSEvent(cgEvent: event) else { return }
+        let isUp = type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp
+        glaspen2_router_pen_bubble(isUp ? 0 : 1)
+        let state = glaspen2_router_pen_state()
+        let strokesVisible = (state & 1) != 0
+        let strokeActive = (state & 2) != 0
+        let cursorVisible = (state & 4) != 0
+        if !strokesVisible { glaspen2_router_pen_auto_show() }
+        glaspen2_router_peek_cancel()
+        let loc = ev.locationInWindow
+        let oldX = glaspen2_router_cursor_x()
+        let oldY = glaspen2_router_cursor_y()
+        let moved = oldX != loc.x || oldY != loc.y
+        if moved && cursorVisible { glaspen2_router_cursor_invalidate() }
+        glaspen2_router_cursor_set(Double(loc.x), Double(loc.y))
+        if !strokeActive { glaspen2_router_cursor_show(1) }
+        if moved && glaspen2_router_pen_cursor_visible() != 0 {
+            glaspen2_router_cursor_invalidate()
+            if !strokeActive && glaspen2_router_cursor_flush_due() == 1 {
+                glaspen2_router_flush()
+            }
+        }
+    }
+
+    /// 虚拟笔(GLASPEN2_VIRTUAL_PEN)合成事件判定。
     @objc(isVirtualPenEvent:)
     public static func isVirtualPenEvent(_ event: CGEvent) -> Bool {
         event.getIntegerValueField(.eventSourceUserData) == glaspen2_virtual_pen_user_data()

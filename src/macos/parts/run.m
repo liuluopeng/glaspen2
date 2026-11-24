@@ -2386,49 +2386,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
 
   // S6-3-2: 非笔 mouseMoved 隐藏光标已迁 Swift EventRouter。
 
-  // Update cursor position for pen events only. The crosshair is hidden
-  // while a stroke is being drawn (the ink itself is the feedback) and
-  // re-shown on pen-up; during hover its redraws are throttled to ~16 ms
-  // to cut per-event work at high hover rates.
-  if (isPen) {
-    // 气泡消息冷启动分段: 悬空移动/落笔/拖动 = 笔在感应区(回来 + 心跳);
-    // 抬笔只刷心跳 —— proximity exit 常紧跟在抬笔后, 若把抬笔当回来,
-    // 离开计时会被撤销, 冷启动永远不生效。
-    if (etype != NSEventTypeLeftMouseUp &&
-        etype != NSEventTypeRightMouseUp &&
-        etype != NSEventTypeOtherMouseUp) {
-      glaspen2_bubble_pen_back();
-    } else {
-      glaspen2_bubble_pen_activity();
-    }
-    // Tablets without proximity events: hover moves are the only signal —
-    // treat them like a hover to show the strokes in 飘渺画布涂鸦模式.
-    if (!g_strokes_visible)
-      auto_show_canvas();
-    peek_cancel_timer(); // pen interaction overrides a pending page peek
-    NSPoint loc = [nsevent locationInWindow];
-    BOOL moved = (g_cursor_x != loc.x || g_cursor_y != loc.y);
-    if (etype == NSEventTypeMouseMoved) {
-      perf_log_event("pen_hover",
-                     elapsed_us(t0)); // 只算纯悬停, 拖动另记 pen_move
-    }
-    if (moved && g_cursor_visible) {
-      dirty_include_point(g_cursor_x, g_cursor_y, 14.0); // old position
-    }
-    g_cursor_x = loc.x;
-    g_cursor_y = loc.y;
-    if (!g_stroke_active) {
-      g_cursor_visible = YES;
-    }
-    if (moved && g_cursor_visible) {
-      // 书写/擦除中也跟随: raw_draw 已把笔尖区域标脏, 十字恰在笔尖
-      dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
-      if (!g_stroke_active && elapsed_us(g_last_cursor_flush) >= 16000) {
-        g_last_cursor_flush = mach_absolute_time();
-        flush_dirty_to_layer();
-      }
-    }
-  }
+  // S6-3-3b: 笔光标更新已迁 Swift EventRouter。
 
   // Hide system cursor while pen is drawing, restore on any mouse up
   if (isPen && (etype == NSEventTypeLeftMouseDown ||
@@ -3413,4 +3371,35 @@ void glaspen2_router_flush(void) { flush_dirty_to_layer(); }
 
 int64_t glaspen2_virtual_pen_user_data(void) {
   return (int64_t)kVirtualPenUserData;
+}
+
+// S6-3-3b: 笔光标更新的状态/动作薄桥
+int glaspen2_router_pen_state(void) {
+  return (g_strokes_visible ? 1 : 0) | ((g_stroke_active ? 1 : 0) << 1) |
+         ((g_cursor_visible ? 1 : 0) << 2);
+}
+
+void glaspen2_router_pen_bubble(int back) {
+  if (back) glaspen2_bubble_pen_back();
+  else glaspen2_bubble_pen_activity();
+}
+
+void glaspen2_router_pen_auto_show(void) { auto_show_canvas(); }
+void glaspen2_router_peek_cancel(void) { peek_cancel_timer(); }
+double glaspen2_router_cursor_x(void) { return g_cursor_x; }
+double glaspen2_router_cursor_y(void) { return g_cursor_y; }
+void glaspen2_router_cursor_set(double x, double y) {
+  g_cursor_x = x;
+  g_cursor_y = y;
+}
+void glaspen2_router_cursor_show(int on) {
+  if (on) g_cursor_visible = YES;
+}
+int glaspen2_router_pen_cursor_visible(void) { return g_cursor_visible ? 1 : 0; }
+int glaspen2_router_cursor_flush_due(void) {
+  if (!g_stroke_active && elapsed_us(g_last_cursor_flush) >= 16000) {
+    g_last_cursor_flush = mach_absolute_time();
+    return 1;
+  }
+  return 0;
 }
