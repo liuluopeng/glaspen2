@@ -47,23 +47,12 @@ static void flush_tunnel_to_layer(void) {
 
 // 一层线段 → CG 路径 + 单次 StrokePath(与旧实现一样整层一条路径: 交叉点只
 // 合成一次 alpha)。线段是视图坐标(y 向下), CGContext 是 y 向上, 这里翻转 y。
+// S7: 网格线段绘制已迁 Swift(OverlayGridRenderer)。
 static void grid_stroke_layer(CGContextRef ctx, NSArray *segments, double view_h,
                               CGFloat white, CGFloat alpha, CGFloat line_width) {
-  if (![segments isKindOfClass:[NSArray class]] || segments.count == 0) return;
-  CGContextSetStrokeColorWithColor(
-      ctx, [[NSColor colorWithWhite:white alpha:alpha] CGColor]);
-  CGContextSetLineWidth(ctx, line_width);
-  for (id item in segments) {
-    if (![item isKindOfClass:[NSDictionary class]]) continue;
-    NSDictionary *seg = item;
-    NSNumber *x0 = seg[@"x0"], *y0 = seg[@"y0"], *x1 = seg[@"x1"], *y1 = seg[@"y1"];
-    if (![x0 isKindOfClass:[NSNumber class]] || ![y0 isKindOfClass:[NSNumber class]] ||
-        ![x1 isKindOfClass:[NSNumber class]] || ![y1 isKindOfClass:[NSNumber class]])
-      continue;
-    CGContextMoveToPoint(ctx, [x0 doubleValue], view_h - [y0 doubleValue]);
-    CGContextAddLineToPoint(ctx, [x1 doubleValue], view_h - [y1 doubleValue]);
-  }
-  CGContextStrokePath(ctx);
+  [OverlayGridRenderer strokeLayerWithContext:ctx segments:segments
+                                   viewHeight:view_h white:white
+                                        alpha:alpha lineWidth:line_width];
 }
 
 // core 网格 FFI JSON → 字典;失败/error JSON 只记一次日志(避免每帧刷屏)并回 nil。
