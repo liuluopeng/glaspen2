@@ -2369,22 +2369,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
           g_prox_dev == NSEraserPointingDevice ? @"eraser-prox"
           : g_prox_dev == NSPenPointingDevice  ? @"pen-prox"
                                                : @"other-prox");
-    bubble_auto_page_flip(); // 气泡写完自动翻页: 这笔若开新消息, 先翻到新页
-    glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(px),
-                           canvas_input_y(py), pressure, ts, g_width_scale);
-    g_stroke_active = YES;
-    // 光标全程跟随(此前落笔即隐藏 "ink is the feedback" —— 擦除时无新墨
-    // 可看, 用户实测盲擦)。橡皮态光标变红。
-    g_cursor_visible = YES;
-    g_cursor_x = px;
-    g_cursor_y = py;
-    stroke_begin();        // reuse one cairo context for the whole stroke
-    raw_draw_dot(px, py, raw_w);
-    g_raw_last_x = px;
-    g_raw_last_y = py;
-    g_raw_last_w = raw_w;
-    g_raw_has_last = YES;
-    g_raw_path_len = 0;
+    // S6-3-3d: 落笔入口(翻页/begin/context/raw dot/状态)已迁 Swift。
+    [EventRouter penDownWithX:px y:py pressure:pressure timestamp:ts rawWidth:raw_w];
     perf_log_event("pen_down", elapsed_us(t0));
     return NULL;
   }
@@ -3283,3 +3269,25 @@ void glaspen2_router_tap_menu_bar_interaction(void) {
 int glaspen2_router_eraser_mode(void) { return g_eraser_mode ? 1 : 0; }
 void glaspen2_router_set_eraser_mode(int on) { g_eraser_mode = on != 0; }
 void glaspen2_router_update_status_icon_state(void) { update_status_icon_state(); }
+
+// S6-3-3d: 落笔入口薄桥
+void glaspen2_router_bubble_auto_page_flip(void) { bubble_auto_page_flip(); }
+void glaspen2_router_modeler_begin(double x, double y, double pressure, double timestamp) {
+  glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(x),
+                         canvas_input_y(y), pressure, timestamp, g_width_scale);
+}
+void glaspen2_router_stroke_begin(void) { stroke_begin(); }
+void glaspen2_router_raw_draw_dot(double x, double y, double rawWidth) {
+  raw_draw_dot(x, y, rawWidth);
+}
+void glaspen2_router_pen_down_state(double x, double y, double rawWidth) {
+  g_stroke_active = YES;
+  g_cursor_visible = YES;
+  g_cursor_x = x;
+  g_cursor_y = y;
+  g_raw_last_x = x;
+  g_raw_last_y = y;
+  g_raw_last_w = rawWidth;
+  g_raw_has_last = YES;
+  g_raw_path_len = 0;
+}

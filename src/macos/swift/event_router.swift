@@ -70,6 +70,17 @@ import AppKit
         }
     }
 
+    /// S6-3-3d: 落笔入口: 自动翻页 + 模型器 begin + 共享 context + raw dot + 落笔状态。
+    @objc(penDownWithX:y:pressure:timestamp:rawWidth:)
+    public static func penDown(x: Double, y: Double, pressure: Double,
+                               timestamp: Double, rawWidth: Double) {
+        glaspen2_router_bubble_auto_page_flip()
+        glaspen2_router_modeler_begin(x, y, pressure, timestamp)
+        glaspen2_router_stroke_begin()
+        glaspen2_router_raw_draw_dot(x, y, rawWidth)
+        glaspen2_router_pen_down_state(x, y, rawWidth)
+    }
+
     /// S6-3-3d: 橡皮态切换 + 状态图标刷新(落笔/拖动自动补 begin/抬笔共用)。
     @objc(updateEraserState:)
     public static func updateEraserState(isEraser: Bool) {

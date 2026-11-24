@@ -313,3 +313,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 3. S8 用真机清单逐项验收后,才可把 goal 标记 complete。
 | 2026-11-24 | S6-3-3d-0(续跑第1轮) | 菜单栏点击分支迁 Swift: EventRouter 判定 leftMouseDown+非笔+屏幕 y<30 时调 glaspen2_router_tap_menu_bar_interaction(停 tap + 5s 兜底恢复); ObjC 原 18 行分支删除; 为 tablet 主处理前的最后小分支 | cargo build/tests/parity 全绿;点菜单栏/菜单交互需真机验证 | 本提交 |
 | 2026-11-24 | S6-3-3d-1(续跑第1轮) | 橡皮态切换迁 Swift: EventRouter.updateEraserState(仅状态变化时写 g_eraser_mode + 刷新状态图标); 落笔/拖动自动补 begin/抬笔复位三处重复逻辑收敛为一处调用; 新增 3 个薄桥 | cargo build/tests/parity 全绿;橡皮/图标需真机验证 | 本提交 |
+| 2026-11-24 | S6-3-3d-2(续跑第2轮) | 落笔入口迁 Swift: EventRouter.penDown(自动翻页 + modeler_begin + 共享 cairo context + raw dot + 落笔状态初始化)一行调用; ObjC 保留 finish 守卫/NSLog/perf; 新增 5 个落笔薄桥 | cargo build/tests/parity 全绿;落笔/raw 绘制需真机验证 | 本提交 |
