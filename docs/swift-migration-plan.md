@@ -2,7 +2,17 @@
 
 > 用法: 这是持久台账,不是一次性方案。开始/完成任何阶段必须改状态并追加进度记录;
 > 中途停下要保持工作区干净、已提交,并在进度表写清卡点与下一步。
-> 基线: v0.7.0(tag, commit ce525db, 2026-11-23)。迁移从未开始。
+> 基线: v0.7.0(tag, commit ce525db, 2026-11-23)。
+>
+> ## 当前状态总览(2026-11-24,每轮更新)
+>
+> - ✅ S0 原型、S1 build.rs+swiftc+open_url、S2 桥接头+双向互调、S3 状态栏/菜单
+>   (构建/图标/富文本/查找/名称/刷新/勾选/handler 动作/导出/退出)、S4 通知
+>   presenter+绘制、S5 窗口/玻璃/内容视图/显示器防抖。
+> - 🟨 S6 进行中:掩码(S6-1)、CGEventTap 创建(S6-2)、路由骨架+滚轮缩放(S6-3-0/1)
+>   已迁 Swift;剩 S6-3-2 鼠标/光标+tablet 笔、S6-3-3 键盘/热键。
+> - ⬜ S7 删除 ObjC 应用源;S8 文档收口。**真机验收(笔/多屏/菜单/玻璃)全部待补**。
+> - 当前 Swift 文件: src/macos/swift/{open_url,interop_probe,status_bar,menu_icons,menu_lookup,menu_builder,menu_builder_full,menu_updater,menu_names,menu_handler,notification,overlay_window,display_monitor,event_tap,event_router}.swift + Bridging.h。
 
 ## 0. 目标 / 非目标
 

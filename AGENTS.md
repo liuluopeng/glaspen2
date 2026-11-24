@@ -64,7 +64,9 @@ Cargo workspace 多 crate 结构(`crates/` 下为核心与 Windows 两个新 cra
 ```
 ┌─ macOS 主程序 glaspen2(根 crate = 壳)───────────────────────────────┐
 │                                                                      │
-│  ObjC 层  src/macos/glaspen2.m(唯一 ObjC 文件)                      │
+│  原生层  src/macos/*.m(ObjC)+ src/macos/swift/*.swift(Swift)        │
+│   build.rs: clang 编 ObjC + swiftc 编 Swift, 同一静态库; C ABI 桥     │
+│   迁移状态见 docs/swift-migration-plan.md(S0–S5 完成, S6 进行中)   │
 │   ├ CGEventTap(挂主 runloop):笔/鼠标/键盘/滚轮事件统一入口           │
 │   │   ├ 笔: modeler_begin/move/end → cairo 实时画 → 抬笔 commit      │
 │   │   ├ 热键: ⌘⌃` / ⌘⌃1、⌥⌘↑/↓ 整页翻页(setIsVisible 系统动效)      │
