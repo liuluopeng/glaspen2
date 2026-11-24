@@ -27,6 +27,17 @@ import AppKit
         return text as NSString
     }
 
+    /// 读一条字符串设置(DB, 未设置为 nil)。
+    @objc(loadStringWithKey:)
+    public static func loadString(key: String) -> String? {
+        guard let v = key.withCString({ glaspen2_load_string_setting($0) }) else {
+            return nil
+        }
+        let s = String(cString: v)
+        glaspen2_free_c_string(v)
+        return s
+    }
+
     /// 非主线程同步投递到主线程执行(不改变调用方等待语义)。
     @objc public static func runOnMainSync(_ block: @escaping () -> Void) {
         if Thread.isMainThread {

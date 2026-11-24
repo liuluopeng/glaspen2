@@ -279,6 +279,7 @@ void glaspen2_router_set_arrow_cursor(id cursor);
 int glaspen2_router_event_tap_ok(void);
 void glaspen2_router_set_grid_follow(int on);
 void glaspen2_router_set_status_item(id item);
+NSDictionary *glaspen2_router_pressure_state(void);
 void glaspen2_router_set_menu_handler(id handler);
 void glaspen2_router_set_menu(id menu);
 void glaspen2_router_install_signals(void);

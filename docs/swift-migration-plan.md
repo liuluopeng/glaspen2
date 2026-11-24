@@ -535,3 +535,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
   若允许抬到 12.3, `invert_*` 与 `save_with_background` 两个子系统(~331 行)可整体迁 Swift;
   否则它们作为**平台例外**保留并写入 `docs/swift-boundary.md`。
 - 彻底无 `.m`: 还需把剩余 ~773 行 C 桥与全局状态所有权逐步移入 Swift(@_cdecl 导出或去桥), 预计 10–15 轮。
+| 2026-11-24 | S7dg(新目标第54轮) | 面板透明/压感标签/字符串设置读取迁 Swift: 新增 settings_panel_extras.swift(透明窗口属性、压力状态桥→MenuHandler 标签刷新), SettingsGlue 增 loadString; ObjC gl_panel_transparent_apply/pm_update/gl_string_setting 一行转发; 新增 1 压力状态桥 | cargo build/tests/parity 全绿;面板透明/压感标签需真机验证 | 本提交 |

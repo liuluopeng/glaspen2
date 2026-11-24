@@ -254,12 +254,7 @@ static void gl_run_on_main_sync(dispatch_block_t block) { [SettingsGlue runOnMai
 
 /// 读一条字符串设置(DB),转成 NSString(未设置为空串)。调用方持有返回值。
 /// 仅用于 settings_json 等非热路径;SQLite 单行读取在主线程也足够快。
-static NSString *gl_string_setting(const char *key) {
-    char *v = glaspen2_load_string_setting(key);
-    NSString *s = v ? [NSString stringWithUTF8String:v] : @"";
-    glaspen2_free_c_string(v);
-    return s;
-}
+static NSString *gl_string_setting(const char *key) { return [SettingsGlue loadStringWithKey:[NSString stringWithUTF8String:key]]; }
 
 // ── 可配置快捷键 ─────────────────────────────────────────────────────
 // 动作 id 与默认组合; 真正的动作执行在 run.m 的 perform_action()。本区只
@@ -358,14 +353,7 @@ int glaspen2_macos_delete_page(long long screen_id) { return [MacosApi deletePag
 
 /// 面板窗口真穿透(实验): 拟物玻璃卡片的"透明窟窿"需要窗口本身可透明。
 /// 只动 NSWindow(不透明→透明+清底); Flutter view 的 layer 部分在 panel.m。
-void gl_panel_transparent_apply(BOOL on) {
-    if (!g_settings_window) return;
-    gl_run_on_main_sync(^{
-        [g_settings_window setOpaque: !on];
-        [g_settings_window setBackgroundColor: on ? [NSColor clearColor]
-                                                  : [NSColor windowBackgroundColor]];
-    });
-}
+void gl_panel_transparent_apply(BOOL on) { [SettingsPanelExtras applyPanelTransparent:on]; }
 
 /// 面板页面详情改动了当前页的数据(圈选移动/粘贴/删除) → 重建玻璃。
 /// core 的 refresh hook 在后台线程调用; surface 操作必须回主线程。
@@ -459,13 +447,7 @@ static void pm_show(void) { [PressureMonitorWindow show]; }
 
 static void pm_hide(void) { [PressureMonitorWindow hide]; }
 
-static void pm_update(void) {
-    // S7y: 标签格式化已迁 Swift(MenuHandler.updatePressureLabel); 窗口/标签在 Swift 内判空。
-    [MenuHandler updatePressureLabelWithPressure:g_pm_pressure
-                                            type:g_pm_evtype
-                                               x:g_pm_x
-                                               y:g_pm_y];
-}
+static void pm_update(void) { [SettingsPanelExtras refreshPressureLabel]; }
 
 static void pm_destroy(void) { [PressureMonitorWindow destroy]; }
 
@@ -620,4 +602,14 @@ void glaspen2_router_color_preset_rgb_at(int idx, double *r, double *g, double *
 double glaspen2_router_width_preset_scale_at(int idx) {
   if (idx < 0 || idx >= g_width_preset_count) return 0;
   return g_width_presets[idx];
+}
+
+// S7dg: 压感状态桥(变量在 menu.m)
+NSDictionary *glaspen2_router_pressure_state(void) {
+  return @{
+    @"pressure" : @(g_pm_pressure),
+    @"type" : g_pm_evtype ?: @"---",
+    @"x" : @(g_pm_x),
+    @"y" : @(g_pm_y),
+  };
 }
