@@ -26,7 +26,7 @@
   - `fvm flutter run -d macos` 不用于主程序;调试 Dart 侧用
     `GLASPEN2_FLUTTER_CONFIG=Debug cargo run`(Debug 的 App.framework 走 JIT,
     可被 flutter attach;默认 Release 是 AOT)
-- **Rust/整体构建**:`cargo build`(build.rs 会自动:编译 `glaspen2.m` →
+- **Rust/整体构建**:`cargo build`(build.rs 会自动:swiftc 编译 macOS Swift 原生层 →
   fvm 构建 Flutter macos-framework → 链接);运行:`cargo run`
 - **测试**:`cargo test`(根壳 + core + windows)、
   `cargo test --workspace --exclude glaspen2_installer`(全可移植仓)、
@@ -43,13 +43,13 @@
 ## 日志(tracing, 全仓统一)
 
 - **Rust 侧一律 `tracing::info!/warn!/error!/debug!`**,别再写 eprintln/println
-  (ObjC 侧 NSLog 保留,不桥接)。输出走 stderr + **按天滚动文件层**
+  (原生层 NSLog 保留,不桥接)。输出走 stderr + **按天滚动文件层**
   `~/Library/Logs/glaspen2/glaspen2.log.<日期>`(Windows 在
   `%LOCALAPPDATA%/glaspen2/logs/`;Finder 启动看不到 stderr,文件是唯一现场,
   见 src/logging.rs),格式 = 时间 级别 目标 消息
   (target = 模块路径,消息里不用再带 `[db]` `[pdf]` 这类前缀)
 - panic 崩溃自动写 `glaspen2-crash-*.log` 到同一目录(保留最近 10 份);
-  只覆盖 Rust panic,ObjC NSException/段错误走系统崩溃报告
+  只覆盖 Rust panic,原生 NSException/段错误走系统崩溃报告
 - 过滤优先级:`RUST_LOG`(标准 EnvFilter 语法,如 `RUST_LOG=glaspen_core=debug`)>
   `GLASPEN2_DB_LOG=1`(兼容旧开关,映射到 debug)>
   默认 `info` —— **db 的 CRUD 日志是 debug 级,默认静默**(反色模式下
@@ -64,9 +64,9 @@ Cargo workspace 多 crate 结构(`crates/` 下为核心与 Windows 两个新 cra
 ```
 ┌─ macOS 主程序 glaspen2(根 crate = 壳)───────────────────────────────┐
 │                                                                      │
-│  原生层  src/macos/*.m(ObjC)+ src/macos/swift/*.swift(Swift)        │
-│   build.rs: clang 编 ObjC + swiftc 编 Swift, 同一静态库; C ABI 桥     │
-│   迁移状态见 docs/swift-migration-plan.md(S0–S5 完成, S6 进行中)   │
+│  原生层  src/macos/swift/*.swift(Swift; 应用层 ObjC 已清零)          │
+│   build.rs: swiftc 编译/归档; Bridging.h+rust_ffi.h = C ABI 边界      │
+│   迁移状态见 docs/swift-migration-plan.md(应用层 ObjC 清零)        │
 │   ├ CGEventTap(挂主 runloop):笔/鼠标/键盘/滚轮事件统一入口           │
 │   │   ├ 笔: modeler_begin/move/end → cairo 实时画 → 抬笔 commit      │
 │   │   ├ 热键: ⌘⌃` / ⌘⌃1、⌥⌘↑/↓ 整页翻页(setIsVisible 系统动效)      │
@@ -74,7 +74,7 @@ Cargo workspace 多 crate 结构(`crates/` 下为核心与 Windows 两个新 cra
 │   │   └ 飘渺模式: 隐藏/重现笔迹 = setIsVisible(窗口级系统动效)        │
 │   ├ 覆盖层窗口(笔迹 layer + 网格 + 磨砂玻璃)+ 菜单栏(NSStatusItem)  │
 │   │   └ 菜单图标: attributedTitle + NSTextAttachment(image 不渲染)   │
-│   ├ C shim: glaspen2_macos_*(settings_json / set_setting / 导出…)   │
+│   ├ C ABI: glaspen2_macos_*(settings_json / set_setting / 导出…)    │
 │   └ main.rs / macos.rs(壳): 入口分发, 依赖 glaspen-core/windows     │
 │                                                                      │
 │  crates/glaspen-core(共享核心, 平台无关)──────────────────────────── │
@@ -123,9 +123,9 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
   (Rust, 写 DB)→ 抬笔 `glaspen2_modeler_commit_to_strokes`(平滑点列进
   STROKES)→ **钩子扇出**:`ink_draft_on_stroke_committed`(⌘⌃2 草稿流)+
   `ink_share_on_stroke_committed`(共享上行)
-- **设置项**:Dart `setSetting(key, json)` → FRB → ObjC
+- **设置项**:Dart `setSetting(key, json)` → FRB → Swift(SettingsDispatcher)
   `glaspen2_macos_set_setting` → 按 key 分派到 `gl_settings_set_*` + 落
-  `user_settings` 表 → 启动时按同序恢复。**新增设置键三处同步**:ObjC
+  `user_settings` 表 → 启动时按同序恢复。**新增设置键三处同步**:Swift
   handler、`api.rs Settings`(from_json)、Dart(`_settingsToMap` + 界面)
 - **翻页**:整页翻转,动效 = `[g_window setIsVisible:]` 系统动效
   (`page_flip_swap`,参数不可调,勿改成手写 alpha 动画)
@@ -153,9 +153,9 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
   current_screen_id,STROKES 内存是 shell 的责任**:切页后必须
   `load_strokes_for_screen(当前页)` 再 rebuild,否则旧页内容被画到
   新页上(表现为"相邻两页内容重复/翻页像只翻了一部分")。
-- **build.rs 必须监视 parts/*.m**:子文件是 #include 文本包含,
+- **(历史)build.rs 必须监视 parts/*.m**:拆分时代子文件是 #include 文本包含,
   cargo 只认 rerun-if-changed——漏监视时改子文件不会重编,ObjC 改动
-  静默失效(排查了半天的"灵异现象")。
+  静默失效。现已无 parts/,build.rs 监视 `src/macos/swift/`。
 - **FRB content hash 不一致**(面板初始化全挂):Dart 与 Rust 两侧生成
   代码不同步。codegen 后必须 `cargo build`;build.rs 已监视
   `flutter_settings/lib/src/rust/`,别删那几行 rerun-if-changed
@@ -178,8 +178,8 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
   `NSJSONReadingFragmentsAllowed`,否则每个设置都静默变成 false/0
 - **主线程锁序**:STROKES/INK_DRAFT/CANVAS 等全局锁不做嵌套获取;
   提交钩子在放掉 STROKES 锁之后才调扇出钩子
-- **ObjC 函数定义顺序**:C99 隐式声明是错误——被后文引用的 static 函数
-  需要前向声明(文件头有 decl 区)
+- **(历史)ObjC 函数定义顺序**:C99 隐式声明是错误——被后文引用的 static 函数
+  需要前向声明(文件头有 decl 区;迁移期经验,Swift 无此问题)
 - **测试零副作用**(2026-10: 桌面 62 份诡异 PDF):无断言的冒烟测试直调
   真实导出函数, 每次 cargo test 都把开发库整本导出到桌面(Dart wire
   测试经 FRB 同样泄漏过, 两路齐发)。手动冒烟一律 `#[ignore]` +
@@ -194,16 +194,16 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
 
 | 层 | 位置 | 说明 |
 |---|---|---|
-| ObjC 交互层 | `src/macos/glaspen2.m` | 事件/窗口/菜单/系统动效 |
+| Swift 交互层 | `src/macos/swift/` | 事件/窗口/菜单/系统动效 |
 | Rust 核心 | `crates/glaspen-core/src/`(lib/db/modeler/state) | 数据模型/SQLite/平滑 |
-| FFI 面 | `crates/glaspen-core/src/export/` | ObjC ↔ Rust 的一切入口(mod.rs+pages/chat_glue/media/thumbs) |
+| FFI 面 | `crates/glaspen-core/src/export/` | Swift ↔ Rust 的一切入口(mod.rs+pages/chat_glue/media/thumbs) |
 | 面板桥 | `src/api.rs`(+ FRB codegen) | 设置面板 ↔ Rust |
 | 聊天协议 | `chat/` + `proto/glaspen/chat/v1/chat.proto` | 与 axum 的一切交互 |
 | 面板 UI | `flutter_settings/lib/main.dart` | 4 个 tab |
 
-### 1. 改 Rust / ObjC
-- ObjC 或 Rust 改完 `cargo build`——build.rs 会先编 ObjC,**ObjC 报错时
-  整个 build 挂**,从 stderr 里找 `glaspen2.m:N` 行号
+### 1. 改 Rust / Swift
+- Swift 或 Rust 改完 `cargo build`——build.rs 会先编 Swift,**Swift 报错时
+  整个 build 挂**,从 stderr 里找 `swift/<file>.swift:N` 行号
 - 改了 FRB 面(api.rs 的 `#[frb]` 函数或 Settings 结构)→ codegen → build
 
 ### 2. 改 proto(与 axum 的协议)
@@ -212,13 +212,13 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
 - 更新对应 docs 文档 + proto 头部变更记录
 
 ### 3. 改设置面板(Dart)
-- 新设置项 = ObjC handler 分支 + `api.rs Settings` 字段 + Dart UI 三处
+- 新设置项 = Swift 设置分派分支 + `api.rs Settings` 字段 + Dart UI 三处
   同步;`cd flutter_settings && fvm flutter analyze` 过了再提交
 - 改了 `#[frb]` API 记得 codegen(`flutter_rust_bridge_codegen generate`,
   在 `flutter_settings/` 下跑)
 
 ### 4. 提交前自检
-- `cargo build`(必须过,含 ObjC 编译)
+- `cargo build`(必须过,含 Swift 编译)
 - `cargo test`(全仓)+ `cargo test -p glaspen-chat`
 - `cd flutter_settings && fvm flutter analyze`(0 error/warning)
 - 手测主路径:涂鸦、翻页(淡入淡出)、⌘⌃2/⌘⌃3(集成开时)、设置面板 4 tab
@@ -233,8 +233,8 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
 
 | 路径 | 内容 |
 |---|---|
-| `src/macos/glaspen2.m` | macOS 全部 ObjC(交互/窗口/菜单/动效) |
-| `src/*.rs` | 壳:FRB 面(api.rs)/入口/ObjC 链接 |
+| `src/macos/swift/` | macOS 全部原生层(Swift;应用层 ObjC 已清零) |
+| `src/*.rs` | 壳:FRB 面(api.rs)/入口/C ABI 链接 |
 | `crates/glaspen-core/` | 共享核心(存储/模型/导出/更新) |
 | `crates/glaspen-windows/` | Windows 覆盖层(Win32/笔输入/管道) |
 | `chat/` | glaspen-chat:gRPC 客户端 + proto 生成 + mock |

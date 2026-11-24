@@ -1,14 +1,14 @@
 //! 无限画布镜头数学的唯一实现(D5a: pan/zoom/锚点/限幅/居中/持久化格式)。
 //!
 //! 背景: 镜头**状态**仍由两端壳各自持有(macOS `g_pan_x/g_pan_y/g_zoom`,
-//! `src/macos/glaspen2.m:416-418`;Windows `CAM_PAN_X/CAM_PAN_Y/CAM_ZOOM` 原子量,
+//! `src/macos/swift/run_glue.swift:416-418`;Windows `CAM_PAN_X/CAM_PAN_Y/CAM_ZOOM` 原子量,
 //! `crates/glaspen-windows/src/overlay/state.rs:53-78`), 但同一套**数学**曾各写
 //! 一份(`docs/duplication-backlog.md` D5):
 //!
-//! - macOS: `src/macos/parts/run.m:461-468` `canvas_pan_by`、`:507-535`
+//! - macOS: `src/macos/swift/run_glue.swift:461-468` `canvas_pan_by`、`:507-535`
 //!   `canvas_zoom_at`、`:1450-1464` 持久化/载入;视图↔画布换算在
-//!   `src/macos/glaspen2.m:427-440`,`run.m:109-121`(网格绘制)消费变换;
-//!   居中内容在 `src/macos/parts/menu.m:1254-1261`。
+//!   `src/macos/swift/run_glue.swift:427-440`,`run.m:109-121`(网格绘制)消费变换;
+//!   居中内容在 `src/macos/swift/menu_runtime.swift:1254-1261`。
 //! - Windows: `crates/glaspen-windows/src/overlay/actions.rs:639`
 //!   `persist_camera`、`:659-668` `canvas_pan_by`、`:672-713`
 //!   `canvas_zoom_at`; `overlay/state.rs:63-102` `cam/set_cam` +

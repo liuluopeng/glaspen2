@@ -141,7 +141,7 @@ let me = Unmanaged<EventTapController>.fromOpaque(refcon!).takeUnretainedValue()
    -emit-objc-header -emit-objc-header-path $OUT_DIR/glaspen2_macos_swift-Swift.h
    src/macos/swift/*.swift`
    → `$OUT_DIR/swift/*.o` + 生成头;
-2. `clang -fobjc-arc -O2 -Wall -I$OUT_DIR [-g] ... -c src/macos/glaspen2.m` 与
+2. `clang -fobjc-arc -O2 -Wall -I$OUT_DIR [-g] ... -c src/macos/swift/run_glue.swift` 与
    `-c src/macos/swift/InteropProbe.m`(两单元各自编;ObjC 可
    `#import "glaspen2_macos_swift-Swift.h"`);
 3. `ar crus $OUT_DIR/libglaspen2_objc.a` 收入 ObjC + Swift 全部 .o;

@@ -1,7 +1,7 @@
 //! 设置面板快照构建单源(D12)。
 //!
 //! 背景: 面板启动/热重载要拿一份"当前设置"JSON。快照曾是两份手工拼装:
-//! macOS src/macos/parts/menu.m 的 glaspen2_macos_settings_json(37 个
+//! macOS src/macos/swift/menu_runtime.swift 的 glaspen2_macos_settings_json(37 个
 //! @"key": @(值) 的 NSDictionary)与 Windows
 //! crates/glaspen-windows/src/overlay/pipe.rs 的 getSettings 巨型 format!
 //! (同 37 项, 但字段顺序/类型/缺省值各写一遍)。任何一端漏改就会让 Flutter
