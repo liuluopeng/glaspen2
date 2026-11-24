@@ -10,14 +10,14 @@ import AppKit
         guard let ctx = cairo_create(surface) else { return }
         cairo_scale(ctx, SurfaceStore.scaleFactor, SurfaceStore.scaleFactor)
         active = ctx
-        glaspen2_router_install_active_ctx(ctx)
+        glaspen2_router_install_active_ctx(UnsafeMutableRawPointer(ctx))
         glaspen2_router_reset_raw_stroke()
     }
 
     @objc public static func end() {
         active = nil
-        if let ctx = glaspen2_router_take_active_ctx() {
-            cairo_destroy(ctx)
+        if let ctxRaw = glaspen2_router_take_active_ctx() {
+            cairo_destroy(OpaquePointer(ctxRaw))
         }
     }
 }

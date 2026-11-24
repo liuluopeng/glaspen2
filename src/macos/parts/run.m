@@ -311,10 +311,6 @@ int glaspen2_router_cursor_flags(void) {
          ((sw_tablet_proximity() ? 1 : 0) << 3);
 }
 
-void glaspen2_router_cursor_invalidate(void) {
-  dirty_include_point(sw_cursor_x(), sw_cursor_y(), 14.0);
-}
-
 void glaspen2_router_auto_hide(void) { auto_hide_now(); }
 void glaspen2_router_bubble_pen_gone(void) { glaspen2_bubble_pen_gone(); }
 void glaspen2_router_flush(void) { flush_dirty_to_layer(); }
@@ -342,14 +338,6 @@ void glaspen2_router_cursor_set(double x, double y) {
 void glaspen2_router_cursor_show(int on) {
   if (on) sw_cursor_show();
 }
-int glaspen2_router_cursor_flush_due(void) {
-  if (!sw_stroke_active() && [PerfLog elapsedUsSince:g_last_cursor_flush] >= 16000) {
-    g_last_cursor_flush = mach_absolute_time();
-    return 1;
-  }
-  return 0;
-}
-
 // S6-3-3c: 笔书写系统光标隐藏/恢复薄桥
 void glaspen2_router_hide_system_cursor(void) {
   CGDisplayHideCursor(kCGDirectMainDisplay);
@@ -475,12 +463,6 @@ NSRect glaspen2_router_dirty_rect(void) { return NSMakeRect(gl_dirty_rect_x(), g
 void glaspen2_router_surface_cache_invalidate(void) { surface_image_cache_invalidate(); }
 
 // S7by: 首点实时绘制薄桥
-cairo_t *glaspen2_router_acquire_cr(int *owned) {
-  if (g_active_cr) { if (owned) *owned = 0; return g_active_cr; }
-  if (owned) *owned = 1;
-  return (cairo_t *)cairo_create_scaled();
-}
-double glaspen2_router_outline_pad(void) { return kOutlinePad; }
 int glaspen2_router_live_plan_dot(cairo_t *cr, double x, double y, double width) {
   return [LivePlan drawDotContext:(void *)cr x:x y:y width:width] ? 1 : 0;
 }
@@ -498,13 +480,6 @@ int glaspen2_router_live_plan_segment(cairo_t *cr, double x, double y, double wi
 double glaspen2_router_outline_dash(void) { return kOutlineDash; }
 
 // S7ca: 实时笔画上下文薄桥
-int glaspen2_router_active_ctx_present(void) { return g_active_cr ? 1 : 0; }
-void glaspen2_router_install_active_ctx(cairo_t *ctx) { g_active_cr = ctx; }
-cairo_t *glaspen2_router_take_active_ctx(void) {
-  cairo_t *ctx = g_active_cr;
-  g_active_cr = NULL;
-  return ctx;
-}
 // S7cb: 飘渺模式薄桥
 
 
@@ -534,7 +509,6 @@ int glaspen2_router_perform_hotkey(unsigned short keyCode) {
 // S7cl: 动作分派薄桥
 void glaspen2_router_apply_infinite_canvas(int on) { apply_infinite_canvas(on != 0, YES); }
 void glaspen2_router_show_notification(NSString *text) { show_notification(text); }
-NSString *glaspen2_router_textf(NSString *key, NSDictionary *args) { return gl_textf(key, args); }
 // S7cm: 快捷键分发薄桥
 void glaspen2_router_clear_screen(void) { clear_screen(); }
 void glaspen2_router_replay_strokes(void) { replay_strokes_from_memory(); }

@@ -6,7 +6,8 @@ import AppKit
     public static func drawDot(x: Double, y: Double, width: Double) {
         guard SurfaceStore.current != nil else { return }
         var owned: Int32 = 0
-        guard let cr = glaspen2_router_acquire_cr(&owned) else { return }
+        guard let crRaw = glaspen2_router_acquire_cr(&owned) else { return }
+        let cr = OpaquePointer(crRaw)
         let planned = glaspen2_router_live_plan_dot(cr, x, y, width) != 0
         if !planned {
             let eraser = glaspen2_router_eraser_mode() != 0
@@ -47,7 +48,8 @@ import AppKit
     public static func drawSegment(x: Double, y: Double, width: Double) {
         guard SurfaceStore.current != nil else { return }
         var owned: Int32 = 0
-        guard let cr = glaspen2_router_acquire_cr(&owned) else { return }
+        guard let crRaw = glaspen2_router_acquire_cr(&owned) else { return }
+        let cr = OpaquePointer(crRaw)
         let hasLast = PenState.rawHasLast
         let hasPrev = PenState.rawHasPrev
         let lastX = PenState.rawLastX, lastY = PenState.rawLastY

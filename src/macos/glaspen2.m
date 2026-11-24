@@ -292,8 +292,8 @@ id glaspen2_router_main_window(void);
 id glaspen2_router_settings_engine(void);
 id glaspen2_router_settings_vc(void);
 id glaspen2_router_settings_window(void);
+char *sw_text(const char *key);
 void *sw_status_item(void);
-static BOOL g_perf_log = NO;
 static void event_tap_reinstall(void);
 
 // --- Drawing state ---
@@ -338,7 +338,6 @@ static void pageview_update(void);
 // Active cairo context (reused across pen events during a stroke).
 // Created on pen-down, destroyed on pen-up. Avoids per-event malloc/free
 // of cairo_t and avoids the CTM scale setup cost.
-static cairo_t *g_active_cr = NULL;
 
 // 滚轮劫持修复:滚轮事件只在无限画布模式下进入 tap;
 // 翻页模式重装不含滚轮的 tap,系统滚轮零拦截。
@@ -354,7 +353,6 @@ static cairo_t *g_active_cr = NULL;
 
 // Crosshair hover redraw throttle: flush at most every ~16 ms; the dirty
 // rect accumulates intermediate positions so no ghost trails appear.
-static uint64_t g_last_cursor_flush = 0;
 
 // System cursor hidden while pen is drawing (file scope so toggle_enabled
 // can restore it when the app is disabled mid-stroke).
@@ -426,7 +424,6 @@ static uint64_t g_last_cursor_flush = 0;
 // 反色追踪帧率上限(10/30/60/100): SCStream minimumFrameInterval。
 // 流本身只在画面变化时送帧, 此值只是上限; 静态背景零帧零开销。
 // 描边比笔迹宽出的半径(逻辑 px),与 Rust OUTLINE_PAD 保持一致。
-static const double kOutlinePad = 1.0;
 
 // Glass overlay opacity (0.0 = off, 0.0-0.3 range)
 
@@ -441,10 +438,6 @@ typedef struct { double r, g, b; } ColorPreset;
 // CGEventTap
 
 // Language: 0=Chinese, 1=English
-
-static NSString *L(NSString *zh, NSString *en) {
-    return glaspen2_router_lang() == 0 ? zh : en;
-}
 
 // ── D10b 共享文案接线: 两端语义相同的用户可见文案单源在 core i18n 表 ──
 // 遗留的 L(@"zh", @"en") 只用于单平台独有/两端有意不同的字符串(见
@@ -461,24 +454,15 @@ static const char *gl_lang_code(void) {
 static NSString *gl_text(NSString *key) {
     const char *c_key = [key UTF8String];
     if (!c_key) return key;
-    char *c_text = glaspen2_i18n(c_key, gl_lang_code());
+    char *c_text = sw_text(c_key);
     if (!c_text) return key;
     NSString *text = [NSString stringWithUTF8String:c_text];
-    glaspen2_free_c_string(c_text);
+    free(c_text);
     return text.length ? text : key;
 }
 
 /// 带占位符的文案: {name} 按字典替换(未提供的占位符原样保留, 与
 /// core::i18n::Msg::format 同语义)。平台键名等差异由调用方作为参数传入。
-static NSString *gl_textf(NSString *key, NSDictionary<NSString *, NSString *> *args) {
-    NSString *text = gl_text(key);
-    for (NSString *name in args) {
-        text = [text stringByReplacingOccurrencesOfString:
-                     [NSString stringWithFormat:@"{%@}", name]
-                                               withString:args[name]];
-    }
-    return text;
-}
 
 // S4: presenter redraw 桥(Swift 通知状态变化时调用)
 void glaspen2_notification_redraw(void) {

@@ -8,6 +8,7 @@ import AppKit
     static var blankCursor: NSCursor?
     static var arrowCursor: NSCursor?
     static var penDrawing = false
+    static var lastFlush: UInt64 = 0
 }
 
 @_cdecl("glaspen2_router_cursor_x")

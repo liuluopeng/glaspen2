@@ -167,7 +167,7 @@ int glaspen2_menu_export_infinite_svg(void) {
     return glaspen2_export_infinite_svg();
 }
 void glaspen2_menu_shutdown(void) { glaspen2_shutdown(); }
-NSString *glaspen2_menu_l10n_pair(NSString *zh, NSString *en) { return L(zh, en); }
+NSString *glaspen2_menu_l10n_pair(NSString *zh, NSString *en) { return glaspen2_router_lang() == 0 ? zh : en; }
 
 // ObjC 侧保留薄 delegate 方法(仅转发给 Swift MenuHandler); 业务逻辑在 Swift。
 

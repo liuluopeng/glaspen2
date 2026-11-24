@@ -72,7 +72,7 @@ import AppKit
             MenuHandler.setColor(index: Int32(prev))
             let name = MenuNames.colorDisplayName(index: prev)
             glaspen2_router_show_notification(
-                glaspen2_router_textf("hud.color_changed", ["color": name]))
+                I18nText.textf("hud.color_changed", ["color": name]))
             return true
         }
         if kind == "WidthSwap" {
@@ -84,7 +84,7 @@ import AppKit
             MenuHandler.setWidth(index: Int32(prev))
             let name = MenuNames.widthDisplayName(index: prev)
             glaspen2_router_show_notification(
-                glaspen2_router_textf("hud.width_changed", ["width": name]))
+                I18nText.textf("hud.width_changed", ["width": name]))
             return true
         }
         NSLog("[action] %@ 的 effect kind %@ 未在 macOS 适配器实现", action, kind)
