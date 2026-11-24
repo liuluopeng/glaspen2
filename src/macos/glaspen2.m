@@ -289,6 +289,8 @@ id glaspen2_router_draw_view(void);
 id glaspen2_router_menu(void);
 id glaspen2_router_glass_view(void);
 id glaspen2_router_main_window(void);
+id glaspen2_router_settings_engine(void);
+id glaspen2_router_settings_vc(void);
 id glaspen2_router_settings_window(void);
 void *sw_status_item(void);
 static BOOL g_perf_log = NO;

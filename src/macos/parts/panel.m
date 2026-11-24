@@ -73,7 +73,8 @@ static void invert_stream_invalidate(void) {
 }
 void gl_panel_transparent_apply_full(BOOL on) {
   gl_panel_transparent_apply(on);
-  if (g_flutter_vc.view) g_flutter_vc.view.layer.opaque = !on;
+  FlutterViewController *fvc = (FlutterViewController *)glaspen2_router_settings_vc();
+  if (fvc.view) fvc.view.layer.opaque = !on;
 }
 
 

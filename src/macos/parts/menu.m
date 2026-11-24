@@ -173,8 +173,6 @@ NSString *glaspen2_menu_l10n_pair(NSString *zh, NSString *en) { return L(zh, en)
 
 
 // --- Settings Panel (Flutter-based) ---
-static FlutterEngine *g_flutter_engine = nil;
-static FlutterViewController *g_flutter_vc = nil;
 static NSWindow *g_settings_window = nil;
 
 static void show_settings_panel(void);

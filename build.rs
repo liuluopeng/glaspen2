@@ -262,6 +262,12 @@ fn main() {
             .arg(&swift_header_path)
             .arg("-O")
             .current_dir(&swift_obj_dir);
+        // Flutter 模块: 设置面板宿主(FlutterHost)在 Swift 里直接 import FlutterMacOS。
+        let flutter_swift_search = format!(
+            "{}/FlutterMacOS.xcframework/macos-arm64_x86_64",
+            flutter_fw_dir
+        );
+        swiftc_cmd.arg("-F").arg(&flutter_swift_search);
         // cairo 头: Bridging.h 需要 <cairo/cairo.h>, pkg-config 给的是 .../include/cairo。
         for p in &cairo.include_paths {
             swiftc_cmd.arg("-I").arg(p);

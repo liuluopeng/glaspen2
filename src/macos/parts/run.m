@@ -514,27 +514,14 @@ void glaspen2_router_dirty_include_surface_rect(double x, double y, double w, do
 }
 
 // S7cd: 设置面板宿主薄桥(Flutter 对象仍在 ObjC 创建)
-id glaspen2_router_settings_engine(void) {
-  if (!g_flutter_engine) {
-    g_flutter_engine = [[FlutterEngine alloc] initWithName:@"glaspen_settings"
-                                                    project:nil];
-    [g_flutter_engine runWithEntrypoint:nil];
-  }
-  return g_flutter_engine;
-}
-id glaspen2_router_settings_vc(void) {
-  if (!g_flutter_vc) {
-    g_flutter_vc = [[FlutterViewController alloc] initWithEngine:g_flutter_engine
-                                                         nibName:nil
-                                                          bundle:nil];
-  }
-  return g_flutter_vc;
-}
+id glaspen2_router_settings_engine(void) { return (__bridge id)sw_flutter_engine(); }
+id glaspen2_router_settings_vc(void) { return (__bridge id)sw_flutter_vc(); }
 id glaspen2_router_settings_window(void) { return (__bridge id)sw_settings_window(); }
 void glaspen2_router_set_settings_window(id window) { sw_set_settings_window((__bridge void *)window); }
 void glaspen2_router_settings_apply_transparent(void) {
   gl_panel_transparent_apply(YES);
-  if (g_flutter_vc.view.layer) g_flutter_vc.view.layer.opaque = NO;
+  FlutterViewController *fvc = (FlutterViewController *)glaspen2_router_settings_vc();
+  if (fvc.view.layer) fvc.view.layer.opaque = NO;
 }
 
 // S7cf: 性能日志薄桥
