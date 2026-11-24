@@ -249,12 +249,8 @@ static void event_tap_reinstall(void) { event_tap_install(glaspen2_router_infini
 /// 测试工具绝不能抢用户的鼠标。
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                      CGEventRef event, void *refcon) {
-  // S6: 事件路由全部在 Swift; 这里只按结果放行/吞掉。
-  (void)proxy;
-  (void)refcon;
-  int32_t route = [EventRouter routeEventOfType:type event:event];
-  CGEventRef out = (route == 2) ? NULL : event;
-  return [EventRouter isVirtualPenEvent:event] ? NULL : out;
+  return (CGEventRef)sw_event_tap_callback((void *)proxy, (uint32_t)type,
+                                          (void *)event, refcon);
 }
 
 // Call this at app exit to dump stats
@@ -294,20 +290,6 @@ void glaspen2_run(void) {
 CGEventTapCallBack glaspen2_event_tap_callback_ptr(void) {
   return event_tap_callback;
 }
-
-void glaspen2_event_tap_store(CFMachPortRef tap) {
-  if (g_event_tap) {
-    CFMachPortInvalidate(g_event_tap);
-    CFRelease(g_event_tap);
-    g_event_tap = NULL;
-  }
-  if (tap) {
-    g_event_tap = (CFMachPortRef)CFRetain(tap);
-  }
-}
-
-void glaspen2_event_tap_note_scroll(int on) { (void)on; }
-
 
 // S6-3-1: 事件路由薄桥
 NSUInteger glaspen2_router_camera_mods(void) {
@@ -399,10 +381,10 @@ int glaspen2_router_rec_finish_and_count(void) { return rec_finish_and_count(); 
 int glaspen2_router_rec_feed(int slot, NSString *json) { return rec_feed(slot, json) ? 1 : 0; }
 // S6-3-3d: 点菜单栏时临时停 tap + 5s 兜底恢复(逻辑由 Swift EventRouter 触发)
 void glaspen2_router_tap_menu_bar_interaction(void) {
-  CGEventTapEnable(g_event_tap, false);
+  sw_event_tap_disable();
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC),
                  dispatch_get_main_queue(), ^{
-                   if (g_event_tap) CGEventTapEnable(g_event_tap, true);
+                   glaspen2_router_event_tap_enable();
                  });
 }
 
@@ -434,7 +416,7 @@ void glaspen2_router_pm_update(int inRange, int pressure, double x, double y,
 
 // S6-3-3d: callback 内层收尾薄桥
 void glaspen2_router_reenable_tap(void) {
-  if (g_event_tap) CGEventTapEnable(g_event_tap, true);
+  glaspen2_router_event_tap_enable();
 }
 double glaspen2_router_raw_width(double pressure) {
   return glaspen2_pressure_raw_width(pressure, glaspen2_router_width_scale()) * glaspen2_router_zoom();
@@ -650,12 +632,7 @@ void glaspen2_router_rec_init(void) { gl_recording_init(); }
 void glaspen2_router_set_startup_window(id window) { g_window = window; }
 void glaspen2_router_set_draw_view(id view) { g_draw_view = view; }
 void glaspen2_router_set_glass_view(id view) { g_glass_view = view; }
-int glaspen2_router_event_tap_ok(void) { return g_event_tap ? 1 : 0; }
-
 // S7db: tap 看门狗桥
-int glaspen2_router_event_tap_enabled(void) { return (g_event_tap && CGEventTapIsEnabled(g_event_tap)) ? 1 : 0; }
-void glaspen2_router_event_tap_enable(void) { if (g_event_tap) CGEventTapEnable(g_event_tap, true); }
-
 // S7dc: 设置应用分派桥
 void glaspen2_router_invert_restart(void) { invert_stream_restart(); }
 void glaspen2_router_panel_transparent_full(int on) { gl_panel_transparent_apply_full(on != 0); }

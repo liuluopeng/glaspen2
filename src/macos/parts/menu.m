@@ -128,9 +128,7 @@ void glaspen2_menu_will_open_bridge(void) {
 void glaspen2_menu_did_close_bridge(void) {
     glaspen2_router_update_status_icon_state();
     // Re-enable CGEventTap after menu closes
-    if (g_event_tap) {
-        CGEventTapEnable(g_event_tap, true);
-    }
+    glaspen2_router_event_tap_enable();
 }
 
 void glaspen2_menu_quit_bridge(void) {

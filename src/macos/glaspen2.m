@@ -435,7 +435,6 @@ typedef struct { double r, g, b; } ColorPreset;
 // S4: 通知状态/计时已迁 Swift(NotificationPresenter); 绘制代码经 currentText 读取。
 
 // CGEventTap
-static CFMachPortRef g_event_tap = NULL;
 
 // Language: 0=Chinese, 1=English
 
