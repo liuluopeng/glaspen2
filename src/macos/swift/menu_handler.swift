@@ -61,6 +61,22 @@ import AppKit
         glaspen2_menu_notify(glaspen2_menu_l10n("export.notes_saved"))
     }
 
+    /// 书写中暂存的颜色/粗细在抬笔后生效(原 gl_settings_apply_pending_color_width)。
+    @objc(applyPendingColorWidth)
+    public static func applyPendingColorWidth() {
+        if glaspen2_router_stroke_active() != 0 { return }
+        let color = glaspen2_router_pending_color()
+        if color >= 0 {
+            glaspen2_router_clear_pending_color()
+            glaspen2_menu_select_color(Int32(color))
+        }
+        let width = glaspen2_router_pending_width()
+        if width >= 0 {
+            glaspen2_router_clear_pending_width()
+            glaspen2_menu_select_width(Int32(width))
+        }
+    }
+
     /// 彻底退出: perf 汇总 + 恢复系统光标 + NSApp terminate(Swift 实现)。
     @objc(quitAppNow)
     public static func quitAppNow() {

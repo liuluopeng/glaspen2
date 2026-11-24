@@ -1200,17 +1200,8 @@ static void gl_settings_set_width(int idx) {
 
 /// 抬笔后应用书写中按下的换色/换粗细(只保留最后一次)。
 static void gl_settings_apply_pending_color_width(void) {
-    if (g_stroke_active) return;
-    if (g_pending_color_index >= 0) {
-        int idx = g_pending_color_index;
-        g_pending_color_index = -1;
-        gl_settings_set_color(idx);
-    }
-    if (g_pending_width_index >= 0) {
-        int idx = g_pending_width_index;
-        g_pending_width_index = -1;
-        gl_settings_set_width(idx);
-    }
+    // S7: 逻辑已迁 Swift(MenuHandler.applyPendingColorWidth)。
+    [MenuHandler applyPendingColorWidth];
 }
 
 static void gl_settings_set_grid(BOOL on) {
@@ -1333,3 +1324,9 @@ static void sync_settings_panel(void) {
     glaspen2_notify_settings_changed();
 }
 
+
+// S7: 暂存颜色/粗细状态薄桥(变量在 menu.m)
+int glaspen2_router_pending_color(void) { return g_pending_color_index; }
+int glaspen2_router_pending_width(void) { return g_pending_width_index; }
+void glaspen2_router_clear_pending_color(void) { g_pending_color_index = -1; }
+void glaspen2_router_clear_pending_width(void) { g_pending_width_index = -1; }

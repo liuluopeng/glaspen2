@@ -352,3 +352,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
   5. `glaspen2.m` 剩余 i18n/设置分派/DB 初始化 shim(保留 C ABI 名,可换 Swift 实现)。
 - 每片都跑 `cargo build`/全量测试/parity;真机验收清单见各阶段记录。
 | 2026-11-24 | S8 审计(续跑第19轮) | 生成剩余 ObjC 清单(行数/static/方法/类)与建议迁移顺序(drawRect 分图层→run.m 辅助→panel.m→menu.m→glaspen2.m shim); 单函数最大 drawRect 188 行 | 文档同步, 无代码变更 | 本提交 |
+| 2026-11-24 | S7g(续跑第20轮) | 暂存颜色/粗细生效逻辑迁 Swift: MenuHandler.applyPendingColorWidth(书写中不动, 抬笔后读 pending→清标记→调既有 select 桥), ObjC 函数变一行转发; 新增 4 个 pending 状态薄桥(menu.m) | cargo build/tests/parity 全绿;书写中换色/换粗细需真机验证 | 本提交 |
