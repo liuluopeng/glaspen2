@@ -14,6 +14,7 @@
 #define GLASPEN2_SWIFT_BRIDGING_H
 
 #import <Foundation/Foundation.h>
+#import <CoreGraphics/CoreGraphics.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -62,6 +63,12 @@ void glaspen2_menu_select_color(int idx);
 void glaspen2_menu_select_width(int idx);
 void glaspen2_menu_save_xoj_raw(void);
 void glaspen2_menu_notify(NSString *text);
+
+// S6-2: 事件 tap 回调函数指针 / tap 存储 / 滚轮标记桥(实现留在 run.m)
+CGEventTapCallBack glaspen2_event_tap_callback_ptr(void);
+void glaspen2_event_tap_store(CFMachPortRef tap);
+void glaspen2_event_tap_note_scroll(int on);
+void glaspen2_event_tap_enable(CFMachPortRef tap, int on);
 
 // S5-3: 显示器防抖所需的当前几何读取与应用桥(实现留在 panel.m)
 void glaspen2_display_size(int *w, int *h);

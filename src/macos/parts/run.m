@@ -2158,25 +2158,9 @@ static void gl_recording_init(void) {
 }
 
 // (重)装 event tap:include_scroll 决定滚轮事件是否进入 tap。
+// S6-2: 掩码/创建/runloop 挂载已迁 Swift; 回调指针与 tap 存储经薄桥留在 ObjC。
 static void event_tap_install(BOOL include_scroll) {
-  if (g_event_tap) {
-    CFMachPortInvalidate(g_event_tap);
-    CFRelease(g_event_tap);
-    g_event_tap = NULL;
-  }
-  // S5/S6-1: 事件掩码构造已迁 Swift; 创建/回调仍在 ObjC。
-  CGEventMask tapMask = (CGEventMask)[EventTapInstaller eventMaskWithScroll:include_scroll];
-  g_event_tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
-                                 kCGEventTapOptionDefault, tapMask,
-                                 event_tap_callback, NULL);
-  if (g_event_tap) {
-    CGEventTapEnable(g_event_tap, true);
-    CFRunLoopSourceRef source =
-        CFMachPortCreateRunLoopSource(kCFAllocatorDefault, g_event_tap, 0);
-    CFRunLoopAddSource(CFRunLoopGetMain(), source, kCFRunLoopCommonModes);
-    CFRelease(source);
-    g_tap_has_scroll = include_scroll;
-  }
+  [EventTapInstaller installWithScroll:include_scroll];
 }
 
 // 按当前画布模式重装 event tap(无限=含滚轮,翻页=不含)。
@@ -3417,4 +3401,28 @@ void glaspen2_run(void) {
 
     [NSApp run];
   }
+}
+
+// S6-2: event tap 的 Swift 薄桥(回调/全局均已在前面定义)
+CGEventTapCallBack glaspen2_event_tap_callback_ptr(void) {
+  return event_tap_callback;
+}
+
+void glaspen2_event_tap_store(CFMachPortRef tap) {
+  if (g_event_tap) {
+    CFMachPortInvalidate(g_event_tap);
+    CFRelease(g_event_tap);
+    g_event_tap = NULL;
+  }
+  if (tap) {
+    g_event_tap = (CFMachPortRef)CFRetain(tap);
+  }
+}
+
+void glaspen2_event_tap_note_scroll(int on) {
+  g_tap_has_scroll = on != 0;
+}
+
+void glaspen2_event_tap_enable(CFMachPortRef tap, int on) {
+  if (tap) CGEventTapEnable(tap, on != 0);
 }
