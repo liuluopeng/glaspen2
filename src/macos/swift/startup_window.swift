@@ -20,7 +20,7 @@ import AppKit
         glaspen2_router_set_glass_view(glass)
         CursorState.blankCursor = blank
         CursorState.arrowCursor = arrow
-        glaspen2_router_ensure_surface()
+        MenuRuntime.ensureSurface()
         if glaspen2_router_ethereal() != 0 { EtherealMode.restoreNow() }
         NSLog("[glaspen2] window ready %dx%d, ignoresMouseEvents=%d",
               Int32(frame.size.width), Int32(frame.size.height),
@@ -41,14 +41,14 @@ import AppKit
         NSLog("[glaspen2] CGEventTap FAILED - need Accessibility permission for: %@",
               bundlePath)
         let alert = NSAlert()
-        alert.messageText = glaspen2_menu_l10n_pair("需要辅助功能权限",
+        alert.messageText = MenuRuntime.pair("需要辅助功能权限",
                                                     "Accessibility Permission Required")
-        alert.informativeText = glaspen2_menu_l10n_pair(
+        alert.informativeText = MenuRuntime.pair(
             "请在系统设置 → 隐私与安全性 → 辅助功能中添加并勾选 glaspen2。\n\n添加后请点击下方按钮重启应用。",
             "Please add and enable glaspen2 in System Settings → Privacy & Security → Accessibility.\n\nAfter enabling, click below to restart.")
-        alert.addButton(withTitle: glaspen2_menu_l10n_pair("打开系统设置并重启",
+        alert.addButton(withTitle: MenuRuntime.pair("打开系统设置并重启",
                                                            "Open Settings & Restart"))
-        alert.addButton(withTitle: glaspen2_menu_l10n_pair("取消", "Cancel"))
+        alert.addButton(withTitle: MenuRuntime.pair("取消", "Cancel"))
         DispatchQueue.main.async {
             guard alert.runModal() == .alertFirstButtonReturn else { return }
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {

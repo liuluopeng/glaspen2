@@ -19,7 +19,7 @@ import AppKit
 
     /// 当前生效表 → JSON 文本(失败回 "{}")。
     @objc public static func effectiveShortcutJSON() -> NSString {
-        let values = glaspen2_router_shortcut_values() as NSDictionary? ?? [:]
+        let values = ShortcutStore.valuesSnapshot()
         guard let data = try? JSONSerialization.data(withJSONObject: values),
               let text = String(data: data, encoding: .utf8) else {
             return "{}" as NSString

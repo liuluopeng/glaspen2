@@ -33,7 +33,7 @@ import AppKit
         glaspen2_notify_settings_changed()
         if notify {
             let key = on ? "canvas.infinite_on" : "canvas.infinite_off"
-            glaspen2_menu_notify(glaspen2_menu_l10n(key))
+            MenuRuntime.notify(MenuRuntime.l10n(key))
         }
     }
 }

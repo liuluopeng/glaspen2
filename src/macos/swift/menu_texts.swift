@@ -3,17 +3,17 @@ import AppKit
 
 @objc public final class MenuTextUpdater: NSObject {
     @objc public static func update() {
-        guard let menu = glaspen2_router_menu() as? NSMenu else { return }
+        guard let menu = UIAnchors.menu as? NSMenu else { return }
         func pair(_ zh: String, _ en: String) -> String {
-            glaspen2_menu_l10n_pair(zh, en)
+            MenuRuntime.pair(zh, en)
         }
         var colorTitles: [NSAttributedString] = []
         for i in 0..<Int(glaspen2_router_color_preset_count()) {
-            if let t = glaspen2_router_color_item_title(Int32(i)) { colorTitles.append(t) }
+            colorTitles.append(MenuRuntime.colorItemTitle(Int32(i)))
         }
         var widthTitles: [NSAttributedString] = []
         for i in 0..<Int(glaspen2_router_width_preset_count()) {
-            if let t = glaspen2_router_width_item_title(Int32(i)) { widthTitles.append(t) }
+            widthTitles.append(MenuRuntime.widthItemTitle(Int32(i)))
         }
         let topTitles = [
             pair("保存(含背景)", "Save (with bg)"),
@@ -39,8 +39,8 @@ import AppKit
             pair("笔迹描边", "Stroke outline"),
         ]
         let modeTitle = glaspen2_router_menu_state(778) != 0
-            ? (glaspen2_menu_l10n("canvas.fixed_mode") ?? "")
-            : (glaspen2_menu_l10n("canvas.ethereal_mode") ?? "")
+            ? (MenuRuntime.l10n("canvas.fixed_mode") ?? "")
+            : (MenuRuntime.l10n("canvas.ethereal_mode") ?? "")
         let toggleTitle = glaspen2_router_enabled() != 0
             ? pair("关闭涂鸦", "Disable Drawing")
             : pair("开启涂鸦", "Enable Drawing")

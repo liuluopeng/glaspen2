@@ -13,7 +13,7 @@ import AppKit
             if glaspen2_router_pressure_monitor() != 0 { PressureMonitorWindow.hide() }
         } else {
             if let window {
-                glaspen2_router_ensure_surface()
+                MenuRuntime.ensureSurface()
                 if glaspen2_router_ethereal() != 0
                     && glaspen2_router_strokes_visible() == 0 {
                     glaspen2_router_rebuild_surface()
@@ -27,11 +27,11 @@ import AppKit
         }
         glaspen2_router_update_status_icon_state()
         let key = enabled ? "draw.enabled" : "draw.disabled"
-        glaspen2_menu_notify(glaspen2_menu_l10n(key))
+        MenuRuntime.notify(MenuRuntime.l10n(key))
         glaspen2_router_update_menu_state(888, enabled ? 1 : 0)
         let zh = enabled ? "关闭涂鸦" : "开启涂鸦"
         let en = enabled ? "Disable Drawing" : "Enable Drawing"
-        glaspen2_router_set_menu_title(888, glaspen2_menu_l10n_pair(zh, en))
+        MenuRuntime.setMenuTitle(tag: 888, title: MenuRuntime.pair(zh, en))
     }
 
     /// 飘渺画布 ↔ 固定画布: 笔迹显隐/玻璃跟随/压感窗/菜单文案/落库/图标。
@@ -42,24 +42,24 @@ import AppKit
             EventRouter.finishActiveStroke()
             glaspen2_router_set_strokes_visible(0)
             if glaspen2_router_glass_follow() != 0,
-               let glass = glaspen2_router_glass_view() as? NSView {
+               let glass = UIAnchors.glassView as? NSView {
                 glass.isHidden = true
             }
             if glaspen2_router_pressure_monitor() != 0 { PressureMonitorWindow.hide() }
             glaspen2_router_redraw_draw_view()
-            glaspen2_menu_notify(glaspen2_menu_l10n("canvas.ethereal_mode"))
+            MenuRuntime.notify(MenuRuntime.l10n("canvas.ethereal_mode"))
         } else {
             glaspen2_router_set_ethereal(0)
             glaspen2_router_set_strokes_visible(1)
             MenuHandler.applyGlass()
             if glaspen2_router_pressure_monitor() != 0 { PressureMonitorWindow.show() }
             glaspen2_router_redraw_draw_view()
-            glaspen2_menu_notify(glaspen2_menu_l10n("canvas.fixed_mode"))
+            MenuRuntime.notify(MenuRuntime.l10n("canvas.fixed_mode"))
         }
         let ethereal = glaspen2_router_ethereal() != 0
         glaspen2_router_update_menu_state(778, ethereal ? 1 : 0)
-        glaspen2_router_set_menu_title(778,
-            glaspen2_menu_l10n(ethereal ? "canvas.fixed_mode" : "canvas.ethereal_mode"))
+        MenuRuntime.setMenuTitle(tag: 778,
+            title: MenuRuntime.l10n(ethereal ? "canvas.fixed_mode" : "canvas.ethereal_mode"))
         "ethereal".withCString { glaspen2_save_bool_setting($0, ethereal ? 1 : 0) }
         glaspen2_router_update_status_icon_state()
     }

@@ -105,10 +105,10 @@ import AppKit
             window.setFrame(frame, display: true)
             window.contentView?.frame = frame
         }
-        (glaspen2_router_glass_view() as? NSView)?.frame = frame
+        (UIAnchors.glassView as? NSView)?.frame = frame
         if let drawView = glaspen2_router_draw_view() as? NSView {
             drawView.frame = frame
-            glaspen2_router_ensure_surface()
+            MenuRuntime.ensureSurface()
             glaspen2_router_rebuild_surface()
             drawView.needsDisplay = true
         }

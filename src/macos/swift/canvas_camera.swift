@@ -79,7 +79,7 @@ import AppKit
             let now = ProcessInfo.processInfo.systemUptime
             if now - lastZoomHint > 1.5 {
                 lastZoomHint = now
-                glaspen2_menu_notify(glaspen2_menu_l10n("zoom.max_100"))
+                MenuRuntime.notify(MenuRuntime.l10n("zoom.max_100"))
             }
         }
         if !CameraState.assign(result: result, assignZoom: true) { return }

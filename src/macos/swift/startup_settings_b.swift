@@ -12,8 +12,8 @@ import Darwin
                                              ethereal ? 1 : 0)
         glaspen2_router_update_menu_state(778, ethereal ? 1 : 0)
         let modeKey = ethereal ? "canvas.fixed_mode" : "canvas.ethereal_mode"
-        if let title = glaspen2_menu_l10n(modeKey) {
-            glaspen2_router_set_menu_title(778, title)
+        if let title = Optional(MenuRuntime.l10n(modeKey)) {
+            MenuRuntime.setMenuTitle(tag: 778, title: title)
         }
         glaspen2_router_update_menu_state(668, infinite ? 1 : 0)
         glaspen2_set_canvas_kind(infinite ? 1 : 0)
@@ -23,8 +23,8 @@ import Darwin
         } else {
             CanvasCamera.resetLens()
         }
-        if let title = glaspen2_menu_l10n("canvas.ethereal_mode") {
-            glaspen2_router_set_menu_title(778, title)
+        if let title = Optional(MenuRuntime.l10n("canvas.ethereal_mode")) {
+            MenuRuntime.setMenuTitle(tag: 778, title: title)
         }
 
         let pressure = glaspen2_load_bool_setting("pressure_monitor") != 0
@@ -63,7 +63,7 @@ import Darwin
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             if glaspen2_router_stroke_active() != 0 { return }
-            glaspen2_router_ensure_surface()
+            MenuRuntime.ensureSurface()
             PageViewOps.rebuildSurface()
         }
     }

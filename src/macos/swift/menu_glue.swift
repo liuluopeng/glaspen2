@@ -4,7 +4,7 @@ import Darwin
 
 @objc public final class MenuGlue: NSObject {
     @objc public static func updateCheckmarks() {
-        guard let menu = glaspen2_router_menu() as? NSMenu else { return }
+        guard let menu = UIAnchors.menu as? NSMenu else { return }
         MenuUpdater.updateCheckmarks(menu: menu,
             colorCount: Int(glaspen2_router_color_preset_count()),
             widthCount: Int(glaspen2_router_width_preset_count()),
@@ -15,7 +15,7 @@ import Darwin
     @objc public static func snapshotOverridesJSON() -> UnsafeMutablePointer<CChar>? {
         let overrides: [String: Any] = [
             "launchAtLogin": glaspen2_is_launch_at_login() != 0,
-            "shortcuts": glaspen2_router_shortcuts_effective_json() ?? "{}",
+            "shortcuts": MenuRuntime.shortcutsEffectiveJSON() ?? "{}",
             "flipEffect": glaspen2_router_flip_effect(),
             "language": glaspen2_router_lang() == 1 ? "en" : "zh",
         ]

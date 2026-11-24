@@ -384,7 +384,7 @@ void glaspen2_router_bubble_auto_page_flip(void) { bubble_auto_page_flip(); }
 // S6-3-3d: 拖动实时段薄桥
 // S6-3-3d: 抬笔薄桥
 void glaspen2_router_apply_pending_color_width(void) {
-  gl_settings_apply_pending_color_width();
+  [MenuHandler applyPendingColorWidth];
 }
 // S6-3-3d: proximity 分支薄桥
 void glaspen2_router_bubble_pen_back(void) { glaspen2_bubble_pen_back(); }

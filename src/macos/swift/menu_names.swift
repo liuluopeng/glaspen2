@@ -14,12 +14,12 @@ import AppKit
     @objc(colorDisplayNameWithIndex:)
     public static func colorDisplayName(index: Int) -> String {
         guard index >= 0 && index < colorKeys.count else { return "" }
-        return glaspen2_menu_l10n(colorKeys[index])
+        return MenuRuntime.l10n(colorKeys[index])
     }
 
     @objc(widthDisplayNameWithIndex:)
     public static func widthDisplayName(index: Int) -> String {
         guard index >= 0 && index < widthKeys.count else { return "" }
-        return glaspen2_menu_l10n(widthKeys[index])
+        return MenuRuntime.l10n(widthKeys[index])
     }
 }

@@ -35,7 +35,7 @@ import AppKit
             glaspen2_router_replay_strokes()
         })
         NotificationPresenter.showPageInfo(screenId: Int64(page))
-        if let text = glaspen2_menu_l10n("page.auto_created") {
+        if let text = Optional(MenuRuntime.l10n("page.auto_created")) {
             glaspen2_router_show_notification(text)
         }
         return true

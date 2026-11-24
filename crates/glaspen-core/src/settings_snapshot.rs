@@ -903,7 +903,10 @@ mod tests {
     // 文档化可选覆盖(flipEffect/language), 不许夹带持久化设置。
     // 负向验证见 docs/duplication-backlog.md D12 进度记录。
 
-    const MAC_MENU_SRC: &str = include_str!("../../../src/macos/parts/menu.m");
+    const MAC_MENU_SRC: &str = concat!(
+    include_str!("../../../src/macos/swift/menu_runtime.swift"),
+    include_str!("../../../src/macos/swift/settings_api_glue.swift"),
+    include_str!("../../../src/macos/swift/settings_dispatcher.swift"));
     const WIN_PIPE_SRC: &str = include_str!("../../../crates/glaspen-windows/src/overlay/pipe.rs");
 
     /// 去注释(保留字符串字面量; 支持 // 与 /* */; 处理 Rust 字符字面量与

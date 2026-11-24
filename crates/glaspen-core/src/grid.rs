@@ -905,7 +905,7 @@ mod tests {
 
         let mac_main = include_str!("../../../src/macos/glaspen2.m");
         let mac_run = include_str!("../../../src/macos/parts/run.m");
-        let mac_menu = include_str!("../../../src/macos/parts/menu.m");
+        let mac_menu = include_str!("../../../src/macos/swift/menu_runtime.swift");
         let mac_panel = format!("{}{}",
             include_str!("../../../src/macos/swift/panel_glue.swift"),
             include_str!("../../../src/macos/swift/raw_drawing.swift"));

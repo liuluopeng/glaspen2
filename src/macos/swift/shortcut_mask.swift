@@ -4,7 +4,7 @@ import AppKit
 @objc public final class ShortcutMask: NSObject {
     @objc(maskForAction:)
     public static func maskFor(action: String) -> UInt {
-        guard let chord = glaspen2_router_shortcut_chord(action),
+        guard let chord = MenuRuntime.shortcutChord(action),
               !chord.isEmpty else { return 0 }
         var mask: UInt = 0
         for part in chord.components(separatedBy: "+") {

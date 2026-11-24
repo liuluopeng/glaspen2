@@ -11,7 +11,7 @@ import AppKit
 
         var colorTitles: [NSAttributedString] = []
         for i in 0..<Int(glaspen2_router_color_preset_count()) {
-            if let t = glaspen2_router_color_item_title(Int32(i)) { colorTitles.append(t) }
+            colorTitles.append(MenuRuntime.colorItemTitle(Int32(i)))
         }
         MenuBuilder.addColorItems(toMenu: menu, handler: handler,
                                   count: Int(glaspen2_router_color_preset_count()),
@@ -20,14 +20,14 @@ import AppKit
 
         var widthTitles: [NSAttributedString] = []
         for i in 0..<Int(glaspen2_router_width_preset_count()) {
-            if let t = glaspen2_router_width_item_title(Int32(i)) { widthTitles.append(t) }
+            widthTitles.append(MenuRuntime.widthItemTitle(Int32(i)))
         }
         MenuBuilder.addWidthItems(toMenu: menu, handler: handler,
                                   count: Int(glaspen2_router_width_preset_count()),
                                   titles: widthTitles)
 
         func pair(_ zh: String, _ en: String) -> String {
-            glaspen2_menu_l10n_pair(zh, en)
+            MenuRuntime.pair(zh, en)
         }
         let titles: [String: String] = [
             "saveWithBg": pair("保存(含背景)", "Save (with bg)"),
@@ -47,8 +47,8 @@ import AppKit
             "moreLaunch": pair("开机自启", "Launch at login"),
             "moreGlass": pair("磨砂玻璃", "Frosted Glass"),
             "moreOutline": pair("笔迹描边", "Stroke outline"),
-            "moreCanvasInfinite": glaspen2_menu_l10n("canvas.mode_infinite") ?? "",
-            "moreCanvasMode": glaspen2_menu_l10n("canvas.fixed_mode") ?? "",
+            "moreCanvasInfinite": MenuRuntime.l10n("canvas.mode_infinite") ?? "",
+            "moreCanvasMode": MenuRuntime.l10n("canvas.fixed_mode") ?? "",
         ]
         MenuBuilder.addTopLevelAndSubmenus(toMenu: menu, handler: handler,
                                            titles: titles,

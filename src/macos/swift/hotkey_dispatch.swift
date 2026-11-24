@@ -139,7 +139,7 @@ import AppKit
     }
 
     private static func notify(_ key: String) {
-        if let text = glaspen2_menu_l10n(key) {
+        if let text = Optional(MenuRuntime.l10n(key)) {
             glaspen2_router_show_notification(text)
         }
     }

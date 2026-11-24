@@ -8,8 +8,8 @@ import AppKit
 
     @objc(toggleLanguage)
     public static func toggleLanguage() {
-        let next = glaspen2_menu_lang() == 1 ? 0 : 1
-        glaspen2_menu_set_lang(Int32(next))
+        let next = Int32(AppState.lang) == 1 ? 0 : 1
+        menuSetLang(Int32(next))
         let code = next == 1 ? "en" : "zh"
         "language".withCString { key in
             code.withCString { value in glaspen2_save_string_setting(key, value) }
@@ -58,7 +58,7 @@ import AppKit
     @objc(saveXoj)
     public static func saveXoj() {
         glaspen2_menu_save_xoj_raw()
-        glaspen2_menu_notify(glaspen2_menu_l10n("export.notes_saved"))
+        MenuRuntime.notify(MenuRuntime.l10n("export.notes_saved"))
     }
 
     /// 描边开关: 状态/FFI/落库/菜单勾选/重建笔迹/提示。
@@ -74,9 +74,9 @@ import AppKit
         EventRouter.finishActiveStroke()
         glaspen2_router_rebuild_surface()
         let text = enabled
-            ? glaspen2_menu_l10n_pair("笔迹描边已开启", "Stroke outline on")
-            : glaspen2_menu_l10n_pair("笔迹描边已关闭", "Stroke outline off")
-        glaspen2_menu_notify(text)
+            ? MenuRuntime.pair("笔迹描边已开启", "Stroke outline on")
+            : MenuRuntime.pair("笔迹描边已关闭", "Stroke outline off")
+        MenuRuntime.notify(text)
     }
 
     /// 磨砂玻璃应用: 组合 enabled/opacity/飘渺联动, 刷新视图与菜单勾选。
@@ -89,7 +89,7 @@ import AppKit
         let strokesVisible = ViewSettings.strokesVisible
         let hiddenByEthereal = ethereal && follow && !strokesVisible
         glaspen2_router_apply_glass_view(enabled ? opacity * 2.0 : 0.0,
-                                        !enabled || hiddenByEthereal)
+                                        (!enabled || hiddenByEthereal) ? 1 : 0)
         glaspen2_router_update_menu_state(444, enabled ? 1 : 0)
     }
 
@@ -126,7 +126,7 @@ import AppKit
         glaspen2_router_update_menu_state(888, enabled ? 1 : 0)
         let zh = enabled ? "关闭涂鸦" : "开启涂鸦"
         let en = enabled ? "Disable Drawing" : "Enable Drawing"
-        glaspen2_router_set_menu_title(888, glaspen2_menu_l10n_pair(zh, en))
+        MenuRuntime.setMenuTitle(tag: 888, title: MenuRuntime.pair(zh, en))
         glaspen2_router_update_status_icon_state()
     }
 
@@ -250,9 +250,9 @@ import AppKit
             let ok = glaspen2_menu_export_infinite_pdf_paged(w, h)
             DispatchQueue.main.async {
                 let text = ok != 0
-                    ? glaspen2_menu_l10n_pair("无限画布 PDF 已导出到桌面", "Infinite-canvas PDF saved to Desktop")
-                    : glaspen2_menu_l10n_pair("无限画布为空或页数过多", "Infinite canvas empty or too many pages")
-                glaspen2_menu_notify(text)
+                    ? MenuRuntime.pair("无限画布 PDF 已导出到桌面", "Infinite-canvas PDF saved to Desktop")
+                    : MenuRuntime.pair("无限画布为空或页数过多", "Infinite canvas empty or too many pages")
+                MenuRuntime.notify(text)
             }
         }
     }
@@ -263,9 +263,9 @@ import AppKit
             let ok = glaspen2_menu_export_infinite_svg()
             DispatchQueue.main.async {
                 let text = ok != 0
-                    ? glaspen2_menu_l10n_pair("无限画布 SVG 已导出到桌面", "Infinite-canvas SVG saved to Desktop")
-                    : glaspen2_menu_l10n_pair("无限画布为空", "Infinite canvas is empty")
-                glaspen2_menu_notify(text)
+                    ? MenuRuntime.pair("无限画布 SVG 已导出到桌面", "Infinite-canvas SVG saved to Desktop")
+                    : MenuRuntime.pair("无限画布为空", "Infinite canvas is empty")
+                MenuRuntime.notify(text)
             }
         }
     }

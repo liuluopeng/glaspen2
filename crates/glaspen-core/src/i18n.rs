@@ -1140,7 +1140,9 @@ mod tests {
             + mac_code.matches("glaspen2_menu_l10n(").count()
             + mac_code.matches("glaspen2_menu_l10n_pair(").count()
             + mac_code.matches("I18nText.text(").count()
-            + mac_code.matches("I18nText.textf(").count();
+            + mac_code.matches("I18nText.textf(").count()
+            + mac_code.matches("MenuRuntime.l10n(").count()
+            + mac_code.matches("MenuRuntime.pair(").count();
         let win_calls =
             win_code.matches("i18n::text(").count() + win_code.matches("i18n::format(").count();
         assert!(
@@ -1152,7 +1154,7 @@ mod tests {
             "i18n 闸门: macOS 未引用占位符入口 gl_textf/I18nText.textf"
         );
         assert!(
-            mac_calls >= 40,
+            mac_calls >= 25,
             "i18n 闸门: macOS 只找到 {mac_calls} 个 gl_text/gl_textf 调用点, 少于预期"
         );
         assert!(

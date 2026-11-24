@@ -19,7 +19,7 @@ import AppKit
             }
             if chord == nil { chord = defaults[action] as? String }
             if let c = chord, !c.isEmpty,
-               glaspen2_router_shortcut_reserved(c) != 0 {
+               MenuRuntime.shortcutReserved(c) {
                 NSLog("[hotkey] 保留组合 \(action)=\(c), 回退默认")
                 chord = defaults[action] as? String
             }
@@ -30,7 +30,7 @@ import AppKit
             values[action] = chord ?? ""
             if let c = chord, !c.isEmpty { lookup[c] = action }
         }
-        glaspen2_router_set_shortcut_tables(values as [AnyHashable: Any],
-                                            lookup as [AnyHashable: Any])
+        ShortcutStore.install(values: values as NSDictionary,
+                              lookup: lookup as NSDictionary)
     }
 }

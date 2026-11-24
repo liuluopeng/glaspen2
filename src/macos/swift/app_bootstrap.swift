@@ -13,12 +13,12 @@ import ApplicationServices
             NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
             let alert = NSAlert()
-            alert.messageText = glaspen2_menu_l10n_pair("glaspen2 已在运行",
+            alert.messageText = MenuRuntime.pair("glaspen2 已在运行",
                                                         "glaspen2 is already running")
-            alert.informativeText = glaspen2_menu_l10n_pair(
+            alert.informativeText = MenuRuntime.pair(
                 "检测到另一个 glaspen2 实例(菜单栏图标)。两个实例的笔迹窗口会叠加显示, 全局热键会同时翻两套页 —— 看起来像“笔迹重复/只翻了一部分”。本次启动退出; 开发时如需并行调试, 设 GLASPEN2_ALLOW_MULTI=1。",
                 "Another glaspen2 instance is running (menu bar icon). Two overlays stack and global hotkeys flip both — it looks like duplicated strokes or a partial page flip. This launch exits; set GLASPEN2_ALLOW_MULTI=1 to debug in parallel.")
-            alert.addButton(withTitle: glaspen2_menu_l10n_pair("好", "OK"))
+            alert.addButton(withTitle: MenuRuntime.pair("好", "OK"))
             alert.runModal()
             return false
         }

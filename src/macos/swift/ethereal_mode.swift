@@ -17,7 +17,7 @@ import AppKit
         EventRouter.finishActiveStroke()
         glaspen2_router_set_strokes_visible(0)
         if glaspen2_router_glass_follow() != 0,
-           let glass = glaspen2_router_glass_view() as? NSView {
+           let glass = UIAnchors.glassView as? NSView {
             glass.isHidden = true
         }
         if glaspen2_router_pressure_monitor() != 0 { PressureMonitorWindow.hide() }

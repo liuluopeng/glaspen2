@@ -1732,7 +1732,9 @@ mod tests {
             include_str!("../../../src/macos/swift/recording_effects.swift");
         let mac_run = include_str!("../../../src/macos/parts/run.m");
         let mac_run_effects = format!("{mac_run}\n{mac_effects_swift}");
-        let mac_menu = include_str!("../../../src/macos/parts/menu.m");
+        let mac_menu = concat!(
+            include_str!("../../../src/macos/swift/menu_runtime.swift"),
+            include_str!("../../../src/macos/swift/settings_api_glue.swift"));
         // S6/S8: 录制 HUD 文案映射已迁 Swift, 闸门必须同时扫 Swift 源。
         let mac_recording_swift =
             include_str!("../../../src/macos/swift/recording_hud.swift");

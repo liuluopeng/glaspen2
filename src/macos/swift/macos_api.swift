@@ -124,9 +124,9 @@ import Darwin
                 if ok != 0 {
                     copyNewestGifToPasteboard()
                     glaspen2_router_show_notification(
-                        glaspen2_menu_l10n_pair("动画 GIF 已保存并复制到剪贴板",
+                        MenuRuntime.pair("动画 GIF 已保存并复制到剪贴板",
                                                 "Animated GIF saved & copied"))
-                } else if let text = glaspen2_menu_l10n("recording.gif_no_strokes_or_export_failed") {
+                } else if let text = Optional(MenuRuntime.l10n("recording.gif_no_strokes_or_export_failed")) {
                     glaspen2_router_show_notification(text)
                 }
             }

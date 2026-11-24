@@ -5,7 +5,7 @@ import AppKit
     /// 清空当前页(无限画布不清, 只提示)。
     @objc public static func clearScreen() {
         if glaspen2_router_infinite() != 0 {
-            if let text = glaspen2_menu_l10n("canvas.infinite_kept") {
+            if let text = Optional(MenuRuntime.l10n("canvas.infinite_kept")) {
                 glaspen2_router_show_notification(text)
             }
             return
@@ -22,7 +22,7 @@ import AppKit
         OverlayLayerFlush.flush()
         if created != 0 {
             NotificationPresenter.showPageInfo(screenId: Int64(glaspen2_get_current_screen_id()))
-        } else if let text = glaspen2_menu_l10n("canvas.blank_guard") {
+        } else if let text = Optional(MenuRuntime.l10n("canvas.blank_guard")) {
             glaspen2_router_show_notification(text)
         }
     }
@@ -36,7 +36,7 @@ import AppKit
         let stride = Int32(cairo_image_surface_get_stride(surface))
         let data = cairo_image_surface_get_data(surface)
         glaspen2_save_drawing(data, w, h, stride)
-        if let text = glaspen2_menu_l10n("export.screenshot_saved") {
+        if let text = Optional(MenuRuntime.l10n("export.screenshot_saved")) {
             glaspen2_router_show_notification(text)
         }
     }

@@ -528,7 +528,7 @@ mod tests {
 
     #[test]
     fn apply_dispatch_covers_every_effect_variant() {
-        let mac_src = include_str!("../../../src/macos/parts/menu.m");
+        let mac_src = include_str!("../../../src/macos/swift/settings_dispatcher.swift");
         let win_src = include_str!("../../../crates/glaspen-windows/src/overlay/pipe.rs");
         let mac_dispatcher_swift =
             include_str!("../../../src/macos/swift/settings_dispatcher.swift");

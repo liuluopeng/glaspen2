@@ -4,8 +4,8 @@ import AppKit
 @objc public final class RecHudPresenter: NSObject {
     @objc(presentHud:strokes:detail:)
     public static func present(hud: String, strokes: Int32, detail: String?) {
-        func text(_ key: String) -> String { glaspen2_menu_l10n(key) }
-        func notify(_ s: String) { glaspen2_menu_notify(s) }
+        func text(_ key: String) -> String { MenuRuntime.l10n(key) }
+        func notify(_ s: String) { MenuRuntime.notify(s) }
         func fmt(_ key: String, _ name: String, _ value: String) -> String {
             text(key).replacingOccurrences(of: "{" + name + "}", with: value)
         }

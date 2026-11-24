@@ -35,7 +35,7 @@ import Darwin
             free(drawingCopy)
             DispatchQueue.main.async {
                 if !message.isEmpty {
-                    glaspen2_router_show_notification(glaspen2_menu_l10n_pair(message, message))
+                    glaspen2_router_show_notification(MenuRuntime.pair(message, message))
                 }
                 SurfaceOps.saveDrawingOnly()
             }
@@ -158,7 +158,7 @@ import Darwin
         glaspen2_save_with_background(drawPtr, Int32(dw), Int32(dh), Int32(drawStride),
                                       bgPtr, Int32(bw), Int32(bh), Int32(bgStride))
         free(drawingCopy)
-        if let message = glaspen2_menu_l10n("export.screenshot_with_bg_saved") {
+        if let message = Optional(MenuRuntime.l10n("export.screenshot_with_bg_saved")) {
             DispatchQueue.main.async {
                 glaspen2_router_show_notification(message)
             }

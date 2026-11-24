@@ -15,7 +15,7 @@ import AppKit
         let window = NSWindow(contentRect: frame,
                               styleMask: [.titled, .closable, .resizable],
                               backing: .buffered, defer: false)
-        window.title = glaspen2_menu_l10n_pair("玻璃涂鸦", "glaspen2")
+        window.title = MenuRuntime.pair("玻璃涂鸦", "glaspen2")
         window.minSize = NSSize(width: 600, height: 800)
         window.isReleasedWhenClosed = false
         if SettingsWindowDelegate.shared == nil {
