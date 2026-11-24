@@ -217,6 +217,8 @@ double glaspen2_router_pageview_paper_scale(void);
 double glaspen2_router_pageview_page_w(void);
 double glaspen2_router_pageview_page_h(void);
 extern void glaspen2_draw_rebuild_view(void *surface, double scale, double ox, double oy, double page_scale);
+extern int glaspen2_save_drawing(const unsigned char *data, int w, int h, int stride);
+extern int glaspen2_clear_strokes(int screen_w, int screen_h);
 void glaspen2_router_clear_screen(void);
 void glaspen2_router_replay_strokes(void);
 void glaspen2_router_page_flip(int forward, dispatch_block_t prepare, dispatch_block_t commit);

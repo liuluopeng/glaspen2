@@ -570,16 +570,7 @@ static void show_notification(NSString *text) {
 
 // 页信息 HUD: 已迁 Swift(NotificationPresenter.showPageInfoWithScreenId:);
 // 文案与日期比较单源仍在 core::pageinfo。
-static void save_drawing_only(void) {
-    if (!g_surface) return;
-    cairo_surface_flush(g_surface);
-    const unsigned char *data = cairo_image_surface_get_data(g_surface);
-    int w = cairo_image_surface_get_width(g_surface);
-    int h = cairo_image_surface_get_height(g_surface);
-    int stride = cairo_image_surface_get_stride(g_surface);
-    glaspen2_save_drawing(data, w, h, stride);
-    show_notification(gl_text(@"export.screenshot_saved"));
-}
+static void save_drawing_only(void) { [SurfaceOps saveDrawingOnly]; }
 
 /// 当前覆盖层所在屏幕的 CGDirectDisplayID。
 /// 截图曾经永远取 `content.displays.firstObject` —— 多屏时会把副屏的
@@ -766,40 +757,7 @@ static void save_with_background(void) {
     }
 }
 
-static void clear_screen(void) {
-    if (g_infinite_canvas) {
-        // 无限画布只能手动新建,菜单/快捷键不清空
-        show_notification(gl_text(@"canvas.infinite_kept"));
-        return;
-    }
-    if (!g_surface) return;
-    cairo_t *cr = cairo_create_scaled();
-    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-    cairo_paint(cr);
-    cairo_destroy(cr);
-    g_has_last = NO;
-    int created = glaspen2_clear_strokes(g_screen_w, g_screen_h);
-    pageview_update(); // 新建/复用页可能切换了当前页
-    if (g_infinite_canvas) {
-        // 无限画布只有一个画布:清空内容 + 复位镜头,不新建页。
-        if (created) {
-            [CanvasCamera resetLens];
-            [CanvasCamera persistInfinite];
-        }
-        flush_to_layer();
-        show_notification(created
-            ? L(@"已清空无限画布", @"Infinite canvas cleared")
-            : L(@"无限画布本来就是空的", @"Infinite canvas is already empty"));
-        return;
-    }
-    flush_to_layer();
-    if (created) {
-        [NotificationPresenter showPageInfoWithScreenId:glaspen2_get_current_screen_id()];
-    } else {
-        // The current canvas was never edited — don't allow blank-on-blank.
-        show_notification(gl_text(@"canvas.blank_guard"));
-    }
-}
+static void clear_screen(void) { [SurfaceOps clearScreen]; }
 
 // 快照观看的页框: 页外区域压暗 + 页边界细线(物理像素坐标, 不吃变换)。
 static void pageview_frame_draw(void) { [SurfaceReplay drawPageFrame]; }
