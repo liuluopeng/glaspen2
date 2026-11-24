@@ -61,6 +61,24 @@ import AppKit
         glaspen2_menu_notify(glaspen2_menu_l10n("export.notes_saved"))
     }
 
+    /// 描边开关: 状态/FFI/落库/菜单勾选/重建笔迹/提示。
+    @objc(setOutlineEnabled:)
+    public static func setOutlineEnabled(enabled: Bool) {
+        if (glaspen2_router_outline_enabled() != 0) == enabled { return }
+        glaspen2_router_set_outline_state(enabled ? 1 : 0)
+        glaspen2_set_stroke_outline(enabled ? 1 : 0)
+        "outline".withCString { key in
+            glaspen2_save_bool_setting(key, enabled ? 1 : 0)
+        }
+        glaspen2_router_update_menu_state(667, enabled ? 1 : 0)
+        EventRouter.finishActiveStroke()
+        glaspen2_router_rebuild_surface()
+        let text = enabled
+            ? glaspen2_menu_l10n_pair("笔迹描边已开启", "Stroke outline on")
+            : glaspen2_menu_l10n_pair("笔迹描边已关闭", "Stroke outline off")
+        glaspen2_menu_notify(text)
+    }
+
     /// 磨砂玻璃应用: 组合 enabled/opacity/飘渺联动, 刷新视图与菜单勾选。
     @objc(applyGlass)
     public static func applyGlass() {

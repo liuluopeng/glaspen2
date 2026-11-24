@@ -200,22 +200,8 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
 }
 
 // 应用描边开关(菜单与 Flutter 设置面板共用的唯一入口)。
-// 纯渲染设置:只改内存状态与菜单勾选,不落库。
-static void apply_outline(BOOL on) {
-  if (g_outline_enabled == on)
-    return;
-  g_outline_enabled = on;
-  glaspen2_set_stroke_outline(on ? 1 : 0);
-  glaspen2_save_bool_setting("outline", on ? 1 : 0);
-  NSMenuItem *item = [MenuLookup itemWithTag:667 inMenu:g_menu];
-  if (item)
-    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
-  // 立即对已有笔迹生效(重绘 = 从 STROKES 按当前描边开关重建)
-  finish_active_stroke();
-  rebuild_surface_from_strokes();
-  show_notification(on ? L(@"笔迹描边已开启", @"Stroke outline on")
-                       : L(@"笔迹描边已关闭", @"Stroke outline off"));
-}
+// S7ac: 逻辑已迁 Swift(MenuHandler.setOutlineEnabled)。
+static void apply_outline(BOOL on) { [MenuHandler setOutlineEnabled:on]; }
 
 // ── 无限画布:镜头平移(全局唯一画布) ──
 
@@ -2890,3 +2876,8 @@ void glaspen2_router_redraw_draw_view(void) {
 
 // S7w: 录制状态机总开关变化薄桥
 void glaspen2_router_rec_chat_integration_changed(int on) { gl_recording_chat_integration_changed(on != 0); }
+
+// S7ac: 描边开关的 Swift 薄桥
+int glaspen2_router_outline_enabled(void) { return g_outline_enabled ? 1 : 0; }
+void glaspen2_router_set_outline_state(int on) { g_outline_enabled = on != 0; }
+void glaspen2_router_rebuild_surface(void) { rebuild_surface_from_strokes(); }
