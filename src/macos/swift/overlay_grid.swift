@@ -25,29 +25,27 @@ import CoreGraphics
     /// drawRect 网格层: 门控 + pan/zoom 换算 + core::grid 三段线段绘制。
     @objc(drawGridWithContext:bounds:clipRect:)
     public static func drawGrid(_ ctx: CGContext, bounds: NSRect, clipRect: NSRect) {
-        let st = glaspen2_router_grid_state() as NSDictionary
-        func num(_ key: String) -> NSNumber? { st[key] as? NSNumber }
-        let showGrid = num("showGrid")?.boolValue ?? false
-        let divider = num("divider")?.intValue ?? 0
+        let showGrid = ViewSettings.showGrid
+        let divider = ViewSettings.gridDivider
         let tunActive = TunnelState.active
-        let strokesVisible = num("strokesVisible")?.boolValue ?? true
-        let follow = num("gridFollow")?.boolValue ?? false
+        let strokesVisible = ViewSettings.strokesVisible
+        let follow = ViewSettings.gridFollowStrokes
         guard (showGrid || divider > 0) && !tunActive
             && (strokesVisible || !follow) else { return }
         let viewW = Double(bounds.size.width)
         let viewH = Double(bounds.size.height)
         guard viewW > 0, viewH > 0 else { return }
         var panX = 0.0, panY = 0.0, zoom = 1.0
-        if num("infinite")?.boolValue ?? false {
-            panX = num("panX")?.doubleValue ?? 0
-            panY = num("panY")?.doubleValue ?? 0
-            let z = num("zoom")?.doubleValue ?? 1
+        if ViewSettings.infiniteCanvas {
+            panX = CameraStore.panX
+            panY = CameraStore.panY
+            let z = CameraStore.zoom
             zoom = z > 0.05 ? z : 0.05
         } else {
-            panX = -(num("pageOffX")?.doubleValue ?? 0)
-            panY = -(num("pageOffY")?.doubleValue ?? 0)
+            panX = -CameraStore.pageOffX
+            panY = -CameraStore.pageOffY
         }
-        let gridSize = num("gridSize")?.doubleValue ?? 1
+        let gridSize = ViewSettings.gridSize
         let clipX0 = Double(clipRect.minX), clipX1 = Double(clipRect.maxX)
         let clipY0 = viewH - Double(clipRect.maxY)
         let clipY1 = viewH - Double(clipRect.minY)

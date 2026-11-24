@@ -11,6 +11,9 @@ static void rebuild_surface_from_strokes(void) { [PageViewOps rebuildSurface]; }
 
 
 
+@interface GlaspenDrawView : NSView
+@end
+
 @implementation GlaspenDrawView
 - (void)drawRect:(NSRect)rect { [OverlayDrawing drawInView:self rect:rect]; }
 
@@ -236,7 +239,7 @@ static void event_tap_install(BOOL include_scroll) {
 }
 
 // 按当前画布模式重装 event tap(无限=含滚轮,翻页=不含)。
-static void event_tap_reinstall(void) { event_tap_install(g_infinite_canvas); }
+static void event_tap_reinstall(void) { event_tap_install(glaspen2_router_infinite() != 0); }
 
 // S6-3-4b-2 拆分: 录制热键(⌘⌃R/2/3)处理, 返回 YES = 事件已消费。
 // 本次只是把原键盘块里的录制分支纯移动到独立函数(行为不变);
@@ -315,7 +318,7 @@ NSUInteger glaspen2_router_camera_mods(void) {
 
 int glaspen2_router_state(void) {
   return (g_enabled ? 1 : 0) | ((sw_stroke_active() ? 1 : 0) << 1) |
-         ((g_infinite_canvas ? 1 : 0) << 2);
+         ((glaspen2_router_infinite() ? 1 : 0) << 2);
 }
 
 double glaspen2_router_draw_height(void) {
@@ -347,7 +350,7 @@ int64_t glaspen2_virtual_pen_user_data(void) {
 
 // S6-3-3b: 笔光标更新的状态/动作薄桥
 int glaspen2_router_pen_state(void) {
-  return (g_strokes_visible ? 1 : 0) | ((sw_stroke_active() ? 1 : 0) << 1) |
+  return (glaspen2_router_strokes_visible() ? 1 : 0) | ((sw_stroke_active() ? 1 : 0) << 1) |
          ((sw_cursor_visible() ? 1 : 0) << 2);
 }
 
@@ -411,7 +414,7 @@ void glaspen2_router_tap_menu_bar_interaction(void) {
 void glaspen2_router_update_status_icon_state(void) {
   [StatusIconUpdater applyToStatusItem:g_statusItem eraser:(sw_eraser_mode() != 0)
                                enabled:g_enabled ethereal:g_ethereal_canvas
-                              infinite:g_infinite_canvas widthScale:g_width_scale
+                              infinite:glaspen2_router_infinite() != 0 widthScale:g_width_scale
                                   penRed:g_pen_r penGreen:g_pen_g penBlue:g_pen_b];
 }
 
@@ -449,8 +452,6 @@ void glaspen2_router_reenable_tap(void) {
 double glaspen2_router_raw_width(double pressure) {
   return glaspen2_pressure_raw_width(pressure, glaspen2_router_width_scale()) * glaspen2_router_zoom();
 }
-int glaspen2_router_strokes_hidden(void) { return g_strokes_visible ? 0 : 1; }
-
 // 页信息 HUD: 语言代码薄桥(Swift 调 core::pageinfo)
 const char *glaspen2_router_lang_code(void) { return gl_lang_code(); }
 
@@ -487,8 +488,6 @@ double glaspen2_router_screen_h(void) { return g_screen_h; }
 
 // S7bg: 翻页模式镜头重置前清 page 偏移
 // S7: 画布模式切换的 Swift 薄桥
-int glaspen2_router_infinite(void) { return g_infinite_canvas ? 1 : 0; }
-void glaspen2_router_set_infinite_state(int on) { g_infinite_canvas = on != 0; }
 void glaspen2_router_event_tap_reinstall(void) { event_tap_reinstall(); }
 
 // S7: minimap 状态薄桥
@@ -677,12 +676,6 @@ void glaspen2_router_startup_glass(double opacity, int enabled) {
   g_glass_opacity = opacity; g_glass_enabled = enabled != 0;
 }
 void glaspen2_router_startup_set_glass_follow(int on) { g_glass_follow_strokes = on != 0; }
-void glaspen2_router_startup_grid(int show, double size, int follow, int divider) {
-  g_show_grid = show != 0;
-  if (size >= 10 && size <= 200) g_grid_size = size;
-  g_grid_follow_strokes = follow != 0;
-  if (divider >= 0 && divider <= 4) g_grid_divider = divider;
-}
 void glaspen2_router_startup_shadow(int on) { g_soft_shadow = on != 0; }
 void glaspen2_router_startup_outline(int on) { g_outline_enabled = on != 0; }
 void glaspen2_router_startup_invert(int fps, int ink) {
@@ -694,8 +687,8 @@ void glaspen2_router_invert_apply(int on) { invert_ink_apply(on); }
 
 // S7cz: 启动恢复后半桥
 void glaspen2_router_restore_canvas_flags(int infinite, int minimap, int ethereal) {
-  g_infinite_canvas = infinite != 0;
-  g_minimap_enabled = minimap != 0;
+  sw_set_infinite(infinite);
+  sw_set_minimap(minimap);
   g_ethereal_canvas = ethereal != 0;
 }
 void glaspen2_router_restore_pressure(int on) { g_pressure_monitor = on != 0; }
@@ -717,7 +710,6 @@ int glaspen2_router_event_tap_enabled(void) { return (g_event_tap && CGEventTapI
 void glaspen2_router_event_tap_enable(void) { if (g_event_tap) CGEventTapEnable(g_event_tap, true); }
 
 // S7dc: 设置应用分派桥
-void glaspen2_router_set_grid_follow(int on) { g_grid_follow_strokes = on != 0; }
 void glaspen2_router_set_glass_follow(int on) { g_glass_follow_strokes = on != 0; }
 void glaspen2_router_set_soft_shadow_flag(int on) { g_soft_shadow = on != 0; }
 void glaspen2_router_invert_set_ink(int on) { g_invert_ink = on != 0; }
@@ -725,9 +717,6 @@ void glaspen2_router_invert_set_fps(int fps) { g_invert_fps = fps; }
 void glaspen2_router_invert_restart(void) { invert_stream_restart(); }
 int glaspen2_router_invert_enabled(void) { return g_invert_ink ? 1 : 0; }
 void glaspen2_router_panel_transparent_full(int on) { gl_panel_transparent_apply_full(on != 0); }
-void glaspen2_router_set_minimap(int on) { g_minimap_enabled = on != 0; }
-void glaspen2_router_set_grid_size(double size) { g_grid_size = size; }
-void glaspen2_router_set_grid_divider(int divider) { g_grid_divider = divider; }
 void glaspen2_router_set_flip(int effect) { g_flip_effect = effect; }
 void glaspen2_router_set_gif(int fps, double res, double speed, int endMode) {
   g_gif_fps = fps; g_gif_resolution = res; g_gif_speed = speed; g_gif_end_mode = endMode;
@@ -746,28 +735,10 @@ void glaspen2_router_install_signals(void) {
 // S7dk: 带背景保存桥
 int glaspen2_router_window_sharing_type(void) { return (int)[g_window sharingType]; }
 
-NSDictionary *glaspen2_router_grid_state(void) {
-  return @{
-    @"showGrid" : @(g_show_grid ? YES : NO),
-    @"divider" : @((int)g_grid_divider),
-    @"strokesVisible" : @(g_strokes_visible ? YES : NO),
-    @"gridFollow" : @(g_grid_follow_strokes ? YES : NO),
-    @"infinite" : @(g_infinite_canvas ? YES : NO),
-    @"panX" : @(glaspen2_router_pan_x()),
-    @"panY" : @(glaspen2_router_pan_y()),
-    @"zoom" : @(glaspen2_router_zoom()),
-    @"pageOffX" : @(glaspen2_router_page_off_x()),
-    @"pageOffY" : @(glaspen2_router_page_off_y()),
-    @"gridSize" : @(g_grid_size),
-  };
-}
 
 
 
 // S7do: 绘制标志桥
-int glaspen2_router_minimap_enabled(void) { return g_minimap_enabled ? 1 : 0; }
-int glaspen2_router_show_grid(void) { return g_show_grid ? 1 : 0; }
-
 int glaspen2_router_perf_enabled(void) { return [PerfLog isEnabled] ? 1 : 0; }
 
 // S7dq: 宽度倍率桥

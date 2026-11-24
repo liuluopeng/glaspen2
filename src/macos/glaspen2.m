@@ -40,7 +40,6 @@ static void gl_ethereal_restore_now(void); // 定义在 parts/menu.m(启动恢�
 // D8b 录制状态机接线: 总开关变化时把事件喂给手写消息槽并执行 effects
 // (定义在 parts/run.m 录制区), 菜单/设置面板切换总开关时调用。
 static void gl_recording_chat_integration_changed(BOOL on);
-static BOOL g_strokes_visible; // 定义在飘渺模式区(总开关恢复 V 时要用)
 static void ethereal_hide_now(void); // 定义在飘渺模式区
 
 // --- Cairo (linked via cargo) ---
@@ -383,16 +382,13 @@ static const int g_width_preset_count = 8;
 static int g_selected_width_index = 3; // default: 1.0x
 
 // 网格大小(逻辑 px),设置面板可调,默认 40
-static double g_grid_size = 40.0;
 
 // 网格分栏参考线(纯视觉,无功能含义,独立于显示网格开关):
 // 0=无 1=左右两栏 2=上下两栏 3=九宫格 4=康奈尔。
 // 实现 = 把每屏单位 1/2(两栏)或 1/3、2/3(九宫格)或 30%/75%(康奈尔)
 // 位置上最近的网格线加粗一档。
-static NSInteger g_grid_divider = 0;
 
 // ── 页面缩略图条(minimap,翻页模式) ──
-static BOOL g_minimap_enabled = NO;
 // 页窗 + 条带几何的唯一来源 = core::minimap(经 FFI glaspen2_minimap_layout_json);
 // 这里只缓存最近一次布局 JSON(当前页/视图尺寸/几何组过滤宽度变化时重取)。
 // 缩略图队列/条带合成/描边/页号字体仍在 run.m 的 draw_minimap。
@@ -400,7 +396,6 @@ static BOOL g_minimap_enabled = NO;
 // ── 无限画布模式 ──
 // 画布坐标 = 视口坐标 + pan(pan = 视口左上角在画布坐标系中的位置)。
 // 模式开启时 ⌘⌃滚轮移动镜头,笔迹以画布坐标存储(可为负/超界)。
-static BOOL g_infinite_canvas = NO;
 // 翻页模式的滚动偏移:整页翻页后恒为 0(变量保留,canvas_input/drawRect
 // 的变换式以此为恒等项;不再有任何滑动写入路径)。
 // ── D5b: 镜头数学唯一来源是 core::camera(经 FFI);本文件只持有状态 ──
@@ -427,12 +422,10 @@ static BOOL g_infinite_canvas = NO;
 // 翻页模式渲染时镜头恒为原点(page_off 恒 0,整页翻页不滚动),无限画布则是 g_pan。
 // 注意:此前输入写成 `+ g_page_off`,符号反了 —— 在两张之间涂鸦后一移动就跳位。
 // Grid overlay toggle (default off)
-static BOOL g_show_grid = NO;
 
 // When YES the grid follows the strokes and is hidden with them by
 // 飘渺画布涂鸦模式 (X). When NO the grid is always visible while its own
 // Flutter switch is on. Controlled by the Flutter settings panel.
-static BOOL g_grid_follow_strokes = NO;
 
 // When YES the frosted-glass backdrop is hidden with the strokes by
 // 飘渺画布涂鸦模式 (X) — the historical behavior. When NO the glass stays

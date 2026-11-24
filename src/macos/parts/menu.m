@@ -62,7 +62,6 @@ static void toggle_enabled(void) { [DrawMode toggleEnabled]; }
 // 显隐为**即时**笔迹级切换(无动效): 悬浮边界笔反复进出时, 窗口级
 // 系统动效会反复重启造成闪烁/哆嗦, 故此处绝不做窗口级显隐。
 static BOOL g_ethereal_canvas = NO; // YES = 飘渺画布涂鸦模式
-static BOOL g_strokes_visible = YES; // strokes drawn on the overlay?
 
 // Hide the strokes (飘渺 mode). Returns YES if it actually hid them.
 static void ethereal_hide_now(void) { (void)[EtherealMode hideNow]; }
@@ -184,7 +183,7 @@ void glaspen2_menu_apply_outline(int on) {
 }
 
 int glaspen2_menu_infinite_enabled(void) {
-    return g_infinite_canvas ? 1 : 0;
+    return glaspen2_router_infinite();
 }
 
 void glaspen2_menu_apply_infinite(int on) {
@@ -487,8 +486,6 @@ void glaspen2_router_update_menu_state(int tag, int state) {
 }
 
 // S7t: 网格开关状态薄桥
-void glaspen2_router_set_grid_state(int on) { g_show_grid = on != 0; }
-
 // S7u: 压感监视器开关的 Swift 薄桥
 void glaspen2_router_set_pressure_monitor(int on) { g_pressure_monitor = on != 0; }
 void glaspen2_router_pm_show(void) { pm_show(); }
@@ -514,7 +511,7 @@ NSDictionary *glaspen2_router_glass_state(void) {
     @"opacity" : @(g_glass_opacity),
     @"ethereal" : @(g_ethereal_canvas ? YES : NO),
     @"follow" : @(g_glass_follow_strokes ? YES : NO),
-    @"strokesVisible" : @(g_strokes_visible ? YES : NO),
+    @"strokesVisible" : @(glaspen2_router_strokes_visible() ? YES : NO),
   };
 }
 void glaspen2_router_apply_glass_view(double alpha, BOOL hidden) {
@@ -543,14 +540,12 @@ NSString *glaspen2_router_shortcut_chord(NSString *action) {
 // S7bo: 涂鸦启停的 Swift 薄桥
 int glaspen2_router_enabled(void) { return g_enabled ? 1 : 0; }
 int glaspen2_router_pressure_monitor(void) { return g_pressure_monitor ? 1 : 0; }
-int glaspen2_router_strokes_visible(void) { return g_strokes_visible ? 1 : 0; }
 void glaspen2_router_ensure_surface(void) {
   if (g_draw_view) ensure_surface(g_draw_view);
 }
 
 // S7bp: 画布模式切换的 Swift 薄桥
 void glaspen2_router_set_ethereal(int on) { g_ethereal_canvas = on != 0; }
-void glaspen2_router_set_strokes_visible(int on) { g_strokes_visible = on != 0; }
 int glaspen2_router_glass_follow(void) { return g_glass_follow_strokes ? 1 : 0; }
 id glaspen2_router_glass_view(void) { return g_glass_view; }
 
