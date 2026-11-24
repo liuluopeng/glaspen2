@@ -9,10 +9,10 @@ public func cairoCreateScaled() -> OpaquePointer? {
     guard let cr = cairo_create(surface) else { return nil }
     let scale = glaspen2_router_scale()
     cairo_scale(cr, scale, scale)
-    if glaspen2_router_pageview_is_fit() != 0 {
-        cairo_translate(cr, glaspen2_router_pageview_paper_ox() * scale,
-                        glaspen2_router_pageview_paper_oy() * scale)
-        let ps = glaspen2_router_pageview_paper_scale()
+    if PageViewOps.isFit {
+        cairo_translate(cr, PageViewOps.paperOx * scale,
+                        PageViewOps.paperOy * scale)
+        let ps = PageViewOps.paperScale
         cairo_scale(cr, ps, ps)
     }
     return cr
@@ -23,10 +23,10 @@ public func canvasInputX(_ viewX: Double) -> Double {
     if glaspen2_router_infinite() != 0 {
         return viewX / glaspen2_router_zoom() + glaspen2_router_pan_x()
     }
-    if glaspen2_router_pageview_is_fit() != 0 {
+    if PageViewOps.isFit {
         return (viewX - glaspen2_router_page_off_x()
-            - glaspen2_router_pageview_paper_ox())
-            / glaspen2_router_pageview_paper_scale()
+            - PageViewOps.paperOx)
+            / PageViewOps.paperScale
     }
     return viewX - glaspen2_router_page_off_x()
 }
@@ -36,10 +36,10 @@ public func canvasInputY(_ viewY: Double) -> Double {
     if glaspen2_router_infinite() != 0 {
         return viewY / glaspen2_router_zoom() + glaspen2_router_pan_y()
     }
-    if glaspen2_router_pageview_is_fit() != 0 {
+    if PageViewOps.isFit {
         return (viewY - glaspen2_router_page_off_y()
-            - glaspen2_router_pageview_paper_oy())
-            / glaspen2_router_pageview_paper_scale()
+            - PageViewOps.paperOy)
+            / PageViewOps.paperScale
     }
     return viewY - glaspen2_router_page_off_y()
 }

@@ -8,7 +8,7 @@ import Darwin
             glaspen2_router_startup_set_lang(v == "en" ? 1 : 0)
             MenuTextUpdater.update()
         }
-        glaspen2_router_pageview_update()
+        PageViewOps.update()
 
         var sr = 0.0, sg = 0.0, sb = 0.0, sw = 0.0
         if glaspen2_load_settings_parts(&sr, &sg, &sb, &sw) != 0 {

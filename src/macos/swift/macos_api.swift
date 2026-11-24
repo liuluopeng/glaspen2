@@ -47,7 +47,7 @@ import Darwin
         }
         DispatchQueue.global(qos: .userInitiated).sync {
             glaspen2_load_strokes_for_screen(Int(screenId))
-            glaspen2_router_pageview_update()
+            PageViewOps.update()
             SettingsGlue.runOnMainSync {
                 PageViewOps.rebuildSurface()
             }
@@ -71,7 +71,7 @@ import Darwin
                     let target = nextId != 0 ? nextId : prevId
                     if target != 0 {
                         glaspen2_load_strokes_for_screen(Int(target))
-                        glaspen2_router_pageview_update()
+                        PageViewOps.update()
                         PageViewOps.rebuildSurface()
                     } else {
                         SurfaceOps.clearScreen()

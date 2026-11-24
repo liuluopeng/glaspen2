@@ -23,7 +23,7 @@ import AppKit
 
         let viewW = Double(bounds.size.width)
         let viewH = Double(bounds.size.height)
-        let geomW = glaspen2_router_pageview_pw()
+        let geomW = PageViewOps.geometryWidth
         if layout == nil || layoutFor != cur || layoutW != viewW
             || layoutH != viewH || layoutGeomW != geomW {
             layout = layoutFromJSON(glaspen2_minimap_layout_json(cur, viewW, viewH,

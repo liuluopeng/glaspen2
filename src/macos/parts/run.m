@@ -695,12 +695,9 @@ void glaspen2_router_reset_page_offsets(void) {
 int glaspen2_router_infinite(void) { return g_infinite_canvas ? 1 : 0; }
 void glaspen2_router_set_infinite_state(int on) { g_infinite_canvas = on != 0; }
 void glaspen2_router_clear_camera_dragging(void) { g_camera_mouse_dragging = NO; }
-void glaspen2_router_pageview_update(void) { pageview_update(); }
 void glaspen2_router_event_tap_reinstall(void) { event_tap_reinstall(); }
 
 // S7: minimap 状态薄桥
-int glaspen2_router_pageview_pw(void) { return g_pageview_pw; }
-
 // S7bl: drawRect 编排的薄桥(表面/隧道状态快照 + flush)
 void glaspen2_router_draw_prepare(void) {
   if (g_surface) cairo_surface_flush(g_surface);
@@ -892,23 +889,7 @@ void glaspen2_router_page_flip_from(int forward, long from, dispatch_block_t pre
 }
 
 // S7cn: 页视图/重放薄桥
-int glaspen2_router_pageview_is_fit(void) { return g_pageview_fit ? 1 : 0; }
-double glaspen2_router_pageview_paper_ox(void) { return g_pageview_ox; }
-double glaspen2_router_pageview_paper_oy(void) { return g_pageview_oy; }
-double glaspen2_router_pageview_paper_scale(void) { return g_pageview_scale; }
-double glaspen2_router_pageview_page_w(void) { return g_pageview_pw; }
-double glaspen2_router_pageview_page_h(void) { return g_pageview_ph; }
-
 // S7cp: 页视图几何薄桥
-void glaspen2_router_pageview_set(int fit, double scale, double ox, double oy, int pw, int ph) {
-  g_pageview_fit = fit != 0;
-  g_pageview_scale = scale;
-  g_pageview_ox = ox;
-  g_pageview_oy = oy;
-  g_pageview_pw = pw;
-  g_pageview_ph = ph;
-}
-
 // S7cs: 隧道几何薄桥
 double glaspen2_router_tunnel_k(void) { return s_tun_k; }
 int glaspen2_router_tunnel_surf_w(void) { return s_tun_surf_w; }

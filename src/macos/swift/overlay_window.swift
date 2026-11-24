@@ -99,7 +99,7 @@ import AppKit
         glaspen2_on_display_change(width, height)
         glaspen2_load_strokes_for_screen(glaspen2_get_current_screen_id())
         glaspen2_smooth_loaded_strokes()
-        glaspen2_router_pageview_update()
+        PageViewOps.update()
         let frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height))
         if let window = glaspen2_router_main_window() as? NSWindow {
             window.setFrame(frame, display: true)

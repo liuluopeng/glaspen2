@@ -300,11 +300,8 @@ static cairo_surface_t *g_surface = NULL;
 // 页视图变换(scale-to-fit): 当前页几何 ≠ 屏幕时, 等比缩放居中观看该页
 // (页 = 某时刻玻璃的几何快照); 同几何时恒为恒等 —— 纯玻璃, 严格 1:1。
 // pageview_update() 定义在 parts/run.m, 每次载入某页后调用。
-static double g_pageview_scale = 1.0, g_pageview_ox = 0.0, g_pageview_oy = 0.0;
 // 翻页动效: 0=macOS 系统动效(默认) 1=时光隧道(自定义, 见 parts/run.m)
 static int g_flip_effect = 0;
-static int g_pageview_pw = 0, g_pageview_ph = 0;
-static BOOL g_pageview_fit = NO;
 static void pageview_update(void);
 
 // Create a cairo context with the backing scale factor applied.

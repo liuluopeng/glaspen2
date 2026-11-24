@@ -19,7 +19,7 @@ import AppKit
         glaspen2_router_set_has_last(0)
         let created = glaspen2_clear_strokes(Int32(glaspen2_router_screen_w()),
                                              Int32(glaspen2_router_screen_h()))
-        glaspen2_router_pageview_update()
+        PageViewOps.update()
         OverlayLayerFlush.flush()
         if created != 0 {
             NotificationPresenter.showPageInfo(screenId: Int64(glaspen2_get_current_screen_id()))
@@ -47,10 +47,10 @@ import AppKit
         guard let cr = cairo_create(surface) else { return nil }
         let scale = glaspen2_router_scale()
         cairo_scale(cr, scale, scale)
-        if glaspen2_router_pageview_is_fit() != 0 {
-            cairo_translate(cr, glaspen2_router_pageview_paper_ox() * scale,
-                            glaspen2_router_pageview_paper_oy() * scale)
-            let ps = glaspen2_router_pageview_paper_scale()
+        if PageViewOps.isFit {
+            cairo_translate(cr, PageViewOps.paperOx * scale,
+                            PageViewOps.paperOy * scale)
+            let ps = PageViewOps.paperScale
             cairo_scale(cr, ps, ps)
         }
         return cr

@@ -29,7 +29,7 @@ import AppKit
                 glaspen2_router_page_flip(0, {
                     glaspen2_load_strokes_for_screen(target)
                     glaspen2_smooth_loaded_strokes()
-                    glaspen2_router_pageview_update()
+                    PageViewOps.update()
                 }, { glaspen2_router_replay_strokes() })
                 EtherealMode.peek(seconds: 1.0)
                 NotificationPresenter.showPageInfo(screenId: Int64(target))
@@ -48,7 +48,7 @@ import AppKit
                 glaspen2_router_page_flip(1, {
                     glaspen2_load_strokes_for_screen(target)
                     glaspen2_smooth_loaded_strokes()
-                    glaspen2_router_pageview_update()
+                    PageViewOps.update()
                 }, { glaspen2_router_replay_strokes() })
                 EtherealMode.peek(seconds: 1.0)
                 NotificationPresenter.showPageInfo(screenId: Int64(target))
@@ -67,7 +67,7 @@ import AppKit
                 glaspen2_router_page_flip_from(1, before, {
                     glaspen2_load_strokes_for_screen(pageId)
                     glaspen2_smooth_loaded_strokes()
-                    glaspen2_router_pageview_update()
+                    PageViewOps.update()
                 }, { glaspen2_router_replay_strokes() })
                 EtherealMode.peek(seconds: 1.0)
                 NotificationPresenter.showPageInfo(screenId: Int64(pageId))

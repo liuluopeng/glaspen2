@@ -6,9 +6,9 @@ import AppKit
         guard let surface = glaspen2_router_surface() else { return }
         glaspen2_draw_rebuild_view(UnsafeMutableRawPointer(surface),
                                    glaspen2_router_scale(),
-                                   glaspen2_router_pageview_paper_ox(),
-                                   glaspen2_router_pageview_paper_oy(),
-                                   glaspen2_router_pageview_paper_scale())
+                                   PageViewOps.paperOx,
+                                   PageViewOps.paperOy,
+                                   PageViewOps.paperScale)
         drawPageFrame()
         cairo_surface_flush(surface)
         glaspen2_router_set_has_last(0)
@@ -16,13 +16,13 @@ import AppKit
     }
 
     private static func pageviewFrameDraw(_ surface: OpaquePointer) {
-        if glaspen2_router_pageview_is_fit() == 0 { return }
+        if !PageViewOps.isFit { return }
         guard let cr = cairo_create(surface) else { return }
         let scale = glaspen2_router_scale()
-        let x = glaspen2_router_pageview_paper_ox() * scale
-        let y = glaspen2_router_pageview_paper_oy() * scale
-        let w = glaspen2_router_pageview_page_w() * glaspen2_router_pageview_paper_scale() * scale
-        let h = glaspen2_router_pageview_page_h() * glaspen2_router_pageview_paper_scale() * scale
+        let x = PageViewOps.paperOx * scale
+        let y = PageViewOps.paperOy * scale
+        let w = Double(PageViewOps.pageW) * PageViewOps.paperScale * scale
+        let h = Double(PageViewOps.pageH) * PageViewOps.paperScale * scale
         cairo_set_source_rgba(cr, 0, 0, 0, 0.42)
         cairo_set_fill_rule(cr, cairo_fill_rule_t(1)) // EVEN_ODD
         cairo_rectangle(cr, 0, 0,
