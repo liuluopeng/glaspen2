@@ -1572,23 +1572,6 @@ static BOOL perform_action(NSString *action) {
 
 // Write the GIF bytes to a temp .gif file and put that file URL on the
 // pasteboard so it can be pasted as an animation in apps that accept files.
-static void copy_gif_data_to_clipboard(unsigned char *gif, int len) {
-  if (!gif || len <= 0)
-    return;
-  NSData *data = [NSData dataWithBytes:gif length:len];
-  NSString *name = [NSString
-      stringWithFormat:@"glaspen2_record_%.0f.gif",
-                       [NSDate timeIntervalSinceReferenceDate] * 1000];
-  NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:name];
-  if (![data writeToFile:path atomically:YES]) {
-    NSLog(@"[glaspen2] failed to write GIF temp file: %@", path);
-    return;
-  }
-  NSPasteboard *pb = [NSPasteboard generalPasteboard];
-  [pb clearContents];
-  [pb writeObjects:@[ [NSURL fileURLWithPath:path] ]];
-}
-
 // ── 录制会话接线(D8b): GIF / ⌘⌃2 草稿 / ⌘⌃3 直发 ──
 //
 // 状态/起止窗口/决策/用户可见动作的唯一来源 = core recording::RecordingMachine
@@ -1708,7 +1691,7 @@ static void rec_exec_effect(int slot, NSDictionary *effect) {
     NSData *gif = s_pending_gif;
     s_pending_gif = nil;
     if (gif.length > 0) {
-      copy_gif_data_to_clipboard((unsigned char *)gif.bytes, (int)gif.length);
+      [GifClipboard copyData:(const unsigned char *)gif.bytes length:(int)gif.length];
     } else {
       NSLog(@"[recording] Clipboard effect 没有待写字节");
     }
