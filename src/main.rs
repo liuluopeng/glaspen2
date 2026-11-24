@@ -70,6 +70,20 @@ fn main() {
         std::process::exit(2);
     }
 
+    // S8 自检: 设置应用分派/状态存储/设置快照(隐藏调试入口, 不启动 GUI)。
+    if args.get(1).map(String::as_str) == Some("--swift-settings-probe") {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            unsafe extern "C" {
+                fn glaspen2_swift_settings_probe_selftest() -> i32;
+            }
+            let code = glaspen2_swift_settings_probe_selftest();
+            std::process::exit(code);
+        }
+        #[cfg(not(target_os = "macos"))]
+        std::process::exit(2);
+    }
+
     #[cfg(target_os = "macos")]
     glaspen2::macos::macos_run();
 

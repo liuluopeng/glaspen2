@@ -17,6 +17,7 @@ echo "=== 菜单/状态栏探针 ==="
 "$BIN" --swift-menu-probe
 "$BIN" --swift-menu-full-probe
 "$BIN" --swift-statusbar-probe
+"$BIN" --swift-settings-probe
 
 echo "=== 冷启动冒烟 ==="
 TMPBASE="$TMPDIR"
