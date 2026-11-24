@@ -3306,8 +3306,8 @@ void glaspen2_run(void) {
     g_arrow_cursor = [OverlayWindowFactory makeArrowCursor];
 
     // Container view for glass + drawing layers
-    NSView *contentView = [[NSView alloc] initWithFrame:screenFrame];
-    [contentView setWantsLayer:YES];
+    // S5-4: 容器视图创建/wantsLayer 已迁 Swift。
+    NSView *contentView = [OverlayWindowFactory makeContentViewWithFrame:screenFrame];
 
     // Frosted glass layer (behind drawing)
     // S5-2: 玻璃视图创建/材质/透明度已迁 Swift。
@@ -3326,8 +3326,8 @@ void glaspen2_run(void) {
     }
     [contentView addSubview:drawView];
 
-    [g_window setContentView:contentView];
-    [g_window orderFront:nil];
+    // S5-4: 挂载 + orderFront 已迁 Swift。
+    [OverlayWindowFactory attachContent:contentView toWindow:g_window];
 
     g_draw_view = drawView;
     ensure_surface(drawView);

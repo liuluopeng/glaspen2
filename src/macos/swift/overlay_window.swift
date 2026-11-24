@@ -51,4 +51,19 @@ import AppKit
         layer.isOpaque = false
         layer.backgroundColor = NSColor.clear.cgColor
     }
+
+    /// S5-4: 内容容器视图(layer-backed), 由 ObjC 继续往里加玻璃/绘制视图。
+    @objc(makeContentViewWithFrame:)
+    public static func makeContentView(frame: NSRect) -> NSView {
+        let view = NSView(frame: frame)
+        view.wantsLayer = true
+        return view
+    }
+
+    /// S5-4: 挂载内容视图并 orderFront(与原 setContentView/orderFront 顺序一致)。
+    @objc(attachContent:toWindow:)
+    public static func attachContent(_ view: NSView, to window: NSWindow) {
+        window.contentView = view
+        window.orderFront(nil)
+    }
 }
