@@ -25,7 +25,7 @@ import AppKit
                 glaspen2_clear_strokes(Int32(glaspen2_router_screen_w()),
                                        Int32(glaspen2_router_screen_h()))
             }
-            glaspen2_router_pageview_update()
+            PageViewOps.update()
             CanvasCamera.resetLens()
         }
         glaspen2_router_rebuild_surface()
