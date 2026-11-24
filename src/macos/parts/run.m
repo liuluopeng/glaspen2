@@ -2388,25 +2388,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
 
   // S6-3-3b: 笔光标更新已迁 Swift EventRouter。
 
-  // Hide system cursor while pen is drawing, restore on any mouse up
-  if (isPen && (etype == NSEventTypeLeftMouseDown ||
-                etype == NSEventTypeRightMouseDown ||
-                etype == NSEventTypeOtherMouseDown ||
-                etype == NSEventTypeLeftMouseDragged ||
-                etype == NSEventTypeRightMouseDragged ||
-                etype == NSEventTypeOtherMouseDragged)) {
-    if (!g_pen_drawing) {
-      CGDisplayHideCursor(kCGDirectMainDisplay);
-      g_pen_drawing = YES;
-    }
-  }
-  if (etype == NSEventTypeLeftMouseUp || etype == NSEventTypeRightMouseUp ||
-      etype == NSEventTypeOtherMouseUp) {
-    restore_system_cursor();
-    g_cursor_visible = NO;
-    dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
-    flush_dirty_to_layer();
-  }
+  // S6-3-3c: 笔书写系统光标隐藏/恢复已迁 Swift EventRouter。
+
 
   // Check if click is on the menu bar (real mouse clicks only — a pen
   // stroke starting near the top of the screen must not freeze input).
@@ -3403,3 +3386,11 @@ int glaspen2_router_cursor_flush_due(void) {
   }
   return 0;
 }
+
+// S6-3-3c: 笔书写系统光标隐藏/恢复薄桥
+int glaspen2_router_pen_drawing(void) { return g_pen_drawing ? 1 : 0; }
+void glaspen2_router_set_pen_drawing(int on) { g_pen_drawing = on != 0; }
+void glaspen2_router_hide_system_cursor(void) {
+  CGDisplayHideCursor(kCGDirectMainDisplay);
+}
+void glaspen2_router_restore_system_cursor(void) { restore_system_cursor(); }

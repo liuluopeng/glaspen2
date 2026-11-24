@@ -20,6 +20,7 @@ import AppKit
         }
         if type != .tabletProximity, isPenEvent(event) {
             penCursorUpdate(type: type, event: event)
+            penSystemCursor(type: type)
         }
         return 0
     }
@@ -28,6 +29,23 @@ import AppKit
         let dev = ev.pointingDeviceType
         if dev == .pen || dev == .eraser { return true }
         return ev.subtype == .tabletPoint || ev.subtype == .tabletProximity
+    }
+
+    /// 笔按下/拖动期间隐藏系统光标; 任意 up 恢复光标并清十字/刷新(S6-3-3c)。
+    private static func penSystemCursor(type: CGEventType) {
+        let downOrDrag = type == .leftMouseDown || type == .rightMouseDown ||
+            type == .otherMouseDown || type == .leftMouseDragged ||
+            type == .rightMouseDragged || type == .otherMouseDragged
+        if downOrDrag && glaspen2_router_pen_drawing() == 0 {
+            glaspen2_router_hide_system_cursor()
+            glaspen2_router_set_pen_drawing(1)
+        }
+        if type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp {
+            glaspen2_router_restore_system_cursor()
+            glaspen2_router_cursor_hide()
+            glaspen2_router_cursor_invalidate()
+            glaspen2_router_flush()
+        }
     }
 
     private static func isPenEvent(_ event: CGEvent) -> Bool {
