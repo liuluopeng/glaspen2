@@ -33,12 +33,8 @@ static void clear_screen(void);
 static void rebuild_surface_from_strokes(void);
 static void show_settings_panel(void);
 static void sync_settings_panel(void);
-static void gl_settings_set_color(int idx);
-static void gl_settings_set_width(int idx);
 static void perf_log_summary(void);
 static void gl_quit_app(void); // 定义在 parts/menu.m(彻底退出, 菜单/快捷键共用)
-static void gl_settings_set_launch(BOOL on);
-static void gl_settings_set_glass_enabled(BOOL on);
 static void pm_ensure_window(void);
 static void pm_show(void);
 static void pm_hide(void);

@@ -366,7 +366,7 @@ int glaspen2_menu_launch_at_login(void) {
 }
 
 void glaspen2_menu_set_launch(int on) {
-    gl_settings_set_launch(on != 0);
+    [MenuHandler setLaunchAtLogin:(on != 0)];
 }
 
 int glaspen2_menu_glass_enabled(void) {
@@ -374,7 +374,7 @@ int glaspen2_menu_glass_enabled(void) {
 }
 
 void glaspen2_menu_set_glass(int on) {
-    gl_settings_set_glass_enabled(on != 0);
+    [MenuHandler setGlassEnabled:(on != 0)];
 }
 
 int glaspen2_menu_outline_enabled(void) {
@@ -400,8 +400,8 @@ void glaspen2_menu_clear_screen(void) { clear_screen(); }
 void glaspen2_menu_toggle_enabled(void) { toggle_enabled(); }
 void glaspen2_menu_show_settings(void) { show_settings_panel(); }
 void glaspen2_menu_toggle_canvas_mode(void) { toggle_canvas_mode(); }
-void glaspen2_menu_select_color(int idx) { gl_settings_set_color(idx); }
-void glaspen2_menu_select_width(int idx) { gl_settings_set_width(idx); }
+void glaspen2_menu_select_color(int idx) { [MenuHandler setColorIndex:idx]; }
+void glaspen2_menu_select_width(int idx) { [MenuHandler setWidthIndex:idx]; }
 void glaspen2_menu_save_xoj_raw(void) { glaspen2_save_xoj(); }
 void glaspen2_menu_notify(NSString *text) { show_notification(text); }
 void glaspen2_menu_screen_size(int *w, int *h) {
@@ -783,11 +783,6 @@ void glaspen2_macos_free_bytes(unsigned char *p) {
 
 /// 手写消息集成总开关:关 = 热键直通、面板收起;顺带终止进行中的手写会话。
 /// (共享画布上行的关闭由 Dart 侧随 tab 收起调用 FRB shareInkSetActive(false)。)
-static void gl_settings_set_chat_integration(BOOL on) {
-    // S7w: 逻辑已迁 Swift(MenuHandler.setChatIntegration)。
-    [MenuHandler setChatIntegration:on];
-}
-
 /// 写入一项设置(D1:解析 / 钳制 / 落库单源在 core)。
 ///
 /// core `settings_apply::apply_setting` 完成宽容解析(面板历史上发过裸标量
@@ -831,13 +826,13 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             return;
         }
         if ([kind isEqualToString:@"Color"]) {
-            gl_settings_set_color((int)intValue);
+            [MenuHandler setColorIndex:(int)intValue];
         } else if ([kind isEqualToString:@"Width"]) {
-            gl_settings_set_width((int)intValue);
+            [MenuHandler setWidthIndex:(int)intValue];
         } else if ([kind isEqualToString:@"LaunchAtLogin"]) {
-            gl_settings_set_launch(boolValue);
+            [MenuHandler setLaunchAtLogin:boolValue];
         } else if ([kind isEqualToString:@"FrostedGlass"]) {
-            gl_settings_set_glass_enabled(boolValue);
+            [MenuHandler setGlassEnabled:boolValue];
         } else if ([kind isEqualToString:@"Grid"]) {
             [MenuHandler setGridEnabled:boolValue];
         } else if ([kind isEqualToString:@"GridFollowStrokes"]) {
@@ -894,7 +889,7 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
                 glaspen2_chat_auth_reload();
             }
         } else if ([kind isEqualToString:@"ChatIntegration"]) {
-            gl_settings_set_chat_integration(boolValue);
+            [MenuHandler setChatIntegration:boolValue];
         } else if ([kind isEqualToString:@"ShowBubbleTab"]) {
             // tab 关闭时同时关掉气泡捕获: 不占笔事件 CPU、不落库(捕获状态是运行态)
             glaspen2_bubble_set_capture(boolValue ? 1 : 0);
@@ -1144,35 +1139,15 @@ int glaspen2_macos_export_gif(void) {
 
 // --- Unified settings functions (single source of truth) ---
 
-static void gl_settings_set_color(int idx) {
-    // S7i: 逻辑已迁 Swift(MenuHandler.setColorIndex)。
-    [MenuHandler setColorIndex:idx];
-}
-
-static void gl_settings_set_width(int idx) {
-    // S7h: 逻辑已迁 Swift(MenuHandler.setWidthIndex)。
-    [MenuHandler setWidthIndex:idx];
-}
-
 /// 抬笔后应用书写中按下的换色/换粗细(只保留最后一次)。
 static void gl_settings_apply_pending_color_width(void) {
     // S7: 逻辑已迁 Swift(MenuHandler.applyPendingColorWidth)。
     [MenuHandler applyPendingColorWidth];
 }
 
-static void gl_settings_set_launch(BOOL on) {
-    // S7k: 逻辑已迁 Swift(MenuHandler.setLaunchAtLogin)。
-    [MenuHandler setLaunchAtLogin:on];
-}
-
 static void gl_glass_apply(void) {
     // S7z: 逻辑已迁 Swift(MenuHandler.applyGlass)。
     [MenuHandler applyGlass];
-}
-
-static void gl_settings_set_glass_enabled(BOOL on) {
-    // S7j: 逻辑已迁 Swift(MenuHandler.setGlassEnabled)。
-    [MenuHandler setGlassEnabled:on];
 }
 
 // --- Pressure monitor (top-left info window) ---

@@ -1535,7 +1535,7 @@ static BOOL perform_hotkey(unsigned short kc) {
     }
     return YES;
   } else if (kc == kVK_ANSI_B) {
-    gl_settings_set_glass_enabled(!g_glass_enabled);
+    [MenuHandler setGlassEnabled:(!g_glass_enabled)];
     return YES;
   } else if (kc == kVK_ANSI_X) {
     // Switch canvas mode: 固定 ↔ 飘渺 (⌘ + ⌃ + X)
@@ -1651,7 +1651,7 @@ static BOOL perform_action(NSString *action) {
     if (prev < 0 || prev >= g_color_preset_count || prev == g_selectedColorIndex) {
       prev = (g_selectedColorIndex == 0) ? 9 : 0; // 无历史时给红/黑另一端
     }
-    gl_settings_set_color(prev);
+    [MenuHandler setColorIndex:prev];
     show_notification(gl_textf(@"hud.color_changed",
                                @{@"color" : [MenuNames colorDisplayNameWithIndex:prev]}));
     return YES;
@@ -1661,7 +1661,7 @@ static BOOL perform_action(NSString *action) {
     if (prev < 0 || prev >= g_width_preset_count || prev == g_selected_width_index) {
       prev = (g_selected_width_index <= 3) ? 6 : 2; // 无历史时给细/粗另一端
     }
-    gl_settings_set_width(prev);
+    [MenuHandler setWidthIndex:prev];
     show_notification(gl_textf(@"hud.width_changed",
                                @{@"width" : [MenuNames widthDisplayNameWithIndex:prev]}));
     return YES;
