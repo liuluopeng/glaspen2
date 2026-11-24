@@ -343,32 +343,9 @@ static NSString *gl_string_setting(const char *key) {
 // (只按 ⌘/⇧ 的组合容易和 App 菜单/系统快捷键冲突, 且录制时会被菜单先吃掉)。
 // 空串 = 该动作未绑定。按键名走物理位置(与布局无关), 与事件 tap 的
 // kVK_* keycode 一一对应。
-static NSArray<NSString *> *gl_shortcut_actions(void) {
-    static NSArray<NSString *> *actions;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        char *json = glaspen2_chord_actions_json();
-        NSData *data = [NSData dataWithBytes:json length:strlen(json)];
-        id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-        actions = [obj isKindOfClass:[NSArray class]] ? obj : @[];
-        glaspen2_free_c_string(json);
-    });
-    return actions;
-}
+static NSArray<NSString *> *gl_shortcut_actions(void) { return (NSArray *)[ShortcutTable actions]; }
 
-static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) {
-    // 默认键位单源在 core/ui.rs(经 FFI 下发, 与 Windows 同一张表)。
-    static NSDictionary<NSString *, NSString *> *defaults;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        char *json = glaspen2_chord_defaults_json();
-        NSData *data = [NSData dataWithBytes:json length:strlen(json)];
-        id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-        defaults = [obj isKindOfClass:[NSDictionary class]] ? obj : @{};
-        glaspen2_free_c_string(json);
-    });
-    return defaults;
-}
+static NSDictionary<NSString *, NSString *> *gl_shortcut_defaults(void) { return (NSDictionary *)[ShortcutTable defaults]; }
 
 /// keycode → 规范按键名。只收录能当全局快捷键的键; 其它键录制时拒绝。
 static NSDictionary<NSNumber *, NSString *> *gl_keycode_names(void) {
