@@ -425,3 +425,30 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7bf(续跑第77轮) | 镜头回原点迁 Swift: CanvasCamera.home(FFI home → 状态应用 → applyTransform) 与 resetLens(仅设置变换), 三处调用点(编辑动作/清空/翻页重置)直调 Swift; 删除重复的 home+set_view/rebuild 序列; D5b menu.m 令牌改为 [CanvasCamera home]; 补 glaspen2_camera_home FFI 声明 | cargo build/tests/parity 全绿;镜头回原点需真机验证 | 本提交 |
 | 2026-11-24 | S8 检查点(续跑第78轮) | 78 轮检查点: 全量测试/parity 全绿; 死代码与死桥扫描均无输出(无未引用 static / 桥); 输入、镜头、设置、工具层已全部 Swift 化; 剩余仅大型功能体(infinite canvas 切换、draw_minimap、dirty 合成余量、panel.m 宿主、menu.m selector 转发、glaspen2.m shim), 迁移必须配合真机/截图验证, 不宜低上下文盲改 | 无代码变更 | 本提交 |
 | 2026-11-24 | S7bg(续跑第79轮) | 删除 canvas_reset_lens 包装: Swift resetLens 增加 page 偏移清零薄桥, 3 处调用点直调 [CanvasCamera resetLens], wrapper 与声明删除 | cargo build/tests/parity 全绿 | 本提交 |
+
+## 80 轮(第二次目标冲刺)收尾状态(2026-11-24)
+
+> 结论:**目标未达成**(仓库仍有约 5,993 行应用层 ObjC);goal 保持 active,轮次 80/80 已用尽。
+
+### 本轮冲刺新增(相比第一次 40 轮)
+- 事件路由收尾: 删除 `event_tap_callback_inner`,tap-disabled/笔坐标/压力/raw_w/压感/分派全部入 Swift;
+- 设置层全部 Swift: 颜色/粗细/玻璃/自启/网格/压感/总开关/手写集成(含删除 ObjC 转发);
+- 输入/镜头/工具层: 菜单位置分支、橡皮态、笔光标/系统光标、proximity、相机抓手与鼠标 pan 调度、
+  zoom/pan/home/persist/load、实例锁、重复实例检测、录制热键/录制状态、HUD 文案、页信息、GIF 剪贴板、
+  chord 规范化/迁移、笔预设加载、退出/光标恢复等全部 Swift 化并删除 ObjC 包装;
+- `drawRect` 已迁: 网格层、笔迹子图绘制、CGImage 缓存、隧道 surface、光标十字、perf 打点;
+- 闸门同步: i18n/D8b/D6/D5b 闸门均已扩展扫描对应 Swift 源;
+- 质量: 每步 `cargo build` + 全量测试 + parity;本轮结束 clippy `-D warnings` 亦通过。
+
+### 当前数字
+- `main` = 6d7dc21(随后仅文档提交), 领先 origin/main 222+ 提交, **未推送**; `v0.7.0` tag 未动;
+- ObjC 应用层 5,993 行; Swift 2,433 行(31 文件);
+- 全量测试 307+29+31+0 全绿, parity 通过, clippy 通过。
+
+### 剩余(下一轮从高上下文继续)
+1. `apply_infinite_canvas` 切换(画布种类/冲刷/持久化/重建/peek/通知);
+2. `draw_minimap`(布局缓存 + 异步缩略图队列 + 条带绘制, 单函数最大);
+3. `drawRect` 剩余 dirty 合成/invert 路径与 `panel.m` 设置宿主;
+4. `menu.m` selector 转发、`glaspen2.m` 设置分派/DB 初始化 shim;
+5. **S8 真机验收**: 笔输入/延迟、多屏/锁屏、菜单视觉、热键/录制、玻璃、隧道/网格像素;
+6. 已知缺口: tap 路径 perf 打点未迁。
