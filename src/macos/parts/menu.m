@@ -260,13 +260,7 @@ static void sync_settings_panel(void);
 #include <string.h>
 
 /// 把 block 放到主线程同步执行(已在主线程则就地调用)。
-static void gl_run_on_main_sync(dispatch_block_t block) {
-    if ([NSThread isMainThread]) {
-        block();
-    } else {
-        dispatch_sync(dispatch_get_main_queue(), block);
-    }
-}
+static void gl_run_on_main_sync(dispatch_block_t block) { [SettingsGlue runOnMainSync:block]; }
 
 /// 读一条字符串设置(DB),转成 NSString(未设置为空串)。调用方持有返回值。
 /// 仅用于 settings_json 等非热路径;SQLite 单行读取在主线程也足够快。
@@ -307,28 +301,10 @@ static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved);
 static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved) { [ShortcutApply applySaved:saved]; }
 
 /// 当前生效表(含默认补齐)的 JSON; settings_json / 面板回显用。
-static NSString *gl_shortcuts_effective_json(void) {
-    if (!g_shortcut_values) gl_shortcuts_apply(@{});
-    NSData *d = [NSJSONSerialization dataWithJSONObject:g_shortcut_values
-                                                options:0
-                                                  error:nil];
-    if (!d) return @"{}";
-    return [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] ?: @"{}";
-}
+static NSString *gl_shortcuts_effective_json(void) { return [SettingsGlue effectiveShortcutJSON]; }
 
 /// 启动时从 user_settings 恢复; 必须在 event tap 安装前调用。
-static void gl_shortcuts_load(void) {
-    NSString *raw = gl_string_setting("shortcuts");
-    NSDictionary *saved = nil;
-    if (raw.length) {
-        id obj = [NSJSONSerialization JSONObjectWithData:
-                                     [raw dataUsingEncoding:NSUTF8StringEncoding]
-                                                 options:0
-                                                   error:nil];
-        if ([obj isKindOfClass:[NSDictionary class]]) saved = obj;
-    }
-    gl_shortcuts_apply(saved);
-}
+static void gl_shortcuts_load(void) { [SettingsGlue loadShortcuts]; }
 
 /// 录制快捷键期间放行所有键盘事件给设置面板; 60s 兜底, 防止面板异常退出
 /// 后全局热键永久失效。
@@ -905,3 +881,8 @@ NSString *glaspen2_router_shortcuts_effective_json(void) {
 }
 int glaspen2_router_flip_effect(void) { return g_flip_effect; }
 int glaspen2_router_lang(void) { return g_lang; }
+
+// S7cj: 快捷键生效表薄桥
+NSDictionary *glaspen2_router_shortcut_values(void) {
+  return g_shortcut_values ?: @{};
+}
