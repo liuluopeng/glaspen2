@@ -278,6 +278,8 @@ void glaspen2_router_set_blank_cursor(id cursor);
 void glaspen2_router_set_arrow_cursor(id cursor);
 int glaspen2_router_event_tap_ok(void);
 void glaspen2_router_set_grid_follow(int on);
+void glaspen2_router_color_preset_rgb_at(int idx, double *r, double *g, double *b);
+double glaspen2_router_width_preset_scale_at(int idx);
 void glaspen2_router_set_glass_follow(int on);
 void glaspen2_router_set_soft_shadow_flag(int on);
 void glaspen2_router_invert_set_ink(int on);

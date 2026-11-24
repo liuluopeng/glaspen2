@@ -29,19 +29,9 @@ NSString *glaspen2_menu_l10n(NSString *key) {
     return gl_text(key);
 }
 
-static NSAttributedString* gl_color_item_text(NSInteger idx) {
-    NSColor *c = [NSColor colorWithRed:g_color_presets[idx].r
-                                 green:g_color_presets[idx].g
-                                  blue:g_color_presets[idx].b
-                                 alpha:1.0];
-    return [MenuIconFactory menuTextWithIcon:[MenuIconFactory colorDotWithColor:c]
-                                      name:[MenuNames colorDisplayNameWithIndex:idx]];
-}
+static NSAttributedString* gl_color_item_text(NSInteger idx) { return [MenuPresetTitles colorItemTextWithIndex:(int)idx]; }
 
-static NSAttributedString* gl_width_item_text(NSInteger idx) {
-    return [MenuIconFactory menuTextWithIcon:[MenuIconFactory widthLineWithScale:g_width_presets[idx]]
-                                      name:[MenuNames widthDisplayNameWithIndex:idx]];
-}
+static NSAttributedString* gl_width_item_text(NSInteger idx) { return [MenuPresetTitles widthItemTextWithIndex:(int)idx]; }
 
 // ── 菜单栏图标: 一支斜放的马克笔, 把当前关键状态画进 18pt 里 ──
 //   笔色      → 笔杆填充色
@@ -620,4 +610,14 @@ int glaspen2_router_lang(void) { return g_lang; }
 // S7cj: 快捷键生效表薄桥
 NSDictionary *glaspen2_router_shortcut_values(void) {
   return g_shortcut_values ?: @{};
+}
+
+// S7de: 预设标题桥
+void glaspen2_router_color_preset_rgb_at(int idx, double *r, double *g, double *b) {
+  if (idx < 0 || idx >= g_color_preset_count) { *r = *g = *b = 0; return; }
+  *r = g_color_presets[idx].r; *g = g_color_presets[idx].g; *b = g_color_presets[idx].b;
+}
+double glaspen2_router_width_preset_scale_at(int idx) {
+  if (idx < 0 || idx >= g_width_preset_count) return 0;
+  return g_width_presets[idx];
 }
