@@ -61,6 +61,24 @@ import AppKit
         glaspen2_menu_notify(glaspen2_menu_l10n("export.notes_saved"))
     }
 
+    /// 颜色设置: 书写中暂存, 否则应用并刷新菜单/状态图标/面板。
+    @objc(setColorIndex:)
+    public static func setColor(index: Int32) {
+        let count = glaspen2_router_color_preset_count()
+        guard index >= 0 && Int(index) < Int(count) else { return }
+        if glaspen2_router_stroke_active() != 0 {
+            glaspen2_router_set_pending_color(index)
+            return
+        }
+        let selected = glaspen2_router_selected_color()
+        if index != selected { glaspen2_router_set_prev_color(selected) }
+        glaspen2_router_apply_color(index)
+        glaspen2_router_save_pen_settings()
+        glaspen2_router_update_checkmarks()
+        glaspen2_router_update_status_icon_state()
+        glaspen2_router_sync_settings_panel()
+    }
+
     /// 粗细设置: 书写中暂存, 否则应用并刷新菜单/状态图标/面板。
     @objc(setWidthIndex:)
     public static func setWidth(index: Int32) {

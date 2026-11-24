@@ -1164,21 +1164,8 @@ int glaspen2_macos_export_gif(void) {
 // --- Unified settings functions (single source of truth) ---
 
 static void gl_settings_set_color(int idx) {
-    if (idx < 0 || idx >= g_color_preset_count) return;
-    // 书写中换色: 存 pending, 抬笔后再应用 —— 否则当前笔的尾部会被改色。
-    if (g_stroke_active) {
-        g_pending_color_index = idx;
-        return;
-    }
-    if (idx != g_selectedColorIndex) g_prev_color_index = g_selectedColorIndex;
-    g_pen_r = g_color_presets[idx].r;
-    g_pen_g = g_color_presets[idx].g;
-    g_pen_b = g_color_presets[idx].b;
-    g_selectedColorIndex = idx;
-    glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
-    update_menu_checkmarks();
-    update_status_icon_color();
-    sync_settings_panel();
+    // S7i: 逻辑已迁 Swift(MenuHandler.setColorIndex)。
+    [MenuHandler setColorIndex:idx];
 }
 
 static void gl_settings_set_width(int idx) {
@@ -1333,3 +1320,15 @@ void glaspen2_router_save_pen_settings(void) {
 }
 void glaspen2_router_update_checkmarks(void) { update_menu_checkmarks(); }
 void glaspen2_router_sync_settings_panel(void) { sync_settings_panel(); }
+
+// S7i: 颜色设置的 Swift 薄桥
+int glaspen2_router_color_preset_count(void) { return g_color_preset_count; }
+int glaspen2_router_selected_color(void) { return g_selectedColorIndex; }
+void glaspen2_router_set_prev_color(int idx) { g_prev_color_index = idx; }
+void glaspen2_router_set_pending_color(int idx) { g_pending_color_index = idx; }
+void glaspen2_router_apply_color(int idx) {
+  g_pen_r = g_color_presets[idx].r;
+  g_pen_g = g_color_presets[idx].g;
+  g_pen_b = g_color_presets[idx].b;
+  g_selectedColorIndex = idx;
+}
