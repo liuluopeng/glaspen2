@@ -80,3 +80,41 @@ import CoreGraphics
                     white: 0.5, alpha: 0.65, lineWidth: 1.5)
     }
 }
+// S7: drawRect 光标十字层(白/红圈 + 中心点 + 四向线), 与原 ObjC 逐值一致。
+import AppKit
+import CoreGraphics
+
+@objc public final class OverlayCursorRenderer: NSObject {
+    @objc(drawCursorWithContext:)
+    public static func drawCursor(_ ctx: CGContext) {
+        let st = glaspen2_router_cursor_draw_state() as NSDictionary
+        func num(_ key: String) -> NSNumber? { st[key] as? NSNumber }
+        guard num("visible")?.boolValue ?? false,
+              let x = num("x")?.doubleValue, x >= 0,
+              let y = num("y")?.doubleValue else { return }
+        let eraser = num("eraser")?.boolValue ?? false
+        let radius = 8.0
+        let ring = eraser ? NSColor(calibratedRed: 1.0, green: 0.25, blue: 0.2, alpha: 0.95)
+                          : NSColor(white: 1.0, alpha: 0.8)
+        ctx.setStrokeColor(ring.cgColor)
+        ctx.setLineWidth(1.5)
+        ctx.strokeEllipse(in: CGRect(x: x - radius, y: y - radius,
+                                     width: radius * 2, height: radius * 2))
+        let dot = eraser ? NSColor(calibratedRed: 1.0, green: 0.25, blue: 0.2, alpha: 0.95)
+                         : NSColor(white: 1.0, alpha: 0.9)
+        ctx.setFillColor(dot.cgColor)
+        ctx.fillEllipse(in: CGRect(x: x - 1.5, y: y - 1.5, width: 3, height: 3))
+        let gap = 3.0
+        ctx.setStrokeColor(NSColor(white: 0, alpha: 0.5).cgColor)
+        ctx.setLineWidth(1.0)
+        ctx.move(to: CGPoint(x: x, y: y - radius - 2))
+        ctx.addLine(to: CGPoint(x: x, y: y - gap))
+        ctx.move(to: CGPoint(x: x, y: y + gap))
+        ctx.addLine(to: CGPoint(x: x, y: y + radius + 2))
+        ctx.move(to: CGPoint(x: x - radius - 2, y: y))
+        ctx.addLine(to: CGPoint(x: x - gap, y: y))
+        ctx.move(to: CGPoint(x: x + gap, y: y))
+        ctx.addLine(to: CGPoint(x: x + radius + 2, y: y))
+        ctx.strokePath()
+    }
+}

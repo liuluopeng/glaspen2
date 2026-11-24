@@ -129,6 +129,7 @@ extern void glaspen2_save_bool_setting(const char *key, int value);
 void glaspen2_router_update_menu_state(int tag, int state);
 extern void glaspen2_set_launch_at_login(int on);
 NSDictionary *glaspen2_router_grid_state(void);
+NSDictionary *glaspen2_router_cursor_draw_state(void);
 extern char *glaspen2_grid_json(double view_w, double view_h, double pan_x, double pan_y, double zoom, double grid_size, int divider, int follow);
 extern char *glaspen2_grid_json_clipped(double view_w, double view_h, double pan_x, double pan_y, double zoom, double grid_size, int divider, int show_grid, double clip_x0, double clip_y0, double clip_x1, double clip_y1);
 double glaspen2_router_last_raw_x(void);

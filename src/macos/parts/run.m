@@ -236,50 +236,9 @@ static void draw_grid_lines(CGContextRef ctx, NSRect bounds, NSRect clipRect) {
     [NotificationPresenter drawInBounds:noteBounds];
   }
 
-  // Draw pen crosshair cursor
-  if (g_cursor_visible && g_cursor_x >= 0) {
-    CGFloat cx = g_cursor_x;
-    CGFloat cy = g_cursor_y;
-    CGFloat radius = 8.0;
+  // S7n: 光标十字层已迁 Swift(OverlayCursorRenderer)。
+  [OverlayCursorRenderer drawCursorWithContext:ctx];
 
-    // Outer circle: 橡皮态红圈(与状态栏橡皮块呼应), 书写白圈
-    NSColor *ringColor =
-        g_eraser_mode
-            ? [NSColor colorWithRed:1.0 green:0.25 blue:0.2 alpha:0.95]
-            : [NSColor colorWithWhite:1.0 alpha:0.8];
-    CGContextSetStrokeColorWithColor(ctx, ringColor.CGColor);
-    CGContextSetLineWidth(ctx, 1.5);
-    CGContextStrokeEllipseInRect(
-        ctx, CGRectMake(cx - radius, cy - radius, radius * 2, radius * 2));
-
-    // Center dot
-    NSColor *dotColor =
-        g_eraser_mode
-            ? [NSColor colorWithRed:1.0 green:0.25 blue:0.2 alpha:0.95]
-            : [NSColor colorWithWhite:1.0 alpha:0.9];
-    CGContextSetFillColorWithColor(ctx, dotColor.CGColor);
-    CGContextFillEllipseInRect(ctx, CGRectMake(cx - 1.5, cy - 1.5, 3, 3));
-
-    // Crosshair lines
-    CGFloat gap = 3.0;
-    CGContextSetStrokeColorWithColor(
-        ctx, [[NSColor colorWithWhite:0 alpha:0.5] CGColor]);
-    CGContextSetLineWidth(ctx, 1.0);
-
-    // Top
-    CGContextMoveToPoint(ctx, cx, cy - radius - 2);
-    CGContextAddLineToPoint(ctx, cx, cy - gap);
-    // Bottom
-    CGContextMoveToPoint(ctx, cx, cy + gap);
-    CGContextAddLineToPoint(ctx, cx, cy + radius + 2);
-    // Left
-    CGContextMoveToPoint(ctx, cx - radius - 2, cy);
-    CGContextAddLineToPoint(ctx, cx - gap, cy);
-    // Right
-    CGContextMoveToPoint(ctx, cx + gap, cy);
-    CGContextAddLineToPoint(ctx, cx + radius + 2, cy);
-    CGContextStrokePath(ctx);
-  }
   CGContextRestoreGState(ctx);
 
   // 性能日志:记录每帧被请求重绘的区域。layer-backed 视图可能拿到全屏
@@ -3015,5 +2974,15 @@ NSDictionary *glaspen2_router_grid_state(void) {
     @"pageOffX" : @(g_page_off_x),
     @"pageOffY" : @(g_page_off_y),
     @"gridSize" : @(g_grid_size),
+  };
+}
+
+// S7n: 光标十字层状态快照桥(供 Swift OverlayCursorRenderer)
+NSDictionary *glaspen2_router_cursor_draw_state(void) {
+  return @{
+    @"visible" : @(g_cursor_visible ? YES : NO),
+    @"x" : @(g_cursor_x),
+    @"y" : @(g_cursor_y),
+    @"eraser" : @(g_eraser_mode ? YES : NO),
   };
 }
