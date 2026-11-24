@@ -28,9 +28,7 @@ static void rebuild_surface_from_strokes(void) {
 // 时光隧道专用半分辨率表面: 卡片快照本来就是 half-res, 直接在 half-res
 // 上合成再放大上屏, 填充量降到 1/4, 是 4K 下把 40fps 拉到 60+ 的关键。
 static cairo_surface_t *s_tun_surface = NULL;
-static CGImageRef s_tun_cgimage = NULL;
-static unsigned char *s_tun_cgimage_data = NULL;
-static int s_tun_cgimage_w = 0, s_tun_cgimage_h = 0, s_tun_cgimage_stride = 0;
+// S7: 隧道 surface 缓存/绘制已迁 Swift(OverlayTunnelRenderer)。
 
 /// 隧道帧上屏(半分辨率表面由 drawRect 放大绘制)。
 static void flush_tunnel_to_layer(void) {
@@ -93,29 +91,13 @@ static void draw_grid_lines(CGContextRef ctx, NSRect bounds, NSRect clipRect) {
     int tw = cairo_image_surface_get_width(s_tun_surface);
     int th = cairo_image_surface_get_height(s_tun_surface);
     int ts = cairo_image_surface_get_stride(s_tun_surface);
-    if (td && tw > 0 && th > 0 &&
-        (!s_tun_cgimage || s_tun_cgimage_data != td ||
-         s_tun_cgimage_w != tw || s_tun_cgimage_h != th ||
-         s_tun_cgimage_stride != ts)) {
-      CGImageRelease(s_tun_cgimage);
-      s_tun_cgimage = NULL;
-      CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-      CGDataProviderRef provider =
-          CGDataProviderCreateWithData(NULL, td, ts * th, NULL);
-      s_tun_cgimage = CGImageCreate(
-          tw, th, 8, 32, ts, cs,
-          kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst,
-          provider, NULL, false, kCGRenderingIntentDefault);
-      CGDataProviderRelease(provider);
-      CGColorSpaceRelease(cs);
-      s_tun_cgimage_data = td;
-      s_tun_cgimage_w = tw;
-      s_tun_cgimage_h = th;
-      s_tun_cgimage_stride = ts;
-    }
-    if (s_tun_cgimage) {
-      NSRect b = [self bounds];
-      CGContextDrawImage(ctx, NSRectToCGRect(b), s_tun_cgimage);
+    if (td && tw > 0 && th > 0) {
+      [OverlayTunnelRenderer drawTunnelWithContext:ctx
+                                              data:td
+                                             width:tw
+                                            height:th
+                                            stride:ts
+                                            bounds:[self bounds]];
     }
     CGContextRestoreGState(ctx);
     return;
@@ -613,12 +595,8 @@ static void tunnel_free_cards(void) {
     cairo_surface_destroy(s_tun_blur);
     s_tun_blur = NULL;
   }
-  // 先放掉引用表面数据的 CGImage, 再销毁表面。
-  if (s_tun_cgimage) {
-    CGImageRelease(s_tun_cgimage);
-    s_tun_cgimage = NULL;
-    s_tun_cgimage_data = NULL;
-  }
+  // 先放掉引用表面数据的 CGImage 缓存, 再销毁表面(Swift 持有缓存)。
+  [OverlayTunnelRenderer clear];
   if (s_tun_surface) {
     cairo_surface_destroy(s_tun_surface);
     s_tun_surface = NULL;

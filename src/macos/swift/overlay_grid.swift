@@ -189,3 +189,56 @@ import CoreGraphics
         width = 0; height = 0; stride = 0
     }
 }
+
+// S7: 时光隧道半分辨率 surface 缓存 + 全屏绘制(Swift 持有缓存)。
+@objc public final class OverlayTunnelRenderer: NSObject {
+    private static var cached: CGImage?
+    private static var dataPtr: UnsafeMutableRawPointer?
+    private static var width = 0, height = 0, stride = 0
+
+    @objc(drawTunnelWithContext:data:width:height:stride:bounds:)
+    public static func drawTunnel(_ ctx: CGContext, data: UnsafeMutableRawPointer,
+                                  width: Int32, height: Int32, stride: Int32,
+                                  bounds: NSRect) {
+        let image = cachedImage(data: data, width: width, height: height, stride: stride)
+        guard let image else { return }
+        ctx.draw(image, in: CGRect(origin: .zero, size: bounds.size))
+    }
+
+    @objc public static func clear() {
+        cached = nil
+        dataPtr = nil
+        width = 0; height = 0; stride = 0
+    }
+
+    private static func cachedImage(data: UnsafeMutableRawPointer, width: Int32,
+                                    height: Int32, stride: Int32) -> CGImage? {
+        if cached != nil, dataPtr == data, self.width == Int(width),
+           self.height == Int(height), self.stride == Int(stride) {
+            return cached
+        }
+        let bytes = data.assumingMemoryBound(to: UInt8.self)
+        let release: CGDataProviderReleaseDataCallback = { _, _, _ in }
+        guard let provider = CGDataProvider(dataInfo: nil, data: bytes,
+                                           size: Int(height) * Int(stride),
+                                           releaseData: release),
+              let space = CGColorSpace(name: CGColorSpace.sRGB) else {
+            cached = nil
+            return nil
+        }
+        let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue
+                                | CGBitmapInfo.byteOrder32Little.rawValue)
+        let image = CGImage(width: Int(width), height: Int(height),
+                            bitsPerComponent: 8, bitsPerPixel: 32,
+                            bytesPerRow: Int(stride), space: space,
+                            bitmapInfo: info, provider: provider,
+                            decode: nil, shouldInterpolate: false,
+                            intent: .defaultIntent)
+        cached = image
+        dataPtr = data
+        self.width = Int(width)
+        self.height = Int(height)
+        self.stride = Int(stride)
+        return image
+    }
+}
