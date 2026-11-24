@@ -61,6 +61,14 @@ import AppKit
         glaspen2_menu_notify(glaspen2_menu_l10n("export.notes_saved"))
     }
 
+    /// 彻底退出: perf 汇总 + 恢复系统光标 + NSApp terminate(Swift 实现)。
+    @objc(quitAppNow)
+    public static func quitAppNow() {
+        glaspen2_router_perf_summary()
+        glaspen2_router_show_system_cursor()
+        NSApp.terminate(nil)
+    }
+
     @objc(applicationShouldTerminate:)
     public static func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         glaspen2_menu_shutdown()

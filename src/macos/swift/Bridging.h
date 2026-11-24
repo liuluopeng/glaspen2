@@ -104,6 +104,7 @@ double glaspen2_router_raw_width(double pressure);
 int glaspen2_router_prox_is_eraser(void);
 int glaspen2_router_strokes_hidden(void);
 id glaspen2_router_main_window(void);
+void glaspen2_router_perf_summary(void);
 double glaspen2_router_last_raw_x(void);
 double glaspen2_router_last_raw_y(void);
 void glaspen2_router_clear_raw_state(void);

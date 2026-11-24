@@ -302,9 +302,8 @@ static void toggle_canvas_mode(void) {
 /// applicationShouldTerminate 把排队点写完并 checkpoint WAL(见下), 进程里
 /// 没有其它需要单独收尾的子进程(设置面板是内嵌 Flutter 视图, 不是独立进程)。
 static void gl_quit_app(void) {
-    perf_log_summary();
-    CGDisplayShowCursor(kCGDirectMainDisplay);
-    [NSApp terminate:nil];
+    // S7: 退出逻辑已迁 Swift(MenuHandler.quitAppNow)。
+    [MenuHandler quitAppNow];
 }
 
 @implementation GlaspenMenuHandler

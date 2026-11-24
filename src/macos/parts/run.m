@@ -3061,3 +3061,6 @@ void glaspen2_router_clear_raw_state(void) {
 
 // S7: 覆盖层窗口引用薄桥(供 Swift 取截图目标屏)
 id glaspen2_router_main_window(void) { return g_window; }
+
+// S7: 退出前 perf 汇总薄桥(perf_log_summary 在本文件)
+void glaspen2_router_perf_summary(void) { perf_log_summary(); }
