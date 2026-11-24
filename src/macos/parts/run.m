@@ -228,155 +228,8 @@ static BOOL tunnel_make_card(int slot, int cache_slot, long screen_id,
 // 相机后退 —— 前一页从镜头后方飞出、当前页缩进隧道深处。
 static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
                              void (^prepare)(void), void (^commit)(void)) {
-  // 防重入兜底: page_flip_swap_from 已经先 tunnel_finish() 收尾上一段;
-  // 若仍处于活动态(异常路径), 不要再销毁/重建表面。
-  if (s_tun_active)
-    return NO;
-  if (!g_surface || g_screen_w <= 0 || g_screen_h <= 0)
-    return NO;
-
-  // cur_page 必须是**翻页前**的当前页 —— 调用方(page_flip_swap)在
-  // prepare() 之前抓取; 此时全局 current id 可能已被 prepare 切到
-  // 目标页, 直接读全局会让卡片集/相机方向整体错位(表现为"向后没有
-  // 动效")。
-  long cur = cur_page;
-  long target = going_next ? glaspen2_page_neighbor(cur, 1)
-                           : glaspen2_page_neighbor(cur, -1);
-  if (target <= 0)
-    return NO;
-
-  tunnel_free_cards();
-  // 半分辨率: 卡片快照本身就是这个尺寸, 合成后再由 drawRect 放大 2x。
-  s_tun_surf_w = (int)(g_screen_w * g_scale * 0.5);
-  s_tun_surf_h = (int)(g_screen_h * g_scale * 0.5);
-  if (s_tun_surf_w <= 0 || s_tun_surf_h <= 0)
-    return NO;
-  s_tun_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
-                                             s_tun_surf_w, s_tun_surf_h);
-  if (cairo_surface_status(s_tun_surface) != CAIRO_STATUS_SUCCESS) {
-    cairo_surface_destroy(s_tun_surface);
-    s_tun_surface = NULL;
-    return NO;
-  }
-  // 预热缓存: [最旧…, prev1, cur, next1]("透视展示 cur 到最旧的所有玻璃";
-  // after 恒 1 = 目标页)。页多时受 TUNNEL_MAX_CARDS 与建卡预算保护。
-  // 只预载可见纵深附近的一小段。此前 400 页会在事件 tap 线程里逐页
-  // 载入 + 平滑 + 软渲染, 大库一次翻页卡数百 ms~数秒, 直接触发
-  // kCGEventTapDisabledByTimeout(笔和热键一起哑)。
-  // tunnel_place 只显示 zc<=TUNNEL_FRONT 的页; 12 页里 8 页建了永远画不到。
-  // 4 页足够覆盖可见纵深(当前/前 2 页/后 1 页), 翻页启动快 3 倍。
-  const int before = 4, after = 1;
-  double tc0 = [NSDate timeIntervalSinceReferenceDate];
-  int n = glaspen2_preload_flip_pages(cur, going_next ? 1 : 0, before, after);
-  double tc1 = [NSDate timeIntervalSinceReferenceDate];
-  if (n <= 0)
-    return NO;
-  if (n > TUNNEL_MAX_CARDS)
-    n = TUNNEL_MAX_CARDS;
-
-  // 后层以 1/3 分辨率绘制再放大 = 廉价磨砂模糊: 深处的页只留色块和轮廓,
-  // 不会和当前页的笔迹叠成"双重曝光"。
-  s_tun_blur = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
-                                          s_tun_surf_w / 3,
-                                          s_tun_surf_h / 3);
-  if (cairo_surface_status(s_tun_blur) != CAIRO_STATUS_SUCCESS) {
-    cairo_surface_destroy(s_tun_blur);
-    s_tun_blur = NULL; // 退化为全部清晰绘制, 不影响动画
-  }
-
-
-  // 可见纵深由玻璃间距决定:淡出尽头(zc 处 alpha≈0.05)之外的页
-  // 画了也不可见, 不建卡 —— "透视展示 cur 到最旧"在可见意义上成立,
-  // 且库有几百页时不会为主线程塞进几百次软渲染。
-  double zc_visible_max = TUNNEL_FRONT; // 真透视下由 tunnel_place 的窗口封顶
-  double tb0 = [NSDate timeIntervalSinceReferenceDate];
-  int built = 0;
-  // 缓存布局 [最旧…, prev1, cur, next1](after=1): cur 恒在倒数第二,
-  // 深度 = (n-2) - i —— cur 为 0, 越靠前(越旧)越深, next1 为 -1。
-  int cur_idx = n - 2;
-  for (int i = 0; i < n; i++) {
-    // 深度轴:旧页(prev)= 正(页列深处), 新页(next)= 负(镜头前方)。
-    int depth = cur_idx - i;
-    if ((double)depth > zc_visible_max)
-      continue; // 缓存从最旧(最深)开始: 超深页跳过, 浅页继续建
-    if ([NSDate timeIntervalSinceReferenceDate] - tb0 > 0.30)
-      break; // 建卡预算 300ms: 超时停下, 宁可少一层也不卡死
-    s_tun_depth[i] = depth;
-    if (!tunnel_make_card(i, i, depth == 0 ? cur : 0, depth == 0)) {
-      tunnel_free_cards();
-      return NO;
-    }
-    built++;
-  }
-  n = built;
-  s_tun_cards = n;
-  double tc2 = [NSDate timeIntervalSinceReferenceDate];
-  NSLog(@"[flip] 时光隧道接管: %d 张卡片(cur=%ld → %ld, 方向=%@) 预载%.0fms "
-        @"建卡%.0fms",
-        n, cur, target, going_next ? @"后" : @"前", (tc1 - tc0) * 1000.0,
-        (tc2 - tc1) * 1000.0);
-  s_tun_back = !going_next; // 向前翻(回溯) → 相机推进
-  s_tun_travel = 1.0;       // 相邻页之间恒为 1 个隧道单位
-
-  s_tun_prepare = prepare;
-  s_tun_commit = commit;
-  s_tun_active = YES;
-
-  double dur = 0.62;
-  const char *vd = getenv("GLASPEN2_FLIP_DUR");
-  if (vd) {
-    double v = atof(vd);
-    if (v > 0.05)
-      dur = v;
-  }
-  s_tun_dur = dur;
-  const char *vk = getenv("GLASPEN2_FLIP_K");
-  if (vk) {
-    double v = atof(vk);
-    if (v > 0.05 && v < 3.0)
-      s_tun_k = v;
-  }
-  // 单片玻璃浓度(评估用): 0 = 全透(只剩墨迹与棱线), 0.3 = 单片就明显
-  // 玻璃厚度(评估用): 0.004 = 纸片, 0.04 = 厚砖
-  const char *vt = getenv("GLASPEN2_FLIP_THICK");
-  if (vt) {
-    double v = atof(vt);
-    if (v >= 0.002 && v <= 0.10)
-      s_tun_thick = v;
-  }
-  const char *vga = getenv("GLASPEN2_FLIP_GLASS");
-  if (vga) {
-    double v = atof(vga);
-    if (v >= 0.0 && v <= 0.98)
-      s_tun_pane_a = v;
-  }
-
-  s_tun_t0 = tunnel_now();
-  s_tun_frames = 0;
-  // 先同步画一帧并立刻上屏:动画第一帧就是"翻页前的画面", 无跳变。
-  tunnel_frame(0.0);
-  if (g_draw_view)
-    [g_draw_view displayIfNeeded];
-  s_tun_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
-                                       dispatch_get_main_queue());
-  // 120Hz 定时器: 60Hz 屏会被 vsync 合并, 120Hz ProMotion 能跑满;
-  // 先画新帧再 display(旧顺序是先 display 上一帧, 每 tick 多画一次旧画面)。
-  dispatch_source_set_timer(s_tun_timer, dispatch_time(DISPATCH_TIME_NOW, 0),
-                            (uint64_t)(1.0 / 120.0 * NSEC_PER_SEC),
-                            (uint64_t)(1.0 / 1000.0 * NSEC_PER_SEC));
-  dispatch_source_set_event_handler(s_tun_timer, ^{
-    double t = tunnel_now() - s_tun_t0;
-    double p = t / s_tun_dur;
-    if (p >= 1.0) {
-      tunnel_finish(); // prepare+commit: 真实页内容无缝落地
-      return;
-    }
-    tunnel_frame(p);
-    if (s_tun_active && g_draw_view)
-      [g_draw_view displayIfNeeded];
-  });
-  dispatch_resume(s_tun_timer);
-  return YES;
+  return [TunnelAnimation startTunnelGoingNext:going_next curPage:cur_page
+                                       prepare:prepare commit:commit] ? YES : NO;
 }
 
 static void page_flip_swap_from(BOOL going_next, long from_page,
@@ -1560,3 +1413,42 @@ int glaspen2_router_page_flip_tunnel(int going_next, long cur_page,
                                      dispatch_block_t commit) {
   return page_flip_tunnel(going_next != 0, cur_page, prepare, commit) ? 1 : 0;
 }
+
+// S7cx: 隧道启动桥
+void glaspen2_router_tunnel_free_all(void) { tunnel_free_cards(); }
+int glaspen2_router_tunnel_create_surface(int w, int h) {
+  s_tun_surf_w = w; s_tun_surf_h = h;
+  s_tun_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+  if (cairo_surface_status(s_tun_surface) != CAIRO_STATUS_SUCCESS) {
+    cairo_surface_destroy(s_tun_surface); s_tun_surface = NULL; return 0;
+  }
+  return 1;
+}
+int glaspen2_router_tunnel_create_blur(int w, int h) {
+  s_tun_blur = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+  if (cairo_surface_status(s_tun_blur) != CAIRO_STATUS_SUCCESS) {
+    cairo_surface_destroy(s_tun_blur); s_tun_blur = NULL;
+  }
+  return 1;
+}
+void glaspen2_router_tunnel_set_depth(int idx, int depth) {
+  if (idx >= 0 && idx < TUNNEL_MAX_CARDS) s_tun_depth[idx] = depth;
+}
+int glaspen2_router_tunnel_make_card(int slot, int cacheSlot, long screenId, int isCurrent) {
+  return tunnel_make_card(slot, cacheSlot, screenId, isCurrent) ? 1 : 0;
+}
+void glaspen2_router_tunnel_set_motion(int back, double travel) {
+  s_tun_back = back != 0; s_tun_travel = travel;
+}
+void glaspen2_router_tunnel_set_callbacks(dispatch_block_t prepare, dispatch_block_t commit) {
+  s_tun_prepare = prepare; s_tun_commit = commit;
+}
+void glaspen2_router_tunnel_set_dur(double dur) { s_tun_dur = dur; }
+void glaspen2_router_tunnel_set_k(double k) { s_tun_k = k; }
+void glaspen2_router_tunnel_set_thick(double thick) { s_tun_thick = thick; }
+void glaspen2_router_tunnel_set_pane_a(double pane) { s_tun_pane_a = pane; }
+void glaspen2_router_tunnel_set_t0_frames(double t0) { s_tun_t0 = t0; s_tun_frames = 0; }
+void glaspen2_router_tunnel_frame_at(double p) { tunnel_frame(p); }
+void glaspen2_router_tunnel_display_now(void) { if (g_draw_view) [g_draw_view displayIfNeeded]; }
+void glaspen2_router_tunnel_set_timer(void *timer) { s_tun_timer = (__bridge dispatch_source_t)timer; }
+double glaspen2_router_tunnel_dur(void) { return s_tun_dur; }
