@@ -86,6 +86,7 @@ void glaspen2_router_set_pen_drawing(int on);
 void glaspen2_router_hide_system_cursor(void);
 void glaspen2_router_show_system_cursor(void);
 void glaspen2_router_disable_cleanup(void);
+void glaspen2_router_tap_menu_bar_interaction(void);
 NSString *glaspen2_router_keycode_name(unsigned short keyCode);
 NSString *glaspen2_router_action_for_chord(NSString *chord);
 void glaspen2_router_perform_action(NSString *action);

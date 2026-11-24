@@ -311,3 +311,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 1. tablet 主处理分 3 片(落笔→拖动/预测→抬笔 commit),每片构建+测试+真机笔回归;
 2. S7 按文件清理已迁完的转发/死代码,再迁 `panel.m`(设置面板宿主)与 `run.m` 相机/绘制辅助;
 3. S8 用真机清单逐项验收后,才可把 goal 标记 complete。
+| 2026-11-24 | S6-3-3d-0(续跑第1轮) | 菜单栏点击分支迁 Swift: EventRouter 判定 leftMouseDown+非笔+屏幕 y<30 时调 glaspen2_router_tap_menu_bar_interaction(停 tap + 5s 兜底恢复); ObjC 原 18 行分支删除; 为 tablet 主处理前的最后小分支 | cargo build/tests/parity 全绿;点菜单栏/菜单交互需真机验证 | 本提交 |

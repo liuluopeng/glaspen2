@@ -11,6 +11,13 @@ import AppKit
             glaspen2_router_disable_cleanup()
             return 1
         }
+        // 点菜单栏(非笔): 临时停 tap, 让菜单能收到点击; 5s 兜底恢复。
+        if type == .leftMouseDown, let ev = NSEvent(cgEvent: event), !isPen(ev) {
+            if event.location.y < 30 {
+                glaspen2_router_tap_menu_bar_interaction()
+                return 1
+            }
+        }
         if type == .scrollWheel && (state() & 4) != 0 {
             return routeScrollZoom(event)
         }

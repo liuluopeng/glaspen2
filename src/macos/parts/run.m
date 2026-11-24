@@ -2268,21 +2268,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
   // S6-3-3c: 笔书写系统光标隐藏/恢复已迁 Swift EventRouter。
 
 
-  // Check if click is on the menu bar (real mouse clicks only — a pen
-  // stroke starting near the top of the screen must not freeze input).
-  if (etype == NSEventTypeLeftMouseDown && !isPen) {
-    CGPoint cgLoc = CGEventGetLocation(event);
-    if (cgLoc.y < 30) {
-      CGEventTapEnable(g_event_tap, false);
-      // 菜单关闭时 menuDidClose 会立刻恢复; 这里是兜底(菜单未正常关闭)。
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC),
-                     dispatch_get_main_queue(), ^{
-                       if (g_event_tap)
-                         CGEventTapEnable(g_event_tap, true);
-                     });
-      return event;
-    }
-  }
+  // S6-3-3d: 菜单栏点击的 tap 暂停/恢复已迁 Swift EventRouter。
+
 
   // Draw on pen contact/drag events — routed through stroke modeler
   NSPoint loc = [nsevent locationInWindow];
@@ -3288,3 +3275,12 @@ int glaspen2_router_rec_mode(int slot) { return glaspen2_recording_mode(slot); }
 int glaspen2_router_rec_finish_and_count(void) { return rec_finish_and_count(); }
 int glaspen2_router_rec_feed(int slot, NSString *json) { return rec_feed(slot, json) ? 1 : 0; }
 int glaspen2_router_chat_integration(void) { return g_chat_integration ? 1 : 0; }
+
+// S6-3-3d: 点菜单栏时临时停 tap + 5s 兜底恢复(逻辑由 Swift EventRouter 触发)
+void glaspen2_router_tap_menu_bar_interaction(void) {
+  CGEventTapEnable(g_event_tap, false);
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC),
+                 dispatch_get_main_queue(), ^{
+                   if (g_event_tap) CGEventTapEnable(g_event_tap, true);
+                 });
+}
