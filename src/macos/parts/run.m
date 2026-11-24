@@ -365,88 +365,13 @@ static void tunnel_finish(void) {
 // 当前页直接拷贝玻璃表面, 保证第 0 帧无跳变。cache_slot = 预热缓存里的序号。
 static BOOL tunnel_make_card(int slot, int cache_slot, long screen_id,
                              int is_current) {
-  // scale-to-fit 变换必须与画布一致(见 pageview_update): 页几何 ≠ 屏幕
-  // 时等比缩放居中, 页外压暗 —— 快照几何来自该页的 screen_w/h。
-  double pscale = 1.0, ox = 0.0, oy = 0.0;
-  int pw = g_screen_w, ph = g_screen_h;
-  if (!is_current) {
-    glaspen2_page_dims(screen_id, &pw, &ph);
-    if (pw <= 0 || ph <= 0) {
-      pw = g_screen_w;
-      ph = g_screen_h;
-    }
-    if (pw != g_screen_w || ph != g_screen_h) {
-      pscale =
-          MIN((double)g_screen_w / (double)pw, (double)g_screen_h / (double)ph);
-      ox = ((double)g_screen_w - (double)pw * pscale) / 2.0;
-      oy = ((double)g_screen_h - (double)ph * pscale) / 2.0;
-    }
-  }
-  // 快照表面用**半分辨率**: 之后必然被磨砂+预缩, 全分辨率是白烧
-  // (几百笔的页软渲染全分辨率要 ~300ms/页, 动画启动前主线程全卡住)。
-  // 磨砂玻璃本来就糊, 半分辨率视觉无损, 成本降 4 倍。
-  double card_scale = g_scale * 0.5;
-  int sw = (int)(g_screen_w * card_scale), sh = (int)(g_screen_h * card_scale);
-  if (sw <= 0 || sh <= 0)
-    return NO;
-  cairo_surface_t *surf =
-      cairo_image_surface_create(CAIRO_FORMAT_ARGB32, sw, sh);
-  if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
-    cairo_surface_destroy(surf);
-    return NO;
-  }
-  if (is_current) {
-    cairo_t *cr = cairo_create(surf);
-    cairo_scale(cr, card_scale / g_scale, card_scale / g_scale);
-    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-    cairo_set_source_surface(cr, g_surface, 0, 0);
-    cairo_paint(cr);
-    cairo_destroy(cr);
-  } else {
-    glaspen2_paint_preview_into_surface(
-        (void *)surf, cache_slot, card_scale, ox * 0.5, oy * 0.5, pscale, 1.0,
-        0,
-        s_tun_depth[slot] == 0 ? -1.0 // cur 页:不磨砂, 保持透明玻璃
-                               : fabs((double)s_tun_depth[slot]));
-  }
-  // 预缩:动画里这张卡最大就到"全屏×0.92"(tunnel_place), 与其在
-  // 每帧里做全分辨率缩放合成(实测 30ms/帧), 不如建卡时一次性缩好。
-  // 用 cairo 自己缩(双线性), 尺寸 = 该卡深度档的最大可能 s。
-  double d = (double)s_tun_depth[slot];
-  // 相机可能朝该卡推进 1 单位(它是目标时), 该卡动画最大 s:
-  // zc_min = |d| - 1 → s_max = 1/(1 + k·(|d|-1)); 落定卡留 5% 余量封顶
-  double smax = 1.0 / (1.0 + s_tun_k * (fabs(d) - 1.0));
-  if (smax > 1.05)
-    smax = 1.05;
-  int tw = (int)((double)s_tun_surf_w * smax);
-  int th = (int)((double)s_tun_surf_h * smax);
-  int nw2 = cairo_image_surface_get_width(surf),
-      nh2 = cairo_image_surface_get_height(surf);
-  if (tw > 16 && th > 16 && (tw < nw2 || th < nh2)) {
-    cairo_surface_t *small =
-        cairo_image_surface_create(CAIRO_FORMAT_ARGB32, tw, th);
-    cairo_t *c2 = cairo_create(small);
-    cairo_scale(c2, (double)tw / (double)nw2, (double)th / (double)nh2);
-    cairo_set_source_surface(c2, surf, 0, 0);
-    cairo_paint(c2);
-    cairo_destroy(c2);
-    cairo_surface_destroy(surf);
-    surf = small;
-  }
-  s_tun_card[slot] = surf;
-  // 半尺寸 mip(建卡一次, 帧内近尺寸合成用)
-  int mw = cairo_image_surface_get_width(surf) / 2;
-  int mh = cairo_image_surface_get_height(surf) / 2;
-  if (mw > 16 && mh > 16) {
-    cairo_surface_t *mip =
-        cairo_image_surface_create(CAIRO_FORMAT_ARGB32, mw, mh);
-    cairo_t *c3 = cairo_create(mip);
-    cairo_scale(c3, 0.5, 0.5);
-    cairo_set_source_surface(c3, surf, 0, 0);
-    cairo_paint(c3);
-    cairo_destroy(c3);
-    s_tun_card_mip[slot] = mip;
-  }
+  NSDictionary *r = [TunnelCardFactory makeCardWithIsCurrent:(is_current ? YES : NO)
+                                                       depth:s_tun_depth[slot]
+                                                   cacheSlot:cache_slot
+                                                    screenId:screen_id];
+  if (!r) return NO;
+  s_tun_card[slot] = (cairo_surface_t *)[r[@"main"] pointerValue];
+  s_tun_card_mip[slot] = (cairo_surface_t *)[r[@"mip"] pointerValue];
   return YES;
 }
 

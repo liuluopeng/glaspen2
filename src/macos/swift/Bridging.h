@@ -215,6 +215,7 @@ double glaspen2_router_tunnel_k(void);
 int glaspen2_router_tunnel_surf_w(void);
 int glaspen2_router_tunnel_surf_h(void);
 double glaspen2_router_tunnel_travel(void);
+extern int glaspen2_paint_preview_into_surface(void *surface_ptr, int slot, double scale, double ox, double oy, double pscale, double alpha, int white_bg, double depth);
 double glaspen2_router_pageview_paper_ox(void);
 double glaspen2_router_pageview_paper_oy(void);
 double glaspen2_router_pageview_paper_scale(void);
