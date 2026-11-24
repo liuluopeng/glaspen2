@@ -63,6 +63,13 @@ void glaspen2_menu_select_width(int idx);
 void glaspen2_menu_save_xoj_raw(void);
 void glaspen2_menu_notify(NSString *text);
 
+// S3b-2b-7e: 异步导出/退出所需薄桥
+void glaspen2_menu_screen_size(int *w, int *h);
+int glaspen2_menu_export_infinite_pdf_paged(int w, int h);
+int glaspen2_menu_export_infinite_svg(void);
+void glaspen2_menu_shutdown(void);
+NSString *glaspen2_menu_l10n_pair(NSString *zh, NSString *en);
+
 // S2 探针入口(ObjC 实现, 供 glaspen2_run / Rust --swift-probe 调用):
 // 内部经生成的 glaspen2_macos_swift-Swift.h 调 [SwiftInteropProbe ping],
 // 验证 ObjC→Swift 方向。普通迁移代码不需要这类"Swift 反向入口"。

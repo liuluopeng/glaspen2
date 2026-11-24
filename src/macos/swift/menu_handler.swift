@@ -1,4 +1,4 @@
-// S3b-2b-7: 菜单 handler 的薄 delegate 与动作迁 Swift(ObjC 只转发)。
+// S3b-2b-7: 菜单 handler 的 delegate 与动作迁 Swift(ObjC 只转发)。
 import AppKit
 
 @objc public final class MenuHandler: NSObject {
@@ -59,5 +59,40 @@ import AppKit
     public static func saveXoj() {
         glaspen2_menu_save_xoj_raw()
         glaspen2_menu_notify(glaspen2_menu_l10n("export.notes_saved"))
+    }
+
+    @objc(applicationShouldTerminate:)
+    public static func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        glaspen2_menu_shutdown()
+        return .terminateNow
+    }
+
+    @objc(exportInfinitePdf)
+    public static func exportInfinitePdf() {
+        var w: Int32 = 0
+        var h: Int32 = 0
+        glaspen2_menu_screen_size(&w, &h)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let ok = glaspen2_menu_export_infinite_pdf_paged(w, h)
+            DispatchQueue.main.async {
+                let text = ok != 0
+                    ? glaspen2_menu_l10n_pair("无限画布 PDF 已导出到桌面", "Infinite-canvas PDF saved to Desktop")
+                    : glaspen2_menu_l10n_pair("无限画布为空或页数过多", "Infinite canvas empty or too many pages")
+                glaspen2_menu_notify(text)
+            }
+        }
+    }
+
+    @objc(exportInfiniteSvg)
+    public static func exportInfiniteSvg() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let ok = glaspen2_menu_export_infinite_svg()
+            DispatchQueue.main.async {
+                let text = ok != 0
+                    ? glaspen2_menu_l10n_pair("无限画布 SVG 已导出到桌面", "Infinite-canvas SVG saved to Desktop")
+                    : glaspen2_menu_l10n_pair("无限画布为空", "Infinite canvas is empty")
+                glaspen2_menu_notify(text)
+            }
+        }
     }
 }

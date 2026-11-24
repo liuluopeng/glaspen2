@@ -324,40 +324,15 @@ static void gl_quit_app(void) {
 - (void)toggleOutline { [MenuHandler toggleOutline]; }
 - (void)toggleInfiniteCanvas { [MenuHandler toggleInfiniteCanvas]; }
 
-// 无限画布 → 分页 PDF(按当前屏幕尺寸切页)
-- (void)exportInfinitePdf {
-    int pw = g_screen_w, ph = g_screen_h;
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        int ok = glaspen2_export_infinite_pdf_paged(pw, ph);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            show_notification(ok
-                ? L(@"无限画布 PDF 已导出到桌面", @"Infinite-canvas PDF saved to Desktop")
-                : L(@"无限画布为空或页数过多", @"Infinite canvas empty or too many pages"));
-        });
-    });
-}
-
-// 无限画布 → 整幅 SVG(内容包围盒, 不受镜头影响)
-- (void)exportInfiniteSvg {
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        int ok = glaspen2_export_infinite_svg();
-        dispatch_async(dispatch_get_main_queue(), ^{
-            show_notification(ok
-                ? L(@"无限画布 SVG 已导出到桌面", @"Infinite-canvas SVG saved to Desktop")
-                : L(@"无限画布为空", @"Infinite canvas is empty"));
-        });
-    });
-}
+- (void)exportInfinitePdf { [MenuHandler exportInfinitePdf]; }
+- (void)exportInfiniteSvg { [MenuHandler exportInfiniteSvg]; }
 
 - (void)selectColor:(NSMenuItem *)sender { [MenuHandler selectColor:sender]; }
 - (void)selectWidth:(NSMenuItem *)sender { [MenuHandler selectWidth:sender]; }
 
 // NSApplicationDelegate
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
-    // NSApp terminate 同样不走 Rust 析构: 退出前写完排队点并 checkpoint WAL,
-    // 否则自动更新的 .db 快照可能缺最后一小段笔迹。
-    glaspen2_shutdown();
-    return NSTerminateNow;
+    return [MenuHandler applicationShouldTerminate:sender];
 }
 
 // S3b-2b-7a: quitApp/menuWillOpen:/menuDidClose: 已迁 Swift(menu_handler.swift),
@@ -436,6 +411,18 @@ void glaspen2_menu_select_color(int idx) { gl_settings_set_color(idx); }
 void glaspen2_menu_select_width(int idx) { gl_settings_set_width(idx); }
 void glaspen2_menu_save_xoj_raw(void) { glaspen2_save_xoj(); }
 void glaspen2_menu_notify(NSString *text) { show_notification(text); }
+void glaspen2_menu_screen_size(int *w, int *h) {
+    if (w) *w = g_screen_w;
+    if (h) *h = g_screen_h;
+}
+int glaspen2_menu_export_infinite_pdf_paged(int w, int h) {
+    return glaspen2_export_infinite_pdf_paged(w, h);
+}
+int glaspen2_menu_export_infinite_svg(void) {
+    return glaspen2_export_infinite_svg();
+}
+void glaspen2_menu_shutdown(void) { glaspen2_shutdown(); }
+NSString *glaspen2_menu_l10n_pair(NSString *zh, NSString *en) { return L(zh, en); }
 
 // ObjC 侧保留薄 delegate 方法(仅转发给 Swift MenuHandler); 业务逻辑在 Swift。
 - (void)quitApp { [MenuHandler quitApp]; }
