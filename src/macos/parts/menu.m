@@ -1182,18 +1182,8 @@ static void gl_settings_set_color(int idx) {
 }
 
 static void gl_settings_set_width(int idx) {
-    if (idx < 0 || idx >= g_width_preset_count) return;
-    if (g_stroke_active) {
-        g_pending_width_index = idx;
-        return;
-    }
-    if (idx != g_selected_width_index) g_prev_width_index = g_selected_width_index;
-    g_width_scale = g_width_presets[idx];
-    g_selected_width_index = idx;
-    glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
-    update_menu_checkmarks();
-    update_status_icon_state(); // 笔宽画在图标笔杆粗细里
-    sync_settings_panel();
+    // S7h: 逻辑已迁 Swift(MenuHandler.setWidthIndex)。
+    [MenuHandler setWidthIndex:idx];
 }
 
 /// 抬笔后应用书写中按下的换色/换粗细(只保留最后一次)。
@@ -1328,3 +1318,18 @@ int glaspen2_router_pending_color(void) { return g_pending_color_index; }
 int glaspen2_router_pending_width(void) { return g_pending_width_index; }
 void glaspen2_router_clear_pending_color(void) { g_pending_color_index = -1; }
 void glaspen2_router_clear_pending_width(void) { g_pending_width_index = -1; }
+
+// S7h: 粗细设置的 Swift 薄桥(状态/刷新函数都在 menu.m)
+int glaspen2_router_width_preset_count(void) { return g_width_preset_count; }
+int glaspen2_router_selected_width(void) { return g_selected_width_index; }
+void glaspen2_router_set_prev_width(int idx) { g_prev_width_index = idx; }
+void glaspen2_router_set_pending_width(int idx) { g_pending_width_index = idx; }
+void glaspen2_router_apply_width(int idx) {
+  g_width_scale = g_width_presets[idx];
+  g_selected_width_index = idx;
+}
+void glaspen2_router_save_pen_settings(void) {
+  glaspen2_save_settings(g_pen_r, g_pen_g, g_pen_b, g_width_scale);
+}
+void glaspen2_router_update_checkmarks(void) { update_menu_checkmarks(); }
+void glaspen2_router_sync_settings_panel(void) { sync_settings_panel(); }

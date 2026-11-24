@@ -354,3 +354,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S8 审计(续跑第19轮) | 生成剩余 ObjC 清单(行数/static/方法/类)与建议迁移顺序(drawRect 分图层→run.m 辅助→panel.m→menu.m→glaspen2.m shim); 单函数最大 drawRect 188 行 | 文档同步, 无代码变更 | 本提交 |
 | 2026-11-24 | S7g(续跑第20轮) | 暂存颜色/粗细生效逻辑迁 Swift: MenuHandler.applyPendingColorWidth(书写中不动, 抬笔后读 pending→清标记→调既有 select 桥), ObjC 函数变一行转发; 新增 4 个 pending 状态薄桥(menu.m) | cargo build/tests/parity 全绿;书写中换色/换粗细需真机验证 | 本提交 |
 | 2026-11-24 | S3/S7(续跑第21轮) | 状态栏图标刷新迁 Swift: StatusIconUpdater.applyToStatusItem:...(渲染仍走 StatusIconRenderer; setImage/清标题在 Swift), ObjC update_status_icon_color 只剩参数转发; 菜单/橡皮态刷新共用 | cargo build/tests/parity 全绿;状态栏图标需真机验证 | 本提交 |
+| 2026-11-24 | S7h(续跑第22轮) | 粗细设置迁 Swift: MenuHandler.setWidthIndex(书写中暂存 pending;否则应用 preset→落库→勾选/状态图标/面板刷新), ObjC gl_settings_set_width 变一行转发; 新增 9 个薄桥(预设计数/选中/prev/pending/apply/save/checkmarks/panel); 修复重复的 update_status_icon_state 桥 | cargo build/tests/parity 全绿;粗细切换需真机验证 | 本提交 |
