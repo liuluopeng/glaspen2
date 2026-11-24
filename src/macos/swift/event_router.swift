@@ -70,6 +70,15 @@ import AppKit
         }
     }
 
+    /// S6-3-3d: 橡皮态切换 + 状态图标刷新(落笔/拖动自动补 begin/抬笔共用)。
+    @objc(updateEraserState:)
+    public static func updateEraserState(isEraser: Bool) {
+        if isEraser != (glaspen2_router_eraser_mode() != 0) {
+            glaspen2_router_set_eraser_mode(isEraser ? 1 : 0)
+            glaspen2_router_update_status_icon_state()
+        }
+    }
+
     /// S6-3-4b-2b: 普通 chord 门控(录制热键由 ObjC 函数先行处理)。
     /// 返回 1 = 放行, 2 = 消费(返回 NULL)。
     @objc(handleChordKeyEvent:)

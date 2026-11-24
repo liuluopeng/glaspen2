@@ -2358,12 +2358,9 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     if (g_stroke_active) {
       finish_active_stroke();
     }
-    BOOL eraser = (devType == NSEraserPointingDevice) ||
-                  (g_prox_dev == NSEraserPointingDevice);
-    if (eraser != g_eraser_mode) {
-      g_eraser_mode = eraser;
-      update_status_icon_state();
-    } // 图标换橡皮块
+    // S6-3-3d: 橡皮态切换/图标刷新已迁 Swift。
+    [EventRouter updateEraserState:(devType == NSEraserPointingDevice) ||
+                                   (g_prox_dev == NSEraserPointingDevice)];
     NSLog(@"[glaspen2] pen DOWN at (%.1f, %.1f) p=%.2f ts=%.3f tool=%@/%@",
           px, py, pressure, ts,
           devType == NSEraserPointingDevice   ? @"ERASER"
@@ -2396,12 +2393,9 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
                 etype == NSEventTypeOtherMouseDragged)) {
     // If no DOWN event was seen (pen detection lag), auto-initialize
     if (!g_stroke_active) {
-      BOOL eraser = (devType == NSEraserPointingDevice) ||
-                    (g_prox_dev == NSEraserPointingDevice);
-      if (eraser != g_eraser_mode) {
-        g_eraser_mode = eraser;
-        update_status_icon_state();
-      }
+      // S6-3-3d: 橡皮态切换/图标刷新已迁 Swift。
+      [EventRouter updateEraserState:(devType == NSEraserPointingDevice) ||
+                                     (g_prox_dev == NSEraserPointingDevice)];
       bubble_auto_page_flip(); // 同落笔分支: 补 begin 前先翻页
       glaspen2_modeler_begin(g_pen_r, g_pen_g, g_pen_b, canvas_input_x(px),
                              canvas_input_y(py), pressure, ts, g_width_scale);
@@ -2434,8 +2428,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     if (g_stroke_active) {
       if (g_eraser_mode) {
         glaspen2_modeler_erase_finish();
-        g_eraser_mode = NO;
-        update_status_icon_state(); // 橡皮块换回笔尖
+        // S6-3-3d: 橡皮态复位/图标刷新已迁 Swift。
+        [EventRouter updateEraserState:NO];
       } else {
         glaspen2_modeler_end(canvas_input_x(px), canvas_input_y(py), pressure,
                              ts, g_width_scale);
@@ -3284,3 +3278,8 @@ void glaspen2_router_tap_menu_bar_interaction(void) {
                    if (g_event_tap) CGEventTapEnable(g_event_tap, true);
                  });
 }
+
+// S6-3-3d: 橡皮态切换薄桥
+int glaspen2_router_eraser_mode(void) { return g_eraser_mode ? 1 : 0; }
+void glaspen2_router_set_eraser_mode(int on) { g_eraser_mode = on != 0; }
+void glaspen2_router_update_status_icon_state(void) { update_status_icon_state(); }
