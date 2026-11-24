@@ -1201,157 +1201,20 @@ static NSString *rec_simple_event(NSString *type) {
   return rec_json(@{@"type" : type});
 }
 
-static void rec_exec_effects(int slot, NSArray *effects);
 
 // 喂一个事件并执行返回的 effects(在调用线程 = 主 runloop 上同步执行)。
 // 返回事件是否产生了 effects; key-up 分支据此决定是否消费按键。
 static BOOL rec_feed(int slot, NSString *event_json) {
-  const char *c = event_json.UTF8String;
-  char *out = glaspen2_recording_event_json(slot, c ? c : "");
-  if (!out) {
-    NSLog(@"[recording] 槽 %d: FFI 返回 NULL(不应发生)", slot);
-    return NO;
-  }
-  NSData *data = [NSData dataWithBytes:out length:strlen(out)];
-  glaspen2_free_c_string(out);
-  id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-  if (![parsed isKindOfClass:[NSArray class]]) {
-    NSLog(@"[recording] 槽 %d 事件执行失败: %@", slot, parsed);
-    return NO;
-  }
-  if ([(NSArray *)parsed count] == 0)
-    return NO;
-  rec_exec_effects(slot, parsed);
-  return YES;
+  return [RecordingEffects feedSlot:slot json:event_json ?: @""] ? YES : NO;
 }
 
 // S6/S7: rec_start/rec_release 已并入 Swift RecordingHotkeys(事件 JSON 由 Swift 生成)。
 
 // GIF 编码结果回主线程后待写剪贴板的字节(Clipboard effect 消费)。
-static NSData *s_pending_gif = nil;
 
 // HUD 语义 → 平台文案: 文案单源在 core::i18n(D10b, 按稳定 key 查),
 // 只有 {keys} 的键名差异(⌘⌃3/⌘⌃2)由本函数作为参数传入。
-static void rec_show_hud(NSDictionary *effect) {
-  NSString *hud = effect[@"hud"];
-  if (![hud isKindOfClass:[NSString class]])
-    return;
-  int strokes = [effect[@"strokes"] intValue];
-  NSString *detail = effect[@"detail"];
-  // S6/S8: 文案映射已迁 Swift(RecHudPresenter); 这里只解包 effect。
-  [RecHudPresenter presentHud:hud strokes:strokes detail:detail];
-}
-
 // 按状态机下发的顺序执行单个 effect。
-static void rec_exec_effect(int slot, NSDictionary *effect) {
-  NSString *kind = effect[@"kind"];
-  if (![kind isKindOfClass:[NSString class]])
-    return;
-  if ([kind isEqualToString:@"ShowHud"]) {
-    rec_show_hud(effect);
-    return;
-  }
-  if ([kind isEqualToString:@"EncodeGif"]) {
-    int start = [effect[@"start_stroke"] intValue];
-    int end = [effect[@"end_stroke"] intValue];
-    // GIF 参数在松手时读(两平台差异 10: 录制中途改参数影响本次输出)。
-    // EncodeGif 由 ReleasePressed 同步产生, 所以这里读到的就是松手瞬间的设置。
-    int fps = g_gif_fps;
-    double resolution = g_gif_resolution;
-    double speed = g_gif_speed;
-    int end_mode = g_gif_end_mode;
-    // 回放渲染 + GIF 压缩可能上百毫秒, 不阻塞主 runloop;窗口已由状态机钉死,
-    // 新一次录制不会覆盖尚在编码的这一次。
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-      int out_len = 0;
-      unsigned char *gif = glaspen2_gif_record_end(
-          start, end, fps, resolution, speed, end_mode, &out_len);
-      dispatch_async(dispatch_get_main_queue(), ^{
-        if (gif && out_len > 0) {
-          s_pending_gif = [NSData dataWithBytes:gif length:out_len];
-          glaspen2_free_rust_bytes(gif, out_len);
-          rec_feed(REC_SLOT_GIF, rec_simple_event(@"GifEncodeSucceeded"));
-        } else {
-          if (gif)
-            glaspen2_free_rust_bytes(gif, out_len);
-          rec_feed(REC_SLOT_GIF, rec_simple_event(@"GifEncodeFailed"));
-        }
-      });
-    });
-    return;
-  }
-  if ([kind isEqualToString:@"Clipboard"]) {
-    NSData *gif = s_pending_gif;
-    s_pending_gif = nil;
-    if (gif.length > 0) {
-      [GifClipboard copyData:(const unsigned char *)gif.bytes length:(int)gif.length];
-    } else {
-      NSLog(@"[recording] Clipboard effect 没有待写字节");
-    }
-    // 保持旧行为: 剪贴板写临时文件失败只 NSLog, 仍提示成功(差异 3, 不属本切片)。
-    rec_feed(REC_SLOT_GIF, rec_simple_event(@"GifClipboardSucceeded"));
-    return;
-  }
-  if ([kind isEqualToString:@"StartChatDraft"]) {
-    if (glaspen2_ink_draft_start(g_screen_w, g_screen_h) != 0) {
-      rec_feed(REC_SLOT_CHAT, rec_simple_event(@"ChatDraftStarted"));
-    } else {
-      rec_feed(REC_SLOT_CHAT, rec_simple_event(@"ChatDraftStartFailed"));
-    }
-    return;
-  }
-  if ([kind isEqualToString:@"StopChatDraft"]) {
-    // 提交在写笔画, 再后台 half-close + 取裁决;结果回主线程作为
-    // ChatDraftFinished 喂回状态机(裁决映射单源在 DraftOutcome::from_ffi_code)。
-    [EventRouter finishActiveStroke];
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-      int r = glaspen2_ink_draft_stop();
-      // 失败原因在后台线程取好再回主线程, 避免与下一次会话的写入竞争。
-      const char *err = glaspen2_ink_draft_last_error();
-      NSString *detail = (err && *err) ? [NSString stringWithUTF8String:err] : @"";
-      dispatch_async(dispatch_get_main_queue(), ^{
-        rec_feed(REC_SLOT_CHAT, rec_json(@{
-                   @"type" : @"ChatDraftFinished",
-                   @"code" : @(r),
-                   @"detail" : detail ?: @"",
-                 }));
-      });
-    });
-    return;
-  }
-  if ([kind isEqualToString:@"SendChatStrokes"]) {
-    int start = [effect[@"start_stroke"] intValue];
-    int end = [effect[@"end_stroke"] intValue];
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-      int sent = glaspen2_chat_send_strokes(start, end);
-      dispatch_async(dispatch_get_main_queue(), ^{
-        if (sent >= 0) {
-          rec_feed(REC_SLOT_CHAT, rec_json(@{
-                     @"type" : @"ChatSendSucceeded",
-                     @"strokes" : @(sent),
-                   }));
-        } else {
-          rec_feed(REC_SLOT_CHAT, rec_simple_event(@"ChatSendFailed"));
-        }
-      });
-    });
-    return;
-  }
-  if ([kind isEqualToString:@"Discard"]) {
-    // 取消路径(总开关关闭取消直发/强制收尾): 不编码/不发送, 无 OS 资源可释放。
-    NSLog(@"[recording] 丢弃进行中的录制窗口(取消)");
-    return;
-  }
-  NSLog(@"[recording] 未实现的录制 effect: %@", kind);
-}
-
-static void rec_exec_effects(int slot, NSArray *effects) {
-  for (id effect in effects) {
-    if ([effect isKindOfClass:[NSDictionary class]])
-      rec_exec_effect(slot, effect);
-  }
-}
-
 // 手写消息总开关变化(menu.m 调): 把总开关镜像喂给手写槽。关闭时的 effects
 // 会静默取消直发(Discard)或优雅收尾草稿(StopChatDraft: 提交在写笔画 +
 // 完整 stop + 裁决提示)。GIF 槽不受总开关影响。
@@ -2421,3 +2284,9 @@ void glaspen2_router_perf_init(void) { [PerfLog initFromEnv]; }
 int glaspen2_router_perform_hotkey(unsigned short keyCode) {
   return perform_hotkey(keyCode) ? 1 : 0;
 }
+
+// S7ck: 录制效果薄桥
+int glaspen2_router_gif_fps(void) { return g_gif_fps; }
+double glaspen2_router_gif_resolution(void) { return g_gif_resolution; }
+double glaspen2_router_gif_speed(void) { return g_gif_speed; }
+int glaspen2_router_gif_end_mode(void) { return g_gif_end_mode; }

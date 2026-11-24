@@ -1728,7 +1728,10 @@ mod tests {
         // macOS: run.m = 热键/事件 tap/effects 执行; glaspen2.m = FFI 声明 +
         // (已删除的)会话标志位; menu.m = 总开关关闭收尾。
         let mac_main = include_str!("../../../src/macos/glaspen2.m");
+        let mac_effects_swift =
+            include_str!("../../../src/macos/swift/recording_effects.swift");
         let mac_run = include_str!("../../../src/macos/parts/run.m");
+        let mac_run_effects = format!("{mac_run}\n{mac_effects_swift}");
         let mac_menu = include_str!("../../../src/macos/parts/menu.m");
         // S6/S8: 录制 HUD 文案映射已迁 Swift, 闸门必须同时扫 Swift 源。
         let mac_recording_swift =
@@ -1737,7 +1740,7 @@ mod tests {
             include_str!("../../../src/macos/swift/recording_keys.swift");
         let mac_menu_handler =
             include_str!("../../../src/macos/swift/menu_handler.swift");
-        let mac_combined = format!("{mac_run}\n{mac_recording_keys}");
+        let mac_combined = format!("{mac_run}\n{mac_recording_keys}\n{mac_effects_swift}");
         let mac_menu_swift = format!("{mac_menu}\n{mac_menu_handler}");
         // Windows: recording.rs = 接线/effects 分派; state.rs = 两个状态机字段;
         // actions.rs = Raw Input/总开关入口; hotkeys.rs = WM_HOTKEY; wndproc =
@@ -1831,14 +1834,14 @@ mod tests {
             ],
         ));
         problems.extend(gate_missing(
-            "run.m",
-            mac_run,
+            "run.m+recording_effects.swift",
+            mac_run_effects.as_str(),
             &[
                 "glaspen2_recording_event_json(",
                 "glaspen2_recording_mode(",
                 "gl_recording_init(",
                 "rec_finish_and_count(",
-                "rec_exec_effect(",
+                "execEffect(",
                 "gl_recording_chat_integration_changed(",
             ],
         ));
@@ -1884,11 +1887,11 @@ mod tests {
             "ChatSendFailed",
         ];
         let mut mac_required: Vec<String> =
-            effect_kinds.iter().map(|n| format!("@\"{n}\"")).collect();
+            effect_kinds.iter().map(|n| format!("\"{n}\"")).collect();
 
 
         let mac_required_refs: Vec<&str> = mac_required.iter().map(String::as_str).collect();
-        problems.extend(gate_missing("run.m(变体覆盖)", mac_run, &mac_required_refs));
+        problems.extend(gate_missing("run.m+recording_effects.swift(变体覆盖)", mac_run_effects.as_str(), &mac_required_refs));
         // 事件名现由 run.m 与 recording_keys.swift 共同出现(Swift 侧为裸字面量)。
         let mut event_refs: Vec<&str> = event_types.to_vec();
         // NSJSONSerialization 载荷键名: run.m(effects 解析)或 Swift(事件构造)都可能出现。
