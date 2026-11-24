@@ -2131,36 +2131,8 @@ static void event_tap_reinstall(void) { event_tap_install(g_infinite_canvas); }
 // 下一步用 recording 事件 FFI 把这函数整体迁 Swift。
 static BOOL handle_recording_hotkeys(CGEventType type, unsigned short kc,
                                      BOOL hasCmdCtrl) {
-  if (type == kCGEventKeyUp && kc == kVK_ANSI_R &&
-      glaspen2_recording_mode(REC_SLOT_GIF) == 1) {
-    rec_release(REC_SLOT_GIF, @"Gif");
-    return YES;
-  }
-  if (hasCmdCtrl && kc == kVK_ANSI_R && type == kCGEventKeyDown) {
-    rec_start(REC_SLOT_GIF, @"Gif");
-    return YES;
-  }
-  if (type == kCGEventKeyUp && kc == kVK_ANSI_3 &&
-      glaspen2_recording_mode(REC_SLOT_CHAT) == 3) {
-    rec_release(REC_SLOT_CHAT, @"Send");
-    return YES;
-  }
-  if (g_chat_integration && hasCmdCtrl && kc == kVK_ANSI_3 &&
-      type == kCGEventKeyDown) {
-    rec_start(REC_SLOT_CHAT, @"Send");
-    return YES;
-  }
-  if (type == kCGEventKeyUp && kc == kVK_ANSI_2 &&
-      glaspen2_recording_mode(REC_SLOT_CHAT) == 2) {
-    rec_release(REC_SLOT_CHAT, @"Draft");
-    return YES;
-  }
-  if (g_chat_integration && hasCmdCtrl && kc == kVK_ANSI_2 &&
-      type == kCGEventKeyDown) {
-    rec_start(REC_SLOT_CHAT, @"Draft");
-    return YES;
-  }
-  return NO;
+  // S6-3-4b-2c: 判定已迁 Swift(RecordingHotkeys); 本函数只转发。
+  return [RecordingHotkeys handleWithType:type keyCode:kc hasCmdCtrl:hasCmdCtrl];
 }
 
 static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
@@ -3329,3 +3301,11 @@ void glaspen2_router_disable_cleanup(void) {
 
 // S6-3-4b-2b: chord 门控的 perform_action 薄桥
 void glaspen2_router_perform_action(NSString *action) { perform_action(action); }
+
+// S6-3-4b-2c: 录制热键 Swift 判定所需薄桥
+int glaspen2_router_rec_slot_gif(void) { return REC_SLOT_GIF; }
+int glaspen2_router_rec_slot_chat(void) { return REC_SLOT_CHAT; }
+int glaspen2_router_rec_mode(int slot) { return glaspen2_recording_mode(slot); }
+int glaspen2_router_rec_finish_and_count(void) { return rec_finish_and_count(); }
+int glaspen2_router_rec_feed(int slot, NSString *json) { return rec_feed(slot, json) ? 1 : 0; }
+int glaspen2_router_chat_integration(void) { return g_chat_integration ? 1 : 0; }
