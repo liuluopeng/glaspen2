@@ -15,6 +15,7 @@
 
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
+#include <cairo/cairo.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -177,6 +178,10 @@ int glaspen2_router_has_surface(void);
 void glaspen2_router_dirty_reset(void);
 int glaspen2_router_dirty_has(void);
 NSRect glaspen2_router_dirty_rect(void);
+void glaspen2_router_install_surface(cairo_surface_t *surface);
+void glaspen2_router_install_scale(double scale);
+void glaspen2_router_set_has_last(int has);
+void glaspen2_router_surface_cache_invalidate(void);
 extern void glaspen2_on_display_change(int screen_w, int screen_h);
 extern void glaspen2_smooth_loaded_strokes(void);
 NSAttributedString *glaspen2_router_color_item_title(int idx);

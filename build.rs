@@ -262,6 +262,13 @@ fn main() {
             .arg(&swift_header_path)
             .arg("-O")
             .current_dir(&swift_obj_dir);
+        // cairo 头: Bridging.h 需要 <cairo/cairo.h>, pkg-config 给的是 .../include/cairo。
+        for p in &cairo.include_paths {
+            swiftc_cmd.arg("-I").arg(p);
+            if let Some(parent) = p.parent() {
+                swiftc_cmd.arg("-I").arg(parent);
+            }
+        }
         if std::env::var("PROFILE").as_deref() == Ok("debug") {
             swiftc_cmd.arg("-g");
         }

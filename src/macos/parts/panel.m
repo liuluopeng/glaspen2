@@ -73,27 +73,7 @@ static void surface_image_cache_invalidate(void) {
     [OverlaySurfaceImageCache clear];
 }
 
-static void ensure_surface(NSView *view) {
-    NSRect bounds = [view bounds];
-    CGFloat scale = [[view window] backingScaleFactor];
-    if (scale < 1.0) scale = 1.0;
-    int w = (int)(bounds.size.width * scale);
-    int h = (int)(bounds.size.height * scale);
-    if (g_surface && cairo_image_surface_get_width(g_surface) == w &&
-        cairo_image_surface_get_height(g_surface) == h && g_scale == scale) return;
-    if (g_surface) {
-        surface_image_cache_invalidate();
-        cairo_surface_destroy(g_surface);
-    }
-    g_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
-    g_scale = scale;
-    cairo_t *cr = cairo_create_scaled();
-    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
-    cairo_paint(cr);
-    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
-    cairo_destroy(cr);
-    g_has_last = NO;
-}
+static void ensure_surface(NSView *view) { [SurfaceStore ensureWithView:view]; }
 
 static void flush_to_layer(void) { [OverlayLayerFlush flush]; }
 

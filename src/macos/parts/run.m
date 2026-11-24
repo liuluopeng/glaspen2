@@ -2491,3 +2491,9 @@ int glaspen2_router_has_surface(void) { return g_surface ? 1 : 0; }
 void glaspen2_router_dirty_reset(void) { dirty_reset(); }
 int glaspen2_router_dirty_has(void) { return g_dirty_has ? 1 : 0; }
 NSRect glaspen2_router_dirty_rect(void) { return g_dirty_rect; }
+
+// S7bw: surface 生命周期薄桥
+void glaspen2_router_install_surface(cairo_surface_t *surface) { g_surface = surface; }
+void glaspen2_router_install_scale(double scale) { g_scale = scale; }
+void glaspen2_router_set_has_last(int has) { g_has_last = has != 0; }
+void glaspen2_router_surface_cache_invalidate(void) { surface_image_cache_invalidate(); }
