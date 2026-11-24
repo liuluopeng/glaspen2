@@ -289,3 +289,25 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7a | 删除迁移后无调用的 ObjC 死代码: rec_start/rec_release(并入 Swift RecordingHotkeys)、gl_shortcut_action_for_key(ObjC 包装); D8b 闸门把事件名覆盖改为 run.m+recording_keys.swift 合并源(裸 token), 保持"每个 core 事件都有 adapter 接线"校验 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7b | 删除无调用薄桥 glaspen2_event_tap_enable(Swift 已改用 CGEvent.tapEnable); 头文件声明与 run.m 实现同步移除 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7c | 删除迁移后无调用的 rec_key_event(事件 JSON 已由 Swift RecordingHotkeys 生成); D8b 闸门把 JSON 载荷键名校验移到 run.m+recording_keys.swift 合并源 | cargo build/tests/parity 全绿 | 本提交 |
+
+## 40 轮目标冲刺收尾状态(2026-11-24)
+
+> 结论:**目标未达成**(仓库仍有应用层 ObjC),goal 保持 active;本记录供后续轮次直接续做。
+
+### 已完成
+- S0 build.rs+swiftc、S1 open_url、S2 桥接头+双向互调;
+- S3 状态栏项/图标、菜单构建/查找/名称/刷新/勾选、GlaspenMenuHandler 全部动作、导出/退出;
+- S4 通知 presenter + 文字绘制;S5 窗口创建/玻璃/内容视图/光标/显示器 2.5s 防抖;
+- S6-1/2 事件掩码与 CGEventTap 创建;S6-3 路由骨架、滚轮缩放、非笔光标隐藏、笔光标更新、系统光标隐藏/恢复、停用态放行、键盘 chord 门控、录制热键、录制 HUD;
+- S7a/b/c 清理迁移后无调用的 ObjC 辅助函数;D8b/i18n 闸门已覆盖 Swift 源。
+
+### 未完成
+- **S6-3-3d-3 tablet 落笔/拖动/抬笔主处理**(模型器 begin/move/end、raw 绘制、压感、橡皮、dirty/flush):`run.m` 中最大剩余块;
+- **S7 主体删除**:ObjC 仍有 6,724 行(`glaspen2.m` 915、`menu.m` 1,336、`panel.m` 1,183、`run.m` 3,290),其中含窗口/绘制视图/设置面板/相机/导出等;
+- **真机验收**:笔输入/延迟、多屏/锁屏唤醒、菜单视觉(明暗/双语/逐项)、热键/录制、玻璃/窗口层级,全部待补;
+- `pen_hover` 性能打点未迁(已知小缺口)。
+
+### 建议续做顺序
+1. tablet 主处理分 3 片(落笔→拖动/预测→抬笔 commit),每片构建+测试+真机笔回归;
+2. S7 按文件清理已迁完的转发/死代码,再迁 `panel.m`(设置面板宿主)与 `run.m` 相机/绘制辅助;
+3. S8 用真机清单逐项验收后,才可把 goal 标记 complete。
