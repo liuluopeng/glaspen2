@@ -2102,18 +2102,6 @@ static int instance_lock_acquire(void) {
 // 旧版实例(没有 flock 逻辑的安装版)不会去抢锁 —— 用运行应用列表兜底:
 // 排除自己之外还有叫 glaspen2 的进程就算已运行。自动更新的 --updater
 // 帮手与主程序同名, 更新窗口期内手动启动会误报, 属可接受的罕见边角。
-static BOOL another_glaspen2_running(void) {
-  for (NSRunningApplication *app in
-       [NSWorkspace.sharedWorkspace runningApplications]) {
-    if (app.processIdentifier == getpid())
-      continue;
-    NSString *name = app.localizedName ?: app.executableURL.lastPathComponent;
-    if ([name isEqualToString:@"glaspen2"])
-      return YES;
-  }
-  return NO;
-}
-
 void glaspen2_run(void) {
   @autoreleasepool {
     // S2 双向互调探针: GLASPEN2_SWIFT_PROBE=1 时在启动早期跑一次
@@ -2123,7 +2111,7 @@ void glaspen2_run(void) {
 
     // 单实例守卫先于一切初始化: 第二个实例直接弹窗退出
     int lock_fd = instance_lock_acquire();
-    if (lock_fd == -1 || another_glaspen2_running()) {
+    if (lock_fd == -1 || [AppInstanceGuard anotherInstanceRunning]) {
       [NSApplication sharedApplication];
       [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
       NSAlert *a = [[NSAlert alloc] init];
