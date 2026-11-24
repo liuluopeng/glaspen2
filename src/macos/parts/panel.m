@@ -49,8 +49,8 @@ static void display_change_apply(int new_w, int new_h) { [OverlayWindowFactory a
 
 // S5-3: 防抖/重读逻辑已迁 Swift(DisplayChangeMonitor); 这里只留 apply/size 桥。
 void glaspen2_display_size(int *w, int *h) {
-    if (w) *w = g_screen_w;
-    if (h) *h = g_screen_h;
+    if (w) *w = (int)glaspen2_router_screen_w();
+    if (h) *h = (int)glaspen2_router_screen_h();
 }
 
 void glaspen2_display_apply(int w, int h) {

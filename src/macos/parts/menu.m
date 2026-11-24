@@ -139,11 +139,11 @@ void glaspen2_menu_quit_bridge(void) {
 
 // S3b-2b-7b: 语言切换的薄桥(g_lang 在本翻译单元; 刷新逻辑仍用原函数)
 int glaspen2_menu_lang(void) {
-    return g_lang;
+    return glaspen2_router_lang();
 }
 
 void glaspen2_menu_set_lang(int value) {
-    g_lang = value == 1 ? 1 : 0;
+    glaspen2_router_set_lang(value);
 }
 
 void glaspen2_menu_refresh_texts(void) {
@@ -195,8 +195,8 @@ void glaspen2_menu_select_width(int idx) { [MenuHandler setWidthIndex:idx]; }
 void glaspen2_menu_save_xoj_raw(void) { glaspen2_save_xoj(); }
 void glaspen2_menu_notify(NSString *text) { show_notification(text); }
 void glaspen2_menu_screen_size(int *w, int *h) {
-    if (w) *w = g_screen_w;
-    if (h) *h = g_screen_h;
+    if (w) *w = (int)glaspen2_router_screen_w();
+    if (h) *h = (int)glaspen2_router_screen_h();
 }
 int glaspen2_menu_export_infinite_pdf_paged(int w, int h) {
     return glaspen2_export_infinite_pdf_paged(w, h);
@@ -376,14 +376,14 @@ unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *r
                 // 一并写回(差异见 camera.rs 模块文档 5)。
                 NSDictionary *result =
                     [CameraState resultFromJSON:glaspen2_camera_centered(
-                        bx, by, bx2, by2, (double)g_screen_w, (double)g_screen_h,
+                        bx, by, bx2, by2, glaspen2_router_screen_w(), glaspen2_router_screen_h(),
                         glaspen2_router_zoom())];
                 if ([CameraState assignResult:result assignZoom:NO])
                     [CanvasCamera applyTransform];
             }
         } else if (action == 3) {
             [EventRouter finishActiveStroke];
-            glaspen2_clear_strokes(g_screen_w, g_screen_h);
+            glaspen2_clear_strokes((int)glaspen2_router_screen_w(), (int)glaspen2_router_screen_h());
             [CanvasCamera home];
             ow = 1024;
             oh = 768;
@@ -510,7 +510,7 @@ void glaspen2_router_set_shortcut_tables(NSDictionary *values, NSDictionary *loo
 NSString *glaspen2_router_shortcuts_effective_json(void) {
   return gl_shortcuts_effective_json();
 }
-int glaspen2_router_lang(void) { return g_lang; }
+int glaspen2_router_lang(void) { return glaspen2_router_lang(); }
 
 // S7cj: 快捷键生效表薄桥
 NSDictionary *glaspen2_router_shortcut_values(void) {

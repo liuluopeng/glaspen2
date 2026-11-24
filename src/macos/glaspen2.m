@@ -18,8 +18,6 @@
 // App enabled state
 
 // Screen dimensions in logical points (set once at startup)
-static int g_screen_w = 1920;
-static int g_screen_h = 1080;
 
 // Backing scale factor for Retina rendering (1.0 = non-Retina, 2.0 = Retina)
 
@@ -282,6 +280,11 @@ double glaspen2_router_zoom(void);
 double glaspen2_router_width_scale(void);
 double glaspen2_router_pan_x(void);
 double glaspen2_router_pan_y(void);
+double glaspen2_router_screen_w(void);
+double glaspen2_router_screen_h(void);
+int glaspen2_router_lang(void);
+void glaspen2_router_set_lang(int value);
+void glaspen2_router_set_screen_size(int w, int h);
 static BOOL g_perf_log = NO;
 static void event_tap_reinstall(void);
 static NSWindow *g_window = nil;
@@ -299,7 +302,6 @@ static void pageview_update(void);
 // Create a cairo context with the backing scale factor applied.
 // All drawing coordinates remain in logical points; Cairo renders
 // at physical pixel resolution.
-static double g_last_x = -1, g_last_y = -1;
 static NSView *g_draw_view = nil;
 
 // Raw drawing state (for responsive real-time feedback during stroke)
@@ -336,7 +338,6 @@ static cairo_t *g_active_cr = NULL;
 
 // 滚轮劫持修复:滚轮事件只在无限画布模式下进入 tap;
 // 翻页模式重装不含滚轮的 tap,系统滚轮零拦截。
-static BOOL g_tap_has_scroll = NO;
 
 // Dirty-rect tracking (logical points, view coordinate space — origin bottom-left).
 // Pen events union their affected area into g_dirty_rect and invalidate it
@@ -437,10 +438,9 @@ typedef struct { double r, g, b; } ColorPreset;
 static CFMachPortRef g_event_tap = NULL;
 
 // Language: 0=Chinese, 1=English
-static int g_lang = 0;
 
 static NSString *L(NSString *zh, NSString *en) {
-    return g_lang == 0 ? zh : en;
+    return glaspen2_router_lang() == 0 ? zh : en;
 }
 
 // ── D10b 共享文案接线: 两端语义相同的用户可见文案单源在 core i18n 表 ──
@@ -450,7 +450,7 @@ static NSString *L(NSString *zh, NSString *en) {
 
 /// 当前语言代码(只有 "en" 是英文, 其余中文; 与 core::i18n::Lang 一致)。
 static const char *gl_lang_code(void) {
-    return g_lang == 1 ? "en" : "zh";
+    return glaspen2_router_lang() == 1 ? "en" : "zh";
 }
 
 /// 稳定 key → 本地化文案(共享文案的唯一入口)。

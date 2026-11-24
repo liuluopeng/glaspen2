@@ -306,9 +306,7 @@ void glaspen2_event_tap_store(CFMachPortRef tap) {
   }
 }
 
-void glaspen2_event_tap_note_scroll(int on) {
-  g_tap_has_scroll = on != 0;
-}
+void glaspen2_event_tap_note_scroll(int on) { (void)on; }
 
 
 // S6-3-1: 事件路由薄桥
@@ -470,9 +468,6 @@ void glaspen2_router_canvas_apply_transform(void) { [CanvasCamera applyTransform
 void glaspen2_router_peek_lens_change(void) { peek_lens_change(); }
 
 // S7av: 屏幕尺寸薄桥
-double glaspen2_router_screen_w(void) { return g_screen_w; }
-double glaspen2_router_screen_h(void) { return g_screen_h; }
-
 // S7bg: 翻页模式镜头重置前清 page 偏移
 // S7: 画布模式切换的 Swift 薄桥
 void glaspen2_router_event_tap_reinstall(void) { event_tap_reinstall(); }
@@ -491,10 +486,6 @@ void glaspen2_router_perf_notes(const char *name, const char *notes, uint64_t t0
 
 // S7bu: 显示器几何变更的薄桥
 void glaspen2_router_invert_invalidate(void) { invert_stream_invalidate(); }
-void glaspen2_router_set_screen_size(int w, int h) {
-  g_screen_w = w;
-  g_screen_h = h;
-}
 id glaspen2_router_draw_view(void) { return g_draw_view; }
 
 // S7bv: 图层面刷新的薄桥(dirty tracker 在 panel.m)
@@ -640,7 +631,6 @@ void glaspen2_router_page_flip_from(int forward, long from, dispatch_block_t pre
 
 
 // S7cy: 启动设置恢复桥
-void glaspen2_router_startup_set_lang(int lang) { g_lang = lang; }
 void glaspen2_router_startup_apply_pen(double r, double g, double b, double width,
                                        int colorIdx, int widthIdx) {
   sw_set_pen_settings(r, g, b, width, colorIdx, widthIdx);
