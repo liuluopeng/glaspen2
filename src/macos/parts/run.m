@@ -163,7 +163,7 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
   camera_mouse_cancel_pan();
   [EventRouter finishActiveStroke]; // 先把在写的笔画落库到"旧"存储
   if (g_infinite_canvas)
-    canvas_infinite_persist(); // 离开无限画布前存镜头
+    [CanvasCamera persistInfinite]; // 离开无限画布前存镜头
   g_infinite_canvas = on;
   glaspen2_save_bool_setting("infinite_canvas", on ? 1 : 0);
   NSMenuItem *item = [MenuLookup itemWithTag:668 inMenu:g_menu];
@@ -173,7 +173,7 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
   glaspen2_set_canvas_kind(on ? 1 : 0);
   if (on) {
     glaspen2_load_infinite_strokes();
-    canvas_infinite_load();
+    [CanvasCamera loadInfinite];
   } else {
     // 回到翻页模式:载入当前页;没有页就建一页
     long cur = glaspen2_get_current_screen_id();
@@ -209,7 +209,7 @@ static void canvas_apply_transform(void) {
   CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
   if (now - last_save > 0.5) {
     last_save = now;
-    canvas_infinite_persist();
+    [CanvasCamera persistInfinite];
   }
 }
 
@@ -1204,11 +1204,7 @@ static BOOL bubble_auto_page_flip(void) {
   return YES;
 }
 
-static void canvas_infinite_persist(void) { [CanvasCamera persistInfinite]; }
-
 // 载入唯一的无限画布镜头 + 应用到渲染
-static void canvas_infinite_load(void) { [CanvasCamera loadInfinite]; }
-
 // 翻页模式:镜头恒为原点 + 100%(HOME 常量单源在 core Camera::HOME)
 static void canvas_reset_lens(void) {
   g_page_off_x = 0.0;
@@ -2286,7 +2282,7 @@ void glaspen2_run(void) {
     glaspen2_set_canvas_kind(g_infinite_canvas ? 1 : 0);
     if (g_infinite_canvas) {
       glaspen2_load_infinite_strokes();
-      canvas_infinite_load();
+      [CanvasCamera loadInfinite];
     } else {
       canvas_reset_lens();
     }

@@ -268,8 +268,6 @@ static void rebuild_surface_from_strokes(void);
 static void ensure_surface(NSView *view);
 static BOOL perform_hotkey(unsigned short keyCode);
 static void apply_infinite_canvas(BOOL on, BOOL notify);
-static void canvas_infinite_load(void);
-static void canvas_infinite_persist(void);
 static void event_tap_install(BOOL include_scroll);
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                      CGEventRef event, void *refcon);
@@ -807,7 +805,7 @@ static void clear_screen(void) {
         // 无限画布只有一个画布:清空内容 + 复位镜头,不新建页。
         if (created) {
             canvas_reset_lens();
-            canvas_infinite_persist();
+            [CanvasCamera persistInfinite];
         }
         flush_to_layer();
         show_notification(created
