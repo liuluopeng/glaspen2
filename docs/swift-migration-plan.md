@@ -582,3 +582,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 **台账规则**:本表只追加行,不改历史行;每轮 = 一次提交(中文 commit message),不 push。
 
 | 2026-11-25 | S8-prep(新目标第83轮) | 收尾文档与 lint: README 架构图/说明改 Swift 原生层; swift-boundary.md 加最终状态注记; 新增 docs/s8-acceptance-checklist.md(19 项真机验收); 台账追加最终状态; cargo fmt + 去除 unused mut/vertbuild 变量, Rust 侧 lint/测试全绿(Flutter 面板测试失败为既有环境问题) | cargo test 全绿; lint 仅剩 Flutter settings_schema 既有失败 | 本提交 |
+| 2026-11-25 | S8-prep(新目标第84轮) | Release 打包验证: scripts/build-dmg.sh 全流程通过(Flutter framework/Release 构建/App bundle/14 个 FRB 符号断言/Homebrew dylib 打包/签名/生成 DMG; 未公证因未配置证书), 产出 release_history/glaspen2-0.7.0-arm64.dmg(48M, sha256 9e9a4c…); build.rs 清理遗留 ObjC 头 emit(-emit-objc-header/断言)与过时注释, 仅保留 Bridging.h 导入; cargo build 全绿 | Release DMG 构建/签名/FRB 符号验证通过; S8 真机交互验收仍需用户执行 | 本提交 |

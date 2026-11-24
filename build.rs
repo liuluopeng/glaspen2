@@ -210,13 +210,7 @@ fn main() {
         let swift_obj_dir = std::path::Path::new(&out_dir).join("swift");
         std::fs::create_dir_all(&swift_obj_dir).expect("创建 Swift 目标文件目录失败");
 
-        // ── S2: 双向互调的两块拼图 ──
-        // 1) bridging header: Swift 侧 import ObjC/C 声明
-        //    (-import-objc-header src/macos/swift/Bridging.h);
-        // 2) 生成的 ObjC 头: swiftc 把本模块 @objc 面 emit 成
-        //    OUT_DIR/glaspen2_macos_swift-Swift.h, ObjC(InteropProbe.m)用
-        //    -I $OUT_DIR #import 它 → ObjC 可调 Swift @objc 类/方法。
-        // 注意顺序: 头必须先由 swiftc 生成, 才轮到下面的 clang 编 ObjC。
+        // bridging header: Swift 侧唯一的 C/FFI 声明入口(无 ObjC 实现侧)。
         let bridging_header = std::path::Path::new(&manifest_dir)
             .join("src")
             .join("macos")
@@ -227,7 +221,6 @@ fn main() {
             "缺少 Swift 桥接头 {}(Swift 调 ObjC 声明的唯一入口)",
             bridging_header.display()
         );
-        let swift_header_path = std::path::Path::new(&out_dir).join("glaspen2_macos_swift-Swift.h");
         let swift_target = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
             Ok("aarch64") => format!("arm64-apple-macosx{SWIFT_DEPLOYMENT_TARGET}"),
             Ok("x86_64") => format!("x86_64-apple-macosx{SWIFT_DEPLOYMENT_TARGET}"),
@@ -249,11 +242,9 @@ fn main() {
             ])
             .args(["-target", &swift_target])
             .args(["-sdk", &sdk_path])
-            // S2 桥接: 导入 ObjC/C 声明, 并 emit ObjC 可 import 的 Swift 头。
+            // 导入 C/FFI 声明(应用层 ObjC 清零后不再 emit ObjC 头)。
             .arg("-import-objc-header")
             .arg(&bridging_header)
-            .args(["-emit-objc-header", "-emit-objc-header-path"])
-            .arg(&swift_header_path)
             .arg("-O")
             .current_dir(&swift_obj_dir);
         // Flutter 模块: 设置面板宿主(FlutterHost)在 Swift 里直接 import FlutterMacOS。
@@ -293,13 +284,6 @@ fn main() {
                 obj
             })
             .collect();
-
-        // swiftc 没生成 -Swift.h 时 ObjC 侧会报找不到头; 提前给出清晰断言。
-        assert!(
-            swift_header_path.exists(),
-            "swiftc 未生成 ObjC 头 {}(-emit-objc-header-path 失败?)",
-            swift_header_path.display()
-        );
 
         // Tell cargo about the object file
         println!("cargo:rustc-link-search=native={}", out_dir);
