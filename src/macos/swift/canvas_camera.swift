@@ -14,6 +14,30 @@ import AppKit
         glaspen2_router_peek_lens_change()
     }
 
+    /// 以视口点 (vx,vy) 为锚缩放(数学在 core Camera::zoom_at)。
+    @objc(zoomAtFactor:vx:vy:)
+    public static func zoomAt(factor: Double, vx: Double, vy: Double) {
+        if glaspen2_router_stroke_active() != 0 { return }
+        let json = glaspen2_camera_zoom_at(glaspen2_router_pan_x(),
+                                           glaspen2_router_pan_y(),
+                                           glaspen2_router_zoom(), factor, vx, vy)
+        guard let result = CameraState.resultFromJSON(json) else { return }
+        applyZoomResult(result)
+    }
+
+    /// 以视口中心为锚缩放(数学在 core Camera::zoom_at_center)。
+    @objc(zoomAtCenterFactor:)
+    public static func zoomAtCenter(factor: Double) {
+        if glaspen2_router_stroke_active() != 0 { return }
+        let json = glaspen2_camera_zoom_at_center(glaspen2_router_pan_x(),
+                                                  glaspen2_router_pan_y(),
+                                                  glaspen2_router_zoom(), factor,
+                                                  glaspen2_router_screen_w(),
+                                                  glaspen2_router_screen_h())
+        guard let result = CameraState.resultFromJSON(json) else { return }
+        applyZoomResult(result)
+    }
+
     /// 无限画布: 持久化当前镜头(仅无限模式)。
     @objc public static func persistInfinite() {
         if (glaspen2_router_state() & 4) == 0 { return }

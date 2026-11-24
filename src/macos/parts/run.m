@@ -239,22 +239,7 @@ static void canvas_zoom_apply(NSDictionary *result) {
 // 缩放镜头(滚轮):以视口点 (vx, vy) 为锚,zoom ∈ (0.05, 1.0]。
 // 锚点的画布坐标在缩放前后保持同一屏幕位置(view = (canvas−pan)×zoom);
 // 数学(锚点不变/限幅/hit 标记)单源在 core Camera::zoom_at。
-static void canvas_zoom_at(double factor, double vx, double vy) {
-  if (g_stroke_active)
-    return;
-  canvas_zoom_apply(camera_result_json(
-      glaspen2_camera_zoom_at(g_pan_x, g_pan_y, g_zoom, factor, vx, vy)));
-}
-
 // 键盘缩放 = 以视口中心为锚(数学单源 core Camera::zoom_at_center)。
-static void canvas_zoom_at_center(double factor) {
-  if (g_stroke_active)
-    return;
-  canvas_zoom_apply(camera_result_json(glaspen2_camera_zoom_at_center(
-      g_pan_x, g_pan_y, g_zoom, factor, (double)g_screen_w,
-      (double)g_screen_h)));
-}
-
 // 保存唯一的无限画布镜头(仅无限模式;翻页模式无镜头)
 // 页面缩略图条(minimap,仅翻页模式;D7: 页窗/条带几何唯一来源 = core::minimap)。
 // 本文件不再算页窗与条带几何(旧 draw_minimap 的 list_screens 过滤 / 5+10 页
@@ -1542,7 +1527,7 @@ static BOOL perform_action(NSString *action) {
     if (!g_infinite_canvas) return YES;
     double factor = [kind isEqualToString:@"CameraZoomIn"] ? 1.15 : 1.0 / 1.15;
     // 键盘缩放锚点 = 视口中心(core Camera::zoom_at_center 单源, D5b)
-    canvas_zoom_at_center(factor);
+    [CanvasCamera zoomAtCenterFactor:factor];
     return YES;
   }
   if ([kind isEqualToString:@"Clear"]) return perform_hotkey(kVK_ANSI_C);
@@ -2520,7 +2505,7 @@ double glaspen2_router_draw_height(void) {
 }
 
 void glaspen2_router_zoom_at(double factor, double x, double y) {
-  canvas_zoom_at(factor, x, y);
+  [CanvasCamera zoomAtFactor:factor vx:x vy:y];
 }
 
 // S6-3-2: 非笔 mouseMoved 隐藏光标所需的薄桥
@@ -2802,3 +2787,7 @@ double glaspen2_router_pan_y(void) { return g_pan_y; }
 double glaspen2_router_zoom(void) { return g_zoom; }
 void glaspen2_router_canvas_apply_transform(void) { canvas_apply_transform(); }
 void glaspen2_router_peek_lens_change(void) { peek_lens_change(); }
+
+// S7av: 屏幕尺寸薄桥
+double glaspen2_router_screen_w(void) { return g_screen_w; }
+double glaspen2_router_screen_h(void) { return g_screen_h; }

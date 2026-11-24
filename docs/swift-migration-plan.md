@@ -411,3 +411,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7as(续跑第63轮) | 快捷键存档值迁移迁 Swift: ChordNormalizer.migrateSavedAction:raw:(非字符串原样返回, 字符串走 core 迁移表并释放 C 串), 调用点直调 Swift; 删除 ObjC 实现/声明 | cargo build/tests/parity 全绿;旧快捷键存档兼容需真机验证 | 本提交 |
 | 2026-11-24 | S7at(续跑第64轮) | 无限画布镜头持久化/载入迁 Swift: CanvasCamera.persistInfinite(仅无限模式 → set_infinite_transform) 与 loadInfinite(get → CameraState 应用 → set_view_transform), ObjC 两函数变一行转发(调用点不变); 新增 3 个 FFI 声明 | cargo build/tests/parity 全绿;无限画布镜头恢复需真机验证 | 本提交 |
 | 2026-11-24 | S7au(续跑第65轮) | 删除无限画布镜头的 ObjC 转发: 5 处调用点直调 [CanvasCamera persistInfinite/loadInfinite](Swift), run.m 两包装与 glaspen2.m 前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
+| 2026-11-24 | S7av(续跑第66轮) | 滚轮/键盘缩放 helper 迁 Swift: CanvasCamera.zoomAt/zoomAtCenter(书写中忽略 → core Camera::zoom_at(_center) → CameraState 应用), 调用点直调 Swift; 删除 ObjC 两函数/声明; 新增屏幕尺寸薄桥与 FFI 声明 | cargo build/tests/parity 全绿;滚轮/键盘缩放需真机验证 | 本提交 |
