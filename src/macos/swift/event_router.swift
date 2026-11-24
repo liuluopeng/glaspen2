@@ -1,4 +1,4 @@
-// S6-3-0/1: 事件路由骨架 + 滚轮缩放分支(无限画布, 修饰键来自 canvas_zoom_in)。
+// S6-3: 事件路由。S6-3-1 滚轮缩放;S6-3-2 非笔 mouseMoved 隐藏光标。
 import AppKit
 
 @objc public final class EventRouter: NSObject {
@@ -8,7 +8,23 @@ import AppKit
         if type == .scrollWheel && (state() & 4) != 0 {
             return routeScrollZoom(event)
         }
+        if type == .mouseMoved, let ev = NSEvent(cgEvent: event), !isPen(ev) {
+            let flags = glaspen2_router_cursor_flags()
+            if (flags & 1) != 0 && (flags & 2) == 0 {
+                glaspen2_router_cursor_invalidate()
+                glaspen2_router_cursor_hide()
+                if (flags & 4) != 0 { glaspen2_router_auto_hide() }
+                if (flags & 8) == 0 { glaspen2_router_bubble_pen_gone() }
+                glaspen2_router_flush()
+            }
+        }
         return 0
+    }
+
+    private static func isPen(_ ev: NSEvent) -> Bool {
+        let dev = ev.pointingDeviceType
+        if dev == .pen || dev == .eraser { return true }
+        return ev.subtype == .tabletPoint || ev.subtype == .tabletProximity
     }
 
     private static func state() -> Int32 { glaspen2_router_state() }
@@ -22,16 +38,8 @@ import AppKit
         let state = state()
         if hasCameraMods && (state & 1) != 0 && (state & 2) == 0 {
             let dy = ev.scrollingDeltaY
-            let factor: Double
-            if ev.hasPreciseScrollingDeltas {
-                factor = exp(-dy * 0.0015)
-            } else if dy > 0 {
-                factor = 1.1
-            } else if dy < 0 {
-                factor = 1.0 / 1.1
-            } else {
-                factor = 1.0
-            }
+            let factor: Double = ev.hasPreciseScrollingDeltas ? exp(-dy * 0.0015)
+                : (dy > 0 ? 1.1 : (dy < 0 ? 1.0 / 1.1 : 1.0))
             let loc = ev.locationInWindow
             let h = glaspen2_router_draw_height()
             glaspen2_router_zoom_at(factor, Double(loc.x), Double(h) - Double(loc.y))

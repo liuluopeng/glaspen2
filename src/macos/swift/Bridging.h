@@ -69,6 +69,12 @@ NSUInteger glaspen2_router_camera_mods(void);
 int glaspen2_router_state(void);
 double glaspen2_router_draw_height(void);
 void glaspen2_router_zoom_at(double factor, double x, double y);
+int glaspen2_router_cursor_flags(void);
+void glaspen2_router_cursor_invalidate(void);
+void glaspen2_router_cursor_hide(void);
+void glaspen2_router_auto_hide(void);
+void glaspen2_router_bubble_pen_gone(void);
+void glaspen2_router_flush(void);
 
 // S6-2: 事件 tap 回调函数指针 / tap 存储 / 滚轮标记桥(实现留在 run.m)
 CGEventTapCallBack glaspen2_event_tap_callback_ptr(void);

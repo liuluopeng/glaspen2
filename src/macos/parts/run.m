@@ -2384,26 +2384,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     }
   }
 
-  // Non-pen mouse move while no active stroke and cursor visible → hide
-  // crosshair. Covers pen-leave-proximity on tablets that don't emit proximity
-  // events. The g_stroke_active guard prevents spurious non-pen events
-  // interleaved during a stroke (from trackpad / secondary input) from causing
-  // extra redraws.
-  if (!isPen && etype == NSEventTypeMouseMoved && g_cursor_visible &&
-      !g_stroke_active) {
-    // Invalidate only the old crosshair region (partial refresh).
-    dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
-    g_cursor_visible = NO;
-    // 飘渺画布涂鸦模式: the pen just left (no proximity events on this
-    // tablet) — hide as a fallback.
-    if (g_ethereal_canvas)
-      auto_hide_now();
-    // 气泡冷启动回退(同款推断): 只有完全没见过 proximity 的平板才把
-    // 真鼠标移动当成笔离开; 有 proximity 的板子笔可能还悬着, 不能设冷。
-    if (!g_has_tablet_proximity)
-      glaspen2_bubble_pen_gone();
-    flush_dirty_to_layer();
-  }
+  // S6-3-2: 非笔 mouseMoved 隐藏光标已迁 Swift EventRouter。
 
   // Update cursor position for pen events only. The crosshair is hidden
   // while a stroke is being drawn (the ink itself is the feedback) and
@@ -3413,3 +3394,19 @@ double glaspen2_router_draw_height(void) {
 void glaspen2_router_zoom_at(double factor, double x, double y) {
   canvas_zoom_at(factor, x, y);
 }
+
+// S6-3-2: 非笔 mouseMoved 隐藏光标所需的薄桥
+int glaspen2_router_cursor_flags(void) {
+  return (g_cursor_visible ? 1 : 0) | ((g_stroke_active ? 1 : 0) << 1) |
+         ((g_ethereal_canvas ? 1 : 0) << 2) |
+         ((g_has_tablet_proximity ? 1 : 0) << 3);
+}
+
+void glaspen2_router_cursor_invalidate(void) {
+  dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
+}
+
+void glaspen2_router_cursor_hide(void) { g_cursor_visible = NO; }
+void glaspen2_router_auto_hide(void) { auto_hide_now(); }
+void glaspen2_router_bubble_pen_gone(void) { glaspen2_bubble_pen_gone(); }
+void glaspen2_router_flush(void) { flush_dirty_to_layer(); }
