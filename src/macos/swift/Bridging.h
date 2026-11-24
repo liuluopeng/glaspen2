@@ -277,6 +277,8 @@ void glaspen2_router_set_glass_view(id view);
 void glaspen2_router_set_blank_cursor(id cursor);
 void glaspen2_router_set_arrow_cursor(id cursor);
 int glaspen2_router_event_tap_ok(void);
+int glaspen2_router_event_tap_enabled(void);
+void glaspen2_router_event_tap_enable(void);
 void glaspen2_router_rec_init(void);
 extern int glaspen2_clamp_setting_int(const char *key, int value);
 extern double glaspen2_clamp_setting_double(const char *key, double value);

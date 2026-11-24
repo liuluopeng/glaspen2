@@ -482,39 +482,7 @@ void glaspen2_run(void) {
 
     [AccessibilityAlert presentIfNeeded];
 
-    // tap 健康看门狗: TCC 被撤销 / tap 被系统禁用 / 意外失效时, 用户看到
-    // 的只是"软件突然不响应笔了"。每 2s 自检, 能恢复就恢复, 不能恢复就
-    // 明确提示一次, 而不是静默装死。
-    {
-      static BOOL s_ax_warned = NO;
-      dispatch_source_t wd = dispatch_source_create(
-          DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
-      dispatch_source_set_timer(
-          wd, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC),
-          2 * NSEC_PER_SEC, (uint64_t)0.2 * NSEC_PER_SEC);
-      dispatch_source_set_event_handler(wd, ^{
-        if (!AXIsProcessTrusted()) {
-          if (!s_ax_warned) {
-            s_ax_warned = YES;
-            show_notification(L(@"辅助功能权限已失效, 涂鸦/热键暂停 — 请到系统设置重新勾选",
-                                @"Accessibility permission lost — re-enable it in System Settings"));
-          }
-          return;
-        }
-        s_ax_warned = NO;
-        if (!g_event_tap) {
-          event_tap_reinstall();
-        } else if (!CGEventTapIsEnabled(g_event_tap)) {
-          CGEventTapEnable(g_event_tap, true);
-        }
-      });
-      dispatch_resume(wd);
-    }
-
-    // 调试开关(环境变量):性能日志 / 虚拟笔, 默认都关
-    [PerfLog initFromEnv];
-    [VirtualPen maybeStart];
-    [FlipProbe maybeStart];
+    [StartupRunLoop begin];
 
     [NSApp run];
   }
@@ -1221,3 +1189,7 @@ void glaspen2_router_set_glass_view(id view) { g_glass_view = view; }
 void glaspen2_router_set_blank_cursor(id cursor) { g_blank_cursor = cursor; }
 void glaspen2_router_set_arrow_cursor(id cursor) { g_arrow_cursor = cursor; }
 int glaspen2_router_event_tap_ok(void) { return g_event_tap ? 1 : 0; }
+
+// S7db: tap 看门狗桥
+int glaspen2_router_event_tap_enabled(void) { return (g_event_tap && CGEventTapIsEnabled(g_event_tap)) ? 1 : 0; }
+void glaspen2_router_event_tap_enable(void) { if (g_event_tap) CGEventTapEnable(g_event_tap, true); }
