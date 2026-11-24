@@ -151,6 +151,7 @@ extern void glaspen2_get_infinite_transform(double *panX, double *panY, double *
 extern void glaspen2_set_view_transform(double panX, double panY, double zoom);
 extern char *glaspen2_camera_zoom_at(double panX, double panY, double zoom, double factor, double vx, double vy);
 extern char *glaspen2_camera_zoom_at_center(double panX, double panY, double zoom, double factor, double vw, double vh);
+extern void glaspen2_camera_home(double *panX, double *panY, double *zoom);
 double glaspen2_router_screen_w(void);
 double glaspen2_router_screen_h(void);
 extern int glaspen2_color_preset_count(void);

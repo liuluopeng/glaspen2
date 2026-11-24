@@ -725,7 +725,7 @@ let mac_run_cam = format!("{mac_run}
                 mac_menu,
                 &[
                     "glaspen2_camera_centered(",
-                    "glaspen2_camera_home(",
+                    "[CanvasCamera home]",
                     "CameraState assignResult:",
                 ][..],
             ),

@@ -990,8 +990,7 @@ unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *r
         if (oh < 400) oh = 768;
         if (action == 1) {
             // 镜头回原点 + 100%(HOME 常量单源 core Camera::HOME, D5b)
-            glaspen2_camera_home(&g_pan_x, &g_pan_y, &g_zoom);
-            [CanvasCamera applyTransform];
+            [CanvasCamera home];
         } else if (action == 2) {
             double bx, by, bx2, by2;
             if (glaspen2_stroke_bbox(&bx, &by, &bx2, &by2)) {
@@ -1008,9 +1007,7 @@ unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *r
         } else if (action == 3) {
             [EventRouter finishActiveStroke];
             glaspen2_clear_strokes(g_screen_w, g_screen_h);
-            glaspen2_camera_home(&g_pan_x, &g_pan_y, &g_zoom);
-            glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
-            rebuild_surface_from_strokes();
+            [CanvasCamera home];
             ow = 1024;
             oh = 768;
         }

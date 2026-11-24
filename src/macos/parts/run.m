@@ -1173,8 +1173,7 @@ static BOOL bubble_auto_page_flip(void) {
 static void canvas_reset_lens(void) {
   g_page_off_x = 0.0;
   g_page_off_y = 0.0;
-  glaspen2_camera_home(&g_pan_x, &g_pan_y, &g_zoom);
-  glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
+  [CanvasCamera resetLens];
 }
 
 // --- CGEventTap callback ---

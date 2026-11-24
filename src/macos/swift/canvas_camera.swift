@@ -87,4 +87,20 @@ import AppKit
         glaspen2_router_canvas_apply_transform()
         glaspen2_router_peek_lens_change()
     }
+
+    /// 镜头回原点 + 100%(HOME 单源 core::Camera::HOME), 并重建画面。
+    @objc public static func home() {
+        var px = 0.0, py = 0.0, pz = 1.0
+        glaspen2_camera_home(&px, &py, &pz)
+        glaspen2_router_set_camera(px, py, pz, 1)
+        applyTransform()
+    }
+
+    /// 翻页模式重置镜头(仅设置变换, 不重建 surface)。
+    @objc public static func resetLens() {
+        var px = 0.0, py = 0.0, pz = 1.0
+        glaspen2_camera_home(&px, &py, &pz)
+        glaspen2_router_set_camera(px, py, pz, 1)
+        glaspen2_set_view_transform(px, py, pz)
+    }
 }
