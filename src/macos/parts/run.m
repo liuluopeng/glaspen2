@@ -3393,4 +3393,6 @@ void glaspen2_router_set_pen_drawing(int on) { g_pen_drawing = on != 0; }
 void glaspen2_router_hide_system_cursor(void) {
   CGDisplayHideCursor(kCGDirectMainDisplay);
 }
-void glaspen2_router_restore_system_cursor(void) { restore_system_cursor(); }
+void glaspen2_router_show_system_cursor(void) {
+  CGDisplayShowCursor(kCGDirectMainDisplay);
+}

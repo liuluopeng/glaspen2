@@ -415,10 +415,8 @@ static BOOL g_pen_drawing = NO;
 
 // Restore the system cursor if it is currently hidden by pen drawing.
 static void restore_system_cursor(void) {
-    if (g_pen_drawing) {
-        CGDisplayShowCursor(kCGDirectMainDisplay);
-        g_pen_drawing = NO;
-    }
+    // S6-3-3d: 实现在 Swift(EventRouter.restoreSystemCursor), 这里只转发。
+    [EventRouter restoreSystemCursor];
 }
 
 // Pressure monitor

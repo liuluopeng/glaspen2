@@ -41,10 +41,19 @@ import AppKit
             glaspen2_router_set_pen_drawing(1)
         }
         if type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp {
-            glaspen2_router_restore_system_cursor()
+            restoreSystemCursor()
             glaspen2_router_cursor_hide()
             glaspen2_router_cursor_invalidate()
             glaspen2_router_flush()
+        }
+    }
+
+    /// 恢复系统光标(S6-3-3d): 只有确实隐藏过(pen_drawing)才 show + 清标记。
+    @objc(restoreSystemCursor)
+    public static func restoreSystemCursor() {
+        if glaspen2_router_pen_drawing() != 0 {
+            glaspen2_router_show_system_cursor()
+            glaspen2_router_set_pen_drawing(0)
         }
     }
 
