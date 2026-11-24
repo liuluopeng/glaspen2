@@ -275,6 +275,15 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
 #define kVirtualPenUserData 0x56504E31LL
 // S6-3-3: 判定逻辑已迁 Swift(EventRouter.isVirtualPenEvent); 常量经薄桥暴露。
 // 性能日志(drawRect 用得到, 实现在文件后部)
+extern void dirty_reset(void);
+extern void dirty_include_point(double x, double y, double r);
+extern void dirty_include_surface_point(double x, double y, double r);
+extern void dirty_include_surface_rect(double x, double y, double w, double h);
+int gl_dirty_has_state(void);
+double gl_dirty_rect_x(void);
+double gl_dirty_rect_y(void);
+double gl_dirty_rect_w(void);
+double gl_dirty_rect_h(void);
 static BOOL g_perf_log = NO;
 static void event_tap_reinstall(void);
 static NSWindow *g_window = nil;
@@ -366,28 +375,9 @@ static BOOL g_tap_has_scroll = NO;
 // Pen events union their affected area into g_dirty_rect and invalidate it
 // with setNeedsDisplayInRect; drawRect then only copies that sub-region
 // from the cairo surface to the screen, instead of the full screen each vsync.
-static BOOL g_dirty_has = NO;       // any dirty region pending?
-static NSRect g_dirty_rect;          // union rect in view points
-static inline void dirty_reset(void) { g_dirty_has = NO; }
-static inline void dirty_include_point(double x, double y, double r) {
-    // Inflate by r (stroke half-width + anti-alias padding) and union.
-    NSRect add = NSMakeRect(x - r, y - r, 2 * r, 2 * r);
-    if (!g_dirty_has) { g_dirty_rect = add; g_dirty_has = YES; }
-    else g_dirty_rect = NSUnionRect(g_dirty_rect, add);
-}
 // Include a point given in SURFACE coordinates (origin top-left).
 // The view is non-flipped (origin bottom-left), so flip Y first.
-static inline void dirty_include_surface_point(double x, double y, double r) {
-    double view_h = g_draw_view ? [g_draw_view bounds].size.height : y;
-    dirty_include_point(x, view_h - y, r);
-}
 // 表面像素坐标的矩形 → view 坐标脏区(反色局部重绘的 blit 用)
-static inline void dirty_include_surface_rect(double x, double y, double w, double h) {
-    double view_h = g_draw_view ? [g_draw_view bounds].size.height : y;
-    dirty_include_point(x, view_h - (y + h), 0);
-    dirty_include_point(x + w, view_h - y, 0);
-}
-
 // Cursor state
 static double g_cursor_x = -100, g_cursor_y = -100;
 static BOOL g_cursor_visible = NO;

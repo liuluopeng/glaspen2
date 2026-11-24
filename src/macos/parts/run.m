@@ -787,8 +787,8 @@ id glaspen2_router_draw_view(void) { return g_draw_view; }
 // S7bv: 图层面刷新的薄桥(dirty tracker 在 panel.m)
 int glaspen2_router_has_surface(void) { return g_surface ? 1 : 0; }
 void glaspen2_router_dirty_reset(void) { dirty_reset(); }
-int glaspen2_router_dirty_has(void) { return g_dirty_has ? 1 : 0; }
-NSRect glaspen2_router_dirty_rect(void) { return g_dirty_rect; }
+int glaspen2_router_dirty_has(void) { return gl_dirty_has_state(); }
+NSRect glaspen2_router_dirty_rect(void) { return NSMakeRect(gl_dirty_rect_x(), gl_dirty_rect_y(), gl_dirty_rect_w(), gl_dirty_rect_h()); }
 
 // S7bw: surface 生命周期薄桥
 void glaspen2_router_install_surface(cairo_surface_t *surface) { g_surface = surface; }

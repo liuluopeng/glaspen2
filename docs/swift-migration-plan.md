@@ -536,3 +536,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
   否则它们作为**平台例外**保留并写入 `docs/swift-boundary.md`。
 - 彻底无 `.m`: 还需把剩余 ~773 行 C 桥与全局状态所有权逐步移入 Swift(@_cdecl 导出或去桥), 预计 10–15 轮。
 | 2026-11-24 | S7dg(新目标第54轮) | 面板透明/压感标签/字符串设置读取迁 Swift: 新增 settings_panel_extras.swift(透明窗口属性、压力状态桥→MenuHandler 标签刷新), SettingsGlue 增 loadString; ObjC gl_panel_transparent_apply/pm_update/gl_string_setting 一行转发; 新增 1 压力状态桥 | cargo build/tests/parity 全绿;面板透明/压感标签需真机验证 | 本提交 |
+| 2026-11-24 | S7dh(新目标第55轮) | 脏矩形跟踪器迁 Swift(首个 @_cdecl 状态所有权反迁): 新增 dirty_tracker.swift(点/表面点/表面矩形并入视图点矩形 + 状态 getter), 以 C 符号导出, ObjC 定义与全局删除、调用点不改; 桥改为读取 Swift 状态。该模式用于后续把桥/状态所有权逐步移入 Swift | cargo build/tests/parity 全绿;局部重绘脏区需真机验证 | 本提交 |
