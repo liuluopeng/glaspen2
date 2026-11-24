@@ -85,21 +85,6 @@ fn main() {
         std::process::exit(2);
     }
 
-    // S3b-2b-6 状态栏图标 parity 自检(隐藏调试入口, 不启动 GUI):
-    // 逐字节比较旧 ObjC 图标与 Swift StatusIconRenderer 的 TIFF 表示。
-    if args.get(1).map(String::as_str) == Some("--swift-status-icon-probe") {
-        #[cfg(target_os = "macos")]
-        unsafe {
-            unsafe extern "C" {
-                fn glaspen2_macos_swift_status_icon_parity() -> i32;
-            }
-            let code = glaspen2_macos_swift_status_icon_parity();
-            std::process::exit(code);
-        }
-        #[cfg(not(target_os = "macos"))]
-        std::process::exit(2);
-    }
-
     #[cfg(target_os = "macos")]
     glaspen2::macos::macos_run();
 

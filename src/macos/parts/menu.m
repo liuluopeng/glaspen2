@@ -101,105 +101,7 @@ static NSAttributedString* gl_width_item_text(NSInteger idx) {
 // 位图按 4x 渲染保证 Retina 清晰; 白晕 + 深描边双勾线让深/浅色菜单栏都可读
 // (纯白笔杆在浅色栏、纯黑笔杆在深色栏都不会隐形)。
 static BOOL g_ethereal_canvas; // 定义在下方(飘渺画布涂鸦模式), 图标要用
-static NSImage* render_status_icon_legacy(void) {
-    const CGFloat size = 18.0;
-    const NSInteger px = 72; // 4x
-    NSBitmapImageRep *rep = [[NSBitmapImageRep alloc]
-        initWithBitmapDataPlanes:NULL pixelsWide:px pixelsHigh:px
-        bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
-        colorSpaceName:NSCalibratedRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
-    rep.size = NSMakeSize(size, size);
-    [NSGraphicsContext saveGraphicsState];
-    // 注意: rep.size(18pt) ≠ 像素尺寸(72px)时, 该上下文的 CTM 已自带
-    // 点→像素的缩放, 再手动 scale 会双重放大把内容画出界(全透明)。
-    [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithBitmapImageRep:rep]];
-    // 之后一律用 18pt 坐标系画
 
-    NSColor *ink   = [NSColor colorWithWhite:0.0 alpha:0.78]; // 主描边(浅色栏可读)
-    NSColor *halo  = [NSColor colorWithWhite:1.0 alpha:0.88]; // 外圈白晕(深色栏可读)
-    NSColor *pen   = [NSColor colorWithRed:g_pen_r green:g_pen_g blue:g_pen_b alpha:1.0];
-    CGFloat dim    = g_enabled ? 1.0 : 0.35;                  // 停用时字形淡化(斜杠不淡化)
-
-    // 先描 halo 再描 ink: 同一条路径画两遍, 外圈白内圈黑, 任何底色都有对比
-    void (^stroke_inked)(NSBezierPath *, CGFloat) = ^(NSBezierPath *path, CGFloat width) {
-        [path setLineWidth:width + 1.2];
-        [[halo colorWithAlphaComponent:dim] setStroke]; [path stroke];
-        [path setLineWidth:width];
-        [[ink colorWithAlphaComponent:dim] setStroke];  [path stroke];
-    };
-
-    if (g_eraser_mode && g_enabled) {
-        // 橡皮擦进行中: 45° 斜放的橡皮块, 亮身 + 深色擦除带
-        NSBezierPath *body = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(3.5, 6.1, 11.2, 5.8)
-                                                        xRadius:1.5 yRadius:1.5];
-        NSAffineTransform *t = [NSAffineTransform transform];
-        [t translateXBy:9 yBy:9]; [t rotateByDegrees:45]; [t translateXBy:-9 yBy:-9];
-        [body transformUsingAffineTransform:t];
-        NSBezierPath *band = [NSBezierPath bezierPathWithRect:NSMakeRect(10.2, 6.1, 4.5, 5.8)];
-        [band transformUsingAffineTransform:t];
-        // 顺序: 白晕 → 填充 → 黑描边。白晕必须画在填充之前, 否则它内侧的
-        // 一半会盖住小形状的内部(笔尖/擦除带会被洗白)。
-        [body setLineWidth:0.8 + 1.2]; [[halo colorWithAlphaComponent:dim] setStroke]; [body stroke];
-        [[NSColor colorWithWhite:0.92 alpha:dim] setFill]; [body fill];
-        [[NSColor colorWithWhite:0.25 alpha:dim] setFill]; [band fill]; // 擦除带
-        [body setLineWidth:0.8]; [[ink colorWithAlphaComponent:dim] setStroke]; [body stroke];
-    } else {
-        // 马克笔: 笔尖朝左下, 笔杆粗细 = 当前笔宽(0.15x..3.5x → 3.1..6.0pt)
-        CGFloat T = MIN(6.0, MAX(2.6, 2.4 + sqrt(g_width_scale) * 1.9));
-        NSBezierPath *body = [NSBezierPath bezierPathWithRoundedRect:
-            NSMakeRect(5.5, 9 - T / 2, 9.0, T)
-            xRadius:MIN(1.6, T / 2) yRadius:MIN(1.6, T / 2)];
-        NSBezierPath *tip = [NSBezierPath bezierPath]; // 深色笔尖三角
-        [tip moveToPoint:NSMakePoint(5.5, 9 - T / 2)];
-        [tip lineToPoint:NSMakePoint(3.0, 9)];
-        [tip lineToPoint:NSMakePoint(5.5, 9 + T / 2)];
-        [tip closePath];
-        NSBezierPath *sil = [NSBezierPath bezierPath]; // 剪影 = 杆 + 尖
-        [sil appendBezierPath:body];
-        [sil appendBezierPath:tip];
-        NSAffineTransform *t = [NSAffineTransform transform];
-        [t translateXBy:9 yBy:9]; [t rotateByDegrees:45]; [t translateXBy:-9 yBy:-9];
-        [sil transformUsingAffineTransform:t];
-        [tip transformUsingAffineTransform:t];
-        [sil setLineWidth:0.9 + 1.2]; [[halo colorWithAlphaComponent:dim] setStroke]; [sil stroke];
-        [[pen colorWithAlphaComponent:dim] setFill]; [sil fill];
-        [[ink colorWithAlphaComponent:dim] setFill]; [tip fill]; // 笔尖深色, 与杆无缝
-        [sil setLineWidth:0.9]; [[ink colorWithAlphaComponent:dim] setStroke]; [sil stroke];
-    }
-
-    if (!g_enabled) {
-        // 停用斜杠(与笔身垂直)—— 全强度, 这是"停用"的主信号
-        NSBezierPath *slash = [NSBezierPath bezierPath];
-        [slash moveToPoint:NSMakePoint(2.6, 15.4)]; [slash lineToPoint:NSMakePoint(15.4, 2.6)];
-        [slash setLineCapStyle:NSLineCapStyleRound];
-        [slash setLineWidth:2.8]; [halo setStroke]; [slash stroke];
-        [slash setLineWidth:1.6]; [ink setStroke];  [slash stroke];
-    }
-
-    // 模式徽标(模式在停用时依然成立, 不随字形淡化; 放在笔身对角线腾出的
-    // 两个角上, 与笔身零重叠; 全强度描边压在停用斜杠之上, 白晕自然开缝)
-    void (^stroke_mark)(NSBezierPath *) = ^(NSBezierPath *path) {
-        [path setLineWidth:1.0 + 1.2]; [halo setStroke]; [path stroke];
-        [path setLineWidth:1.0];       [ink setStroke];  [path stroke];
-    };
-    if (g_ethereal_canvas) {
-        // 飘渺画布: 左上角 ghost 圆环
-        NSBezierPath *dot = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(1.9, 13.1, 3.0, 3.0)];
-        stroke_mark(dot);
-    }
-    if (g_infinite_canvas) {
-        // 无限画布: 右下角 ∞(两个相切的小圆环)
-        NSBezierPath *inf = [NSBezierPath bezierPath];
-        [inf appendBezierPath:[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(12.9, 1.6, 2.4, 2.4)]];
-        [inf appendBezierPath:[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(15.1, 1.6, 2.4, 2.4)]];
-        stroke_mark(inf);
-    }
-
-    [NSGraphicsContext restoreGraphicsState];
-    NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(size, size)];
-    [image addRepresentation:rep];
-    return image;
-}
 
 static void update_status_icon_color(void) {
     // S3b-2b-6: 状态栏图标绘制逻辑已迁 Swift(StatusIconRenderer);
@@ -216,24 +118,7 @@ static void update_status_icon_color(void) {
     [g_statusItem.button setTitle:@""]; // 只用图, 不留 "G" 文字
 }
 
-// S3b-2b-6 临时 parity 探针: 逐字节比较旧 ObjC 图标与 Swift 图标(TIFF 表示)。
-// 旧 render_status_icon_legacy 仅供本探针, 删除计划: S3b-2b-6 收尾。
-int glaspen2_macos_swift_status_icon_parity(void) {
-    NSImage *old = render_status_icon_legacy();
-    NSImage *new = [StatusIconRenderer renderIconWithEraser:g_eraser_mode
-                                                    enabled:g_enabled
-                                                   ethereal:g_ethereal_canvas
-                                                   infinite:g_infinite_canvas
-                                                 widthScale:g_width_scale
-                                                     penRed:g_pen_r
-                                                   penGreen:g_pen_g
-                                                    penBlue:g_pen_b];
-    NSData *a = [old TIFFRepresentation];
-    NSData *b = [new TIFFRepresentation];
-    BOOL same = (a != nil && b != nil && [a isEqualToData:b]);
-    NSLog(@"[swift-s3b-icon] statusIcon same=%d", same);
-    return same ? 0 : 1;
-}
+
 
 static void update_status_icon_state(void) {
     update_status_icon_color();
