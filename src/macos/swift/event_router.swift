@@ -80,6 +80,33 @@ import AppKit
         }
     }
 
+    /// S6-3-3d: 压感监视器状态更新(是否在压感区/压力/坐标/tip down/事件名)。
+    @objc(updatePressureMonitorWithEvent:type:x:y:pressure:)
+    public static func updatePressureMonitor(event: CGEvent, type: CGEventType,
+                                             x: Double, y: Double, pressure: Double) {
+        guard glaspen2_router_pm_enabled() != 0 else { return }
+        let rawField = event.getIntegerValueField(.tabletEventPointPressure)
+        let pmPressure = rawField > 0 ? Int(rawField * 65535 / 65536)
+                                      : Int(pressure * 65535)
+        let tipDown = type == .leftMouseDown || type == .rightMouseDown
+            || type == .otherMouseDown || type == .leftMouseDragged
+            || type == .rightMouseDragged || type == .otherMouseDragged
+        let name: String
+        switch type {
+        case .leftMouseDown: name = "DOWN"
+        case .leftMouseUp: name = "UP"
+        case .leftMouseDragged: name = "DRAG"
+        case .rightMouseDown: name = "R_DOWN"
+        case .rightMouseUp: name = "R_UP"
+        case .rightMouseDragged: name = "R_DRAG"
+        case .otherMouseDown: name = "O_DOWN"
+        case .otherMouseUp: name = "O_UP"
+        case .otherMouseDragged: name = "O_DRAG"
+        default: name = tipDown ? "DOWN" : "MOVE"
+        }
+        glaspen2_router_pm_update(1, Int32(pmPressure), x, y, tipDown ? 1 : 0, name)
+    }
+
     /// S6-3-3d: 笔事件分派(落笔/拖动/抬笔); 返回 2 = 消费事件。
     @objc(handlePenEventOfType:x:y:pressure:timestamp:rawWidth:isEraser:)
     public static func handlePenEvent(type: CGEventType, x: Double, y: Double,

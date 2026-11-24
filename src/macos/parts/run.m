@@ -2202,57 +2202,13 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
   double raw_w = glaspen2_pressure_raw_width(pressure, g_width_scale);
   raw_w *= g_zoom; // 屏幕呈现宽度随缩放
 
-  // Pressure monitor: update on pen event before early returns
-  if (g_pressure_monitor && isPen) {
-    g_pm_in_range = YES;
-    int64_t rawField =
-        CGEventGetIntegerValueField(event, kCGTabletEventPointPressure);
-    g_pm_pressure = (rawField > 0) ? (int)(rawField * 65535 / 65536)
-                                   : (int)(pressure * 65535);
-    g_pm_x = px;
-    g_pm_y = py;
-    g_pm_tip_down = (etype == NSEventTypeLeftMouseDown ||
-                     etype == NSEventTypeRightMouseDown ||
-                     etype == NSEventTypeOtherMouseDown ||
-                     etype == NSEventTypeLeftMouseDragged ||
-                     etype == NSEventTypeRightMouseDragged ||
-                     etype == NSEventTypeOtherMouseDragged);
-    switch (etype) {
-    case NSEventTypeLeftMouseDown:
-      g_pm_evtype = @"DOWN";
-      break;
-    case NSEventTypeLeftMouseUp:
-      g_pm_evtype = @"UP";
-      break;
-    case NSEventTypeLeftMouseDragged:
-      g_pm_evtype = @"DRAG";
-      break;
-    case NSEventTypeRightMouseDown:
-      g_pm_evtype = @"R_DOWN";
-      break;
-    case NSEventTypeRightMouseUp:
-      g_pm_evtype = @"R_UP";
-      break;
-    case NSEventTypeRightMouseDragged:
-      g_pm_evtype = @"R_DRAG";
-      break;
-    case NSEventTypeOtherMouseDown:
-      g_pm_evtype = @"O_DOWN";
-      break;
-    case NSEventTypeOtherMouseUp:
-      g_pm_evtype = @"O_UP";
-      break;
-    case NSEventTypeOtherMouseDragged:
-      g_pm_evtype = @"O_DRAG";
-      break;
-    case NSEventTypeMouseMoved:
-      g_pm_evtype = g_pm_tip_down ? @"DOWN" : @"MOVE";
-      break;
-    default:
-      g_pm_evtype = g_pm_tip_down ? @"DOWN" : @"MOVE";
-      break;
-    }
-    pm_update();
+  // S6-3-3d: 压感监视器更新已迁 Swift。
+  if (isPen) {
+    [EventRouter updatePressureMonitorWithEvent:event
+                                         type:type
+                                            x:px
+                                            y:py
+                                     pressure:pressure];
   }
 
   // Strokes hidden (飘渺画布涂鸦模式): touching down always re-shows them
@@ -3185,4 +3141,17 @@ void glaspen2_router_camera_start(double x, double y) {
 }
 NSUInteger glaspen2_router_camera_pan_mods(void) {
   return gl_shortcut_modifier_mask_for(@"canvas_pan_up");
+}
+
+// S6-3-3d: 压感监视器薄桥
+int glaspen2_router_pm_enabled(void) { return g_pressure_monitor ? 1 : 0; }
+void glaspen2_router_pm_update(int inRange, int pressure, double x, double y,
+                               int tipDown, NSString *evtype) {
+  g_pm_in_range = inRange != 0;
+  g_pm_pressure = pressure;
+  g_pm_x = x;
+  g_pm_y = y;
+  g_pm_tip_down = tipDown != 0;
+  g_pm_evtype = evtype;
+  pm_update();
 }
