@@ -67,22 +67,10 @@ static void show_settings_panel(void) {
     }
 }
 
-// Cached full-surface CGImage for drawRect (rebuilt only when the surface
-// changes). CGImage wraps the shared cairo buffer, so pixels stay live.
-static CGImageRef g_surface_cgimage = NULL;
-static const unsigned char *g_surface_cgimage_data = NULL;
-static int g_surface_cgimage_w = 0, g_surface_cgimage_h = 0, g_surface_cgimage_stride = 0;
-
 // Drop the cached surface image (call before the surface is destroyed).
+// S7: CGImage 缓存已迁 Swift(OverlaySurfaceImageCache, Swift 持有)。
 static void surface_image_cache_invalidate(void) {
-    if (g_surface_cgimage) {
-        CGImageRelease(g_surface_cgimage);
-        g_surface_cgimage = NULL;
-    }
-    g_surface_cgimage_data = NULL;
-    g_surface_cgimage_w = 0;
-    g_surface_cgimage_h = 0;
-    g_surface_cgimage_stride = 0;
+    [OverlaySurfaceImageCache clear];
 }
 
 static void ensure_surface(NSView *view) {

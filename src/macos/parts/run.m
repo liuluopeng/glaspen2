@@ -125,28 +125,9 @@ static void draw_grid_lines(CGContextRef ctx, NSRect bounds, NSRect clipRect) {
   // 本函数只保持原有门控与 CGContext 样式/绘制顺序(D6)。
   draw_grid_lines(ctx, [self bounds], clipRect);
 
-  // Reuse the cached CGImage; it wraps the live cairo buffer, so it is
-  // only rebuilt when the surface itself changes.
-  if (!g_surface_cgimage || g_surface_cgimage_data != data ||
-      g_surface_cgimage_w != w || g_surface_cgimage_h != h ||
-      g_surface_cgimage_stride != stride) {
-    CGImageRelease(g_surface_cgimage);
-    g_surface_cgimage = NULL;
-    CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-    CGDataProviderRef provider =
-        CGDataProviderCreateWithData(NULL, data, stride * h, NULL);
-    g_surface_cgimage = CGImageCreate(
-        w, h, 8, 32, stride, cs,
-        kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst, provider,
-        NULL, false, kCGRenderingIntentDefault);
-    CGDataProviderRelease(provider);
-    CGColorSpaceRelease(cs);
-    g_surface_cgimage_data = data;
-    g_surface_cgimage_w = w;
-    g_surface_cgimage_h = h;
-    g_surface_cgimage_stride = stride;
-  }
-  CGImageRef image = g_surface_cgimage;
+  // S7: CGImage 缓存构造已迁 Swift(Swift 持有缓存, 这里只借指针)。
+  CGImageRef image =
+      [OverlaySurfaceImageCache imageForData:data width:w height:h stride:stride];
 
   // The strokes can be hidden independently (飘渺画布涂鸦模式) — skip the
   // surface image, but keep drawing the notification and crosshair below.
