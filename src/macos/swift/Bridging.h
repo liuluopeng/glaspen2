@@ -63,6 +63,9 @@ void glaspen2_menu_select_width(int idx);
 void glaspen2_menu_save_xoj_raw(void);
 void glaspen2_menu_notify(NSString *text);
 
+// S4: 通知 presenter 的 redraw 桥(实现留在 glaspen2.m; Swift 通知状态变化时调用)
+void glaspen2_notification_redraw(void);
+
 // S3b-2b-7e: 异步导出/退出所需薄桥
 void glaspen2_menu_screen_size(int *w, int *h);
 int glaspen2_menu_export_infinite_pdf_paged(int w, int h);

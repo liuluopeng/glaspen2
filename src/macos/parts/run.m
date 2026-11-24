@@ -290,8 +290,9 @@ static void draw_grid_lines(CGContextRef ctx, NSRect bounds, NSRect clipRect) {
     draw_minimap(ctx, [self bounds]);
   }
 
-  // Draw notification text
-  if (g_notification) {
+  // Draw notification text (S4: 状态由 Swift NotificationPresenter 持有)
+  NSString *notificationText = [NotificationPresenter currentText];
+  if (notificationText) {
     NSShadow *shadow = [[NSShadow alloc] init];
     shadow.shadowColor = [NSColor colorWithWhite:0 alpha:0.8];
     shadow.shadowOffset = NSMakeSize(2, -2);
@@ -303,13 +304,13 @@ static void draw_grid_lines(CGContextRef ctx, NSRect bounds, NSRect clipRect) {
       NSForegroundColorAttributeName : [NSColor whiteColor],
       NSShadowAttributeName : shadow
     };
-    NSSize textSize = [g_notification sizeWithAttributes:attrs];
+    NSSize textSize = [notificationText sizeWithAttributes:attrs];
     // Use view bounds for centering, not surface dimensions — surface may
     // be stale after display resolution changes.
     NSRect bounds = [self bounds];
     CGFloat x = (bounds.size.width - textSize.width) / 2;
     CGFloat y = (bounds.size.height - textSize.height) / 2;
-    [g_notification drawAtPoint:NSMakePoint(x, y) withAttributes:attrs];
+    [notificationText drawAtPoint:NSMakePoint(x, y) withAttributes:attrs];
   }
 
   // Draw pen crosshair cursor

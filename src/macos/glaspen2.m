@@ -573,8 +573,7 @@ static ColorPreset g_color_presets[10];
 static const int g_color_preset_count = 10;
 
 // Notification state
-static NSString *g_notification = nil;
-static dispatch_source_t g_notification_timer = nil;
+// S4: 通知状态/计时已迁 Swift(NotificationPresenter); 绘制代码经 currentText 读取。
 
 // CGEventTap
 static CFMachPortRef g_event_tap = NULL;
@@ -620,26 +619,13 @@ static NSString *gl_textf(NSString *key, NSDictionary<NSString *, NSString *> *a
     return text;
 }
 
-static void show_notification(NSString *text) {
-    g_notification = text;
+// S4: presenter redraw 桥(Swift 通知状态变化时调用)
+void glaspen2_notification_redraw(void) {
     [g_draw_view setNeedsDisplay:YES];
+}
 
-    // Cancel existing timer
-    if (g_notification_timer) {
-        dispatch_source_cancel(g_notification_timer);
-        g_notification_timer = nil;
-    }
-
-    // Clear after 1 second
-    g_notification_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
-    dispatch_source_set_timer(g_notification_timer, dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC), DISPATCH_TIME_FOREVER, 0);
-    dispatch_source_set_event_handler(g_notification_timer, ^{
-        g_notification = nil;
-        [g_draw_view setNeedsDisplay:YES];
-        dispatch_source_cancel(g_notification_timer);
-        g_notification_timer = nil;
-    });
-    dispatch_resume(g_notification_timer);
+static void show_notification(NSString *text) {
+    [NotificationPresenter showText:text];
 }
 
 // Show "今天 第2页  第3/5页" for the given screen.
