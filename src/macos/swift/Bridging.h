@@ -190,6 +190,8 @@ int glaspen2_router_lang(void);
 int glaspen2_router_perf_enabled(void);
 extern uint64_t glaspen2_router_elapsed_us(uint64_t start);
 extern int glaspen2_is_launch_at_login(void);
+extern int glaspen2_debug_insert_pages(int n, int w, int h);
+int glaspen2_router_perform_hotkey(unsigned short keyCode);
 void glaspen2_router_invert_invalidate(void);
 void glaspen2_router_set_screen_size(int w, int h);
 id glaspen2_router_draw_view(void);

@@ -1437,42 +1437,6 @@ static void pageview_update(void) {
 
 // 诊断钩子: GLASPEN2_FLIP_EVERY=<秒> 周期性触发翻页(走 perform_hotkey
 // 与真实热键同一条路)。第一跳先建第二页, 之后往返翻页供连拍/录屏实验。
-static void flip_probe_maybe_start(void) {
-  const char *v = getenv("GLASPEN2_FLIP_EVERY");
-  if (!v || atoi(v) <= 0)
-    return;
-  int every = atoi(v);
-  NSLog(@"[glaspen2] flip probe: 每 %d 秒一跳(第1跳建页, 之后往返翻)", every);
-  // 源必须静态持有: 局部变量在函数退出时被 ARC 释放, 定时器永远不触发
-  static dispatch_source_t s_probe_src;
-  static BOOL back = NO;
-  static BOOL first = YES;
-  s_probe_src = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
-                                       dispatch_get_main_queue());
-  dispatch_source_set_timer(
-      s_probe_src,
-      dispatch_time(DISPATCH_TIME_NOW, (int64_t)every * NSEC_PER_SEC),
-      (uint64_t)every * NSEC_PER_SEC, (int64_t)0.2 * NSEC_PER_SEC);
-  dispatch_source_set_event_handler(s_probe_src, ^{
-    if (first) {
-      first = NO;
-      // 诊断环境: GLASPEN2_PROBE_PAGES=n 直接铺 n 页空白页(不涂鸦,
-      // 翻页测试只需要页存在; 玻璃框本身提供视觉内容)。
-      int want = 0;
-      const char *vpn = getenv("GLASPEN2_PROBE_PAGES");
-      if (vpn)
-        want = atoi(vpn);
-      glaspen2_debug_insert_pages(want, g_screen_w, g_screen_h);
-      NSLog(@"[glaspen2] probe 建页 %d 页(空白, 直插)", want);
-      return;
-    }
-    NSLog(@"[glaspen2] probe 翻页 back=%d", back);
-    perform_hotkey(back ? 0x32 : 0x12); // 往返: 上一页 / 下一页
-    back = !back;
-  });
-  dispatch_resume(s_probe_src);
-}
-
 // 颜色/粗细预设表从 glaspen-core presets 填充(RGB 单源;名字是本平台
 // UI 字符串)。须在任何读表代码(建菜单/恢复设置)之前调用。
 // 单实例守卫: 两个实例 = 两套全屏窗口叠加显示 + 同一全局热键同时翻
@@ -1943,7 +1907,7 @@ void glaspen2_run(void) {
     // 调试开关(环境变量):性能日志 / 虚拟笔, 默认都关
     [PerfLog initFromEnv];
     [VirtualPen maybeStart];
-    flip_probe_maybe_start();
+    [FlipProbe maybeStart];
 
     [NSApp run];
   }
@@ -2452,3 +2416,8 @@ void glaspen2_router_settings_apply_transparent(void) {
 int glaspen2_router_perf_enabled(void) { return [PerfLog isEnabled] ? 1 : 0; }
 uint64_t glaspen2_router_elapsed_us(uint64_t start) { return [PerfLog elapsedUsSince:start]; }
 void glaspen2_router_perf_init(void) { [PerfLog initFromEnv]; }
+
+// S7ci: 诊断探针薄桥
+int glaspen2_router_perform_hotkey(unsigned short keyCode) {
+  return perform_hotkey(keyCode) ? 1 : 0;
+}
