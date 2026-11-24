@@ -6,8 +6,8 @@ import AppKit
     public static func swapFrom(goingNext: Bool, fromPage: Int64,
                                 prepare: @escaping () -> Void,
                                 commit: @escaping () -> Void) {
-        if glaspen2_router_tunnel_active() != 0 {
-            glaspen2_router_tunnel_finish()
+        if TunnelState.active {
+            TunnelLifecycle.finish()
         }
         guard let window = glaspen2_router_main_window() as? NSWindow else {
             prepare()
@@ -21,9 +21,9 @@ import AppKit
             let tp0 = Date().timeIntervalSinceReferenceDate
             prepare()
             let tp1 = Date().timeIntervalSinceReferenceDate
-            let tunneled = glaspen2_router_page_flip_tunnel(goingNext ? 1 : 0,
-                                                            curBefore, prepare, commit)
-            if tunneled != 0 {
+            let tunneled = TunnelAnimation.start(goingNext: goingNext, curPage: curBefore,
+                                                 prepare: prepare, commit: commit)
+            if tunneled {
                 NSLog("[flip] 卡顿账: prepare %.0fms", (tp1 - tp0) * 1000.0)
                 return
             }

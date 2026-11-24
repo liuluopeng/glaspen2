@@ -5,7 +5,8 @@ import Darwin
 @objc public final class OverlayDrawing: NSObject {
     @objc(drawInView:rect:)
     public static func draw(in view: NSView, rect: NSRect) {
-        glaspen2_router_draw_prepare()
+        if let surf = glaspen2_router_surface() { cairo_surface_flush(surf) }
+        if let tun = TunnelState.surface { cairo_surface_flush(tun) }
         let st = glaspen2_router_draw_state() as NSDictionary
         func flag(_ key: String) -> Bool { (st[key] as? NSNumber)?.boolValue ?? false }
         func num(_ key: String) -> Double { (st[key] as? NSNumber)?.doubleValue ?? 0 }
@@ -18,13 +19,14 @@ import Darwin
         ctx.clip(to: clipRect)
         let bounds = view.bounds
 
-        if flag("tunnelActive"), let tv = st["tunnelData"] as? NSValue,
-           let tp = tv.pointerValue, num("tunnelW") > 0, num("tunnelH") > 0 {
-            OverlayTunnelRenderer.drawTunnel(ctx, data: tp,
-                                            width: Int32(num("tunnelW")),
-                                           height: Int32(num("tunnelH")),
-                                           stride: Int32(num("tunnelStride")),
-                                           bounds: bounds)
+        if TunnelState.active, let tun = TunnelState.surface {
+            if let data = cairo_image_surface_get_data(tun) {
+                OverlayTunnelRenderer.drawTunnel(ctx, data: data,
+                    width: cairo_image_surface_get_width(tun),
+                    height: cairo_image_surface_get_height(tun),
+                    stride: cairo_image_surface_get_stride(tun),
+                    bounds: bounds)
+            }
             ctx.restoreGState()
             return
         }

@@ -268,7 +268,7 @@ import ScreenCaptureKit
             schedule(0.5)
             return
         }
-        if glaspen2_router_tunnel_active() != 0 {
+        if TunnelState.active {
             schedule(0.5)
             return
         }

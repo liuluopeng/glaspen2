@@ -6,7 +6,7 @@ import AppKit
 
     /// 立即隐藏笔迹(含玻璃/压感窗), 前置: 非隧道动画 + 飘渺 + 当前可见。
     @objc public static func hideNow() -> Bool {
-        if glaspen2_router_tunnel_active() != 0 { return false }
+        if TunnelState.active { return false }
         if glaspen2_router_ethereal() == 0 { return false }
         if glaspen2_router_strokes_visible() == 0 { return false }
         hideStrokes()

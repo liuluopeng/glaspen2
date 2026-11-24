@@ -27,7 +27,7 @@ import Darwin
         guard let surf = cairo_image_surface_create(cairo_format_t(0), sw, sh) else {
             return nil
         }
-        if cairo_surface_status(surf).rawValue != 0 { // CAIRO_STATUS_SUCCESS
+        if cairo_surface_status(surf).rawValue != 0 {
             cairo_surface_destroy(surf)
             return nil
         }
@@ -35,7 +35,7 @@ import Darwin
             if let cr = cairo_create(surf) {
                 let f = cardScale / max(gScale, 0.0001)
                 cairo_scale(cr, f, f)
-                cairo_set_operator(cr, cairo_operator_t(1)) // SOURCE
+                cairo_set_operator(cr, cairo_operator_t(1))
                 if let current = glaspen2_router_surface() {
                     cairo_set_source_surface(cr, current, 0, 0)
                     cairo_paint(cr)
@@ -49,12 +49,11 @@ import Darwin
                                                     1.0, 0,
                                                     depth == 0 ? -1.0 : Double(abs(depth)))
         }
-        // 预缩到该深度档最大可能尺寸
         let d = Double(depth)
-        var smax = 1.0 / (1.0 + glaspen2_router_tunnel_k() * (abs(d) - 1.0))
+        var smax = 1.0 / (1.0 + TunnelState.k * (abs(d) - 1.0))
         if smax > 1.05 { smax = 1.05 }
-        let tw = Int32(Double(glaspen2_router_tunnel_surf_w()) * smax)
-        let th = Int32(Double(glaspen2_router_tunnel_surf_h()) * smax)
+        let tw = Int32(Double(TunnelState.surfW) * smax)
+        let th = Int32(Double(TunnelState.surfH) * smax)
         let nw = cairo_image_surface_get_width(surf)
         let nh = cairo_image_surface_get_height(surf)
         var mainSurf = surf

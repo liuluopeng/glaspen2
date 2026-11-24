@@ -9,40 +9,11 @@ static void rebuild_surface_from_strokes(void) { [PageViewOps rebuildSurface]; }
 
 // 时光隧道专用半分辨率表面: 卡片快照本来就是 half-res, 直接在 half-res
 // 上合成再放大上屏, 填充量降到 1/4, 是 4K 下把 40fps 拉到 60+ 的关键。
-static cairo_surface_t *s_tun_surface = NULL;
 // S7: 隧道 surface 缓存/绘制已迁 Swift(OverlayTunnelRenderer)。
 
-/// 隧道帧上屏(半分辨率表面由 drawRect 放大绘制)。
-static void flush_tunnel_to_layer(void) {
-  if (s_tun_surface && g_draw_view)
-    [g_draw_view setNeedsDisplay:YES];
-}
 
-// ── 网格/分栏绘制(D6: 几何唯一来源 = core::grid,经 FFI 下发线段表) ──
-//
-// 本文件不再算任何网格几何(旧 run.m 内联的三段循环已删): 视图尺寸/镜头/网格
-// 设置经 glaspen2_grid_json(_clipped) 交给 core, 这里只把 core 算好的线段按原有
-// CGContext 样式描边(颜色/线宽/alpha/绘制顺序全部保持)。
-// 绘制顺序 = 细网格 → 屏幕分界线 → 分栏参考线(后画的覆盖先画的, 与旧代码同序)。
-
-// 一层线段 → CG 路径 + 单次 StrokePath(与旧实现一样整层一条路径: 交叉点只
-// 合成一次 alpha)。线段是视图坐标(y 向下), CGContext 是 y 向上, 这里翻转 y。
-// S7: 网格线段绘制已迁 Swift(OverlayGridRenderer)。
-// core 网格 FFI JSON → 字典;失败/error JSON 只记一次日志(避免每帧刷屏)并回 nil。
-// 网格 + 分栏参考线:门控与视图←画布变换保持旧 drawRect 逐字一致。
-// clipRect = 本次 drawRect 的脏矩形(非翻转视图坐标, y 向上), 只向 core 要相交的
-// 线(旧实现同样的省遍历);视图尺寸 = bounds(macOS 窗口 = 屏幕 frame)。
-// --- Drawing view ---
-
-@interface GlaspenDrawView : NSView
-@end
 
 @implementation GlaspenDrawView
-
-- (BOOL)acceptsFirstResponder {
-  return YES;
-}
-
 - (void)drawRect:(NSRect)rect { [OverlayDrawing drawInView:self rect:rect]; }
 
 @end
@@ -116,41 +87,22 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) { [CanvasMode applyInfin
 #define TUNNEL_FRONT 4.5 // 相机前方可见深度(页从这里飞近)
 
 // 玻璃表面像素尺寸(卡片的坐标空间: 全屏卡片 = 整个表面)
-static int s_tun_surf_w = 0, s_tun_surf_h = 0;
 
 // 卡片:页距(相对当前页, 整数)+ 该页的快照
-static cairo_surface_t *s_tun_card[TUNNEL_MAX_CARDS];
 // 每张卡的半尺寸 mip:帧内按目标尺寸选级(>0.7×主尺寸用主, 否则用 mip),
 // 缩放比从最多 ~3× 降到 ≤1.41× —— 合成是每帧成本的大头(实测 24ms)。
-static cairo_surface_t *s_tun_card_mip[TUNNEL_MAX_CARDS];
-static cairo_surface_t *s_tun_blur = NULL; // 后层低分辨率缓冲(磨砂玻璃的"模糊")
-static int s_tun_depth[TUNNEL_MAX_CARDS]; // 页距(0 = 当前页)
-static int s_tun_cards = 0;
-static double s_tun_travel = 1.0; // 相机推进的隧道单位(= 本次翻页跨过的页数)
-static BOOL s_tun_back = NO; // 向前翻(上一页/回溯旧页): 相机**推进**页列深处
-static double s_tun_dur = 0.38; // 短促: 隧道动效在感知内"一闪而过"
 // 透视强度 K: s(z)=1/(1+K·z)。K 越大, 层间尺寸差越明显、隧道越"深"。
 // GLASPEN2_FLIP_K 可覆盖(0.05-3.0)。
-static double s_tun_k = 0.45;
 // 玻璃厚度(相对卡片宽度的比例)。可调: GLASPEN2_FLIP_THICK。
 // 1.8% 是直角侧视图下"能看出厚度但不抢戏"的默认值。
-static double s_tun_thick = 0.018;
 // 玻璃面的基准不透明度。真实玻璃需要"面"来遮挡后页; 旧值 0.08 只有
 // 一层灰, 每页的空白都完全透明, 所有笔迹叠在一起(观感发假的主因)。
 // 0.84 是磨砂玻璃: 近页基本挡住后页, 后页只从边缘/模糊里透出一点。
 // GLASPEN2_FLIP_GLASS 可覆盖(0-0.98, 评估用)。
-static double s_tun_pane_a = 0.84;
-static void (^s_tun_prepare)(void);
-static void (^s_tun_commit)(void);
-static dispatch_source_t s_tun_timer;
-static double s_tun_t0 = 0;
-static uint64_t s_tun_frames = 0;
 
-static inline double tunnel_now(void) {
-  return [NSDate timeIntervalSinceReferenceDate];
-}
 
-static void tunnel_free_cards(void) { [TunnelLifecycle freeCards]; }
+
+
 
 // 卡片在画面里的位置与缩放。返回 NO = 飞出画面外。
 // zc = 页距 − 相机位置(负 = 已越过镜头, 正 = 在隧道里)。
@@ -168,36 +120,11 @@ static void tunnel_free_cards(void) { [TunnelLifecycle freeCards]; }
 // 一眼可读(上/右侧面 = 你正看着玻璃的截面)。
 // 一帧:相机沿页距推进(缓入缓出), 卡片按隧道坐标摆位;
 // 深处的先画、近处的后画 —— 层叠顺序即页序。
-static void tunnel_frame(double p) {
-  if (!s_tun_surface || s_tun_cards == 0) return;
-  s_tun_frames++;
-  [TunnelFrameRenderer renderWithP:p state:glaspen2_router_tunnel_state()];
-}
 
-static void tunnel_finish(void) { [TunnelLifecycle finish]; }
 
-// 造一张卡片:某页的快照渲染到独立缓冲(与画布一致的 scale-to-fit 变换);
-// 当前页直接拷贝玻璃表面, 保证第 0 帧无跳变。cache_slot = 预热缓存里的序号。
-static BOOL tunnel_make_card(int slot, int cache_slot, long screen_id,
-                             int is_current) {
-  NSDictionary *r = [TunnelCardFactory makeCardWithIsCurrent:(is_current ? YES : NO)
-                                                       depth:s_tun_depth[slot]
-                                                   cacheSlot:cache_slot
-                                                    screenId:screen_id];
-  if (!r) return NO;
-  s_tun_card[slot] = (cairo_surface_t *)[r[@"main"] pointerValue];
-  s_tun_card_mip[slot] = (cairo_surface_t *)[r[@"mip"] pointerValue];
-  return YES;
-}
 
-// 返回 YES = 隧道动画已接管; NO = 无目标页/资源失败, 走系统动效。
-// going_next: 向后翻(下一页) = 相机推进 1 个隧道单位; 向前翻(上一页) =
-// 相机后退 —— 前一页从镜头后方飞出、当前页缩进隧道深处。
-static BOOL page_flip_tunnel(BOOL going_next, long cur_page,
-                             void (^prepare)(void), void (^commit)(void)) {
-  return [TunnelAnimation startTunnelGoingNext:going_next curPage:cur_page
-                                       prepare:prepare commit:commit] ? YES : NO;
-}
+
+
 
 static void page_flip_swap_from(BOOL going_next, long from_page,
                                 void (^prepare)(void), void (^commit)(void)) {
@@ -626,33 +553,7 @@ id glaspen2_router_main_window(void) { return g_window; }
 // S7: 退出前 perf 汇总薄桥(perf_log_summary 在本文件)
 void glaspen2_router_perf_summary(void) { [PerfLog summary]; }
 
-// S7m: 网格层状态快照桥(供 Swift OverlayGridRenderer 读)
-NSDictionary *glaspen2_router_grid_state(void) {
-  return @{
-    @"showGrid" : @(g_show_grid ? YES : NO),
-    @"divider" : @((int)g_grid_divider),
-    @"tunActive" : @(s_tun_active ? YES : NO),
-    @"strokesVisible" : @(g_strokes_visible ? YES : NO),
-    @"gridFollow" : @(g_grid_follow_strokes ? YES : NO),
-    @"infinite" : @(g_infinite_canvas ? YES : NO),
-    @"panX" : @(g_pan_x),
-    @"panY" : @(g_pan_y),
-    @"zoom" : @(g_zoom),
-    @"pageOffX" : @(g_page_off_x),
-    @"pageOffY" : @(g_page_off_y),
-    @"gridSize" : @(g_grid_size),
-  };
-}
 
-// S7n: 光标十字层状态快照桥(供 Swift OverlayCursorRenderer)
-NSDictionary *glaspen2_router_cursor_draw_state(void) {
-  return @{
-    @"visible" : @(g_cursor_visible ? YES : NO),
-    @"x" : @(g_cursor_x),
-    @"y" : @(g_cursor_y),
-    @"eraser" : @(g_eraser_mode ? YES : NO),
-  };
-}
 
 // S7t: 触发绘制视图重绘薄桥
 void glaspen2_router_redraw_draw_view(void) {
@@ -699,34 +600,8 @@ void glaspen2_router_event_tap_reinstall(void) { event_tap_reinstall(); }
 
 // S7: minimap 状态薄桥
 // S7bl: drawRect 编排的薄桥(表面/隧道状态快照 + flush)
-void glaspen2_router_draw_prepare(void) {
-  if (g_surface) cairo_surface_flush(g_surface);
-  if (s_tun_active && s_tun_surface) cairo_surface_flush(s_tun_surface);
-}
-NSDictionary *glaspen2_router_draw_state(void) {
-  NSMutableDictionary *d = [NSMutableDictionary dictionary];
-  d[@"hasSurface"] = @(g_surface ? YES : NO);
-  if (g_surface) {
-    d[@"surfaceData"] = [NSValue valueWithPointer:cairo_image_surface_get_data(g_surface)];
-    d[@"surfaceW"] = @(cairo_image_surface_get_width(g_surface));
-    d[@"surfaceH"] = @(cairo_image_surface_get_height(g_surface));
-    d[@"surfaceStride"] = @(cairo_image_surface_get_stride(g_surface));
-  }
-  d[@"tunnelActive"] = @(s_tun_active && s_tun_surface);
-  if (s_tun_active && s_tun_surface) {
-    d[@"tunnelData"] = [NSValue valueWithPointer:cairo_image_surface_get_data(s_tun_surface)];
-    d[@"tunnelW"] = @(cairo_image_surface_get_width(s_tun_surface));
-    d[@"tunnelH"] = @(cairo_image_surface_get_height(s_tun_surface));
-    d[@"tunnelStride"] = @(cairo_image_surface_get_stride(s_tun_surface));
-  }
-  d[@"scale"] = @(g_scale);
-  d[@"strokesVisible"] = @(g_strokes_visible ? YES : NO);
-  d[@"showGrid"] = @(g_show_grid ? YES : NO);
-  d[@"minimapEnabled"] = @(g_minimap_enabled ? YES : NO);
-  d[@"infinite"] = @(g_infinite_canvas ? YES : NO);
-  d[@"perfEnabled"] = @([PerfLog isEnabled] ? YES : NO);
-  return d;
-}
+
+
 
 // S7bl: drawRect perf 打点薄桥
 void glaspen2_router_perf_notes(const char *name, const char *notes, uint64_t t0) {
@@ -823,7 +698,7 @@ void glaspen2_router_reset_raw_stroke(void) {
 }
 
 // S7cb: 飘渺模式薄桥
-int glaspen2_router_tunnel_active(void) { return s_tun_active ? 1 : 0; }
+
 
 // S7cc: 计划脏区薄桥
 void glaspen2_router_dirty_include_surface_rect(double x, double y, double w, double h) {
@@ -891,107 +766,48 @@ void glaspen2_router_page_flip_from(int forward, long from, dispatch_block_t pre
 // S7cn: 页视图/重放薄桥
 // S7cp: 页视图几何薄桥
 // S7cs: 隧道几何薄桥
-double glaspen2_router_tunnel_k(void) { return s_tun_k; }
-int glaspen2_router_tunnel_surf_w(void) { return s_tun_surf_w; }
-int glaspen2_router_tunnel_surf_h(void) { return s_tun_surf_h; }
-double glaspen2_router_tunnel_travel(void) { return s_tun_travel; }
+
+
+
+
 
 // S7cu: 隧道帧渲染桥
-void glaspen2_router_flush_tunnel(void) { flush_tunnel_to_layer(); }
-NSDictionary *glaspen2_router_tunnel_state(void) {
-  NSMutableArray *cards = [NSMutableArray arrayWithCapacity:(NSUInteger)s_tun_cards];
-  for (int i = 0; i < s_tun_cards; i++) {
-    if (!s_tun_card[i]) continue;
-    NSMutableDictionary *c = [NSMutableDictionary dictionary];
-    c[@"depth"] = @(s_tun_depth[i]);
-    c[@"card"] = [NSValue valueWithPointer:s_tun_card[i]];
-    if (s_tun_card_mip[i]) c[@"mip"] = [NSValue valueWithPointer:s_tun_card_mip[i]];
-    [cards addObject:c];
-  }
-  NSMutableDictionary *d = [NSMutableDictionary dictionary];
-  d[@"surface"] = [NSValue valueWithPointer:s_tun_surface];
-  if (s_tun_blur) d[@"blur"] = [NSValue valueWithPointer:s_tun_blur];
-  d[@"cards"] = cards;
-  d[@"surfW"] = @(s_tun_surf_w);
-  d[@"surfH"] = @(s_tun_surf_h);
-  d[@"travel"] = @(s_tun_travel);
-  d[@"back"] = @(s_tun_back ? YES : NO);
-  d[@"thick"] = @(s_tun_thick);
-  d[@"paneA"] = @(s_tun_pane_a);
-  return d;
-}
+
+
 
 // S7cv: 隧道生命周期桥
-void *glaspen2_router_tunnel_take_card(int idx) {
-  if (idx < 0 || idx >= TUNNEL_MAX_CARDS) return NULL;
-  void *p = s_tun_card[idx]; s_tun_card[idx] = NULL; return p;
-}
-void *glaspen2_router_tunnel_take_mip(int idx) {
-  if (idx < 0 || idx >= TUNNEL_MAX_CARDS) return NULL;
-  void *p = s_tun_card_mip[idx]; s_tun_card_mip[idx] = NULL; return p;
-}
-void *glaspen2_router_tunnel_take_blur(void) { void *p = s_tun_blur; s_tun_blur = NULL; return p; }
-void *glaspen2_router_tunnel_take_surface(void) { void *p = s_tun_surface; s_tun_surface = NULL; return p; }
-void glaspen2_router_tunnel_set_cards(int count) { s_tun_cards = count; }
-void glaspen2_router_tunnel_cancel_timer(void) {
-  if (s_tun_timer) { dispatch_source_cancel(s_tun_timer); s_tun_timer = NULL; }
-}
-void glaspen2_router_tunnel_render_final(void) { tunnel_frame(1.0); }
-void glaspen2_router_tunnel_set_active(int active) { s_tun_active = active != 0; }
-void glaspen2_router_tunnel_run_callbacks(void) {
-  if (s_tun_prepare) { s_tun_prepare(); s_tun_prepare = NULL; }
-  if (s_tun_commit) { s_tun_commit(); s_tun_commit = NULL; }
-}
-double glaspen2_router_tunnel_now(void) { return tunnel_now(); }
-double glaspen2_router_tunnel_t0(void) { return s_tun_t0; }
-uint64_t glaspen2_router_tunnel_frames(void) { return s_tun_frames; }
+
+
+
+
+
+
+
+
+
+
+
+
 
 // S7cw: 翻页编排薄桥
-void glaspen2_router_tunnel_finish(void) { tunnel_finish(); }
-int glaspen2_router_page_flip_tunnel(int going_next, long cur_page,
-                                     dispatch_block_t prepare,
-                                     dispatch_block_t commit) {
-  return page_flip_tunnel(going_next != 0, cur_page, prepare, commit) ? 1 : 0;
-}
 
 // S7cx: 隧道启动桥
-void glaspen2_router_tunnel_free_all(void) { tunnel_free_cards(); }
-int glaspen2_router_tunnel_create_surface(int w, int h) {
-  s_tun_surf_w = w; s_tun_surf_h = h;
-  s_tun_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
-  if (cairo_surface_status(s_tun_surface) != CAIRO_STATUS_SUCCESS) {
-    cairo_surface_destroy(s_tun_surface); s_tun_surface = NULL; return 0;
-  }
-  return 1;
-}
-int glaspen2_router_tunnel_create_blur(int w, int h) {
-  s_tun_blur = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
-  if (cairo_surface_status(s_tun_blur) != CAIRO_STATUS_SUCCESS) {
-    cairo_surface_destroy(s_tun_blur); s_tun_blur = NULL;
-  }
-  return 1;
-}
-void glaspen2_router_tunnel_set_depth(int idx, int depth) {
-  if (idx >= 0 && idx < TUNNEL_MAX_CARDS) s_tun_depth[idx] = depth;
-}
-int glaspen2_router_tunnel_make_card(int slot, int cacheSlot, long screenId, int isCurrent) {
-  return tunnel_make_card(slot, cacheSlot, screenId, isCurrent) ? 1 : 0;
-}
-void glaspen2_router_tunnel_set_motion(int back, double travel) {
-  s_tun_back = back != 0; s_tun_travel = travel;
-}
-void glaspen2_router_tunnel_set_callbacks(dispatch_block_t prepare, dispatch_block_t commit) {
-  s_tun_prepare = prepare; s_tun_commit = commit;
-}
-void glaspen2_router_tunnel_set_dur(double dur) { s_tun_dur = dur; }
-void glaspen2_router_tunnel_set_k(double k) { s_tun_k = k; }
-void glaspen2_router_tunnel_set_thick(double thick) { s_tun_thick = thick; }
-void glaspen2_router_tunnel_set_pane_a(double pane) { s_tun_pane_a = pane; }
-void glaspen2_router_tunnel_set_t0_frames(double t0) { s_tun_t0 = t0; s_tun_frames = 0; }
-void glaspen2_router_tunnel_frame_at(double p) { tunnel_frame(p); }
-void glaspen2_router_tunnel_display_now(void) { if (g_draw_view) [g_draw_view displayIfNeeded]; }
-void glaspen2_router_tunnel_set_timer(void *timer) { s_tun_timer = (__bridge dispatch_source_t)timer; }
-double glaspen2_router_tunnel_dur(void) { return s_tun_dur; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // S7cy: 启动设置恢复桥
 void glaspen2_router_startup_set_lang(int lang) { g_lang = lang; }
@@ -1077,3 +893,46 @@ double glaspen2_router_page_off_y(void) { return g_page_off_y; }
 
 // S7dk: 带背景保存桥
 int glaspen2_router_window_sharing_type(void) { return (int)[g_window sharingType]; }
+
+NSDictionary *glaspen2_router_grid_state(void) {
+  return @{
+    @"showGrid" : @(g_show_grid ? YES : NO),
+    @"divider" : @((int)g_grid_divider),
+    @"strokesVisible" : @(g_strokes_visible ? YES : NO),
+    @"gridFollow" : @(g_grid_follow_strokes ? YES : NO),
+    @"infinite" : @(g_infinite_canvas ? YES : NO),
+    @"panX" : @(g_pan_x),
+    @"panY" : @(g_pan_y),
+    @"zoom" : @(g_zoom),
+    @"pageOffX" : @(g_page_off_x),
+    @"pageOffY" : @(g_page_off_y),
+    @"gridSize" : @(g_grid_size),
+  };
+}
+
+NSDictionary *glaspen2_router_cursor_draw_state(void) {
+  return @{
+    @"visible" : @(g_cursor_visible ? YES : NO),
+    @"x" : @(g_cursor_x),
+    @"y" : @(g_cursor_y),
+    @"eraser" : @(g_eraser_mode ? YES : NO),
+  };
+}
+
+NSDictionary *glaspen2_router_draw_state(void) {
+  NSMutableDictionary *d = [NSMutableDictionary dictionary];
+  d[@"hasSurface"] = @(g_surface ? YES : NO);
+  if (g_surface) {
+    d[@"surfaceData"] = [NSValue valueWithPointer:cairo_image_surface_get_data(g_surface)];
+    d[@"surfaceW"] = @(cairo_image_surface_get_width(g_surface));
+    d[@"surfaceH"] = @(cairo_image_surface_get_height(g_surface));
+    d[@"surfaceStride"] = @(cairo_image_surface_get_stride(g_surface));
+  }
+  d[@"scale"] = @(g_scale);
+  d[@"strokesVisible"] = @(g_strokes_visible ? YES : NO);
+  d[@"showGrid"] = @(g_show_grid ? YES : NO);
+  d[@"minimapEnabled"] = @(g_minimap_enabled ? YES : NO);
+  d[@"infinite"] = @(g_infinite_canvas ? YES : NO);
+  d[@"perfEnabled"] = @([PerfLog isEnabled] ? YES : NO);
+  return d;
+}

@@ -29,7 +29,7 @@ import CoreGraphics
         func num(_ key: String) -> NSNumber? { st[key] as? NSNumber }
         let showGrid = num("showGrid")?.boolValue ?? false
         let divider = num("divider")?.intValue ?? 0
-        let tunActive = num("tunActive")?.boolValue ?? false
+        let tunActive = TunnelState.active
         let strokesVisible = num("strokesVisible")?.boolValue ?? true
         let follow = num("gridFollow")?.boolValue ?? false
         guard (showGrid || divider > 0) && !tunActive
