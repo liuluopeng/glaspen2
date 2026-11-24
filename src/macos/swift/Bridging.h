@@ -145,6 +145,7 @@ extern void glaspen2_set_stroke_outline(int enabled);
 void glaspen2_router_set_camera(double panX, double panY, double zoom, int assignZoom);
 extern char *glaspen2_chord_normalize(const char *raw);
 extern char *glaspen2_camera_pan(double panX, double panY, double zoom, double dx, double dy);
+extern char *glaspen2_chord_migrate_value(const char *action, const char *raw);
 double glaspen2_router_pan_x(void);
 double glaspen2_router_pan_y(void);
 double glaspen2_router_zoom(void);

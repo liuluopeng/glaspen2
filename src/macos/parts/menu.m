@@ -597,22 +597,12 @@ static NSUInteger gl_shortcut_modifier_mask_for(NSString *action) {
 }
 
 /// 旧默认迁移单源在 core/chord.rs(D2): 历史默认表 + "只迁仍等于旧默认的项"。
-static id gl_shortcut_migrate_saved(NSString *action, id raw) {
-    if (![raw isKindOfClass:[NSString class]]) return raw;
-    char *migrated = glaspen2_chord_migrate_value(action.UTF8String,
-                                                  [(NSString *)raw UTF8String]);
-    if (!migrated) return raw;
-    NSString *s = [NSString stringWithUTF8String:migrated];
-    glaspen2_free_c_string(migrated);
-    return s ?: raw;
-}
-
 static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved) {
     NSDictionary<NSString *, NSString *> *defaults = gl_shortcut_defaults();
     NSMutableDictionary<NSString *, NSString *> *values = [NSMutableDictionary dictionary];
     NSMutableDictionary<NSString *, NSString *> *lookup = [NSMutableDictionary dictionary];
     for (NSString *action in gl_shortcut_actions()) {
-        id raw = gl_shortcut_migrate_saved(action, saved[action]);
+        id raw = [ChordNormalizer migrateSavedAction:action raw:saved[action]];
         NSString *chord = nil;
         if ([raw isKindOfClass:[NSString class]]) {
             chord = [ChordNormalizer normalizeRaw:raw];
