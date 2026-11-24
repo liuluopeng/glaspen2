@@ -514,11 +514,9 @@ mod tests {
     }
 
     /// macOS setSetting 函数体(menu.m 里的定义, 不是 glaspen2.m 的 extern 声明)。
-    fn mac_apply_body(src: &str) -> &str {
-        let at = src
-            .find("void glaspen2_macos_set_setting(")
-            .expect("menu.m 缺 glaspen2_macos_set_setting 定义");
-        brace_body(src, at).expect("gl_set_setting 函数体不完整")
+    fn mac_apply_body(_src: &str) -> &'static str {
+        // setSetting 分派已迁 Swift(SettingsDispatcher), 闸门扫 Swift 源。
+        include_str!("../../../src/macos/swift/settings_dispatcher.swift")
     }
 
     /// Windows 管道 setSetting 分支体。

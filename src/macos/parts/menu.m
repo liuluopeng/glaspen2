@@ -260,18 +260,8 @@ NSString *glaspen2_router_action_for_chord(NSString *chord) {
 /// settings_snapshot::snapshot_json;本函数只收运行时专属值并转发 FFI。
 /// FFI 永不返回 NULL;内部错误以 {"error": ...} 形式传给 api.rs(它会拒绝该帧,
 /// 等价于旧实现"拿不到快照")。
-char *glaspen2_macos_settings_json(void) { return (char *)[MacosApi settingsJSON]; }
-
-void glaspen2_macos_free_c_string(char *p) {
-    if (p) free(p);
-}
-
 /// 释放 glaspen2_macos_canvas_payload 返回的缓冲区(ObjC 侧 malloc,
 /// 不能交给 Rust 的 Vec::from_raw_parts)。
-void glaspen2_macos_free_bytes(unsigned char *p) {
-    if (p) free(p);
-}
-
 /// 手写消息集成总开关:关 = 热键直通、面板收起;顺带终止进行中的手写会话。
 /// (共享画布上行的关闭由 Dart 侧随 tab 收起调用 FRB shareInkSetActive(false)。)
 /// 写入一项设置(D1:解析 / 钳制 / 落库单源在 core)。
@@ -281,95 +271,22 @@ void glaspen2_macos_free_bytes(unsigned char *p) {
 /// effect JSON: {"kind":"GridSize","float":40} / {"kind":"Shortcuts","json":{...}},
 /// 失败返回 {"error":"..."}。本函数只按 kind 执行 macOS 运行时副作用(菜单/
 /// 窗口/重绘/向主线程投任务), 不再自己解析标量、不再逐键钳制或落库。
-void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
-  if (!key_c || !value_json) return;
-  [SettingsDispatcher applyWithKey:[NSString stringWithUTF8String:key_c]
-                             value:[NSString stringWithUTF8String:value_json]];
-}
-
 /// 删除一页;返回 1 表示成功。删除当前页时自动切到相邻页。
-int glaspen2_macos_delete_page(long long screen_id) { return [MacosApi deletePageWithScreenId:screen_id]; }
-
 /// 面板窗口真穿透(实验): 拟物玻璃卡片的"透明窟窿"需要窗口本身可透明。
 /// 只动 NSWindow(不透明→透明+清底); Flutter view 的 layer 部分在 panel.m。
 void gl_panel_transparent_apply(BOOL on) { [SettingsPanelExtras applyPanelTransparent:on]; }
 
 /// 面板页面详情改动了当前页的数据(圈选移动/粘贴/删除) → 重建玻璃。
 /// core 的 refresh hook 在后台线程调用; surface 操作必须回主线程。
-void glaspen2_macos_refresh_page(long long screen_id) { [MacosApi refreshPageWithScreenId:screen_id]; }
-
 /// 面板自由涂鸦编辑(圈选移动/粘贴/删除)改动了无限画布 → 重载并重建玻璃。
-void glaspen2_macos_refresh_infinite(void) { [MacosApi refreshInfinite]; }
-
 /// 跳转到指定页继续绘画。
-void glaspen2_macos_navigate_to_page(long long screen_id) { [MacosApi navigateToPageWithScreenId:screen_id]; }
-
 /// 设置面板快捷键按钮 → 执行与物理快捷键相同的动作。
-void glaspen2_macos_hotkey(const char *key_c) { if (!key_c) return; [MacosApi hotkeyWithKey:[NSString stringWithUTF8String:key_c]]; }
-
 /// 无限画布总览:action 0=当前 1=镜头回原点 2=居中内容 3=新建(清空)。
 /// 返回 PNG 缓冲区(用 glaspen2_macos_free_bytes 释放)。rect_out 必须指向
 /// 8 个 double: [0..3] 视口矩形, [4..7] 渲染内容包围盒 [bx,by,bw,bh]
 /// (面板编辑用:图片像素 → 画布坐标的映射)。
 /// 空画布返回 NULL 且 *out_len = 0。
-unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *rect_out,
-                                             int *out_len) {
-    __block unsigned char *result_png = NULL;
-    gl_run_on_main_sync(^{
-        // block 捕获的参数是只读副本,尺寸用局部变量调整
-        int ow = w, oh = h;
-        if (ow < 400) ow = 1024;
-        if (oh < 400) oh = 768;
-        if (action == 1) {
-            // 镜头回原点 + 100%(HOME 常量单源 core Camera::HOME, D5b)
-            [CanvasCamera home];
-        } else if (action == 2) {
-            double bx, by, bx2, by2;
-            if (glaspen2_stroke_bbox(&bx, &by, &bx2, &by2)) {
-                // 居中公式单源 core Camera::centered_on(D5b)。macOS 只改 pan:
-                // assign_zoom = NO 保留当前 g_zoom;Windows 会把兜底后的 zoom
-                // 一并写回(差异见 camera.rs 模块文档 5)。
-                NSDictionary *result =
-                    [CameraState resultFromJSON:glaspen2_camera_centered(
-                        bx, by, bx2, by2, glaspen2_router_screen_w(), glaspen2_router_screen_h(),
-                        glaspen2_router_zoom())];
-                if ([CameraState assignResult:result assignZoom:NO])
-                    [CanvasCamera applyTransform];
-            }
-        } else if (action == 3) {
-            [EventRouter finishActiveStroke];
-            glaspen2_clear_strokes((int)glaspen2_router_screen_w(), (int)glaspen2_router_screen_h());
-            [CanvasCamera home];
-            ow = 1024;
-            oh = 768;
-        }
-        NSDictionary *payload = [CanvasOverview payloadWithWidth:ow height:oh];
-        if (!payload) return;
-        NSData *data = payload[@"png"];
-        NSArray *rect = payload[@"rect"];
-        NSArray *boundsArr = payload[@"bounds"];
-        if (!data || data.length == 0) return;
-        unsigned char *buf = (unsigned char *)malloc(data.length);
-        if (!buf) return;
-        memcpy(buf, data.bytes, data.length);
-        result_png = buf;
-        if (out_len) *out_len = (int)data.length;
-        if (rect_out) {
-            if (rect.count == 4) {
-                for (int i = 0; i < 4; i++) rect_out[i] = [rect[i] doubleValue];
-            }
-            for (int i = 0; i < 4 && i < (int)boundsArr.count; i++)
-                rect_out[4 + i] = [boundsArr[i] doubleValue];
-        }
-    });
-    return result_png;
-}
-
-int glaspen2_macos_export_pdf(void) { return [MacosApi exportPDF]; }
-
 /// 导出动画 GIF:后台渲染,完成后回主线程复制到剪贴板并提示。
-int glaspen2_macos_export_gif(void) { return [MacosApi exportGIF]; }
-
 // --- Unified settings functions (single source of truth) ---
 
 /// 抬笔后应用书写中按下的换色/换粗细(只保留最后一次)。

@@ -624,7 +624,9 @@ let mac_cam_store_swift =
 let mac_action_swift =
     include_str!("../../../src/macos/swift/action_dispatch.swift");
 let mac_run_cam = format!("{mac_run}\n{mac_cam_swift}\n{mac_action_swift}\n{mac_cam_store_swift}");
-        let mac_menu = include_str!("../../../src/macos/parts/menu.m");
+        let mac_menu = format!("{}{}",
+            include_str!("../../../src/macos/parts/menu.m"),
+            include_str!("../../../src/macos/swift/settings_api_glue.swift"));
         let win_actions = include_str!("../../../crates/glaspen-windows/src/overlay/actions.rs");
         let win_hotkeys = include_str!("../../../crates/glaspen-windows/src/overlay/hotkeys.rs");
         let win_mouse = include_str!("../../../crates/glaspen-windows/src/overlay/mouse.rs");
@@ -635,7 +637,7 @@ let mac_run_cam = format!("{mac_run}\n{mac_cam_swift}\n{mac_action_swift}\n{mac_
         // include_str! 指错文件/文件被清空时闸门不能静默变绿。
         for (name, src) in [
             ("run.m", mac_run),
-            ("menu.m", mac_menu),
+            ("menu.m+settings_api_glue.swift", mac_menu.as_str()),
             ("actions.rs", win_actions),
             ("hotkeys.rs", win_hotkeys),
             ("mouse.rs", win_mouse),
@@ -696,7 +698,7 @@ let mac_run_cam = format!("{mac_run}\n{mac_cam_swift}\n{mac_action_swift}\n{mac_
 
         let mut problems = Vec::new();
         problems.extend(violations("run.m", mac_run, &mac_forbidden));
-        problems.extend(violations("menu.m", mac_menu, &mac_forbidden));
+        problems.extend(violations("menu.m", &mac_menu, &mac_forbidden));
         for (name, src) in [
             ("actions.rs", win_actions),
             ("hotkeys.rs", win_hotkeys),
@@ -725,11 +727,11 @@ let mac_run_cam = format!("{mac_run}\n{mac_cam_swift}\n{mac_action_swift}\n{mac_
             ),
             (
                 "menu.m",
-                mac_menu,
+                &mac_menu,
                 &[
                     "glaspen2_camera_centered(",
-                    "[CanvasCamera home]",
-                    "CameraState assignResult:",
+                    "CanvasCamera.home()",
+                    "CameraState.assign(result:",
                 ][..],
             ),
             (

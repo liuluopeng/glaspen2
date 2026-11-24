@@ -361,6 +361,7 @@ extern char *glaspen2_minimap_layout_json(long long current_screen_id, double vi
 extern unsigned char *glaspen2_render_thumbnail(long long screen_id, int w, int h, int max_size, int *out_len);
 extern void glaspen2_free_rust_bytes(unsigned char *ptr, int len);
 extern int glaspen2_stroke_bbox(double *bx, double *by, double *bx2, double *by2);
+extern char *glaspen2_camera_centered(double bx, double by, double bx2, double by2, double viewport_w, double viewport_h, double zoom);
 extern unsigned char *glaspen2_render_canvas_overview(double bx, double by, double bw, double bh, int ow, int oh, int *out_len);
 extern double glaspen2_camera_step_zoom(double zoom);
 int glaspen2_router_infinite(void);

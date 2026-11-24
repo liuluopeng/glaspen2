@@ -1013,8 +1013,12 @@ mod tests {
         // overrides 组装已迁 Swift(menu_glue.swift), 闸门同时扫描两边。
         let mac_glue_swift = include_str!("../../../src/macos/swift/menu_glue.swift");
         let win_code = strip_comments(WIN_PIPE_SRC);
-        let mac_snapshot = body_after(&mac_code, "char *glaspen2_macos_settings_json(void)")
-            .expect("macOS 缺 glaspen2_macos_settings_json 定义");
+        let mac_snapshot_glue = include_str!("../../../src/macos/swift/settings_api_glue.swift");
+        let fn_at = mac_snapshot_glue
+            .find("func settingsApiJSON")
+            .expect("settings_api_glue.swift 缺 settingsApiJSON");
+        let rel_end = mac_snapshot_glue[fn_at..].find('}').expect("settingsApiJSON 不完整");
+        let mac_snapshot = &mac_snapshot_glue[fn_at..fn_at + rel_end];
         let win_snapshot = pipe_branch(&win_code, "msg_type == \"getSettings\"")
             .expect("Windows 管道缺 getSettings 分支");
 
