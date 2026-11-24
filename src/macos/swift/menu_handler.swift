@@ -61,6 +61,22 @@ import AppKit
         glaspen2_menu_notify(glaspen2_menu_l10n("export.notes_saved"))
     }
 
+    /// 手写消息集成总开关: 状态/落库/录制状态机通知/共享上行恢复。
+    @objc(setChatIntegration:)
+    public static func setChatIntegration(enabled: Bool) {
+        glaspen2_router_set_chat_integration(enabled ? 1 : 0)
+        "chat_integration".withCString { key in
+            glaspen2_save_bool_setting(key, enabled ? 1 : 0)
+        }
+        glaspen2_router_rec_chat_integration_changed(enabled ? 1 : 0)
+        if !enabled {
+            glaspen2_share_ink_set_active(0)
+        } else {
+            let share = "share_ink".withCString { glaspen2_load_bool_setting($0) }
+            if share != 0 { glaspen2_share_ink_set_active(1) }
+        }
+    }
+
     /// 涂鸦总开关: 状态 + 菜单勾选/标题 + 状态图标。
     @objc(setDrawEnabled:)
     public static func setDrawEnabled(enabled: Bool) {

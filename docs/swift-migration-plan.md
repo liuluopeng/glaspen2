@@ -384,3 +384,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7t(续跑第36轮) | 网格开关迁 Swift: MenuHandler.setGridEnabled(状态/落库/面板同步/重绘), ObjC gl_settings_set_grid 变一行转发; 新增网格状态与重绘两个薄桥 | cargo build/tests/parity 全绿;网格开关需真机验证 | 本提交 |
 | 2026-11-24 | S7u(续跑第37轮) | 压感监视器开关迁 Swift: MenuHandler.setPressureMonitor(状态/落库/显示隐藏/刷新/面板同步), ObjC gl_settings_set_pressure_monitor 变一行转发; 新增 4 个薄桥; 修复桥名与既有 pm_update(6 参)冲突(改名 pm_refresh) | cargo build/tests/parity 全绿;压感监视器需真机验证 | 本提交 |
 | 2026-11-24 | S7v(续跑第38轮) | 涂鸦总开关迁 Swift: MenuHandler.setDrawEnabled(状态 + 菜单 888 勾选/本地化标题 + 状态图标), ObjC gl_settings_set_enabled 变一行转发; 新增 enabled 状态与菜单标题两个薄桥 | cargo build/tests/parity 全绿;总开关/菜单标题需真机验证 | 本提交 |
+| 2026-11-24 | S7w(续跑第39轮) | 手写消息总开关迁 Swift: MenuHandler.setChatIntegration(状态/落库/录制状态机通知/关闭停共享、重开按 share_ink 恢复), ObjC gl_settings_set_chat_integration 变一行转发; 新增状态与录制通知薄桥; D8b 闸门改为 menu.m+menu_handler.swift 合并源校验桥名 | cargo build/tests/parity 全绿;集成开关/共享上行需真机验证 | 本提交 |

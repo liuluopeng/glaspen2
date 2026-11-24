@@ -789,18 +789,8 @@ void glaspen2_macos_free_bytes(unsigned char *p) {
 /// 手写消息集成总开关:关 = 热键直通、面板收起;顺带终止进行中的手写会话。
 /// (共享画布上行的关闭由 Dart 侧随 tab 收起调用 FRB shareInkSetActive(false)。)
 static void gl_settings_set_chat_integration(BOOL on) {
-    g_chat_integration = on;
-    glaspen2_save_bool_setting("chat_integration", on ? 1 : 0);
-    // 录制会话收尾交给 core 状态机(D8b): 关闭时直发静默丢弃, 草稿走完整
-    // StopChatDraft(提交在写笔画 + half-close + 按 axum 裁决提示);GIF 不受影响。
-    gl_recording_chat_integration_changed(on);
-    if (!on) {
-        // 共享上行一并停止
-        glaspen2_share_ink_set_active(NO);
-    } else if (glaspen2_load_bool_setting("share_ink")) {
-        // 重新开启集成:共享上行开关若此前是开的,一并恢复
-        glaspen2_share_ink_set_active(YES);
-    }
+    // S7w: 逻辑已迁 Swift(MenuHandler.setChatIntegration)。
+    [MenuHandler setChatIntegration:on];
 }
 
 /// 写入一项设置(D1:解析 / 钳制 / 落库单源在 core)。
@@ -1338,3 +1328,6 @@ void glaspen2_router_set_menu_title(int tag, NSString *title) {
   NSMenuItem *item = [MenuLookup itemWithTag:tag inMenu:g_menu];
   if (item) [item setTitle:title];
 }
+
+// S7w: 手写消息总开关状态薄桥
+void glaspen2_router_set_chat_integration(int on) { g_chat_integration = on != 0; }

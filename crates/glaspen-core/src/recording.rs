@@ -1735,7 +1735,10 @@ mod tests {
             include_str!("../../../src/macos/swift/recording_hud.swift");
         let mac_recording_keys =
             include_str!("../../../src/macos/swift/recording_keys.swift");
+        let mac_menu_handler =
+            include_str!("../../../src/macos/swift/menu_handler.swift");
         let mac_combined = format!("{mac_run}\n{mac_recording_keys}");
+        let mac_menu_swift = format!("{mac_menu}\n{mac_menu_handler}");
         // Windows: recording.rs = 接线/effects 分派; state.rs = 两个状态机字段;
         // actions.rs = Raw Input/总开关入口; hotkeys.rs = WM_HOTKEY; wndproc =
         // 后台结果回窗口线程; cmds.rs = 自定义消息。
@@ -1904,10 +1907,11 @@ mod tests {
             mac_recording_swift,
             &swift_hud_refs,
         ));
+        // 总开关通知录制状态机的调用已迁 Swift(menu_handler 调桥, run.m 实现)。
         problems.extend(gate_missing(
-            "menu.m",
-            mac_menu,
-            &["gl_recording_chat_integration_changed("],
+            "menu.m+menu_handler.swift",
+            mac_menu_swift.as_str(),
+            &["glaspen2_router_rec_chat_integration_changed("],
         ));
 
         // Windows 必须直接 match 两个状态机/全部事件与 effect 变体。

@@ -2887,3 +2887,6 @@ NSDictionary *glaspen2_router_cursor_draw_state(void) {
 void glaspen2_router_redraw_draw_view(void) {
   if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
 }
+
+// S7w: 录制状态机总开关变化薄桥
+void glaspen2_router_rec_chat_integration_changed(int on) { gl_recording_chat_integration_changed(on != 0); }
