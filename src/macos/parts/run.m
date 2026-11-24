@@ -2537,3 +2537,17 @@ int glaspen2_router_live_plan_segment(cairo_t *cr, double x, double y, double wi
   return gl_live_plan_draw_segment(cr, x, y, width) ? 1 : 0;
 }
 double glaspen2_router_outline_dash(void) { return kOutlineDash; }
+
+// S7ca: 实时笔画上下文薄桥
+double glaspen2_router_scale(void) { return g_scale; }
+int glaspen2_router_active_ctx_present(void) { return g_active_cr ? 1 : 0; }
+void glaspen2_router_install_active_ctx(cairo_t *ctx) { g_active_cr = ctx; }
+cairo_t *glaspen2_router_take_active_ctx(void) {
+  cairo_t *ctx = g_active_cr;
+  g_active_cr = NULL;
+  return ctx;
+}
+void glaspen2_router_reset_raw_stroke(void) {
+  g_raw_has_prev = NO;
+  g_raw_path_len = 0;
+}

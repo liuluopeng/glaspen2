@@ -88,22 +88,10 @@ static void flush_dirty_to_layer(void) { [OverlayLayerFlush flushDirty]; }
 
 /// Set up the shared cairo context for the duration of a stroke.
 /// Idempotent: safe to call if g_active_cr is already set.
-static void stroke_begin(void) {
-    if (g_active_cr) return;
-    if (!g_surface) return;
-    g_active_cr = cairo_create(g_surface);
-    cairo_scale(g_active_cr, g_scale, g_scale);
-    g_raw_has_prev = NO; // 新笔没有"上一段"可重画
-    g_raw_path_len = 0;  // 虚线相位从黑段起
-}
+static void stroke_begin(void) { [StrokeSurface begin]; }
 
 /// Tear down the shared cairo context at end of stroke.
-static void stroke_end(void) {
-    if (g_active_cr) {
-        cairo_destroy(g_active_cr);
-        g_active_cr = NULL;
-    }
-}
+static void stroke_end(void) { [StrokeSurface end]; }
 
 /// Properly finish an in-flight stroke (used by hotkeys / re-entrant pen-down
 /// so an interrupted stroke is committed or erased instead of silently lost).
