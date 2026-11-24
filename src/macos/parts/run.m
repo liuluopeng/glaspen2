@@ -11,13 +11,7 @@ static void rebuild_surface_from_strokes(void) { [PageViewOps rebuildSurface]; }
 
 
 
-@interface GlaspenDrawView : NSView
-@end
 
-@implementation GlaspenDrawView
-- (void)drawRect:(NSRect)rect { [OverlayDrawing drawInView:self rect:rect]; }
-
-@end
 
 // 应用无限画布开关(菜单与 Flutter 设置面板共用的唯一入口)。
 // 两种模式各自独立存储:翻页模式用 screens/strokes,无限画布用
@@ -533,10 +527,6 @@ id glaspen2_router_settings_vc(void) {
                                                           bundle:nil];
   }
   return g_flutter_vc;
-}
-id glaspen2_router_settings_delegate(void) {
-  if (!g_settings_delegate) g_settings_delegate = [[SettingsWindowDelegate alloc] init];
-  return g_settings_delegate;
 }
 id glaspen2_router_settings_window(void) { return g_settings_window; }
 void glaspen2_router_set_settings_window(id window) { g_settings_window = window; }

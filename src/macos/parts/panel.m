@@ -1,15 +1,5 @@
-@interface SettingsWindowDelegate : NSObject <NSWindowDelegate>
-@end
 
-@implementation SettingsWindowDelegate
-- (void)windowWillClose:(NSNotification *)notification {
-    // Switch back to Accessory when settings window closes
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-    [NSApp deactivate];
-}
-@end
 
-static SettingsWindowDelegate *g_settings_delegate = nil;
 
 static void show_settings_panel(void) { [SettingsPanel show]; }
 

@@ -12,10 +12,7 @@ import AppKit
             frame: frame,
             enabled: glaspen2_router_glass_enabled() != 0,
             opacity: glaspen2_router_glass_opacity())
-        guard let viewClass = NSClassFromString("GlaspenDrawView") as? NSView.Type else {
-            return false
-        }
-        let drawView = viewClass.init(frame: frame)
+        let drawView = GlaspenDrawView(frame: frame)
         OverlayWindowFactory.assembleContent(content, glass: glass,
                                              drawView: drawView, in: window)
         glaspen2_router_set_startup_window(window)

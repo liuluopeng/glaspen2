@@ -18,9 +18,10 @@ import AppKit
         window.title = glaspen2_menu_l10n_pair("玻璃涂鸦", "glaspen2")
         window.minSize = NSSize(width: 600, height: 800)
         window.isReleasedWhenClosed = false
-        if let delegate = glaspen2_router_settings_delegate() as? NSWindowDelegate {
-            window.delegate = delegate
+        if SettingsWindowDelegate.shared == nil {
+            SettingsWindowDelegate.shared = SettingsWindowDelegate()
         }
+        window.delegate = SettingsWindowDelegate.shared
         window.contentViewController = vc
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)

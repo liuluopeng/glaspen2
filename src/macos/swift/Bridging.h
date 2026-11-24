@@ -162,7 +162,6 @@ extern char *glaspen2_live_plan_json(const char *input);
 void glaspen2_router_dirty_include_surface_rect(double x, double y, double w, double h);
 id glaspen2_router_settings_engine(void);
 id glaspen2_router_settings_vc(void);
-id glaspen2_router_settings_delegate(void);
 id glaspen2_router_settings_window(void);
 void glaspen2_router_set_settings_window(id window);
 void glaspen2_router_settings_apply_transparent(void);
