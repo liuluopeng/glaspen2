@@ -330,13 +330,7 @@ static void gl_quit_app(void) {
     show_notification(gl_text(@"export.notes_saved"));
 }
 
-- (void)toggleLanguage {
-    g_lang = 1 - g_lang;
-    glaspen2_save_string_setting("language", g_lang == 1 ? "en" : "zh");
-    update_menu_texts();
-    // 面板若开着, 让 Dart 侧跟着切换(不再跟随系统 locale)
-    glaspen2_notify_settings_changed();
-}
+- (void)toggleLanguage { [MenuHandler toggleLanguage]; }
 - (void)showSettingsPanel {
     show_settings_panel();
 }
@@ -419,6 +413,19 @@ void glaspen2_menu_did_close_bridge(void) {
 
 void glaspen2_menu_quit_bridge(void) {
     gl_quit_app();
+}
+
+// S3b-2b-7b: 语言切换的薄桥(g_lang 在本翻译单元; 刷新逻辑仍用原函数)
+int glaspen2_menu_lang(void) {
+    return g_lang;
+}
+
+void glaspen2_menu_set_lang(int value) {
+    g_lang = value == 1 ? 1 : 0;
+}
+
+void glaspen2_menu_refresh_texts(void) {
+    update_menu_texts();
 }
 
 // ObjC 侧保留薄 delegate 方法(仅转发给 Swift MenuHandler); 业务逻辑在 Swift。

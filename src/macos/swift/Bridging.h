@@ -32,6 +32,15 @@ void glaspen2_menu_will_open_bridge(void);
 void glaspen2_menu_did_close_bridge(void);
 void glaspen2_menu_quit_bridge(void);
 
+// S3b-2b-7b: 语言切换所需的语言状态桥(实现留在 menu.m, g_lang 是 TU 内静态全局)
+int glaspen2_menu_lang(void);
+void glaspen2_menu_set_lang(int value);
+void glaspen2_menu_refresh_texts(void);
+
+// 既有 C FFI(实现在 core/Rust, 这里只补声明给 Swift 用)
+void glaspen2_save_string_setting(const char *key, const char *value);
+void glaspen2_notify_settings_changed(void);
+
 // S2 探针入口(ObjC 实现, 供 glaspen2_run / Rust --swift-probe 调用):
 // 内部经生成的 glaspen2_macos_swift-Swift.h 调 [SwiftInteropProbe ping],
 // 验证 ObjC→Swift 方向。普通迁移代码不需要这类"Swift 反向入口"。
