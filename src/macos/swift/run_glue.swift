@@ -45,7 +45,7 @@ public func runBubblePenGone() { glaspen2_bubble_pen_gone() }
 public func runFlush() { OverlayLayerFlush.flushDirty() }
 
 @_cdecl("glaspen2_virtual_pen_user_data")
-public func runVirtualPenUserData() -> Int64 { 0x676C_6173_7065_6E32 }
+public func runVirtualPenUserData() -> Int64 { 0x5650_4E31 }
 
 @_cdecl("glaspen2_router_pen_state")
 public func runPenState() -> Int32 {
