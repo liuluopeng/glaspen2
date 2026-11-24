@@ -196,12 +196,6 @@ extern void glaspen2_set_stroke_outline(int enabled);
 static void canvas_apply_transform(void);
 
 // S7ak: 镜头 JSON 逻辑已迁 Swift(CameraState), 以下为 ObjC 转发。
-static BOOL camera_assign(NSDictionary *result, BOOL assign_zoom) {
-  return [CameraState assignResult:result assignZoom:assign_zoom];
-}
-static NSDictionary *camera_result_json(char *json) {
-  return [CameraState resultFromJSON:json];
-}
 // ObjC 侧使用的 Swift 薄桥前向声明(Bridging.h 只给 Swift 编译单元)
 void glaspen2_router_update_status_icon_state(void);
 extern void glaspen2_set_soft_shadow(int enabled);

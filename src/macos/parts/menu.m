@@ -998,10 +998,11 @@ unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *r
                 // 居中公式单源 core Camera::centered_on(D5b)。macOS 只改 pan:
                 // assign_zoom = NO 保留当前 g_zoom;Windows 会把兜底后的 zoom
                 // 一并写回(差异见 camera.rs 模块文档 5)。
-                NSDictionary *result = camera_result_json(glaspen2_camera_centered(
-                    bx, by, bx2, by2, (double)g_screen_w, (double)g_screen_h,
-                    g_zoom));
-                if (camera_assign(result, NO))
+                NSDictionary *result =
+                    [CameraState resultFromJSON:glaspen2_camera_centered(
+                        bx, by, bx2, by2, (double)g_screen_w, (double)g_screen_h,
+                        g_zoom)];
+                if ([CameraState assignResult:result assignZoom:NO])
                     canvas_apply_transform();
             }
         } else if (action == 3) {
