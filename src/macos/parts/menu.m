@@ -568,16 +568,6 @@ static NSDictionary<NSNumber *, NSString *> *gl_keycode_names(void) {
 }
 
 /// 规范化用户/存档 chord; 空串 = 未绑定; 非法返回 nil。
-static NSString *gl_normalize_chord(NSString *raw) {
-    // 规范化规则单源在 core/chord.rs(经 FFI, 与 Windows 同一实现)。
-    if (![raw isKindOfClass:[NSString class]]) return nil;
-    char *out = glaspen2_chord_normalize(raw.UTF8String);
-    if (!out) return nil;
-    NSString *s = [NSString stringWithUTF8String:out];
-    glaspen2_free_c_string(out);
-    return s;
-}
-
 /// 保留组合: 按住类功能、系统锁屏、常用 App 默认不能被普通动作占用。
 /// 列表单源在 core/ui.rs(经 FFI), 不再在 ObjC 里维护第二份。
 static BOOL gl_shortcut_reserved(NSString *chord) {
@@ -627,7 +617,7 @@ static void gl_shortcuts_apply(NSDictionary<NSString *, id> *saved) {
         id raw = gl_shortcut_migrate_saved(action, saved[action]);
         NSString *chord = nil;
         if ([raw isKindOfClass:[NSString class]]) {
-            chord = gl_normalize_chord(raw);
+            chord = [ChordNormalizer normalizeRaw:raw];
             if (!chord && [(NSString *)raw length] > 0) {
                 NSLog(@"[hotkey] 非法组合 %@=%@, 回退默认", action, raw);
             }

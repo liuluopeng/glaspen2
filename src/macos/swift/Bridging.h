@@ -144,6 +144,7 @@ void glaspen2_router_set_outline_state(int on);
 void glaspen2_router_rebuild_surface(void);
 extern void glaspen2_set_stroke_outline(int enabled);
 void glaspen2_router_set_camera(double panX, double panY, double zoom, int assignZoom);
+extern char *glaspen2_chord_normalize(const char *raw);
 void glaspen2_router_pm_show(void);
 void glaspen2_router_pm_hide(void);
 void glaspen2_router_pm_refresh(void);
