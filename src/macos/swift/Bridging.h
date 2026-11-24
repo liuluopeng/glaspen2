@@ -153,6 +153,12 @@ extern char *glaspen2_camera_zoom_at(double panX, double panY, double zoom, doub
 extern char *glaspen2_camera_zoom_at_center(double panX, double panY, double zoom, double factor, double vw, double vh);
 double glaspen2_router_screen_w(void);
 double glaspen2_router_screen_h(void);
+extern int glaspen2_color_preset_count(void);
+extern void glaspen2_color_preset_rgb(int i, double *r, double *g, double *b);
+extern int glaspen2_width_preset_count(void);
+extern double glaspen2_width_preset_value(int i);
+void glaspen2_router_set_color_preset(int idx, double r, double g, double b);
+void glaspen2_router_set_width_preset(int idx, double value);
 double glaspen2_router_pan_x(void);
 double glaspen2_router_pan_y(void);
 double glaspen2_router_zoom(void);

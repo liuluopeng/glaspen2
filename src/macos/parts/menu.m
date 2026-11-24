@@ -1231,3 +1231,13 @@ void glaspen2_router_apply_glass_view(double alpha, BOOL hidden) {
     g_glass_view.hidden = hidden;
   }
 }
+
+// S7az: 预设表写入薄桥
+void glaspen2_router_set_color_preset(int idx, double r, double g, double b) {
+  g_color_presets[idx].r = r;
+  g_color_presets[idx].g = g;
+  g_color_presets[idx].b = b;
+}
+void glaspen2_router_set_width_preset(int idx, double value) {
+  g_width_presets[idx] = value;
+}

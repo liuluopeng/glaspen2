@@ -1950,22 +1950,7 @@ static void flip_probe_maybe_start(void) {
 
 // 颜色/粗细预设表从 glaspen-core presets 填充(RGB 单源;名字是本平台
 // UI 字符串)。须在任何读表代码(建菜单/恢复设置)之前调用。
-static void gl_load_pen_presets(void) {
-  if (glaspen2_color_preset_count() != g_color_preset_count ||
-      glaspen2_width_preset_count() != g_width_preset_count) {
-    NSLog(@"[glaspen2] WARN: core 预设数量与 ObjC 表不一致 (color %d/%d, width "
-          @"%d/%d)",
-          glaspen2_color_preset_count(), g_color_preset_count,
-          glaspen2_width_preset_count(), g_width_preset_count);
-  }
-  for (int i = 0; i < g_color_preset_count; i++) {
-    glaspen2_color_preset_rgb(i, &g_color_presets[i].r, &g_color_presets[i].g,
-                              &g_color_presets[i].b);
-  }
-  for (int i = 0; i < g_width_preset_count; i++) {
-    g_width_presets[i] = glaspen2_width_preset_value(i);
-  }
-}
+static void gl_load_pen_presets(void) { [PenPresets loadPresets]; }
 
 // 单实例守卫: 两个实例 = 两套全屏窗口叠加显示 + 同一全局热键同时翻
 // 两套页, 表现为"笔迹重复/翻页只翻了一部分"。flock 随进程生死自动
