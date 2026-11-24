@@ -157,3 +157,19 @@ public func glaspen2_macos_swift_statusbar_selftest() -> Int32 {
     print("SWIFT_STATUSBAR_OK items=1 button=1 image=1")
     return 0
 }
+
+// S7: 状态栏图标刷新(setImage/清标题), 绘制仍走 StatusIconRenderer。
+@objc public final class StatusIconUpdater: NSObject {
+    @objc(applyToStatusItem:eraser:enabled:ethereal:infinite:widthScale:penRed:penGreen:penBlue:)
+    public static func apply(item: NSStatusItem, eraser: Bool, enabled: Bool,
+                             ethereal: Bool, infinite: Bool, widthScale: Double,
+                             penRed: Double, penGreen: Double, penBlue: Double) {
+        let icon = StatusIconRenderer.renderIcon(eraser: eraser, enabled: enabled,
+                                                 ethereal: ethereal, infinite: infinite,
+                                                 widthScale: widthScale,
+                                                 penRed: penRed, penGreen: penGreen,
+                                                 penBlue: penBlue)
+        item.button?.image = icon
+        item.button?.title = ""
+    }
+}

@@ -104,18 +104,16 @@ static BOOL g_ethereal_canvas; // 定义在下方(飘渺画布涂鸦模式), 图
 
 
 static void update_status_icon_color(void) {
-    // S3b-2b-6: 状态栏图标绘制逻辑已迁 Swift(StatusIconRenderer);
-    // ObjC 旧实现暂留为 parity 探针, 验证通过后删除。
-    NSImage *icon = [StatusIconRenderer renderIconWithEraser:g_eraser_mode
-                                                     enabled:g_enabled
-                                                    ethereal:g_ethereal_canvas
-                                                    infinite:g_infinite_canvas
-                                                  widthScale:g_width_scale
-                                                      penRed:g_pen_r
-                                                    penGreen:g_pen_g
-                                                     penBlue:g_pen_b];
-    [g_statusItem.button setImage:icon];
-    [g_statusItem.button setTitle:@""]; // 只用图, 不留 "G" 文字
+    // S7: 图标刷新(setImage/清标题)已迁 Swift(StatusIconUpdater)。
+    [StatusIconUpdater applyToStatusItem:g_statusItem
+                                  eraser:g_eraser_mode
+                                 enabled:g_enabled
+                                ethereal:g_ethereal_canvas
+                                infinite:g_infinite_canvas
+                              widthScale:g_width_scale
+                                  penRed:g_pen_r
+                                penGreen:g_pen_g
+                                 penBlue:g_pen_b];
 }
 
 
