@@ -467,7 +467,7 @@ int glaspen2_router_live_plan_dot(cairo_t *cr, double x, double y, double width)
   return [LivePlan drawDotContext:(void *)cr x:x y:y width:width] ? 1 : 0;
 }
 cairo_pattern_t *glaspen2_router_invert_ink_source(cairo_t *cr) {
-  return invert_ink_source(cr);
+  return (cairo_pattern_t *)invert_ink_source((void *)cr);
 }
 void glaspen2_router_dirty_include_surface_point(double x, double y, double pad) {
   dirty_include_surface_point(x, y, pad);
@@ -477,7 +477,6 @@ void glaspen2_router_dirty_include_surface_point(double x, double y, double pad)
 int glaspen2_router_live_plan_segment(cairo_t *cr, double x, double y, double width) {
   return [LivePlan drawSegmentContext:(void *)cr x:x y:y width:width] ? 1 : 0;
 }
-double glaspen2_router_outline_dash(void) { return kOutlineDash; }
 
 // S7ca: 实时笔画上下文薄桥
 // S7cb: 飘渺模式薄桥

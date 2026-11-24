@@ -906,7 +906,9 @@ mod tests {
         let mac_main = include_str!("../../../src/macos/glaspen2.m");
         let mac_run = include_str!("../../../src/macos/parts/run.m");
         let mac_menu = include_str!("../../../src/macos/parts/menu.m");
-        let mac_panel = include_str!("../../../src/macos/parts/panel.m");
+        let mac_panel = format!("{}{}",
+            include_str!("../../../src/macos/swift/panel_glue.swift"),
+            include_str!("../../../src/macos/swift/raw_drawing.swift"));
         // S7m: 网格层绘制已迁 Swift, 闸门须同时扫 Swift 源(几何仍走 core::grid)。
         let mac_grid_swift = include_str!("../../../src/macos/swift/overlay_grid.swift");
         let mac_drawing_swift = include_str!("../../../src/macos/swift/overlay_drawing.swift");
@@ -919,7 +921,7 @@ let mac_run_grid = format!("{mac_run}\n{mac_grid_swift}\n{mac_drawing_swift}");
             ("glaspen2.m", mac_main),
             ("run.m", mac_run),
             ("menu.m", mac_menu),
-            ("panel.m", mac_panel),
+            ("panel_glue.swift", mac_panel.as_str()),
             ("canvas.rs", win_canvas),
             ("actions.rs", win_actions),
             ("state.rs", win_state),
@@ -1008,7 +1010,7 @@ let mac_run_grid = format!("{mac_run}\n{mac_grid_swift}\n{mac_drawing_swift}");
         problems.extend(violations("glaspen2.m", mac_main, &mac_forbidden));
         problems.extend(violations("run.m", mac_run, &mac_forbidden));
         problems.extend(violations("menu.m", mac_menu, &mac_forbidden));
-        problems.extend(violations("panel.m", mac_panel, &mac_forbidden));
+        problems.extend(violations("panel_glue.swift", &mac_panel, &mac_forbidden));
         problems.extend(violations("canvas.rs", win_canvas, &win_canvas_forbidden));
         problems.extend(violations("actions.rs", win_actions, &win_other_forbidden));
         problems.extend(violations("state.rs", win_state, &win_other_forbidden));

@@ -27,7 +27,7 @@ import AppKit
                           0, 2 * Double.pi)
                 cairo_fill(cr)
             }
-            let ipat = glaspen2_router_invert_ink_source(cr)
+            let ipat = glaspen2_router_invert_ink_source(UnsafeMutableRawPointer(cr)).map { OpaquePointer($0) }
             if ipat == nil {
                 cairo_set_source_rgba(cr, glaspen2_router_pen_r(),
                                       glaspen2_router_pen_g(),
@@ -107,7 +107,7 @@ import AppKit
                 }
                 cairo_set_line_cap(cr, cairo_line_cap_t(1))
             }
-            let ipat = glaspen2_router_invert_ink_source(cr)
+            let ipat = glaspen2_router_invert_ink_source(UnsafeMutableRawPointer(cr)).map { OpaquePointer($0) }
             if ipat == nil {
                 cairo_set_source_rgba(cr, glaspen2_router_pen_r(),
                                       glaspen2_router_pen_g(),

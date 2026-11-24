@@ -134,7 +134,7 @@ import AppKit
             return
         }
         // fill
-        let invertPat = glaspen2_router_invert_ink_source(cr)
+        let invertPat = glaspen2_router_invert_ink_source(UnsafeMutableRawPointer(cr)).map { OpaquePointer($0) }
         if invertPat == nil {
             color(cr, command["color"], alpha)
         }

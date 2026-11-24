@@ -22,11 +22,13 @@
 // Backing scale factor for Retina rendering (1.0 = non-Retina, 2.0 = Retina)
 
 // Forward declarations
-static void flush_to_layer(void);
+void flush_to_layer(void);
+void flush_dirty_to_layer(void);
+void surface_image_cache_invalidate(void);
 // 翻页动效(时光隧道)进行中(drawRect 抑制网格; 飘渺模式禁止隐藏笔迹)
 static void clear_screen(void);
 static void rebuild_surface_from_strokes(void);
-static void show_settings_panel(void);
+void show_settings_panel(void);
 static void perf_log_summary(void);
 static void pm_ensure_window(void);
 static void pm_show(void);
@@ -197,7 +199,7 @@ extern void glaspen2_set_invert_background(void *surface); // 反相背景 cairo
 extern int  glaspen2_has_strokes(void);                    // 捕获循环空转判断
 void invert_ink_apply(int on);                             // 定义在 parts/panel.m
 void invert_stream_restart(void);                          // 帧率变更后重启捕获流
-void gl_panel_transparent_apply_full(BOOL on);             // 面板真穿透开关(定义在 parts/panel.m)
+void gl_panel_transparent_apply_full(int on);             // 面板真穿透开关(定义在 parts/panel.m)
 extern void glaspen2_set_invert_dirty(int x, int y, int w, int h); // 局部重绘脏区
 extern unsigned char* glaspen2_render_canvas_overview(double bx, double by, double bw, double bh, int out_w, int out_h, int *out_len);
 extern void glaspen2_set_view_transform(double pan_x, double pan_y, double zoom);
@@ -253,7 +255,7 @@ extern int glaspen2_undo_last_stroke(void);
 
 // Forward declarations
 static void rebuild_surface_from_strokes(void);
-static void ensure_surface(NSView *view);
+void ensure_surface(void *view);
 static BOOL perform_hotkey(unsigned short keyCode);
 static void event_tap_install(BOOL include_scroll);
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
@@ -498,5 +500,4 @@ static void replay_strokes_from_memory(void) { [SurfaceReplay replay]; }
 // ── 文件拆分: #include 文本包含(同一编译单元, clang 报错行号直指子文件);
 //    拆分为纯移动, 行为零变化。构建仍只编译 glaspen2.m 这一个入口。──
 #include "parts/menu.m"
-#include "parts/panel.m"
 #include "parts/run.m"

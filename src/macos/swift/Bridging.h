@@ -341,7 +341,7 @@ double glaspen2_router_pen_r(void);
 double glaspen2_router_pen_g(void);
 double glaspen2_router_pen_b(void);
 int glaspen2_router_live_plan_dot(cairo_t *cr, double x, double y, double width);
-cairo_pattern_t *glaspen2_router_invert_ink_source(cairo_t *cr);
+void *glaspen2_router_invert_ink_source(void *cr);
 void glaspen2_router_dirty_include_surface_point(double x, double y, double pad);
 NSDictionary *glaspen2_router_raw_state(void);
 void glaspen2_router_update_raw_after_segment(double x, double y, double width);

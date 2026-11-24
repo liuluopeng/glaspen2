@@ -175,7 +175,6 @@ NSString *glaspen2_menu_l10n_pair(NSString *zh, NSString *en) { return glaspen2_
 // --- Settings Panel (Flutter-based) ---
 static NSWindow *g_settings_window = nil;
 
-static void show_settings_panel(void);
 static void sync_settings_panel(void);
 
 // S7x: 遗留设置面板按钮 stub 已彻底删除(桌面面板早已移除)。
@@ -440,7 +439,7 @@ NSString *glaspen2_router_shortcut_chord(NSString *action) {
 // S7bo: 涂鸦启停的 Swift 薄桥
 void glaspen2_router_ensure_surface(void) {
   id dv = glaspen2_router_draw_view();
-  if (dv) ensure_surface((NSView *)dv);
+  if (dv) ensure_surface((__bridge void *)dv);
 }
 
 // S7bp: 画布模式切换的 Swift 薄桥
