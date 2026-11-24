@@ -130,6 +130,8 @@ extern void glaspen2_set_launch_at_login(int on);
 void glaspen2_router_set_grid_state(int on);
 void glaspen2_router_redraw_draw_view(void);
 void glaspen2_router_set_pressure_monitor(int on);
+void glaspen2_router_set_enabled_state(int on);
+void glaspen2_router_set_menu_title(int tag, NSString *title);
 void glaspen2_router_pm_show(void);
 void glaspen2_router_pm_hide(void);
 void glaspen2_router_pm_refresh(void);

@@ -1208,11 +1208,8 @@ static void gl_settings_set_glass_enabled(BOOL on) {
 }
 
 static void gl_settings_set_enabled(BOOL on) {
-    g_enabled = on;
-    NSMenuItem *item = [MenuLookup itemWithTag:888 inMenu:g_menu];
-    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
-    [item setTitle:on ? L(@"关闭涂鸦", @"Disable Drawing") : L(@"开启涂鸦", @"Enable Drawing")];
-    update_status_icon_color();
+    // S7v: 逻辑已迁 Swift(MenuHandler.setDrawEnabled)。
+    [MenuHandler setDrawEnabled:on];
 }
 
 // --- Pressure monitor (top-left info window) ---
@@ -1334,3 +1331,10 @@ void glaspen2_router_set_pressure_monitor(int on) { g_pressure_monitor = on != 0
 void glaspen2_router_pm_show(void) { pm_show(); }
 void glaspen2_router_pm_hide(void) { pm_hide(); }
 void glaspen2_router_pm_refresh(void) { pm_update(); }
+
+// S7v: 涂鸦总开关的 Swift 薄桥
+void glaspen2_router_set_enabled_state(int on) { g_enabled = on != 0; }
+void glaspen2_router_set_menu_title(int tag, NSString *title) {
+  NSMenuItem *item = [MenuLookup itemWithTag:tag inMenu:g_menu];
+  if (item) [item setTitle:title];
+}

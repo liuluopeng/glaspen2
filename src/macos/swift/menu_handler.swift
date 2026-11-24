@@ -61,6 +61,17 @@ import AppKit
         glaspen2_menu_notify(glaspen2_menu_l10n("export.notes_saved"))
     }
 
+    /// 涂鸦总开关: 状态 + 菜单勾选/标题 + 状态图标。
+    @objc(setDrawEnabled:)
+    public static func setDrawEnabled(enabled: Bool) {
+        glaspen2_router_set_enabled_state(enabled ? 1 : 0)
+        glaspen2_router_update_menu_state(888, enabled ? 1 : 0)
+        let zh = enabled ? "关闭涂鸦" : "开启涂鸦"
+        let en = enabled ? "Disable Drawing" : "Enable Drawing"
+        glaspen2_router_set_menu_title(888, glaspen2_menu_l10n_pair(zh, en))
+        glaspen2_router_update_status_icon_state()
+    }
+
     /// 压感监视器开关: 状态/落库/显示隐藏/面板同步。
     @objc(setPressureMonitor:)
     public static func setPressureMonitor(enabled: Bool) {
