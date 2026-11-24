@@ -39,8 +39,6 @@ static void perf_log_summary(void);
 static void gl_quit_app(void); // 定义在 parts/menu.m(彻底退出, 菜单/快捷键共用)
 static void gl_settings_set_launch(BOOL on);
 static void gl_settings_set_glass_enabled(BOOL on);
-static void gl_settings_set_grid(BOOL on);
-static void gl_settings_set_pressure_monitor(BOOL on);
 static void pm_ensure_window(void);
 static void pm_show(void);
 static void pm_hide(void);
@@ -48,7 +46,6 @@ static void pm_destroy(void);
 static void pm_update(void);
 static void gl_glass_apply(void);
 static void gl_ethereal_restore_now(void); // 定义在 parts/menu.m(启动恢复飘渺落位)
-static void gl_settings_set_enabled(BOOL on);
 static void toggle_enabled(void);
 // D8b 录制状态机接线: 总开关变化时把事件喂给手写消息槽并执行 effects
 // (定义在 parts/run.m 录制区), 菜单/设置面板切换总开关时调用。

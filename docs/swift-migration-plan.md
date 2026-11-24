@@ -389,3 +389,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7x(续跑第41轮) | 清理遗留设置面板按钮 stub: 删除完全无引用的 g_color_buttons/g_width_buttons/g_launch_toggle, 删除 g_glass_toggle/g_glass_buttons 及 gl_glass_apply 中对应的 nil/空数组 no-op 赋值; 桌面面板早以 Flutter 取代 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7y(续跑第42轮) | 压感监视器标签格式化迁 Swift: MenuHandler.updatePressureLabel(P=%-5d + 事件名 + 坐标, 缺省 ---), ObjC pm_update 只做窗口/标签存在性守卫与取值; 新增标签设置薄桥 | cargo build/tests/parity 全绿;压感监视器显示需真机验证 | 本提交 |
 | 2026-11-24 | S7z(续跑第43轮) | 磨砂玻璃应用逻辑迁 Swift: MenuHandler.applyGlass(组合 enabled/opacity/飘渺跟随/笔迹可见性 → alpha/hidden + 菜单 444 勾选), ObjC gl_glass_apply 变一行转发; 新增玻璃状态快照与应用两个薄桥 | cargo build/tests/parity 全绿;玻璃视觉效果需真机验证 | 本提交 |
+| 2026-11-24 | S7aa(续跑第44轮) | 删除已迁 Swift 的设置 setter 转发: gl_settings_set_enabled(无调用) 直接删; gl_settings_set_grid / gl_settings_set_pressure_monitor 调用点改为直接调 MenuHandler(Swift) 后删转发; 同步删 glaspen2.m 前向声明 | cargo build/tests/parity 全绿 | 本提交 |

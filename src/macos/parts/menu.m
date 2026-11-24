@@ -839,7 +839,7 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
         } else if ([kind isEqualToString:@"FrostedGlass"]) {
             gl_settings_set_glass_enabled(boolValue);
         } else if ([kind isEqualToString:@"Grid"]) {
-            gl_settings_set_grid(boolValue);
+            [MenuHandler setGridEnabled:boolValue];
         } else if ([kind isEqualToString:@"GridFollowStrokes"]) {
             g_grid_follow_strokes = boolValue;
             if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
@@ -874,7 +874,7 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
         } else if ([kind isEqualToString:@"FlipEffect"]) {
             g_flip_effect = (int)intValue;
         } else if ([kind isEqualToString:@"PressureMonitor"]) {
-            gl_settings_set_pressure_monitor(boolValue);
+            [MenuHandler setPressureMonitor:boolValue];
         } else if ([kind isEqualToString:@"GifFps"]) {
             g_gif_fps = (int)intValue;
         } else if ([kind isEqualToString:@"GifResolution"]) {
@@ -1160,11 +1160,6 @@ static void gl_settings_apply_pending_color_width(void) {
     [MenuHandler applyPendingColorWidth];
 }
 
-static void gl_settings_set_grid(BOOL on) {
-    // S7t: 逻辑已迁 Swift(MenuHandler.setGridEnabled)。
-    [MenuHandler setGridEnabled:on];
-}
-
 static void gl_settings_set_launch(BOOL on) {
     // S7k: 逻辑已迁 Swift(MenuHandler.setLaunchAtLogin)。
     [MenuHandler setLaunchAtLogin:on];
@@ -1178,11 +1173,6 @@ static void gl_glass_apply(void) {
 static void gl_settings_set_glass_enabled(BOOL on) {
     // S7j: 逻辑已迁 Swift(MenuHandler.setGlassEnabled)。
     [MenuHandler setGlassEnabled:on];
-}
-
-static void gl_settings_set_enabled(BOOL on) {
-    // S7v: 逻辑已迁 Swift(MenuHandler.setDrawEnabled)。
-    [MenuHandler setDrawEnabled:on];
 }
 
 // --- Pressure monitor (top-left info window) ---
@@ -1241,11 +1231,6 @@ static void pm_destroy(void) {
         g_pm_window = nil;
         g_pm_label = nil;
     }
-}
-
-static void gl_settings_set_pressure_monitor(BOOL on) {
-    // S7u: 逻辑已迁 Swift(MenuHandler.setPressureMonitor)。
-    [MenuHandler setPressureMonitor:on];
 }
 
 static void sync_settings_panel(void) {
