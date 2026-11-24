@@ -2166,6 +2166,43 @@ static void event_tap_install(BOOL include_scroll) {
 // 按当前画布模式重装 event tap(无限=含滚轮,翻页=不含)。
 static void event_tap_reinstall(void) { event_tap_install(g_infinite_canvas); }
 
+// S6-3-4b-2 拆分: 录制热键(⌘⌃R/2/3)处理, 返回 YES = 事件已消费。
+// 本次只是把原键盘块里的录制分支纯移动到独立函数(行为不变);
+// 下一步用 recording 事件 FFI 把这函数整体迁 Swift。
+static BOOL handle_recording_hotkeys(CGEventType type, unsigned short kc,
+                                     BOOL hasCmdCtrl) {
+  if (type == kCGEventKeyUp && kc == kVK_ANSI_R &&
+      glaspen2_recording_mode(REC_SLOT_GIF) == 1) {
+    rec_release(REC_SLOT_GIF, @"Gif");
+    return YES;
+  }
+  if (hasCmdCtrl && kc == kVK_ANSI_R && type == kCGEventKeyDown) {
+    rec_start(REC_SLOT_GIF, @"Gif");
+    return YES;
+  }
+  if (type == kCGEventKeyUp && kc == kVK_ANSI_3 &&
+      glaspen2_recording_mode(REC_SLOT_CHAT) == 3) {
+    rec_release(REC_SLOT_CHAT, @"Send");
+    return YES;
+  }
+  if (g_chat_integration && hasCmdCtrl && kc == kVK_ANSI_3 &&
+      type == kCGEventKeyDown) {
+    rec_start(REC_SLOT_CHAT, @"Send");
+    return YES;
+  }
+  if (type == kCGEventKeyUp && kc == kVK_ANSI_2 &&
+      glaspen2_recording_mode(REC_SLOT_CHAT) == 2) {
+    rec_release(REC_SLOT_CHAT, @"Draft");
+    return YES;
+  }
+  if (g_chat_integration && hasCmdCtrl && kc == kVK_ANSI_2 &&
+      type == kCGEventKeyDown) {
+    rec_start(REC_SLOT_CHAT, @"Draft");
+    return YES;
+  }
+  return NO;
+}
+
 static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
                                            CGEventType type, CGEventRef event,
                                            void *refcon) {
@@ -2252,41 +2289,7 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
       // 这里只做按键匹配与"抬起是否属于本槽位"的预判。
       // 抬起不验修饰键: 先松 ⌘/⌃ 也不会把会话卡死(与旧实现一致);
       // 抬起只在状态机确实处于该模式时消费, 普通 r/2/3 抬键照常放行。
-      if (type == kCGEventKeyUp && kc == kVK_ANSI_R &&
-          glaspen2_recording_mode(REC_SLOT_GIF) == 1) {
-        rec_release(REC_SLOT_GIF, @"Gif");
-        return NULL;
-      }
-      if (hasCmdCtrl && kc == kVK_ANSI_R && type == kCGEventKeyDown) {
-        // Hold-to-record GIF: key-down starts the recording.
-        rec_start(REC_SLOT_GIF, @"Gif");
-        return NULL;
-      }
-      if (type == kCGEventKeyUp && kc == kVK_ANSI_3 &&
-          glaspen2_recording_mode(REC_SLOT_CHAT) == 3) {
-        rec_release(REC_SLOT_CHAT, @"Send");
-        return NULL;
-      }
-      if (g_chat_integration && hasCmdCtrl && kc == kVK_ANSI_3 &&
-          type == kCGEventKeyDown) {
-        // Hold-to-record handwriting message: key-down starts the session.
-        rec_start(REC_SLOT_CHAT, @"Send");
-        return NULL;
-      }
-      // ⌘⌃2 hold-to-draft handwriting: strokes stream live to the axum side
-      // over ChatStore/DraftInk while held; release closes the stream and axum
-      // decides whether to send. '2' key-up ends it regardless of modifiers.
-      // 总开关关闭时整段不匹配 → 事件原样放行(不占用这两个键)。
-      if (type == kCGEventKeyUp && kc == kVK_ANSI_2 &&
-          glaspen2_recording_mode(REC_SLOT_CHAT) == 2) {
-        rec_release(REC_SLOT_CHAT, @"Draft");
-        return NULL;
-      }
-      if (g_chat_integration && hasCmdCtrl && kc == kVK_ANSI_2 &&
-          type == kCGEventKeyDown) {
-        rec_start(REC_SLOT_CHAT, @"Draft");
-        return NULL;
-      }
+      if (handle_recording_hotkeys(type, kc, hasCmdCtrl)) return NULL;
       // 自由画布的镜头平移/缩放已并入可配置动作(canvas_pan_* / canvas_zoom_*),
       // 默认组合见 menu.m 的 gl_shortcut_defaults(); 不再在此硬编码。
       // 可配置快捷键: 按 chord 精确匹配(菜单层已按物理键名+修饰键建表)。
