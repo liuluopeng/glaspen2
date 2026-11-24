@@ -220,11 +220,6 @@ static void camera_mouse_cancel_pan(void) { [CameraMousePan cancel]; }
 // macOS 没有 5% 下限提示(只有 Windows 有, 见 camera.rs 模块文档差异 2);
 // 命中上限的判定用 core 的 hit_max(钳制前的请求越过 100%), 因此到达 100%
 // 后继续放大仍会提示, 不会静默。
-static void canvas_zoom_apply(NSDictionary *result) {
-  if (!result) return;
-  [CanvasCamera applyZoomResult:result];
-}
-
 // 缩放镜头(滚轮):以视口点 (vx, vy) 为锚,zoom ∈ (0.05, 1.0]。
 // 锚点的画布坐标在缩放前后保持同一屏幕位置(view = (canvas−pan)×zoom);
 // 数学(锚点不变/限幅/hit 标记)单源在 core Camera::zoom_at。
