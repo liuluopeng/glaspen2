@@ -16,11 +16,6 @@ import AppKit
 
     /// 用 ObjC 侧最新压力状态刷新标签。
     @objc public static func refreshPressureLabel() {
-        let state = glaspen2_router_pressure_state() as NSDictionary
-        let pressure = (state["pressure"] as? NSNumber)?.int32Value ?? 0
-        let type = state["type"] as? String
-        let x = (state["x"] as? NSNumber)?.doubleValue ?? 0
-        let y = (state["y"] as? NSNumber)?.doubleValue ?? 0
-        MenuHandler.updatePressureLabel(pressure: pressure, type: type, x: x, y: y)
+        PressureState.refresh()
     }
 }

@@ -431,18 +431,16 @@ static void pm_show(void) { [PressureMonitorWindow show]; }
 
 static void pm_hide(void) { [PressureMonitorWindow hide]; }
 
-static void pm_update(void) { [SettingsPanelExtras refreshPressureLabel]; }
+static void pm_update(void) { sw_pm_refresh(); }
 
 static void pm_destroy(void) { [PressureMonitorWindow destroy]; }
 
 // S7: 暂存颜色/粗细状态薄桥(变量在 menu.m)
 // S7h: 粗细设置的 Swift 薄桥(状态/刷新函数都在 menu.m)
-int glaspen2_router_width_preset_count(void) { return g_width_preset_count; }
 void glaspen2_router_update_checkmarks(void) { update_menu_checkmarks(); }
 void glaspen2_router_sync_settings_panel(void) { glaspen2_notify_settings_changed(); }
 
 // S7i: 颜色设置的 Swift 薄桥
-int glaspen2_router_color_preset_count(void) { return g_color_preset_count; }
 // S7j: 磨砂玻璃开关的 Swift 薄桥
 void glaspen2_router_glass_apply(void) { [MenuHandler applyGlass]; }
 
@@ -476,15 +474,6 @@ void glaspen2_router_apply_glass_view(double alpha, BOOL hidden) {
 }
 
 // S7az: 预设表写入薄桥
-void glaspen2_router_set_color_preset(int idx, double r, double g, double b) {
-  g_color_presets[idx].r = r;
-  g_color_presets[idx].g = g;
-  g_color_presets[idx].b = b;
-}
-void glaspen2_router_set_width_preset(int idx, double value) {
-  g_width_presets[idx] = value;
-}
-
 // S7bk: 快捷键 chord 查询薄桥
 NSString *glaspen2_router_shortcut_chord(NSString *action) {
   if (!g_shortcut_values) gl_shortcuts_apply(@{});
@@ -529,21 +518,4 @@ NSDictionary *glaspen2_router_shortcut_values(void) {
 }
 
 // S7de: 预设标题桥
-void glaspen2_router_color_preset_rgb_at(int idx, double *r, double *g, double *b) {
-  if (idx < 0 || idx >= g_color_preset_count) { *r = *g = *b = 0; return; }
-  *r = g_color_presets[idx].r; *g = g_color_presets[idx].g; *b = g_color_presets[idx].b;
-}
-double glaspen2_router_width_preset_scale_at(int idx) {
-  if (idx < 0 || idx >= g_width_preset_count) return 0;
-  return g_width_presets[idx];
-}
-
 // S7dg: 压感状态桥(变量在 menu.m)
-NSDictionary *glaspen2_router_pressure_state(void) {
-  return @{
-    @"pressure" : @(g_pm_pressure),
-    @"type" : g_pm_evtype ?: @"---",
-    @"x" : @(g_pm_x),
-    @"y" : @(g_pm_y),
-  };
-}

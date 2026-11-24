@@ -56,8 +56,7 @@ public func penClearPendingWidth() { PenSettingsStore.pendingWidth = -1 }
 
 @_cdecl("glaspen2_router_apply_color")
 public func penApplyColor(_ idx: Int32) {
-    var r = 0.0, g = 0.0, b = 0.0
-    glaspen2_router_color_preset_rgb_at(idx, &r, &g, &b)
+    let (r, g, b) = PresetStore.rgb(Int(idx))
     PenSettingsStore.penR = r
     PenSettingsStore.penG = g
     PenSettingsStore.penB = b
@@ -66,7 +65,7 @@ public func penApplyColor(_ idx: Int32) {
 
 @_cdecl("glaspen2_router_apply_width")
 public func penApplyWidth(_ idx: Int32) {
-    PenSettingsStore.widthScale = glaspen2_router_width_preset_scale_at(idx)
+    PenSettingsStore.widthScale = PresetStore.width(Int(idx))
     PenSettingsStore.selectedWidth = Int(idx)
 }
 

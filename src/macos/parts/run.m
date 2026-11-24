@@ -429,13 +429,7 @@ void glaspen2_router_bubble_pen_back(void) { glaspen2_bubble_pen_back(); }
 // S6-3-3d: 压感监视器薄桥
 void glaspen2_router_pm_update(int inRange, int pressure, double x, double y,
                                int tipDown, NSString *evtype) {
-  g_pm_in_range = inRange != 0;
-  g_pm_pressure = pressure;
-  g_pm_x = x;
-  g_pm_y = y;
-  g_pm_tip_down = tipDown != 0;
-  g_pm_evtype = evtype;
-  pm_update();
+  sw_pm_update(inRange, pressure, x, y, tipDown, evtype ? [evtype UTF8String] : NULL);
 }
 
 // S6-3-4: 键盘录制放行标志薄桥

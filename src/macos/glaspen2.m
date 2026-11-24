@@ -356,19 +356,12 @@ static uint64_t g_last_cursor_flush = 0;
 
 // Restore the system cursor if it is currently hidden by pen drawing.
 // Pressure monitor
-static int g_pm_pressure = 0;
-static NSString *g_pm_evtype = nil;
-static BOOL g_pm_tip_down = NO;
-static BOOL g_pm_in_range = NO;
-static CGFloat g_pm_x = 0, g_pm_y = 0;
 
 // Pen color state
 
 // Width scale presets
 // 8 档线宽倍率:数值单源在 glaspen-core presets,启动时经 FFI 填充
 // (g_width_preset_count 须与 core WIDTH_PRESETS 一致,core 测试守着)。
-static double g_width_presets[8];
-static const int g_width_preset_count = 8;
 
 // 网格大小(逻辑 px),设置面板可调,默认 40
 
@@ -436,8 +429,6 @@ static const double kOutlinePad = 1.0;
 typedef struct { double r, g, b; } ColorPreset;
 // RGB 单源在 glaspen-core presets, 启动时经 FFI 填充(core 测试守着色值与
 // 数量一致); 显示名文案单源在 core::i18n(D10b, 经 gl_text 按 key 取)。
-static ColorPreset g_color_presets[10];
-static const int g_color_preset_count = 10;
 
 // Notification state
 // S4: 通知状态/计时已迁 Swift(NotificationPresenter); 绘制代码经 currentText 读取。
