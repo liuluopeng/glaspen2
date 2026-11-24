@@ -51,6 +51,18 @@ void glaspen2_menu_apply_outline(int on);
 int glaspen2_menu_infinite_enabled(void);
 void glaspen2_menu_apply_infinite(int on);
 
+// S3b-2b-7d: 保存/导出/设置/选择动作的薄桥(实现留在 menu.m)
+void glaspen2_menu_save_with_bg(void);
+void glaspen2_menu_save_only(void);
+void glaspen2_menu_clear_screen(void);
+void glaspen2_menu_toggle_enabled(void);
+void glaspen2_menu_show_settings(void);
+void glaspen2_menu_toggle_canvas_mode(void);
+void glaspen2_menu_select_color(int idx);
+void glaspen2_menu_select_width(int idx);
+void glaspen2_menu_save_xoj_raw(void);
+void glaspen2_menu_notify(NSString *text);
+
 // S2 探针入口(ObjC 实现, 供 glaspen2_run / Rust --swift-probe 调用):
 // 内部经生成的 glaspen2_macos_swift-Swift.h 调 [SwiftInteropProbe ping],
 // 验证 ObjC→Swift 方向。普通迁移代码不需要这类"Swift 反向入口"。

@@ -309,35 +309,15 @@ static void gl_quit_app(void) {
 
 @implementation GlaspenMenuHandler
 
-- (void)saveWithBg {
-    save_with_background();
-}
-
-- (void)saveOnly {
-    save_drawing_only();
-}
-
-- (void)clearScreen {
-    clear_screen();
-}
-
-- (void)toggleDraw {
-    toggle_enabled();
-}
-
-- (void)saveXoj {
-    glaspen2_save_xoj();
-    show_notification(gl_text(@"export.notes_saved"));
-}
+- (void)saveWithBg { [MenuHandler saveWithBg]; }
+- (void)saveOnly { [MenuHandler saveOnly]; }
+- (void)clearScreen { [MenuHandler clearScreen]; }
+- (void)toggleDraw { [MenuHandler toggleDraw]; }
+- (void)saveXoj { [MenuHandler saveXoj]; }
 
 - (void)toggleLanguage { [MenuHandler toggleLanguage]; }
-- (void)showSettingsPanel {
-    show_settings_panel();
-}
-
-- (void)toggleCanvasMode {
-    toggle_canvas_mode();
-}
+- (void)showSettingsPanel { [MenuHandler showSettingsPanel]; }
+- (void)toggleCanvasMode { [MenuHandler toggleCanvasMode]; }
 
 - (void)toggleLaunch { [MenuHandler toggleLaunch]; }
 - (void)toggleGlass { [MenuHandler toggleGlass]; }
@@ -369,13 +349,8 @@ static void gl_quit_app(void) {
     });
 }
 
-- (void)selectColor:(NSMenuItem *)sender {
-    gl_settings_set_color((int)[sender tag]);
-}
-
-- (void)selectWidth:(NSMenuItem *)sender {
-    gl_settings_set_width((int)[sender tag]);
-}
+- (void)selectColor:(NSMenuItem *)sender { [MenuHandler selectColor:sender]; }
+- (void)selectWidth:(NSMenuItem *)sender { [MenuHandler selectWidth:sender]; }
 
 // NSApplicationDelegate
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
@@ -449,6 +424,18 @@ int glaspen2_menu_infinite_enabled(void) {
 void glaspen2_menu_apply_infinite(int on) {
     apply_infinite_canvas(on != 0, YES);
 }
+
+// S3b-2b-7d: 保存/导出/设置/选择动作薄桥
+void glaspen2_menu_save_with_bg(void) { save_with_background(); }
+void glaspen2_menu_save_only(void) { save_drawing_only(); }
+void glaspen2_menu_clear_screen(void) { clear_screen(); }
+void glaspen2_menu_toggle_enabled(void) { toggle_enabled(); }
+void glaspen2_menu_show_settings(void) { show_settings_panel(); }
+void glaspen2_menu_toggle_canvas_mode(void) { toggle_canvas_mode(); }
+void glaspen2_menu_select_color(int idx) { gl_settings_set_color(idx); }
+void glaspen2_menu_select_width(int idx) { gl_settings_set_width(idx); }
+void glaspen2_menu_save_xoj_raw(void) { glaspen2_save_xoj(); }
+void glaspen2_menu_notify(NSString *text) { show_notification(text); }
 
 // ObjC 侧保留薄 delegate 方法(仅转发给 Swift MenuHandler); 业务逻辑在 Swift。
 - (void)quitApp { [MenuHandler quitApp]; }
