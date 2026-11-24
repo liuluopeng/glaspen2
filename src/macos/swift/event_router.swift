@@ -5,6 +5,12 @@ import AppKit
     /// 0 = fallback(ObjC), 1 = pass(return event), 2 = consume(return NULL)
     @objc(routeEventOfType:event:)
     public static func route(type: CGEventType, event: CGEvent) -> Int32 {
+        // 停用涂鸦时: 非键盘/非滚轮事件先清理相机/光标再放行(与原 ObjC 同序)。
+        if (state() & 1) == 0 && type != .keyDown && type != .keyUp
+            && type != .scrollWheel {
+            glaspen2_router_disable_cleanup()
+            return 1
+        }
         if type == .scrollWheel && (state() & 4) != 0 {
             return routeScrollZoom(event)
         }

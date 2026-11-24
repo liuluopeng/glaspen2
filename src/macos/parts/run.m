@@ -2322,15 +2322,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     return event;
   }
 
-  // All non-keyboard events: if app is disabled, pass through.
-  // Restore the system cursor first — disabling mid-stroke must never
-  // leave the cursor hidden.
-  if (!g_enabled) {
-    g_camera_mouse_dragging = NO;
-    camera_mouse_cancel_pan();
-    restore_system_cursor();
-    return event;
-  }
+  // S6-3-4: 停用涂鸦时的清理/放行已迁 Swift EventRouter。
+
 
   // Convert to NSEvent to check pen properties
   NSEvent *nsevent = [NSEvent eventWithCGEvent:event];
@@ -3395,4 +3388,11 @@ void glaspen2_router_hide_system_cursor(void) {
 }
 void glaspen2_router_show_system_cursor(void) {
   CGDisplayShowCursor(kCGDirectMainDisplay);
+}
+
+// S6-3-4: 停用涂鸦时非键盘事件的清理+放行薄桥
+void glaspen2_router_disable_cleanup(void) {
+  g_camera_mouse_dragging = NO;
+  camera_mouse_cancel_pan();
+  restore_system_cursor();
 }
