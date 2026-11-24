@@ -1053,113 +1053,7 @@ static BOOL perform_hotkey(unsigned short kc) {
 // kind 字符串分派 macOS 副作用(ObjC 无字符串 switch), 不再自己比较 action id;
 // 每个分支的代码/顺序/门控/文案与旧 action 字符串链逐行一致(镜头方向符号、
 // 退出路径、未知动作返回 NO 都保持原样)。
-static BOOL perform_action(NSString *action) {
-  if (![action isKindOfClass:[NSString class]]) return NO;
-  const char *action_c = [action UTF8String];
-  if (!action_c) return NO;
-  char *effect_c = glaspen2_action_effect_json(action_c);
-  if (!effect_c) return NO;
-  // 先拷出再释放: Rust 侧返回的缓冲区由 glaspen2_free_c_string 回收。
-  NSData *effect_data = [NSData dataWithBytes:effect_c length:strlen(effect_c)];
-  glaspen2_free_c_string(effect_c);
-  id parsed = [NSJSONSerialization JSONObjectWithData:effect_data options:0 error:nil];
-  if (![parsed isKindOfClass:[NSDictionary class]]) {
-    NSLog(@"[action] %@ 的 effect JSON 无法解析", action);
-    return NO;
-  }
-  NSDictionary *effect = parsed;
-  NSString *kind = effect[@"kind"];
-  if (![kind isKindOfClass:[NSString class]]) {
-    // 未登记/空的 action id: 记录并忽略, 等价于旧实现落空返回 NO。
-    NSLog(@"[action] %@ 分发失败: %@", action, effect[@"error"]);
-    return NO;
-  }
-  if ([kind isEqualToString:@"Undo"]) return perform_hotkey(kVK_ANSI_Z);
-  if ([kind isEqualToString:@"PagePrev"]) return perform_hotkey(0x32);
-  if ([kind isEqualToString:@"PageNext"]) return perform_hotkey(0x12);
-  if ([kind isEqualToString:@"ToggleDraw"]) return perform_hotkey(kVK_ANSI_V);
-  if ([kind isEqualToString:@"ToggleFreeCanvas"]) {
-    // 打开自由画布时, 如果 Flutter 的「自由涂鸦模式」开关还是关的, 自动
-    // 打开它: 否则面板没有自由涂鸦 tab, 模式切换既看不见落点, 也容易被
-    // 面板的 tab 逻辑推回翻页模式。sync_settings_panel 会随后的
-    // apply_infinite_canvas 把 showFreeCanvas 推给 Flutter。
-    if (!g_infinite_canvas &&
-        glaspen2_load_bool_setting("show_free_canvas") == 0) {
-      glaspen2_save_bool_setting("show_free_canvas", 1);
-    }
-    // 事件 tap 回调里重装 tap 不安全: 下一 tick 再切模式(与菜单/面板同一条
-    // apply_infinite_canvas 路径, 会同步面板 tab 与 ∞ 徽标)。
-    dispatch_async(dispatch_get_main_queue(), ^{
-      apply_infinite_canvas(!g_infinite_canvas, YES);
-    });
-    return YES;
-  }
-  // 自由涂鸦镜头: 动作只在无限画布模式生效; 事件 tap 层会放行非自由画布
-  // 模式下的组合。步长除以 zoom, 保证屏幕上每次移动的视觉距离一致。
-  if ([kind hasPrefix:@"CameraPan"]) {
-    if (!g_infinite_canvas) return YES;
-    // 步长 80/step_zoom 单源在 core(D5b);方向符号留在本平台:
-    // 按键方向 = 视野移动方向(与 Windows 的"内容跟随"相反, 见
-    // ActionEffect::CameraPan 文档)。
-    double step = glaspen2_camera_keyboard_pan_step(g_zoom);
-    double dx = 0.0, dy = 0.0;
-    // 按键方向 = 视野移动方向(与普通软件一致): 按左 → 镜头左移(内容右移),
-    // 按上 → 镜头上移(内容下移)。canvas_pan_by 内部是 pan -= d, 所以 d 取正
-    // 表示镜头朝该方向移动。
-    if ([kind isEqualToString:@"CameraPanLeft"])       dx = step;
-    else if ([kind isEqualToString:@"CameraPanRight"]) dx = -step;
-    else if ([kind isEqualToString:@"CameraPanUp"])    dy = step;
-    else if ([kind isEqualToString:@"CameraPanDown"])  dy = -step;
-    [CanvasCamera panByDX:dx dy:dy];
-    return YES;
-  }
-  if ([kind isEqualToString:@"CameraZoomIn"] ||
-      [kind isEqualToString:@"CameraZoomOut"]) {
-    if (!g_infinite_canvas) return YES;
-    double factor = [kind isEqualToString:@"CameraZoomIn"] ? 1.15 : 1.0 / 1.15;
-    // 键盘缩放锚点 = 视口中心(core Camera::zoom_at_center 单源, D5b)
-    [CanvasCamera zoomAtCenterFactor:factor];
-    return YES;
-  }
-  if ([kind isEqualToString:@"Clear"]) return perform_hotkey(kVK_ANSI_C);
-  if ([kind isEqualToString:@"Export"]) return perform_hotkey(kVK_ANSI_G);
-  if ([kind isEqualToString:@"CopySvg"]) return perform_hotkey(kVK_ANSI_S);
-  if ([kind isEqualToString:@"ToggleGlass"]) return perform_hotkey(kVK_ANSI_B);
-  if ([kind isEqualToString:@"ToggleEthereal"]) return perform_hotkey(kVK_ANSI_X);
-  if ([kind isEqualToString:@"OpenSettings"]) return perform_hotkey(kVK_ANSI_D);
-  if ([kind isEqualToString:@"Quit"]) {
-    // 彻底退出: 与菜单「退出」共用 gl_quit_app 这条收尾路径(terminate →
-    // applicationShouldTerminate 写完排队点 + checkpoint WAL)。事件 tap 回调里
-    // 同步 terminate 会把 DB 收尾卡在回调栈上, 放到下一 tick 更稳; 本事件仍吞掉,
-    // 不让组合键漏给前台 App。
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [MenuHandler quitAppNow];
-    });
-    return YES;
-  }
-  if ([kind isEqualToString:@"ColorSwap"]) {
-    int prev = g_prev_color_index;
-    if (prev < 0 || prev >= g_color_preset_count || prev == g_selectedColorIndex) {
-      prev = (g_selectedColorIndex == 0) ? 9 : 0; // 无历史时给红/黑另一端
-    }
-    [MenuHandler setColorIndex:prev];
-    show_notification(gl_textf(@"hud.color_changed",
-                               @{@"color" : [MenuNames colorDisplayNameWithIndex:prev]}));
-    return YES;
-  }
-  if ([kind isEqualToString:@"WidthSwap"]) {
-    int prev = g_prev_width_index;
-    if (prev < 0 || prev >= g_width_preset_count || prev == g_selected_width_index) {
-      prev = (g_selected_width_index <= 3) ? 6 : 2; // 无历史时给细/粗另一端
-    }
-    [MenuHandler setWidthIndex:prev];
-    show_notification(gl_textf(@"hud.width_changed",
-                               @{@"width" : [MenuNames widthDisplayNameWithIndex:prev]}));
-    return YES;
-  }
-  NSLog(@"[action] %@ 的 effect kind %@ 未在 macOS 适配器实现", action, kind);
-  return NO;
-}
+static BOOL perform_action(NSString *action) { return [ActionDispatch performAction:action ?: @""] ? YES : NO; }
 
 // ── Quick GIF recording (hold Cmd+Ctrl+R, doodle, release to copy) ──
 
@@ -2290,3 +2184,10 @@ int glaspen2_router_gif_fps(void) { return g_gif_fps; }
 double glaspen2_router_gif_resolution(void) { return g_gif_resolution; }
 double glaspen2_router_gif_speed(void) { return g_gif_speed; }
 int glaspen2_router_gif_end_mode(void) { return g_gif_end_mode; }
+
+// S7cl: 动作分派薄桥
+void glaspen2_router_apply_infinite_canvas(int on) { apply_infinite_canvas(on != 0, YES); }
+void glaspen2_router_show_notification(NSString *text) { show_notification(text); }
+NSString *glaspen2_router_textf(NSString *key, NSDictionary *args) { return gl_textf(key, args); }
+int glaspen2_router_prev_color_index(void) { return g_prev_color_index; }
+int glaspen2_router_prev_width_index(void) { return g_prev_width_index; }

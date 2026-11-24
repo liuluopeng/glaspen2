@@ -947,6 +947,11 @@ mod tests {
                 "action_effect 的 wire kind 名(内部协议, 不是用户文案)",
             ),
             (
+                "src/macos/swift/action_dispatch.swift",
+                "Undo",
+                "action_effect 的 wire kind 名(内部协议, 迁 Swift 后同义)",
+            ),
+            (
                 "crates/glaspen-windows/src/overlay/pipe.rs",
                 "无限画布",
                 "tracing 日志里的画布模式名(非用户可见 HUD, 且不等于 canvas.mode_infinite 的用途)",

@@ -535,14 +535,13 @@ mod tests {
         while let Some(pos) = src[from..].find(needle) {
             let at = from + pos;
             if let Some(body) = brace_body(src, at)
-                && body.contains("glaspen2_action_effect_json")
                 && best.is_none_or(|b| body.len() > b.len())
             {
                 best = Some(body);
             }
             from = at + needle.len();
         }
-        best.expect("run.m 的 perform_action 必须经 glaspen2_action_effect_json 按 kind 分派(D3b)")
+        best.expect("run.m 缺 perform_action 定义(D3b)")
     }
 
     /// Windows `hotkeys.rs` 的 perform_action 函数体(定义不是调用点)。
@@ -561,7 +560,10 @@ mod tests {
     fn adapter_dispatch_covers_every_effect_variant() {
         let mac_src = include_str!("../../../src/macos/parts/run.m");
         let win_src = include_str!("../../../crates/glaspen-windows/src/overlay/hotkeys.rs");
-        let mac_body = mac_perform_action_body(mac_src);
+        let mac_action_swift =
+            include_str!("../../../src/macos/swift/action_dispatch.swift");
+        let mac_body = format!("{}
+{mac_action_swift}", mac_perform_action_body(mac_src));
         let win_body = windows_perform_action_body(win_src);
 
         // 20 个 action 的稳定变体名(镜头带方向后缀)。
