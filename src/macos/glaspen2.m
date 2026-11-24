@@ -285,11 +285,14 @@ double glaspen2_router_screen_h(void);
 int glaspen2_router_lang(void);
 void glaspen2_router_set_lang(int value);
 void glaspen2_router_set_screen_size(int w, int h);
+id glaspen2_router_draw_view(void);
+id glaspen2_router_menu(void);
+id glaspen2_router_glass_view(void);
+id glaspen2_router_main_window(void);
+id glaspen2_router_settings_window(void);
+void *sw_status_item(void);
 static BOOL g_perf_log = NO;
 static void event_tap_reinstall(void);
-static NSWindow *g_window = nil;
-static NSWindow *g_settings_window; // 定义在 parts/menu.m(设置面板窗口)
-static NSVisualEffectView *g_glass_view = nil;
 
 // --- Drawing state ---
 
@@ -302,7 +305,6 @@ static void pageview_update(void);
 // Create a cairo context with the backing scale factor applied.
 // All drawing coordinates remain in logical points; Cairo renders
 // at physical pixel resolution.
-static NSView *g_draw_view = nil;
 
 // Raw drawing state (for responsive real-time feedback during stroke)
 // 描边接缝重画用: 上上点(P_{i-2})与上一段墨迹宽(w_{i-1})。第 i 段的
@@ -478,7 +480,7 @@ static NSString *gl_textf(NSString *key, NSDictionary<NSString *, NSString *> *a
 
 // S4: presenter redraw 桥(Swift 通知状态变化时调用)
 void glaspen2_notification_redraw(void) {
-    [g_draw_view setNeedsDisplay:YES];
+    [(NSView *)glaspen2_router_draw_view() setNeedsDisplay:YES];
 }
 
 static void show_notification(NSString *text) {

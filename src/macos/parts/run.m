@@ -296,7 +296,8 @@ int glaspen2_router_state(void) {
 }
 
 double glaspen2_router_draw_height(void) {
-  return g_draw_view ? [g_draw_view bounds].size.height : 0.0;
+  NSView *v = (NSView *)glaspen2_router_draw_view();
+  return v ? [v bounds].size.height : 0.0;
 }
 
 void glaspen2_router_zoom_at(double factor, double x, double y) {
@@ -384,7 +385,7 @@ void glaspen2_router_tap_menu_bar_interaction(void) {
 
 // S6-3-3d: 橡皮态切换薄桥
 void glaspen2_router_update_status_icon_state(void) {
-  [StatusIconUpdater applyToStatusItem:g_statusItem eraser:(sw_eraser_mode() != 0)
+  [StatusIconUpdater applyToStatusItem:(__bridge NSStatusItem *)sw_status_item() eraser:(sw_eraser_mode() != 0)
                                enabled:glaspen2_router_enabled() != 0 ethereal:glaspen2_router_ethereal() != 0
                               infinite:glaspen2_router_infinite() != 0 widthScale:glaspen2_router_width_scale()
                                   penRed:glaspen2_router_pen_r() penGreen:glaspen2_router_pen_g() penBlue:glaspen2_router_pen_b()];
@@ -420,7 +421,7 @@ const char *glaspen2_router_lang_code(void) { return gl_lang_code(); }
 
 // S7: finish_active_stroke 迁 Swift 所需薄桥
 // S7: 覆盖层窗口引用薄桥(供 Swift 取截图目标屏)
-id glaspen2_router_main_window(void) { return g_window; }
+id glaspen2_router_main_window(void) { return (__bridge id)sw_main_window(); }
 
 // S7: 退出前 perf 汇总薄桥(perf_log_summary 在本文件)
 void glaspen2_router_perf_summary(void) { [PerfLog summary]; }
@@ -429,7 +430,8 @@ void glaspen2_router_perf_summary(void) { [PerfLog summary]; }
 
 // S7t: 触发绘制视图重绘薄桥
 void glaspen2_router_redraw_draw_view(void) {
-  if (g_draw_view) [g_draw_view setNeedsDisplay:YES];
+  NSView *v = (NSView *)glaspen2_router_draw_view();
+  if (v) [v setNeedsDisplay:YES];
 }
 
 // S7w: 录制状态机总开关变化薄桥
@@ -462,7 +464,7 @@ void glaspen2_router_perf_notes(const char *name, const char *notes, uint64_t t0
 
 // S7bu: 显示器几何变更的薄桥
 void glaspen2_router_invert_invalidate(void) { invert_stream_invalidate(); }
-id glaspen2_router_draw_view(void) { return g_draw_view; }
+id glaspen2_router_draw_view(void) { return (__bridge id)sw_draw_view(); }
 
 // S7bv: 图层面刷新的薄桥(dirty tracker 在 panel.m)
 void glaspen2_router_dirty_reset(void) { dirty_reset(); }
@@ -528,8 +530,8 @@ id glaspen2_router_settings_vc(void) {
   }
   return g_flutter_vc;
 }
-id glaspen2_router_settings_window(void) { return g_settings_window; }
-void glaspen2_router_set_settings_window(id window) { g_settings_window = window; }
+id glaspen2_router_settings_window(void) { return (__bridge id)sw_settings_window(); }
+void glaspen2_router_set_settings_window(id window) { sw_set_settings_window((__bridge void *)window); }
 void glaspen2_router_settings_apply_transparent(void) {
   gl_panel_transparent_apply(YES);
   if (g_flutter_vc.view.layer) g_flutter_vc.view.layer.opaque = NO;
@@ -619,16 +621,16 @@ void glaspen2_router_restore_pressure(int on) { glaspen2_router_set_pressure_mon
 void glaspen2_router_rec_init(void) { gl_recording_init(); }
 
 // S7da: 启动窗口/告警桥
-void glaspen2_router_set_startup_window(id window) { g_window = window; }
-void glaspen2_router_set_draw_view(id view) { g_draw_view = view; }
-void glaspen2_router_set_glass_view(id view) { g_glass_view = view; }
+void glaspen2_router_set_startup_window(id window) { sw_set_main_window((__bridge void *)window); }
+void glaspen2_router_set_draw_view(id view) { sw_set_draw_view((__bridge void *)view); }
+void glaspen2_router_set_glass_view(id view) { sw_set_glass_view((__bridge void *)view); }
 // S7db: tap 看门狗桥
 // S7dc: 设置应用分派桥
 void glaspen2_router_invert_restart(void) { invert_stream_restart(); }
 void glaspen2_router_panel_transparent_full(int on) { gl_panel_transparent_apply_full(on != 0); }
 // S7df: 启动编排桥
-void glaspen2_router_set_status_item(id item) { g_statusItem = item; }
-void glaspen2_router_set_menu(id menu) { g_menu = menu; }
+void glaspen2_router_set_status_item(id item) { sw_set_status_item((__bridge void *)item); }
+void glaspen2_router_set_menu(id menu) { sw_set_menu((__bridge void *)menu); }
 void glaspen2_router_install_signals(void) {
   signal(SIGINT, save_and_exit);
   signal(SIGTERM, save_and_exit);
@@ -636,7 +638,7 @@ void glaspen2_router_install_signals(void) {
 
 // S7di: 页面偏移桥
 // S7dk: 带背景保存桥
-int glaspen2_router_window_sharing_type(void) { return (int)[g_window sharingType]; }
+int glaspen2_router_window_sharing_type(void) { return (int)[(NSWindow *)glaspen2_router_main_window() sharingType]; }
 
 
 

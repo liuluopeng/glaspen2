@@ -110,10 +110,12 @@ static void raw_draw_dot(double x, double y, double width) { [RawDrawing drawDot
 static void raw_draw_segment(double x, double y, double width) { [RawDrawing drawSegmentWithX:x y:y width:width]; }
 // S7dj: 反色捕获桥(实现已在 Swift InvertCapture, 12.3+ 才启用)
 void glaspen2_router_set_window_sharing_none(void) {
-  [g_window setSharingType:NSWindowSharingNone];
-  if (g_settings_window) [g_settings_window setSharingType:NSWindowSharingNone];
+  [(NSWindow *)glaspen2_router_main_window() setSharingType:NSWindowSharingNone];
+  NSWindow *sw = (NSWindow *)glaspen2_router_settings_window();
+  if (sw) [sw setSharingType:NSWindowSharingNone];
 }
 void glaspen2_router_set_window_sharing_readonly(void) {
-  [g_window setSharingType:NSWindowSharingReadOnly];
-  if (g_settings_window) [g_settings_window setSharingType:NSWindowSharingReadOnly];
+  [(NSWindow *)glaspen2_router_main_window() setSharingType:NSWindowSharingReadOnly];
+  NSWindow *sw = (NSWindow *)glaspen2_router_settings_window();
+  if (sw) [sw setSharingType:NSWindowSharingReadOnly];
 }

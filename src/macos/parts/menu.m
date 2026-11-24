@@ -1,5 +1,3 @@
-static NSStatusItem *g_statusItem = nil;
-static NSMenu *g_menu = nil;
 
 
 // 换回上一色/上一粗细的交换键用; 重新选色时更新, 初值给一个可用的另一端。
@@ -406,7 +404,7 @@ void glaspen2_router_glass_apply(void) { [MenuHandler applyGlass]; }
 
 // S7k: 菜单项勾选状态薄桥(按 tag 查菜单)
 void glaspen2_router_update_menu_state(int tag, int state) {
-  NSMenuItem *item = [MenuLookup itemWithTag:tag inMenu:g_menu];
+  NSMenuItem *item = [MenuLookup itemWithTag:tag inMenu:(NSMenu *)glaspen2_router_menu()];
   [item setState:state ? NSControlStateValueOn : NSControlStateValueOff];
 }
 
@@ -418,7 +416,7 @@ void glaspen2_router_pm_refresh(void) { pm_update(); }
 
 // S7v: 涂鸦总开关的 Swift 薄桥
 void glaspen2_router_set_menu_title(int tag, NSString *title) {
-  NSMenuItem *item = [MenuLookup itemWithTag:tag inMenu:g_menu];
+  NSMenuItem *item = [MenuLookup itemWithTag:tag inMenu:(NSMenu *)glaspen2_router_menu()];
   if (item) [item setTitle:title];
 }
 
@@ -427,9 +425,10 @@ void glaspen2_router_set_menu_title(int tag, NSString *title) {
 
 // S7z: 磨砂玻璃应用的 Swift 薄桥
 void glaspen2_router_apply_glass_view(double alpha, BOOL hidden) {
-  if (g_glass_view) {
-    g_glass_view.alphaValue = alpha;
-    g_glass_view.hidden = hidden;
+  NSVisualEffectView *gv = (NSVisualEffectView *)glaspen2_router_glass_view();
+  if (gv) {
+    gv.alphaValue = alpha;
+    gv.hidden = hidden;
   }
 }
 
@@ -442,16 +441,17 @@ NSString *glaspen2_router_shortcut_chord(NSString *action) {
 
 // S7bo: 涂鸦启停的 Swift 薄桥
 void glaspen2_router_ensure_surface(void) {
-  if (g_draw_view) ensure_surface(g_draw_view);
+  id dv = glaspen2_router_draw_view();
+  if (dv) ensure_surface((NSView *)dv);
 }
 
 // S7bp: 画布模式切换的 Swift 薄桥
-id glaspen2_router_glass_view(void) { return g_glass_view; }
+id glaspen2_router_glass_view(void) { return (__bridge id)sw_glass_view(); }
 
 // S7bq: 菜单文案/状态薄桥
-id glaspen2_router_menu(void) { return g_menu; }
+id glaspen2_router_menu(void) { return (__bridge id)sw_menu(); }
 int glaspen2_router_menu_state(int tag) {
-  NSMenuItem *item = [MenuLookup itemWithTag:tag inMenu:g_menu];
+  NSMenuItem *item = [MenuLookup itemWithTag:tag inMenu:(NSMenu *)glaspen2_router_menu()];
   return (item && item.state == NSControlStateValueOn) ? 1 : 0;
 }
 NSAttributedString *glaspen2_router_color_item_title(int idx) { return gl_color_item_text(idx); }
