@@ -1028,71 +1028,10 @@ void glaspen2_run(void) {
     g_menuHandler = [[GlaspenMenuHandler alloc] init];
     [NSApp setDelegate:g_menuHandler];
 
-    g_menu = [[NSMenu alloc] init];
-    [g_menu setDelegate:g_menuHandler];
-    [g_menu setAutoenablesItems:NO];
-
-    // Color items: inline color dot + name (attributed — see gl_color_item_text)
-    // S3b-2b-2: 建项循环(建项/attributedTitle/target/tag)已迁 Swift
-    // MenuBuilder; ObjC 只预构富文本标题(图标/文案单源仍在
-    // MenuIconFactory + core i18n, selectColor:/selectWidth: selector 不变)。
-    NSMutableArray<NSAttributedString *> *colorTitles =
-        [NSMutableArray arrayWithCapacity:g_color_preset_count];
-    for (int i = 0; i < g_color_preset_count; i++) {
-      [colorTitles addObject:gl_color_item_text(i)];
-    }
-    [MenuBuilder addColorItemsToMenu:g_menu
-                             handler:g_menuHandler
-                               count:g_color_preset_count
-                              titles:colorTitles];
-
-    [g_menu addItem:[NSMenuItem separatorItem]];
-
-    // Width items: inline line-thickness icon + name
-    NSMutableArray<NSAttributedString *> *widthTitles =
-        [NSMutableArray arrayWithCapacity:g_width_preset_count];
-    for (int i = 0; i < g_width_preset_count; i++) {
-      [widthTitles addObject:gl_width_item_text(i)];
-    }
-    [MenuBuilder addWidthItemsToMenu:g_menu
-                             handler:g_menuHandler
-                               count:g_width_preset_count
-                              titles:widthTitles];
-
-    // S3b-2b-3: 顶层其余项(保存×2/新建画布/导出▸/涂鸦开关/设置/更多▸/语言/
-    // 退出)与两个子菜单的结构(顺序/分隔符/tag/selector/target/初始 state/
-    // keyEquivalent)已迁 Swift MenuBuilder(契约见 menu_builder_full.swift 顶部);
-    // ObjC 只提供本地化文案(L()/gl_text 单源)与两个动态初始状态。
-    // 高频动作留在顶层; 低频导出/实验开关收进子菜单, 首屏不再铺满 30+ 行。
-    NSDictionary<NSString *, NSString *> *menuTitles = @{
-      @"saveWithBg" : L(@"保存(含背景)", @"Save (with bg)"),
-      @"saveDrawing" : L(@"保存(涂鸦)", @"Save (drawing)"),
-      @"newCanvas" : L(@"新建画布", @"New canvas"),
-      @"export" : L(@"导出", @"Export"),
-      @"settings" : L(@"设置...", @"Settings..."),
-      @"more" : L(@"更多", @"More"),
-      @"toggleDraw" : L(@"开启涂鸦", @"Enable Drawing"),
-      @"language" : L(@"English", @"中文"),
-      @"quit" : L(@"退出", @"Quit"),
-      @"exportXournal" : L(@"保存笔记 (Xournal)", @"Save Notes (Xournal)"),
-      @"exportInfinitePdf" : L(@"导出无限画布 PDF (分页)",
-                               @"Export infinite canvas PDF (paged)"),
-      @"exportInfiniteSvg" : L(@"导出无限画布 SVG (整幅)",
-                               @"Export infinite canvas SVG (whole)"),
-      @"moreLaunch" : L(@"开机自启", @"Launch at login"),
-      @"moreGlass" : L(@"磨砂玻璃", @"Frosted Glass"),
-      @"moreOutline" : L(@"笔迹描边", @"Stroke outline"),
-      @"moreCanvasInfinite" : gl_text(@"canvas.mode_infinite"),
-      @"moreCanvasMode" : gl_text(@"canvas.fixed_mode"),
-    };
-    BOOL launchAtLoginOn = glaspen2_is_launch_at_login() ? YES : NO;
-    [MenuBuilder addTopLevelAndSubmenusToMenu:g_menu
-                                     handler:g_menuHandler
-                                      titles:menuTitles
-                              launchAtLoginOn:launchAtLoginOn
-                                     glassOn:g_glass_enabled];
-
-    [g_statusItem setMenu:g_menu];
+    g_menu = [MainMenuBuilder buildWithHandler:g_menuHandler
+                                             statusItem:g_statusItem
+                                         launchAtLoginOn:(glaspen2_is_launch_at_login() ? YES : NO)
+                                                glassOn:g_glass_enabled];
 
     NSScreen *screen = [NSScreen mainScreen];
     NSRect screenFrame = [screen frame];

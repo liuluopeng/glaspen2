@@ -502,3 +502,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
      SCK 需 12.3, 迁移前须确认是否抬最低 macOS;
   4. `menu.m`: `glaspen2_macos_settings_json`/`set_setting` 等 C ABI 分派与设置应用小胶水。
 - S8 真机验收仍未完成(不标完成): 笔迹像素与延迟、翻页/隧道动效、多屏/锁屏唤醒、菜单视觉 zh/en、热键/录制、玻璃、缩略图条。
+| 2026-11-24 | S7cq(新目标第36轮) | 主菜单构建块迁 Swift: 新增 main_menu.swift(MainMenuBuilder.build: delegate/autoenable、颜色与粗细富文本项、顶层/导出/更多/语言文案字典、调用 MenuBuilder、挂到状态栏), run.m 原 ~120 行构建块替换为一次 Swift 调用 | cargo build/tests/parity 全绿;菜单构建/文案需真机验证 | 本提交 |
