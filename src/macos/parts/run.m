@@ -2164,23 +2164,8 @@ static void event_tap_install(BOOL include_scroll) {
     CFRelease(g_event_tap);
     g_event_tap = NULL;
   }
-  CGEventMask tapMask = CGEventMaskBit(kCGEventMouseMoved) |
-                        CGEventMaskBit(kCGEventLeftMouseDown) |
-                        CGEventMaskBit(kCGEventLeftMouseDragged) |
-                        CGEventMaskBit(kCGEventLeftMouseUp) |
-                        CGEventMaskBit(kCGEventRightMouseDown) |
-                        CGEventMaskBit(kCGEventRightMouseDragged) |
-                        CGEventMaskBit(kCGEventRightMouseUp) |
-                        CGEventMaskBit(kCGEventOtherMouseDown) |
-                        CGEventMaskBit(kCGEventOtherMouseDragged) |
-                        CGEventMaskBit(kCGEventOtherMouseUp) |
-                        CGEventMaskBit(kCGEventTabletProximity) |
-                        CGEventMaskBit(kCGEventTabletPointer) |
-                        CGEventMaskBit(kCGEventKeyDown) |
-                        CGEventMaskBit(kCGEventKeyUp);
-  if (include_scroll) {
-    tapMask |= CGEventMaskBit(kCGEventScrollWheel);
-  }
+  // S5/S6-1: 事件掩码构造已迁 Swift; 创建/回调仍在 ObjC。
+  CGEventMask tapMask = (CGEventMask)[EventTapInstaller eventMaskWithScroll:include_scroll];
   g_event_tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
                                  kCGEventTapOptionDefault, tapMask,
                                  event_tap_callback, NULL);
