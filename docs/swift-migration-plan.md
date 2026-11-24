@@ -486,3 +486,19 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7cn(新目标第32轮) | 内存笔迹重放 + 页框绘制迁 Swift: 新增 surface_replay.swift(SurfaceReplay.replay/drawPageFrame: core 重建视图 + 页外压暗/页边界线 + flush/重置/图层刷新), ObjC replay 与 pageview_frame_draw 变一行转发(后者保留供多调用点); 新增 6 页视图 getter 桥(避免与 minimap 的 pw 冲突而改名 page_w/page_h); 修正 rebuild_view 返回 void | cargo build/tests/parity 全绿;翻页/快照页框像素需真机验证 | 本提交 |
 | 2026-11-24 | S7co(新目标第33轮) | 清屏与仅保存涂鸦迁 Swift: 新增 surface_ops.swift(SurfaceOps.clearScreen/saveDrawingOnly: CLEAR 绘制/清空笔画/页信息或空白保护; 纯涂鸦 PNG 导出 + 通知; 自带 scale+页视图 context helper), ObjC 两函数一行转发; 新增 2 FFI 声明; 修正 Int64 screenId | cargo build/tests/parity 全绿;清屏/导出截图需真机验证 | 本提交 |
 | 2026-11-24 | S7cp(新目标第34轮) | 页视图几何/笔迹重建/气泡自动翻页迁 Swift: 新增 pageview_ops.swift(rebuildSurface: core 光栅+页框+dirty_reset; bubbleAutoPageFlip: 建页/翻页/页信息/通知; update: 页尺寸 FFI→fit scale/offset 并用桥写回 ObjC 状态), ObjC 三函数一行转发; 新增 3 FFI/桥声明; 修正 Int64 screenId | cargo build/tests/parity 全绿;翻页/页视图像素需真机验证 | 本提交 |
+
+### 中期检查点(新目标第35轮, 2026-11-24)
+
+- 验证: `cargo build` / 全量测试 307+29+31 / parity / clippy -D warnings 全绿。
+- 规模: 应用层 ObjC 4,156 行, Swift 59 文件; `main` 257 提交领先 origin(未推送), `v0.7.0` tag 未动。
+- 已迁完: 事件 tap 路由、全部设置动作、镜头/输入/光标、画布模式切换、菜单(构建/文案/勾选/快捷键表/动作与热键分派)、
+  笔迹 cairo 实时绘制与计划光栅、drawRect 各层、minimap、页视图/重建/翻页(swap 编排除外)、录制 effect 分派、
+  性能日志、虚拟笔/翻页诊断、设置面板宿主、清屏/导出涂鸦、笔迹重放与页框。
+- 剩余大块:
+  1. `run.m`: 时光隧道动画(`tunnel_frame/finish/free_cards`、卡片绘制/放置、`page_flip_tunnel`、swap 编排)与
+     `glaspen2_run` 启动编排(菜单构建/设置恢复/窗口与视图创建/事件 tap 安装/退出);
+  2. `glaspen2.m`: `save_with_background`/`capture_below_own_window`(ScreenCaptureKit), `glaspen2_run` 之外的 DB/窗口辅助;
+  3. `panel.m`: 反色捕获子系统(ScreenCaptureKit: 双缓冲/消费/监流/pattern) —— **需产品决策**: Swift 部署目标当前 12.0,
+     SCK 需 12.3, 迁移前须确认是否抬最低 macOS;
+  4. `menu.m`: `glaspen2_macos_settings_json`/`set_setting` 等 C ABI 分派与设置应用小胶水。
+- S8 真机验收仍未完成(不标完成): 笔迹像素与延迟、翻页/隧道动效、多屏/锁屏唤醒、菜单视觉 zh/en、热键/录制、玻璃、缩略图条。
