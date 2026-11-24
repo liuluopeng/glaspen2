@@ -2410,29 +2410,8 @@ static CGEventRef event_tap_callback_inner(CGEventTapProxy proxy,
     // Pen up: finalize modeler, commit smoothed points (or erase)
     NSLog(@"[pen] 抬笔 (pen up)");
     if (g_stroke_active) {
-      if (g_eraser_mode) {
-        glaspen2_modeler_erase_finish();
-        // S6-3-3d: 橡皮态复位/图标刷新已迁 Swift。
-        [EventRouter updateEraserState:NO];
-      } else {
-        glaspen2_modeler_end(canvas_input_x(px), canvas_input_y(py), pressure,
-                             ts, g_width_scale);
-        glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
-      }
-
-      // P0: no rebuild — raw drawing remains on the surface.
-      // Undo still calls rebuild_surface_from_strokes() to clear erased
-      // strokes.
-      stroke_end(); // release shared cairo context
-      g_stroke_active = NO;
-      gl_settings_apply_pending_color_width(); // 书写中换色/换粗细, 抬笔后生效
-      g_raw_has_last = NO;
-      g_raw_has_prev = NO;
-      g_raw_path_len = 0;
-      // Pen is back to hovering — restore the crosshair.
-      g_cursor_visible = YES;
-      dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
-      flush_dirty_to_layer();
+      // S6-3-3d: 抬笔收尾(erase/end/commit/context/状态)已迁 Swift。
+      [EventRouter penUpWithX:px y:py pressure:pressure timestamp:ts];
       perf_log_event("pen_up", elapsed_us(t0));
     }
     return NULL;
@@ -3297,4 +3276,28 @@ void glaspen2_router_modeler_move(double x, double y, double pressure, double ti
 }
 void glaspen2_router_raw_draw_segment(double x, double y, double rawWidth) {
   raw_draw_segment(x, y, rawWidth);
+}
+
+// S6-3-3d: 抬笔薄桥
+int glaspen2_router_stroke_active(void) { return g_stroke_active ? 1 : 0; }
+void glaspen2_router_set_stroke_active(int on) { g_stroke_active = on != 0; }
+void glaspen2_router_modeler_erase_finish(void) { glaspen2_modeler_erase_finish(); }
+void glaspen2_router_modeler_end(double x, double y, double pressure, double timestamp) {
+  glaspen2_modeler_end(canvas_input_x(x), canvas_input_y(y), pressure, timestamp,
+                       g_width_scale);
+}
+void glaspen2_router_commit_to_strokes(void) {
+  glaspen2_modeler_commit_to_strokes(g_pen_r, g_pen_g, g_pen_b);
+}
+void glaspen2_router_stroke_end(void) { stroke_end(); }
+void glaspen2_router_apply_pending_color_width(void) {
+  gl_settings_apply_pending_color_width();
+}
+void glaspen2_router_pen_up_state(void) {
+  g_raw_has_last = NO;
+  g_raw_has_prev = NO;
+  g_raw_path_len = 0;
+  g_cursor_visible = YES;
+  dirty_include_point(g_cursor_x, g_cursor_y, 14.0);
+  flush_dirty_to_layer();
 }

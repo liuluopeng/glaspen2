@@ -81,6 +81,24 @@ import AppKit
         glaspen2_router_pen_down_state(x, y, rawWidth)
     }
 
+    /// S6-3-3d: 抬笔: 结束模型器(橡皮 finish / 正常 end+commit) + context/状态复位。
+    @objc(penUpWithX:y:pressure:timestamp:)
+    public static func penUp(x: Double, y: Double, pressure: Double,
+                             timestamp: Double) {
+        guard glaspen2_router_stroke_active() != 0 else { return }
+        if glaspen2_router_eraser_mode() != 0 {
+            glaspen2_router_modeler_erase_finish()
+            updateEraserState(isEraser: false)
+        } else {
+            glaspen2_router_modeler_end(x, y, pressure, timestamp)
+            glaspen2_router_commit_to_strokes()
+        }
+        glaspen2_router_stroke_end()
+        glaspen2_router_set_stroke_active(0)
+        glaspen2_router_apply_pending_color_width()
+        glaspen2_router_pen_up_state()
+    }
+
     /// S6-3-3d: 拖动实时段: 模型器 move + raw segment(响应式反馈)。
     @objc(penMoveWithX:y:pressure:timestamp:rawWidth:)
     public static func penMove(x: Double, y: Double, pressure: Double,
