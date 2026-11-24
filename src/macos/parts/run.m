@@ -216,8 +216,6 @@ static void canvas_apply_transform(void) {
 // 键盘平移镜头(滚轮缩放走 canvas_zoom_at; 书写中忽略)。
 // D5b: 数学(pan -= d)单源在 core Camera::pan_by, 经 FFI 拿回三值;
 // 门控/重绘/0.5s 持久化节流/飘渺 peek 仍在本文件(adapter)。
-static void canvas_pan_by(double dx, double dy) { [CanvasCamera panByDX:dx dy:dy]; }
-
 /// 鼠标拖动平移: 高频事件只累积位移, 每帧最多真正重建一次 surface。
 static void camera_mouse_flush_pan(void) { [CameraMousePan flush]; }
 
@@ -1519,7 +1517,7 @@ static BOOL perform_action(NSString *action) {
     else if ([kind isEqualToString:@"CameraPanRight"]) dx = -step;
     else if ([kind isEqualToString:@"CameraPanUp"])    dy = step;
     else if ([kind isEqualToString:@"CameraPanDown"])  dy = -step;
-    canvas_pan_by(dx, dy);
+    [CanvasCamera panByDX:dx dy:dy];
     return YES;
   }
   if ([kind isEqualToString:@"CameraZoomIn"] ||

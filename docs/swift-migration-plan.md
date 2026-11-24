@@ -413,3 +413,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7au(续跑第65轮) | 删除无限画布镜头的 ObjC 转发: 5 处调用点直调 [CanvasCamera persistInfinite/loadInfinite](Swift), run.m 两包装与 glaspen2.m 前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7av(续跑第66轮) | 滚轮/键盘缩放 helper 迁 Swift: CanvasCamera.zoomAt/zoomAtCenter(书写中忽略 → core Camera::zoom_at(_center) → CameraState 应用), 调用点直调 Swift; 删除 ObjC 两函数/声明; 新增屏幕尺寸薄桥与 FFI 声明 | cargo build/tests/parity 全绿;滚轮/键盘缩放需真机验证 | 本提交 |
 | 2026-11-24 | 质量验证(续跑第67轮) | 严格 clippy 通过: cargo clippy -p glaspen2 --all-targets -- -D warnings 退出码 0(仅 linker 旧 -ld_classic 提示, 属 linker_messages lint 不参与 -D warnings); 自 53 轮后新增的 camera/instance/hotkey 等 Swift 迁移无静态检查回退 | 无代码变更 | 本提交 |
+| 2026-11-24 | S7aw(续跑第68轮) | 删除 canvas_pan_by 的 ObjC 转发: 唯一调用点直调 [CanvasCamera panByDX:dy:], wrapper 与 glaspen2.m 前向声明删除; 过程中一次越界删除(误删相邻函数)被 cargo 构建拦下, 已 git checkout 回滚并用括号匹配重做 | cargo build/tests/parity 全绿 | 本提交 |
