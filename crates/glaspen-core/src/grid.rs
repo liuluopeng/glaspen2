@@ -1029,7 +1029,6 @@ mod tests {
                     "glaspen2_grid_json(",
                     "glaspen2_grid_json_clipped(",
                     "draw_grid_lines(ctx",
-                    "grid_stroke_layer(",
                 ][..],
             ),
             (

@@ -48,44 +48,7 @@ static void flush_tunnel_to_layer(void) {
 // 一层线段 → CG 路径 + 单次 StrokePath(与旧实现一样整层一条路径: 交叉点只
 // 合成一次 alpha)。线段是视图坐标(y 向下), CGContext 是 y 向上, 这里翻转 y。
 // S7: 网格线段绘制已迁 Swift(OverlayGridRenderer)。
-static void grid_stroke_layer(CGContextRef ctx, NSArray *segments, double view_h,
-                              CGFloat white, CGFloat alpha, CGFloat line_width) {
-  [OverlayGridRenderer strokeLayerWithContext:ctx segments:segments
-                                   viewHeight:view_h white:white
-                                        alpha:alpha lineWidth:line_width];
-}
-
 // core 网格 FFI JSON → 字典;失败/error JSON 只记一次日志(避免每帧刷屏)并回 nil。
-static NSDictionary *grid_json_dict(char *json) {
-  static BOOL s_grid_ffi_warned = NO;
-  if (!json) {
-    if (!s_grid_ffi_warned) {
-      s_grid_ffi_warned = YES;
-      NSLog(@"[grid] core 网格 FFI 返回 NULL");
-    }
-    return nil;
-  }
-  NSData *data = [NSData dataWithBytes:json length:strlen(json)];
-  glaspen2_free_c_string(json);
-  id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-  if (![parsed isKindOfClass:[NSDictionary class]]) {
-    if (!s_grid_ffi_warned) {
-      s_grid_ffi_warned = YES;
-      NSLog(@"[grid] core 网格 JSON 无法解析");
-    }
-    return nil;
-  }
-  NSDictionary *dict = parsed;
-  if (dict[@"error"]) {
-    if (!s_grid_ffi_warned) {
-      s_grid_ffi_warned = YES;
-      NSLog(@"[grid] core 网格 FFI 错误: %@", dict[@"error"]);
-    }
-    return nil;
-  }
-  return dict;
-}
-
 // 网格 + 分栏参考线:门控与视图←画布变换保持旧 drawRect 逐字一致。
 // clipRect = 本次 drawRect 的脏矩形(非翻转视图坐标, y 向上), 只向 core 要相交的
 // 线(旧实现同样的省遍历);视图尺寸 = bounds(macOS 窗口 = 屏幕 frame)。
