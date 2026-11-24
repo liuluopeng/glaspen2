@@ -2874,3 +2874,10 @@ void glaspen2_router_rec_chat_integration_changed(int on) { gl_recording_chat_in
 int glaspen2_router_outline_enabled(void) { return g_outline_enabled ? 1 : 0; }
 void glaspen2_router_set_outline_state(int on) { g_outline_enabled = on != 0; }
 void glaspen2_router_rebuild_surface(void) { rebuild_surface_from_strokes(); }
+
+// S7ak: 镜头状态应用薄桥
+void glaspen2_router_set_camera(double panX, double panY, double zoom, int assignZoom) {
+  g_pan_x = panX;
+  g_pan_y = panY;
+  if (assignZoom) g_zoom = zoom;
+}

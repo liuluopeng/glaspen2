@@ -193,6 +193,14 @@ extern char* glaspen2_recording_event_json(int slot, const char *event_json);
 extern int glaspen2_recording_reset(int slot);
 extern int glaspen2_recording_mode(int slot);
 extern void glaspen2_set_stroke_outline(int enabled);
+
+// S7ak: 镜头 JSON 逻辑已迁 Swift(CameraState), 以下为 ObjC 转发。
+static BOOL camera_assign(NSDictionary *result, BOOL assign_zoom) {
+  return [CameraState assignResult:result assignZoom:assign_zoom];
+}
+static NSDictionary *camera_result_json(char *json) {
+  return [CameraState resultFromJSON:json];
+}
 // ObjC 侧使用的 Swift 薄桥前向声明(Bridging.h 只给 Swift 编译单元)
 void glaspen2_router_update_status_icon_state(void);
 extern void glaspen2_set_soft_shadow(int enabled);
@@ -463,37 +471,12 @@ static double g_page_off_x = 0.0, g_page_off_y = 0.0;
 // 最小缩放提示仅 Windows、居中 zoom 回写、载入不钳上限)见 camera.rs 模块文档。
 
 // 解析 Rust 返回的镜头 JSON 并释放缓冲区;形状不对/error JSON 返回 nil。
-static NSDictionary *camera_result_json(char *json) {
-  if (!json) {
-    NSLog(@"[camera] core 镜头 FFI 返回 NULL");
-    return nil;
-  }
-  NSData *data = [NSData dataWithBytes:json length:strlen(json)];
-  glaspen2_free_c_string(json);
-  id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-  if (![parsed isKindOfClass:[NSDictionary class]]) {
-    NSLog(@"[camera] core 镜头 JSON 无法解析");
-    return nil;
-  }
-  return parsed;
-}
+
 
 // 把 core 算好的三值写回全局。assign_zoom = NO 时保留当前 g_zoom(macOS
 // 居中只改 pan;Windows 会把兜底后的 zoom 写回, 差异见 camera.rs 模块文档 5)。
 // 字段缺失(含 error JSON)返回 NO 且不改状态。
-static BOOL camera_assign(NSDictionary *result, BOOL assign_zoom) {
-  if (![result isKindOfClass:[NSDictionary class]]) return NO;
-  NSNumber *px = result[@"pan_x"], *py = result[@"pan_y"], *pz = result[@"zoom"];
-  if (![px isKindOfClass:[NSNumber class]] || ![py isKindOfClass:[NSNumber class]] ||
-      ![pz isKindOfClass:[NSNumber class]]) {
-    NSLog(@"[camera] 镜头 JSON 缺字段: %@", result[@"error"] ?: result);
-    return NO;
-  }
-  g_pan_x = [px doubleValue];
-  g_pan_y = [py doubleValue];
-  if (assign_zoom) g_zoom = [pz doubleValue];
-  return YES;
-}
+
 
 // 页视图变换(scale-to-fit): 当前页几何 ≠ 屏幕时, 等比缩放居中观看该页
 // (页 = 某时刻玻璃的几何快照); 同几何时恒为恒等 —— 纯玻璃, 严格 1:1。
