@@ -397,3 +397,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7af(续跑第49轮) | 继续删转发: gl_glass_apply 调用点/桥直调 [MenuHandler applyGlass]; apply_outline 调用点/桥直调 setOutlineEnabled; sync_settings_panel 全部调用点直调 glaspen2_notify_settings_changed; 三个 ObjC 包装与前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7ag(续跑第50轮) | 删除 restore_system_cursor 的 ObjC 包装: 调用点直调 [EventRouter restoreSystemCursor](Swift, 仅 pen_drawing 时 show+清标记); glaspen2.m 包装与前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
 | 2026-11-24 | S7ah(续跑第51轮) | 删除 show_page_info 的 ObjC 包装: 5 处调用点(翻页/新建页/气泡翻页)直调 [NotificationPresenter showPageInfoWithScreenId](Swift); glaspen2.m 包装与前向声明删除 | cargo build/tests/parity 全绿 | 本提交 |
+| 2026-11-24 | S7ai(续跑第52轮) | 删除 update_status_icon_color 包装: 全部调用点直调桥 glaspen2_router_update_status_icon_state(), 桥实现直接调 Swift StatusIconUpdater; 桥在 ObjC 侧补前向声明(Bridging.h 仅对 Swift 可见); 期间修正自递归与未声明错误 | cargo build/tests/parity 全绿 | 本提交 |

@@ -103,21 +103,6 @@ static NSAttributedString* gl_width_item_text(NSInteger idx) {
 static BOOL g_ethereal_canvas; // 定义在下方(飘渺画布涂鸦模式), 图标要用
 
 
-static void update_status_icon_color(void) {
-    // S7: 图标刷新(setImage/清标题)已迁 Swift(StatusIconUpdater)。
-    [StatusIconUpdater applyToStatusItem:g_statusItem
-                                  eraser:g_eraser_mode
-                                 enabled:g_enabled
-                                ethereal:g_ethereal_canvas
-                                infinite:g_infinite_canvas
-                              widthScale:g_width_scale
-                                  penRed:g_pen_r
-                                penGreen:g_pen_g
-                                 penBlue:g_pen_b];
-}
-
-
-
 static void update_menu_checkmarks(void) {
     // S3b-2b-4a: 勾选刷新逻辑在 Swift(MenuUpdater);这里只传当前状态。
     [MenuUpdater updateCheckmarksInMenu:g_menu
@@ -150,7 +135,7 @@ static void toggle_enabled(void) {
         }
         if (g_pressure_monitor) pm_show();
     }
-    update_status_icon_color();
+    glaspen2_router_update_status_icon_state();
     show_notification(g_enabled
         ? gl_text(@"draw.enabled")
         : gl_text(@"draw.disabled"));
@@ -288,7 +273,7 @@ static void toggle_canvas_mode(void) {
     }
     // 持久化(与 Windows 同键 "ethereal"): 启动恢复在 run.m 设置装载段
     glaspen2_save_bool_setting("ethereal", g_ethereal_canvas ? 1 : 0);
-    update_status_icon_color(); // 飘渺画布 = 图标左上角的 ghost 圆环徽标
+    glaspen2_router_update_status_icon_state(); // 飘渺画布 = 图标左上角的 ghost 圆环徽标
 }
 
 /// 彻底退出:菜单「退出」、可配置快捷键 quit、设置面板/自动更新流程共用**同一条**
@@ -326,12 +311,12 @@ static void toggle_canvas_mode(void) {
 // S3b-2b-7a: quitApp/menuWillOpen:/menuDidClose: 已迁 Swift(menu_handler.swift),
 // 这里保留 delegate 需要的薄桥; g_event_tap 是本文件翻译单元内的静态全局。
 void glaspen2_menu_will_open_bridge(void) {
-    update_status_icon_color();
+    glaspen2_router_update_status_icon_state();
     update_menu_checkmarks();
 }
 
 void glaspen2_menu_did_close_bridge(void) {
-    update_status_icon_color();
+    glaspen2_router_update_status_icon_state();
     // Re-enable CGEventTap after menu closes
     if (g_event_tap) {
         CGEventTapEnable(g_event_tap, true);

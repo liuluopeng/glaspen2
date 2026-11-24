@@ -173,7 +173,7 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
   NSMenuItem *item = [MenuLookup itemWithTag:668 inMenu:g_menu];
   if (item)
     [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
-  update_status_icon_color(); // 无限画布 = 图标右下角的 ∞ 徽标
+  glaspen2_router_update_status_icon_state(); // 无限画布 = 图标右下角的 ∞ 徽标
   glaspen2_set_canvas_kind(on ? 1 : 0);
   if (on) {
     glaspen2_load_infinite_strokes();
@@ -2266,7 +2266,7 @@ void glaspen2_run(void) {
       glaspen2_color_preset_rgb(g_selectedColorIndex, &g_pen_r, &g_pen_g,
                                 &g_pen_b);
     }
-    update_status_icon_color();
+    glaspen2_router_update_status_icon_state();
     update_menu_checkmarks();
 
     // 可配置快捷键: 必须在 event_tap_reinstall 之前装载, 否则首帧仍是旧键位。
@@ -2428,7 +2428,7 @@ void glaspen2_run(void) {
 
     // 图标反映的状态(颜色/宽度/无限画布)到这里才全部恢复完, 补刷一次
     // (恢复流程更早处的刷新发生在 infinite_canvas 恢复之前, ∞ 徽标会丢)
-    update_status_icon_color();
+    glaspen2_router_update_status_icon_state();
 
     // 涂鸦身份:DB 里的账号配置(若用户在面板配过)推给 Rust auth 模块
     glaspen2_chat_auth_reload();
@@ -2711,7 +2711,12 @@ void glaspen2_router_tap_menu_bar_interaction(void) {
 // S6-3-3d: 橡皮态切换薄桥
 int glaspen2_router_eraser_mode(void) { return g_eraser_mode ? 1 : 0; }
 void glaspen2_router_set_eraser_mode(int on) { g_eraser_mode = on != 0; }
-void glaspen2_router_update_status_icon_state(void) { update_status_icon_color(); }
+void glaspen2_router_update_status_icon_state(void) {
+  [StatusIconUpdater applyToStatusItem:g_statusItem eraser:g_eraser_mode
+                               enabled:g_enabled ethereal:g_ethereal_canvas
+                              infinite:g_infinite_canvas widthScale:g_width_scale
+                                  penRed:g_pen_r penGreen:g_pen_g penBlue:g_pen_b];
+}
 
 // S6-3-3d: 落笔入口薄桥
 void glaspen2_router_bubble_auto_page_flip(void) { bubble_auto_page_flip(); }

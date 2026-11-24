@@ -193,6 +193,8 @@ extern char* glaspen2_recording_event_json(int slot, const char *event_json);
 extern int glaspen2_recording_reset(int slot);
 extern int glaspen2_recording_mode(int slot);
 extern void glaspen2_set_stroke_outline(int enabled);
+// ObjC 侧使用的 Swift 薄桥前向声明(Bridging.h 只给 Swift 编译单元)
+void glaspen2_router_update_status_icon_state(void);
 extern void glaspen2_set_soft_shadow(int enabled);
 extern void glaspen2_set_stroke_invert(int enabled);      // 反色突出开关
 extern void glaspen2_set_invert_background(void *surface); // 反相背景 cairo surface
