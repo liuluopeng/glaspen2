@@ -1273,15 +1273,8 @@ static void pm_destroy(void) {
 }
 
 static void gl_settings_set_pressure_monitor(BOOL on) {
-    g_pressure_monitor = on;
-    glaspen2_save_bool_setting("pressure_monitor", on ? 1 : 0);
-    if (on) {
-        pm_show();
-        pm_update();
-    } else {
-        pm_hide();
-    }
-    sync_settings_panel();
+    // S7u: 逻辑已迁 Swift(MenuHandler.setPressureMonitor)。
+    [MenuHandler setPressureMonitor:on];
 }
 
 static void sync_settings_panel(void) {
@@ -1335,3 +1328,9 @@ void glaspen2_router_update_menu_state(int tag, int state) {
 
 // S7t: 网格开关状态薄桥
 void glaspen2_router_set_grid_state(int on) { g_show_grid = on != 0; }
+
+// S7u: 压感监视器开关的 Swift 薄桥
+void glaspen2_router_set_pressure_monitor(int on) { g_pressure_monitor = on != 0; }
+void glaspen2_router_pm_show(void) { pm_show(); }
+void glaspen2_router_pm_hide(void) { pm_hide(); }
+void glaspen2_router_pm_refresh(void) { pm_update(); }

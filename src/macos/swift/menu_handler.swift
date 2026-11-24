@@ -61,6 +61,22 @@ import AppKit
         glaspen2_menu_notify(glaspen2_menu_l10n("export.notes_saved"))
     }
 
+    /// 压感监视器开关: 状态/落库/显示隐藏/面板同步。
+    @objc(setPressureMonitor:)
+    public static func setPressureMonitor(enabled: Bool) {
+        glaspen2_router_set_pressure_monitor(enabled ? 1 : 0)
+        "pressure_monitor".withCString { key in
+            glaspen2_save_bool_setting(key, enabled ? 1 : 0)
+        }
+        if enabled {
+            glaspen2_router_pm_show()
+            glaspen2_router_pm_refresh()
+        } else {
+            glaspen2_router_pm_hide()
+        }
+        glaspen2_router_sync_settings_panel()
+    }
+
     /// 网格开关: 状态/落库/面板同步/重绘。
     @objc(setGridEnabled:)
     public static func setGridEnabled(enabled: Bool) {
