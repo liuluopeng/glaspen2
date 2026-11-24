@@ -909,7 +909,8 @@ mod tests {
         let mac_panel = include_str!("../../../src/macos/parts/panel.m");
         // S7m: 网格层绘制已迁 Swift, 闸门须同时扫 Swift 源(几何仍走 core::grid)。
         let mac_grid_swift = include_str!("../../../src/macos/swift/overlay_grid.swift");
-        let mac_run_grid = format!("{mac_run}\n{mac_grid_swift}");
+        let mac_drawing_swift = include_str!("../../../src/macos/swift/overlay_drawing.swift");
+let mac_run_grid = format!("{mac_run}\n{mac_grid_swift}\n{mac_drawing_swift}");
         let win_canvas = include_str!("../../../crates/glaspen-windows/src/overlay/canvas.rs");
         let win_actions = include_str!("../../../crates/glaspen-windows/src/overlay/actions.rs");
         let win_state = include_str!("../../../crates/glaspen-windows/src/overlay/state.rs");
@@ -1028,7 +1029,7 @@ mod tests {
                 &[
                     "glaspen2_grid_json(",
                     "glaspen2_grid_json_clipped(",
-                    "draw_grid_lines(ctx",
+                    "OverlayGridRenderer.drawGrid(",
                 ][..],
             ),
             (

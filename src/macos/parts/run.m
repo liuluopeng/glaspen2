@@ -62,93 +62,7 @@ static void draw_grid_lines(CGContextRef ctx, NSRect bounds, NSRect clipRect) {
   return YES;
 }
 
-- (void)drawRect:(NSRect)rect {
-  if (!g_surface)
-    return;
-  uint64_t t0 = mach_absolute_time();
-  cairo_surface_flush(g_surface);
-  unsigned char *data = cairo_image_surface_get_data(g_surface);
-  int w = cairo_image_surface_get_width(g_surface);
-  int h = cairo_image_surface_get_height(g_surface);
-  int stride = cairo_image_surface_get_stride(g_surface);
-
-  // Clip to the dirty rect we were asked to repaint (rect parameter).
-  // For layer-backed views AppKit may still pass the full bounds; that's fine —
-  // the code below handles either case correctly.
-  CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
-  CGContextSaveGState(ctx);
-  NSRect clipRect = [self isFlipped] ? rect : rect;
-  CGContextClipToRect(ctx, NSRectToCGRect(clipRect));
-
-  // 时光隧道期间: 只显示半分辨率隧道表面(放大到视图), 不画网格/笔迹。
-  if (s_tun_active && s_tun_surface) {
-    cairo_surface_flush(s_tun_surface);
-    unsigned char *td = cairo_image_surface_get_data(s_tun_surface);
-    int tw = cairo_image_surface_get_width(s_tun_surface);
-    int th = cairo_image_surface_get_height(s_tun_surface);
-    int ts = cairo_image_surface_get_stride(s_tun_surface);
-    if (td && tw > 0 && th > 0) {
-      [OverlayTunnelRenderer drawTunnelWithContext:ctx
-                                              data:td
-                                             width:tw
-                                            height:th
-                                            stride:ts
-                                            bounds:[self bounds]];
-    }
-    CGContextRestoreGState(ctx);
-    return;
-  }
-
-  // 网格 + 分栏参考线: 几何唯一来源 = core::grid(经 FFI 线段表),
-  // 本函数只保持原有门控与 CGContext 样式/绘制顺序(D6)。
-  draw_grid_lines(ctx, [self bounds], clipRect);
-
-  // S7: CGImage 缓存构造已迁 Swift(Swift 持有缓存, 这里只借指针)。
-  CGImageRef image =
-      [OverlaySurfaceImageCache imageForData:data width:w height:h stride:stride];
-
-  // The strokes can be hidden independently (飘渺画布涂鸦模式) — skip the
-  // surface image, but keep drawing the notification and crosshair below.
-  if (image && g_strokes_visible) {
-    // S7: 子图裁剪/全图回退绘制已迁 Swift(OverlaySurfaceRenderer)。
-    [OverlaySurfaceRenderer drawSurfaceImage:image
-                                 inContext:ctx
-                                      rect:rect
-                                    bounds:[self bounds]
-                                     scale:g_scale];
-    // image is the cached surface image — NOT released here.
-  }
-
-  // 页面缩略图条(minimap,翻页模式)。条子贴右缘: 重绘区离得远就整段跳过
-  // (阈值 96pt 远宽于条子, 宁可多画不可漏画)。
-  if (g_minimap_enabled && !g_infinite_canvas &&
-      NSMaxX(rect) >= [self bounds].size.width - 96.0) {
-    [MinimapRenderer drawWithContext:ctx bounds:[self bounds]];
-  }
-
-  // Draw notification text (S4-2: 绘制已迁 Swift NotificationPresenter)
-  {
-    NSRect noteBounds = [self bounds];
-    [NotificationPresenter drawInBounds:noteBounds];
-  }
-
-  // S7n: 光标十字层已迁 Swift(OverlayCursorRenderer)。
-  [OverlayCursorRenderer drawCursorWithContext:ctx];
-
-  CGContextRestoreGState(ctx);
-
-  // 性能日志:记录每帧被请求重绘的区域。layer-backed 视图可能拿到全屏
-  // rect(FULL)—— 那样笔迹拷贝就是整屏 blit, 是涂鸦 CPU 的头号嫌疑,
-  // 这里把它直接量出来。
-  if (g_perf_log) {
-    char notes[128];
-    snprintf(notes, sizeof notes, "rect=%.0fx%.0f%s%s%s", rect.size.width,
-             rect.size.height, NSEqualRects(rect, [self bounds]) ? " FULL" : "",
-             g_show_grid ? " grid" : "",
-             (g_minimap_enabled && !g_infinite_canvas) ? " minimap" : "");
-    perf_log_event_notes("drawrect", elapsed_us(t0), notes);
-  }
-}
+- (void)drawRect:(NSRect)rect { [OverlayDrawing drawInView:self rect:rect]; }
 
 @end
 
@@ -2527,3 +2441,39 @@ void glaspen2_router_event_tap_reinstall(void) { event_tap_reinstall(); }
 
 // S7: minimap 状态薄桥
 int glaspen2_router_pageview_pw(void) { return g_pageview_pw; }
+
+// S7bl: drawRect 编排的薄桥(表面/隧道状态快照 + flush)
+void glaspen2_router_draw_prepare(void) {
+  if (g_surface) cairo_surface_flush(g_surface);
+  if (s_tun_active && s_tun_surface) cairo_surface_flush(s_tun_surface);
+}
+NSDictionary *glaspen2_router_draw_state(void) {
+  NSMutableDictionary *d = [NSMutableDictionary dictionary];
+  d[@"hasSurface"] = @(g_surface ? YES : NO);
+  if (g_surface) {
+    d[@"surfaceData"] = [NSValue valueWithPointer:cairo_image_surface_get_data(g_surface)];
+    d[@"surfaceW"] = @(cairo_image_surface_get_width(g_surface));
+    d[@"surfaceH"] = @(cairo_image_surface_get_height(g_surface));
+    d[@"surfaceStride"] = @(cairo_image_surface_get_stride(g_surface));
+  }
+  d[@"tunnelActive"] = @(s_tun_active && s_tun_surface);
+  if (s_tun_active && s_tun_surface) {
+    d[@"tunnelData"] = [NSValue valueWithPointer:cairo_image_surface_get_data(s_tun_surface)];
+    d[@"tunnelW"] = @(cairo_image_surface_get_width(s_tun_surface));
+    d[@"tunnelH"] = @(cairo_image_surface_get_height(s_tun_surface));
+    d[@"tunnelStride"] = @(cairo_image_surface_get_stride(s_tun_surface));
+  }
+  d[@"scale"] = @(g_scale);
+  d[@"strokesVisible"] = @(g_strokes_visible ? YES : NO);
+  d[@"showGrid"] = @(g_show_grid ? YES : NO);
+  d[@"minimapEnabled"] = @(g_minimap_enabled ? YES : NO);
+  d[@"infinite"] = @(g_infinite_canvas ? YES : NO);
+  d[@"perfEnabled"] = @(g_perf_log ? YES : NO);
+  return d;
+}
+
+// S7bl: drawRect perf 打点薄桥
+void glaspen2_router_perf_notes(const char *name, const char *notes, uint64_t t0) {
+  if (!g_perf_log) return;
+  perf_log_event_notes(name, elapsed_us(t0), notes);
+}
