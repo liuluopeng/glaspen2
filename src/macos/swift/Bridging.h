@@ -105,7 +105,6 @@ void glaspen2_router_flush(void);
 CGEventTapCallBack glaspen2_event_tap_callback_ptr(void);
 void glaspen2_event_tap_store(CFMachPortRef tap);
 void glaspen2_event_tap_note_scroll(int on);
-void glaspen2_event_tap_enable(CFMachPortRef tap, int on);
 
 // S5-3: 显示器防抖所需的当前几何读取与应用桥(实现留在 panel.m)
 void glaspen2_display_size(int *w, int *h);

@@ -3197,9 +3197,6 @@ void glaspen2_event_tap_note_scroll(int on) {
   g_tap_has_scroll = on != 0;
 }
 
-void glaspen2_event_tap_enable(CFMachPortRef tap, int on) {
-  if (tap) CGEventTapEnable(tap, on != 0);
-}
 
 // S6-3-1: 事件路由薄桥
 NSUInteger glaspen2_router_camera_mods(void) {
