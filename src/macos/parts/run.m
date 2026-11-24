@@ -90,57 +90,8 @@ static NSDictionary *grid_json_dict(char *json) {
 // clipRect = 本次 drawRect 的脏矩形(非翻转视图坐标, y 向上), 只向 core 要相交的
 // 线(旧实现同样的省遍历);视图尺寸 = bounds(macOS 窗口 = 屏幕 frame)。
 static void draw_grid_lines(CGContextRef ctx, NSRect bounds, NSRect clipRect) {
-  // 显示网格(细网格+屏幕分界线)与分栏参考线是两个独立设置, 各画各层;
-  // 网格跟随涂鸦 on 时两者都随笔迹隐藏(飘渺画布涂鸦模式)。
-  if (!((g_show_grid || g_grid_divider > 0) && !s_tun_active &&
-        (g_strokes_visible || !g_grid_follow_strokes)))
-    return;
-  double view_w = bounds.size.width, view_h = bounds.size.height;
-  if (!(view_w > 0.0) || !(view_h > 0.0)) return;
-
-  // 两种模式统一:视图 = (画布 − 镜头偏移) × 缩放。
-  // 无限画布:偏移=pan、缩放=zoom(旧代码同款 0.05 兜底, 见 camera.rs 差异 3);
-  // 活页本:偏移=−滚动偏移、缩放=1(整页翻页后滚动偏移恒 0)。
-  double pan_x = 0.0, pan_y = 0.0, z = 1.0;
-  if (g_infinite_canvas) {
-    pan_x = g_pan_x;
-    pan_y = g_pan_y;
-    z = (g_zoom > 0.05) ? g_zoom : 0.05;
-  } else {
-    pan_x = -g_page_off_x;
-    pan_y = -g_page_off_y;
-  }
-
-  // clipRect 是非翻转视图坐标(y 向上)→ core 视图坐标(y 向下)。
-  double clip_x0 = NSMinX(clipRect), clip_x1 = NSMaxX(clipRect);
-  double clip_y0 = view_h - NSMaxY(clipRect), clip_y1 = view_h - NSMinY(clipRect);
-  int follow = g_grid_follow_strokes ? 1 : 0;
-  int divider = (int)g_grid_divider;
-
-  char *json;
-  if (!g_show_grid) {
-    // 只开分栏: 分栏线每屏单位 1–4 条, 全视口算, 不需要脏矩形裁剪。
-    json = glaspen2_grid_json_clipped(view_w, view_h, pan_x, pan_y, z,
-                                      g_grid_size, divider, /*show_grid=*/0,
-                                      0.0, 0.0, view_w, view_h);
-  } else if (clip_x0 <= 0.0 && clip_y0 <= 0.0 && clip_x1 >= view_w &&
-             clip_y1 >= view_h) {
-    // 整屏重绘: 规范入口(屏幕单位 = 视口尺寸 = macOS 视图/屏幕一致)。
-    json = glaspen2_grid_json(view_w, view_h, pan_x, pan_y, z, g_grid_size,
-                              divider, follow);
-  } else {
-    // 笔迹脏矩形: 只请求与 clip 相交的线(旧实现只算脏区, 省整屏遍历)。
-    json = glaspen2_grid_json_clipped(view_w, view_h, pan_x, pan_y, z,
-                                      g_grid_size, divider, /*show_grid=*/1,
-                                      clip_x0, clip_y0, clip_x1, clip_y1);
-  }
-  NSDictionary *lines = grid_json_dict(json);
-  if (!lines) return;
-  // 样式与旧代码逐值一致: 0.5pt/0.5/alpha0.15;1.0pt/0.5/alpha0.55;
-  // 1.5pt/0.5/alpha0.65。
-  grid_stroke_layer(ctx, lines[@"minor"], view_h, 0.5, 0.15, 0.5);
-  grid_stroke_layer(ctx, lines[@"screen"], view_h, 0.5, 0.55, 1.0);
-  grid_stroke_layer(ctx, lines[@"divider"], view_h, 0.5, 0.65, 1.5);
+  // S7m: 逻辑已迁 Swift(OverlayGridRenderer.drawGridWithContext:bounds:clipRect:)。
+  [OverlayGridRenderer drawGridWithContext:ctx bounds:bounds clipRect:clipRect];
 }
 
 // --- Drawing view ---
@@ -3048,3 +2999,21 @@ id glaspen2_router_main_window(void) { return g_window; }
 
 // S7: 退出前 perf 汇总薄桥(perf_log_summary 在本文件)
 void glaspen2_router_perf_summary(void) { perf_log_summary(); }
+
+// S7m: 网格层状态快照桥(供 Swift OverlayGridRenderer 读)
+NSDictionary *glaspen2_router_grid_state(void) {
+  return @{
+    @"showGrid" : @(g_show_grid ? YES : NO),
+    @"divider" : @((int)g_grid_divider),
+    @"tunActive" : @(s_tun_active ? YES : NO),
+    @"strokesVisible" : @(g_strokes_visible ? YES : NO),
+    @"gridFollow" : @(g_grid_follow_strokes ? YES : NO),
+    @"infinite" : @(g_infinite_canvas ? YES : NO),
+    @"panX" : @(g_pan_x),
+    @"panY" : @(g_pan_y),
+    @"zoom" : @(g_zoom),
+    @"pageOffX" : @(g_page_off_x),
+    @"pageOffY" : @(g_page_off_y),
+    @"gridSize" : @(g_grid_size),
+  };
+}
