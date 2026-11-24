@@ -595,8 +595,6 @@ static NSUInteger gl_shortcut_modifier_mask_for(NSString *action) {
     }
     return mask;
 }
-static BOOL g_hotkey_recording = NO;
-static NSUInteger g_hotkey_recording_gen = 0;
 
 /// 旧默认迁移单源在 core/chord.rs(D2): 历史默认表 + "只迁仍等于旧默认的项"。
 static id gl_shortcut_migrate_saved(NSString *action, id raw) {
@@ -665,19 +663,6 @@ static void gl_shortcuts_load(void) {
 
 /// 录制快捷键期间放行所有键盘事件给设置面板; 60s 兜底, 防止面板异常退出
 /// 后全局热键永久失效。
-static void gl_set_hotkey_recording(BOOL on) {
-    g_hotkey_recording = on;
-    NSUInteger gen = ++g_hotkey_recording_gen;
-    if (!on) return;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(60.0 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        if (gen == g_hotkey_recording_gen && g_hotkey_recording) {
-            g_hotkey_recording = NO;
-            NSLog(@"[hotkey] 录制超时, 恢复全局快捷键");
-        }
-    });
-}
-
 /// 事件 tap 用: keycode + 修饰键 → 规范 chord → action id。
 // S6-3-4b: 键名/查找薄桥(Swift EventRouter 调; 逻辑在 Swift)
 NSString *glaspen2_router_keycode_name(unsigned short kc) {
@@ -885,7 +870,7 @@ void glaspen2_macos_set_setting(const char *key_c, const char *value_json) {
             glaspen2_notify_settings_changed();
         } else if ([kind isEqualToString:@"HotkeyRecording"]) {
             // 录制期间放行键盘给面板; 不落库, 超时自动恢复
-            gl_set_hotkey_recording(boolValue);
+            [HotkeyRecorder setRecording:boolValue];
         } else {
             // core 新增了 effect 但这里忘了执行: 记录, 方便 D1a 闸门之外的人工排障
             NSLog(@"[settings] %s: 未处理的 effect kind=%@", key_c, kind);

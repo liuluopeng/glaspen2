@@ -2804,7 +2804,6 @@ void glaspen2_router_pm_update(int inRange, int pressure, double x, double y,
 }
 
 // S6-3-4: 键盘录制放行标志薄桥
-int glaspen2_router_hotkey_recording(void) { return g_hotkey_recording ? 1 : 0; }
 
 // S6-3-3d: callback 内层收尾薄桥
 void glaspen2_router_reenable_tap(void) {

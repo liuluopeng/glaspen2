@@ -131,7 +131,7 @@ import AppKit
 
     /// S6-3-4: 键盘事件: 录制热键 → 普通 chord; 返回 1 放行 / 2 消费。
     private static func routeKeyboardEvent(type: CGEventType, event: CGEvent) -> Int32 {
-        if glaspen2_router_hotkey_recording() != 0 { return 1 }
+        if HotkeyRecorder.isRecording { return 1 }
         guard let ev = NSEvent(cgEvent: event) else { return 1 }
         let hasCmdCtrl = ev.modifierFlags.contains(.command)
             && ev.modifierFlags.contains(.control)

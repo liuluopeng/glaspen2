@@ -403,3 +403,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-24 | S7ak(续跑第55轮) | 镜头 JSON 解析/应用迁 Swift: 新增 camera_state.swift(CameraState.resultFromJSON 释放 C 串+解析, assignResult 校验字段并调镜头状态桥), ObjC camera_result_json/camera_assign 变一行转发(调用点暂不变); 修复 Swift NSLog 不可用问题(改用字符串插值) | cargo build/tests/parity 全绿;镜头平移/缩放需真机验证 | 本提交 |
 | 2026-11-24 | S7al(续跑第56轮) | chord 规范化包装迁 Swift: 新增 chord_normalizer.swift(ChordNormalizer.normalizeRaw 调 core FFI + 释放 C 串), menu.m 调用点直调并删除 ObjC 实现与声明 | cargo build/tests/parity 全绿;快捷键规范化需真机验证 | 本提交 |
 | 2026-11-24 | S7am(续跑第57轮) | 修 ObjC 编译警告: 页面缩略图边框色把属性 getter 当副作用用, 改为显式 NSColor 变量 + setStroke; 构建不再出现 "property access result unused" 警告 | cargo build/tests/parity 全绿 | 本提交 |
+| 2026-11-24 | S7an(续跑第58轮) | 快捷键录制状态迁 Swift: 新增 hotkey_recorder.swift(HotkeyRecorder: recording/generation + 60s 兜底), EventRouter 直接读 Swift 状态; settings 分派调用点直调 Swift; 删除 ObjC 状态全局/函数/桥 | cargo build/tests/parity 全绿;录制快捷键需真机验证 | 本提交 |

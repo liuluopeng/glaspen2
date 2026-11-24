@@ -98,7 +98,6 @@ int glaspen2_router_camera_dragging(void);
 double glaspen2_router_camera_step_zoom(void);
 void glaspen2_router_camera_queue_pan(double dx, double dy);
 int glaspen2_router_pm_enabled(void);
-int glaspen2_router_hotkey_recording(void);
 void glaspen2_router_reenable_tap(void);
 double glaspen2_router_raw_width(double pressure);
 int glaspen2_router_prox_is_eraser(void);
