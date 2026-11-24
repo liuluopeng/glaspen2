@@ -193,6 +193,7 @@ extern char* glaspen2_recording_event_json(int slot, const char *event_json);
 extern int glaspen2_recording_reset(int slot);
 extern int glaspen2_recording_mode(int slot);
 extern void glaspen2_set_stroke_outline(int enabled);
+static void apply_infinite_canvas(BOOL on, BOOL notify);
 
 // S7ak: 镜头 JSON 逻辑已迁 Swift(CameraState), 以下为 ObjC 转发。
 // ObjC 侧使用的 Swift 薄桥前向声明(Bridging.h 只给 Swift 编译单元)
@@ -261,7 +262,6 @@ extern int glaspen2_undo_last_stroke(void);
 static void rebuild_surface_from_strokes(void);
 static void ensure_surface(NSView *view);
 static BOOL perform_hotkey(unsigned short keyCode);
-static void apply_infinite_canvas(BOOL on, BOOL notify);
 static void event_tap_install(BOOL include_scroll);
 static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
                                      CGEventRef event, void *refcon);

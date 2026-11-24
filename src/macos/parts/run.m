@@ -156,44 +156,7 @@ static void draw_grid_lines(CGContextRef ctx, NSRect bounds, NSRect clipRect) {
 // 两种模式各自独立存储:翻页模式用 screens/strokes,无限画布用
 // infinite_strokes(全局仅一个画布)。切换时冲刷当前笔画、切存储、载入对应笔迹。
 // 模式本身持久化在 user_settings(结构性的模式,与描边这类渲染设置不同)。
-static void apply_infinite_canvas(BOOL on, BOOL notify) {
-  if (g_infinite_canvas == on)
-    return;
-  g_camera_mouse_dragging = NO; // 模式切换时结束任何鼠标抓手
-  [CameraMousePan cancel];
-  [EventRouter finishActiveStroke]; // 先把在写的笔画落库到"旧"存储
-  if (g_infinite_canvas)
-    [CanvasCamera persistInfinite]; // 离开无限画布前存镜头
-  g_infinite_canvas = on;
-  glaspen2_save_bool_setting("infinite_canvas", on ? 1 : 0);
-  NSMenuItem *item = [MenuLookup itemWithTag:668 inMenu:g_menu];
-  if (item)
-    [item setState:on ? NSControlStateValueOn : NSControlStateValueOff];
-  glaspen2_router_update_status_icon_state(); // 无限画布 = 图标右下角的 ∞ 徽标
-  glaspen2_set_canvas_kind(on ? 1 : 0);
-  if (on) {
-    glaspen2_load_infinite_strokes();
-    [CanvasCamera loadInfinite];
-  } else {
-    // 回到翻页模式:载入当前页;没有页就建一页
-    long cur = glaspen2_get_current_screen_id();
-    if (cur > 0) {
-      glaspen2_load_strokes_for_screen(cur);
-    } else {
-      glaspen2_clear_strokes(g_screen_w, g_screen_h);
-    }
-    pageview_update();
-    [CanvasCamera resetLens];
-  }
-  rebuild_surface_from_strokes();
-  // 滚轮劫持的根治:翻页模式重装不含滚轮的 tap,系统滚轮零拦截
-  event_tap_reinstall();
-  glaspen2_notify_settings_changed(); // Flutter 面板的开关/圆点同步
-  if (notify) {
-    show_notification(on ? gl_text(@"canvas.infinite_on")
-                         : gl_text(@"canvas.infinite_off"));
-  }
-}
+static void apply_infinite_canvas(BOOL on, BOOL notify) { [CanvasMode applyInfiniteCanvasOn:on notify:notify]; }
 
 // 应用描边开关(菜单与 Flutter 设置面板共用的唯一入口)。
 // S7ac: 逻辑已迁 Swift(MenuHandler.setOutlineEnabled)。
@@ -2735,3 +2698,10 @@ void glaspen2_router_reset_page_offsets(void) {
   g_page_off_x = 0.0;
   g_page_off_y = 0.0;
 }
+
+// S7: 画布模式切换的 Swift 薄桥
+int glaspen2_router_infinite(void) { return g_infinite_canvas ? 1 : 0; }
+void glaspen2_router_set_infinite_state(int on) { g_infinite_canvas = on != 0; }
+void glaspen2_router_clear_camera_dragging(void) { g_camera_mouse_dragging = NO; }
+void glaspen2_router_pageview_update(void) { pageview_update(); }
+void glaspen2_router_event_tap_reinstall(void) { event_tap_reinstall(); }

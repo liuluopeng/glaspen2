@@ -452,3 +452,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 4. `menu.m` selector 转发、`glaspen2.m` 设置分派/DB 初始化 shim;
 5. **S8 真机验收**: 笔输入/延迟、多屏/锁屏、菜单视觉、热键/录制、玻璃、隧道/网格像素;
 6. 已知缺口: tap 路径 perf 打点未迁。
+| 2026-11-24 | S7bh(新目标第1轮) | 画布模式切换迁 Swift: 新增 canvas_mode.swift(CanvasMode.applyInfiniteCanvasOn:notify: 状态/落库/菜单 668/图标/存储切换/镜头载入或重置/tap 重装/通知), ObjC apply_infinite_canvas 变一行转发; 新增 5 个薄桥 + 6 个 FFI 声明; 构建暴露调用点先于声明, 已在 glaspen2.m 补前向声明 | cargo build/tests/parity 全绿;翻页/无限切换需真机验证 | 本提交 |
