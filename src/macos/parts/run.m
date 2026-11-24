@@ -1404,71 +1404,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
 // 每 12 秒画 3 笔(每笔 2 秒 @ 200Hz, 屏幕上会真的出现笔迹)。
 // 配套 GLASPEN2_DB_PATH 指向临时库即可不碰真实数据。
 // 绘制处于关闭状态(g_enabled=NO)时暂停: 否则合成事件会漏给前台应用当鼠标。
-static void virtual_pen_post(CGEventType type, double x, double y,
-                             double pressure) {
-  CGEventRef ev = CGEventCreateMouseEvent(NULL, type, CGPointMake(x, y),
-                                          kCGMouseButtonLeft);
-  if (!ev)
-    return;
-  // NSEvent.subtype == 1(NSTabletPointEventSubtype) → 被判定为笔事件
-  CGEventSetIntegerValueField(ev, kCGMouseEventSubtype, 1);
-  CGEventSetIntegerValueField(ev, kCGEventSourceUserData, kVirtualPenUserData);
-  CGEventSetIntegerValueField(ev, kCGTabletEventPointPressure,
-                              (int64_t)(pressure * 65535.0));
-  CGEventPost(kCGHIDEventTap, ev);
-  CFRelease(ev);
-}
-
-static void virtual_pen_run(void) {
-  for (int batch = 0;; batch++) {
-    @autoreleasepool {
-      for (int s = 0; s < 3 && g_enabled; s++) {
-        double w = (double)g_screen_w, h = (double)g_screen_h;
-        double x0 = w * 0.22 + s * w * 0.18;
-        double y0 = h * 0.35;
-        const int n = 400; // 2 秒 @ 200Hz
-        NSLog(@"[glaspen2] virtual pen: batch %d stroke %d", batch, s);
-        // 接触前 0.5 秒悬停(真笔接近板面时的 hover 流)
-        for (int i = 0; i < 100 && g_enabled; i++) {
-          double t = (double)i / 100;
-          virtual_pen_post(kCGEventMouseMoved, x0 + t * w * 0.22, y0, 0.0);
-          usleep(5000);
-        }
-        for (int i = 0; i <= n && g_enabled; i++) {
-          double t = (double)i / n;
-          double x = x0 + t * w * 0.22;
-          double y = y0 + sin(t * 9.42478) * h * 0.12;
-          double p = 0.4 + 0.5 * fabs(sin(t * 12.566));
-          virtual_pen_post(i == 0 ? kCGEventLeftMouseDown
-                                  : kCGEventLeftMouseDragged,
-                           x, y, p);
-          usleep(5000); // ~200Hz
-        }
-        virtual_pen_post(kCGEventLeftMouseUp, x0 + w * 0.22, y0, 0.0);
-        // 抬笔后再悬停 0.5 秒
-        for (int i = 0; i < 100 && g_enabled; i++) {
-          virtual_pen_post(kCGEventMouseMoved, x0 + w * 0.22 - i * 2.0,
-                           y0 + i * 1.0, 0.0);
-          usleep(5000);
-        }
-        usleep(200000);
-      }
-    }
-    sleep(9);
-  }
-}
-
-static void virtual_pen_maybe_start(void) {
-  const char *v = getenv("GLASPEN2_VIRTUAL_PEN");
-  if (!v || !*v || strcmp(v, "0") == 0)
-    return;
-  NSLog(@"[glaspen2] virtual pen enabled (GLASPEN2_VIRTUAL_PEN): 每 12 秒画 3 "
-        @"笔");
-  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-    virtual_pen_run();
-  });
-}
-
 // 每次载入某页(翻页/启动/显示变化/新建复用)后调用: 依据该页几何
 // 设置页视图变换。页 = 某时刻玻璃的几何快照; 同几何 = 恒等(纯玻璃)。
 static void pageview_update(void) {
@@ -2007,7 +1942,7 @@ void glaspen2_run(void) {
 
     // 调试开关(环境变量):性能日志 / 虚拟笔, 默认都关
     [PerfLog initFromEnv];
-    virtual_pen_maybe_start();
+    [VirtualPen maybeStart];
     flip_probe_maybe_start();
 
     [NSApp run];
