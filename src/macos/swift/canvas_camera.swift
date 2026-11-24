@@ -14,6 +14,22 @@ import AppKit
         glaspen2_router_peek_lens_change()
     }
 
+    /// 无限画布: 持久化当前镜头(仅无限模式)。
+    @objc public static func persistInfinite() {
+        if (glaspen2_router_state() & 4) == 0 { return }
+        glaspen2_set_infinite_transform(glaspen2_router_pan_x(),
+                                        glaspen2_router_pan_y(),
+                                        glaspen2_router_zoom())
+    }
+
+    /// 无限画布: 载入唯一镜头并应用(zoom 兜底已在 FFI 边界完成)。
+    @objc public static func loadInfinite() {
+        var px = 0.0, py = 0.0, pz = 1.0
+        glaspen2_get_infinite_transform(&px, &py, &pz)
+        glaspen2_router_set_camera(px, py, pz, 1)
+        glaspen2_set_view_transform(px, py, pz)
+    }
+
     private static var lastZoomHint: TimeInterval = 0
 
     /// 缩放结果应用: 100% 上限提示(1.5s 节流) + 镜头状态 + 变换/peek。

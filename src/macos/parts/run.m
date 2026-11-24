@@ -1204,23 +1204,10 @@ static BOOL bubble_auto_page_flip(void) {
   return YES;
 }
 
-static void canvas_infinite_persist(void) {
-  if (!g_infinite_canvas)
-    return;
-  glaspen2_set_infinite_transform(g_pan_x, g_pan_y, g_zoom);
-}
+static void canvas_infinite_persist(void) { [CanvasCamera persistInfinite]; }
 
 // 载入唯一的无限画布镜头 + 应用到渲染
-static void canvas_infinite_load(void) {
-  double px = 0.0, py = 0.0, pz = 1.0;
-  glaspen2_get_infinite_transform(&px, &py, &pz);
-  g_pan_x = px;
-  g_pan_y = py;
-  // zoom 兜底(>0 否则 1.0, 不钳 100% 上限)已在 FFI 边界按 from_db_values
-  // 语义完成(D5b), 这里不再重复公式。
-  g_zoom = pz;
-  glaspen2_set_view_transform(g_pan_x, g_pan_y, g_zoom);
-}
+static void canvas_infinite_load(void) { [CanvasCamera loadInfinite]; }
 
 // 翻页模式:镜头恒为原点 + 100%(HOME 常量单源在 core Camera::HOME)
 static void canvas_reset_lens(void) {
