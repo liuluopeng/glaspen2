@@ -5,19 +5,7 @@ static NSPoint g_camera_mouse_last = {0, 0};
 static void camera_mouse_cancel_pan(void);
 
 static void pageview_frame_draw(void);
-static void rebuild_surface_from_strokes(void) {
-  if (!g_surface)
-    return;
-  // Delegate the actual Cairo rendering to Rust (avoids per-point FFI overhead)
-  glaspen2_draw_rebuild_view((void *)g_surface, g_scale, g_pageview_ox,
-                             g_pageview_oy, g_pageview_scale);
-  pageview_frame_draw();
-
-  cairo_surface_flush(g_surface);
-  // Full-screen refresh — undo/page-nav/resize need it
-  dirty_reset();
-  flush_to_layer();
-}
+static void rebuild_surface_from_strokes(void) { [PageViewOps rebuildSurface]; }
 
 // 时光隧道专用半分辨率表面: 卡片快照本来就是 half-res, 直接在 half-res
 // 上合成再放大上屏, 填充量降到 1/4, 是 4K 下把 40fps 拉到 60+ 的关键。
@@ -841,19 +829,7 @@ static void page_flip_swap(BOOL going_next, void (^prepare)(void),
 /// (冷启动/静默超时, 设置 bubbleAutoNewPage × 气泡 tab 开启, 仅翻页模式),
 /// 先建页并按 ⌥⌘↓ 新建同款动效翻过去 —— 笔画落在新页, 消息边界 = 页边界。
 /// 返回是否翻了页。
-static BOOL bubble_auto_page_flip(void) {
-  long long page = glaspen2_bubble_auto_page_if_due();
-  if (page <= 0)
-    return NO;
-  page_flip_swap(YES,
-                 ^{ glaspen2_load_strokes_for_screen(page);
-                    glaspen2_smooth_loaded_strokes();
-                    pageview_update(); },
-                 ^{ replay_strokes_from_memory(); });
-  [NotificationPresenter showPageInfoWithScreenId:page];
-  show_notification(gl_text(@"page.auto_created"));
-  return YES;
-}
+static BOOL bubble_auto_page_flip(void) { return [PageViewOps bubbleAutoPageFlip] ? YES : NO; }
 
 // 载入唯一的无限画布镜头 + 应用到渲染
 // 翻页模式:镜头恒为原点 + 100%(HOME 常量单源在 core Camera::HOME)
@@ -986,34 +962,7 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
 // 绘制处于关闭状态(g_enabled=NO)时暂停: 否则合成事件会漏给前台应用当鼠标。
 // 每次载入某页(翻页/启动/显示变化/新建复用)后调用: 依据该页几何
 // 设置页视图变换。页 = 某时刻玻璃的几何快照; 同几何 = 恒等(纯玻璃)。
-static void pageview_update(void) {
-  g_pageview_pw = 0;
-  g_pageview_ph = 0;
-  if (g_infinite_canvas) {
-    g_pageview_fit = NO;
-    g_pageview_scale = 1.0;
-    g_pageview_ox = g_pageview_oy = 0.0;
-    return;
-  }
-  glaspen2_page_dims(glaspen2_get_current_screen_id(), &g_pageview_pw,
-                     &g_pageview_ph);
-  if (g_pageview_pw <= 0 || g_pageview_ph <= 0 ||
-      (g_pageview_pw == g_screen_w && g_pageview_ph == g_screen_h)) {
-    g_pageview_fit = NO;
-    g_pageview_scale = 1.0;
-    g_pageview_ox = g_pageview_oy = 0.0;
-    return;
-  }
-  g_pageview_scale = MIN((double)g_screen_w / g_pageview_pw,
-                         (double)g_screen_h / g_pageview_ph);
-  g_pageview_ox = ((double)g_screen_w - g_pageview_pw * g_pageview_scale) / 2.0;
-  g_pageview_oy = ((double)g_screen_h - g_pageview_ph * g_pageview_scale) / 2.0;
-  g_pageview_fit = YES;
-  NSLog(@"[glaspen2] pageview fit: 页 %dx%d → 屏 %dx%d scale=%.3f "
-        @"off=(%.0f,%.0f)",
-        g_pageview_pw, g_pageview_ph, g_screen_w, g_screen_h, g_pageview_scale,
-        g_pageview_ox, g_pageview_oy);
-}
+static void pageview_update(void) { [PageViewOps update]; }
 
 // 诊断钩子: GLASPEN2_FLIP_EVERY=<秒> 周期性触发翻页(走 perform_hotkey
 // 与真实热键同一条路)。第一跳先建第二页, 之后往返翻页供连拍/录屏实验。
@@ -2033,3 +1982,13 @@ double glaspen2_router_pageview_paper_oy(void) { return g_pageview_oy; }
 double glaspen2_router_pageview_paper_scale(void) { return g_pageview_scale; }
 double glaspen2_router_pageview_page_w(void) { return g_pageview_pw; }
 double glaspen2_router_pageview_page_h(void) { return g_pageview_ph; }
+
+// S7cp: 页视图几何薄桥
+void glaspen2_router_pageview_set(int fit, double scale, double ox, double oy, int pw, int ph) {
+  g_pageview_fit = fit != 0;
+  g_pageview_scale = scale;
+  g_pageview_ox = ox;
+  g_pageview_oy = oy;
+  g_pageview_pw = pw;
+  g_pageview_ph = ph;
+}
