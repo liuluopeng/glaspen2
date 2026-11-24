@@ -1,7 +1,3 @@
-@interface GlaspenMenuHandler : NSObject <NSMenuDelegate, NSApplicationDelegate>
-@end
-
-static GlaspenMenuHandler *g_menuHandler = nil;
 static NSStatusItem *g_statusItem = nil;
 static NSMenu *g_menu = nil;
 
@@ -90,36 +86,6 @@ static void toggle_canvas_mode(void) { [DrawMode toggleCanvasMode]; }
 /// 路径 —— 先记性能汇总、把光标还给系统, 再 terminate。terminate 会同步走
 /// applicationShouldTerminate 把排队点写完并 checkpoint WAL(见下), 进程里
 /// 没有其它需要单独收尾的子进程(设置面板是内嵌 Flutter 视图, 不是独立进程)。
-@implementation GlaspenMenuHandler
-
-- (void)saveWithBg { [MenuHandler saveWithBg]; }
-- (void)saveOnly { [MenuHandler saveOnly]; }
-- (void)clearScreen { [MenuHandler clearScreen]; }
-- (void)toggleDraw { [MenuHandler toggleDraw]; }
-- (void)saveXoj { [MenuHandler saveXoj]; }
-
-- (void)toggleLanguage { [MenuHandler toggleLanguage]; }
-- (void)showSettingsPanel { [MenuHandler showSettingsPanel]; }
-- (void)toggleCanvasMode { [MenuHandler toggleCanvasMode]; }
-
-- (void)toggleLaunch { [MenuHandler toggleLaunch]; }
-- (void)toggleGlass { [MenuHandler toggleGlass]; }
-- (void)toggleOutline { [MenuHandler toggleOutline]; }
-- (void)toggleInfiniteCanvas { [MenuHandler toggleInfiniteCanvas]; }
-
-- (void)exportInfinitePdf { [MenuHandler exportInfinitePdf]; }
-- (void)exportInfiniteSvg { [MenuHandler exportInfiniteSvg]; }
-
-- (void)selectColor:(NSMenuItem *)sender { [MenuHandler selectColor:sender]; }
-- (void)selectWidth:(NSMenuItem *)sender { [MenuHandler selectWidth:sender]; }
-
-// NSApplicationDelegate
-- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
-    return [MenuHandler applicationShouldTerminate:sender];
-}
-
-// S3b-2b-7a: quitApp/menuWillOpen:/menuDidClose: 已迁 Swift(menu_handler.swift),
-// 这里保留 delegate 需要的薄桥; g_event_tap 是本文件翻译单元内的静态全局。
 void glaspen2_menu_will_open_bridge(void) {
     glaspen2_router_update_status_icon_state();
     update_menu_checkmarks();
@@ -206,11 +172,7 @@ void glaspen2_menu_shutdown(void) { glaspen2_shutdown(); }
 NSString *glaspen2_menu_l10n_pair(NSString *zh, NSString *en) { return L(zh, en); }
 
 // ObjC 侧保留薄 delegate 方法(仅转发给 Swift MenuHandler); 业务逻辑在 Swift。
-- (void)quitApp { [MenuHandler quitApp]; }
-- (void)menuWillOpen:(NSMenu *)menu { [MenuHandler menuWillOpen]; }
-- (void)menuDidClose:(NSMenu *)menu { [MenuHandler menuDidClose]; }
 
-@end
 
 // --- Settings Panel (Flutter-based) ---
 static FlutterEngine *g_flutter_engine = nil;

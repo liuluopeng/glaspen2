@@ -638,7 +638,6 @@ void glaspen2_router_invert_restart(void) { invert_stream_restart(); }
 void glaspen2_router_panel_transparent_full(int on) { gl_panel_transparent_apply_full(on != 0); }
 // S7df: 启动编排桥
 void glaspen2_router_set_status_item(id item) { g_statusItem = item; }
-void glaspen2_router_set_menu_handler(id handler) { g_menuHandler = handler; [NSApp setDelegate:handler]; }
 void glaspen2_router_set_menu(id menu) { g_menu = menu; }
 void glaspen2_router_install_signals(void) {
   signal(SIGINT, save_and_exit);

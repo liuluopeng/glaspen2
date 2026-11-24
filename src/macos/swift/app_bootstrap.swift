@@ -40,11 +40,9 @@ import ApplicationServices
         guard let statusItem else { return false }
         glaspen2_router_set_status_item(statusItem)
 
-        guard let handlerClass = NSClassFromString("GlaspenMenuHandler") as? NSObject.Type else {
-            return false
-        }
-        let handler = handlerClass.init()
-        glaspen2_router_set_menu_handler(handler)
+        let handler = AppDelegate()
+        AppDelegate.shared = handler
+        NSApp.delegate = handler
 
         let menu = MainMenuBuilder.build(handler: handler, statusItem: statusItem,
                                          launchAtLoginOn: glaspen2_is_launch_at_login() != 0,
