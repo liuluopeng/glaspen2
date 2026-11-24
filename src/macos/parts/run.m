@@ -1193,3 +1193,20 @@ int glaspen2_router_event_tap_ok(void) { return g_event_tap ? 1 : 0; }
 // S7db: tap 看门狗桥
 int glaspen2_router_event_tap_enabled(void) { return (g_event_tap && CGEventTapIsEnabled(g_event_tap)) ? 1 : 0; }
 void glaspen2_router_event_tap_enable(void) { if (g_event_tap) CGEventTapEnable(g_event_tap, true); }
+
+// S7dc: 设置应用分派桥
+void glaspen2_router_set_grid_follow(int on) { g_grid_follow_strokes = on != 0; }
+void glaspen2_router_set_glass_follow(int on) { g_glass_follow_strokes = on != 0; }
+void glaspen2_router_set_soft_shadow_flag(int on) { g_soft_shadow = on != 0; }
+void glaspen2_router_invert_set_ink(int on) { g_invert_ink = on != 0; }
+void glaspen2_router_invert_set_fps(int fps) { g_invert_fps = fps; }
+void glaspen2_router_invert_restart(void) { invert_stream_restart(); }
+int glaspen2_router_invert_enabled(void) { return g_invert_ink ? 1 : 0; }
+void glaspen2_router_panel_transparent_full(int on) { gl_panel_transparent_apply_full(on != 0); }
+void glaspen2_router_set_minimap(int on) { g_minimap_enabled = on != 0; }
+void glaspen2_router_set_grid_size(double size) { g_grid_size = size; }
+void glaspen2_router_set_grid_divider(int divider) { g_grid_divider = divider; }
+void glaspen2_router_set_flip(int effect) { g_flip_effect = effect; }
+void glaspen2_router_set_gif(int fps, double res, double speed, int endMode) {
+  g_gif_fps = fps; g_gif_resolution = res; g_gif_speed = speed; g_gif_end_mode = endMode;
+}

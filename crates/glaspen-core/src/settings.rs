@@ -532,12 +532,15 @@ mod tests {
     fn apply_dispatch_covers_every_effect_variant() {
         let mac_src = include_str!("../../../src/macos/parts/menu.m");
         let win_src = include_str!("../../../crates/glaspen-windows/src/overlay/pipe.rs");
-        let mac_body = mac_apply_body(mac_src);
+        let mac_dispatcher_swift =
+            include_str!("../../../src/macos/swift/settings_dispatcher.swift");
+        let mac_body = format!("{}
+{mac_dispatcher_swift}", mac_apply_body(mac_src));
         let win_body = windows_apply_body(win_src);
 
         // (平台, 适配器函数体, 变体名前的锚, 变体名后的锚)
         let cases = [
-            ("macOS", true, mac_body, "isEqualToString:@\"", "\""),
+            ("macOS", true, mac_body.as_str(), "\"", "\""),
             ("Windows", false, win_body, "SettingEffect::", "("),
         ];
         for (label, mac_platform, body, prefix, suffix) in cases {
