@@ -865,184 +865,7 @@ static BOOL bubble_auto_page_flip(void) {
 // GLASPEN2_PERF_LOG=1 打开性能日志(写 ~/Library/Logs/glaspen2/perf.log)
 // Execute a hotkey action by key code. Returns YES if handled.
 // Used by the physical shortcut (event tap) and the settings-panel buttons.
-static BOOL perform_hotkey(unsigned short kc) {
-  if (kc == kVK_ANSI_C) {
-    [EventRouter finishActiveStroke]; // don't strand an in-flight stroke
-    if (g_infinite_canvas) {
-      // 无限画布不清空(内容多,误清损失大):新建请走设置面板
-      show_notification(gl_text(@"canvas.infinite_kept"));
-      return YES;
-    }
-    clear_screen();
-    return YES;
-  } else if (kc == kVK_ANSI_V) {
-    toggle_enabled();
-    return YES;
-  } else if (kc == 0x32) { // ` — previous page
-    if (g_infinite_canvas) {
-      show_notification(gl_text(@"canvas.single_canvas_warning"));
-      return YES;
-    }
-    [EventRouter finishActiveStroke];
-    long target = glaspen2_prev_screen_id();
-    if (target > 0) {
-      page_flip_swap(
-          NO,
-          ^{ // 渐隐期间并行: 载入 + 平滑
-            glaspen2_load_strokes_for_screen(target);
-            glaspen2_smooth_loaded_strokes();
-            pageview_update();
-          },
-          ^{
-            replay_strokes_from_memory();
-          });
-      peek_strokes(1.0); // show the page briefly in ethereal mode
-      [NotificationPresenter showPageInfoWithScreenId:target];
-    } else {
-      show_notification(gl_text(@"page.no_previous"));
-    }
-    return YES;
-  } else if (kc == 0x12) { // 1 — next page
-    if (g_infinite_canvas) {
-      show_notification(gl_text(@"canvas.single_canvas_warning"));
-      return YES;
-    }
-    [EventRouter finishActiveStroke];
-    long target = glaspen2_next_screen_id();
-    if (target > 0) {
-      page_flip_swap(
-          YES,
-          ^{ // 渐隐期间并行: 载入 + 平滑
-            glaspen2_load_strokes_for_screen(target);
-            glaspen2_smooth_loaded_strokes();
-            pageview_update();
-          },
-          ^{
-            replay_strokes_from_memory();
-          });
-      peek_strokes(1.0); // show the page briefly in ethereal mode
-      [NotificationPresenter showPageInfoWithScreenId:target];
-    } else {
-      // 没有下一页: 5 秒内再按一次 = 新建一页并翻过去(写完接着写)
-      static NSTimeInterval lastNoNextAt = 0;
-      NSTimeInterval nowTs = [[NSProcessInfo processInfo] systemUptime];
-      BOOL secondPress = (nowTs - lastNoNextAt) < 5.0;
-      lastNoNextAt = nowTs;
-      if (!secondPress) {
-        show_notification(gl_text(@"page.no_next"));
-        return YES;
-      }
-      // core 建页时会顺手把 current 切到新页; 翻页前的页必须先抓下来,
-      // 否则拿返回 id 再和 current 比较永远相等 → 建了页却不载入/不翻。
-      long before = glaspen2_get_current_screen_id();
-      long pageId = glaspen2_create_next_page(before);
-      if (pageId > 0 && pageId != before) {
-        page_flip_swap_from(
-            YES, before,
-            ^{ // 渐隐期间并行: 载入 + 平滑
-              glaspen2_load_strokes_for_screen(pageId);
-              glaspen2_smooth_loaded_strokes();
-              pageview_update();
-            },
-            ^{
-              replay_strokes_from_memory();
-            });
-        peek_strokes(1.0);
-        [NotificationPresenter showPageInfoWithScreenId:pageId];
-        show_notification(gl_text(@"page.created"));
-      } else if (pageId == before) {
-        show_notification(gl_text(@"page.already_latest"));
-      } else {
-        show_notification(gl_text(@"page.create_failed"));
-      }
-    }
-    return YES;
-  } else if (kc == kVK_ANSI_G) {
-    glaspen2_save_svg();
-    if (g_surface) {
-      cairo_surface_flush(g_surface);
-      const unsigned char *data = cairo_image_surface_get_data(g_surface);
-      int w = cairo_image_surface_get_width(g_surface);
-      int h = cairo_image_surface_get_height(g_surface);
-      int stride = cairo_image_surface_get_stride(g_surface);
-      if (glaspen2_save_gif_cropped(data, w, h, stride, (double)g_scale)) {
-        NSString *desktop = [NSSearchPathForDirectoriesInDomains(
-            NSDesktopDirectory, NSUserDomainMask, YES) firstObject];
-        NSFileManager *fm = [NSFileManager defaultManager];
-        NSArray *files = [fm contentsOfDirectoryAtPath:desktop error:nil];
-        NSString *newestGif = nil;
-        NSDate *newestDate = nil;
-        for (NSString *f in files) {
-          if ([f hasPrefix:@"glaspen2_"] && [f hasSuffix:@".gif"]) {
-            NSString *full = [desktop stringByAppendingPathComponent:f];
-            NSDictionary *attr = [fm attributesOfItemAtPath:full error:nil];
-            NSDate *d = attr[NSFileModificationDate];
-            if (!newestDate || [d compare:newestDate] == NSOrderedDescending) {
-              newestDate = d;
-              newestGif = full;
-            }
-          }
-        }
-        if (newestGif) {
-          NSPasteboard *pb = [NSPasteboard generalPasteboard];
-          [pb clearContents];
-          [pb writeObjects:@[ [NSURL fileURLWithPath:newestGif] ]];
-        }
-        show_notification(gl_text(@"export.svg_gif_saved"));
-      } else {
-        show_notification(gl_text(@"export.failed"));
-      }
-    }
-    return YES;
-  } else if (kc == kVK_ANSI_Z) {
-    if (g_stroke_active) {
-      show_notification(gl_text(@"draw.stroke_in_progress"));
-    } else {
-      int remaining = glaspen2_undo_last_stroke();
-      if (remaining < 0) {
-        show_notification(gl_text(@"draw.nothing_to_undo"));
-      } else {
-        rebuild_surface_from_strokes();
-        show_notification(gl_text(@"draw.undone"));
-      }
-    }
-    return YES;
-  } else if (kc == kVK_ANSI_S) {
-    char *svg = glaspen2_get_cropped_svg();
-    if (svg) {
-      NSString *svgStr = [NSString stringWithUTF8String:svg];
-      NSData *svgData = [svgStr dataUsingEncoding:NSUTF8StringEncoding];
-      NSString *base64 = [svgData base64EncodedStringWithOptions:0];
-      NSString *htmlTag = [NSString
-          stringWithFormat:@"<img src=\"data:image/svg+xml;base64,%@\" />",
-                           base64];
-      NSPasteboard *pb = [NSPasteboard generalPasteboard];
-      [pb clearContents];
-      [pb setString:htmlTag forType:NSPasteboardTypeString];
-      glaspen2_free_c_string(svg);
-      show_notification(gl_text(@"export.svg_copied"));
-    } else {
-      show_notification(gl_text(@"export.no_strokes_to_copy"));
-    }
-    return YES;
-  } else if (kc == kVK_ANSI_B) {
-    [MenuHandler setGlassEnabled:(!g_glass_enabled)];
-    return YES;
-  } else if (kc == kVK_ANSI_X) {
-    // Switch canvas mode: 固定 ↔ 飘渺 (⌘ + ⌃ + X)
-    toggle_canvas_mode();
-    return YES;
-  } else if (kc == kVK_ANSI_D) {
-    // 打开设置面板。⌘⌃D 在 macOS 是文本场景的"查词典"快捷键 ——
-    // 涂鸦开启时被 tap 消费不冲突; 关闭涂鸦后词典功能照常。
-    show_settings_panel();
-    return YES;
-  }
-  // 注意: 不要在这里处理 Q — ⌃⌘Q 是 macOS 的系统锁屏快捷键,
-  // 拦截它会顶掉锁屏。可配置的彻底退出动作走 perform_action("quit")
-  // (默认 ⌘⌃⇧Q), 见 gl_shortcut_defaults()。
-  return NO;
-}
+static BOOL perform_hotkey(unsigned short kc) { return [HotkeyDispatch performHotkey:kc] ? YES : NO; }
 
 // 按动作 id 执行(事件 tap 的可配置键位表命中后调用)。旧 perform_hotkey
 // 仍保留给设置面板按钮/诊断钩子; 这里用固定的 keyCode 当作 action 选择器,
@@ -2191,3 +2014,14 @@ void glaspen2_router_show_notification(NSString *text) { show_notification(text)
 NSString *glaspen2_router_textf(NSString *key, NSDictionary *args) { return gl_textf(key, args); }
 int glaspen2_router_prev_color_index(void) { return g_prev_color_index; }
 int glaspen2_router_prev_width_index(void) { return g_prev_width_index; }
+
+// S7cm: 快捷键分发薄桥
+int glaspen2_router_glass_enabled(void) { return g_glass_enabled ? 1 : 0; }
+void glaspen2_router_clear_screen(void) { clear_screen(); }
+void glaspen2_router_replay_strokes(void) { replay_strokes_from_memory(); }
+void glaspen2_router_page_flip(int forward, dispatch_block_t prepare, dispatch_block_t commit) {
+  page_flip_swap(forward != 0, prepare, commit);
+}
+void glaspen2_router_page_flip_from(int forward, long from, dispatch_block_t prepare, dispatch_block_t commit) {
+  page_flip_swap_from(forward != 0, from, prepare, commit);
+}
