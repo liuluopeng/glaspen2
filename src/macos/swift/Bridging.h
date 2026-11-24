@@ -281,6 +281,8 @@ void glaspen2_router_set_grid_follow(int on);
 void glaspen2_router_set_status_item(id item);
 int glaspen2_router_invert_fps(void);
 void glaspen2_router_set_window_sharing_none(void);
+int glaspen2_router_window_sharing_type(void);
+extern void glaspen2_save_with_background(const unsigned char *drawing_data, int drawing_width, int drawing_height, int drawing_stride, const unsigned char *bg_data, int bg_width, int bg_height, int bg_stride);
 void glaspen2_router_set_window_sharing_readonly(void);
 extern void glaspen2_set_stroke_invert(int enabled);
 extern void glaspen2_set_invert_background(void *surface);

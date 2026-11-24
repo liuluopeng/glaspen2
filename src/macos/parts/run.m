@@ -1135,3 +1135,6 @@ void glaspen2_router_install_signals(void) {
 // S7di: 页面偏移桥
 double glaspen2_router_page_off_x(void) { return g_page_off_x; }
 double glaspen2_router_page_off_y(void) { return g_page_off_y; }
+
+// S7dk: 带背景保存桥
+int glaspen2_router_window_sharing_type(void) { return (int)[g_window sharingType]; }
