@@ -2111,12 +2111,6 @@ static void event_tap_reinstall(void) { event_tap_install(g_infinite_canvas); }
 // S6-3-4b-2 拆分: 录制热键(⌘⌃R/2/3)处理, 返回 YES = 事件已消费。
 // 本次只是把原键盘块里的录制分支纯移动到独立函数(行为不变);
 // 下一步用 recording 事件 FFI 把这函数整体迁 Swift。
-static BOOL handle_recording_hotkeys(CGEventType type, unsigned short kc,
-                                     BOOL hasCmdCtrl) {
-  // S6-3-4b-2c: 判定已迁 Swift(RecordingHotkeys); 本函数只转发。
-  return [RecordingHotkeys handleWithType:type keyCode:kc hasCmdCtrl:hasCmdCtrl];
-}
-
 /// 合成事件(虚拟笔)处理完一律吞掉: 落笔/拖动本来就是 return NULL, 但**悬停
 /// 走的是放行路径** —— 不拦住的话虚拟笔的 hover 流会真的移动用户光标。
 /// 测试工具绝不能抢用户的鼠标。
