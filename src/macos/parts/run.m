@@ -3310,13 +3310,10 @@ void glaspen2_run(void) {
     [contentView setWantsLayer:YES];
 
     // Frosted glass layer (behind drawing)
-    g_glass_view = [[NSVisualEffectView alloc] initWithFrame:screenFrame];
-    [g_glass_view setBlendingMode:NSVisualEffectBlendingModeBehindWindow];
-    [g_glass_view setMaterial:NSVisualEffectMaterialLight];
-    [g_glass_view setState:NSVisualEffectStateActive];
-    double vis = g_glass_enabled ? g_glass_opacity * 2.0 : 0.0;
-    g_glass_view.alphaValue = vis;
-    g_glass_view.hidden = !g_glass_enabled;
+    // S5-2: 玻璃视图创建/材质/透明度已迁 Swift。
+    g_glass_view = [OverlayWindowFactory makeGlassViewWithFrame:screenFrame
+                                                        enabled:g_glass_enabled
+                                                        opacity:g_glass_opacity];
     [contentView addSubview:g_glass_view];
 
     // Drawing view on top
@@ -3325,8 +3322,7 @@ void glaspen2_run(void) {
     [drawView setWantsLayer:YES];
     CALayer *layer = [drawView layer];
     if (layer) {
-      [layer setOpaque:NO];
-      [layer setBackgroundColor:[[NSColor clearColor] CGColor]];
+      [OverlayWindowFactory configureClearLayer:layer]; // S5-2
     }
     [contentView addSubview:drawView];
 

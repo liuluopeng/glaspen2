@@ -31,4 +31,24 @@ import AppKit
 
     @objc(makeArrowCursor)
     public static func makeArrowCursor() -> NSCursor { .arrow }
+
+    /// 磨砂玻璃视图(S5-2): behind-window 混合、light 材质、active 状态;
+    /// alpha/hidden 与原 ObjC 公式一致(enabled ? opacity*2 : 0)。
+    @objc(makeGlassViewWithFrame:enabled:opacity:)
+    public static func makeGlassView(frame: NSRect, enabled: Bool, opacity: Double) -> NSVisualEffectView {
+        let view = NSVisualEffectView(frame: frame)
+        view.blendingMode = .behindWindow
+        view.material = .light
+        view.state = .active
+        view.alphaValue = enabled ? opacity * 2.0 : 0.0
+        view.isHidden = !enabled
+        return view
+    }
+
+    /// 绘制视图的透明 layer 配置(S5-2): 非不透明 + clear 背景。
+    @objc(configureClearLayer:)
+    public static func configureClearLayer(_ layer: CALayer) {
+        layer.isOpaque = false
+        layer.backgroundColor = NSColor.clear.cgColor
+    }
 }
