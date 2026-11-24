@@ -458,118 +458,7 @@ void glaspen2_run(void) {
     g_screen_w = (int)screenFrame.size.width;
     g_screen_h = (int)screenFrame.size.height;
     glaspen2_init_db(g_screen_w, g_screen_h);
-    // 语言不再跟随系统: 读面板上次选择(缺省中文), 菜单在建好后再刷新文案
-    {
-      char *vlang = glaspen2_load_string_setting("language");
-      if (vlang) {
-        g_lang = (strcmp(vlang, "en") == 0) ? 1 : 0;
-        glaspen2_free_c_string(vlang);
-        update_menu_texts();
-      }
-    }
-    pageview_update(); // 启动落在末页, 页几何可能 ≠ 屏幕
-
-    // Restore saved pen color and width
-    double sr, sg, sb, sw;
-    if (glaspen2_load_settings_parts(&sr, &sg, &sb, &sw)) {
-      g_pen_r = sr;
-      g_pen_g = sg;
-      g_pen_b = sb;
-      g_width_scale = sw;
-      // 最近预设匹配(core 单源,Windows 同一实现)
-      g_selectedColorIndex = glaspen2_nearest_color_index(sr, sg, sb);
-      g_selected_width_index = glaspen2_nearest_width_index(sw);
-      // 存档色吸附到最近预设: 色板调亮这类更新后, 旧存档值自动迁移
-      // (本来就是预设值时为恒等, 自定义场景不存在——色板是唯一入口)
-      glaspen2_color_preset_rgb(g_selectedColorIndex, &g_pen_r, &g_pen_g,
-                                &g_pen_b);
-    }
-    glaspen2_router_update_status_icon_state();
-    update_menu_checkmarks();
-
-    // 可配置快捷键: 必须在 event_tap_reinstall 之前装载, 否则首帧仍是旧键位。
-    gl_shortcuts_load();
-
-    // Restore glass settings (opacity stored as millipercent, enabled as bool)
-    int glass_milli = glaspen2_load_bool_setting("glass_alpha");
-    if (glass_milli > 0)
-      g_glass_opacity = glass_milli / 1000.0;
-    g_glass_enabled = glaspen2_load_bool_setting("glass_enabled") != 0;
-    [MenuHandler applyGlass];
-
-    // Restore grid setting
-    g_show_grid = glaspen2_load_bool_setting("grid") != 0;
-    {
-      char *vgs = glaspen2_load_string_setting("grid_size");
-      if (vgs) {
-        double gs = atof(vgs);
-        if (gs >= 10 && gs <= 200)
-          g_grid_size = gs;
-        glaspen2_free_c_string(vgs);
-      }
-    }
-    g_grid_follow_strokes =
-        glaspen2_load_bool_setting("grid_follow_strokes") != 0;
-    {
-      // 玻璃跟随涂鸦: 缺省 = 跟随(历史行为), 只有存过关才改
-      char *vgf = glaspen2_load_string_setting("glass_follow_strokes");
-      if (vgf) {
-        g_glass_follow_strokes = atoi(vgf) != 0;
-        glaspen2_free_c_string(vgf);
-      }
-    }
-    g_soft_shadow = glaspen2_load_bool_setting("soft_shadow") != 0;
-    glaspen2_set_soft_shadow(g_soft_shadow ? 1 : 0);
-    // 描边(蚂蚁线)持久化: 恢复开关并同步菜单项状态
-    g_outline_enabled = glaspen2_load_bool_setting("outline") != 0;
-    glaspen2_set_stroke_outline(g_outline_enabled ? 1 : 0);
-    {
-      NSMenuItem *oi = [MenuLookup itemWithTag:667 inMenu:g_menu];
-      if (oi)
-        [oi setState:g_outline_enabled ? NSControlStateValueOn
-                                       : NSControlStateValueOff];
-    }
-    {
-      char *vif = glaspen2_load_string_setting("invert_fps");
-      if (vif) {
-        int fps = atoi(vif);
-        if (fps == 10 || fps == 30 || fps == 60 || fps == 100)
-          g_invert_fps = fps;
-        glaspen2_free_c_string(vif);
-      }
-    }
-    g_invert_ink = glaspen2_load_bool_setting("invert_ink") != 0;
-    if (g_invert_ink) invert_ink_apply(1);
-    {
-      char *vfe = glaspen2_load_string_setting("flip_effect");
-      if (vfe) {
-        int fe = atoi(vfe);
-        if (fe >= 0 && fe <= 1)
-          g_flip_effect = fe;
-        glaspen2_free_c_string(vfe);
-      }
-    }
-    // 调试: GLASPEN2_FLIP_EFFECT=1 强制时光隧道(不动用户存档设置,
-    // 环境变量优先级最高 —— 评估动效时不用先去面板里改选项)
-    {
-      const char *vfe_env = getenv("GLASPEN2_FLIP_EFFECT");
-      if (vfe_env)
-        g_flip_effect = atoi(vfe_env) == 1 ? 1 : 0;
-    }
-    {
-      char *vdv = glaspen2_load_string_setting("grid_divider");
-      if (vdv) {
-        int dv = atoi(vdv);
-        if (dv >= 0 && dv <= 4) // 4 = 康奈尔
-          g_grid_divider = dv;
-        glaspen2_free_c_string(vdv);
-      }
-    }
-
-    // 气泡捕获只在「气泡消息」tab 打开时运行(默认关): 关闭时笔事件钩子
-    // 立即返回, 不占 CPU、不落库、不读历史。必须在 event tap 安装前装载。
-    glaspen2_bubble_set_capture(
-        glaspen2_load_bool_setting("show_bubble_tab") != 0 ? 1 : 0);
+    [StartupSettings restorePartA];
 
     // Restore canvas mode and load the matching independent store.
     // 翻页/无限两套存储互不影响:无限画布全局仅一个。
@@ -1452,3 +1341,29 @@ void glaspen2_router_tunnel_frame_at(double p) { tunnel_frame(p); }
 void glaspen2_router_tunnel_display_now(void) { if (g_draw_view) [g_draw_view displayIfNeeded]; }
 void glaspen2_router_tunnel_set_timer(void *timer) { s_tun_timer = (__bridge dispatch_source_t)timer; }
 double glaspen2_router_tunnel_dur(void) { return s_tun_dur; }
+
+// S7cy: 启动设置恢复桥
+void glaspen2_router_startup_set_lang(int lang) { g_lang = lang; }
+void glaspen2_router_startup_apply_pen(double r, double g, double b, double width,
+                                       int colorIdx, int widthIdx) {
+  g_pen_r = r; g_pen_g = g; g_pen_b = b; g_width_scale = width;
+  g_selectedColorIndex = colorIdx; g_selected_width_index = widthIdx;
+}
+void glaspen2_router_startup_glass(double opacity, int enabled) {
+  g_glass_opacity = opacity; g_glass_enabled = enabled != 0;
+}
+void glaspen2_router_startup_set_glass_follow(int on) { g_glass_follow_strokes = on != 0; }
+void glaspen2_router_startup_grid(int show, double size, int follow, int divider) {
+  g_show_grid = show != 0;
+  if (size >= 10 && size <= 200) g_grid_size = size;
+  g_grid_follow_strokes = follow != 0;
+  if (divider >= 0 && divider <= 4) g_grid_divider = divider;
+}
+void glaspen2_router_startup_shadow(int on) { g_soft_shadow = on != 0; }
+void glaspen2_router_startup_outline(int on) { g_outline_enabled = on != 0; }
+void glaspen2_router_startup_invert(int fps, int ink) {
+  if (fps == 10 || fps == 30 || fps == 60 || fps == 100) g_invert_fps = fps;
+  g_invert_ink = ink != 0;
+}
+void glaspen2_router_startup_flip(int effect) { g_flip_effect = effect; }
+void glaspen2_router_invert_apply(int on) { invert_ink_apply(on); }
