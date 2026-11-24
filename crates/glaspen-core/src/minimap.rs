@@ -633,6 +633,8 @@ mod tests {
 
         let mac_main = include_str!("../../../src/macos/glaspen2.m");
         let mac_run = include_str!("../../../src/macos/parts/run.m");
+let mac_minimap_swift = include_str!("../../../src/macos/swift/minimap.swift");
+let mac_run_minimap = format!("{mac_run}\n{mac_minimap_swift}");
         let win_actions = include_str!("../../../crates/glaspen-windows/src/overlay/actions.rs");
         let win_state = include_str!("../../../crates/glaspen-windows/src/overlay/state.rs");
         // include_str! 指错文件/文件被清空时闸门不能静默变绿。
@@ -696,13 +698,12 @@ mod tests {
                 mac_main,
                 &[
                     "extern char* glaspen2_minimap_layout_json(",
-                    "g_minimap_layout",
                 ][..],
             ),
             (
-                "run.m",
-                mac_run,
-                &["glaspen2_minimap_layout_json(", "minimap_layout_json("][..],
+                "run.m+minimap.swift",
+                mac_run_minimap.as_str(),
+                &["glaspen2_minimap_layout_json(", "layoutFromJSON("][..],
             ),
             (
                 "actions.rs",

@@ -269,7 +269,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
 // 鼠标用(悬停移动光标、点击落到前台应用) —— 处理完必须一律吞掉。
 #define kVirtualPenUserData 0x56504E31LL
 // S6-3-3: 判定逻辑已迁 Swift(EventRouter.isVirtualPenEvent); 常量经薄桥暴露。
-static void draw_minimap(CGContextRef ctx, NSRect bounds);
 // 性能日志(drawRect 用得到, 实现在文件后部)
 static BOOL g_perf_log = NO;
 static void perf_log_event_notes(const char *evtype, uint64_t dur_us, const char *notes);
@@ -433,16 +432,9 @@ static NSInteger g_grid_divider = 0;
 
 // ── 页面缩略图条(minimap,翻页模式) ──
 static BOOL g_minimap_enabled = NO;
-static NSMutableDictionary *g_minimap_thumbs = nil; // screenId(NSNumber) → NSImage
-static NSMutableArray *g_minimap_inflight = nil;     // 正在后台取图的 screenId
 // 页窗 + 条带几何的唯一来源 = core::minimap(经 FFI glaspen2_minimap_layout_json);
 // 这里只缓存最近一次布局 JSON(当前页/视图尺寸/几何组过滤宽度变化时重取)。
 // 缩略图队列/条带合成/描边/页号字体仍在 run.m 的 draw_minimap。
-static NSDictionary *g_minimap_layout = nil; // {"strip_x","strip_y","strip_w","strip_h","items":[...]}
-static long g_minimap_layout_for = -1;       // 该布局对应的当前页 id
-static double g_minimap_layout_w = -1.0;     // 该布局对应的视图宽(逻辑点)
-static double g_minimap_layout_h = -1.0;     // 该布局对应的视图高(逻辑点)
-static int g_minimap_layout_geom_w = -1;     // 该布局对应的几何组过滤宽度(0=不过滤)
 
 // ── 无限画布模式 ──
 // 画布坐标 = 视口坐标 + pan(pan = 视口左上角在画布坐标系中的位置)。
