@@ -37,7 +37,6 @@ static NSAttributedString* gl_width_item_text(NSInteger idx) { return [MenuPrese
 //   无限画布  → 右下角 ∞ 徽标
 // 位图按 4x 渲染保证 Retina 清晰; 白晕 + 深描边双勾线让深/浅色菜单栏都可读
 // (纯白笔杆在浅色栏、纯黑笔杆在深色栏都不会隐形)。
-static BOOL g_ethereal_canvas; // 定义在下方(飘渺画布涂鸦模式), 图标要用
 
 
 static void update_menu_checkmarks(void) { [MenuGlue updateCheckmarks]; }
@@ -56,7 +55,6 @@ static void toggle_enabled(void) { [DrawMode toggleEnabled]; }
 // (g_enabled) — X never touches it.
 // 显隐为**即时**笔迹级切换(无动效): 悬浮边界笔反复进出时, 窗口级
 // 系统动效会反复重启造成闪烁/哆嗦, 故此处绝不做窗口级显隐。
-static BOOL g_ethereal_canvas = NO; // YES = 飘渺画布涂鸦模式
 
 // Hide the strokes (飘渺 mode). Returns YES if it actually hid them.
 static void ethereal_hide_now(void) { (void)[EtherealMode hideNow]; }
@@ -456,21 +454,17 @@ void glaspen2_router_update_menu_state(int tag, int state) {
 
 // S7t: 网格开关状态薄桥
 // S7u: 压感监视器开关的 Swift 薄桥
-void glaspen2_router_set_pressure_monitor(int on) { g_pressure_monitor = on != 0; }
 void glaspen2_router_pm_show(void) { pm_show(); }
 void glaspen2_router_pm_hide(void) { pm_hide(); }
 void glaspen2_router_pm_refresh(void) { pm_update(); }
 
 // S7v: 涂鸦总开关的 Swift 薄桥
-void glaspen2_router_set_enabled_state(int on) { g_enabled = on != 0; }
 void glaspen2_router_set_menu_title(int tag, NSString *title) {
   NSMenuItem *item = [MenuLookup itemWithTag:tag inMenu:g_menu];
   if (item) [item setTitle:title];
 }
 
 // S7w: 手写消息总开关状态薄桥
-void glaspen2_router_set_chat_integration(int on) { g_chat_integration = on != 0; }
-
 // S7y: 压感监视器标签设置薄桥
 
 // S7z: 磨砂玻璃应用的 Swift 薄桥
@@ -498,14 +492,11 @@ NSString *glaspen2_router_shortcut_chord(NSString *action) {
 }
 
 // S7bo: 涂鸦启停的 Swift 薄桥
-int glaspen2_router_enabled(void) { return g_enabled ? 1 : 0; }
-int glaspen2_router_pressure_monitor(void) { return g_pressure_monitor ? 1 : 0; }
 void glaspen2_router_ensure_surface(void) {
   if (g_draw_view) ensure_surface(g_draw_view);
 }
 
 // S7bp: 画布模式切换的 Swift 薄桥
-void glaspen2_router_set_ethereal(int on) { g_ethereal_canvas = on != 0; }
 id glaspen2_router_glass_view(void) { return g_glass_view; }
 
 // S7bq: 菜单文案/状态薄桥

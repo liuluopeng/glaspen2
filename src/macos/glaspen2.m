@@ -16,7 +16,6 @@
 #include <sys/file.h>  // flock
 
 // App enabled state
-static BOOL g_enabled = YES;
 
 // Screen dimensions in logical points (set once at startup)
 static int g_screen_w = 1920;
@@ -317,14 +316,9 @@ static NSView *g_draw_view = nil;
 // 适配器只保留 GIF 参数、文案与本平台 OS 动作。
 // 手写消息集成总开关(设置面板,默认关):关 = ⌘⌃2/⌘⌃3 直通不劫持,
 // 登录与画布共享界面隐藏。聊天/共享始终是增强功能,不影响涂鸦本体。
-static BOOL g_chat_integration = NO;
 
 // GIF quality/speed settings (frame rate, resolution multiplier, playback speed)
-static int g_gif_fps = 15;
-static double g_gif_resolution = 0.5;
-static double g_gif_speed = 2.0;
 // GIF ending: 0 = stop on last frame, 1 = hold 1s then loop, 2 = loop immediately
-static int g_gif_end_mode = 1;
 
 // Eraser (back end of pen) mode — clears pixels instead of drawing ink
 
@@ -362,7 +356,6 @@ static uint64_t g_last_cursor_flush = 0;
 
 // Restore the system cursor if it is currently hidden by pen drawing.
 // Pressure monitor
-static BOOL g_pressure_monitor = NO;
 static int g_pm_pressure = 0;
 static NSString *g_pm_evtype = nil;
 static BOOL g_pm_tip_down = NO;

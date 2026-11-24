@@ -229,7 +229,7 @@ static void gl_recording_chat_integration_changed(BOOL on) {
 // 启动: 按当前总开关初始化两个槽位(必须在 g_chat_integration 恢复之后调用)。
 static void gl_recording_init(void) {
   glaspen2_recording_init(REC_SLOT_GIF, 0);
-  glaspen2_recording_init(REC_SLOT_CHAT, g_chat_integration ? 1 : 0);
+  glaspen2_recording_init(REC_SLOT_CHAT, glaspen2_router_chat_integration());
 }
 
 // (重)装 event tap:include_scroll 决定滚轮事件是否进入 tap。
@@ -317,7 +317,7 @@ NSUInteger glaspen2_router_camera_mods(void) {
 }
 
 int glaspen2_router_state(void) {
-  return (g_enabled ? 1 : 0) | ((sw_stroke_active() ? 1 : 0) << 1) |
+  return (glaspen2_router_enabled() ? 1 : 0) | ((sw_stroke_active() ? 1 : 0) << 1) |
          ((glaspen2_router_infinite() ? 1 : 0) << 2);
 }
 
@@ -332,7 +332,7 @@ void glaspen2_router_zoom_at(double factor, double x, double y) {
 // S6-3-2: 非笔 mouseMoved 隐藏光标所需的薄桥
 int glaspen2_router_cursor_flags(void) {
   return (sw_cursor_visible() ? 1 : 0) | ((sw_stroke_active() ? 1 : 0) << 1) |
-         ((g_ethereal_canvas ? 1 : 0) << 2) |
+         ((glaspen2_router_ethereal() ? 1 : 0) << 2) |
          ((sw_tablet_proximity() ? 1 : 0) << 3);
 }
 
@@ -399,8 +399,6 @@ int glaspen2_router_rec_slot_chat(void) { return REC_SLOT_CHAT; }
 int glaspen2_router_rec_mode(int slot) { return glaspen2_recording_mode(slot); }
 int glaspen2_router_rec_finish_and_count(void) { return rec_finish_and_count(); }
 int glaspen2_router_rec_feed(int slot, NSString *json) { return rec_feed(slot, json) ? 1 : 0; }
-int glaspen2_router_chat_integration(void) { return g_chat_integration ? 1 : 0; }
-
 // S6-3-3d: 点菜单栏时临时停 tap + 5s 兜底恢复(逻辑由 Swift EventRouter 触发)
 void glaspen2_router_tap_menu_bar_interaction(void) {
   CGEventTapEnable(g_event_tap, false);
@@ -413,7 +411,7 @@ void glaspen2_router_tap_menu_bar_interaction(void) {
 // S6-3-3d: 橡皮态切换薄桥
 void glaspen2_router_update_status_icon_state(void) {
   [StatusIconUpdater applyToStatusItem:g_statusItem eraser:(sw_eraser_mode() != 0)
-                               enabled:g_enabled ethereal:g_ethereal_canvas
+                               enabled:glaspen2_router_enabled() != 0 ethereal:glaspen2_router_ethereal() != 0
                               infinite:glaspen2_router_infinite() != 0 widthScale:glaspen2_router_width_scale()
                                   penRed:glaspen2_router_pen_r() penGreen:glaspen2_router_pen_g() penBlue:glaspen2_router_pen_b()];
 }
@@ -427,11 +425,8 @@ void glaspen2_router_apply_pending_color_width(void) {
 }
 // S6-3-3d: proximity 分支薄桥
 void glaspen2_router_bubble_pen_back(void) { glaspen2_bubble_pen_back(); }
-int glaspen2_router_ethereal(void) { return g_ethereal_canvas ? 1 : 0; }
-
 // S6-3-3d: 相机临时抓手薄桥
 // S6-3-3d: 压感监视器薄桥
-int glaspen2_router_pm_enabled(void) { return g_pressure_monitor ? 1 : 0; }
 void glaspen2_router_pm_update(int inRange, int pressure, double x, double y,
                                int tipDown, NSString *evtype) {
   g_pm_in_range = inRange != 0;
@@ -590,11 +585,6 @@ int glaspen2_router_perform_hotkey(unsigned short keyCode) {
 }
 
 // S7ck: 录制效果薄桥
-int glaspen2_router_gif_fps(void) { return g_gif_fps; }
-double glaspen2_router_gif_resolution(void) { return g_gif_resolution; }
-double glaspen2_router_gif_speed(void) { return g_gif_speed; }
-int glaspen2_router_gif_end_mode(void) { return g_gif_end_mode; }
-
 // S7cl: 动作分派薄桥
 void glaspen2_router_apply_infinite_canvas(int on) { apply_infinite_canvas(on != 0, YES); }
 void glaspen2_router_show_notification(NSString *text) { show_notification(text); }
@@ -667,13 +657,9 @@ void glaspen2_router_invert_apply(int on) { invert_ink_apply(on); }
 void glaspen2_router_restore_canvas_flags(int infinite, int minimap, int ethereal) {
   sw_set_infinite(infinite);
   sw_set_minimap(minimap);
-  g_ethereal_canvas = ethereal != 0;
+  glaspen2_router_set_ethereal(ethereal);
 }
-void glaspen2_router_restore_pressure(int on) { g_pressure_monitor = on != 0; }
-void glaspen2_router_restore_gif_settings(int fps, double res, double speed, int endMode) {
-  g_gif_fps = fps; g_gif_resolution = res; g_gif_speed = speed; g_gif_end_mode = endMode;
-}
-void glaspen2_router_restore_chat_integration(int on) { g_chat_integration = on != 0; }
+void glaspen2_router_restore_pressure(int on) { glaspen2_router_set_pressure_monitor(on); }
 void glaspen2_router_rec_init(void) { gl_recording_init(); }
 
 // S7da: 启动窗口/告警桥
@@ -689,10 +675,6 @@ void glaspen2_router_event_tap_enable(void) { if (g_event_tap) CGEventTapEnable(
 // S7dc: 设置应用分派桥
 void glaspen2_router_invert_restart(void) { invert_stream_restart(); }
 void glaspen2_router_panel_transparent_full(int on) { gl_panel_transparent_apply_full(on != 0); }
-void glaspen2_router_set_gif(int fps, double res, double speed, int endMode) {
-  g_gif_fps = fps; g_gif_resolution = res; g_gif_speed = speed; g_gif_end_mode = endMode;
-}
-
 // S7df: 启动编排桥
 void glaspen2_router_set_status_item(id item) { g_statusItem = item; }
 void glaspen2_router_set_menu_handler(id handler) { g_menuHandler = handler; [NSApp setDelegate:handler]; }
