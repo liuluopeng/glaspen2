@@ -162,6 +162,9 @@ void glaspen2_router_perf_notes(const char *name, const char *notes, uint64_t t0
 extern char *glaspen2_minimap_layout_json(long long current_screen_id, double view_w, double view_h, int geometry_width);
 extern unsigned char *glaspen2_render_thumbnail(long long screen_id, int w, int h, int max_size, int *out_len);
 extern void glaspen2_free_rust_bytes(unsigned char *ptr, int len);
+extern int glaspen2_stroke_bbox(double *bx, double *by, double *bx2, double *by2);
+extern unsigned char *glaspen2_render_canvas_overview(double bx, double by, double bw, double bh, int ow, int oh, int *out_len);
+extern double glaspen2_camera_step_zoom(double zoom);
 int glaspen2_router_infinite(void);
 void glaspen2_router_set_infinite_state(int on);
 void glaspen2_router_clear_camera_dragging(void);

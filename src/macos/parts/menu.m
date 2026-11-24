@@ -416,49 +416,6 @@ static void sync_settings_panel(void);
 
 // 无限画布总览载荷:渲染当前页包围盒适配图 + 当前视口矩形。
 // 返回 nil 表示空画布(无笔迹)。
-static NSDictionary *canvas_overview_payload(double w, double h, double *bounds_out) {
-    double bx, by, bx2, by2;
-    if (!glaspen2_stroke_bbox(&bx, &by, &bx2, &by2)) {
-        return nil;
-    }
-    double bw = bx2 - bx, bh = by2 - by;
-    if (bw < 1.0) bw = 1.0;
-    if (bh < 1.0) bh = 1.0;
-    // 外扩 5%,笔迹不贴边
-    double mx = bw * 0.05, my = bh * 0.05;
-    bx -= mx; by -= my; bw += mx * 2; bh += my * 2;
-    if (bounds_out) {
-        bounds_out[0] = bx;
-        bounds_out[1] = by;
-        bounds_out[2] = bw;
-        bounds_out[3] = bh;
-    }
-
-    int ow = (int)w, oh = (int)h;
-    int outLen = 0;
-    unsigned char *png = glaspen2_render_canvas_overview(bx, by, bw, bh, ow, oh, &outLen);
-    if (!png || outLen <= 0) return nil;
-
-    // 总览映射(scale/offset 必须与渲染一致),再映射当前视口矩形
-    double ov_scale = (ow / bw) < (oh / bh) ? (ow / bw) : (oh / bh);
-    double ov_ox = (ow - bw * ov_scale) * 0.5;
-    double ov_oy = (oh - bh * ov_scale) * 0.5;
-    // 交互 zoom 兜底(> 0.05 否则 1.0)单源在 core(D5b)
-    double z = glaspen2_camera_step_zoom(g_zoom);
-    double vr_w = g_screen_w / z * ov_scale;
-    double vr_h = g_screen_h / z * ov_scale;
-    double vx = ov_ox + (g_pan_x - bx) * ov_scale;
-    double vy = ov_oy + (g_pan_y - by) * ov_scale;
-
-    NSData *data = [NSData dataWithBytes:png length:outLen];
-    glaspen2_free_rust_bytes(png, outLen);
-    return @{
-        @"png": data,
-        @"rect": @[[NSNumber numberWithDouble:vx], [NSNumber numberWithDouble:vy],
-                   [NSNumber numberWithDouble:vr_w], [NSNumber numberWithDouble:vr_h]],
-    };
-}
-
 // ---------------------------------------------------------------------------
 // flutter_rust_bridge:设置面板的 ObjC 侧入口
 //
@@ -997,11 +954,11 @@ unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *r
             ow = 1024;
             oh = 768;
         }
-        double bounds[4] = {0};
-        NSDictionary *payload = canvas_overview_payload(ow, oh, bounds);
+        NSDictionary *payload = [CanvasOverview payloadWithWidth:ow height:oh];
         if (!payload) return;
         NSData *data = payload[@"png"];
         NSArray *rect = payload[@"rect"];
+        NSArray *boundsArr = payload[@"bounds"];
         if (!data || data.length == 0) return;
         unsigned char *buf = (unsigned char *)malloc(data.length);
         if (!buf) return;
@@ -1012,7 +969,8 @@ unsigned char *glaspen2_macos_canvas_payload(int w, int h, int action, double *r
             if (rect.count == 4) {
                 for (int i = 0; i < 4; i++) rect_out[i] = [rect[i] doubleValue];
             }
-            for (int i = 0; i < 4; i++) rect_out[4 + i] = bounds[i];
+            for (int i = 0; i < 4 && i < (int)boundsArr.count; i++)
+                rect_out[4 + i] = [boundsArr[i] doubleValue];
         }
     });
     return result_png;
