@@ -101,7 +101,7 @@ static NSAttributedString* gl_width_item_text(NSInteger idx) {
 // 位图按 4x 渲染保证 Retina 清晰; 白晕 + 深描边双勾线让深/浅色菜单栏都可读
 // (纯白笔杆在浅色栏、纯黑笔杆在深色栏都不会隐形)。
 static BOOL g_ethereal_canvas; // 定义在下方(飘渺画布涂鸦模式), 图标要用
-static NSImage* render_status_icon(void) {
+static NSImage* render_status_icon_legacy(void) {
     const CGFloat size = 18.0;
     const NSInteger px = 72; // 4x
     NSBitmapImageRep *rep = [[NSBitmapImageRep alloc]
@@ -202,8 +202,37 @@ static NSImage* render_status_icon(void) {
 }
 
 static void update_status_icon_color(void) {
-    [g_statusItem.button setImage:render_status_icon()];
+    // S3b-2b-6: 状态栏图标绘制逻辑已迁 Swift(StatusIconRenderer);
+    // ObjC 旧实现暂留为 parity 探针, 验证通过后删除。
+    NSImage *icon = [StatusIconRenderer renderIconWithEraser:g_eraser_mode
+                                                     enabled:g_enabled
+                                                    ethereal:g_ethereal_canvas
+                                                    infinite:g_infinite_canvas
+                                                  widthScale:g_width_scale
+                                                      penRed:g_pen_r
+                                                    penGreen:g_pen_g
+                                                     penBlue:g_pen_b];
+    [g_statusItem.button setImage:icon];
     [g_statusItem.button setTitle:@""]; // 只用图, 不留 "G" 文字
+}
+
+// S3b-2b-6 临时 parity 探针: 逐字节比较旧 ObjC 图标与 Swift 图标(TIFF 表示)。
+// 旧 render_status_icon_legacy 仅供本探针, 删除计划: S3b-2b-6 收尾。
+int glaspen2_macos_swift_status_icon_parity(void) {
+    NSImage *old = render_status_icon_legacy();
+    NSImage *new = [StatusIconRenderer renderIconWithEraser:g_eraser_mode
+                                                    enabled:g_enabled
+                                                   ethereal:g_ethereal_canvas
+                                                   infinite:g_infinite_canvas
+                                                 widthScale:g_width_scale
+                                                     penRed:g_pen_r
+                                                   penGreen:g_pen_g
+                                                    penBlue:g_pen_b];
+    NSData *a = [old TIFFRepresentation];
+    NSData *b = [new TIFFRepresentation];
+    BOOL same = (a != nil && b != nil && [a isEqualToData:b]);
+    NSLog(@"[swift-s3b-icon] statusIcon same=%d", same);
+    return same ? 0 : 1;
 }
 
 static void update_status_icon_state(void) {
