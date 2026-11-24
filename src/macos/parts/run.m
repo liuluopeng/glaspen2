@@ -462,41 +462,7 @@ void glaspen2_run(void) {
 
     [StartupSettingsB restorePartB];
 
-    // S5-1: 窗口创建/层级/透明/穿透/集合行为与光标已迁 Swift。
-    g_window = [OverlayWindowFactory makeWindowWithFrame:screenFrame];
-    g_blank_cursor = [OverlayWindowFactory makeBlankCursor];
-    g_arrow_cursor = [OverlayWindowFactory makeArrowCursor];
-
-    // Container view for glass + drawing layers
-    // S5-4: 容器视图创建/wantsLayer 已迁 Swift。
-    NSView *contentView = [OverlayWindowFactory makeContentViewWithFrame:screenFrame];
-
-    // Frosted glass layer (behind drawing)
-    // S5-2: 玻璃视图创建/材质/透明度已迁 Swift。
-    g_glass_view = [OverlayWindowFactory makeGlassViewWithFrame:screenFrame
-                                                        enabled:g_glass_enabled
-                                                        opacity:g_glass_opacity];
-    // Drawing view on top
-    GlaspenDrawView *drawView =
-        [[GlaspenDrawView alloc] initWithFrame:screenFrame];
-
-    // 组装(玻璃在下/绘制视图在上/layer 透明/挂载+orderFront)已迁 Swift。
-    [OverlayWindowFactory assembleContent:contentView
-                                  glass:g_glass_view
-                               drawView:drawView
-                               inWindow:g_window];
-
-    g_draw_view = drawView;
-    ensure_surface(drawView);
-
-    // 视图就绪: 若恢复到飘渺画布模式, 此处统一落位(笔迹隐藏/玻璃跟随隐藏/
-    // 压强计隐藏), 落位路径与 toggle 进入飘渺完全一致。
-    if (g_ethereal_canvas) gl_ethereal_restore_now();
-
-
-    NSLog(@"[glaspen2] window ready %dx%d, ignoresMouseEvents=%d",
-          (int)screenFrame.size.width, (int)screenFrame.size.height,
-          [g_window ignoresMouseEvents]);
+    [StartupWindow create];
 
     // Register signal handlers for graceful exit
     signal(SIGINT, save_and_exit);  // Ctrl+C
@@ -514,44 +480,7 @@ void glaspen2_run(void) {
     // CGEventTap: intercept events at system level before dispatch
     event_tap_reinstall();
 
-    if (g_event_tap) {
-      NSLog(@"[glaspen2] CGEventTap created OK, enabled=%d",
-            CGEventTapIsEnabled(g_event_tap));
-    } else {
-      NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
-      NSLog(@"[glaspen2] CGEventTap FAILED - need Accessibility permission "
-            @"for: %@",
-            bundlePath);
-      // Show alert and open accessibility settings
-      dispatch_async(dispatch_get_main_queue(), ^{
-        NSAlert *alert = [[NSAlert alloc] init];
-        alert.messageText =
-            L(@"需要辅助功能权限", @"Accessibility Permission Required");
-        alert.informativeText =
-            L(@"请在系统设置 → 隐私与安全性 → 辅助功能中添加并勾选 "
-              @"glaspen2。\n\n添加后请点击下方按钮重启应用。",
-              @"Please add and enable glaspen2 in System Settings → Privacy & "
-              @"Security → Accessibility.\n\nAfter enabling, click below to "
-              @"restart.");
-        [alert addButtonWithTitle:L(@"打开系统设置并重启",
-                                    @"Open Settings & Restart")];
-        [alert addButtonWithTitle:L(@"取消", @"Cancel")];
-        if ([alert runModal] == NSAlertFirstButtonReturn) {
-          [[NSWorkspace sharedWorkspace]
-              openURL:[NSURL URLWithString:
-                                 @"x-apple.systempreferences:com.apple."
-                                 @"preference.security?Privacy_Accessibility"]];
-          // Relaunch after a short delay
-          NSString *path = bundlePath;
-          dispatch_after(
-              dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
-              dispatch_get_main_queue(), ^{
-                [[NSWorkspace sharedWorkspace] launchApplication:path];
-                [NSApp terminate:nil];
-              });
-        }
-      });
-    }
+    [AccessibilityAlert presentIfNeeded];
 
     // tap 健康看门狗: TCC 被撤销 / tap 被系统禁用 / 意外失效时, 用户看到
     // 的只是"软件突然不响应笔了"。每 2s 自检, 能恢复就恢复, 不能恢复就
@@ -1283,3 +1212,12 @@ void glaspen2_router_restore_gif_settings(int fps, double res, double speed, int
 }
 void glaspen2_router_restore_chat_integration(int on) { g_chat_integration = on != 0; }
 void glaspen2_router_rec_init(void) { gl_recording_init(); }
+
+// S7da: 启动窗口/告警桥
+double glaspen2_router_glass_opacity(void) { return g_glass_opacity; }
+void glaspen2_router_set_startup_window(id window) { g_window = window; }
+void glaspen2_router_set_draw_view(id view) { g_draw_view = view; }
+void glaspen2_router_set_glass_view(id view) { g_glass_view = view; }
+void glaspen2_router_set_blank_cursor(id cursor) { g_blank_cursor = cursor; }
+void glaspen2_router_set_arrow_cursor(id cursor) { g_arrow_cursor = cursor; }
+int glaspen2_router_event_tap_ok(void) { return g_event_tap ? 1 : 0; }
