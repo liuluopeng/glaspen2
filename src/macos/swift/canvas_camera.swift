@@ -98,6 +98,7 @@ import AppKit
 
     /// 翻页模式重置镜头(仅设置变换, 不重建 surface)。
     @objc public static func resetLens() {
+        glaspen2_router_reset_page_offsets()
         var px = 0.0, py = 0.0, pz = 1.0
         glaspen2_camera_home(&px, &py, &pz)
         glaspen2_router_set_camera(px, py, pz, 1)

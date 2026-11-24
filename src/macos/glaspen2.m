@@ -270,7 +270,6 @@ static CGEventRef event_tap_callback(CGEventTapProxy proxy, CGEventType type,
 #define kVirtualPenUserData 0x56504E31LL
 // S6-3-3: 判定逻辑已迁 Swift(EventRouter.isVirtualPenEvent); 常量经薄桥暴露。
 static void draw_minimap(CGContextRef ctx, NSRect bounds);
-static void canvas_reset_lens(void);
 // 性能日志(drawRect 用得到, 实现在文件后部)
 static BOOL g_perf_log = NO;
 static void perf_log_event_notes(const char *evtype, uint64_t dur_us, const char *notes);
@@ -797,7 +796,7 @@ static void clear_screen(void) {
     if (g_infinite_canvas) {
         // 无限画布只有一个画布:清空内容 + 复位镜头,不新建页。
         if (created) {
-            canvas_reset_lens();
+            [CanvasCamera resetLens];
             [CanvasCamera persistInfinite];
         }
         flush_to_layer();

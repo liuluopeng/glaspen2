@@ -183,7 +183,7 @@ static void apply_infinite_canvas(BOOL on, BOOL notify) {
       glaspen2_clear_strokes(g_screen_w, g_screen_h);
     }
     pageview_update();
-    canvas_reset_lens();
+    [CanvasCamera resetLens];
   }
   rebuild_surface_from_strokes();
   // 滚轮劫持的根治:翻页模式重装不含滚轮的 tap,系统滚轮零拦截
@@ -1170,12 +1170,6 @@ static BOOL bubble_auto_page_flip(void) {
 
 // 载入唯一的无限画布镜头 + 应用到渲染
 // 翻页模式:镜头恒为原点 + 100%(HOME 常量单源在 core Camera::HOME)
-static void canvas_reset_lens(void) {
-  g_page_off_x = 0.0;
-  g_page_off_y = 0.0;
-  [CanvasCamera resetLens];
-}
-
 // --- CGEventTap callback ---
 
 // Performance logging (set g_perf_log=YES to enable)
@@ -2213,7 +2207,7 @@ void glaspen2_run(void) {
       glaspen2_load_infinite_strokes();
       [CanvasCamera loadInfinite];
     } else {
-      canvas_reset_lens();
+      [CanvasCamera resetLens];
     }
 
     // Canvas mode starts in 固定画布涂鸦模式; menu item shows the switch target
@@ -2735,3 +2729,9 @@ void glaspen2_router_peek_lens_change(void) { peek_lens_change(); }
 // S7av: 屏幕尺寸薄桥
 double glaspen2_router_screen_w(void) { return g_screen_w; }
 double glaspen2_router_screen_h(void) { return g_screen_h; }
+
+// S7bg: 翻页模式镜头重置前清 page 偏移
+void glaspen2_router_reset_page_offsets(void) {
+  g_page_off_x = 0.0;
+  g_page_off_y = 0.0;
+}
