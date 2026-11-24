@@ -3300,31 +3300,10 @@ void glaspen2_run(void) {
                      rebuild_surface_from_strokes();
                    });
 
-    g_window = [[NSWindow alloc] initWithContentRect:screenFrame
-                                           styleMask:NSWindowStyleMaskBorderless
-                                             backing:NSBackingStoreBuffered
-                                               defer:NO];
-
-    [g_window setLevel:kCGMaximumWindowLevel];
-    [g_window setOpaque:NO];
-    [g_window setBackgroundColor:[NSColor clearColor]];
-    [g_window setTitle:@"glaspen2"];
-    [g_window setAcceptsMouseMovedEvents:YES];
-    [g_window setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces |
-                                    NSWindowCollectionBehaviorStationary];
-
-    // Make click-through
-
-    // Create blank cursor for hiding system cursor on our window only
-    NSImage *blankImg = [[NSImage alloc] initWithSize:NSMakeSize(1, 1)];
-    [blankImg lockFocus];
-    [[NSColor clearColor] setFill];
-    NSRectFill(NSMakeRect(0, 0, 1, 1));
-    [blankImg unlockFocus];
-    g_blank_cursor = [[NSCursor alloc] initWithImage:blankImg
-                                             hotSpot:NSZeroPoint];
-    g_arrow_cursor = [NSCursor arrowCursor];
-    [g_window setIgnoresMouseEvents:YES];
+    // S5-1: 窗口创建/层级/透明/穿透/集合行为与光标已迁 Swift。
+    g_window = [OverlayWindowFactory makeWindowWithFrame:screenFrame];
+    g_blank_cursor = [OverlayWindowFactory makeBlankCursor];
+    g_arrow_cursor = [OverlayWindowFactory makeArrowCursor];
 
     // Container view for glass + drawing layers
     NSView *contentView = [[NSView alloc] initWithFrame:screenFrame];
