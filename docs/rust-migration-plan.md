@@ -127,6 +127,8 @@
   默认 Rust, `GLASPEN2_SWIFT_LIVE_RASTER=1` 回退 Swift; 虚拟笔连续笔迹正常。
 - **R56 实时笔迹首点/拖动**: `RawDrawing` 的 plan 调用/旧分档回退光栅化(阴影/描边虚线/接缝/反色)迁 Rust;
   Swift 只保留 SurfaceStore 门控; 虚拟笔截图正常。
+- **R57 笔模式状态**: `PenState` 的 strokeActive/eraserMode/tabletProximity/hasSeenProximity/proxDevice 迁 Rust;
+  Swift 同 API 计算属性; 虚拟笔截图正常。
 
 ## 下一批候选(按风险从低到高)
 

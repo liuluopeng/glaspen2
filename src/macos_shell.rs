@@ -3394,3 +3394,52 @@ pub extern "C" fn glaspen2_rust_raw_draw_segment(x: f64, y: f64, width: f64) {
     glaspen2_rust_pen_update_after_segment(x, y, width);
     unsafe { glaspen2_router_flush_dirty() };
 }
+
+// ── R57: 笔状态(书写中/橡皮/接近/设备) ──
+
+static PEN_STROKE_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PEN_ERASER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PEN_TABLET_PROX: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PEN_SEEN_PROX: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PEN_PROX_DEVICE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_stroke_active() -> i32 {
+    i32::from(PEN_STROKE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_set_stroke_active(v: i32) {
+    PEN_STROKE_ACTIVE.store(v != 0, std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_eraser_mode() -> i32 {
+    i32::from(PEN_ERASER.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_set_eraser_mode(v: i32) {
+    PEN_ERASER.store(v != 0, std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_tablet_proximity() -> i32 {
+    i32::from(PEN_TABLET_PROX.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_set_tablet_proximity(v: i32) {
+    PEN_TABLET_PROX.store(v != 0, std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_has_seen_proximity() -> i32 {
+    i32::from(PEN_SEEN_PROX.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_set_has_seen_proximity(v: i32) {
+    PEN_SEEN_PROX.store(v != 0, std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_prox_device() -> i32 {
+    PEN_PROX_DEVICE.load(std::sync::atomic::Ordering::Relaxed)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_set_prox_device(v: i32) {
+    PEN_PROX_DEVICE.store(v, std::sync::atomic::Ordering::Relaxed);
+}

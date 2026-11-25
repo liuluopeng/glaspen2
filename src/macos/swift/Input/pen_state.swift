@@ -35,13 +35,28 @@ import Darwin
         get { glaspen2_rust_pen_raw_path_len() }
         set { glaspen2_rust_pen_set_raw_path_len(newValue) }
     }
-    static var strokeActive = false
-    static var eraserMode = false
+    static var strokeActive: Bool {
+        get { glaspen2_rust_pen_stroke_active() != 0 }
+        set { glaspen2_rust_pen_set_stroke_active(newValue ? 1 : 0) }
+    }
+    static var eraserMode: Bool {
+        get { glaspen2_rust_pen_eraser_mode() != 0 }
+        set { glaspen2_rust_pen_set_eraser_mode(newValue ? 1 : 0) }
+    }
     /// 当前笔是否在感应区(proximity enter 后 true, exit 后 false)。
-    static var tabletProximity = false
+    static var tabletProximity: Bool {
+        get { glaspen2_rust_pen_tablet_proximity() != 0 }
+        set { glaspen2_rust_pen_set_tablet_proximity(newValue ? 1 : 0) }
+    }
     /// 该平板是否曾发过 proximity 事件(旧 g_has_tablet_proximity; 永不清零)。
-    static var hasSeenProximity = false
-    static var proxDevice: Int = 0
+    static var hasSeenProximity: Bool {
+        get { glaspen2_rust_pen_has_seen_proximity() != 0 }
+        set { glaspen2_rust_pen_set_has_seen_proximity(newValue ? 1 : 0) }
+    }
+    static var proxDevice: Int {
+        get { Int(glaspen2_rust_pen_prox_device()) }
+        set { glaspen2_rust_pen_set_prox_device(Int32(newValue)) }
+    }
 
     static func clearRaw() { glaspen2_rust_pen_clear_raw() }
 

@@ -474,3 +474,15 @@ extern int glaspen2_rust_draw_live_plan(void *cr, const char *plan_json, double 
 // R56: 实时笔迹首点/拖动(计划优先 + 回退光栅化)
 extern void glaspen2_rust_raw_draw_dot(double x, double y, double width);
 extern void glaspen2_rust_raw_draw_segment(double x, double y, double width);
+
+// R57: 笔状态
+extern int glaspen2_rust_pen_stroke_active(void);
+extern void glaspen2_rust_pen_set_stroke_active(int v);
+extern int glaspen2_rust_pen_eraser_mode(void);
+extern void glaspen2_rust_pen_set_eraser_mode(int v);
+extern int glaspen2_rust_pen_tablet_proximity(void);
+extern void glaspen2_rust_pen_set_tablet_proximity(int v);
+extern int glaspen2_rust_pen_has_seen_proximity(void);
+extern void glaspen2_rust_pen_set_has_seen_proximity(int v);
+extern int glaspen2_rust_pen_prox_device(void);
+extern void glaspen2_rust_pen_set_prox_device(int v);
