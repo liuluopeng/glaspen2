@@ -188,3 +188,9 @@
 3. 设置面板、菜单勾选/标题、语言切换、快捷键重绑/冲突。
 4. minimap 缩略图异步、时光隧道翻页、通知 HUD。
 5. 多屏/睡眠唤醒/显示器重配防抖、长时书写录制。
+
+
+## R66 清理
+
+- 删除 `Input/cursor_state.swift`(只存两个从未读取的 NSCursor 静态字段)与 `StartupWindow` 中的死赋值; Swift 88→87。
+- 保留 `OverlayWindowFactory.makeBlankCursor/makeArrowCursor` 与 Rust cursor create 函数(当前无调用, 供后续光标壳使用)。

@@ -25,8 +25,6 @@ import AppKit
         UIAnchors.mainWindow = window
         UIAnchors.drawView = drawView
         UIAnchors.glassView = glass
-        CursorState.blankCursor = blank
-        CursorState.arrowCursor = arrow
         MenuRuntime.ensureSurface()
         if glaspen2_router_ethereal() != 0 { EtherealMode.restoreNow() }
         NSLog("[glaspen2] window ready %dx%d, ignoresMouseEvents=%d",
