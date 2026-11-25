@@ -2568,3 +2568,86 @@ pub extern "C" fn glaspen2_shortcut_apply_json(saved_json: *const std::os::raw::
     glaspen_core::shortcut_state::install(values, lookup);
     1
 }
+
+// ── R51: 事件 tap 句柄/scroll 标志 ──
+
+#[derive(Clone, Copy)]
+struct EventTapPtr(*mut c_void);
+unsafe impl Send for EventTapPtr {}
+static EVENT_TAP: std::sync::OnceLock<std::sync::Mutex<Option<EventTapPtr>>> =
+    std::sync::OnceLock::new();
+static EVENT_TAP_SCROLL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn event_tap_slot() -> &'static std::sync::Mutex<Option<EventTapPtr>> {
+    EVENT_TAP.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+unsafe extern "C" {
+    fn CFMachPortInvalidate(port: *mut c_void);
+    fn CFRetain(cf: *const c_void) -> *const c_void;
+    fn CGEventTapIsEnabled(tap: *mut c_void) -> bool;
+    fn CGEventTapEnable(tap: *mut c_void, enable: bool);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_event_tap_store(tap: *mut c_void) {
+    if !tap.is_null() {
+        unsafe { CFRetain(tap as *const c_void) };
+    }
+    let old = {
+        let mut slot = event_tap_slot().lock().unwrap_or_else(|e| e.into_inner());
+        let old = slot.take();
+        *slot = if tap.is_null() {
+            None
+        } else {
+            Some(EventTapPtr(tap))
+        };
+        old
+    };
+    if let Some(old) = old {
+        unsafe {
+            CFMachPortInvalidate(old.0);
+            CFRelease(old.0 as *const c_void);
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_event_tap_note_scroll(on: i32) {
+    EVENT_TAP_SCROLL.store(on != 0, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_event_tap_ok() -> i32 {
+    i32::from(
+        event_tap_slot()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some(),
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_event_tap_enabled() -> i32 {
+    let guard = event_tap_slot().lock().unwrap_or_else(|e| e.into_inner());
+    match *guard {
+        Some(tap) => i32::from(unsafe { CGEventTapIsEnabled(tap.0) }),
+        None => 0,
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_event_tap_enable() {
+    let guard = event_tap_slot().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(tap) = *guard {
+        unsafe { CGEventTapEnable(tap.0, true) };
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_event_tap_disable() {
+    let guard = event_tap_slot().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(tap) = *guard {
+        unsafe { CGEventTapEnable(tap.0, false) };
+    }
+}
