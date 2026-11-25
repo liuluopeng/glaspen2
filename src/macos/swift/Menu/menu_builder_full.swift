@@ -349,6 +349,31 @@ public func glaspen2_macos_swift_menu_full_selftest() -> Int32 {
           + "width5=\(menu2.items[colorCount + 1 + 5].state == .on) ok=\(checkmarksOK)")
     expect(checkmarksOK, "checkmarks")
 
+    // R26: 动态文案刷新(默认走 Rust, GLASPEN2_SWIFT_MENU_TEXTS=1 时走 Swift)。
+    let (menu3, _) = buildMenu(launchAtLoginOn: false, glassOn: false)
+    let colorNew = fakeTitles("C", colorCount)
+    let widthNew = fakeTitles("W", widthCount)
+    let topNew = (0..<11).map { "TOP\($0)" }
+    let exportNew = ["E0", "E1", "E2"]
+    let moreNew = ["M0", "M1", "M2", "M3"]
+    MenuUpdater.updateTexts(menu: menu3, colorTitles: colorNew, widthTitles: widthNew,
+                            topTitles: topNew, exportTitles: exportNew, moreTitles: moreNew,
+                            modeTitle: "MODE", toggleTitle: "TOGGLE")
+    let topBase3 = colorCount + 1 + widthCount + 1
+    var textsOK = menu3.items[0].attributedTitle?.string == "C-0"
+        && menu3.items[colorCount + 1].attributedTitle?.string == "W-0"
+        && menu3.items[topBase3 + 0].title == "TOP0"
+        && menu3.items[topBase3 + 7].title == "TOP7"
+        && menu3.items[topBase3 + 3].submenu?.items[0].title == "E0"
+        && menu3.items[topBase3 + 7].submenu?.items[0].title == "M0"
+    if let mode = MenuLookup.item(tag: 778, inMenu: menu3) { textsOK = textsOK && mode.title == "MODE" } else { textsOK = false }
+    if let toggle = MenuLookup.item(tag: 888, inMenu: menu3) { textsOK = textsOK && toggle.title == "TOGGLE" } else { textsOK = false }
+    print("SWIFT_MENU_FULL_TEXTS color=\(menu3.items[0].attributedTitle?.string ?? "nil") "
+          + "width=\(menu3.items[colorCount + 1].attributedTitle?.string ?? "nil") "
+          + "mode=\(MenuLookup.item(tag: 778, inMenu: menu3)?.title ?? "nil") "
+          + "toggle=\(MenuLookup.item(tag: 888, inMenu: menu3)?.title ?? "nil") ok=\(textsOK)")
+    expect(textsOK, "texts")
+
     // 防御分支: nil menu 不崩(guard 在任何文案读取之前返回, 不产生日志)。
     MenuBuilder.addTopLevelAndSubmenus(toMenu: nil, handler: nil, titles: [:],
                                        launchAtLoginOn: false, glassOn: false)

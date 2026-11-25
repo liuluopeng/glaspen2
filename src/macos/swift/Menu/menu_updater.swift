@@ -35,6 +35,30 @@ import AppKit
                                    moreTitles: [String],
                                    modeTitle: String,
                                    toggleTitle: String) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_TEXTS"] != "1",
+           let topData = try? JSONSerialization.data(withJSONObject: topTitles),
+           let topJSON = String(data: topData, encoding: .utf8),
+           let exportData = try? JSONSerialization.data(withJSONObject: exportTitles),
+           let exportJSON = String(data: exportData, encoding: .utf8),
+           let moreData = try? JSONSerialization.data(withJSONObject: moreTitles),
+           let moreJSON = String(data: moreData, encoding: .utf8) {
+            var colorPtrs: [UnsafeMutableRawPointer?] = colorTitles.map { Unmanaged.passUnretained($0).toOpaque() }
+            var widthPtrs: [UnsafeMutableRawPointer?] = widthTitles.map { Unmanaged.passUnretained($0).toOpaque() }
+            let modeItem = MenuLookup.item(tag: 778, inMenu: menu)
+            let toggleItem = MenuLookup.item(tag: 888, inMenu: menu)
+            let ok = colorPtrs.withUnsafeMutableBufferPointer { cb in
+                widthPtrs.withUnsafeMutableBufferPointer { wb in
+                    glaspen2_rust_menu_update_texts(
+                        Unmanaged.passUnretained(menu).toOpaque(), cb.baseAddress,
+                        Int32(colorTitles.count), wb.baseAddress,
+                        Int32(widthTitles.count), topJSON, exportJSON, moreJSON,
+                        modeTitle, toggleTitle,
+                        modeItem.map { Unmanaged.passUnretained($0).toOpaque() },
+                        toggleItem.map { Unmanaged.passUnretained($0).toOpaque() })
+                }
+            }
+            if ok != 0 { return }
+        }
         let colorCount = colorTitles.count
         for i in 0..<colorCount {
             menu.item(at: i)?.attributedTitle = colorTitles[i]

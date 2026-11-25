@@ -626,3 +626,119 @@ pub extern "C" fn glaspen2_rust_menu_update_checkmarks(
     tracing::info!("rust-shell: menu checkmarks updated by Rust (objc2)");
     1
 }
+
+/// R26: 菜单动态文案刷新(颜色/粗细富文本 + 顶层/导出/更多 + tag 778/888)。
+/// 数组长度显式传入; 失败返回 0(Swift 回退)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_update_texts(
+    menu: *mut c_void,
+    color_titles: *const *mut c_void,
+    color_count: i32,
+    width_titles: *const *mut c_void,
+    width_count: i32,
+    top_titles_json: *const std::os::raw::c_char,
+    export_titles_json: *const std::os::raw::c_char,
+    more_titles_json: *const std::os::raw::c_char,
+    mode_title: *const std::os::raw::c_char,
+    toggle_title: *const std::os::raw::c_char,
+    mode_item: *mut c_void,
+    toggle_item: *mut c_void,
+) -> i32 {
+    use objc2_app_kit::{NSMenu, NSMenuItem};
+    use objc2_foundation::{NSAttributedString, NSString};
+
+    if menu.is_null() {
+        return 0;
+    }
+    let cstr = |p: *const std::os::raw::c_char| -> Option<String> {
+        if p.is_null() {
+            None
+        } else {
+            Some(
+                unsafe { std::ffi::CStr::from_ptr(p) }
+                    .to_string_lossy()
+                    .into_owned(),
+            )
+        }
+    };
+    let parse_list = |p: *const std::os::raw::c_char| -> Vec<String> {
+        cstr(p)
+            .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+            .unwrap_or_default()
+    };
+    let menu = unsafe { &*(menu as *const NSMenu) };
+    let color_count = color_count.max(0);
+    let width_count = width_count.max(0);
+
+    for i in 0..color_count {
+        if color_titles.is_null() {
+            break;
+        }
+        let p = unsafe { *color_titles.add(i as usize) };
+        if p.is_null() {
+            continue;
+        }
+        if let Some(item) = menu.itemAtIndex(i as isize) {
+            let title = unsafe { &*(p as *const NSAttributedString) };
+            item.setAttributedTitle(Some(title));
+        }
+    }
+    let width_base = color_count + 1;
+    for i in 0..width_count {
+        if width_titles.is_null() {
+            break;
+        }
+        let p = unsafe { *width_titles.add(i as usize) };
+        if p.is_null() {
+            continue;
+        }
+        if let Some(item) = menu.itemAtIndex((width_base + i) as isize) {
+            let title = unsafe { &*(p as *const NSAttributedString) };
+            item.setAttributedTitle(Some(title));
+        }
+    }
+    let base = width_base + width_count + 1;
+    let top = parse_list(top_titles_json);
+    for (offset, title) in top.iter().enumerate() {
+        if title.is_empty() {
+            continue;
+        }
+        if let Some(item) = menu.itemAtIndex((base + offset as i32) as isize) {
+            item.setTitle(&NSString::from_str(title));
+        }
+    }
+    if let Some(export) = menu
+        .itemAtIndex((base + 3) as isize)
+        .and_then(|i| i.submenu())
+    {
+        for (i, title) in parse_list(export_titles_json).iter().enumerate() {
+            if let Some(item) = export.itemAtIndex(i as isize) {
+                item.setTitle(&NSString::from_str(title));
+            }
+        }
+    }
+    if let Some(more) = menu
+        .itemAtIndex((base + 7) as isize)
+        .and_then(|i| i.submenu())
+    {
+        for (i, title) in parse_list(more_titles_json).iter().enumerate() {
+            if let Some(item) = more.itemAtIndex(i as isize) {
+                item.setTitle(&NSString::from_str(title));
+            }
+        }
+    }
+    if let Some(title) = cstr(mode_title) {
+        if !mode_item.is_null() {
+            let item = unsafe { &*(mode_item as *const NSMenuItem) };
+            item.setTitle(&NSString::from_str(&title));
+        }
+    }
+    if let Some(title) = cstr(toggle_title) {
+        if !toggle_item.is_null() {
+            let item = unsafe { &*(toggle_item as *const NSMenuItem) };
+            item.setTitle(&NSString::from_str(&title));
+        }
+    }
+    tracing::info!("rust-shell: menu texts updated by Rust (objc2)");
+    1
+}
