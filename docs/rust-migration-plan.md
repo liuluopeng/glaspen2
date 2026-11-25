@@ -53,6 +53,8 @@
   (玻璃/绘制视图加入顺序、layer 透明背景、setContentView/orderFront); `GLASPEN2_RUST_OVERLAY=1` 时整条覆盖层组装走 Rust。
 - **R19 绘制视图**: `macos_shell` 用 `define_class!` 创建 NSView 子类 `GlaspenRustDrawView`,
   `drawRect:` 经 C 桥回调 Swift `OverlayDrawing`; `GLASPEN2_RUST_DRAW_VIEW=1` opt-in, 默认 Swift/失败回退。
+- **R20 状态栏默认切 Rust**: 状态栏项创建 + 状态栏图标渲染默认走 objc2; 保留 `GLASPEN2_SWIFT_STATUS_ITEM=1` /
+  `GLASPEN2_SWIFT_STATUS_ICON=1` 回退开关与失败自动回退; parity 探针默认 diff=0。
 
 ## 下一批候选(按风险从低到高)
 

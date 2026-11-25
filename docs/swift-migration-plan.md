@@ -620,3 +620,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-25 | Rust-R17 | 状态栏图标渲染移植到 objc2: 18pt/72px 马克笔/橡皮/斜杠/飘渺/无限画布像素级 parity; Swift 默认仍走原实现, `GLASPEN2_RUST_STATUS_ICON=1` opt-in; `GLASPEN2_RUST_STATUS_ICON_TEST=1` 探针实测 diff=0/20736 | 全量 tests/build/smoke/parity 绿; 图标 parity 通过 | 本提交 |
 | 2026-11-25 | Rust-R18 | 覆盖层内容组装迁 Rust: addSubview 顺序/绘制视图 layer 透明/setContentView/orderFront 由 objc2 完成; `GLASPEN2_RUST_OVERLAY=1` opt-in; 默认 Swift/失败回退 | 真实 app 日志确认 Rust 组装; 开关 smoke/全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-25 | Rust-R19 | 绘制视图迁 Rust: `define_class!` NSView 子类 + drawRect C 桥回调 Swift OverlayDrawing; `GLASPEN2_RUST_DRAW_VIEW=1` opt-in; 虚拟笔绘制截图确认旧笔迹/新笔迹均正常渲染 | 默认/绘制视图/覆盖窗+绘制视图组合 smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-25 | Rust-R20 | 状态栏项创建与图标渲染默认切 Rust(objc2): 默认路径走 Rust, GLASPEN2_SWIFT_STATUS_ITEM=1/GLASPEN2_SWIFT_STATUS_ICON=1 可回退 Swift; 失败自动回退; parity 72x72 diff=0/20736 | 默认 smoke(含状态栏)/回退 smoke/全量 tests/build/parity 绿 | 本提交 |
