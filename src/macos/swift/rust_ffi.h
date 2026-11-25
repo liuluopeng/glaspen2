@@ -293,3 +293,6 @@ extern void *glaspen2_rust_status_icon_render(int eraser, int enabled, int ether
 // R18: 覆盖层内容组装(opt-in: GLASPEN2_RUST_OVERLAY=1)
 extern void glaspen2_rust_overlay_assemble_content(void *content, void *glass,
                                                   void *draw_view, void *window);
+
+// R19: Rust NSView 子类绘制视图(opt-in: GLASPEN2_RUST_DRAW_VIEW=1)
+extern void *glaspen2_rust_draw_view_create(double x, double y, double width, double height);

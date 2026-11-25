@@ -10,6 +10,16 @@ import AppKit
     }
 }
 
+/// R19: Rust 绘制视图的 drawRect C 桥(重入现有 OverlayDrawing)。
+@_cdecl("glaspen2_swift_draw_overlay_bridge")
+public func glaspen2SwiftDrawOverlayBridge(_ view: UnsafeMutableRawPointer?,
+                                           _ x: Double, _ y: Double,
+                                           _ w: Double, _ h: Double) {
+    guard let view else { return }
+    let nsView = Unmanaged<NSView>.fromOpaque(view).takeUnretainedValue()
+    OverlayDrawing.draw(in: nsView, rect: NSRect(x: x, y: y, width: w, height: h))
+}
+
 @objc public final class SettingsWindowDelegate: NSObject, NSWindowDelegate {
     static var shared: SettingsWindowDelegate?
 

@@ -5,7 +5,7 @@
 use std::ffi::c_void;
 
 use objc2::rc::Retained;
-use objc2::{AnyThread, MainThreadOnly};
+use objc2::{AnyThread, MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::NSStatusBar;
 use objc2_foundation::MainThreadMarker;
 
@@ -335,4 +335,66 @@ pub extern "C" fn glaspen2_rust_overlay_assemble_content(
     window.setContentView(Some(content));
     window.orderFront(None);
     tracing::info!("rust-shell: overlay content assembled by Rust (objc2)");
+}
+
+// ── R19: Rust 绘制视图(NSView 子类, drawRect 回调 Swift 绘制桥) ──────────
+
+#[derive(Default)]
+struct RustDrawViewIvars {}
+
+define_class!(
+    #[unsafe(super = objc2_app_kit::NSView)]
+    #[thread_kind = MainThreadOnly]
+    #[name = "GlaspenRustDrawView"]
+    #[ivars = RustDrawViewIvars]
+    struct RustDrawView;
+
+    impl RustDrawView {
+        #[unsafe(method(acceptsFirstResponder))]
+        fn accepts_first_responder(&self) -> bool {
+            true
+        }
+
+        #[unsafe(method(drawRect:))]
+        fn draw_rect(&self, rect: objc2_foundation::NSRect) {
+            unsafe extern "C" {
+                fn glaspen2_swift_draw_overlay_bridge(
+                    view: *mut c_void, x: f64, y: f64, w: f64, h: f64,
+                );
+            }
+            let view = self as *const Self as *mut c_void;
+            unsafe {
+                glaspen2_swift_draw_overlay_bridge(
+                    view, rect.origin.x, rect.origin.y, rect.size.width, rect.size.height,
+                );
+            }
+        }
+    }
+);
+
+impl RustDrawView {
+    fn new(mtm: MainThreadMarker, frame: objc2_foundation::NSRect) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(RustDrawViewIvars::default());
+        unsafe { msg_send![super(this), initWithFrame: frame] }
+    }
+}
+
+/// R19: 创建 Rust NSView 子类绘制视图; drawRect 通过 C 桥回调 Swift OverlayDrawing。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_draw_view_create(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> *mut c_void {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return std::ptr::null_mut();
+    };
+    let frame = objc2_foundation::NSRect::new(
+        objc2_foundation::NSPoint::new(x, y),
+        objc2_foundation::NSSize::new(width, height),
+    );
+    let view = RustDrawView::new(mtm, frame);
+    tracing::info!("rust-shell: draw NSView created by Rust (objc2)");
+    Retained::into_raw(view) as *mut c_void
 }

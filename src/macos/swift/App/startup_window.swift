@@ -12,7 +12,14 @@ import AppKit
             frame: frame,
             enabled: glaspen2_router_glass_enabled() != 0,
             opacity: glaspen2_router_glass_opacity())
-        let drawView = GlaspenDrawView(frame: frame)
+        var drawView: NSView
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_DRAW_VIEW"] == "1",
+           let p = glaspen2_rust_draw_view_create(frame.origin.x, frame.origin.y,
+                                                  frame.size.width, frame.size.height) {
+            drawView = Unmanaged<NSView>.fromOpaque(p).takeRetainedValue()
+        } else {
+            drawView = GlaspenDrawView(frame: frame)
+        }
         OverlayWindowFactory.assembleContent(content, glass: glass,
                                              drawView: drawView, in: window)
         UIAnchors.mainWindow = window
