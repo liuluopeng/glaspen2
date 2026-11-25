@@ -933,3 +933,61 @@ pub extern "C" fn glaspen2_rust_settings_window_create(
     tracing::info!("rust-shell: settings window created by Rust (objc2)");
     Retained::into_raw(window) as *mut c_void
 }
+
+// ── R30: 笔迹 surface 合成(小脏矩形裁子图; Swift 仍负责 CGImage 缓存) ──
+
+unsafe extern "C" {
+    fn CGImageCreateWithImageInRect(
+        image: *const c_void,
+        rect: objc2_core_foundation::CGRect,
+    ) -> *mut c_void;
+    fn CGImageRelease(image: *mut c_void);
+}
+
+/// R30: 把笔迹 surface 的 CGImage 绘到当前 overlay context。
+/// 返回 1 成功, 0 失败(Swift 回退)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_draw_surface(
+    ctx: *mut c_void,
+    image: *mut c_void,
+    rx: f64,
+    ry: f64,
+    rw: f64,
+    rh: f64,
+    bx: f64,
+    by: f64,
+    bw: f64,
+    bh: f64,
+    scale: f64,
+) -> i32 {
+    use objc2_core_foundation::{CGPoint, CGRect, CGSize};
+    use objc2_core_graphics::{CGContext, CGImage};
+    if ctx.is_null() || image.is_null() || bw <= 0.0 || bh <= 0.0 {
+        return 0;
+    }
+    let ctx = unsafe { &*(ctx as *const CGContext) };
+    let image = unsafe { &*(image as *const CGImage) };
+    let same_rect = (rx - bx).abs() < 0.5
+        && (ry - by).abs() < 0.5
+        && (rw - bw).abs() < 0.5
+        && (rh - bh).abs() < 0.5;
+    let small_dirty = !same_rect && (rw < bw || rh < bh);
+    let full = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(bw, bh));
+    if small_dirty {
+        let sx = rx * scale;
+        let sy = (bh - (ry + rh)) * scale;
+        let phys = CGRect::new(CGPoint::new(sx, sy), CGSize::new(rw * scale, rh * scale));
+        let sub = unsafe { CGImageCreateWithImageInRect(image as *const _ as *const c_void, phys) };
+        if !sub.is_null() {
+            let sub = unsafe { &*(sub as *const CGImage) };
+            let rect = CGRect::new(CGPoint::new(rx, ry), CGSize::new(rw, rh));
+            CGContext::draw_image(Some(ctx), rect, Some(sub));
+            unsafe { CGImageRelease(sub as *const _ as *mut c_void) };
+        } else {
+            CGContext::draw_image(Some(ctx), full, Some(image));
+        }
+    } else {
+        CGContext::draw_image(Some(ctx), full, Some(image));
+    }
+    1
+}

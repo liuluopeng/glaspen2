@@ -127,6 +127,15 @@ import CoreGraphics
     @objc(drawSurfaceImage:inContext:rect:bounds:scale:)
     public static func drawSurface(_ image: CGImage, in ctx: CGContext,
                                    rect: NSRect, bounds: NSRect, scale: Double) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_SURFACE"] == "1",
+           glaspen2_rust_draw_surface(
+               Unmanaged.passUnretained(ctx).toOpaque(),
+               Unmanaged.passUnretained(image).toOpaque(),
+               rect.origin.x, rect.origin.y, rect.size.width, rect.size.height,
+               bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height,
+               scale) != 0 {
+            return
+        }
         let smallDirty = !NSEqualRects(rect, bounds)
             && (rect.size.width < bounds.size.width
                 || rect.size.height < bounds.size.height)

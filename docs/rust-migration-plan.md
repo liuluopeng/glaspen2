@@ -73,6 +73,8 @@
   默认 Rust; `GLASPEN2_SWIFT_CURSOR=1` 回退, 失败自动回退。
 - **R29 设置面板窗口**: Rust 创建设置面板 `NSWindow`(标题/尺寸/样式/内容 VC/激活/居中);
   delegate/Flutter host 仍 Swift; 默认 Rust, `GLASPEN2_SWIFT_SETTINGS_PANEL=1` 回退。
+- **R30 笔迹 surface 合成**: `OverlaySurfaceRenderer` 的小脏矩形裁子图/绘制迁 Rust(CoreGraphics);
+  CGImage 缓存仍 Swift; `GLASPEN2_RUST_SURFACE=1` opt-in, 默认 Swift/失败回退。
 
 ## 下一批候选(按风险从低到高)
 

@@ -333,3 +333,8 @@ extern void glaspen2_rust_draw_cursor(void *ctx, int visible, double x, double y
 // R29: 设置面板窗口创建(默认; GLASPEN2_SWIFT_SETTINGS_PANEL=1 回退)
 extern void *glaspen2_rust_settings_window_create(const char *title, void *view_controller,
                                                    double width, double height);
+
+// R30: 笔迹 surface 合成(opt-in: GLASPEN2_RUST_SURFACE=1)
+extern int glaspen2_rust_draw_surface(void *ctx, void *image, double rx, double ry,
+                                      double rw, double rh, double bx, double by,
+                                      double bw, double bh, double scale);
