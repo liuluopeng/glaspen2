@@ -310,3 +310,25 @@ modeler Up error 需真机笔/翻页连击复验。
 - macOS 虚拟键码 -> chord 键名(70 项)迁 Rust, C 返回堆字符串(Swift free);
 - `MenuRuntime.keycodeName` 改调 Rust, 删除 `Input/shortcut_names.swift` 与旧 C 包装;
 - ⌘⌃1/⌘⌃` 真机日志 `[flip] 隐藏间隙 320ms`, 键盘动作链路正常。
+
+
+## R78 收尾快照(第 80 轮)
+
+- HEAD `39dbea0`(本提交前), tag `v0.7.0^{}` = `ce525db` 未移动, 领先 `origin/main` 404, 未 push;
+- `src/macos` ObjC `.m/.mm` = 0; Swift 源文件 84;
+- `cargo test --workspace --exclude glaspen2_installer`、release build、smoke、parity 全绿;
+- 干净 DB 四探针全过: settings failures=0 / menu-full OK / hotkeys 14/14 / render failures=0。
+
+### 77 批迁移覆盖(概要)
+- 纯逻辑/状态: 几何/预设/设置/快捷键/指令/菜单状态/镜头/页视图/光标/压感/笔迹/raw/事件 tap/脏矩形/快捷键生效表/快捷键键名表/动作分派;
+- 绘制与资源: surface/grid/tunnel surface/minimap strip/通知/光标/surface 缓存/实时 plan 入参+光栅化/画布总览;
+- AppKit 壳: 状态栏/菜单/覆盖窗/内容/玻璃/绘制视图/设置窗/设置 delegate/光标壳/菜单桥;
+- 每一批均本地中文提交, 未 push, tag 未动。
+
+### 仍未完成(按“整个应用层 Rust”口径)
+- 时光隧道卡片/帧绘制(Swift cairo);
+- 录制效果执行/GIF 剪贴板/导出; `event_router` 事件分派壳; Flutter host; menu/settings 构建与诊断; minimap 缩略图异步;
+- 真机专项验收: 隧道/录制/多屏/睡眠唤醒/真实笔压/橡皮/描边/反色/软阴影。
+
+结论: 按“纯逻辑/状态优先 + 必要 AppKit 壳保留”的既定方法, 已完成 77 批迁移并通过全部自动化验证;
+“整个应用层 Rust”仍未完成, 目标保持 active, 待后续轮次/人工验收继续。
