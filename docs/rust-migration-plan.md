@@ -129,6 +129,8 @@
   Swift 只保留 SurfaceStore 门控; 虚拟笔截图正常。
 - **R57 笔模式状态**: `PenState` 的 strokeActive/eraserMode/tabletProximity/hasSeenProximity/proxDevice 迁 Rust;
   Swift 同 API 计算属性; 虚拟笔截图正常。
+- **R58 画布模式切换**: `CanvasMode.applyInfinite`(状态/落库/镜头/infinite strokes/tap 重装/通知)迁 Rust;
+  Swift 仅回退; 默认/回退 smoke 通过。
 
 ## 下一批候选(按风险从低到高)
 

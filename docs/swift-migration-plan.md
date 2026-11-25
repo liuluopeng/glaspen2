@@ -658,3 +658,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R55 | LivePlan plan JSON 解析 + cairo 光栅化(今 shadow/outline/erase/fill/seam/dirty)迁 Rust; 默认 Rust, GLASPEN2_SWIFT_LIVE_RASTER=1 回退; 虚拟笔截图正常 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R56 | RawDrawing 首点/拖动(plan 调用 + 旧分档回退光栅化)迁 Rust; Swift 仅表面门控; 虚拟笔截图正常 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R57 | PenState 书写中/橡皮/接近/设备状态迁 Rust; Swift 同 API 计算属性; 虚拟笔截图正常 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R58 | CanvasMode.applyInfinite 状态/落库/镜头/infinite strokes/tap 重装/通知迁 Rust; Swift 仅回退; 真机无限画布切换待验 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |

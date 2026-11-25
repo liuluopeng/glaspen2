@@ -188,6 +188,15 @@ public func runDirtyRect() -> CGRect {
     return CGRect(x: out[0], y: out[1], width: out[2], height: out[3])
 }
 
+@_cdecl("glaspen2_router_camera_pan_cancel")
+public func runCameraPanCancel() { CameraMousePan.cancel() }
+@_cdecl("glaspen2_router_camera_persist_infinite")
+public func runCameraPersistInfinite() { CanvasCamera.persistInfinite() }
+@_cdecl("glaspen2_router_camera_load_infinite")
+public func runCameraLoadInfinite() { CanvasCamera.loadInfinite() }
+@_cdecl("glaspen2_router_camera_reset_lens")
+public func runCameraResetLens() { CanvasCamera.resetLens() }
+
 @_cdecl("glaspen2_router_flush_dirty")
 public func runFlushDirty() { OverlayLayerFlush.flushDirty() }
 

@@ -3443,3 +3443,69 @@ pub extern "C" fn glaspen2_rust_pen_prox_device() -> i32 {
 pub extern "C" fn glaspen2_rust_pen_set_prox_device(v: i32) {
     PEN_PROX_DEVICE.store(v, std::sync::atomic::Ordering::Relaxed);
 }
+
+// ── R58: 画布模式切换(翻页 <-> 无限) ──
+
+unsafe extern "C" {
+    fn glaspen2_router_camera_pan_cancel();
+    fn glaspen2_router_camera_persist_infinite();
+    fn glaspen2_router_camera_load_infinite();
+    fn glaspen2_router_camera_reset_lens();
+    fn glaspen2_router_infinite() -> i32;
+    fn glaspen2_router_set_infinite_state(on: i32);
+    fn glaspen2_set_canvas_kind(kind: i32);
+    fn glaspen2_load_infinite_strokes();
+    fn glaspen2_load_strokes_for_screen(id: i64);
+    fn glaspen2_clear_strokes(w: i32, h: i32);
+    fn glaspen2_router_event_tap_reinstall();
+    fn glaspen2_notify_settings_changed();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_apply_infinite(
+    on: i32,
+    notify_text: *const std::os::raw::c_char,
+) -> i32 {
+    let want = on != 0;
+    if (unsafe { glaspen2_router_infinite() } != 0) == want {
+        return 1;
+    }
+    unsafe {
+        glaspen2_router_clear_camera_dragging();
+        glaspen2_router_camera_pan_cancel();
+        glaspen2_router_finish_active_stroke();
+        if glaspen2_router_infinite() != 0 {
+            glaspen2_router_camera_persist_infinite();
+        }
+        glaspen2_router_set_infinite_state(i32::from(want));
+        let key = std::ffi::CString::new("infinite_canvas").unwrap();
+        glaspen2_save_bool_setting(key.as_ptr(), i32::from(want));
+        glaspen2_router_update_menu_state(668, i32::from(want));
+        glaspen2_router_update_status_icon_state();
+        glaspen2_set_canvas_kind(i32::from(want));
+        if want {
+            glaspen2_load_infinite_strokes();
+            glaspen2_router_camera_load_infinite();
+        } else {
+            let cur = glaspen2_get_current_screen_id();
+            if cur > 0 {
+                glaspen2_load_strokes_for_screen(cur);
+            } else {
+                glaspen2_clear_strokes(
+                    glaspen_core::shell_state::screen_w(),
+                    glaspen_core::shell_state::screen_h(),
+                );
+            }
+            glaspen2_rust_pageview_update();
+            glaspen2_router_camera_reset_lens();
+        }
+        glaspen2_router_rebuild_surface();
+        glaspen2_router_event_tap_reinstall();
+        glaspen2_notify_settings_changed();
+    }
+    if !notify_text.is_null() {
+        let text = unsafe { std::ffi::CStr::from_ptr(notify_text) }.to_string_lossy();
+        notify(&text);
+    }
+    1
+}

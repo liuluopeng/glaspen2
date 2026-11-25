@@ -486,3 +486,6 @@ extern int glaspen2_rust_pen_has_seen_proximity(void);
 extern void glaspen2_rust_pen_set_has_seen_proximity(int v);
 extern int glaspen2_rust_pen_prox_device(void);
 extern void glaspen2_rust_pen_set_prox_device(int v);
+
+// R58: 画布模式切换(默认; GLASPEN2_SWIFT_CANVAS_MODE=1 回退)
+extern int glaspen2_rust_apply_infinite(int on, const char *notify_text);
