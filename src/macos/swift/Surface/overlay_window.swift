@@ -93,6 +93,14 @@ import AppKit
     @objc(assembleContent:glass:drawView:inWindow:)
     public static func assembleContent(_ content: NSView, glass: NSView,
                                        drawView: NSView, in window: NSWindow) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_OVERLAY"] == "1" {
+            glaspen2_rust_overlay_assemble_content(
+                Unmanaged.passUnretained(content).toOpaque(),
+                Unmanaged.passUnretained(glass).toOpaque(),
+                Unmanaged.passUnretained(drawView).toOpaque(),
+                Unmanaged.passUnretained(window).toOpaque())
+            return
+        }
         content.addSubview(glass)
         drawView.wantsLayer = true
         if let layer = drawView.layer { configureClearLayer(layer) }

@@ -618,3 +618,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-25 | Rust-R15 | 覆盖窗预研: `macos_shell` 用 objc2 创建主覆盖 NSWindow(最大层级/透明/穿透/集合行为); Swift OverlayWindowFactory 在 GLASPEN2_RUST_OVERLAY=1 时使用, 默认 Swift/失败回退 | 真实 app 日志确认 Rust 创建窗口且 window ready; 默认+开关 smoke 全绿 | 本提交 |
 | 2026-11-25 | Rust-R16 | 覆盖窗内容层预研: Rust 创建 layer-backed NSView 内容容器与 NSVisualEffectView 玻璃视图; OverlayWindowFactory 在 GLASPEN2_RUST_OVERLAY=1 时使用, 默认 Swift/失败回退 | 真实 app + 默认/开关 smoke 全绿; 未切默认 | 本提交 |
 | 2026-11-25 | Rust-R17 | 状态栏图标渲染移植到 objc2: 18pt/72px 马克笔/橡皮/斜杠/飘渺/无限画布像素级 parity; Swift 默认仍走原实现, `GLASPEN2_RUST_STATUS_ICON=1` opt-in; `GLASPEN2_RUST_STATUS_ICON_TEST=1` 探针实测 diff=0/20736 | 全量 tests/build/smoke/parity 绿; 图标 parity 通过 | 本提交 |
+| 2026-11-25 | Rust-R18 | 覆盖层内容组装迁 Rust: addSubview 顺序/绘制视图 layer 透明/setContentView/orderFront 由 objc2 完成; `GLASPEN2_RUST_OVERLAY=1` opt-in; 默认 Swift/失败回退 | 真实 app 日志确认 Rust 组装; 开关 smoke/全量 tests/build/parity 绿 | 本提交 |

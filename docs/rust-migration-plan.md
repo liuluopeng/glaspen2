@@ -49,6 +49,8 @@
   (behind-window/light/active); `OverlayWindowFactory` 同开关复用, 默认 Swift/失败回退。
 - **R17 状态栏图标渲染**: `macos_shell` 移植 `StatusIconRenderer`(NSBitmapImageRep/NSBezierPath/NSAffineTransform),
   新增 `GLASPEN2_RUST_STATUS_ICON=1` 切换与 `GLASPEN2_RUST_STATUS_ICON_TEST=1` 像素 parity 探针; 实测 72x72 diff=0/20736。
+- **R18 覆盖层内容组装**: `macos_shell` 新增 `glaspen2_rust_overlay_assemble_content`
+  (玻璃/绘制视图加入顺序、layer 透明背景、setContentView/orderFront); `GLASPEN2_RUST_OVERLAY=1` 时整条覆盖层组装走 Rust。
 
 ## 下一批候选(按风险从低到高)
 

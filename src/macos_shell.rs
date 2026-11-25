@@ -307,3 +307,32 @@ pub extern "C" fn glaspen2_rust_status_icon_render(
         None => std::ptr::null_mut(),
     }
 }
+
+/// R18: 覆盖层内容组装(玻璃在下/绘制视图在上 + layer 透明 + attach/orderFront)。
+/// 指针来自 Swift 已创建的 NSView/NSWindow; 仅 opt-in 路径调用。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_overlay_assemble_content(
+    content: *mut c_void,
+    glass: *mut c_void,
+    draw_view: *mut c_void,
+    window: *mut c_void,
+) {
+    use objc2_app_kit::{NSColor, NSView, NSWindow};
+    if content.is_null() || glass.is_null() || draw_view.is_null() || window.is_null() {
+        return;
+    }
+    let content = unsafe { &*(content as *const NSView) };
+    let glass = unsafe { &*(glass as *const NSView) };
+    let draw_view = unsafe { &*(draw_view as *const NSView) };
+    let window = unsafe { &*(window as *const NSWindow) };
+    content.addSubview(glass);
+    draw_view.setWantsLayer(true);
+    if let Some(layer) = draw_view.layer() {
+        layer.setOpaque(false);
+        layer.setBackgroundColor(Some(&NSColor::clearColor().CGColor()));
+    }
+    content.addSubview(draw_view);
+    window.setContentView(Some(content));
+    window.orderFront(None);
+    tracing::info!("rust-shell: overlay content assembled by Rust (objc2)");
+}
