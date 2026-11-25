@@ -145,7 +145,7 @@ public func bridgePenDownState(_ x: Double, _ y: Double, _ rawWidth: Double) {
 public func bridgePenUpState() {
     PenState.clearRaw()
     CursorState.visible = true
-    dirtyIncludePoint(CursorState.x, CursorState.y, 14.0)
+    glaspen2_rust_dirty_include_point(CursorState.x, CursorState.y, 14.0)
     OverlayLayerFlush.flushDirty()
 }
 

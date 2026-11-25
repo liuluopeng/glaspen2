@@ -1824,3 +1824,97 @@ pub extern "C" fn glaspen2_rust_draw_minimap(
     let _ = ctx;
     1
 }
+
+// ── R41: 脏矩形跟踪(视图点并集) ──
+
+#[derive(Clone, Copy)]
+struct DirtyRect {
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+}
+
+static DIRTY: std::sync::OnceLock<std::sync::Mutex<Option<DirtyRect>>> = std::sync::OnceLock::new();
+
+fn dirty_state() -> &'static std::sync::Mutex<Option<DirtyRect>> {
+    DIRTY.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+fn dirty_include_point(x: f64, y: f64, r: f64) {
+    let mut state = dirty_state().lock().unwrap_or_else(|e| e.into_inner());
+    let (nx0, ny0, nx1, ny1) = (x - r, y - r, x + r, y + r);
+    *state = Some(match *state {
+        None => DirtyRect {
+            x: nx0,
+            y: ny0,
+            w: nx1 - nx0,
+            h: ny1 - ny0,
+        },
+        Some(rect) => {
+            let x0 = rect.x.min(nx0);
+            let y0 = rect.y.min(ny0);
+            let x1 = (rect.x + rect.w).max(nx1);
+            let y1 = (rect.y + rect.h).max(ny1);
+            DirtyRect {
+                x: x0,
+                y: y0,
+                w: x1 - x0,
+                h: y1 - y0,
+            }
+        }
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_dirty_reset() {
+    *dirty_state().lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_dirty_include_point(x: f64, y: f64, r: f64) {
+    dirty_include_point(x, y, r);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_dirty_include_surface_point(x: f64, y: f64, r: f64) {
+    let view_h = glaspen_core::shell_state::screen_h() as f64;
+    dirty_include_point(x, view_h - y, r);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_dirty_include_surface_rect(x: f64, y: f64, w: f64, h: f64) {
+    let view_h = glaspen_core::shell_state::screen_h() as f64;
+    dirty_include_point(x, view_h - (y + h), 0.0);
+    dirty_include_point(x + w, view_h - y, 0.0);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_dirty_has() -> i32 {
+    i32::from(
+        dirty_state()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some(),
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_dirty_rect(out: *mut f64) -> i32 {
+    if out.is_null() {
+        return 0;
+    }
+    let state = *dirty_state().lock().unwrap_or_else(|e| e.into_inner());
+    match state {
+        Some(rect) => {
+            unsafe {
+                *out.add(0) = rect.x;
+                *out.add(1) = rect.y;
+                *out.add(2) = rect.w;
+                *out.add(3) = rect.h;
+            }
+            1
+        }
+        None => 0,
+    }
+}

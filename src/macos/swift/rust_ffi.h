@@ -387,3 +387,11 @@ typedef struct {
 extern int glaspen2_rust_draw_minimap(void *ctx, const GlaspenMinimapItem *items, int count,
                                        double strip_w, double strip_h, double strip_x, double strip_y,
                                        double view_h);
+
+// R41: 脏矩形跟踪
+extern void glaspen2_rust_dirty_reset(void);
+extern void glaspen2_rust_dirty_include_point(double x, double y, double r);
+extern void glaspen2_rust_dirty_include_surface_point(double x, double y, double r);
+extern void glaspen2_rust_dirty_include_surface_rect(double x, double y, double w, double h);
+extern int glaspen2_rust_dirty_has(void);
+extern int glaspen2_rust_dirty_rect(double *out);

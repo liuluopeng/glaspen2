@@ -177,13 +177,15 @@ public func runEventTapReinstall() {
 }
 
 @_cdecl("glaspen2_router_dirty_reset")
-public func runDirtyReset() { dirtyReset() }
+public func runDirtyReset() { glaspen2_rust_dirty_reset() }
 @_cdecl("glaspen2_router_dirty_has")
-public func runDirtyHas() -> Int32 { glDirtyHasState() }
+public func runDirtyHas() -> Int32 { glaspen2_rust_dirty_has() }
 @_cdecl("glaspen2_router_dirty_rect")
 public func runDirtyRect() -> CGRect {
-    CGRect(x: glDirtyRectX(), y: glDirtyRectY(),
-           width: glDirtyRectW(), height: glDirtyRectH())
+    var out = [Double](repeating: 0, count: 4)
+    let ok = out.withUnsafeMutableBufferPointer { glaspen2_rust_dirty_rect($0.baseAddress) }
+    if ok == 0 { return .zero }
+    return CGRect(x: out[0], y: out[1], width: out[2], height: out[3])
 }
 
 @_cdecl("glaspen2_router_surface_cache_invalidate")
@@ -210,12 +212,12 @@ public func runInvertInkSource(_ cr: UnsafeMutableRawPointer?) -> UnsafeMutableR
 
 @_cdecl("glaspen2_router_dirty_include_surface_point")
 public func runDirtySurfacePoint(_ x: Double, _ y: Double, _ pad: Double) {
-    dirtyIncludeSurfacePoint(x, y, pad)
+    glaspen2_rust_dirty_include_surface_point(x, y, pad)
 }
 
 @_cdecl("glaspen2_router_dirty_include_surface_rect")
 public func runDirtySurfaceRect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) {
-    dirtyIncludeSurfaceRect(x, y, w, h)
+    glaspen2_rust_dirty_include_surface_rect(x, y, w, h)
 }
 
 @_cdecl("glaspen2_router_settings_apply_transparent")

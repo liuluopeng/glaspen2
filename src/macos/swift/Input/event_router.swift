@@ -59,7 +59,7 @@ import AppKit
         if type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp {
             EventRouter.restoreSystemCursor()
             CursorState.visible = false
-            dirtyIncludePoint(CursorState.x, CursorState.y, 14.0)
+            glaspen2_rust_dirty_include_point(CursorState.x, CursorState.y, 14.0)
             OverlayLayerFlush.flushDirty()
         }
         // 笔事件: 坐标/压力/raw_w 在本层计算, 再交 pen 分派(原 inner 逻辑)。
