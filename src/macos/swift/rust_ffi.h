@@ -498,3 +498,13 @@ extern void glaspen2_rust_pen_down(double x, double y, double pressure, double t
 extern void glaspen2_rust_pen_up(double x, double y, double pressure, double timestamp);
 extern void glaspen2_rust_pen_move(double x, double y, double pressure, double timestamp, double raw_width);
 extern void glaspen2_rust_update_eraser(int is_eraser);
+
+// R62: 镜头动作(默认; GLASPEN2_SWIFT_CANVAS_CAMERA=1 回退)
+extern void glaspen2_rust_camera_pan(double dx, double dy);
+extern void glaspen2_rust_camera_zoom_at(double factor, double vx, double vy);
+extern void glaspen2_rust_camera_zoom_at_center(double factor);
+extern void glaspen2_rust_camera_persist_infinite(void);
+extern void glaspen2_rust_camera_load_infinite(void);
+extern void glaspen2_rust_camera_apply_transform(void);
+extern void glaspen2_rust_camera_home(void);
+extern void glaspen2_rust_camera_reset_lens(void);

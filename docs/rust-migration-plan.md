@@ -136,6 +136,8 @@
   Swift 仅回退; 新增 main window/ensure surface/pm show-hide/restore cursor C 桥; 真机热键待验。
 - **R61 笔事件编排**: `penDown/penUp/penMove/updateEraserState` 的模型器/描边/raw/状态/提交动作迁 Rust;
   Swift 仅保留事件分派与回退; 虚拟笔截图正常。
+- **R62 镜头动作**: `CanvasCamera` 平移/缩放(视口中心/锚点)/应用变换/持久化节流/加载无限/复位/HOME 迁 Rust;
+  Swift 仅回退; 真机缩放热键未自动化。
 
 ## 下一批候选(按风险从低到高)
 

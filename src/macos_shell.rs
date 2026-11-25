@@ -3657,3 +3657,248 @@ pub extern "C" fn glaspen2_rust_update_eraser(is_eraser: i32) {
         }
     }
 }
+
+// ── R62: 键盘/滚轮镜头动作(平移/缩放/应用/持久化) ──
+
+unsafe extern "C" {
+    fn glaspen2_camera_pan_values(
+        px: f64,
+        py: f64,
+        pz: f64,
+        dx: f64,
+        dy: f64,
+        ox: *mut f64,
+        oy: *mut f64,
+        oz: *mut f64,
+    ) -> i32;
+    fn glaspen2_camera_zoom_at_values(
+        px: f64,
+        py: f64,
+        pz: f64,
+        factor: f64,
+        vx: f64,
+        vy: f64,
+        ox: *mut f64,
+        oy: *mut f64,
+        oz: *mut f64,
+        hit_max: *mut i32,
+        hit_min: *mut i32,
+        changed: *mut i32,
+    ) -> i32;
+    fn glaspen2_camera_zoom_at_center_values(
+        px: f64,
+        py: f64,
+        pz: f64,
+        factor: f64,
+        vw: f64,
+        vh: f64,
+        ox: *mut f64,
+        oy: *mut f64,
+        oz: *mut f64,
+        hit_max: *mut i32,
+        hit_min: *mut i32,
+        changed: *mut i32,
+    ) -> i32;
+    fn glaspen2_camera_home(px: *mut f64, py: *mut f64, pz: *mut f64);
+    fn glaspen2_set_view_transform(px: f64, py: f64, pz: f64);
+    fn glaspen2_set_infinite_transform(px: f64, py: f64, pz: f64);
+    fn glaspen2_get_infinite_transform(px: *mut f64, py: *mut f64, pz: *mut f64);
+    fn glaspen2_router_canvas_apply_transform();
+    fn glaspen2_router_peek_lens_change();
+    fn glaspen2_router_state() -> i32;
+    fn glaspen2_router_screen_w() -> f64;
+    fn glaspen2_router_screen_h() -> f64;
+}
+
+static CAM_LAST_SAVE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static CAM_LAST_ZOOM_HINT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn now_secs() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0)
+}
+
+fn camera_persist_infinite_now() {
+    unsafe {
+        if glaspen2_router_state() & 4 == 0 {
+            return;
+        }
+        glaspen2_set_infinite_transform(
+            glaspen2_router_pan_x(),
+            glaspen2_router_pan_y(),
+            glaspen2_router_zoom(),
+        );
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_camera_pan(dx: f64, dy: f64) {
+    if glaspen2_rust_pen_stroke_active() != 0 {
+        return;
+    }
+    let mut px = 0.0;
+    let mut py = 0.0;
+    let mut pz = 0.0;
+    let ok = unsafe {
+        glaspen2_camera_pan_values(
+            glaspen2_router_pan_x(),
+            glaspen2_router_pan_y(),
+            glaspen2_router_zoom(),
+            dx,
+            dy,
+            &mut px,
+            &mut py,
+            &mut pz,
+        )
+    };
+    if ok == 0 {
+        return;
+    }
+    unsafe {
+        glaspen2_router_set_camera(px, py, pz, 1);
+        glaspen2_router_canvas_apply_transform();
+        glaspen2_router_peek_lens_change();
+    }
+}
+
+fn camera_apply_zoom(px: f64, py: f64, pz: f64, hit_max: i32, changed: i32) {
+    if hit_max != 0 {
+        let now = now_secs();
+        let last = f64::from_bits(CAM_LAST_ZOOM_HINT.load(std::sync::atomic::Ordering::Relaxed));
+        if now - last > 1.5 {
+            CAM_LAST_ZOOM_HINT.store(now.to_bits(), std::sync::atomic::Ordering::Relaxed);
+            let lang = if glaspen_core::shell_state::lang() == 1 {
+                glaspen_core::i18n::Lang::En
+            } else {
+                glaspen_core::i18n::Lang::Zh
+            };
+            notify(glaspen_core::i18n::text(
+                lang,
+                &glaspen_core::i18n::Msg::ZoomMax100,
+            ));
+        }
+    }
+    unsafe {
+        glaspen2_router_set_camera(px, py, pz, 1);
+        if changed != 0 {
+            glaspen2_router_canvas_apply_transform();
+            glaspen2_router_peek_lens_change();
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_camera_zoom_at(factor: f64, vx: f64, vy: f64) {
+    if glaspen2_rust_pen_stroke_active() != 0 {
+        return;
+    }
+    let mut px = 0.0;
+    let mut py = 0.0;
+    let mut pz = 0.0;
+    let (mut hit_max, mut hit_min, mut changed) = (0, 0, 0);
+    let ok = unsafe {
+        glaspen2_camera_zoom_at_values(
+            glaspen2_router_pan_x(),
+            glaspen2_router_pan_y(),
+            glaspen2_router_zoom(),
+            factor,
+            vx,
+            vy,
+            &mut px,
+            &mut py,
+            &mut pz,
+            &mut hit_max,
+            &mut hit_min,
+            &mut changed,
+        )
+    };
+    if ok == 0 {
+        return;
+    }
+    camera_apply_zoom(px, py, pz, hit_max, changed);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_camera_zoom_at_center(factor: f64) {
+    if glaspen2_rust_pen_stroke_active() != 0 {
+        return;
+    }
+    let mut px = 0.0;
+    let mut py = 0.0;
+    let mut pz = 0.0;
+    let (mut hit_max, mut hit_min, mut changed) = (0, 0, 0);
+    let ok = unsafe {
+        glaspen2_camera_zoom_at_center_values(
+            glaspen2_router_pan_x(),
+            glaspen2_router_pan_y(),
+            glaspen2_router_zoom(),
+            factor,
+            glaspen2_router_screen_w(),
+            glaspen2_router_screen_h(),
+            &mut px,
+            &mut py,
+            &mut pz,
+            &mut hit_max,
+            &mut hit_min,
+            &mut changed,
+        )
+    };
+    if ok == 0 {
+        return;
+    }
+    camera_apply_zoom(px, py, pz, hit_max, changed);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_camera_persist_infinite() {
+    camera_persist_infinite_now();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_camera_load_infinite() {
+    let (mut px, mut py, mut pz) = (0.0, 0.0, 1.0);
+    unsafe {
+        glaspen2_get_infinite_transform(&mut px, &mut py, &mut pz);
+        glaspen2_router_set_camera(px, py, pz, 1);
+        glaspen2_set_view_transform(px, py, pz);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_camera_apply_transform() {
+    unsafe {
+        glaspen2_set_view_transform(
+            glaspen2_router_pan_x(),
+            glaspen2_router_pan_y(),
+            glaspen2_router_zoom(),
+        );
+        glaspen2_router_rebuild_surface();
+    }
+    let now = now_secs();
+    let last = f64::from_bits(CAM_LAST_SAVE.load(std::sync::atomic::Ordering::Relaxed));
+    if now - last > 0.5 {
+        CAM_LAST_SAVE.store(now.to_bits(), std::sync::atomic::Ordering::Relaxed);
+        camera_persist_infinite_now();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_camera_home() {
+    let (mut px, mut py, mut pz) = (0.0, 0.0, 1.0);
+    unsafe { glaspen2_camera_home(&mut px, &mut py, &mut pz) };
+    unsafe { glaspen2_router_set_camera(px, py, pz, 1) };
+    glaspen2_rust_camera_apply_transform();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_camera_reset_lens() {
+    unsafe { glaspen2_router_reset_page_offsets() };
+    let (mut px, mut py, mut pz) = (0.0, 0.0, 1.0);
+    unsafe {
+        glaspen2_camera_home(&mut px, &mut py, &mut pz);
+        glaspen2_router_set_camera(px, py, pz, 1);
+        glaspen2_set_view_transform(px, py, pz);
+    }
+}
