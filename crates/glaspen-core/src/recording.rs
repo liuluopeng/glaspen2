@@ -14,7 +14,7 @@
 //!
 //! # 两端现状证据(D8a 读码时行号;D8b 接线后旧代码已删除,行号仅作历史)
 //!
-//! - macOS `src/macos/swift/run_glue.swift`:
+//! - macOS `src/macos/swift/App/run_glue.swift`:
 //!   - GIF 开始/结束 `:1924-1932` / `:1938-1963`(异步编码 `:1948-1962`,
 //!     剪贴板 helper `:1905-1920`);
 //!   - ⌘⌃3 直发开始/结束 `:1967-1974` / `:1979-2001`;
@@ -22,8 +22,8 @@
 //!   - 事件 tap 键位 `:2198-2254`(R 抬起 `:2214-2219`、R 按下 `:2220-2225`、
 //!     `3` 抬起 `:2226-2232`、`3` 按下 `:2233-2239`、`2` 抬起 `:2245-2248`、
 //!     `2` 按下 `:2249-2254`);
-//!   - 会话标志位 `src/macos/swift/run_glue.swift:311-332`;手写消息总开关关闭的收尾
-//!     `src/macos/swift/menu_runtime.swift:958-972`。
+//!   - 会话标志位 `src/macos/swift/App/run_glue.swift:311-332`;手写消息总开关关闭的收尾
+//!     `src/macos/swift/Menu/menu_runtime.swift:958-972`。
 //! - Windows `crates/glaspen-windows/src/overlay/actions.rs`:
 //!   - GIF 开始/结束 `:811-820` / `:823-859`(结果码经 `WM_RECORD_DONE`
 //!     回主线程,`wndproc.rs:183-191`);剪贴板 `:944-1032`;
@@ -1729,23 +1729,26 @@ mod tests {
         // (已删除的)会话标志位; menu.m = 总开关关闭收尾。
         let mac_main = concat!(
             include_str!("../../../src/macos/swift/rust_ffi.h"),
-            include_str!("../../../src/macos/swift/run_glue.swift")
+            include_str!("../../../src/macos/swift/App/run_glue.swift")
         );
-        let mac_effects_swift = include_str!("../../../src/macos/swift/recording_effects.swift");
+        let mac_effects_swift =
+            include_str!("../../../src/macos/swift/Features/recording_effects.swift");
         let mac_run = concat!(
-            include_str!("../../../src/macos/swift/run_glue.swift"),
-            include_str!("../../../src/macos/swift/recording_effects.swift"),
-            include_str!("../../../src/macos/swift/recording_keys.swift")
+            include_str!("../../../src/macos/swift/App/run_glue.swift"),
+            include_str!("../../../src/macos/swift/Features/recording_effects.swift"),
+            include_str!("../../../src/macos/swift/Features/recording_keys.swift")
         );
         let mac_run_effects = format!("{mac_run}\n{mac_effects_swift}");
         let mac_menu = concat!(
-            include_str!("../../../src/macos/swift/menu_runtime.swift"),
-            include_str!("../../../src/macos/swift/settings_api_glue.swift")
+            include_str!("../../../src/macos/swift/Menu/menu_runtime.swift"),
+            include_str!("../../../src/macos/swift/Settings/settings_api_glue.swift")
         );
         // S6/S8: 录制 HUD 文案映射已迁 Swift, 闸门必须同时扫 Swift 源。
-        let mac_recording_swift = include_str!("../../../src/macos/swift/recording_hud.swift");
-        let mac_recording_keys = include_str!("../../../src/macos/swift/recording_keys.swift");
-        let mac_menu_handler = include_str!("../../../src/macos/swift/menu_handler.swift");
+        let mac_recording_swift =
+            include_str!("../../../src/macos/swift/Features/recording_hud.swift");
+        let mac_recording_keys =
+            include_str!("../../../src/macos/swift/Features/recording_keys.swift");
+        let mac_menu_handler = include_str!("../../../src/macos/swift/Menu/menu_handler.swift");
         let mac_combined = format!("{mac_run}\n{mac_recording_keys}\n{mac_effects_swift}");
         let mac_menu_swift = format!("{mac_menu}\n{mac_menu_handler}");
         // Windows: recording.rs = 接线/effects 分派; state.rs = 两个状态机字段;

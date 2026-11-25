@@ -1,4 +1,8 @@
-# 跨平台重复实现清单与进度表
+# 跨平台重复实现清单
+
+> 2026-11-25 起 macOS Swift 源已按 App/Menu/Input/Surface/Settings/Features/Diagnostics 分目录(见 src/macos/swift/README.md)。下表历史行中的 `src/macos/swift/xxx.swift` 是当时平铺路径, 现对应文件在子目录中; 路径仅供追溯, 以仓库现状为准。
+
+与进度表
 
 > 目的: macOS/Windows 两份实现中,**可以只写一次**的部分集中登记在这里。
 > 这个文件是**持久台账**,不是一次性审计: 每开始/完成一项都改状态并追加进度,

@@ -113,7 +113,7 @@ let me = Unmanaged<EventTapController>.fromOpaque(refcon!).takeUnretainedValue()
 | Swift 导出给 ObjC 的类 | `@objc public final class`;类名与 ObjC 现有类不冲突(现有 `GlaspenMenuHandler`/`GlaspenDrawView`/…);需要时用 `@objc(Name)` 显式指定 | `SwiftInteropProbe` |
 | Swift 导出给 ObjC 的方法 | `@objc` + ObjC 兼容类型;方法名保持"动词+ObjC 风格" | `@objc public static func ping() -> String` |
 | ObjC selector | 与旧实现逐字一致(菜单 target/action 契约) | `selectColor:`、`toggleDraw`、`showSettingsPanel` |
-| 文件 | Swift 文件 `snake_case.swift`,按模块前缀扁平放 `src/macos/swift/`(`menu_bar.swift`、`event_tap.swift`);ObjC 文件保持现有 `glaspen2.m` / `parts/*.m` | `src/macos/swift/interop_probe.swift` |
+| 文件 | Swift 文件 `snake_case.swift`,按子系统分目录放 `src/macos/swift/{App,Menu,Input,Surface,Settings,Features,Diagnostics}/`(目录仅组织代码, 仍编译为同一模块);文件名全局唯一;ObjC 文件保持现有 `glaspen2.m` / `parts/*.m`(应用层已清零) | `src/macos/swift/Input/event_tap.swift` |
 | 桥接头 | 只放 C/ObjC 声明,`extern "C"` 包裹;不 include Swift 生成头 | `src/macos/swift/Bridging.h` |
 | 生成头 | `swiftc -emit-objc-header-path $OUT_DIR/glaspen2_macos_swift-Swift.h`;**不提交、不手改** | — |
 
@@ -131,33 +131,29 @@ let me = Unmanaged<EventTapController>.fromOpaque(refcon!).takeUnretainedValue()
 - 部署目标固定 **macOS 12.0**(与 `scripts/build-dmg.sh` 的 LSMinimumSystemVersion
   一致);工具链兼容库/搜索路径见迁移计划 §8.2。
 
-## 7. 构建集成(S2 落地)
+## 7. 构建集成(当前:Swift-only)
 
 `build.rs`(macOS 分支)顺序与职责:
 
-1. `xcrun swiftc -c -parse-as-library -module-name glaspen2_macos_swift
+1. 递归收集 `src/macos/swift/**/*.swift`(按 App/Menu/Input/Surface/Settings/
+   Features/Diagnostics 分目录, 仍编译为同一个 `glaspen2_macos_swift` 模块);
+   `xcrun swiftc -c -parse-as-library -module-name glaspen2_macos_swift
    -swift-version 5 -target <arch>-apple-macosx12.0 -sdk <SDK> -O
-   -import-objc-header src/macos/swift/Bridging.h
-   -emit-objc-header -emit-objc-header-path $OUT_DIR/glaspen2_macos_swift-Swift.h
-   src/macos/swift/*.swift`
-   → `$OUT_DIR/swift/*.o` + 生成头;
-2. `clang -fobjc-arc -O2 -Wall -I$OUT_DIR [-g] ... -c src/macos/swift/run_glue.swift` 与
-   `-c src/macos/swift/InteropProbe.m`(两单元各自编;ObjC 可
-   `#import "glaspen2_macos_swift-Swift.h"`);
-3. `ar crus $OUT_DIR/libglaspen2_objc.a` 收入 ObjC + Swift 全部 .o;
-4. 链接参数(Flutter frameworks、cairo、Swift 运行时搜索路径/rpath)不变。
+   -import-objc-header src/macos/swift/Bridging.h <sources>`
+   → `$OUT_DIR/swift/*.o`;
+2. `ar crus $OUT_DIR/libglaspen2_objc.a` 收入全部 Swift .o(归档名沿用历史名称);
+3. 链接参数(Flutter frameworks、cairo、Swift 运行时搜索路径/rpath)不变。
 
-**顺序很重要**:Swift 头必须先于 ObjC 编译生成;新增 ObjC 桥接单元时要加进
-`build.rs` 的 `compile_objc` 列表(否则不参与链接)。`src/macos/swift/` 目录级
-`rerun-if-changed` 已覆盖新 .swift;新增 .m 也放进该目录以免漏监视。
+**约束**:Swift 目标文件按源文件 basename 命名, 所以 `.swift` 文件名必须全局唯一;
+`build.rs` 编译前断言, `tests/swift_layout.rs` 同时守护目录结构/无 ObjC/头文件位置。
+新增/移动 Swift 文件无需改 `build.rs` 列表(递归收集 + 逐文件 rerun-if-changed)。
 
 **新增一条跨边界调用的 checklist**:
 
-1. ObjC/C 侧函数先写进 `Bridging.h`(签名与定义逐字一致);
-2. Swift 侧 `@_cdecl`(C ABI)或 `@objc`(ObjC 面)实现,类型过 §2 白名单;
-3. 需要 ObjC 调 Swift 时,Import 生成头(不要手写 extern 声明);
-4. `cargo build` → 跑 `target/debug/glaspen2 --swift-probe` 之类无 GUI 自检;
-5. 行为验证通过才进下一阶段;不通过就保留 ObjC。
+1. C/Rust FFI 声明先写进 `Bridging.h`/`rust_ffi.h`(签名与实现逐字一致);
+2. Swift 侧 `@_cdecl`(C ABI)或 `@objc`(AppKit 面)实现,类型过 §2 白名单;
+3. 保持 `glaspen2_*` 符号名/签名不变(Windows/Rust/契约测试共用);
+4. `cargo build` → 跑对应 `--swift-*-probe` 无 GUI 自检;应用层不得新增 `.m`/`.mm`。
 
 ## 8. S3+ 文件映射计划
 

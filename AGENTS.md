@@ -233,7 +233,7 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
 
 | 路径 | 内容 |
 |---|---|
-| `src/macos/swift/` | macOS 全部原生层(Swift;应用层 ObjC 已清零) |
+| `src/macos/swift/` | macOS 全部原生层(Swift;应用层 ObjC 已清零);按 App/Menu/Input/Surface/Settings/Features/Diagnostics 分目录, 规则见目录内 README |
 | `src/*.rs` | 壳:FRB 面(api.rs)/入口/C ABI 链接 |
 | `crates/glaspen-core/` | 共享核心(存储/模型/导出/更新) |
 | `crates/glaspen-windows/` | Windows 覆盖层(Win32/笔输入/管道) |

@@ -1,14 +1,14 @@
 //! 无限画布镜头数学的唯一实现(D5a: pan/zoom/锚点/限幅/居中/持久化格式)。
 //!
 //! 背景: 镜头**状态**仍由两端壳各自持有(macOS `g_pan_x/g_pan_y/g_zoom`,
-//! `src/macos/swift/run_glue.swift:416-418`;Windows `CAM_PAN_X/CAM_PAN_Y/CAM_ZOOM` 原子量,
+//! `src/macos/swift/App/run_glue.swift:416-418`;Windows `CAM_PAN_X/CAM_PAN_Y/CAM_ZOOM` 原子量,
 //! `crates/glaspen-windows/src/overlay/state.rs:53-78`), 但同一套**数学**曾各写
 //! 一份(`docs/duplication-backlog.md` D5):
 //!
-//! - macOS: `src/macos/swift/run_glue.swift:461-468` `canvas_pan_by`、`:507-535`
+//! - macOS: `src/macos/swift/App/run_glue.swift:461-468` `canvas_pan_by`、`:507-535`
 //!   `canvas_zoom_at`、`:1450-1464` 持久化/载入;视图↔画布换算在
-//!   `src/macos/swift/run_glue.swift:427-440`,`run.m:109-121`(网格绘制)消费变换;
-//!   居中内容在 `src/macos/swift/menu_runtime.swift:1254-1261`。
+//!   `src/macos/swift/App/run_glue.swift:427-440`,`run.m:109-121`(网格绘制)消费变换;
+//!   居中内容在 `src/macos/swift/Menu/menu_runtime.swift:1254-1261`。
 //! - Windows: `crates/glaspen-windows/src/overlay/actions.rs:639`
 //!   `persist_camera`、`:659-668` `canvas_pan_by`、`:672-713`
 //!   `canvas_zoom_at`; `overlay/state.rs:63-102` `cam/set_cam` +
@@ -617,16 +617,17 @@ mod tests {
                 .collect()
         }
 
-        let mac_run = include_str!("../../../src/macos/swift/run_glue.swift");
-        let mac_cam_swift = include_str!("../../../src/macos/swift/canvas_camera.swift");
-        let mac_cam_store_swift = include_str!("../../../src/macos/swift/camera_state_store.swift");
-        let mac_action_swift = include_str!("../../../src/macos/swift/action_dispatch.swift");
+        let mac_run = include_str!("../../../src/macos/swift/App/run_glue.swift");
+        let mac_cam_swift = include_str!("../../../src/macos/swift/Surface/canvas_camera.swift");
+        let mac_cam_store_swift =
+            include_str!("../../../src/macos/swift/Surface/camera_state_store.swift");
+        let mac_action_swift = include_str!("../../../src/macos/swift/Menu/action_dispatch.swift");
         let mac_run_cam =
             format!("{mac_run}\n{mac_cam_swift}\n{mac_action_swift}\n{mac_cam_store_swift}");
         let mac_menu = format!(
             "{}{}",
-            include_str!("../../../src/macos/swift/menu_runtime.swift"),
-            include_str!("../../../src/macos/swift/settings_api_glue.swift")
+            include_str!("../../../src/macos/swift/Menu/menu_runtime.swift"),
+            include_str!("../../../src/macos/swift/Settings/settings_api_glue.swift")
         );
         let win_actions = include_str!("../../../crates/glaspen-windows/src/overlay/actions.rs");
         let win_hotkeys = include_str!("../../../crates/glaspen-windows/src/overlay/hotkeys.rs");

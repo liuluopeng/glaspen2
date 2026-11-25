@@ -46,7 +46,7 @@ Rust 与 Swift **都带行号**。Swift 的调试信息来自 `build.rs` 在 deb
 
 ```bash
 lldb target/debug/glaspen2
-(lldb) b src/macos/swift/settings_api_glue.swift:14   # Swift 文件:行(要带目录)
+(lldb) b src/macos/swift/Settings/settings_api_glue.swift:14   # Swift 文件:行(要带目录)
 (lldb) b glaspen2_macos_settings_json            # C ABI 符号(@_cdecl 导出)也行
 (lldb) b glaspen2::export::page_thumbnails_blob  # Rust: export.rs:2371
 (lldb) b glaspen2_render_thumbnail               # no_mangle 的 C 入口也行

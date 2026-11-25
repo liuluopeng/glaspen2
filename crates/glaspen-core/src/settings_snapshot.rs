@@ -1,7 +1,7 @@
 //! 设置面板快照构建单源(D12)。
 //!
 //! 背景: 面板启动/热重载要拿一份"当前设置"JSON。快照曾是两份手工拼装:
-//! macOS src/macos/swift/menu_runtime.swift 的 glaspen2_macos_settings_json(37 个
+//! macOS src/macos/swift/Menu/menu_runtime.swift 的 glaspen2_macos_settings_json(37 个
 //! @"key": @(值) 的 NSDictionary)与 Windows
 //! crates/glaspen-windows/src/overlay/pipe.rs 的 getSettings 巨型 format!
 //! (同 37 项, 但字段顺序/类型/缺省值各写一遍)。任何一端漏改就会让 Flutter
@@ -904,9 +904,9 @@ mod tests {
     // 负向验证见 docs/duplication-backlog.md D12 进度记录。
 
     const MAC_MENU_SRC: &str = concat!(
-        include_str!("../../../src/macos/swift/menu_runtime.swift"),
-        include_str!("../../../src/macos/swift/settings_api_glue.swift"),
-        include_str!("../../../src/macos/swift/settings_dispatcher.swift")
+        include_str!("../../../src/macos/swift/Menu/menu_runtime.swift"),
+        include_str!("../../../src/macos/swift/Settings/settings_api_glue.swift"),
+        include_str!("../../../src/macos/swift/Settings/settings_dispatcher.swift")
     );
     const WIN_PIPE_SRC: &str = include_str!("../../../crates/glaspen-windows/src/overlay/pipe.rs");
 
@@ -1015,9 +1015,10 @@ mod tests {
     fn adapters_build_panel_snapshot_only_in_core() {
         let mac_code = strip_comments(MAC_MENU_SRC);
         // overrides 组装已迁 Swift(menu_glue.swift), 闸门同时扫描两边。
-        let mac_glue_swift = include_str!("../../../src/macos/swift/menu_glue.swift");
+        let mac_glue_swift = include_str!("../../../src/macos/swift/Menu/menu_glue.swift");
         let win_code = strip_comments(WIN_PIPE_SRC);
-        let mac_snapshot_glue = include_str!("../../../src/macos/swift/settings_api_glue.swift");
+        let mac_snapshot_glue =
+            include_str!("../../../src/macos/swift/Settings/settings_api_glue.swift");
         let fn_at = mac_snapshot_glue
             .find("func settingsApiJSON")
             .expect("settings_api_glue.swift 缺 settingsApiJSON");
@@ -1028,7 +1029,7 @@ mod tests {
         let win_snapshot = pipe_branch(&win_code, "msg_type == \"getSettings\"")
             .expect("Windows 管道缺 getSettings 分支");
 
-        let mac_api_swift = include_str!("../../../src/macos/swift/macos_api.swift");
+        let mac_api_swift = include_str!("../../../src/macos/swift/Settings/macos_api.swift");
         assert!(
             mac_snapshot.contains("glaspen2_settings_snapshot_json")
                 || mac_api_swift.contains("glaspen2_settings_snapshot_json"),

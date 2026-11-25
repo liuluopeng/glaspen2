@@ -4,9 +4,9 @@
 //! [`crate::chord`](D2)单源, 但"按下某个动作到底做什么"仍由两端各写一份分派
 //! (见 `docs/duplication-backlog.md` 的 D3/D3a):
 //!
-//! - macOS: `src/macos/swift/run_glue.swift:1739` 的 `perform_action`(action id →
+//! - macOS: `src/macos/swift/App/run_glue.swift:1739` 的 `perform_action`(action id →
 //!   `perform_hotkey(keyCode)` / 镜头专用分支 / 退出), 事件 tap
-//!   (`src/macos/swift/run_glue.swift:2184-2206`)按 chord 查到 action id 后调用;
+//!   (`src/macos/swift/App/run_glue.swift:2184-2206`)按 chord 查到 action id 后调用;
 //! - Windows: `crates/glaspen-windows/src/overlay/hotkeys.rs:716` 的
 //!   `dispatch_hotkey` → `:742` 的 `perform_action`(action id →
 //!   `overlay/actions.rs` 各 helper / `handle_command`)。
@@ -41,7 +41,7 @@
 /// (`canvas_pan_left` → `Left`)。
 ///
 /// **屏幕位移符号两端当前相反**(本切片不改, 接线时各保留现有符号):
-/// - macOS `perform_action`(`src/macos/swift/run_glue.swift:1763-1777`)把 `Left` 翻成
+/// - macOS `perform_action`(`src/macos/swift/App/run_glue.swift:1763-1777`)把 `Left` 翻成
 ///   `dx = +step`, 而 `canvas_pan_by`(`run.m:461-468`)内部是 `pan -= d`,
 ///   即按左 → 镜头左移 / 内容右移("视野跟随按键", 与普通看图软件一致);
 /// - Windows `perform_action`(`hotkeys.rs:774-777`)把 `Left` 翻成
@@ -559,11 +559,11 @@ mod tests {
     #[test]
     fn adapter_dispatch_covers_every_effect_variant() {
         let mac_src = concat!(
-            include_str!("../../../src/macos/swift/run_glue.swift"),
-            include_str!("../../../src/macos/swift/action_dispatch.swift")
+            include_str!("../../../src/macos/swift/App/run_glue.swift"),
+            include_str!("../../../src/macos/swift/Menu/action_dispatch.swift")
         );
         let win_src = include_str!("../../../crates/glaspen-windows/src/overlay/hotkeys.rs");
-        let mac_action_swift = include_str!("../../../src/macos/swift/action_dispatch.swift");
+        let mac_action_swift = include_str!("../../../src/macos/swift/Menu/action_dispatch.swift");
         let mac_body = format!(
             "{}
 {mac_action_swift}",

@@ -151,7 +151,7 @@ fn main() {
             .probe("cairo")
             .expect("cairo not found via pkg-config (brew install cairo)");
 
-        // ── Swift 原生层(S1):src/macos/swift/*.swift → .o,与 ObjC 同一个归档 ──
+        // ── Swift 原生层:src/macos/swift/**/*.swift → .o,与 ObjC 同一个归档 ──
         // 部署目标取发布包 Info.plist 的 LSMinimumSystemVersion = 12.0
         // (scripts/build-dmg.sh;README 也写 macOS 12+)。S0 报告要求显式设置:
         // swiftc 默认 target 是宿主系统版本(这里 27.2),不设会让产物只能在
@@ -194,18 +194,43 @@ fn main() {
             .join("src")
             .join("macos")
             .join("swift");
-        let mut swift_sources: Vec<std::path::PathBuf> = std::fs::read_dir(&swift_src_dir)
-            .unwrap_or_else(|e| panic!("读取 {} 失败: {e}", swift_src_dir.display()))
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "swift"))
-            .collect();
+        // 按子系统分目录(App/Menu/Input/Surface/Settings/Features/Diagnostics),
+        // 递归收集; Swift 侧仍编译为同一个模块, 目录只影响工程组织。
+        fn collect_swift_sources(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            let entries = std::fs::read_dir(dir)
+                .unwrap_or_else(|e| panic!("读取 {} 失败: {e}", dir.display()));
+            for entry in entries {
+                let path = entry.expect("目录项").path();
+                if path.is_dir() {
+                    collect_swift_sources(&path, out);
+                } else if path.extension().is_some_and(|x| x == "swift") {
+                    out.push(path);
+                }
+            }
+        }
+        let mut swift_sources: Vec<std::path::PathBuf> = Vec::new();
+        collect_swift_sources(&swift_src_dir, &mut swift_sources);
         swift_sources.sort();
         assert!(
             !swift_sources.is_empty(),
             "{} 下没有 .swift 文件(Swift 迁移层不应为空)",
             swift_src_dir.display()
         );
+        // swiftc -c 把每个源文件的目标文件写到当前目录、文件名只取 basename;
+        // 分目录后若出现同名 .swift 会互相覆盖, 这里提前报错而不是静默少链。
+        let mut swift_stems = std::collections::HashSet::new();
+        for src in &swift_sources {
+            let stem = src.file_stem().expect("swift 源文件没有文件名");
+            assert!(
+                swift_stems.insert(stem.to_os_string()),
+                "Swift 文件名必须全局唯一(目标文件按 basename 命名): {}",
+                src.display()
+            );
+        }
+        // 目录级 rerun-if-changed 之外逐文件显式列出: 嵌套目录/新增文件都能可靠触发重建。
+        for src in &swift_sources {
+            println!("cargo:rerun-if-changed={}", src.display());
+        }
 
         let swift_obj_dir = std::path::Path::new(&out_dir).join("swift");
         std::fs::create_dir_all(&swift_obj_dir).expect("创建 Swift 目标文件目录失败");
@@ -267,7 +292,7 @@ fn main() {
         let status = swiftc_cmd.status().expect("Failed to run swiftc");
         assert!(
             status.success(),
-            "swiftc failed to compile src/macos/swift/*.swift"
+            "swiftc failed to compile src/macos/swift/**/*.swift"
         );
 
         let swift_objects: Vec<std::path::PathBuf> = swift_sources

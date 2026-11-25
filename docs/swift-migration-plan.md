@@ -14,7 +14,7 @@
   ObjC 回调只剩"Swift 结果 → NULL/event"。已知缺口:perf_log_event 打点未迁。
 > - 🟨 S7 删除 ObjC 应用源(S7a–S7d 已清死代码/死桥;主体 window/draw view/panel/menu 仍在);
   S8 文档与真机验收待收口。**真机验收(笔/多屏/菜单/玻璃)全部待补**。
-> - 当前 Swift 文件: src/macos/swift/{open_url,interop_probe,status_bar,menu_icons,menu_lookup,menu_builder,menu_builder_full,menu_updater,menu_names,menu_handler,notification,recording_hud,recording_keys,overlay_window,display_monitor,event_tap,event_router}.swift + Bridging.h。
+> - 当前 Swift 文件: 103 个, 已按子系统分目录(src/macos/swift/{App,Menu,Input,Surface,Settings,Features,Diagnostics}/);目录结构/规则见 src/macos/swift/README.md,build.rs 递归收集且文件名全局唯一,tests/swift_layout.rs 守护。
 
 ## 0. 目标 / 非目标
 
@@ -600,3 +600,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-25 | S8-fix(实测第5项) | 修复“涂鸦时多个光标残影”: 迁移时 cursor_invalidate / pen_up_state 把视图坐标(原点左下)误用 `dirty_include_surface_point`(按表面 y 向下翻转), 旧光标位置被算到屏幕另一半, 脏区漏掉 → 旧十字光标残留。两处改为 `dirtyIncludePoint` 视图坐标; 全量 tests/parity 绿 | 需真笔复测残影是否消失 | 本提交 |
 | 2026-11-25 | S8-fix(实测第6项) | 修复磨砂玻璃快捷键无视觉效果: 启动恢复 `startup_glass` 无条件把透明度写成库里的 glass_alpha(用户库=0), 覆盖默认 0.45 → enabled=1 但 alpha=0。与迁移前 ObjC 一致改为仅在 opacity>0 时覆盖; hotkeys probe 增加该回归断言。实测按 ⌘⌃B 后叠加窗口像素变化 495 万(之前 0) | smoke/tests/parity 绿 | 本提交 |
 | 2026-11-25 | S8-audit(迁移语义审计第1轮) | 按最近真机 bug 的模式全面比对 ObjC 迁移语义, 修掉确认的回归: ①笔按下未先收尾漏抬笔的上一笔(63f6a97 迁移丢调用); ②快捷键显式空串解绑被当缺键回退默认(c7e1e96 副作用); ③任意 mouseup 恢复系统光标被塞进 isPen 分支; ④tap-disabled/proximity 被放到禁用态早退之后; ⑤proximity“曾见过”latch 被改成“当前在感应区”(无 proximity 平板悬停失效); ⑥minimap 合成漏减 strip_y(缩略图整体下移 8pt/底部裁切); ⑦隧道落定重复执行 prepare(旧 ObjC 传 NULL, 落点卡顿); ⑧无限画布面板/跳页切换误弹 HUD; ⑨换色/换粗细历史初值 9/2 被改成 -1; ⑩菜单语言切换漏刷“更多▸无限画布”; ⑪启动恢复把画布模式菜单标题无条件覆盖成“飘渺画布”(状态反转); ⑫快捷键快照未加载时缺默认兜底; ⑬lang_code 每次 HUD 泄漏 strdup. 探针增加显式解绑/交换初值断言 | 全量 smoke/测试/parity 绿 | 本提交 |
+| 2026-11-25 | 工程化(目录重构) | src/macos/swift 由 103 个平铺 .swift 重构为 7 个子系统目录(App/Menu/Input/Surface/Settings/Features/Diagnostics), 文件用 git mv 保留历史; build.rs 改为递归收集 + 断言 basename 全局唯一 + 逐文件 rerun-if-changed; 更新 Rust include_str/契约测试/i18n 豁免/文档路径; 新增 src/macos/swift/README.md 与 tests/swift_layout.rs(目录/文件唯一性/无 ObjC/头文件位置守护) | 全量 build/smoke/tests/parity 绿 | 本提交 |

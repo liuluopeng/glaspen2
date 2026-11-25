@@ -50,7 +50,7 @@
 //!
 //! 1. pass 语义与笔画内顺序:软阴影 → 描边 → 墨迹。
 //!    - Windows overlay/pen.rs:67 / :78 / :93(fill_stroke_path 内);
-//!    - macOS 实时 src/macos/swift/panel_glue.swift:701 / :738 / :758(raw_draw_dot /
+//!    - macOS 实时 src/macos/swift/Surface/panel_glue.swift:701 / :738 / :758(raw_draw_dot /
 //!      raw_draw_segment 内);
 //!    - macOS 整页重建 core export/mod.rs:663 / :705 / :734(paint_strokes_into)。
 //! 2. 软阴影三档常量完全同值:(外扩, alpha) = (1.5, 0.20) / (3.0, 0.13) /

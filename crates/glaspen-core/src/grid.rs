@@ -2,9 +2,9 @@
 //!
 //! 背景: 两端壳曾经各写一份同一套画线公式(`docs/duplication-backlog.md» D6):
 //!
-//! - macOS: `src/macos/swift/run_glue.swift:105-230»(`GlaspenDrawView drawRect» 内联的
+//! - macOS: `src/macos/swift/App/run_glue.swift:105-230»(`GlaspenDrawView drawRect» 内联的
 //!   细网格/屏幕分界线/分栏参考线三段几何), 状态与设置键在
-//!   `src/macos/swift/run_glue.swift:410-417,495-500»(`g_grid_size» / `g_grid_divider» /
+//!   `src/macos/swift/App/run_glue.swift:410-417,495-500»(`g_grid_size» / `g_grid_divider» /
 //!   `g_show_grid» / `g_grid_follow_strokes»),启动恢复在 `run.m:3069-3082,3128-3136»。
 //! - Windows: `crates/glaspen-windows/src/overlay/canvas.rs:319-506»
 //!   `OverlayCanvas::draw_grid»(同一套公式 + 像素直写), 状态在
@@ -905,18 +905,19 @@ mod tests {
 
         let mac_main = concat!(
             include_str!("../../../src/macos/swift/rust_ffi.h"),
-            include_str!("../../../src/macos/swift/run_glue.swift")
+            include_str!("../../../src/macos/swift/App/run_glue.swift")
         );
-        let mac_run = include_str!("../../../src/macos/swift/run_glue.swift");
-        let mac_menu = include_str!("../../../src/macos/swift/menu_runtime.swift");
+        let mac_run = include_str!("../../../src/macos/swift/App/run_glue.swift");
+        let mac_menu = include_str!("../../../src/macos/swift/Menu/menu_runtime.swift");
         let mac_panel = format!(
             "{}{}",
-            include_str!("../../../src/macos/swift/panel_glue.swift"),
-            include_str!("../../../src/macos/swift/raw_drawing.swift")
+            include_str!("../../../src/macos/swift/Surface/panel_glue.swift"),
+            include_str!("../../../src/macos/swift/Input/raw_drawing.swift")
         );
         // S7m: 网格层绘制已迁 Swift, 闸门须同时扫 Swift 源(几何仍走 core::grid)。
-        let mac_grid_swift = include_str!("../../../src/macos/swift/overlay_grid.swift");
-        let mac_drawing_swift = include_str!("../../../src/macos/swift/overlay_drawing.swift");
+        let mac_grid_swift = include_str!("../../../src/macos/swift/Surface/overlay_grid.swift");
+        let mac_drawing_swift =
+            include_str!("../../../src/macos/swift/Surface/overlay_drawing.swift");
         let mac_run_grid = format!("{mac_run}\n{mac_grid_swift}\n{mac_drawing_swift}");
         let win_canvas = include_str!("../../../crates/glaspen-windows/src/overlay/canvas.rs");
         let win_actions = include_str!("../../../crates/glaspen-windows/src/overlay/actions.rs");
