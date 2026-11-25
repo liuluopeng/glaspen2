@@ -72,11 +72,11 @@ public func menuLaunchAtLogin() -> Int32 { glaspen2_is_launch_at_login() }
 @_cdecl("glaspen2_menu_set_launch")
 public func menuSetLaunch(_ on: Int32) { MenuHandler.setLaunchAtLogin(enabled: on != 0) }
 @_cdecl("glaspen2_menu_glass_enabled")
-public func menuGlassEnabled() -> Int32 { RenderSettings.glassEnabled ? 1 : 0 }
+public func menuGlassEnabled() -> Int32 { glaspen2_router_glass_enabled() }
 @_cdecl("glaspen2_menu_set_glass")
 public func menuSetGlass(_ on: Int32) { MenuHandler.setGlassEnabled(enabled: on != 0) }
 @_cdecl("glaspen2_menu_outline_enabled")
-public func menuOutlineEnabled() -> Int32 { RenderSettings.outlineEnabled ? 1 : 0 }
+public func menuOutlineEnabled() -> Int32 { glaspen2_router_outline_enabled() }
 @_cdecl("glaspen2_menu_apply_outline")
 public func menuApplyOutline(_ on: Int32) { MenuHandler.setOutlineEnabled(enabled: on != 0) }
 @_cdecl("glaspen2_menu_infinite_enabled")

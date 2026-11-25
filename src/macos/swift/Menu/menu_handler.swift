@@ -82,9 +82,9 @@ import AppKit
     /// 磨砂玻璃应用: 组合 enabled/opacity/飘渺联动, 刷新视图与菜单勾选。
     @objc(applyGlass)
     public static func applyGlass() {
-        let enabled = RenderSettings.glassEnabled
-        let opacity = RenderSettings.glassOpacity
-        let follow = RenderSettings.glassFollow
+        let enabled = glaspen2_router_glass_enabled() != 0
+        let opacity = glaspen2_router_glass_opacity()
+        let follow = glaspen2_router_glass_follow() != 0
         let ethereal = glaspen2_router_ethereal() != 0
         let strokesVisible = glaspen2_router_strokes_visible() != 0
         let hiddenByEthereal = ethereal && follow && !strokesVisible

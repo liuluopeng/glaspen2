@@ -35,6 +35,8 @@
   原 C ABI 符号改 Rust 导出 + 3 个网格 getter; Swift 直接引用改 FFI, 删除 `Settings/view_settings.swift`; 1 个单测。
 - **R10 功能开关/GIF 参数**: `ToggleSettings` 迁 `glaspen-core::toggle_state`(原子量); 16 个 C ABI 符号改 Rust 导出;
   Swift 直接引用改 FFI, 删除 `Settings/toggle_settings.swift`; 1 个单测。
+- **R11 渲染设置**: `RenderSettings` 迁 `glaspen-core::render_state`(玻璃/描边/软阴影/反色/翻转);
+  24 个 C ABI 符号改 Rust 导出; Swift 直接引用改 FFI, 删除 `Settings/render_settings.swift`; 1 个单测。
 
 ## 下一批候选(按风险从低到高)
 
