@@ -75,12 +75,13 @@ public func settingsApiCanvasPayload(_ w: Int32, _ h: Int32, _ action: Int32,
         } else if action == 2 {
             var bx = 0.0, by = 0.0, bx2 = 0.0, by2 = 0.0
             if glaspen2_stroke_bbox(&bx, &by, &bx2, &by2) != 0 {
-                let json = glaspen2_camera_centered(bx, by, bx2, by2,
-                                                    glaspen2_router_screen_w(),
-                                                    glaspen2_router_screen_h(),
-                                                    glaspen2_router_zoom())
-                if let resultDict = CameraState.resultFromJSON(json),
-                   CameraState.assign(result: resultDict, assignZoom: false) {
+                var px = 0.0, py = 0.0, pz = 0.0
+                if glaspen2_camera_centered_values(bx, by, bx2, by2,
+                                                   glaspen2_router_screen_w(),
+                                                   glaspen2_router_screen_h(),
+                                                   glaspen2_router_zoom(),
+                                                   &px, &py, &pz) != 0 {
+                    glaspen2_router_set_camera(px, py, pz, 0)
                     CanvasCamera.applyTransform()
                 }
             }

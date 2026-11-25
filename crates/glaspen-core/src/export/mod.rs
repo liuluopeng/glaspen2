@@ -2575,6 +2575,137 @@ pub extern "C" fn glaspen2_perf_summary() {
     crate::perf::summary();
 }
 
+// ── 镜头结果直出(R5: 去掉 Swift JSON 解析) ──
+
+fn write_camera_out(
+    pan_x: f64,
+    pan_y: f64,
+    zoom: f64,
+    out_x: *mut c_double,
+    out_y: *mut c_double,
+    out_z: *mut c_double,
+) -> bool {
+    if out_x.is_null() || out_y.is_null() || out_z.is_null() {
+        return false;
+    }
+    if !pan_x.is_finite() || !pan_y.is_finite() || !zoom.is_finite() {
+        return false;
+    }
+    unsafe {
+        *out_x = pan_x;
+        *out_y = pan_y;
+        *out_z = zoom;
+    }
+    true
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_camera_pan_values(
+    pan_x: c_double,
+    pan_y: c_double,
+    zoom: c_double,
+    dx: c_double,
+    dy: c_double,
+    out_x: *mut c_double,
+    out_y: *mut c_double,
+    out_z: *mut c_double,
+) -> c_int {
+    let mut cam = Camera::new(pan_x, pan_y, zoom);
+    cam.pan_by(dx, dy);
+    i32::from(write_camera_out(
+        cam.pan_x, cam.pan_y, cam.zoom, out_x, out_y, out_z,
+    ))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_camera_zoom_at_values(
+    pan_x: c_double,
+    pan_y: c_double,
+    zoom: c_double,
+    factor: c_double,
+    vx: c_double,
+    vy: c_double,
+    out_x: *mut c_double,
+    out_y: *mut c_double,
+    out_z: *mut c_double,
+    out_hit_max: *mut c_int,
+    out_hit_min: *mut c_int,
+    out_changed: *mut c_int,
+) -> c_int {
+    let mut cam = Camera::new(pan_x, pan_y, zoom);
+    let out = cam.zoom_at(factor, vx, vy);
+    if !write_camera_out(cam.pan_x, cam.pan_y, cam.zoom, out_x, out_y, out_z) {
+        return 0;
+    }
+    if !out_hit_max.is_null() {
+        unsafe { *out_hit_max = i32::from(out.hit_max) };
+    }
+    if !out_hit_min.is_null() {
+        unsafe { *out_hit_min = i32::from(out.hit_min) };
+    }
+    if !out_changed.is_null() {
+        unsafe { *out_changed = i32::from(out.changed()) };
+    }
+    1
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_camera_zoom_at_center_values(
+    pan_x: c_double,
+    pan_y: c_double,
+    zoom: c_double,
+    factor: c_double,
+    viewport_w: c_double,
+    viewport_h: c_double,
+    out_x: *mut c_double,
+    out_y: *mut c_double,
+    out_z: *mut c_double,
+    out_hit_max: *mut c_int,
+    out_hit_min: *mut c_int,
+    out_changed: *mut c_int,
+) -> c_int {
+    let mut cam = Camera::new(pan_x, pan_y, zoom);
+    let out = cam.zoom_at_center(factor, viewport_w, viewport_h);
+    if !write_camera_out(cam.pan_x, cam.pan_y, cam.zoom, out_x, out_y, out_z) {
+        return 0;
+    }
+    if !out_hit_max.is_null() {
+        unsafe { *out_hit_max = i32::from(out.hit_max) };
+    }
+    if !out_hit_min.is_null() {
+        unsafe { *out_hit_min = i32::from(out.hit_min) };
+    }
+    if !out_changed.is_null() {
+        unsafe { *out_changed = i32::from(out.changed()) };
+    }
+    1
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_camera_centered_values(
+    bx: c_double,
+    by: c_double,
+    bx2: c_double,
+    by2: c_double,
+    viewport_w: c_double,
+    viewport_h: c_double,
+    zoom: c_double,
+    out_x: *mut c_double,
+    out_y: *mut c_double,
+    out_used_zoom: *mut c_double,
+) -> c_int {
+    let mut cam = Camera::new(0.0, 0.0, zoom);
+    let used_zoom = cam.centered_on((bx, by, bx2, by2), (viewport_w, viewport_h));
+    i32::from(write_camera_out(
+        cam.pan_x,
+        cam.pan_y,
+        used_zoom,
+        out_x,
+        out_y,
+        out_used_zoom,
+    ))
+}
+
 // ── 画布输入变换(R4: Swift canvas_input_x/y → Rust) ──
 
 #[unsafe(no_mangle)]

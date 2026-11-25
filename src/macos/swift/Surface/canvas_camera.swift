@@ -2,14 +2,20 @@
 import AppKit
 
 @objc public final class CanvasCamera: NSObject {
+    private static func setCamera(_ px: Double, _ py: Double, _ pz: Double,
+                                  assignZoom: Bool) {
+        glaspen2_router_set_camera(px, py, pz, assignZoom ? 1 : 0)
+    }
+
     @objc(panByDX:dy:)
     public static func panBy(dx: Double, dy: Double) {
         if glaspen2_router_stroke_active() != 0 { return }
-        let json = glaspen2_camera_pan(glaspen2_router_pan_x(),
-                                       glaspen2_router_pan_y(),
-                                       glaspen2_router_zoom(), dx, dy)
-        guard let result = CameraState.resultFromJSON(json) else { return }
-        guard CameraState.assign(result: result, assignZoom: true) else { return }
+        var px = 0.0, py = 0.0, pz = 0.0
+        guard glaspen2_camera_pan_values(glaspen2_router_pan_x(),
+                                         glaspen2_router_pan_y(),
+                                         glaspen2_router_zoom(), dx, dy,
+                                         &px, &py, &pz) != 0 else { return }
+        setCamera(px, py, pz, assignZoom: true)
         glaspen2_router_canvas_apply_transform()
         glaspen2_router_peek_lens_change()
     }
@@ -33,24 +39,30 @@ import AppKit
     @objc(zoomAtFactor:vx:vy:)
     public static func zoomAt(factor: Double, vx: Double, vy: Double) {
         if glaspen2_router_stroke_active() != 0 { return }
-        let json = glaspen2_camera_zoom_at(glaspen2_router_pan_x(),
-                                           glaspen2_router_pan_y(),
-                                           glaspen2_router_zoom(), factor, vx, vy)
-        guard let result = CameraState.resultFromJSON(json) else { return }
-        applyZoomResult(result)
+        var px = 0.0, py = 0.0, pz = 0.0
+        var hitMax: Int32 = 0, hitMin: Int32 = 0, changed: Int32 = 0
+        guard glaspen2_camera_zoom_at_values(glaspen2_router_pan_x(),
+                                             glaspen2_router_pan_y(),
+                                             glaspen2_router_zoom(), factor, vx, vy,
+                                             &px, &py, &pz,
+                                             &hitMax, &hitMin, &changed) != 0 else { return }
+        applyZoom(px, py, pz, hitMax: hitMax, changed: changed)
     }
 
     /// 以视口中心为锚缩放(数学在 core Camera::zoom_at_center)。
     @objc(zoomAtCenterFactor:)
     public static func zoomAtCenter(factor: Double) {
         if glaspen2_router_stroke_active() != 0 { return }
-        let json = glaspen2_camera_zoom_at_center(glaspen2_router_pan_x(),
-                                                  glaspen2_router_pan_y(),
-                                                  glaspen2_router_zoom(), factor,
-                                                  glaspen2_router_screen_w(),
-                                                  glaspen2_router_screen_h())
-        guard let result = CameraState.resultFromJSON(json) else { return }
-        applyZoomResult(result)
+        var px = 0.0, py = 0.0, pz = 0.0
+        var hitMax: Int32 = 0, hitMin: Int32 = 0, changed: Int32 = 0
+        guard glaspen2_camera_zoom_at_center_values(glaspen2_router_pan_x(),
+                                                    glaspen2_router_pan_y(),
+                                                    glaspen2_router_zoom(), factor,
+                                                    glaspen2_router_screen_w(),
+                                                    glaspen2_router_screen_h(),
+                                                    &px, &py, &pz,
+                                                    &hitMax, &hitMin, &changed) != 0 else { return }
+        applyZoom(px, py, pz, hitMax: hitMax, changed: changed)
     }
 
     /// 无限画布: 持久化当前镜头(仅无限模式)。
@@ -72,18 +84,17 @@ import AppKit
     private static var lastZoomHint: TimeInterval = 0
 
     /// 缩放结果应用: 100% 上限提示(1.5s 节流) + 镜头状态 + 变换/peek。
-    @objc(applyZoomResult:)
-    public static func applyZoomResult(_ result: NSDictionary) {
-        func num(_ key: String) -> NSNumber? { result[key] as? NSNumber }
-        if num("hit_max")?.boolValue ?? false {
+    private static func applyZoom(_ px: Double, _ py: Double, _ pz: Double,
+                                  hitMax: Int32, changed: Int32) {
+        if hitMax != 0 {
             let now = ProcessInfo.processInfo.systemUptime
             if now - lastZoomHint > 1.5 {
                 lastZoomHint = now
                 MenuRuntime.notify(MenuRuntime.l10n("zoom.max_100"))
             }
         }
-        if !CameraState.assign(result: result, assignZoom: true) { return }
-        if !(num("changed")?.boolValue ?? false) { return }
+        setCamera(px, py, pz, assignZoom: true)
+        if changed == 0 { return }
         glaspen2_router_canvas_apply_transform()
         glaspen2_router_peek_lens_change()
     }

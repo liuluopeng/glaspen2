@@ -718,22 +718,22 @@ mod tests {
                 "run.m+canvas_camera.swift",
                 mac_run_cam.as_str(),
                 &[
-                    "glaspen2_camera_pan(",
-                    "glaspen2_camera_zoom_at(",
-                    "glaspen2_camera_zoom_at_center(",
+                    "glaspen2_camera_pan_values(",
+                    "glaspen2_camera_zoom_at_values(",
+                    "glaspen2_camera_zoom_at_center_values(",
                     "glaspen2_camera_keyboard_pan_step(",
                     "glaspen2_camera_step_zoom(",
                     "glaspen2_camera_home(",
-                    "CameraState.assign(",
+                    "setCamera(",
                 ][..],
             ),
             (
                 "menu.m",
                 &mac_menu,
                 &[
-                    "glaspen2_camera_centered(",
+                    "glaspen2_camera_centered_values(",
                     "CanvasCamera.home()",
-                    "CameraState.assign(result:",
+                    "glaspen2_router_set_camera(",
                 ][..],
             ),
             (

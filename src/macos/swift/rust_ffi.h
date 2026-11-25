@@ -144,7 +144,7 @@ extern int glaspen2_recording_reset(int slot);
 extern int glaspen2_recording_mode(int slot);
 extern void glaspen2_set_stroke_outline(int enabled);
 
-// S7ak: 镜头 JSON 逻辑已迁 Swift(CameraState), 以下为 ObjC 转发。
+// 镜头数学在 core::camera。生产 Swift 走 R5 的 *_values 直出接口; 下面的 JSON 版本保留给 core 测试/兼容。
 // ObjC 侧使用的 Swift 薄桥前向声明(Bridging.h 只给 Swift 编译单元)
 void glaspen2_router_update_status_icon_state(void);
 extern void glaspen2_set_soft_shadow(int enabled);
@@ -230,3 +230,19 @@ extern int glaspen2_canvas_input(double view_x, double view_y, int infinite,
                                  double page_off_x, double page_off_y,
                                  int is_fit, double paper_ox, double paper_oy,
                                  double paper_scale, double *out_x, double *out_y);
+
+// R5: 镜头结果直出(不再走 JSON 解析; 0 = 非法/NaN)
+extern int glaspen2_camera_pan_values(double pan_x, double pan_y, double zoom,
+                                      double dx, double dy,
+                                      double *out_x, double *out_y, double *out_z);
+extern int glaspen2_camera_zoom_at_values(double pan_x, double pan_y, double zoom,
+                                          double factor, double vx, double vy,
+                                          double *out_x, double *out_y, double *out_z,
+                                          int *out_hit_max, int *out_hit_min, int *out_changed);
+extern int glaspen2_camera_zoom_at_center_values(double pan_x, double pan_y, double zoom,
+                                                 double factor, double viewport_w, double viewport_h,
+                                                 double *out_x, double *out_y, double *out_z,
+                                                 int *out_hit_max, int *out_hit_min, int *out_changed);
+extern int glaspen2_camera_centered_values(double bx, double by, double bx2, double by2,
+                                           double viewport_w, double viewport_h, double zoom,
+                                           double *out_x, double *out_y, double *out_used_zoom);
