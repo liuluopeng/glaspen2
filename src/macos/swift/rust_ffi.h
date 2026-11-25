@@ -395,3 +395,6 @@ extern void glaspen2_rust_dirty_include_surface_point(double x, double y, double
 extern void glaspen2_rust_dirty_include_surface_rect(double x, double y, double w, double h);
 extern int glaspen2_rust_dirty_has(void);
 extern int glaspen2_rust_dirty_rect(double *out);
+
+// R42: 磨砂玻璃应用(默认; GLASPEN2_SWIFT_MENU_ACTIONS=1 回退)
+extern void glaspen2_rust_apply_glass(void);

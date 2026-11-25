@@ -97,6 +97,8 @@
   默认 Rust, `GLASPEN2_SWIFT_MINIMAP_DRAW=1` 回退; minimap=1 真机截图确认右侧条带正常。
 - **R41 脏矩形跟踪**: `DirtyTracker`(复位/点/表面点/表面矩形并集/查询)迁 Rust Mutex 状态;
   run_glue 的 C 包装改调 Rust; 删除 `Input/dirty_tracker.swift`; 虚拟笔截图正常。
+- **R42 磨砂玻璃应用**: `MenuHandler.applyGlass` 的 enabled/opacity/follow/飘渺联动/apply view/菜单勾选迁 Rust;
+  Swift 仅 `GLASPEN2_SWIFT_MENU_ACTIONS=1` 回退。
 
 ## 下一批候选(按风险从低到高)
 

@@ -1918,3 +1918,31 @@ pub extern "C" fn glaspen2_rust_dirty_rect(out: *mut f64) -> i32 {
         None => 0,
     }
 }
+
+// ── R42: 磨砂玻璃应用(组合 enabled/opacity/飘渺联动) ──
+
+unsafe extern "C" {
+    fn glaspen2_router_glass_enabled() -> i32;
+    fn glaspen2_router_glass_opacity() -> f64;
+    fn glaspen2_router_glass_follow() -> i32;
+    fn glaspen2_router_ethereal() -> i32;
+    fn glaspen2_router_strokes_visible() -> i32;
+    fn glaspen2_router_apply_glass_view(alpha: f64, hidden: i32);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_apply_glass() {
+    unsafe {
+        let enabled = glaspen2_router_glass_enabled() != 0;
+        let opacity = glaspen2_router_glass_opacity();
+        let follow = glaspen2_router_glass_follow() != 0;
+        let ethereal = glaspen2_router_ethereal() != 0;
+        let strokes_visible = glaspen2_router_strokes_visible() != 0;
+        let hidden = ethereal && follow && !strokes_visible;
+        glaspen2_router_apply_glass_view(
+            if enabled { opacity * 2.0 } else { 0.0 },
+            i32::from(!enabled || hidden),
+        );
+        glaspen2_router_update_menu_state(444, i32::from(enabled));
+    }
+}
