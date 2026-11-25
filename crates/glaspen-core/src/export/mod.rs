@@ -33,6 +33,8 @@ mod media;
 pub mod nas_backup;
 mod pages;
 pub(crate) mod thumbs;
+#[cfg(target_os = "macos")]
+mod view_state;
 pub(crate) use chat_glue::ink_draft_on_stroke_committed;
 pub(crate) use chat_glue::ink_share_on_stroke_committed;
 pub use chat_glue::*;

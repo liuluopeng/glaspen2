@@ -86,7 +86,7 @@ import AppKit
         let opacity = RenderSettings.glassOpacity
         let follow = RenderSettings.glassFollow
         let ethereal = glaspen2_router_ethereal() != 0
-        let strokesVisible = ViewSettings.strokesVisible
+        let strokesVisible = glaspen2_router_strokes_visible() != 0
         let hiddenByEthereal = ethereal && follow && !strokesVisible
         glaspen2_router_apply_glass_view(enabled ? opacity * 2.0 : 0.0,
                                         (!enabled || hiddenByEthereal) ? 1 : 0)

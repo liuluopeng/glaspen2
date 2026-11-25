@@ -71,6 +71,8 @@ pub mod tunnel;
 pub mod ui;
 pub mod update;
 pub mod updater;
+#[cfg(target_os = "macos")]
+pub mod view_state;
 
 // ---------------------------------------------------------------------------
 // Core types

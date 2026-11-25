@@ -261,3 +261,12 @@ extern char *glaspen2_shortcut_store_chord(const char *action);
 extern char *glaspen2_shortcut_store_action_for_chord(const char *chord);
 extern char *glaspen2_shortcut_store_values_json(void);
 extern int glaspen2_shortcut_store_is_empty(void);
+
+// R9: 网格/绘制状态 getter(状态在 glaspen-core::view_state)
+extern double glaspen2_router_grid_size(void);
+extern int glaspen2_router_grid_divider(void);
+extern int glaspen2_router_grid_follow(void);
+
+// R9: ViewSettings 状态(旧 Swift 直调函数改为 C 入口)
+extern void sw_set_infinite(int on);
+extern void sw_set_minimap(int on);

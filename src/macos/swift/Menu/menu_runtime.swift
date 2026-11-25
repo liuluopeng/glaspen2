@@ -80,7 +80,7 @@ public func menuOutlineEnabled() -> Int32 { RenderSettings.outlineEnabled ? 1 : 
 @_cdecl("glaspen2_menu_apply_outline")
 public func menuApplyOutline(_ on: Int32) { MenuHandler.setOutlineEnabled(enabled: on != 0) }
 @_cdecl("glaspen2_menu_infinite_enabled")
-public func menuInfiniteEnabled() -> Int32 { ViewSettings.infiniteCanvas ? 1 : 0 }
+public func menuInfiniteEnabled() -> Int32 { glaspen2_router_infinite() }
 @_cdecl("glaspen2_menu_apply_infinite")
 public func menuApplyInfinite(_ on: Int32) {
     CanvasMode.applyInfinite(on: on != 0, notify: true)

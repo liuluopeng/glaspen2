@@ -25,18 +25,18 @@ import CoreGraphics
     /// drawRect 网格层: 门控 + pan/zoom 换算 + core::grid 三段线段绘制。
     @objc(drawGridWithContext:bounds:clipRect:)
     public static func drawGrid(_ ctx: CGContext, bounds: NSRect, clipRect: NSRect) {
-        let showGrid = ViewSettings.showGrid
-        let divider = ViewSettings.gridDivider
+        let showGrid = glaspen2_router_show_grid() != 0
+        let divider = glaspen2_router_grid_divider()
         let tunActive = TunnelState.active
-        let strokesVisible = ViewSettings.strokesVisible
-        let follow = ViewSettings.gridFollowStrokes
+        let strokesVisible = glaspen2_router_strokes_visible() != 0
+        let follow = glaspen2_router_grid_follow() != 0
         guard (showGrid || divider > 0) && !tunActive
             && (strokesVisible || !follow) else { return }
         let viewW = Double(bounds.size.width)
         let viewH = Double(bounds.size.height)
         guard viewW > 0, viewH > 0 else { return }
         var panX = 0.0, panY = 0.0, zoom = 1.0
-        if ViewSettings.infiniteCanvas {
+        if glaspen2_router_infinite() != 0 {
             panX = CameraStore.panX
             panY = CameraStore.panY
             let z = CameraStore.zoom
@@ -45,7 +45,7 @@ import CoreGraphics
             panX = -CameraStore.pageOffX
             panY = -CameraStore.pageOffY
         }
-        let gridSize = ViewSettings.gridSize
+        let gridSize = glaspen2_router_grid_size()
         let clipX0 = Double(clipRect.minX), clipX1 = Double(clipRect.maxX)
         let clipY0 = viewH - Double(clipRect.maxY)
         let clipY1 = viewH - Double(clipRect.minY)

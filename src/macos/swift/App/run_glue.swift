@@ -16,7 +16,7 @@ public func runCameraMods() -> UInt { MenuRuntime.maskFor(action: "canvas_zoom_i
 public func runState() -> Int32 {
     (ToggleSettings.enabled ? 1 : 0)
         | ((PenState.strokeActive ? 1 : 0) << 1)
-        | ((ViewSettings.infiniteCanvas ? 1 : 0) << 2)
+        | ((glaspen2_router_infinite()) << 2)
 }
 
 @_cdecl("glaspen2_router_draw_height")
@@ -49,7 +49,7 @@ public func runVirtualPenUserData() -> Int64 { 0x5650_4E31 }
 
 @_cdecl("glaspen2_router_pen_state")
 public func runPenState() -> Int32 {
-    (ViewSettings.strokesVisible ? 1 : 0)
+    (glaspen2_router_strokes_visible())
         | ((PenState.strokeActive ? 1 : 0) << 1)
         | ((CursorState.visible ? 1 : 0) << 2)
 }
@@ -110,7 +110,7 @@ public func runUpdateStatusIcon() {
     StatusIconUpdater.apply(item: item, eraser: PenState.eraserMode,
                             enabled: ToggleSettings.enabled,
                             ethereal: ToggleSettings.ethereal,
-                            infinite: ViewSettings.infiniteCanvas,
+                            infinite: glaspen2_router_infinite() != 0,
                             widthScale: PenSettingsStore.widthScale,
                             penRed: PenSettingsStore.penR,
                             penGreen: PenSettingsStore.penG,
@@ -173,7 +173,7 @@ public func runPeekLensChange() { EtherealMode.peekLensChange() }
 
 @_cdecl("glaspen2_router_event_tap_reinstall")
 public func runEventTapReinstall() {
-    EventTapInstaller.install(includeScroll: ViewSettings.infiniteCanvas)
+    EventTapInstaller.install(includeScroll: glaspen2_router_infinite() != 0)
 }
 
 @_cdecl("glaspen2_router_dirty_reset")
@@ -244,8 +244,8 @@ public func runInvertApply(_ on: Int32) { panelInvertApply(on) }
 
 @_cdecl("glaspen2_router_restore_canvas_flags")
 public func runRestoreCanvasFlags(_ infinite: Int32, _ minimap: Int32, _ ethereal: Int32) {
-    viewSetInfinite(infinite)
-    viewSetMinimap(minimap)
+    sw_set_infinite(infinite)
+    sw_set_minimap(minimap)
     ToggleSettings.ethereal = ethereal != 0
 }
 

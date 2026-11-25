@@ -16,13 +16,13 @@ import AppKit
         PenPresets.loadPresets()
 
         SettingsDispatcher.apply(key: "gridSize", value: "55")
-        check("gridSize", ViewSettings.gridSize == 55)
+        check("gridSize", glaspen2_router_grid_size() == 55)
         SettingsDispatcher.apply(key: "gridDivider", value: "2")
-        check("gridDivider", ViewSettings.gridDivider == 2)
+        check("gridDivider", glaspen2_router_grid_divider() == 2)
         SettingsDispatcher.apply(key: "language", value: "\"en\"")
         check("language", glaspen2_router_lang() == 1)
         SettingsDispatcher.apply(key: "minimap", value: "true")
-        check("minimap", ViewSettings.minimapEnabled)
+        check("minimap", glaspen2_router_minimap_enabled() != 0)
         SettingsDispatcher.apply(key: "flipEffect", value: "1")
         check("flipEffect", RenderSettings.flipEffect == 1)
         SettingsDispatcher.apply(key: "gifFps", value: "30")
@@ -40,7 +40,7 @@ import AppKit
         SettingsDispatcher.apply(key: "width", value: "5")
         check("width", PenSettingsStore.selectedWidth == 5)
         SettingsDispatcher.apply(key: "gridFollowStrokes", value: "true")
-        check("gridFollowStrokes", ViewSettings.gridFollowStrokes)
+        check("gridFollowStrokes", glaspen2_router_grid_follow() != 0)
 
         guard let raw = MacosApi.settingsJSON() else {
             NSLog("[settings-probe] FAIL settings_json nil")
