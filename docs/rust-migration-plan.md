@@ -303,3 +303,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 结论: 按“纯逻辑/状态优先迁 Rust + 必要 AppKit 壳保留”的既定方法, 迁移已覆盖主要逻辑/状态/绘制编排;
 但“整个应用层 Rust”口径仍未完成, 目标保持 active。
+
+
+## R77 虚拟键码名表迁 Rust
+
+- macOS 虚拟键码 -> chord 键名(70 项)迁 Rust, C 返回堆字符串(Swift free);
+- `MenuRuntime.keycodeName` 改调 Rust, 删除 `Input/shortcut_names.swift` 与旧 C 包装;
+- ⌘⌃1/⌘⌃` 真机日志 `[flip] 隐藏间隙 320ms`, 键盘动作链路正常。

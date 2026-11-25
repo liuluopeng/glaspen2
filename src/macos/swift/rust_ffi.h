@@ -529,3 +529,6 @@ extern unsigned char *glaspen2_rust_canvas_overview(double width, double height,
 
 // R74: 动作 effect 分派(默认; GLASPEN2_SWIFT_ACTION_DISPATCH=1 回退)
 extern int glaspen2_rust_perform_action(const char *action);
+
+// R77: 虚拟键码 -> chord 键名(调用方 free)
+extern char *glaspen2_rust_keycode_name(unsigned short key_code);
