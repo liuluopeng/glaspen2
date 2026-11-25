@@ -20,7 +20,7 @@ import AppKit
         SettingsDispatcher.apply(key: "gridDivider", value: "2")
         check("gridDivider", ViewSettings.gridDivider == 2)
         SettingsDispatcher.apply(key: "language", value: "\"en\"")
-        check("language", AppState.lang == 1)
+        check("language", glaspen2_router_lang() == 1)
         SettingsDispatcher.apply(key: "minimap", value: "true")
         check("minimap", ViewSettings.minimapEnabled)
         SettingsDispatcher.apply(key: "flipEffect", value: "1")

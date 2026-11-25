@@ -140,7 +140,7 @@ private let runLangZhPtr: UnsafeMutablePointer<CChar> = strdup("zh")!
 @_cdecl("glaspen2_router_lang_code")
 public func runLangCode() -> UnsafePointer<CChar>? {
     // 旧实现返回静态字符串; 这里同样只分配一次, 不再每次页信息 HUD 泄漏一小块。
-    UnsafePointer(AppState.lang == 1 ? runLangEnPtr : runLangZhPtr)
+    UnsafePointer(glaspen2_router_lang() == 1 ? runLangEnPtr : runLangZhPtr)
 }
 
 @_cdecl("glaspen2_router_perf_summary")

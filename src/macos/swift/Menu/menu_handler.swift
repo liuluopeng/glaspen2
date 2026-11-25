@@ -8,7 +8,7 @@ import AppKit
 
     @objc(toggleLanguage)
     public static func toggleLanguage() {
-        let next = Int32(AppState.lang) == 1 ? 0 : 1
+        let next = glaspen2_router_lang() == 1 ? 0 : 1
         menuSetLang(Int32(next))
         let code = next == 1 ? "en" : "zh"
         "language".withCString { key in

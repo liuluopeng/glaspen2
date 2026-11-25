@@ -25,6 +25,8 @@
   新增 FFI `glaspen2_canvas_input`(一次输出 x/y), Swift 笔桥改调 Rust, 删除旧 C 导出; 2 个单测。
 - **R5 镜头结果直出**: 新增 `glaspen2_camera_{pan,zoom_at,zoom_at_center,centered}_values` 系列(out 参数)替代 JSON 解析;
   Swift `CanvasCamera`/`settings_api_glue` 改调, 删除 `camera_state.swift`; 更新 D5b 镜头接线闸门 token。
+- **R6 壳全局状态**: `AppState`(屏幕尺寸/语言)迁入 `glaspen-core::shell_state`(原子量);
+  C ABI 同名符号改由 Rust 导出, Swift 三处直接引用改 FFI, 删除 `App/app_state.swift`; 1 个单测。
 
 ## 下一批候选(按风险从低到高)
 

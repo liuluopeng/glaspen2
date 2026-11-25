@@ -246,3 +246,8 @@ extern int glaspen2_camera_zoom_at_center_values(double pan_x, double pan_y, dou
 extern int glaspen2_camera_centered_values(double bx, double by, double bx2, double by2,
                                            double viewport_w, double viewport_h, double zoom,
                                            double *out_x, double *out_y, double *out_used_zoom);
+
+// R6: 壳全局状态(Swift AppState → glaspen-core::shell_state)
+extern void glaspen2_router_set_lang(int value);
+extern int sw_app_screen_w(void);
+extern int sw_app_screen_h(void);

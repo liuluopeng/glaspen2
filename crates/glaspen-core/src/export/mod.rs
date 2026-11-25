@@ -2527,6 +2527,56 @@ pub extern "C" fn glaspen2_width_name(index: c_int, lang: c_int) -> *mut c_char 
     return_c_string(text.to_string())
 }
 
+// ── 壳全局状态(R6: Swift AppState → Rust) ──
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_screen_w() -> c_double {
+    crate::shell_state::screen_w() as f64
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_screen_h() -> c_double {
+    crate::shell_state::screen_h() as f64
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_set_screen_size(w: c_int, h: c_int) {
+    crate::shell_state::set_screen_size(w, h);
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_lang() -> c_int {
+    crate::shell_state::lang()
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_set_lang(value: c_int) {
+    crate::shell_state::set_lang(value);
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_startup_set_lang(lang: c_int) {
+    crate::shell_state::startup_set_lang(lang);
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_app_screen_w() -> c_int {
+    crate::shell_state::screen_w()
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_app_screen_h() -> c_int {
+    crate::shell_state::screen_h()
+}
+
 // ── 性能日志(R3: Swift PerfLog → Rust) ──
 
 #[cfg(target_os = "macos")]

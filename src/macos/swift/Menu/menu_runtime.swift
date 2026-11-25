@@ -3,7 +3,7 @@ import AppKit
 
 @objc public final class MenuRuntime: NSObject {
     static func l10n(_ key: String) -> String { I18nText.text(key) }
-    static func pair(_ zh: String, _ en: String) -> String { AppState.lang == 0 ? zh : en }
+    static func pair(_ zh: String, _ en: String) -> String { glaspen2_router_lang() == 0 ? zh : en }
     static func notify(_ text: String) { NotificationPresenter.show(text: text) }
     static func setMenuTitle(tag: Int32, title: String) {
         guard let item = MenuLookup.item(tag: Int(tag), inMenu: UIAnchors.menu) else { return }
@@ -56,9 +56,9 @@ import AppKit
 
 // C ABI 薄桥(供剩余 ObjC 与 Swift 既有 Bridging 声明使用)
 @_cdecl("glaspen2_menu_lang")
-public func menuLang() -> Int32 { AppState.lang }
+public func menuLang() -> Int32 { glaspen2_router_lang() }
 @_cdecl("glaspen2_menu_set_lang")
-public func menuSetLang(_ value: Int32) { AppState.lang = value == 1 ? 1 : 0 }
+public func menuSetLang(_ value: Int32) { glaspen2_router_set_lang(value) }
 @_cdecl("glaspen2_menu_refresh_texts")
 public func menuRefreshTexts() { MenuTextUpdater.update() }
 @_cdecl("glaspen2_menu_launch_at_login")
@@ -99,8 +99,8 @@ public func menuSelectWidth(_ idx: Int32) { MenuHandler.setWidth(index: idx) }
 public func menuSaveXoj() { glaspen2_save_xoj() }
 @_cdecl("glaspen2_menu_screen_size")
 public func menuScreenSize(_ w: UnsafeMutablePointer<Int32>?, _ h: UnsafeMutablePointer<Int32>?) {
-    w?.pointee = Int32(AppState.screenW)
-    h?.pointee = Int32(AppState.screenH)
+    w?.pointee = sw_app_screen_w()
+    h?.pointee = sw_app_screen_h()
 }
 @_cdecl("glaspen2_menu_export_infinite_pdf_paged")
 public func menuExportPDFPaged(_ w: Int32, _ h: Int32) -> Int32 {
