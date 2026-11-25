@@ -10,7 +10,7 @@ public func appRun() {
 }
 
 @_cdecl("glaspen2_router_camera_mods")
-public func runCameraMods() -> UInt { ShortcutMask.maskFor(action: "canvas_zoom_in") }
+public func runCameraMods() -> UInt { MenuRuntime.maskFor(action: "canvas_zoom_in") }
 
 @_cdecl("glaspen2_router_state")
 public func runState() -> Int32 {

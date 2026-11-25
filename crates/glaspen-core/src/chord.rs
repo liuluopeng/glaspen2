@@ -251,6 +251,43 @@ fn windows_legacy_target(action: &str, norm: &str) -> Option<&'static str> {
     }
 }
 
+/// chord → AppKit `NSEvent.ModifierFlags.rawValue` 位掩码(R7)。
+///
+/// 只解析 cmd/ctrl/alt/shift 四个修饰键, 与迁移前 Swift `ShortcutMask` 一致;
+/// 数值是 Cocoa 的 NSEventModifierFlag 原始值(cmd=1<<20, ctrl=1<<18,
+/// alt=1<<19, shift=1<<17), 供 macOS Swift 壳直接使用; 非 macOS 不编译。
+#[cfg(target_os = "macos")]
+pub fn appkit_modifier_mask(chord: &str) -> u64 {
+    const CMD: u64 = 1 << 20;
+    const CTRL: u64 = 1 << 18;
+    const ALT: u64 = 1 << 19;
+    const SHIFT: u64 = 1 << 17;
+    let mut mask = 0u64;
+    for part in chord.split('+') {
+        mask |= match part {
+            "cmd" => CMD,
+            "ctrl" => CTRL,
+            "alt" => ALT,
+            "shift" => SHIFT,
+            _ => 0,
+        };
+    }
+    mask
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod appkit_mask_tests {
+    use super::*;
+
+    #[test]
+    fn modifier_mask_matches_appkit_flags() {
+        assert_eq!(appkit_modifier_mask("cmd+ctrl+1"), (1 << 20) | (1 << 18));
+        assert_eq!(appkit_modifier_mask("alt+shift+`"), (1 << 19) | (1 << 17));
+        assert_eq!(appkit_modifier_mask(""), 0);
+        assert_eq!(appkit_modifier_mask("cmd+unknown"), 1 << 20);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

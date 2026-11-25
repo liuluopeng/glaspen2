@@ -2625,6 +2625,18 @@ pub extern "C" fn glaspen2_perf_summary() {
     crate::perf::summary();
 }
 
+// ── chord 修饰键掩码(R7: Swift ShortcutMask → Rust) ──
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_chord_modifier_mask(chord: *const c_char) -> u64 {
+    if chord.is_null() {
+        return 0;
+    }
+    let chord = unsafe { CStr::from_ptr(chord) }.to_string_lossy();
+    crate::chord::appkit_modifier_mask(&chord)
+}
+
 // ── 镜头结果直出(R5: 去掉 Swift JSON 解析) ──
 
 fn write_camera_out(

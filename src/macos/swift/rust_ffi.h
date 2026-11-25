@@ -251,3 +251,6 @@ extern int glaspen2_camera_centered_values(double bx, double by, double bx2, dou
 extern void glaspen2_router_set_lang(int value);
 extern int sw_app_screen_w(void);
 extern int sw_app_screen_h(void);
+
+// R7: chord → NSEvent.ModifierFlags.rawValue 掩码(解析在 core::chord)
+extern unsigned long long glaspen2_chord_modifier_mask(const char *chord);

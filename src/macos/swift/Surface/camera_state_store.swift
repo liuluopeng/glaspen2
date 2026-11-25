@@ -77,4 +77,4 @@ public func cameraStart(_ x: Double, _ y: Double) {
 public func cameraClearDraggingAlias() { CameraStore.mouseDragging = false }
 
 @_cdecl("glaspen2_router_camera_pan_mods")
-public func cameraPanMods() -> UInt { ShortcutMask.maskFor(action: "canvas_pan_up") }
+public func cameraPanMods() -> UInt { MenuRuntime.maskFor(action: "canvas_pan_up") }

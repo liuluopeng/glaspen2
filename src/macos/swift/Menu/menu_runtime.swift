@@ -38,6 +38,12 @@ import AppKit
     static func shortcutChord(_ action: String) -> String? {
         ShortcutStore.chord(forAction: action)
     }
+    /// R7: 动作 → NSEvent.ModifierFlags.rawValue(解析在 core::chord)。
+    static func maskFor(action: String) -> UInt {
+        guard let chord = ShortcutStore.chord(forAction: action), !chord.isEmpty else { return 0 }
+        return UInt(chord.withCString { glaspen2_chord_modifier_mask($0) })
+    }
+
     static func shortcutReserved(_ chord: String) -> Bool {
         chord.withCString { glaspen2_chord_reserved($0) != 0 }
     }
