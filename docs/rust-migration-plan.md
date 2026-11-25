@@ -45,6 +45,8 @@
   smoke(默认+Rust 开关)与全量测试均绿; 下一步再迁状态栏图标/菜单/覆盖窗。
 - **R15 覆盖窗预研**: `macos_shell` 增加 `glaspen2_rust_overlay_window_create`, Rust 创建主覆盖 `NSWindow`
   (无边框/最大层级/透明/穿透/全空间); Swift `OverlayWindowFactory` 仅在 `GLASPEN2_RUST_OVERLAY=1` 时使用, 默认 Swift/失败回退。
+- **R16 覆盖窗内容层**: `macos_shell` 增加 Rust 创建内容容器 `NSView`(layer-backed)与磨砂玻璃 `NSVisualEffectView`
+  (behind-window/light/active); `OverlayWindowFactory` 同开关复用, 默认 Swift/失败回退。
 
 ## 下一批候选(按风险从低到高)
 

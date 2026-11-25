@@ -24,6 +24,53 @@ pub extern "C" fn glaspen2_rust_status_item_create() -> *mut c_void {
     Retained::into_raw(item) as *mut c_void
 }
 
+/// R16: 创建覆盖层内容容器(NSView, layer-backed)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_overlay_content_view_create(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> *mut c_void {
+    use objc2_app_kit::NSView;
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+    let Some(mtm) = MainThreadMarker::new() else {
+        return std::ptr::null_mut();
+    };
+    let frame = NSRect::new(NSPoint::new(x, y), NSSize::new(width, height));
+    let view = NSView::initWithFrame(NSView::alloc(mtm), frame);
+    view.setWantsLayer(true);
+    Retained::into_raw(view) as *mut c_void
+}
+
+/// R16: 创建磨砂玻璃 NSVisualEffectView(behind-window/light/active)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_overlay_glass_view_create(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    enabled: i32,
+    opacity: f64,
+) -> *mut c_void {
+    use objc2_app_kit::{
+        NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView,
+    };
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+    let Some(mtm) = MainThreadMarker::new() else {
+        return std::ptr::null_mut();
+    };
+    let frame = NSRect::new(NSPoint::new(x, y), NSSize::new(width, height));
+    let view = NSVisualEffectView::initWithFrame(NSVisualEffectView::alloc(mtm), frame);
+    let enabled = enabled != 0;
+    view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
+    view.setMaterial(NSVisualEffectMaterial::Light);
+    view.setState(NSVisualEffectState::Active);
+    view.setAlphaValue(if enabled { opacity * 2.0 } else { 0.0 });
+    view.setHidden(!enabled);
+    Retained::into_raw(view) as *mut c_void
+}
+
 /// R15: 用 Rust/objc2 创建覆盖层主窗口(层级/透明/穿透/集合行为),
 /// 返回 +1 持有指针; Swift 仅在 `GLASPEN2_RUST_OVERLAY=1` 时使用。
 #[unsafe(no_mangle)]

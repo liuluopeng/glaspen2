@@ -42,6 +42,12 @@ import AppKit
     /// alpha/hidden 与原 ObjC 公式一致(enabled ? opacity*2 : 0)。
     @objc(makeGlassViewWithFrame:enabled:opacity:)
     public static func makeGlassView(frame: NSRect, enabled: Bool, opacity: Double) -> NSVisualEffectView {
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_OVERLAY"] == "1",
+           let p = glaspen2_rust_overlay_glass_view_create(frame.origin.x, frame.origin.y,
+                                                           frame.size.width, frame.size.height,
+                                                           enabled ? 1 : 0, opacity) {
+            return Unmanaged<NSVisualEffectView>.fromOpaque(p).takeUnretainedValue()
+        }
         let view = NSVisualEffectView(frame: frame)
         view.blendingMode = .behindWindow
         view.material = .light
@@ -73,6 +79,11 @@ import AppKit
     /// S5-4: 内容容器视图(layer-backed), 由 ObjC 继续往里加玻璃/绘制视图。
     @objc(makeContentViewWithFrame:)
     public static func makeContentView(frame: NSRect) -> NSView {
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_OVERLAY"] == "1",
+           let p = glaspen2_rust_overlay_content_view_create(frame.origin.x, frame.origin.y,
+                                                            frame.size.width, frame.size.height) {
+            return Unmanaged<NSView>.fromOpaque(p).takeUnretainedValue()
+        }
         let view = NSView(frame: frame)
         view.wantsLayer = true
         return view

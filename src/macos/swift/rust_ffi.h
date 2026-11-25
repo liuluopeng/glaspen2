@@ -280,3 +280,8 @@ extern void *glaspen2_rust_status_item_create(void);
 
 // R15: Rust 创建覆盖层主窗口(opt-in: GLASPEN2_RUST_OVERLAY=1)
 extern void *glaspen2_rust_overlay_window_create(double x, double y, double width, double height);
+
+// R16: Rust 创建覆盖层内容容器/磨砂玻璃视图(opt-in: GLASPEN2_RUST_OVERLAY=1)
+extern void *glaspen2_rust_overlay_content_view_create(double x, double y, double width, double height);
+extern void *glaspen2_rust_overlay_glass_view_create(double x, double y, double width, double height,
+                                                    int enabled, double opacity);
