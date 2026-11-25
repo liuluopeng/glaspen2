@@ -109,6 +109,8 @@
   删除 `camera_state_store.swift`; queue/flush 桥移入 `camera_mouse_pan.swift`; overlay_grid/run_glue 改读 Rust; 虚拟笔截图正常。
 - **R47 画笔光标状态**: `CursorState` 的 x/y/visible/penDrawing/lastFlush 迁 Rust; NSCursor 实例仍 Swift;
   run_glue/pen_state/event_router/misc_state/overlay_grid 改读 Rust; 虚拟笔截图正常。
+- **R48 原始笔迹状态**: `PenState` 的 rawLastX/Y/W、rawHasLast/Prev、rawPrevX/Y、rawPathLen 迁 Rust;
+  `clearRaw`/`updateAfterSegment` 走 Rust; Swift 保留同 API 计算属性; 虚拟笔截图正常。
 
 ## 下一批候选(按风险从低到高)
 

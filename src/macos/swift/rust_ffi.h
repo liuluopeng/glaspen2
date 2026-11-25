@@ -426,3 +426,24 @@ extern int sw_cursor_visible(void);
 extern double sw_cursor_x(void);
 extern double sw_cursor_y(void);
 extern void sw_cursor_show(void);
+
+
+// R48: 原始笔迹状态
+extern double glaspen2_rust_pen_raw_last_x(void);
+extern void glaspen2_rust_pen_set_raw_last_x(double v);
+extern double glaspen2_rust_pen_raw_last_y(void);
+extern void glaspen2_rust_pen_set_raw_last_y(double v);
+extern double glaspen2_rust_pen_raw_last_w(void);
+extern void glaspen2_rust_pen_set_raw_last_w(double v);
+extern double glaspen2_rust_pen_raw_path_len(void);
+extern void glaspen2_rust_pen_set_raw_path_len(double v);
+extern double glaspen2_rust_pen_raw_prev_x(void);
+extern void glaspen2_rust_pen_set_raw_prev_x(double v);
+extern double glaspen2_rust_pen_raw_prev_y(void);
+extern void glaspen2_rust_pen_set_raw_prev_y(double v);
+extern int glaspen2_rust_pen_raw_has_last(void);
+extern void glaspen2_rust_pen_set_raw_has_last(int v);
+extern int glaspen2_rust_pen_raw_has_prev(void);
+extern void glaspen2_rust_pen_set_raw_has_prev(int v);
+extern void glaspen2_rust_pen_clear_raw(void);
+extern void glaspen2_rust_pen_update_after_segment(double x, double y, double width);

@@ -2331,3 +2331,112 @@ pub extern "C" fn glaspen2_rust_cursor_last_flush() -> u64 {
 pub extern "C" fn glaspen2_rust_cursor_set_last_flush(value: u64) {
     CUR_LAST_FLUSH.store(value, std::sync::atomic::Ordering::Relaxed);
 }
+
+// ── R48: 原始笔迹状态(raw last/prev/path) ──
+
+static RAW_LAST_X: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static RAW_LAST_Y: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static RAW_LAST_W: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static RAW_PATH_LEN: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static RAW_PREV_X: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static RAW_PREV_Y: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static RAW_HAS_LAST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static RAW_HAS_PREV: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_raw_last_x() -> f64 {
+    f64::from_bits(RAW_LAST_X.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_set_raw_last_x(v: f64) {
+    RAW_LAST_X.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_raw_last_y() -> f64 {
+    f64::from_bits(RAW_LAST_Y.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_set_raw_last_y(v: f64) {
+    RAW_LAST_Y.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_raw_last_w() -> f64 {
+    f64::from_bits(RAW_LAST_W.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_set_raw_last_w(v: f64) {
+    RAW_LAST_W.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_raw_path_len() -> f64 {
+    f64::from_bits(RAW_PATH_LEN.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_set_raw_path_len(v: f64) {
+    RAW_PATH_LEN.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_raw_prev_x() -> f64 {
+    f64::from_bits(RAW_PREV_X.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_set_raw_prev_x(v: f64) {
+    RAW_PREV_X.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_raw_prev_y() -> f64 {
+    f64::from_bits(RAW_PREV_Y.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_set_raw_prev_y(v: f64) {
+    RAW_PREV_Y.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_raw_has_last() -> i32 {
+    i32::from(RAW_HAS_LAST.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_set_raw_has_last(v: i32) {
+    RAW_HAS_LAST.store(v != 0, std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_raw_has_prev() -> i32 {
+    i32::from(RAW_HAS_PREV.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_set_raw_has_prev(v: i32) {
+    RAW_HAS_PREV.store(v != 0, std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_clear_raw() {
+    use std::sync::atomic::Ordering;
+    RAW_HAS_LAST.store(false, Ordering::Relaxed);
+    RAW_HAS_PREV.store(false, Ordering::Relaxed);
+    RAW_PATH_LEN.store(0.0f64.to_bits(), Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_update_after_segment(x: f64, y: f64, width: f64) {
+    use std::sync::atomic::Ordering;
+    let has_last = glaspen2_rust_pen_raw_has_last() != 0;
+    if has_last {
+        let lx = glaspen2_rust_pen_raw_last_x();
+        let ly = glaspen2_rust_pen_raw_last_y();
+        let dx = x - lx;
+        let dy = y - ly;
+        let len = glaspen2_rust_pen_raw_path_len() + (dx * dx + dy * dy).sqrt();
+        RAW_PATH_LEN.store(len.to_bits(), Ordering::Relaxed);
+    }
+    RAW_PREV_X.store(glaspen2_rust_pen_raw_last_x().to_bits(), Ordering::Relaxed);
+    RAW_PREV_Y.store(glaspen2_rust_pen_raw_last_y().to_bits(), Ordering::Relaxed);
+    RAW_HAS_PREV.store(true, Ordering::Relaxed);
+    RAW_LAST_X.store(x.to_bits(), Ordering::Relaxed);
+    RAW_LAST_Y.store(y.to_bits(), Ordering::Relaxed);
+    RAW_LAST_W.store(width.to_bits(), Ordering::Relaxed);
+    RAW_HAS_LAST.store(true, Ordering::Relaxed);
+}

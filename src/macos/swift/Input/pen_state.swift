@@ -3,14 +3,38 @@ import AppKit
 import Darwin
 
 @objc public final class PenState: NSObject {
-    static var rawLastX = 0.0
-    static var rawLastY = 0.0
-    static var rawLastW = 0.0
-    static var rawHasLast = false
-    static var rawHasPrev = false
-    static var rawPrevX = 0.0
-    static var rawPrevY = 0.0
-    static var rawPathLen = 0.0
+    static var rawLastX: Double {
+        get { glaspen2_rust_pen_raw_last_x() }
+        set { glaspen2_rust_pen_set_raw_last_x(newValue) }
+    }
+    static var rawLastY: Double {
+        get { glaspen2_rust_pen_raw_last_y() }
+        set { glaspen2_rust_pen_set_raw_last_y(newValue) }
+    }
+    static var rawLastW: Double {
+        get { glaspen2_rust_pen_raw_last_w() }
+        set { glaspen2_rust_pen_set_raw_last_w(newValue) }
+    }
+    static var rawHasLast: Bool {
+        get { glaspen2_rust_pen_raw_has_last() != 0 }
+        set { glaspen2_rust_pen_set_raw_has_last(newValue ? 1 : 0) }
+    }
+    static var rawHasPrev: Bool {
+        get { glaspen2_rust_pen_raw_has_prev() != 0 }
+        set { glaspen2_rust_pen_set_raw_has_prev(newValue ? 1 : 0) }
+    }
+    static var rawPrevX: Double {
+        get { glaspen2_rust_pen_raw_prev_x() }
+        set { glaspen2_rust_pen_set_raw_prev_x(newValue) }
+    }
+    static var rawPrevY: Double {
+        get { glaspen2_rust_pen_raw_prev_y() }
+        set { glaspen2_rust_pen_set_raw_prev_y(newValue) }
+    }
+    static var rawPathLen: Double {
+        get { glaspen2_rust_pen_raw_path_len() }
+        set { glaspen2_rust_pen_set_raw_path_len(newValue) }
+    }
     static var strokeActive = false
     static var eraserMode = false
     /// 当前笔是否在感应区(proximity enter 后 true, exit 后 false)。
@@ -19,25 +43,10 @@ import Darwin
     static var hasSeenProximity = false
     static var proxDevice: Int = 0
 
-    static func clearRaw() {
-        rawHasLast = false
-        rawHasPrev = false
-        rawPathLen = 0
-    }
+    static func clearRaw() { glaspen2_rust_pen_clear_raw() }
 
     static func updateAfterSegment(_ x: Double, _ y: Double, _ width: Double) {
-        if rawHasLast {
-            let dx = x - rawLastX
-            let dy = y - rawLastY
-            rawPathLen += (dx * dx + dy * dy).squareRoot()
-        }
-        rawPrevX = rawLastX
-        rawPrevY = rawLastY
-        rawHasPrev = true
-        rawLastX = x
-        rawLastY = y
-        rawLastW = width
-        rawHasLast = true
+        glaspen2_rust_pen_update_after_segment(x, y, width)
     }
 }
 
