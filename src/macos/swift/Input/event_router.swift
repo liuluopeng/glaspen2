@@ -108,6 +108,10 @@ import AppKit
     /// 恢复系统光标(S6-3-3d): 只有确实隐藏过(pen_drawing)才 show + 清标记。
     @objc(restoreSystemCursor)
     public static func restoreSystemCursor() {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_EVENT_ROUTER"] != "1" {
+            glaspen2_rust_restore_system_cursor()
+            return
+        }
         if glaspen2_router_pen_drawing() != 0 {
             glaspen2_router_show_system_cursor()
             glaspen2_router_set_pen_drawing(0)
@@ -117,6 +121,10 @@ import AppKit
     /// 收尾在写笔画(退出/切页/丢 pen-up 时共用), 与 penUp 的区别是不动光标/不刷新。
     @objc(finishActiveStroke)
     public static func finishActiveStroke() {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_EVENT_ROUTER"] != "1" {
+            glaspen2_rust_finish_active_stroke()
+            return
+        }
         guard glaspen2_router_stroke_active() != 0 else { return }
         let ts = ProcessInfo.processInfo.systemUptime
         if glaspen2_router_eraser_mode() != 0 {

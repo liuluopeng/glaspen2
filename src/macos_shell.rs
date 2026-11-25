@@ -3945,3 +3945,71 @@ pub extern "C" fn glaspen2_rust_update_pressure_label(
         unsafe { glaspen2_router_pressure_label(c.as_ptr()) };
     }
 }
+
+// ── R64: 收尾在写笔画/恢复系统光标 ──
+
+unsafe extern "C" {
+    fn glaspen2_router_last_raw_x() -> f64;
+    fn glaspen2_router_last_raw_y() -> f64;
+    fn glaspen2_router_clear_raw_state();
+}
+
+#[repr(C)]
+struct Timespec {
+    tv_sec: i64,
+    tv_nsec: i64,
+}
+
+fn monotonic_secs() -> f64 {
+    let mut ts = Timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // CLOCK_MONOTONIC = 6 on Darwin.
+    let rc = unsafe { clock_gettime(6, &mut ts) };
+    if rc == 0 {
+        ts.tv_sec as f64 + ts.tv_nsec as f64 / 1e9
+    } else {
+        0.0
+    }
+}
+
+unsafe extern "C" {
+    fn clock_gettime(clk: i32, ts: *mut Timespec) -> i32;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_finish_active_stroke() {
+    if glaspen2_rust_pen_stroke_active() == 0 {
+        return;
+    }
+    let ts = monotonic_secs();
+    unsafe {
+        if glaspen2_router_eraser_mode() != 0 {
+            glaspen2_router_modeler_erase_finish();
+        } else {
+            glaspen2_router_modeler_end(
+                glaspen2_router_last_raw_x(),
+                glaspen2_router_last_raw_y(),
+                0.0,
+                ts,
+            );
+            glaspen2_router_commit_to_strokes();
+        }
+        glaspen2_rust_update_eraser(0);
+        glaspen2_router_stroke_end();
+        glaspen2_router_set_stroke_active(0);
+        glaspen2_rust_apply_pending_color_width();
+        glaspen2_router_clear_raw_state();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_restore_system_cursor() {
+    unsafe {
+        if glaspen2_router_pen_drawing() != 0 {
+            glaspen2_router_show_system_cursor();
+            glaspen2_router_set_pen_drawing(0);
+        }
+    }
+}

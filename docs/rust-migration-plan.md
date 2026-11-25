@@ -140,6 +140,8 @@
   Swift 仅回退; 真机缩放热键未自动化。
 - **R63 退出/压感标签**: `quitAppNow`(perf summary + cursor + NSApp terminate)与 `updatePressureLabel` 格式化迁 Rust;
   压感窗标签真实更新; Swift 仅回退。
+- **R64 收尾笔画/恢复系统光标**: `finishActiveStroke`(橡皮/正常收尾+commit+pending+clear raw)与 `restoreSystemCursor` 迁 Rust;
+  虚拟笔/退出路径正常; Swift 仅回退。
 
 ## 下一批候选(按风险从低到高)
 

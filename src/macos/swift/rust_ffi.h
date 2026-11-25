@@ -512,3 +512,7 @@ extern void glaspen2_rust_camera_reset_lens(void);
 // R63: 退出/压感标签
 extern void glaspen2_rust_quit_app(void);
 extern void glaspen2_rust_update_pressure_label(int pressure, const char *event_type, double x, double y);
+
+// R64: 收尾笔画/恢复系统光标
+extern void glaspen2_rust_finish_active_stroke(void);
+extern void glaspen2_rust_restore_system_cursor(void);
