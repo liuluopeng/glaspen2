@@ -402,3 +402,13 @@ extern void glaspen2_rust_apply_glass(void);
 // R43: 涂鸦/描边开关(状态/菜单/通知动作)
 extern int glaspen2_rust_set_draw_enabled(int enabled, const char *menu_title, const char *hud_text);
 extern int glaspen2_rust_set_outline_enabled(int enabled, const char *notify_text);
+
+// R44: 页视图 fit 状态/几何
+extern void glaspen2_rust_pageview_update(void);
+extern int glaspen2_rust_pageview_is_fit(void);
+extern double glaspen2_rust_pageview_paper_scale(void);
+extern double glaspen2_rust_pageview_paper_ox(void);
+extern double glaspen2_rust_pageview_paper_oy(void);
+extern int glaspen2_rust_pageview_page_w(void);
+extern int glaspen2_rust_pageview_page_h(void);
+extern int glaspen2_rust_pageview_geometry_width(void);

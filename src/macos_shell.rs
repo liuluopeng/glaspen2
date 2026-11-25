@@ -2027,3 +2027,85 @@ pub extern "C" fn glaspen2_rust_set_outline_enabled(
     }
     1
 }
+
+// ── R44: 页视图 fit 状态/几何(PageViewOps) ──
+
+static PV_FIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PV_SCALE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1.0f64.to_bits());
+static PV_OX: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static PV_OY: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static PV_PAGE_W: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+static PV_PAGE_H: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+unsafe extern "C" {
+    fn glaspen2_page_dims(screen_id: i64, w: *mut i32, h: *mut i32);
+    fn glaspen2_get_current_screen_id() -> i64;
+}
+
+fn pv_reset() {
+    use std::sync::atomic::Ordering;
+    PV_FIT.store(false, Ordering::Relaxed);
+    PV_SCALE.store(1.0f64.to_bits(), Ordering::Relaxed);
+    PV_OX.store(0.0f64.to_bits(), Ordering::Relaxed);
+    PV_OY.store(0.0f64.to_bits(), Ordering::Relaxed);
+    PV_PAGE_W.store(0, Ordering::Relaxed);
+    PV_PAGE_H.store(0, Ordering::Relaxed);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pageview_update() {
+    use std::sync::atomic::Ordering;
+    pv_reset();
+    if glaspen_core::view_state::infinite() {
+        return;
+    }
+    let mut pw = 0i32;
+    let mut ph = 0i32;
+    unsafe { glaspen2_page_dims(glaspen2_get_current_screen_id(), &mut pw, &mut ph) };
+    let screen_w = glaspen_core::shell_state::screen_w() as f64;
+    let screen_h = glaspen_core::shell_state::screen_h() as f64;
+    if pw <= 0 || ph <= 0 || (pw as f64 == screen_w && ph as f64 == screen_h) {
+        return;
+    }
+    let scale = (screen_w / pw as f64).min(screen_h / ph as f64);
+    let ox = (screen_w - pw as f64 * scale) / 2.0;
+    let oy = (screen_h - ph as f64 * scale) / 2.0;
+    PV_FIT.store(true, Ordering::Relaxed);
+    PV_SCALE.store(scale.to_bits(), Ordering::Relaxed);
+    PV_OX.store(ox.to_bits(), Ordering::Relaxed);
+    PV_OY.store(oy.to_bits(), Ordering::Relaxed);
+    PV_PAGE_W.store(pw, Ordering::Relaxed);
+    PV_PAGE_H.store(ph, Ordering::Relaxed);
+    tracing::info!(
+        "rust-shell: pageview fit {pw}x{ph} -> {screen_w:.0}x{screen_h:.0} scale={scale:.3}"
+    );
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pageview_is_fit() -> i32 {
+    i32::from(PV_FIT.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pageview_paper_scale() -> f64 {
+    f64::from_bits(PV_SCALE.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pageview_paper_ox() -> f64 {
+    f64::from_bits(PV_OX.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pageview_paper_oy() -> f64 {
+    f64::from_bits(PV_OY.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pageview_page_w() -> i32 {
+    PV_PAGE_W.load(std::sync::atomic::Ordering::Relaxed)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pageview_page_h() -> i32 {
+    PV_PAGE_H.load(std::sync::atomic::Ordering::Relaxed)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pageview_geometry_width() -> i32 {
+    0
+}

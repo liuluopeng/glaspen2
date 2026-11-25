@@ -1,14 +1,15 @@
-// S7: 笔迹整页重建 / 气泡自动翻页 / 页视图几何更新。
+// R44: 页视图 fit 状态/几何已迁 Rust; 本文件只做 C 桥与重建/翻页动作。
 import AppKit
 
 @objc public final class PageViewOps: NSObject {
-    static var isFit = false
-    static var paperOx = 0.0
-    static var paperOy = 0.0
-    static var paperScale = 1.0
-    static var pageW = 0
-    static var pageH = 0
-    static var geometryWidth: Int32 = 0
+    static var isFit: Bool { glaspen2_rust_pageview_is_fit() != 0 }
+    static var paperOx: Double { glaspen2_rust_pageview_paper_ox() }
+    static var paperOy: Double { glaspen2_rust_pageview_paper_oy() }
+    static var paperScale: Double { glaspen2_rust_pageview_paper_scale() }
+    static var pageW: Int { Int(glaspen2_rust_pageview_page_w()) }
+    static var pageH: Int { Int(glaspen2_rust_pageview_page_h()) }
+    static var geometryWidth: Int32 { glaspen2_rust_pageview_geometry_width() }
+
     /// 由 STROKES 内存整页重建表面(core 光栅 + 页框 + 全屏刷新)。
     @objc public static func rebuildSurface() {
         guard let surface = SurfaceStore.current else { return }
@@ -41,39 +42,8 @@ import AppKit
         return true
     }
 
-    /// 当前页/视图几何: 唯一来源 core::minimap 的页窗参数(FFI)。
+    /// 当前页/视图几何: 唯一来源 core(页面尺寸/屏幕尺寸 -> fit)。
     @objc public static func update() {
-        setState(fit: false, scale: 1.0, ox: 0, oy: 0, pw: 0, ph: 0)
-        if glaspen2_router_infinite() != 0 {
-            setState(fit: false, scale: 1.0, ox: 0, oy: 0, pw: 0, ph: 0)
-            return
-        }
-        var pw: Int32 = 0
-        var ph: Int32 = 0
-        glaspen2_page_dims(glaspen2_get_current_screen_id(), &pw, &ph)
-        let screenW = glaspen2_router_screen_w()
-        let screenH = glaspen2_router_screen_h()
-        if pw <= 0 || ph <= 0 || (pw == Int32(screenW) && ph == Int32(screenH)) {
-            setState(fit: false, scale: 1.0, ox: 0, oy: 0, pw: 0, ph: 0)
-            return
-        }
-        let scale = min(screenW / Double(pw), screenH / Double(ph))
-        let ox = (screenW - Double(pw) * scale) / 2.0
-        let oy = (screenH - Double(ph) * scale) / 2.0
-        setState(fit: true, scale: scale, ox: ox, oy: oy, pw: Int(pw), ph: Int(ph))
-        NSLog("[glaspen2] pageview fit: 页 %dx%d → 屏 %dx%d scale=%.3f off=(%.0f,%.0f)",
-              pw, ph, Int32(screenW), Int32(screenH), scale, ox, oy)
-    }
-}
-
-
-extension PageViewOps {
-    fileprivate static func setState(fit: Bool, scale: Double, ox: Double, oy: Double, pw: Int, ph: Int) {
-        isFit = fit
-        paperScale = scale
-        paperOx = ox
-        paperOy = oy
-        pageW = pw
-        pageH = ph
+        glaspen2_rust_pageview_update()
     }
 }

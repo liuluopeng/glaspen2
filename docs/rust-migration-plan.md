@@ -101,6 +101,8 @@
   Swift 仅 `GLASPEN2_SWIFT_MENU_ACTIONS=1` 回退。
 - **R43 涂鸦/描边开关动作**: `MenuHandler.setDrawEnabled/setOutlineEnabled` 的状态/菜单勾选/标题/通知/重建面迁 Rust;
   文案仍由 Swift 传入; 新增 `glaspen2_router_finish_active_stroke` 桥; settings probe 增加动作断言。
+- **R44 页视图 fit 状态**: `PageViewOps` 的 isFit/paperOx/paperOy/paperScale/pageW/pageH/geometryWidth + update() 迁 Rust;
+  Swift 保留 C 桥与 rebuild/bubbleFlip; 虚拟笔截图正常。
 
 ## 下一批候选(按风险从低到高)
 

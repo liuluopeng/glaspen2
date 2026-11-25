@@ -644,3 +644,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R41 | 脏矩形跟踪迁 Rust: 复位/点/表面点/表面矩形并集/has/rect; run_glue 改调 Rust; 删除 Input/dirty_tracker.swift; 虚拟笔截图正常 | 默认 smoke、全量 tests/build/parity 绿; Swift 92→91 | 本提交 |
 | 2026-11-26 | Rust-R42 | 磨砂玻璃应用逻辑迁 Rust: enabled/opacity/follow/飘渺 hidden 组合 + apply glass view + menu 444; Swift 仅回退; 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R43 | 涂鸦/描边菜单动作迁 Rust: 状态/菜单标题/勾选/通知/finish stroke/rebuild; 文案 Swift 传入; settings probe draw/outline 断言通过 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R44 | PageViewOps fit 状态/几何/update 迁 Rust; Swift 只做 C 桥与重建/翻页动作; 虚拟笔截图正常 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
