@@ -168,3 +168,23 @@
 
 结论: 默认 Rust 路径与 Swift 回退在虚拟笔负载下 CPU/RSS/启动时间处于同一噪声区间, 未观察到明显回归;
 该抽查是相对比较, 不是用户真实笔/多屏/长时录制基准。
+
+
+## R65 残余 Swift 清单(88 文件, 2026-11-26)
+
+- **薄桥/门控(可继续删)**: `cursor_state`(仅 NSCursor 实例)、`shortcut_apply`(JSON 桥)、`pageview_ops`(getter 桥)、`live_plan`(入参+回退)、`raw_drawing`(表面门控)、`chord_normalizer`(已删, 无调用方)。
+- **AppKit 壳**: app_bootstrap/delegate/instance/startup/window_classes/ui_anchors/status_bar/run_glue/misc_state/display_monitor/open_url/instance_lock。
+- **事件/输入壳**: event_router(事件分派/相机/播放键/虚拟笔判定)、event_tap(创建/挂载)、hotkey_recorder、pressure_monitor、shortcut_names/store/table。
+- **菜单**: menu_builder/full(构建与自检)、menu_glue/runtime/lookup/names/texts/updater/icons/preset_titles/handler、action_dispatch/hotkey_dispatch。
+- **设置/面板**: flutter_host、macos_api、settings_api_glue、settings_dispatcher、settings_glue、settings_panel/extras。
+- **Surface/绘制**: overlay_window/drawing/grid/layer_flush、surface_store/ops/replay、canvas_helpers/camera/overview/mode、flipper、minimap(缩略图异步)、notification、stroke_surface、panel_glue。
+- **时光隧道/录制/导出**: tunnel_state/animation/card/card_factory/frame/lifecycle、recording_effects/keys/hud、gif_clipboard、invert_capture、save_background、ethereal_mode、draw_mode。
+- **诊断探针**: flip/hotkeys/pages/persist/render/settings/virtual_pen(测试入口, 非生产)。
+
+## R65 默认 Rust 验收清单(待真机)
+
+1. 书写/擦除/描边虚线/反色/软阴影/接缝/脏矩形局部刷新。
+2. 涂鸦开关热键(窗口隐藏/恢复)、无限画布切换、镜头平移/缩放/HOME。
+3. 设置面板、菜单勾选/标题、语言切换、快捷键重绑/冲突。
+4. minimap 缩略图异步、时光隧道翻页、通知 HUD。
+5. 多屏/睡眠唤醒/显示器重配防抖、长时书写录制。
