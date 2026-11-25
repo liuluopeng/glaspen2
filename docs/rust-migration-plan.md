@@ -143,3 +143,17 @@
 
 - Flutter 面板(Dart/FRB)、cairo 绘制算法、SQLite/模型器(Rust 已有)。
 - Flutter 宿主、ScreenCaptureKit、系统菜单/状态栏在 R3 验证前保持 Swift。
+
+
+## R59 默认 Rust 壳性能抽查(2026-11-26, release)
+
+条件: 3440x1440, 同一 DB 副本, `GLASPEN2_VIRTUAL_PEN=1`, 启动后 7s 采样 `ps -o %cpu,rss`; 各配置 3 次。
+
+| 配置 | %CPU 三次 | RSS(MB) 三次 | 启动到 window ready |
+|---|---|---|---|
+| 默认 Rust 绘制/编排 | 13.6 / 12.6 / 10.8 | 335 / 332 / 331 | 0.20–0.28s |
+| `GLASPEN2_SWIFT_LIVE_RASTER=1` | 13.3 / 11.8 / 12.4 | 331 / 331 / 334 | 0.20–0.27s |
+| `GLASPEN2_SWIFT_OVERLAY_DRAW=1` | 13.9 / 12.4 / 11.7 | 337 / 332 / 331 | 0.20–0.27s |
+
+结论: 默认 Rust 路径与 Swift 回退在虚拟笔负载下 CPU/RSS/启动时间处于同一噪声区间, 未观察到明显回归;
+该抽查是相对比较, 不是用户真实笔/多屏/长时录制基准。
