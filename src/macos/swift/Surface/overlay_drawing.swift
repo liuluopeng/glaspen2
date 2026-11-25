@@ -5,10 +5,11 @@ import Darwin
 @objc public final class OverlayDrawing: NSObject {
     @objc(drawInView:rect:)
     public static func draw(in view: NSView, rect: NSRect) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_OVERLAY_DRAW"] == "1" {
-            _ = glaspen2_rust_overlay_draw(
-                Unmanaged.passUnretained(view).toOpaque(),
-                rect.origin.x, rect.origin.y, rect.size.width, rect.size.height)
+        // R39: 默认 Rust 编排; GLASPEN2_SWIFT_OVERLAY_DRAW=1 回退 Swift。
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_OVERLAY_DRAW"] != "1",
+           glaspen2_rust_overlay_draw(
+               Unmanaged.passUnretained(view).toOpaque(),
+               rect.origin.x, rect.origin.y, rect.size.width, rect.size.height) != 0 {
             return
         }
         let t0 = mach_absolute_time()

@@ -91,6 +91,8 @@
   Swift `MenuHandler` 仅 `GLASPEN2_SWIFT_TOGGLES=1` 回退; settings probe 通过。
 - **R38 OverlayDrawing 编排**: Swift 绘制拆成 prepare/tunnel/grid/surface/minimap/notification/cursor/perf stage 桥;
   Rust `glaspen2_rust_overlay_draw` 负责 save/clip/顺序/restore/性能打点; `GLASPEN2_RUST_OVERLAY_DRAW=1` opt-in。
+- **R39 OverlayDrawing 默认切 Rust**: 默认走 Rust 编排; `GLASPEN2_SWIFT_OVERLAY_DRAW=1` 回退 Swift stage 顺序;
+  真实 app 网格+虚拟笔截图正常, smoke/tests/parity 全绿。
 
 ## 下一批候选(按风险从低到高)
 
