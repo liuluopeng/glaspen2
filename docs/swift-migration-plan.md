@@ -671,3 +671,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R68 | 删除 shortcut_apply.swift; JSON 桥移入 SettingsGlue.applyShortcuts; hotkeys probe 14/14; Swift 86→85 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R69 | 删除无调用方 blank/arrow 光标工厂(Swift+Rust)与 StartupWindow 死变量; 构建/smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R70 | RecordingHotkeys 判定 + 事件 JSON 迁 Rust; 通过桥交 RecordingEffects; Swift 仅回退; 录制链路待真机 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R71 | 完成标准评估: tag ce525db 未动/未 push/ObjC 0/Swift 85; tests/build/smoke/parity+探针全绿; 判定纯逻辑/状态迁移基本达成, 剩余 Swift 为平台壳/绘制/效果 | 继续迁移项已列 | 本提交 |

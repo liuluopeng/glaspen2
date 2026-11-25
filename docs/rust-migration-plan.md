@@ -225,3 +225,25 @@
 - `RecordingHotkeys.handle` 的 ⌘⌃R/2/3 start/release 判定与事件 JSON 构造迁 Rust;
 - Rust 调 core 的 rec_slot/mode/chat_integration/rec_finish_and_count, 通过 C 桥 `glaspen2_router_recording_feed` 交给 RecordingEffects(效果执行仍 Swift);
 - Swift 仅回退; 录制 HUD/效果测试待真机。
+
+
+## R71 完成标准评估与证据(2026-11-26)
+
+### 硬约束证据
+- tag `v0.7.0^{}` = `ce525db`(未移动);
+- 本地 HEAD = 迁移提交链顶端; 领先 `origin/main` 397; 未 push;
+- `src/macos` 下 ObjC `.m/.mm` = 0; Swift 源文件 85 个(纯逻辑/状态已迁, 余下为 AppKit/CGEvent/Flutter/录制效果/时光隧道绘制/诊断探针);
+- 工作区仅 `?? .zcode/`(忽略, 不入提交)。
+
+### 验证命令(本切片复跑)
+- `cargo test --workspace --exclude glaspen2_installer` ✅
+- `cargo build --release` ✅
+- `sh scripts/smoke-macos.sh` ✅
+- `sh scripts/check-platform-parity.sh` ✅
+- 探针(独立干净 DB): settings failures=0 / menu-full OK / hotkeys 14-of-14 / render failures=0。
+
+### 完成标准判定
+- 本目标的**迁移方法**已执行: 纯逻辑/状态优先、AppKit 壳保留、每切片 Rust tests/FFI、build/tests/smoke/parity、中文本地提交、未 push、tag 未动。
+- 纯逻辑/状态迁移已覆盖: 几何/预设/设置/快捷键/菜单状态、镜头/页视图/光标/压感/笔迹/实时绘制/事件 tap/脏矩形/surface/grid/tunnel/minimap 合成/通知/画布模式/动作编排。
+- 剩余 Swift 仍含少量平台适配逻辑(event_router 分派、录制效果执行、隧道卡片绘制、Flutter host), 因此按“整个应用层 Rust”口径**尚未完成**; 按“纯逻辑/状态迁 Rust + 必要 AppKit 壳保留”口径已基本达成。
+- 继续项: 隧道绘制、录制/导出效果、event_router 分派、Flutter host、真机验收清单。
