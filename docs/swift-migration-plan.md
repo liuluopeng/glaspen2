@@ -675,3 +675,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R72 | 60s 虚拟笔+翻页+网格+minimap 浸泡: 进程存活, strokes +10, RSS 380MB 平台化, CPU 0–6%; 2 条 modeler Up error 待真机 | 未 push/tag 未动 | 本提交 |
 | 2026-11-26 | Rust-R73 | CanvasOverview 载荷几何/渲染迁 Rust; Swift 仅 Data 包装; render probe overview 全通过 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R74 | ActionDispatch effect 分派迁 Rust; 键盘路径默认 Rust; 【flip】日志验证翻页动作生效; Swift 仅回退 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R75 | 清理已删除的 live plan C 包装声明(Rust extern + Bridging.h); 构建通过 | 本提交 |

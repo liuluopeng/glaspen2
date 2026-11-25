@@ -3196,8 +3196,6 @@ pub extern "C" fn glaspen2_rust_draw_live_plan(
 
 unsafe extern "C" {
     fn cairo_destroy(cr: *mut c_void);
-    fn glaspen2_router_live_plan_dot(cr: *mut c_void, x: f64, y: f64, width: f64) -> i32;
-    fn glaspen2_router_live_plan_segment(cr: *mut c_void, x: f64, y: f64, width: f64) -> i32;
     fn glaspen2_router_flush_dirty();
     fn glaspen2_router_soft_shadow() -> i32;
     fn glaspen2_router_outline_pad() -> f64;

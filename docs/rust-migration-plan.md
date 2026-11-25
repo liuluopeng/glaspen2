@@ -279,3 +279,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - 颜色/粗细 HUD 文案用 core i18n + 名称表; async 动作经 C 桥回主线程;
 - `EventRouter` 键盘路径默认调 Rust, `GLASPEN2_SWIFT_ACTION_DISPATCH=1` 回退;
 - 真机 ⌘⌃1/⌘⌃` 验证: 日志出现 `[flip] 隐藏间隙 345ms`, 动作分派生效。
+
+
+## R75 清理 live plan 旧声明
+
+- 删除 Rust 中已无调用的 `glaspen2_router_live_plan_dot/segment` extern 与 `Bridging.h` 旧声明;
+- 与 R67 删除 `live_plan.swift`/C 包装一致; 无行为变化。
