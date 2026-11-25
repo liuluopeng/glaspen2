@@ -63,12 +63,6 @@ import AppKit
             OverlayLayerFlush.flushDirty()
         }
         // 笔事件: 坐标/压力/raw_w 在本层计算, 再交 pen 分派(原 inner 逻辑)。
-        if getenv("GLASPEN2_DEBUG_PEN") != nil,
-           type == .leftMouseDown || type == .leftMouseDragged || type == .leftMouseUp {
-            if let ev = NSEvent(cgEvent: event) {
-                NSLog("%@", "[pen] evt type=\(type.rawValue) subtype=\(ev.subtype.rawValue) dev=\(ev.pointingDeviceType.rawValue) isPen=\(isPen(ev) ? 1 : 0) active=\(glaspen2_router_stroke_active())")
-            }
-        }
         if let ev = NSEvent(cgEvent: event), isPen(ev) {
             let loc = ev.locationInWindow
             let px = Double(loc.x)
@@ -272,13 +266,7 @@ import AppKit
                 glaspen2_router_flush()
             }
             if glaspen2_router_ethereal() != 0 {
-                if getenv("GLASPEN2_DEBUG_ETHEREAL") != nil {
-                    NSLog("%@", "[ethereal] proximity exit hide begin visible=\(glaspen2_router_strokes_visible()) ethereal=\(glaspen2_router_ethereal())")
-                }
                 glaspen2_router_auto_hide()
-                if getenv("GLASPEN2_DEBUG_ETHEREAL") != nil {
-                    NSLog("%@", "[ethereal] proximity exit hide end visible=\(glaspen2_router_strokes_visible())")
-                }
             }
         }
     }
@@ -287,7 +275,6 @@ import AppKit
     @objc(penDownWithX:y:pressure:timestamp:rawWidth:)
     public static func penDown(x: Double, y: Double, pressure: Double,
                                timestamp: Double, rawWidth: Double) {
-        penMoveCount = 0
         glaspen2_router_bubble_auto_page_flip()
         glaspen2_router_modeler_begin(x, y, pressure, timestamp)
         glaspen2_router_stroke_begin()
@@ -299,10 +286,6 @@ import AppKit
     @objc(penUpWithX:y:pressure:timestamp:)
     public static func penUp(x: Double, y: Double, pressure: Double,
                              timestamp: Double) {
-        if getenv("GLASPEN2_DEBUG_PEN") != nil {
-            NSLog("[pen] UP p=\(pressure) moves=\(penMoveCount) active=\(glaspen2_router_stroke_active()) strokes_before=\(glaspen2_stroke_count())")
-        }
-        penMoveCount = 0
         guard glaspen2_router_stroke_active() != 0 else { return }
         if glaspen2_router_eraser_mode() != 0 {
             glaspen2_router_modeler_erase_finish()
@@ -310,11 +293,6 @@ import AppKit
         } else {
             glaspen2_router_modeler_end(x, y, pressure, timestamp)
             glaspen2_router_commit_to_strokes()
-            if getenv("GLASPEN2_DEBUG_PEN") != nil {
-                let n = glaspen2_stroke_count()
-                let pts = n > 0 ? glaspen2_get_stroke_point_count(n - 1) : -1
-                NSLog("[pen] UP commit strokes_after=\(n) last_points=\(pts)")
-            }
         }
         glaspen2_router_stroke_end()
         glaspen2_router_set_stroke_active(0)
@@ -323,15 +301,9 @@ import AppKit
     }
 
     /// S6-3-3d: 拖动实时段: 模型器 move + raw segment(响应式反馈)。
-    private static var penMoveCount = 0
-
     @objc(penMoveWithX:y:pressure:timestamp:rawWidth:)
     public static func penMove(x: Double, y: Double, pressure: Double,
                                timestamp: Double, rawWidth: Double) {
-        penMoveCount += 1
-        if getenv("GLASPEN2_DEBUG_PEN") != nil && (penMoveCount <= 3 || penMoveCount % 50 == 0) {
-            NSLog("%@", "[pen] MOVE #\(penMoveCount) p=\(pressure) x=\(x) y=\(y) rawW=\(rawWidth)")
-        }
         glaspen2_router_modeler_move(x, y, pressure, timestamp)
         glaspen2_router_raw_draw_segment(x, y, rawWidth)
     }
@@ -409,9 +381,6 @@ import AppKit
         // 无 proximity 的平板: 悬停移动也要能自动显示(旧实现无条件 auto-show);
         // 有 proximity 的平板: 离开后的尾随 pen 事件不得把刚隐藏的笔迹拉回来。
         if !strokesVisible && (PenState.tabletProximity || !PenState.hasSeenProximity) {
-            if getenv("GLASPEN2_DEBUG_ETHEREAL") != nil {
-                NSLog("[ethereal] pen auto-show (proximity active)")
-            }
             glaspen2_router_pen_auto_show()
         }
         glaspen2_router_peek_cancel()
