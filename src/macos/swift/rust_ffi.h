@@ -254,3 +254,10 @@ extern int sw_app_screen_h(void);
 
 // R7: chord → NSEvent.ModifierFlags.rawValue 掩码(解析在 core::chord)
 extern unsigned long long glaspen2_chord_modifier_mask(const char *chord);
+
+// R8: 快捷键生效表状态(values/lookup JSON; 调用方 free 返回的字符串)
+extern void glaspen2_shortcut_store_install(const char *values_json, const char *lookup_json);
+extern char *glaspen2_shortcut_store_chord(const char *action);
+extern char *glaspen2_shortcut_store_action_for_chord(const char *chord);
+extern char *glaspen2_shortcut_store_values_json(void);
+extern int glaspen2_shortcut_store_is_empty(void);

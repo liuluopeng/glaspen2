@@ -64,6 +64,8 @@ pub mod settings_form;
 pub mod settings_snapshot;
 #[cfg(target_os = "macos")]
 pub mod shell_state;
+#[cfg(target_os = "macos")]
+pub mod shortcut_state;
 pub mod state;
 pub mod tunnel;
 pub mod ui;

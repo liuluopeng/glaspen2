@@ -19,12 +19,9 @@ import AppKit
 
     /// 当前生效表 → JSON 文本(失败回 "{}")。
     @objc public static func effectiveShortcutJSON() -> NSString {
-        let values = ShortcutStore.valuesSnapshot()
-        guard let data = try? JSONSerialization.data(withJSONObject: values),
-              let text = String(data: data, encoding: .utf8) else {
-            return "{}" as NSString
-        }
-        return text as NSString
+        guard let p = glaspen2_shortcut_store_values_json() else { return "{}" as NSString }
+        defer { glaspen2_free_c_string(p) }
+        return String(cString: p) as NSString
     }
 
     /// 读一条字符串设置(DB, 未设置为 nil)。

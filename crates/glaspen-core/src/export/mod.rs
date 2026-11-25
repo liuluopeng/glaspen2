@@ -2625,6 +2625,67 @@ pub extern "C" fn glaspen2_perf_summary() {
     crate::perf::summary();
 }
 
+// ── 快捷键生效表状态(R8: Swift ShortcutStore → Rust) ──
+
+#[cfg(target_os = "macos")]
+fn parse_shortcut_map(ptr: *const c_char) -> std::collections::BTreeMap<String, String> {
+    if ptr.is_null() {
+        return std::collections::BTreeMap::new();
+    }
+    let text = unsafe { CStr::from_ptr(ptr) }.to_string_lossy();
+    serde_json::from_str(&text).unwrap_or_default()
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_shortcut_store_install(
+    values_json: *const c_char,
+    lookup_json: *const c_char,
+) {
+    crate::shortcut_state::install(
+        parse_shortcut_map(values_json),
+        parse_shortcut_map(lookup_json),
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_shortcut_store_chord(action: *const c_char) -> *mut c_char {
+    if action.is_null() {
+        return std::ptr::null_mut();
+    }
+    let action = unsafe { CStr::from_ptr(action) }.to_string_lossy();
+    match crate::shortcut_state::chord(&action) {
+        Some(chord) => return_c_string(chord),
+        None => std::ptr::null_mut(),
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_shortcut_store_action_for_chord(chord: *const c_char) -> *mut c_char {
+    if chord.is_null() {
+        return std::ptr::null_mut();
+    }
+    let chord = unsafe { CStr::from_ptr(chord) }.to_string_lossy();
+    match crate::shortcut_state::action_for_chord(&chord) {
+        Some(action) => return_c_string(action),
+        None => std::ptr::null_mut(),
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_shortcut_store_values_json() -> *mut c_char {
+    return_c_string(crate::shortcut_state::values_json())
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_shortcut_store_is_empty() -> c_int {
+    i32::from(crate::shortcut_state::is_empty())
+}
+
 // ── chord 修饰键掩码(R7: Swift ShortcutMask → Rust) ──
 
 #[cfg(target_os = "macos")]

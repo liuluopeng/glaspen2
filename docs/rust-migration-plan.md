@@ -29,6 +29,8 @@
   C ABI 同名符号改由 Rust 导出, Swift 三处直接引用改 FFI, 删除 `App/app_state.swift`; 1 个单测。
 - **R7 快捷键修饰键掩码**: chord→NSEvent 修饰键解析迁 `chord::appkit_modifier_mask` + FFI;
   Swift `MenuRuntime.maskFor` 调 Rust, 删除 `Input/shortcut_mask.swift`; 1 个单测。
+- **R8 快捷键生效表状态**: values/lookup 迁 `glaspen-core::shortcut_state`(BTreeMap+Mutex);
+  FFI install/查询/JSON 快照; Swift `ShortcutStore` 只做 NSDictionary/JSON 桥, `SettingsGlue` 快照直出; 1 个单测。
 
 ## 下一批候选(按风险从低到高)
 
