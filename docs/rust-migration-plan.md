@@ -69,6 +69,8 @@
   `--swift-menu-full-probe` 新增 TEXTS 断言; `GLASPEN2_SWIFT_MENU_TEXTS=1` 回退。
 - **R27 菜单项查找**: `MenuLookup` 顶层+一层子菜单递归查找/标题/state 迁 Rust;
   Swift 只做指针桥; `GLASPEN2_SWIFT_MENU_LOOKUP=1` 回退, 失败自动回退。
+- **R28 光标壳**: 空白/箭头 `NSCursor` 创建与光标环/点/十字线绘制迁 Rust(objc2+CoreGraphics);
+  默认 Rust; `GLASPEN2_SWIFT_CURSOR=1` 回退, 失败自动回退。
 
 ## 下一批候选(按风险从低到高)
 

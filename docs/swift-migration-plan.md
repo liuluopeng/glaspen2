@@ -628,3 +628,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-25 | Rust-R25 | 菜单勾选更新迁 Rust(objc2): 按颜色/粗细索引设置 NSMenuItem.state; --swift-menu-full-probe 增加 CHECKMARKS 断言; GLASPEN2_SWIFT_MENU_STATE=1 回退 | 默认/回退 smoke、全量 tests/build/parity 绿; probe SWIFT_MENU_FULL_OK | 本提交 |
 | 2026-11-25 | Rust-R26 | 菜单动态文案刷新迁 Rust(objc2): 颜色/粗细 attributedTitle、顶层/导出/更多 title、tag 778/888 文案; probe 增加 TEXTS 断言; GLASPEN2_SWIFT_MENU_TEXTS=1 回退 | 默认/回退 smoke、全量 tests/build/parity 绿; probe SWIFT_MENU_FULL_OK | 本提交 |
 | 2026-11-25 | Rust-R27 | 菜单项递归查找/设置标题/读 state 迁 Rust(objc2); Swift MenuLookup 退化为指针桥; GLASPEN2_SWIFT_MENU_LOOKUP=1 回退 | 默认/回退 smoke、全量 tests/build/parity 绿; menu probe SWIFT_MENU_FULL_OK | 本提交 |
+| 2026-11-25 | Rust-R28 | 光标壳迁 Rust(objc2+CoreGraphics): 空白/箭头 NSCursor、光标环/点/十字线绘制; 默认 Rust, GLASPEN2_SWIFT_CURSOR=1 回退; 真实 app+虚拟笔/默认/回退 smoke 全绿 | 未做像素 parity(光标动态绘制), 行为路径验证 | 本提交 |

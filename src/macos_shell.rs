@@ -798,3 +798,91 @@ pub extern "C" fn glaspen2_rust_menu_item_state(menu: *mut c_void, tag: isize) -
     let item = unsafe { &*(p as *const NSMenuItem) };
     item.state() as i32
 }
+
+// ── R28: 光标壳(空白/箭头 NSCursor + 光标环绘制) ──────────────────────
+
+/// R28: 1x1 透明光标(旧 makeBlankCursor)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_blank_cursor_create() -> *mut c_void {
+    use objc2_app_kit::{NSBezierPath, NSColor, NSCursor, NSImage};
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+    let mtm = MainThreadMarker::new();
+    let Some(mtm) = mtm else {
+        return std::ptr::null_mut();
+    };
+    let image = NSImage::initWithSize(NSImage::alloc(), NSSize::new(1.0, 1.0));
+    image.lockFocus();
+    NSColor::clearColor().setFill();
+    NSBezierPath::bezierPathWithRect(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1.0, 1.0)))
+        .fill();
+    image.unlockFocus();
+    let cursor = NSCursor::initWithImage_hotSpot(NSCursor::alloc(), &image, NSPoint::new(0.0, 0.0));
+    let _ = mtm;
+    Retained::into_raw(cursor) as *mut c_void
+}
+
+/// R28: 系统箭头光标(旧 makeArrowCursor)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_arrow_cursor_create() -> *mut c_void {
+    use objc2_app_kit::NSCursor;
+    Retained::into_raw(NSCursor::arrowCursor()) as *mut c_void
+}
+
+/// R28: 光标环/点/十字线绘制(旧 OverlayCursorRenderer.drawCursor)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_draw_cursor(
+    ctx: *mut c_void,
+    visible: i32,
+    x: f64,
+    y: f64,
+    eraser: i32,
+) {
+    use objc2_app_kit::NSColor;
+    use objc2_core_foundation::{CGPoint, CGRect, CGSize};
+    use objc2_core_graphics::CGContext;
+    if visible == 0 || ctx.is_null() {
+        return;
+    }
+    let ctx = unsafe { &*(ctx as *const CGContext) };
+    let radius = 8.0;
+    let eraser = eraser != 0;
+    let ring = if eraser {
+        NSColor::colorWithCalibratedRed_green_blue_alpha(1.0, 0.25, 0.2, 0.95)
+    } else {
+        NSColor::colorWithWhite_alpha(1.0, 0.8)
+    };
+    let dot = if eraser {
+        NSColor::colorWithCalibratedRed_green_blue_alpha(1.0, 0.25, 0.2, 0.95)
+    } else {
+        NSColor::colorWithWhite_alpha(1.0, 0.9)
+    };
+    CGContext::set_stroke_color_with_color(Some(ctx), Some(&ring.CGColor()));
+    CGContext::set_line_width(Some(ctx), 1.5);
+    CGContext::stroke_ellipse_in_rect(
+        Some(ctx),
+        CGRect::new(
+            CGPoint::new(x - radius, y - radius),
+            CGSize::new(radius * 2.0, radius * 2.0),
+        ),
+    );
+    CGContext::set_fill_color_with_color(Some(ctx), Some(&dot.CGColor()));
+    CGContext::fill_ellipse_in_rect(
+        Some(ctx),
+        CGRect::new(CGPoint::new(x - 1.5, y - 1.5), CGSize::new(3.0, 3.0)),
+    );
+    let gap = 3.0;
+    CGContext::set_stroke_color_with_color(
+        Some(ctx),
+        Some(&NSColor::colorWithWhite_alpha(0.0, 0.5).CGColor()),
+    );
+    CGContext::set_line_width(Some(ctx), 1.0);
+    CGContext::move_to_point(Some(ctx), x, y - radius - 2.0);
+    CGContext::add_line_to_point(Some(ctx), x, y - gap);
+    CGContext::move_to_point(Some(ctx), x, y + gap);
+    CGContext::add_line_to_point(Some(ctx), x, y + radius + 2.0);
+    CGContext::move_to_point(Some(ctx), x - radius - 2.0, y);
+    CGContext::add_line_to_point(Some(ctx), x - gap, y);
+    CGContext::move_to_point(Some(ctx), x + gap, y);
+    CGContext::add_line_to_point(Some(ctx), x + radius + 2.0, y);
+    CGContext::stroke_path(Some(ctx));
+}

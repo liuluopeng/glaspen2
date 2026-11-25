@@ -85,6 +85,13 @@ import CoreGraphics
 @objc public final class OverlayCursorRenderer: NSObject {
     @objc(drawCursorWithContext:)
     public static func drawCursor(_ ctx: CGContext) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_CURSOR"] != "1" {
+            glaspen2_rust_draw_cursor(Unmanaged.passUnretained(ctx).toOpaque(),
+                                      CursorState.visible ? 1 : 0,
+                                      CursorState.x, CursorState.y,
+                                      glaspen2_router_eraser_mode())
+            return
+        }
         guard CursorState.visible, CursorState.x >= 0 else { return }
         let x = CursorState.x
         let y = CursorState.y
