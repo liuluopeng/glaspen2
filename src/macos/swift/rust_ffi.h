@@ -364,3 +364,10 @@ extern int glaspen2_rust_draw_surface_data(void *ctx, void *data, int width, int
 extern int glaspen2_rust_select_color(int index);
 extern int glaspen2_rust_select_width(int index);
 extern void glaspen2_rust_apply_pending_color_width(void);
+
+// R37: 功能开关 setter(默认; GLASPEN2_SWIFT_TOGGLES=1 回退)
+extern void glaspen2_rust_set_chat_integration(int enabled);
+extern void glaspen2_rust_set_pressure_monitor(int enabled);
+extern void glaspen2_rust_set_grid_enabled(int enabled);
+extern void glaspen2_rust_set_launch_at_login(int enabled);
+extern void glaspen2_rust_set_glass_enabled(int enabled);

@@ -1511,3 +1511,94 @@ pub extern "C" fn glaspen2_rust_apply_pending_color_width() {
         }
     }
 }
+
+// ── R37: 功能开关 setter(聊天/压力/网格/自启/玻璃) ──
+
+unsafe extern "C" {
+    fn glaspen2_router_set_chat_integration(on: i32);
+    fn glaspen2_save_bool_setting(key: *const std::os::raw::c_char, value: i32);
+    fn glaspen2_router_rec_chat_integration_changed(on: i32);
+    fn glaspen2_share_ink_set_active(on: i32);
+    fn glaspen2_load_bool_setting(key: *const std::os::raw::c_char) -> i32;
+    fn glaspen2_router_set_pressure_monitor(on: i32);
+    fn glaspen2_router_pm_show();
+    fn glaspen2_router_pm_refresh();
+    fn glaspen2_router_pm_hide();
+    fn glaspen2_router_set_grid_state(on: i32);
+    fn glaspen2_set_launch_at_login(on: i32);
+    fn glaspen2_router_update_menu_state(tag: i32, state: i32);
+    fn glaspen2_router_set_glass_state(on: i32);
+    fn glaspen2_router_glass_apply();
+}
+
+fn bool_setting(key: &str, value: bool) {
+    let key = std::ffi::CString::new(key).unwrap();
+    unsafe { glaspen2_save_bool_setting(key.as_ptr(), i32::from(value)) };
+}
+
+fn load_bool(key: &str) -> bool {
+    let key = std::ffi::CString::new(key).unwrap();
+    unsafe { glaspen2_load_bool_setting(key.as_ptr()) != 0 }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_set_chat_integration(enabled: i32) {
+    let on = enabled != 0;
+    unsafe {
+        glaspen2_router_set_chat_integration(i32::from(on));
+        bool_setting("chat_integration", on);
+        glaspen2_router_rec_chat_integration_changed(i32::from(on));
+        if !on {
+            glaspen2_share_ink_set_active(0);
+        } else if load_bool("share_ink") {
+            glaspen2_share_ink_set_active(1);
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_set_pressure_monitor(enabled: i32) {
+    let on = enabled != 0;
+    unsafe {
+        glaspen2_router_set_pressure_monitor(i32::from(on));
+        bool_setting("pressure_monitor", on);
+        if on {
+            glaspen2_router_pm_show();
+            glaspen2_router_pm_refresh();
+        } else {
+            glaspen2_router_pm_hide();
+        }
+        glaspen2_router_sync_settings_panel();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_set_grid_enabled(enabled: i32) {
+    let on = enabled != 0;
+    unsafe {
+        glaspen2_router_set_grid_state(i32::from(on));
+        bool_setting("grid", on);
+        glaspen2_router_sync_settings_panel();
+        glaspen2_router_save_pen_settings();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_set_launch_at_login(enabled: i32) {
+    let on = enabled != 0;
+    unsafe {
+        glaspen2_set_launch_at_login(i32::from(on));
+        glaspen2_router_update_menu_state(777, i32::from(on));
+        glaspen2_router_sync_settings_panel();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_set_glass_enabled(enabled: i32) {
+    let on = enabled != 0;
+    unsafe {
+        glaspen2_router_set_glass_state(i32::from(on));
+        bool_setting("glass_enabled", on);
+        glaspen2_router_glass_apply();
+    }
+}

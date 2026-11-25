@@ -87,6 +87,8 @@
   设置窗口创建时安装 Rust delegate; Swift delegate 仅 `GLASPEN2_SWIFT_SETTINGS_PANEL=1` 回退。
 - **R36 颜色/粗细选择状态机**: `MenuHandler.setColor/setWidth/applyPendingColorWidth` 的书写中暂存/应用/prev/
   保存/菜单勾选/状态图标/面板同步迁 Rust; Swift 只做回退; `--swift-settings-probe` 仍 color/width ok。
+- **R37 功能开关 setter**: 聊天集成/压感监视器/网格/开机自启/磨砂玻璃的状态+落库+面板/菜单/重绘动作迁 Rust;
+  Swift `MenuHandler` 仅 `GLASPEN2_SWIFT_TOGGLES=1` 回退; settings probe 通过。
 
 ## 下一批候选(按风险从低到高)
 

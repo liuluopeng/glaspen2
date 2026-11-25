@@ -106,6 +106,10 @@ import AppKit
     /// 手写消息集成总开关: 状态/落库/录制状态机通知/共享上行恢复。
     @objc(setChatIntegration:)
     public static func setChatIntegration(enabled: Bool) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TOGGLES"] != "1" {
+            glaspen2_rust_set_chat_integration(enabled ? 1 : 0)
+            return
+        }
         glaspen2_router_set_chat_integration(enabled ? 1 : 0)
         "chat_integration".withCString { key in
             glaspen2_save_bool_setting(key, enabled ? 1 : 0)
@@ -133,6 +137,10 @@ import AppKit
     /// 压感监视器开关: 状态/落库/显示隐藏/面板同步。
     @objc(setPressureMonitor:)
     public static func setPressureMonitor(enabled: Bool) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TOGGLES"] != "1" {
+            glaspen2_rust_set_pressure_monitor(enabled ? 1 : 0)
+            return
+        }
         glaspen2_router_set_pressure_monitor(enabled ? 1 : 0)
         "pressure_monitor".withCString { key in
             glaspen2_save_bool_setting(key, enabled ? 1 : 0)
@@ -149,6 +157,10 @@ import AppKit
     /// 网格开关: 状态/落库/面板同步/重绘。
     @objc(setGridEnabled:)
     public static func setGridEnabled(enabled: Bool) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TOGGLES"] != "1" {
+            glaspen2_rust_set_grid_enabled(enabled ? 1 : 0)
+            return
+        }
         glaspen2_router_set_grid_state(enabled ? 1 : 0)
         "grid".withCString { key in
             glaspen2_save_bool_setting(key, enabled ? 1 : 0)
@@ -160,6 +172,10 @@ import AppKit
     /// 开机自启开关: 系统设置 + 菜单勾选 + 面板同步。
     @objc(setLaunchAtLogin:)
     public static func setLaunchAtLogin(enabled: Bool) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TOGGLES"] != "1" {
+            glaspen2_rust_set_launch_at_login(enabled ? 1 : 0)
+            return
+        }
         glaspen2_set_launch_at_login(enabled ? 1 : 0)
         glaspen2_router_update_menu_state(777, enabled ? 1 : 0)
         glaspen2_router_sync_settings_panel()
@@ -168,6 +184,10 @@ import AppKit
     /// 磨砂玻璃开关: 状态/落库/应用。
     @objc(setGlassEnabled:)
     public static func setGlassEnabled(enabled: Bool) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TOGGLES"] != "1" {
+            glaspen2_rust_set_glass_enabled(enabled ? 1 : 0)
+            return
+        }
         glaspen2_router_set_glass_state(enabled ? 1 : 0)
         "glass_enabled".withCString { key in
             glaspen2_save_bool_setting(key, enabled ? 1 : 0)
