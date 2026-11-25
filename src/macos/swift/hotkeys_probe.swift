@@ -21,6 +21,17 @@ import AppKit
             NSLog("[hotkeys-probe] FAIL cmd+ctrl+D -> settings")
             failures += 1
         }
+        // 飘渺隐藏路径: visible=1 + ethereal=1 时 hideNow 必须置 0。
+        glaspen2_router_set_ethereal(1)
+        glaspen2_router_set_strokes_visible(1)
+        let hidden = EtherealMode.hideNow()
+        if !hidden || glaspen2_router_strokes_visible() != 0 {
+            NSLog("[hotkeys-probe] FAIL ethereal hide (hidden=%d visible=%d)",
+                  hidden ? 1 : 0, glaspen2_router_strokes_visible())
+            failures += 1
+        }
+        glaspen2_router_set_ethereal(0)
+        glaspen2_router_set_strokes_visible(1)
         print("HOTKEYS_PROBE checked=\(checked) failures=\(failures)")
         return failures == 0 ? 0 : 1
     }

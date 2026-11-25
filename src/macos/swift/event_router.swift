@@ -239,11 +239,13 @@ import AppKit
         guard let prox = NSEvent(cgEvent: event) else { return }
         let dev = prox.pointingDeviceType
         guard dev == .pen || dev == .eraser else { return }
-        glaspen2_router_mark_tablet_proximity()
         let enter = event.getIntegerValueField(.tabletProximityEventEnterProximity) == 1
+        // 进入/离开都要同步为真实 proximity;离开后残留的 pen 事件不得再自动显示笔迹。
+        PenState.tabletProximity = enter
         let label = enter ? (dev == .eraser ? "橡皮进入" : "悬浮进入") : "悬浮离开"
         NSLog("[pen] \(label) (proximity \(enter ? "enter" : "exit"))")
         if enter {
+            glaspen2_router_mark_tablet_proximity()
             glaspen2_router_set_prox_device(Int32(dev.rawValue))
             glaspen2_router_peek_cancel()
             glaspen2_router_bubble_pen_back()
@@ -255,7 +257,15 @@ import AppKit
                 glaspen2_router_cursor_hide()
                 glaspen2_router_flush()
             }
-            if glaspen2_router_ethereal() != 0 { glaspen2_router_auto_hide() }
+            if glaspen2_router_ethereal() != 0 {
+                if getenv("GLASPEN2_DEBUG_ETHEREAL") != nil {
+                    NSLog("%@", "[ethereal] proximity exit hide begin visible=\(glaspen2_router_strokes_visible()) ethereal=\(glaspen2_router_ethereal())")
+                }
+                glaspen2_router_auto_hide()
+                if getenv("GLASPEN2_DEBUG_ETHEREAL") != nil {
+                    NSLog("%@", "[ethereal] proximity exit hide end visible=\(glaspen2_router_strokes_visible())")
+                }
+            }
         }
     }
 
@@ -365,7 +375,13 @@ import AppKit
         let strokesVisible = (state & 1) != 0
         let strokeActive = (state & 2) != 0
         let cursorVisible = (state & 4) != 0
-        if !strokesVisible { glaspen2_router_pen_auto_show() }
+        // 只有笔确实在感应范围内才自动显示; 离开后的尾随 pen 事件不能把刚隐藏的笔迹又拉回来。
+        if !strokesVisible && PenState.tabletProximity {
+            if getenv("GLASPEN2_DEBUG_ETHEREAL") != nil {
+                NSLog("[ethereal] pen auto-show (proximity active)")
+            }
+            glaspen2_router_pen_auto_show()
+        }
         glaspen2_router_peek_cancel()
         let loc = ev.locationInWindow
         let oldX = glaspen2_router_cursor_x()
