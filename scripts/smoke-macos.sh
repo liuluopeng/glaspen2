@@ -17,6 +17,7 @@ PROBE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/glaspen2-probe.XXXXXX")"
 PROBE_DB="$PROBE_ROOT/settings.db"
 PROBE_DB2="$PROBE_ROOT/pages.db"
 PROBE_DB3="$PROBE_ROOT/render.db"
+PROBE_DB4="$PROBE_ROOT/hotkeys.db"
 PROBE_LOG="$PROBE_ROOT/logs"
 "$BIN" --swift-menu-probe
 "$BIN" --swift-menu-full-probe
@@ -24,6 +25,7 @@ PROBE_LOG="$PROBE_ROOT/logs"
 GLASPEN2_DB_PATH="$PROBE_DB" GLASPEN2_LOG_DIR="$PROBE_LOG" "$BIN" --swift-settings-probe
 GLASPEN2_DB_PATH="$PROBE_DB2" GLASPEN2_LOG_DIR="$PROBE_LOG" "$BIN" --swift-pages-probe
 GLASPEN2_DB_PATH="$PROBE_DB3" GLASPEN2_LOG_DIR="$PROBE_LOG" "$BIN" --swift-render-probe
+GLASPEN2_DB_PATH="$PROBE_DB4" GLASPEN2_LOG_DIR="$PROBE_LOG" "$BIN" --swift-hotkeys-probe
 
 echo "=== 冷启动冒烟 ==="
 TMPBASE="$TMPDIR"

@@ -112,6 +112,20 @@ fn main() {
         std::process::exit(2);
     }
 
+    // S8 自检: 快捷键默认表安装/反查(隐藏调试入口; 需临时 DB)。
+    if args.get(1).map(String::as_str) == Some("--swift-hotkeys-probe") {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            unsafe extern "C" {
+                fn glaspen2_swift_hotkeys_probe_selftest() -> i32;
+            }
+            let code = glaspen2_swift_hotkeys_probe_selftest();
+            std::process::exit(code);
+        }
+        #[cfg(not(target_os = "macos"))]
+        std::process::exit(2);
+    }
+
     #[cfg(target_os = "macos")]
     glaspen2::macos::macos_run();
 
