@@ -4,8 +4,8 @@
 
 use std::ffi::c_void;
 
-use objc2::MainThreadOnly;
 use objc2::rc::Retained;
+use objc2::{AnyThread, MainThreadOnly};
 use objc2_app_kit::NSStatusBar;
 use objc2_foundation::MainThreadMarker;
 
@@ -13,7 +13,7 @@ use objc2_foundation::MainThreadMarker;
 /// 本项目 app 生命周期 = 进程生命周期, 不额外实现释放)。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_status_item_create() -> *mut c_void {
-    let Some(mtm) = MainThreadMarker::new() else {
+    let Some(_mtm) = MainThreadMarker::new() else {
         tracing::error!("rust-shell: status item create 不在主线程");
         return std::ptr::null_mut();
     };
@@ -111,4 +111,199 @@ pub extern "C" fn glaspen2_rust_overlay_window_create(
     window.setIgnoresMouseEvents(true);
     tracing::info!("rust-shell: overlay NSWindow created by Rust (objc2)");
     Retained::into_raw(window) as *mut c_void
+}
+
+// ── R17: 状态栏图标渲染(objc2 移植 Swift StatusIconRenderer) ─────────────
+
+use objc2_app_kit::{
+    NSBezierPath, NSBitmapImageRep, NSColor, NSGraphicsContext, NSImage, NSLineCapStyle,
+};
+use objc2_foundation::{NSAffineTransform, NSPoint, NSRect, NSSize};
+
+fn mark_transform() -> Retained<NSAffineTransform> {
+    let t = NSAffineTransform::transform();
+    t.translateXBy_yBy(9.0, 9.0);
+    t.rotateByDegrees(45.0);
+    t.translateXBy_yBy(-9.0, -9.0);
+    t
+}
+
+fn stroke_inked(path: &NSBezierPath, width: f64, halo: &NSColor, ink: &NSColor) {
+    path.setLineWidth(width + 1.2);
+    halo.setStroke();
+    path.stroke();
+    path.setLineWidth(width);
+    ink.setStroke();
+    path.stroke();
+}
+
+fn render_status_icon(
+    eraser: bool,
+    enabled: bool,
+    ethereal: bool,
+    infinite: bool,
+    width_scale: f64,
+    pen_r: f64,
+    pen_g: f64,
+    pen_b: f64,
+) -> Option<Retained<NSImage>> {
+    let mtm = MainThreadMarker::new()?;
+    let size = 18.0f64;
+    let px = 72isize;
+    let rep = unsafe {
+        NSBitmapImageRep::initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel(
+            NSBitmapImageRep::alloc(),
+            std::ptr::null_mut(), px, px, 8, 4, true, false,
+            unsafe { objc2_app_kit::NSCalibratedRGBColorSpace },
+            0, 0,
+        )
+    }?;
+    unsafe { rep.setSize(NSSize::new(size, size)) };
+    let ctx = NSGraphicsContext::graphicsContextWithBitmapImageRep(&rep)?;
+    NSGraphicsContext::saveGraphicsState_class();
+    NSGraphicsContext::setCurrentContext(Some(&ctx));
+
+    let ink = NSColor::colorWithWhite_alpha(0.0, if enabled { 0.78 } else { 0.78 * 0.35 });
+    let halo = NSColor::colorWithWhite_alpha(1.0, if enabled { 0.88 } else { 0.88 * 0.35 });
+    let pen = NSColor::colorWithDeviceRed_green_blue_alpha(
+        pen_r,
+        pen_g,
+        pen_b,
+        if enabled { 1.0 } else { 0.35 },
+    );
+    let dim = if enabled { 1.0 } else { 0.35 };
+    let ink_dim = NSColor::colorWithWhite_alpha(0.0, dim);
+    let halo_dim = NSColor::colorWithWhite_alpha(1.0, dim);
+    let _ = &ink;
+    let _ = &halo;
+
+    let t = mark_transform();
+    if eraser && enabled {
+        let body = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(
+            NSRect::new(NSPoint::new(3.5, 6.1), NSSize::new(11.2, 5.8)),
+            1.5,
+            1.5,
+        );
+        body.transformUsingAffineTransform(&t);
+        let band = NSBezierPath::bezierPathWithRect(NSRect::new(
+            NSPoint::new(10.2, 6.1),
+            NSSize::new(4.5, 5.8),
+        ));
+        band.transformUsingAffineTransform(&t);
+        body.setLineWidth(0.8 + 1.2);
+        halo_dim.setStroke();
+        body.stroke();
+        NSColor::colorWithWhite_alpha(0.92, dim).setFill();
+        body.fill();
+        NSColor::colorWithWhite_alpha(0.25, dim).setFill();
+        band.fill();
+        body.setLineWidth(0.8);
+        ink_dim.setStroke();
+        body.stroke();
+    } else {
+        let th = (2.4 + width_scale.sqrt() * 1.9).clamp(2.6, 6.0);
+        let body = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(
+            NSRect::new(NSPoint::new(5.5, 9.0 - th / 2.0), NSSize::new(9.0, th)),
+            th.min(3.2) / 2.0,
+            th.min(3.2) / 2.0,
+        );
+        let tip = NSBezierPath::bezierPath();
+        tip.moveToPoint(NSPoint::new(5.5, 9.0 - th / 2.0));
+        tip.lineToPoint(NSPoint::new(3.0, 9.0));
+        tip.lineToPoint(NSPoint::new(5.5, 9.0 + th / 2.0));
+        tip.closePath();
+        let sil = NSBezierPath::bezierPath();
+        sil.appendBezierPath(&body);
+        sil.appendBezierPath(&tip);
+        sil.transformUsingAffineTransform(&t);
+        tip.transformUsingAffineTransform(&t);
+        sil.setLineWidth(0.9 + 1.2);
+        halo_dim.setStroke();
+        sil.stroke();
+        pen.setFill();
+        sil.fill();
+        ink_dim.setFill();
+        tip.fill();
+        sil.setLineWidth(0.9);
+        ink_dim.setStroke();
+        sil.stroke();
+    }
+
+    if !enabled {
+        let slash = NSBezierPath::bezierPath();
+        slash.moveToPoint(NSPoint::new(2.6, 15.4));
+        slash.lineToPoint(NSPoint::new(15.4, 2.6));
+        slash.setLineCapStyle(NSLineCapStyle::Round);
+        slash.setLineWidth(2.8);
+        NSColor::colorWithWhite_alpha(1.0, 0.88).setStroke();
+        slash.stroke();
+        slash.setLineWidth(1.6);
+        NSColor::colorWithWhite_alpha(0.0, 0.78).setStroke();
+        slash.stroke();
+    }
+
+    if ethereal {
+        let dot = NSBezierPath::bezierPathWithOvalInRect(NSRect::new(
+            NSPoint::new(1.9, 13.1),
+            NSSize::new(3.0, 3.0),
+        ));
+        stroke_inked(
+            &dot,
+            1.0,
+            &NSColor::colorWithWhite_alpha(1.0, 0.88),
+            &NSColor::colorWithWhite_alpha(0.0, 0.78),
+        );
+    }
+    if infinite {
+        let inf = NSBezierPath::bezierPath();
+        inf.appendBezierPathWithOvalInRect(NSRect::new(
+            NSPoint::new(12.9, 1.6),
+            NSSize::new(2.4, 2.4),
+        ));
+        inf.appendBezierPathWithOvalInRect(NSRect::new(
+            NSPoint::new(15.1, 1.6),
+            NSSize::new(2.4, 2.4),
+        ));
+        stroke_inked(
+            &inf,
+            1.0,
+            &NSColor::colorWithWhite_alpha(1.0, 0.88),
+            &NSColor::colorWithWhite_alpha(0.0, 0.78),
+        );
+    }
+
+    NSGraphicsContext::restoreGraphicsState_class();
+    let image = NSImage::initWithSize(NSImage::alloc(), NSSize::new(size, size));
+    image.addRepresentation(&rep);
+    Some(image)
+}
+
+/// R17: 状态栏图标(18pt/72px), 返回 +1 持有 NSImage; Swift 在
+/// `GLASPEN2_RUST_STATUS_ICON=1` 时使用, 默认 Swift/失败回退。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_status_icon_render(
+    eraser: i32,
+    enabled: i32,
+    ethereal: i32,
+    infinite: i32,
+    width_scale: f64,
+    pen_r: f64,
+    pen_g: f64,
+    pen_b: f64,
+) -> *mut c_void {
+    let out = render_status_icon(
+        eraser != 0,
+        enabled != 0,
+        ethereal != 0,
+        infinite != 0,
+        width_scale,
+        pen_r,
+        pen_g,
+        pen_b,
+    );
+    tracing::info!("rust-shell: status icon render ok={}", out.is_some());
+    match out {
+        Some(image) => Retained::into_raw(image) as *mut c_void,
+        None => std::ptr::null_mut(),
+    }
 }

@@ -42,6 +42,10 @@ import ApplicationServices
         AppDelegate.shared = handler
         NSApp.delegate = handler
 
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_STATUS_ICON_TEST"] == "1" {
+            _ = StatusIconParity.check()
+        }
+
         let menu = MainMenuBuilder.build(handler: handler, statusItem: statusItem,
                                          launchAtLoginOn: glaspen2_is_launch_at_login() != 0,
                                          glassOn: glaspen2_router_glass_enabled() != 0)

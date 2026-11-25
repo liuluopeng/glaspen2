@@ -15,7 +15,7 @@ import AppKit
         // R14 预研: Rust/objc2 创建状态栏项; 默认仍走 Swift, 失败自动回退。
         if ProcessInfo.processInfo.environment["GLASPEN2_RUST_STATUS_ITEM"] == "1",
            let p = glaspen2_rust_status_item_create() {
-            return Unmanaged<NSStatusItem>.fromOpaque(p).takeUnretainedValue()
+            return Unmanaged<NSStatusItem>.fromOpaque(p).takeRetainedValue()
         }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.title = ""
@@ -35,6 +35,26 @@ import AppKit
                                   penRed: Double,
                                   penGreen: Double,
                                   penBlue: Double) -> NSImage? {
+        // R17 预研: Rust/objc2 渲染状态栏图标; 默认 Swift, 失败回退。
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_STATUS_ICON"] == "1",
+           let p = glaspen2_rust_status_icon_render(
+               eraser ? 1 : 0, enabled ? 1 : 0, ethereal ? 1 : 0, infinite ? 1 : 0,
+               widthScale, penRed, penGreen, penBlue) {
+            return Unmanaged<NSImage>.fromOpaque(p).takeRetainedValue()
+        }
+        return renderSwiftIcon(eraser: eraser, enabled: enabled, ethereal: ethereal,
+                               infinite: infinite, widthScale: widthScale,
+                               penRed: penRed, penGreen: penGreen, penBlue: penBlue)
+    }
+
+    static func renderSwiftIcon(eraser: Bool,
+                                        enabled: Bool,
+                                        ethereal: Bool,
+                                        infinite: Bool,
+                                        widthScale: Double,
+                                        penRed: Double,
+                                        penGreen: Double,
+                                        penBlue: Double) -> NSImage? {
         let size: CGFloat = 18.0
         let px = 72
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
@@ -143,6 +163,47 @@ import AppKit
         let image = NSImage(size: NSSize(width: size, height: size))
         image.addRepresentation(rep)
         return image
+    }
+}
+
+/// R17: Rust/Swift 状态栏图标像素 parity 探针(测试时 GLASPEN2_RUST_STATUS_ICON_TEST=1)。
+@objc public final class StatusIconParity: NSObject {
+    private static func bytes(_ image: NSImage?) -> (Int, Int, [UInt8])? {
+        guard let image,
+              let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let data = rep.bitmapData else { return nil }
+        let count = rep.bytesPerRow * rep.pixelsHigh
+        return (rep.pixelsWide, rep.pixelsHigh,
+                Array(UnsafeBufferPointer(start: data, count: count)))
+    }
+
+    @objc public static func check() -> Int32 {
+        let args: (Bool, Bool, Bool, Bool, Double, Double, Double, Double)
+            = (false, true, false, false, 1.0, 1.0, 0.0, 0.0)
+        let swift = StatusIconRenderer.renderSwiftIcon(
+            eraser: args.0, enabled: args.1, ethereal: args.2, infinite: args.3,
+            widthScale: args.4, penRed: args.5, penGreen: args.6, penBlue: args.7)
+        guard let p = glaspen2_rust_status_icon_render(
+            args.0 ? 1 : 0, args.1 ? 1 : 0, args.2 ? 1 : 0, args.3 ? 1 : 0,
+            args.4, args.5, args.6, args.7) else {
+            NSLog("STATUS_ICON_PARITY fail: rust null")
+            return 1
+        }
+        let rust = Unmanaged<NSImage>.fromOpaque(p).takeRetainedValue()
+        guard let a = bytes(swift), let b = bytes(rust) else {
+            NSLog("STATUS_ICON_PARITY fail: image bytes nil")
+            return 1
+        }
+        guard a.0 == b.0, a.1 == b.1, a.2.count == b.2.count else {
+            NSLog("STATUS_ICON_PARITY fail: size %dx%d vs %dx%d bytes %d vs %d",
+                  a.0, a.1, b.0, b.1, a.2.count, b.2.count)
+            return 1
+        }
+        var diff = 0
+        for i in 0..<a.2.count where a.2[i] != b.2[i] { diff += 1 }
+        NSLog("STATUS_ICON_PARITY size=%dx%d diff=%d/%d", a.0, a.1, diff, a.2.count)
+        return diff == 0 ? 0 : 1
     }
 }
 

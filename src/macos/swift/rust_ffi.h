@@ -285,3 +285,7 @@ extern void *glaspen2_rust_overlay_window_create(double x, double y, double widt
 extern void *glaspen2_rust_overlay_content_view_create(double x, double y, double width, double height);
 extern void *glaspen2_rust_overlay_glass_view_create(double x, double y, double width, double height,
                                                     int enabled, double opacity);
+
+// R17: 状态栏图标 Rust 渲染(opt-in: GLASPEN2_RUST_STATUS_ICON=1)
+extern void *glaspen2_rust_status_icon_render(int eraser, int enabled, int ethereal, int infinite,
+                                              double width_scale, double pen_r, double pen_g, double pen_b);
