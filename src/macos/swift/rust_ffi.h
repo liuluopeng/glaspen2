@@ -521,3 +521,8 @@ extern void glaspen2_rust_raw_draw_segment2(double x, double y, double width, do
 
 // R70: 录制热键(默认; GLASPEN2_SWIFT_RECORDING_KEYS=1 回退)
 extern int glaspen2_rust_recording_hotkey(int down, unsigned short key_code, int has_cmd_ctrl);
+
+// R73: 无限画布总览载荷(PNG 指针 + rect[4] + bounds[4] + len)
+extern unsigned char *glaspen2_rust_canvas_overview(double width, double height,
+                                                    double *rect_out, double *bounds_out,
+                                                    int *len_out);

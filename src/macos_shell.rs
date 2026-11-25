@@ -4217,3 +4217,83 @@ pub extern "C" fn glaspen2_rust_recording_hotkey(
     }
     0
 }
+
+// ── R73: 无限画布总览载荷(bbox 外扩/渲染/视口矩形) ──
+
+unsafe extern "C" {
+    fn glaspen2_stroke_bbox(bx: *mut f64, by: *mut f64, bx2: *mut f64, by2: *mut f64) -> i32;
+    fn glaspen2_render_canvas_overview(
+        bx: f64,
+        by: f64,
+        bw: f64,
+        bh: f64,
+        ow: i32,
+        oh: i32,
+        out_len: *mut i32,
+    ) -> *mut u8;
+    fn glaspen2_free_rust_bytes(p: *mut u8, len: i32);
+}
+
+/// R73: 返回 PNG 字节指针(NULL=失败)并写 rect[4]/bounds[4]/len;
+/// 成功时调用方用 glaspen2_free_rust_bytes 释放。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_canvas_overview(
+    width: f64,
+    height: f64,
+    rect_out: *mut f64,
+    bounds_out: *mut f64,
+    len_out: *mut i32,
+) -> *mut u8 {
+    if rect_out.is_null() || bounds_out.is_null() || len_out.is_null() {
+        return std::ptr::null_mut();
+    }
+    let (mut bx, mut by, mut bx2, mut by2) = (0.0, 0.0, 0.0, 0.0);
+    if unsafe { glaspen2_stroke_bbox(&mut bx, &mut by, &mut bx2, &mut by2) } == 0 {
+        return std::ptr::null_mut();
+    }
+    let mut bw = bx2 - bx;
+    let mut bh = by2 - by;
+    if bw < 1.0 {
+        bw = 1.0;
+    }
+    if bh < 1.0 {
+        bh = 1.0;
+    }
+    let mx = bw * 0.05;
+    let my = bh * 0.05;
+    bx -= mx;
+    by -= my;
+    bw += mx * 2.0;
+    bh += my * 2.0;
+    let ow = width as i32;
+    let oh = height as i32;
+    let mut out_len = 0i32;
+    let png = unsafe { glaspen2_render_canvas_overview(bx, by, bw, bh, ow, oh, &mut out_len) };
+    if png.is_null() || out_len <= 0 {
+        if !png.is_null() {
+            unsafe { glaspen2_free_rust_bytes(png, out_len) };
+        }
+        return std::ptr::null_mut();
+    }
+    let ov_scale = (ow as f64 / bw).min(oh as f64 / bh);
+    let ov_ox = (ow as f64 - bw * ov_scale) * 0.5;
+    let ov_oy = (oh as f64 - bh * ov_scale) * 0.5;
+    let z = unsafe { glaspen2_camera_step_zoom(glaspen2_router_zoom()) };
+    let (screen_w, screen_h) = unsafe { (glaspen2_router_screen_w(), glaspen2_router_screen_h()) };
+    let vr_w = screen_w / z * ov_scale;
+    let vr_h = screen_h / z * ov_scale;
+    let vx = ov_ox + (glaspen2_router_pan_x() - bx) * ov_scale;
+    let vy = ov_oy + (glaspen2_router_pan_y() - by) * ov_scale;
+    unsafe {
+        *rect_out.add(0) = vx;
+        *rect_out.add(1) = vy;
+        *rect_out.add(2) = vr_w;
+        *rect_out.add(3) = vr_h;
+        *bounds_out.add(0) = bx;
+        *bounds_out.add(1) = by;
+        *bounds_out.add(2) = bw;
+        *bounds_out.add(3) = bh;
+        *len_out = out_len;
+    }
+    png
+}

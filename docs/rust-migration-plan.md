@@ -262,3 +262,11 @@
 
 结论: 默认 Rust 壳在虚拟笔+翻页+网格+minimap 组合下 60s 稳定, 无明显内存持续增长;
 modeler Up error 需真机笔/翻页连击复验。
+
+
+## R73 无限画布总览载荷迁 Rust
+
+- `CanvasOverview.payload` 的 bbox 外扩 5%、core render、viewport 矩形换算迁 Rust;
+- 新增 `glaspen2_rust_canvas_overview(width,height,rect,bounds,len)` 返回 PNG 指针;
+- Swift 只做 `Data` 包装与 `glaspen2_free_rust_bytes`;
+- render probe 的 overview_png/rect/bounds 通过。
