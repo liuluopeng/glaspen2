@@ -188,6 +188,9 @@ public func runDirtyRect() -> CGRect {
     return CGRect(x: out[0], y: out[1], width: out[2], height: out[3])
 }
 
+@_cdecl("glaspen2_router_flush_dirty")
+public func runFlushDirty() { OverlayLayerFlush.flushDirty() }
+
 @_cdecl("glaspen2_router_finish_active_stroke")
 public func runFinishActiveStroke() { EventRouter.finishActiveStroke() }
 

@@ -125,6 +125,8 @@
   Swift 只做通知展示; HUD 文案单源。
 - **R55 实时绘制计划光栅化**: `LivePlan.command/seam/runPlan` 的 plan JSON 解析与 cairo 光栅化迁 Rust;
   默认 Rust, `GLASPEN2_SWIFT_LIVE_RASTER=1` 回退 Swift; 虚拟笔连续笔迹正常。
+- **R56 实时笔迹首点/拖动**: `RawDrawing` 的 plan 调用/旧分档回退光栅化(阴影/描边虚线/接缝/反色)迁 Rust;
+  Swift 只保留 SurfaceStore 门控; 虚拟笔截图正常。
 
 ## 下一批候选(按风险从低到高)
 

@@ -656,3 +656,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R53 | StrokeContext 活动 cairo context 槽 + cursorFlushDue 判定迁 Rust; Swift 仅保留 I18n/cursor invalidate 等; 虚拟笔截图正常 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R54 | 录制 HUD 13 种语义 -> core i18n 文案/占位符/detail 覆盖迁 Rust; Swift 仅通知展示; 全量 tests/build/smoke/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R55 | LivePlan plan JSON 解析 + cairo 光栅化(今 shadow/outline/erase/fill/seam/dirty)迁 Rust; 默认 Rust, GLASPEN2_SWIFT_LIVE_RASTER=1 回退; 虚拟笔截图正常 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R56 | RawDrawing 首点/拖动(plan 调用 + 旧分档回退光栅化)迁 Rust; Swift 仅表面门控; 虚拟笔截图正常 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |

@@ -470,3 +470,7 @@ extern char *glaspen2_rust_rec_hud_text(const char *hud, int strokes, const char
 extern int glaspen2_rust_draw_live_plan(void *cr, const char *plan_json, double inv_scale, int dot,
                                         double f1x, double f1y, double f1p,
                                         double f2x, double f2y, double f2p, int fallback_count);
+
+// R56: 实时笔迹首点/拖动(计划优先 + 回退光栅化)
+extern void glaspen2_rust_raw_draw_dot(double x, double y, double width);
+extern void glaspen2_rust_raw_draw_segment(double x, double y, double width);

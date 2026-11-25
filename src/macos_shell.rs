@@ -3192,3 +3192,205 @@ pub extern "C" fn glaspen2_rust_draw_live_plan(
     }
     1
 }
+
+// ── R56: 实时笔迹首点/拖动(计划优先 + 旧回退光栅化) ──
+
+unsafe extern "C" {
+    fn cairo_destroy(cr: *mut c_void);
+    fn glaspen2_router_live_plan_dot(cr: *mut c_void, x: f64, y: f64, width: f64) -> i32;
+    fn glaspen2_router_live_plan_segment(cr: *mut c_void, x: f64, y: f64, width: f64) -> i32;
+    fn glaspen2_router_flush_dirty();
+    fn glaspen2_router_soft_shadow() -> i32;
+    fn glaspen2_router_outline_pad() -> f64;
+    fn glaspen2_router_outline_dash() -> f64;
+    fn glaspen2_router_eraser_mode() -> i32;
+}
+
+fn raw_dot_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
+    let eraser = unsafe { glaspen2_router_eraser_mode() != 0 };
+    let shadow = unsafe { glaspen2_router_soft_shadow() != 0 };
+    unsafe {
+        cairo_set_operator(cr, if eraser { 3 } else { 2 });
+        if shadow && !eraser {
+            for (pad, alpha) in [(1.5, 0.20), (3.0, 0.13), (5.0, 0.07)] {
+                cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, alpha);
+                cairo_arc(cr, x, y, width * 0.5 + pad, 0.0, std::f64::consts::TAU);
+                cairo_fill(cr);
+            }
+        }
+        if glaspen2_router_outline_enabled() != 0 && !eraser {
+            cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
+            cairo_arc(
+                cr,
+                x,
+                y,
+                width * 0.5 + glaspen2_router_outline_pad(),
+                0.0,
+                std::f64::consts::TAU,
+            );
+            cairo_fill(cr);
+        }
+        let ipat = glaspen2_router_invert_ink_source(cr);
+        if ipat.is_null() {
+            cairo_set_source_rgba(
+                cr,
+                glaspen2_router_pen_r(),
+                glaspen2_router_pen_g(),
+                glaspen2_router_pen_b(),
+                1.0,
+            );
+        }
+        cairo_arc(cr, x, y, width * 0.5, 0.0, std::f64::consts::TAU);
+        cairo_fill(cr);
+        if !ipat.is_null() {
+            cairo_pattern_destroy(ipat);
+        }
+    }
+    let pad = width * 0.5 + 1.5 + if shadow { 5.0 } else { 0.0 };
+    glaspen2_rust_dirty_include_surface_point(x, y, pad);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_raw_draw_dot(x: f64, y: f64, width: f64) {
+    let mut owned = 0i32;
+    let cr = glaspen2_router_acquire_cr(&mut owned);
+    if cr.is_null() {
+        return;
+    }
+    let planned = unsafe { glaspen2_router_live_plan_dot(cr, x, y, width) } != 0;
+    if !planned {
+        raw_dot_fallback(cr, x, y, width);
+    }
+    if owned != 0 {
+        unsafe { cairo_destroy(cr) };
+    }
+    unsafe { glaspen2_router_flush_dirty() };
+}
+
+fn raw_segment_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
+    let has_last = glaspen2_rust_pen_raw_has_last() != 0;
+    let has_prev = glaspen2_rust_pen_raw_has_prev() != 0;
+    let last_x = glaspen2_rust_pen_raw_last_x();
+    let last_y = glaspen2_rust_pen_raw_last_y();
+    let last_w = glaspen2_rust_pen_raw_last_w();
+    let path_len = glaspen2_rust_pen_raw_path_len();
+    let eraser = unsafe { glaspen2_router_eraser_mode() != 0 };
+    let shadow = unsafe { glaspen2_router_soft_shadow() != 0 };
+    let outline = unsafe { glaspen2_router_outline_enabled() != 0 };
+    let pad_const = unsafe { glaspen2_router_outline_pad() };
+    let dash = unsafe { glaspen2_router_outline_dash() };
+    unsafe {
+        cairo_set_operator(cr, if eraser { 3 } else { 2 });
+        cairo_set_line_cap(cr, 1);
+        cairo_set_line_join(cr, 1);
+        if shadow && !eraser {
+            for (sp, alpha) in [(1.5, 0.20), (3.0, 0.13), (5.0, 0.07)] {
+                cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, alpha);
+                cairo_set_line_width(cr, width + 2.0 * sp);
+                if has_last {
+                    cairo_move_to(cr, last_x, last_y);
+                    cairo_line_to(cr, x, y);
+                    cairo_stroke(cr);
+                } else {
+                    cairo_arc(cr, x, y, width * 0.5 + sp, 0.0, std::f64::consts::TAU);
+                    cairo_fill(cr);
+                }
+            }
+        }
+        if outline && !eraser {
+            let mut off = path_len % (2.0 * dash);
+            cairo_set_line_cap(cr, 2);
+            cairo_set_line_width(cr, width + 2.0 * pad_const);
+            if has_last {
+                let dashes = [dash, dash];
+                cairo_set_dash(cr, dashes.as_ptr(), 2, off);
+                cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
+                cairo_move_to(cr, last_x, last_y);
+                cairo_line_to(cr, x, y);
+                cairo_stroke(cr);
+                off = (off + dash) % (2.0 * dash);
+                cairo_set_dash(cr, std::ptr::null(), 0, 0.0);
+                cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
+                cairo_move_to(cr, last_x, last_y);
+                cairo_line_to(cr, x, y);
+                cairo_stroke(cr);
+                cairo_set_dash(cr, std::ptr::null(), 0, 0.0);
+            } else {
+                cairo_set_dash(cr, std::ptr::null(), 0, 0.0);
+                cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
+                cairo_arc(
+                    cr,
+                    x,
+                    y,
+                    width * 0.5 + pad_const,
+                    0.0,
+                    std::f64::consts::TAU,
+                );
+                cairo_fill(cr);
+            }
+            cairo_set_line_cap(cr, 1);
+        }
+        let ipat = glaspen2_router_invert_ink_source(cr);
+        if ipat.is_null() {
+            cairo_set_source_rgba(
+                cr,
+                glaspen2_router_pen_r(),
+                glaspen2_router_pen_g(),
+                glaspen2_router_pen_b(),
+                1.0,
+            );
+        }
+        cairo_set_line_width(cr, width);
+        if has_last {
+            cairo_move_to(cr, last_x, last_y);
+            cairo_line_to(cr, x, y);
+            cairo_stroke(cr);
+        } else {
+            cairo_arc(cr, x, y, width * 0.5, 0.0, std::f64::consts::TAU);
+            cairo_fill(cr);
+        }
+        if !ipat.is_null() {
+            cairo_pattern_destroy(ipat);
+        }
+        if outline && !eraser && has_prev {
+            cairo_set_source_rgba(
+                cr,
+                glaspen2_router_pen_r(),
+                glaspen2_router_pen_g(),
+                glaspen2_router_pen_b(),
+                1.0,
+            );
+            cairo_set_line_width(cr, last_w);
+            cairo_move_to(
+                cr,
+                glaspen2_rust_pen_raw_prev_x(),
+                glaspen2_rust_pen_raw_prev_y(),
+            );
+            cairo_line_to(cr, last_x, last_y);
+            cairo_stroke(cr);
+        }
+    }
+    let pad = width * 0.5 + 1.5 + if shadow { 5.0 } else { 0.0 };
+    if has_last {
+        glaspen2_rust_dirty_include_surface_point(last_x, last_y, pad);
+    }
+    glaspen2_rust_dirty_include_surface_point(x, y, pad);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_raw_draw_segment(x: f64, y: f64, width: f64) {
+    let mut owned = 0i32;
+    let cr = glaspen2_router_acquire_cr(&mut owned);
+    if cr.is_null() {
+        return;
+    }
+    let planned = unsafe { glaspen2_router_live_plan_segment(cr, x, y, width) } != 0;
+    if !planned {
+        raw_segment_fallback(cr, x, y, width);
+    }
+    if owned != 0 {
+        unsafe { cairo_destroy(cr) };
+    }
+    glaspen2_rust_pen_update_after_segment(x, y, width);
+    unsafe { glaspen2_router_flush_dirty() };
+}
