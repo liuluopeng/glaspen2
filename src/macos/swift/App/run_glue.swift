@@ -223,6 +223,15 @@ public func runRecordingFeed(_ slot: Int32, _ json: UnsafePointer<CChar>?) -> In
     return RecordingEffects.feed(slot: slot, json: String(cString: json)) ? 1 : 0
 }
 
+@_cdecl("glaspen2_router_apply_infinite_async")
+public func runApplyInfiniteAsync(_ on: Int32) {
+    DispatchQueue.main.async { glaspen2_router_apply_infinite_canvas(on) }
+}
+@_cdecl("glaspen2_router_quit_async")
+public func runQuitAsync() {
+    DispatchQueue.main.async { MenuHandler.quitAppNow() }
+}
+
 @_cdecl("glaspen2_router_flush_dirty")
 public func runFlushDirty() { OverlayLayerFlush.flushDirty() }
 

@@ -674,3 +674,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R71 | 完成标准评估: tag ce525db 未动/未 push/ObjC 0/Swift 85; tests/build/smoke/parity+探针全绿; 判定纯逻辑/状态迁移基本达成, 剩余 Swift 为平台壳/绘制/效果 | 继续迁移项已列 | 本提交 |
 | 2026-11-26 | Rust-R72 | 60s 虚拟笔+翻页+网格+minimap 浸泡: 进程存活, strokes +10, RSS 380MB 平台化, CPU 0–6%; 2 条 modeler Up error 待真机 | 未 push/tag 未动 | 本提交 |
 | 2026-11-26 | Rust-R73 | CanvasOverview 载荷几何/渲染迁 Rust; Swift 仅 Data 包装; render probe overview 全通过 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R74 | ActionDispatch effect 分派迁 Rust; 键盘路径默认 Rust; 【flip】日志验证翻页动作生效; Swift 仅回退 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |

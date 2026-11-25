@@ -4297,3 +4297,160 @@ pub extern "C" fn glaspen2_rust_canvas_overview(
     }
     png
 }
+
+// ── R74: 动作 id -> effect 分派 ──
+
+unsafe extern "C" {
+    fn glaspen2_action_effect_json(
+        action: *const std::os::raw::c_char,
+    ) -> *mut std::os::raw::c_char;
+    fn glaspen2_router_perform_hotkey(key_code: u16) -> i32;
+    fn glaspen2_router_prev_color_index() -> i32;
+    fn glaspen2_router_selected_color_index() -> i32;
+    fn glaspen2_color_preset_count() -> i32;
+    fn glaspen2_router_prev_width_index() -> i32;
+    fn glaspen2_router_selected_width_index() -> i32;
+    fn glaspen2_width_preset_count() -> i32;
+    fn glaspen2_camera_keyboard_pan_step(zoom: f64) -> f64;
+    fn glaspen2_router_apply_infinite_async(on: i32);
+    fn glaspen2_router_quit_async();
+}
+
+fn action_hud_msg(msg: glaspen_core::i18n::Msg, name_key: &str, name: &str) -> String {
+    let lang = if glaspen_core::shell_state::lang() == 1 {
+        glaspen_core::i18n::Lang::En
+    } else {
+        glaspen_core::i18n::Lang::Zh
+    };
+    glaspen_core::i18n::text(lang, &msg).replace(&format!("{{{name_key}}}"), name)
+}
+
+/// R74: 动作 effect 分派; 返回 1 已处理, 0 失败/未实现。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_perform_action(action: *const std::os::raw::c_char) -> i32 {
+    if action.is_null() {
+        return 0;
+    }
+    let out = unsafe { glaspen2_action_effect_json(action) };
+    if out.is_null() {
+        return 0;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(out) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { glaspen2_free_c_string(out) };
+    let Ok(effect) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return 0;
+    };
+    let Some(kind) = effect.get("kind").and_then(|k| k.as_str()) else {
+        tracing::warn!("action: effect 分发失败: {text}");
+        return 0;
+    };
+    let hotkey = |kc: u16| unsafe { glaspen2_router_perform_hotkey(kc) } != 0;
+    match kind {
+        "Undo" => return i32::from(hotkey(0x06)),
+        "PagePrev" => return i32::from(hotkey(0x32)),
+        "PageNext" => return i32::from(hotkey(0x12)),
+        "ToggleDraw" => return i32::from(hotkey(0x09)),
+        "Clear" => return i32::from(hotkey(0x08)),
+        "Export" => return i32::from(hotkey(0x05)),
+        "CopySvg" => return i32::from(hotkey(0x01)),
+        "ToggleGlass" => return i32::from(hotkey(0x0B)),
+        "ToggleEthereal" => return i32::from(hotkey(0x07)),
+        "OpenSettings" => return i32::from(hotkey(0x02)),
+        "ToggleFreeCanvas" => {
+            unsafe {
+                if glaspen2_router_infinite() == 0 {
+                    let key = std::ffi::CString::new("show_free_canvas").unwrap();
+                    if glaspen2_load_bool_setting(key.as_ptr()) == 0 {
+                        glaspen2_router_apply_infinite_async(0);
+                    }
+                }
+                let on = if glaspen2_router_infinite() != 0 {
+                    0
+                } else {
+                    1
+                };
+                glaspen2_router_apply_infinite_async(on);
+            }
+            return 1;
+        }
+        "Quit" => {
+            unsafe { glaspen2_router_quit_async() };
+            return 1;
+        }
+        _ => {}
+    }
+    if kind.starts_with("CameraPan") {
+        if unsafe { glaspen2_router_infinite() } == 0 {
+            return 1;
+        }
+        let step = unsafe { glaspen2_camera_keyboard_pan_step(glaspen2_router_zoom()) };
+        let (mut dx, mut dy) = (0.0, 0.0);
+        match kind {
+            "CameraPanLeft" => dx = step,
+            "CameraPanRight" => dx = -step,
+            "CameraPanUp" => dy = step,
+            "CameraPanDown" => dy = -step,
+            _ => {}
+        }
+        glaspen2_rust_camera_pan(dx, dy);
+        return 1;
+    }
+    if kind == "CameraZoomIn" || kind == "CameraZoomOut" {
+        if unsafe { glaspen2_router_infinite() } == 0 {
+            return 1;
+        }
+        let factor = if kind == "CameraZoomIn" {
+            1.15
+        } else {
+            1.0 / 1.15
+        };
+        glaspen2_rust_camera_zoom_at_center(factor);
+        return 1;
+    }
+    if kind == "ColorSwap" {
+        let selected = unsafe { glaspen2_router_selected_color_index() };
+        let count = unsafe { glaspen2_color_preset_count() };
+        let mut prev = unsafe { glaspen2_router_prev_color_index() };
+        if prev < 0 || prev >= count || prev == selected {
+            prev = if selected == 0 { 9 } else { 0 };
+        }
+        let _ = glaspen2_rust_select_color(prev);
+        let lang = if glaspen_core::shell_state::lang() == 1 {
+            glaspen_core::i18n::Lang::En
+        } else {
+            glaspen_core::i18n::Lang::Zh
+        };
+        let name = glaspen_core::i18n::color_name(prev as usize, lang);
+        notify(&action_hud_msg(
+            glaspen_core::i18n::Msg::ColorChanged,
+            "color",
+            name,
+        ));
+        return 1;
+    }
+    if kind == "WidthSwap" {
+        let selected = unsafe { glaspen2_router_selected_width_index() };
+        let count = unsafe { glaspen2_width_preset_count() };
+        let mut prev = unsafe { glaspen2_router_prev_width_index() };
+        if prev < 0 || prev >= count || prev == selected {
+            prev = if selected <= 3 { 6 } else { 2 };
+        }
+        let _ = glaspen2_rust_select_width(prev);
+        let lang = if glaspen_core::shell_state::lang() == 1 {
+            glaspen_core::i18n::Lang::En
+        } else {
+            glaspen_core::i18n::Lang::Zh
+        };
+        let name = glaspen_core::i18n::width_name(prev as usize, lang);
+        notify(&action_hud_msg(
+            glaspen_core::i18n::Msg::WidthChanged,
+            "width",
+            name,
+        ));
+        return 1;
+    }
+    tracing::warn!("action: effect kind {kind} 未实现");
+    0
+}

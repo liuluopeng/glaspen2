@@ -270,3 +270,12 @@ modeler Up error 需真机笔/翻页连击复验。
 - 新增 `glaspen2_rust_canvas_overview(width,height,rect,bounds,len)` 返回 PNG 指针;
 - Swift 只做 `Data` 包装与 `glaspen2_free_rust_bytes`;
 - render probe 的 overview_png/rect/bounds 通过。
+
+
+## R74 动作 effect 分派迁 Rust
+
+- `ActionDispatch.perform` 的 effect JSON 解析与 Undo/PagePrev/PageNext/ToggleDraw/Clear/Export/CopySvg/ToggleGlass/ToggleEthereal/OpenSettings
+  /ToggleFreeCanvas/CameraPan*/CameraZoom*/Quit/ColorSwap/WidthSwap 分派迁 Rust;
+- 颜色/粗细 HUD 文案用 core i18n + 名称表; async 动作经 C 桥回主线程;
+- `EventRouter` 键盘路径默认调 Rust, `GLASPEN2_SWIFT_ACTION_DISPATCH=1` 回退;
+- 真机 ⌘⌃1/⌘⌃` 验证: 日志出现 `[flip] 隐藏间隙 345ms`, 动作分派生效。

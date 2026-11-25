@@ -363,7 +363,13 @@ import AppKit
         let repeatable = action.hasPrefix("canvas_pan_")
             || action == "canvas_zoom_in" || action == "canvas_zoom_out"
         let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-        if !isRepeat || repeatable { ActionDispatch.perform(action: action) }
+        if !isRepeat || repeatable {
+            if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_ACTION_DISPATCH"] != "1" {
+                _ = action.withCString { glaspen2_rust_perform_action($0) }
+            } else {
+                _ = ActionDispatch.perform(action: action)
+            }
+        }
         return 2
     }
 
