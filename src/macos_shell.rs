@@ -1418,3 +1418,96 @@ fn install_settings_delegate(window: &objc2_app_kit::NSWindow, mtm: MainThreadMa
     SETTINGS_DELEGATE.with(|d| *d.borrow_mut() = Some(delegate));
     tracing::info!("rust-shell: settings delegate installed by Rust (objc2)");
 }
+
+// ── R36: 颜色/粗细选择状态机(书写中暂存, 否则应用+刷新) ──
+
+unsafe extern "C" {
+    fn glaspen2_router_stroke_active() -> i32;
+    fn glaspen2_router_set_pending_color(idx: i32);
+    fn glaspen2_router_selected_color() -> i32;
+    fn glaspen2_router_set_prev_color(idx: i32);
+    fn glaspen2_router_apply_color(idx: i32);
+    fn glaspen2_router_save_pen_settings();
+    fn glaspen2_router_update_checkmarks();
+    fn glaspen2_router_update_status_icon_state();
+    fn glaspen2_router_sync_settings_panel();
+    fn glaspen2_router_set_pending_width(idx: i32);
+    fn glaspen2_router_selected_width() -> i32;
+    fn glaspen2_router_set_prev_width(idx: i32);
+    fn glaspen2_router_apply_width(idx: i32);
+    fn glaspen2_router_pending_color() -> i32;
+    fn glaspen2_router_clear_pending_color();
+    fn glaspen2_router_pending_width() -> i32;
+    fn glaspen2_router_clear_pending_width();
+}
+
+fn refresh_after_pen_change() {
+    unsafe {
+        glaspen2_router_save_pen_settings();
+        glaspen2_router_update_checkmarks();
+        glaspen2_router_update_status_icon_state();
+        glaspen2_router_sync_settings_panel();
+    }
+}
+
+/// R36: 选择颜色; 返回 1 已处理, 0 非法/失败(Swift 回退)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_select_color(index: i32) -> i32 {
+    if index < 0 || index as usize >= glaspen_core::presets::COLOR_PRESETS.len() {
+        return 0;
+    }
+    unsafe {
+        if glaspen2_router_stroke_active() != 0 {
+            glaspen2_router_set_pending_color(index);
+            return 1;
+        }
+        let selected = glaspen2_router_selected_color();
+        if index != selected {
+            glaspen2_router_set_prev_color(selected);
+        }
+        glaspen2_router_apply_color(index);
+    }
+    refresh_after_pen_change();
+    1
+}
+
+/// R36: 选择粗细; 返回 1 已处理, 0 非法/失败(Swift 回退)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_select_width(index: i32) -> i32 {
+    if index < 0 || index as usize >= glaspen_core::presets::WIDTH_PRESETS.len() {
+        return 0;
+    }
+    unsafe {
+        if glaspen2_router_stroke_active() != 0 {
+            glaspen2_router_set_pending_width(index);
+            return 1;
+        }
+        let selected = glaspen2_router_selected_width();
+        if index != selected {
+            glaspen2_router_set_prev_width(selected);
+        }
+        glaspen2_router_apply_width(index);
+    }
+    refresh_after_pen_change();
+    1
+}
+
+/// R36: 抬笔后应用暂存颜色/粗细。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_apply_pending_color_width() {
+    unsafe {
+        if glaspen2_router_stroke_active() != 0 {
+            return;
+        }
+        let color = glaspen2_router_pending_color();
+        if color >= 0 {
+            glaspen2_router_clear_pending_color();
+            let _ = glaspen2_rust_select_color(color);
+        }
+        let width = glaspen2_router_pending_width();
+        if width >= 0 {
+            glaspen2_router_clear_pending_width();
+            let _ = glaspen2_rust_select_width(width);
+        }
+    }
+}

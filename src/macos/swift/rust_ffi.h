@@ -359,3 +359,8 @@ extern int glaspen2_rust_draw_notification(const char *text, double view_w, doub
 extern int glaspen2_rust_draw_surface_data(void *ctx, void *data, int width, int height, int stride,
                                            double rx, double ry, double rw, double rh,
                                            double bx, double by, double bw, double bh, double scale);
+
+// R36: 颜色/粗细选择状态机(默认; GLASPEN2_SWIFT_MENU_SELECT=1 回退)
+extern int glaspen2_rust_select_color(int index);
+extern int glaspen2_rust_select_width(int index);
+extern void glaspen2_rust_apply_pending_color_width(void);

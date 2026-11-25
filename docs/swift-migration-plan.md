@@ -636,3 +636,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-25 | Rust-R33 | 通知 HUD 文字绘制迁 Rust(objc2): 36pt 等宽/白字/阴影/居中; 新增 --swift-notification-probe(离屏渲染非空像素 15309)并纳入 smoke; 默认 Rust, GLASPEN2_SWIFT_NOTIFICATION=1 回退 | 默认/全量 smoke、tests/build/parity 绿 | 本提交 |
 | 2026-11-25 | Rust-R34 | 笔迹 surface CGImage 缓存迁 Rust(替代 Swift OverlaySurfaceImageCache); OverlayDrawing 默认走 glaspen2_rust_draw_surface_data, Swift 旧缓存仅回退; 虚拟笔截图确认旧/新笔迹正常 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-25 | Rust-R35 | 设置窗口 delegate 迁 Rust: define_class! + NSWindowDelegate.windowWillClose → Accessory/deactivate; 安装日志确认; Swift delegate 仅回退路径 | 默认/回退 smoke、全量 tests/build/parity 绿; 关闭动作未在自动化中点击(需真机) | 本提交 |
+| 2026-11-26 | Rust-R36 | 颜色/粗细选择状态机迁 Rust: 书写中 pending、prev 记录、apply/save/checkmarks/status icon/panel sync; Swift MenuHandler 仅回退; settings probe color/width ok | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |

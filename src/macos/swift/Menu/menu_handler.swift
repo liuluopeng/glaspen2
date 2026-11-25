@@ -178,6 +178,10 @@ import AppKit
     /// 颜色设置: 书写中暂存, 否则应用并刷新菜单/状态图标/面板。
     @objc(setColorIndex:)
     public static func setColor(index: Int32) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_SELECT"] != "1",
+           glaspen2_rust_select_color(index) != 0 {
+            return
+        }
         let count = glaspen2_color_preset_count()
         guard index >= 0 && Int(index) < Int(count) else { return }
         if glaspen2_router_stroke_active() != 0 {
@@ -196,6 +200,10 @@ import AppKit
     /// 粗细设置: 书写中暂存, 否则应用并刷新菜单/状态图标/面板。
     @objc(setWidthIndex:)
     public static func setWidth(index: Int32) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_SELECT"] != "1",
+           glaspen2_rust_select_width(index) != 0 {
+            return
+        }
         let count = glaspen2_width_preset_count()
         guard index >= 0 && Int(index) < Int(count) else { return }
         if glaspen2_router_stroke_active() != 0 {
@@ -214,6 +222,10 @@ import AppKit
     /// 书写中暂存的颜色/粗细在抬笔后生效(原 gl_settings_apply_pending_color_width)。
     @objc(applyPendingColorWidth)
     public static func applyPendingColorWidth() {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_SELECT"] != "1" {
+            glaspen2_rust_apply_pending_color_width()
+            return
+        }
         if glaspen2_router_stroke_active() != 0 { return }
         let color = glaspen2_router_pending_color()
         if color >= 0 {
