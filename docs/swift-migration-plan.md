@@ -667,3 +667,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R64 | finishActiveStroke/restoreSystemCursor 迁 Rust; 虚拟笔/退出路径正常; Swift 仅回退 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R65 | 删除无调用方 chord_normalizer.swift; 追加残余 Swift 清单(88 文件)与默认 Rust 真机验收清单; Swift 89→88 | 构建/smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R66 | 删 cursor_state.swift(死字段)与 StartupWindow 死赋值; Swift 88→87; 构建/smoke/tests/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R67 | LivePlan 入参 JSON/core 调用/plan 光栅化整链迁 Rust; 删 live_plan.swift 与 C 包装; 虚拟笔截图正常; Swift 87→86 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |

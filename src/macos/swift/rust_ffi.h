@@ -494,9 +494,9 @@ extern int glaspen2_rust_apply_infinite(int on, const char *notify_text);
 extern int glaspen2_rust_toggle_draw(const char *menu_title, const char *hud_text);
 
 // R61: 笔事件编排(默认; GLASPEN2_SWIFT_PEN_ORCH=1 回退)
-extern void glaspen2_rust_pen_down(double x, double y, double pressure, double timestamp, double raw_width);
+extern void glaspen2_rust_pen_down(double x, double y, double pressure, double timestamp, double raw_width, double scale);
 extern void glaspen2_rust_pen_up(double x, double y, double pressure, double timestamp);
-extern void glaspen2_rust_pen_move(double x, double y, double pressure, double timestamp, double raw_width);
+extern void glaspen2_rust_pen_move(double x, double y, double pressure, double timestamp, double raw_width, double scale);
 extern void glaspen2_rust_update_eraser(int is_eraser);
 
 // R62: 镜头动作(默认; GLASPEN2_SWIFT_CANVAS_CAMERA=1 回退)
@@ -516,3 +516,7 @@ extern void glaspen2_rust_update_pressure_label(int pressure, const char *event_
 // R64: 收尾笔画/恢复系统光标
 extern void glaspen2_rust_finish_active_stroke(void);
 extern void glaspen2_rust_restore_system_cursor(void);
+
+// R67: 实时绘制入参/计划/Rust 光栅化(scale 由 Swift 传入)
+extern void glaspen2_rust_raw_draw_dot2(double x, double y, double width, double scale);
+extern void glaspen2_rust_raw_draw_segment2(double x, double y, double width, double scale);

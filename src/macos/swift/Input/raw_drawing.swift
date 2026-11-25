@@ -5,12 +5,12 @@ import AppKit
     @objc(drawDotWithX:y:width:)
     public static func drawDot(x: Double, y: Double, width: Double) {
         guard SurfaceStore.current != nil else { return }
-        glaspen2_rust_raw_draw_dot(x, y, width)
+        glaspen2_rust_raw_draw_dot2(x, y, width, SurfaceStore.scaleFactor)
     }
 
     @objc(drawSegmentWithX:y:width:)
     public static func drawSegment(x: Double, y: Double, width: Double) {
         guard SurfaceStore.current != nil else { return }
-        glaspen2_rust_raw_draw_segment(x, y, width)
+        glaspen2_rust_raw_draw_segment2(x, y, width, SurfaceStore.scaleFactor)
     }
 }

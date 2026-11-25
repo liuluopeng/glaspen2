@@ -284,7 +284,7 @@ import AppKit
     public static func penDown(x: Double, y: Double, pressure: Double,
                                timestamp: Double, rawWidth: Double) {
         if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_PEN_ORCH"] != "1" {
-            glaspen2_rust_pen_down(x, y, pressure, timestamp, rawWidth)
+            glaspen2_rust_pen_down(x, y, pressure, timestamp, rawWidth, SurfaceStore.scaleFactor)
             return
         }
         glaspen2_router_bubble_auto_page_flip()
@@ -321,7 +321,7 @@ import AppKit
     public static func penMove(x: Double, y: Double, pressure: Double,
                                timestamp: Double, rawWidth: Double) {
         if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_PEN_ORCH"] != "1" {
-            glaspen2_rust_pen_move(x, y, pressure, timestamp, rawWidth)
+            glaspen2_rust_pen_move(x, y, pressure, timestamp, rawWidth, SurfaceStore.scaleFactor)
             return
         }
         glaspen2_router_modeler_move(x, y, pressure, timestamp)

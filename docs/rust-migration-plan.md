@@ -194,3 +194,12 @@
 
 - 删除 `Input/cursor_state.swift`(只存两个从未读取的 NSCursor 静态字段)与 `StartupWindow` 中的死赋值; Swift 88→87。
 - 保留 `OverlayWindowFactory.makeBlankCursor/makeArrowCursor` 与 Rust cursor create 函数(当前无调用, 供后续光标壳使用)。
+
+
+## R67 实时绘制入参整链迁 Rust
+
+- `LivePlan` 的输入 JSON 组装、core `glaspen2_live_plan_json` 调用、plan JSON 解析/cairo 光栅化/脏区全部迁 Rust;
+- 新增 `glaspen2_rust_raw_draw_dot2/segment2(x,y,width,scale)`, 由 `RawDrawing` 直接调用;
+- 删除 `Input/live_plan.swift` 与 `run_glue` 的 `glaspen2_router_live_plan_dot/segment` C 包装;
+- 旧 `GLASPEN2_SWIFT_LIVE_RASTER` 回退开关随之失效(plan 调用已无 Swift 实现);
+- 虚拟笔连续笔迹截图正常。

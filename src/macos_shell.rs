@@ -3250,23 +3250,6 @@ fn raw_dot_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
     glaspen2_rust_dirty_include_surface_point(x, y, pad);
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_rust_raw_draw_dot(x: f64, y: f64, width: f64) {
-    let mut owned = 0i32;
-    let cr = glaspen2_router_acquire_cr(&mut owned);
-    if cr.is_null() {
-        return;
-    }
-    let planned = unsafe { glaspen2_router_live_plan_dot(cr, x, y, width) } != 0;
-    if !planned {
-        raw_dot_fallback(cr, x, y, width);
-    }
-    if owned != 0 {
-        unsafe { cairo_destroy(cr) };
-    }
-    unsafe { glaspen2_router_flush_dirty() };
-}
-
 fn raw_segment_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
     let has_last = glaspen2_rust_pen_raw_has_last() != 0;
     let has_prev = glaspen2_rust_pen_raw_has_prev() != 0;
@@ -3375,24 +3358,6 @@ fn raw_segment_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
         glaspen2_rust_dirty_include_surface_point(last_x, last_y, pad);
     }
     glaspen2_rust_dirty_include_surface_point(x, y, pad);
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_rust_raw_draw_segment(x: f64, y: f64, width: f64) {
-    let mut owned = 0i32;
-    let cr = glaspen2_router_acquire_cr(&mut owned);
-    if cr.is_null() {
-        return;
-    }
-    let planned = unsafe { glaspen2_router_live_plan_segment(cr, x, y, width) } != 0;
-    if !planned {
-        raw_segment_fallback(cr, x, y, width);
-    }
-    if owned != 0 {
-        unsafe { cairo_destroy(cr) };
-    }
-    glaspen2_rust_pen_update_after_segment(x, y, width);
-    unsafe { glaspen2_router_flush_dirty() };
 }
 
 // ── R57: 笔状态(书写中/橡皮/接近/设备) ──
@@ -3605,13 +3570,14 @@ pub extern "C" fn glaspen2_rust_pen_down(
     pressure: f64,
     timestamp: f64,
     raw_width: f64,
+    scale: f64,
 ) {
     unsafe {
         glaspen2_router_bubble_auto_page_flip();
         glaspen2_router_modeler_begin(x, y, pressure, timestamp);
         glaspen2_router_stroke_begin();
     }
-    glaspen2_rust_raw_draw_dot(x, y, raw_width);
+    glaspen2_rust_raw_draw_dot2(x, y, raw_width, scale);
     unsafe { glaspen2_router_pen_down_state(x, y, raw_width) };
 }
 
@@ -3641,9 +3607,10 @@ pub extern "C" fn glaspen2_rust_pen_move(
     pressure: f64,
     timestamp: f64,
     raw_width: f64,
+    scale: f64,
 ) {
     unsafe { glaspen2_router_modeler_move(x, y, pressure, timestamp) };
-    glaspen2_rust_raw_draw_segment(x, y, raw_width);
+    glaspen2_rust_raw_draw_segment2(x, y, raw_width, scale);
 }
 
 #[unsafe(no_mangle)]
@@ -4012,4 +3979,170 @@ pub extern "C" fn glaspen2_rust_restore_system_cursor() {
             glaspen2_router_set_pen_drawing(0);
         }
     }
+}
+
+// ── R67: 实时绘制计划入参/调用/光栅化整体迁 Rust ──
+
+unsafe extern "C" {
+    fn glaspen2_live_plan_json(input: *const std::os::raw::c_char) -> *mut std::os::raw::c_char;
+    fn glaspen2_free_c_string(p: *mut std::os::raw::c_char);
+    fn cairo_get_target(cr: *mut c_void) -> *mut c_void;
+    fn cairo_image_surface_get_width(surface: *mut c_void) -> i32;
+    fn cairo_image_surface_get_height(surface: *mut c_void) -> i32;
+}
+
+fn live_plan_run(
+    cr: *mut c_void,
+    input: &serde_json::Value,
+    inv: f64,
+    dot: bool,
+    fallback: &[(f64, f64, f64)],
+) -> bool {
+    let text = serde_json::to_string(input).unwrap_or_default();
+    let Ok(cinput) = std::ffi::CString::new(text) else {
+        return false;
+    };
+    let out = unsafe { glaspen2_live_plan_json(cinput.as_ptr()) };
+    if out.is_null() {
+        return false;
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(out) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { glaspen2_free_c_string(out) };
+    let f1 = fallback.first().copied().unwrap_or((0.0, 0.0, 0.0));
+    let f2 = fallback.get(1).copied().unwrap_or(f1);
+    let Ok(cplan) = std::ffi::CString::new(s) else {
+        return false;
+    };
+    glaspen2_rust_draw_live_plan(
+        cr,
+        cplan.as_ptr(),
+        inv,
+        i32::from(dot),
+        f1.0,
+        f1.1,
+        f1.2,
+        f2.0,
+        f2.1,
+        f2.2,
+        fallback.len() as i32,
+    ) != 0
+}
+
+fn live_plan_params(surface_w: i32, surface_h: i32, scale: f64, arc_len: f64) -> serde_json::Value {
+    let shadow = unsafe { glaspen2_router_soft_shadow() != 0 };
+    let outline = unsafe { glaspen2_router_outline_enabled() != 0 };
+    let eraser = unsafe { glaspen2_router_eraser_mode() != 0 };
+    let (r, g, b) = unsafe {
+        (
+            glaspen2_router_pen_r(),
+            glaspen2_router_pen_g(),
+            glaspen2_router_pen_b(),
+        )
+    };
+    serde_json::json!({
+        "viewport": [surface_w, surface_h],
+        "scale": scale,
+        "zoom": 1.0,
+        "pan": [0.0, 0.0],
+        "shadow": shadow,
+        "outline": outline,
+        "eraser": eraser,
+        "alpha": 1.0,
+        "arc_len_start": arc_len,
+        "color": [r, g, b],
+    })
+}
+
+fn live_plan_dot(cr: *mut c_void, x: f64, y: f64, width: f64, scale: f64) -> bool {
+    let target = unsafe { cairo_get_target(cr) };
+    if target.is_null() {
+        return false;
+    }
+    let sw = unsafe { cairo_image_surface_get_width(target) };
+    let sh = unsafe { cairo_image_surface_get_height(target) };
+    if sw <= 0 || sh <= 0 {
+        return false;
+    }
+    let input = serde_json::json!({
+        "points": [[x, y, width]],
+        "params": live_plan_params(sw, sh, scale, 0.0),
+    });
+    let shadow = unsafe { glaspen2_router_soft_shadow() != 0 };
+    let pad = width * 0.5 + 1.5 + if shadow { 5.0 } else { 0.0 };
+    live_plan_run(cr, &input, 1.0 / scale.max(0.0001), true, &[(x, y, pad)])
+}
+
+fn live_plan_segment(cr: *mut c_void, x: f64, y: f64, width: f64, scale: f64) -> bool {
+    let target = unsafe { cairo_get_target(cr) };
+    if target.is_null() {
+        return false;
+    }
+    let sw = unsafe { cairo_image_surface_get_width(target) };
+    let sh = unsafe { cairo_image_surface_get_height(target) };
+    if sw <= 0 || sh <= 0 {
+        return false;
+    }
+    let has_last = glaspen2_rust_pen_raw_has_last() != 0;
+    let last_x = glaspen2_rust_pen_raw_last_x();
+    let last_y = glaspen2_rust_pen_raw_last_y();
+    let last_w = glaspen2_rust_pen_raw_last_w();
+    let path_len = glaspen2_rust_pen_raw_path_len();
+    let mut input = serde_json::json!({
+        "points": [[last_x, last_y, last_w], [x, y, width]],
+        "params": live_plan_params(sw, sh, scale, path_len),
+    });
+    if glaspen2_rust_pen_raw_has_prev() != 0 {
+        input["seam"] = serde_json::json!([
+            glaspen2_rust_pen_raw_prev_x(),
+            glaspen2_rust_pen_raw_prev_y()
+        ]);
+    }
+    let shadow = unsafe { glaspen2_router_soft_shadow() != 0 };
+    let pad = width * 0.5 + 1.5 + if shadow { 5.0 } else { 0.0 };
+    let last_pad = last_w * 0.5 + 1.5 + if shadow { 5.0 } else { 0.0 };
+    let _ = has_last;
+    live_plan_run(
+        cr,
+        &input,
+        1.0 / scale.max(0.0001),
+        false,
+        &[(x, y, pad), (last_x, last_y, last_pad)],
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_raw_draw_dot2(x: f64, y: f64, width: f64, scale: f64) {
+    let mut owned = 0i32;
+    let cr = glaspen2_router_acquire_cr(&mut owned);
+    if cr.is_null() {
+        return;
+    }
+    let planned = live_plan_dot(cr, x, y, width, scale);
+    if !planned {
+        raw_dot_fallback(cr, x, y, width);
+    }
+    if owned != 0 {
+        unsafe { cairo_destroy(cr) };
+    }
+    unsafe { glaspen2_router_flush_dirty() };
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_raw_draw_segment2(x: f64, y: f64, width: f64, scale: f64) {
+    let mut owned = 0i32;
+    let cr = glaspen2_router_acquire_cr(&mut owned);
+    if cr.is_null() {
+        return;
+    }
+    let planned = live_plan_segment(cr, x, y, width, scale);
+    if !planned {
+        raw_segment_fallback(cr, x, y, width);
+    }
+    if owned != 0 {
+        unsafe { cairo_destroy(cr) };
+    }
+    glaspen2_rust_pen_update_after_segment(x, y, width);
+    unsafe { glaspen2_router_flush_dirty() };
 }

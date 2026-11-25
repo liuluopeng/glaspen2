@@ -226,20 +226,6 @@ public func runFinishActiveStroke() { EventRouter.finishActiveStroke() }
 @_cdecl("glaspen2_router_surface_cache_invalidate")
 public func runSurfaceCacheInvalidate() { panelSurfaceImageCacheInvalidate() }
 
-@_cdecl("glaspen2_router_live_plan_dot")
-public func runLivePlanDot(_ cr: UnsafeMutableRawPointer?, _ x: Double, _ y: Double,
-                           _ width: Double) -> Int32 {
-    guard let cr else { return 0 }
-    return LivePlan.drawDot(context: cr, x: x, y: y, width: width) ? 1 : 0
-}
-
-@_cdecl("glaspen2_router_live_plan_segment")
-public func runLivePlanSegment(_ cr: UnsafeMutableRawPointer?, _ x: Double, _ y: Double,
-                               _ width: Double) -> Int32 {
-    guard let cr else { return 0 }
-    return LivePlan.drawSegment(context: cr, x: x, y: y, width: width) ? 1 : 0
-}
-
 @_cdecl("glaspen2_router_invert_ink_source")
 public func runInvertInkSource(_ cr: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? {
     panelInvertInkSource(cr)
