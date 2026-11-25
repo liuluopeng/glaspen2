@@ -2775,3 +2775,60 @@ pub extern "C" fn glaspen2_router_cursor_flush_due() -> i32 {
 unsafe extern "C" {
     fn sw_stroke_active() -> i32;
 }
+
+// ── R54: 录制 HUD 语义 -> 本地化文案映射 ──
+
+fn rec_hud_msg(hud: &str) -> Option<glaspen_core::i18n::Msg> {
+    use glaspen_core::i18n::Msg;
+    Some(match hud {
+        "GifStartHint" => Msg::GifStartHint,
+        "SendStartHint" => Msg::SendStartHint,
+        "DraftStartHint" => Msg::DraftStartHint,
+        "DraftStartFailed" => Msg::DraftStartFailed,
+        "GifCopied" => Msg::GifCopied,
+        "GifNoStrokesOrExportFailed" => Msg::GifNoStrokesOrExportFailed,
+        "GifClipboardFailed" => Msg::GifClipboardFailed,
+        "SendNoStrokes" => Msg::SendNoStrokes,
+        "SendSucceeded" => Msg::SendSucceeded,
+        "SendFailed" => Msg::SendFailed,
+        "DraftAccepted" => Msg::DraftAccepted,
+        "DraftDeclined" => Msg::DraftDeclined,
+        "DraftFailed" => Msg::DraftFailed,
+        _ => return None,
+    })
+}
+
+/// R54: 返回 HUD 文案(C 字符串, 调用方 free); 未知 hud 返回 null。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_rec_hud_text(
+    hud: *const std::os::raw::c_char,
+    strokes: i32,
+    detail: *const std::os::raw::c_char,
+) -> *mut std::os::raw::c_char {
+    if hud.is_null() {
+        return std::ptr::null_mut();
+    }
+    let hud = unsafe { std::ffi::CStr::from_ptr(hud) }.to_string_lossy();
+    let Some(msg) = rec_hud_msg(&hud) else {
+        return std::ptr::null_mut();
+    };
+    let lang = if glaspen_core::shell_state::lang() == 1 {
+        glaspen_core::i18n::Lang::En
+    } else {
+        glaspen_core::i18n::Lang::Zh
+    };
+    let mut text = glaspen_core::i18n::text(lang, &msg).to_string();
+    if hud == "SendStartHint" {
+        text = text.replace("{keys}", "⌘⌃3");
+    } else if hud == "DraftStartHint" {
+        text = text.replace("{keys}", "⌘⌃2");
+    } else if hud == "SendSucceeded" || hud == "DraftAccepted" {
+        text = text.replace("{n}", &strokes.to_string());
+    } else if hud == "DraftFailed" && !detail.is_null() {
+        let d = unsafe { std::ffi::CStr::from_ptr(detail) }.to_string_lossy();
+        if !d.is_empty() {
+            text = d.into_owned();
+        }
+    }
+    std::ffi::CString::new(text).map_or(std::ptr::null_mut(), |s| s.into_raw())
+}

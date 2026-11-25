@@ -121,6 +121,8 @@
   Swift 只返回 Rust 堆字符串; settings probe 通过。
 - **R53 描边活动 context/光标刷新**: `StrokeContext` 活动 cairo context 槽 + `cursorFlushDue` 判定迁 Rust;
   acquire/install/take/present 走 Rust; 虚拟笔截图正常。
+- **R54 录制 HUD 文案**: `RecHudPresenter` 的 13 种 HUD 语义 -> core i18n 文案/占位符/详情覆盖迁 Rust;
+  Swift 只做通知展示; HUD 文案单源。
 
 ## 下一批候选(按风险从低到高)
 

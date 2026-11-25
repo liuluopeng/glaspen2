@@ -462,3 +462,6 @@ extern int glaspen2_shortcut_apply_json(const char *saved_json);
 
 // R52: 设置快照 overrides JSON(调用方 free)
 extern char *glaspen2_menu_snapshot_overrides_json(void);
+
+// R54: 录制 HUD 语义 -> 本地化文案(调用方 free)
+extern char *glaspen2_rust_rec_hud_text(const char *hud, int strokes, const char *detail);
