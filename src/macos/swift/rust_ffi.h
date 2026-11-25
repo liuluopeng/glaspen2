@@ -346,3 +346,8 @@ extern int glaspen2_rust_draw_grid(void *ctx, double view_w, double view_h,
                                     double screen_w, double screen_h,
                                     double clip_x0, double clip_y0,
                                     double clip_x1, double clip_y1);
+
+// R32: 时光隧道 surface 合成(默认; GLASPEN2_SWIFT_TUNNEL=1 回退)
+extern int glaspen2_rust_draw_tunnel(void *ctx, void *data, int width, int height, int stride,
+                                      double bw, double bh);
+extern void glaspen2_rust_clear_tunnel_cache(void);

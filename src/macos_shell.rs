@@ -1063,3 +1063,146 @@ pub extern "C" fn glaspen2_rust_draw_grid(
     stroke_grid_layer(ctx, &lines.divider, view_h, 0.5, 0.65, 1.5);
     1
 }
+
+// ── R32: 时光隧道 CGImage 缓存 + 合成(替代 Swift OverlayTunnelRenderer) ──
+
+#[derive(Default)]
+struct TunnelCache {
+    data: *mut c_void,
+    width: i32,
+    height: i32,
+    stride: i32,
+    image: *mut c_void,
+}
+
+unsafe impl Send for TunnelCache {}
+
+static TUNNEL_CACHE: std::sync::OnceLock<std::sync::Mutex<TunnelCache>> =
+    std::sync::OnceLock::new();
+
+fn tunnel_cache() -> &'static std::sync::Mutex<TunnelCache> {
+    TUNNEL_CACHE.get_or_init(|| std::sync::Mutex::new(TunnelCache::default()))
+}
+
+unsafe extern "C" {
+    fn CGDataProviderCreateWithData(
+        info: *mut c_void,
+        data: *const c_void,
+        size: usize,
+        release_data: *const c_void,
+    ) -> *mut c_void;
+    fn CGColorSpaceCreateDeviceRGB() -> *mut c_void;
+    fn CGColorSpaceRelease(space: *mut c_void);
+    fn CGImageCreate(
+        width: usize,
+        height: usize,
+        bits_per_component: usize,
+        bits_per_pixel: usize,
+        bytes_per_row: usize,
+        space: *mut c_void,
+        bitmap_info: u32,
+        provider: *mut c_void,
+        decode: *const f64,
+        should_interpolate: bool,
+        intent: i32,
+    ) -> *mut c_void;
+    fn CFRelease(cf: *const c_void);
+}
+
+fn tunnel_image(data: *mut c_void, width: i32, height: i32, stride: i32) -> *mut c_void {
+    let mut cache = tunnel_cache().lock().unwrap_or_else(|e| e.into_inner());
+    if cache.image.is_null()
+        || cache.data != data
+        || cache.width != width
+        || cache.height != height
+        || cache.stride != stride
+    {
+        if !cache.image.is_null() {
+            unsafe { CGImageRelease(cache.image) };
+        }
+        let size = height.max(0) as usize * stride.max(0) as usize;
+        let provider = unsafe {
+            CGDataProviderCreateWithData(
+                std::ptr::null_mut(),
+                data as *const c_void,
+                size,
+                std::ptr::null(),
+            )
+        };
+        let space = unsafe { CGColorSpaceCreateDeviceRGB() };
+        // premultipliedFirst(2) | byteOrder32Little(2 << 12)
+        let image = if provider.is_null() || space.is_null() {
+            std::ptr::null_mut()
+        } else {
+            unsafe {
+                CGImageCreate(
+                    width.max(0) as usize,
+                    height.max(0) as usize,
+                    8,
+                    32,
+                    stride.max(0) as usize,
+                    space,
+                    2 | (2 << 12),
+                    provider,
+                    std::ptr::null(),
+                    false,
+                    0,
+                )
+            }
+        };
+        unsafe {
+            if !provider.is_null() {
+                CFRelease(provider)
+            }
+            if !space.is_null() {
+                CGColorSpaceRelease(space)
+            }
+        }
+        cache.data = data;
+        cache.width = width;
+        cache.height = height;
+        cache.stride = stride;
+        cache.image = image;
+    }
+    cache.image
+}
+
+/// R32: 时光隧道 surface → CGImage 缓存并绘制; 返回 1 成功, 0 失败(Swift 回退)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_draw_tunnel(
+    ctx: *mut c_void,
+    data: *mut c_void,
+    width: i32,
+    height: i32,
+    stride: i32,
+    bw: f64,
+    bh: f64,
+) -> i32 {
+    use objc2_core_foundation::{CGPoint, CGRect, CGSize};
+    use objc2_core_graphics::{CGContext, CGImage};
+    if ctx.is_null() || data.is_null() || width <= 0 || height <= 0 || stride <= 0 {
+        return 0;
+    }
+    let image = tunnel_image(data, width, height, stride);
+    if image.is_null() {
+        return 0;
+    }
+    let ctx = unsafe { &*(ctx as *const CGContext) };
+    let image = unsafe { &*(image as *const CGImage) };
+    CGContext::draw_image(
+        Some(ctx),
+        CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(bw, bh)),
+        Some(image),
+    );
+    1
+}
+
+/// R32: 清除隧道 CGImage 缓存。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_clear_tunnel_cache() {
+    let mut cache = tunnel_cache().lock().unwrap_or_else(|e| e.into_inner());
+    if !cache.image.is_null() {
+        unsafe { CGImageRelease(cache.image) };
+    }
+    *cache = TunnelCache::default();
+}

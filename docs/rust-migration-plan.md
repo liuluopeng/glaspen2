@@ -77,6 +77,8 @@
   CGImage 缓存仍 Swift; `GLASPEN2_RUST_SURFACE=1` opt-in, 默认 Swift/失败回退。
 - **R31 surface 默认 + 网格渲染**: 笔迹 surface 合成默认走 Rust(`GLASPEN2_SWIFT_SURFACE=1` 回退);
   网格三层线(细网格/屏幕分界/分栏)用 core::grid 直接计算 + CGContext 描边迁 Rust, 默认 Rust, `GLASPEN2_SWIFT_GRID=1` 回退。
+- **R32 时光隧道 surface 合成**: `OverlayTunnelRenderer` 的 CGImage 缓存/合成迁 Rust(CoreGraphics, 原 cairo BGRA→premultipliedFirst 小端);
+  默认 Rust, `GLASPEN2_SWIFT_TUNNEL=1` 回退; 翻页真实运行无崩溃。
 
 ## 下一批候选(按风险从低到高)
 

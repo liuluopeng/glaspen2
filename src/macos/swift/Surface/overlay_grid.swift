@@ -204,6 +204,9 @@ import CoreGraphics
     }
 
     @objc public static func clear() {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TUNNEL"] != "1" {
+            glaspen2_rust_clear_tunnel_cache()
+        }
         cached = nil
         dataPtr = nil
         width = 0; height = 0; stride = 0
@@ -220,6 +223,12 @@ import CoreGraphics
     public static func drawTunnel(_ ctx: CGContext, data: UnsafeMutableRawPointer,
                                   width: Int32, height: Int32, stride: Int32,
                                   bounds: NSRect) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TUNNEL"] != "1",
+           glaspen2_rust_draw_tunnel(
+               Unmanaged.passUnretained(ctx).toOpaque(), data, width, height, stride,
+               bounds.size.width, bounds.size.height) != 0 {
+            return
+        }
         let image = cachedImage(data: data, width: width, height: height, stride: stride)
         guard let image else { return }
         ctx.draw(image, in: CGRect(origin: .zero, size: bounds.size))
