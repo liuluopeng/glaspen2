@@ -29,7 +29,7 @@ public func runZoomAt(_ factor: Double, _ x: Double, _ y: Double) {
 
 @_cdecl("glaspen2_router_cursor_flags")
 public func runCursorFlags() -> Int32 {
-    (CursorState.visible ? 1 : 0)
+    (glaspen2_router_pen_cursor_visible() != 0 ? 1 : 0)
         | ((PenState.strokeActive ? 1 : 0) << 1)
         | ((glaspen2_router_ethereal()) << 2)
         | ((PenState.hasSeenProximity ? 1 : 0) << 3)
@@ -51,7 +51,7 @@ public func runVirtualPenUserData() -> Int64 { 0x5650_4E31 }
 public func runPenState() -> Int32 {
     (glaspen2_router_strokes_visible())
         | ((PenState.strokeActive ? 1 : 0) << 1)
-        | ((CursorState.visible ? 1 : 0) << 2)
+        | ((glaspen2_router_pen_cursor_visible() != 0 ? 1 : 0) << 2)
 }
 
 @_cdecl("glaspen2_router_pen_bubble")
@@ -66,10 +66,10 @@ public func runPenAutoShow() { EtherealMode.autoShow() }
 public func runPeekCancel() { EtherealMode.cancelTimer() }
 
 @_cdecl("glaspen2_router_cursor_set")
-public func runCursorSet(_ x: Double, _ y: Double) { CursorState.x = x; CursorState.y = y }
+public func runCursorSet(_ x: Double, _ y: Double) { sw_cursor_set(x, y, 0) }
 
 @_cdecl("glaspen2_router_cursor_show")
-public func runCursorShow(_ on: Int32) { if on != 0 { CursorState.visible = true } }
+public func runCursorShow(_ on: Int32) { if on != 0 { sw_cursor_show() } }
 
 @_cdecl("glaspen2_router_hide_system_cursor")
 public func runHideSystemCursor() { CGDisplayHideCursor(CGMainDisplayID()) }

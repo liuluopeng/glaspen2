@@ -136,16 +136,14 @@ public func bridgePenDownState(_ x: Double, _ y: Double, _ rawWidth: Double) {
     PenState.rawLastW = rawWidth
     PenState.rawHasLast = true
     PenState.rawPathLen = 0
-    CursorState.visible = true
-    CursorState.x = x
-    CursorState.y = y
+    sw_cursor_set(x, y, 1)
 }
 
 @_cdecl("glaspen2_router_pen_up_state")
 public func bridgePenUpState() {
     PenState.clearRaw()
-    CursorState.visible = true
-    glaspen2_rust_dirty_include_point(CursorState.x, CursorState.y, 14.0)
+    sw_cursor_show()
+    glaspen2_rust_dirty_include_point(glaspen2_router_cursor_x(), glaspen2_router_cursor_y(), 14.0)
     OverlayLayerFlush.flushDirty()
 }
 

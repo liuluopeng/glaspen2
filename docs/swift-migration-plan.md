@@ -647,3 +647,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R44 | PageViewOps fit 状态/几何/update 迁 Rust; Swift 只做 C 桥与重建/翻页动作; 虚拟笔截图正常 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R45 | 菜单 C ABI 薄桥迁 Rust: update_checkmarks/update_menu_state/menu_state/glass_apply/set_title; 删 Swift 方法/C 包装; MenuGlue 改调 Rust; menu-full/settings probe 通过 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R46 | CameraStore 平移/缩放/页偏移/拖动/最后点状态迁 Rust; 删 camera_state_store.swift; queue/flush 桥移入 camera_mouse_pan; 虚拟笔截图正常 | 默认 smoke、全量 tests/build/parity 绿; Swift 91→90 | 本提交 |
+| 2026-11-26 | Rust-R47 | 光标状态 x/y/visible/penDrawing/lastFlush 迁 Rust; NSCursor 实例留 Swift; 调用点改读 Rust; 虚拟笔截图正常 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |

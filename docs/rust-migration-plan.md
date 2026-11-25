@@ -107,6 +107,8 @@
   删除 Swift `MenuRuntime` 对应方法与 C 包装; `MenuGlue.updateCheckmarks` 改调 Rust; menu-full/settings probe 通过。
 - **R46 镜头状态**: `CameraStore` 平移/缩放/翻页偏移/拖动/最后点迁 Rust;
   删除 `camera_state_store.swift`; queue/flush 桥移入 `camera_mouse_pan.swift`; overlay_grid/run_glue 改读 Rust; 虚拟笔截图正常。
+- **R47 画笔光标状态**: `CursorState` 的 x/y/visible/penDrawing/lastFlush 迁 Rust; NSCursor 实例仍 Swift;
+  run_glue/pen_state/event_router/misc_state/overlay_grid 改读 Rust; 虚拟笔截图正常。
 
 ## 下一批候选(按风险从低到高)
 

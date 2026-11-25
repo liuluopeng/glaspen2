@@ -2263,3 +2263,71 @@ pub extern "C" fn glaspen2_router_camera_start(x: f64, y: f64) {
 pub extern "C" fn glaspen2_router_clear_camera_dragging() {
     CAM_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
 }
+
+// ── R47: 画笔光标状态(位置/可见/绘制中/刷新时间) ──
+
+static CUR_X: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new((-100.0f64).to_bits());
+static CUR_Y: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new((-100.0f64).to_bits());
+static CUR_VISIBLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static CUR_PEN_DRAWING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static CUR_LAST_FLUSH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_cursor_x() -> f64 {
+    f64::from_bits(CUR_X.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_cursor_y() -> f64 {
+    f64::from_bits(CUR_Y.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_cursor_hide() {
+    CUR_VISIBLE.store(false, std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_pen_cursor_visible() -> i32 {
+    i32::from(CUR_VISIBLE.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_cursor_set(x: f64, y: f64, visible: i32) {
+    use std::sync::atomic::Ordering;
+    CUR_X.store(x.to_bits(), Ordering::Relaxed);
+    CUR_Y.store(y.to_bits(), Ordering::Relaxed);
+    if visible != 0 {
+        CUR_VISIBLE.store(true, Ordering::Relaxed);
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_cursor_visible() -> i32 {
+    glaspen2_router_pen_cursor_visible()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_cursor_x() -> f64 {
+    glaspen2_router_cursor_x()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_cursor_y() -> f64 {
+    glaspen2_router_cursor_y()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_cursor_show() {
+    CUR_VISIBLE.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_pen_drawing() -> i32 {
+    i32::from(CUR_PEN_DRAWING.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_set_pen_drawing(on: i32) {
+    CUR_PEN_DRAWING.store(on != 0, std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_cursor_last_flush() -> u64 {
+    CUR_LAST_FLUSH.load(std::sync::atomic::Ordering::Relaxed)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_cursor_set_last_flush(value: u64) {
+    CUR_LAST_FLUSH.store(value, std::sync::atomic::Ordering::Relaxed);
+}

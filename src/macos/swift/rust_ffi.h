@@ -415,3 +415,14 @@ extern int glaspen2_rust_pageview_geometry_width(void);
 
 // R45: 菜单 C ABI 薄桥
 extern void glaspen2_menu_set_title(int tag, const char *title);
+
+// R47: 画笔光标刷新时间
+extern unsigned long long glaspen2_rust_cursor_last_flush(void);
+extern void glaspen2_rust_cursor_set_last_flush(unsigned long long value);
+
+// R47: 光标状态 C 声明(原 Swift 导出, 现 Rust)
+extern void sw_cursor_set(double x, double y, int visible);
+extern int sw_cursor_visible(void);
+extern double sw_cursor_x(void);
+extern double sw_cursor_y(void);
+extern void sw_cursor_show(void);

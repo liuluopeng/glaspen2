@@ -58,8 +58,8 @@ import AppKit
         // 旧实现: 任意鼠标/笔抬起都恢复系统光标并清掉十字(不只笔事件)。
         if type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp {
             EventRouter.restoreSystemCursor()
-            CursorState.visible = false
-            glaspen2_rust_dirty_include_point(CursorState.x, CursorState.y, 14.0)
+            glaspen2_router_cursor_hide()
+            glaspen2_rust_dirty_include_point(glaspen2_router_cursor_x(), glaspen2_router_cursor_y(), 14.0)
             OverlayLayerFlush.flushDirty()
         }
         // 笔事件: 坐标/压力/raw_w 在本层计算, 再交 pen 分派(原 inner 逻辑)。

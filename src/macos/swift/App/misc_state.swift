@@ -61,14 +61,14 @@ public func strokeTakeActive() -> OpaquePointer? {
 @_cdecl("glaspen2_router_cursor_invalidate")
 public func cursorInvalidate() {
     // 光标坐标是视图坐标(原点左下), 不是表面坐标(y 向下), 不能用 surface 转换。
-    glaspen2_rust_dirty_include_point(CursorState.x, CursorState.y, 14.0)
+    glaspen2_rust_dirty_include_point(glaspen2_router_cursor_x(), glaspen2_router_cursor_y(), 14.0)
 }
 
 @_cdecl("glaspen2_router_cursor_flush_due")
 public func cursorFlushDue() -> Int32 {
     if !PenState.strokeActive,
-       glaspen2_perf_elapsed_us(CursorState.lastFlush) >= 16000 {
-        CursorState.lastFlush = mach_absolute_time()
+       glaspen2_perf_elapsed_us(glaspen2_rust_cursor_last_flush()) >= 16000 {
+        glaspen2_rust_cursor_set_last_flush(mach_absolute_time())
         return 1
     }
     return 0

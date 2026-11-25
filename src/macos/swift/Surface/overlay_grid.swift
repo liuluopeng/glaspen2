@@ -95,14 +95,14 @@ import CoreGraphics
     public static func drawCursor(_ ctx: CGContext) {
         if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_CURSOR"] != "1" {
             glaspen2_rust_draw_cursor(Unmanaged.passUnretained(ctx).toOpaque(),
-                                      CursorState.visible ? 1 : 0,
-                                      CursorState.x, CursorState.y,
+                                      glaspen2_router_pen_cursor_visible() != 0 ? 1 : 0,
+                                      glaspen2_router_cursor_x(), glaspen2_router_cursor_y(),
                                       glaspen2_router_eraser_mode())
             return
         }
-        guard CursorState.visible, CursorState.x >= 0 else { return }
-        let x = CursorState.x
-        let y = CursorState.y
+        guard glaspen2_router_pen_cursor_visible() != 0, glaspen2_router_cursor_x() >= 0 else { return }
+        let x = glaspen2_router_cursor_x()
+        let y = glaspen2_router_cursor_y()
         let eraser = glaspen2_router_eraser_mode() != 0
         let radius = 8.0
         let ring = eraser ? NSColor(calibratedRed: 1.0, green: 0.25, blue: 0.2, alpha: 0.95)
