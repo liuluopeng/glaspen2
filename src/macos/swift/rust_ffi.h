@@ -296,3 +296,7 @@ extern void glaspen2_rust_overlay_assemble_content(void *content, void *glass,
 
 // R19/R21: Rust NSView 子类绘制视图(默认; GLASPEN2_SWIFT_DRAW_VIEW=1 回退)
 extern void *glaspen2_rust_draw_view_create(double x, double y, double width, double height);
+
+// R22: 状态栏主菜单创建/挂载(默认; GLASPEN2_SWIFT_MENU=1 回退 Swift)
+extern void *glaspen2_rust_menu_create(void);
+extern void glaspen2_rust_status_item_set_menu(void *item, void *menu);

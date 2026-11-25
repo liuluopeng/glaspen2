@@ -398,3 +398,28 @@ pub extern "C" fn glaspen2_rust_draw_view_create(
     tracing::info!("rust-shell: draw NSView created by Rust (objc2)");
     Retained::into_raw(view) as *mut c_void
 }
+
+/// R22: 用 Rust/objc2 创建状态栏主菜单对象(菜单项仍由 Swift 构建)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_create() -> *mut c_void {
+    use objc2_app_kit::NSMenu;
+    let Some(mtm) = MainThreadMarker::new() else {
+        return std::ptr::null_mut();
+    };
+    let menu = NSMenu::new(mtm);
+    tracing::info!("rust-shell: NSMenu created by Rust (objc2)");
+    Retained::into_raw(menu) as *mut c_void
+}
+
+/// R22: Rust 把菜单挂到状态栏项(statusItem.menu = menu)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_status_item_set_menu(item: *mut c_void, menu: *mut c_void) {
+    use objc2_app_kit::{NSMenu, NSStatusItem};
+    if item.is_null() || menu.is_null() {
+        return;
+    }
+    let item = unsafe { &*(item as *const NSStatusItem) };
+    let menu = unsafe { &*(menu as *const NSMenu) };
+    item.setMenu(Some(menu));
+    tracing::info!("rust-shell: status item menu attached by Rust (objc2)");
+}

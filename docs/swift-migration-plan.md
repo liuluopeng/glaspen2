@@ -622,3 +622,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-25 | Rust-R19 | 绘制视图迁 Rust: `define_class!` NSView 子类 + drawRect C 桥回调 Swift OverlayDrawing; `GLASPEN2_RUST_DRAW_VIEW=1` opt-in; 虚拟笔绘制截图确认旧笔迹/新笔迹均正常渲染 | 默认/绘制视图/覆盖窗+绘制视图组合 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-25 | Rust-R20 | 状态栏项创建与图标渲染默认切 Rust(objc2): 默认路径走 Rust, GLASPEN2_SWIFT_STATUS_ITEM=1/GLASPEN2_SWIFT_STATUS_ICON=1 可回退 Swift; 失败自动回退; parity 72x72 diff=0/20736 | 默认 smoke(含状态栏)/回退 smoke/全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-25 | Rust-R21 | 覆盖层默认切 Rust: 主窗口/内容容器/玻璃视图/组装/绘制视图默认 objc2; GLASPEN2_SWIFT_OVERLAY=1 + GLASPEN2_SWIFT_DRAW_VIEW=1 回退 Swift; 失败自动回退 | 默认 smoke + 回退 smoke、虚拟笔截图、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-25 | Rust-R22 | 状态栏菜单对象迁 Rust(objc2): Rust 创建 NSMenu + 挂到 NSStatusItem; 菜单项仍 Swift 构建; GLASPEN2_SWIFT_MENU=1 回退; 默认 smoke/回退 smoke/全量 tests/build/parity 绿 | 默认启动日志确认 Rust 创建并挂载菜单 | 本提交 |

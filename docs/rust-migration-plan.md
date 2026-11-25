@@ -57,6 +57,8 @@
   `GLASPEN2_SWIFT_STATUS_ICON=1` 回退开关与失败自动回退; parity 探针默认 diff=0。
 - **R21 覆盖层默认切 Rust**: 主覆盖窗/内容容器/玻璃视图/内容组装/绘制视图默认走 objc2;
   `GLASPEN2_SWIFT_OVERLAY=1` + `GLASPEN2_SWIFT_DRAW_VIEW=1` 可整体回退 Swift, 各函数失败自动回退。
+- **R22 状态栏菜单对象**: Rust 创建 `NSMenu` 并把菜单挂到 `NSStatusItem`; 菜单项仍由 Swift `MenuBuilder` 构建;
+  `GLASPEN2_SWIFT_MENU=1` 回退 Swift, 失败自动回退。
 
 ## 下一批候选(按风险从低到高)
 
