@@ -634,3 +634,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-25 | Rust-R31 | surface 合成默认切 Rust; 网格三层线从 Swift JSON 解析改为 Rust 直接 core::grid+CGContext 描边并默认启用; 回退开关 GLASPEN2_SWIFT_SURFACE/GRID=1 | 真实 app 开网格+虚拟笔截图确认网格/笔迹正常; 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-25 | Rust-R32 | 时光隧道 surface 合成迁 Rust(CoreGraphics): CGImage 缓存 + drawImage; 默认 Rust, GLASPEN2_SWIFT_TUNNEL=1 回退; 翻页接管日志正常、默认/回退 smoke 全绿 | 页面内容少时隧道 0 卡, 但绘制路径已接 | 本提交 |
 | 2026-11-25 | Rust-R33 | 通知 HUD 文字绘制迁 Rust(objc2): 36pt 等宽/白字/阴影/居中; 新增 --swift-notification-probe(离屏渲染非空像素 15309)并纳入 smoke; 默认 Rust, GLASPEN2_SWIFT_NOTIFICATION=1 回退 | 默认/全量 smoke、tests/build/parity 绿 | 本提交 |
+| 2026-11-25 | Rust-R34 | 笔迹 surface CGImage 缓存迁 Rust(替代 Swift OverlaySurfaceImageCache); OverlayDrawing 默认走 glaspen2_rust_draw_surface_data, Swift 旧缓存仅回退; 虚拟笔截图确认旧/新笔迹正常 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |

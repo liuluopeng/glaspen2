@@ -354,3 +354,8 @@ extern void glaspen2_rust_clear_tunnel_cache(void);
 
 // R33: 通知文字绘制(默认; GLASPEN2_SWIFT_NOTIFICATION=1 回退)
 extern int glaspen2_rust_draw_notification(const char *text, double view_w, double view_h);
+
+// R34: 笔迹 surface CGImage 缓存 + 绘制(默认; GLASPEN2_SWIFT_SURFACE=1 回退)
+extern int glaspen2_rust_draw_surface_data(void *ctx, void *data, int width, int height, int stride,
+                                           double rx, double ry, double rw, double rh,
+                                           double bx, double by, double bw, double bh, double scale);

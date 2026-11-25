@@ -1221,7 +1221,7 @@ pub extern "C" fn glaspen2_rust_draw_notification(
         NSShadowAttributeName, NSStringDrawing,
     };
     use objc2_core_foundation::{CGPoint, CGSize};
-    use objc2_foundation::{NSAttributedStringKey, NSCopying, NSMutableDictionary, NSString};
+    use objc2_foundation::{NSAttributedStringKey, NSMutableDictionary, NSString};
 
     if text.is_null() || view_w <= 0.0 || view_h <= 0.0 {
         return 0;
@@ -1261,4 +1261,109 @@ pub extern "C" fn glaspen2_rust_draw_notification(
     let y = (view_h - size.height) / 2.0;
     unsafe { ns.drawAtPoint_withAttributes(CGPoint::new(x, y), Some(&attrs)) };
     1
+}
+
+// ── R34: 笔迹 surface CGImage 缓存(替代 Swift OverlaySurfaceImageCache) ──
+
+#[derive(Default)]
+struct SurfaceCache {
+    data: *mut c_void,
+    width: i32,
+    height: i32,
+    stride: i32,
+    image: *mut c_void,
+}
+
+unsafe impl Send for SurfaceCache {}
+
+static SURFACE_CACHE: std::sync::OnceLock<std::sync::Mutex<SurfaceCache>> =
+    std::sync::OnceLock::new();
+
+fn surface_cache() -> &'static std::sync::Mutex<SurfaceCache> {
+    SURFACE_CACHE.get_or_init(|| std::sync::Mutex::new(SurfaceCache::default()))
+}
+
+fn surface_image(data: *mut c_void, width: i32, height: i32, stride: i32) -> *mut c_void {
+    let mut cache = surface_cache().lock().unwrap_or_else(|e| e.into_inner());
+    if cache.image.is_null()
+        || cache.data != data
+        || cache.width != width
+        || cache.height != height
+        || cache.stride != stride
+    {
+        if !cache.image.is_null() {
+            unsafe { CGImageRelease(cache.image) };
+        }
+        let size = height.max(0) as usize * stride.max(0) as usize;
+        let provider = unsafe {
+            CGDataProviderCreateWithData(
+                std::ptr::null_mut(),
+                data as *const c_void,
+                size,
+                std::ptr::null(),
+            )
+        };
+        let space = unsafe { CGColorSpaceCreateDeviceRGB() };
+        let image = if provider.is_null() || space.is_null() {
+            std::ptr::null_mut()
+        } else {
+            unsafe {
+                CGImageCreate(
+                    width.max(0) as usize,
+                    height.max(0) as usize,
+                    8,
+                    32,
+                    stride.max(0) as usize,
+                    space,
+                    2 | (2 << 12),
+                    provider,
+                    std::ptr::null(),
+                    false,
+                    0,
+                )
+            }
+        };
+        unsafe {
+            if !provider.is_null() {
+                CFRelease(provider)
+            }
+            if !space.is_null() {
+                CGColorSpaceRelease(space)
+            }
+        }
+        cache.data = data;
+        cache.width = width;
+        cache.height = height;
+        cache.stride = stride;
+        cache.image = image;
+    }
+    cache.image
+}
+
+/// R34: 由 cairo surface 指针直接缓存 CGImage 并绘制; 返回 1 成功, 0 失败。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_draw_surface_data(
+    ctx: *mut c_void,
+    data: *mut c_void,
+    width: i32,
+    height: i32,
+    stride: i32,
+    rx: f64,
+    ry: f64,
+    rw: f64,
+    rh: f64,
+    bx: f64,
+    by: f64,
+    bw: f64,
+    bh: f64,
+    scale: f64,
+) -> i32 {
+    if data.is_null() || width <= 0 || height <= 0 || stride <= 0 {
+        return 0;
+    }
+    let image = surface_image(data, width, height, stride);
+    if image.is_null() {
+        return 0;
+    }
+    glaspen2_rust_draw_surface(ctx, image, rx, ry, rw, rh, bx, by, bw, bh, scale)
 }
