@@ -640,3 +640,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R37 | 聊天/压感/网格/自启/玻璃开关 setter 迁 Rust: 状态/落库/面板/菜单/重绘; Swift MenuHandler 仅回退; settings probe 全绿 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R38 | OverlayDrawing 编排迁 Rust: Swift stage 桥 + Rust save/clip/顺序/restore/perf; GLASPEN2_RUST_OVERLAY_DRAW=1 opt-in; 网格+虚拟笔截图正常 | 默认/opt-in smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R39 | OverlayDrawing 编排默认切 Rust(save/clip/顺序/restore/perf), GLASPEN2_SWIFT_OVERLAY_DRAW=1 回退; 默认截图网格+笔迹正常 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R40 | Minimap strip 合成/绘制迁 Rust: 布局/缩略图贴图/当前页边框/标签/整体贴图; 缩略图生成仍 Swift; GLASPEN2_SWIFT_MINIMAP_DRAW=1 回退; minimap 截图正常 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |

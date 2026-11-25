@@ -93,6 +93,8 @@
   Rust `glaspen2_rust_overlay_draw` 负责 save/clip/顺序/restore/性能打点; `GLASPEN2_RUST_OVERLAY_DRAW=1` opt-in。
 - **R39 OverlayDrawing 默认切 Rust**: 默认走 Rust 编排; `GLASPEN2_SWIFT_OVERLAY_DRAW=1` 回退 Swift stage 顺序;
   真实 app 网格+虚拟笔截图正常, smoke/tests/parity 全绿。
+- **R40 Minimap strip 合成/绘制**: 缩略图仍 Swift 异步生成, 布局+strip 合成/边框/标签/贴图迁 Rust(objc2);
+  默认 Rust, `GLASPEN2_SWIFT_MINIMAP_DRAW=1` 回退; minimap=1 真机截图确认右侧条带正常。
 
 ## 下一批候选(按风险从低到高)
 

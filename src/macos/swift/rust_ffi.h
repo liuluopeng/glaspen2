@@ -374,3 +374,16 @@ extern void glaspen2_rust_set_glass_enabled(int enabled);
 
 // R38: 覆盖层绘制编排(opt-in: GLASPEN2_RUST_OVERLAY_DRAW=1)
 extern int glaspen2_rust_overlay_draw(void *view, double rx, double ry, double rw, double rh);
+
+// R40: Minimap strip 合成/绘制(默认; GLASPEN2_SWIFT_MINIMAP_DRAW=1 回退)
+typedef struct {
+    long long screen_id;
+    int current;
+    double y;
+    double h;
+    const char *label;
+    void *thumb;
+} GlaspenMinimapItem;
+extern int glaspen2_rust_draw_minimap(void *ctx, const GlaspenMinimapItem *items, int count,
+                                       double strip_w, double strip_h, double strip_x, double strip_y,
+                                       double view_h);

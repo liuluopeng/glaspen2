@@ -1708,3 +1708,119 @@ pub extern "C" fn glaspen2_rust_overlay_draw(
     unsafe { glaspen2_swift_overlay_perf(t0, bx, by, bw, bh, rx, ry, rw, rh) };
     1
 }
+
+// ── R40: Minimap strip 合成/绘制(缩略图生成仍 Swift) ──
+
+#[repr(C)]
+pub struct MinimapItemC {
+    pub screen_id: i64,
+    pub current: i32,
+    pub y: f64,
+    pub h: f64,
+    pub label: *const std::os::raw::c_char,
+    pub thumb: *mut c_void,
+}
+
+/// R40: 用 Swift 提供的缩略图/布局合成 minimap strip 并绘制; 返回 1 成功, 0 失败。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_draw_minimap(
+    ctx: *mut c_void,
+    items: *const MinimapItemC,
+    count: i32,
+    strip_w: f64,
+    strip_h: f64,
+    strip_x: f64,
+    strip_y: f64,
+    view_h: f64,
+) -> i32 {
+    use objc2::runtime::AnyObject;
+    use objc2_app_kit::{
+        NSBezierPath, NSColor, NSCompositingOperation, NSFont, NSFontAttributeName,
+        NSFontWeightRegular, NSForegroundColorAttributeName, NSImage, NSStringDrawing,
+    };
+    use objc2_foundation::{
+        NSAttributedStringKey, NSMutableDictionary, NSPoint, NSRect, NSSize, NSString,
+    };
+
+    if ctx.is_null() || items.is_null() || strip_w <= 0.0 || strip_h <= 0.0 || count <= 0 {
+        return 0;
+    }
+    let Some(mtm) = MainThreadMarker::new() else {
+        return 0;
+    };
+    let ctx = unsafe { &*(ctx as *const objc2_core_graphics::CGContext) };
+    let strip = NSImage::initWithSize(NSImage::alloc(), NSSize::new(strip_w, strip_h));
+    strip.lockFocus();
+    for i in 0..count {
+        let item = unsafe { &*items.add(i as usize) };
+        let ly = strip_h - ((item.y - strip_y) + item.h);
+        let rect = NSRect::new(NSPoint::new(0.0, ly), NSSize::new(strip_w, item.h));
+        if !item.thumb.is_null() {
+            let thumb = unsafe { &*(item.thumb as *const NSImage) };
+            thumb.drawInRect_fromRect_operation_fraction(
+                rect,
+                NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(0.0, 0.0)),
+                NSCompositingOperation::SourceOver,
+                1.0,
+            );
+        } else {
+            NSColor::colorWithCalibratedWhite_alpha(0.94, 0.9).setFill();
+            NSBezierPath::bezierPathWithRect(rect).fill();
+        }
+        let border = NSBezierPath::bezierPathWithRect(rect);
+        border.setLineWidth(if item.current != 0 { 2.0 } else { 1.0 });
+        if item.current != 0 {
+            NSColor::systemRedColor().setStroke();
+        } else {
+            NSColor::systemGrayColor().setStroke();
+        }
+        border.stroke();
+        if !item.label.is_null() {
+            let label = unsafe { std::ffi::CStr::from_ptr(item.label) }.to_string_lossy();
+            if !label.is_empty() {
+                let font =
+                    NSFont::monospacedSystemFontOfSize_weight(9.0, unsafe { NSFontWeightRegular });
+                let attrs: objc2::rc::Retained<
+                    NSMutableDictionary<NSAttributedStringKey, AnyObject>,
+                > = NSMutableDictionary::new();
+                unsafe {
+                    let font_any: &AnyObject = &*(&*font as *const NSFont as *const AnyObject);
+                    let color = NSColor::colorWithCalibratedWhite_alpha(0.25, 0.9);
+                    let color_any: &AnyObject = &*(&*color as *const NSColor as *const AnyObject);
+                    attrs.setObject_forKey(
+                        font_any,
+                        objc2::runtime::ProtocolObject::from_ref(&*NSFontAttributeName),
+                    );
+                    attrs.setObject_forKey(
+                        color_any,
+                        objc2::runtime::ProtocolObject::from_ref(&*NSForegroundColorAttributeName),
+                    );
+                }
+                let ns = NSString::from_str(&label);
+                unsafe {
+                    ns.drawAtPoint_withAttributes(
+                        objc2_core_foundation::CGPoint::new(
+                            rect.origin.x + 3.0,
+                            rect.origin.y + 3.0,
+                        ),
+                        Some(&attrs),
+                    );
+                }
+            }
+        }
+    }
+    strip.unlockFocus();
+    let dst = NSRect::new(
+        NSPoint::new(strip_x, view_h - strip_y - strip_h),
+        NSSize::new(strip_w, strip_h),
+    );
+    strip.drawInRect_fromRect_operation_fraction(
+        dst,
+        NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(0.0, 0.0)),
+        NSCompositingOperation::SourceOver,
+        1.0,
+    );
+    let _ = mtm;
+    let _ = ctx;
+    1
+}
