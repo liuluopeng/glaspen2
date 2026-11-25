@@ -1,25 +1,20 @@
-// S3b-2b-4b: 颜色/粗细显示名(仅稳定 i18n key 表),文案仍由 ObjC gl_text/核心 i18n 决定。
+// R2: 颜色/粗细显示名表已迁 glaspen-core::i18n, 本文件只做 C 字符串桥。
 import AppKit
 
 @objc public final class MenuNames: NSObject {
-    private static let colorKeys = [
-        "color.red", "color.orange", "color.yellow", "color.green", "color.cyan",
-        "color.blue", "color.purple", "color.pink", "color.white", "color.black",
-    ]
-    private static let widthKeys = [
-        "width.hair", "width.very_fine", "width.fine", "width.medium",
-        "width.thick", "width.very_thick", "width.extra_thick", "width.boldest",
-    ]
+    private static func take(_ p: UnsafeMutablePointer<CChar>?) -> String {
+        guard let p else { return "" }
+        defer { glaspen2_free_c_string(p) }
+        return String(cString: p)
+    }
 
     @objc(colorDisplayNameWithIndex:)
     public static func colorDisplayName(index: Int) -> String {
-        guard index >= 0 && index < colorKeys.count else { return "" }
-        return MenuRuntime.l10n(colorKeys[index])
+        take(glaspen2_color_name(Int32(index), glaspen2_router_lang()))
     }
 
     @objc(widthDisplayNameWithIndex:)
     public static func widthDisplayName(index: Int) -> String {
-        guard index >= 0 && index < widthKeys.count else { return "" }
-        return MenuRuntime.l10n(widthKeys[index])
+        take(glaspen2_width_name(Int32(index), glaspen2_router_lang()))
     }
 }

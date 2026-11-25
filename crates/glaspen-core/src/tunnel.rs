@@ -23,13 +23,7 @@ pub struct TunnelPlacement {
 }
 
 /// 由页距计算卡片矩形/透明度; 不可见时返回 None。
-pub fn place(
-    zc: f64,
-    k: f64,
-    travel: f64,
-    surf_w: f64,
-    surf_h: f64,
-) -> Option<TunnelPlacement> {
+pub fn place(zc: f64, k: f64, travel: f64, surf_w: f64, surf_h: f64) -> Option<TunnelPlacement> {
     if zc < -SPAN || zc > FRONT {
         return None;
     }
@@ -51,7 +45,13 @@ pub fn place(
     if alpha > 1.0 {
         alpha = 1.0;
     }
-    Some(TunnelPlacement { cx, cy, w, h, alpha })
+    Some(TunnelPlacement {
+        cx,
+        cy,
+        w,
+        h,
+        alpha,
+    })
 }
 
 #[cfg(test)]

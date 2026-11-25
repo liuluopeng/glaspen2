@@ -2495,6 +2495,38 @@ pub extern "C" fn glaspen2_tunnel_front() -> c_double {
     crate::tunnel::FRONT
 }
 
+// ── 预设显示名(R2: Swift MenuNames 表迁 Rust) ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_color_name(index: c_int, lang: c_int) -> *mut c_char {
+    let lang = if lang == 1 {
+        crate::i18n::Lang::En
+    } else {
+        crate::i18n::Lang::Zh
+    };
+    let text = if index < 0 {
+        ""
+    } else {
+        crate::i18n::color_name(index as usize, lang)
+    };
+    return_c_string(text.to_string())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_width_name(index: c_int, lang: c_int) -> *mut c_char {
+    let lang = if lang == 1 {
+        crate::i18n::Lang::En
+    } else {
+        crate::i18n::Lang::Zh
+    };
+    let text = if index < 0 {
+        ""
+    } else {
+        crate::i18n::width_name(index as usize, lang)
+    };
+    return_c_string(text.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

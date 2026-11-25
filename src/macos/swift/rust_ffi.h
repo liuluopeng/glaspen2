@@ -212,3 +212,7 @@ extern int glaspen2_undo_last_stroke(void);
 extern int glaspen2_tunnel_place(double zc, double k, double travel,
                                  double surf_w, double surf_h, double *out);
 extern double glaspen2_tunnel_front(void);
+
+// R2: 预设显示名(索引/语言 -> UTF-8, 调用方 glaspen2_free_c_string)
+extern char *glaspen2_color_name(int index, int lang);
+extern char *glaspen2_width_name(int index, int lang);

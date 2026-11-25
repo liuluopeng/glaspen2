@@ -258,6 +258,16 @@ pub const WIDTH_NAMES: [Msg; 8] = [
     Msg::WidthBoldest,
 ];
 
+/// 颜色预设显示名; 越界返回空串。
+pub fn color_name(index: usize, lang: Lang) -> &'static str {
+    COLOR_NAMES.get(index).map(|m| text(lang, m)).unwrap_or("")
+}
+
+/// 粗细预设显示名; 越界返回空串。
+pub fn width_name(index: usize, lang: Lang) -> &'static str {
+    WIDTH_NAMES.get(index).map(|m| text(lang, m)).unwrap_or("")
+}
+
 impl Msg {
     /// 全表(测试/审计遍历用; 顺序 = 变体声明顺序)。
     pub const ALL: &[Msg] = &[
@@ -1093,10 +1103,39 @@ mod tests {
         //    且 key 形状的字面量都必须真的在表里(拼错 key 运行时会原样显示)。
         let mac_literals: BTreeSet<&str> =
             mac_lits.iter().map(|(_, _, lit)| lit.as_str()).collect();
+        // R2: 颜色/粗细显示名表已迁到 core(i18n::color_name/width_name),
+        // Swift 不再保留这些 key 字面量, 由 core FFI 直接解析; 其余 key 仍要求在
+        // macOS 源码出现。这里校验豁免键确实在表中, 防止豁免名单腐化。
+        const CORE_SERVED_KEYS: &[&str] = &[
+            "color.red",
+            "color.orange",
+            "color.yellow",
+            "color.green",
+            "color.cyan",
+            "color.blue",
+            "color.purple",
+            "color.pink",
+            "color.white",
+            "color.black",
+            "width.hair",
+            "width.very_fine",
+            "width.fine",
+            "width.medium",
+            "width.thick",
+            "width.very_thick",
+            "width.extra_thick",
+            "width.boldest",
+        ];
+        for key in CORE_SERVED_KEYS {
+            assert!(
+                by_key(key).is_some(),
+                "i18n 闸门: core-served key 不存在: {key}"
+            );
+        }
         let missing_keys: Vec<&str> = Msg::ALL
             .iter()
             .map(|msg| msg.key())
-            .filter(|key| !mac_literals.contains(key))
+            .filter(|key| !CORE_SERVED_KEYS.contains(key) && !mac_literals.contains(key))
             .collect();
         assert!(
             missing_keys.is_empty(),
@@ -1190,5 +1229,16 @@ mod tests {
             win_lits.iter().any(|(_, _, lit)| lit == "Ctrl+Alt+3"),
             "Windows 源码应含 Ctrl+Alt+3 键名(作为 {{keys}} 参数)"
         );
+    }
+
+    /// R2: Swift MenuNames 表迁 Rust 后的边界(越界空串, zh/en 不同)。
+    #[test]
+    fn preset_name_helpers() {
+        assert_eq!(color_name(0, Lang::Zh), "红");
+        assert_eq!(color_name(0, Lang::En), "Red");
+        assert_eq!(color_name(99, Lang::Zh), "");
+        assert_eq!(width_name(0, Lang::Zh), "极细");
+        assert_eq!(width_name(0, Lang::En), "Hair");
+        assert_eq!(width_name(99, Lang::En), "");
     }
 }
