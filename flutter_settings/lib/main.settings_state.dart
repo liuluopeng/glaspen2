@@ -27,7 +27,14 @@ extension _SettingsStateUi on _SettingsPageState {
     // 画布模式被外部改(快捷键切自由涂鸦/覆盖层推设置)时, TabBar 选中项必须
     // 跟着走 —— 否则"玻璃在自由涂鸦、面板停在活页本", 用户再点活页本就会
     // 把自由涂鸦关掉(用户报的严重错位)。
-    if (wasInfinite != _infiniteCanvas || wasFreeTab != _showFreeCanvas) {
+    //
+    // 首次快照也可能以推送形式先到(getSettings 的返回会被 _settingsLoadGen
+    // 作废): 此时同样要完成"上次停留 tab"的初始恢复, 否则 push 路径永远
+    // 不走 _applyInitialTabIfReady, 面板就停在 0 号 tab。
+    if (!_initialTabApplied) {
+      _settingsReadyForInitialTab = true;
+      _applyInitialTabIfReady();
+    } else if (wasInfinite != _infiniteCanvas || wasFreeTab != _showFreeCanvas) {
       _syncTabToCanvasMode(force: true);
     }
     _applyLanguage(_language);
@@ -167,11 +174,12 @@ extension _SettingsStateUi on _SettingsPageState {
       final wasInfinite = _infiniteCanvas;
       final wasFreeTab = _showFreeCanvas;
       setState(() => _mergeSettingsSnapshot(settings, full: true));
-      // 首次拿到设置: 直接把面板停在当前画布模式对应的 tab(自由涂鸦/活页本),
-      // 让"面板选的模式"和"玻璃实际模式"一致; 不是首次则只在模式变化时跟随。
+      // 首次拿到设置: 恢复上次停留的 tab(有记录且仍存在时); 没有记录则
+      // 回落到当前画布模式对应的 tab(自由涂鸦/活页本)。不是首次则只在模式
+      // 变化时跟随。初始恢复要等 panel_state 也读取完成, 见 _applyInitialTabIfReady。
       if (!_initialTabApplied) {
-        _initialTabApplied = true;
-        _syncTabToCanvasMode(force: true);
+        _settingsReadyForInitialTab = true;
+        _applyInitialTabIfReady();
       } else if (wasInfinite != _infiniteCanvas || wasFreeTab != _showFreeCanvas) {
         _syncTabToCanvasMode(force: true);
       }

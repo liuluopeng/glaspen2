@@ -2,6 +2,28 @@ part of 'main.dart';
 
 // ── 桥接层:macOS FRB 直调 / Windows 命名管道 ──
 
+/// 面板 UI 状态文件目录(平台分支集中在 bridge 工厂, parity 测试要求)。
+///
+/// 优先 GLASPEN2_DB_PATH 的父目录(测试隔离), 否则沿用平台应用支持目录。
+String? panelStateDirPath() {
+  final dbPath = Platform.environment['GLASPEN2_DB_PATH'];
+  if (dbPath != null && dbPath.isNotEmpty) {
+    return File(dbPath).parent.path;
+  }
+  if (Platform.isMacOS) {
+    final home = Platform.environment['HOME'];
+    if (home == null || home.isEmpty) return null;
+    return '$home/Library/Application Support/glaspen2';
+  }
+  if (Platform.isWindows) {
+    final appData = Platform.environment['LOCALAPPDATA'] ??
+        Platform.environment['APPDATA'];
+    if (appData == null || appData.isEmpty) return null;
+    return appData + r'\glaspen2';
+  }
+  return null;
+}
+
 abstract class SettingsBridge {
   Future<Map<dynamic, dynamic>> getSettings();
   /// 平台 UI 配置(默认键位/保留组合/修饰键名/字号/功能可用性等)。

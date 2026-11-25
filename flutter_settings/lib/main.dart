@@ -28,6 +28,7 @@ part 'main.notebook.dart';
 part 'main.update.dart';
 part 'main.settings_widgets.dart';
 part 'main.shortcuts.dart';
+part 'main.panel_tab.dart';
 
 void main() {
   // FRB 需要绑定初始化(消息端口/isolate)后才能解析 Rust 符号
@@ -633,8 +634,16 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   /// 程序性切换 tab 时置位: 避免同步 TabBar 选中项时又触发 _onTabChanged
   /// 反向发一轮 setSetting(会把画布模式来回切)。
   bool _syncingTabs = false;
-  /// 首次拿到设置后是否已把 TabBar 落到当前画布模式对应的 tab。
+  /// 首次拿到设置后是否已把 TabBar 落到当前画布模式/上次停留的 tab。
   bool _initialTabApplied = false;
+  /// 设置快照是否已到(初始 tab 恢复要等它和 panel_state 都就绪)。
+  bool _settingsReadyForInitialTab = false;
+  /// panel_state.json 是否已读取(无文件也算已读取)。
+  bool _panelTabLoaded = false;
+  /// 用户是否已手动切过 tab(手动优先, 不再被异步初始恢复拽走)。
+  bool _userTabTouched = false;
+  /// 上次停留的 tab(跨启动; null = 无记录)。
+  int? _savedTabIndex;
   /// 设置页渐进披露: 高级项收进「更多设置」, **默认展开**(用户明确要求:
   /// 打开设置就能看到外观/活页本/导出/备份/语言/快捷键, 不用先点一次)。
   bool _showAdvanced = true;
@@ -731,6 +740,8 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
     unawaited(_loadUiConfig());
     // 「关于」区显示当前版本;取不到只显示 —,不影响面板其它功能
     unawaited(_loadAppVersion());
+    // 上次停留的 tab(同步读很小文件;设置快照到达前就绪才能恢复)
+    _restorePanelTabSync();
   }
 
   @override
@@ -971,6 +982,12 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
                 Expanded(
                   child: TabBar(
                     controller: _tabController,
+                    // 只在用户点击时记录"上次停留 tab"; 程序性切换/动画完成
+                    // 的 listener 不代表用户选择, 不能在启动时覆盖记忆值。
+                    onTap: (idx) {
+                      _userTabTouched = true;
+                      _savePanelTab(idx);
+                    },
                     tabs: [
                   Tab(
                     text: AppLocalizations.of(context)!.settings,
