@@ -338,6 +338,17 @@ public func glaspen2_macos_swift_menu_full_selftest() -> Int32 {
     }
     expect(statesOK, "initial_states")
 
+    // R25: 颜色/粗细勾选更新(默认走 Rust, GLASPEN2_SWIFT_MENU_STATE=1 时走 Swift)。
+    MenuUpdater.updateCheckmarks(menu: menu2, colorCount: colorCount,
+                                 widthCount: widthCount, colorIndex: 3, widthIndex: 5)
+    let checkmarksOK = menu2.items[3].state == .on
+        && menu2.items[0].state == .off
+        && menu2.items[colorCount + 1 + 5].state == .on
+        && menu2.items[colorCount + 1].state == .off
+    print("SWIFT_MENU_FULL_CHECKMARKS color3=\(menu2.items[3].state == .on) "
+          + "width5=\(menu2.items[colorCount + 1 + 5].state == .on) ok=\(checkmarksOK)")
+    expect(checkmarksOK, "checkmarks")
+
     // 防御分支: nil menu 不崩(guard 在任何文案读取之前返回, 不产生日志)。
     MenuBuilder.addTopLevelAndSubmenus(toMenu: nil, handler: nil, titles: [:],
                                        launchAtLoginOn: false, glassOn: false)

@@ -8,6 +8,12 @@ import AppKit
                                         widthCount: Int,
                                         colorIndex: Int,
                                         widthIndex: Int) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_STATE"] != "1",
+           glaspen2_rust_menu_update_checkmarks(
+               Unmanaged.passUnretained(menu).toOpaque(), Int32(colorCount),
+               Int32(widthCount), Int32(colorIndex), Int32(widthIndex)) != 0 {
+            return
+        }
         for i in 0..<max(0, colorCount) {
             menu.item(at: i)?.state = (i == colorIndex) ? .on : .off
         }

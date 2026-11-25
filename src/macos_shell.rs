@@ -589,3 +589,40 @@ pub extern "C" fn glaspen2_rust_menu_add_top_level(
     tracing::info!("rust-shell: top-level/submenu items built by Rust (objc2)");
     1
 }
+
+/// R25: 按索引更新颜色/粗细菜单勾选。返回 1 成功, 0 失败(Swift 回退)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_update_checkmarks(
+    menu: *mut c_void,
+    color_count: i32,
+    width_count: i32,
+    color_index: i32,
+    width_index: i32,
+) -> i32 {
+    use objc2_app_kit::{NSControlStateValueOn, NSMenu};
+    if menu.is_null() {
+        return 0;
+    }
+    let menu = unsafe { &*(menu as *const NSMenu) };
+    for i in 0..color_count.max(0) {
+        if let Some(item) = menu.itemAtIndex(i as isize) {
+            item.setState(if i == color_index {
+                NSControlStateValueOn
+            } else {
+                0
+            });
+        }
+    }
+    let width_offset = color_count.max(0) + 1;
+    for i in 0..width_count.max(0) {
+        if let Some(item) = menu.itemAtIndex((width_offset + i) as isize) {
+            item.setState(if i == width_index {
+                NSControlStateValueOn
+            } else {
+                0
+            });
+        }
+    }
+    tracing::info!("rust-shell: menu checkmarks updated by Rust (objc2)");
+    1
+}

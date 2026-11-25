@@ -308,3 +308,7 @@ extern int glaspen2_rust_menu_add_items(void *menu, void *handler, int count,
 // R24: 顶层其余项/导出▸/更多▸ 子菜单(默认; GLASPEN2_SWIFT_MENU_FULL=1 回退)
 extern int glaspen2_rust_menu_add_top_level(void *menu, void *handler, const char *titles_json,
                                             int launch_at_login_on, int glass_on);
+
+// R25: 颜色/粗细菜单勾选更新(默认; GLASPEN2_SWIFT_MENU_STATE=1 回退)
+extern int glaspen2_rust_menu_update_checkmarks(void *menu, int color_count, int width_count,
+                                                int color_index, int width_index);

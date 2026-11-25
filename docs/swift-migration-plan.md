@@ -625,3 +625,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-25 | Rust-R22 | 状态栏菜单对象迁 Rust(objc2): Rust 创建 NSMenu + 挂到 NSStatusItem; 菜单项仍 Swift 构建; GLASPEN2_SWIFT_MENU=1 回退; 默认 smoke/回退 smoke/全量 tests/build/parity 绿 | 默认启动日志确认 Rust 创建并挂载菜单 | 本提交 |
 | 2026-11-25 | Rust-R23 | 颜色/粗细菜单项批量构建迁 Rust(objc2): NSMenuItem/attributedTitle/target/action/tag; 富文本标题仍 Swift; GLASPEN2_SWIFT_MENU_ITEMS=1 回退; --swift-menu-probe 默认 Rust SWIFT_MENU_OK | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-25 | Rust-R24 | 顶层其余项/导出▸/更多▸ 子菜单构建迁 Rust(objc2); 标题仍 Swift 本地化; GLASPEN2_SWIFT_MENU_FULL=1 回退; --swift-menu-full-probe 默认 Rust SWIFT_MENU_FULL_OK(31 项/分隔符/子菜单全对) | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-25 | Rust-R25 | 菜单勾选更新迁 Rust(objc2): 按颜色/粗细索引设置 NSMenuItem.state; --swift-menu-full-probe 增加 CHECKMARKS 断言; GLASPEN2_SWIFT_MENU_STATE=1 回退 | 默认/回退 smoke、全量 tests/build/parity 绿; probe SWIFT_MENU_FULL_OK | 本提交 |
