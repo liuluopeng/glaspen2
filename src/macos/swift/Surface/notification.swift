@@ -43,6 +43,11 @@ import AppKit
     @objc(drawInBounds:)
     public static func draw(in bounds: NSRect) {
         guard let text = current else { return }
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_NOTIFICATION"] != "1",
+           text.withCString({ glaspen2_rust_draw_notification(
+               $0, bounds.size.width, bounds.size.height) }) != 0 {
+            return
+        }
         let shadow = NSShadow()
         shadow.shadowColor = NSColor(white: 0, alpha: 0.8)
         shadow.shadowOffset = NSSize(width: 2, height: -2)
@@ -58,4 +63,28 @@ import AppKit
         let y = (bounds.size.height - size.height) / 2
         ns.draw(at: NSPoint(x: x, y: y), withAttributes: attrs)
     }
+}
+
+/// R33: Rust 通知绘制探针(离屏渲染并检查非空像素)。
+@_cdecl("glaspen2_macos_swift_notification_selftest")
+public func glaspen2_macos_swift_notification_selftest() -> Int32 {
+    _ = NSApplication.shared
+    let w = 400.0, h = 200.0
+    let image = NSImage(size: NSSize(width: w, height: h))
+    image.lockFocus()
+    let ok = "TEST NOTIFICATION".withCString {
+        glaspen2_rust_draw_notification($0, w, h) != 0
+    }
+    image.unlockFocus()
+    guard ok, let tiff = image.tiffRepresentation,
+          let rep = NSBitmapImageRep(data: tiff),
+          let data = rep.bitmapData else {
+        print("SWIFT_NOTIFICATION_FAIL rust_draw_or_bitmap")
+        return 1
+    }
+    var nonEmpty = 0
+    let count = rep.bytesPerRow * rep.pixelsHigh
+    for i in stride(from: 0, to: count, by: 4) where data[i] != 0 || data[i + 1] != 0 || data[i + 2] != 0 { nonEmpty += 1 }
+    print("SWIFT_NOTIFICATION_RUST_OK pixels=\(nonEmpty)")
+    return nonEmpty > 0 ? 0 : 1
 }

@@ -1206,3 +1206,59 @@ pub extern "C" fn glaspen2_rust_clear_tunnel_cache() {
     }
     *cache = TunnelCache::default();
 }
+
+/// R33: 通知文字绘制(36pt 等宽 + 白字 + 阴影 + 视图内居中)。
+/// 返回 1 成功, 0 失败(Swift 回退)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_draw_notification(
+    text: *const std::os::raw::c_char,
+    view_w: f64,
+    view_h: f64,
+) -> i32 {
+    use objc2::runtime::{AnyObject, ProtocolObject};
+    use objc2_app_kit::{
+        NSFont, NSFontAttributeName, NSFontWeightMedium, NSForegroundColorAttributeName, NSShadow,
+        NSShadowAttributeName, NSStringDrawing,
+    };
+    use objc2_core_foundation::{CGPoint, CGSize};
+    use objc2_foundation::{NSAttributedStringKey, NSCopying, NSMutableDictionary, NSString};
+
+    if text.is_null() || view_w <= 0.0 || view_h <= 0.0 {
+        return 0;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(text) }.to_string_lossy();
+    if text.is_empty() {
+        return 0;
+    }
+    let shadow = NSShadow::new();
+    shadow.setShadowColor(Some(&objc2_app_kit::NSColor::colorWithWhite_alpha(
+        0.0, 0.8,
+    )));
+    shadow.setShadowOffset(objc2_foundation::NSSize::new(2.0, -2.0));
+    shadow.setShadowBlurRadius(4.0);
+    let font = NSFont::monospacedSystemFontOfSize_weight(36.0, unsafe { NSFontWeightMedium });
+    let attrs: objc2::rc::Retained<NSMutableDictionary<NSAttributedStringKey, AnyObject>> =
+        NSMutableDictionary::new();
+    unsafe {
+        let font_any: &AnyObject = &*(&*font as *const NSFont as *const AnyObject);
+        let shadow_any: &AnyObject = &*(&*shadow as *const NSShadow as *const AnyObject);
+        let white = objc2_app_kit::NSColor::whiteColor();
+        let white_any: &AnyObject =
+            &*(&*white as *const objc2_app_kit::NSColor as *const AnyObject);
+        attrs.setObject_forKey(font_any, ProtocolObject::from_ref(&*NSFontAttributeName));
+        attrs.setObject_forKey(
+            white_any,
+            ProtocolObject::from_ref(&*NSForegroundColorAttributeName),
+        );
+        attrs.setObject_forKey(
+            shadow_any,
+            ProtocolObject::from_ref(&*NSShadowAttributeName),
+        );
+    }
+    let ns = NSString::from_str(&text);
+    let size: CGSize = unsafe { ns.sizeWithAttributes(Some(&attrs)) };
+    let x = (view_w - size.width) / 2.0;
+    let y = (view_h - size.height) / 2.0;
+    unsafe { ns.drawAtPoint_withAttributes(CGPoint::new(x, y), Some(&attrs)) };
+    1
+}

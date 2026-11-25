@@ -21,6 +21,7 @@ PROBE_DB4="$PROBE_ROOT/hotkeys.db"
 PROBE_LOG="$PROBE_ROOT/logs"
 "$BIN" --swift-menu-probe
 "$BIN" --swift-menu-full-probe
+"$BIN" --swift-notification-probe
 "$BIN" --swift-statusbar-probe
 GLASPEN2_DB_PATH="$PROBE_DB" GLASPEN2_LOG_DIR="$PROBE_LOG" "$BIN" --swift-settings-probe
 GLASPEN2_DB_PATH="$PROBE_DB2" GLASPEN2_LOG_DIR="$PROBE_LOG" "$BIN" --swift-pages-probe

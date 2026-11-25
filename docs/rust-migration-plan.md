@@ -79,6 +79,8 @@
   网格三层线(细网格/屏幕分界/分栏)用 core::grid 直接计算 + CGContext 描边迁 Rust, 默认 Rust, `GLASPEN2_SWIFT_GRID=1` 回退。
 - **R32 时光隧道 surface 合成**: `OverlayTunnelRenderer` 的 CGImage 缓存/合成迁 Rust(CoreGraphics, 原 cairo BGRA→premultipliedFirst 小端);
   默认 Rust, `GLASPEN2_SWIFT_TUNNEL=1` 回退; 翻页真实运行无崩溃。
+- **R33 通知文字绘制**: `NotificationPresenter.draw` 迁 Rust(objc2: NSFont/NSShadow/NSColor/NSStringDrawing);
+  新增 `--swift-notification-probe` 离屏像素探针; 默认 Rust, `GLASPEN2_SWIFT_NOTIFICATION=1` 回退。
 
 ## 下一批候选(按风险从低到高)
 
