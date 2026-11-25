@@ -278,10 +278,10 @@ extern void sw_set_pen_settings(double r, double g, double b, double width,
 // R14: Rust objc2 预研(默认关闭; GLASPEN2_RUST_STATUS_ITEM=1 时走这里)
 extern void *glaspen2_rust_status_item_create(void);
 
-// R15: Rust 创建覆盖层主窗口(opt-in: GLASPEN2_RUST_OVERLAY=1)
+// R15/R21: Rust 创建覆盖层主窗口(默认; GLASPEN2_SWIFT_OVERLAY=1 回退 Swift)
 extern void *glaspen2_rust_overlay_window_create(double x, double y, double width, double height);
 
-// R16: Rust 创建覆盖层内容容器/磨砂玻璃视图(opt-in: GLASPEN2_RUST_OVERLAY=1)
+// R16/R21: Rust 创建覆盖层内容容器/磨砂玻璃视图(默认; GLASPEN2_SWIFT_OVERLAY=1 回退)
 extern void *glaspen2_rust_overlay_content_view_create(double x, double y, double width, double height);
 extern void *glaspen2_rust_overlay_glass_view_create(double x, double y, double width, double height,
                                                     int enabled, double opacity);
@@ -290,9 +290,9 @@ extern void *glaspen2_rust_overlay_glass_view_create(double x, double y, double 
 extern void *glaspen2_rust_status_icon_render(int eraser, int enabled, int ethereal, int infinite,
                                               double width_scale, double pen_r, double pen_g, double pen_b);
 
-// R18: 覆盖层内容组装(opt-in: GLASPEN2_RUST_OVERLAY=1)
+// R18/R21: 覆盖层内容组装(默认; GLASPEN2_SWIFT_OVERLAY=1 回退)
 extern void glaspen2_rust_overlay_assemble_content(void *content, void *glass,
                                                   void *draw_view, void *window);
 
-// R19: Rust NSView 子类绘制视图(opt-in: GLASPEN2_RUST_DRAW_VIEW=1)
+// R19/R21: Rust NSView 子类绘制视图(默认; GLASPEN2_SWIFT_DRAW_VIEW=1 回退)
 extern void *glaspen2_rust_draw_view_create(double x, double y, double width, double height);
