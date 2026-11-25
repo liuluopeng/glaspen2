@@ -3,6 +3,16 @@ import AppKit
 
 @objc public final class DrawMode: NSObject {
     @objc public static func toggleEnabled() {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_DRAW_MODE"] != "1" {
+            let on = glaspen2_router_enabled() == 0
+            let title = MenuRuntime.pair(on ? "关闭涂鸦" : "开启涂鸦",
+                                         on ? "Disable Drawing" : "Enable Drawing")
+            let hud = MenuRuntime.l10n(on ? "draw.enabled" : "draw.disabled")
+            _ = title.withCString { t in hud.withCString { h in
+                glaspen2_rust_toggle_draw(t, h)
+            } }
+            return
+        }
         let enabled = glaspen2_router_enabled() == 0
         glaspen2_router_set_enabled_state(enabled ? 1 : 0)
         let window = UIAnchors.mainWindow

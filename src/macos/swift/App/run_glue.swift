@@ -197,6 +197,20 @@ public func runCameraLoadInfinite() { CanvasCamera.loadInfinite() }
 @_cdecl("glaspen2_router_camera_reset_lens")
 public func runCameraResetLens() { CanvasCamera.resetLens() }
 
+@_cdecl("glaspen2_router_restore_system_cursor")
+public func runRestoreSystemCursor() { EventRouter.restoreSystemCursor() }
+@_cdecl("glaspen2_router_main_window")
+public func runMainWindow() -> UnsafeMutableRawPointer? {
+    guard let w = UIAnchors.mainWindow else { return nil }
+    return Unmanaged.passUnretained(w).toOpaque()
+}
+@_cdecl("glaspen2_router_ensure_surface")
+public func runEnsureSurface() { MenuRuntime.ensureSurface() }
+@_cdecl("glaspen2_router_pm_show")
+public func runPmShow() { PressureMonitorWindow.show() }
+@_cdecl("glaspen2_router_pm_hide")
+public func runPmHide() { PressureMonitorWindow.hide() }
+
 @_cdecl("glaspen2_router_flush_dirty")
 public func runFlushDirty() { OverlayLayerFlush.flushDirty() }
 

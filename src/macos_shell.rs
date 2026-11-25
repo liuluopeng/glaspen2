@@ -3509,3 +3509,74 @@ pub extern "C" fn glaspen2_rust_apply_infinite(
     }
     1
 }
+
+// ── R60: 涂鸦总开关热键路径(窗口显隐/压感窗/状态/通知/菜单) ──
+
+unsafe extern "C" {
+    fn glaspen2_router_restore_system_cursor();
+    fn glaspen2_router_main_window() -> *mut c_void;
+    fn glaspen2_router_ensure_surface();
+    fn glaspen2_router_pressure_monitor() -> i32;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_toggle_draw(
+    menu_title: *const std::os::raw::c_char,
+    hud_text: *const std::os::raw::c_char,
+) -> i32 {
+    use objc2_app_kit::NSWindow;
+    let enabled = unsafe { glaspen2_router_enabled() } == 0;
+    tracing::info!("rust-shell: draw enabled={enabled}");
+    unsafe {
+        glaspen2_router_set_enabled_state(i32::from(enabled));
+        let win_ptr = glaspen2_router_main_window();
+        let window = if win_ptr.is_null() {
+            None
+        } else {
+            Some(&*(win_ptr as *const NSWindow))
+        };
+        if !enabled {
+            glaspen2_router_restore_system_cursor();
+            glaspen2_router_finish_active_stroke();
+            if let Some(window) = window {
+                window.orderOut(None);
+            }
+            if glaspen2_router_pressure_monitor() != 0 {
+                glaspen2_router_pm_hide();
+            }
+        } else {
+            if window.is_some() {
+                glaspen2_router_ensure_surface();
+                if glaspen2_router_ethereal() != 0 && glaspen2_router_strokes_visible() == 0 {
+                    glaspen2_router_rebuild_surface();
+                    if let Some(window) = window {
+                        let _: () = unsafe { objc2::msg_send![window, setIsVisible: false] };
+                    }
+                } else {
+                    if let Some(window) = window {
+                        window.orderFrontRegardless();
+                    }
+                    glaspen2_router_rebuild_surface();
+                }
+            }
+            if glaspen2_router_pressure_monitor() != 0 {
+                glaspen2_router_pm_show();
+            }
+        }
+        glaspen2_router_update_status_icon_state();
+        glaspen2_router_update_menu_state(888, i32::from(enabled));
+    }
+    if !menu_title.is_null() {
+        let title = unsafe { std::ffi::CStr::from_ptr(menu_title) }.to_string_lossy();
+        let menu = unsafe { sw_menu() };
+        if !menu.is_null() {
+            let c = std::ffi::CString::new(title.as_bytes()).unwrap_or_default();
+            unsafe { glaspen2_rust_menu_set_item_title(menu, 888, c.as_ptr()) };
+        }
+    }
+    if !hud_text.is_null() {
+        let text = unsafe { std::ffi::CStr::from_ptr(hud_text) }.to_string_lossy();
+        notify(&text);
+    }
+    1
+}

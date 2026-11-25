@@ -660,3 +660,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R57 | PenState 书写中/橡皮/接近/设备状态迁 Rust; Swift 同 API 计算属性; 虚拟笔截图正常 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R58 | CanvasMode.applyInfinite 状态/落库/镜头/infinite strokes/tap 重装/通知迁 Rust; Swift 仅回退; 真机无限画布切换待验 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R59 | 默认 Rust 壳性能抽查(release, 3 次): CPU 10.8–13.6%, RSS 331–335MB, 启动 0.20–0.28s; 与 Swift live/overlay 回退同噪声区间 | 仅抽查, 非真机笔/多屏长测 | 本提交 |
+| 2026-11-26 | Rust-R60 | DrawMode.toggleEnabled 窗口显隐/压感窗/状态/通知/菜单迁 Rust; Swift 仅回退; 热键触发未自动化, 待真机 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |

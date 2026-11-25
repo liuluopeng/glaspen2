@@ -489,3 +489,6 @@ extern void glaspen2_rust_pen_set_prox_device(int v);
 
 // R58: 画布模式切换(默认; GLASPEN2_SWIFT_CANVAS_MODE=1 回退)
 extern int glaspen2_rust_apply_infinite(int on, const char *notify_text);
+
+// R60: 涂鸦总开关热键路径(默认; GLASPEN2_SWIFT_DRAW_MODE=1 回退)
+extern int glaspen2_rust_toggle_draw(const char *menu_title, const char *hud_text);

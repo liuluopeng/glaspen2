@@ -131,6 +131,9 @@
   Swift 同 API 计算属性; 虚拟笔截图正常。
 - **R58 画布模式切换**: `CanvasMode.applyInfinite`(状态/落库/镜头/infinite strokes/tap 重装/通知)迁 Rust;
   Swift 仅回退; 默认/回退 smoke 通过。
+- **R59 性能抽查**: 默认 Rust 与 Swift live/overlay 回退在虚拟笔负载下 CPU/RSS/启动同噪声区间。
+- **R60 涂鸦总开关热键路径**: `DrawMode.toggleEnabled` 的窗口显隐/压感窗/状态/通知/菜单迁 Rust;
+  Swift 仅回退; 新增 main window/ensure surface/pm show-hide/restore cursor C 桥; 真机热键待验。
 
 ## 下一批候选(按风险从低到高)
 
