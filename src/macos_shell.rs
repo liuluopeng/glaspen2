@@ -991,3 +991,75 @@ pub extern "C" fn glaspen2_rust_draw_surface(
     }
     1
 }
+
+// ── R31: 网格三段线绘制(core::grid 直接计算, CGContext 描边) ──
+
+fn stroke_grid_layer(
+    ctx: &objc2_core_graphics::CGContext,
+    segments: &[glaspen_core::grid::Segment],
+    view_h: f64,
+    white: f64,
+    alpha: f64,
+    line_width: f64,
+) {
+    use objc2_app_kit::NSColor;
+    use objc2_core_graphics::CGContext;
+    if segments.is_empty() {
+        return;
+    }
+    let color = NSColor::colorWithWhite_alpha(white, alpha);
+    CGContext::set_stroke_color_with_color(Some(ctx), Some(&color.CGColor()));
+    CGContext::set_line_width(Some(ctx), line_width);
+    for seg in segments {
+        CGContext::move_to_point(Some(ctx), seg.x0, view_h - seg.y0);
+        CGContext::add_line_to_point(Some(ctx), seg.x1, view_h - seg.y1);
+    }
+    CGContext::stroke_path(Some(ctx));
+}
+
+/// R31: 绘制网格(细网格/屏幕分界/分栏线); 返回 1 成功, 0 失败(Swift 回退)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_draw_grid(
+    ctx: *mut c_void,
+    view_w: f64,
+    view_h: f64,
+    pan_x: f64,
+    pan_y: f64,
+    zoom: f64,
+    grid_size: f64,
+    divider: i32,
+    show_grid: i32,
+    screen_w: f64,
+    screen_h: f64,
+    clip_x0: f64,
+    clip_y0: f64,
+    clip_x1: f64,
+    clip_y1: f64,
+) -> i32 {
+    use glaspen_core::camera::Camera;
+    use glaspen_core::grid::{self, GridParams, ViewRect};
+    use objc2_core_graphics::CGContext;
+    if ctx.is_null() {
+        return 0;
+    }
+    let ctx = unsafe { &*(ctx as *const CGContext) };
+    let params = GridParams {
+        view_w,
+        view_h,
+        camera: Camera::new(pan_x, pan_y, zoom),
+        grid_size,
+        divider,
+        show_grid: show_grid != 0,
+        screen_w,
+        screen_h,
+        screen_lines: true,
+        clip: Some(ViewRect::new(clip_x0, clip_y0, clip_x1, clip_y1)),
+    };
+    let Ok(lines) = grid::compute_checked(&params) else {
+        return 0;
+    };
+    stroke_grid_layer(ctx, &lines.minor, view_h, 0.5, 0.15, 0.5);
+    stroke_grid_layer(ctx, &lines.screen, view_h, 0.5, 0.55, 1.0);
+    stroke_grid_layer(ctx, &lines.divider, view_h, 0.5, 0.65, 1.5);
+    1
+}

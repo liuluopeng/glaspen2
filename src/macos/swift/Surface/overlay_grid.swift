@@ -49,6 +49,14 @@ import CoreGraphics
         let clipX0 = Double(clipRect.minX), clipX1 = Double(clipRect.maxX)
         let clipY0 = viewH - Double(clipRect.maxY)
         let clipY1 = viewH - Double(clipRect.minY)
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_GRID"] != "1",
+           glaspen2_rust_draw_grid(
+               Unmanaged.passUnretained(ctx).toOpaque(), viewW, viewH,
+               panX, panY, zoom, gridSize, Int32(divider), showGrid ? 1 : 0,
+               glaspen2_router_screen_w(), glaspen2_router_screen_h(),
+               clipX0, clipY0, clipX1, clipY1) != 0 {
+            return
+        }
         var json: UnsafeMutablePointer<CChar>?
         if !showGrid {
             json = glaspen2_grid_json_clipped(viewW, viewH, panX, panY, zoom,
@@ -127,7 +135,7 @@ import CoreGraphics
     @objc(drawSurfaceImage:inContext:rect:bounds:scale:)
     public static func drawSurface(_ image: CGImage, in ctx: CGContext,
                                    rect: NSRect, bounds: NSRect, scale: Double) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_SURFACE"] == "1",
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_SURFACE"] != "1",
            glaspen2_rust_draw_surface(
                Unmanaged.passUnretained(ctx).toOpaque(),
                Unmanaged.passUnretained(image).toOpaque(),

@@ -631,3 +631,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-25 | Rust-R28 | 光标壳迁 Rust(objc2+CoreGraphics): 空白/箭头 NSCursor、光标环/点/十字线绘制; 默认 Rust, GLASPEN2_SWIFT_CURSOR=1 回退; 真实 app+虚拟笔/默认/回退 smoke 全绿 | 未做像素 parity(光标动态绘制), 行为路径验证 | 本提交 |
 | 2026-11-25 | Rust-R29 | 设置面板窗口创建迁 Rust(objc2): 标题/尺寸/样式/内容 VC/激活/居中; delegate/Flutter host 仍 Swift; 默认 Rust, GLASPEN2_SWIFT_SETTINGS_PANEL=1 回退 | 热键打开面板截图确认正常; 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-25 | Rust-R30 | 笔迹 surface 合成迁 Rust(CoreGraphics): 小脏矩形 crop/绘制/回退全图; CGImage 缓存仍 Swift; GLASPEN2_RUST_SURFACE=1 opt-in, 虚拟笔截图确认旧/新笔迹正常 | 默认/opt-in smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-25 | Rust-R31 | surface 合成默认切 Rust; 网格三层线从 Swift JSON 解析改为 Rust 直接 core::grid+CGContext 描边并默认启用; 回退开关 GLASPEN2_SWIFT_SURFACE/GRID=1 | 真实 app 开网格+虚拟笔截图确认网格/笔迹正常; 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |

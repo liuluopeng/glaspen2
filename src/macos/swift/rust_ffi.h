@@ -338,3 +338,11 @@ extern void *glaspen2_rust_settings_window_create(const char *title, void *view_
 extern int glaspen2_rust_draw_surface(void *ctx, void *image, double rx, double ry,
                                       double rw, double rh, double bx, double by,
                                       double bw, double bh, double scale);
+
+// R31: 网格三段线绘制(默认; GLASPEN2_SWIFT_GRID=1 回退)
+extern int glaspen2_rust_draw_grid(void *ctx, double view_w, double view_h,
+                                    double pan_x, double pan_y, double zoom,
+                                    double grid_size, int divider, int show_grid,
+                                    double screen_w, double screen_h,
+                                    double clip_x0, double clip_y0,
+                                    double clip_x1, double clip_y1);
