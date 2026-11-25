@@ -103,6 +103,8 @@ PDF / SVG / GIF / XOJ"]
 | 撤销上一笔                            | `⌘ + ⌃ + Z`              | `Ctrl + Alt + Z`                  |
 | 上一页 / 下一页 (整页翻页)            | ``⌘ + ⌃ + ` `` / `⌘ + ⌃ + 1` | ``Ctrl + Alt + ` `` / `Ctrl + Alt + 1` |
 | 打开设置                              | `⌘ + ⌃ + D`              | `Ctrl + Alt + D`                  |
+| 磨砂玻璃开关                          | `⌘ + ⌃ + B`              | `Ctrl + Alt + B`                  |
+| 飘渺画布开关                          | `⌘ + ⌃ + X`              | `Ctrl + Alt + X`                  |
 | 彻底退出玻璃笔记                      | `⌘ + ⌃ + ⇧ + Q`          | `Ctrl + Alt + Shift + Q`          |
 | 快捷录制 GIF (按住)                   | `⌘ + ⌃ + R`              | `Ctrl + Alt + R` (按住)           |
 | 无限画布: 镜头四向平移                | `⌃⌥ + W / A / S / D`      | `Win + Alt + W / A / S / D`       |
@@ -111,10 +113,9 @@ PDF / SVG / GIF / XOJ"]
 | 无限画布: 缩放 (光标为锚)             | `⌃⌥ + 滚轮`               | `Win + Alt + 滚轮`                |
 
 macOS 默认未绑定(可在设置里绑): 换色 / 换粗细 / 新建画布 / 导出 SVG+GIF /
-复制 SVG / 磨砂玻璃 / 飘渺画布 / 切换自由涂鸦。**Windows 这些也都有默认键**:
-飘渺 `Ctrl+Alt+X`、自由涂鸦 `Ctrl+Alt+I`、清空 `Ctrl+Alt+C`、导出 `Ctrl+Alt+G`、
-复制 SVG `Ctrl+Alt+S`、磨砂玻璃 `Ctrl+Alt+B`、换色 `Ctrl+Alt+Shift+C`、
-换粗细 `Ctrl+Alt+T`。
+复制 SVG / 切换自由涂鸦。**Windows 这些也都有默认键**:
+自由涂鸦 `Ctrl+Alt+I`、清空 `Ctrl+Alt+C`、导出 `Ctrl+Alt+G`、
+复制 SVG `Ctrl+Alt+S`、换色 `Ctrl+Alt+Shift+C`、换粗细 `Ctrl+Alt+T`。
 
 彻底退出默认 `⌘⌃⇧Q`(`⌘⌃Q` 是 macOS 系统锁屏, 不能占用); Windows 为 `Ctrl+Alt+Shift+Q`。
 Windows 默认键分两条家族: 核心/开关类 = `Ctrl+Alt+字母`(Z/`/1/V、D 设置、⇧Q 退出、

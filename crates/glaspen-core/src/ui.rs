@@ -133,13 +133,13 @@ pub const ACTIONS: &[ActionDef] = &[
     },
     ActionDef {
         id: "toggle_glass",
-        mac_default: "",
+        mac_default: "cmd+ctrl+B",
         win_default: "ctrl+alt+B",
         win_force_bound: false,
     },
     ActionDef {
         id: "toggle_ethereal",
-        mac_default: "",
+        mac_default: "cmd+ctrl+X",
         win_default: "ctrl+alt+X",
         win_force_bound: false,
     },
