@@ -67,7 +67,7 @@ public func cursorInvalidate() {
 @_cdecl("glaspen2_router_cursor_flush_due")
 public func cursorFlushDue() -> Int32 {
     if !PenState.strokeActive,
-       PerfLog.elapsedUs(since: CursorState.lastFlush) >= 16000 {
+       glaspen2_perf_elapsed_us(CursorState.lastFlush) >= 16000 {
         CursorState.lastFlush = mach_absolute_time()
         return 1
     }

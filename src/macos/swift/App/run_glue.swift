@@ -144,15 +144,13 @@ public func runLangCode() -> UnsafePointer<CChar>? {
 }
 
 @_cdecl("glaspen2_router_perf_summary")
-public func runPerfSummary() { PerfLog.summary() }
+public func runPerfSummary() { glaspen2_perf_summary() }
 @_cdecl("glaspen2_router_perf_enabled")
-public func runPerfEnabled() -> Int32 { PerfLog.isEnabled() ? 1 : 0 }
+public func runPerfEnabled() -> Int32 { glaspen2_perf_is_enabled() }
 @_cdecl("glaspen2_router_perf_notes")
 public func runPerfNotes(_ name: UnsafePointer<CChar>?, _ notes: UnsafePointer<CChar>?,
                          _ t0: UInt64) {
-    PerfLog.record(name: name.map { String(cString: $0) } ?? "",
-                  durUs: PerfLog.elapsedUs(since: t0),
-                  notes: notes.map { String(cString: $0) })
+    glaspen2_perf_record(name, glaspen2_perf_elapsed_us(t0), notes)
 }
 
 @_cdecl("glaspen2_router_redraw_draw_view")

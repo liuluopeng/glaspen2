@@ -2527,6 +2527,54 @@ pub extern "C" fn glaspen2_width_name(index: c_int, lang: c_int) -> *mut c_char 
     return_c_string(text.to_string())
 }
 
+// ── 性能日志(R3: Swift PerfLog → Rust) ──
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_perf_init_from_env() {
+    crate::perf::init_from_env();
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_perf_is_enabled() -> c_int {
+    i32::from(crate::perf::is_enabled())
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_perf_elapsed_us(since: u64) -> u64 {
+    crate::perf::elapsed_us(since)
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_perf_record(name: *const c_char, dur_us: u64, notes: *const c_char) {
+    let name = if name.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(name) }
+            .to_string_lossy()
+            .into_owned()
+    };
+    let notes = if notes.is_null() {
+        None
+    } else {
+        Some(
+            unsafe { CStr::from_ptr(notes) }
+                .to_string_lossy()
+                .into_owned(),
+        )
+    };
+    crate::perf::record(&name, dur_us, notes.as_deref());
+}
+
+#[cfg(target_os = "macos")]
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_perf_summary() {
+    crate::perf::summary();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

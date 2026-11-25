@@ -9,7 +9,7 @@ import ApplicationServices
         Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             checkTap()
         }
-        PerfLog.initFromEnv()
+        glaspen2_perf_init_from_env()
         VirtualPen.maybeStart()
         FlipProbe.maybeStart()
     }
