@@ -89,6 +89,8 @@
   保存/菜单勾选/状态图标/面板同步迁 Rust; Swift 只做回退; `--swift-settings-probe` 仍 color/width ok。
 - **R37 功能开关 setter**: 聊天集成/压感监视器/网格/开机自启/磨砂玻璃的状态+落库+面板/菜单/重绘动作迁 Rust;
   Swift `MenuHandler` 仅 `GLASPEN2_SWIFT_TOGGLES=1` 回退; settings probe 通过。
+- **R38 OverlayDrawing 编排**: Swift 绘制拆成 prepare/tunnel/grid/surface/minimap/notification/cursor/perf stage 桥;
+  Rust `glaspen2_rust_overlay_draw` 负责 save/clip/顺序/restore/性能打点; `GLASPEN2_RUST_OVERLAY_DRAW=1` opt-in。
 
 ## 下一批候选(按风险从低到高)
 

@@ -1602,3 +1602,109 @@ pub extern "C" fn glaspen2_rust_set_glass_enabled(enabled: i32) {
         glaspen2_router_glass_apply();
     }
 }
+
+// ── R38: 覆盖层绘制编排(opt-in: GLASPEN2_RUST_OVERLAY_DRAW=1) ──
+
+unsafe extern "C" {
+    fn glaspen2_swift_overlay_prepare() -> i32;
+    fn glaspen2_swift_overlay_tunnel(ctx: *mut c_void, bx: f64, by: f64, bw: f64, bh: f64) -> i32;
+    fn glaspen2_swift_overlay_grid(
+        ctx: *mut c_void,
+        bx: f64,
+        by: f64,
+        bw: f64,
+        bh: f64,
+        rx: f64,
+        ry: f64,
+        rw: f64,
+        rh: f64,
+    );
+    fn glaspen2_swift_overlay_surface(
+        ctx: *mut c_void,
+        bx: f64,
+        by: f64,
+        bw: f64,
+        bh: f64,
+        rx: f64,
+        ry: f64,
+        rw: f64,
+        rh: f64,
+    );
+    fn glaspen2_swift_overlay_minimap(ctx: *mut c_void, bx: f64, by: f64, bw: f64, bh: f64);
+    fn glaspen2_swift_overlay_notification(bx: f64, by: f64, bw: f64, bh: f64);
+    fn glaspen2_swift_overlay_cursor(ctx: *mut c_void);
+    fn glaspen2_swift_overlay_perf(
+        t0: u64,
+        bx: f64,
+        by: f64,
+        bw: f64,
+        bh: f64,
+        rx: f64,
+        ry: f64,
+        rw: f64,
+        rh: f64,
+    );
+}
+
+unsafe extern "C" {
+    fn mach_absolute_time() -> u64;
+}
+
+/// R38: 覆盖层绘制编排; 返回 1 成功, 0 失败(Swift 回退)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_overlay_draw(
+    view: *mut c_void,
+    rx: f64,
+    ry: f64,
+    rw: f64,
+    rh: f64,
+) -> i32 {
+    use objc2_app_kit::{NSGraphicsContext, NSView};
+    use objc2_core_foundation::{CGPoint, CGRect, CGSize};
+    use objc2_core_graphics::CGContext;
+
+    if view.is_null() {
+        return 0;
+    }
+    let Some(_mtm) = MainThreadMarker::new() else {
+        return 0;
+    };
+    let view = unsafe { &*(view as *const NSView) };
+    let Some(gctx) = NSGraphicsContext::currentContext() else {
+        return 0;
+    };
+    let cg = gctx.CGContext();
+    let ctx_ptr = Retained::as_ptr(&cg) as *mut c_void;
+    let bounds = view.bounds();
+    let (bx, by, bw, bh) = (
+        bounds.origin.x,
+        bounds.origin.y,
+        bounds.size.width,
+        bounds.size.height,
+    );
+    let t0 = unsafe { mach_absolute_time() };
+
+    CGContext::save_g_state(Some(&cg));
+    CGContext::clip_to_rect(
+        Some(&cg),
+        CGRect::new(CGPoint::new(rx, ry), CGSize::new(rw, rh)),
+    );
+    if unsafe { glaspen2_swift_overlay_prepare() } == 0 {
+        CGContext::restore_g_state(Some(&cg));
+        return 1;
+    }
+    if unsafe { glaspen2_swift_overlay_tunnel(ctx_ptr, bx, by, bw, bh) } != 0 {
+        CGContext::restore_g_state(Some(&cg));
+        return 1;
+    }
+    unsafe {
+        glaspen2_swift_overlay_grid(ctx_ptr, bx, by, bw, bh, rx, ry, rw, rh);
+        glaspen2_swift_overlay_surface(ctx_ptr, bx, by, bw, bh, rx, ry, rw, rh);
+        glaspen2_swift_overlay_minimap(ctx_ptr, bx, by, bw, bh);
+        glaspen2_swift_overlay_notification(bx, by, bw, bh);
+        glaspen2_swift_overlay_cursor(ctx_ptr);
+    }
+    CGContext::restore_g_state(Some(&cg));
+    unsafe { glaspen2_swift_overlay_perf(t0, bx, by, bw, bh, rx, ry, rw, rh) };
+    1
+}

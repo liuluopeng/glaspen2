@@ -371,3 +371,6 @@ extern void glaspen2_rust_set_pressure_monitor(int enabled);
 extern void glaspen2_rust_set_grid_enabled(int enabled);
 extern void glaspen2_rust_set_launch_at_login(int enabled);
 extern void glaspen2_rust_set_glass_enabled(int enabled);
+
+// R38: 覆盖层绘制编排(opt-in: GLASPEN2_RUST_OVERLAY_DRAW=1)
+extern int glaspen2_rust_overlay_draw(void *view, double rx, double ry, double rw, double rh);

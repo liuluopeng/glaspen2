@@ -638,3 +638,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-25 | Rust-R35 | 设置窗口 delegate 迁 Rust: define_class! + NSWindowDelegate.windowWillClose → Accessory/deactivate; 安装日志确认; Swift delegate 仅回退路径 | 默认/回退 smoke、全量 tests/build/parity 绿; 关闭动作未在自动化中点击(需真机) | 本提交 |
 | 2026-11-26 | Rust-R36 | 颜色/粗细选择状态机迁 Rust: 书写中 pending、prev 记录、apply/save/checkmarks/status icon/panel sync; Swift MenuHandler 仅回退; settings probe color/width ok | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R37 | 聊天/压感/网格/自启/玻璃开关 setter 迁 Rust: 状态/落库/面板/菜单/重绘; Swift MenuHandler 仅回退; settings probe 全绿 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R38 | OverlayDrawing 编排迁 Rust: Swift stage 桥 + Rust save/clip/顺序/restore/perf; GLASPEN2_RUST_OVERLAY_DRAW=1 opt-in; 网格+虚拟笔截图正常 | 默认/opt-in smoke、全量 tests/build/parity 绿 | 本提交 |
