@@ -14,7 +14,7 @@ public func runCameraMods() -> UInt { MenuRuntime.maskFor(action: "canvas_zoom_i
 
 @_cdecl("glaspen2_router_state")
 public func runState() -> Int32 {
-    (ToggleSettings.enabled ? 1 : 0)
+    glaspen2_router_enabled()
         | ((PenState.strokeActive ? 1 : 0) << 1)
         | ((glaspen2_router_infinite()) << 2)
 }
@@ -31,7 +31,7 @@ public func runZoomAt(_ factor: Double, _ x: Double, _ y: Double) {
 public func runCursorFlags() -> Int32 {
     (CursorState.visible ? 1 : 0)
         | ((PenState.strokeActive ? 1 : 0) << 1)
-        | ((ToggleSettings.ethereal ? 1 : 0) << 2)
+        | ((glaspen2_router_ethereal()) << 2)
         | ((PenState.hasSeenProximity ? 1 : 0) << 3)
 }
 
@@ -108,8 +108,8 @@ public func runTapMenuBar() {
 public func runUpdateStatusIcon() {
     guard let item = UIAnchors.statusItem else { return }
     StatusIconUpdater.apply(item: item, eraser: PenState.eraserMode,
-                            enabled: ToggleSettings.enabled,
-                            ethereal: ToggleSettings.ethereal,
+                            enabled: glaspen2_router_enabled() != 0,
+                            ethereal: glaspen2_router_ethereal() != 0,
                             infinite: glaspen2_router_infinite() != 0,
                             widthScale: PenSettingsStore.widthScale,
                             penRed: PenSettingsStore.penR,
@@ -246,18 +246,18 @@ public func runInvertApply(_ on: Int32) { panelInvertApply(on) }
 public func runRestoreCanvasFlags(_ infinite: Int32, _ minimap: Int32, _ ethereal: Int32) {
     sw_set_infinite(infinite)
     sw_set_minimap(minimap)
-    ToggleSettings.ethereal = ethereal != 0
+    glaspen2_router_set_ethereal(ethereal)
 }
 
 @_cdecl("glaspen2_router_restore_pressure")
 public func runRestorePressure(_ on: Int32) {
-    ToggleSettings.pressureMonitor = on != 0
+    glaspen2_router_set_pressure_monitor(on)
 }
 
 @_cdecl("glaspen2_router_rec_init")
 public func runRecInit() {
     glaspen2_recording_init(0, 0)
-    glaspen2_recording_init(1, ToggleSettings.chatIntegration ? 1 : 0)
+    glaspen2_recording_init(1, glaspen2_router_chat_integration())
 }
 
 @_cdecl("glaspen2_router_startup_apply_pen")

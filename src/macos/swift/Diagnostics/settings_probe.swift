@@ -26,7 +26,7 @@ import AppKit
         SettingsDispatcher.apply(key: "flipEffect", value: "1")
         check("flipEffect", RenderSettings.flipEffect == 1)
         SettingsDispatcher.apply(key: "gifFps", value: "30")
-        check("gifFps", ToggleSettings.gifFps == 30)
+        check("gifFps", glaspen2_router_gif_fps() == 30)
         SettingsDispatcher.apply(key: "softShadow", value: "true")
         check("softShadow", RenderSettings.softShadow)
         SettingsDispatcher.apply(key: "outline", value: "true")

@@ -67,6 +67,8 @@ pub mod shell_state;
 #[cfg(target_os = "macos")]
 pub mod shortcut_state;
 pub mod state;
+#[cfg(target_os = "macos")]
+pub mod toggle_state;
 pub mod tunnel;
 pub mod ui;
 pub mod update;
