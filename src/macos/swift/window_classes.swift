@@ -2,6 +2,9 @@
 import AppKit
 
 @objc public final class GlaspenDrawView: NSView {
+    /// 与迁移前 ObjC 一致(覆盖层窗口不 key, 但保留语义, 防止未来键盘交互回归)。
+    @objc public override var acceptsFirstResponder: Bool { true }
+
     @objc public override func draw(_ rect: NSRect) {
         OverlayDrawing.draw(in: self, rect: rect)
     }

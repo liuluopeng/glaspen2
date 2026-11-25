@@ -21,6 +21,22 @@ import AppKit
             NSLog("[hotkeys-probe] FAIL cmd+ctrl+D -> settings")
             failures += 1
         }
+        // 显式空串 = 用户解绑, 不能在下次启动被默认值覆盖。
+        ShortcutApply.apply(saved: ["undo": ""])
+        if ShortcutStore.action(forChord: "cmd+ctrl+Z") != nil {
+            NSLog("[hotkeys-probe] FAIL explicit unbind fell back to default (undo -> cmd+ctrl+Z)")
+            failures += 1
+        }
+        if ShortcutStore.chord(forAction: "undo") != "" {
+            NSLog("[hotkeys-probe] FAIL explicit unbind not stored as empty (got %@)", ShortcutStore.chord(forAction: "undo") ?? "nil")
+            failures += 1
+        }
+        // 换色/换粗细的“上一项”初值必须与旧 ObjC 一致(9 黑 / 2 细), 否则重启后首次交换落到别处。
+        if PenSettingsStore.prevColor != 9 || PenSettingsStore.prevWidth != 2 {
+            NSLog("[hotkeys-probe] FAIL swap defaults prevColor=%d prevWidth=%d",
+                  PenSettingsStore.prevColor, PenSettingsStore.prevWidth)
+            failures += 1
+        }
         // 飘渺隐藏路径: visible=1 + ethereal=1 时 hideNow 必须置 0。
         glaspen2_router_set_ethereal(1)
         glaspen2_router_set_strokes_visible(1)

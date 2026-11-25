@@ -8,13 +8,15 @@ import AppKit
         var values: [String: String] = [:]
         var lookup: [String: String] = [:]
         for case let action as String in ShortcutTable.actions() {
-            let raw: Any = saved[action] ?? ""
-            let migrated = ChordNormalizer.migrateSaved(action: action, raw: raw)
             var chord: String?
-            if let s = migrated as? String {
-                chord = ChordNormalizer.normalize(raw: s)
-                if chord == nil && !s.isEmpty {
-                    NSLog("[hotkey] 非法组合 \(action)=\(s), 回退默认")
+            // 缺键 = 用默认; 显式空串 = 用户解绑(必须保持未绑定)。
+            if let raw = saved[action] {
+                let migrated = ChordNormalizer.migrateSaved(action: action, raw: raw)
+                if let s = migrated as? String {
+                    chord = ChordNormalizer.normalize(raw: s)
+                    if chord == nil && !s.trimmingCharacters(in: .whitespaces).isEmpty {
+                        NSLog("[hotkey] 非法组合 \(action)=\(s), 回退默认")
+                    }
                 }
             }
             if chord == nil { chord = defaults[action] as? String }

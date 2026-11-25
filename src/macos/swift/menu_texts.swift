@@ -37,6 +37,7 @@ import AppKit
             pair("开机自启", "Launch at login"),
             pair("磨砂玻璃", "Frosted Glass"),
             pair("笔迹描边", "Stroke outline"),
+            MenuRuntime.l10n("canvas.mode_infinite") ?? "",
         ]
         let modeTitle = glaspen2_router_menu_state(778) != 0
             ? (MenuRuntime.l10n("canvas.fixed_mode") ?? "")

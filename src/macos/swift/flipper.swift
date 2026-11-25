@@ -21,8 +21,10 @@ import AppKit
             let tp0 = Date().timeIntervalSinceReferenceDate
             prepare()
             let tp1 = Date().timeIntervalSinceReferenceDate
+            // prepare 已在建卡前执行过(与建卡共用一次 DB 访问); 旧 ObjC 这里传 NULL,
+            // 否则动画落定瞬间会重复 load+smooth+update, 造成落点卡顿。
             let tunneled = TunnelAnimation.start(goingNext: goingNext, curPage: Int(curBefore),
-                                                 prepare: prepare, commit: commit)
+                                                 prepare: {}, commit: commit)
             if tunneled {
                 NSLog("[flip] 卡顿账: prepare %.0fms", (tp1 - tp0) * 1000.0)
                 return

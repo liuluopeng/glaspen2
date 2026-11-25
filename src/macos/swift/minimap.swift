@@ -86,7 +86,7 @@ import AppKit
                 let isCur = (item["current"] as? NSNumber)?.boolValue ?? false
                 let itemY = (item["y"] as? NSNumber)?.doubleValue ?? 0
                 let itemH = (item["h"] as? NSNumber)?.doubleValue ?? 0
-                let ly = CGFloat(stripH - (itemY + itemH))
+                let ly = CGFloat(stripH - ((itemY - stripY) + itemH))
                 let rect = NSRect(x: 0, y: ly, width: CGFloat(stripW),
                                   height: CGFloat(itemH))
                 if let im = thumbs[pid] {

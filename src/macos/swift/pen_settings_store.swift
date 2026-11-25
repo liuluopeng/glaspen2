@@ -8,8 +8,9 @@ import AppKit
     static var widthScale = 1.0
     static var selectedColor = 0
     static var selectedWidth = 3
-    static var prevColor = -1
-    static var prevWidth = -1
+    // 旧 ObjC: 交换键初值给"可用的另一端"(黑/细), 无历史时可直接换过去。
+    static var prevColor = 9
+    static var prevWidth = 2
     static var pendingColor = -1
     static var pendingWidth = -1
 }

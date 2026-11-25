@@ -32,7 +32,7 @@ public func runCursorFlags() -> Int32 {
     (CursorState.visible ? 1 : 0)
         | ((PenState.strokeActive ? 1 : 0) << 1)
         | ((ToggleSettings.ethereal ? 1 : 0) << 2)
-        | ((PenState.tabletProximity ? 1 : 0) << 3)
+        | ((PenState.hasSeenProximity ? 1 : 0) << 3)
 }
 
 @_cdecl("glaspen2_router_auto_hide")
@@ -134,9 +134,13 @@ public func runRawWidth(_ pressure: Double) -> Double {
     glaspen2_pressure_raw_width(pressure, PenSettingsStore.widthScale) * CameraStore.zoom
 }
 
+private let runLangEnPtr: UnsafeMutablePointer<CChar> = strdup("en")!
+private let runLangZhPtr: UnsafeMutablePointer<CChar> = strdup("zh")!
+
 @_cdecl("glaspen2_router_lang_code")
 public func runLangCode() -> UnsafePointer<CChar>? {
-    AppState.lang == 1 ? UnsafePointer(strdup("en")) : UnsafePointer(strdup("zh"))
+    // 旧实现返回静态字符串; 这里同样只分配一次, 不再每次页信息 HUD 泄漏一小块。
+    UnsafePointer(AppState.lang == 1 ? runLangEnPtr : runLangZhPtr)
 }
 
 @_cdecl("glaspen2_router_perf_summary")

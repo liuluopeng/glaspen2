@@ -13,7 +13,10 @@ import Darwin
     static var rawPathLen = 0.0
     static var strokeActive = false
     static var eraserMode = false
+    /// 当前笔是否在感应区(proximity enter 后 true, exit 后 false)。
     static var tabletProximity = false
+    /// 该平板是否曾发过 proximity 事件(旧 g_has_tablet_proximity; 永不清零)。
+    static var hasSeenProximity = false
     static var proxDevice: Int = 0
 
     static func clearRaw() {
@@ -136,7 +139,10 @@ public func bridgePenUpState() {
 public func bridgeClearRawState() { PenState.clearRaw() }
 
 @_cdecl("glaspen2_router_mark_tablet_proximity")
-public func bridgeMarkTabletProximity() { PenState.tabletProximity = true }
+public func bridgeMarkTabletProximity() {
+    PenState.tabletProximity = true
+    PenState.hasSeenProximity = true
+}
 
 @_cdecl("glaspen2_router_set_prox_device")
 public func bridgeSetProxDevice(_ device: Int32) { PenState.proxDevice = Int(device) }

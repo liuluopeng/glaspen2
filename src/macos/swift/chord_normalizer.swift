@@ -16,8 +16,6 @@ import AppKit
 
     @objc(normalizeRaw:)
     public static func normalize(raw: String) -> String? {
-        // 空串 = 未绑定(不能当成"合法空 chord", 否则默认值永远补不上)。
-        if raw.trimmingCharacters(in: .whitespaces).isEmpty { return nil }
         guard let out = raw.withCString({ glaspen2_chord_normalize($0) }) else {
             return nil
         }

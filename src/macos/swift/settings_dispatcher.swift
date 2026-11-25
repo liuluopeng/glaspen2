@@ -64,7 +64,8 @@ import AppKit
             glaspen2_router_panel_transparent_full(boolValue ? 1 : 0)
         case "Outline": MenuHandler.setOutlineEnabled(enabled: boolValue)
         case "InfiniteCanvas":
-            glaspen2_router_apply_infinite_canvas(boolValue ? 1 : 0)
+            // 面板/菜单设置路径旧实现 no-notify; HUD 只在热键/菜单动作里弹。
+            CanvasMode.applyInfinite(on: boolValue, notify: false)
         case "Minimap":
             glaspen2_router_set_minimap(boolValue ? 1 : 0)
             glaspen2_router_redraw_draw_view()

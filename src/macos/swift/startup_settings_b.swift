@@ -23,9 +23,8 @@ import Darwin
         } else {
             CanvasCamera.resetLens()
         }
-        if let title = Optional(MenuRuntime.l10n("canvas.ethereal_mode")) {
-            MenuRuntime.setMenuTitle(tag: 778, title: title)
-        }
+        // 注意: 别在这里无条件覆盖 778 的标题 —— 上一段已按 ethereal 状态
+        // 设成“固定画布/飘渺画布”的动作名, 再写固定文案会让菜单显示反。
 
         let pressure = glaspen2_load_bool_setting("pressure_monitor") != 0
         glaspen2_router_restore_pressure(pressure ? 1 : 0)

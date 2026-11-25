@@ -5,23 +5,25 @@ import AppKit
     /// 0 = fallback(ObjC), 1 = pass(return event), 2 = consume(return NULL)
     @objc(routeEventOfType:event:)
     public static func route(type: CGEventType, event: CGEvent) -> Int32 {
+        // tap 被系统停用必须优先恢复(旧实现也在最前); 涂鸦停用时同样要能恢复。
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            glaspen2_router_reenable_tap()
+            NSLog("[glaspen2] TAP DISABLED (timeout/userinput) — re-enabled")
+            return 1
+        }
+        // 旧实现: proximity 在 "停用涂鸦" 提前返回之前处理, 保持状态不陈旧。
+        if type == .tabletProximity {
+            routeProximity(event)
+            return 1
+        }
         // 停用涂鸦时: 非键盘/非滚轮事件先清理相机/光标再放行(与原 ObjC 同序)。
         if (state() & 1) == 0 && type != .keyDown && type != .keyUp
             && type != .scrollWheel {
             glaspen2_router_disable_cleanup()
             return 1
         }
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            glaspen2_router_reenable_tap()
-            NSLog("[glaspen2] TAP DISABLED (timeout/userinput) — re-enabled")
-            return 1
-        }
         if type == .keyDown || type == .keyUp {
             return routeKeyboardEvent(type: type, event: event)
-        }
-        if type == .tabletProximity {
-            routeProximity(event)
-            return 1
         }
         // 相机临时抓手: 非笔拖/放 或 ⌃⌥+左键按下(须在菜单栏判定之前)。
         if type == .leftMouseDragged || type == .leftMouseUp || type == .leftMouseDown {
@@ -52,6 +54,13 @@ import AppKit
         if type != .tabletProximity, isPenEvent(event) {
             penCursorUpdate(type: type, event: event)
             penSystemCursor(type: type)
+        }
+        // 旧实现: 任意鼠标/笔抬起都恢复系统光标并清掉十字(不只笔事件)。
+        if type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp {
+            EventRouter.restoreSystemCursor()
+            CursorState.visible = false
+            dirtyIncludePoint(CursorState.x, CursorState.y, 14.0)
+            OverlayLayerFlush.flushDirty()
         }
         // 笔事件: 坐标/压力/raw_w 在本层计算, 再交 pen 分派(原 inner 逻辑)。
         if getenv("GLASPEN2_DEBUG_PEN") != nil,
@@ -99,12 +108,7 @@ import AppKit
             glaspen2_router_hide_system_cursor()
             glaspen2_router_set_pen_drawing(1)
         }
-        if type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp {
-            restoreSystemCursor()
-            glaspen2_router_cursor_hide()
-            glaspen2_router_cursor_invalidate()
-            glaspen2_router_flush()
-        }
+
     }
 
     /// 恢复系统光标(S6-3-3d): 只有确实隐藏过(pen_drawing)才 show + 清标记。
@@ -185,6 +189,8 @@ import AppKit
         let dragTypes: [CGEventType] = [.leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
         let upTypes: [CGEventType] = [.leftMouseUp, .rightMouseUp, .otherMouseUp]
         if downTypes.contains(type) {
+            // 旧实现: 漏抬笔时先收尾上一笔, 避免新笔覆盖掉未 commit 的实时笔迹。
+            finishActiveStroke()
             updateEraserState(isEraser: isEraser)
             NSLog("[glaspen2] pen DOWN p=%.2f ts=%.3f", pressure, timestamp)
             penDown(x: x, y: y, pressure: pressure, timestamp: timestamp, rawWidth: rawWidth)
@@ -248,6 +254,7 @@ import AppKit
         let enter = event.getIntegerValueField(.tabletProximityEventEnterProximity) == 1
         // 进入/离开都要同步为真实 proximity;离开后残留的 pen 事件不得再自动显示笔迹。
         PenState.tabletProximity = enter
+        PenState.hasSeenProximity = true
         let label = enter ? (dev == .eraser ? "橡皮进入" : "悬浮进入") : "悬浮离开"
         NSLog("[pen] \(label) (proximity \(enter ? "enter" : "exit"))")
         if enter {
@@ -399,7 +406,9 @@ import AppKit
         let strokeActive = (state & 2) != 0
         let cursorVisible = (state & 4) != 0
         // 只有笔确实在感应范围内才自动显示; 离开后的尾随 pen 事件不能把刚隐藏的笔迹又拉回来。
-        if !strokesVisible && PenState.tabletProximity {
+        // 无 proximity 的平板: 悬停移动也要能自动显示(旧实现无条件 auto-show);
+        // 有 proximity 的平板: 离开后的尾随 pen 事件不得把刚隐藏的笔迹拉回来。
+        if !strokesVisible && (PenState.tabletProximity || !PenState.hasSeenProximity) {
             if getenv("GLASPEN2_DEBUG_ETHEREAL") != nil {
                 NSLog("[ethereal] pen auto-show (proximity active)")
             }

@@ -48,7 +48,9 @@ import AppKit
             }
         }
         if let moreMenu = menu.item(at: base + 7)?.submenu {
-            for (i, title) in moreTitles.enumerated() where i < 3 && i < moreMenu.items.count {
+            // 0 开机自启 / 1 磨砂玻璃 / 2 笔迹描边 / 3 无限画布;
+            // 第 4 项“画布模式”文案随状态走, 由下方 tag 778 单独更新。
+            for (i, title) in moreTitles.enumerated() where i < moreMenu.items.count {
                 moreMenu.item(at: i)?.title = title
             }
         }
