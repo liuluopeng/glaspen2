@@ -5,10 +5,6 @@ import AppKit
     static func l10n(_ key: String) -> String { I18nText.text(key) }
     static func pair(_ zh: String, _ en: String) -> String { glaspen2_router_lang() == 0 ? zh : en }
     static func notify(_ text: String) { NotificationPresenter.show(text: text) }
-    static func setMenuTitle(tag: Int32, title: String) {
-        guard let item = MenuLookup.item(tag: Int(tag), inMenu: UIAnchors.menu) else { return }
-        item.title = title
-    }
     static func colorItemTitle(_ idx: Int32) -> NSAttributedString {
         MenuPresetTitles.colorItemText(index: idx)
     }
@@ -17,14 +13,6 @@ import AppKit
     }
     static func ensureSurface() {
         if let dv = UIAnchors.drawView { SurfaceStore.ensure(view: dv) }
-    }
-    static func updateMenuState(tag: Int32, state: Int32) {
-        guard let item = MenuLookup.item(tag: Int(tag), inMenu: UIAnchors.menu) else { return }
-        item.state = state != 0 ? NSControl.StateValue.on : NSControl.StateValue.off
-    }
-    static func menuState(_ tag: Int32) -> Int32 {
-        guard let item = MenuLookup.item(tag: Int(tag), inMenu: UIAnchors.menu) else { return 0 }
-        return item.state == NSControl.StateValue.on ? 1 : 0
     }
     static func applyGlassView(alpha: Double, hidden: Bool) {
         guard let gv = UIAnchors.glassView else { return }
@@ -128,18 +116,8 @@ public func menuDidCloseBridge() {
 }
 @_cdecl("glaspen2_menu_quit_bridge")
 public func menuQuitBridge() { MenuHandler.quitAppNow() }
-@_cdecl("glaspen2_router_update_checkmarks")
-public func menuUpdateCheckmarks() { MenuGlue.updateCheckmarks() }
 @_cdecl("glaspen2_router_sync_settings_panel")
 public func menuSyncSettingsPanel() { glaspen2_notify_settings_changed() }
-@_cdecl("glaspen2_router_glass_apply")
-public func menuGlassApply() { MenuHandler.applyGlass() }
-@_cdecl("glaspen2_router_menu_state")
-public func menuStateValue(_ tag: Int32) -> Int32 { MenuRuntime.menuState(tag) }
-@_cdecl("glaspen2_router_update_menu_state")
-public func menuUpdateState(_ tag: Int32, _ state: Int32) {
-    MenuRuntime.updateMenuState(tag: tag, state: state)
-}
 @_cdecl("glaspen2_router_pm_show")
 public func menuPMShow() { PressureMonitorWindow.show() }
 @_cdecl("glaspen2_router_pm_hide")

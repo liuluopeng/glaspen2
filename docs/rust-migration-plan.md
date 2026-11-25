@@ -103,6 +103,8 @@
   文案仍由 Swift 传入; 新增 `glaspen2_router_finish_active_stroke` 桥; settings probe 增加动作断言。
 - **R44 页视图 fit 状态**: `PageViewOps` 的 isFit/paperOx/paperOy/paperScale/pageW/pageH/geometryWidth + update() 迁 Rust;
   Swift 保留 C 桥与 rebuild/bubbleFlip; 虚拟笔截图正常。
+- **R45 菜单 C ABI 薄桥**: update_checkmarks/update_menu_state/menu_state/glass_apply/menu_set_title 迁 Rust;
+  删除 Swift `MenuRuntime` 对应方法与 C 包装; `MenuGlue.updateCheckmarks` 改调 Rust; menu-full/settings probe 通过。
 
 ## 下一批候选(按风险从低到高)
 

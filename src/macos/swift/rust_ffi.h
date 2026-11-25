@@ -412,3 +412,6 @@ extern double glaspen2_rust_pageview_paper_oy(void);
 extern int glaspen2_rust_pageview_page_w(void);
 extern int glaspen2_rust_pageview_page_h(void);
 extern int glaspen2_rust_pageview_geometry_width(void);
+
+// R45: 菜单 C ABI 薄桥
+extern void glaspen2_menu_set_title(int tag, const char *title);

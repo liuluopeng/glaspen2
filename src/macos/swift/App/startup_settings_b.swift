@@ -13,7 +13,7 @@ import Darwin
         glaspen2_router_update_menu_state(778, ethereal ? 1 : 0)
         let modeKey = ethereal ? "canvas.fixed_mode" : "canvas.ethereal_mode"
         if let title = Optional(MenuRuntime.l10n(modeKey)) {
-            MenuRuntime.setMenuTitle(tag: 778, title: title)
+            title.withCString { glaspen2_menu_set_title(778, $0) }
         }
         glaspen2_router_update_menu_state(668, infinite ? 1 : 0)
         glaspen2_set_canvas_kind(infinite ? 1 : 0)

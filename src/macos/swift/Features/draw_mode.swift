@@ -31,7 +31,7 @@ import AppKit
         glaspen2_router_update_menu_state(888, enabled ? 1 : 0)
         let zh = enabled ? "关闭涂鸦" : "开启涂鸦"
         let en = enabled ? "Disable Drawing" : "Enable Drawing"
-        MenuRuntime.setMenuTitle(tag: 888, title: MenuRuntime.pair(zh, en))
+        MenuRuntime.pair(zh, en).withCString { glaspen2_menu_set_title(888, $0) }
     }
 
     /// 飘渺画布 ↔ 固定画布: 笔迹显隐/玻璃跟随/压感窗/菜单文案/落库/图标。
@@ -58,8 +58,7 @@ import AppKit
         }
         let ethereal = glaspen2_router_ethereal() != 0
         glaspen2_router_update_menu_state(778, ethereal ? 1 : 0)
-        MenuRuntime.setMenuTitle(tag: 778,
-            title: MenuRuntime.l10n(ethereal ? "canvas.fixed_mode" : "canvas.ethereal_mode"))
+        MenuRuntime.l10n(ethereal ? "canvas.fixed_mode" : "canvas.ethereal_mode").withCString { glaspen2_menu_set_title(778, $0) }
         "ethereal".withCString { glaspen2_save_bool_setting($0, ethereal ? 1 : 0) }
         glaspen2_router_update_status_icon_state()
     }

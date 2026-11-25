@@ -1428,7 +1428,6 @@ unsafe extern "C" {
     fn glaspen2_router_set_prev_color(idx: i32);
     fn glaspen2_router_apply_color(idx: i32);
     fn glaspen2_router_save_pen_settings();
-    fn glaspen2_router_update_checkmarks();
     fn glaspen2_router_update_status_icon_state();
     fn glaspen2_router_sync_settings_panel();
     fn glaspen2_router_set_pending_width(idx: i32);
@@ -1526,9 +1525,7 @@ unsafe extern "C" {
     fn glaspen2_router_pm_hide();
     fn glaspen2_router_set_grid_state(on: i32);
     fn glaspen2_set_launch_at_login(on: i32);
-    fn glaspen2_router_update_menu_state(tag: i32, state: i32);
     fn glaspen2_router_set_glass_state(on: i32);
-    fn glaspen2_router_glass_apply();
 }
 
 fn bool_setting(key: &str, value: bool) {
@@ -2108,4 +2105,67 @@ pub extern "C" fn glaspen2_rust_pageview_page_h() -> i32 {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_pageview_geometry_width() -> i32 {
     0
+}
+
+// ── R45: 菜单 C ABI 薄桥(状态/勾选/玻璃/标题) ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_update_checkmarks() {
+    let menu = unsafe { sw_menu() };
+    if menu.is_null() {
+        return;
+    }
+    let color_count = glaspen_core::presets::COLOR_PRESETS.len() as i32;
+    let width_count = glaspen_core::presets::WIDTH_PRESETS.len() as i32;
+    let (color_index, width_index) = unsafe {
+        (
+            glaspen2_router_selected_color(),
+            glaspen2_router_selected_width(),
+        )
+    };
+    let _ = glaspen2_rust_menu_update_checkmarks(
+        menu,
+        color_count,
+        width_count,
+        color_index,
+        width_index,
+    );
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_update_menu_state(tag: i32, state: i32) {
+    use objc2_app_kit::{NSControlStateValueOn, NSMenuItem};
+    let menu = unsafe { sw_menu() };
+    if menu.is_null() {
+        return;
+    }
+    let p = glaspen2_rust_menu_item_with_tag(menu, tag as isize);
+    if p.is_null() {
+        return;
+    }
+    let item = unsafe { &*(p as *const NSMenuItem) };
+    item.setState(if state != 0 { NSControlStateValueOn } else { 0 });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_menu_state(tag: i32) -> i32 {
+    let menu = unsafe { sw_menu() };
+    if menu.is_null() {
+        return 0;
+    }
+    glaspen2_rust_menu_item_state(menu, tag as isize)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_glass_apply() {
+    glaspen2_rust_apply_glass();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_set_title(tag: i32, title: *const std::os::raw::c_char) {
+    let menu = unsafe { sw_menu() };
+    if menu.is_null() || title.is_null() {
+        return;
+    }
+    let _ = glaspen2_rust_menu_set_item_title(menu, tag as isize, title);
 }

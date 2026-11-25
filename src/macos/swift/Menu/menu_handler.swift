@@ -151,7 +151,7 @@ import AppKit
         glaspen2_router_update_menu_state(888, enabled ? 1 : 0)
         let zh = enabled ? "关闭涂鸦" : "开启涂鸦"
         let en = enabled ? "Disable Drawing" : "Enable Drawing"
-        MenuRuntime.setMenuTitle(tag: 888, title: MenuRuntime.pair(zh, en))
+        MenuRuntime.pair(zh, en).withCString { glaspen2_menu_set_title(888, $0) }
         glaspen2_router_update_status_icon_state()
     }
 
