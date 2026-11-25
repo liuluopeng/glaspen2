@@ -113,6 +113,8 @@
   `clearRaw`/`updateAfterSegment` 走 Rust; Swift 保留同 API 计算属性; 虚拟笔截图正常。
 - **R49 压感监视状态**: `PressureState` 的压力/坐标/接触/接近/事件类型迁 Rust(CString 存类型);
   Swift 计算属性 + `sw_pm_update` 刷新桥; 压感窗真实更新正常。
+- **R50 快捷键生效表**: `ShortcutApply` 的默认/迁移/保留/冲突解绑逻辑迁 Rust(读 core ui/chord/shortcut_state);
+  Swift 只做 NSDictionary -> JSON 桥; hotkeys probe 14 项通过。
 
 ## 下一批候选(按风险从低到高)
 

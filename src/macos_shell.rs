@@ -2504,3 +2504,67 @@ pub extern "C" fn glaspen2_rust_pm_ev_type() -> *const std::os::raw::c_char {
     let guard = pm_ev_type().lock().unwrap_or_else(|e| e.into_inner());
     guard.as_ref().map_or(std::ptr::null(), |s| s.as_ptr())
 }
+
+// ── R50: 快捷键生效表(默认/迁移/保留/冲突解绑) ──
+
+/// R50: 由已保存 JSON(可为空)计算并安装生效表; 返回 1 成功。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_shortcut_apply_json(saved_json: *const std::os::raw::c_char) -> i32 {
+    use std::collections::BTreeMap;
+    let saved: BTreeMap<String, serde_json::Value> = if saved_json.is_null() {
+        BTreeMap::new()
+    } else {
+        let raw = unsafe { std::ffi::CStr::from_ptr(saved_json) }.to_string_lossy();
+        serde_json::from_str(&raw).unwrap_or_default()
+    };
+    let defaults: BTreeMap<&str, &str> =
+        glaspen_core::ui::defaults(glaspen_core::ui::Platform::Macos)
+            .into_iter()
+            .collect();
+    let mut values: BTreeMap<String, String> = BTreeMap::new();
+    let mut lookup: BTreeMap<String, String> = BTreeMap::new();
+    for action in glaspen_core::ui::actions() {
+        let action_id = action.id;
+        let mut chord: Option<String> = None;
+        if let Some(raw) = saved.get(action_id) {
+            if let Some(s) = raw.as_str() {
+                let migrated = glaspen_core::chord::migrate_value(
+                    glaspen_core::ui::Platform::Macos,
+                    action_id,
+                    s,
+                )
+                .unwrap_or_else(|| s.to_string());
+                chord = glaspen_core::chord::normalize(&migrated);
+                if chord.is_none() && !s.trim().is_empty() {
+                    tracing::warn!("hotkey: 非法组合 {action_id}={s}, 回退默认");
+                }
+            }
+        }
+        if chord.is_none() {
+            chord = defaults.get(action_id).map(|s| s.to_string());
+        }
+        if let Some(c) = chord.clone() {
+            if !c.is_empty()
+                && glaspen_core::chord::is_reserved(glaspen_core::ui::Platform::Macos, &c)
+            {
+                tracing::warn!("hotkey: 保留组合 {action_id}={c}, 回退默认");
+                chord = defaults.get(action_id).map(|s| s.to_string());
+            }
+        }
+        if let Some(c) = chord.clone() {
+            if !c.is_empty()
+                && let Some(existing) = lookup.get(&c)
+            {
+                tracing::warn!("hotkey: 冲突 {existing} 与 {action_id} 都是 {c}; 后者解绑");
+                chord = Some(String::new());
+            }
+        }
+        let final_chord = chord.unwrap_or_default();
+        if !final_chord.is_empty() {
+            lookup.insert(final_chord.clone(), action_id.to_string());
+        }
+        values.insert(action_id.to_string(), final_chord);
+    }
+    glaspen_core::shortcut_state::install(values, lookup);
+    1
+}

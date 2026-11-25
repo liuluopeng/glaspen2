@@ -456,3 +456,6 @@ extern int glaspen2_rust_pm_in_range(void);
 extern double glaspen2_rust_pm_x(void);
 extern double glaspen2_rust_pm_y(void);
 extern const char *glaspen2_rust_pm_ev_type(void);
+
+// R50: 快捷键生效表计算/安装
+extern int glaspen2_shortcut_apply_json(const char *saved_json);
