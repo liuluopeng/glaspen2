@@ -33,6 +33,8 @@ mod media;
 pub mod nas_backup;
 mod pages;
 #[cfg(target_os = "macos")]
+mod pen_settings;
+#[cfg(target_os = "macos")]
 mod render_state;
 pub(crate) mod thumbs;
 #[cfg(target_os = "macos")]

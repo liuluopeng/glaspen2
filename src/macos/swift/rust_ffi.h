@@ -270,3 +270,7 @@ extern int glaspen2_router_grid_follow(void);
 // R9: ViewSettings 状态(旧 Swift 直调函数改为 C 入口)
 extern void sw_set_infinite(int on);
 extern void sw_set_minimap(int on);
+
+// R12: 笔外观设置(Swift PenSettingsStore → Rust)
+extern void sw_set_pen_settings(double r, double g, double b, double width,
+                                int color_idx, int width_idx);

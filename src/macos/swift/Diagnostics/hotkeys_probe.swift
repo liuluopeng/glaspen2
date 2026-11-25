@@ -32,9 +32,9 @@ import AppKit
             failures += 1
         }
         // 换色/换粗细的“上一项”初值必须与旧 ObjC 一致(9 黑 / 2 细), 否则重启后首次交换落到别处。
-        if PenSettingsStore.prevColor != 9 || PenSettingsStore.prevWidth != 2 {
+        if glaspen2_router_prev_color_index() != 9 || glaspen2_router_prev_width_index() != 2 {
             NSLog("[hotkeys-probe] FAIL swap defaults prevColor=%d prevWidth=%d",
-                  PenSettingsStore.prevColor, PenSettingsStore.prevWidth)
+                  glaspen2_router_prev_color_index(), glaspen2_router_prev_width_index())
             failures += 1
         }
         // 飘渺隐藏路径: visible=1 + ethereal=1 时 hideNow 必须置 0。

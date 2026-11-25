@@ -37,6 +37,8 @@
   Swift 直接引用改 FFI, 删除 `Settings/toggle_settings.swift`; 1 个单测。
 - **R11 渲染设置**: `RenderSettings` 迁 `glaspen-core::render_state`(玻璃/描边/软阴影/反色/翻转);
   24 个 C ABI 符号改 Rust 导出; Swift 直接引用改 FFI, 删除 `Settings/render_settings.swift`; 1 个单测。
+- **R12 笔外观设置**: `PenSettingsStore`(颜色/粗细/选中/历史/暂存)迁 `glaspen-core::pen_settings`;
+  颜色/宽度预设直接用 core presets; 全部 C ABI 符号改 Rust 导出, 删除 `Settings/pen_settings_store.swift`; 1 个单测。
 
 ## 下一批候选(按风险从低到高)
 

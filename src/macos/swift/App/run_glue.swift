@@ -111,10 +111,10 @@ public func runUpdateStatusIcon() {
                             enabled: glaspen2_router_enabled() != 0,
                             ethereal: glaspen2_router_ethereal() != 0,
                             infinite: glaspen2_router_infinite() != 0,
-                            widthScale: PenSettingsStore.widthScale,
-                            penRed: PenSettingsStore.penR,
-                            penGreen: PenSettingsStore.penG,
-                            penBlue: PenSettingsStore.penB)
+                            widthScale: glaspen2_router_width_scale(),
+                            penRed: glaspen2_router_pen_r(),
+                            penGreen: glaspen2_router_pen_g(),
+                            penBlue: glaspen2_router_pen_b())
 }
 
 @_cdecl("glaspen2_router_bubble_auto_page_flip")
@@ -131,7 +131,7 @@ public func runReenableTap() { glaspen2_router_event_tap_enable() }
 
 @_cdecl("glaspen2_router_raw_width")
 public func runRawWidth(_ pressure: Double) -> Double {
-    glaspen2_pressure_raw_width(pressure, PenSettingsStore.widthScale) * CameraStore.zoom
+    glaspen2_pressure_raw_width(pressure, glaspen2_router_width_scale()) * CameraStore.zoom
 }
 
 private let runLangEnPtr: UnsafeMutablePointer<CChar> = strdup("en")!
@@ -263,7 +263,7 @@ public func runRecInit() {
 @_cdecl("glaspen2_router_startup_apply_pen")
 public func runStartupApplyPen(_ r: Double, _ g: Double, _ b: Double, _ width: Double,
                                _ colorIdx: Int32, _ widthIdx: Int32) {
-    penSetSettings(r, g, b, width, colorIdx, widthIdx)
+    sw_set_pen_settings(r, g, b, width, colorIdx, widthIdx)
 }
 
 @_cdecl("glaspen2_router_invert_restart")

@@ -62,6 +62,8 @@ pub mod settings_apply;
 pub mod settings_form;
 // 面板设置快照构建单源(字段集合/顺序/类型/缺省值/DB 回退, D12)
 #[cfg(target_os = "macos")]
+pub mod pen_settings;
+#[cfg(target_os = "macos")]
 pub mod render_state;
 pub mod settings_snapshot;
 #[cfg(target_os = "macos")]

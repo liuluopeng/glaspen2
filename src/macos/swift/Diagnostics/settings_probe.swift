@@ -36,9 +36,9 @@ import AppKit
         SettingsDispatcher.apply(key: "invertFps", value: "60")
         check("invertFps", glaspen2_router_invert_fps() == 60)
         SettingsDispatcher.apply(key: "color", value: "2")
-        check("color", PenSettingsStore.selectedColor == 2)
+        check("color", glaspen2_router_selected_color() == 2)
         SettingsDispatcher.apply(key: "width", value: "5")
-        check("width", PenSettingsStore.selectedWidth == 5)
+        check("width", glaspen2_router_selected_width() == 5)
         SettingsDispatcher.apply(key: "gridFollowStrokes", value: "true")
         check("gridFollowStrokes", glaspen2_router_grid_follow() != 0)
 
