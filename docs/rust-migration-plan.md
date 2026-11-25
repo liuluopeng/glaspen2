@@ -59,6 +59,8 @@
   `GLASPEN2_SWIFT_OVERLAY=1` + `GLASPEN2_SWIFT_DRAW_VIEW=1` 可整体回退 Swift, 各函数失败自动回退。
 - **R22 状态栏菜单对象**: Rust 创建 `NSMenu` 并把菜单挂到 `NSStatusItem`; 菜单项仍由 Swift `MenuBuilder` 构建;
   `GLASPEN2_SWIFT_MENU=1` 回退 Swift, 失败自动回退。
+- **R23 颜色/粗细菜单项构建**: `MenuBuilder` 的批量建项(NSMenuItem/attributedTitle/target/action/tag)迁 Rust;
+  富文本标题仍 Swift 预构建; `GLASPEN2_SWIFT_MENU_ITEMS=1` 回退; `--swift-menu-probe` 默认走 Rust 并 `SWIFT_MENU_OK`。
 
 ## 下一批候选(按风险从低到高)
 

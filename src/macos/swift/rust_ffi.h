@@ -300,3 +300,7 @@ extern void *glaspen2_rust_draw_view_create(double x, double y, double width, do
 // R22: 状态栏主菜单创建/挂载(默认; GLASPEN2_SWIFT_MENU=1 回退 Swift)
 extern void *glaspen2_rust_menu_create(void);
 extern void glaspen2_rust_status_item_set_menu(void *item, void *menu);
+
+// R23: 批量追加菜单项(默认; GLASPEN2_SWIFT_MENU_ITEMS=1 回退 Swift)
+extern int glaspen2_rust_menu_add_items(void *menu, void *handler, int count,
+                                        void **titles, int title_count, const char *action);

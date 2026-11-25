@@ -423,3 +423,48 @@ pub extern "C" fn glaspen2_rust_status_item_set_menu(item: *mut c_void, menu: *m
     item.setMenu(Some(menu));
     tracing::info!("rust-shell: status item menu attached by Rust (objc2)");
 }
+
+/// R23: 批量追加菜单项(颜色/粗细预设); 富文本标题由 Swift 预构建, Rust 负责
+/// NSMenuItem 创建/attributedTitle/target/action/tag/追加。返回 1 成功, 0 失败。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_add_items(
+    menu: *mut c_void,
+    handler: *mut c_void,
+    count: i32,
+    titles: *const *mut c_void,
+    title_count: i32,
+    action: *const std::os::raw::c_char,
+) -> i32 {
+    use objc2::runtime::{AnyObject, Sel};
+    use objc2_app_kit::{NSMenu, NSMenuItem};
+    use objc2_foundation::NSAttributedString;
+
+    if menu.is_null() || titles.is_null() || action.is_null() {
+        return 0;
+    }
+    let Some(mtm) = MainThreadMarker::new() else {
+        return 0;
+    };
+    let menu = unsafe { &*(menu as *const NSMenu) };
+    let action = unsafe { std::ffi::CStr::from_ptr(action) };
+    let sel = Sel::register(action);
+    let n = count.max(0).min(title_count.max(0));
+    for i in 0..n {
+        let title = unsafe { *titles.add(i as usize) };
+        if title.is_null() {
+            continue;
+        }
+        let title = unsafe { &*(title as *const NSAttributedString) };
+        let item = NSMenuItem::new(mtm);
+        item.setAttributedTitle(Some(title));
+        if !handler.is_null() {
+            let handler = unsafe { &*(handler as *const AnyObject) };
+            unsafe { item.setTarget(Some(handler)) };
+        }
+        unsafe { item.setAction(Some(sel)) };
+        item.setTag(i as isize);
+        menu.addItem(&item);
+    }
+    tracing::info!("rust-shell: {n} menu items added by Rust (objc2)");
+    1
+}
