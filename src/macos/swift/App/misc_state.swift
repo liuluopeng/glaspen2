@@ -28,35 +28,8 @@ public func i18nText(_ key: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar
     return strdup(text)
 }
 
-@objc public final class StrokeContext: NSObject {
-    static var active: OpaquePointer?
-}
-
-@_cdecl("glaspen2_router_acquire_cr")
-public func strokeAcquire(_ owned: UnsafeMutablePointer<Int32>?) -> OpaquePointer? {
-    if let active = StrokeContext.active {
-        owned?.pointee = 0
-        return active
-    }
-    owned?.pointee = 1
-    return cairoCreateScaled()
-}
-
 @_cdecl("glaspen2_router_outline_pad")
 public func strokeOutlinePad() -> Double { 1.0 }
-
-@_cdecl("glaspen2_router_active_ctx_present")
-public func strokeActivePresent() -> Int32 { StrokeContext.active != nil ? 1 : 0 }
-
-@_cdecl("glaspen2_router_install_active_ctx")
-public func strokeInstallActive(_ ctx: OpaquePointer?) { StrokeContext.active = ctx }
-
-@_cdecl("glaspen2_router_take_active_ctx")
-public func strokeTakeActive() -> OpaquePointer? {
-    let ctx = StrokeContext.active
-    StrokeContext.active = nil
-    return ctx
-}
 
 @_cdecl("glaspen2_router_cursor_invalidate")
 public func cursorInvalidate() {
@@ -64,12 +37,3 @@ public func cursorInvalidate() {
     glaspen2_rust_dirty_include_point(glaspen2_router_cursor_x(), glaspen2_router_cursor_y(), 14.0)
 }
 
-@_cdecl("glaspen2_router_cursor_flush_due")
-public func cursorFlushDue() -> Int32 {
-    if !PenState.strokeActive,
-       glaspen2_perf_elapsed_us(glaspen2_rust_cursor_last_flush()) >= 16000 {
-        glaspen2_rust_cursor_set_last_flush(mach_absolute_time())
-        return 1
-    }
-    return 0
-}

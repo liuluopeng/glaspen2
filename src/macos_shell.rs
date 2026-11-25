@@ -2696,3 +2696,82 @@ pub extern "C" fn glaspen2_menu_snapshot_overrides_json() -> *mut std::os::raw::
         Err(_) => std::ptr::null_mut(),
     }
 }
+
+// ── R53: 描边 cairo context 活动槽 + 光标刷新判定 ──
+
+#[derive(Clone, Copy)]
+struct CairoCtxPtr(*mut c_void);
+unsafe impl Send for CairoCtxPtr {}
+static STROKE_CTX: std::sync::OnceLock<std::sync::Mutex<Option<CairoCtxPtr>>> =
+    std::sync::OnceLock::new();
+
+fn stroke_ctx_slot() -> &'static std::sync::Mutex<Option<CairoCtxPtr>> {
+    STROKE_CTX.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+unsafe extern "C" {
+    fn cairo_create_scaled() -> *mut c_void;
+    fn glaspen2_perf_elapsed_us(since: u64) -> u64;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_acquire_cr(owned: *mut i32) -> *mut c_void {
+    let guard = stroke_ctx_slot().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(ctx) = *guard {
+        if !owned.is_null() {
+            unsafe { *owned = 0 };
+        }
+        ctx.0
+    } else {
+        if !owned.is_null() {
+            unsafe { *owned = 1 };
+        }
+        unsafe { cairo_create_scaled() }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_active_ctx_present() -> i32 {
+    i32::from(
+        stroke_ctx_slot()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some(),
+    )
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_install_active_ctx(ctx: *mut c_void) {
+    *stroke_ctx_slot().lock().unwrap_or_else(|e| e.into_inner()) = if ctx.is_null() {
+        None
+    } else {
+        Some(CairoCtxPtr(ctx))
+    };
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_take_active_ctx() -> *mut c_void {
+    stroke_ctx_slot()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+        .map_or(std::ptr::null_mut(), |ctx| ctx.0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_cursor_flush_due() -> i32 {
+    unsafe {
+        if sw_stroke_active() != 0 {
+            return 0;
+        }
+        if glaspen2_perf_elapsed_us(glaspen2_rust_cursor_last_flush()) >= 16000 {
+            glaspen2_rust_cursor_set_last_flush(mach_absolute_time());
+            return 1;
+        }
+        0
+    }
+}
+
+unsafe extern "C" {
+    fn sw_stroke_active() -> i32;
+}

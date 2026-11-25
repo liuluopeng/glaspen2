@@ -119,6 +119,8 @@
   删除 `event_tap_state.swift`; `EventTapInstaller` 改调 Rust; tap/smoke 通过。
 - **R52 设置快照 overrides JSON**: `MenuGlue.snapshotOverridesJSON` 的 launchAtLogin/shortcuts/flipEffect/language 组装迁 Rust;
   Swift 只返回 Rust 堆字符串; settings probe 通过。
+- **R53 描边活动 context/光标刷新**: `StrokeContext` 活动 cairo context 槽 + `cursorFlushDue` 判定迁 Rust;
+  acquire/install/take/present 走 Rust; 虚拟笔截图正常。
 
 ## 下一批候选(按风险从低到高)
 

@@ -653,3 +653,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R50 | ShortcutApply 默认/迁移/保留/冲突解绑迁 Rust; Swift 仅 JSON 桥; hotkeys probe 14 项通过 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R51 | 事件 tap 句柄(CFMachPort retain/release/invalidate)+scroll 标志迁 Rust; 删 event_tap_state.swift; EventTapInstaller 改调 Rust; smoke tap 检查通过 | 默认 smoke、全量 tests/build/parity 绿; Swift 90→89 | 本提交 |
 | 2026-11-26 | Rust-R52 | 设置快照 overrides JSON 组装迁 Rust(launchAtLogin/shortcuts/flipEffect/language); Swift 仅返回 Rust 字符串; settings probe 通过 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R53 | StrokeContext 活动 cairo context 槽 + cursorFlushDue 判定迁 Rust; Swift 仅保留 I18n/cursor invalidate 等; 虚拟笔截图正常 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
