@@ -12,6 +12,11 @@ import AppKit
 
     @objc(createSquareItem)
     public static func createSquareItem() -> NSStatusItem? {
+        // R14 预研: Rust/objc2 创建状态栏项; 默认仍走 Swift, 失败自动回退。
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_STATUS_ITEM"] == "1",
+           let p = glaspen2_rust_status_item_create() {
+            return Unmanaged<NSStatusItem>.fromOpaque(p).takeUnretainedValue()
+        }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.title = ""
         return item

@@ -274,3 +274,6 @@ extern void sw_set_minimap(int on);
 // R12: 笔外观设置(Swift PenSettingsStore → Rust)
 extern void sw_set_pen_settings(double r, double g, double b, double width,
                                 int color_idx, int width_idx);
+
+// R14: Rust objc2 预研(默认关闭; GLASPEN2_RUST_STATUS_ITEM=1 时走这里)
+extern void *glaspen2_rust_status_item_create(void);

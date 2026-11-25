@@ -18,6 +18,8 @@ pub mod logging;
 
 #[cfg(target_os = "macos")]
 pub mod macos;
+#[cfg(target_os = "macos")]
+pub mod macos_shell;
 
 // ── core 再导出:api.rs 的 `crate::db` / `crate::export` 等旧路径照旧成立 ──
 pub use glaspen_core::{

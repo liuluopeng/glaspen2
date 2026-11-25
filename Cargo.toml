@@ -49,6 +49,10 @@ tracing-appender = "0.2"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
 libc = "0.2.189"
+# R14: AppKit 壳 Rust 预研(状态栏项创建)
+objc2 = "0.6.5"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSStatusBar", "NSStatusItem", "NSStatusBarButton", "objc2-core-foundation"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSObject", "NSString"] }
 
 [target.'cfg(windows)'.dependencies]
 # Versions match C:\Users\liulu\Downloads\wAPItry (verified Windows pen-input prototype)
