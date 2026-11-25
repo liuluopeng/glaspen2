@@ -247,3 +247,18 @@
 - 纯逻辑/状态迁移已覆盖: 几何/预设/设置/快捷键/菜单状态、镜头/页视图/光标/压感/笔迹/实时绘制/事件 tap/脏矩形/surface/grid/tunnel/minimap 合成/通知/画布模式/动作编排。
 - 剩余 Swift 仍含少量平台适配逻辑(event_router 分派、录制效果执行、隧道卡片绘制、Flutter host), 因此按“整个应用层 Rust”口径**尚未完成**; 按“纯逻辑/状态迁 Rust + 必要 AppKit 壳保留”口径已基本达成。
 - 继续项: 隧道绘制、录制/导出效果、event_router 分派、Flutter host、真机验收清单。
+
+
+## R72 默认 Rust 壳 60s 虚拟笔浸泡
+
+条件: release, 3440x1440, 临时 DB 副本, `GLASPEN2_VIRTUAL_PEN=1`, grid+minimap+flip_effect 开启;
+每 4s 交替发送 ⌘⌃1/⌘⌃`(翻页), 共 12 个采样点。
+
+- 进程全程存活(ALIVE=1);
+- strokes 23439 → 23449(+10, 落库正常);
+- CPU 0–6%(首样 37% 为启动/预热), RSS 从 ~142MB 升至 ~380–387MB 后平台化;
+- 日志 2 条 `ERROR glaspen_core::modeler: Up error: 模型器拒绝输入: Input element error`,
+  与虚拟笔合成事件/翻页收尾重叠有关; 未崩溃, 真实笔路径需真机确认。
+
+结论: 默认 Rust 壳在虚拟笔+翻页+网格+minimap 组合下 60s 稳定, 无明显内存持续增长;
+modeler Up error 需真机笔/翻页连击复验。
