@@ -61,6 +61,8 @@
   `GLASPEN2_SWIFT_MENU=1` 回退 Swift, 失败自动回退。
 - **R23 颜色/粗细菜单项构建**: `MenuBuilder` 的批量建项(NSMenuItem/attributedTitle/target/action/tag)迁 Rust;
   富文本标题仍 Swift 预构建; `GLASPEN2_SWIFT_MENU_ITEMS=1` 回退; `--swift-menu-probe` 默认走 Rust 并 `SWIFT_MENU_OK`。
+- **R24 顶层/子菜单构建**: 顶层其余项与 导出▸/更多▸ 子菜单(顺序/分隔符/tag/state/selector/target)迁 Rust;
+  标题仍 Swift 本地化字典; `GLASPEN2_SWIFT_MENU_FULL=1` 回退; `--swift-menu-full-probe` 默认 Rust 并 `SWIFT_MENU_FULL_OK`。
 
 ## 下一批候选(按风险从低到高)
 

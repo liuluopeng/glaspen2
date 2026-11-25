@@ -468,3 +468,124 @@ pub extern "C" fn glaspen2_rust_menu_add_items(
     tracing::info!("rust-shell: {n} menu items added by Rust (objc2)");
     1
 }
+
+/// R24: 构建顶层其余项 + 导出▸/更多▸ 子菜单; titles 是已本地化 JSON 对象。
+/// 返回 1 成功, 0 失败(Swift 回退)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_add_top_level(
+    menu: *mut c_void,
+    handler: *mut c_void,
+    titles_json: *const std::os::raw::c_char,
+    launch_at_login_on: i32,
+    glass_on: i32,
+) -> i32 {
+    use objc2::runtime::{AnyObject, Sel};
+    use objc2_app_kit::{NSControlStateValueOn, NSMenu, NSMenuItem};
+    use objc2_foundation::NSString;
+
+    if menu.is_null() || titles_json.is_null() {
+        return 0;
+    }
+    let Some(mtm) = MainThreadMarker::new() else {
+        return 0;
+    };
+    let titles_json = unsafe { std::ffi::CStr::from_ptr(titles_json) }.to_string_lossy();
+    let Ok(titles) = serde_json::from_str::<serde_json::Value>(&titles_json) else {
+        return 0;
+    };
+    let Some(obj) = titles.as_object() else {
+        return 0;
+    };
+    let text = |key: &str| -> String {
+        obj.get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let menu = unsafe { &*(menu as *const NSMenu) };
+    let handler = if handler.is_null() {
+        None
+    } else {
+        Some(unsafe { &*(handler as *const AnyObject) })
+    };
+
+    let empty = NSString::from_str("");
+    let make = |m: &NSMenu, title: &str, action: Option<&str>| -> Retained<NSMenuItem> {
+        let title = NSString::from_str(title);
+        let sel = action.map(|a| Sel::register(std::ffi::CString::new(a).unwrap().as_c_str()));
+        let item = unsafe { m.addItemWithTitle_action_keyEquivalent(&title, sel, &empty) };
+        if let Some(handler) = handler {
+            unsafe { item.setTarget(Some(handler)) };
+        }
+        item
+    };
+
+    menu.addItem(&NSMenuItem::separatorItem(mtm));
+    make(menu, &text("saveWithBg"), Some("saveWithBg"));
+    make(menu, &text("saveDrawing"), Some("saveOnly"));
+    make(menu, &text("newCanvas"), Some("clearScreen"));
+
+    let export = make(menu, &text("export"), None);
+    let export_menu = NSMenu::new(mtm);
+    export_menu.setAutoenablesItems(false);
+    make(&export_menu, &text("exportXournal"), Some("saveXoj"));
+    make(
+        &export_menu,
+        &text("exportInfinitePdf"),
+        Some("exportInfinitePdf"),
+    );
+    make(
+        &export_menu,
+        &text("exportInfiniteSvg"),
+        Some("exportInfiniteSvg"),
+    );
+    export.setSubmenu(Some(&export_menu));
+
+    menu.addItem(&NSMenuItem::separatorItem(mtm));
+    let toggle = make(menu, &text("toggleDraw"), Some("toggleDraw"));
+    toggle.setTag(888);
+    toggle.setState(NSControlStateValueOn);
+    make(menu, &text("settings"), Some("showSettingsPanel"));
+
+    let more = make(menu, &text("more"), None);
+    let more_menu = NSMenu::new(mtm);
+    more_menu.setAutoenablesItems(false);
+    let launch = make(&more_menu, &text("moreLaunch"), Some("toggleLaunch"));
+    launch.setTag(777);
+    launch.setState(if launch_at_login_on != 0 {
+        NSControlStateValueOn
+    } else {
+        0
+    });
+    let glass = make(&more_menu, &text("moreGlass"), Some("toggleGlass"));
+    glass.setTag(444);
+    glass.setState(if glass_on != 0 {
+        NSControlStateValueOn
+    } else {
+        0
+    });
+    let outline = make(&more_menu, &text("moreOutline"), Some("toggleOutline"));
+    outline.setTag(667);
+    outline.setState(0);
+    let infinite = make(
+        &more_menu,
+        &text("moreCanvasInfinite"),
+        Some("toggleInfiniteCanvas"),
+    );
+    infinite.setTag(668);
+    infinite.setState(0);
+    let mode = make(
+        &more_menu,
+        &text("moreCanvasMode"),
+        Some("toggleCanvasMode"),
+    );
+    mode.setTag(778);
+    mode.setState(0);
+    more.setSubmenu(Some(&more_menu));
+
+    menu.addItem(&NSMenuItem::separatorItem(mtm));
+    make(menu, &text("language"), Some("toggleLanguage"));
+    make(menu, &text("quit"), Some("quitApp"));
+    tracing::info!("rust-shell: top-level/submenu items built by Rust (objc2)");
+    1
+}

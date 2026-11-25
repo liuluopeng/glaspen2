@@ -304,3 +304,7 @@ extern void glaspen2_rust_status_item_set_menu(void *item, void *menu);
 // R23: 批量追加菜单项(默认; GLASPEN2_SWIFT_MENU_ITEMS=1 回退 Swift)
 extern int glaspen2_rust_menu_add_items(void *menu, void *handler, int count,
                                         void **titles, int title_count, const char *action);
+
+// R24: 顶层其余项/导出▸/更多▸ 子菜单(默认; GLASPEN2_SWIFT_MENU_FULL=1 回退)
+extern int glaspen2_rust_menu_add_top_level(void *menu, void *handler, const char *titles_json,
+                                            int launch_at_login_on, int glass_on);

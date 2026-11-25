@@ -36,6 +36,17 @@ extension MenuBuilder {
                                               glassOn: Bool) {
         guard let menu = menu else { return }
 
+        // R24: 默认由 Rust 构建顶层其余项与两个子菜单; 标题仍是已本地化字典。
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_FULL"] != "1",
+           let jsonData = try? JSONSerialization.data(withJSONObject: titles),
+           let json = String(data: jsonData, encoding: .utf8),
+           json.withCString({ glaspen2_rust_menu_add_top_level(
+               Unmanaged.passUnretained(menu).toOpaque(),
+               handler.map { Unmanaged.passUnretained($0).toOpaque() },
+               $0, launchAtLoginOn ? 1 : 0, glassOn ? 1 : 0) }) != 0 {
+            return
+        }
+
         // 标题字典由 ObjC 侧按契约键填好(L()/gl_text 单源); 缺键时留空并打日志,
         // 不猜文案(菜单仍完整, 只是该项无字, 属明显可诊断的接线错误)。
         func localized(_ key: String) -> String {
