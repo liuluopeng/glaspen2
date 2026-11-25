@@ -218,3 +218,10 @@
 - 删除 `OverlayWindowFactory.makeBlankCursor/makeArrowCursor` 与 Rust `glaspen2_rust_blank_cursor_create/arrow_cursor_create`;
 - 删除 `StartupWindow` 中已不再使用的 blank/arrow 局部变量;
 - 这些光标创建已无调用方(R66 已删静态字段), 行为无变化。
+
+
+## R70 录制热键判定迁 Rust
+
+- `RecordingHotkeys.handle` 的 ⌘⌃R/2/3 start/release 判定与事件 JSON 构造迁 Rust;
+- Rust 调 core 的 rec_slot/mode/chat_integration/rec_finish_and_count, 通过 C 桥 `glaspen2_router_recording_feed` 交给 RecordingEffects(效果执行仍 Swift);
+- Swift 仅回退; 录制 HUD/效果测试待真机。

@@ -217,6 +217,12 @@ public func runPressureLabel(_ text: UnsafePointer<CChar>?) {
     PressureMonitorWindow.updateLabel(String(cString: text))
 }
 
+@_cdecl("glaspen2_router_recording_feed")
+public func runRecordingFeed(_ slot: Int32, _ json: UnsafePointer<CChar>?) -> Int32 {
+    guard let json else { return 0 }
+    return RecordingEffects.feed(slot: slot, json: String(cString: json)) ? 1 : 0
+}
+
 @_cdecl("glaspen2_router_flush_dirty")
 public func runFlushDirty() { OverlayLayerFlush.flushDirty() }
 

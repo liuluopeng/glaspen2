@@ -4145,3 +4145,75 @@ pub extern "C" fn glaspen2_rust_raw_draw_segment2(x: f64, y: f64, width: f64, sc
     glaspen2_rust_pen_update_after_segment(x, y, width);
     unsafe { glaspen2_router_flush_dirty() };
 }
+
+// ── R70: 录制热键判定/事件 JSON(⌘⌃R/2/3) ──
+
+unsafe extern "C" {
+    fn glaspen2_router_rec_slot_gif() -> i32;
+    fn glaspen2_router_rec_slot_chat() -> i32;
+    fn glaspen2_router_rec_mode(slot: i32) -> i32;
+    fn glaspen2_router_chat_integration() -> i32;
+    fn glaspen2_router_rec_finish_and_count() -> i32;
+    fn glaspen2_router_recording_feed(slot: i32, json: *const std::os::raw::c_char) -> i32;
+}
+
+fn recording_feed(slot: i32, kind: &str, mode: &str) {
+    let strokes = unsafe { glaspen2_router_rec_finish_and_count() };
+    let payload = serde_json::json!({
+        "type": kind,
+        "mode": mode,
+        "stroke_count": strokes,
+    });
+    if let Ok(c) = std::ffi::CString::new(payload.to_string()) {
+        unsafe { glaspen2_router_recording_feed(slot, c.as_ptr()) };
+    }
+}
+
+/// R70: 录制热键; 返回 1 已处理, 0 未处理。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_recording_hotkey(
+    down: i32,
+    key_code: u16,
+    has_cmd_ctrl: i32,
+) -> i32 {
+    let down = down != 0;
+    let has_cmd_ctrl = has_cmd_ctrl != 0;
+    let gif = unsafe { glaspen2_router_rec_slot_gif() };
+    let chat = unsafe { glaspen2_router_rec_slot_chat() };
+    const KEY_R: u16 = 15;
+    const KEY_2: u16 = 19;
+    const KEY_3: u16 = 20;
+    if !down && key_code == KEY_R && unsafe { glaspen2_router_rec_mode(gif) } == 1 {
+        recording_feed(gif, "ReleasePressed", "Gif");
+        return 1;
+    }
+    if down && has_cmd_ctrl && key_code == KEY_R {
+        recording_feed(gif, "StartPressed", "Gif");
+        return 1;
+    }
+    if !down && key_code == KEY_3 && unsafe { glaspen2_router_rec_mode(chat) } == 3 {
+        recording_feed(chat, "ReleasePressed", "Send");
+        return 1;
+    }
+    if down
+        && unsafe { glaspen2_router_chat_integration() } != 0
+        && has_cmd_ctrl
+        && key_code == KEY_3
+    {
+        recording_feed(chat, "StartPressed", "Send");
+        return 1;
+    }
+    if !down && key_code == KEY_2 && unsafe { glaspen2_router_rec_mode(chat) } == 2 {
+        recording_feed(chat, "ReleasePressed", "Draft");
+        return 1;
+    }
+    if down
+        && unsafe { glaspen2_router_chat_integration() } != 0
+        && has_cmd_ctrl
+        && key_code == KEY_2
+    {
+        recording_feed(chat, "StartPressed", "Draft");
+        return 1;
+    }
+    0
+}

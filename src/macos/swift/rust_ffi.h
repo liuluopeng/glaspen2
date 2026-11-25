@@ -518,3 +518,6 @@ extern void glaspen2_rust_restore_system_cursor(void);
 // R67: 实时绘制入参/计划/Rust 光栅化(scale 由 Swift 传入)
 extern void glaspen2_rust_raw_draw_dot2(double x, double y, double width, double scale);
 extern void glaspen2_rust_raw_draw_segment2(double x, double y, double width, double scale);
+
+// R70: 录制热键(默认; GLASPEN2_SWIFT_RECORDING_KEYS=1 回退)
+extern int glaspen2_rust_recording_hotkey(int down, unsigned short key_code, int has_cmd_ctrl);

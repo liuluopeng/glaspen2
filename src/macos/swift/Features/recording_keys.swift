@@ -9,6 +9,9 @@ import AppKit
 
     @objc(handleWithType:keyCode:hasCmdCtrl:)
     public static func handle(type: CGEventType, keyCode: UInt16, hasCmdCtrl: Bool) -> Bool {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_RECORDING_KEYS"] != "1" {
+            return glaspen2_rust_recording_hotkey(type == .keyDown ? 1 : 0, keyCode, hasCmdCtrl ? 1 : 0) != 0
+        }
         let gif = Int(glaspen2_router_rec_slot_gif())
         let chat = Int(glaspen2_router_rec_slot_chat())
         let down = type == .keyDown
