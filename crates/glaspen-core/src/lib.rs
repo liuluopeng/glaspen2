@@ -29,6 +29,7 @@ pub mod action_effect;
 pub mod cairo_dl;
 // 无限画布镜头数学(pan/zoom/锚点/限幅/居中/持久化格式, D5a)
 pub mod camera;
+pub mod canvas_input;
 pub mod chord;
 
 pub mod db;

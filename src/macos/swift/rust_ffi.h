@@ -223,3 +223,10 @@ extern int glaspen2_perf_is_enabled(void);
 extern unsigned long long glaspen2_perf_elapsed_us(unsigned long long since);
 extern void glaspen2_perf_record(const char *name, unsigned long long dur_us, const char *notes);
 extern void glaspen2_perf_summary(void);
+
+// R4: 画布输入变换(view→canvas; 纯公式在 glaspen-core::canvas_input)
+extern int glaspen2_canvas_input(double view_x, double view_y, int infinite,
+                                 double zoom, double pan_x, double pan_y,
+                                 double page_off_x, double page_off_y,
+                                 int is_fit, double paper_ox, double paper_oy,
+                                 double paper_scale, double *out_x, double *out_y);

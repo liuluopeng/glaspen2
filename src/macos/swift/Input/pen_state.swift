@@ -81,26 +81,40 @@ public func bridgeRawDrawSegment(_ x: Double, _ y: Double, _ w: Double) {
     RawDrawing.drawSegment(x: x, y: y, width: w)
 }
 
+/// R4: view→canvas 变换统一走 Rust; 一次调用同时得到 x/y。
+private func canvasInput(_ x: Double, _ y: Double) -> (Double, Double) {
+    var cx = 0.0, cy = 0.0
+    _ = glaspen2_canvas_input(
+        x, y, glaspen2_router_infinite(), glaspen2_router_zoom(),
+        glaspen2_router_pan_x(), glaspen2_router_pan_y(),
+        glaspen2_router_page_off_x(), glaspen2_router_page_off_y(),
+        PageViewOps.isFit ? 1 : 0, PageViewOps.paperOx, PageViewOps.paperOy,
+        PageViewOps.paperScale, &cx, &cy)
+    return (cx, cy)
+}
+
 @_cdecl("glaspen2_router_modeler_begin")
 public func bridgeModelerBegin(_ x: Double, _ y: Double, _ pressure: Double,
                                _ timestamp: Double) {
+    let (cx, cy) = canvasInput(x, y)
     glaspen2_modeler_begin(glaspen2_router_pen_r(), glaspen2_router_pen_g(),
-                           glaspen2_router_pen_b(), canvasInputX(x),
-                           canvasInputY(y), pressure, timestamp,
+                           glaspen2_router_pen_b(), cx, cy, pressure, timestamp,
                            glaspen2_router_width_scale())
 }
 
 @_cdecl("glaspen2_router_modeler_move")
 public func bridgeModelerMove(_ x: Double, _ y: Double, _ pressure: Double,
                               _ timestamp: Double) {
-    glaspen2_modeler_move(canvasInputX(x), canvasInputY(y), pressure, timestamp,
+    let (cx, cy) = canvasInput(x, y)
+    glaspen2_modeler_move(cx, cy, pressure, timestamp,
                           glaspen2_router_width_scale())
 }
 
 @_cdecl("glaspen2_router_modeler_end")
 public func bridgeModelerEnd(_ x: Double, _ y: Double, _ pressure: Double,
                              _ timestamp: Double) {
-    glaspen2_modeler_end(canvasInputX(x), canvasInputY(y), pressure, timestamp,
+    let (cx, cy) = canvasInput(x, y)
+    glaspen2_modeler_end(cx, cy, pressure, timestamp,
                          glaspen2_router_width_scale())
 }
 

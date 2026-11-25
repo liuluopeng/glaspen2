@@ -2575,6 +2575,47 @@ pub extern "C" fn glaspen2_perf_summary() {
     crate::perf::summary();
 }
 
+// ── 画布输入变换(R4: Swift canvas_input_x/y → Rust) ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_canvas_input(
+    view_x: c_double,
+    view_y: c_double,
+    infinite: c_int,
+    zoom: c_double,
+    pan_x: c_double,
+    pan_y: c_double,
+    page_off_x: c_double,
+    page_off_y: c_double,
+    is_fit: c_int,
+    paper_ox: c_double,
+    paper_oy: c_double,
+    paper_scale: c_double,
+    out_x: *mut c_double,
+    out_y: *mut c_double,
+) -> c_int {
+    if out_x.is_null() || out_y.is_null() {
+        return 0;
+    }
+    let (x, y) = if infinite != 0 {
+        (
+            crate::canvas_input::infinite_input(view_x, zoom, pan_x),
+            crate::canvas_input::infinite_input(view_y, zoom, pan_y),
+        )
+    } else {
+        let fit = is_fit != 0;
+        (
+            crate::canvas_input::page_input(view_x, page_off_x, fit, paper_ox, paper_scale),
+            crate::canvas_input::page_input(view_y, page_off_y, fit, paper_oy, paper_scale),
+        )
+    };
+    unsafe {
+        *out_x = x;
+        *out_y = y;
+    }
+    1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
