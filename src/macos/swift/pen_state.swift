@@ -142,7 +142,10 @@ public func bridgeMarkTabletProximity() { PenState.tabletProximity = true }
 public func bridgeSetProxDevice(_ device: Int32) { PenState.proxDevice = Int(device) }
 
 @_cdecl("glaspen2_router_prox_is_eraser")
-public func bridgeProxIsEraser() -> Int32 { PenState.proxDevice == 1 ? 1 : 0 }
+public func bridgeProxIsEraser() -> Int32 {
+    // NSPointingDeviceType: 0=unknown, 1=pen, 2=cursor, 3=eraser(旧 NSEraserPointingDevice)。
+    PenState.proxDevice == 3 ? 1 : 0
+}
 
 @_cdecl("glaspen2_router_last_raw_x")
 public func bridgeLastRawX() -> Double { PenState.rawLastX }

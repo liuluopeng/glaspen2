@@ -126,6 +126,20 @@ fn main() {
         std::process::exit(2);
     }
 
+    // 诊断: 模型器一笔 + 异步 flush, 外部查 DB points。
+    if args.get(1).map(String::as_str) == Some("--swift-persist-probe") {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            unsafe extern "C" {
+                fn glaspen2_swift_persist_probe_selftest() -> i32;
+            }
+            let code = glaspen2_swift_persist_probe_selftest();
+            std::process::exit(code);
+        }
+        #[cfg(not(target_os = "macos"))]
+        std::process::exit(2);
+    }
+
     #[cfg(target_os = "macos")]
     glaspen2::macos::macos_run();
 

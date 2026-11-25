@@ -10,7 +10,7 @@ import Darwin
         guard let ev = CGEvent(mouseEventSource: nil, mouseType: type,
                                mouseCursorPosition: CGPoint(x: x, y: y),
                                mouseButton: .left) else { return }
-        ev.setIntegerValueField(CGEventField(rawValue: 3)!, value: 1) // subtype=tablet
+        ev.setIntegerValueField(.mouseEventSubtype, value: 1) // NSEventSubtype.tabletPoint
         ev.setIntegerValueField(CGEventField(rawValue: 42)!,
                                 value: Int64(kUserData)) // source user data
         ev.setIntegerValueField(CGEventField(rawValue: 0x2F)!,
