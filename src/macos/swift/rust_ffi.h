@@ -508,3 +508,7 @@ extern void glaspen2_rust_camera_load_infinite(void);
 extern void glaspen2_rust_camera_apply_transform(void);
 extern void glaspen2_rust_camera_home(void);
 extern void glaspen2_rust_camera_reset_lens(void);
+
+// R63: 退出/压感标签
+extern void glaspen2_rust_quit_app(void);
+extern void glaspen2_rust_update_pressure_label(int pressure, const char *event_type, double x, double y);

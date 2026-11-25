@@ -108,6 +108,14 @@ import AppKit
     @objc(updatePressureLabelWithPressure:type:x:y:)
     public static func updatePressureLabel(pressure: Int32, type: String?,
                                            x: Double, y: Double) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_ACTIONS"] != "1" {
+            if let type {
+                type.withCString { glaspen2_rust_update_pressure_label(pressure, $0, x, y) }
+            } else {
+                glaspen2_rust_update_pressure_label(pressure, nil, x, y)
+            }
+            return
+        }
         let typeString = type ?? "---"
         let text = String(format: "P=%-5d  ", pressure) + typeString
             + String(format: "  (%d,%d)", Int(x), Int(y))
@@ -283,6 +291,10 @@ import AppKit
     /// 彻底退出: perf 汇总 + 恢复系统光标 + NSApp terminate(Swift 实现)。
     @objc(quitAppNow)
     public static func quitAppNow() {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_ACTIONS"] != "1" {
+            glaspen2_rust_quit_app()
+            return
+        }
         glaspen2_router_perf_summary()
         glaspen2_router_show_system_cursor()
         NSApp.terminate(nil)

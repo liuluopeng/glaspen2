@@ -138,6 +138,8 @@
   Swift 仅保留事件分派与回退; 虚拟笔截图正常。
 - **R62 镜头动作**: `CanvasCamera` 平移/缩放(视口中心/锚点)/应用变换/持久化节流/加载无限/复位/HOME 迁 Rust;
   Swift 仅回退; 真机缩放热键未自动化。
+- **R63 退出/压感标签**: `quitAppNow`(perf summary + cursor + NSApp terminate)与 `updatePressureLabel` 格式化迁 Rust;
+  压感窗标签真实更新; Swift 仅回退。
 
 ## 下一批候选(按风险从低到高)
 

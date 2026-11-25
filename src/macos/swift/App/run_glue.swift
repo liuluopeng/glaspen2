@@ -211,6 +211,12 @@ public func runPmShow() { PressureMonitorWindow.show() }
 @_cdecl("glaspen2_router_pm_hide")
 public func runPmHide() { PressureMonitorWindow.hide() }
 
+@_cdecl("glaspen2_router_pressure_label")
+public func runPressureLabel(_ text: UnsafePointer<CChar>?) {
+    guard let text else { return }
+    PressureMonitorWindow.updateLabel(String(cString: text))
+}
+
 @_cdecl("glaspen2_router_flush_dirty")
 public func runFlushDirty() { OverlayLayerFlush.flushDirty() }
 

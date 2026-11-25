@@ -3902,3 +3902,46 @@ pub extern "C" fn glaspen2_rust_camera_reset_lens() {
         glaspen2_set_view_transform(px, py, pz);
     }
 }
+
+// ── R63: 退出流程与压感标签格式化 ──
+
+unsafe extern "C" {
+    fn glaspen2_router_perf_summary();
+    fn glaspen2_router_show_system_cursor();
+    fn glaspen2_router_pressure_label(text: *const std::os::raw::c_char);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_quit_app() {
+    use objc2_app_kit::NSApplication;
+    unsafe {
+        glaspen2_router_perf_summary();
+        glaspen2_router_show_system_cursor();
+    }
+    if let Some(mtm) = MainThreadMarker::new() {
+        NSApplication::sharedApplication(mtm).terminate(None);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_update_pressure_label(
+    pressure: i32,
+    event_type: *const std::os::raw::c_char,
+    x: f64,
+    y: f64,
+) {
+    let type_string = if event_type.is_null() {
+        "---".to_string()
+    } else {
+        unsafe { std::ffi::CStr::from_ptr(event_type) }
+            .to_string_lossy()
+            .into_owned()
+    };
+    let text = format!(
+        "P={:<5}  {}  ({},{})",
+        pressure, type_string, x as i32, y as i32
+    );
+    if let Ok(c) = std::ffi::CString::new(text) {
+        unsafe { glaspen2_router_pressure_label(c.as_ptr()) };
+    }
+}
