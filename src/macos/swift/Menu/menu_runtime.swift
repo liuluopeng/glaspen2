@@ -40,7 +40,7 @@ import AppKit
     }
     static func shortcutsEffectiveJSON() -> String {
         // 旧实现: 尚未 apply 过时先补默认表, 避免快照返回空对象。
-        if ShortcutStore.isEmpty { ShortcutApply.apply(saved: NSDictionary()) }
+        if ShortcutStore.isEmpty { SettingsGlue.applyShortcuts(saved: NSDictionary()) }
         return SettingsGlue.effectiveShortcutJSON() as String
     }
     static func setShortcutTables(values: NSDictionary, lookup: NSDictionary) {

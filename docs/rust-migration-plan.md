@@ -203,3 +203,11 @@
 - 删除 `Input/live_plan.swift` 与 `run_glue` 的 `glaspen2_router_live_plan_dot/segment` C 包装;
 - 旧 `GLASPEN2_SWIFT_LIVE_RASTER` 回退开关随之失效(plan 调用已无 Swift 实现);
 - 虚拟笔连续笔迹截图正常。
+
+
+## R68 快捷键 JSON 桥收口
+
+- `ShortcutApply` 仅剩 NSDictionary -> JSON 桥, 逻辑此前已在 R50 迁 Rust;
+- 桥移入 `SettingsGlue.applyShortcuts(saved:)`, 删除 `Input/shortcut_apply.swift`; Swift 86→85;
+- 调用点(SettingsDispatcher/SettingsGlue/MenuRuntime/HotkeysProbe)改调 SettingsGlue;
+- hotkeys probe 14/14 通过。

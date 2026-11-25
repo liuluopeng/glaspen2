@@ -14,7 +14,7 @@ import AppKit
                 saved = dict
             }
         }
-        ShortcutApply.apply(saved: saved)
+        SettingsGlue.applyShortcuts(saved: saved)
     }
 
     /// 当前生效表 → JSON 文本(失败回 "{}")。
@@ -33,6 +33,16 @@ import AppKit
         let s = String(cString: v)
         glaspen2_free_c_string(v)
         return s
+    }
+
+    /// 快捷键生效表: NSDictionary -> JSON -> Rust。
+    @objc public static func applyShortcuts(saved: NSDictionary) {
+        var json = "{}"
+        if let data = try? JSONSerialization.data(withJSONObject: saved),
+           let text = String(data: data, encoding: .utf8) {
+            json = text
+        }
+        _ = json.withCString { glaspen2_shortcut_apply_json($0) }
     }
 
     /// 非主线程同步投递到主线程执行(不改变调用方等待语义)。

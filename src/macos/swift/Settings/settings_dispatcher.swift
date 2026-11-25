@@ -115,7 +115,7 @@ import AppKit
             glaspen2_notify_settings_changed()
         case "Shortcuts":
             let map = jsonValue as? NSDictionary ?? [:]
-            ShortcutApply.apply(saved: map)
+            SettingsGlue.applyShortcuts(saved: map)
             let json = SettingsGlue.effectiveShortcutJSON() as String
             if !json.isEmpty {
                 "shortcuts".withCString { k in

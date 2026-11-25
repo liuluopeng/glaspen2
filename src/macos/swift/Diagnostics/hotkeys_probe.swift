@@ -22,7 +22,7 @@ import AppKit
             failures += 1
         }
         // 显式空串 = 用户解绑, 不能在下次启动被默认值覆盖。
-        ShortcutApply.apply(saved: ["undo": ""])
+        SettingsGlue.applyShortcuts(saved: ["undo": ""])
         if ShortcutStore.action(forChord: "cmd+ctrl+Z") != nil {
             NSLog("[hotkeys-probe] FAIL explicit unbind fell back to default (undo -> cmd+ctrl+Z)")
             failures += 1
