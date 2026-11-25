@@ -3580,3 +3580,80 @@ pub extern "C" fn glaspen2_rust_toggle_draw(
     }
     1
 }
+
+// ── R61: 笔事件编排(落笔/抬笔/拖动/橡皮态) ──
+
+unsafe extern "C" {
+    fn glaspen2_router_bubble_auto_page_flip();
+    fn glaspen2_router_modeler_begin(x: f64, y: f64, pressure: f64, timestamp: f64);
+    fn glaspen2_router_modeler_move(x: f64, y: f64, pressure: f64, timestamp: f64);
+    fn glaspen2_router_modeler_end(x: f64, y: f64, pressure: f64, timestamp: f64);
+    fn glaspen2_router_modeler_erase_finish();
+    fn glaspen2_router_stroke_begin();
+    fn glaspen2_router_stroke_end();
+    fn glaspen2_router_commit_to_strokes();
+    fn glaspen2_router_pen_down_state(x: f64, y: f64, raw_width: f64);
+    fn glaspen2_router_pen_up_state();
+    fn glaspen2_router_set_stroke_active(on: i32);
+    fn glaspen2_router_set_eraser_mode(on: i32);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_down(
+    x: f64,
+    y: f64,
+    pressure: f64,
+    timestamp: f64,
+    raw_width: f64,
+) {
+    unsafe {
+        glaspen2_router_bubble_auto_page_flip();
+        glaspen2_router_modeler_begin(x, y, pressure, timestamp);
+        glaspen2_router_stroke_begin();
+    }
+    glaspen2_rust_raw_draw_dot(x, y, raw_width);
+    unsafe { glaspen2_router_pen_down_state(x, y, raw_width) };
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_up(x: f64, y: f64, pressure: f64, timestamp: f64) {
+    if glaspen2_rust_pen_stroke_active() == 0 {
+        return;
+    }
+    unsafe {
+        if glaspen2_router_eraser_mode() != 0 {
+            glaspen2_router_modeler_erase_finish();
+        } else {
+            glaspen2_router_modeler_end(x, y, pressure, timestamp);
+            glaspen2_router_commit_to_strokes();
+        }
+        glaspen2_router_stroke_end();
+        glaspen2_router_set_stroke_active(0);
+    }
+    glaspen2_rust_apply_pending_color_width();
+    unsafe { glaspen2_router_pen_up_state() };
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_move(
+    x: f64,
+    y: f64,
+    pressure: f64,
+    timestamp: f64,
+    raw_width: f64,
+) {
+    unsafe { glaspen2_router_modeler_move(x, y, pressure, timestamp) };
+    glaspen2_rust_raw_draw_segment(x, y, raw_width);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_update_eraser(is_eraser: i32) {
+    let want = is_eraser != 0;
+    let current = unsafe { glaspen2_router_eraser_mode() != 0 };
+    if want != current {
+        unsafe {
+            glaspen2_router_set_eraser_mode(i32::from(want));
+            glaspen2_router_update_status_icon_state();
+        }
+    }
+}

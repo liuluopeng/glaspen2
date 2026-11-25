@@ -134,6 +134,8 @@
 - **R59 性能抽查**: 默认 Rust 与 Swift live/overlay 回退在虚拟笔负载下 CPU/RSS/启动同噪声区间。
 - **R60 涂鸦总开关热键路径**: `DrawMode.toggleEnabled` 的窗口显隐/压感窗/状态/通知/菜单迁 Rust;
   Swift 仅回退; 新增 main window/ensure surface/pm show-hide/restore cursor C 桥; 真机热键待验。
+- **R61 笔事件编排**: `penDown/penUp/penMove/updateEraserState` 的模型器/描边/raw/状态/提交动作迁 Rust;
+  Swift 仅保留事件分派与回退; 虚拟笔截图正常。
 
 ## 下一批候选(按风险从低到高)
 
