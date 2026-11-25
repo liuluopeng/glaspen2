@@ -7,7 +7,9 @@ use std::ffi::c_void;
 use objc2::rc::Retained;
 use objc2::{AnyThread, MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::NSStatusBar;
+use objc2_app_kit::NSWindowDelegate;
 use objc2_foundation::MainThreadMarker;
+use objc2_foundation::NSObjectProtocol;
 
 /// 创建方形 NSStatusItem, 返回 +1 持有的裸指针(由 Swift 侧接管引用;
 /// 本项目 app 生命周期 = 进程生命周期, 不额外实现释放)。
@@ -924,6 +926,7 @@ pub extern "C" fn glaspen2_rust_settings_window_create(
     unsafe { window.setReleasedWhenClosed(false) };
     let vc = unsafe { &*(view_controller as *const NSViewController) };
     window.setContentViewController(Some(vc));
+    install_settings_delegate(&window, mtm);
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
     #[allow(deprecated)]
@@ -1366,4 +1369,52 @@ pub extern "C" fn glaspen2_rust_draw_surface_data(
         return 0;
     }
     glaspen2_rust_draw_surface(ctx, image, rx, ry, rw, rh, bx, by, bw, bh, scale)
+}
+
+// ── R35: 设置窗口 delegate(窗口关闭后回到 Accessory + deactivate) ──
+
+#[derive(Default)]
+struct RustSettingsDelegateIvars {}
+
+define_class!(
+    #[unsafe(super = objc2_foundation::NSObject)]
+    #[thread_kind = MainThreadOnly]
+    #[name = "GlaspenRustSettingsDelegate"]
+    #[ivars = RustSettingsDelegateIvars]
+    struct RustSettingsDelegate;
+
+    unsafe impl NSObjectProtocol for RustSettingsDelegate {}
+
+    unsafe impl NSWindowDelegate for RustSettingsDelegate {
+        #[unsafe(method(windowWillClose:))]
+        fn window_will_close(&self, _notification: &objc2_foundation::NSNotification) {
+            use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+            if let Some(mtm) = MainThreadMarker::new() {
+                let app = NSApplication::sharedApplication(mtm);
+                app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+                app.deactivate();
+            }
+            tracing::info!("rust-shell: settings window will close");
+        }
+    }
+);
+
+impl RustSettingsDelegate {
+    fn new(mtm: MainThreadMarker) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(RustSettingsDelegateIvars::default());
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
+thread_local! {
+    static SETTINGS_DELEGATE: std::cell::RefCell<Option<Retained<RustSettingsDelegate>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+fn install_settings_delegate(window: &objc2_app_kit::NSWindow, mtm: MainThreadMarker) {
+    use objc2::runtime::ProtocolObject;
+    let delegate = RustSettingsDelegate::new(mtm);
+    window.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+    SETTINGS_DELEGATE.with(|d| *d.borrow_mut() = Some(delegate));
+    tracing::info!("rust-shell: settings delegate installed by Rust (objc2)");
 }

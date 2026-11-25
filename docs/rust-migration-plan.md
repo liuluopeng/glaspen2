@@ -83,6 +83,8 @@
   新增 `--swift-notification-probe` 离屏像素探针; 默认 Rust, `GLASPEN2_SWIFT_NOTIFICATION=1` 回退。
 - **R34 笔迹 surface 缓存**: `OverlaySurfaceImageCache` 的 CGImage 缓存迁 Rust; 新增 `glaspen2_rust_draw_surface_data`;
   `OverlayDrawing` 默认直接走 Rust 缓存+绘制, Swift 旧缓存/CGImage 路径仅作回退; 虚拟笔截图正常。
+- **R35 设置窗口 delegate**: Rust `define_class!` 实现 `NSWindowDelegate.windowWillClose:`(关闭后回 Accessory + deactivate);
+  设置窗口创建时安装 Rust delegate; Swift delegate 仅 `GLASPEN2_SWIFT_SETTINGS_PANEL=1` 回退。
 
 ## 下一批候选(按风险从低到高)
 

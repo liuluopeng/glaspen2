@@ -30,10 +30,12 @@ import AppKit
         NSApp.activate(ignoringOtherApps: true)
         window.center()
         }
-        if SettingsWindowDelegate.shared == nil {
-            SettingsWindowDelegate.shared = SettingsWindowDelegate()
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_SETTINGS_PANEL"] == "1" {
+            if SettingsWindowDelegate.shared == nil {
+                SettingsWindowDelegate.shared = SettingsWindowDelegate()
+            }
+            window.delegate = SettingsWindowDelegate.shared
         }
-        window.delegate = SettingsWindowDelegate.shared
         window.makeKeyAndOrderFront(nil)
         UIAnchors.settingsWindow = window
         if "panel_transparent".withCString({ glaspen2_load_bool_setting($0) }) != 0 {
