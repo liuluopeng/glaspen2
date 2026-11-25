@@ -398,3 +398,7 @@ extern int glaspen2_rust_dirty_rect(double *out);
 
 // R42: 磨砂玻璃应用(默认; GLASPEN2_SWIFT_MENU_ACTIONS=1 回退)
 extern void glaspen2_rust_apply_glass(void);
+
+// R43: 涂鸦/描边开关(状态/菜单/通知动作)
+extern int glaspen2_rust_set_draw_enabled(int enabled, const char *menu_title, const char *hud_text);
+extern int glaspen2_rust_set_outline_enabled(int enabled, const char *notify_text);

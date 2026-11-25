@@ -190,3 +190,11 @@ public func menuAutoShowCanvas() { EtherealMode.autoShow() }
 public func menuPeekCancelTimer() { EtherealMode.cancelTimer() }
 @_cdecl("peek_lens_change")
 public func menuPeekLensChange() { EtherealMode.peekLensChange() }
+
+// R43: Rust 侧菜单通知桥(NSString* -> NotificationPresenter)。
+@_cdecl("glaspen2_menu_notify")
+public func menuNotify(_ text: UnsafeMutableRawPointer?) {
+    guard let text else { return }
+    let ns = Unmanaged<NSString>.fromOpaque(text).takeUnretainedValue()
+    NotificationPresenter.show(text: ns as String)
+}

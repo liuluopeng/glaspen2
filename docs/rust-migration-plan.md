@@ -99,6 +99,8 @@
   run_glue 的 C 包装改调 Rust; 删除 `Input/dirty_tracker.swift`; 虚拟笔截图正常。
 - **R42 磨砂玻璃应用**: `MenuHandler.applyGlass` 的 enabled/opacity/follow/飘渺联动/apply view/菜单勾选迁 Rust;
   Swift 仅 `GLASPEN2_SWIFT_MENU_ACTIONS=1` 回退。
+- **R43 涂鸦/描边开关动作**: `MenuHandler.setDrawEnabled/setOutlineEnabled` 的状态/菜单勾选/标题/通知/重建面迁 Rust;
+  文案仍由 Swift 传入; 新增 `glaspen2_router_finish_active_stroke` 桥; settings probe 增加动作断言。
 
 ## 下一批候选(按风险从低到高)
 

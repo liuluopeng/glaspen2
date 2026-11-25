@@ -41,6 +41,14 @@ import AppKit
         SettingsDispatcher.apply(key: "gridFollowStrokes", value: "true")
         check("gridFollowStrokes", glaspen2_router_grid_follow() != 0)
 
+        // R43: 涂鸦/描边菜单动作(默认 Rust)也做状态自检。
+        MenuHandler.setDrawEnabled(enabled: false)
+        check("drawDisabled", glaspen2_router_enabled() == 0)
+        MenuHandler.setDrawEnabled(enabled: true)
+        check("drawEnabled", glaspen2_router_enabled() != 0)
+        MenuHandler.setOutlineEnabled(enabled: false)
+        check("outlineDisabled", glaspen2_router_outline_enabled() == 0)
+
         guard let raw = MacosApi.settingsJSON() else {
             NSLog("[settings-probe] FAIL settings_json nil")
             return 1

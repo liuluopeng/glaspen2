@@ -64,6 +64,13 @@ import AppKit
     /// 描边开关: 状态/FFI/落库/菜单勾选/重建笔迹/提示。
     @objc(setOutlineEnabled:)
     public static func setOutlineEnabled(enabled: Bool) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_ACTIONS"] != "1" {
+            let text = enabled
+                ? MenuRuntime.pair("笔迹描边已开启", "Stroke outline on")
+                : MenuRuntime.pair("笔迹描边已关闭", "Stroke outline off")
+            _ = text.withCString { glaspen2_rust_set_outline_enabled(enabled ? 1 : 0, $0) }
+            return
+        }
         if (glaspen2_router_outline_enabled() != 0) == enabled { return }
         glaspen2_router_set_outline_state(enabled ? 1 : 0)
         glaspen2_set_stroke_outline(enabled ? 1 : 0)
@@ -130,6 +137,16 @@ import AppKit
     /// 涂鸦总开关: 状态 + 菜单勾选/标题 + 状态图标。
     @objc(setDrawEnabled:)
     public static func setDrawEnabled(enabled: Bool) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_ACTIONS"] != "1" {
+            let zh = enabled ? "关闭涂鸦" : "开启涂鸦"
+            let en = enabled ? "Disable Drawing" : "Enable Drawing"
+            let title = MenuRuntime.pair(zh, en)
+            let hud = MenuRuntime.l10n(enabled ? "draw.enabled" : "draw.disabled")
+            title.withCString { t in hud.withCString { h in
+                _ = glaspen2_rust_set_draw_enabled(enabled ? 1 : 0, t, h)
+            } }
+            return
+        }
         glaspen2_router_set_enabled_state(enabled ? 1 : 0)
         glaspen2_router_update_menu_state(888, enabled ? 1 : 0)
         let zh = enabled ? "关闭涂鸦" : "开启涂鸦"

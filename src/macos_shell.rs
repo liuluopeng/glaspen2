@@ -1946,3 +1946,84 @@ pub extern "C" fn glaspen2_rust_apply_glass() {
         glaspen2_router_update_menu_state(444, i32::from(enabled));
     }
 }
+
+// ── R43: 涂鸦总开关/描边开关(文案由 Swift 传入, 状态/菜单/通知动作在 Rust) ──
+
+unsafe extern "C" {
+    fn glaspen2_router_enabled() -> i32;
+    fn glaspen2_router_set_enabled_state(on: i32);
+    fn glaspen2_router_outline_enabled() -> i32;
+    fn glaspen2_router_set_outline_state(on: i32);
+    fn glaspen2_set_stroke_outline(on: i32);
+    fn glaspen2_router_rebuild_surface();
+    fn glaspen2_router_finish_active_stroke();
+    fn glaspen2_menu_notify(text: *const c_void);
+    fn sw_menu() -> *mut c_void;
+}
+
+fn menu_title(tag: i32, text: &str) {
+    let menu = unsafe { sw_menu() };
+    if menu.is_null() {
+        return;
+    }
+    let c = std::ffi::CString::new(text).unwrap_or_default();
+    unsafe { glaspen2_rust_menu_set_item_title(menu, tag as isize, c.as_ptr()) };
+}
+
+fn notify(text: &str) {
+    let ns = objc2_foundation::NSString::from_str(text);
+    unsafe { glaspen2_menu_notify(&*ns as *const objc2_foundation::NSString as *const c_void) };
+}
+
+/// R43: 涂鸦总开关; menu_title/hud_text 由 Swift 传入。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_set_draw_enabled(
+    enabled: i32,
+    menu_title: *const std::os::raw::c_char,
+    hud_text: *const std::os::raw::c_char,
+) -> i32 {
+    let on = enabled != 0;
+    unsafe {
+        glaspen2_router_set_enabled_state(i32::from(on));
+        glaspen2_router_update_menu_state(888, i32::from(on));
+        glaspen2_router_update_status_icon_state();
+    }
+    if !menu_title.is_null() {
+        let title = unsafe { std::ffi::CStr::from_ptr(menu_title) }.to_string_lossy();
+        menu_title_set(888, &title);
+    }
+    if !hud_text.is_null() {
+        let text = unsafe { std::ffi::CStr::from_ptr(hud_text) }.to_string_lossy();
+        notify(&text);
+    }
+    1
+}
+
+fn menu_title_set(tag: i32, text: &str) {
+    menu_title(tag, text);
+}
+
+/// R43: 描边开关; notify_text 由 Swift 传入。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_set_outline_enabled(
+    enabled: i32,
+    notify_text: *const std::os::raw::c_char,
+) -> i32 {
+    let on = enabled != 0;
+    unsafe {
+        if (glaspen2_router_outline_enabled() != 0) == on {
+            return 1;
+        }
+        glaspen2_router_set_outline_state(i32::from(on));
+        glaspen2_set_stroke_outline(i32::from(on));
+        bool_setting("outline", on);
+        glaspen2_router_update_menu_state(667, i32::from(on));
+        glaspen2_router_finish_active_stroke();
+        glaspen2_router_rebuild_surface();
+    }
+    if !notify_text.is_null() {
+        let text = unsafe { std::ffi::CStr::from_ptr(notify_text) }.to_string_lossy();
+        notify(&text);
+    }
+    1
+}
