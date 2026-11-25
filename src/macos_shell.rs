@@ -742,3 +742,59 @@ pub extern "C" fn glaspen2_rust_menu_update_texts(
     tracing::info!("rust-shell: menu texts updated by Rust (objc2)");
     1
 }
+
+/// R27: 递归查找菜单项(顶层 + 一层子菜单, 与旧 Swift MenuLookup 等价)。
+/// 返回非持有指针(菜单仍持有); 找不到返回 null。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_item_with_tag(menu: *mut c_void, tag: isize) -> *mut c_void {
+    use objc2_app_kit::NSMenu;
+    if menu.is_null() {
+        return std::ptr::null_mut();
+    }
+    let menu = unsafe { &*(menu as *const NSMenu) };
+    if let Some(item) = menu.itemWithTag(tag) {
+        return Retained::as_ptr(&item) as *mut c_void;
+    }
+    for i in 0..menu.numberOfItems() {
+        if let Some(inner) = menu.itemAtIndex(i).and_then(|item| item.submenu()) {
+            if let Some(item) = inner.itemWithTag(tag) {
+                return Retained::as_ptr(&item) as *mut c_void;
+            }
+        }
+    }
+    std::ptr::null_mut()
+}
+
+/// R27: 查找并设置菜单项标题; 找不到返回 0。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_set_item_title(
+    menu: *mut c_void,
+    tag: isize,
+    title: *const std::os::raw::c_char,
+) -> i32 {
+    use objc2_app_kit::NSMenuItem;
+    use objc2_foundation::NSString;
+    if menu.is_null() || title.is_null() {
+        return 0;
+    }
+    let p = glaspen2_rust_menu_item_with_tag(menu, tag);
+    if p.is_null() {
+        return 0;
+    }
+    let item = unsafe { &*(p as *const NSMenuItem) };
+    let title = unsafe { std::ffi::CStr::from_ptr(title) }.to_string_lossy();
+    item.setTitle(&NSString::from_str(&title));
+    1
+}
+
+/// R27: 查找并读取菜单项 state(未找到返回 0, 与旧实现默认一致)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_item_state(menu: *mut c_void, tag: isize) -> i32 {
+    use objc2_app_kit::NSMenuItem;
+    let p = glaspen2_rust_menu_item_with_tag(menu, tag);
+    if p.is_null() {
+        return 0;
+    }
+    let item = unsafe { &*(p as *const NSMenuItem) };
+    item.state() as i32
+}

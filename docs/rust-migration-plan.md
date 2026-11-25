@@ -67,6 +67,8 @@
   `GLASPEN2_SWIFT_MENU_STATE=1` 回退, 失败自动回退。
 - **R26 菜单动态文案刷新**: `MenuUpdater.updateTexts` 迁 Rust(颜色/粗细 attributedTitle + 顶层/导出/更多标题 + tag 778/888);
   `--swift-menu-full-probe` 新增 TEXTS 断言; `GLASPEN2_SWIFT_MENU_TEXTS=1` 回退。
+- **R27 菜单项查找**: `MenuLookup` 顶层+一层子菜单递归查找/标题/state 迁 Rust;
+  Swift 只做指针桥; `GLASPEN2_SWIFT_MENU_LOOKUP=1` 回退, 失败自动回退。
 
 ## 下一批候选(按风险从低到高)
 

@@ -319,3 +319,8 @@ extern int glaspen2_rust_menu_update_texts(void *menu, void **color_titles, int 
                                            const char *top_titles_json, const char *export_titles_json,
                                            const char *more_titles_json, const char *mode_title,
                                            const char *toggle_title, void *mode_item, void *toggle_item);
+
+// R27: 菜单项递归查找/标题/state(默认; GLASPEN2_SWIFT_MENU_LOOKUP=1 回退)
+extern void *glaspen2_rust_menu_item_with_tag(void *menu, long tag);
+extern int glaspen2_rust_menu_set_item_title(void *menu, long tag, const char *title);
+extern int glaspen2_rust_menu_item_state(void *menu, long tag);
