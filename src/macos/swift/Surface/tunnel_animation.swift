@@ -45,7 +45,7 @@ import Darwin
         var built = 0
         for i in 0..<count {
             let depth = curIdx - i
-            if Double(depth) > TunnelState.front { continue }
+            if Double(depth) > glaspen2_tunnel_front() { continue }
             if TunnelState.now() - tb0 > 0.30 { break }
             TunnelState.depths[i] = Int32(depth)
             guard let made = TunnelCardFactory.make(isCurrent: depth == 0,

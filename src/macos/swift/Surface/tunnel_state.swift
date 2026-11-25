@@ -23,8 +23,6 @@ import AppKit
     static var prepare: (() -> Void)?
     static var commit: (() -> Void)?
 
-    static let span = 2.5
-    static let front = 4.5
     static let maxCards = 512
 
     static func now() -> Double {

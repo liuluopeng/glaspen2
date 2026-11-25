@@ -80,9 +80,14 @@ import Darwin
     }
 
     private static func place(_ zc: Double) -> (Double, Double, Double, Double, Double)? {
-        guard let r = TunnelGeometry.place(zc: zc), r.count == 5 else { return nil }
-        func v(_ i: Int) -> Double { (r[i] as? NSNumber)?.doubleValue ?? 0 }
-        return (v(0), v(1), v(2), v(3), v(4))
+        var out = [Double](repeating: 0, count: 5)
+        let ok = out.withUnsafeMutableBufferPointer { buf in
+            glaspen2_tunnel_place(zc, TunnelState.k, TunnelState.travel,
+                                  Double(TunnelState.surfW), Double(TunnelState.surfH),
+                                  buf.baseAddress)
+        }
+        guard ok != 0 else { return nil }
+        return (out[0], out[1], out[2], out[3], out[4])
     }
 
     private static func drawCard(_ cr: OpaquePointer, _ slot: Int,

@@ -2460,6 +2460,41 @@ pub extern "C" fn glaspen2_i18n_catalog_json() -> *mut c_char {
     return_c_string(crate::i18n::catalog_json())
 }
 
+// ── 时光隧道几何(Swift shell → Rust, R1 首个迁移切片) ──
+
+/// 由页距计算卡片位置/尺寸/透明度; 写 out[0..5] 并返回 1, 不可见返回 0。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_tunnel_place(
+    zc: c_double,
+    k: c_double,
+    travel: c_double,
+    surf_w: c_double,
+    surf_h: c_double,
+    out: *mut c_double,
+) -> c_int {
+    if out.is_null() {
+        return 0;
+    }
+    match crate::tunnel::place(zc, k, travel, surf_w, surf_h) {
+        Some(p) => {
+            let out = unsafe { std::slice::from_raw_parts_mut(out, 5) };
+            out[0] = p.cx;
+            out[1] = p.cy;
+            out[2] = p.w;
+            out[3] = p.h;
+            out[4] = p.alpha;
+            1
+        }
+        None => 0,
+    }
+}
+
+/// 隧道最前页距(唯一来源; Swift 动画循环用它做可见性门控)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_tunnel_front() -> c_double {
+    crate::tunnel::FRONT
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

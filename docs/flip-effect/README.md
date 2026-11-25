@@ -1,6 +1,6 @@
 # 玻璃隧道翻页：现状与问题示意
 
-> 这两张图是**离屏模拟**（按 `src/macos/swift/Surface/tunnel_geometry.swift` 的 `TunnelGeometry.place` /
+> 这两张图是**离屏模拟**（按 `crates/glaspen-core/src/tunnel.rs` 的 `place` /
 > `tunnel_draw_card` 参数 1:1 重画，卡片内容用示意笔迹），不是屏幕截图。
 > 用途是排查几何/透明度问题，不代表最终视觉。
 
@@ -27,7 +27,7 @@
 
 | 问题 | 位置 |
 |---|---|
-| 等比缩小、所有卡同心 | `src/macos/swift/Surface/tunnel_geometry.swift` `TunnelGeometry.place` |
+| 等比缩小、所有卡同心 | `crates/glaspen-core/src/tunnel.rs` `place` |
 | 0.92 落定缩放 | 同上（已修为满屏） |
 | 快照只有笔迹、8% 玻璃面 | `crates/glaspen-core/src/export/mod.rs` `render_page_into`；`tunnel_draw_card` |
 | 纯色侧面/硬阴影 | `tunnel_draw_card` |

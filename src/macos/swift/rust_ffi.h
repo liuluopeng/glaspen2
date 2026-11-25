@@ -207,3 +207,8 @@ extern void glaspen2_get_stroke_point(int idx, int pidx, double *x, double *y);
 extern double glaspen2_get_stroke_point_width(int idx, int pidx);
 extern int glaspen2_undo_last_stroke(void);
 
+
+// R1: 时光隧道几何(数学在 glaspen-core::tunnel, Swift 只做 FFI 调用/绘制)
+extern int glaspen2_tunnel_place(double zc, double k, double travel,
+                                 double surf_w, double surf_h, double *out);
+extern double glaspen2_tunnel_front(void);

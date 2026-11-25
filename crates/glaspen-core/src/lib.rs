@@ -61,6 +61,7 @@ pub mod settings_form;
 pub mod settings_snapshot;
 pub mod state;
 pub mod ui;
+pub mod tunnel;
 pub mod update;
 pub mod updater;
 
