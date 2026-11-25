@@ -117,6 +117,8 @@
   Swift 只做 NSDictionary -> JSON 桥; hotkeys probe 14 项通过。
 - **R51 事件 tap 状态**: tap 句柄(CFMachPort retain/release/invalidate)+ scroll 标志迁 Rust;
   删除 `event_tap_state.swift`; `EventTapInstaller` 改调 Rust; tap/smoke 通过。
+- **R52 设置快照 overrides JSON**: `MenuGlue.snapshotOverridesJSON` 的 launchAtLogin/shortcuts/flipEffect/language 组装迁 Rust;
+  Swift 只返回 Rust 堆字符串; settings probe 通过。
 
 ## 下一批候选(按风险从低到高)
 

@@ -2651,3 +2651,48 @@ pub extern "C" fn sw_event_tap_disable() {
         unsafe { CGEventTapEnable(tap.0, false) };
     }
 }
+
+// ── R52: 设置快照 overrides JSON(启动自启/快捷键/翻页/语言) ──
+
+unsafe extern "C" {
+    fn glaspen2_is_launch_at_login() -> i32;
+    fn glaspen2_shortcut_store_values_json() -> *mut std::os::raw::c_char;
+    fn glaspen2_router_flip_effect() -> i32;
+    fn glaspen2_router_lang() -> i32;
+}
+
+/// R52: 返回堆上 JSON(调用方 free), 失败返回 null。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_snapshot_overrides_json() -> *mut std::os::raw::c_char {
+    let launch = unsafe { glaspen2_is_launch_at_login() != 0 };
+    let shortcuts = unsafe {
+        let p = glaspen2_shortcut_store_values_json();
+        if p.is_null() {
+            "{}".to_string()
+        } else {
+            let s = std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned();
+            // Rust core 的 into_raw 字符串由 glaspen2_free_c_string 释放。
+            unsafe extern "C" {
+                fn glaspen2_free_c_string(p: *mut std::os::raw::c_char);
+            }
+            unsafe { glaspen2_free_c_string(p) };
+            s
+        }
+    };
+    let flip = unsafe { glaspen2_router_flip_effect() };
+    let lang = if unsafe { glaspen2_router_lang() } == 1 {
+        "en"
+    } else {
+        "zh"
+    };
+    let value = serde_json::json!({
+        "launchAtLogin": launch,
+        "shortcuts": shortcuts,
+        "flipEffect": flip,
+        "language": lang,
+    });
+    match std::ffi::CString::new(value.to_string()) {
+        Ok(s) => s.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}

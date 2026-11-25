@@ -459,3 +459,6 @@ extern const char *glaspen2_rust_pm_ev_type(void);
 
 // R50: 快捷键生效表计算/安装
 extern int glaspen2_shortcut_apply_json(const char *saved_json);
+
+// R52: 设置快照 overrides JSON(调用方 free)
+extern char *glaspen2_menu_snapshot_overrides_json(void);
