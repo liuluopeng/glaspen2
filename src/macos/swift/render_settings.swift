@@ -29,7 +29,9 @@ public func renderSetGlassFollow(_ on: Int32) { RenderSettings.glassFollow = on 
 
 @_cdecl("glaspen2_router_startup_glass")
 public func renderStartupGlass(_ opacity: Double, _ enabled: Int32) {
-    RenderSettings.glassOpacity = opacity
+    // 与迁移前 ObjC 一致: 库里没存 glass_alpha(0) 时保留默认 0.45。
+    // 之前无条件覆盖成 0, 玻璃虽 enabled 但 alpha=0, 表现为快捷键完全没反应。
+    if opacity > 0 { RenderSettings.glassOpacity = opacity }
     RenderSettings.glassEnabled = enabled != 0
 }
 

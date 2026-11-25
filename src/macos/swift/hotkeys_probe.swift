@@ -32,6 +32,12 @@ import AppKit
         }
         glaspen2_router_set_ethereal(0)
         glaspen2_router_set_strokes_visible(1)
+        // 库里没存 glass_alpha(0) 时, 启动恢复不得把默认透明度覆盖成 0。
+        glaspen2_router_startup_glass(0.0, 1)
+        if glaspen2_router_glass_opacity() <= 0.0 {
+            NSLog("[hotkeys-probe] FAIL glass default opacity was overwritten to 0")
+            failures += 1
+        }
         print("HOTKEYS_PROBE checked=\(checked) failures=\(failures)")
         return failures == 0 ? 0 : 1
     }
