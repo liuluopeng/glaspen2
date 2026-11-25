@@ -803,7 +803,6 @@ pub extern "C" fn glaspen2_rust_menu_item_state(menu: *mut c_void, tag: isize) -
 
 // ── R28: 光标壳(空白/箭头 NSCursor + 光标环绘制) ──────────────────────
 
-/// R28: 1x1 透明光标(旧 makeBlankCursor)。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_blank_cursor_create() -> *mut c_void {
     use objc2_app_kit::{NSBezierPath, NSColor, NSCursor, NSImage};

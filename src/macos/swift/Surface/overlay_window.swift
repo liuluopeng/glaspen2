@@ -25,29 +25,6 @@ import AppKit
         return window
     }
 
-    @objc(makeBlankCursor)
-    public static func makeBlankCursor() -> NSCursor {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_CURSOR"] != "1",
-           let p = glaspen2_rust_blank_cursor_create() {
-            return Unmanaged<NSCursor>.fromOpaque(p).takeRetainedValue()
-        }
-        let image = NSImage(size: NSSize(width: 1, height: 1))
-        image.lockFocus()
-        NSColor.clear.setFill()
-        NSBezierPath(rect: NSRect(x: 0, y: 0, width: 1, height: 1)).fill()
-        image.unlockFocus()
-        return NSCursor(image: image, hotSpot: .zero)
-    }
-
-    @objc(makeArrowCursor)
-    public static func makeArrowCursor() -> NSCursor {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_CURSOR"] != "1",
-           let p = glaspen2_rust_arrow_cursor_create() {
-            return Unmanaged<NSCursor>.fromOpaque(p).takeRetainedValue()
-        }
-        return .arrow
-    }
-
     /// 磨砂玻璃视图(S5-2): behind-window 混合、light 材质、active 状态;
     /// alpha/hidden 与原 ObjC 公式一致(enabled ? opacity*2 : 0)。
     @objc(makeGlassViewWithFrame:enabled:opacity:)

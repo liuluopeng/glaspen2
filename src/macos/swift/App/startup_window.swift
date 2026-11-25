@@ -5,8 +5,6 @@ import AppKit
     @objc public static func create() -> Bool {
         let frame = NSScreen.main?.frame ?? .zero
         let window = OverlayWindowFactory.makeWindow(frame: frame)
-        let blank = OverlayWindowFactory.makeBlankCursor()
-        let arrow = OverlayWindowFactory.makeArrowCursor()
         let content = OverlayWindowFactory.makeContentView(frame: frame)
         let glass = OverlayWindowFactory.makeGlassView(
             frame: frame,

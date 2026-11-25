@@ -669,3 +669,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R66 | 删 cursor_state.swift(死字段)与 StartupWindow 死赋值; Swift 88→87; 构建/smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R67 | LivePlan 入参 JSON/core 调用/plan 光栅化整链迁 Rust; 删 live_plan.swift 与 C 包装; 虚拟笔截图正常; Swift 87→86 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R68 | 删除 shortcut_apply.swift; JSON 桥移入 SettingsGlue.applyShortcuts; hotkeys probe 14/14; Swift 86→85 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R69 | 删除无调用方 blank/arrow 光标工厂(Swift+Rust)与 StartupWindow 死变量; 构建/smoke/tests/parity 绿 | 本提交 |

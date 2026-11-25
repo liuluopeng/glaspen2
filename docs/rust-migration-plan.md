@@ -211,3 +211,10 @@
 - 桥移入 `SettingsGlue.applyShortcuts(saved:)`, 删除 `Input/shortcut_apply.swift`; Swift 86→85;
 - 调用点(SettingsDispatcher/SettingsGlue/MenuRuntime/HotkeysProbe)改调 SettingsGlue;
 - hotkeys probe 14/14 通过。
+
+
+## R69 死光标工厂清理
+
+- 删除 `OverlayWindowFactory.makeBlankCursor/makeArrowCursor` 与 Rust `glaspen2_rust_blank_cursor_create/arrow_cursor_create`;
+- 删除 `StartupWindow` 中已不再使用的 blank/arrow 局部变量;
+- 这些光标创建已无调用方(R66 已删静态字段), 行为无变化。
