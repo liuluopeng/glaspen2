@@ -210,6 +210,17 @@ import AppKit
         }
         let outputText = String(cString: outputRaw)
         glaspen2_free_c_string(outputRaw)
+        // R55: 默认由 Rust 解析 plan JSON 并光栅化; Swift 旧命令光栅化仅回退。
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_LIVE_RASTER"] != "1" {
+            let first = fallback.first ?? (0, 0, 0)
+            let second = fallback.count > 1 ? fallback[1] : first
+            if outputText.withCString({ glaspen2_rust_draw_live_plan(
+                UnsafeMutableRawPointer(cr), $0, invScale, dot ? 1 : 0,
+                first.0, first.1, first.2, second.0, second.1, second.2,
+                Int32(fallback.count)) }) != 0 {
+                return true
+            }
+        }
         guard let outputData = outputText.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: outputData),
               let plan = root as? [String: Any] else {

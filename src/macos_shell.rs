@@ -2832,3 +2832,363 @@ pub extern "C" fn glaspen2_rust_rec_hud_text(
     }
     std::ffi::CString::new(text).map_or(std::ptr::null_mut(), |s| s.into_raw())
 }
+
+// ── R55: 实时绘制计划(core plan JSON)光栅化 ──
+
+unsafe extern "C" {
+    fn cairo_save(cr: *mut c_void);
+    fn cairo_restore(cr: *mut c_void);
+    fn cairo_set_operator(cr: *mut c_void, op: i32);
+    fn cairo_set_line_cap(cr: *mut c_void, cap: i32);
+    fn cairo_set_line_join(cr: *mut c_void, join: i32);
+    fn cairo_set_dash(cr: *mut c_void, dashes: *const f64, count: i32, offset: f64);
+    fn cairo_set_source_rgba(cr: *mut c_void, r: f64, g: f64, b: f64, a: f64);
+    fn cairo_set_source(cr: *mut c_void, pattern: *mut c_void);
+    fn cairo_set_line_width(cr: *mut c_void, width: f64);
+    fn cairo_move_to(cr: *mut c_void, x: f64, y: f64);
+    fn cairo_line_to(cr: *mut c_void, x: f64, y: f64);
+    fn cairo_arc(cr: *mut c_void, x: f64, y: f64, radius: f64, a1: f64, a2: f64);
+    fn cairo_fill(cr: *mut c_void);
+    fn cairo_stroke(cr: *mut c_void);
+    fn cairo_pattern_destroy(pattern: *mut c_void);
+    fn glaspen2_router_invert_ink_source(cr: *mut c_void) -> *mut c_void;
+    fn glaspen2_router_pen_r() -> f64;
+    fn glaspen2_router_pen_g() -> f64;
+    fn glaspen2_router_pen_b() -> f64;
+}
+
+fn plan_num(v: &serde_json::Value, key: &str) -> f64 {
+    v.get(key).and_then(|x| x.as_f64()).unwrap_or(0.0)
+}
+fn plan_point(v: &serde_json::Value, i: usize) -> f64 {
+    v.get(i).and_then(|x| x.as_f64()).unwrap_or(0.0)
+}
+fn plan_color(cr: *mut c_void, cmd: &serde_json::Value, alpha: f64) {
+    let (mut r, mut g, mut b) = (0.0, 0.0, 0.0);
+    if let Some(arr) = cmd.get("color").and_then(|x| x.as_array()) {
+        r = arr.first().and_then(|x| x.as_f64()).unwrap_or(0.0);
+        g = arr.get(1).and_then(|x| x.as_f64()).unwrap_or(0.0);
+        b = arr.get(2).and_then(|x| x.as_f64()).unwrap_or(0.0);
+    }
+    unsafe { cairo_set_source_rgba(cr, r, g, b, alpha) };
+}
+
+fn plan_command(cr: *mut c_void, cmd: &serde_json::Value, inv: f64) {
+    let Some(pass) = cmd.get("pass").and_then(|x| x.as_str()) else {
+        return;
+    };
+    let Some(points) = cmd.get("points").and_then(|x| x.as_array()) else {
+        return;
+    };
+    if points.is_empty() {
+        return;
+    }
+    let alpha = plan_num(cmd, "alpha");
+    let width_delta = plan_num(cmd, "width_delta");
+    unsafe {
+        cairo_set_dash(cr, std::ptr::null(), 0, 0.0);
+        cairo_set_operator(cr, 2);
+        cairo_set_line_cap(cr, 1);
+        cairo_set_line_join(cr, 1);
+    }
+    match pass {
+        "shadow" => {
+            plan_color(cr, cmd, alpha);
+            if points.len() == 1 {
+                let p = &points[0];
+                if p.as_array().map_or(0, |a| a.len()) < 3 {
+                    return;
+                }
+                unsafe {
+                    cairo_arc(
+                        cr,
+                        plan_point(p, 0) * inv,
+                        plan_point(p, 1) * inv,
+                        plan_point(p, 2) * 0.5 * inv,
+                        0.0,
+                        std::f64::consts::TAU,
+                    );
+                    cairo_fill(cr);
+                }
+                return;
+            }
+            for i in 1..points.len() {
+                let (a, b) = (&points[i - 1], &points[i]);
+                if a.as_array().map_or(0, |x| x.len()) < 3
+                    || b.as_array().map_or(0, |x| x.len()) < 3
+                {
+                    continue;
+                }
+                unsafe {
+                    cairo_set_line_width(cr, (plan_point(b, 2) + width_delta) * inv);
+                    cairo_move_to(cr, plan_point(a, 0) * inv, plan_point(a, 1) * inv);
+                    cairo_line_to(cr, plan_point(b, 0) * inv, plan_point(b, 1) * inv);
+                    cairo_stroke(cr);
+                }
+            }
+        }
+        "outline" => {
+            if points.len() == 1 {
+                let p = &points[0];
+                if p.as_array().map_or(0, |a| a.len()) < 3 {
+                    return;
+                }
+                unsafe {
+                    cairo_set_dash(cr, std::ptr::null(), 0, 0.0);
+                    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, alpha);
+                    cairo_arc(
+                        cr,
+                        plan_point(p, 0) * inv,
+                        plan_point(p, 1) * inv,
+                        plan_point(p, 2) * 0.5 * inv,
+                        0.0,
+                        std::f64::consts::TAU,
+                    );
+                    cairo_fill(cr);
+                }
+                return;
+            }
+            if points.len() < 2 {
+                return;
+            }
+            let mut dash_len = cmd
+                .get("dash")
+                .and_then(|d| d.get("len"))
+                .and_then(|x| x.as_f64())
+                .unwrap_or(1.0)
+                * inv;
+            if !(dash_len > 0.0) {
+                dash_len = 1.0;
+            }
+            let mut cum = cmd
+                .get("dash")
+                .and_then(|d| d.get("phase"))
+                .and_then(|x| x.as_f64())
+                .unwrap_or(0.0)
+                * inv;
+            let pattern = [dash_len, dash_len];
+            unsafe { cairo_set_line_cap(cr, 2) };
+            for i in 1..points.len() {
+                let (a, b) = (&points[i - 1], &points[i]);
+                if a.as_array().map_or(0, |x| x.len()) < 3
+                    || b.as_array().map_or(0, |x| x.len()) < 3
+                {
+                    continue;
+                }
+                let (x0, y0) = (plan_point(a, 0) * inv, plan_point(a, 1) * inv);
+                let (x1, y1) = (plan_point(b, 0) * inv, plan_point(b, 1) * inv);
+                let seg_width = (plan_point(b, 2) + width_delta) * inv;
+                let mut off = cum % (2.0 * dash_len);
+                if off < 0.0 {
+                    off += 2.0 * dash_len;
+                }
+                unsafe {
+                    cairo_set_line_width(cr, seg_width);
+                    cairo_set_dash(cr, pattern.as_ptr(), 2, off);
+                    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, alpha);
+                    cairo_move_to(cr, x0, y0);
+                    cairo_line_to(cr, x1, y1);
+                    cairo_stroke(cr);
+                    let nxt = (off + dash_len) % (2.0 * dash_len);
+                    cairo_set_dash(cr, pattern.as_ptr(), 2, nxt);
+                    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, alpha);
+                    cairo_move_to(cr, x0, y0);
+                    cairo_line_to(cr, x1, y1);
+                    cairo_stroke(cr);
+                }
+                let dx = x1 - x0;
+                let dy = y1 - y0;
+                cum += (dx * dx + dy * dy).sqrt();
+            }
+            unsafe {
+                cairo_set_dash(cr, std::ptr::null(), 0, 0.0);
+                cairo_set_line_cap(cr, 1);
+            }
+        }
+        "erase" => {
+            unsafe {
+                cairo_set_operator(cr, 3);
+                cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
+            }
+            if points.len() == 1 {
+                let p = &points[0];
+                if p.as_array().map_or(0, |a| a.len()) < 3 {
+                    return;
+                }
+                unsafe {
+                    cairo_arc(
+                        cr,
+                        plan_point(p, 0) * inv,
+                        plan_point(p, 1) * inv,
+                        plan_point(p, 2) * 0.5 * inv,
+                        0.0,
+                        std::f64::consts::TAU,
+                    );
+                    cairo_fill(cr);
+                }
+            } else {
+                for i in 1..points.len() {
+                    let (a, b) = (&points[i - 1], &points[i]);
+                    if a.as_array().map_or(0, |x| x.len()) < 3
+                        || b.as_array().map_or(0, |x| x.len()) < 3
+                    {
+                        continue;
+                    }
+                    unsafe {
+                        cairo_set_line_width(cr, plan_point(b, 2) * inv);
+                        cairo_move_to(cr, plan_point(a, 0) * inv, plan_point(a, 1) * inv);
+                        cairo_line_to(cr, plan_point(b, 0) * inv, plan_point(b, 1) * inv);
+                        cairo_stroke(cr);
+                    }
+                }
+            }
+            unsafe { cairo_set_operator(cr, 2) };
+        }
+        _ => {
+            // fill
+            let invert = unsafe { glaspen2_router_invert_ink_source(cr) };
+            if !invert.is_null() {
+                unsafe { cairo_set_source(cr, invert) };
+            } else {
+                plan_color(cr, cmd, alpha);
+            }
+            if points.len() == 1 {
+                let p = &points[0];
+                if p.as_array().map_or(0, |a| a.len()) >= 3 {
+                    unsafe {
+                        cairo_arc(
+                            cr,
+                            plan_point(p, 0) * inv,
+                            plan_point(p, 1) * inv,
+                            plan_point(p, 2) * 0.5 * inv,
+                            0.0,
+                            std::f64::consts::TAU,
+                        );
+                        cairo_fill(cr);
+                    }
+                }
+            } else {
+                for i in 1..points.len() {
+                    let (a, b) = (&points[i - 1], &points[i]);
+                    if a.as_array().map_or(0, |x| x.len()) < 3
+                        || b.as_array().map_or(0, |x| x.len()) < 3
+                    {
+                        continue;
+                    }
+                    unsafe {
+                        cairo_set_line_width(cr, plan_point(b, 2) * inv);
+                        cairo_move_to(cr, plan_point(a, 0) * inv, plan_point(a, 1) * inv);
+                        cairo_line_to(cr, plan_point(b, 0) * inv, plan_point(b, 1) * inv);
+                        cairo_stroke(cr);
+                    }
+                }
+            }
+            if !invert.is_null() {
+                unsafe { cairo_pattern_destroy(invert) };
+            }
+        }
+    }
+}
+
+fn plan_seam(cr: *mut c_void, seam: &serde_json::Value, inv: f64) {
+    let from = seam.get("from").and_then(|x| x.as_array());
+    let to = seam.get("to").and_then(|x| x.as_array());
+    let (Some(from), Some(to)) = (from, to) else {
+        return;
+    };
+    if from.len() < 2 || to.len() < 2 {
+        return;
+    }
+    let width = plan_num(seam, "width") * inv;
+    if width <= 0.0 {
+        return;
+    }
+    unsafe {
+        cairo_set_dash(cr, std::ptr::null(), 0, 0.0);
+        cairo_set_operator(cr, 2);
+        cairo_set_line_cap(cr, 1);
+        cairo_set_line_join(cr, 1);
+        cairo_set_line_width(cr, width);
+        cairo_set_source_rgba(
+            cr,
+            glaspen2_router_pen_r(),
+            glaspen2_router_pen_g(),
+            glaspen2_router_pen_b(),
+            1.0,
+        );
+        cairo_move_to(
+            cr,
+            from.first().and_then(|x| x.as_f64()).unwrap_or(0.0) * inv,
+            from.get(1).and_then(|x| x.as_f64()).unwrap_or(0.0) * inv,
+        );
+        cairo_line_to(
+            cr,
+            to.first().and_then(|x| x.as_f64()).unwrap_or(0.0) * inv,
+            to.get(1).and_then(|x| x.as_f64()).unwrap_or(0.0) * inv,
+        );
+        cairo_stroke(cr);
+    }
+}
+
+/// R55: 光栅化 core live plan JSON; 返回 1 成功, 0 失败(调用方回退)。
+/// fallback 两点的 (x,y,pad) 通过 7 个参数传入; count<2 时忽略。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_draw_live_plan(
+    cr: *mut c_void,
+    plan_json: *const std::os::raw::c_char,
+    inv_scale: f64,
+    dot: i32,
+    f1x: f64,
+    f1y: f64,
+    f1p: f64,
+    f2x: f64,
+    f2y: f64,
+    f2p: f64,
+    fallback_count: i32,
+) -> i32 {
+    if cr.is_null() || plan_json.is_null() {
+        return 0;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(plan_json) }.to_string_lossy();
+    let root: serde_json::Value = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(_) => return 0,
+    };
+    if root.get("error").is_some() {
+        return 0;
+    }
+    let Some(commands) = root.get("commands").and_then(|x| x.as_array()) else {
+        return 0;
+    };
+    unsafe { cairo_save(cr) };
+    for cmd in commands {
+        plan_command(cr, cmd, inv_scale);
+    }
+    if dot == 0 {
+        if let Some(seam) = root.get("seam") {
+            plan_seam(cr, seam, inv_scale);
+        }
+    }
+    unsafe { cairo_restore(cr) };
+    if let Some(dirty) = root.get("dirty") {
+        let dx = plan_num(dirty, "x") * inv_scale;
+        let dy = plan_num(dirty, "y") * inv_scale;
+        let dw = plan_num(dirty, "w") * inv_scale;
+        let dh = plan_num(dirty, "h") * inv_scale;
+        if dx.is_finite()
+            && dy.is_finite()
+            && dw.is_finite()
+            && dh.is_finite()
+            && dw > 0.0
+            && dh > 0.0
+        {
+            glaspen2_rust_dirty_include_surface_rect(dx, dy, dw, dh);
+        } else if fallback_count > 0 {
+            glaspen2_rust_dirty_include_surface_point(f1x, f1y, f1p);
+            if fallback_count > 1 {
+                glaspen2_rust_dirty_include_surface_point(f2x, f2y, f2p);
+            }
+        }
+    }
+    1
+}

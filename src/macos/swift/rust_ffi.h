@@ -465,3 +465,8 @@ extern char *glaspen2_menu_snapshot_overrides_json(void);
 
 // R54: 录制 HUD 语义 -> 本地化文案(调用方 free)
 extern char *glaspen2_rust_rec_hud_text(const char *hud, int strokes, const char *detail);
+
+// R55: 实时绘制计划光栅化
+extern int glaspen2_rust_draw_live_plan(void *cr, const char *plan_json, double inv_scale, int dot,
+                                        double f1x, double f1y, double f1p,
+                                        double f2x, double f2y, double f2p, int fallback_count);

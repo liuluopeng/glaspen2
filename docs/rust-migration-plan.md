@@ -123,6 +123,8 @@
   acquire/install/take/present 走 Rust; 虚拟笔截图正常。
 - **R54 录制 HUD 文案**: `RecHudPresenter` 的 13 种 HUD 语义 -> core i18n 文案/占位符/详情覆盖迁 Rust;
   Swift 只做通知展示; HUD 文案单源。
+- **R55 实时绘制计划光栅化**: `LivePlan.command/seam/runPlan` 的 plan JSON 解析与 cairo 光栅化迁 Rust;
+  默认 Rust, `GLASPEN2_SWIFT_LIVE_RASTER=1` 回退 Swift; 虚拟笔连续笔迹正常。
 
 ## 下一批候选(按风险从低到高)
 
