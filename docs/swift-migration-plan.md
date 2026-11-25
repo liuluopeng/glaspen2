@@ -676,3 +676,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R73 | CanvasOverview 载荷几何/渲染迁 Rust; Swift 仅 Data 包装; render probe overview 全通过 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R74 | ActionDispatch effect 分派迁 Rust; 键盘路径默认 Rust; 【flip】日志验证翻页动作生效; Swift 仅回退 | 默认/回退 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R75 | 清理已删除的 live plan C 包装声明(Rust extern + Bridging.h); 构建通过 | 本提交 |
+| 2026-11-26 | Rust-R76 | 最终验证快照: tag 未动/未 push/ObjC 0/Swift 85; tests/build/smoke/parity 全绿; 干净 DB 四探针全过; render 探针在旧 DB 上因 stroke_count 假定失败(非回归); 目标保持 active | 剩余项已列 | 本提交 |

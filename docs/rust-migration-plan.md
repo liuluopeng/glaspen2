@@ -285,3 +285,21 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - 删除 Rust 中已无调用的 `glaspen2_router_live_plan_dot/segment` extern 与 `Bridging.h` 旧声明;
 - 与 R67 删除 `live_plan.swift`/C 包装一致; 无行为变化。
+
+
+## R76 最终验证快照(2026-11-26)
+
+- HEAD `24b36f2`(本提交前), tag `v0.7.0^{}`=`ce525db` 未移动, 领先 `origin/main` 402, 未 push;
+- `src/macos` ObjC `.m/.mm` = 0; Swift 源文件 85;
+- `cargo test --workspace --exclude glaspen2_installer`、release build、`smoke-macos.sh`、`check-platform-parity.sh` 全绿;
+- 四探针(干净 DB): settings failures=0 / menu-full OK / hotkeys 14/14 / render failures=0;
+- 注意: render probe 在**已填充旧 DB** 上会报 `stroke_count`(探针假定新库), 干净 DB 复跑通过, 非代码回归;
+- R72 60s 虚拟笔+翻页浸泡: 进程存活、strokes +10、RSS 稳定约 380MB。
+
+### 仍待迁移/验证
+- 时光隧道卡片/帧绘制(Swift cairo, 最大剩余绘制块);
+- 录制效果执行/GIF 剪贴板/导出; `event_router` 事件分派壳; Flutter host; menu/settings 构建与诊断; minimap 缩略图异步;
+- 真机专项: 录制、隧道、多屏/睡眠唤醒、真实笔压/橡皮/描边/反色/软阴影。
+
+结论: 按“纯逻辑/状态优先迁 Rust + 必要 AppKit 壳保留”的既定方法, 迁移已覆盖主要逻辑/状态/绘制编排;
+但“整个应用层 Rust”口径仍未完成, 目标保持 active。
