@@ -13,7 +13,6 @@ import AppKit
             }
         }
 
-        PenPresets.loadPresets()
 
         SettingsDispatcher.apply(key: "gridSize", value: "55")
         check("gridSize", glaspen2_router_grid_size() == 55)

@@ -39,6 +39,7 @@
   24 个 C ABI 符号改 Rust 导出; Swift 直接引用改 FFI, 删除 `Settings/render_settings.swift`; 1 个单测。
 - **R12 笔外观设置**: `PenSettingsStore`(颜色/粗细/选中/历史/暂存)迁 `glaspen-core::pen_settings`;
   颜色/宽度预设直接用 core presets; 全部 C ABI 符号改 Rust 导出, 删除 `Settings/pen_settings_store.swift`; 1 个单测。
+- **R13 预设缓存清理**: 删除 Swift `PresetStore`/`PenPresets` 缓存层; 菜单/预设标题直接读 core `glaspen2_color_preset_*` / `glaspen2_width_preset_*`; 预设数量调用改 core; 2 个 Swift 文件删除。
 
 ## 下一批候选(按风险从低到高)
 

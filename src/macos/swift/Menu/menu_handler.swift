@@ -178,7 +178,7 @@ import AppKit
     /// 颜色设置: 书写中暂存, 否则应用并刷新菜单/状态图标/面板。
     @objc(setColorIndex:)
     public static func setColor(index: Int32) {
-        let count = glaspen2_router_color_preset_count()
+        let count = glaspen2_color_preset_count()
         guard index >= 0 && Int(index) < Int(count) else { return }
         if glaspen2_router_stroke_active() != 0 {
             glaspen2_router_set_pending_color(index)
@@ -196,7 +196,7 @@ import AppKit
     /// 粗细设置: 书写中暂存, 否则应用并刷新菜单/状态图标/面板。
     @objc(setWidthIndex:)
     public static func setWidth(index: Int32) {
-        let count = glaspen2_router_width_preset_count()
+        let count = glaspen2_width_preset_count()
         guard index >= 0 && Int(index) < Int(count) else { return }
         if glaspen2_router_stroke_active() != 0 {
             glaspen2_router_set_pending_width(index)

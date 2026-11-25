@@ -10,20 +10,20 @@ import AppKit
         menu.autoenablesItems = false
 
         var colorTitles: [NSAttributedString] = []
-        for i in 0..<Int(glaspen2_router_color_preset_count()) {
+        for i in 0..<Int(glaspen2_color_preset_count()) {
             colorTitles.append(MenuRuntime.colorItemTitle(Int32(i)))
         }
         MenuBuilder.addColorItems(toMenu: menu, handler: handler,
-                                  count: Int(glaspen2_router_color_preset_count()),
+                                  count: Int(glaspen2_color_preset_count()),
                                   titles: colorTitles)
         menu.addItem(.separator())
 
         var widthTitles: [NSAttributedString] = []
-        for i in 0..<Int(glaspen2_router_width_preset_count()) {
+        for i in 0..<Int(glaspen2_width_preset_count()) {
             widthTitles.append(MenuRuntime.widthItemTitle(Int32(i)))
         }
         MenuBuilder.addWidthItems(toMenu: menu, handler: handler,
-                                  count: Int(glaspen2_router_width_preset_count()),
+                                  count: Int(glaspen2_width_preset_count()),
                                   titles: widthTitles)
 
         func pair(_ zh: String, _ en: String) -> String {

@@ -6,8 +6,8 @@ import Darwin
     @objc public static func updateCheckmarks() {
         guard let menu = UIAnchors.menu as? NSMenu else { return }
         MenuUpdater.updateCheckmarks(menu: menu,
-            colorCount: Int(glaspen2_router_color_preset_count()),
-            widthCount: Int(glaspen2_router_width_preset_count()),
+            colorCount: Int(glaspen2_color_preset_count()),
+            widthCount: Int(glaspen2_width_preset_count()),
             colorIndex: Int(glaspen2_router_selected_color_index()),
             widthIndex: Int(glaspen2_router_selected_width_index()))
     }

@@ -24,7 +24,6 @@ import ApplicationServices
 
         NSApplication.shared
         NSApp.setActivationPolicy(.accessory)
-        PenPresets.loadPresets()
 
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
         if !AXIsProcessTrustedWithOptions(opts as CFDictionary) {

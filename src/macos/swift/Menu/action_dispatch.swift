@@ -66,7 +66,7 @@ import AppKit
         if kind == "ColorSwap" {
             var prev = Int(glaspen2_router_prev_color_index())
             let selected = Int(glaspen2_router_selected_color_index())
-            if prev < 0 || prev >= Int(glaspen2_router_color_preset_count()) || prev == selected {
+            if prev < 0 || prev >= Int(glaspen2_color_preset_count()) || prev == selected {
                 prev = selected == 0 ? 9 : 0
             }
             MenuHandler.setColor(index: Int32(prev))
@@ -78,7 +78,7 @@ import AppKit
         if kind == "WidthSwap" {
             var prev = Int(glaspen2_router_prev_width_index())
             let selected = Int(glaspen2_router_selected_width_index())
-            if prev < 0 || prev >= Int(glaspen2_router_width_preset_count()) || prev == selected {
+            if prev < 0 || prev >= Int(glaspen2_width_preset_count()) || prev == selected {
                 prev = selected <= 3 ? 6 : 2
             }
             MenuHandler.setWidth(index: Int32(prev))

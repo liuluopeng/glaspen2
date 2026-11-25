@@ -8,11 +8,11 @@ import AppKit
             MenuRuntime.pair(zh, en)
         }
         var colorTitles: [NSAttributedString] = []
-        for i in 0..<Int(glaspen2_router_color_preset_count()) {
+        for i in 0..<Int(glaspen2_color_preset_count()) {
             colorTitles.append(MenuRuntime.colorItemTitle(Int32(i)))
         }
         var widthTitles: [NSAttributedString] = []
-        for i in 0..<Int(glaspen2_router_width_preset_count()) {
+        for i in 0..<Int(glaspen2_width_preset_count()) {
             widthTitles.append(MenuRuntime.widthItemTitle(Int32(i)))
         }
         let topTitles = [
