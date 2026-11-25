@@ -43,6 +43,8 @@
 - **R14 AppKit 壳预研**: 根 crate 增加 objc2/objc2-app-kit macO 依赖; 新增 `src/macos_shell.rs`,
   用 Rust 创建 `NSStatusItem`; Swift `StatusBarFactory` 仅在 `GLASPEN2_RUST_STATUS_ITEM=1` 时走 Rust, 默认保持 Swift, 失败自动回退。
   smoke(默认+Rust 开关)与全量测试均绿; 下一步再迁状态栏图标/菜单/覆盖窗。
+- **R15 覆盖窗预研**: `macos_shell` 增加 `glaspen2_rust_overlay_window_create`, Rust 创建主覆盖 `NSWindow`
+  (无边框/最大层级/透明/穿透/全空间); Swift `OverlayWindowFactory` 仅在 `GLASPEN2_RUST_OVERLAY=1` 时使用, 默认 Swift/失败回退。
 
 ## 下一批候选(按风险从低到高)
 

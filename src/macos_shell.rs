@@ -4,6 +4,7 @@
 
 use std::ffi::c_void;
 
+use objc2::MainThreadOnly;
 use objc2::rc::Retained;
 use objc2_app_kit::NSStatusBar;
 use objc2_foundation::MainThreadMarker;
@@ -21,4 +22,46 @@ pub extern "C" fn glaspen2_rust_status_item_create() -> *mut c_void {
     let item = bar.statusItemWithLength(-2.0);
     tracing::info!("rust-shell: NSStatusItem created by Rust (objc2)");
     Retained::into_raw(item) as *mut c_void
+}
+
+/// R15: 用 Rust/objc2 创建覆盖层主窗口(层级/透明/穿透/集合行为),
+/// 返回 +1 持有指针; Swift 仅在 `GLASPEN2_RUST_OVERLAY=1` 时使用。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_overlay_window_create(
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> *mut c_void {
+    use objc2_app_kit::{
+        NSBackingStoreType, NSColor, NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask,
+    };
+    use objc2_foundation::{NSPoint, NSRect, NSSize, ns_string};
+
+    let Some(mtm) = MainThreadMarker::new() else {
+        tracing::error!("rust-shell: overlay window create 不在主线程");
+        return std::ptr::null_mut();
+    };
+    let frame = NSRect::new(NSPoint::new(x, y), NSSize::new(width, height));
+    let window = unsafe {
+        NSWindow::initWithContentRect_styleMask_backing_defer(
+            NSWindow::alloc(mtm),
+            frame,
+            NSWindowStyleMask::Borderless,
+            NSBackingStoreType::Buffered,
+            false,
+        )
+    };
+    unsafe { window.setReleasedWhenClosed(false) };
+    window.setLevel(objc2_core_graphics::kCGMaximumWindowLevel as isize);
+    window.setOpaque(false);
+    window.setBackgroundColor(Some(&NSColor::clearColor()));
+    window.setTitle(ns_string!("glaspen2"));
+    window.setAcceptsMouseMovedEvents(true);
+    window.setCollectionBehavior(
+        NSWindowCollectionBehavior::CanJoinAllSpaces | NSWindowCollectionBehavior::Stationary,
+    );
+    window.setIgnoresMouseEvents(true);
+    tracing::info!("rust-shell: overlay NSWindow created by Rust (objc2)");
+    Retained::into_raw(window) as *mut c_void
 }

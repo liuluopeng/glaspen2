@@ -5,6 +5,12 @@ import AppKit
 @objc public final class OverlayWindowFactory: NSObject {
     @objc(makeWindowWithFrame:)
     public static func makeWindow(frame: NSRect) -> NSWindow {
+        // R15 预研: Rust/objc2 创建主覆盖窗; 默认仍 Swift, 失败回退。
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_OVERLAY"] == "1",
+           let p = glaspen2_rust_overlay_window_create(frame.origin.x, frame.origin.y,
+                                                       frame.size.width, frame.size.height) {
+            return Unmanaged<NSWindow>.fromOpaque(p).takeUnretainedValue()
+        }
         let window = NSWindow(contentRect: frame,
                               styleMask: .borderless,
                               backing: .buffered,

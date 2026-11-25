@@ -277,3 +277,6 @@ extern void sw_set_pen_settings(double r, double g, double b, double width,
 
 // R14: Rust objc2 预研(默认关闭; GLASPEN2_RUST_STATUS_ITEM=1 时走这里)
 extern void *glaspen2_rust_status_item_create(void);
+
+// R15: Rust 创建覆盖层主窗口(opt-in: GLASPEN2_RUST_OVERLAY=1)
+extern void *glaspen2_rust_overlay_window_create(double x, double y, double width, double height);

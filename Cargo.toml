@@ -51,8 +51,12 @@ objc = "0.2"
 libc = "0.2.189"
 # R14: AppKit 壳 Rust 预研(状态栏项创建)
 objc2 = "0.6.5"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSStatusBar", "NSStatusItem", "NSStatusBarButton", "objc2-core-foundation"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+  "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSWindow", "NSColor", "NSGraphics",
+  "NSResponder", "NSView", "NSApplication", "objc2-core-foundation",
+] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSObject", "NSString"] }
+objc2-core-graphics = "0.3.2"
 
 [target.'cfg(windows)'.dependencies]
 # Versions match C:\Users\liulu\Downloads\wAPItry (verified Windows pen-input prototype)
