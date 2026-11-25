@@ -37,13 +37,13 @@ import CoreGraphics
         guard viewW > 0, viewH > 0 else { return }
         var panX = 0.0, panY = 0.0, zoom = 1.0
         if glaspen2_router_infinite() != 0 {
-            panX = CameraStore.panX
-            panY = CameraStore.panY
-            let z = CameraStore.zoom
+            panX = glaspen2_router_pan_x()
+            panY = glaspen2_router_pan_y()
+            let z = glaspen2_router_zoom()
             zoom = z > 0.05 ? z : 0.05
         } else {
-            panX = -CameraStore.pageOffX
-            panY = -CameraStore.pageOffY
+            panX = -glaspen2_router_page_off_x()
+            panY = -glaspen2_router_page_off_y()
         }
         let gridSize = glaspen2_router_grid_size()
         let clipX0 = Double(clipRect.minX), clipX1 = Double(clipRect.maxX)

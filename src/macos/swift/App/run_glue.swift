@@ -79,7 +79,7 @@ public func runShowSystemCursor() { CGDisplayShowCursor(CGMainDisplayID()) }
 
 @_cdecl("glaspen2_router_disable_cleanup")
 public func runDisableCleanup() {
-    CameraStore.mouseDragging = false
+    glaspen2_router_camera_clear_dragging()
     CameraMousePan.cancel()
     EventRouter.restoreSystemCursor()
 }
@@ -131,7 +131,7 @@ public func runReenableTap() { glaspen2_router_event_tap_enable() }
 
 @_cdecl("glaspen2_router_raw_width")
 public func runRawWidth(_ pressure: Double) -> Double {
-    glaspen2_pressure_raw_width(pressure, glaspen2_router_width_scale()) * CameraStore.zoom
+    glaspen2_pressure_raw_width(pressure, glaspen2_router_width_scale()) * glaspen2_router_zoom()
 }
 
 private let runLangEnPtr: UnsafeMutablePointer<CChar> = strdup("en")!

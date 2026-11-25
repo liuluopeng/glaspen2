@@ -39,3 +39,10 @@ import AppKit
         generation += 1
     }
 }
+
+@_cdecl("glaspen2_router_camera_queue_pan")
+public func cameraQueuePan(_ dx: Double, _ dy: Double) {
+    CameraMousePan.queue(dx: dx, dy: dy)
+}
+@_cdecl("glaspen2_router_camera_flush")
+public func cameraFlush() { CameraMousePan.flush() }

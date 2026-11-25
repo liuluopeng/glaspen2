@@ -2169,3 +2169,97 @@ pub extern "C" fn glaspen2_menu_set_title(tag: i32, title: *const std::os::raw::
     }
     let _ = glaspen2_rust_menu_set_item_title(menu, tag as isize, title);
 }
+
+// ── R46: 镜头状态(平移/缩放/翻页偏移/相机抓手) ──
+
+static CAM_PAN_X: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static CAM_PAN_Y: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static CAM_ZOOM: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1.0f64.to_bits());
+static CAM_PAGE_OFF_X: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static CAM_PAGE_OFF_Y: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static CAM_DRAGGING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static CAM_LAST_X: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static CAM_LAST_Y: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+
+unsafe extern "C" {
+    fn glaspen2_camera_step_zoom(zoom: f64) -> f64;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_set_camera(pan_x: f64, pan_y: f64, zoom: f64, assign_zoom: i32) {
+    use std::sync::atomic::Ordering;
+    CAM_PAN_X.store(pan_x.to_bits(), Ordering::Relaxed);
+    CAM_PAN_Y.store(pan_y.to_bits(), Ordering::Relaxed);
+    if assign_zoom != 0 {
+        CAM_ZOOM.store(zoom.to_bits(), Ordering::Relaxed);
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_pan_x() -> f64 {
+    f64::from_bits(CAM_PAN_X.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_pan_y() -> f64 {
+    f64::from_bits(CAM_PAN_Y.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_zoom() -> f64 {
+    f64::from_bits(CAM_ZOOM.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_reset_page_offsets() {
+    use std::sync::atomic::Ordering;
+    CAM_PAGE_OFF_X.store(0.0f64.to_bits(), Ordering::Relaxed);
+    CAM_PAGE_OFF_Y.store(0.0f64.to_bits(), Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_page_off_x() -> f64 {
+    f64::from_bits(CAM_PAGE_OFF_X.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_page_off_y() -> f64 {
+    f64::from_bits(CAM_PAGE_OFF_Y.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_dragging() -> i32 {
+    i32::from(CAM_DRAGGING.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_step_zoom() -> f64 {
+    let zoom = glaspen2_router_zoom();
+    unsafe { glaspen2_camera_step_zoom(zoom) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_set_last(x: f64, y: f64) {
+    use std::sync::atomic::Ordering;
+    CAM_LAST_X.store(x.to_bits(), Ordering::Relaxed);
+    CAM_LAST_Y.store(y.to_bits(), Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_last_x() -> f64 {
+    f64::from_bits(CAM_LAST_X.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_last_y() -> f64 {
+    f64::from_bits(CAM_LAST_Y.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_clear_dragging() {
+    CAM_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_start(x: f64, y: f64) {
+    use std::sync::atomic::Ordering;
+    CAM_DRAGGING.store(true, Ordering::Relaxed);
+    glaspen2_router_camera_set_last(x, y);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_clear_camera_dragging() {
+    CAM_DRAGGING.store(false, std::sync::atomic::Ordering::Relaxed);
+}

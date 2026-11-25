@@ -176,3 +176,6 @@ public func menuNotify(_ text: UnsafeMutableRawPointer?) {
     let ns = Unmanaged<NSString>.fromOpaque(text).takeUnretainedValue()
     NotificationPresenter.show(text: ns as String)
 }
+
+@_cdecl("glaspen2_router_camera_pan_mods")
+public func cameraPanMods() -> UInt { MenuRuntime.maskFor(action: "canvas_pan_up") }
