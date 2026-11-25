@@ -2440,3 +2440,67 @@ pub extern "C" fn glaspen2_rust_pen_update_after_segment(x: f64, y: f64, width: 
     RAW_LAST_W.store(width.to_bits(), Ordering::Relaxed);
     RAW_HAS_LAST.store(true, Ordering::Relaxed);
 }
+
+// ── R49: 压感监视状态(压力/坐标/接触/接近/事件类型) ──
+
+static PM_PRESSURE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+static PM_TIP_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PM_IN_RANGE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PM_X: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static PM_Y: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static PM_EV_TYPE: std::sync::OnceLock<std::sync::Mutex<Option<std::ffi::CString>>> =
+    std::sync::OnceLock::new();
+
+fn pm_ev_type() -> &'static std::sync::Mutex<Option<std::ffi::CString>> {
+    PM_EV_TYPE.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pm_update(
+    in_range: i32,
+    pressure: i32,
+    x: f64,
+    y: f64,
+    tip_down: i32,
+    ev_type: *const std::os::raw::c_char,
+) {
+    use std::sync::atomic::Ordering;
+    PM_IN_RANGE.store(in_range != 0, Ordering::Relaxed);
+    PM_PRESSURE.store(pressure, Ordering::Relaxed);
+    PM_X.store(x.to_bits(), Ordering::Relaxed);
+    PM_Y.store(y.to_bits(), Ordering::Relaxed);
+    PM_TIP_DOWN.store(tip_down != 0, Ordering::Relaxed);
+    let value = if ev_type.is_null() {
+        None
+    } else {
+        Some(unsafe { std::ffi::CStr::from_ptr(ev_type) }.to_owned())
+    };
+    *pm_ev_type().lock().unwrap_or_else(|e| e.into_inner()) = value;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pm_pressure() -> i32 {
+    PM_PRESSURE.load(std::sync::atomic::Ordering::Relaxed)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pm_tip_down() -> i32 {
+    i32::from(PM_TIP_DOWN.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pm_in_range() -> i32 {
+    i32::from(PM_IN_RANGE.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pm_x() -> f64 {
+    f64::from_bits(PM_X.load(std::sync::atomic::Ordering::Relaxed))
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pm_y() -> f64 {
+    f64::from_bits(PM_Y.load(std::sync::atomic::Ordering::Relaxed))
+}
+/// 返回事件类型 C 字符串(调用方立即复制, 下次 update 可能失效)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pm_ev_type() -> *const std::os::raw::c_char {
+    let guard = pm_ev_type().lock().unwrap_or_else(|e| e.into_inner());
+    guard.as_ref().map_or(std::ptr::null(), |s| s.as_ptr())
+}

@@ -111,6 +111,8 @@
   run_glue/pen_state/event_router/misc_state/overlay_grid 改读 Rust; 虚拟笔截图正常。
 - **R48 原始笔迹状态**: `PenState` 的 rawLastX/Y/W、rawHasLast/Prev、rawPrevX/Y、rawPathLen 迁 Rust;
   `clearRaw`/`updateAfterSegment` 走 Rust; Swift 保留同 API 计算属性; 虚拟笔截图正常。
+- **R49 压感监视状态**: `PressureState` 的压力/坐标/接触/接近/事件类型迁 Rust(CString 存类型);
+  Swift 计算属性 + `sw_pm_update` 刷新桥; 压感窗真实更新正常。
 
 ## 下一批候选(按风险从低到高)
 

@@ -447,3 +447,12 @@ extern int glaspen2_rust_pen_raw_has_prev(void);
 extern void glaspen2_rust_pen_set_raw_has_prev(int v);
 extern void glaspen2_rust_pen_clear_raw(void);
 extern void glaspen2_rust_pen_update_after_segment(double x, double y, double width);
+
+// R49: 压感监视状态
+extern void glaspen2_rust_pm_update(int in_range, int pressure, double x, double y, int tip_down, const char *ev_type);
+extern int glaspen2_rust_pm_pressure(void);
+extern int glaspen2_rust_pm_tip_down(void);
+extern int glaspen2_rust_pm_in_range(void);
+extern double glaspen2_rust_pm_x(void);
+extern double glaspen2_rust_pm_y(void);
+extern const char *glaspen2_rust_pm_ev_type(void);
