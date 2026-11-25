@@ -71,6 +71,8 @@
   Swift 只做指针桥; `GLASPEN2_SWIFT_MENU_LOOKUP=1` 回退, 失败自动回退。
 - **R28 光标壳**: 空白/箭头 `NSCursor` 创建与光标环/点/十字线绘制迁 Rust(objc2+CoreGraphics);
   默认 Rust; `GLASPEN2_SWIFT_CURSOR=1` 回退, 失败自动回退。
+- **R29 设置面板窗口**: Rust 创建设置面板 `NSWindow`(标题/尺寸/样式/内容 VC/激活/居中);
+  delegate/Flutter host 仍 Swift; 默认 Rust, `GLASPEN2_SWIFT_SETTINGS_PANEL=1` 回退。
 
 ## 下一批候选(按风险从低到高)
 

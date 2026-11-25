@@ -886,3 +886,50 @@ pub extern "C" fn glaspen2_rust_draw_cursor(
     CGContext::add_line_to_point(Some(ctx), x + radius + 2.0, y);
     CGContext::stroke_path(Some(ctx));
 }
+
+/// R29: 创建设置面板窗口(标题/尺寸/样式/内容 VC/激活/居中); delegate 仍由 Swift 设置。
+/// 返回 +1 持有 NSWindow; GLASPEN2_SWIFT_SETTINGS_PANEL=1 时 Swift 回退。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_settings_window_create(
+    title: *const std::os::raw::c_char,
+    view_controller: *mut c_void,
+    width: f64,
+    height: f64,
+) -> *mut c_void {
+    use objc2_app_kit::{
+        NSApplication, NSApplicationActivationPolicy, NSBackingStoreType, NSViewController,
+        NSWindow, NSWindowStyleMask,
+    };
+    use objc2_foundation::{NSPoint, NSRect, NSSize, NSString, ns_string};
+
+    if title.is_null() || view_controller.is_null() {
+        return std::ptr::null_mut();
+    }
+    let Some(mtm) = MainThreadMarker::new() else {
+        return std::ptr::null_mut();
+    };
+    let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, height));
+    let window = unsafe {
+        NSWindow::initWithContentRect_styleMask_backing_defer(
+            NSWindow::alloc(mtm),
+            frame,
+            NSWindowStyleMask::Titled | NSWindowStyleMask::Closable | NSWindowStyleMask::Resizable,
+            NSBackingStoreType::Buffered,
+            false,
+        )
+    };
+    let title = unsafe { std::ffi::CStr::from_ptr(title) }.to_string_lossy();
+    window.setTitle(&NSString::from_str(&title));
+    window.setMinSize(NSSize::new(600.0, 800.0));
+    unsafe { window.setReleasedWhenClosed(false) };
+    let vc = unsafe { &*(view_controller as *const NSViewController) };
+    window.setContentViewController(Some(vc));
+    let app = NSApplication::sharedApplication(mtm);
+    app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
+    #[allow(deprecated)]
+    app.activateIgnoringOtherApps(true);
+    window.center();
+    let _ = ns_string!("");
+    tracing::info!("rust-shell: settings window created by Rust (objc2)");
+    Retained::into_raw(window) as *mut c_void
+}

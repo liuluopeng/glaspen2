@@ -329,3 +329,7 @@ extern int glaspen2_rust_menu_item_state(void *menu, long tag);
 extern void *glaspen2_rust_blank_cursor_create(void);
 extern void *glaspen2_rust_arrow_cursor_create(void);
 extern void glaspen2_rust_draw_cursor(void *ctx, int visible, double x, double y, int eraser);
+
+// R29: 设置面板窗口创建(默认; GLASPEN2_SWIFT_SETTINGS_PANEL=1 回退)
+extern void *glaspen2_rust_settings_window_create(const char *title, void *view_controller,
+                                                   double width, double height);
