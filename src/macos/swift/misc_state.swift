@@ -60,7 +60,8 @@ public func strokeTakeActive() -> OpaquePointer? {
 
 @_cdecl("glaspen2_router_cursor_invalidate")
 public func cursorInvalidate() {
-    glaspen2_router_dirty_include_surface_point(CursorState.x, CursorState.y, 14.0)
+    // 光标坐标是视图坐标(原点左下), 不是表面坐标(y 向下), 不能用 surface 转换。
+    dirtyIncludePoint(CursorState.x, CursorState.y, 14.0)
 }
 
 @_cdecl("glaspen2_router_cursor_flush_due")
