@@ -1351,3 +1351,20 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - bootstrap_status_item/bootstrap_screen_size 迁 Rust;
 - 删除 Swift 包装; statusbar probe OK, 冷启动 3440x1440 正常.
+
+
+## R253 阶段性验收
+
+- 冷启动: `window ready 3440x1440`, `CGEventTap created OK`;
+- 虚拟笔: 6s 内 2 次 pen DOWN, DB strokes 23439→23441;
+- SIGTERM: 优雅退出(TERM_OK);
+- 探针: menu/menu-full/statusbar/hotkeys/hotkey-perform/macos-api/tunnel-card/tunnel-frame/pageframe 全部 OK 或 diff=0;
+- 设置面板打开、压感窗、时光隧道(5/6 卡多次接管)、非隧道翻页(隐藏间隙 12-85ms)均正常.
+
+### 剩余 Swift 壳(3 文件, 均为 AppKit/SCK/Flutter/UI 桥)
+
+- `App/run_glue.swift`: 入口/AppDelegate/菜单文字桥/保存与反色 SCK 外壳/事件 tap/剪贴板/探针;
+- `Menu/menu_runtime.swift`: 菜单构建(富文本图标)/菜单文案刷新/启动菜单桥;
+- `Surface/tunnel_animation.swift`: 隧道卡片/帧渲染 Swift 参考实现 + 卡片/表面缓存/探针.
+
+纯逻辑/状态/C ABI 已全部 Rust; 剩余 Swift 仅负责 AppKit 对象构造、SC 流生命周期与视觉渲染参考/探针.
