@@ -108,37 +108,13 @@ import AppKit
     /// 恢复系统光标(S6-3-3d): 只有确实隐藏过(pen_drawing)才 show + 清标记。
     @objc(restoreSystemCursor)
     public static func restoreSystemCursor() {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_EVENT_ROUTER"] != "1" {
-            glaspen2_rust_restore_system_cursor()
-            return
-        }
-        if glaspen2_router_pen_drawing() != 0 {
-            glaspen2_router_show_system_cursor()
-            glaspen2_router_set_pen_drawing(0)
-        }
+        glaspen2_rust_restore_system_cursor()
     }
 
     /// 收尾在写笔画(退出/切页/丢 pen-up 时共用), 与 penUp 的区别是不动光标/不刷新。
     @objc(finishActiveStroke)
     public static func finishActiveStroke() {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_EVENT_ROUTER"] != "1" {
-            glaspen2_rust_finish_active_stroke()
-            return
-        }
-        guard glaspen2_router_stroke_active() != 0 else { return }
-        let ts = ProcessInfo.processInfo.systemUptime
-        if glaspen2_router_eraser_mode() != 0 {
-            glaspen2_router_modeler_erase_finish()
-            updateEraserState(isEraser: false)
-        } else {
-            glaspen2_router_modeler_end(glaspen2_router_last_raw_x(),
-                                        glaspen2_router_last_raw_y(), 0.0, ts)
-            glaspen2_router_commit_to_strokes()
-        }
-        glaspen2_router_stroke_end()
-        glaspen2_router_set_stroke_active(0)
-        glaspen2_router_apply_pending_color_width()
-        glaspen2_router_clear_raw_state()
+        glaspen2_rust_finish_active_stroke()
     }
 
     /// S6-3-4: 键盘事件: 录制热键 → 普通 chord; 返回 1 放行 / 2 消费。
@@ -220,31 +196,8 @@ import AppKit
     private static func routeProximity(_ event: CGEvent) {
         guard let prox = NSEvent(cgEvent: event) else { return }
         let dev = prox.pointingDeviceType
-        guard dev == .pen || dev == .eraser else { return }
         let enter = event.getIntegerValueField(.tabletProximityEventEnterProximity) == 1
-        // 进入/离开都要同步为真实 proximity;离开后残留的 pen 事件不得再自动显示笔迹。
-        PenState.tabletProximity = enter
-        PenState.hasSeenProximity = true
-        let label = enter ? (dev == .eraser ? "橡皮进入" : "悬浮进入") : "悬浮离开"
-        NSLog("[pen] \(label) (proximity \(enter ? "enter" : "exit"))")
-        if enter {
-            glaspen2_router_mark_tablet_proximity()
-            glaspen2_router_set_prox_device(Int32(dev.rawValue))
-            glaspen2_router_peek_cancel()
-            glaspen2_router_bubble_pen_back()
-            if glaspen2_router_ethereal() != 0 { glaspen2_router_pen_auto_show() }
-        } else {
-            PenState.proxDevice = 0 // 离开后不得残留上一次 proximity 的橡皮态
-            glaspen2_router_bubble_pen_gone()
-            if (glaspen2_router_cursor_flags() & 1) != 0 {
-                glaspen2_router_cursor_invalidate()
-                glaspen2_router_cursor_hide()
-                glaspen2_router_flush()
-            }
-            if glaspen2_router_ethereal() != 0 {
-                glaspen2_router_auto_hide()
-            }
-        }
+        _ = glaspen2_rust_route_proximity(Int32(dev.rawValue), enter ? 1 : 0)
     }
 
     /// S6-3-3d: 落笔入口: 自动翻页 + 模型器 begin + 共享 context + raw dot + 落笔状态。

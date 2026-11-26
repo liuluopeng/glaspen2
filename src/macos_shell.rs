@@ -6462,3 +6462,58 @@ pub extern "C" fn glaspen2_rust_update_pressure_monitor(
     unsafe { sw_pm_update(1, pm_pressure, x, y, i32::from(tip_down), cname.as_ptr()) };
     1
 }
+
+// ── R121: 笔 proximity 进入/离开 ──
+
+unsafe extern "C" {
+    fn glaspen2_router_bubble_pen_back();
+    fn glaspen2_router_bubble_pen_gone();
+    fn glaspen2_router_peek_cancel();
+    fn glaspen2_router_cursor_flags() -> i32;
+    fn glaspen2_router_cursor_invalidate();
+    fn glaspen2_router_flush();
+    fn glaspen2_router_auto_hide();
+    fn glaspen2_router_pen_auto_show();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_route_proximity(device: i32, enter: i32) -> i32 {
+    if device != 1 && device != 3 {
+        return 0;
+    }
+    glaspen2_rust_pen_set_tablet_proximity(enter);
+    glaspen2_rust_pen_set_has_seen_proximity(1);
+    if enter != 0 {
+        tracing::info!(
+            "[pen] {} (proximity enter)",
+            if device == 3 {
+                "橡皮进入"
+            } else {
+                "悬浮进入"
+            }
+        );
+        unsafe {
+            glaspen2_rust_pen_set_prox_device(device);
+            glaspen2_router_peek_cancel();
+            glaspen2_router_bubble_pen_back();
+        }
+        if unsafe { glaspen2_router_ethereal() } != 0 {
+            unsafe { glaspen2_router_pen_auto_show() };
+        }
+    } else {
+        tracing::info!("[pen] 悬浮离开 (proximity exit)");
+        glaspen2_rust_pen_set_prox_device(0);
+        unsafe {
+            glaspen2_router_bubble_pen_gone();
+            if (glaspen2_router_cursor_flags() & 1) != 0 {
+                glaspen2_router_cursor_invalidate();
+                glaspen2_router_cursor_hide();
+                glaspen2_router_flush();
+            }
+        }
+        if unsafe { glaspen2_router_ethereal() } != 0 {
+            unsafe { glaspen2_router_auto_hide() };
+        }
+    }
+    1
+}

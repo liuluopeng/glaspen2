@@ -652,3 +652,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - `updatePressureMonitor` 的 raw pressure/tipDown/事件名分类迁 Rust, 调 sw_pm_update;
 - EventRouter 两个方法变薄 C 调用; 虚拟笔运行进程存活、日志改为 Rust tracing;
 - 默认 smoke/tests/build/parity 全绿。
+
+
+## R121 笔 proximity 分派迁 Rust
+
+- `routeProximity` 的设备判定/enter-exit 状态/bubble/peek/ethereal/光标清理迁 Rust;
+- 同时删除 `restoreSystemCursor`/`finishActiveStroke` 的 Swift 回退, 仅保留 Rust 调用;
+- 虚拟笔运行存活; 默认 smoke/tests/parity 全绿。

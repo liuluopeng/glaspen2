@@ -625,3 +625,6 @@ extern int glaspen2_rust_handle_pen_event(int kind, double x, double y, double p
                                            double timestamp, double raw_width, int is_eraser);
 extern int glaspen2_rust_update_pressure_monitor(int kind, long long raw_field,
                                                   double x, double y, double pressure);
+
+// R121: 笔 proximity 进入/离开
+extern int glaspen2_rust_route_proximity(int device, int enter);
