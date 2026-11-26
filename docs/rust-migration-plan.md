@@ -1247,3 +1247,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - zoom_at/cursor_set/cursor_show/hide/show_system_cursor/virtual_pen_user_data 迁 Rust;
 - 删 Swift 包装; menu/hotkey probes OK, 虚拟笔 pen DOWN 正常.
+
+
+## R234 run_glue 纯状态 C 桥迁 Rust
+
+- state/cursor_flags/pen_state/auto_hide/flush/pen_auto_show/peek_cancel/reenable_tap/pen_bubble/bubble_pen_back/gone/raw_width/rec_slot/mode/finish 16 个符号迁 Rust;
+- 删除 Swift 包装; hotkey probe OK, 虚拟笔 pen DOWN 正常;
+- 偶发 NSFont NULL panic 复测未复现, 记录为字体服务瞬态.

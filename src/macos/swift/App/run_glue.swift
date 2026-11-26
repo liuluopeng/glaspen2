@@ -12,52 +12,19 @@ public func appRun() {
 @_cdecl("glaspen2_router_camera_mods")
 public func runCameraMods() -> UInt { MenuRuntime.maskFor(action: "canvas_zoom_in") }
 
-@_cdecl("glaspen2_router_state")
-public func runState() -> Int32 {
-    glaspen2_router_enabled()
-        | (((glaspen2_rust_pen_stroke_active() != 0) ? 1 : 0) << 1)
-        | ((glaspen2_router_infinite()) << 2)
-}
 
 @_cdecl("glaspen2_router_draw_height")
 public func runDrawHeight() -> Double { Double(UIAnchors.drawView?.bounds.size.height ?? 0) }
 
 
-@_cdecl("glaspen2_router_cursor_flags")
-public func runCursorFlags() -> Int32 {
-    (glaspen2_router_pen_cursor_visible() != 0 ? 1 : 0)
-        | (((glaspen2_rust_pen_stroke_active() != 0) ? 1 : 0) << 1)
-        | ((glaspen2_router_ethereal()) << 2)
-        | (((glaspen2_rust_pen_has_seen_proximity() != 0) ? 1 : 0) << 3)
-}
-
-@_cdecl("glaspen2_router_auto_hide")
-public func runAutoHide() { _ = glaspen2_rust_ethereal_hide_now() }
-
-@_cdecl("glaspen2_router_bubble_pen_gone")
-public func runBubblePenGone() { glaspen2_bubble_pen_gone() }
-
-@_cdecl("glaspen2_router_flush")
-public func runFlush() { glaspen2_rust_overlay_flush_dirty() }
 
 
-@_cdecl("glaspen2_router_pen_state")
-public func runPenState() -> Int32 {
-    (glaspen2_router_strokes_visible())
-        | (((glaspen2_rust_pen_stroke_active() != 0) ? 1 : 0) << 1)
-        | ((glaspen2_router_pen_cursor_visible() != 0 ? 1 : 0) << 2)
-}
 
-@_cdecl("glaspen2_router_pen_bubble")
-public func runPenBubble(_ back: Int32) {
-    if back != 0 { glaspen2_bubble_pen_back() } else { glaspen2_bubble_pen_activity() }
-}
 
-@_cdecl("glaspen2_router_pen_auto_show")
-public func runPenAutoShow() { glaspen2_rust_ethereal_auto_show() }
 
-@_cdecl("glaspen2_router_peek_cancel")
-public func runPeekCancel() { glaspen2_rust_ethereal_cancel_peek() }
+
+
+
 
 
 
@@ -70,17 +37,6 @@ public func runDisableCleanup() {
     EventRouter.restoreSystemCursor()
 }
 
-@_cdecl("glaspen2_router_rec_slot_gif")
-public func runRecSlotGif() -> Int32 { 0 }
-@_cdecl("glaspen2_router_rec_slot_chat")
-public func runRecSlotChat() -> Int32 { 1 }
-@_cdecl("glaspen2_router_rec_mode")
-public func runRecMode(_ slot: Int32) -> Int32 { glaspen2_recording_mode(slot) }
-@_cdecl("glaspen2_router_rec_finish_and_count")
-public func runRecFinishAndCount() -> Int32 {
-    EventRouter.finishActiveStroke()
-    return glaspen2_stroke_count()
-}
 
 @_cdecl("glaspen2_router_tap_menu_bar_interaction")
 public func runTapMenuBar() {
@@ -107,16 +63,8 @@ public func runBubbleAutoPageFlip() { _ = bubbleAutoPageFlip() }
 @_cdecl("glaspen2_router_apply_pending_color_width")
 public func runApplyPendingColorWidth() { glaspen2_rust_apply_pending_color_width() }
 
-@_cdecl("glaspen2_router_bubble_pen_back")
-public func runBubblePenBack() { glaspen2_bubble_pen_back() }
 
-@_cdecl("glaspen2_router_reenable_tap")
-public func runReenableTap() { glaspen2_router_event_tap_enable() }
 
-@_cdecl("glaspen2_router_raw_width")
-public func runRawWidth(_ pressure: Double) -> Double {
-    glaspen2_pressure_raw_width(pressure, glaspen2_router_width_scale()) * glaspen2_router_zoom()
-}
 
 private let runLangEnPtr: UnsafeMutablePointer<CChar> = strdup("en")!
 private let runLangZhPtr: UnsafeMutablePointer<CChar> = strdup("zh")!

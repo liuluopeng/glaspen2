@@ -3742,7 +3742,6 @@ unsafe extern "C" {
     fn glaspen2_get_infinite_transform(px: *mut f64, py: *mut f64, pz: *mut f64);
     fn glaspen2_router_canvas_apply_transform();
     fn glaspen2_router_peek_lens_change();
-    fn glaspen2_router_state() -> i32;
     fn glaspen2_router_screen_w() -> f64;
     fn glaspen2_router_screen_h() -> f64;
 }
@@ -4215,11 +4214,7 @@ pub extern "C" fn glaspen2_rust_raw_draw_segment2(x: f64, y: f64, width: f64, sc
 // ── R70: 录制热键判定/事件 JSON(⌘⌃R/2/3) ──
 
 unsafe extern "C" {
-    fn glaspen2_router_rec_slot_gif() -> i32;
-    fn glaspen2_router_rec_slot_chat() -> i32;
-    fn glaspen2_router_rec_mode(slot: i32) -> i32;
     fn glaspen2_router_chat_integration() -> i32;
-    fn glaspen2_router_rec_finish_and_count() -> i32;
     fn glaspen2_router_recording_feed(slot: i32, json: *const std::os::raw::c_char) -> i32;
 }
 
@@ -6530,15 +6525,7 @@ pub extern "C" fn glaspen2_rust_update_pressure_monitor(
 
 // ── R121: 笔 proximity 进入/离开 ──
 
-unsafe extern "C" {
-    fn glaspen2_router_bubble_pen_back();
-    fn glaspen2_router_bubble_pen_gone();
-    fn glaspen2_router_peek_cancel();
-    fn glaspen2_router_cursor_flags() -> i32;
-    fn glaspen2_router_flush();
-    fn glaspen2_router_auto_hide();
-    fn glaspen2_router_pen_auto_show();
-}
+unsafe extern "C" {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_route_proximity(device: i32, enter: i32) -> i32 {
@@ -6584,10 +6571,7 @@ pub extern "C" fn glaspen2_rust_route_proximity(device: i32, enter: i32) -> i32 
 
 // ── R122: 笔光标更新/系统光标隐藏恢复 ──
 
-unsafe extern "C" {
-    fn glaspen2_router_pen_bubble(on: i32);
-    fn glaspen2_router_pen_state() -> i32;
-}
+unsafe extern "C" {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_pen_system_cursor(kind: i32) {
@@ -6712,7 +6696,6 @@ pub extern "C" fn glaspen2_rust_route_keyboard(
 // ── R127: 主路由笔事件块(压感/raw width/自动显示/分派) ──
 
 unsafe extern "C" {
-    fn glaspen2_router_raw_width(pressure: f64) -> f64;
     fn glaspen2_router_strokes_hidden() -> i32;
 }
 
@@ -7497,9 +7480,7 @@ pub struct GlaspenEventC {
     pub is_eraser: i32,
 }
 
-unsafe extern "C" {
-    fn glaspen2_router_reenable_tap();
-}
+unsafe extern "C" {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_route_event(ev: *const GlaspenEventC) -> i32 {
@@ -8598,7 +8579,6 @@ pub extern "C" fn glaspen2_rust_statusbar_selftest() -> i32 {
 unsafe extern "C" {
     fn glaspen2_init_db(w: i32, h: i32);
     fn glaspen2_modeler_clear_buffer();
-    fn glaspen2_stroke_count() -> i64;
 }
 
 #[unsafe(no_mangle)]
@@ -10549,4 +10529,99 @@ pub extern "C" fn glaspen2_router_show_system_cursor() {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_virtual_pen_user_data() -> i64 {
     0x5650_4E31
+}
+
+// ── R234: run_glue 纯状态 C 桥迁 Rust ──
+
+unsafe extern "C" {
+    fn glaspen2_bubble_pen_activity();
+    fn glaspen2_bubble_pen_back();
+    fn glaspen2_bubble_pen_gone();
+}
+
+fn glaspen2_width_scale_for_raw() -> f64 {
+    unsafe { glaspen2_router_width_scale() }
+}
+
+unsafe extern "C" {
+    fn glaspen2_pressure_raw_width(pressure: f64, width_scale: f64) -> f64;
+    fn glaspen2_stroke_count() -> i64;
+    fn glaspen2_recording_mode(slot: i32) -> i32;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_state() -> i32 {
+    (unsafe { glaspen2_router_enabled() })
+        | (i32::from(glaspen2_rust_pen_stroke_active() != 0) << 1)
+        | (unsafe { glaspen2_router_infinite() } << 2)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_cursor_flags() -> i32 {
+    i32::from(unsafe { glaspen2_router_pen_cursor_visible() } != 0)
+        | (i32::from(glaspen2_rust_pen_stroke_active() != 0) << 1)
+        | (unsafe { glaspen2_router_ethereal() } << 2)
+        | (i32::from(glaspen2_rust_pen_has_seen_proximity() != 0) << 3)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_pen_state() -> i32 {
+    (unsafe { glaspen2_router_strokes_visible() })
+        | (i32::from(glaspen2_rust_pen_stroke_active() != 0) << 1)
+        | (i32::from(unsafe { glaspen2_router_pen_cursor_visible() } != 0) << 2)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_auto_hide() {
+    let _ = glaspen2_rust_ethereal_hide_now();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_flush() {
+    glaspen2_rust_overlay_flush_dirty();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_pen_auto_show() {
+    glaspen2_rust_ethereal_auto_show();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_peek_cancel() {
+    glaspen2_rust_ethereal_cancel_peek();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_reenable_tap() {
+    glaspen2_router_event_tap_enable();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_pen_bubble(back: i32) {
+    if back != 0 {
+        unsafe { glaspen2_bubble_pen_back() }
+    } else {
+        unsafe { glaspen2_bubble_pen_activity() }
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_bubble_pen_back() {
+    unsafe { glaspen2_bubble_pen_back() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_bubble_pen_gone() {
+    unsafe { glaspen2_bubble_pen_gone() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_raw_width(pressure: f64) -> f64 {
+    (unsafe { glaspen2_width_scale_for_raw() }) * unsafe { glaspen2_router_zoom() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_rec_slot_gif() -> i32 {
+    0
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_rec_slot_chat() -> i32 {
+    1
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_rec_mode(slot: i32) -> i32 {
+    unsafe { glaspen2_recording_mode(slot) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_rec_finish_and_count() -> i32 {
+    glaspen2_rust_finish_active_stroke();
+    unsafe { glaspen2_stroke_count() as i32 }
 }
