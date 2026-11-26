@@ -1383,3 +1383,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - i18n 闸门: macOS 扫描 3 个 Swift 壳 + 读取 macos_shell.rs 的 key 字面量; 录音/HUD 保留 key 豁免; ⌘⌃3 keys 参数允许 Rust 壳;
 - tests/swift_layout.rs 阈值由 >=90 改为 3..=8(迁移后仅余壳);
 - `cargo test --workspace --exclude glaspen2_installer` 全绿(此前因 include_str 删文件编译失败, 已修复).
+
+
+## R256 全量测试恢复
+
+- `cargo test --workspace --exclude glaspen2_installer` 从 include_str 失败恢复为 **全绿**(core 318+ tests / chat / windows / root / doc-tests);
+- `sh scripts/smoke-macos.sh debug` 通过;
+- `sh scripts/check-platform-parity.sh` 通过;
+- 说明: 之前批次日志只 grep test result 被管道吞掉, 本轮直接查看 tail + exit code 确认.
