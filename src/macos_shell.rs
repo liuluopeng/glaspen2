@@ -5117,7 +5117,6 @@ unsafe extern "C" {
     ) -> *mut std::os::raw::c_char;
     fn glaspen2_router_refresh_menu_texts();
     fn glaspen2_router_hotkey_recording(on: i32);
-    fn glaspen2_menu_apply_outline(on: i32);
     fn glaspen2_router_set_grid_size(v: f64);
     fn glaspen2_router_set_grid_divider(v: i32);
     fn glaspen2_router_set_minimap(on: i32);
@@ -9841,7 +9840,6 @@ pub extern "C" fn glaspen2_rust_surface_save_drawing_only() {
 // ── R211: 菜单 handler 逻辑迁 Rust ──
 
 unsafe extern "C" {
-    fn glaspen2_menu_set_lang(value: i32);
     fn glaspen2_menu_refresh_texts();
     fn glaspen2_save_xoj();
 }
@@ -10396,4 +10394,98 @@ pub extern "C" fn glaspen2_router_hotkey_perform(key: u16) -> i32 {
         }
         _ => 0,
     }
+}
+
+unsafe extern "C" {
+    fn glaspen2_router_set_lang(value: i32);
+}
+
+// ── R231: 菜单 C 薄桥迁 Rust ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_lang() -> i32 {
+    unsafe { glaspen2_router_lang() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_set_lang(value: i32) {
+    unsafe { glaspen2_router_set_lang(value) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_launch_at_login() -> i32 {
+    unsafe { glaspen2_is_launch_at_login() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_set_launch(on: i32) {
+    glaspen2_rust_set_launch_at_login(on);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_glass_enabled() -> i32 {
+    unsafe { glaspen2_router_glass_enabled() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_set_glass(on: i32) {
+    glaspen2_rust_set_glass_enabled(on);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_outline_enabled() -> i32 {
+    unsafe { glaspen2_router_outline_enabled() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_apply_outline(on: i32) {
+    glaspen2_rust_menu_set_outline_enabled(on);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_infinite_enabled() -> i32 {
+    unsafe { glaspen2_router_infinite() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_apply_infinite(on: i32) {
+    let text = i18n_text_owned(if on != 0 {
+        "canvas.infinite_on"
+    } else {
+        "canvas.infinite_off"
+    });
+    if text.is_null() {
+        return;
+    }
+    unsafe {
+        glaspen2_rust_apply_infinite(on, text);
+        libc::free(text as *mut c_void);
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_save_only() {
+    glaspen2_rust_surface_save_drawing_only();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_clear_screen() {
+    glaspen2_rust_surface_clear_screen();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_toggle_enabled() {
+    glaspen2_rust_toggle_draw_enabled();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_show_settings() {
+    glaspen2_rust_show_settings_panel();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_toggle_canvas_mode() {
+    glaspen2_rust_toggle_canvas_mode();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_select_color(idx: i32) {
+    let _ = glaspen2_rust_select_color(idx);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_select_width(idx: i32) {
+    let _ = glaspen2_rust_select_width(idx);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_save_xoj_raw() {
+    unsafe { glaspen2_save_xoj() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_quit_bridge() {
+    glaspen2_rust_menu_quit_app();
 }

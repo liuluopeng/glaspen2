@@ -828,3 +828,5 @@ extern void glaspen2_rust_menu_application_should_terminate(void);
 
 // R230: 热键分派
 extern int glaspen2_router_hotkey_perform(unsigned short key);
+
+// R231: 菜单 C 薄桥全部 Rust

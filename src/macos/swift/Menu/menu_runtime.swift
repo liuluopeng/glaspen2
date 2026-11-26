@@ -105,55 +105,10 @@ import AppKit
 }
 
 // C ABI 薄桥(供剩余 ObjC 与 Swift 既有 Bridging 声明使用)
-@_cdecl("glaspen2_menu_lang")
-public func menuLang() -> Int32 { glaspen2_router_lang() }
-@_cdecl("glaspen2_menu_set_lang")
-public func menuSetLang(_ value: Int32) { glaspen2_router_set_lang(value) }
 @_cdecl("glaspen2_menu_refresh_texts")
 public func menuRefreshTexts() { MenuTextUpdater.update() }
-@_cdecl("glaspen2_menu_launch_at_login")
-public func menuLaunchAtLogin() -> Int32 { glaspen2_is_launch_at_login() }
-@_cdecl("glaspen2_menu_set_launch")
-public func menuSetLaunch(_ on: Int32) { glaspen2_rust_set_launch_at_login(on) }
-@_cdecl("glaspen2_menu_glass_enabled")
-public func menuGlassEnabled() -> Int32 { glaspen2_router_glass_enabled() }
-@_cdecl("glaspen2_menu_set_glass")
-public func menuSetGlass(_ on: Int32) { glaspen2_rust_set_glass_enabled(on) }
-@_cdecl("glaspen2_menu_outline_enabled")
-public func menuOutlineEnabled() -> Int32 { glaspen2_router_outline_enabled() }
-@_cdecl("glaspen2_menu_apply_outline")
-public func menuApplyOutline(_ on: Int32) { glaspen2_rust_menu_set_outline_enabled(on) }
-@_cdecl("glaspen2_menu_infinite_enabled")
-public func menuInfiniteEnabled() -> Int32 { glaspen2_router_infinite() }
-@_cdecl("glaspen2_menu_apply_infinite")
-public func menuApplyInfinite(_ on: Int32) {
-    let text = MenuRuntime.l10n(on != 0 ? "canvas.infinite_on" : "canvas.infinite_off")
-    _ = text.withCString { glaspen2_rust_apply_infinite(on, $0) }
-}
 @_cdecl("glaspen2_menu_save_with_bg")
 public func menuSaveWithBg() { SaveBackground.save() }
-@_cdecl("glaspen2_menu_save_only")
-public func menuSaveOnly() { glaspen2_rust_surface_save_drawing_only() }
-@_cdecl("glaspen2_menu_clear_screen")
-public func menuClearScreen() { glaspen2_rust_surface_clear_screen() }
-@_cdecl("glaspen2_menu_toggle_enabled")
-public func menuToggleEnabled() { glaspen2_rust_toggle_draw_enabled() }
-@_cdecl("glaspen2_menu_show_settings")
-public func menuShowSettings() { glaspen2_rust_show_settings_panel() }
-@_cdecl("glaspen2_menu_toggle_canvas_mode")
-public func menuToggleCanvasMode() { glaspen2_rust_toggle_canvas_mode() }
-@_cdecl("glaspen2_menu_select_color")
-public func menuSelectColor(_ idx: Int32) { _ = glaspen2_rust_select_color(idx) }
-@_cdecl("glaspen2_menu_select_width")
-public func menuSelectWidth(_ idx: Int32) { _ = glaspen2_rust_select_width(idx) }
-@_cdecl("glaspen2_menu_save_xoj_raw")
-public func menuSaveXoj() { glaspen2_save_xoj() }
-@_cdecl("glaspen2_menu_quit_bridge")
-public func menuQuitBridge() { glaspen2_rust_menu_quit_app() }
-@_cdecl("glaspen2_router_pm_show")
-public func menuPMShow() { PressureMonitorWindow.show() }
-@_cdecl("glaspen2_router_pm_hide")
-public func menuPMHide() { PressureMonitorWindow.hide() }
 @_cdecl("glaspen2_router_pm_refresh")
 public func menuPMRefresh() { PressureMonitorWindow.refreshLabel() }
 @_cdecl("gl_panel_transparent_apply")

@@ -1228,3 +1228,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - HotkeyDispatch.perform 全部分派迁 Rust(翻页/新建页/导出/撤销/复制/玻璃/画布/设置); 翻页与剪贴板保留 Swift 桥;
 - 删除 HotkeyDispatch 类; 新增 --swift-hotkey-perform-probe 并入 smoke;
 - probe draw1=1 draw2=1 undo=1; menu probe OK; 冷启动正常.
+
+
+## R231 菜单 C 薄桥迁 Rust
+
+- lang/launch/glass/outline/infinite/apply/save/clear/toggle/settings/select/xoj/quit 等 19 个 C 符号迁 Rust;
+- 删除 Swift 对应包装与重复 ensure_surface/pm_show/hide 导出; menu probes/hotkey/api probe OK, 冷启动正常;
+- 一次启动出现 NSFont NULL panic, 复测未复现(疑似探针/字体缓存瞬态), 已记录.
