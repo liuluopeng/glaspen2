@@ -9,31 +9,8 @@ import AppKit
 
     @objc(handleWithType:keyCode:hasCmdCtrl:)
     public static func handle(type: CGEventType, keyCode: UInt16, hasCmdCtrl: Bool) -> Bool {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_RECORDING_KEYS"] != "1" {
-            return glaspen2_rust_recording_hotkey(type == .keyDown ? 1 : 0, keyCode, hasCmdCtrl ? 1 : 0) != 0
-        }
-        let gif = Int(glaspen2_router_rec_slot_gif())
-        let chat = Int(glaspen2_router_rec_slot_chat())
-        let down = type == .keyDown
-        if !down && keyCode == keyR && glaspen2_router_rec_mode(Int32(gif)) == 1 {
-            feedRelease(slot: gif, mode: "Gif"); return true
-        }
-        if down && hasCmdCtrl && keyCode == keyR {
-            feedStart(slot: gif, mode: "Gif"); return true
-        }
-        if !down && keyCode == key3 && glaspen2_router_rec_mode(Int32(chat)) == 3 {
-            feedRelease(slot: chat, mode: "Send"); return true
-        }
-        if down && glaspen2_router_chat_integration() != 0 && hasCmdCtrl && keyCode == key3 {
-            feedStart(slot: chat, mode: "Send"); return true
-        }
-        if !down && keyCode == key2 && glaspen2_router_rec_mode(Int32(chat)) == 2 {
-            feedRelease(slot: chat, mode: "Draft"); return true
-        }
-        if down && glaspen2_router_chat_integration() != 0 && hasCmdCtrl && keyCode == key2 {
-            feedStart(slot: chat, mode: "Draft"); return true
-        }
-        return false
+        glaspen2_rust_recording_hotkey(type == .keyDown ? 1 : 0, keyCode,
+                                        hasCmdCtrl ? 1 : 0) != 0
     }
 
     private static func feedStart(slot: Int, mode: String) { feed(slot: slot, type: "StartPressed", mode: mode) }

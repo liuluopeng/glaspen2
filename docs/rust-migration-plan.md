@@ -757,3 +757,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - 13 个 toggle/action(setOutline/applyGlass/pressureLabel/chat/draw/pressure/grid/launch/glass/color/width/pending/quit)删除 env 回退与旧实现, 仅调 Rust;
 - debug build 通过(加速批次)。
+
+
+## R138 涂鸦启停/录制热键回退清理
+
+- DrawMode.toggleEnabled 删除 Swift 显隐旧实现, 仅调 Rust toggle_draw;
+- RecordingHotkeys.handle 删除 Swift 键码/状态机旧实现, 仅调 Rust;
+- debug build 通过。
