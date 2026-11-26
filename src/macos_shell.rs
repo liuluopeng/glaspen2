@@ -8585,3 +8585,22 @@ pub extern "C" fn glaspen2_router_camera_pan_mods() -> usize {
     unsafe { glaspen2_free_c_string(chord) };
     mask as usize
 }
+
+// ── R179: 状态栏自检(status_bar.swift 删除后) ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_statusbar_selftest() -> i32 {
+    use objc2::runtime::AnyObject;
+    let item = glaspen2_rust_status_item_create();
+    if item.is_null() {
+        println!("SWIFT_STATUSBAR_FAIL");
+        return 1;
+    }
+    let button: *mut AnyObject = unsafe { objc2::msg_send![item as *mut AnyObject, button] };
+    if button.is_null() {
+        println!("SWIFT_STATUSBAR_FAIL");
+        return 1;
+    }
+    println!("SWIFT_STATUSBAR_OK items=1 button=1");
+    0
+}

@@ -1008,3 +1008,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 屏幕尺寸/无限画布导出/退出/menuWillOpen/DidClose/settings sync/shortcut reserved/effective/chord/action/camera pan mods 迁 Rust;
 - 删除 MenuRuntime 对应 Swift C 包装; hotkeys probe 14/14, 冷启动正常;
 - 批次 tests/smoke debug/parity 全绿。
+
+
+## R179 删除 status_bar.swift
+
+- 状态栏图标/更新/自检全部 Rust; run_glue 直调 glaspen2_rust_status_icon_apply; --swift-statusbar-probe 改 Rust 自检;
+- 删除 status_bar.swift; Swift 60→59;
+- statusbar probe OK, 冷启动正常。

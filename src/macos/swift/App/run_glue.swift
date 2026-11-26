@@ -107,14 +107,12 @@ public func runTapMenuBar() {
 @_cdecl("glaspen2_router_update_status_icon_state")
 public func runUpdateStatusIcon() {
     guard let item = UIAnchors.statusItem else { return }
-    StatusIconUpdater.apply(item: item, eraser: (glaspen2_rust_pen_eraser_mode() != 0),
-                            enabled: glaspen2_router_enabled() != 0,
-                            ethereal: glaspen2_router_ethereal() != 0,
-                            infinite: glaspen2_router_infinite() != 0,
-                            widthScale: glaspen2_router_width_scale(),
-                            penRed: glaspen2_router_pen_r(),
-                            penGreen: glaspen2_router_pen_g(),
-                            penBlue: glaspen2_router_pen_b())
+    _ = glaspen2_rust_status_icon_apply(
+        Unmanaged.passUnretained(item).toOpaque(),
+        glaspen2_rust_pen_eraser_mode(), glaspen2_router_enabled(),
+        glaspen2_router_ethereal(), glaspen2_router_infinite(),
+        glaspen2_router_width_scale(), glaspen2_router_pen_r(),
+        glaspen2_router_pen_g(), glaspen2_router_pen_b())
 }
 
 @_cdecl("glaspen2_router_bubble_auto_page_flip")
