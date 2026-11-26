@@ -1084,3 +1084,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - display_changed 入口改为 Rust: 读主屏尺寸/begin/2.5s 线程防抖/finish; display_finish 改读主屏尺寸;
 - 删除 App/display_monitor.swift; app_bootstrap 观察者直调 Rust; Swift 46→45;
 - 冷启动正常; 批次验证后提交。
+
+
+## R195 删除死代码 action_dispatch/overlay_grid
+
+- ActionDispatch 无调用者, 删除 action_dispatch.swift;
+- OverlayGridRenderer/OverlayTunnelRenderer.drawTunnel 无调用者, 仅 clear 改直调 Rust C; 删除 overlay_grid.swift;
+- Swift 45→43; debug build 通过。

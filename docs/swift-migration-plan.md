@@ -787,3 +787,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R190/191 | 画布模式/录制热键/open_url 迁 Rust; 删3文件; Swift 50→47; 批次验证绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R192 | 删除 settings_glue.swift; runOnMain/canvasOverview 内联; Swift 47→46 | 本提交 |
 | 2026-11-26 | Rust-R194 | 显示器变更防抖迁 Rust; 删 display_monitor.swift; Swift 46→45; 批次验证绿(不跑 release) | 本提交 |
+| 2026-11-26 | Rust-R195 | 删除 ActionDispatch/OverlayGrid 死代码; Swift 45→43 | 本提交 |

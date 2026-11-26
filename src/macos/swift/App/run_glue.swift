@@ -268,7 +268,7 @@ public func runTunnelClearState() {
     TunnelState.blur = nil
     TunnelState.surface = nil
     TunnelState.cards = 0
-    OverlayTunnelRenderer.clear()
+    glaspen2_rust_clear_tunnel_cache()
 }
 
 @_cdecl("glaspen2_swift_tunnel_flush")
