@@ -1186,3 +1186,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - event_tap 合入 event_router; menu_builder_full 合入 menu_builder; tunnel_frame 合入 tunnel_card;
 - 删3文件; Swift 21→18;
 - menu-full/tunnel-card/tunnel-frame parity 0, 冷启动正常。
+
+
+## R217/218/219 应用/菜单/隧道文件合并
+
+- main_menu 合入 menu_builder; ui_anchors 合入 run_glue; flipper 合入 tunnel_animation;
+- 删3文件; 修 sw_glass_view 重定义; Swift 18→15;
+- menu probes OK, 冷启动正常。
