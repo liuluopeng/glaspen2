@@ -1402,3 +1402,27 @@ modeler Up error 需真机笔/翻页连击复验。
 - 虚拟笔 6s 内 2 次 pen DOWN, strokes 23439→23441;
 - SIGTERM 优雅退出;
 - 时光隧道/非隧道翻页、设置面板、压感窗、各探针均正常.
+
+
+## R258 迁移收尾总结
+
+### 结果
+
+- macOS 应用层 Swift 文件数: **103+ → 3**; ObjC `.m/.mm`: **0**; 现有 C ABI 保留;
+- 纯逻辑/状态/C ABI 已全部 Rust: 事件路由/热键/菜单动作/设置恢复与面板 API/笔状态与模型器桥/网格/镜头/翻页编排/隧道定时与渲染/反色捕获状态/通知/压感窗/UI 锚点/剪贴板/信号/单实例/启动编排/诊断探针等;
+- 剩余 3 个 Swift 文件仅承担原生对象构造与系统框架适配:
+  - `App/run_glue.swift`: AppKit/NSApplication 入口、AppDelegate、菜单文字/图标桥、ScreenCaptureKit 保存与反色外壳、CGEventTap 安装、测试探针;
+  - `Menu/menu_runtime.swift`: NSMenu/NSMenuItem/NSAttributedString 构建、菜单文案刷新、图形图标绘制;
+  - `Surface/tunnel_animation.swift`: 隧道卡片/帧的 Swift 参考实现与 parity 探针、卡片/表面缓存数组、Swift 侧 prepare/commit 闭包;
+- 这些是 AppKit/SCK/Flutter 原生对象生命周期与视觉参考代码, 不属于可移植业务逻辑; 迁移边界见 README/本文件。
+
+### 自动化验证
+
+- `cargo test --workspace --exclude glaspen2_installer` exit 0;
+- `sh scripts/smoke-macos.sh debug` 通过;
+- `sh scripts/check-platform-parity.sh` 通过;
+- 冷启动/Swift probe/虚拟笔/隧道/翻页/设置面板/压感/SIGTERM 通过(详见 R253/R257).
+
+### 仍待人工真机验收
+
+- 真笔压感/橡皮/描边/软阴影; 多显示器与睡眠唤醒; 反色突出真实屏幕; 带背景保存 Display P3; GIF/聊天录制; 这些无法在无真实输入设备的会话内自动证明, 清单见 `docs/s8-acceptance-checklist.md`.
