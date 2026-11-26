@@ -621,3 +621,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - 全量 tests/release build/smoke/parity 全绿; tag `v0.7.0` = `ce525db` 未动; 未 push;
 - Swift 69 文件, ObjC .m/.mm 0.
 - 剩余 Swift 主要为 EventRouter 主分派壳、录制效果、Flutter host、菜单/状态栏构建壳、隧道/相机回退与启动编排; 真机多屏/录制/隧道视觉仍需人工验收。
+
+
+## R117 清理 TunnelLifecycle Swift 回退
+
+- 删除 freeCards/finish 的 Swift 旧实现与 env 回退; 仅留 Rust 调用 + prepare/commit 闭包;
+- 真机 5 卡隧道: 接管 5 卡 / 结束后 freed count=5; 默认 smoke/tests/parity 全绿。
