@@ -432,3 +432,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - `drawPageFrame` 默认 Rust, `GLASPEN2_SWIFT_PAGEFRAME=1` 回退;
 - 新增 `--swift-pageframe-parity`: 同参数 Rust/Swift 绘制 300x200, `diff=0/60000`;
 - parity 探针并入 smoke; 默认/回退 smoke、tests/build/parity 全绿。
+
+
+## R91 整页重建/重放编排迁 Rust
+
+- `PageViewOps.rebuildSurface` / `SurfaceReplay.replay` 的 draw_rebuild_view + 页框 + flush + dirty reset + overlay flush 编排迁 Rust;
+- 默认 Rust, `GLASPEN2_SWIFT_SURFACE_REBUILD=1` 回退;
+- 虚拟笔/启动截图正常; 默认/回退 smoke、tests/build/parity 全绿。

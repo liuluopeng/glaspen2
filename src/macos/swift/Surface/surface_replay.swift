@@ -4,6 +4,13 @@ import AppKit
 @objc public final class SurfaceReplay: NSObject {
     @objc public static func replay() {
         guard let surface = SurfaceStore.current else { return }
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_SURFACE_REBUILD"] != "1",
+           glaspen2_rust_rebuild_surface(UnsafeMutableRawPointer(surface),
+                                         SurfaceStore.scaleFactor,
+                                         PageViewOps.paperOx, PageViewOps.paperOy, PageViewOps.paperScale,
+                                         1) != 0 {
+            return
+        }
         glaspen2_draw_rebuild_view(UnsafeMutableRawPointer(surface),
                                    SurfaceStore.scaleFactor,
                                    PageViewOps.paperOx,
@@ -11,7 +18,7 @@ import AppKit
                                    PageViewOps.paperScale)
         drawPageFrame()
         cairo_surface_flush(surface)
-                OverlayLayerFlush.flush()
+        OverlayLayerFlush.flush()
     }
 
     private static func pageviewFrameDraw(_ surface: OpaquePointer) {

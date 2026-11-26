@@ -562,3 +562,7 @@ extern int glaspen2_rust_apply_setting(const char *key, const char *value);
 // R90: 快照观看页框(默认; GLASPEN2_SWIFT_PAGEFRAME=1 回退)
 extern int glaspen2_rust_draw_page_frame(void *surface, double scale, double ox, double oy,
                                           double pscale, int page_w, int page_h, int is_fit);
+
+// R91: 整页重建/重放编排(默认; GLASPEN2_SWIFT_SURFACE_REBUILD=1 回退)
+extern int glaspen2_rust_rebuild_surface(void *surface, double scale, double ox, double oy,
+                                          double pscale, int draw_page_frame);

@@ -5379,3 +5379,44 @@ pub extern "C" fn glaspen2_rust_draw_page_frame(
     }
     1
 }
+
+// ── R91: 整页重建/重放编排(rebuild view + 页框 + flush + dirty + overlay flush) ──
+
+unsafe extern "C" {
+    fn glaspen2_draw_rebuild_view(surface: *mut c_void, scale: f64, ox: f64, oy: f64, pscale: f64);
+    fn cairo_surface_flush(surface: *mut c_void);
+    fn glaspen2_swift_overlay_flush();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_rebuild_surface(
+    surface: *mut c_void,
+    scale: f64,
+    ox: f64,
+    oy: f64,
+    pscale: f64,
+    draw_page_frame: i32,
+) -> i32 {
+    if surface.is_null() {
+        return 0;
+    }
+    unsafe { glaspen2_draw_rebuild_view(surface, scale, ox, oy, pscale) };
+    if draw_page_frame != 0 {
+        let _ = glaspen2_rust_draw_page_frame(
+            surface,
+            scale,
+            ox,
+            oy,
+            pscale,
+            glaspen2_rust_pageview_page_w(),
+            glaspen2_rust_pageview_page_h(),
+            glaspen2_rust_pageview_is_fit(),
+        );
+    }
+    unsafe {
+        cairo_surface_flush(surface);
+        glaspen2_swift_overlay_flush();
+    }
+    glaspen2_rust_dirty_reset();
+    1
+}

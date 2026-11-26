@@ -13,6 +13,13 @@ import AppKit
     /// 由 STROKES 内存整页重建表面(core 光栅 + 页框 + 全屏刷新)。
     @objc public static func rebuildSurface() {
         guard let surface = SurfaceStore.current else { return }
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_SURFACE_REBUILD"] != "1",
+           glaspen2_rust_rebuild_surface(UnsafeMutableRawPointer(surface),
+                                         SurfaceStore.scaleFactor,
+                                         PageViewOps.paperOx, PageViewOps.paperOy, PageViewOps.paperScale,
+                                         1) != 0 {
+            return
+        }
         glaspen2_draw_rebuild_view(UnsafeMutableRawPointer(surface),
                                    SurfaceStore.scaleFactor,
                                    PageViewOps.paperOx,

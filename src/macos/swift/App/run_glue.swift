@@ -368,3 +368,6 @@ public func runInvertInvalidate() { panelInvertInvalidate() }
 public func runNotificationRedraw() {
     UIAnchors.drawView?.needsDisplay = true
 }
+
+@_cdecl("glaspen2_swift_overlay_flush")
+public func runOverlayFlush() { OverlayLayerFlush.flush() }
