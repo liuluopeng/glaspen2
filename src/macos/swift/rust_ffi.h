@@ -688,3 +688,7 @@ extern void glaspen2_rust_tunnel_apply_env(void);
 // R155: 隧道每帧时间/进度
 extern void glaspen2_rust_tunnel_reset_start(void);
 extern int glaspen2_rust_tunnel_tick(double *out_p);
+
+// R156: 隧道建卡循环
+extern int glaspen2_rust_tunnel_build_cards(long long cur, int count, int cur_idx, double front,
+                                             int *depths, void **card_surf, void **mip_surf);

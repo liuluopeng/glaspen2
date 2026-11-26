@@ -6939,3 +6939,65 @@ pub extern "C" fn glaspen2_rust_tunnel_tick(out_p: *mut f64) -> i32 {
     }
     i32::from(p < 1.0)
 }
+
+// ── R156: 隧道建卡循环(半分辨率快照由 Swift factory 提供) ──
+
+unsafe extern "C" {
+    fn glaspen2_swift_tunnel_make_card(
+        is_current: i32,
+        depth: i32,
+        cache_slot: i32,
+        screen_id: i64,
+        main_out: *mut *mut c_void,
+        mip_out: *mut *mut c_void,
+    ) -> i32;
+}
+
+/// 返回建卡数; -1 表示 factory 失败。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_tunnel_build_cards(
+    cur: i64,
+    count: i32,
+    cur_idx: i32,
+    front: f64,
+    depths: *mut i32,
+    card_surf: *mut *mut c_void,
+    mip_surf: *mut *mut c_void,
+) -> i32 {
+    if depths.is_null() || card_surf.is_null() || mip_surf.is_null() || count <= 0 {
+        return 0;
+    }
+    let start = std::time::Instant::now();
+    let mut built = 0i32;
+    for i in 0..count {
+        let depth = cur_idx - i;
+        if depth as f64 > front {
+            continue;
+        }
+        if start.elapsed().as_secs_f64() > 0.30 {
+            break;
+        }
+        let mut main: *mut c_void = std::ptr::null_mut();
+        let mut mip: *mut c_void = std::ptr::null_mut();
+        let ok = unsafe {
+            glaspen2_swift_tunnel_make_card(
+                i32::from(depth == 0),
+                depth,
+                i,
+                if depth == 0 { cur } else { 0 },
+                &mut main,
+                &mut mip,
+            )
+        };
+        if ok == 0 || main.is_null() {
+            return -1;
+        }
+        unsafe {
+            *depths.add(i as usize) = depth;
+            *card_surf.add(i as usize) = main;
+            *mip_surf.add(i as usize) = mip;
+        }
+        built += 1;
+    }
+    built
+}

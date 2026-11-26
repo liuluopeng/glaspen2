@@ -42,29 +42,26 @@ import Darwin
         }
         let count = Int(n)
         let curIdx = count - 2
-        var built = 0
-        for i in 0..<count {
-            let depth = curIdx - i
-            if Double(depth) > glaspen2_tunnel_front() { continue }
-            // 建卡预算应从预载完成后开始算; 预载慢时按 tb0 会直接 0 卡(空隧道)。
-            if TunnelState.now() - tc1 > 0.30 { break }
-            TunnelState.depths[i] = Int32(depth)
-            guard let made = TunnelCardFactory.make(isCurrent: depth == 0,
-                                                    depth: Int32(depth),
-                                                    cacheSlot: Int32(i),
-                                                    screenId: depth == 0 ? Int64(cur) : 0),
-                  let mainValue = made["main"] as? NSValue,
-                  let mainPtr = mainValue.pointerValue else {
-                TunnelLifecycle.freeCards()
-                return false
+        let built = TunnelState.depths.withUnsafeMutableBufferPointer { dp in
+            TunnelState.cardSurf.withUnsafeMutableBufferPointer { cp in
+                TunnelState.mipSurf.withUnsafeMutableBufferPointer { mp in
+                    cp.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { cardPtr in
+                        mp.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { mipPtr in
+                            dp.baseAddress!.withMemoryRebound(to: Int32.self, capacity: TunnelState.maxCards) { depthPtr in
+                                glaspen2_rust_tunnel_build_cards(
+                                    Int64(cur), Int32(count), Int32(curIdx),
+                                    glaspen2_tunnel_front(), depthPtr, cardPtr, mipPtr)
+                            }
+                        }
+                    }
+                }
             }
-            TunnelState.cardSurf[i] = OpaquePointer(mainPtr)
-            if let mipValue = made["mip"] as? NSValue, let mipPtr = mipValue.pointerValue {
-                TunnelState.mipSurf[i] = OpaquePointer(mipPtr)
-            }
-            built += 1
         }
-        TunnelState.cards = built
+        if built < 0 {
+            TunnelLifecycle.freeCards()
+            return false
+        }
+        TunnelState.cards = Int(built)
         let tc2 = TunnelState.now()
         NSLog("[flip] 时光隧道接管: %d 张卡片(cur=%ld → %ld, 方向=%@) 预载%.0fms 建卡%.0fms",
               built, cur, target, goingNext ? "后" : "前",

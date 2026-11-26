@@ -868,3 +868,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - t0/frames 复位与 tick 进度计算迁 Rust; Swift 定时器只负责 finish/render 分派;
 - 第3片后全量 tests/smoke/parity(不跑 release)全绿。
+
+
+## R156 隧道建卡循环迁 Rust
+
+- 深度/front/0.30s 预算/逐卡 factory 调用/数组写入迁 Rust, Swift 仅提供卡片 factory C 桥;
+- 真机 5 卡隧道正常运行; debug build 通过。
