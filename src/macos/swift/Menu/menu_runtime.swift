@@ -48,7 +48,7 @@ import AppKit
     /// R7: 动作 → NSEvent.ModifierFlags.rawValue(解析在 core::chord)。
     static func applyPanelTransparent(on: Bool) {
         guard let window = UIAnchors.settingsWindow else { return }
-        SettingsGlue.runOnMainSync {
+        settingsRunOnMain {
             window.isOpaque = !on
             window.backgroundColor = on ? .clear : .windowBackgroundColor
         }

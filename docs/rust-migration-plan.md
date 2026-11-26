@@ -1071,3 +1071,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - RecordingHotkeys 无调用, 删除 recording_keys.swift;
 - glaspen2_macos_open_url 迁 Rust(NSURL/NSWorkspace + main sync 桥), 删除 open_url.swift;
 - Swift 50→47; 冷启动正常; 批次验证后提交。
+
+
+## R192 删除 settings_glue.swift
+
+- runOnMainSync 移到 macos_api 文件级 helper; canvasOverview 直接从 Rust 取 PNG/rect/bounds;
+- 删除 Settings/settings_glue.swift; Swift 47→46; debug build 通过。

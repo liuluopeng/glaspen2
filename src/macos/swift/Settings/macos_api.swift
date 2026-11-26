@@ -5,7 +5,7 @@ import Darwin
 @objc public final class MacosApi: NSObject {
     @objc public static func settingsJSON() -> UnsafeMutablePointer<CChar>? {
         var out: UnsafeMutablePointer<CChar>?
-        SettingsGlue.runOnMainSync {
+        settingsRunOnMain {
             guard let overrides = glaspen2_menu_snapshot_overrides_json() else { return }
             defer { free(overrides) }
             guard let json = glaspen2_settings_snapshot_json(overrides) else { return }
@@ -19,7 +19,7 @@ import Darwin
     @objc(refreshPageWithScreenId:)
     public static func refreshPage(screenId: Int64) {
         if screenId <= 0 { return }
-        SettingsGlue.runOnMainSync {
+        settingsRunOnMain {
             if glaspen2_router_infinite() != 0 { return }
             if screenId != Int64(glaspen2_get_current_screen_id()) { return }
             glaspen2_load_strokes_for_screen(screenId)
@@ -29,7 +29,7 @@ import Darwin
     }
 
     @objc public static func refreshInfinite() {
-        SettingsGlue.runOnMainSync {
+        settingsRunOnMain {
             if glaspen2_router_infinite() == 0 { return }
             glaspen2_load_infinite_strokes()
             PageViewOps.rebuildSurface()
@@ -41,14 +41,14 @@ import Darwin
     public static func navigateToPage(screenId: Int64) {
         if screenId <= 0 { return }
         if glaspen2_router_infinite() != 0 {
-            SettingsGlue.runOnMainSync {
+            settingsRunOnMain {
                 _ = "".withCString { glaspen2_rust_apply_infinite(0, $0) }
             }
         }
         DispatchQueue.global(qos: .userInitiated).sync {
             glaspen2_load_strokes_for_screen(screenId)
             PageViewOps.update()
-            SettingsGlue.runOnMainSync {
+            settingsRunOnMain {
                 PageViewOps.rebuildSurface()
             }
         }
@@ -62,7 +62,7 @@ import Darwin
         let prevId: Int64 = wasCurrent ? Int64(glaspen2_prev_screen_id()) : 0
         DispatchQueue.global(qos: .userInitiated).sync {
             ok = glaspen2_delete_screen(screenId)
-            SettingsGlue.runOnMainSync {
+            settingsRunOnMain {
                 if glaspen2_router_infinite() != 0 {
                     PageViewOps.rebuildSurface()
                     return
@@ -84,7 +84,7 @@ import Darwin
 
     @objc(hotkeyWithKey:)
     public static func hotkey(key: String) {
-        SettingsGlue.runOnMainSync {
+        settingsRunOnMain {
             if key == "Q" {
                 MenuHandler.quitAppNow()
                 return
@@ -120,7 +120,7 @@ import Darwin
                                             glaspen2_router_gif_resolution(),
                                             glaspen2_router_gif_speed(),
                                             glaspen2_router_gif_end_mode())
-            SettingsGlue.runOnMainSync {
+            settingsRunOnMain {
                 if ok != 0 {
                     copyNewestGifToPasteboard()
                     NotificationPresenter.show(text:
@@ -154,5 +154,13 @@ import Darwin
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.writeObjects([newest as NSURL])
+    }
+}
+
+func settingsRunOnMain(_ block: @escaping () -> Void) {
+    if Thread.isMainThread {
+        block()
+    } else {
+        DispatchQueue.main.sync(execute: block)
     }
 }

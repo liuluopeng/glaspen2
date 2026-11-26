@@ -93,8 +93,19 @@ public func settingsApiCanvasPayload(_ w: Int32, _ h: Int32, _ action: Int32,
             ow = 1024
             oh = 768
         }
-        guard let payload = SettingsGlue.canvasOverviewPayload(width: Double(ow), height: Double(oh)),
-              let data = payload["png"] as? Data, !data.isEmpty else { return }
+        var rect = [Double](repeating: 0, count: 4)
+        var bounds = [Double](repeating: 0, count: 4)
+        var pngLen: Int32 = 0
+        let png = rect.withUnsafeMutableBufferPointer { r in
+            bounds.withUnsafeMutableBufferPointer { b in
+                glaspen2_rust_canvas_overview(Double(ow), Double(oh), r.baseAddress, b.baseAddress, &pngLen)
+            }
+        }
+        guard let png, pngLen > 0 else { return }
+        let data = Data(bytes: png, count: Int(pngLen))
+        glaspen2_free_rust_bytes(png, pngLen)
+        let payload: [String: Any] = ["png": data, "rect": rect, "bounds": bounds]
+        guard !data.isEmpty else { return }
         let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: data.count)
         data.copyBytes(to: buf, count: data.count)
         result = buf
