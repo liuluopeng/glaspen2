@@ -953,3 +953,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - 像素反色/差异统计/脏框/consume/ink source 迁 Rust;
 - Swift 仅保留 SCK stream/filter/config/tick 生命周期与像素 buffer 读取;
 - 批次 tests/smoke/parity(不跑 release)全绿; 真机反色路径待人工验收。
+
+
+## R170 EventRouter 死代码清理
+
+- 删除 route 已迁 Rust 后不再使用的 updatePressureMonitor/handlePenEvent/handleChordKeyEvent/isPenForEvent/isPenEvent;
+- debug build 通过。

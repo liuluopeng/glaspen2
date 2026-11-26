@@ -73,22 +73,7 @@ import AppKit
 
 
     /// S6-3-3d: 压感监视器状态更新(是否在压感区/压力/坐标/tip down/事件名)。
-    @objc(updatePressureMonitorWithEvent:type:x:y:pressure:)
-    public static func updatePressureMonitor(event: CGEvent, type: CGEventType,
-                                             x: Double, y: Double, pressure: Double) {
-        let rawField = event.getIntegerValueField(.tabletEventPointPressure)
-        _ = glaspen2_rust_update_pressure_monitor(Int32(type.rawValue), rawField, x, y, pressure)
-    }
-
     /// S6-3-3d: 笔事件分派(落笔/拖动/抬笔); 返回 2 = 消费事件。
-    @objc(handlePenEventOfType:x:y:pressure:timestamp:rawWidth:isEraser:)
-    public static func handlePenEvent(type: CGEventType, x: Double, y: Double,
-                                      pressure: Double, timestamp: Double,
-                                      rawWidth: Double, isEraser: Bool) -> Int32 {
-        glaspen2_rust_handle_pen_event(Int32(type.rawValue), x, y, pressure, timestamp,
-                                       rawWidth, isEraser ? 1 : 0)
-    }
-
     /// S6-3-3d: 相机临时抓手(⌃⌥+左键拖动)开始/拖动/结束; 返回 true = 消费事件。
 
 
@@ -129,33 +114,7 @@ import AppKit
 
     /// S6-3-4b-2b: 普通 chord 门控(录制热键由 ObjC 函数先行处理)。
     /// 返回 1 = 放行, 2 = 消费(返回 NULL)。
-    @objc(handleChordKeyEvent:)
-    public static func handleChordKeyEvent(_ event: CGEvent) -> Int32 {
-        guard let ev = NSEvent(cgEvent: event) else { return 1 }
-        guard ev.type == .keyDown else { return 1 }
-        let m = ev.modifierFlags
-        return glaspen2_rust_handle_chord(
-            ev.keyCode,
-            m.contains(.command) ? 1 : 0,
-            m.contains(.control) ? 1 : 0,
-            m.contains(.option) ? 1 : 0,
-            m.contains(.shift) ? 1 : 0,
-            event.getIntegerValueField(.keyboardEventAutorepeat) != 0 ? 1 : 0)
-    }
-
     /// ObjC 侧复用同一笔事件判定(避免两处公式各自维护)。
-    @objc(isPenForEvent:)
-    public static func isPenForEvent(_ event: CGEvent) -> Bool {
-        isPenEvent(event)
-    }
-
-    private static func isPenEvent(_ event: CGEvent) -> Bool {
-        guard let ev = NSEvent(cgEvent: event) else { return false }
-        return isPen(ev)
-    }
-
-
-
     /// 虚拟笔(GLASPEN2_VIRTUAL_PEN)合成事件判定。
     @objc(isVirtualPenEvent:)
     public static func isVirtualPenEvent(_ event: CGEvent) -> Bool {
