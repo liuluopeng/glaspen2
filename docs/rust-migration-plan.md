@@ -382,3 +382,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - 结果 `SWIFT_TUNNEL_FRAME_PARITY diff=0/120000 landed=0`;
 - `TunnelFrameRenderer.render` 默认 Rust, `GLASPEN2_SWIFT_TUNNEL_FRAME=1` 回退 Swift;
 - parity 探针并入 smoke; 默认/回退 smoke、全量 tests/build/parity 全绿。
+
+
+## R85 默认 Rust 隧道真机运行
+
+- 临时 DB 复制 2 页内容, 默认(卡片+帧编排均 Rust), FLIP_DUR=5s, 翻上一页;
+- 日志 `[flip] 时光隧道接管: 5 张卡片 ... 预载580ms 建卡130ms`, 运行无崩溃;
+- 多个时间点截图未能稳定捕获动画中帧(系统截图/窗口层), 视觉效果仍需人工盯屏复验;
+- 默认/回退 smoke、tests/build/parity 持续全绿。

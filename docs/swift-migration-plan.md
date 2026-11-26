@@ -685,3 +685,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R82 | 隧道卡片绘制默认切 Rust; Rust/Swift 像素 parity diff=0/43200; GLASPEN2_SWIFT_TUNNEL_CARD=1 回退; 默认/回退 smoke 绿 | 本提交 |
 | 2026-11-26 | Rust-R83 | 隧道逐帧编排(ease/排序/落定/模糊/近层)迁 Rust, 复用 Rust 卡片; opt-in GLASPEN2_RUST_TUNNEL_FRAME=1; 真机5卡隧道无崩溃; 默认仍 Swift | 默认/opt-in smoke、tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R84 | 隧道逐帧编排默认切 Rust; 整帧 parity diff=0/120000; GLASPEN2_SWIFT_TUNNEL_FRAME=1 回退; 默认/回退 smoke 绿 | 本提交 |
+| 2026-11-26 | Rust-R85 | 默认 Rust 隧道 5 卡真机运行无崩溃; 截图未稳定捕获动画帧, 视觉待人工复验 | 全量验证绿 | 本提交 |
