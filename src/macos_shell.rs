@@ -8304,3 +8304,150 @@ pub extern "C" fn glaspen2_rust_another_instance_running() -> i32 {
     }
     0
 }
+
+// ── R175: 隧道卡片工厂(先独立函数, 暂不接线) ──
+
+unsafe extern "C" {
+    fn glaspen2_paint_preview_into_surface(
+        surface: *mut c_void,
+        slot: i32,
+        scale: f64,
+        ox: f64,
+        oy: f64,
+        pscale: f64,
+        alpha: f64,
+        white_bg: i32,
+        depth: f64,
+    ) -> i32;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_make_card(
+    is_current: i32,
+    depth: i32,
+    cache_slot: i32,
+    screen_id: i64,
+    main_out: *mut *mut c_void,
+    mip_out: *mut *mut c_void,
+) -> i32 {
+    if main_out.is_null() || mip_out.is_null() {
+        return 0;
+    }
+    unsafe {
+        *main_out = std::ptr::null_mut();
+        *mip_out = std::ptr::null_mut();
+        let screen_w = glaspen2_router_screen_w();
+        let screen_h = glaspen2_router_screen_h();
+        let g_scale = glaspen2_rust_surface_scale();
+        let mut pscale = 1.0f64;
+        let mut ox = 0.0f64;
+        let mut oy = 0.0f64;
+        let mut pw = screen_w as i32;
+        let mut ph = screen_h as i32;
+        if is_current == 0 {
+            glaspen2_page_dims(screen_id, &mut pw, &mut ph);
+            if pw <= 0 || ph <= 0 {
+                pw = screen_w as i32;
+                ph = screen_h as i32;
+            }
+            if pw != screen_w as i32 || ph != screen_h as i32 {
+                pscale = (screen_w / pw as f64).min(screen_h / ph as f64);
+                ox = (screen_w - pw as f64 * pscale) / 2.0;
+                oy = (screen_h - ph as f64 * pscale) / 2.0;
+            }
+        }
+        let card_scale = g_scale * 0.5;
+        let sw = (screen_w * card_scale) as i32;
+        let sh = (screen_h * card_scale) as i32;
+        if sw <= 0 || sh <= 0 {
+            return 0;
+        }
+        let surf = cairo_image_surface_create(0, sw, sh);
+        if surf.is_null() || cairo_surface_status(surf) != 0 {
+            if !surf.is_null() {
+                cairo_surface_destroy(surf)
+            }
+            return 0;
+        }
+        if is_current != 0 {
+            let current = glaspen2_rust_surface_current();
+            if current.is_null() {
+                cairo_surface_destroy(surf);
+                return 0;
+            }
+            let cr = cairo_create(surf);
+            if !cr.is_null() {
+                let f = card_scale / g_scale.max(0.0001);
+                cairo_scale(cr, f, f);
+                cairo_set_operator(cr, 1);
+                cairo_set_source_surface(cr, current, 0.0, 0.0);
+                cairo_paint(cr);
+                cairo_destroy(cr);
+            }
+        } else {
+            let _ = glaspen2_paint_preview_into_surface(
+                surf,
+                cache_slot,
+                card_scale,
+                ox * 0.5,
+                oy * 0.5,
+                pscale,
+                1.0,
+                0,
+                if depth == 0 {
+                    -1.0
+                } else {
+                    (depth as f64).abs()
+                },
+            );
+        }
+        let d = depth as f64;
+        let k = f64::from_bits(TS_K.load(std::sync::atomic::Ordering::Relaxed));
+        let mut smax = 1.0 / (1.0 + k * (d.abs() - 1.0));
+        if smax > 1.05 {
+            smax = 1.05;
+        }
+        let tw = (glaspen2_rust_tunnel_get_surf_w() as f64 * smax) as i32;
+        let th = (glaspen2_rust_tunnel_get_surf_h() as f64 * smax) as i32;
+        let nw = cairo_image_surface_get_width(surf);
+        let nh = cairo_image_surface_get_height(surf);
+        let mut main_surf = surf;
+        if tw > 16 && th > 16 && (tw < nw || th < nh) {
+            let small = cairo_image_surface_create(0, tw, th);
+            if !small.is_null() && cairo_surface_status(small) == 0 {
+                let c2 = cairo_create(small);
+                if !c2.is_null() {
+                    cairo_scale(c2, tw as f64 / nw as f64, th as f64 / nh as f64);
+                    cairo_set_source_surface(c2, surf, 0.0, 0.0);
+                    cairo_paint(c2);
+                    cairo_destroy(c2);
+                }
+                cairo_surface_destroy(surf);
+                main_surf = small;
+            } else if !small.is_null() {
+                cairo_surface_destroy(small);
+            }
+        }
+        let mw = cairo_image_surface_get_width(main_surf) / 2;
+        let mh = cairo_image_surface_get_height(main_surf) / 2;
+        let mut mip: *mut c_void = std::ptr::null_mut();
+        if mw > 16 && mh > 16 {
+            let m = cairo_image_surface_create(0, mw, mh);
+            if !m.is_null() && cairo_surface_status(m) == 0 {
+                let c3 = cairo_create(m);
+                if !c3.is_null() {
+                    cairo_scale(c3, 0.5, 0.5);
+                    cairo_set_source_surface(c3, main_surf, 0.0, 0.0);
+                    cairo_paint(c3);
+                    cairo_destroy(c3);
+                }
+                mip = m;
+            } else if !m.is_null() {
+                cairo_surface_destroy(m);
+            }
+        }
+        *main_out = main_surf;
+        *mip_out = mip;
+        1
+    }
+}

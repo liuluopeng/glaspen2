@@ -772,3 +772,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R171 | 启动设置恢复 PartA/B 迁 Rust; 删2文件; Swift 65→63; 批次验证绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R172 | 菜单 dead helper/StatusBarFactory 清理; statusbar probe OK; debug build 通过 | 本提交 |
 | 2026-11-26 | Rust-R173/174 | 单实例锁/重复实例检测迁 Rust; 删2文件; Swift 65→63; 批次验证绿(不跑 release) | 本提交 |
+| 2026-11-26 | Rust-R175 | 隧道卡片工厂 Rust 函数(未接线); debug build 通过 | 本提交 |

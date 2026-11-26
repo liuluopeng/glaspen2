@@ -980,3 +980,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - 重复实例检测迁 Rust(NSWorkspace runningApplications raw msg_send); 开启 NSWorkspace feature;
 - 删除 instance_lock.swift / app_instance.swift; Swift 65→63;
 - 冷启动正常; 批次 tests/smoke/parity(不跑 release)全绿。
+
+
+## R175 隧道卡片工厂 Rust 函数(未接线)
+
+- 新增 glaspen2_rust_make_card: 邻页尺寸/半分辨率快照/预缩/mip 生成; 暂未替换 Swift factory;
+- debug build 通过。
