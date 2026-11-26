@@ -797,3 +797,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - applyDisplayChange 的反色失效/屏幕尺寸/建页重载/smooth/pageview update/窗口尺寸/ensure/rebuild 迁 Rust;
 - Swift 仅保留 NSWindow/NSView frame 设置桥; debug build 通过。
+
+
+## R144 ensure surface C 符号迁 Rust
+
+- glaspen2_router_ensure_surface 从 Swift 迁 Rust(sw_draw_view → surface_ensure), 删 Swift C 包装;
+- debug build 通过。

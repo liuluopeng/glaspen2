@@ -184,8 +184,6 @@ public func menuPMShow() { PressureMonitorWindow.show() }
 public func menuPMHide() { PressureMonitorWindow.hide() }
 @_cdecl("glaspen2_router_pm_refresh")
 public func menuPMRefresh() { PressureMonitorWindow.refreshLabel() }
-@_cdecl("glaspen2_router_ensure_surface")
-public func menuEnsureSurface() { MenuRuntime.ensureSurface() }
 @_cdecl("glaspen2_router_shortcut_reserved")
 public func menuShortcutReserved(_ chord: UnsafePointer<CChar>?) -> Int32 {
     guard let chord else { return 0 }

@@ -3475,7 +3475,6 @@ pub extern "C" fn glaspen2_rust_apply_infinite(
 unsafe extern "C" {
     fn glaspen2_router_restore_system_cursor();
     fn glaspen2_router_main_window() -> *mut c_void;
-    fn glaspen2_router_ensure_surface();
     fn glaspen2_router_pressure_monitor() -> i32;
 }
 
@@ -6698,5 +6697,15 @@ pub extern "C" fn glaspen2_rust_apply_display_change(width: i32, height: i32) {
         glaspen2_swift_apply_display_frames(width, height);
         glaspen2_router_ensure_surface();
         glaspen2_router_rebuild_surface();
+    }
+}
+
+// ── R144: ensure surface C 符号(绘制视图指针 → Rust 表面 ensure) ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_ensure_surface() {
+    let view = unsafe { glaspen2_swift_draw_view() };
+    if !view.is_null() {
+        let _ = glaspen2_rust_surface_ensure(view);
     }
 }
