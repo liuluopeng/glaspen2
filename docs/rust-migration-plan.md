@@ -697,3 +697,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - route 内笔坐标/压力/raw field/自动显示/橡皮判定/压感更新/pen 分派收口为 `glaspen2_rust_route_pen`;
 - Swift 仅取 NSEvent 字段; debug build 通过; 第3片后全量 tests/smoke/parity(不跑 release)全绿。
+
+
+## R128 清理网格/光标/surface 合成 Swift 回退
+
+- OverlayGridRenderer/OverlayCursorRenderer/OverlaySurfaceRenderer 删除旧 CG 绘制与 JSON 解析回退, 仅调 Rust;
+- debug build 通过(加速批次)。
