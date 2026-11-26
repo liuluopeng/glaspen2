@@ -6647,3 +6647,28 @@ pub extern "C" fn glaspen2_rust_route_keyboard(
     }
     glaspen2_rust_handle_chord(key_code, has_cmd, has_ctrl, has_alt, has_shift, is_repeat)
 }
+
+// ── R127: 主路由笔事件块(压感/raw width/自动显示/分派) ──
+
+unsafe extern "C" {
+    fn glaspen2_router_raw_width(pressure: f64) -> f64;
+    fn glaspen2_router_strokes_hidden() -> i32;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_route_pen(
+    kind: i32,
+    x: f64,
+    y: f64,
+    pressure: f64,
+    timestamp: f64,
+    raw_field: i64,
+    is_eraser: i32,
+) -> i32 {
+    if unsafe { glaspen2_router_strokes_hidden() } != 0 && matches!(kind, 1 | 3 | 4 | 6 | 7 | 9) {
+        unsafe { glaspen2_router_pen_auto_show() };
+    }
+    let _ = glaspen2_rust_update_pressure_monitor(kind, raw_field, x, y, pressure);
+    let raw_width = unsafe { glaspen2_router_raw_width(pressure) };
+    glaspen2_rust_handle_pen_event(kind, x, y, pressure, timestamp, raw_width, is_eraser)
+}

@@ -691,3 +691,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - penDown/penUp/penMove/updateEraserState 删除 `GLASPEN2_SWIFT_PEN_ORCH` 回退, 仅调 Rust;
 - debug build 通过(加速批次)。
+
+
+## R127 主路由笔事件块迁 Rust
+
+- route 内笔坐标/压力/raw field/自动显示/橡皮判定/压感更新/pen 分派收口为 `glaspen2_rust_route_pen`;
+- Swift 仅取 NSEvent 字段; debug build 通过; 第3片后全量 tests/smoke/parity(不跑 release)全绿。

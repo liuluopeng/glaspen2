@@ -642,3 +642,7 @@ extern void glaspen2_rust_route_mouse_up(void);
 // R124: 键盘事件顶层路由
 extern int glaspen2_rust_route_keyboard(int kind, unsigned short key_code, int has_cmd,
                                          int has_ctrl, int has_alt, int has_shift, int is_repeat);
+
+// R127: 主路由笔事件块
+extern int glaspen2_rust_route_pen(int kind, double x, double y, double pressure,
+                                    double timestamp, long long raw_field, int is_eraser);

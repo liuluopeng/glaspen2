@@ -57,19 +57,11 @@ import AppKit
             let px = Double(loc.x)
             let py = glaspen2_router_draw_height() - Double(loc.y)
             let pressure = Double(ev.pressure)
-            let ts = ev.timestamp
-            updatePressureMonitor(event: event, type: type, x: px, y: py, pressure: pressure)
-            let rawW = glaspen2_router_raw_width(pressure)
-            if glaspen2_router_strokes_hidden() != 0
-                && (type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown
-                    || type == .leftMouseDragged || type == .rightMouseDragged
-                    || type == .otherMouseDragged) {
-                glaspen2_router_pen_auto_show()
-            }
+            let rawField = event.getIntegerValueField(.tabletEventPointPressure)
             let isEraser = ev.pointingDeviceType == .eraser
                 || glaspen2_router_prox_is_eraser() != 0
-            if handlePenEvent(type: type, x: px, y: py, pressure: pressure,
-                              timestamp: ts, rawWidth: rawW, isEraser: isEraser) == 2 {
+            if glaspen2_rust_route_pen(Int32(type.rawValue), px, py, pressure,
+                                        ev.timestamp, rawField, isEraser ? 1 : 0) == 2 {
                 return 2
             }
         }
