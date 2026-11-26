@@ -718,3 +718,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R115 | 清理 CanvasCamera Swift 回退, 仅留 ObjC 入口; 文件 150→50 行; smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R116 | 第38轮快照: 四探针/全量验证绿; tag ce525db; Swift 69; ObjC 0; 未 push | 本提交 |
 | 2026-11-26 | Rust-R117 | 清理 TunnelLifecycle Swift 回退; 仅留 Rust+闭包; 真机5卡/freed5 正常; smoke/tests/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R118 | 第40轮最终快照: 全量+四探针+像素 parity 绿; tag ce525db; Swift69/ObjC0; 目标未整体完成, 保持 active | 本提交 |

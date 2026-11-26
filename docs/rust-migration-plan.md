@@ -627,3 +627,12 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - 删除 freeCards/finish 的 Swift 旧实现与 env 回退; 仅留 Rust 调用 + prepare/commit 闭包;
 - 真机 5 卡隧道: 接管 5 卡 / 结束后 freed count=5; 默认 smoke/tests/parity 全绿。
+
+
+## R118 第40轮最终验证快照
+
+- HEAD `bd3c6f7`; tag `v0.7.0` = `ce525db` 未动; 未 push; 领先 origin/main 444;
+- 全量 tests/release build/smoke/parity 全绿; Swift 69 文件; ObjC .m/.mm 0;
+- Fresh DB 四探针: settings failures=0 / menu-full OK / hotkeys 14/14 / render failures=0;
+- 像素 parity: tunnel-frame diff=0/120000; pageframe diff=0/60000;
+- 结论: 纯逻辑/状态与主要绘制/交互路径已默认 Rust; EventRouter 主分派壳、录制效果、Flutter host、菜单/状态栏构建、启动编排仍为 Swift/AppKit; 真机多屏/录制/隧道视觉未验收。目标未整体完成, 保持 active(轮数已达 40 上限)。
