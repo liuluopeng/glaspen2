@@ -805,3 +805,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R217-219 | 合并 main_menu/ui_anchors/flipper; 删3文件; Swift 18→15 | 本提交 |
 | 2026-11-26 | Rust-R220-222 | 合并settings_api/invert/panel_glue; 删3文件; Swift 15→12 | 本提交 |
 | 2026-11-26 | Rust-R223-225 | 合并菜单/事件文件; 删4文件; Swift 12→8 | 本提交 |
+| 2026-11-26 | Rust-R226-228 | 合并保存/表面/事件到运行壳; 删4文件; Swift 8→4; parity 全 0 | 本提交 |

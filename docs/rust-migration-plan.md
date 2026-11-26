@@ -1208,3 +1208,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - menu_texts/hotkey_dispatch/menu_builder 合入 menu_runtime; pressure_monitor 合入 event_router;
 - 删4文件; Swift 12→8;
 - menu probes OK, 冷启动正常。
+
+
+## R226/227/228 剩余壳文件合并
+
+- save_background 合入 macos_api; overlay_window/tunnel_card 合入 tunnel_animation; event_router 合入 run_glue;
+- 删4文件; Swift 8→4; 所有 parity/menu/statusbar 探针保持 0/OK, 冷启动正常。
