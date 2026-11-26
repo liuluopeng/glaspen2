@@ -154,62 +154,27 @@ import AppKit
     @objc(penDownWithX:y:pressure:timestamp:rawWidth:)
     public static func penDown(x: Double, y: Double, pressure: Double,
                                timestamp: Double, rawWidth: Double) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_PEN_ORCH"] != "1" {
-            glaspen2_rust_pen_down(x, y, pressure, timestamp, rawWidth, SurfaceStore.scaleFactor)
-            return
-        }
-        glaspen2_router_bubble_auto_page_flip()
-        glaspen2_router_modeler_begin(x, y, pressure, timestamp)
-        glaspen2_router_stroke_begin()
-        glaspen2_router_raw_draw_dot(x, y, rawWidth)
-        glaspen2_router_pen_down_state(x, y, rawWidth)
+        glaspen2_rust_pen_down(x, y, pressure, timestamp, rawWidth, SurfaceStore.scaleFactor)
     }
 
     /// S6-3-3d: 抬笔: 结束模型器(橡皮 finish / 正常 end+commit) + context/状态复位。
     @objc(penUpWithX:y:pressure:timestamp:)
     public static func penUp(x: Double, y: Double, pressure: Double,
                              timestamp: Double) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_PEN_ORCH"] != "1" {
-            glaspen2_rust_pen_up(x, y, pressure, timestamp)
-            return
-        }
-        guard glaspen2_router_stroke_active() != 0 else { return }
-        if glaspen2_router_eraser_mode() != 0 {
-            glaspen2_router_modeler_erase_finish()
-            updateEraserState(isEraser: false)
-        } else {
-            glaspen2_router_modeler_end(x, y, pressure, timestamp)
-            glaspen2_router_commit_to_strokes()
-        }
-        glaspen2_router_stroke_end()
-        glaspen2_router_set_stroke_active(0)
-        glaspen2_router_apply_pending_color_width()
-        glaspen2_router_pen_up_state()
+        glaspen2_rust_pen_up(x, y, pressure, timestamp)
     }
 
     /// S6-3-3d: 拖动实时段: 模型器 move + raw segment(响应式反馈)。
     @objc(penMoveWithX:y:pressure:timestamp:rawWidth:)
     public static func penMove(x: Double, y: Double, pressure: Double,
                                timestamp: Double, rawWidth: Double) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_PEN_ORCH"] != "1" {
-            glaspen2_rust_pen_move(x, y, pressure, timestamp, rawWidth, SurfaceStore.scaleFactor)
-            return
-        }
-        glaspen2_router_modeler_move(x, y, pressure, timestamp)
-        glaspen2_router_raw_draw_segment(x, y, rawWidth)
+        glaspen2_rust_pen_move(x, y, pressure, timestamp, rawWidth, SurfaceStore.scaleFactor)
     }
 
     /// S6-3-3d: 橡皮态切换 + 状态图标刷新(落笔/拖动自动补 begin/抬笔共用)。
     @objc(updateEraserState:)
     public static func updateEraserState(isEraser: Bool) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_PEN_ORCH"] != "1" {
-            glaspen2_rust_update_eraser(isEraser ? 1 : 0)
-            return
-        }
-        if isEraser != (glaspen2_router_eraser_mode() != 0) {
-            glaspen2_router_set_eraser_mode(isEraser ? 1 : 0)
-            glaspen2_router_update_status_icon_state()
-        }
+        glaspen2_rust_update_eraser(isEraser ? 1 : 0)
     }
 
     /// S6-3-4b-2b: 普通 chord 门控(录制热键由 ObjC 函数先行处理)。

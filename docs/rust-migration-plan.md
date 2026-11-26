@@ -685,3 +685,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - routeCameraMouse/routeScrollZoom 删除 Swift 旧实现与 env 回退, 默认只调 Rust;
 - EventRouter 相机鼠标分支收口; debug build 通过(加速批次, 待第3片全量)。
+
+
+## R126 笔编排 Swift 回退清理
+
+- penDown/penUp/penMove/updateEraserState 删除 `GLASPEN2_SWIFT_PEN_ORCH` 回退, 仅调 Rust;
+- debug build 通过(加速批次)。
