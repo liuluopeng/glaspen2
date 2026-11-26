@@ -750,3 +750,6 @@ extern int glaspen2_rust_instance_lock_acquire(void);
 
 // R174: 重复实例检测
 extern int glaspen2_rust_another_instance_running(void);
+
+// R177: 主覆盖窗启动组装
+extern int glaspen2_rust_create_main_window(void);

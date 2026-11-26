@@ -473,3 +473,12 @@ public func runDelayedRebuild() {
         PageViewOps.rebuildSurface()
     }
 }
+
+@_cdecl("glaspen2_swift_set_main_anchors")
+public func runSetMainAnchors(_ window: UnsafeMutableRawPointer?,
+                              _ draw: UnsafeMutableRawPointer?,
+                              _ glass: UnsafeMutableRawPointer?) {
+    if let window { UIAnchors.mainWindow = Unmanaged<NSWindow>.fromOpaque(window).takeUnretainedValue() }
+    if let draw { UIAnchors.drawView = Unmanaged<NSView>.fromOpaque(draw).takeUnretainedValue() }
+    if let glass { UIAnchors.glassView = Unmanaged<NSVisualEffectView>.fromOpaque(glass).takeUnretainedValue() }
+}

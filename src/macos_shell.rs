@@ -8440,3 +8440,51 @@ pub extern "C" fn glaspen2_rust_make_card(
         1
     }
 }
+
+// ── R177: 主覆盖窗启动组装 ──
+
+unsafe extern "C" {
+    fn sw_app_screen_w() -> i32;
+    fn sw_app_screen_h() -> i32;
+    fn glaspen2_swift_set_main_anchors(window: *mut c_void, draw: *mut c_void, glass: *mut c_void);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_create_main_window() -> i32 {
+    let w = unsafe { sw_app_screen_w() } as f64;
+    let h = unsafe { sw_app_screen_h() } as f64;
+    if w <= 0.0 || h <= 0.0 {
+        return 0;
+    }
+    let window = glaspen2_rust_overlay_window_create(0.0, 0.0, w, h);
+    if window.is_null() {
+        return 0;
+    }
+    let content = glaspen2_rust_overlay_content_view_create(0.0, 0.0, w, h);
+    if content.is_null() {
+        return 0;
+    }
+    let enabled = unsafe { glaspen2_router_glass_enabled() } != 0;
+    let opacity = unsafe { glaspen2_router_glass_opacity() };
+    let glass =
+        glaspen2_rust_overlay_glass_view_create(0.0, 0.0, w, h, i32::from(enabled), opacity);
+    if glass.is_null() {
+        return 0;
+    }
+    let draw = glaspen2_rust_draw_view_create(0.0, 0.0, w, h);
+    if draw.is_null() {
+        return 0;
+    }
+    glaspen2_rust_overlay_assemble_content(content, glass, draw, window);
+    unsafe { glaspen2_swift_set_main_anchors(window, draw, glass) };
+    glaspen2_router_ensure_surface();
+    if unsafe { glaspen2_router_ethereal() } != 0 {
+        glaspen2_rust_ethereal_restore_now();
+    }
+    tracing::info!(
+        "[glaspen2] window ready {}x{}, ignoresMouseEvents=1",
+        w as i32,
+        h as i32
+    );
+    1
+}

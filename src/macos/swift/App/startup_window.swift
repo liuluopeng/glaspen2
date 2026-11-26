@@ -3,31 +3,7 @@ import AppKit
 
 @objc public final class StartupWindow: NSObject {
     @objc public static func create() -> Bool {
-        let frame = NSScreen.main?.frame ?? .zero
-        let window = OverlayWindowFactory.makeWindow(frame: frame)
-        let content = OverlayWindowFactory.makeContentView(frame: frame)
-        let glass = OverlayWindowFactory.makeGlassView(
-            frame: frame,
-            enabled: glaspen2_router_glass_enabled() != 0,
-            opacity: glaspen2_router_glass_opacity())
-        var drawView: NSView
-        if let p = glaspen2_rust_draw_view_create(frame.origin.x, frame.origin.y,
-                                                  frame.size.width, frame.size.height) {
-            drawView = Unmanaged<NSView>.fromOpaque(p).takeRetainedValue()
-        } else {
-            drawView = GlaspenDrawView(frame: frame)
-        }
-        OverlayWindowFactory.assembleContent(content, glass: glass,
-                                             drawView: drawView, in: window)
-        UIAnchors.mainWindow = window
-        UIAnchors.drawView = drawView
-        UIAnchors.glassView = glass
-        glaspen2_router_ensure_surface()
-        if glaspen2_router_ethereal() != 0 { EtherealMode.restoreNow() }
-        NSLog("[glaspen2] window ready %dx%d, ignoresMouseEvents=%d",
-              Int32(frame.size.width), Int32(frame.size.height),
-              window.ignoresMouseEvents ? 1 : 0)
-        return true
+        glaspen2_rust_create_main_window() != 0
     }
 }
 

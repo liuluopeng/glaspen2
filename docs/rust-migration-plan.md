@@ -994,3 +994,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 新增 --swift-card-factory-probe(当前表面→half/mip, ok=1 main=true mip=true)并入 smoke;
 - 备注: smoke 验证统一用 `sh scripts/smoke-macos.sh debug`(不重建 release, 避免旧 binary);
 - 批次 cargo test/parity + debug smoke(含 card factory probe)全绿。
+
+
+## R177 主覆盖窗启动组装迁 Rust
+
+- StartupWindow.create 的 window/content/glass/drawView 创建/组装/anchors/ensure surface/ethereal restore/日志迁 Rust;
+- Swift 仅保留 AccessibilityAlert; 冷启动 window ready 正常;
+- 批次 cargo test/parity + smoke debug 全绿。
