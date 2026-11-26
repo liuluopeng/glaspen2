@@ -703,3 +703,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - OverlayGridRenderer/OverlayCursorRenderer/OverlaySurfaceRenderer 删除旧 CG 绘制与 JSON 解析回退, 仅调 Rust;
 - debug build 通过(加速批次)。
+
+
+## R129 清理隧道 renderer Swift 回退
+
+- OverlayTunnelRenderer.drawTunnel 仅调 Rust; clear 仅调 Rust 缓存清理; 删除 CGImage 缓存;
+- debug build 通过(加速批次)。
