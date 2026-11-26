@@ -1523,7 +1523,6 @@ pub extern "C" fn glaspen2_rust_apply_pending_color_width() {
 unsafe extern "C" {
     fn glaspen2_router_set_chat_integration(on: i32);
     fn glaspen2_save_bool_setting(key: *const std::os::raw::c_char, value: i32);
-    fn glaspen2_router_rec_chat_integration_changed(on: i32);
     fn glaspen2_share_ink_set_active(on: i32);
     fn glaspen2_load_bool_setting(key: *const std::os::raw::c_char) -> i32;
     fn glaspen2_router_set_pressure_monitor(on: i32);
@@ -1795,12 +1794,6 @@ pub extern "C" fn glaspen2_rust_overlay_draw(
 
 unsafe extern "C" {
     fn glaspen2_swift_tunnel_surface() -> *mut c_void;
-    fn glaspen2_router_perf_enabled() -> i32;
-    fn glaspen2_router_perf_notes(
-        name: *const std::os::raw::c_char,
-        notes: *const std::os::raw::c_char,
-        t0: u64,
-    );
     fn glaspen2_router_minimap_enabled() -> i32;
     fn glaspen2_router_show_grid() -> i32;
     fn glaspen2_router_grid_divider() -> i32;
@@ -2055,8 +2048,6 @@ unsafe extern "C" {
     fn glaspen2_router_outline_enabled() -> i32;
     fn glaspen2_router_set_outline_state(on: i32);
     fn glaspen2_set_stroke_outline(on: i32);
-    fn glaspen2_router_rebuild_surface();
-    fn glaspen2_router_finish_active_stroke();
     fn sw_menu() -> *mut c_void;
 }
 
@@ -3296,7 +3287,6 @@ pub extern "C" fn glaspen2_rust_draw_live_plan(
 
 unsafe extern "C" {
     fn cairo_destroy(cr: *mut c_void);
-    fn glaspen2_router_flush_dirty();
     fn glaspen2_router_soft_shadow() -> i32;
     fn glaspen2_router_outline_dash() -> f64;
 }
@@ -3507,10 +3497,6 @@ pub extern "C" fn glaspen2_rust_pen_set_prox_device(v: i32) {
 // ── R58: 画布模式切换(翻页 <-> 无限) ──
 
 unsafe extern "C" {
-    fn glaspen2_router_camera_pan_cancel();
-    fn glaspen2_router_camera_persist_infinite();
-    fn glaspen2_router_camera_load_infinite();
-    fn glaspen2_router_camera_reset_lens();
     fn glaspen2_router_infinite() -> i32;
     fn glaspen2_router_set_infinite_state(on: i32);
     fn glaspen2_set_canvas_kind(kind: i32);
@@ -3572,7 +3558,6 @@ pub extern "C" fn glaspen2_rust_apply_infinite(
 // ── R60: 涂鸦总开关热键路径(窗口显隐/压感窗/状态/通知/菜单) ──
 
 unsafe extern "C" {
-    fn glaspen2_router_restore_system_cursor();
     fn glaspen2_router_main_window() -> *mut c_void;
     fn glaspen2_router_pressure_monitor() -> i32;
 }
@@ -3752,8 +3737,6 @@ unsafe extern "C" {
     fn glaspen2_set_view_transform(px: f64, py: f64, pz: f64);
     fn glaspen2_set_infinite_transform(px: f64, py: f64, pz: f64);
     fn glaspen2_get_infinite_transform(px: *mut f64, py: *mut f64, pz: *mut f64);
-    fn glaspen2_router_canvas_apply_transform();
-    fn glaspen2_router_peek_lens_change();
     fn glaspen2_router_screen_w() -> f64;
     fn glaspen2_router_screen_h() -> f64;
 }
@@ -3954,7 +3937,6 @@ pub extern "C" fn glaspen2_rust_camera_reset_lens() {
 // ── R63: 退出流程与压感标签格式化 ──
 
 unsafe extern "C" {
-    fn glaspen2_router_perf_summary();
     fn glaspen2_router_pressure_label(text: *const std::os::raw::c_char);
 }
 
@@ -4377,7 +4359,6 @@ unsafe extern "C" {
     fn glaspen2_action_effect_json(
         action: *const std::os::raw::c_char,
     ) -> *mut std::os::raw::c_char;
-    fn glaspen2_router_perform_hotkey(key_code: u16) -> i32;
     fn glaspen2_router_prev_color_index() -> i32;
     fn glaspen2_router_selected_color_index() -> i32;
     fn glaspen2_color_preset_count() -> i32;
@@ -5121,7 +5102,6 @@ unsafe extern "C" {
         value: *const std::os::raw::c_char,
     ) -> *mut std::os::raw::c_char;
     fn glaspen2_router_refresh_menu_texts();
-    fn glaspen2_router_hotkey_recording(on: i32);
     fn glaspen2_router_set_grid_size(v: f64);
     fn glaspen2_router_set_grid_divider(v: i32);
     fn glaspen2_router_set_minimap(on: i32);
@@ -5741,7 +5721,6 @@ pub extern "C" fn glaspen2_rust_surface_set_scale(scale: f64) {
 unsafe extern "C" {
     fn cairo_image_surface_create(format: i32, w: i32, h: i32) -> *mut c_void;
     fn cairo_surface_status(surface: *mut c_void) -> i32;
-    fn glaspen2_router_surface_cache_invalidate();
 }
 
 #[unsafe(no_mangle)]
@@ -7778,7 +7757,6 @@ unsafe extern "C" {
     fn cairo_pattern_set_matrix(pattern: *mut c_void, matrix: *const [f64; 6]);
     fn glaspen2_set_invert_background(surface: *mut c_void);
     fn glaspen2_set_invert_dirty(x: i32, y: i32, w: i32, h: i32);
-    fn glaspen2_router_dirty_include_surface_rect(x: f64, y: f64, w: f64, h: f64);
     fn glaspen2_swift_pageview_rebuild();
     fn glaspen2_set_stroke_invert(on: i32);
 }
@@ -10710,4 +10688,175 @@ pub extern "C" fn glaspen2_router_draw_height() -> f64 {
             objc2::msg_send![view as *mut objc2::runtime::AnyObject, bounds];
         rect.size.height
     }
+}
+
+// ── R237: run_glue 更多纯桥迁 Rust ──
+
+unsafe extern "C" {
+    fn glaspen2_perf_summary();
+    fn glaspen2_perf_is_enabled() -> i32;
+    fn glaspen2_perf_record(
+        name: *const std::os::raw::c_char,
+        us: u64,
+        notes: *const std::os::raw::c_char,
+    );
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct CGPointR {
+    x: f64,
+    y: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct CGSizeR {
+    width: f64,
+    height: f64,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct CGRectR {
+    origin: CGPointR,
+    size: CGSizeR,
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_perf_summary() {
+    unsafe { glaspen2_perf_summary() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_perf_enabled() -> i32 {
+    unsafe { glaspen2_perf_is_enabled() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_perf_notes(
+    name: *const std::os::raw::c_char,
+    notes: *const std::os::raw::c_char,
+    t0: u64,
+) {
+    unsafe { glaspen2_perf_record(name, glaspen2_perf_elapsed_us(t0), notes) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_rec_chat_integration_changed(on: i32) {
+    let json = format!(
+        "{{\"type\":\"ChatIntegrationChanged\",\"enabled\":{}}}",
+        on != 0
+    );
+    let Ok(c) = std::ffi::CString::new(json) else {
+        return;
+    };
+    let _ = glaspen2_rust_recording_feed(1, c.as_ptr());
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_rebuild_surface() {
+    glaspen2_rust_pageview_rebuild();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_canvas_apply_transform() {
+    glaspen2_rust_camera_apply_transform();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_peek_lens_change() {
+    glaspen2_rust_ethereal_peek_lens_change();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_dirty_reset() {
+    glaspen2_rust_dirty_reset();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_dirty_has() -> i32 {
+    glaspen2_rust_dirty_has()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_dirty_rect() -> CGRectR {
+    let mut out = [0.0f64; 4];
+    if glaspen2_rust_dirty_rect(out.as_mut_ptr()) == 0 {
+        return CGRectR {
+            origin: CGPointR { x: 0.0, y: 0.0 },
+            size: CGSizeR {
+                width: 0.0,
+                height: 0.0,
+            },
+        };
+    }
+    CGRectR {
+        origin: CGPointR {
+            x: out[0],
+            y: out[1],
+        },
+        size: CGSizeR {
+            width: out[2],
+            height: out[3],
+        },
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_pan_cancel() {
+    glaspen2_router_camera_cancel();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_persist_infinite() {
+    glaspen2_rust_camera_persist_infinite();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_load_infinite() {
+    glaspen2_rust_camera_load_infinite();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_reset_lens() {
+    glaspen2_rust_camera_reset_lens();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_restore_system_cursor() {
+    glaspen2_rust_restore_system_cursor();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_hotkey_recording(on: i32) {
+    glaspen2_rust_hotkey_recording_set(on);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_flush_dirty() {
+    glaspen2_rust_overlay_flush_dirty();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_finish_active_stroke() {
+    glaspen2_rust_finish_active_stroke();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_surface_cache_invalidate() {}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_dirty_include_surface_point(x: f64, y: f64, pad: f64) {
+    glaspen2_rust_dirty_include_surface_point(x, y, pad);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_dirty_include_surface_rect(x: f64, y: f64, w: f64, h: f64) {
+    glaspen2_rust_dirty_include_surface_rect(x, y, w, h);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_perform_hotkey(key: u16) -> i32 {
+    glaspen2_router_hotkey_perform(key)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_apply_infinite_canvas(on: i32) {
+    let text = i18n_text_owned(if on != 0 {
+        "canvas.infinite_on"
+    } else {
+        "canvas.infinite_off"
+    });
+    if text.is_null() {
+        return;
+    }
+    unsafe {
+        glaspen2_rust_apply_infinite(on, text);
+        libc::free(text as *mut c_void);
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_clear_screen() {
+    glaspen2_rust_surface_clear_screen();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_replay_strokes() {
+    glaspen2_rust_pageview_rebuild();
 }

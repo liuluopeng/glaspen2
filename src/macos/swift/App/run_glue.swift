@@ -43,62 +43,21 @@ private let runLangEnPtr: UnsafeMutablePointer<CChar> = strdup("en")!
 private let runLangZhPtr: UnsafeMutablePointer<CChar> = strdup("zh")!
 
 
-@_cdecl("glaspen2_router_perf_summary")
-public func runPerfSummary() { glaspen2_perf_summary() }
-@_cdecl("glaspen2_router_perf_enabled")
-public func runPerfEnabled() -> Int32 { glaspen2_perf_is_enabled() }
-@_cdecl("glaspen2_router_perf_notes")
-public func runPerfNotes(_ name: UnsafePointer<CChar>?, _ notes: UnsafePointer<CChar>?,
-                         _ t0: UInt64) {
-    glaspen2_perf_record(name, glaspen2_perf_elapsed_us(t0), notes)
-}
 
 @_cdecl("glaspen2_router_redraw_draw_view")
 public func runRedraw() { UIAnchors.drawView?.needsDisplay = true }
 
-@_cdecl("glaspen2_router_rec_chat_integration_changed")
-public func runRecChatChanged(_ on: Int32) {
-    let json = "{\"type\":\"ChatIntegrationChanged\",\"enabled\":\(on != 0 ? "true" : "false")}"
-    _ = json.withCString { glaspen2_rust_recording_feed(1, $0) }
-}
 
-@_cdecl("glaspen2_router_rebuild_surface")
-public func runRebuildSurface() { glaspen2_rust_pageview_rebuild() }
 
-@_cdecl("glaspen2_router_canvas_apply_transform")
-public func runApplyTransform() { glaspen2_rust_camera_apply_transform() }
 
-@_cdecl("glaspen2_router_peek_lens_change")
-public func runPeekLensChange() { glaspen2_rust_ethereal_peek_lens_change() }
 
 @_cdecl("glaspen2_router_event_tap_reinstall")
 public func runEventTapReinstall() {
     EventTapInstaller.install(includeScroll: glaspen2_router_infinite() != 0)
 }
 
-@_cdecl("glaspen2_router_dirty_reset")
-public func runDirtyReset() { glaspen2_rust_dirty_reset() }
-@_cdecl("glaspen2_router_dirty_has")
-public func runDirtyHas() -> Int32 { glaspen2_rust_dirty_has() }
-@_cdecl("glaspen2_router_dirty_rect")
-public func runDirtyRect() -> CGRect {
-    var out = [Double](repeating: 0, count: 4)
-    let ok = out.withUnsafeMutableBufferPointer { glaspen2_rust_dirty_rect($0.baseAddress) }
-    if ok == 0 { return .zero }
-    return CGRect(x: out[0], y: out[1], width: out[2], height: out[3])
-}
 
-@_cdecl("glaspen2_router_camera_pan_cancel")
-public func runCameraPanCancel() { glaspen2_router_camera_cancel() }
-@_cdecl("glaspen2_router_camera_persist_infinite")
-public func runCameraPersistInfinite() { glaspen2_rust_camera_persist_infinite() }
-@_cdecl("glaspen2_router_camera_load_infinite")
-public func runCameraLoadInfinite() { glaspen2_rust_camera_load_infinite() }
-@_cdecl("glaspen2_router_camera_reset_lens")
-public func runCameraResetLens() { glaspen2_rust_camera_reset_lens() }
 
-@_cdecl("glaspen2_router_restore_system_cursor")
-public func runRestoreSystemCursor() { EventRouter.restoreSystemCursor() }
 @_cdecl("glaspen2_router_main_window")
 public func runMainWindow() -> UnsafeMutableRawPointer? {
     guard let w = UIAnchors.mainWindow else { return nil }
@@ -170,54 +129,25 @@ public func runTunnelFlush() { UIAnchors.drawView?.needsDisplay = true }
 
 @_cdecl("glaspen2_router_refresh_menu_texts")
 public func runRefreshMenuTexts() { MenuTextUpdater.update() }
-@_cdecl("glaspen2_router_hotkey_recording")
-public func runHotkeyRecording(_ on: Int32) { glaspen2_rust_hotkey_recording_set(on) }
 
-@_cdecl("glaspen2_router_flush_dirty")
-public func runFlushDirty() { glaspen2_rust_overlay_flush_dirty() }
 
-@_cdecl("glaspen2_router_finish_active_stroke")
-public func runFinishActiveStroke() { EventRouter.finishActiveStroke() }
 
-@_cdecl("glaspen2_router_surface_cache_invalidate")
-public func runSurfaceCacheInvalidate() { panelSurfaceImageCacheInvalidate() }
 
 @_cdecl("glaspen2_router_invert_ink_source")
 public func runInvertInkSource(_ cr: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? {
     panelInvertInkSource(cr)
 }
 
-@_cdecl("glaspen2_router_dirty_include_surface_point")
-public func runDirtySurfacePoint(_ x: Double, _ y: Double, _ pad: Double) {
-    glaspen2_rust_dirty_include_surface_point(x, y, pad)
-}
 
-@_cdecl("glaspen2_router_dirty_include_surface_rect")
-public func runDirtySurfaceRect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) {
-    glaspen2_rust_dirty_include_surface_rect(x, y, w, h)
-}
 
 @_cdecl("glaspen2_router_settings_apply_transparent")
 public func runSettingsTransparent() {
     panelTransparentFull(1)
 }
 
-@_cdecl("glaspen2_router_perform_hotkey")
-public func runPerformHotkey(_ keyCode: UInt16) -> Int32 {
-    glaspen2_router_hotkey_perform(keyCode)
-}
 
-@_cdecl("glaspen2_router_apply_infinite_canvas")
-public func runApplyInfinite(_ on: Int32) {
-    let text = MenuRuntime.l10n(on != 0 ? "canvas.infinite_on" : "canvas.infinite_off")
-    _ = text.withCString { glaspen2_rust_apply_infinite(on, $0) }
-}
 
-@_cdecl("glaspen2_router_clear_screen")
-public func runClearScreen() { glaspen2_rust_surface_clear_screen() }
 
-@_cdecl("glaspen2_router_replay_strokes")
-public func runReplayStrokes() { glaspen2_rust_pageview_rebuild() }
 
 @_cdecl("glaspen2_router_invert_apply")
 public func runInvertApply(_ on: Int32) { panelInvertApply(on) }

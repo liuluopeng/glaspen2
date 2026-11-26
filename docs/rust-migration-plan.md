@@ -1261,3 +1261,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - camera_mods/lang_code/disable_cleanup/tap_menu_bar/update_status_icon/draw_height 迁 Rust;
 - NSFont monospaced 改为 raw msg_send, NULL 时跳过绘制, 修复虚拟笔下的 NSFont NULL panic;
 - 虚拟笔 pen DOWN/两笔正常, probes OK.
+
+
+## R237 run_glue 更多纯桥迁 Rust
+
+- perf/rec_chat/rebuild/apply_transform/peek_lens/dirty/camera/restore_cursor/hotkey_recording/flush/finish/surface_invalidate/dirty_include/perform_hotkey/apply_infinite/clear_screen/replay 25 符号迁 Rust;
+- 删除 Swift 包装; menu/hotkey probes OK, 虚拟笔两笔正常.
