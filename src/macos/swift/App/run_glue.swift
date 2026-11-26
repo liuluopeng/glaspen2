@@ -262,6 +262,11 @@ public func runTunnelClearState() {
 @_cdecl("glaspen2_swift_tunnel_flush")
 public func runTunnelFlush() { UIAnchors.drawView?.needsDisplay = true }
 
+@_cdecl("glaspen2_router_refresh_menu_texts")
+public func runRefreshMenuTexts() { MenuTextUpdater.update() }
+@_cdecl("glaspen2_router_hotkey_recording")
+public func runHotkeyRecording(_ on: Int32) { HotkeyRecorder.setRecording(on != 0) }
+
 @_cdecl("glaspen2_router_flush_dirty")
 public func runFlushDirty() { OverlayLayerFlush.flushDirty() }
 

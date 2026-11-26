@@ -414,3 +414,13 @@ modeler Up error 需真机笔/翻页连击复验。
 - 默认 Rust, `GLASPEN2_SWIFT_TUNNEL_LIFECYCLE=1` 回退;
 - 真机 5 卡隧道默认: `[flip] 实测 56.4 fps (34 帧 / 0.603s)`, `tunnel cards freed count=5`, 无崩溃;
 - 默认/回退 smoke、tests/build/parity 全绿。
+
+
+## R89 常用设置 effect 分派迁 Rust
+
+- `SettingsDispatcher.apply` 先调 Rust `glaspen2_rust_apply_setting`:
+  - core settings_apply -> effect JSON -> 常用 kind 分派(Color/Width/Launch/Glass/Grid/Chat/Pressure/GridFollow/GlassFollow/SoftShadow/Invert/Panel/Outline/Infinite/Minimap/GridSize/GridDivider/Flip/GIF/ChatAuth/Bubble/Share/Language/HotkeyRecording/Shortcuts);
+  - 未识别 kind 记 warn 并视为已处理(避免重复应用 core);
+- Swift 仅 `GLASPEN2_SWIFT_SETTINGS_DISPATCH=1` 回退原 switch;
+- settings probe 默认/回退均 `SWIFT_SETTINGS_PROBE_OK failures=0`;
+- 全量 tests/build/smoke/parity 绿。

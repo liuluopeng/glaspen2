@@ -5036,3 +5036,297 @@ pub extern "C" fn glaspen2_rust_tunnel_finish(
     unsafe { glaspen2_swift_tunnel_mark_inactive() };
     glaspen2_rust_apply_glass();
 }
+
+// ── R89: 设置 effect 分派(常用键; 未覆盖回退 Swift) ──
+
+unsafe extern "C" {
+    fn glaspen2_settings_apply(
+        key: *const std::os::raw::c_char,
+        value: *const std::os::raw::c_char,
+    ) -> *mut std::os::raw::c_char;
+    fn glaspen2_router_refresh_menu_texts();
+    fn glaspen2_router_hotkey_recording(on: i32);
+    fn glaspen2_menu_apply_outline(on: i32);
+    fn glaspen2_router_set_grid_size(v: f64);
+    fn glaspen2_router_set_grid_divider(v: i32);
+    fn glaspen2_router_set_minimap(on: i32);
+    fn glaspen2_router_set_flip(v: i32);
+    fn glaspen2_router_gif_fps() -> i32;
+    fn glaspen2_router_gif_resolution() -> f64;
+    fn glaspen2_router_gif_speed() -> f64;
+    fn glaspen2_router_gif_end_mode() -> i32;
+    fn glaspen2_router_set_gif(fps: i32, resolution: f64, speed: f64, end_mode: i32);
+    fn glaspen2_router_set_soft_shadow_flag(on: i32);
+    fn glaspen2_set_soft_shadow(on: i32);
+    fn glaspen2_router_invert_set_ink(on: i32);
+    fn glaspen2_router_invert_apply(on: i32);
+    fn glaspen2_router_invert_set_fps(v: i32);
+    fn glaspen2_router_invert_enabled() -> i32;
+    fn glaspen2_router_invert_restart();
+    fn glaspen2_router_set_grid_follow(on: i32);
+    fn glaspen2_router_set_glass_follow(on: i32);
+    fn glaspen2_router_redraw_draw_view();
+    fn glaspen2_router_panel_transparent_full(on: i32);
+    fn glaspen2_bubble_set_capture(on: i32);
+    fn glaspen2_router_startup_set_lang(v: i32);
+    fn glaspen2_save_string_setting(
+        key: *const std::os::raw::c_char,
+        value: *const std::os::raw::c_char,
+    );
+    fn glaspen2_chat_auth_reload();
+}
+
+fn cstr_setting(text: &str) -> std::ffi::CString {
+    std::ffi::CString::new(text).unwrap_or_default()
+}
+
+/// R89: 应用一个设置; 返回 1 已处理, 0 回退 Swift。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_apply_setting(
+    key: *const std::os::raw::c_char,
+    value: *const std::os::raw::c_char,
+) -> i32 {
+    if key.is_null() || value.is_null() {
+        return 0;
+    }
+    let effect_raw = unsafe { glaspen2_settings_apply(key, value) };
+    if effect_raw.is_null() {
+        return 0;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(effect_raw) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { glaspen2_free_c_string(effect_raw) };
+    let Ok(effect) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return 0;
+    };
+    let Some(kind) = effect.get("kind").and_then(|k| k.as_str()) else {
+        return 0;
+    };
+    let b = effect
+        .get("bool")
+        .and_then(|x| x.as_bool())
+        .unwrap_or(false);
+    let iv = effect.get("int").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+    let fv = effect.get("float").and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let sv = effect.get("str").and_then(|x| x.as_str()).unwrap_or("");
+    let ignored = [
+        "BubbleAutoNewPage",
+        "BubbleReplayAuto",
+        "BubbleReplayHoldLast",
+        "BubbleReplaySpeed",
+        "NasUrl",
+        "NotebookStyle",
+        "ShowFreeCanvas",
+    ];
+    if ignored.contains(&kind) {
+        return 1;
+    }
+    match kind {
+        "Color" => {
+            let _ = glaspen2_rust_select_color(iv);
+            1
+        }
+        "Width" => {
+            let _ = glaspen2_rust_select_width(iv);
+            1
+        }
+        "LaunchAtLogin" => {
+            glaspen2_rust_set_launch_at_login(i32::from(b));
+            1
+        }
+        "FrostedGlass" => {
+            glaspen2_rust_set_glass_enabled(i32::from(b));
+            1
+        }
+        "Grid" => {
+            glaspen2_rust_set_grid_enabled(i32::from(b));
+            1
+        }
+        "ChatIntegration" => {
+            glaspen2_rust_set_chat_integration(i32::from(b));
+            1
+        }
+        "PressureMonitor" => {
+            glaspen2_rust_set_pressure_monitor(i32::from(b));
+            1
+        }
+        "GridFollowStrokes" => {
+            unsafe {
+                glaspen2_router_set_grid_follow(i32::from(b));
+                glaspen2_router_redraw_draw_view();
+            }
+            1
+        }
+        "GlassFollowStrokes" => {
+            unsafe {
+                glaspen2_router_set_glass_follow(i32::from(b));
+            }
+            glaspen2_rust_apply_glass();
+            1
+        }
+        "SoftShadow" => {
+            unsafe {
+                glaspen2_router_set_soft_shadow_flag(i32::from(b));
+                glaspen2_set_soft_shadow(i32::from(b));
+                glaspen2_router_redraw_draw_view();
+            }
+            1
+        }
+        "InvertInk" => {
+            unsafe {
+                glaspen2_router_invert_set_ink(i32::from(b));
+                glaspen2_router_invert_apply(i32::from(b));
+            }
+            1
+        }
+        "InvertFps" => {
+            unsafe {
+                glaspen2_router_invert_set_fps(iv);
+                if glaspen2_router_invert_enabled() != 0 {
+                    glaspen2_router_invert_restart();
+                }
+            }
+            1
+        }
+        "PanelTransparent" => {
+            unsafe {
+                glaspen2_router_panel_transparent_full(i32::from(b));
+            }
+            1
+        }
+        "Outline" => {
+            unsafe {
+                glaspen2_menu_apply_outline(i32::from(b));
+            }
+            1
+        }
+        "InfiniteCanvas" => {
+            let _ = glaspen2_rust_apply_infinite(i32::from(b), std::ptr::null());
+            1
+        }
+        "Minimap" => {
+            unsafe {
+                glaspen2_router_set_minimap(i32::from(b));
+                glaspen2_router_redraw_draw_view();
+            }
+            1
+        }
+        "GridSize" => {
+            unsafe {
+                glaspen2_router_set_grid_size(fv);
+                glaspen2_router_redraw_draw_view();
+            }
+            1
+        }
+        "GridDivider" => {
+            unsafe {
+                glaspen2_router_set_grid_divider(iv);
+                glaspen2_router_redraw_draw_view();
+            }
+            1
+        }
+        "FlipEffect" => {
+            unsafe {
+                glaspen2_router_set_flip(iv);
+            }
+            1
+        }
+        "GifFps" | "GifResolution" | "GifSpeed" | "GifEndMode" => {
+            let (mut fps, mut res, mut speed, mut end_mode) = unsafe {
+                (
+                    glaspen2_router_gif_fps(),
+                    glaspen2_router_gif_resolution(),
+                    glaspen2_router_gif_speed(),
+                    glaspen2_router_gif_end_mode(),
+                )
+            };
+            match kind {
+                "GifFps" => fps = iv,
+                "GifResolution" => res = fv,
+                "GifSpeed" => speed = fv,
+                _ => end_mode = iv,
+            }
+            unsafe { glaspen2_router_set_gif(fps, res, speed, end_mode) };
+            1
+        }
+        "ChatApiBase" | "ChatUser" | "ChatPassword" => {
+            if kind == "ChatPassword" && !sv.is_empty() {
+                let k = cstr_setting("chat_password");
+                let v = cstr_setting(sv);
+                unsafe {
+                    glaspen2_save_string_setting(k.as_ptr(), v.as_ptr());
+                }
+            }
+            unsafe {
+                glaspen2_chat_auth_reload();
+            }
+            1
+        }
+        "ShowBubbleTab" => {
+            unsafe {
+                glaspen2_bubble_set_capture(i32::from(b));
+            }
+            1
+        }
+        "ShareCanvas" => {
+            let chat = unsafe {
+                let k = cstr_setting("chat_integration");
+                glaspen2_load_bool_setting(k.as_ptr()) != 0
+            };
+            if chat || !b {
+                unsafe {
+                    glaspen2_share_ink_set_active(i32::from(chat && b));
+                }
+            }
+            1
+        }
+        "Language" => {
+            unsafe {
+                glaspen2_router_startup_set_lang(i32::from(sv == "en"));
+                glaspen2_router_refresh_menu_texts();
+                glaspen2_notify_settings_changed();
+            }
+            1
+        }
+        "HotkeyRecording" => {
+            unsafe {
+                glaspen2_router_hotkey_recording(i32::from(b));
+            }
+            1
+        }
+        "Shortcuts" => {
+            let saved = effect
+                .get("json")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({}));
+            let text = saved.to_string();
+            let Ok(cs) = std::ffi::CString::new(text) else {
+                return 1;
+            };
+            unsafe {
+                glaspen2_shortcut_apply_json(cs.as_ptr());
+            }
+            let values = unsafe { glaspen2_shortcut_store_values_json() };
+            if !values.is_null() {
+                let payload = unsafe { std::ffi::CStr::from_ptr(values) }
+                    .to_string_lossy()
+                    .into_owned();
+                unsafe { glaspen2_free_c_string(values) };
+                let k = cstr_setting("shortcuts");
+                let v = cstr_setting(&payload);
+                unsafe {
+                    glaspen2_save_string_setting(k.as_ptr(), v.as_ptr());
+                }
+            }
+            unsafe {
+                glaspen2_notify_settings_changed();
+            }
+            1
+        }
+        _ => {
+            tracing::warn!("settings: 未处理的 effect kind={kind}");
+            1
+        }
+    }
+}

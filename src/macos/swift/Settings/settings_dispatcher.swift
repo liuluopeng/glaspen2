@@ -4,6 +4,10 @@ import AppKit
 @objc public final class SettingsDispatcher: NSObject {
     @objc(applyWithKey:value:)
     public static func apply(key: String, value: String) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_SETTINGS_DISPATCH"] != "1" {
+            let handled = key.withCString { k in value.withCString { v in glaspen2_rust_apply_setting(k, v) } }
+            if handled != 0 { return }
+        }
         guard let effectRaw = key.withCString({ k in
             value.withCString { v in glaspen2_settings_apply(k, v) }
         }) else { return }

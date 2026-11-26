@@ -555,3 +555,6 @@ extern void glaspen2_rust_tunnel_finish(double t0, double now, unsigned long lon
                                         const int *depths, void *const *card_surf, void *const *mip_surf,
                                         int back, double travel, double k, double thick, double pane_a,
                                         int surf_w, int surf_h);
+
+// R89: 常用设置 effect 分派(未覆盖回退 Swift)
+extern int glaspen2_rust_apply_setting(const char *key, const char *value);
