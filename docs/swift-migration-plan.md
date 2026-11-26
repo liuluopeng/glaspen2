@@ -814,3 +814,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R234 | run_glue 16 个纯状态 C 桥迁 Rust; 虚拟笔 pen DOWN 正常 | 本提交 |
 | 2026-11-26 | Rust-R235/236 | 运行壳 6 桥迁 Rust; NSFont NULL 防护修复虚拟笔崩溃 | 本提交 |
 | 2026-11-26 | Rust-R237 | run_glue 25 个纯桥迁 Rust; 虚拟笔两笔正常 | 本提交 |
+| 2026-11-26 | Rust-R238 | 视图/标志/延迟重建 10 桥迁 Rust; 虚拟笔两笔正常 | 本提交 |

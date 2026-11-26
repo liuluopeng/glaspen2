@@ -1267,3 +1267,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - perf/rec_chat/rebuild/apply_transform/peek_lens/dirty/camera/restore_cursor/hotkey_recording/flush/finish/surface_invalidate/dirty_include/perform_hotkey/apply_infinite/clear_screen/replay 25 符号迁 Rust;
 - 删除 Swift 包装; menu/hotkey probes OK, 虚拟笔两笔正常.
+
+
+## R238 视图/标志/延迟重建桥迁 Rust
+
+- show_cursor/pageview_rebuild/tunnel_flush/notification_redraw/main_window/draw_view/restore_canvas_flags/restore_pressure/notify_ax_warning/delayed_rebuild 迁 Rust;
+- 删除 Swift 包装; probes OK, 虚拟笔两笔正常.

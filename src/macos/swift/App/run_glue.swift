@@ -58,11 +58,6 @@ public func runEventTapReinstall() {
 
 
 
-@_cdecl("glaspen2_router_main_window")
-public func runMainWindow() -> UnsafeMutableRawPointer? {
-    guard let w = UIAnchors.mainWindow else { return nil }
-    return Unmanaged.passUnretained(w).toOpaque()
-}
 @_cdecl("glaspen2_router_pm_show")
 public func runPmShow() { PressureMonitorWindow.show() }
 @_cdecl("glaspen2_router_pm_hide")
@@ -97,8 +92,6 @@ public func runDrawView() -> UnsafeMutableRawPointer? {
 
 @_cdecl("glaspen2_swift_pressure_destroy")
 public func runPressureDestroy() { PressureMonitorWindow.destroy() }
-@_cdecl("glaspen2_swift_show_cursor")
-public func runShowCursor() { CGDisplayShowCursor(CGMainDisplayID()) }
 
 @_cdecl("glaspen2_swift_tunnel_active")
 public func runTunnelActive() -> Int32 { TunnelState.active ? 1 : 0 }
@@ -124,8 +117,6 @@ public func runTunnelClearState() {
     glaspen2_rust_clear_tunnel_cache()
 }
 
-@_cdecl("glaspen2_swift_tunnel_flush")
-public func runTunnelFlush() { UIAnchors.drawView?.needsDisplay = true }
 
 @_cdecl("glaspen2_router_refresh_menu_texts")
 public func runRefreshMenuTexts() { MenuTextUpdater.update() }
@@ -152,17 +143,7 @@ public func runSettingsTransparent() {
 @_cdecl("glaspen2_router_invert_apply")
 public func runInvertApply(_ on: Int32) { panelInvertApply(on) }
 
-@_cdecl("glaspen2_router_restore_canvas_flags")
-public func runRestoreCanvasFlags(_ infinite: Int32, _ minimap: Int32, _ ethereal: Int32) {
-    sw_set_infinite(infinite)
-    sw_set_minimap(minimap)
-    glaspen2_router_set_ethereal(ethereal)
-}
 
-@_cdecl("glaspen2_router_restore_pressure")
-public func runRestorePressure(_ on: Int32) {
-    glaspen2_router_set_pressure_monitor(on)
-}
 
 @_cdecl("glaspen2_router_rec_init")
 public func runRecInit() {
@@ -193,18 +174,10 @@ public func runWindowSharingType() -> Int32 {
     Int32(UIAnchors.mainWindow?.sharingType.rawValue ?? 0)
 }
 
-@_cdecl("glaspen2_router_draw_view")
-public func runDrawViewPtr() -> UnsafeMutableRawPointer? {
-    UIAnchors.drawView.map { Unmanaged.passUnretained($0).toOpaque() }
-}
 
 @_cdecl("glaspen2_router_invert_invalidate")
 public func runInvertInvalidate() { panelInvertInvalidate() }
 
-@_cdecl("glaspen2_notification_redraw")
-public func runNotificationRedraw() {
-    UIAnchors.drawView?.needsDisplay = true
-}
 
 @_cdecl("glaspen2_swift_overlay_flush")
 public func runOverlayFlush() { glaspen2_rust_overlay_flush() }
@@ -255,12 +228,6 @@ public func runApplyDisplayFrames(_ width: Int32, _ height: Int32) {
     }
 }
 
-@_cdecl("glaspen2_swift_notify_ax_warning")
-public func runNotifyAxWarning() {
-    notificationShowText(text: MenuRuntime.pair(
-        "辅助功能权限已失效, 涂鸦/热键暂停 — 请到系统设置重新勾选",
-        "Accessibility permission lost — re-enable it in System Settings"))
-}
 
 
 @_cdecl("glaspen2_swift_tunnel_set_surfaces")
@@ -275,8 +242,6 @@ public func runTunnelSurface() -> UnsafeMutableRawPointer? {
     return UnsafeMutableRawPointer(s)
 }
 
-@_cdecl("glaspen2_swift_pageview_rebuild")
-public func runPageviewRebuild() { glaspen2_rust_pageview_rebuild() }
 
 @_cdecl("glaspen2_swift_update_menu_texts")
 public func runUpdateMenuTexts() { MenuTextUpdater.update() }
@@ -286,14 +251,6 @@ public func runRestorePressureWindow() {
         PressureMonitorWindow.ensureWindow()
         PressureMonitorWindow.show()
         glaspen2_router_pm_refresh()
-    }
-}
-@_cdecl("glaspen2_swift_delayed_rebuild")
-public func runDelayedRebuild() {
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-        if glaspen2_router_stroke_active() != 0 { return }
-        glaspen2_router_ensure_surface()
-        glaspen2_rust_pageview_rebuild()
     }
 }
 

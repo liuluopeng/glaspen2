@@ -3558,7 +3558,6 @@ pub extern "C" fn glaspen2_rust_apply_infinite(
 // ── R60: 涂鸦总开关热键路径(窗口显隐/压感窗/状态/通知/菜单) ──
 
 unsafe extern "C" {
-    fn glaspen2_router_main_window() -> *mut c_void;
     fn glaspen2_router_pressure_monitor() -> i32;
 }
 
@@ -4834,7 +4833,6 @@ unsafe extern "C" {
     fn cairo_create(surface: *mut c_void) -> *mut c_void;
     fn cairo_get_source(cr: *mut c_void) -> *mut c_void;
     fn cairo_pattern_set_filter(pattern: *mut c_void, filter: i32);
-    fn glaspen2_swift_tunnel_flush();
 }
 
 fn tunnel_place(zc: f64, k: f64, travel: f64, surf_w: i32, surf_h: i32) -> Option<[f64; 5]> {
@@ -6033,7 +6031,6 @@ pub extern "C" fn glaspen2_rust_ethereal_preview_show() -> i32 {
 unsafe extern "C" {
     fn glaspen2_shutdown();
     fn glaspen2_swift_pressure_destroy();
-    fn glaspen2_swift_show_cursor();
 }
 
 #[unsafe(no_mangle)]
@@ -6746,7 +6743,6 @@ static AX_WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool:
 
 unsafe extern "C" {
     fn AXIsProcessTrusted() -> u8;
-    fn glaspen2_swift_notify_ax_warning();
 }
 
 #[unsafe(no_mangle)]
@@ -7135,9 +7131,7 @@ pub extern "C" fn glaspen2_rust_minimap_layout(
 static NOTIF_TEXT: std::sync::Mutex<Option<std::ffi::CString>> = std::sync::Mutex::new(None);
 static NOTIF_GEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
-unsafe extern "C" {
-    fn glaspen2_notification_redraw();
-}
+unsafe extern "C" {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_notification_set(text: *const std::os::raw::c_char) -> u32 {
@@ -7757,7 +7751,6 @@ unsafe extern "C" {
     fn cairo_pattern_set_matrix(pattern: *mut c_void, matrix: *const [f64; 6]);
     fn glaspen2_set_invert_background(surface: *mut c_void);
     fn glaspen2_set_invert_dirty(x: i32, y: i32, w: i32, h: i32);
-    fn glaspen2_swift_pageview_rebuild();
     fn glaspen2_set_stroke_invert(on: i32);
 }
 
@@ -7979,8 +7972,6 @@ unsafe extern "C" {
     fn glaspen2_router_startup_outline(on: i32);
     fn glaspen2_router_startup_invert(fps: i32, ink: i32);
     fn glaspen2_router_startup_flip(v: i32);
-    fn glaspen2_router_restore_canvas_flags(inf: i32, mini: i32, eth: i32);
-    fn glaspen2_router_restore_pressure(on: i32);
     fn glaspen2_clamp_setting_int(key: *const std::os::raw::c_char, v: i32) -> i32;
     fn glaspen2_clamp_setting_double(key: *const std::os::raw::c_char, v: f64) -> f64;
     fn glaspen2_router_restore_gif_settings(fps: i32, resolution: f64, speed: f64, end_mode: i32);
@@ -7991,7 +7982,6 @@ unsafe extern "C" {
         lang: *const std::os::raw::c_char,
     ) -> *mut std::os::raw::c_char;
     fn glaspen2_swift_restore_pressure_window();
-    fn glaspen2_swift_delayed_rebuild();
 }
 
 fn load_str_setting(key: &str) -> Option<String> {
@@ -10859,4 +10849,79 @@ pub extern "C" fn glaspen2_router_clear_screen() {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_replay_strokes() {
     glaspen2_rust_pageview_rebuild();
+}
+
+// ── R238: run_glue 视图/标志/延迟重建桥 ──
+
+unsafe extern "C" {
+    fn sw_main_window() -> *mut c_void;
+    fn sw_set_infinite(on: i32);
+    fn sw_set_minimap(on: i32);
+}
+
+fn redraw_draw_view_now() {
+    let view = unsafe { sw_draw_view() };
+    if view.is_null() {
+        return;
+    }
+    unsafe {
+        let _: () = objc2::msg_send![view as *mut objc2::runtime::AnyObject, setNeedsDisplay: true];
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_show_cursor() {
+    unsafe { CGDisplayShowCursor(CGMainDisplayID()) };
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_pageview_rebuild() {
+    glaspen2_rust_pageview_rebuild();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_tunnel_flush() {
+    redraw_draw_view_now();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_notification_redraw() {
+    redraw_draw_view_now();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_main_window() -> *mut c_void {
+    unsafe { sw_main_window() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_draw_view() -> *mut c_void {
+    unsafe { sw_draw_view() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_restore_canvas_flags(infinite: i32, minimap: i32, ethereal: i32) {
+    unsafe {
+        sw_set_infinite(infinite);
+        sw_set_minimap(minimap);
+        glaspen2_router_set_ethereal(ethereal);
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_restore_pressure(on: i32) {
+    unsafe { glaspen2_router_set_pressure_monitor(on) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_notify_ax_warning() {
+    let text = if unsafe { glaspen2_router_lang() } == 0 {
+        "辅助功能权限已失效, 涂鸦/热键暂停 — 请到系统设置重新勾选"
+    } else {
+        "Accessibility permission lost — re-enable it in System Settings"
+    };
+    notification_show_owned(text);
+}
+extern "C" fn delayed_rebuild_cb(_ctx: *mut c_void) {
+    if unsafe { glaspen2_router_stroke_active() } != 0 {
+        return;
+    }
+    glaspen2_router_ensure_surface();
+    glaspen2_rust_pageview_rebuild();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_delayed_rebuild() {
+    unsafe { glaspen2_swift_dispatch_main_after(0.3, std::ptr::null_mut(), delayed_rebuild_cb) }
 }
