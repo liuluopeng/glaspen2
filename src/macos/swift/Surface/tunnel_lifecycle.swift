@@ -33,6 +33,34 @@ import Darwin
     }
 
     @objc public static func finish() {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TUNNEL_LIFECYCLE"] != "1" {
+            let now = TunnelState.now()
+            TunnelState.depths.withUnsafeBufferPointer { depths in
+                TunnelState.cardSurf.withUnsafeBufferPointer { cards in
+                    TunnelState.mipSurf.withUnsafeBufferPointer { mips in
+                        cards.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { cardPtr in
+                            mips.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { mipPtr in
+                                glaspen2_rust_tunnel_finish(
+                                    TunnelState.t0, now, TunnelState.frames,
+                                    TunnelState.surface.map(UnsafeMutableRawPointer.init),
+                                    TunnelState.blur.map(UnsafeMutableRawPointer.init),
+                                    Int32(TunnelState.cards), depths.baseAddress, cardPtr, mipPtr,
+                                    TunnelState.back ? 1 : 0, TunnelState.travel, TunnelState.k,
+                                    TunnelState.thick, TunnelState.paneA,
+                                    Int32(TunnelState.surfW), Int32(TunnelState.surfH))
+                            }
+                        }
+                    }
+                }
+            }
+            let prepare = TunnelState.prepare
+            let commit = TunnelState.commit
+            TunnelState.prepare = nil
+            TunnelState.commit = nil
+            prepare?()
+            commit?()
+            return
+        }
         TunnelState.timer?.cancel()
         TunnelState.timer = nil
         TunnelFrameRenderer.render(p: 1.0)

@@ -548,3 +548,10 @@ extern int glaspen2_rust_tunnel_render(double p, void *surface, void *blur, int 
 // R86: 隧道卡片/缓冲/表面释放
 extern void glaspen2_rust_tunnel_free_cards(int count, void *const *card_surf, void *const *mip_surf,
                                             void *blur, void *surface);
+
+// R88: 隧道收尾(cancel/final frame/FPS/free/glass)
+extern void glaspen2_rust_tunnel_finish(double t0, double now, unsigned long long frames,
+                                        void *surface, void *blur, int cards,
+                                        const int *depths, void *const *card_surf, void *const *mip_surf,
+                                        int back, double travel, double k, double thick, double pane_a,
+                                        int surf_w, int surf_h);

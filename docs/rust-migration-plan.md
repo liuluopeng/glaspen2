@@ -406,3 +406,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - `TunnelLifecycle.freeCards` 默认走 Rust, `GLASPEN2_SWIFT_TUNNEL_LIFECYCLE=1` 回退;
 - 真机 5 卡隧道(默认路径): 启动前/结束后 `tunnel cards freed count=512`, 无崩溃;
 - 默认/回退 smoke、tests/build/parity 全绿。
+
+
+## R88 隧道收尾迁 Rust
+
+- `TunnelLifecycle.finish` 的 cancel timer / 最终帧渲染 / FPS 日志 / 释放 / 置 inactive / applyGlass 迁 Rust, 闭包回调用 Swift;
+- 默认 Rust, `GLASPEN2_SWIFT_TUNNEL_LIFECYCLE=1` 回退;
+- 真机 5 卡隧道默认: `[flip] 实测 56.4 fps (34 帧 / 0.603s)`, `tunnel cards freed count=5`, 无崩溃;
+- 默认/回退 smoke、tests/build/parity 全绿。

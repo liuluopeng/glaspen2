@@ -238,6 +238,14 @@ public func runGlassView() -> UnsafeMutableRawPointer? {
     return Unmanaged.passUnretained(g).toOpaque()
 }
 
+@_cdecl("glaspen2_swift_tunnel_cancel_timer")
+public func runTunnelCancelTimer() {
+    TunnelState.timer?.cancel()
+    TunnelState.timer = nil
+}
+@_cdecl("glaspen2_swift_tunnel_mark_inactive")
+public func runTunnelMarkInactive() { TunnelState.active = false }
+
 @_cdecl("glaspen2_swift_tunnel_clear_state")
 public func runTunnelClearState() {
     for i in 0..<TunnelState.maxCards {

@@ -4989,3 +4989,50 @@ pub extern "C" fn glaspen2_rust_tunnel_free_cards(
     tracing::info!("rust-shell: tunnel cards freed count={count}");
     unsafe { glaspen2_swift_tunnel_clear_state() };
 }
+
+// ── R88: 隧道收尾(cancel timer/final frame/FPS/free/glass) ──
+
+unsafe extern "C" {
+    fn glaspen2_swift_tunnel_cancel_timer();
+    fn glaspen2_swift_tunnel_mark_inactive();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_tunnel_finish(
+    t0: f64,
+    now: f64,
+    frames: u64,
+    surface: *mut c_void,
+    blur: *mut c_void,
+    cards: i32,
+    depths: *const i32,
+    card_surf: *const *mut c_void,
+    mip_surf: *const *mut c_void,
+    back: i32,
+    travel: f64,
+    k: f64,
+    thick: f64,
+    pane_a: f64,
+    surf_w: i32,
+    surf_h: i32,
+) {
+    unsafe { glaspen2_swift_tunnel_cancel_timer() };
+    if !surface.is_null() && cards > 0 {
+        let _ = glaspen2_rust_tunnel_render(
+            1.0, surface, blur, cards, depths, card_surf, mip_surf, back, travel, k, thick, pane_a,
+            surf_w, surf_h,
+        );
+    }
+    if std::env::var_os("GLASPEN2_FLIP_FPS").is_some() {
+        let secs = now - t0;
+        let fps = if secs > 0.001 {
+            frames as f64 / secs
+        } else {
+            0.0
+        };
+        tracing::info!("[flip] 实测 {fps:.1} fps ({frames} 帧 / {secs:.3}s)");
+    }
+    glaspen2_rust_tunnel_free_cards(cards, card_surf, mip_surf, blur, surface);
+    unsafe { glaspen2_swift_tunnel_mark_inactive() };
+    glaspen2_rust_apply_glass();
+}
