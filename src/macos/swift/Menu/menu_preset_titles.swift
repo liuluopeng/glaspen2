@@ -8,7 +8,7 @@ import AppKit
         glaspen2_color_preset_rgb(index, &r, &g, &b)
         let color = NSColor(calibratedRed: r, green: g, blue: b, alpha: 1.0)
         let icon = MenuIconFactory.colorDot(color)
-        let name = MenuNames.colorDisplayName(index: Int(index))
+        let name = MenuRuntime.colorDisplayName(index: Int(index))
         return MenuIconFactory.menuText(icon: icon, name: name)
     }
 
@@ -16,7 +16,7 @@ import AppKit
     public static func widthItemText(index: Int32) -> NSAttributedString {
         let scale = glaspen2_width_preset_value(index)
         let icon = MenuIconFactory.widthLine(scale)
-        let name = MenuNames.widthDisplayName(index: Int(index))
+        let name = MenuRuntime.widthDisplayName(index: Int(index))
         return MenuIconFactory.menuText(icon: icon, name: name)
     }
 }

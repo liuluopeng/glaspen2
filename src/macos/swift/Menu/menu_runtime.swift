@@ -31,6 +31,18 @@ import AppKit
         ShortcutStore.chord(forAction: action)
     }
     /// R7: 动作 → NSEvent.ModifierFlags.rawValue(解析在 core::chord)。
+    static func colorDisplayName(index: Int) -> String {
+        guard let p = glaspen2_color_name(Int32(index), glaspen2_router_lang()) else { return "" }
+        defer { glaspen2_free_c_string(p) }
+        return String(cString: p)
+    }
+
+    static func widthDisplayName(index: Int) -> String {
+        guard let p = glaspen2_width_name(Int32(index), glaspen2_router_lang()) else { return "" }
+        defer { glaspen2_free_c_string(p) }
+        return String(cString: p)
+    }
+
     static func maskFor(action: String) -> UInt {
         guard let chord = ShortcutStore.chord(forAction: action), !chord.isEmpty else { return 0 }
         return UInt(chord.withCString { glaspen2_chord_modifier_mask($0) })

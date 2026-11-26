@@ -70,7 +70,7 @@ import AppKit
                 prev = selected == 0 ? 9 : 0
             }
             MenuHandler.setColor(index: Int32(prev))
-            let name = MenuNames.colorDisplayName(index: prev)
+            let name = MenuRuntime.colorDisplayName(index: Int(prev))
             NotificationPresenter.show(text:
                 I18nText.textf("hud.color_changed", ["color": name]))
             return true
@@ -82,7 +82,7 @@ import AppKit
                 prev = selected <= 3 ? 6 : 2
             }
             MenuHandler.setWidth(index: Int32(prev))
-            let name = MenuNames.widthDisplayName(index: prev)
+            let name = MenuRuntime.widthDisplayName(index: Int(prev))
             NotificationPresenter.show(text:
                 I18nText.textf("hud.width_changed", ["width": name]))
             return true
