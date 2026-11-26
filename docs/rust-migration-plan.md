@@ -1036,3 +1036,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 模型器一笔/提交/笔画点数/总览 PNG/画布载荷/清空动作迁 Rust;
 - 删除 Diagnostics/render_probe.swift; Swift 55→54;
 - SWIFT_RENDER_PROBE_OK failures=0。
+
+
+## R185 虚拟笔诊断迁 Rust
+
+- 后台线程合成 mouseMoved/leftMouseDown/Dragged/Up, 设置 tablet subtype/user data/pressure, CGEventPost;
+- 删除 Diagnostics/virtual_pen.swift; StartupRunLoop 直调 Rust;
+- 实测虚拟笔 batch/抬笔正常; Swift 54→53。

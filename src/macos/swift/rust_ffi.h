@@ -768,3 +768,6 @@ extern int glaspen2_rust_hotkeys_probe(void);
 
 // R184: 渲染诊断探针
 extern int glaspen2_rust_render_probe(void);
+
+// R185: 虚拟笔诊断
+extern void glaspen2_rust_virtual_pen_maybe_start(void);

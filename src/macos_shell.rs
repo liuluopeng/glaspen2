@@ -9000,3 +9000,91 @@ pub extern "C" fn glaspen2_rust_render_probe() -> i32 {
     println!("SWIFT_RENDER_PROBE_OK failures={failures}");
     i32::from(failures == 0) - 1
 }
+
+// ── R185: 虚拟笔诊断 ──
+
+#[repr(C)]
+struct CGPoint2 {
+    x: f64,
+    y: f64,
+}
+
+unsafe extern "C" {
+    fn CGEventCreateMouseEvent(
+        source: *mut c_void,
+        mouse_type: u32,
+        pos: CGPoint2,
+        button: u32,
+    ) -> *mut c_void;
+    fn CGEventSetIntegerValueField(event: *mut c_void, field: u32, value: i64);
+    fn CGEventPost(tap: u32, event: *mut c_void);
+}
+
+fn virtual_pen_post(kind: u32, x: f64, y: f64, pressure: f64) {
+    let ev = unsafe { CGEventCreateMouseEvent(std::ptr::null_mut(), kind, CGPoint2 { x, y }, 0) };
+    if ev.is_null() {
+        return;
+    }
+    unsafe {
+        CGEventSetIntegerValueField(ev, 7, 1); // NSEventSubtype.tabletPoint
+        CGEventSetIntegerValueField(ev, 42, 0x5650_4E31); // kVirtualPenUserData
+        CGEventSetIntegerValueField(ev, 0x2F, (pressure * 65535.0) as i64);
+        CGEventPost(0, ev); // kCGHIDEventTap
+        CFRelease(ev);
+    }
+}
+
+fn virtual_pen_run() {
+    let mut batch = 0i32;
+    loop {
+        let mut s = 0i32;
+        while s < 3 && unsafe { glaspen2_router_enabled() } != 0 {
+            let w = unsafe { glaspen2_router_screen_w() };
+            let h = unsafe { glaspen2_router_screen_h() };
+            let x0 = w * 0.22 + s as f64 * w * 0.18;
+            let y0 = h * 0.35;
+            tracing::info!("[glaspen2] virtual pen: batch {batch} stroke {s}");
+            let mut i = 0i32;
+            while i < 100 && unsafe { glaspen2_router_enabled() } != 0 {
+                let t = i as f64 / 100.0;
+                virtual_pen_post(5, x0 + t * w * 0.22, y0, 0.0);
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                i += 1;
+            }
+            let n = 400i32;
+            i = 0;
+            while i <= n && unsafe { glaspen2_router_enabled() } != 0 {
+                let t = i as f64 / n as f64;
+                let x = x0 + t * w * 0.22;
+                let y = y0 + (t * 9.42478).sin() * h * 0.12;
+                let p = 0.4 + 0.5 * (t * 12.566).sin().abs();
+                virtual_pen_post(if i == 0 { 1 } else { 6 }, x, y, p);
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                i += 1;
+            }
+            virtual_pen_post(2, x0 + w * 0.22, y0, 0.0);
+            i = 0;
+            while i < 100 && unsafe { glaspen2_router_enabled() } != 0 {
+                virtual_pen_post(5, x0 + w * 0.22 - i as f64 * 2.0, y0 + i as f64, 0.0);
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                i += 1;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            s += 1;
+        }
+        batch += 1;
+        std::thread::sleep(std::time::Duration::from_secs(9));
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_virtual_pen_maybe_start() {
+    let Ok(v) = std::env::var("GLASPEN2_VIRTUAL_PEN") else {
+        return;
+    };
+    if v.is_empty() || v == "0" {
+        return;
+    }
+    tracing::info!("[glaspen2] virtual pen enabled (GLASPEN2_VIRTUAL_PEN): 每 12 秒画 3 笔");
+    std::thread::spawn(virtual_pen_run);
+}

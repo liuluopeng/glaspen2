@@ -8,7 +8,7 @@ import ApplicationServices
             checkTap()
         }
         glaspen2_perf_init_from_env()
-        VirtualPen.maybeStart()
+        glaspen2_rust_virtual_pen_maybe_start()
         FlipProbe.maybeStart()
     }
 
