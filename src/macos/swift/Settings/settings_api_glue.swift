@@ -20,7 +20,7 @@ public func settingsApiFreeBytes(_ p: UnsafeMutablePointer<UInt8>?) {
 @_cdecl("glaspen2_macos_set_setting")
 public func settingsApiSetSetting(_ key: UnsafePointer<CChar>?, _ value: UnsafePointer<CChar>?) {
     guard let key, let value else { return }
-    SettingsDispatcher.apply(key: String(cString: key), value: String(cString: value))
+    _ = glaspen2_rust_apply_setting(key, value)
 }
 
 @_cdecl("glaspen2_macos_delete_page")

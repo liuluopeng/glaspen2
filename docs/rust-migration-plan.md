@@ -519,3 +519,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - `EtherealMode.hideNow/restoreNow/autoShow/peek 显示部分` 的状态判断/结束笔画/笔迹显隐/玻璃/压感窗/重绘迁 Rust;
 - 默认 Rust, `GLASPEN2_SWIFT_ETHEREAL=1` 回退; peek 定时器仍 Swift;
 - 默认/回退 smoke、tests/build/parity 全绿。
+
+
+## R103 删除 SettingsDispatcher 回退桥
+
+- R89 后默认路径已全走 Rust, Swift 回退实际不可达; 删除 `Settings/settings_dispatcher.swift`;
+- `settings_api_glue` 直接调 `glaspen2_rust_apply_setting`; settings probe 同步改直调;
+- Swift 82→81; settings probe failures=0, 默认 smoke/tests/build/parity 全绿。

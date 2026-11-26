@@ -14,31 +14,35 @@ import AppKit
         }
 
 
-        SettingsDispatcher.apply(key: "gridSize", value: "55")
+        func apply(_ key: String, _ value: String) {
+            _ = key.withCString { k in value.withCString { v in glaspen2_rust_apply_setting(k, v) } }
+        }
+
+        apply("gridSize", "55")
         check("gridSize", glaspen2_router_grid_size() == 55)
-        SettingsDispatcher.apply(key: "gridDivider", value: "2")
+        apply("gridDivider", "2")
         check("gridDivider", glaspen2_router_grid_divider() == 2)
-        SettingsDispatcher.apply(key: "language", value: "\"en\"")
+        apply("language", "\"en\"")
         check("language", glaspen2_router_lang() == 1)
-        SettingsDispatcher.apply(key: "minimap", value: "true")
+        apply("minimap", "true")
         check("minimap", glaspen2_router_minimap_enabled() != 0)
-        SettingsDispatcher.apply(key: "flipEffect", value: "1")
+        apply("flipEffect", "1")
         check("flipEffect", glaspen2_router_flip_effect() == 1)
-        SettingsDispatcher.apply(key: "gifFps", value: "30")
+        apply("gifFps", "30")
         check("gifFps", glaspen2_router_gif_fps() == 30)
-        SettingsDispatcher.apply(key: "softShadow", value: "true")
+        apply("softShadow", "true")
         check("softShadow", glaspen2_router_soft_shadow() != 0)
-        SettingsDispatcher.apply(key: "outline", value: "true")
+        apply("outline", "true")
         check("outline", glaspen2_router_outline_enabled() != 0)
-        SettingsDispatcher.apply(key: "frostedGlass", value: "true")
+        apply("frostedGlass", "true")
         check("frostedGlass", glaspen2_router_glass_enabled() != 0)
-        SettingsDispatcher.apply(key: "invertFps", value: "60")
+        apply("invertFps", "60")
         check("invertFps", glaspen2_router_invert_fps() == 60)
-        SettingsDispatcher.apply(key: "color", value: "2")
+        apply("color", "2")
         check("color", glaspen2_router_selected_color() == 2)
-        SettingsDispatcher.apply(key: "width", value: "5")
+        apply("width", "5")
         check("width", glaspen2_router_selected_width() == 5)
-        SettingsDispatcher.apply(key: "gridFollowStrokes", value: "true")
+        apply("gridFollowStrokes", "true")
         check("gridFollowStrokes", glaspen2_router_grid_follow() != 0)
 
         // R43: 涂鸦/描边菜单动作(默认 Rust)也做状态自检。
