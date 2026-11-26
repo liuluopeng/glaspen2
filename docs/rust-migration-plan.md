@@ -613,3 +613,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - 删除 pan/apply/zoom/persist/load/home/reset 的 Swift 旧实现与节流状态;
 - 仅保留 ObjC 选择器入口调 Rust, 文件 150→50 行;
 - 默认 smoke、tests/build/parity 全绿。
+
+
+## R116 第38轮验证快照
+
+- HEAD `38dd978`; fresh DB 四探针全绿: settings failures=0 / menu-full OK / hotkeys 14/14 / render failures=0;
+- 全量 tests/release build/smoke/parity 全绿; tag `v0.7.0` = `ce525db` 未动; 未 push;
+- Swift 69 文件, ObjC .m/.mm 0.
+- 剩余 Swift 主要为 EventRouter 主分派壳、录制效果、Flutter host、菜单/状态栏构建壳、隧道/相机回退与启动编排; 真机多屏/录制/隧道视觉仍需人工验收。
