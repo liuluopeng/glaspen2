@@ -672,3 +672,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - route 内 disable_cleanup / 菜单栏点击判定 / mouseMoved 光标隐藏 / mouseUp 恢复光标+脏矩形刷新迁 Rust helper;
 - Swift route 保留事件类型/笔判定编排; debug build 通过(加速批次)。
+
+
+## R124 键盘事件顶层路由迁 Rust
+
+- `routeKeyboardEvent` 的录制态放行/录制热键/chord 分派迁 Rust `glaspen2_rust_route_keyboard`;
+- Swift 仅计算 NSEvent 修饰键/autorepeat 并调 C;
+- 加速策略: R122-R124 三个切片仅 debug build; 本切片后跑一次全量 tests/smoke/parity(debug, 不跑 release)全绿。

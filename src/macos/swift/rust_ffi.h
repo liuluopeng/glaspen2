@@ -638,3 +638,7 @@ extern void glaspen2_rust_route_disable_cleanup(void);
 extern int glaspen2_rust_route_menu_bar_click(double y);
 extern void glaspen2_rust_route_mouse_moved(void);
 extern void glaspen2_rust_route_mouse_up(void);
+
+// R124: 键盘事件顶层路由
+extern int glaspen2_rust_route_keyboard(int kind, unsigned short key_code, int has_cmd,
+                                         int has_ctrl, int has_alt, int has_shift, int is_repeat);

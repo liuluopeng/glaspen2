@@ -101,16 +101,15 @@ import AppKit
 
     /// S6-3-4: 键盘事件: 录制热键 → 普通 chord; 返回 1 放行 / 2 消费。
     private static func routeKeyboardEvent(type: CGEventType, event: CGEvent) -> Int32 {
-        if HotkeyRecorder.isRecording { return 1 }
         guard let ev = NSEvent(cgEvent: event) else { return 1 }
-        let hasCmdCtrl = ev.modifierFlags.contains(.command)
-            && ev.modifierFlags.contains(.control)
-        // 录制键的 keyDown/keyUp 都要交给状态机(抬起用于结束会话)。
-        if RecordingHotkeys.handle(type: type, keyCode: ev.keyCode, hasCmdCtrl: hasCmdCtrl) {
-            return 2
-        }
-        if handleChordKeyEvent(event) == 2 { return 2 }
-        return 1
+        let m = ev.modifierFlags
+        return glaspen2_rust_route_keyboard(
+            Int32(type.rawValue), ev.keyCode,
+            m.contains(.command) ? 1 : 0,
+            m.contains(.control) ? 1 : 0,
+            m.contains(.option) ? 1 : 0,
+            m.contains(.shift) ? 1 : 0,
+            event.getIntegerValueField(.keyboardEventAutorepeat) != 0 ? 1 : 0)
     }
 
     /// S6-3-3d: 压感监视器状态更新(是否在压感区/压力/坐标/tip down/事件名)。

@@ -6624,3 +6624,26 @@ pub extern "C" fn glaspen2_rust_route_mouse_up() {
     }
     glaspen2_rust_overlay_flush_dirty();
 }
+
+// ── R124: 键盘事件顶层路由(录制热键 + chord) ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_route_keyboard(
+    kind: i32,
+    key_code: u16,
+    has_cmd: i32,
+    has_ctrl: i32,
+    has_alt: i32,
+    has_shift: i32,
+    is_repeat: i32,
+) -> i32 {
+    if glaspen2_rust_recording_is_active() != 0 {
+        return 1;
+    }
+    let down = i32::from(kind == 10);
+    if glaspen2_rust_recording_hotkey(down, key_code, i32::from(has_cmd != 0 && has_ctrl != 0)) != 0
+    {
+        return 2;
+    }
+    glaspen2_rust_handle_chord(key_code, has_cmd, has_ctrl, has_alt, has_shift, is_repeat)
+}
