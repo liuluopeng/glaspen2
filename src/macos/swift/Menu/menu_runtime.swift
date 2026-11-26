@@ -6,10 +6,10 @@ import AppKit
     static func pair(_ zh: String, _ en: String) -> String { glaspen2_router_lang() == 0 ? zh : en }
     static func notify(_ text: String) { NotificationPresenter.show(text: text) }
     static func colorItemTitle(_ idx: Int32) -> NSAttributedString {
-        MenuPresetTitles.colorItemText(index: idx)
+        colorItemTitle(index: idx)
     }
     static func widthItemTitle(_ idx: Int32) -> NSAttributedString {
-        MenuPresetTitles.widthItemText(index: idx)
+        widthItemTitle(index: idx)
     }
     static func ensureSurface() {
         if let dv = UIAnchors.drawView { SurfaceStore.ensure(view: dv) }
@@ -57,6 +57,20 @@ import AppKit
             return
         }
         notify(text)
+    }
+
+    static func colorItemTitle(index: Int32) -> NSAttributedString {
+        var r = 0.0, g = 0.0, b = 0.0
+        glaspen2_color_preset_rgb(index, &r, &g, &b)
+        let color = NSColor(calibratedRed: r, green: g, blue: b, alpha: 1.0)
+        let icon = MenuIconFactory.colorDot(color)
+        return MenuIconFactory.menuText(icon: icon, name: colorDisplayName(index: Int(index)))
+    }
+
+    static func widthItemTitle(index: Int32) -> NSAttributedString {
+        let scale = glaspen2_width_preset_value(index)
+        let icon = MenuIconFactory.widthLine(scale)
+        return MenuIconFactory.menuText(icon: icon, name: widthDisplayName(index: Int(index)))
     }
 
     static func colorDisplayName(index: Int) -> String {
@@ -167,7 +181,7 @@ public func menuPMShow() { PressureMonitorWindow.show() }
 @_cdecl("glaspen2_router_pm_hide")
 public func menuPMHide() { PressureMonitorWindow.hide() }
 @_cdecl("glaspen2_router_pm_refresh")
-public func menuPMRefresh() { PressureState.refresh() }
+public func menuPMRefresh() { PressureMonitorWindow.refreshLabel() }
 @_cdecl("glaspen2_router_ensure_surface")
 public func menuEnsureSurface() { MenuRuntime.ensureSurface() }
 @_cdecl("glaspen2_router_shortcut_reserved")

@@ -556,3 +556,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - 缓存从 Swift `ShortcutTable` 静态 NSDictionary/NSArray 迁 Rust(OnceLock+Mutex+CString, borrowed 指针);
 - hotkeys probe 直接解析 Rust 缓存; 删除 `Input/shortcut_table.swift`; Swift 75→74;
 - HOTKEYS_PROBE 14/14、默认 smoke/tests/build/parity 全绿。
+
+
+## R108 合并 MenuPresetTitles/PressureState 薄桥
+
+- 颜色/粗细项富文本方法移入 MenuRuntime.colorItemTitle/widthItemTitle;
+- 压感状态读/C 桥/标签刷新移入 PressureMonitorWindow;
+- 删除两个文件; Swift 74→72;
+- 默认 smoke、tests/build/parity 全绿。

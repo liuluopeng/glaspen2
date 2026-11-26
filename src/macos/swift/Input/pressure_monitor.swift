@@ -48,4 +48,29 @@ import AppKit
     @objc public static func updateLabel(_ text: String) {
         label?.stringValue = text
     }
+
+    static var pressure: Int32 { glaspen2_rust_pm_pressure() }
+    static var evType: String? {
+        guard let p = glaspen2_rust_pm_ev_type() else { return nil }
+        return String(cString: p)
+    }
+    static var tipDown: Bool { glaspen2_rust_pm_tip_down() != 0 }
+    static var inRange: Bool { glaspen2_rust_pm_in_range() != 0 }
+    static var x: Double { glaspen2_rust_pm_x() }
+    static var y: Double { glaspen2_rust_pm_y() }
+
+    static func refreshLabel() {
+        MenuHandler.updatePressureLabel(pressure: pressure, type: evType, x: x, y: y)
+    }
 }
+
+
+@_cdecl("sw_pm_update")
+public func pressureUpdate(_ inRange: Int32, _ pressure: Int32, _ x: Double, _ y: Double,
+                           _ tipDown: Int32, _ evType: UnsafePointer<CChar>?) {
+    glaspen2_rust_pm_update(inRange, pressure, x, y, tipDown, evType)
+    PressureMonitorWindow.refreshLabel()
+}
+
+@_cdecl("sw_pm_refresh")
+public func pressureRefresh() { PressureMonitorWindow.refreshLabel() }
