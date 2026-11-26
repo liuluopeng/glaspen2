@@ -71,7 +71,7 @@ public func settingsApiCanvasPayload(_ w: Int32, _ h: Int32, _ action: Int32,
         if ow < 400 { ow = 1024 }
         if oh < 400 { oh = 768 }
         if action == 1 {
-            CanvasCamera.home()
+            glaspen2_rust_camera_home()
         } else if action == 2 {
             var bx = 0.0, by = 0.0, bx2 = 0.0, by2 = 0.0
             if glaspen2_stroke_bbox(&bx, &by, &bx2, &by2) != 0 {
@@ -82,14 +82,14 @@ public func settingsApiCanvasPayload(_ w: Int32, _ h: Int32, _ action: Int32,
                                                    glaspen2_router_zoom(),
                                                    &px, &py, &pz) != 0 {
                     glaspen2_router_set_camera(px, py, pz, 0)
-                    CanvasCamera.applyTransform()
+                    glaspen2_rust_camera_apply_transform()
                 }
             }
         } else if action == 3 {
             EventRouter.finishActiveStroke()
             glaspen2_clear_strokes(Int32(glaspen2_router_screen_w()),
                                    Int32(glaspen2_router_screen_h()))
-            CanvasCamera.home()
+            glaspen2_rust_camera_home()
             ow = 1024
             oh = 768
         }

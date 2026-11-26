@@ -1132,3 +1132,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - ethereal preview/hide 计时由 Rust + dispatch_main_after 调度; 删除 ethereal_mode.swift;
 - 相机鼠标平移 16ms 合帧由 Rust 调度; 删除 camera_mouse_pan.swift; Swift 37→35;
 - 冷启动正常; draw probe 切换不崩; 批次验证后提交。
+
+
+## R203/204/205 运行期看门狗/overlay draw/相机桥清理
+
+- startup_run_loop 迁 Rust(perf/virtual pen/flip probe/2s tap 看门狗); 删 startup_run_loop.swift;
+- overlay_drawing 删除, draw 桥直调 Rust; canvas_camera 删除, 调用点直调 Rust C;
+- Swift 34→32; 冷启动正常; 批次验证后提交。

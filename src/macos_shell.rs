@@ -9371,7 +9371,6 @@ unsafe extern "C" {
     fn glaspen2_swift_bootstrap_status_item() -> *mut c_void;
     fn glaspen2_swift_bootstrap_delegate_menu(item: *mut c_void) -> i32;
     fn glaspen2_swift_bootstrap_display_observer();
-    fn glaspen2_swift_startup_run_loop();
     fn glaspen2_swift_bootstrap_screen_size(w: *mut i32, h: *mut i32);
 }
 
@@ -9415,7 +9414,7 @@ pub extern "C" fn glaspen2_rust_app_bootstrap_start() -> i32 {
         glaspen2_swift_bootstrap_display_observer();
         glaspen2_router_event_tap_reinstall();
         glaspen2_rust_accessibility_alert_present();
-        glaspen2_swift_startup_run_loop();
+        glaspen2_rust_startup_run_loop();
     }
     if std::env::var("GLASPEN2_OPEN_SETTINGS").as_deref() == Ok("1") {
         glaspen2_rust_show_settings_panel();
@@ -9734,4 +9733,32 @@ pub extern "C" fn glaspen2_router_camera_flush() {
 pub extern "C" fn glaspen2_router_camera_cancel() {
     glaspen2_rust_camera_pan_cancel();
     CAMERA_PAN_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+// ── R203: 运行期初始化/看门狗 ──
+
+static STARTUP_RUN_LOOP_STARTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+unsafe extern "C" {
+    fn glaspen2_perf_init_from_env();
+    fn glaspen2_swift_flip_probe_maybe_start();
+}
+
+extern "C" fn startup_tap_check(_ctx: *mut c_void) {
+    glaspen2_rust_check_tap();
+    unsafe { glaspen2_swift_dispatch_main_after(2.0, std::ptr::null_mut(), startup_tap_check) };
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_startup_run_loop() {
+    if STARTUP_RUN_LOOP_STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    unsafe {
+        glaspen2_perf_init_from_env();
+        glaspen2_rust_virtual_pen_maybe_start();
+        glaspen2_swift_flip_probe_maybe_start();
+        glaspen2_swift_dispatch_main_after(2.0, std::ptr::null_mut(), startup_tap_check);
+    }
 }

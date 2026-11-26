@@ -24,7 +24,7 @@ public func runDrawHeight() -> Double { Double(UIAnchors.drawView?.bounds.size.h
 
 @_cdecl("glaspen2_router_zoom_at")
 public func runZoomAt(_ factor: Double, _ x: Double, _ y: Double) {
-    CanvasCamera.zoomAt(factor: factor, vx: x, vy: y)
+    glaspen2_rust_camera_zoom_at(factor, x, y)
 }
 
 @_cdecl("glaspen2_router_cursor_flags")
@@ -164,7 +164,7 @@ public func runRecChatChanged(_ on: Int32) {
 public func runRebuildSurface() { PageViewOps.rebuildSurface() }
 
 @_cdecl("glaspen2_router_canvas_apply_transform")
-public func runApplyTransform() { CanvasCamera.applyTransform() }
+public func runApplyTransform() { glaspen2_rust_camera_apply_transform() }
 
 @_cdecl("glaspen2_router_peek_lens_change")
 public func runPeekLensChange() { glaspen2_rust_ethereal_peek_lens_change() }
@@ -189,11 +189,11 @@ public func runDirtyRect() -> CGRect {
 @_cdecl("glaspen2_router_camera_pan_cancel")
 public func runCameraPanCancel() { glaspen2_router_camera_cancel() }
 @_cdecl("glaspen2_router_camera_persist_infinite")
-public func runCameraPersistInfinite() { CanvasCamera.persistInfinite() }
+public func runCameraPersistInfinite() { glaspen2_rust_camera_persist_infinite() }
 @_cdecl("glaspen2_router_camera_load_infinite")
-public func runCameraLoadInfinite() { CanvasCamera.loadInfinite() }
+public func runCameraLoadInfinite() { glaspen2_rust_camera_load_infinite() }
 @_cdecl("glaspen2_router_camera_reset_lens")
-public func runCameraResetLens() { CanvasCamera.resetLens() }
+public func runCameraResetLens() { glaspen2_rust_camera_reset_lens() }
 
 @_cdecl("glaspen2_router_restore_system_cursor")
 public func runRestoreSystemCursor() { EventRouter.restoreSystemCursor() }
@@ -508,7 +508,7 @@ public func glaspen2SwiftDrawOverlayBridge(_ view: UnsafeMutableRawPointer?,
                                            _ w: Double, _ h: Double) {
     guard let view else { return }
     let nsView = Unmanaged<NSView>.fromOpaque(view).takeUnretainedValue()
-    OverlayDrawing.draw(in: nsView, rect: NSRect(x: x, y: y, width: w, height: h))
+    _ = glaspen2_rust_overlay_draw(Unmanaged.passUnretained(nsView).toOpaque(), x, y, w, h)
 }
 
 @_cdecl("glaspen2_swift_bootstrap_prepare")
@@ -566,8 +566,8 @@ public func bootstrapDisplayObserver() {
         object: nil, queue: .main) { _ in glaspen2_rust_display_changed() }
 }
 
-@_cdecl("glaspen2_swift_startup_run_loop")
-public func bootstrapStartupRunLoop() { StartupRunLoop.begin() }
+@_cdecl("glaspen2_swift_flip_probe_maybe_start")
+public func bootstrapFlipProbe() { FlipProbe.maybeStart() }
 
 @_cdecl("glaspen2_swift_bootstrap_screen_size")
 public func bootstrapScreenSize(_ w: UnsafeMutablePointer<Int32>?,

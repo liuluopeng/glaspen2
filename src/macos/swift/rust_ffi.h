@@ -806,3 +806,6 @@ extern void glaspen2_rust_ethereal_peek_lens_change(void);
 
 // R202: 相机鼠标平移合帧
 extern void glaspen2_router_camera_cancel(void);
+
+// R203: 运行期初始化/看门狗
+extern void glaspen2_rust_startup_run_loop(void);
