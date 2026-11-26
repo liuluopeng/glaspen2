@@ -6,7 +6,7 @@ import Darwin
     @objc(renderWithP:)
     public static func render(p: Double) {
         guard let surface = TunnelState.surface, TunnelState.cards > 0 else { return }
-        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_TUNNEL_FRAME"] == "1" {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TUNNEL_FRAME"] != "1" {
             TunnelState.frames += 1
             let landed = TunnelState.depths.withUnsafeBufferPointer { depths in
                 TunnelState.cardSurf.withUnsafeBufferPointer { cards in
@@ -248,5 +248,91 @@ public func glaspen2TunnelCardParitySelftest() -> Int32 {
     cairo_surface_destroy(a)
     cairo_surface_destroy(b)
     print("SWIFT_TUNNEL_CARD_PARITY diff=\(diff)/\(total)")
+    return diff == 0 ? 0 : 1
+}
+
+// R84: 整帧 Rust/Swift 渲染像素对比探针(伪 TunnelState, 400x300)。
+@_cdecl("glaspen2_macos_swift_tunnel_frame_parity_selftest")
+public func glaspen2TunnelFrameParitySelftest() -> Int32 {
+    let w = 400, h = 300
+    func makeTarget() -> OpaquePointer? {
+        guard let s = cairo_image_surface_create(cairo_format_t(0), Int32(w), Int32(h)),
+              cairo_surface_status(s).rawValue == 0 else { return nil }
+        cairo_surface_flush(s)
+        return s
+    }
+    func makeCard() -> OpaquePointer? {
+        guard let s = cairo_image_surface_create(cairo_format_t(0), 100, 80),
+              cairo_surface_status(s).rawValue == 0,
+              let cr = cairo_create(s) else { return nil }
+        cairo_set_source_rgba(cr, 0.25, 0.55, 0.85, 1.0)
+        cairo_paint(cr)
+        cairo_destroy(cr)
+        cairo_surface_flush(s)
+        return s
+    }
+    guard let a = makeTarget(), let b = makeTarget(), let card = makeCard() else {
+        print("SWIFT_TUNNEL_FRAME_PARITY_FAIL surface")
+        return 1
+    }
+    var depths = [Int32](repeating: 0, count: TunnelState.maxCards)
+    depths[0] = 0
+    depths[1] = 1
+    var cards = [OpaquePointer?](repeating: nil, count: TunnelState.maxCards)
+    cards[0] = card
+    cards[1] = card
+    var mips = [OpaquePointer?](repeating: nil, count: TunnelState.maxCards)
+    TunnelState.surface = a
+    TunnelState.blur = nil
+    TunnelState.cards = 2
+    TunnelState.depths = depths
+    TunnelState.cardSurf = cards
+    TunnelState.mipSurf = mips
+    TunnelState.back = true
+    TunnelState.travel = 1.0
+    TunnelState.k = 0.45
+    TunnelState.thick = 0.018
+    TunnelState.paneA = 0.84
+    TunnelState.surfW = w
+    TunnelState.surfH = h
+
+    let rustLanded = depths.withUnsafeBufferPointer { dp in
+        cards.withUnsafeBufferPointer { cp in
+            mips.withUnsafeBufferPointer { mp in
+                cp.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { cardPtr in
+                    mp.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { mipPtr in
+                        glaspen2_rust_tunnel_render(
+                            0.37, UnsafeMutableRawPointer(a), nil, 2,
+                            dp.baseAddress, cardPtr, mipPtr, 1, 1.0, 0.45, 0.018, 0.84,
+                            Int32(w), Int32(h))
+                    }
+                }
+            }
+        }
+    }
+    setenv("GLASPEN2_SWIFT_TUNNEL_CARD", "1", 1)
+    TunnelState.surface = b
+    TunnelFrameRenderer.render(p: 0.37)
+    unsetenv("GLASPEN2_SWIFT_TUNNEL_CARD")
+    cairo_surface_flush(a)
+    cairo_surface_flush(b)
+    guard let da = cairo_image_surface_get_data(a), let db = cairo_image_surface_get_data(b) else {
+        print("SWIFT_TUNNEL_FRAME_PARITY_FAIL data")
+        return 1
+    }
+    let stride = Int(cairo_image_surface_get_stride(a))
+    var diff = 0
+    for y in 0..<h {
+        for x in 0..<w {
+            let i = y * stride + x * 4
+            if da[i] != db[i] || da[i + 1] != db[i + 1] || da[i + 2] != db[i + 2] || da[i + 3] != db[i + 3] {
+                diff += 1
+            }
+        }
+    }
+    cairo_surface_destroy(card)
+    cairo_surface_destroy(a)
+    cairo_surface_destroy(b)
+    print("SWIFT_TUNNEL_FRAME_PARITY diff=\(diff)/\(w*h) landed=\(rustLanded)")
     return diff == 0 ? 0 : 1
 }

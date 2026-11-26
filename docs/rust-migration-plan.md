@@ -374,3 +374,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - `GLASPEN2_RUST_TUNNEL_FRAME=1` opt-in, 默认仍 Swift;
 - 真机 2 页内容 DB 翻页: `5 张卡片 ... 预载640ms 建卡151ms`, Rust frame 路径运行无崩溃;
 - 默认/opt-in smoke、全量 tests/build/parity 绿。
+
+
+## R84 隧道逐帧编排默认切 Rust(整帧 parity 0)
+
+- 新增 `--swift-tunnel-frame-parity`: 伪 TunnelState(2 卡/400x300)分别用 Rust/Swift 渲染整帧;
+- 结果 `SWIFT_TUNNEL_FRAME_PARITY diff=0/120000 landed=0`;
+- `TunnelFrameRenderer.render` 默认 Rust, `GLASPEN2_SWIFT_TUNNEL_FRAME=1` 回退 Swift;
+- parity 探针并入 smoke; 默认/回退 smoke、全量 tests/build/parity 全绿。
