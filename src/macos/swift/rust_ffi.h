@@ -574,3 +574,8 @@ extern int glaspen2_rust_handle_chord(unsigned short key_code, int has_cmd, int 
 // R93: 相机鼠标抓手/滚轮缩放(opt-in: GLASPEN2_RUST_CAMERA_MOUSE=1)
 extern int glaspen2_rust_camera_mouse(int kind, double x, double y, unsigned long long mods);
 extern int glaspen2_rust_scroll_zoom(double dy, int precise, double x, double y, unsigned long long mods);
+
+// R94: 清屏/保存涂鸦截图(默认; GLASPEN2_SWIFT_SURFACE_OPS=1 回退)
+extern int glaspen2_rust_clear_screen(void *surface, double scale, double ox, double oy,
+                                       double pscale, int is_fit);
+extern int glaspen2_rust_save_drawing(void *surface);

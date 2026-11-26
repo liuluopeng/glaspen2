@@ -3417,7 +3417,7 @@ unsafe extern "C" {
     fn glaspen2_set_canvas_kind(kind: i32);
     fn glaspen2_load_infinite_strokes();
     fn glaspen2_load_strokes_for_screen(id: i64);
-    fn glaspen2_clear_strokes(w: i32, h: i32);
+    fn glaspen2_clear_strokes(w: i32, h: i32) -> i32;
     fn glaspen2_router_event_tap_reinstall();
     fn glaspen2_notify_settings_changed();
 }
@@ -5565,6 +5565,69 @@ pub extern "C" fn glaspen2_rust_scroll_zoom(
         let h = unsafe { glaspen2_router_draw_height() };
         glaspen2_rust_camera_zoom_at(factor, x, h - y);
         return 2;
+    }
+    1
+}
+
+// ── R94: 清屏/保存涂鸦截图 ──
+
+unsafe extern "C" {
+    fn glaspen2_save_drawing(data: *mut u8, w: i32, h: i32, stride: i32);
+    fn cairo_image_surface_get_stride(surface: *mut c_void) -> i32;
+    fn cairo_image_surface_get_data(surface: *mut c_void) -> *mut u8;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_clear_screen(
+    surface: *mut c_void,
+    scale: f64,
+    ox: f64,
+    oy: f64,
+    pscale: f64,
+    is_fit: i32,
+) -> i32 {
+    if surface.is_null() {
+        return -1;
+    }
+    let cr = unsafe { cairo_create(surface) };
+    if !cr.is_null() {
+        unsafe {
+            cairo_scale(cr, scale, scale);
+            if is_fit != 0 {
+                cairo_translate(cr, ox * scale, oy * scale);
+                cairo_scale(cr, pscale, pscale);
+            }
+            cairo_set_operator(cr, 3);
+            cairo_paint(cr);
+            cairo_destroy(cr);
+        }
+    }
+    let created = unsafe {
+        glaspen2_clear_strokes(
+            glaspen_core::shell_state::screen_w(),
+            glaspen_core::shell_state::screen_h(),
+        )
+    };
+    glaspen2_rust_pageview_update();
+    unsafe { glaspen2_swift_overlay_flush() };
+    created
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_save_drawing(surface: *mut c_void) -> i32 {
+    if surface.is_null() {
+        return 0;
+    }
+    unsafe {
+        cairo_surface_flush(surface);
+        let w = cairo_image_surface_get_width(surface);
+        let h = cairo_image_surface_get_height(surface);
+        let stride = cairo_image_surface_get_stride(surface);
+        let data = cairo_image_surface_get_data(surface);
+        if data.is_null() || w <= 0 || h <= 0 {
+            return 0;
+        }
+        glaspen2_save_drawing(data, w, h, stride);
     }
     1
 }

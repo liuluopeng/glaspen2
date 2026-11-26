@@ -454,3 +454,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - `EventRouter.routeCameraMouse` 的相机抓手 down/drag/up 与 `routeScrollZoom` 的修饰键/精确滚动判定/缩放因子迁 Rust;
 - `GLASPEN2_RUST_CAMERA_MOUSE=1` opt-in, 默认仍 Swift;
 - 默认/opt-in smoke、全量 tests/build/parity 绿; 真机鼠标手势待验。
+
+
+## R94 清屏/保存涂鸦截图迁 Rust
+
+- `SurfaceOps.clearScreen` 的 cairo 清屏(scale/fit 变换)/clear_strokes/pageview update/overlay flush 迁 Rust;
+- `SurfaceOps.saveDrawingOnly` 的 flush/dims/stride/data/save 迁 Rust;
+- 默认 Rust, `GLASPEN2_SWIFT_SURFACE_OPS=1` 回退;
+- render probe clear_action/默认/回退 smoke、tests/build/parity 全绿。
