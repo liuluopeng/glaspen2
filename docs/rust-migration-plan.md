@@ -1391,3 +1391,14 @@ modeler Up error 需真机笔/翻页连击复验。
 - `sh scripts/smoke-macos.sh debug` 通过;
 - `sh scripts/check-platform-parity.sh` 通过;
 - 说明: 之前批次日志只 grep test result 被管道吞掉, 本轮直接查看 tail + exit code 确认.
+
+
+## R257 最终验收(全绿)
+
+- `cargo test --workspace --exclude glaspen2_installer` exit 0(全仓/doc-tests);
+- `sh scripts/smoke-macos.sh debug` 通过;
+- `sh scripts/check-platform-parity.sh` 通过;
+- 冷启动 `window ready 3440x1440`, `CGEventTap created OK`;
+- 虚拟笔 6s 内 2 次 pen DOWN, strokes 23439→23441;
+- SIGTERM 优雅退出;
+- 时光隧道/非隧道翻页、设置面板、压感窗、各探针均正常.

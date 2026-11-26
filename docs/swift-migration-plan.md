@@ -831,3 +831,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R254 | 已在运行告警迁 Rust; 冷启动正常 | 本提交 |
 | 2026-11-26 | Rust-R255 | 更新迁移后 core 适配器/i18n/Swift 布局测试闸门; cargo test 全绿 | 本提交 |
 | 2026-11-26 | Rust-R256 | 全量 cargo test 恢复全绿; smoke/parity 通过 | 本提交 |
+| 2026-11-26 | Rust-R257 | 最终验收: cargo test exit 0 + smoke + parity + 冷启动/笔迹/SIGTERM 全过 | 本提交 |
