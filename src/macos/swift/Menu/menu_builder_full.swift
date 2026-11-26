@@ -26,8 +26,7 @@
 import AppKit
 
 extension MenuBuilder {
-    /// 在已有颜色/粗细条目的菜单后追加顶层其余项与两个子菜单。
-    /// 与 run.m 原手工建菜单段逐项等价(顺序/tag/action/target/state/keyEquivalent)。
+    /// 在已有颜色/粗细条目的菜单后追加顶层其余项与两个子菜单(全部在 Rust 构建)。
     @objc(addTopLevelAndSubmenusToMenu:handler:titles:launchAtLoginOn:glassOn:)
     public static func addTopLevelAndSubmenus(toMenu menu: NSMenu?,
                                               handler: AnyObject?,
@@ -35,132 +34,12 @@ extension MenuBuilder {
                                               launchAtLoginOn: Bool,
                                               glassOn: Bool) {
         guard let menu = menu else { return }
-
-        // R24: 默认由 Rust 构建顶层其余项与两个子菜单; 标题仍是已本地化字典。
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_FULL"] != "1",
-           let jsonData = try? JSONSerialization.data(withJSONObject: titles),
-           let json = String(data: jsonData, encoding: .utf8),
-           json.withCString({ glaspen2_rust_menu_add_top_level(
-               Unmanaged.passUnretained(menu).toOpaque(),
-               handler.map { Unmanaged.passUnretained($0).toOpaque() },
-               $0, launchAtLoginOn ? 1 : 0, glassOn ? 1 : 0) }) != 0 {
-            return
-        }
-
-        // 标题字典由 ObjC 侧按契约键填好(L()/gl_text 单源); 缺键时留空并打日志,
-        // 不猜文案(菜单仍完整, 只是该项无字, 属明显可诊断的接线错误)。
-        func localized(_ key: String) -> String {
-            if let text = titles[key] { return text }
-            NSLog("[menu] 缺少本地化标题键: %@", key)
-            return ""
-        }
-
-        // 颜色/粗细段之后的分隔符(原 run.m 在此处单独 addItem 分隔符)。
-        menu.addItem(NSMenuItem.separator())
-
-        // 高频动作留在顶层; 低频导出/实验开关收进子菜单, 首屏不再铺满 30+ 行。
-        addActionItem(to: menu, title: localized("saveWithBg"),
-                      action: "saveWithBg", handler: handler)
-        addActionItem(to: menu, title: localized("saveDrawing"),
-                      action: "saveOnly", handler: handler)
-        addActionItem(to: menu, title: localized("newCanvas"),
-                      action: "clearScreen", handler: handler)
-
-        // ── 导出 ▸ ──
-        let exportItem = addActionItem(to: menu, title: localized("export"),
-                                       action: nil, handler: handler)
-        exportItem.submenu = makeExportMenu(localized: localized,
-                                            handler: handler)
-
-        menu.addItem(NSMenuItem.separator())
-
-        let toggleItem = addActionItem(to: menu, title: localized("toggleDraw"),
-                                       action: "toggleDraw", handler: handler)
-        toggleItem.tag = 888
-        toggleItem.state = .on
-
-        addActionItem(to: menu, title: localized("settings"),
-                      action: "showSettingsPanel", handler: handler)
-
-        // ── 更多 ▸(低频实验/系统开关) ──
-        let moreItem = addActionItem(to: menu, title: localized("more"),
-                                     action: nil, handler: handler)
-        moreItem.submenu = makeMoreMenu(localized: localized,
-                                        handler: handler,
-                                        launchAtLoginOn: launchAtLoginOn,
-                                        glassOn: glassOn)
-
-        menu.addItem(NSMenuItem.separator())
-
-        addActionItem(to: menu, title: localized("language"),
-                      action: "toggleLanguage", handler: handler)
-        addActionItem(to: menu, title: localized("quit"),
-                      action: "quitApp", handler: handler)
-    }
-
-    /// 导出▸ 子菜单: 3 项, 顺序/selector/target 与旧实现一致。
-    private static func makeExportMenu(localized: (String) -> String,
-                                       handler: AnyObject?) -> NSMenu {
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        addActionItem(to: menu, title: localized("exportXournal"),
-                      action: "saveXoj", handler: handler)
-        addActionItem(to: menu, title: localized("exportInfinitePdf"),
-                      action: "exportInfinitePdf", handler: handler)
-        addActionItem(to: menu, title: localized("exportInfiniteSvg"),
-                      action: "exportInfiniteSvg", handler: handler)
-        return menu
-    }
-
-    /// 更多▸ 子菜单: 5 项, tag 777/444/667/668/778, 前两项的初始 state 按入参。
-    private static func makeMoreMenu(localized: (String) -> String,
-                                     handler: AnyObject?,
-                                     launchAtLoginOn: Bool,
-                                     glassOn: Bool) -> NSMenu {
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-
-        let launchItem = addActionItem(to: menu, title: localized("moreLaunch"),
-                                       action: "toggleLaunch", handler: handler)
-        launchItem.tag = 777
-        launchItem.state = launchAtLoginOn ? .on : .off
-
-        let glassItem = addActionItem(to: menu, title: localized("moreGlass"),
-                                      action: "toggleGlass", handler: handler)
-        glassItem.tag = 444
-        glassItem.state = glassOn ? .on : .off
-
-        let outlineItem = addActionItem(to: menu, title: localized("moreOutline"),
-                                        action: "toggleOutline", handler: handler)
-        outlineItem.tag = 667
-        outlineItem.state = .off
-
-        let infiniteItem =
-            addActionItem(to: menu, title: localized("moreCanvasInfinite"),
-                          action: "toggleInfiniteCanvas", handler: handler)
-        infiniteItem.tag = 668
-        infiniteItem.state = .off
-
-        let modeItem = addActionItem(to: menu, title: localized("moreCanvasMode"),
-                                     action: "toggleCanvasMode", handler: handler)
-        modeItem.tag = 778
-        modeItem.state = .off
-
-        return menu
-    }
-
-    /// 建项 + 显式 target(action 为 nil 时只用于子菜单父项, 与旧 target 兜底循环的
-    /// 最终状态一致)。keyEquivalent 旧实现全部为空串, 这里保持一致。
-    @discardableResult
-    private static func addActionItem(to menu: NSMenu,
-                                      title: String,
-                                      action: String?,
-                                      handler: AnyObject?) -> NSMenuItem {
-        let item = menu.addItem(withTitle: title,
-                                action: action.map { Selector($0) },
-                                keyEquivalent: "")
-        item.target = handler
-        return item
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: titles),
+              let json = String(data: jsonData, encoding: .utf8) else { return }
+        _ = json.withCString { glaspen2_rust_menu_add_top_level(
+            Unmanaged.passUnretained(menu).toOpaque(),
+            handler.map { Unmanaged.passUnretained($0).toOpaque() },
+            $0, launchAtLoginOn ? 1 : 0, glassOn ? 1 : 0) }
     }
 }
 

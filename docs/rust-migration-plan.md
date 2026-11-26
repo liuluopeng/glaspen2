@@ -809,3 +809,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - AX 权限检查/警告一次性状态/tap 重装与 enable 判定迁 Rust; Swift 仅保留 AX 警告文案桥;
 - 第3片后全量 tests/smoke/parity(不跑 release)全绿。
+
+
+## R146 顶层菜单/子菜单 Swift 构建回退清理
+
+- MenuBuilder.addTopLevelAndSubmenus 删除旧 Swift 建项/子菜单/helper, 统一走 Rust;
+- menu-full probe 仍 OK; debug build 通过。
