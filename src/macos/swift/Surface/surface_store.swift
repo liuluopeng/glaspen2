@@ -13,6 +13,10 @@ import AppKit
 
     @objc(ensureWithView:)
     public static func ensure(view: NSView) {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_SURFACE_ENSURE"] != "1",
+           glaspen2_rust_surface_ensure(Unmanaged.passUnretained(view).toOpaque()) != 0 {
+            return
+        }
         let bounds = view.bounds
         var scale = view.window?.backingScaleFactor ?? 1
         if scale < 1 { scale = 1 }

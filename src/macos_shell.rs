@@ -5666,3 +5666,65 @@ pub extern "C" fn glaspen2_rust_surface_scale() -> f64 {
 pub extern "C" fn glaspen2_rust_surface_set_scale(scale: f64) {
     SURFACE_SCALE.store(scale.to_bits(), std::sync::atomic::Ordering::Relaxed);
 }
+
+// ── R96: 笔迹表面 ensure(创建/尺寸缓存/透明填充) ──
+
+unsafe extern "C" {
+    fn cairo_image_surface_create(format: i32, w: i32, h: i32) -> *mut c_void;
+    fn cairo_surface_status(surface: *mut c_void) -> i32;
+    fn glaspen2_router_surface_cache_invalidate();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_surface_ensure(view: *mut c_void) -> i32 {
+    use objc2_app_kit::NSView;
+    use std::sync::atomic::Ordering;
+    if view.is_null() {
+        return 0;
+    }
+    let view = unsafe { &*(view as *const NSView) };
+    let bounds = view.bounds();
+    let mut scale = view.window().map(|w| w.backingScaleFactor()).unwrap_or(1.0);
+    if scale < 1.0 {
+        scale = 1.0;
+    }
+    let w = (bounds.size.width * scale) as i32;
+    let h = (bounds.size.height * scale) as i32;
+    if w <= 0 || h <= 0 {
+        return 0;
+    }
+    let current = glaspen2_rust_surface_current();
+    let current_scale = glaspen2_rust_surface_scale();
+    if !current.is_null()
+        && unsafe { cairo_image_surface_get_width(current) } == w
+        && unsafe { cairo_image_surface_get_height(current) } == h
+        && (current_scale - scale).abs() < f64::EPSILON
+    {
+        return 1;
+    }
+    if !current.is_null() {
+        unsafe {
+            glaspen2_router_surface_cache_invalidate();
+            cairo_surface_destroy(current);
+        }
+    }
+    let surface = unsafe { cairo_image_surface_create(0, w, h) };
+    if surface.is_null() || unsafe { cairo_surface_status(surface) } != 0 {
+        if !surface.is_null() {
+            unsafe { cairo_surface_destroy(surface) }
+        }
+        return 0;
+    }
+    glaspen2_rust_surface_set(surface);
+    SURFACE_SCALE.store(scale.to_bits(), Ordering::Relaxed);
+    unsafe {
+        let cr = cairo_create(surface);
+        if !cr.is_null() {
+            cairo_set_operator(cr, 3);
+            cairo_paint(cr);
+            cairo_set_operator(cr, 2);
+            cairo_destroy(cr);
+        }
+    }
+    1
+}

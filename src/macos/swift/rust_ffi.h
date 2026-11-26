@@ -585,3 +585,6 @@ extern void *glaspen2_rust_surface_current(void);
 extern void glaspen2_rust_surface_set(void *surface);
 extern double glaspen2_rust_surface_scale(void);
 extern void glaspen2_rust_surface_set_scale(double scale);
+
+// R96: 笔迹表面 ensure(默认; GLASPEN2_SWIFT_SURFACE_ENSURE=1 回退)
+extern int glaspen2_rust_surface_ensure(void *view);
