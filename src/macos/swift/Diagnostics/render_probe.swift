@@ -24,7 +24,7 @@ import AppKit
         check("stroke_count", glaspen2_stroke_count() == 1)
         check("stroke_points", glaspen2_get_stroke_point_count(0) > 10)
 
-        let overview = CanvasOverview.payload(width: 800, height: 600)
+        let overview = SettingsGlue.canvasOverviewPayload(width: 800, height: 600)
         check("overview_non_nil", overview != nil)
         if let overview {
             let png = overview["png"] as? Data

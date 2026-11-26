@@ -53,4 +53,19 @@ import AppKit
             DispatchQueue.main.sync(execute: block)
         }
     }
+    // R110: 画布总览载荷(原 CanvasOverview)。
+    static func canvasOverviewPayload(width: Double, height: Double) -> NSDictionary? {
+        var rect = [Double](repeating: 0, count: 4)
+        var bounds = [Double](repeating: 0, count: 4)
+        var len: Int32 = 0
+        let png = rect.withUnsafeMutableBufferPointer { r in
+            bounds.withUnsafeMutableBufferPointer { b in
+                glaspen2_rust_canvas_overview(width, height, r.baseAddress, b.baseAddress, &len)
+            }
+        }
+        guard let png, len > 0 else { return nil }
+        let data = Data(bytes: png, count: Int(len))
+        glaspen2_free_rust_bytes(png, len)
+        return ["png": data, "rect": rect, "bounds": bounds]
+    }
 }

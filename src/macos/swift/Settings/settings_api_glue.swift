@@ -93,7 +93,7 @@ public func settingsApiCanvasPayload(_ w: Int32, _ h: Int32, _ action: Int32,
             ow = 1024
             oh = 768
         }
-        guard let payload = CanvasOverview.payload(width: Double(ow), height: Double(oh)),
+        guard let payload = SettingsGlue.canvasOverviewPayload(width: Double(ow), height: Double(oh)),
               let data = payload["png"] as? Data, !data.isEmpty else { return }
         let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: data.count)
         data.copyBytes(to: buf, count: data.count)

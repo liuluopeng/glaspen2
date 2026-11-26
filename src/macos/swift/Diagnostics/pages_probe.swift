@@ -28,7 +28,7 @@ import AppKit
         check("stroke_count_empty", glaspen2_stroke_count() == 0)
 
         // 空画布: 总览载荷应为 nil(不崩溃)。
-        check("canvas_overview_empty", CanvasOverview.payload(width: 800, height: 600) == nil)
+        check("canvas_overview_empty", SettingsGlue.canvasOverviewPayload(width: 800, height: 600) == nil)
         var len: Int32 = 0
         let payload = settingsApiCanvasPayload(800, 600, 0, nil, &len)
         check("canvas_payload_empty", payload == nil && len == 0)

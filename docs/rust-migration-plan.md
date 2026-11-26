@@ -571,3 +571,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 菜单项 tag 查找移入 MenuRuntime.menuItem(直调 Rust);
 - 删除 `Menu/menu_lookup.swift`; Swift 72→71;
 - 默认 smoke、tests/build/parity 全绿。
+
+
+## R110 合并 CanvasOverview 薄桥
+
+- 总览载荷 Data 包装移入 SettingsGlue.canvasOverviewPayload;
+- 更新 settings_api_glue/render_probe/pages_probe; 删除 canvas_overview.swift; Swift 71→70;
+- 默认 smoke、render probe 总览、tests/build/parity 全绿。

@@ -710,3 +710,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R107 | 快捷键默认/动作 JSON 缓存迁 Rust; 删 shortcut_table.swift; Swift 75→74; hotkeys probe 通过 | 默认 smoke、tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R108 | 合并 MenuPresetTitles/PressureState 到 MenuRuntime/PressureMonitorWindow; Swift 74→72; smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R109 | 删除 MenuLookup, tag 查找移入 MenuRuntime; Swift 72→71; smoke/tests/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R110 | 合并 CanvasOverview 到 SettingsGlue; 删除 canvas_overview.swift; Swift 71→70; smoke/tests/parity 绿 | 本提交 |
