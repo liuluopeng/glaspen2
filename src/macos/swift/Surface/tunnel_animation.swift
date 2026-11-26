@@ -182,17 +182,7 @@ import AppKit
 
 
 
-@_cdecl("glaspen2_router_set_window_sharing_none")
-public func panelSharingNone() {
-    UIAnchors.mainWindow?.sharingType = .none
-    UIAnchors.settingsWindow?.sharingType = .none
-}
 
-@_cdecl("glaspen2_router_set_window_sharing_readonly")
-public func panelSharingReadOnly() {
-    UIAnchors.mainWindow?.sharingType = .readOnly
-    UIAnchors.settingsWindow?.sharingType = .readOnly
-}
 
 @_cdecl("invert_ink_source")
 public func panelInvertInkSource(_ cr: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? {

@@ -1326,3 +1326,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - settingsWindow setOpaque/backgroundColor + Flutter VC layer opaque 迁 Rust raw objc;
 - gl_panel_transparent_apply/router_settings_apply_transparent 接线; 删除 Swift 包装;
 - 设置面板打开/透明路径正常.
+
+
+## R248/249 窗口共享/信号安装迁 Rust
+
+- 窗口 sharingType none/readOnly raw objc 迁 Rust; 删除 Swift 包装;
+- SIGINT/SIGTERM 安装迁 Rust(libc signal -> save_and_exit); 删除 Swift 包装;
+- SIGTERM 实测优雅退出; menu probe OK.

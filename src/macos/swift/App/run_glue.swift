@@ -114,11 +114,6 @@ public func runInvertRestart() { panelInvertRestart() }
 @_cdecl("glaspen2_router_panel_transparent_full")
 public func runPanelTransparentFull(_ on: Int32) { gl_panel_transparent_apply(on) }
 
-@_cdecl("glaspen2_router_install_signals")
-public func runInstallSignals() {
-    signal(SIGINT) { _ in save_and_exit(0) }
-    signal(SIGTERM) { _ in save_and_exit(0) }
-}
 
 
 

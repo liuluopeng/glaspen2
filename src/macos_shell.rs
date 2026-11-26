@@ -9273,7 +9273,6 @@ pub extern "C" fn glaspen2_rust_display_changed() {
 // ── R197: 应用启动编排 ──
 
 unsafe extern "C" {
-    fn glaspen2_router_install_signals();
     fn glaspen2_swift_bootstrap_prepare();
     fn glaspen2_swift_bootstrap_running_alert();
     fn glaspen2_swift_bootstrap_status_item() -> *mut c_void;
@@ -11429,4 +11428,43 @@ pub extern "C" fn gl_panel_transparent_apply(on: i32) {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_settings_apply_transparent() {
     apply_panel_transparent_rust(1);
+}
+
+// ── R248: 窗口共享类型 C 桥迁 Rust ──
+
+fn set_window_sharing_rust(kind: i64) {
+    use objc2::runtime::AnyObject;
+    unsafe {
+        let main = sw_main_window();
+        if !main.is_null() {
+            let _: () = objc2::msg_send![main as *mut AnyObject, setSharingType: kind];
+        }
+        let settings = sw_settings_window();
+        if !settings.is_null() {
+            let _: () = objc2::msg_send![settings as *mut AnyObject, setSharingType: kind];
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_set_window_sharing_none() {
+    set_window_sharing_rust(0);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_set_window_sharing_readonly() {
+    set_window_sharing_rust(1);
+}
+
+// ── R249: 信号安装迁 Rust ──
+
+extern "C" fn signal_exit_handler(sig: i32) {
+    save_and_exit(sig);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_install_signals() {
+    unsafe {
+        libc::signal(libc::SIGINT, signal_exit_handler as libc::sighandler_t);
+        libc::signal(libc::SIGTERM, signal_exit_handler as libc::sighandler_t);
+    }
 }
