@@ -4,11 +4,8 @@ import AppKit
 @objc public final class CanvasMode: NSObject {
     @objc(applyInfiniteCanvasOn:notify:)
     public static func applyInfinite(on: Bool, notify: Bool) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_CANVAS_MODE"] != "1" {
-            let text = notify ? MenuRuntime.l10n(on ? "canvas.infinite_on" : "canvas.infinite_off") : ""
-            _ = text.withCString { glaspen2_rust_apply_infinite(on ? 1 : 0, $0) }
-            return
-        }
+        let text = notify ? MenuRuntime.l10n(on ? "canvas.infinite_on" : "canvas.infinite_off") : ""
+        _ = text.withCString { glaspen2_rust_apply_infinite(on ? 1 : 0, $0) }
         if (glaspen2_router_infinite() != 0) == on { return }
         glaspen2_router_clear_camera_dragging()
         CameraMousePan.cancel()

@@ -778,3 +778,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - settings window/draw view/main menu 创建去掉 env 开关, Rust 失败才用 Swift 原语;
 - status item menu 统一 Rust attach; debug build 通过。
+
+
+## R141 通知/画布模式/minimap env 回退清理
+
+- NotificationPresenter.draw 仅调 Rust; CanvasMode.applyInfinite 仅调 Rust; minimap 去掉 env 包裹;
+- debug build 通过。

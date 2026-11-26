@@ -43,25 +43,9 @@ import AppKit
     @objc(drawInBounds:)
     public static func draw(in bounds: NSRect) {
         guard let text = current else { return }
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_NOTIFICATION"] != "1",
-           text.withCString({ glaspen2_rust_draw_notification(
-               $0, bounds.size.width, bounds.size.height) }) != 0 {
-            return
+        _ = text.withCString {
+            glaspen2_rust_draw_notification($0, bounds.size.width, bounds.size.height)
         }
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor(white: 0, alpha: 0.8)
-        shadow.shadowOffset = NSSize(width: 2, height: -2)
-        shadow.shadowBlurRadius = 4
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 36, weight: .medium),
-            .foregroundColor: NSColor.white,
-            .shadow: shadow,
-        ]
-        let ns = text as NSString
-        let size = ns.size(withAttributes: attrs)
-        let x = (bounds.size.width - size.width) / 2
-        let y = (bounds.size.height - size.height) / 2
-        ns.draw(at: NSPoint(x: x, y: y), withAttributes: attrs)
     }
 }
 

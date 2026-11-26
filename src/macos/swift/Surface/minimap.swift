@@ -70,36 +70,33 @@ import AppKit
         }
 
         // 2) 合成整条 strip; R40 默认交给 Rust 合成+绘制(缩略图仍 Swift 异步生成)。
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MINIMAP_DRAW"] != "1" {
-            var cItems: [GlaspenMinimapItem] = []
-            var labels: [UnsafeMutablePointer<CChar>?] = []
-            cItems.reserveCapacity(items.count)
-            for item in items {
-                guard let pidNum = item["screen_id"] as? NSNumber else { continue }
-                let pid = pidNum.int64Value
-                let isCur = (item["current"] as? NSNumber)?.boolValue ?? false
-                let itemY = (item["y"] as? NSNumber)?.doubleValue ?? 0
-                let itemH = (item["h"] as? NSNumber)?.doubleValue ?? 0
-                let labelPtr: UnsafeMutablePointer<CChar>?
-                if let label = item["label"] as? String, !label.isEmpty {
-                    labelPtr = strdup(label)
-                    labels.append(labelPtr)
-                } else {
-                    labelPtr = nil
-                }
-                let thumbPtr = thumbs[pid].map { Unmanaged.passUnretained($0).toOpaque() }
-                cItems.append(GlaspenMinimapItem(screen_id: pid, current: isCur ? 1 : 0,
-                                                  y: itemY, h: itemH,
-                                                  label: labelPtr, thumb: thumbPtr))
+        var cItems: [GlaspenMinimapItem] = []
+        var labels: [UnsafeMutablePointer<CChar>?] = []
+        cItems.reserveCapacity(items.count)
+        for item in items {
+            guard let pidNum = item["screen_id"] as? NSNumber else { continue }
+            let pid = pidNum.int64Value
+            let isCur = (item["current"] as? NSNumber)?.boolValue ?? false
+            let itemY = (item["y"] as? NSNumber)?.doubleValue ?? 0
+            let itemH = (item["h"] as? NSNumber)?.doubleValue ?? 0
+            let labelPtr: UnsafeMutablePointer<CChar>?
+            if let label = item["label"] as? String, !label.isEmpty {
+                labelPtr = strdup(label)
+                labels.append(labelPtr)
+            } else {
+                labelPtr = nil
             }
-            _ = cItems.withUnsafeBufferPointer { buf in
-                glaspen2_rust_draw_minimap(
-                    Unmanaged.passUnretained(ctx).toOpaque(), buf.baseAddress,
-                    Int32(buf.count), stripW, stripH, stripX, stripY, viewH)
-            }
-            for p in labels { free(p) }
-            return
+            let thumbPtr = thumbs[pid].map { Unmanaged.passUnretained($0).toOpaque() }
+            cItems.append(GlaspenMinimapItem(screen_id: pid, current: isCur ? 1 : 0,
+                                              y: itemY, h: itemH,
+                                              label: labelPtr, thumb: thumbPtr))
         }
+        _ = cItems.withUnsafeBufferPointer { buf in
+            glaspen2_rust_draw_minimap(
+                Unmanaged.passUnretained(ctx).toOpaque(), buf.baseAddress,
+                Int32(buf.count), stripW, stripH, stripX, stripY, viewH)
+        }
+        for p in labels { free(p) }
 
     }
 
