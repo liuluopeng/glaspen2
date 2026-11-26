@@ -5,67 +5,47 @@ import AppKit
     /// 0 = fallback(ObjC), 1 = pass(return event), 2 = consume(return NULL)
     @objc(routeEventOfType:event:)
     public static func route(type: CGEventType, event: CGEvent) -> Int32 {
-        // tap 被系统停用必须优先恢复(旧实现也在最前); 涂鸦停用时同样要能恢复。
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            glaspen2_router_reenable_tap()
-            NSLog("[glaspen2] TAP DISABLED (timeout/userinput) — re-enabled")
-            return 1
-        }
-        // 旧实现: proximity 在 "停用涂鸦" 提前返回之前处理, 保持状态不陈旧。
         if type == .tabletProximity {
             routeProximity(event)
             return 1
         }
-        // 停用涂鸦时: 非键盘/非滚轮事件先清理相机/光标再放行(与原 ObjC 同序)。
-        if (state() & 1) == 0 && type != .keyDown && type != .keyUp
-            && type != .scrollWheel {
-            glaspen2_rust_route_disable_cleanup()
-            return 1
-        }
-        if type == .keyDown || type == .keyUp {
-            return routeKeyboardEvent(type: type, event: event)
-        }
-        // 相机临时抓手: 非笔拖/放 或 ⌃⌥+左键按下(须在菜单栏判定之前)。
-        if type == .leftMouseDragged || type == .leftMouseUp || type == .leftMouseDown {
-            if let ev = NSEvent(cgEvent: event), !isPen(ev), routeCameraMouse(type: type, ev: ev) {
-                return 2
+        var e = GlaspenEventC()
+        let kind = type.rawValue
+        e.kind = Int32(kind)
+        if kind == 10 || kind == 11 {
+            if let ev = NSEvent(cgEvent: event) {
+                e.key_code = Int32(ev.keyCode)
+                let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
+                let raw = ev.modifierFlags.intersection(relevant).rawValue
+                e.flags = Int32(bitPattern: UInt32(truncatingIfNeeded: raw))
+                e.is_repeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0 ? 1 : 0
             }
+            return glaspen2_rust_route_event(&e)
         }
-        // 点菜单栏(非笔): 临时停 tap, 让菜单能收到点击; 5s 兜底恢复。
-        if type == .leftMouseDown, let ev = NSEvent(cgEvent: event), !isPen(ev) {
-            if glaspen2_rust_route_menu_bar_click(event.location.y) != 0 {
-                return 1
-            }
-        }
-        if type == .scrollWheel && (state() & 4) != 0 {
-            return routeScrollZoom(event)
-        }
-        if type == .mouseMoved, let ev = NSEvent(cgEvent: event), !isPen(ev) {
-            glaspen2_rust_route_mouse_moved()
-        }
-        if type != .tabletProximity, isPenEvent(event) {
-            penCursorUpdate(type: type, event: event)
-            penSystemCursor(type: type)
-        }
-        // 旧实现: 任意鼠标/笔抬起都恢复系统光标并清掉十字(不只笔事件)。
-        if type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp {
-            glaspen2_rust_route_mouse_up()
-        }
-        // 笔事件: 坐标/压力/raw_w 在本层计算, 再交 pen 分派(原 inner 逻辑)。
-        if let ev = NSEvent(cgEvent: event), isPen(ev) {
+        let pointerKind = (1...9).contains(kind) || kind == 23
+        if let ev = NSEvent(cgEvent: event) {
+            let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
+            let raw = ev.modifierFlags.intersection(relevant).rawValue
+            e.flags = Int32(bitPattern: UInt32(truncatingIfNeeded: raw))
             let loc = ev.locationInWindow
-            let px = Double(loc.x)
-            let py = glaspen2_router_draw_height() - Double(loc.y)
-            let pressure = Double(ev.pressure)
-            let rawField = event.getIntegerValueField(.tabletEventPointPressure)
-            let isEraser = ev.pointingDeviceType == .eraser
-                || glaspen2_router_prox_is_eraser() != 0
-            if glaspen2_rust_route_pen(Int32(type.rawValue), px, py, pressure,
-                                        ev.timestamp, rawField, isEraser ? 1 : 0) == 2 {
-                return 2
+            e.x = Double(loc.x)
+            e.y = Double(loc.y)
+            e.pen_x = e.x
+            e.pen_y = glaspen2_router_draw_height() - e.y
+            e.screen_y = event.location.y
+            if pointerKind {
+                e.is_pen = isPen(ev) ? 1 : 0
+                e.raw_field = event.getIntegerValueField(.tabletEventPointPressure)
+                e.pressure = Double(ev.pressure)
+                e.timestamp = ev.timestamp
+                e.is_eraser = (ev.pointingDeviceType == .eraser
+                    || glaspen2_router_prox_is_eraser() != 0) ? 1 : 0
+            } else if kind == 22 {
+                e.delta_y = ev.scrollingDeltaY
+                e.precise = ev.hasPreciseScrollingDeltas ? 1 : 0
             }
         }
-        return 1
+        return glaspen2_rust_route_event(&e)
     }
 
     private static func isPen(_ ev: NSEvent) -> Bool {
@@ -75,9 +55,7 @@ import AppKit
     }
 
     /// 笔按下/拖动期间隐藏系统光标; 任意 up 恢复光标并清十字/刷新(S6-3-3c)。
-    private static func penSystemCursor(type: CGEventType) {
-        glaspen2_rust_pen_system_cursor(Int32(type.rawValue))
-    }
+
 
     /// 恢复系统光标(S6-3-3d): 只有确实隐藏过(pen_drawing)才 show + 清标记。
     @objc(restoreSystemCursor)
@@ -92,17 +70,7 @@ import AppKit
     }
 
     /// S6-3-4: 键盘事件: 录制热键 → 普通 chord; 返回 1 放行 / 2 消费。
-    private static func routeKeyboardEvent(type: CGEventType, event: CGEvent) -> Int32 {
-        guard let ev = NSEvent(cgEvent: event) else { return 1 }
-        let m = ev.modifierFlags
-        return glaspen2_rust_route_keyboard(
-            Int32(type.rawValue), ev.keyCode,
-            m.contains(.command) ? 1 : 0,
-            m.contains(.control) ? 1 : 0,
-            m.contains(.option) ? 1 : 0,
-            m.contains(.shift) ? 1 : 0,
-            event.getIntegerValueField(.keyboardEventAutorepeat) != 0 ? 1 : 0)
-    }
+
 
     /// S6-3-3d: 压感监视器状态更新(是否在压感区/压力/坐标/tip down/事件名)。
     @objc(updatePressureMonitorWithEvent:type:x:y:pressure:)
@@ -122,17 +90,7 @@ import AppKit
     }
 
     /// S6-3-3d: 相机临时抓手(⌃⌥+左键拖动)开始/拖动/结束; 返回 true = 消费事件。
-    private static func routeCameraMouse(type: CGEventType, ev: NSEvent) -> Bool {
-        let kind: Int32
-        if type == .leftMouseDown { kind = 0 }
-        else if type == .leftMouseDragged { kind = 1 }
-        else if type == .leftMouseUp { kind = 2 }
-        else { return false }
-        let loc = ev.locationInWindow
-        let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
-        let mods = ev.modifierFlags.intersection(relevant).rawValue
-        return glaspen2_rust_camera_mouse(kind, Double(loc.x), Double(loc.y), UInt64(mods)) != 0
-    }
+
 
     /// S6-3-3d: 笔 proximity 进入/离开: 悬停显示/离开隐藏, 飘渺模式联动。
     private static func routeProximity(_ event: CGEvent) {
@@ -196,13 +154,7 @@ import AppKit
         return isPen(ev)
     }
 
-    private static func penCursorUpdate(type: CGEventType, event: CGEvent) {
-        guard let ev = NSEvent(cgEvent: event) else { return }
-        let isUp = type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp
-        let loc = ev.locationInWindow
-        glaspen2_rust_pen_cursor_update(Int32(type.rawValue), isUp ? 1 : 0,
-                                        Double(loc.x), Double(loc.y))
-    }
+
 
     /// 虚拟笔(GLASPEN2_VIRTUAL_PEN)合成事件判定。
     @objc(isVirtualPenEvent:)
@@ -212,14 +164,6 @@ import AppKit
 
     private static func state() -> Int32 { glaspen2_router_state() }
 
-    private static func routeScrollZoom(_ cgEvent: CGEvent) -> Int32 {
-        guard let ev = NSEvent(cgEvent: cgEvent) else { return 1 }
-        let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
-        let mods = ev.modifierFlags.intersection(relevant).rawValue
-        let loc = ev.locationInWindow
-        return glaspen2_rust_scroll_zoom(
-            ev.scrollingDeltaY, ev.hasPreciseScrollingDeltas ? 1 : 0,
-            Double(loc.x), Double(loc.y), UInt64(mods))
-    }
+
 
 }

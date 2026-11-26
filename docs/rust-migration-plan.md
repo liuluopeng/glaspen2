@@ -931,3 +931,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 笔状态/raw/模型器 begin/move/end/commit/erase/penDown-UP state/proximity/prox device 全部 C 符号迁 Rust;
 - Swift 调用点改 Rust 状态 getter; 删除 `Input/pen_state.swift`; Swift 68?→66;
 - 虚拟笔运行、DB 新增 1 笔; 批次 tests/smoke/parity(不跑 release)全绿。
+
+
+## R167 主路由事件编排迁 Rust
+
+- Swift route 只构造 GlaspenEventC 描述符(键/指针/滚动字段), Rust 做 tap 恢复/停用清理/键盘/相机/菜单栏/滚轮/光标/笔分派;
+- 删除 Swift routeKeyboardEvent/routeCameraMouse/routeScrollZoom/penCursorUpdate/penSystemCursor;
+- 真机: 虚拟笔 pen DOWN、⌘⌃` 翻页正常; 批次 tests/smoke/parity(不跑 release)全绿。

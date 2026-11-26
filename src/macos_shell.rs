@@ -7499,3 +7499,102 @@ pub extern "C" fn glaspen2_router_commit_to_strokes() {
         );
     }
 }
+
+// ── R167: 主路由事件描述符/编排迁 Rust ──
+
+#[repr(C)]
+pub struct GlaspenEventC {
+    pub kind: i32,
+    pub is_pen: i32,
+    pub key_code: i32,
+    pub flags: i32,
+    pub is_repeat: i32,
+    pub raw_field: i64,
+    pub x: f64,
+    pub y: f64,
+    pub pen_x: f64,
+    pub pen_y: f64,
+    pub screen_y: f64,
+    pub pressure: f64,
+    pub timestamp: f64,
+    pub delta_y: f64,
+    pub precise: i32,
+    pub is_eraser: i32,
+}
+
+unsafe extern "C" {
+    fn glaspen2_router_reenable_tap();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_route_event(ev: *const GlaspenEventC) -> i32 {
+    if ev.is_null() {
+        return 1;
+    }
+    let ev = unsafe { &*ev };
+    let kind = ev.kind;
+    if kind == 15 || kind == 16 {
+        unsafe { glaspen2_router_reenable_tap() };
+        tracing::info!("[glaspen2] TAP DISABLED (timeout/userinput) — re-enabled");
+        return 1;
+    }
+    let state = unsafe { glaspen2_router_state() };
+    if (state & 1) == 0 && !matches!(kind, 10 | 11 | 22) {
+        glaspen2_rust_route_disable_cleanup();
+        return 1;
+    }
+    if kind == 10 || kind == 11 {
+        let flags = ev.flags;
+        return glaspen2_rust_route_keyboard(
+            kind,
+            ev.key_code as u16,
+            i32::from(flags & (1 << 20) != 0),
+            i32::from(flags & (1 << 18) != 0),
+            i32::from(flags & (1 << 19) != 0),
+            i32::from(flags & (1 << 17) != 0),
+            ev.is_repeat,
+        );
+    }
+    // 相机临时抓手(非笔左键 down/drag/up)。
+    if ev.is_pen == 0 && matches!(kind, 1 | 2 | 3) {
+        let dir = if kind == 1 {
+            0
+        } else if kind == 3 {
+            1
+        } else {
+            2
+        };
+        if glaspen2_rust_camera_mouse(dir, ev.x, ev.y, ev.flags as u64) != 0 {
+            return 2;
+        }
+    }
+    if kind == 1 && ev.is_pen == 0 && glaspen2_rust_route_menu_bar_click(ev.screen_y) != 0 {
+        return 1;
+    }
+    if kind == 22 && (state & 4) != 0 {
+        return glaspen2_rust_scroll_zoom(ev.delta_y, ev.precise, ev.x, ev.y, ev.flags as u64);
+    }
+    if kind == 5 && ev.is_pen == 0 {
+        glaspen2_rust_route_mouse_moved();
+    }
+    if ev.is_pen != 0 {
+        let is_up = matches!(kind, 2 | 5 | 8);
+        glaspen2_rust_pen_cursor_update(kind, i32::from(is_up), ev.x, ev.y);
+        glaspen2_rust_pen_system_cursor(kind);
+    }
+    if matches!(kind, 2 | 5 | 8) {
+        glaspen2_rust_route_mouse_up();
+    }
+    if ev.is_pen != 0 {
+        return glaspen2_rust_route_pen(
+            kind,
+            ev.pen_x,
+            ev.pen_y,
+            ev.pressure,
+            ev.timestamp,
+            ev.raw_field,
+            ev.is_eraser,
+        );
+    }
+    1
+}

@@ -711,3 +711,25 @@ extern int glaspen2_rust_status_icon_apply(void *item, int eraser, int enabled, 
 
 // R165: 覆盖窗所在屏 displayID
 extern unsigned int glaspen2_rust_window_display_id(void);
+
+// R167: 主路由事件描述符
+typedef struct {
+    int kind;
+    int is_pen;
+    int key_code;
+    int flags;
+    int is_repeat;
+    long long raw_field;
+    double x;
+    double y;
+    double pen_x;
+    double pen_y;
+    double screen_y;
+    double pressure;
+    double timestamp;
+    double delta_y;
+    int precise;
+    int is_eraser;
+} GlaspenEventC;
+
+extern int glaspen2_rust_route_event(const GlaspenEventC *ev);
