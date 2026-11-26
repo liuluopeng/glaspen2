@@ -181,15 +181,6 @@ import Darwin
 import AppKit
 
 
-@_cdecl("gl_panel_transparent_apply_full")
-public func panelTransparentFull(_ on: Int32) {
-    MenuRuntime.applyPanelTransparent(on: on != 0)
-    let vcPtr = glaspen2_rust_flutter_vc()
-    if let vcPtr {
-            let vc = Unmanaged<FlutterViewController>.fromOpaque(vcPtr).takeUnretainedValue()
-            vc.view.layer?.isOpaque = on == 0
-        }
-}
 
 @_cdecl("glaspen2_router_set_window_sharing_none")
 public func panelSharingNone() {

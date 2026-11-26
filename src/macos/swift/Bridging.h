@@ -380,3 +380,6 @@ void *sw_menu(void);
 void sw_set_menu(void *p);
 void *sw_settings_window(void);
 void sw_set_settings_window(void *p);
+
+// R247: 面板透明应用(Rust)
+void gl_panel_transparent_apply(int on);

@@ -109,10 +109,6 @@ import AppKit
 public func menuRefreshTexts() { MenuTextUpdater.update() }
 @_cdecl("glaspen2_menu_save_with_bg")
 public func menuSaveWithBg() { SaveBackground.save() }
-@_cdecl("gl_panel_transparent_apply")
-public func menuPanelTransparent(_ on: Int32) {
-    MenuRuntime.applyPanelTransparent(on: on != 0)
-}
 
 // R43: Rust 侧菜单通知桥(NSString* -> NotificationPresenter)。
 

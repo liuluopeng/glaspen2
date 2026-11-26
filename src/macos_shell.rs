@@ -9349,7 +9349,6 @@ unsafe extern "C" {
     fn glaspen2_swift_make_flutter_vc() -> *mut c_void;
     fn glaspen2_swift_activate_settings_existing();
     fn glaspen2_swift_show_settings_window(window: *mut c_void);
-    fn glaspen2_router_settings_apply_transparent();
 }
 
 #[unsafe(no_mangle)]
@@ -11389,4 +11388,45 @@ pub extern "C" fn glaspen2_router_bubble_auto_page_flip() -> i32 {
         }
     }
     1
+}
+
+// ── R247: 设置面板透明应用迁 Rust ──
+
+fn apply_panel_transparent_rust(on: i32) {
+    use objc2::runtime::AnyObject;
+    let win = unsafe { sw_settings_window() };
+    if !win.is_null() {
+        unsafe {
+            let _: () = objc2::msg_send![win as *mut AnyObject, setOpaque: on == 0];
+            let color = if on != 0 {
+                objc2_app_kit::NSColor::clearColor()
+            } else {
+                objc2_app_kit::NSColor::windowBackgroundColor()
+            };
+            let _: () = objc2::msg_send![win as *mut AnyObject, setBackgroundColor: &*color];
+        }
+    }
+    let vc = glaspen2_rust_flutter_vc();
+    if vc.is_null() {
+        return;
+    }
+    unsafe {
+        let view: *mut AnyObject = objc2::msg_send![vc as *mut AnyObject, view];
+        if view.is_null() {
+            return;
+        }
+        let layer: *mut AnyObject = objc2::msg_send![view, layer];
+        if !layer.is_null() {
+            let _: () = objc2::msg_send![layer, setOpaque: on == 0];
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn gl_panel_transparent_apply(on: i32) {
+    apply_panel_transparent_rust(on);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_settings_apply_transparent() {
+    apply_panel_transparent_rust(1);
 }

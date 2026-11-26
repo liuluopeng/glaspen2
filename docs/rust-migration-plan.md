@@ -1319,3 +1319,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - Flipper 删除; Rust 翻页路径: tunnel 准备/触发/隐藏间隙/commit 回写;
 - BubbleAutoPageFlip 迁 Rust; 删除 Swift helper 与 C 桥;
 - flip probe: 时光隧道 5/6 卡多次接管 + 非隧道隐藏间隙 12-85ms, 应用存活.
+
+
+## R247 设置面板透明应用迁 Rust
+
+- settingsWindow setOpaque/backgroundColor + Flutter VC layer opaque 迁 Rust raw objc;
+- gl_panel_transparent_apply/router_settings_apply_transparent 接线; 删除 Swift 包装;
+- 设置面板打开/透明路径正常.

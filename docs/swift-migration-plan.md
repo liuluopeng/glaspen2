@@ -822,3 +822,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R244 | 隧道定时器迁 Rust; 时光隧道多次接管正常 | 本提交 |
 | 2026-11-26 | Rust-R245 | 删除 OverlayWindowFactory; 显示帧应用迁 Rust; 虚拟笔正常 | 本提交 |
 | 2026-11-26 | Rust-R246 | Flipper 迁 Rust; 删除 Flipper/Bubble helper; flip 两路径正常 | 本提交 |
+| 2026-11-26 | Rust-R247 | 设置面板透明应用迁 Rust; 面板打开正常 | 本提交 |

@@ -96,10 +96,6 @@ public func runInvertInkSource(_ cr: UnsafeMutableRawPointer?) -> UnsafeMutableR
 
 
 
-@_cdecl("glaspen2_router_settings_apply_transparent")
-public func runSettingsTransparent() {
-    panelTransparentFull(1)
-}
 
 
 
@@ -116,7 +112,7 @@ public func runInvertApply(_ on: Int32) { panelInvertApply(on) }
 public func runInvertRestart() { panelInvertRestart() }
 
 @_cdecl("glaspen2_router_panel_transparent_full")
-public func runPanelTransparentFull(_ on: Int32) { panelTransparentFull(on) }
+public func runPanelTransparentFull(_ on: Int32) { gl_panel_transparent_apply(on) }
 
 @_cdecl("glaspen2_router_install_signals")
 public func runInstallSignals() {
