@@ -9363,3 +9363,61 @@ pub extern "C" fn glaspen2_rust_display_changed() {
         }
     });
 }
+
+// ── R197: 应用启动编排 ──
+
+unsafe extern "C" {
+    fn glaspen2_router_install_signals();
+    fn glaspen2_swift_bootstrap_prepare();
+    fn glaspen2_swift_bootstrap_running_alert();
+    fn glaspen2_swift_bootstrap_status_item() -> *mut c_void;
+    fn glaspen2_swift_bootstrap_delegate_menu(item: *mut c_void) -> i32;
+    fn glaspen2_swift_bootstrap_display_observer();
+    fn glaspen2_swift_startup_run_loop();
+    fn glaspen2_swift_bootstrap_screen_size(w: *mut i32, h: *mut i32);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_app_bootstrap_start() -> i32 {
+    let lock_fd = glaspen2_rust_instance_lock_acquire();
+    if lock_fd == -1 || glaspen2_rust_another_instance_running() != 0 {
+        unsafe { glaspen2_swift_bootstrap_running_alert() };
+        return 0;
+    }
+    unsafe { glaspen2_swift_bootstrap_prepare() };
+    let status = glaspen2_rust_status_item_create();
+    let status = if status.is_null() {
+        unsafe { glaspen2_swift_bootstrap_status_item() }
+    } else {
+        status
+    };
+    if status.is_null() {
+        return 0;
+    }
+    if unsafe { glaspen2_swift_bootstrap_delegate_menu(status) } == 0 {
+        return 0;
+    }
+    let (mut w, mut h) = (0i32, 0i32);
+    unsafe { glaspen2_swift_bootstrap_screen_size(&mut w, &mut h) };
+    if w <= 0 || h <= 0 {
+        w = unsafe { sw_app_screen_w() };
+        h = unsafe { sw_app_screen_h() };
+    }
+    unsafe {
+        glaspen2_router_set_screen_size(w, h);
+        glaspen2_init_db(w, h);
+    }
+    glaspen2_rust_restore_settings_a();
+    glaspen2_rust_restore_settings_b();
+    if glaspen2_rust_create_main_window() == 0 {
+        return 0;
+    }
+    unsafe {
+        glaspen2_router_install_signals();
+        glaspen2_swift_bootstrap_display_observer();
+        glaspen2_router_event_tap_reinstall();
+        glaspen2_rust_accessibility_alert_present();
+        glaspen2_swift_startup_run_loop();
+    }
+    1
+}

@@ -5,7 +5,7 @@ import Darwin
 
 @_cdecl("glaspen2_run")
 public func appRun() {
-    if !AppBootstrap.start() { return }
+    if glaspen2_rust_app_bootstrap_start() == 0 { return }
     NSApp.run()
 }
 
@@ -509,4 +509,70 @@ public func glaspen2SwiftDrawOverlayBridge(_ view: UnsafeMutableRawPointer?,
     guard let view else { return }
     let nsView = Unmanaged<NSView>.fromOpaque(view).takeUnretainedValue()
     OverlayDrawing.draw(in: nsView, rect: NSRect(x: x, y: y, width: w, height: h))
+}
+
+@_cdecl("glaspen2_swift_bootstrap_prepare")
+public func bootstrapPrepare() {
+    NSApplication.shared
+    NSApp.setActivationPolicy(.accessory)
+    let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+    if !AXIsProcessTrustedWithOptions(opts as CFDictionary) {
+        NSLog("[glaspen2] Accessibility permission not granted")
+    }
+}
+
+@_cdecl("glaspen2_swift_bootstrap_running_alert")
+public func bootstrapRunningAlert() {
+    NSApplication.shared
+    NSApp.setActivationPolicy(.accessory)
+    let alert = NSAlert()
+    alert.messageText = MenuRuntime.pair("glaspen2 已在运行", "glaspen2 is already running")
+    alert.informativeText = MenuRuntime.pair(
+        "检测到另一个 glaspen2 实例(菜单栏图标)。两个实例的笔迹窗口会叠加显示, 全局热键会同时翻两套页 —— 看起来像“笔迹重复/只翻了一部分”。本次启动退出; 开发时如需并行调试, 设 GLASPEN2_ALLOW_MULTI=1。",
+        "Another glaspen2 instance is running (menu bar icon). Two overlays stack and global hotkeys flip both — it looks like duplicated strokes or a partial page flip. This launch exits; set GLASPEN2_ALLOW_MULTI=1 to debug in parallel.")
+    alert.addButton(withTitle: MenuRuntime.pair("好", "OK"))
+    alert.runModal()
+}
+
+@_cdecl("glaspen2_swift_bootstrap_status_item")
+public func bootstrapStatusItem() -> UnsafeMutableRawPointer? {
+    let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    item.button?.title = ""
+    UIAnchors.statusItem = item
+    return Unmanaged.passUnretained(item).toOpaque()
+}
+
+@_cdecl("glaspen2_swift_bootstrap_delegate_menu")
+public func bootstrapDelegateMenu(_ item: UnsafeMutableRawPointer?) -> Int32 {
+    guard let item else { return 0 }
+    let statusItem = Unmanaged<NSStatusItem>.fromOpaque(item).takeUnretainedValue()
+    UIAnchors.statusItem = statusItem
+    NSApplication.shared
+    NSApp.setActivationPolicy(.accessory)
+    let handler = AppDelegate()
+    AppDelegate.shared = handler
+    NSApp.delegate = handler
+    let menu = MainMenuBuilder.build(handler: handler, statusItem: statusItem,
+                                     launchAtLoginOn: glaspen2_is_launch_at_login() != 0,
+                                     glassOn: glaspen2_router_glass_enabled() != 0)
+    UIAnchors.menu = menu
+    return 1
+}
+
+@_cdecl("glaspen2_swift_bootstrap_display_observer")
+public func bootstrapDisplayObserver() {
+    NotificationCenter.default.addObserver(
+        forName: NSApplication.didChangeScreenParametersNotification,
+        object: nil, queue: .main) { _ in glaspen2_rust_display_changed() }
+}
+
+@_cdecl("glaspen2_swift_startup_run_loop")
+public func bootstrapStartupRunLoop() { StartupRunLoop.begin() }
+
+@_cdecl("glaspen2_swift_bootstrap_screen_size")
+public func bootstrapScreenSize(_ w: UnsafeMutablePointer<Int32>?,
+                                _ h: UnsafeMutablePointer<Int32>?) {
+    let frame = NSScreen.main?.frame ?? .zero
+    w?.pointee = Int32(frame.size.width)
+    h?.pointee = Int32(frame.size.height)
 }

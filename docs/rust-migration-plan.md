@@ -1097,3 +1097,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - GlaspenDrawView/SettingsWindowDelegate 均无调用者; draw overlay C 桥移入 run_glue;
 - 删除 App/window_classes.swift; Swift 43→42; 冷启动正常。
+
+
+## R197 应用启动编排迁 Rust
+
+- 单实例守卫/NSApp 准备/状态栏项/菜单 delegate/屏幕尺寸/DB/设置恢复/主窗/信号/显示器观察/tap/告警/运行期钩子全部由 Rust 编排;
+- 删除 App/app_bootstrap.swift; run_glue 直调 Rust;
+- 冷启动 window ready/CGEventTap OK; Swift 42→41。

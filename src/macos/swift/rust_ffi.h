@@ -783,3 +783,6 @@ extern void glaspen2_rust_hotkey_recording_set(int on);
 
 // R194: 显示器变更防抖
 extern void glaspen2_rust_display_changed(void);
+
+// R197: 应用启动编排
+extern int glaspen2_rust_app_bootstrap_start(void);
