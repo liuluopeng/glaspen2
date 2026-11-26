@@ -1043,3 +1043,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - 后台线程合成 mouseMoved/leftMouseDown/Dragged/Up, 设置 tablet subtype/user data/pressure, CGEventPost;
 - 删除 Diagnostics/virtual_pen.swift; StartupRunLoop 直调 Rust;
 - 实测虚拟笔 batch/抬笔正常; Swift 54→53。
+
+
+## R186 EventRouter 死代码清理
+
+- 删除已无调用的 penDown/penUp/penMove/updateEraserState/state 包装;
+- debug build 通过。

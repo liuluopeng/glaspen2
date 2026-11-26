@@ -86,31 +86,12 @@ import AppKit
     }
 
     /// S6-3-3d: 落笔入口: 自动翻页 + 模型器 begin + 共享 context + raw dot + 落笔状态。
-    @objc(penDownWithX:y:pressure:timestamp:rawWidth:)
-    public static func penDown(x: Double, y: Double, pressure: Double,
-                               timestamp: Double, rawWidth: Double) {
-        glaspen2_rust_pen_down(x, y, pressure, timestamp, rawWidth, SurfaceStore.scaleFactor)
-    }
 
     /// S6-3-3d: 抬笔: 结束模型器(橡皮 finish / 正常 end+commit) + context/状态复位。
-    @objc(penUpWithX:y:pressure:timestamp:)
-    public static func penUp(x: Double, y: Double, pressure: Double,
-                             timestamp: Double) {
-        glaspen2_rust_pen_up(x, y, pressure, timestamp)
-    }
 
     /// S6-3-3d: 拖动实时段: 模型器 move + raw segment(响应式反馈)。
-    @objc(penMoveWithX:y:pressure:timestamp:rawWidth:)
-    public static func penMove(x: Double, y: Double, pressure: Double,
-                               timestamp: Double, rawWidth: Double) {
-        glaspen2_rust_pen_move(x, y, pressure, timestamp, rawWidth, SurfaceStore.scaleFactor)
-    }
 
     /// S6-3-3d: 橡皮态切换 + 状态图标刷新(落笔/拖动自动补 begin/抬笔共用)。
-    @objc(updateEraserState:)
-    public static func updateEraserState(isEraser: Bool) {
-        glaspen2_rust_update_eraser(isEraser ? 1 : 0)
-    }
 
     /// S6-3-4b-2b: 普通 chord 门控(录制热键由 ObjC 函数先行处理)。
     /// 返回 1 = 放行, 2 = 消费(返回 NULL)。
@@ -121,7 +102,6 @@ import AppKit
         event.getIntegerValueField(.eventSourceUserData) == glaspen2_virtual_pen_user_data()
     }
 
-    private static func state() -> Int32 { glaspen2_router_state() }
 
 
 
