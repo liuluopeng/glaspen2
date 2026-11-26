@@ -9271,10 +9271,8 @@ pub extern "C" fn glaspen2_rust_display_changed() {
 unsafe extern "C" {
     fn glaspen2_swift_bootstrap_prepare();
     fn glaspen2_swift_bootstrap_running_alert();
-    fn glaspen2_swift_bootstrap_status_item() -> *mut c_void;
     fn glaspen2_swift_bootstrap_delegate_menu(item: *mut c_void) -> i32;
     fn glaspen2_swift_bootstrap_display_observer();
-    fn glaspen2_swift_bootstrap_screen_size(w: *mut i32, h: *mut i32);
 }
 
 #[unsafe(no_mangle)]
@@ -11623,4 +11621,32 @@ pub extern "C" fn glaspen2_router_panel_transparent_full(on: i32) {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_swift_restore_pressure_window() {
     unsafe { glaspen2_swift_dispatch_main_after(0.0, std::ptr::null_mut(), restore_pressure_cb) }
+}
+
+// ── R252: 启动状态项/屏幕尺寸桥迁 Rust ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_bootstrap_status_item() -> *mut c_void {
+    glaspen2_rust_status_item_create()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_bootstrap_screen_size(w: *mut i32, h: *mut i32) {
+    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2_foundation::NSRect;
+    unsafe {
+        let Some(cls) = AnyClass::get(c"NSScreen") else {
+            return;
+        };
+        let screen: *mut AnyObject = objc2::msg_send![cls, mainScreen];
+        if screen.is_null() {
+            return;
+        }
+        let rect: NSRect = objc2::msg_send![screen, frame];
+        if !w.is_null() {
+            *w = rect.size.width as i32;
+        }
+        if !h.is_null() {
+            *h = rect.size.height as i32;
+        }
+    }
 }

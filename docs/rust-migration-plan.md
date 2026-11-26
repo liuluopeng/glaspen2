@@ -1345,3 +1345,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - apply_display_frames/panel_transparent_full/restore_pressure_window 迁 Rust;
 - 删除 Swift 包装; menu probes OK, 冷启动正常.
+
+
+## R252 启动状态项/屏幕尺寸桥迁 Rust
+
+- bootstrap_status_item/bootstrap_screen_size 迁 Rust;
+- 删除 Swift 包装; statusbar probe OK, 冷启动 3440x1440 正常.

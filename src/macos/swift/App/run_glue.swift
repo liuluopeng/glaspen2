@@ -210,13 +210,6 @@ public func bootstrapRunningAlert() {
     alert.runModal()
 }
 
-@_cdecl("glaspen2_swift_bootstrap_status_item")
-public func bootstrapStatusItem() -> UnsafeMutableRawPointer? {
-    let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    item.button?.title = ""
-    UIAnchors.statusItem = item
-    return Unmanaged.passUnretained(item).toOpaque()
-}
 
 @_cdecl("glaspen2_swift_bootstrap_delegate_menu")
 public func bootstrapDelegateMenu(_ item: UnsafeMutableRawPointer?) -> Int32 {
@@ -245,13 +238,6 @@ public func bootstrapDisplayObserver() {
 @_cdecl("glaspen2_swift_flip_probe_maybe_start")
 public func bootstrapFlipProbe() { FlipProbe.maybeStart() }
 
-@_cdecl("glaspen2_swift_bootstrap_screen_size")
-public func bootstrapScreenSize(_ w: UnsafeMutablePointer<Int32>?,
-                                _ h: UnsafeMutablePointer<Int32>?) {
-    let frame = NSScreen.main?.frame ?? .zero
-    w?.pointee = Int32(frame.size.width)
-    h?.pointee = Int32(frame.size.height)
-}
 
 import FlutterMacOS
 
