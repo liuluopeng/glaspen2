@@ -22,10 +22,6 @@ public func runState() -> Int32 {
 @_cdecl("glaspen2_router_draw_height")
 public func runDrawHeight() -> Double { Double(UIAnchors.drawView?.bounds.size.height ?? 0) }
 
-@_cdecl("glaspen2_router_zoom_at")
-public func runZoomAt(_ factor: Double, _ x: Double, _ y: Double) {
-    glaspen2_rust_camera_zoom_at(factor, x, y)
-}
 
 @_cdecl("glaspen2_router_cursor_flags")
 public func runCursorFlags() -> Int32 {
@@ -44,8 +40,6 @@ public func runBubblePenGone() { glaspen2_bubble_pen_gone() }
 @_cdecl("glaspen2_router_flush")
 public func runFlush() { glaspen2_rust_overlay_flush_dirty() }
 
-@_cdecl("glaspen2_virtual_pen_user_data")
-public func runVirtualPenUserData() -> Int64 { 0x5650_4E31 }
 
 @_cdecl("glaspen2_router_pen_state")
 public func runPenState() -> Int32 {
@@ -65,17 +59,9 @@ public func runPenAutoShow() { glaspen2_rust_ethereal_auto_show() }
 @_cdecl("glaspen2_router_peek_cancel")
 public func runPeekCancel() { glaspen2_rust_ethereal_cancel_peek() }
 
-@_cdecl("glaspen2_router_cursor_set")
-public func runCursorSet(_ x: Double, _ y: Double) { sw_cursor_set(x, y, 0) }
 
-@_cdecl("glaspen2_router_cursor_show")
-public func runCursorShow(_ on: Int32) { if on != 0 { sw_cursor_show() } }
 
-@_cdecl("glaspen2_router_hide_system_cursor")
-public func runHideSystemCursor() { CGDisplayHideCursor(CGMainDisplayID()) }
 
-@_cdecl("glaspen2_router_show_system_cursor")
-public func runShowSystemCursor() { CGDisplayShowCursor(CGMainDisplayID()) }
 
 @_cdecl("glaspen2_router_disable_cleanup")
 public func runDisableCleanup() {

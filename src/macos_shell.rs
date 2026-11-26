@@ -3944,7 +3944,6 @@ pub extern "C" fn glaspen2_rust_camera_reset_lens() {
 
 unsafe extern "C" {
     fn glaspen2_router_perf_summary();
-    fn glaspen2_router_show_system_cursor();
     fn glaspen2_router_pressure_label(text: *const std::os::raw::c_char);
 }
 
@@ -6588,9 +6587,6 @@ pub extern "C" fn glaspen2_rust_route_proximity(device: i32, enter: i32) -> i32 
 unsafe extern "C" {
     fn glaspen2_router_pen_bubble(on: i32);
     fn glaspen2_router_pen_state() -> i32;
-    fn glaspen2_router_cursor_set(x: f64, y: f64);
-    fn glaspen2_router_cursor_show(on: i32);
-    fn glaspen2_router_hide_system_cursor();
 }
 
 #[unsafe(no_mangle)]
@@ -10519,4 +10515,38 @@ pub extern "C" fn glaspen2_menu_notify(text: *const c_void) {
     use objc2_foundation::NSString;
     let s = unsafe { &*(text as *const NSString) }.to_string();
     notification_show_owned(&s);
+}
+
+// ── R233: 光标/缩放 C 桥迁 Rust ──
+
+unsafe extern "C" {
+    fn CGDisplayHideCursor(display: u32) -> i32;
+    fn CGDisplayShowCursor(display: u32) -> i32;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_zoom_at(factor: f64, x: f64, y: f64) {
+    glaspen2_rust_camera_zoom_at(factor, x, y);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_cursor_set(x: f64, y: f64) {
+    sw_cursor_set(x, y, 0);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_cursor_show(on: i32) {
+    if on != 0 {
+        sw_cursor_show();
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_hide_system_cursor() {
+    unsafe { CGDisplayHideCursor(CGMainDisplayID()) };
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_show_system_cursor() {
+    unsafe { CGDisplayShowCursor(CGMainDisplayID()) };
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_virtual_pen_user_data() -> i64 {
+    0x5650_4E31
 }

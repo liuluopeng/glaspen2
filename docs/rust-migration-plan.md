@@ -1241,3 +1241,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - gl_ethereal_restore_now/auto_hide_now/auto_show_canvas/peek_cancel_timer/peek_lens_change/menu_notify 迁 Rust;
 - 删除 Swift 包装; menu probes OK, 冷启动正常.
+
+
+## R233 光标/缩放 C 桥迁 Rust
+
+- zoom_at/cursor_set/cursor_show/hide/show_system_cursor/virtual_pen_user_data 迁 Rust;
+- 删 Swift 包装; menu/hotkey probes OK, 虚拟笔 pen DOWN 正常.
