@@ -366,12 +366,12 @@ public func glaspen2_macos_swift_menu_full_selftest() -> Int32 {
         && menu3.items[topBase3 + 7].title == "TOP7"
         && menu3.items[topBase3 + 3].submenu?.items[0].title == "E0"
         && menu3.items[topBase3 + 7].submenu?.items[0].title == "M0"
-    if let mode = MenuLookup.item(tag: 778, inMenu: menu3) { textsOK = textsOK && mode.title == "MODE" } else { textsOK = false }
-    if let toggle = MenuLookup.item(tag: 888, inMenu: menu3) { textsOK = textsOK && toggle.title == "TOGGLE" } else { textsOK = false }
+    if let mode = MenuRuntime.menuItem(tag: 778, inMenu: menu3) { textsOK = textsOK && mode.title == "MODE" } else { textsOK = false }
+    if let toggle = MenuRuntime.menuItem(tag: 888, inMenu: menu3) { textsOK = textsOK && toggle.title == "TOGGLE" } else { textsOK = false }
     print("SWIFT_MENU_FULL_TEXTS color=\(menu3.items[0].attributedTitle?.string ?? "nil") "
           + "width=\(menu3.items[colorCount + 1].attributedTitle?.string ?? "nil") "
-          + "mode=\(MenuLookup.item(tag: 778, inMenu: menu3)?.title ?? "nil") "
-          + "toggle=\(MenuLookup.item(tag: 888, inMenu: menu3)?.title ?? "nil") ok=\(textsOK)")
+          + "mode=\(MenuRuntime.menuItem(tag: 778, inMenu: menu3)?.title ?? "nil") "
+          + "toggle=\(MenuRuntime.menuItem(tag: 888, inMenu: menu3)?.title ?? "nil") ok=\(textsOK)")
     expect(textsOK, "texts")
 
     // 防御分支: nil menu 不崩(guard 在任何文案读取之前返回, 不产生日志)。

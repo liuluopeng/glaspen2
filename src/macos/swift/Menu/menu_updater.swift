@@ -44,8 +44,8 @@ import AppKit
            let moreJSON = String(data: moreData, encoding: .utf8) {
             var colorPtrs: [UnsafeMutableRawPointer?] = colorTitles.map { Unmanaged.passUnretained($0).toOpaque() }
             var widthPtrs: [UnsafeMutableRawPointer?] = widthTitles.map { Unmanaged.passUnretained($0).toOpaque() }
-            let modeItem = MenuLookup.item(tag: 778, inMenu: menu)
-            let toggleItem = MenuLookup.item(tag: 888, inMenu: menu)
+            let modeItem = MenuRuntime.menuItem(tag: 778, inMenu: menu)
+            let toggleItem = MenuRuntime.menuItem(tag: 888, inMenu: menu)
             let ok = colorPtrs.withUnsafeMutableBufferPointer { cb in
                 widthPtrs.withUnsafeMutableBufferPointer { wb in
                     glaspen2_rust_menu_update_texts(
@@ -84,10 +84,10 @@ import AppKit
                 moreMenu.item(at: i)?.title = title
             }
         }
-        if let modeItem = MenuLookup.item(tag: 778, inMenu: menu) {
+        if let modeItem = MenuRuntime.menuItem(tag: 778, inMenu: menu) {
             modeItem.title = modeTitle
         }
-        if let toggleItem = MenuLookup.item(tag: 888, inMenu: menu) {
+        if let toggleItem = MenuRuntime.menuItem(tag: 888, inMenu: menu) {
             toggleItem.title = toggleTitle
         }
     }

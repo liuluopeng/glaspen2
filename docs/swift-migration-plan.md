@@ -709,3 +709,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R106 | cairo_create_scaled/save_and_exit 迁 Rust; 删 canvas_helpers.swift; Swift 76→75; smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R107 | 快捷键默认/动作 JSON 缓存迁 Rust; 删 shortcut_table.swift; Swift 75→74; hotkeys probe 通过 | 默认 smoke、tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R108 | 合并 MenuPresetTitles/PressureState 到 MenuRuntime/PressureMonitorWindow; Swift 74→72; smoke/tests/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R109 | 删除 MenuLookup, tag 查找移入 MenuRuntime; Swift 72→71; smoke/tests/parity 绿 | 本提交 |

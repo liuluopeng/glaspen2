@@ -59,6 +59,13 @@ import AppKit
         notify(text)
     }
 
+    static func menuItem(tag: Int, inMenu menu: NSMenu?) -> NSMenuItem? {
+        guard let menu else { return nil }
+        let p = glaspen2_rust_menu_item_with_tag(Unmanaged.passUnretained(menu).toOpaque(), tag)
+        guard let p else { return nil }
+        return Unmanaged<NSMenuItem>.fromOpaque(p).takeUnretainedValue()
+    }
+
     static func colorItemTitle(index: Int32) -> NSAttributedString {
         var r = 0.0, g = 0.0, b = 0.0
         glaspen2_color_preset_rgb(index, &r, &g, &b)

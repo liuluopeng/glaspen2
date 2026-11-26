@@ -564,3 +564,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 压感状态读/C 桥/标签刷新移入 PressureMonitorWindow;
 - 删除两个文件; Swift 74→72;
 - 默认 smoke、tests/build/parity 全绿。
+
+
+## R109 删除 MenuLookup 薄桥
+
+- 菜单项 tag 查找移入 MenuRuntime.menuItem(直调 Rust);
+- 删除 `Menu/menu_lookup.swift`; Swift 72→71;
+- 默认 smoke、tests/build/parity 全绿。
