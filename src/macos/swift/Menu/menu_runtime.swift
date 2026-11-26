@@ -31,6 +31,26 @@ import AppKit
         ShortcutStore.chord(forAction: action)
     }
     /// R7: 动作 → NSEvent.ModifierFlags.rawValue(解析在 core::chord)。
+    static func presentHud(hud: String, strokes: Int32, detail: String?) {
+        let text: String? = hud.withCString { h in
+            if let detail {
+                return detail.withCString { d in
+                    guard let p = glaspen2_rust_rec_hud_text(h, strokes, d) else { return nil }
+                    defer { free(p) }
+                    return String(cString: p)
+                }
+            }
+            guard let p = glaspen2_rust_rec_hud_text(h, strokes, nil) else { return nil }
+            defer { free(p) }
+            return String(cString: p)
+        }
+        guard let text else {
+            NSLog("[recording] 未实现的 HUD 文案: %@", hud)
+            return
+        }
+        notify(text)
+    }
+
     static func colorDisplayName(index: Int) -> String {
         guard let p = glaspen2_color_name(Int32(index), glaspen2_router_lang()) else { return "" }
         defer { glaspen2_free_c_string(p) }

@@ -704,3 +704,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R101 | 删除 MenuNames 薄桥, 颜色/粗细名改 MenuRuntime 直调 core; Swift 83→82; smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R102 | EtherealMode 隐藏/恢复/预览显示迁 Rust; peek 定时器留 Swift; 默认 Rust, GLASPEN2_SWIFT_ETHEREAL=1 回退 | 默认/回退 smoke、tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R103 | 删除 SettingsDispatcher 回退桥, 设置入口直调 Rust; Swift 82→81; settings probe failures=0 | 默认 smoke、tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R104 | 删除 RawDrawing/RecHudPresenter 薄桥(内联/移入 MenuRuntime); Swift 81→79; smoke/tests/parity 绿 | 本提交 |

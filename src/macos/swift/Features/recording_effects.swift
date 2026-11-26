@@ -30,7 +30,7 @@ import AppKit
         if kind == "ShowHud" {
             if let hud = effect["hud"] as? String {
                 let strokes = (effect["strokes"] as? NSNumber)?.int32Value ?? 0
-                RecHudPresenter.present(hud: hud, strokes: strokes,
+                MenuRuntime.presentHud(hud: hud, strokes: strokes,
                                         detail: effect["detail"] as? String)
             }
             return

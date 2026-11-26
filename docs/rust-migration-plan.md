@@ -526,3 +526,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - R89 后默认路径已全走 Rust, Swift 回退实际不可达; 删除 `Settings/settings_dispatcher.swift`;
 - `settings_api_glue` 直接调 `glaspen2_rust_apply_setting`; settings probe 同步改直调;
 - Swift 82→81; settings probe failures=0, 默认 smoke/tests/build/parity 全绿。
+
+
+## R104 删除 RawDrawing/RecHudPresenter 薄桥
+
+- `RawDrawing` 表面门控+dot/segment 调用内联到 pen_state C 桥;
+- `RecHudPresenter` 文案桥移入 `MenuRuntime.presentHud`;
+- 删除 `Input/raw_drawing.swift`、`Features/recording_hud.swift`; Swift 81→79;
+- 默认 smoke、tests/build/parity 全绿。

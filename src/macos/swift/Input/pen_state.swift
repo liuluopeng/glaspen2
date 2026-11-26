@@ -91,12 +91,14 @@ public func bridgeSetEraserMode(_ on: Int32) { PenState.eraserMode = on != 0 }
 
 @_cdecl("glaspen2_router_raw_draw_dot")
 public func bridgeRawDrawDot(_ x: Double, _ y: Double, _ w: Double) {
-    RawDrawing.drawDot(x: x, y: y, width: w)
+    guard SurfaceStore.current != nil else { return }
+    glaspen2_rust_raw_draw_dot2(x, y, w, SurfaceStore.scaleFactor)
 }
 
 @_cdecl("glaspen2_router_raw_draw_segment")
 public func bridgeRawDrawSegment(_ x: Double, _ y: Double, _ w: Double) {
-    RawDrawing.drawSegment(x: x, y: y, width: w)
+    guard SurfaceStore.current != nil else { return }
+    glaspen2_rust_raw_draw_segment2(x, y, w, SurfaceStore.scaleFactor)
 }
 
 /// R4: view→canvas 变换统一走 Rust; 一次调用同时得到 x/y。
