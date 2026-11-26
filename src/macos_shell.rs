@@ -5495,3 +5495,76 @@ pub extern "C" fn glaspen2_rust_handle_chord(
     }
     2
 }
+
+// ── R93: 相机鼠标抓手/滚轮缩放分发 ──
+
+unsafe extern "C" {
+    fn glaspen2_router_camera_pan_mods() -> usize;
+    fn glaspen2_router_camera_mods() -> usize;
+    fn glaspen2_router_camera_queue_pan(dx: f64, dy: f64);
+    fn glaspen2_router_camera_flush();
+    fn glaspen2_router_draw_height() -> f64;
+}
+
+/// R93: kind 0=down,1=drag,2=up; 返回 1 已消费, 0 未处理。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_camera_mouse(kind: i32, x: f64, y: f64, mods: u64) -> i32 {
+    let st = unsafe { glaspen2_router_state() };
+    let dragging = glaspen2_router_camera_dragging() != 0;
+    if dragging && (kind == 1 || kind == 2) {
+        if kind == 1 {
+            if (st & 4) != 0 && (st & 1) != 0 && (st & 2) == 0 {
+                let z = unsafe { glaspen2_router_camera_step_zoom() };
+                unsafe {
+                    glaspen2_router_camera_queue_pan(
+                        (x - glaspen2_router_camera_last_x()) / z,
+                        (glaspen2_router_camera_last_y() - y) / z,
+                    );
+                    glaspen2_router_camera_set_last(x, y);
+                }
+            }
+        } else {
+            unsafe {
+                glaspen2_router_camera_flush();
+                glaspen2_router_clear_camera_dragging();
+            }
+        }
+        return 1;
+    }
+    if (st & 4) != 0 && (st & 1) != 0 && (st & 2) == 0 && kind == 0 {
+        let camera_mods = unsafe { glaspen2_router_camera_pan_mods() } as u64;
+        if camera_mods != 0 && mods == camera_mods {
+            unsafe { glaspen2_router_camera_start(x, y) };
+            return 1;
+        }
+    }
+    0
+}
+
+/// R93: 滚轮缩放; 返回 2 消费, 1 放行。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_scroll_zoom(
+    dy: f64,
+    precise: i32,
+    x: f64,
+    y: f64,
+    mods: u64,
+) -> i32 {
+    let st = unsafe { glaspen2_router_state() };
+    let camera_mods = unsafe { glaspen2_router_camera_mods() } as u64;
+    if camera_mods != 0 && mods == camera_mods && (st & 1) != 0 && (st & 2) == 0 {
+        let factor = if precise != 0 {
+            (-dy * 0.0015).exp()
+        } else if dy > 0.0 {
+            1.1
+        } else if dy < 0.0 {
+            1.0 / 1.1
+        } else {
+            1.0
+        };
+        let h = unsafe { glaspen2_router_draw_height() };
+        glaspen2_rust_camera_zoom_at(factor, x, h - y);
+        return 2;
+    }
+    1
+}

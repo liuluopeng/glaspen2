@@ -447,3 +447,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 默认 Rust, `GLASPEN2_SWIFT_CHORD=1` 回退 Swift;
 - 真机 ⌘⌃1/⌘⌃` 翻页日志 `[flip] 隐藏间隙 307ms`;
 - 默认/回退 smoke、tests/build/parity 全绿。
+
+
+## R93 相机鼠标抓手/滚轮缩放分发迁 Rust(opt-in)
+
+- `EventRouter.routeCameraMouse` 的相机抓手 down/drag/up 与 `routeScrollZoom` 的修饰键/精确滚动判定/缩放因子迁 Rust;
+- `GLASPEN2_RUST_CAMERA_MOUSE=1` opt-in, 默认仍 Swift;
+- 默认/opt-in smoke、全量 tests/build/parity 绿; 真机鼠标手势待验。

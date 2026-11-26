@@ -217,6 +217,17 @@ import AppKit
 
     /// S6-3-3d: 相机临时抓手(⌃⌥+左键拖动)开始/拖动/结束; 返回 true = 消费事件。
     private static func routeCameraMouse(type: CGEventType, ev: NSEvent) -> Bool {
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_CAMERA_MOUSE"] == "1" {
+            let kind: Int32
+            if type == .leftMouseDown { kind = 0 }
+            else if type == .leftMouseDragged { kind = 1 }
+            else if type == .leftMouseUp { kind = 2 }
+            else { return false }
+            let loc = ev.locationInWindow
+            let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
+            let mods = ev.modifierFlags.intersection(relevant).rawValue
+            return glaspen2_rust_camera_mouse(kind, Double(loc.x), Double(loc.y), UInt64(mods)) != 0
+        }
         let st = state()
         if glaspen2_router_camera_dragging() != 0
             && (type == .leftMouseDragged || type == .leftMouseUp) {
@@ -449,6 +460,14 @@ import AppKit
 
     private static func routeScrollZoom(_ cgEvent: CGEvent) -> Int32 {
         guard let ev = NSEvent(cgEvent: cgEvent) else { return 1 }
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_CAMERA_MOUSE"] == "1" {
+            let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
+            let mods = ev.modifierFlags.intersection(relevant).rawValue
+            let loc = ev.locationInWindow
+            return glaspen2_rust_scroll_zoom(
+                ev.scrollingDeltaY, ev.hasPreciseScrollingDeltas ? 1 : 0,
+                Double(loc.x), Double(loc.y), UInt64(mods))
+        }
         let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
         let mods = ev.modifierFlags.intersection(relevant)
         let cameraMods = UInt(glaspen2_router_camera_mods())
