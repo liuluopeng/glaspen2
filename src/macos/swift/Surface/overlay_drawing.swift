@@ -41,19 +41,11 @@ import Darwin
         let h = cairo_image_surface_get_height(surf)
         let stride = cairo_image_surface_get_stride(surf)
         if w > 0 && h > 0 && glaspen2_router_strokes_visible() != 0 {
-            if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_SURFACE"] != "1",
-               glaspen2_rust_draw_surface_data(
-                   Unmanaged.passUnretained(ctx).toOpaque(), sp, w, h, stride,
-                   rect.origin.x, rect.origin.y, rect.size.width, rect.size.height,
-                   bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height,
-                   SurfaceStore.scaleFactor) != 0 {
-                return
-            }
-            let image = OverlaySurfaceImageCache.image(data: sp, width: w, height: h, stride: stride)
-            if let image {
-                OverlaySurfaceRenderer.drawSurface(image, in: ctx, rect: rect,
-                                                   bounds: bounds, scale: SurfaceStore.scaleFactor)
-            }
+            _ = glaspen2_rust_draw_surface_data(
+                Unmanaged.passUnretained(ctx).toOpaque(), sp, w, h, stride,
+                rect.origin.x, rect.origin.y, rect.size.width, rect.size.height,
+                bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height,
+                SurfaceStore.scaleFactor)
         }
     }
 

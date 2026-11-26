@@ -52,66 +52,6 @@ import CoreGraphics
 }
 
 // S7: 笔迹 surface 合成: 小脏矩形裁子图(视图点→物理像素, Y 翻转), 失败回退全图。
-@objc public final class OverlaySurfaceRenderer: NSObject {
-    @objc(drawSurfaceImage:inContext:rect:bounds:scale:)
-    public static func drawSurface(_ image: CGImage, in ctx: CGContext,
-                                   rect: NSRect, bounds: NSRect, scale: Double) {
-        _ = glaspen2_rust_draw_surface(
-            Unmanaged.passUnretained(ctx).toOpaque(),
-            Unmanaged.passUnretained(image).toOpaque(),
-            rect.origin.x, rect.origin.y, rect.size.width, rect.size.height,
-            bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height,
-            scale)
-    }
-}
-
-// S7: 笔迹 surface → CGImage 缓存(Swift 持有;表面地址/尺寸/stride 变化才重建)。
-@objc public final class OverlaySurfaceImageCache: NSObject {
-    private static var cached: CGImage?
-    private static var dataPtr: UnsafeMutableRawPointer?
-    private static var width = 0, height = 0, stride = 0
-
-    @objc(imageForData:width:height:stride:)
-    public static func image(data: UnsafeMutableRawPointer, width: Int32,
-                             height: Int32, stride: Int32) -> CGImage? {
-        if cached != nil, dataPtr == data, self.width == Int(width),
-           self.height == Int(height), self.stride == Int(stride) {
-            return cached
-        }
-        let bytes = data.assumingMemoryBound(to: UInt8.self)
-        // 表面生命周期由 ObjC/cairo 负责, 这里不释放底层像素。
-        let release: CGDataProviderReleaseDataCallback = { _, _, _ in }
-        guard let provider = CGDataProvider(dataInfo: nil, data: bytes,
-                                           size: Int(height) * Int(stride),
-                                           releaseData: release),
-              let space = CGColorSpace(name: CGColorSpace.sRGB) else {
-            cached = nil
-            return nil
-        }
-        let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue
-                                | CGBitmapInfo.byteOrder32Little.rawValue)
-        let image = CGImage(width: Int(width), height: Int(height),
-                            bitsPerComponent: 8, bitsPerPixel: 32,
-                            bytesPerRow: Int(stride), space: space,
-                            bitmapInfo: info, provider: provider,
-                            decode: nil, shouldInterpolate: false,
-                            intent: .defaultIntent)
-        cached = image
-        dataPtr = data
-        self.width = Int(width)
-        self.height = Int(height)
-        self.stride = Int(stride)
-        return image
-    }
-
-    @objc public static func clear() {
-        glaspen2_rust_clear_tunnel_cache()
-        cached = nil
-        dataPtr = nil
-        width = 0; height = 0; stride = 0
-    }
-}
-
 // S7: 时光隧道半分辨率 surface 缓存 + 全屏绘制(Swift 持有缓存)。
 @objc public final class OverlayTunnelRenderer: NSObject {
     @objc(drawTunnelWithContext:data:width:height:stride:bounds:)

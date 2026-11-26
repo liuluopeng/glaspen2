@@ -715,3 +715,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - draw(in:rect:) 删除 Swift 编排旧路径, 仅调 Rust; stage 桥保留给 Rust 编排调用;
 - debug build 通过; 第3片后全量 tests/smoke/parity(不跑 release)全绿。
+
+
+## R131 删除 Surface CGImage 缓存/合成回退
+
+- 删除 OverlaySurfaceRenderer/OverlaySurfaceImageCache; drawSurface 直接调 Rust draw_surface_data;
+- panel 缓存失效变 no-op; debug build 通过(加速批次)。

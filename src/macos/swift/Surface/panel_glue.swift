@@ -6,7 +6,7 @@ import CoreGraphics
 public func panelShowSettings() { SettingsPanel.show() }
 
 @_cdecl("surface_image_cache_invalidate")
-public func panelSurfaceImageCacheInvalidate() { OverlaySurfaceImageCache.clear() }
+public func panelSurfaceImageCacheInvalidate() { /* R131: Surface 绘制直接读 cairo 数据, 无 Swift 图像缓存 */ }
 
 @_cdecl("ensure_surface")
 public func panelEnsureSurface(_ viewRaw: UnsafeMutableRawPointer?) {
