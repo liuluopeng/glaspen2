@@ -1279,3 +1279,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - recording_feed/apply_infinite_async/quit_async/rec_init/startup_apply_pen/overlay_flush/swift_notify/draw_view 迁 Rust;
 - 删除 Swift 包装; probes OK, 虚拟笔两笔正常.
+
+
+## R240 面板/视图 C 桥迁 Rust
+
+- apply_pending/redraw/window_sharing_type/show_settings/ensure_surface/flush/flush_dirty/display_size/outline_dash 迁 Rust;
+- 删除 Swift 包装; probes OK, 虚拟笔两笔正常.

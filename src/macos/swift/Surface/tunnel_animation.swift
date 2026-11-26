@@ -319,30 +319,11 @@ import AppKit
 import FlutterMacOS
 import CoreGraphics
 
-@_cdecl("show_settings_panel")
-public func panelShowSettings() { glaspen2_rust_show_settings_panel() }
 
-@_cdecl("surface_image_cache_invalidate")
-public func panelSurfaceImageCacheInvalidate() { /* R131: Surface 绘制直接读 cairo 数据, 无 Swift 图像缓存 */ }
 
-@_cdecl("ensure_surface")
-public func panelEnsureSurface(_ viewRaw: UnsafeMutableRawPointer?) {
-    guard let viewRaw else { return }
-    let view = Unmanaged<NSView>.fromOpaque(viewRaw).takeUnretainedValue()
-    surfaceEnsure(view: view)
-}
 
-@_cdecl("flush_to_layer")
-public func panelFlushToLayer() { glaspen2_rust_overlay_flush() }
 
-@_cdecl("flush_dirty_to_layer")
-public func panelFlushDirtyToLayer() { glaspen2_rust_overlay_flush_dirty() }
 
-@_cdecl("glaspen2_display_size")
-public func panelDisplaySize(_ w: UnsafeMutablePointer<Int32>?, _ h: UnsafeMutablePointer<Int32>?) {
-    w?.pointee = Int32(glaspen2_router_screen_w())
-    h?.pointee = Int32(glaspen2_router_screen_h())
-}
 
 @_cdecl("glaspen2_display_apply")
 public func panelDisplayApply(_ w: Int32, _ h: Int32) {
@@ -394,8 +375,6 @@ public func panelInvertInvalidate() {
     if #available(macOS 12.3, *) { InvertCapture.invalidate() }
 }
 
-@_cdecl("glaspen2_router_outline_dash")
-public func panelOutlineDash() -> Double { 1.0 }
 
 
 // S7: 时光隧道卡片(玻璃厚度/阴影/前脸/扫光/棱线)绘制。

@@ -33,8 +33,6 @@ public func appRun() {
 @_cdecl("glaspen2_router_bubble_auto_page_flip")
 public func runBubbleAutoPageFlip() { _ = bubbleAutoPageFlip() }
 
-@_cdecl("glaspen2_router_apply_pending_color_width")
-public func runApplyPendingColorWidth() { glaspen2_rust_apply_pending_color_width() }
 
 
 
@@ -44,8 +42,6 @@ private let runLangZhPtr: UnsafeMutablePointer<CChar> = strdup("zh")!
 
 
 
-@_cdecl("glaspen2_router_redraw_draw_view")
-public func runRedraw() { UIAnchors.drawView?.needsDisplay = true }
 
 
 
@@ -141,10 +137,6 @@ public func runInstallSignals() {
     signal(SIGTERM) { _ in save_and_exit(0) }
 }
 
-@_cdecl("glaspen2_router_window_sharing_type")
-public func runWindowSharingType() -> Int32 {
-    Int32(UIAnchors.mainWindow?.sharingType.rawValue ?? 0)
-}
 
 
 @_cdecl("glaspen2_router_invert_invalidate")

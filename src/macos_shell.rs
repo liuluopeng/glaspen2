@@ -3288,7 +3288,6 @@ pub extern "C" fn glaspen2_rust_draw_live_plan(
 unsafe extern "C" {
     fn cairo_destroy(cr: *mut c_void);
     fn glaspen2_router_soft_shadow() -> i32;
-    fn glaspen2_router_outline_dash() -> f64;
 }
 
 fn raw_dot_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
@@ -5115,7 +5114,6 @@ unsafe extern "C" {
     fn glaspen2_router_invert_restart();
     fn glaspen2_router_set_grid_follow(on: i32);
     fn glaspen2_router_set_glass_follow(on: i32);
-    fn glaspen2_router_redraw_draw_view();
     fn glaspen2_router_panel_transparent_full(on: i32);
     fn glaspen2_bubble_set_capture(on: i32);
     fn glaspen2_router_startup_set_lang(v: i32);
@@ -5882,7 +5880,6 @@ pub extern "C" fn glaspen2_rust_recording_timeout(generation: u32) -> i32 {
 static DISPLAY_GEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 unsafe extern "C" {
-    fn glaspen2_display_size(w: *mut i32, h: *mut i32);
     fn glaspen2_display_apply(w: i32, h: i32);
 }
 
@@ -10978,4 +10975,59 @@ pub extern "C" fn glaspen2_swift_notify(text: *const std::os::raw::c_char) {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_swift_draw_view() -> *mut c_void {
     unsafe { sw_draw_view() }
+}
+
+// ── R240: 面板/视图 C 桥迁 Rust ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_apply_pending_color_width() {
+    glaspen2_rust_apply_pending_color_width();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_redraw_draw_view() {
+    redraw_draw_view_now();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_window_sharing_type() -> i32 {
+    let w = unsafe { sw_main_window() };
+    if w.is_null() {
+        return 0;
+    }
+    unsafe { objc2::msg_send![w as *mut objc2::runtime::AnyObject, sharingType] }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn show_settings_panel() {
+    glaspen2_rust_show_settings_panel();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn surface_image_cache_invalidate() {}
+#[unsafe(no_mangle)]
+pub extern "C" fn ensure_surface(view: *mut c_void) {
+    if view.is_null() {
+        return;
+    }
+    let _ = glaspen2_rust_surface_ensure(view);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn flush_to_layer() {
+    glaspen2_rust_overlay_flush();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn flush_dirty_to_layer() {
+    glaspen2_rust_overlay_flush_dirty();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_display_size(w: *mut i32, h: *mut i32) {
+    unsafe {
+        if !w.is_null() {
+            *w = glaspen2_router_screen_w() as i32;
+        }
+        if !h.is_null() {
+            *h = glaspen2_router_screen_h() as i32;
+        }
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_outline_dash() -> f64 {
+    1.0
 }
