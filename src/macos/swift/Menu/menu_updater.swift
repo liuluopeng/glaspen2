@@ -8,19 +8,9 @@ import AppKit
                                         widthCount: Int,
                                         colorIndex: Int,
                                         widthIndex: Int) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_STATE"] != "1",
-           glaspen2_rust_menu_update_checkmarks(
-               Unmanaged.passUnretained(menu).toOpaque(), Int32(colorCount),
-               Int32(widthCount), Int32(colorIndex), Int32(widthIndex)) != 0 {
-            return
-        }
-        for i in 0..<max(0, colorCount) {
-            menu.item(at: i)?.state = (i == colorIndex) ? .on : .off
-        }
-        let widthOffset = colorCount + 1 // 颜色项 + 一个分隔符
-        for i in 0..<max(0, widthCount) {
-            menu.item(at: widthOffset + i)?.state = (i == widthIndex) ? .on : .off
-        }
+        _ = glaspen2_rust_menu_update_checkmarks(
+            Unmanaged.passUnretained(menu).toOpaque(), Int32(colorCount),
+            Int32(widthCount), Int32(colorIndex), Int32(widthIndex))
     }
 
     /// 动态文案刷新(语言切换/状态变化)。索引契约与旧 ObjC 实现逐项一致:
@@ -35,8 +25,7 @@ import AppKit
                                    moreTitles: [String],
                                    modeTitle: String,
                                    toggleTitle: String) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_TEXTS"] != "1",
-           let topData = try? JSONSerialization.data(withJSONObject: topTitles),
+        if let topData = try? JSONSerialization.data(withJSONObject: topTitles),
            let topJSON = String(data: topData, encoding: .utf8),
            let exportData = try? JSONSerialization.data(withJSONObject: exportTitles),
            let exportJSON = String(data: exportData, encoding: .utf8),
@@ -57,38 +46,7 @@ import AppKit
                         toggleItem.map { Unmanaged.passUnretained($0).toOpaque() })
                 }
             }
-            if ok != 0 { return }
-        }
-        let colorCount = colorTitles.count
-        for i in 0..<colorCount {
-            menu.item(at: i)?.attributedTitle = colorTitles[i]
-        }
-        let widthBase = colorCount + 1
-        for i in 0..<widthTitles.count {
-            menu.item(at: widthBase + i)?.attributedTitle = widthTitles[i]
-        }
-        let base = widthBase + widthTitles.count + 1
-        // 顶层固定 11 个位置(空串表示该位置不需要刷新)
-        for (offset, title) in topTitles.enumerated() where !title.isEmpty {
-            menu.item(at: base + offset)?.title = title
-        }
-        if let exportMenu = menu.item(at: base + 3)?.submenu {
-            for (i, title) in exportTitles.enumerated() where i < exportMenu.items.count {
-                exportMenu.item(at: i)?.title = title
-            }
-        }
-        if let moreMenu = menu.item(at: base + 7)?.submenu {
-            // 0 开机自启 / 1 磨砂玻璃 / 2 笔迹描边 / 3 无限画布;
-            // 第 4 项“画布模式”文案随状态走, 由下方 tag 778 单独更新。
-            for (i, title) in moreTitles.enumerated() where i < moreMenu.items.count {
-                moreMenu.item(at: i)?.title = title
-            }
-        }
-        if let modeItem = MenuRuntime.menuItem(tag: 778, inMenu: menu) {
-            modeItem.title = modeTitle
-        }
-        if let toggleItem = MenuRuntime.menuItem(tag: 888, inMenu: menu) {
-            toggleItem.title = toggleTitle
+            _ = ok
         }
     }
 }

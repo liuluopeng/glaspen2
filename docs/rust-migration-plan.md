@@ -733,3 +733,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - createSquareItem/renderIcon 删除 env 回退, 统一走 Rust/objc2; Swift 图标实现仅留 parity 探针;
 - debug build 通过; 第3片后全量 tests/smoke/parity(不跑 release)全绿。
+
+
+## R134 菜单勾选/文案刷新 Swift 回退清理
+
+- MenuUpdater.updateCheckmarks/updateTexts 删除 env 回退与旧索引写回; 仅调 Rust;
+- debug build 通过(加速批次)。
