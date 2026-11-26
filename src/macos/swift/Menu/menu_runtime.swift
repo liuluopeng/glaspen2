@@ -127,7 +127,8 @@ public func menuApplyOutline(_ on: Int32) { MenuHandler.setOutlineEnabled(enable
 public func menuInfiniteEnabled() -> Int32 { glaspen2_router_infinite() }
 @_cdecl("glaspen2_menu_apply_infinite")
 public func menuApplyInfinite(_ on: Int32) {
-    CanvasMode.applyInfinite(on: on != 0, notify: true)
+    let text = MenuRuntime.l10n(on != 0 ? "canvas.infinite_on" : "canvas.infinite_off")
+    _ = text.withCString { glaspen2_rust_apply_infinite(on, $0) }
 }
 @_cdecl("glaspen2_menu_save_with_bg")
 public func menuSaveWithBg() { SaveBackground.save() }

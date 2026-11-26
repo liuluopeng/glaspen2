@@ -1063,3 +1063,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - sw_text / i18n textf / outline_pad / cursor_invalidate 迁 Rust, 删 misc_state.swift; MenuRuntime/action_dispatch 改 C 调用;
 - 快捷键录制 60s 超时线程迁 Rust, 删 hotkey_recorder.swift; Swift 52→50;
 - 冷启动正常; 批次验证后提交。
+
+
+## R190/191 画布模式/录制热键/打开 URL 迁 Rust
+
+- CanvasMode.applyInfinite 三处调用改直调 Rust C; 删除 canvas_mode.swift;
+- RecordingHotkeys 无调用, 删除 recording_keys.swift;
+- glaspen2_macos_open_url 迁 Rust(NSURL/NSWorkspace + main sync 桥), 删除 open_url.swift;
+- Swift 50→47; 冷启动正常; 批次验证后提交。

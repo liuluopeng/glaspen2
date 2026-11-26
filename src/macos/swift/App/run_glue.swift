@@ -315,7 +315,8 @@ public func runPerformHotkey(_ keyCode: UInt16) -> Int32 {
 
 @_cdecl("glaspen2_router_apply_infinite_canvas")
 public func runApplyInfinite(_ on: Int32) {
-    CanvasMode.applyInfinite(on: on != 0, notify: true)
+    let text = MenuRuntime.l10n(on != 0 ? "canvas.infinite_on" : "canvas.infinite_off")
+    _ = text.withCString { glaspen2_rust_apply_infinite(on, $0) }
 }
 
 @_cdecl("glaspen2_router_clear_screen")
@@ -487,4 +488,16 @@ func i18nTextf(_ key: String, _ placeholder: String, _ value: String) -> String 
     } } }) else { return key }
     defer { glaspen2_free_c_string(p) }
     return String(cString: p)
+}
+
+
+@_cdecl("glaspen2_swift_run_on_main_sync")
+public func runOnMainSyncBridge(_ ctx: UnsafeMutableRawPointer?,
+                                _ cb: (@convention(c) (UnsafeMutableRawPointer?) -> Void)?) {
+    guard let cb else { return }
+    if Thread.isMainThread {
+        cb(ctx)
+    } else {
+        DispatchQueue.main.sync { cb(ctx) }
+    }
 }

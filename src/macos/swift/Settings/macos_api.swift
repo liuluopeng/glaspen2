@@ -42,7 +42,7 @@ import Darwin
         if screenId <= 0 { return }
         if glaspen2_router_infinite() != 0 {
             SettingsGlue.runOnMainSync {
-                CanvasMode.applyInfinite(on: false, notify: false)
+                _ = "".withCString { glaspen2_rust_apply_infinite(0, $0) }
             }
         }
         DispatchQueue.global(qos: .userInitiated).sync {

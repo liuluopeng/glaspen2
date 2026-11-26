@@ -9289,3 +9289,51 @@ pub extern "C" fn glaspen2_rust_hotkey_recording_set(on: i32) {
         }
     });
 }
+
+// ── R191: 设置面板打开 URL ──
+
+unsafe extern "C" {
+    fn glaspen2_swift_run_on_main_sync(ctx: *mut c_void, cb: extern "C" fn(*mut c_void));
+}
+
+extern "C" fn open_url_on_main(ctx: *mut c_void) {
+    use objc2::runtime::AnyObject;
+    if ctx.is_null() {
+        return;
+    }
+    let url = unsafe { Box::from_raw(ctx as *mut usize) };
+    unsafe {
+        let Some(ws_cls) = objc2::runtime::AnyClass::get(c"NSWorkspace") else {
+            return;
+        };
+        let ws: *mut AnyObject = objc2::msg_send![ws_cls, sharedWorkspace];
+        if !ws.is_null() {
+            let _: bool = objc2::msg_send![ws, openURL: *url as *mut AnyObject];
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_macos_open_url(url_c: *const std::os::raw::c_char) {
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::NSString;
+    if url_c.is_null() {
+        return;
+    }
+    let raw = unsafe { std::ffi::CStr::from_ptr(url_c) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe {
+        let Some(url_cls) = objc2::runtime::AnyClass::get(c"NSURL") else {
+            return;
+        };
+        let s = NSString::from_str(&raw);
+        let url: *mut AnyObject = objc2::msg_send![url_cls, URLWithString: &*s];
+        if url.is_null() {
+            tracing::warn!("[glaspen2] open_url: URL 解析失败: {raw}");
+            return;
+        }
+        let ctx = Box::into_raw(Box::new(url as usize)) as *mut c_void;
+        glaspen2_swift_run_on_main_sync(ctx, open_url_on_main);
+    }
+}
