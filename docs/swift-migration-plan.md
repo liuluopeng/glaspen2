@@ -751,3 +751,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R148 | 菜单构建/飘渺/未用薄桥清理; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R149 | ShortcutStore 并入 MenuRuntime; 删文件; Swift 68→67; debug build 通过 | 本提交 |
 | 2026-11-26 | Rust-R150 | 清理 ensureSurface Swift 包装; debug build 通过 | 本提交 |
+| 2026-11-26 | Rust-R151 | 启动快捷键覆盖读取迁 Rust; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |

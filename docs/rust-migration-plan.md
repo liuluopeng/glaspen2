@@ -840,3 +840,9 @@ modeler Up error 需真机笔/翻页连击复验。
 ## R150 ensureSurface Swift 包装清理
 
 - 调用点直调 C glaspen2_router_ensure_surface; 删除 MenuRuntime.ensureSurface; debug build 通过。
+
+
+## R151 启动快捷键覆盖读取迁 Rust
+
+- SettingsGlue.loadShortcuts 迁 Rust(读 user_settings + JSON 校验 + apply); 调试点更新;
+- 第3片后全量 tests/smoke/parity(不跑 release)全绿。

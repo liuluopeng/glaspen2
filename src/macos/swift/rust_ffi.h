@@ -652,3 +652,6 @@ extern void glaspen2_rust_apply_display_change(int width, int height);
 
 // R145: 事件 tap 健康看门狗
 extern void glaspen2_rust_check_tap(void);
+
+// R151: 启动读取快捷键覆盖并应用
+extern void glaspen2_rust_load_shortcuts(void);

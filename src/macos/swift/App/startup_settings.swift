@@ -20,7 +20,7 @@ import Darwin
         }
         glaspen2_router_update_status_icon_state()
         glaspen2_router_update_checkmarks()
-        SettingsGlue.loadShortcuts()
+        glaspen2_rust_load_shortcuts()
 
         let glassMilli = glaspen2_load_bool_setting("glass_alpha")
         var opacity = 0.0

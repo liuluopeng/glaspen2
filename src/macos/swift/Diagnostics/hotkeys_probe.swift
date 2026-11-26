@@ -3,7 +3,7 @@ import AppKit
 
 @objc public final class HotkeysProbe: NSObject {
     @objc public static func run() -> Int32 {
-        SettingsGlue.loadShortcuts()
+        glaspen2_rust_load_shortcuts()
         func parseJSON(_ p: UnsafePointer<CChar>?) -> Any? {
             guard let p else { return nil }
             let data = Data(bytes: p, count: strlen(p))

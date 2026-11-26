@@ -6737,3 +6737,31 @@ pub extern "C" fn glaspen2_rust_check_tap() {
         }
     }
 }
+
+// ── R151: 启动读取快捷键覆盖并应用 ──
+
+unsafe extern "C" {
+    fn glaspen2_load_string_setting(key: *const std::os::raw::c_char) -> *mut std::os::raw::c_char;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_load_shortcuts() {
+    let key = b"shortcuts\0";
+    let raw = unsafe { glaspen2_load_string_setting(key.as_ptr() as *const std::os::raw::c_char) };
+    if raw.is_null() {
+        let _ = glaspen2_shortcut_apply_json(b"{}\0".as_ptr() as *const std::os::raw::c_char);
+        return;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(raw) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { glaspen2_free_c_string(raw) };
+    let json = if text.trim().is_empty() {
+        "{}".to_string()
+    } else {
+        text
+    };
+    if let Ok(c) = std::ffi::CString::new(json) {
+        let _ = glaspen2_shortcut_apply_json(c.as_ptr());
+    }
+}

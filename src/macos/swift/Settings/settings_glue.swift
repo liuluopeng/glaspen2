@@ -3,20 +3,6 @@ import AppKit
 
 @objc public final class SettingsGlue: NSObject {
     /// 从 DB 读快捷键覆盖并应用(无效 JSON 视为空)。
-    @objc public static func loadShortcuts() {
-        var saved: NSDictionary = [:]
-        if let v = glaspen2_load_string_setting("shortcuts") {
-            let raw = String(cString: v)
-            glaspen2_free_c_string(v)
-            if !raw.isEmpty, let data = raw.data(using: .utf8),
-               let obj = try? JSONSerialization.jsonObject(with: data),
-               let dict = obj as? NSDictionary {
-                saved = dict
-            }
-        }
-        SettingsGlue.applyShortcuts(saved: saved)
-    }
-
     /// 当前生效表 → JSON 文本(失败回 "{}")。
     @objc public static func effectiveShortcutJSON() -> NSString {
         guard let p = glaspen2_shortcut_store_values_json() else { return "{}" as NSString }
