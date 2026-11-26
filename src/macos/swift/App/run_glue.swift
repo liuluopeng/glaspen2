@@ -9,12 +9,6 @@ public func appRun() {
     NSApp.run()
 }
 
-@_cdecl("glaspen2_router_camera_mods")
-public func runCameraMods() -> UInt { MenuRuntime.maskFor(action: "canvas_zoom_in") }
-
-
-@_cdecl("glaspen2_router_draw_height")
-public func runDrawHeight() -> Double { Double(UIAnchors.drawView?.bounds.size.height ?? 0) }
 
 
 
@@ -30,32 +24,11 @@ public func runDrawHeight() -> Double { Double(UIAnchors.drawView?.bounds.size.h
 
 
 
-@_cdecl("glaspen2_router_disable_cleanup")
-public func runDisableCleanup() {
-    glaspen2_router_camera_clear_dragging()
-    glaspen2_router_camera_cancel()
-    EventRouter.restoreSystemCursor()
-}
 
 
-@_cdecl("glaspen2_router_tap_menu_bar_interaction")
-public func runTapMenuBar() {
-    sw_event_tap_disable()
-    DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-        glaspen2_router_event_tap_enable()
-    }
-}
 
-@_cdecl("glaspen2_router_update_status_icon_state")
-public func runUpdateStatusIcon() {
-    guard let item = UIAnchors.statusItem else { return }
-    _ = glaspen2_rust_status_icon_apply(
-        Unmanaged.passUnretained(item).toOpaque(),
-        glaspen2_rust_pen_eraser_mode(), glaspen2_router_enabled(),
-        glaspen2_router_ethereal(), glaspen2_router_infinite(),
-        glaspen2_router_width_scale(), glaspen2_router_pen_r(),
-        glaspen2_router_pen_g(), glaspen2_router_pen_b())
-}
+
+
 
 @_cdecl("glaspen2_router_bubble_auto_page_flip")
 public func runBubbleAutoPageFlip() { _ = bubbleAutoPageFlip() }
@@ -69,11 +42,6 @@ public func runApplyPendingColorWidth() { glaspen2_rust_apply_pending_color_widt
 private let runLangEnPtr: UnsafeMutablePointer<CChar> = strdup("en")!
 private let runLangZhPtr: UnsafeMutablePointer<CChar> = strdup("zh")!
 
-@_cdecl("glaspen2_router_lang_code")
-public func runLangCode() -> UnsafePointer<CChar>? {
-    // 旧实现返回静态字符串; 这里同样只分配一次, 不再每次页信息 HUD 泄漏一小块。
-    UnsafePointer(glaspen2_router_lang() == 1 ? runLangEnPtr : runLangZhPtr)
-}
 
 @_cdecl("glaspen2_router_perf_summary")
 public func runPerfSummary() { glaspen2_perf_summary() }

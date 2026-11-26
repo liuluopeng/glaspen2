@@ -1211,6 +1211,13 @@ pub extern "C" fn glaspen2_rust_clear_tunnel_cache() {
 
 /// R33: 通知文字绘制(36pt 等宽 + 白字 + 阴影 + 视图内居中)。
 /// 返回 1 成功, 0 失败(Swift 回退)。
+fn monospaced_font_ptr(size: f64, w: f64) -> *mut objc2_app_kit::NSFont {
+    let Some(cls) = objc2::runtime::AnyClass::get(c"NSFont") else {
+        return std::ptr::null_mut();
+    };
+    unsafe { objc2::msg_send![cls, monospacedSystemFontOfSize: size, weight: w] }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_draw_notification(
     text: *const std::os::raw::c_char,
@@ -1238,11 +1245,15 @@ pub extern "C" fn glaspen2_rust_draw_notification(
     )));
     shadow.setShadowOffset(objc2_foundation::NSSize::new(2.0, -2.0));
     shadow.setShadowBlurRadius(4.0);
-    let font = NSFont::monospacedSystemFontOfSize_weight(36.0, unsafe { NSFontWeightMedium });
+    let font_ptr = monospaced_font_ptr(36.0, unsafe { NSFontWeightMedium } as f64);
+    if font_ptr.is_null() {
+        return 0;
+    }
+    let font: *mut NSFont = font_ptr;
     let attrs: objc2::rc::Retained<NSMutableDictionary<NSAttributedStringKey, AnyObject>> =
         NSMutableDictionary::new();
     unsafe {
-        let font_any: &AnyObject = &*(&*font as *const NSFont as *const AnyObject);
+        let font_any: &AnyObject = &*(font as *const AnyObject);
         let shadow_any: &AnyObject = &*(&*shadow as *const NSShadow as *const AnyObject);
         let white = objc2_app_kit::NSColor::whiteColor();
         let white_any: &AnyObject =
@@ -1426,7 +1437,6 @@ unsafe extern "C" {
     fn glaspen2_router_set_prev_color(idx: i32);
     fn glaspen2_router_apply_color(idx: i32);
     fn glaspen2_router_save_pen_settings();
-    fn glaspen2_router_update_status_icon_state();
     fn glaspen2_router_set_pending_width(idx: i32);
     fn glaspen2_router_selected_width() -> i32;
     fn glaspen2_router_set_prev_width(idx: i32);
@@ -1867,13 +1877,15 @@ pub extern "C" fn glaspen2_rust_draw_minimap(
         if !item.label.is_null() {
             let label = unsafe { std::ffi::CStr::from_ptr(item.label) }.to_string_lossy();
             if !label.is_empty() {
-                let font =
-                    NSFont::monospacedSystemFontOfSize_weight(9.0, unsafe { NSFontWeightRegular });
+                let font_ptr = monospaced_font_ptr(9.0, unsafe { NSFontWeightRegular } as f64);
+                if font_ptr.is_null() {
+                    return 0;
+                }
                 let attrs: objc2::rc::Retained<
                     NSMutableDictionary<NSAttributedStringKey, AnyObject>,
                 > = NSMutableDictionary::new();
                 unsafe {
-                    let font_any: &AnyObject = &*(&*font as *const NSFont as *const AnyObject);
+                    let font_any: &AnyObject = &*(font_ptr as *const AnyObject);
                     let color = NSColor::colorWithCalibratedWhite_alpha(0.25, 0.9);
                     let color_any: &AnyObject = &*(&*color as *const NSColor as *const AnyObject);
                     attrs.setObject_forKey(
@@ -5561,10 +5573,7 @@ pub extern "C" fn glaspen2_rust_handle_chord(
 
 // ── R93: 相机鼠标抓手/滚轮缩放分发 ──
 
-unsafe extern "C" {
-    fn glaspen2_router_camera_mods() -> usize;
-    fn glaspen2_router_draw_height() -> f64;
-}
+unsafe extern "C" {}
 
 /// R93: kind 0=down,1=drag,2=up; 返回 1 已消费, 0 未处理。
 #[unsafe(no_mangle)]
@@ -6618,10 +6627,7 @@ pub extern "C" fn glaspen2_rust_pen_cursor_update(kind: i32, is_up: i32, x: f64,
 
 // ── R123: 主路由的鼠标移动/抬起/菜单栏/停用清理分支 ──
 
-unsafe extern "C" {
-    fn glaspen2_router_disable_cleanup();
-    fn glaspen2_router_tap_menu_bar_interaction();
-}
+unsafe extern "C" {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_route_disable_cleanup() {
@@ -9476,7 +9482,6 @@ unsafe extern "C" {
         screen_id: i64,
         lang: *const std::os::raw::c_char,
     ) -> *mut std::os::raw::c_char;
-    fn glaspen2_router_lang_code() -> *const std::os::raw::c_char;
 }
 
 fn notification_show_owned(text: &str) {
@@ -10624,4 +10629,85 @@ pub extern "C" fn glaspen2_router_rec_mode(slot: i32) -> i32 {
 pub extern "C" fn glaspen2_router_rec_finish_and_count() -> i32 {
     glaspen2_rust_finish_active_stroke();
     unsafe { glaspen2_stroke_count() as i32 }
+}
+
+// ── R235: run_glue 更多纯 C 桥迁 Rust ──
+
+static LANG_CODE_EN: std::sync::OnceLock<std::ffi::CString> = std::sync::OnceLock::new();
+static LANG_CODE_ZH: std::sync::OnceLock<std::ffi::CString> = std::sync::OnceLock::new();
+
+unsafe extern "C" {
+    fn sw_draw_view() -> *mut c_void;
+    fn sw_status_item() -> *mut c_void;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_mods() -> usize {
+    let action = b"canvas_zoom_in\0";
+    let chord =
+        unsafe { glaspen2_shortcut_store_chord(action.as_ptr() as *const std::os::raw::c_char) };
+    if chord.is_null() {
+        return 0;
+    }
+    let mask = unsafe { glaspen2_chord_modifier_mask(chord) };
+    unsafe { glaspen2_free_c_string(chord) };
+    mask as usize
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_lang_code() -> *const std::os::raw::c_char {
+    let en = LANG_CODE_EN.get_or_init(|| std::ffi::CString::new("en").unwrap());
+    let zh = LANG_CODE_ZH.get_or_init(|| std::ffi::CString::new("zh").unwrap());
+    if unsafe { glaspen2_router_lang() } == 1 {
+        en.as_ptr()
+    } else {
+        zh.as_ptr()
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_disable_cleanup() {
+    unsafe {
+        glaspen2_router_camera_clear_dragging();
+        glaspen2_router_camera_cancel();
+        glaspen2_rust_restore_system_cursor();
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_tap_menu_bar_interaction() {
+    unsafe {
+        sw_event_tap_disable();
+        glaspen2_swift_dispatch_main_after(5.0, std::ptr::null_mut(), tap_menu_bar_reenable);
+    }
+}
+extern "C" fn tap_menu_bar_reenable(_ctx: *mut c_void) {
+    glaspen2_router_event_tap_enable();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_update_status_icon_state() {
+    let item = unsafe { sw_status_item() };
+    if item.is_null() {
+        return;
+    }
+    let _ = glaspen2_rust_status_icon_apply(
+        item,
+        glaspen2_rust_pen_eraser_mode(),
+        unsafe { glaspen2_router_enabled() },
+        unsafe { glaspen2_router_ethereal() },
+        unsafe { glaspen2_router_infinite() },
+        unsafe { glaspen2_router_width_scale() },
+        unsafe { glaspen2_router_pen_r() },
+        unsafe { glaspen2_router_pen_g() },
+        unsafe { glaspen2_router_pen_b() },
+    );
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_draw_height() -> f64 {
+    let view = unsafe { sw_draw_view() };
+    if view.is_null() {
+        return 0.0;
+    }
+    unsafe {
+        let rect: objc2_foundation::NSRect =
+            objc2::msg_send![view as *mut objc2::runtime::AnyObject, bounds];
+        rect.size.height
+    }
 }

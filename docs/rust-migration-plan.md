@@ -1254,3 +1254,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - state/cursor_flags/pen_state/auto_hide/flush/pen_auto_show/peek_cancel/reenable_tap/pen_bubble/bubble_pen_back/gone/raw_width/rec_slot/mode/finish 16 个符号迁 Rust;
 - 删除 Swift 包装; hotkey probe OK, 虚拟笔 pen DOWN 正常;
 - 偶发 NSFont NULL panic 复测未复现, 记录为字体服务瞬态.
+
+
+## R235/236 运行壳桥迁 Rust + 字体空指针防护
+
+- camera_mods/lang_code/disable_cleanup/tap_menu_bar/update_status_icon/draw_height 迁 Rust;
+- NSFont monospaced 改为 raw msg_send, NULL 时跳过绘制, 修复虚拟笔下的 NSFont NULL panic;
+- 虚拟笔 pen DOWN/两笔正常, probes OK.
