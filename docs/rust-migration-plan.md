@@ -751,3 +751,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - MenuBuilder.addItems 删除 env 回退与 Swift 建项循环, 统一走 Rust;
 - 第3片后全量 tests/smoke/parity(不跑 release)全绿。
+
+
+## R137 MenuHandler toggle/action Swift 回退清理
+
+- 13 个 toggle/action(setOutline/applyGlass/pressureLabel/chat/draw/pressure/grid/launch/glass/color/width/pending/quit)删除 env 回退与旧实现, 仅调 Rust;
+- debug build 通过(加速批次)。

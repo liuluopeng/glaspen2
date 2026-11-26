@@ -64,240 +64,93 @@ import AppKit
     /// 描边开关: 状态/FFI/落库/菜单勾选/重建笔迹/提示。
     @objc(setOutlineEnabled:)
     public static func setOutlineEnabled(enabled: Bool) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_ACTIONS"] != "1" {
-            let text = enabled
-                ? MenuRuntime.pair("笔迹描边已开启", "Stroke outline on")
-                : MenuRuntime.pair("笔迹描边已关闭", "Stroke outline off")
-            _ = text.withCString { glaspen2_rust_set_outline_enabled(enabled ? 1 : 0, $0) }
-            return
-        }
-        if (glaspen2_router_outline_enabled() != 0) == enabled { return }
-        glaspen2_router_set_outline_state(enabled ? 1 : 0)
-        glaspen2_set_stroke_outline(enabled ? 1 : 0)
-        "outline".withCString { key in
-            glaspen2_save_bool_setting(key, enabled ? 1 : 0)
-        }
-        glaspen2_router_update_menu_state(667, enabled ? 1 : 0)
-        EventRouter.finishActiveStroke()
-        glaspen2_router_rebuild_surface()
         let text = enabled
             ? MenuRuntime.pair("笔迹描边已开启", "Stroke outline on")
             : MenuRuntime.pair("笔迹描边已关闭", "Stroke outline off")
-        MenuRuntime.notify(text)
+        _ = text.withCString { glaspen2_rust_set_outline_enabled(enabled ? 1 : 0, $0) }
     }
 
     /// 磨砂玻璃应用: 组合 enabled/opacity/飘渺联动, 刷新视图与菜单勾选。
     @objc(applyGlass)
     public static func applyGlass() {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_ACTIONS"] != "1" {
-            glaspen2_rust_apply_glass()
-            return
-        }
-        let enabled = glaspen2_router_glass_enabled() != 0
-        let opacity = glaspen2_router_glass_opacity()
-        let follow = glaspen2_router_glass_follow() != 0
-        let ethereal = glaspen2_router_ethereal() != 0
-        let strokesVisible = glaspen2_router_strokes_visible() != 0
-        let hiddenByEthereal = ethereal && follow && !strokesVisible
-        glaspen2_router_apply_glass_view(enabled ? opacity * 2.0 : 0.0,
-                                        (!enabled || hiddenByEthereal) ? 1 : 0)
-        glaspen2_router_update_menu_state(444, enabled ? 1 : 0)
+        glaspen2_rust_apply_glass()
     }
 
     /// 压感监视器标签格式化(P=压力 事件 坐标)。
     @objc(updatePressureLabelWithPressure:type:x:y:)
     public static func updatePressureLabel(pressure: Int32, type: String?,
                                            x: Double, y: Double) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_ACTIONS"] != "1" {
-            if let type {
-                type.withCString { glaspen2_rust_update_pressure_label(pressure, $0, x, y) }
-            } else {
-                glaspen2_rust_update_pressure_label(pressure, nil, x, y)
-            }
-            return
+        if let type {
+            type.withCString { glaspen2_rust_update_pressure_label(pressure, $0, x, y) }
+        } else {
+            glaspen2_rust_update_pressure_label(pressure, nil, x, y)
         }
-        let typeString = type ?? "---"
-        let text = String(format: "P=%-5d  ", pressure) + typeString
-            + String(format: "  (%d,%d)", Int(x), Int(y))
-        PressureMonitorWindow.updateLabel(text)
     }
 
     /// 手写消息集成总开关: 状态/落库/录制状态机通知/共享上行恢复。
     @objc(setChatIntegration:)
     public static func setChatIntegration(enabled: Bool) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TOGGLES"] != "1" {
-            glaspen2_rust_set_chat_integration(enabled ? 1 : 0)
-            return
-        }
-        glaspen2_router_set_chat_integration(enabled ? 1 : 0)
-        "chat_integration".withCString { key in
-            glaspen2_save_bool_setting(key, enabled ? 1 : 0)
-        }
-        glaspen2_router_rec_chat_integration_changed(enabled ? 1 : 0)
-        if !enabled {
-            glaspen2_share_ink_set_active(0)
-        } else {
-            let share = "share_ink".withCString { glaspen2_load_bool_setting($0) }
-            if share != 0 { glaspen2_share_ink_set_active(1) }
-        }
+        glaspen2_rust_set_chat_integration(enabled ? 1 : 0)
     }
 
     /// 涂鸦总开关: 状态 + 菜单勾选/标题 + 状态图标。
     @objc(setDrawEnabled:)
     public static func setDrawEnabled(enabled: Bool) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_ACTIONS"] != "1" {
-            let zh = enabled ? "关闭涂鸦" : "开启涂鸦"
-            let en = enabled ? "Disable Drawing" : "Enable Drawing"
-            let title = MenuRuntime.pair(zh, en)
-            let hud = MenuRuntime.l10n(enabled ? "draw.enabled" : "draw.disabled")
-            title.withCString { t in hud.withCString { h in
-                _ = glaspen2_rust_set_draw_enabled(enabled ? 1 : 0, t, h)
-            } }
-            return
-        }
-        glaspen2_router_set_enabled_state(enabled ? 1 : 0)
-        glaspen2_router_update_menu_state(888, enabled ? 1 : 0)
         let zh = enabled ? "关闭涂鸦" : "开启涂鸦"
         let en = enabled ? "Disable Drawing" : "Enable Drawing"
-        MenuRuntime.pair(zh, en).withCString { glaspen2_menu_set_title(888, $0) }
-        glaspen2_router_update_status_icon_state()
+        let title = MenuRuntime.pair(zh, en)
+        let hud = MenuRuntime.l10n(enabled ? "draw.enabled" : "draw.disabled")
+        title.withCString { t in hud.withCString { h in
+            _ = glaspen2_rust_set_draw_enabled(enabled ? 1 : 0, t, h)
+        } }
     }
 
     /// 压感监视器开关: 状态/落库/显示隐藏/面板同步。
     @objc(setPressureMonitor:)
     public static func setPressureMonitor(enabled: Bool) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TOGGLES"] != "1" {
-            glaspen2_rust_set_pressure_monitor(enabled ? 1 : 0)
-            return
-        }
-        glaspen2_router_set_pressure_monitor(enabled ? 1 : 0)
-        "pressure_monitor".withCString { key in
-            glaspen2_save_bool_setting(key, enabled ? 1 : 0)
-        }
-        if enabled {
-            glaspen2_router_pm_show()
-            glaspen2_router_pm_refresh()
-        } else {
-            glaspen2_router_pm_hide()
-        }
-        glaspen2_router_sync_settings_panel()
+        glaspen2_rust_set_pressure_monitor(enabled ? 1 : 0)
     }
 
     /// 网格开关: 状态/落库/面板同步/重绘。
     @objc(setGridEnabled:)
     public static func setGridEnabled(enabled: Bool) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TOGGLES"] != "1" {
-            glaspen2_rust_set_grid_enabled(enabled ? 1 : 0)
-            return
-        }
-        glaspen2_router_set_grid_state(enabled ? 1 : 0)
-        "grid".withCString { key in
-            glaspen2_save_bool_setting(key, enabled ? 1 : 0)
-        }
-        glaspen2_router_sync_settings_panel()
-        glaspen2_router_redraw_draw_view()
+        glaspen2_rust_set_grid_enabled(enabled ? 1 : 0)
     }
 
     /// 开机自启开关: 系统设置 + 菜单勾选 + 面板同步。
     @objc(setLaunchAtLogin:)
     public static func setLaunchAtLogin(enabled: Bool) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TOGGLES"] != "1" {
-            glaspen2_rust_set_launch_at_login(enabled ? 1 : 0)
-            return
-        }
-        glaspen2_set_launch_at_login(enabled ? 1 : 0)
-        glaspen2_router_update_menu_state(777, enabled ? 1 : 0)
-        glaspen2_router_sync_settings_panel()
+        glaspen2_rust_set_launch_at_login(enabled ? 1 : 0)
     }
 
     /// 磨砂玻璃开关: 状态/落库/应用。
     @objc(setGlassEnabled:)
     public static func setGlassEnabled(enabled: Bool) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TOGGLES"] != "1" {
-            glaspen2_rust_set_glass_enabled(enabled ? 1 : 0)
-            return
-        }
-        glaspen2_router_set_glass_state(enabled ? 1 : 0)
-        "glass_enabled".withCString { key in
-            glaspen2_save_bool_setting(key, enabled ? 1 : 0)
-        }
-        glaspen2_router_glass_apply()
+        glaspen2_rust_set_glass_enabled(enabled ? 1 : 0)
     }
 
     /// 颜色设置: 书写中暂存, 否则应用并刷新菜单/状态图标/面板。
     @objc(setColorIndex:)
     public static func setColor(index: Int32) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_SELECT"] != "1",
-           glaspen2_rust_select_color(index) != 0 {
-            return
-        }
-        let count = glaspen2_color_preset_count()
-        guard index >= 0 && Int(index) < Int(count) else { return }
-        if glaspen2_router_stroke_active() != 0 {
-            glaspen2_router_set_pending_color(index)
-            return
-        }
-        let selected = glaspen2_router_selected_color()
-        if index != selected { glaspen2_router_set_prev_color(selected) }
-        glaspen2_router_apply_color(index)
-        glaspen2_router_save_pen_settings()
-        glaspen2_router_update_checkmarks()
-        glaspen2_router_update_status_icon_state()
-        glaspen2_router_sync_settings_panel()
+        _ = glaspen2_rust_select_color(index)
     }
 
     /// 粗细设置: 书写中暂存, 否则应用并刷新菜单/状态图标/面板。
     @objc(setWidthIndex:)
     public static func setWidth(index: Int32) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_SELECT"] != "1",
-           glaspen2_rust_select_width(index) != 0 {
-            return
-        }
-        let count = glaspen2_width_preset_count()
-        guard index >= 0 && Int(index) < Int(count) else { return }
-        if glaspen2_router_stroke_active() != 0 {
-            glaspen2_router_set_pending_width(index)
-            return
-        }
-        let selected = glaspen2_router_selected_width()
-        if index != selected { glaspen2_router_set_prev_width(selected) }
-        glaspen2_router_apply_width(index)
-        glaspen2_router_save_pen_settings()
-        glaspen2_router_update_checkmarks()
-        glaspen2_router_update_status_icon_state()
-        glaspen2_router_sync_settings_panel()
+        _ = glaspen2_rust_select_width(index)
     }
 
     /// 书写中暂存的颜色/粗细在抬笔后生效(原 gl_settings_apply_pending_color_width)。
     @objc(applyPendingColorWidth)
     public static func applyPendingColorWidth() {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_SELECT"] != "1" {
-            glaspen2_rust_apply_pending_color_width()
-            return
-        }
-        if glaspen2_router_stroke_active() != 0 { return }
-        let color = glaspen2_router_pending_color()
-        if color >= 0 {
-            glaspen2_router_clear_pending_color()
-            glaspen2_menu_select_color(Int32(color))
-        }
-        let width = glaspen2_router_pending_width()
-        if width >= 0 {
-            glaspen2_router_clear_pending_width()
-            glaspen2_menu_select_width(Int32(width))
-        }
+        glaspen2_rust_apply_pending_color_width()
     }
 
     /// 彻底退出: perf 汇总 + 恢复系统光标 + NSApp terminate(Swift 实现)。
     @objc(quitAppNow)
     public static func quitAppNow() {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_ACTIONS"] != "1" {
-            glaspen2_rust_quit_app()
-            return
-        }
-        glaspen2_router_perf_summary()
-        glaspen2_router_show_system_cursor()
-        NSApp.terminate(nil)
+        glaspen2_rust_quit_app()
     }
 
     @objc(applicationShouldTerminate:)

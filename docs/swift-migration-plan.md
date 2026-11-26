@@ -737,3 +737,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R134 | 清理 MenuUpdater 勾选/文案回退; debug build 通过 | 本提交 |
 | 2026-11-26 | Rust-R135 | 覆盖层窗口/玻璃/内容组装回退清理; debug build 通过 | 本提交 |
 | 2026-11-26 | Rust-R136 | 清理 MenuBuilder 建项回退; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |
+| 2026-11-26 | Rust-R137 | 清理 MenuHandler 13 个 toggle/action 回退; debug build 通过 | 本提交 |
