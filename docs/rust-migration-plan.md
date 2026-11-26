@@ -846,3 +846,8 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - SettingsGlue.loadShortcuts 迁 Rust(读 user_settings + JSON 校验 + apply); 调试点更新;
 - 第3片后全量 tests/smoke/parity(不跑 release)全绿。
+
+
+## R152 SettingsGlue 剩余桥清理
+
+- effectiveShortcutJSON/applyShortcuts/loadString 删除, 调用点直调 C 或内联; debug build 通过。

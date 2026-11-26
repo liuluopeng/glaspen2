@@ -105,8 +105,10 @@ import AppKit
     }
     static func shortcutsEffectiveJSON() -> String {
         // 旧实现: 尚未 apply 过时先补默认表, 避免快照返回空对象。
-        if MenuRuntime.shortcutStoreEmpty { SettingsGlue.applyShortcuts(saved: NSDictionary()) }
-        return SettingsGlue.effectiveShortcutJSON() as String
+        if MenuRuntime.shortcutStoreEmpty { _ = "{}".withCString { glaspen2_shortcut_apply_json($0) } }
+        guard let p = glaspen2_shortcut_store_values_json() else { return "{}" }
+        defer { glaspen2_free_c_string(p) }
+        return String(cString: p)
     }
     static func setShortcutTables(values: NSDictionary, lookup: NSDictionary) {
         MenuRuntime.shortcutInstall(values: values, lookup: lookup)

@@ -27,7 +27,7 @@ import AppKit
             failures += 1
         }
         // 显式空串 = 用户解绑, 不能在下次启动被默认值覆盖。
-        SettingsGlue.applyShortcuts(saved: ["undo": ""])
+        if let d = try? JSONSerialization.data(withJSONObject: ["undo": ""]), let j = String(data: d, encoding: .utf8) { _ = j.withCString { glaspen2_shortcut_apply_json($0) } }
         if MenuRuntime.shortcutAction(forChord: "cmd+ctrl+Z") != nil {
             NSLog("[hotkeys-probe] FAIL explicit unbind fell back to default (undo -> cmd+ctrl+Z)")
             failures += 1
