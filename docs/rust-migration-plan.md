@@ -1153,3 +1153,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - 清屏/仅保存涂鸦迁 Rust 并接通知; 删除 surface_ops.swift;
 - replay 直调 Rust pageview rebuild; pageframe parity selftest 移 run_glue; 删除 surface_replay.swift;
 - Swift 30→28; pageframe parity diff=0; 冷启动正常。
+
+
+## R210 AppDelegate 合并进 menu_handler
+
+- AppDelegate 类移入 menu_handler.swift, 删除 app_delegate.swift; 行为不变;
+- 同轮 flip_probe 迁 Rust(dispatch 链) 未触发 tick, 已回退; Swift 28→27。
