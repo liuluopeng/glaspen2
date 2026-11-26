@@ -57,14 +57,6 @@ import Darwin
         }
     }
 
-    static func drawNotification(bounds: NSRect) {
-        NotificationPresenter.draw(in: bounds)
-    }
-
-    static func drawCursor(_ ctx: CGContext) {
-        OverlayCursorRenderer.drawCursor(ctx)
-    }
-
     static func writePerf(rect: NSRect, bounds: NSRect, t0: UInt64) {
         if glaspen2_router_perf_enabled() != 0 {
             let infinite = glaspen2_router_infinite() != 0
@@ -121,17 +113,9 @@ public func glaspen2SwiftOverlayMinimap(_ ctx: UnsafeMutableRawPointer?,
     OverlayDrawing.drawMinimap(c, bounds: NSRect(x: bx, y: by, width: bw, height: bh))
 }
 
-@_cdecl("glaspen2_swift_overlay_notification")
-public func glaspen2SwiftOverlayNotification(_ bx: Double, _ by: Double, _ bw: Double, _ bh: Double) {
-    OverlayDrawing.drawNotification(bounds: NSRect(x: bx, y: by, width: bw, height: bh))
-}
 
-@_cdecl("glaspen2_swift_overlay_cursor")
-public func glaspen2SwiftOverlayCursor(_ ctx: UnsafeMutableRawPointer?) {
-    guard let ctx else { return }
-    let c = Unmanaged<CGContext>.fromOpaque(ctx).takeUnretainedValue()
-    OverlayDrawing.drawCursor(c)
-}
+
+
 
 @_cdecl("glaspen2_swift_overlay_perf")
 public func glaspen2SwiftOverlayPerf(_ t0: UInt64,

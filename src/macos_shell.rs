@@ -1627,8 +1627,6 @@ unsafe extern "C" {
         rh: f64,
     );
     fn glaspen2_swift_overlay_minimap(ctx: *mut c_void, bx: f64, by: f64, bw: f64, bh: f64);
-    fn glaspen2_swift_overlay_notification(bx: f64, by: f64, bw: f64, bh: f64);
-    fn glaspen2_swift_overlay_cursor(ctx: *mut c_void);
     fn glaspen2_swift_overlay_perf(
         t0: u64,
         bx: f64,
@@ -1697,8 +1695,14 @@ pub extern "C" fn glaspen2_rust_overlay_draw(
         glaspen2_swift_overlay_grid(ctx_ptr, bx, by, bw, bh, rx, ry, rw, rh);
         glaspen2_swift_overlay_surface(ctx_ptr, bx, by, bw, bh, rx, ry, rw, rh);
         glaspen2_swift_overlay_minimap(ctx_ptr, bx, by, bw, bh);
-        glaspen2_swift_overlay_notification(bx, by, bw, bh);
-        glaspen2_swift_overlay_cursor(ctx_ptr);
+        let _ = glaspen2_rust_notification_draw(bw, bh);
+        let _ = glaspen2_rust_draw_cursor(
+            ctx_ptr,
+            i32::from(glaspen2_router_pen_cursor_visible() != 0),
+            glaspen2_router_cursor_x(),
+            glaspen2_router_cursor_y(),
+            glaspen2_router_eraser_mode(),
+        );
     }
     CGContext::restore_g_state(Some(&cg));
     unsafe { glaspen2_swift_overlay_perf(t0, bx, by, bw, bh, rx, ry, rw, rh) };
@@ -7109,4 +7113,48 @@ pub extern "C" fn glaspen2_rust_minimap_layout(
     guard
         .as_ref()
         .map_or(std::ptr::null(), |(_, _, _, _, s)| s.as_ptr())
+}
+
+// ── R159: 通知文字/代际状态(定时器仍 Swift) ──
+
+static NOTIF_TEXT: std::sync::Mutex<Option<std::ffi::CString>> = std::sync::Mutex::new(None);
+static NOTIF_GEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+unsafe extern "C" {
+    fn glaspen2_notification_redraw();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_notification_set(text: *const std::os::raw::c_char) -> u32 {
+    let payload = if text.is_null() {
+        None
+    } else {
+        Some(unsafe { std::ffi::CStr::from_ptr(text) }.to_owned())
+    };
+    *NOTIF_TEXT.lock().unwrap_or_else(|e| e.into_inner()) = payload;
+    unsafe { glaspen2_notification_redraw() };
+    NOTIF_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_notification_clear_if(generation: u32) -> i32 {
+    if NOTIF_GEN.load(std::sync::atomic::Ordering::Relaxed) != generation {
+        return 0;
+    }
+    *NOTIF_TEXT.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    unsafe { glaspen2_notification_redraw() };
+    1
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_notification_text() -> *const std::os::raw::c_char {
+    let guard = NOTIF_TEXT.lock().unwrap_or_else(|e| e.into_inner());
+    guard.as_ref().map_or(std::ptr::null(), |s| s.as_ptr())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_notification_draw(width: f64, height: f64) -> i32 {
+    let guard = NOTIF_TEXT.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(text) = guard.as_ref() else { return 0 };
+    glaspen2_rust_draw_notification(text.as_ptr(), width, height)
 }

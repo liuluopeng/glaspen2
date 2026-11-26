@@ -887,3 +887,14 @@ modeler Up error 需真机笔/翻页连击复验。
 - TunnelFrameRenderer.render 只走 Rust; 旧 Swift 帧实现改为 renderSwiftForProbe 仅供 parity 探针;
 - minimap 布局 JSON 缓存(页/视图/几何 key)迁 Rust, Swift 删除 layout 状态/解析;
 - 批次 tests/smoke/parity(不跑 release)全绿。
+
+
+## R159 通知文字/代际状态迁 Rust
+
+- current/generation 状态迁 Rust; show/clear_if/text/draw 通过 C, Swift 仅保留 1s DispatchSourceTimer 壳;
+- draw 直接调 Rust 绘制。
+
+## R160 覆盖层光标/通知 stage 直连 Rust
+
+- glaspen2_rust_overlay_draw 直接调 Rust cursor/notification, 删除两个 Swift stage 桥与 OverlayCursorRenderer;
+- 批次 tests/smoke/parity(不跑 release)全绿。

@@ -2,26 +2,21 @@
 import AppKit
 
 @objc public final class NotificationPresenter: NSObject {
-    private static var current: String?
     private static var timer: DispatchSourceTimer?
-    private static var generation = 0
 
-    @objc public static func currentText() -> String? { current }
+    @objc public static func currentText() -> String? {
+        guard let p = glaspen2_rust_notification_text() else { return nil }
+        return String(cString: p)
+    }
 
     @objc(showText:)
     public static func show(text: String) {
-        current = text
-        glaspen2_notification_redraw()
+        let gen = text.withCString { glaspen2_rust_notification_set($0) }
         timer?.cancel()
-        generation += 1
-        let gen = generation
         let t = DispatchSource.makeTimerSource(queue: .main)
         t.schedule(deadline: .now() + 1.0)
         t.setEventHandler {
-            if gen == generation {
-                current = nil
-                glaspen2_notification_redraw()
-            }
+            _ = glaspen2_rust_notification_clear_if(gen)
             t.cancel()
         }
         timer = t
@@ -42,10 +37,7 @@ import AppKit
     /// 使用当前图形上下文; 样式与原 ObjC 实现逐项一致。
     @objc(drawInBounds:)
     public static func draw(in bounds: NSRect) {
-        guard let text = current else { return }
-        _ = text.withCString {
-            glaspen2_rust_draw_notification($0, bounds.size.width, bounds.size.height)
-        }
+        _ = glaspen2_rust_notification_draw(bounds.size.width, bounds.size.height)
     }
 }
 

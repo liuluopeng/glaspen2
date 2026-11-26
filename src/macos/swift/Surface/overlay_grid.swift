@@ -41,15 +41,6 @@ import CoreGraphics
 import AppKit
 import CoreGraphics
 
-@objc public final class OverlayCursorRenderer: NSObject {
-    @objc(drawCursorWithContext:)
-    public static func drawCursor(_ ctx: CGContext) {
-        glaspen2_rust_draw_cursor(Unmanaged.passUnretained(ctx).toOpaque(),
-                                  glaspen2_router_pen_cursor_visible() != 0 ? 1 : 0,
-                                  glaspen2_router_cursor_x(), glaspen2_router_cursor_y(),
-                                  glaspen2_router_eraser_mode())
-    }
-}
 
 // S7: 笔迹 surface 合成: 小脏矩形裁子图(视图点→物理像素, Y 翻转), 失败回退全图。
 // S7: 时光隧道半分辨率 surface 缓存 + 全屏绘制(Swift 持有缓存)。
