@@ -4,6 +4,21 @@ import Darwin
 
 @objc public final class TunnelLifecycle: NSObject {
     @objc public static func freeCards() {
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_TUNNEL_LIFECYCLE"] == "1" {
+            TunnelState.cardSurf.withUnsafeBufferPointer { cp in
+                TunnelState.mipSurf.withUnsafeBufferPointer { mp in
+                    cp.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { cardPtr in
+                        mp.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { mipPtr in
+                            glaspen2_rust_tunnel_free_cards(
+                                Int32(TunnelState.maxCards), cardPtr, mipPtr,
+                                TunnelState.blur.map(UnsafeMutableRawPointer.init),
+                                TunnelState.surface.map(UnsafeMutableRawPointer.init))
+                        }
+                    }
+                }
+            }
+            return
+        }
         for i in 0..<TunnelState.maxCards {
             if let s = TunnelState.cardSurf[i] { cairo_surface_destroy(s) }
             TunnelState.cardSurf[i] = nil

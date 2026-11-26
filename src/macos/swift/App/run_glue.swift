@@ -238,6 +238,19 @@ public func runGlassView() -> UnsafeMutableRawPointer? {
     return Unmanaged.passUnretained(g).toOpaque()
 }
 
+@_cdecl("glaspen2_swift_tunnel_clear_state")
+public func runTunnelClearState() {
+    for i in 0..<TunnelState.maxCards {
+        TunnelState.cardSurf[i] = nil
+        TunnelState.mipSurf[i] = nil
+        TunnelState.depths[i] = 0
+    }
+    TunnelState.blur = nil
+    TunnelState.surface = nil
+    TunnelState.cards = 0
+    OverlayTunnelRenderer.clear()
+}
+
 @_cdecl("glaspen2_swift_tunnel_flush")
 public func runTunnelFlush() { UIAnchors.drawView?.needsDisplay = true }
 

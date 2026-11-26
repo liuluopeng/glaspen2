@@ -390,3 +390,12 @@ modeler Up error 需真机笔/翻页连击复验。
 - 日志 `[flip] 时光隧道接管: 5 张卡片 ... 预载580ms 建卡130ms`, 运行无崩溃;
 - 多个时间点截图未能稳定捕获动画中帧(系统截图/窗口层), 视觉效果仍需人工盯屏复验;
 - 默认/回退 smoke、tests/build/parity 持续全绿。
+
+
+## R86 隧道卡片释放迁 Rust(opt-in)
+
+- `TunnelLifecycle.freeCards` 的卡片/mip/blur/surface 销毁迁 Rust;
+- Swift 通过 `glaspen2_swift_tunnel_clear_state` 清空数组/状态/渲染缓存;
+- `GLASPEN2_RUST_TUNNEL_LIFECYCLE=1` opt-in, 默认仍 Swift;
+- 真机 5 卡隧道: 启动前/结束后各 `tunnel cards freed count=512` 日志, 无崩溃;
+- 默认/opt-in smoke、全量 tests/build/parity 绿。

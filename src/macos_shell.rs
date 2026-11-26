@@ -4949,3 +4949,43 @@ pub extern "C" fn glaspen2_rust_tunnel_render(
     unsafe { glaspen2_swift_tunnel_flush() };
     0
 }
+
+// ── R86: 隧道卡片/缓冲/表面释放 ──
+
+unsafe extern "C" {
+    fn cairo_surface_destroy(surface: *mut c_void);
+}
+
+unsafe extern "C" {
+    fn glaspen2_swift_tunnel_clear_state();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_tunnel_free_cards(
+    count: i32,
+    card_surf: *const *mut c_void,
+    mip_surf: *const *mut c_void,
+    blur: *mut c_void,
+    surface: *mut c_void,
+) {
+    if !card_surf.is_null() && !mip_surf.is_null() {
+        for i in 0..count.max(0) as usize {
+            let main = unsafe { *card_surf.add(i) };
+            if !main.is_null() {
+                unsafe { cairo_surface_destroy(main) };
+            }
+            let mip = unsafe { *mip_surf.add(i) };
+            if !mip.is_null() {
+                unsafe { cairo_surface_destroy(mip) };
+            }
+        }
+    }
+    if !blur.is_null() {
+        unsafe { cairo_surface_destroy(blur) };
+    }
+    if !surface.is_null() {
+        unsafe { cairo_surface_destroy(surface) };
+    }
+    tracing::info!("rust-shell: tunnel cards freed count={count}");
+    unsafe { glaspen2_swift_tunnel_clear_state() };
+}
