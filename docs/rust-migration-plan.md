@@ -1015,3 +1015,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 状态栏图标/更新/自检全部 Rust; run_glue 直调 glaspen2_rust_status_icon_apply; --swift-statusbar-probe 改 Rust 自检;
 - 删除 status_bar.swift; Swift 60→59;
 - statusbar probe OK, 冷启动正常。
+
+
+## R180/181 持久化/页面诊断探针迁 Rust
+
+- persist probe(模型器一笔/prox device/DB 检查)迁 Rust, 删除 persist_probe.swift;
+- pages probe(建页/邻页/尺寸/总览空载荷/删除)迁 Rust, 删除 pages_probe.swift;
+- Swift 59→57; 两探针输出与旧一致; 批次 tests/smoke debug/parity 全绿。

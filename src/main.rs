@@ -206,10 +206,9 @@ fn main() {
         #[cfg(target_os = "macos")]
         unsafe {
             unsafe extern "C" {
-                fn glaspen2_swift_pages_probe_selftest() -> i32;
+                fn glaspen2_rust_pages_probe() -> i32;
             }
-            let code = glaspen2_swift_pages_probe_selftest();
-            std::process::exit(code);
+            std::process::exit(glaspen2_rust_pages_probe());
         }
         #[cfg(not(target_os = "macos"))]
         std::process::exit(2);
@@ -248,10 +247,9 @@ fn main() {
         #[cfg(target_os = "macos")]
         unsafe {
             unsafe extern "C" {
-                fn glaspen2_swift_persist_probe_selftest() -> i32;
+                fn glaspen2_rust_persist_probe() -> i32;
             }
-            let code = glaspen2_swift_persist_probe_selftest();
-            std::process::exit(code);
+            std::process::exit(glaspen2_rust_persist_probe());
         }
         #[cfg(not(target_os = "macos"))]
         std::process::exit(2);

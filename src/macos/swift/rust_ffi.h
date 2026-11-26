@@ -753,3 +753,9 @@ extern int glaspen2_rust_another_instance_running(void);
 
 // R177: 主覆盖窗启动组装
 extern int glaspen2_rust_create_main_window(void);
+
+// R180: 持久化诊断探针
+extern int glaspen2_rust_persist_probe(void);
+
+// R181: 页面导航诊断探针
+extern int glaspen2_rust_pages_probe(void);

@@ -8604,3 +8604,104 @@ pub extern "C" fn glaspen2_rust_statusbar_selftest() -> i32 {
     println!("SWIFT_STATUSBAR_OK items=1 button=1");
     0
 }
+
+// ── R180: 持久化诊断探针 ──
+
+unsafe extern "C" {
+    fn glaspen2_init_db(w: i32, h: i32);
+    fn glaspen2_modeler_clear_buffer();
+    fn glaspen2_stroke_count() -> i64;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_persist_probe() -> i32 {
+    unsafe { glaspen2_init_db(1920, 1080) };
+    unsafe { glaspen2_modeler_clear_buffer() };
+    let t0 = glaspen2_rust_reference_now();
+    glaspen2_rust_pen_down(200.0, 300.0, 0.5, t0, 1.0, 1.0);
+    for i in 1..=40 {
+        glaspen2_rust_pen_move(
+            200.0 + i as f64 * 4.0,
+            300.0,
+            0.5,
+            t0 + i as f64 * 0.01,
+            1.0,
+            1.0,
+        );
+    }
+    glaspen2_rust_pen_up(360.0, 300.0, 0.5, t0 + 0.45);
+    glaspen2_rust_pen_set_prox_device(1);
+    let pen_as_eraser = glaspen2_router_prox_is_eraser();
+    glaspen2_rust_pen_set_prox_device(3);
+    let eraser_as_eraser = glaspen2_router_prox_is_eraser();
+    glaspen2_rust_pen_set_prox_device(0);
+    println!("PROX_PROBE pen1_eraser={pen_as_eraser} eraser3_eraser={eraser_as_eraser}");
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    let count = unsafe { glaspen2_stroke_count() };
+    println!("PERSIST_PROBE_DONE strokes={count}");
+    i32::from(count == 1) - 1
+}
+
+fn glaspen2_rust_reference_now() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64() - 978_307_200.0)
+        .unwrap_or(0.0)
+}
+
+// ── R181: 页面导航诊断探针 ──
+
+unsafe extern "C" {
+    fn glaspen2_debug_insert_pages(n: i32, w: i32, h: i32) -> i32;
+    fn glaspen2_create_next_page(id: i64) -> i64;
+    fn glaspen2_delete_screen(id: i64) -> i32;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pages_probe() -> i32 {
+    let mut failures = 0i32;
+    let mut check = |name: &str, ok: bool| {
+        if ok {
+            println!("PAGES_PROBE {name} ok");
+        } else {
+            tracing::warn!("[pages-probe] FAIL {name}");
+            failures += 1;
+        }
+    };
+    unsafe { glaspen2_init_db(1920, 1080) };
+    let current = unsafe { glaspen2_get_current_screen_id() };
+    check("current_page", current > 0);
+    let inserted = unsafe { glaspen2_debug_insert_pages(2, 1920, 1080) };
+    check("debug_insert_pages", inserted == 2);
+    let neighbor = unsafe { glaspen2_page_neighbor(current, 1) };
+    check("page_neighbor", neighbor > 0);
+    let created = unsafe { glaspen2_create_next_page(current) };
+    check("create_next_page", created > 0);
+    let (mut pw, mut ph) = (0i32, 0i32);
+    unsafe { glaspen2_page_dims(created, &mut pw, &mut ph) };
+    check("page_dims", pw == 1920 && ph == 1080);
+    check(
+        "stroke_count_empty",
+        unsafe { glaspen2_stroke_count() } == 0,
+    );
+    let (mut rect, mut bounds, mut len) = ([0.0f64; 4], [0.0f64; 4], 0i32);
+    let payload = unsafe {
+        glaspen2_rust_canvas_overview(
+            800.0,
+            600.0,
+            rect.as_mut_ptr(),
+            bounds.as_mut_ptr(),
+            &mut len,
+        )
+    };
+    check("canvas_payload_empty", payload.is_null() && len == 0);
+    if !payload.is_null() {
+        unsafe { glaspen2_free_rust_bytes(payload, len) }
+    }
+    check(
+        "delete_page",
+        unsafe { glaspen2_delete_screen(created) } == 1,
+    );
+    println!("SWIFT_PAGES_PROBE_OK failures={failures}");
+    i32::from(failures == 0) - 1
+}
