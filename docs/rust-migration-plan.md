@@ -1173,3 +1173,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - MenuUpdater 合入 menu_texts; TunnelLifecycle/TunnelState 合入 tunnel_animation; 删3文件;
 - Swift 26→23; 冷启动正常。
 - 同轮尝试批量迁 run_glue 纯 C 桥, 因 extern/定义重复冲突已回退.
+
+
+## R213 菜单图标/flip probe 合并
+
+- MenuIconFactory 合入 menu_texts; FlipProbe 合入 run_glue; 删2文件;
+- Swift 23→21; 冷启动正常。

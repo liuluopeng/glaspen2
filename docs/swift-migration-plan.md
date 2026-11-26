@@ -800,3 +800,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R210 | AppDelegate 合并进 menu_handler; 删 app_delegate.swift; Swift 28→27; flip probe 尝试已回退 | 本提交 |
 | 2026-11-26 | Rust-R211 | MenuHandler 删除, AppDelegate 移 main_menu; Swift 27→26; menu probes OK | 本提交 |
 | 2026-11-26 | Rust-R212 | 合并 MenuUpdater/TunnelLifecycle/TunnelState; 删3文件; Swift 26→23 | 本提交 |
+| 2026-11-26 | Rust-R213 | 合并 MenuIconFactory/FlipProbe; 删2文件; Swift 23→21 | 本提交 |
