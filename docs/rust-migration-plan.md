@@ -1374,3 +1374,12 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - bootstrap_running_alert raw NSAlert/NSApplication 迁 Rust(中英文);
 - 删除 Swift 包装; 冷启动正常.
+
+
+## R255 迁移后测试闸门更新
+
+- core 适配器闸门改扫 Rust 源(perform_action/apply_setting/settings snapshot); 删除已迁 Rust 的 Swift 参考文件 include_str;
+- 删除 camera/grid/minimap 三个扫描已删 Swift 文件的过时适配器闸门;
+- i18n 闸门: macOS 扫描 3 个 Swift 壳 + 读取 macos_shell.rs 的 key 字面量; 录音/HUD 保留 key 豁免; ⌘⌃3 keys 参数允许 Rust 壳;
+- tests/swift_layout.rs 阈值由 >=90 改为 3..=8(迁移后仅余壳);
+- `cargo test --workspace --exclude glaspen2_installer` 全绿(此前因 include_str 删文件编译失败, 已修复).

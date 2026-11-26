@@ -89,7 +89,7 @@ fn swift_sources_are_grouped_by_subsystem() {
     }
 
     assert!(
-        swift_count >= 90,
-        "Swift 源文件数量异常(当前 {swift_count}), 迁移层不应突然缩水"
+        (3..=8).contains(&swift_count),
+        "Swift 源文件数量异常(当前 {swift_count}); 迁移后应只余少量 AppKit/SCK 壳"
     );
 }

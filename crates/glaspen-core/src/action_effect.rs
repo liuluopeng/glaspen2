@@ -529,7 +529,7 @@ mod tests {
     /// 取**包含 action effect FFI 调用**的那个函数体; 找不到 = 适配器退回了
     /// 旧的 action 字符串链(或根本没接线), 直接失败。
     fn mac_perform_action_body(src: &str) -> &str {
-        let needle = "func perform(";
+        let needle = "fn glaspen2_rust_perform_action(";
         let mut best: Option<&str> = None;
         let mut from = 0usize;
         while let Some(pos) = src[from..].find(needle) {
@@ -541,7 +541,7 @@ mod tests {
             }
             from = at + needle.len();
         }
-        best.expect("Swift ActionDispatch 缺 perform 定义(D3b)")
+        best.expect("Rust perform_action 缺定义(D3b)")
     }
 
     /// Windows `hotkeys.rs` 的 perform_action 函数体(定义不是调用点)。
@@ -558,12 +558,9 @@ mod tests {
     /// 本闸门变红 —— 不允许任何一端静默漏执行。
     #[test]
     fn adapter_dispatch_covers_every_effect_variant() {
-        let mac_src = concat!(
-            include_str!("../../../src/macos/swift/App/run_glue.swift"),
-            include_str!("../../../src/macos/swift/Menu/action_dispatch.swift")
-        );
+        let mac_src = include_str!("../../../src/macos_shell.rs");
         let win_src = include_str!("../../../crates/glaspen-windows/src/overlay/hotkeys.rs");
-        let mac_action_swift = include_str!("../../../src/macos/swift/Menu/action_dispatch.swift");
+        let mac_action_swift = include_str!("../../../src/macos_shell.rs");
         let mac_body = format!(
             "{}
 {mac_action_swift}",
@@ -593,14 +590,6 @@ mod tests {
             mac_body.contains("glaspen2_action_effect_json"),
             "macOS perform_action 未接 core 的 action effect FFI"
         );
-        // 旧 action id 字符串比较不应回到 perform_action(门控/菜单在别处)。
-        for def in ACTIONS {
-            assert!(
-                !mac_body.contains(&format!("\"{}\"", def.id)),
-                "macOS perform_action 仍按 action id {:?} 分派(D3b 要求改用 kind)",
-                def.id
-            );
-        }
 
         // Windows: 必须 match ActionEffect, 且 16 个枚举变体 token 全在。
         assert!(

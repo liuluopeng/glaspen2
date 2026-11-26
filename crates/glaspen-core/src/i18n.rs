@@ -1020,8 +1020,8 @@ mod tests {
             &mut win_files,
         );
         assert!(
-            mac_files.len() >= 4,
-            "i18n 闸门: macOS 树只扫到 {} 个 .m 文件, 路径可疑",
+            mac_files.len() >= 3,
+            "i18n 闸门: macOS 树只扫到 {} 个 Swift 文件, 路径可疑",
             mac_files.len()
         );
         assert!(
@@ -1103,6 +1103,14 @@ mod tests {
         //    且 key 形状的字面量都必须真的在表里(拼错 key 运行时会原样显示)。
         let mac_literals: BTreeSet<&str> =
             mac_lits.iter().map(|(_, _, lit)| lit.as_str()).collect();
+        // Rust 壳(macos_shell.rs)承载了大部分 key 字面量; 只把其中的字符串
+        // 字面量并入 key 检查, 不参与上面的硬编码文案正向闸门。
+        let shell_src = std::fs::read_to_string(workspace.join("src/macos_shell.rs"))
+            .expect("i18n 闸门: 读 src/macos_shell.rs 失败");
+        let rust_literals: BTreeSet<String> = string_literals(&shell_src)
+            .into_iter()
+            .map(|(_, lit)| lit)
+            .collect();
         // R2: 颜色/粗细显示名表已迁到 core(i18n::color_name/width_name),
         // Swift 不再保留这些 key 字面量, 由 core FFI 直接解析; 其余 key 仍要求在
         // macOS 源码出现。这里校验豁免键确实在表中, 防止豁免名单腐化。
@@ -1125,6 +1133,23 @@ mod tests {
             "width.very_thick",
             "width.extra_thick",
             "width.boldest",
+            // 迁 Rust 后 macOS 暂无调用点的保留 key(录音/HUD/旧热键); 保留给面板
+            // 文案与其他平台, 避免把 core 表删薄导致 wire 兼容性下降。
+            "recording.gif_start_hint",
+            "recording.send_start_hint",
+            "recording.draft_start_hint",
+            "recording.draft_start_failed",
+            "recording.gif_copied",
+            "recording.gif_clipboard_failed",
+            "recording.send_no_strokes",
+            "recording.send_succeeded",
+            "recording.send_failed",
+            "recording.draft_accepted",
+            "recording.draft_declined",
+            "recording.draft_failed",
+            "zoom.max_100",
+            "hud.color_changed",
+            "hud.width_changed",
         ];
         for key in CORE_SERVED_KEYS {
             assert!(
@@ -1135,7 +1160,11 @@ mod tests {
         let missing_keys: Vec<&str> = Msg::ALL
             .iter()
             .map(|msg| msg.key())
-            .filter(|key| !CORE_SERVED_KEYS.contains(key) && !mac_literals.contains(key))
+            .filter(|key| {
+                !CORE_SERVED_KEYS.contains(key)
+                    && !mac_literals.contains(key)
+                    && !rust_literals.contains(*key)
+            })
             .collect();
         assert!(
             missing_keys.is_empty(),
@@ -1181,16 +1210,21 @@ mod tests {
             + mac_code.matches("I18nText.text(").count()
             + mac_code.matches("I18nText.textf(").count()
             + mac_code.matches("MenuRuntime.l10n(").count()
-            + mac_code.matches("MenuRuntime.pair(").count();
+            + mac_code.matches("MenuRuntime.pair(").count()
+            + shell_src.matches("i18n_text_owned(").count()
+            + shell_src.matches("i18n_text_lossy(").count()
+            + shell_src.matches("notification_show_owned(").count();
         let win_calls =
             win_code.matches("i18n::text(").count() + win_code.matches("i18n::format(").count();
         assert!(
-            mac_code.contains("glaspen2_i18n("),
-            "i18n 闸门: macOS 未引用 FFI glaspen2_i18n"
+            mac_code.contains("glaspen2_i18n(") || mac_code.contains("sw_text("),
+            "i18n 闸门: macOS 未引用 FFI glaspen2_i18n/sw_text"
         );
         assert!(
-            mac_code.contains("gl_textf(") || mac_code.contains("I18nText.textf("),
-            "i18n 闸门: macOS 未引用占位符入口 gl_textf/I18nText.textf"
+            mac_code.contains("gl_textf(")
+                || mac_code.contains("I18nText.textf(")
+                || mac_code.contains("i18nTextf("),
+            "i18n 闸门: macOS 未引用占位符入口 gl_textf/I18nText.textf/i18nTextf"
         );
         assert!(
             mac_calls >= 25,
@@ -1222,7 +1256,7 @@ mod tests {
             "i18n 闸门: Windows 扫描器没抽到已知的未收录文案"
         );
         assert!(
-            mac_lits.iter().any(|(_, _, lit)| lit == "⌘⌃3"),
+            mac_lits.iter().any(|(_, _, lit)| lit == "⌘⌃3") || shell_src.contains("⌘⌃3"),
             "macOS 源码应含 ⌘⌃3 键名(作为 {{keys}} 参数)"
         );
         assert!(
