@@ -5330,3 +5330,52 @@ pub extern "C" fn glaspen2_rust_apply_setting(
         }
     }
 }
+
+// ── R90: 快照观看页框(页外压暗/页边界线) ──
+
+unsafe extern "C" {
+    fn cairo_set_fill_rule(cr: *mut c_void, rule: i32);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_draw_page_frame(
+    surface: *mut c_void,
+    scale: f64,
+    ox: f64,
+    oy: f64,
+    pscale: f64,
+    page_w: i32,
+    page_h: i32,
+    is_fit: i32,
+) -> i32 {
+    if surface.is_null() || is_fit == 0 || page_w <= 0 || page_h <= 0 {
+        return 0;
+    }
+    let cr = unsafe { cairo_create(surface) };
+    if cr.is_null() {
+        return 0;
+    }
+    let x = ox * scale;
+    let y = oy * scale;
+    let w = page_w as f64 * pscale * scale;
+    let h = page_h as f64 * pscale * scale;
+    unsafe {
+        cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.42);
+        cairo_set_fill_rule(cr, 1);
+        cairo_rectangle(
+            cr,
+            0.0,
+            0.0,
+            cairo_image_surface_get_width(surface) as f64,
+            cairo_image_surface_get_height(surface) as f64,
+        );
+        cairo_rectangle(cr, x, y, w, h);
+        cairo_fill(cr);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.55);
+        cairo_set_line_width(cr, 1.0);
+        cairo_rectangle(cr, x + 0.5, y + 0.5, w - 1.0, h - 1.0);
+        cairo_stroke(cr);
+        cairo_destroy(cr);
+    }
+    1
+}

@@ -690,3 +690,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R87 | 隧道卡片释放默认切 Rust; GLASPEN2_SWIFT_TUNNEL_LIFECYCLE=1 回退; 真机5卡隧道无崩溃; 默认/回退 smoke 绿 | 本提交 |
 | 2026-11-26 | Rust-R88 | 隧道 finish(cancel/final frame/FPS/free/glass)迁 Rust; 默认 Rust, GLASPEN2_SWIFT_TUNNEL_LIFECYCLE=1 回退; 真机5卡 FPS 56.4/freed5 无崩溃 | 默认/回退 smoke、tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R89 | 常用设置 effect 分派迁 Rust; Swift 仅回退; settings probe 默认/回退 failures=0; 全量验证绿 | 本提交 |
+| 2026-11-26 | Rust-R90 | 快照页框绘制迁 Rust; 像素 parity diff=0/60000; GLASPEN2_SWIFT_PAGEFRAME=1 回退; parity 并入 smoke | 默认/回退 smoke、tests/build/parity 绿 | 本提交 |

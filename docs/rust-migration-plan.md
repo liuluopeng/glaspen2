@@ -424,3 +424,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - Swift 仅 `GLASPEN2_SWIFT_SETTINGS_DISPATCH=1` 回退原 switch;
 - settings probe 默认/回退均 `SWIFT_SETTINGS_PROBE_OK failures=0`;
 - 全量 tests/build/smoke/parity 绿。
+
+
+## R90 快照页框绘制迁 Rust
+
+- `SurfaceReplay.pageviewFrameDraw` 的页外压暗(EVEN_ODD)/页边界线迁 Rust;
+- `drawPageFrame` 默认 Rust, `GLASPEN2_SWIFT_PAGEFRAME=1` 回退;
+- 新增 `--swift-pageframe-parity`: 同参数 Rust/Swift 绘制 300x200, `diff=0/60000`;
+- parity 探针并入 smoke; 默认/回退 smoke、tests/build/parity 全绿。
