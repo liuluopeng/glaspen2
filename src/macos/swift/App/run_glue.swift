@@ -42,7 +42,7 @@ public func runAutoHide() { _ = EtherealMode.hideNow() }
 public func runBubblePenGone() { glaspen2_bubble_pen_gone() }
 
 @_cdecl("glaspen2_router_flush")
-public func runFlush() { OverlayLayerFlush.flushDirty() }
+public func runFlush() { glaspen2_rust_overlay_flush_dirty() }
 
 @_cdecl("glaspen2_virtual_pen_user_data")
 public func runVirtualPenUserData() -> Int64 { 0x5650_4E31 }
@@ -238,6 +238,12 @@ public func runGlassView() -> UnsafeMutableRawPointer? {
     return Unmanaged.passUnretained(g).toOpaque()
 }
 
+@_cdecl("glaspen2_swift_draw_view")
+public func runDrawView() -> UnsafeMutableRawPointer? {
+    guard let v = UIAnchors.drawView else { return nil }
+    return Unmanaged.passUnretained(v).toOpaque()
+}
+
 @_cdecl("glaspen2_swift_pressure_destroy")
 public func runPressureDestroy() { PressureMonitorWindow.destroy() }
 @_cdecl("glaspen2_swift_show_cursor")
@@ -276,7 +282,7 @@ public func runRefreshMenuTexts() { MenuTextUpdater.update() }
 public func runHotkeyRecording(_ on: Int32) { HotkeyRecorder.setRecording(on != 0) }
 
 @_cdecl("glaspen2_router_flush_dirty")
-public func runFlushDirty() { OverlayLayerFlush.flushDirty() }
+public func runFlushDirty() { glaspen2_rust_overlay_flush_dirty() }
 
 @_cdecl("glaspen2_router_finish_active_stroke")
 public func runFinishActiveStroke() { EventRouter.finishActiveStroke() }
@@ -378,4 +384,4 @@ public func runNotificationRedraw() {
 }
 
 @_cdecl("glaspen2_swift_overlay_flush")
-public func runOverlayFlush() { OverlayLayerFlush.flush() }
+public func runOverlayFlush() { glaspen2_rust_overlay_flush() }

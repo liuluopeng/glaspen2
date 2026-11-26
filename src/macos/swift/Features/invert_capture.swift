@@ -49,7 +49,7 @@ import ScreenCaptureKit
             glaspen2_set_stroke_invert(0)
             glaspen2_router_set_window_sharing_readonly()
             PageViewOps.rebuildSurface()
-            OverlayLayerFlush.flush()
+            glaspen2_rust_overlay_flush()
         }
     }
 
@@ -167,7 +167,7 @@ import ScreenCaptureKit
             PageViewOps.rebuildSurface()
             glaspen2_router_dirty_include_surface_rect(Double(box[0]), Double(box[1]),
                                                        Double(box[2]), Double(box[3]))
-            OverlayLayerFlush.flushDirty()
+            glaspen2_rust_overlay_flush_dirty()
         } else {
             glaspen2_set_invert_dirty(-1, -1, -1, -1)
         }

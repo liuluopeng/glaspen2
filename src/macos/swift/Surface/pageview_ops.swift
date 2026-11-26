@@ -28,7 +28,7 @@ import AppKit
         SurfaceReplay.drawPageFrame()
         cairo_surface_flush(surface)
         glaspen2_router_dirty_reset()
-        OverlayLayerFlush.flush()
+        glaspen2_rust_overlay_flush()
     }
 
     /// 气泡「写完自动新建一页」: 到点则建页并翻过去, 返回是否翻页。

@@ -578,3 +578,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 总览载荷 Data 包装移入 SettingsGlue.canvasOverviewPayload;
 - 更新 settings_api_glue/render_probe/pages_probe; 删除 canvas_overview.swift; Swift 71→70;
 - 默认 smoke、render probe 总览、tests/build/parity 全绿。
+
+
+## R111 图层面刷新迁 Rust
+
+- `OverlayLayerFlush.flush/flushDirty` 的表面门控/dirty rect/bounds 交集/setNeedsDisplay 迁 Rust;
+- Rust 导出 `glaspen2_rust_overlay_flush(_dirty)`, 14 处调用点直调 C; 删除 overlay_layer_flush.swift; Swift 70→69;
+- 默认 smoke、render probe、tests/build/parity 全绿。

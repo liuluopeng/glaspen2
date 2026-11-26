@@ -18,7 +18,7 @@ import AppKit
                                    PageViewOps.paperScale)
         drawPageFrame()
         cairo_surface_flush(surface)
-        OverlayLayerFlush.flush()
+        glaspen2_rust_overlay_flush()
     }
 
     private static func pageviewFrameDraw(_ surface: OpaquePointer) {

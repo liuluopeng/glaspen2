@@ -31,7 +31,7 @@ import AppKit
                 let created = glaspen2_clear_strokes(Int32(glaspen2_router_screen_w()),
                                              Int32(glaspen2_router_screen_h()))
         PageViewOps.update()
-        OverlayLayerFlush.flush()
+        glaspen2_rust_overlay_flush()
         if created != 0 {
             NotificationPresenter.showPageInfo(screenId: Int64(glaspen2_get_current_screen_id()))
         } else if let text = Optional(MenuRuntime.l10n("canvas.blank_guard")) {

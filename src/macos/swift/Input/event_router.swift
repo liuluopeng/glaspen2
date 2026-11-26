@@ -60,7 +60,7 @@ import AppKit
             EventRouter.restoreSystemCursor()
             glaspen2_router_cursor_hide()
             glaspen2_rust_dirty_include_point(glaspen2_router_cursor_x(), glaspen2_router_cursor_y(), 14.0)
-            OverlayLayerFlush.flushDirty()
+            glaspen2_rust_overlay_flush_dirty()
         }
         // 笔事件: 坐标/压力/raw_w 在本层计算, 再交 pen 分派(原 inner 逻辑)。
         if let ev = NSEvent(cgEvent: event), isPen(ev) {

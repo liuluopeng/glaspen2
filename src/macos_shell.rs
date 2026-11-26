@@ -6062,3 +6062,60 @@ pub extern "C" fn glaspen2_rust_shortcut_defaults_json() -> *const std::os::raw:
 pub extern "C" fn glaspen2_rust_shortcut_actions_json() -> *const std::os::raw::c_char {
     unsafe { cache_chord_json(&CHORD_ACTIONS_CACHE, glaspen2_chord_actions_json) }
 }
+
+// ── R111: 图层面刷新(全量/脏矩形) ──
+
+unsafe extern "C" {
+    fn glaspen2_swift_draw_view() -> *mut c_void;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_overlay_flush() {
+    use objc2_app_kit::NSView;
+    if glaspen2_rust_surface_current().is_null() {
+        return;
+    }
+    let p = unsafe { glaspen2_swift_draw_view() };
+    if p.is_null() {
+        return;
+    }
+    let view = unsafe { &*(p as *const NSView) };
+    glaspen2_rust_dirty_reset();
+    view.setNeedsDisplay(true);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_overlay_flush_dirty() {
+    use objc2_app_kit::NSView;
+    use objc2_foundation::NSRect;
+    if glaspen2_rust_surface_current().is_null() {
+        return;
+    }
+    let p = unsafe { glaspen2_swift_draw_view() };
+    if p.is_null() {
+        return;
+    }
+    let view = unsafe { &*(p as *const NSView) };
+    if glaspen2_rust_dirty_has() == 0 {
+        view.setNeedsDisplay(true);
+        return;
+    }
+    let mut r = [0.0f64; 4];
+    let ok = unsafe { glaspen2_rust_dirty_rect(r.as_mut_ptr()) };
+    let bounds = view.bounds();
+    let x = r[0].max(bounds.origin.x);
+    let y = r[1].max(bounds.origin.y);
+    let max_x = (r[0] + r[2]).min(bounds.origin.x + bounds.size.width);
+    let max_y = (r[1] + r[3]).min(bounds.origin.y + bounds.size.height);
+    let w = max_x - x;
+    let h = max_y - y;
+    glaspen2_rust_dirty_reset();
+    if ok == 0 || w <= 0.0 || h <= 0.0 {
+        view.setNeedsDisplay(true);
+        return;
+    }
+    view.setNeedsDisplayInRect(NSRect::new(
+        objc2_foundation::NSPoint::new(x, y),
+        objc2_foundation::NSSize::new(w, h),
+    ));
+}

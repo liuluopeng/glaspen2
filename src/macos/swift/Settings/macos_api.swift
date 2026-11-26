@@ -24,7 +24,7 @@ import Darwin
             if screenId != Int64(glaspen2_get_current_screen_id()) { return }
             glaspen2_load_strokes_for_screen(screenId)
             PageViewOps.rebuildSurface()
-            OverlayLayerFlush.flush()
+            glaspen2_rust_overlay_flush()
         }
     }
 
@@ -33,7 +33,7 @@ import Darwin
             if glaspen2_router_infinite() == 0 { return }
             glaspen2_load_infinite_strokes()
             PageViewOps.rebuildSurface()
-            OverlayLayerFlush.flush()
+            glaspen2_rust_overlay_flush()
         }
     }
 

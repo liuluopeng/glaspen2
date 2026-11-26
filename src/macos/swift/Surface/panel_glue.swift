@@ -16,10 +16,10 @@ public func panelEnsureSurface(_ viewRaw: UnsafeMutableRawPointer?) {
 }
 
 @_cdecl("flush_to_layer")
-public func panelFlushToLayer() { OverlayLayerFlush.flush() }
+public func panelFlushToLayer() { glaspen2_rust_overlay_flush() }
 
 @_cdecl("flush_dirty_to_layer")
-public func panelFlushDirtyToLayer() { OverlayLayerFlush.flushDirty() }
+public func panelFlushDirtyToLayer() { glaspen2_rust_overlay_flush_dirty() }
 
 @_cdecl("glaspen2_display_size")
 public func panelDisplaySize(_ w: UnsafeMutablePointer<Int32>?, _ h: UnsafeMutablePointer<Int32>?) {

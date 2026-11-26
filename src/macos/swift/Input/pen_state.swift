@@ -164,7 +164,7 @@ public func bridgePenUpState() {
     PenState.clearRaw()
     sw_cursor_show()
     glaspen2_rust_dirty_include_point(glaspen2_router_cursor_x(), glaspen2_router_cursor_y(), 14.0)
-    OverlayLayerFlush.flushDirty()
+    glaspen2_rust_overlay_flush_dirty()
 }
 
 @_cdecl("glaspen2_router_clear_raw_state")
