@@ -65,3 +65,32 @@ import AppKit
         return menu
     }
 }
+
+@objc public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    static var shared: AppDelegate?
+    @objc public func saveWithBg() { glaspen2_menu_save_with_bg() }
+    @objc public func saveOnly() { glaspen2_menu_save_only() }
+    @objc public func clearScreen() { glaspen2_menu_clear_screen() }
+    @objc public func toggleDraw() { glaspen2_menu_toggle_enabled() }
+    @objc public func saveXoj() { glaspen2_rust_menu_save_xoj() }
+    @objc public func toggleLanguage() { glaspen2_rust_menu_toggle_language() }
+    @objc public func showSettingsPanel() { glaspen2_menu_show_settings() }
+    @objc public func toggleCanvasMode() { glaspen2_menu_toggle_canvas_mode() }
+    @objc public func toggleLaunch() { glaspen2_rust_set_launch_at_login(glaspen2_is_launch_at_login() == 0 ? 1 : 0) }
+    @objc public func toggleGlass() { glaspen2_rust_set_glass_enabled(glaspen2_router_glass_enabled() == 0 ? 1 : 0) }
+    @objc public func toggleOutline() { glaspen2_rust_menu_set_outline_enabled(glaspen2_router_outline_enabled() == 0 ? 1 : 0) }
+    @objc public func toggleInfiniteCanvas() { glaspen2_menu_apply_infinite(glaspen2_router_infinite() == 0 ? 1 : 0) }
+    @objc public func exportInfinitePdf() { glaspen2_rust_menu_export_pdf_async() }
+    @objc public func exportInfiniteSvg() { glaspen2_rust_menu_export_svg_async() }
+    @objc(selectColor:)
+    public func selectColor(_ sender: NSMenuItem) { glaspen2_menu_select_color(Int32(sender.tag)) }
+    @objc(selectWidth:)
+    public func selectWidth(_ sender: NSMenuItem) { glaspen2_menu_select_width(Int32(sender.tag)) }
+    public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        glaspen2_menu_shutdown()
+        return .terminateNow
+    }
+    @objc public func quitApp() { glaspen2_rust_menu_quit_app() }
+    public func menuWillOpen(_ menu: NSMenu) { glaspen2_menu_will_open_bridge() }
+    public func menuDidClose(_ menu: NSMenu) { glaspen2_menu_did_close_bridge() }
+}

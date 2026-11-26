@@ -798,3 +798,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R206/207 | 删除 surface_store/pageview_ops; Swift 32→30; 冷启动正常 | 本提交 |
 | 2026-11-26 | Rust-R208/209 | 删除 surface_ops/surface_replay; Swift 30→28; pageframe parity 0 | 本提交 |
 | 2026-11-26 | Rust-R210 | AppDelegate 合并进 menu_handler; 删 app_delegate.swift; Swift 28→27; flip probe 尝试已回退 | 本提交 |
+| 2026-11-26 | Rust-R211 | MenuHandler 删除, AppDelegate 移 main_menu; Swift 27→26; menu probes OK | 本提交 |

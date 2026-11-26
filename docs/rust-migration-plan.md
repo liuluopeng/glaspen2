@@ -1159,3 +1159,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - AppDelegate 类移入 menu_handler.swift, 删除 app_delegate.swift; 行为不变;
 - 同轮 flip_probe 迁 Rust(dispatch 链) 未触发 tick, 已回退; Swift 28→27。
+
+
+## R211 MenuHandler 删除
+
+- toggleLanguage/saveXoj/导出/描边/退出等逻辑迁 Rust; AppDelegate 移入 main_menu 直调 C/Rust;
+- MenuRuntime C 桥改直调 Rust; 删除 menu_handler.swift; Swift 27→26;
+- menu/menu-full probe OK, 冷启动正常。

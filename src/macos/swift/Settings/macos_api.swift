@@ -86,7 +86,7 @@ import Darwin
     public static func hotkey(key: String) {
         settingsRunOnMain {
             if key == "Q" {
-                MenuHandler.quitAppNow()
+                glaspen2_rust_menu_quit_app()
                 return
             }
             let keyCode: UInt16

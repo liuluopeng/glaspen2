@@ -9837,3 +9837,100 @@ pub extern "C" fn glaspen2_rust_surface_save_drawing_only() {
         }
     }
 }
+
+// ── R211: 菜单 handler 逻辑迁 Rust ──
+
+unsafe extern "C" {
+    fn glaspen2_menu_set_lang(value: i32);
+    fn glaspen2_menu_refresh_texts();
+    fn glaspen2_save_xoj();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_toggle_language() {
+    let next = if unsafe { glaspen2_router_lang() } == 1 {
+        0
+    } else {
+        1
+    };
+    unsafe { glaspen2_menu_set_lang(next) };
+    let code = if next == 1 { "en" } else { "zh" };
+    let k = std::ffi::CString::new("language").unwrap();
+    let v = std::ffi::CString::new(code).unwrap();
+    unsafe {
+        glaspen2_save_string_setting(k.as_ptr(), v.as_ptr());
+        glaspen2_menu_refresh_texts();
+        glaspen2_notify_settings_changed();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_save_xoj() {
+    unsafe { glaspen2_save_xoj() };
+    let text = i18n_text_owned("export.notes_saved");
+    if !text.is_null() {
+        unsafe {
+            glaspen2_rust_notification_show(text);
+            libc::free(text as *mut c_void);
+        }
+    }
+}
+
+fn menu_export_async(pdf: bool) {
+    let mut w = 0i32;
+    let mut h = 0i32;
+    unsafe { glaspen2_menu_screen_size(&mut w, &mut h) };
+    std::thread::spawn(move || {
+        let ok = if pdf {
+            unsafe { glaspen2_menu_export_infinite_pdf_paged(w, h) != 0 }
+        } else {
+            unsafe { glaspen2_menu_export_infinite_svg() != 0 }
+        };
+        let (ok_key, fail_key) = if pdf {
+            ("export.infinite_pdf_saved", "export.infinite_pdf_failed")
+        } else {
+            ("export.infinite_svg_saved", "export.infinite_svg_failed")
+        };
+        let text = i18n_text_owned(if ok { ok_key } else { fail_key });
+        if !text.is_null() {
+            unsafe {
+                glaspen2_rust_notification_show(text);
+                libc::free(text as *mut c_void);
+            }
+        }
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_export_pdf_async() {
+    menu_export_async(true);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_export_svg_async() {
+    menu_export_async(false);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_set_outline_enabled(on: i32) {
+    let text = i18n_text_owned(if on != 0 {
+        "hud.outline_on"
+    } else {
+        "hud.outline_off"
+    });
+    if text.is_null() {
+        return;
+    }
+    unsafe {
+        glaspen2_rust_set_outline_enabled(on, text);
+        libc::free(text as *mut c_void);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_quit_app() {
+    glaspen2_rust_quit_app();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_menu_application_should_terminate() {
+    unsafe { glaspen2_menu_shutdown() };
+}

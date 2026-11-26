@@ -60,7 +60,11 @@ import AppKit
     static var y: Double { glaspen2_rust_pm_y() }
 
     static func refreshLabel() {
-        MenuHandler.updatePressureLabel(pressure: pressure, type: evType, x: x, y: y)
+        if let t = evType {
+            t.withCString { glaspen2_rust_update_pressure_label(pressure, $0, x, y) }
+        } else {
+            glaspen2_rust_update_pressure_label(pressure, nil, x, y)
+        }
     }
 }
 

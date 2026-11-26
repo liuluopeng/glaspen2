@@ -125,7 +125,7 @@ import AppKit
             }
             return true
         case 0x0B: // B — glass toggle
-            MenuHandler.setGlassEnabled(enabled: glaspen2_router_glass_enabled() == 0)
+            glaspen2_rust_set_glass_enabled(glaspen2_router_glass_enabled() == 0 ? 1 : 0)
             return true
         case 0x07: // X — canvas mode
             glaspen2_rust_toggle_canvas_mode()

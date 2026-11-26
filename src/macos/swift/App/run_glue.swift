@@ -119,7 +119,7 @@ public func runUpdateStatusIcon() {
 public func runBubbleAutoPageFlip() { _ = bubbleAutoPageFlip() }
 
 @_cdecl("glaspen2_router_apply_pending_color_width")
-public func runApplyPendingColorWidth() { MenuHandler.applyPendingColorWidth() }
+public func runApplyPendingColorWidth() { glaspen2_rust_apply_pending_color_width() }
 
 @_cdecl("glaspen2_router_bubble_pen_back")
 public func runBubblePenBack() { glaspen2_bubble_pen_back() }
@@ -227,7 +227,7 @@ public func runApplyInfiniteAsync(_ on: Int32) {
 }
 @_cdecl("glaspen2_router_quit_async")
 public func runQuitAsync() {
-    DispatchQueue.main.async { MenuHandler.quitAppNow() }
+    DispatchQueue.main.async { glaspen2_rust_menu_quit_app() }
 }
 
 @_cdecl("sw_glass_view")

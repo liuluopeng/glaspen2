@@ -816,3 +816,12 @@ extern void glaspen2_rust_pageview_rebuild(void);
 // R208: 清屏/仅保存涂鸦
 extern void glaspen2_rust_surface_clear_screen(void);
 extern void glaspen2_rust_surface_save_drawing_only(void);
+
+// R211: 菜单 handler 逻辑
+extern void glaspen2_rust_menu_toggle_language(void);
+extern void glaspen2_rust_menu_save_xoj(void);
+extern void glaspen2_rust_menu_export_pdf_async(void);
+extern void glaspen2_rust_menu_export_svg_async(void);
+extern void glaspen2_rust_menu_set_outline_enabled(int on);
+extern void glaspen2_rust_menu_quit_app(void);
+extern void glaspen2_rust_menu_application_should_terminate(void);
