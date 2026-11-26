@@ -830,3 +830,7 @@ extern void glaspen2_rust_menu_application_should_terminate(void);
 extern int glaspen2_router_hotkey_perform(unsigned short key);
 
 // R231: 菜单 C 薄桥全部 Rust
+
+// R244: 隧道定时器
+extern void glaspen2_rust_tunnel_timer_start(void);
+extern void glaspen2_rust_tunnel_timer_cancel(void);

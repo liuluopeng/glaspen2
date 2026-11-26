@@ -1299,3 +1299,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 主窗/绘制视图/玻璃/状态项/菜单/设置窗指针状态迁 Rust AtomicUsize;
 - Sw* C 符号 Rust 实现; Swift UIAnchors 改 computed property; 删除 Swift 存储/C 导出;
 - probes OK, 虚拟笔两笔正常.
+
+
+## R244 隧道动画定时器迁 Rust
+
+- 120Hz 定时器/tick/render/finish 调度由 Rust dispatch_main_after 链实现;
+- Swift 仅保留 render/finish 桥; 删除 DispatchSource timer;
+- flip probe 实测时光隧道 5/6 卡接管多次, 应用存活.

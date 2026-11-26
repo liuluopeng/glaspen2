@@ -11229,3 +11229,38 @@ anchor_accessors!(sw_glass_view, sw_set_glass_view, ANCHOR_GLASS);
 anchor_accessors!(sw_status_item, sw_set_status_item, ANCHOR_STATUS);
 anchor_accessors!(sw_menu, sw_set_menu, ANCHOR_MENU);
 anchor_accessors!(sw_settings_window, sw_set_settings_window, ANCHOR_SETTINGS);
+
+// ── R244: 隧道动画定时器迁 Rust ──
+
+static TUNNEL_TIMER_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+unsafe extern "C" {
+    fn glaspen2_swift_tunnel_render(p: f64);
+    fn glaspen2_swift_tunnel_finish();
+}
+
+extern "C" fn tunnel_timer_tick(_ctx: *mut c_void) {
+    let mut p = 0.0f64;
+    if unsafe { glaspen2_rust_tunnel_tick(&mut p) } == 0 {
+        unsafe { glaspen2_swift_tunnel_finish() };
+        return;
+    }
+    unsafe { glaspen2_swift_tunnel_render(p) };
+    if unsafe { glaspen2_swift_tunnel_active() } != 0 {
+        unsafe { glaspen2_swift_tunnel_flush() };
+    }
+    let generation = TUNNEL_TIMER_GEN.load(std::sync::atomic::Ordering::SeqCst);
+    let ctx = Box::into_raw(Box::new(generation)) as *mut c_void;
+    unsafe { glaspen2_swift_dispatch_main_after(0.008333, ctx, tunnel_timer_tick) }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_tunnel_timer_start() {
+    let generation = TUNNEL_TIMER_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    let ctx = Box::into_raw(Box::new(generation)) as *mut c_void;
+    unsafe { glaspen2_swift_dispatch_main_after(0.0, ctx, tunnel_timer_tick) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_tunnel_timer_cancel() {
+    TUNNEL_TIMER_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}

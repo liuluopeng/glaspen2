@@ -55,22 +55,7 @@ import Darwin
         if let view = UIAnchors.drawView {
             view.displayIfNeeded()
         }
-        let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now(), repeating: .microseconds(8333),
-                       leeway: .microseconds(1000))
-        timer.setEventHandler {
-            var p = 0.0
-            if glaspen2_rust_tunnel_tick(&p) == 0 {
-                TunnelLifecycle.finish()
-                return
-            }
-            TunnelFrameRenderer.render(p: p)
-            if TunnelState.active, let view = UIAnchors.drawView {
-                view.displayIfNeeded()
-            }
-        }
-        TunnelState.timer = timer
-        timer.resume()
+        glaspen2_rust_tunnel_timer_start()
         return true
     }
 }
@@ -835,3 +820,11 @@ public func glaspen2TunnelFrameParitySelftest() -> Int32 {
     print("SWIFT_TUNNEL_FRAME_PARITY diff=\(diff)/\(w*h) landed=\(rustLanded)")
     return diff == 0 ? 0 : 1
 }
+
+
+@_cdecl("glaspen2_swift_tunnel_render")
+public func tunnelRender(_ p: Double) {
+    TunnelFrameRenderer.render(p: p)
+}
+@_cdecl("glaspen2_swift_tunnel_finish")
+public func tunnelFinish() { TunnelLifecycle.finish() }
