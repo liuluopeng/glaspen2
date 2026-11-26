@@ -5631,3 +5631,38 @@ pub extern "C" fn glaspen2_rust_save_drawing(surface: *mut c_void) -> i32 {
     }
     1
 }
+
+// ── R95: 笔迹表面指针/scale 状态 ──
+
+static SURFACE_PTR: std::sync::OnceLock<std::sync::Mutex<Option<usize>>> =
+    std::sync::OnceLock::new();
+static SURFACE_SCALE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1.0f64.to_bits());
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_surface_current() -> *mut c_void {
+    let slot = SURFACE_PTR.get_or_init(|| std::sync::Mutex::new(None));
+    slot.lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .map_or(std::ptr::null_mut(), |p| p as *mut c_void)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_surface_set(surface: *mut c_void) {
+    let slot = SURFACE_PTR.get_or_init(|| std::sync::Mutex::new(None));
+    *slot.lock().unwrap_or_else(|e| e.into_inner()) = if surface.is_null() {
+        None
+    } else {
+        Some(surface as usize)
+    };
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_surface_scale() -> f64 {
+    f64::from_bits(SURFACE_SCALE.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_surface_set_scale(scale: f64) {
+    SURFACE_SCALE.store(scale.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}

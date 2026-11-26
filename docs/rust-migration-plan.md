@@ -462,3 +462,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - `SurfaceOps.saveDrawingOnly` 的 flush/dims/stride/data/save 迁 Rust;
 - 默认 Rust, `GLASPEN2_SWIFT_SURFACE_OPS=1` 回退;
 - render probe clear_action/默认/回退 smoke、tests/build/parity 全绿。
+
+
+## R95 笔迹表面指针/scale 状态迁 Rust
+
+- `SurfaceStore.current/scaleFactor` 从 Swift 静态字段迁 Rust(Mutex 指针 + AtomicU64);
+- Swift 改为计算属性读写 Rust, `ensure`/绘制/重建等调用点不变;
+- 虚拟笔截图正常; smoke/tests/build/parity 全绿。

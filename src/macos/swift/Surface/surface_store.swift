@@ -2,8 +2,14 @@
 import AppKit
 
 @objc public final class SurfaceStore: NSObject {
-    static var current: OpaquePointer?
-    static var scaleFactor: Double = 1.0
+    static var current: OpaquePointer? {
+        get { glaspen2_rust_surface_current().map { OpaquePointer($0) } }
+        set { glaspen2_rust_surface_set(newValue.map(UnsafeMutableRawPointer.init)) }
+    }
+    static var scaleFactor: Double {
+        get { glaspen2_rust_surface_scale() }
+        set { glaspen2_rust_surface_set_scale(newValue) }
+    }
 
     @objc(ensureWithView:)
     public static func ensure(view: NSView) {

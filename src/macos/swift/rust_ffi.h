@@ -579,3 +579,9 @@ extern int glaspen2_rust_scroll_zoom(double dy, int precise, double x, double y,
 extern int glaspen2_rust_clear_screen(void *surface, double scale, double ox, double oy,
                                        double pscale, int is_fit);
 extern int glaspen2_rust_save_drawing(void *surface);
+
+// R95: 笔迹表面指针/scale 状态
+extern void *glaspen2_rust_surface_current(void);
+extern void glaspen2_rust_surface_set(void *surface);
+extern double glaspen2_rust_surface_scale(void);
+extern void glaspen2_rust_surface_set_scale(double scale);
