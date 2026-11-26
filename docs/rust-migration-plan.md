@@ -497,3 +497,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - `HotkeyRecorder` 的 recording/generation/60s 超时判定迁 Rust;
 - Swift 仅保留 DispatchQueue 定时器壳; 默认 Rust, `GLASPEN2_SWIFT_HOTKEY_RECORDER=1` 回退;
 - 默认/回退 smoke、tests/build/parity 全绿。
+
+
+## R100 显示器变更防抖迁 Rust(opt-in)
+
+- `DisplayChangeMonitor` 的 2.5s 防抖入口/到期重读真实几何/apply 判定迁 Rust;
+- Swift 仅保留 DispatchSource 定时器壳与 NSScreen 几何桥;
+- `GLASPEN2_RUST_DISPLAY_MONITOR=1` opt-in, 默认 Swift;
+- 默认/opt-in smoke、tests/build/parity 全绿; 真机多屏/睡眠唤醒待验。

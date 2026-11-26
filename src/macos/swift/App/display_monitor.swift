@@ -5,6 +5,25 @@ import AppKit
     private static var timer: DispatchSourceTimer?
 
     @objc public static func onDisplayChanged() {
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_DISPLAY_MONITOR"] == "1" {
+            guard let screen = NSScreen.main else { return }
+            let f = screen.frame
+            let nw = Int32(f.size.width), nh = Int32(f.size.height)
+            if glaspen2_rust_display_begin(nw, nh) == 0 { return }
+            NSLog("[glaspen2] display reconfig: Rust 防抖 2.5s -> %dx%d", nw, nh)
+            if timer == nil {
+                let t = DispatchSource.makeTimerSource(queue: .main)
+                t.setEventHandler {
+                    if glaspen2_rust_display_finish() != 0 {
+                        NSLog("[glaspen2] display apply by Rust")
+                    }
+                }
+                timer = t
+                t.resume()
+            }
+            timer?.schedule(deadline: .now() + 2.5, repeating: .never, leeway: .milliseconds(200))
+            return
+        }
         guard let screen = NSScreen.main else { return }
         let frame = screen.frame
         let newW = Int(frame.size.width)
@@ -36,4 +55,13 @@ import AppKit
         }
         timer?.schedule(deadline: .now() + 2.5, repeating: .never, leeway: .milliseconds(200))
     }
+}
+
+@_cdecl("glaspen2_swift_display_size")
+public func glaspen2SwiftDisplaySize(_ w: UnsafeMutablePointer<Int32>?,
+                                     _ h: UnsafeMutablePointer<Int32>?) -> Int32 {
+    guard let screen = NSScreen.main, let w, let h else { return 0 }
+    w.pointee = Int32(screen.frame.size.width)
+    h.pointee = Int32(screen.frame.size.height)
+    return 1
 }

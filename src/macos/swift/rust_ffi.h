@@ -598,3 +598,7 @@ extern void glaspen2_rust_camera_pan_cancel(void);
 extern unsigned int glaspen2_rust_recording_set(int on);
 extern int glaspen2_rust_recording_is_active(void);
 extern int glaspen2_rust_recording_timeout(unsigned int gen);
+
+// R100: 显示器变更防抖(opt-in: GLASPEN2_RUST_DISPLAY_MONITOR=1)
+extern int glaspen2_rust_display_begin(int new_w, int new_h);
+extern int glaspen2_rust_display_finish(void);

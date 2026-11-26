@@ -5834,3 +5834,44 @@ pub extern "C" fn glaspen2_rust_recording_timeout(generation: u32) -> i32 {
     RECORDING.store(false, Ordering::Relaxed);
     1
 }
+
+// ── R100: 显示器变更 2.5s 防抖状态/到期重读 ──
+
+static DISPLAY_GEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+unsafe extern "C" {
+    fn glaspen2_display_size(w: *mut i32, h: *mut i32);
+    fn glaspen2_display_apply(w: i32, h: i32);
+    fn glaspen2_swift_display_size(w: *mut i32, h: *mut i32) -> i32;
+}
+
+/// R100: 变更入口; 返回 1 需要调度防抖计时, 0 忽略。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_display_begin(new_w: i32, new_h: i32) -> i32 {
+    if new_w <= 0 || new_h <= 0 {
+        return 0;
+    }
+    let (mut cur_w, mut cur_h) = (0i32, 0i32);
+    unsafe { glaspen2_display_size(&mut cur_w, &mut cur_h) };
+    if new_w == cur_w && new_h == cur_h {
+        return 0;
+    }
+    DISPLAY_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    1
+}
+
+/// R100: 防抖到期; 重读真实几何, 变化才 apply; 返回 1 已应用。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_display_finish() -> i32 {
+    let (mut real_w, mut real_h) = (0i32, 0i32);
+    if unsafe { glaspen2_swift_display_size(&mut real_w, &mut real_h) } == 0 {
+        return 0;
+    }
+    let (mut cur_w, mut cur_h) = (0i32, 0i32);
+    unsafe { glaspen2_display_size(&mut cur_w, &mut cur_h) };
+    if real_w == cur_w && real_h == cur_h {
+        return 0;
+    }
+    unsafe { glaspen2_display_apply(real_w, real_h) };
+    1
+}
