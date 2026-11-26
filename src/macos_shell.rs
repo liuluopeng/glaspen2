@@ -3550,8 +3550,6 @@ unsafe extern "C" {
     fn glaspen2_router_modeler_move(x: f64, y: f64, pressure: f64, timestamp: f64);
     fn glaspen2_router_modeler_end(x: f64, y: f64, pressure: f64, timestamp: f64);
     fn glaspen2_router_modeler_erase_finish();
-    fn glaspen2_router_stroke_begin();
-    fn glaspen2_router_stroke_end();
     fn glaspen2_router_commit_to_strokes();
     fn glaspen2_router_pen_down_state(x: f64, y: f64, raw_width: f64);
     fn glaspen2_router_pen_up_state();
@@ -5727,4 +5725,39 @@ pub extern "C" fn glaspen2_rust_surface_ensure(view: *mut c_void) -> i32 {
         }
     }
     1
+}
+
+// ── R97: 整笔共享 cairo context 的 begin/end ──
+
+unsafe extern "C" {
+    fn glaspen2_router_reset_raw_stroke();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_stroke_begin() {
+    if glaspen2_router_active_ctx_present() != 0 {
+        return;
+    }
+    let surface = glaspen2_rust_surface_current();
+    if surface.is_null() {
+        return;
+    }
+    let cr = unsafe { cairo_create(surface) };
+    if cr.is_null() {
+        return;
+    }
+    let scale = glaspen2_rust_surface_scale();
+    unsafe {
+        cairo_scale(cr, scale, scale);
+        glaspen2_router_reset_raw_stroke();
+    }
+    glaspen2_router_install_active_ctx(cr);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_stroke_end() {
+    let ctx = glaspen2_router_take_active_ctx();
+    if !ctx.is_null() {
+        unsafe { cairo_destroy(ctx) };
+    }
 }

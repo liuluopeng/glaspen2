@@ -89,12 +89,6 @@ public func bridgeEraserMode() -> Int32 { PenState.eraserMode ? 1 : 0 }
 @_cdecl("glaspen2_router_set_eraser_mode")
 public func bridgeSetEraserMode(_ on: Int32) { PenState.eraserMode = on != 0 }
 
-@_cdecl("glaspen2_router_stroke_begin")
-public func bridgeStrokeBegin() { StrokeSurface.begin() }
-
-@_cdecl("glaspen2_router_stroke_end")
-public func bridgeStrokeEnd() { StrokeSurface.end() }
-
 @_cdecl("glaspen2_router_raw_draw_dot")
 public func bridgeRawDrawDot(_ x: Double, _ y: Double, _ w: Double) {
     RawDrawing.drawDot(x: x, y: y, width: w)

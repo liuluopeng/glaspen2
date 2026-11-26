@@ -476,3 +476,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - `SurfaceStore.ensure` 的 view bounds/backing scale、尺寸缓存比较、旧 surface 销毁/缓存失效、创建透明表面迁 Rust;
 - 默认 Rust, `GLASPEN2_SWIFT_SURFACE_ENSURE=1` 回退;
 - 虚拟笔/启动截图正常; 默认/回退 smoke、tests/build/parity 全绿。
+
+
+## R97 整笔共享 cairo context begin/end 迁 Rust
+
+- `StrokeSurface.begin/end` 的 surface/scale/创建 context/install/reset raw/take/destroy 迁 Rust;
+- Rust 直接导出 `glaspen2_router_stroke_begin/end`, 删除 Swift C 包装与 `Surface/stroke_surface.swift`; Swift 84→83;
+- 虚拟笔截图正常; smoke/tests/build/parity 全绿。
