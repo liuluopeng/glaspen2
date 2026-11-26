@@ -1001,3 +1001,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - StartupWindow.create 的 window/content/glass/drawView 创建/组装/anchors/ensure surface/ethereal restore/日志迁 Rust;
 - Swift 仅保留 AccessibilityAlert; 冷启动 window ready 正常;
 - 批次 cargo test/parity + smoke debug 全绿。
+
+
+## R178 菜单 C 薄桥迁 Rust
+
+- 屏幕尺寸/无限画布导出/退出/menuWillOpen/DidClose/settings sync/shortcut reserved/effective/chord/action/camera pan mods 迁 Rust;
+- 删除 MenuRuntime 对应 Swift C 包装; hotkeys probe 14/14, 冷启动正常;
+- 批次 tests/smoke debug/parity 全绿。

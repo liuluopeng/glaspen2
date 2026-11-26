@@ -143,58 +143,14 @@ public func menuSelectColor(_ idx: Int32) { MenuHandler.setColor(index: idx) }
 public func menuSelectWidth(_ idx: Int32) { MenuHandler.setWidth(index: idx) }
 @_cdecl("glaspen2_menu_save_xoj_raw")
 public func menuSaveXoj() { glaspen2_save_xoj() }
-@_cdecl("glaspen2_menu_screen_size")
-public func menuScreenSize(_ w: UnsafeMutablePointer<Int32>?, _ h: UnsafeMutablePointer<Int32>?) {
-    w?.pointee = sw_app_screen_w()
-    h?.pointee = sw_app_screen_h()
-}
-@_cdecl("glaspen2_menu_export_infinite_pdf_paged")
-public func menuExportPDFPaged(_ w: Int32, _ h: Int32) -> Int32 {
-    glaspen2_export_infinite_pdf_paged(w, h)
-}
-@_cdecl("glaspen2_menu_export_infinite_svg")
-public func menuExportSVG() -> Int32 { glaspen2_export_infinite_svg() }
-@_cdecl("glaspen2_menu_shutdown")
-public func menuShutdown() { glaspen2_shutdown() }
-@_cdecl("glaspen2_menu_will_open_bridge")
-public func menuWillOpenBridge() {
-    glaspen2_router_update_status_icon_state()
-    glaspen2_router_update_checkmarks()
-}
-@_cdecl("glaspen2_menu_did_close_bridge")
-public func menuDidCloseBridge() {
-    glaspen2_router_update_status_icon_state()
-    glaspen2_router_event_tap_enable()
-}
 @_cdecl("glaspen2_menu_quit_bridge")
 public func menuQuitBridge() { MenuHandler.quitAppNow() }
-@_cdecl("glaspen2_router_sync_settings_panel")
-public func menuSyncSettingsPanel() { glaspen2_notify_settings_changed() }
 @_cdecl("glaspen2_router_pm_show")
 public func menuPMShow() { PressureMonitorWindow.show() }
 @_cdecl("glaspen2_router_pm_hide")
 public func menuPMHide() { PressureMonitorWindow.hide() }
 @_cdecl("glaspen2_router_pm_refresh")
 public func menuPMRefresh() { PressureMonitorWindow.refreshLabel() }
-@_cdecl("glaspen2_router_shortcut_reserved")
-public func menuShortcutReserved(_ chord: UnsafePointer<CChar>?) -> Int32 {
-    guard let chord else { return 0 }
-    return MenuRuntime.shortcutReserved(String(cString: chord)) ? 1 : 0
-}
-@_cdecl("glaspen2_router_shortcuts_effective_json")
-public func menuShortcutsEffectiveJSON() -> UnsafeMutablePointer<CChar>? {
-    strdup(MenuRuntime.shortcutsEffectiveJSON())
-}
-@_cdecl("glaspen2_router_action_for_chord")
-public func menuActionForChord(_ chord: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
-    guard let chord, let action = MenuRuntime.actionForChord(String(cString: chord)) else { return nil }
-    return strdup(action)
-}
-@_cdecl("glaspen2_router_shortcut_chord")
-public func menuShortcutChord(_ action: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
-    guard let action, let chord = MenuRuntime.shortcutChord(String(cString: action)) else { return nil }
-    return strdup(chord)
-}
 @_cdecl("gl_panel_transparent_apply")
 public func menuPanelTransparent(_ on: Int32) {
     MenuRuntime.applyPanelTransparent(on: on != 0)
@@ -218,5 +174,3 @@ public func menuNotify(_ text: UnsafeMutableRawPointer?) {
     NotificationPresenter.show(text: ns as String)
 }
 
-@_cdecl("glaspen2_router_camera_pan_mods")
-public func cameraPanMods() -> UInt { MenuRuntime.maskFor(action: "canvas_pan_up") }

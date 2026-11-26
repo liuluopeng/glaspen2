@@ -1427,7 +1427,6 @@ unsafe extern "C" {
     fn glaspen2_router_apply_color(idx: i32);
     fn glaspen2_router_save_pen_settings();
     fn glaspen2_router_update_status_icon_state();
-    fn glaspen2_router_sync_settings_panel();
     fn glaspen2_router_set_pending_width(idx: i32);
     fn glaspen2_router_selected_width() -> i32;
     fn glaspen2_router_set_prev_width(idx: i32);
@@ -5573,7 +5572,6 @@ pub extern "C" fn glaspen2_rust_handle_chord(
 // ── R93: 相机鼠标抓手/滚轮缩放分发 ──
 
 unsafe extern "C" {
-    fn glaspen2_router_camera_pan_mods() -> usize;
     fn glaspen2_router_camera_mods() -> usize;
     fn glaspen2_router_camera_queue_pan(dx: f64, dy: f64);
     fn glaspen2_router_camera_flush();
@@ -8487,4 +8485,103 @@ pub extern "C" fn glaspen2_rust_create_main_window() -> i32 {
         h as i32
     );
     1
+}
+
+// ── R178: 菜单 C 薄桥迁 Rust ──
+
+unsafe extern "C" {
+    fn glaspen2_export_infinite_pdf_paged(w: i32, h: i32) -> i32;
+    fn glaspen2_export_infinite_svg() -> i32;
+    fn glaspen2_chord_reserved(chord: *const std::os::raw::c_char) -> i32;
+    fn glaspen2_chord_modifier_mask(chord: *const std::os::raw::c_char) -> u64;
+    fn glaspen2_shortcut_store_chord(
+        action: *const std::os::raw::c_char,
+    ) -> *mut std::os::raw::c_char;
+    fn glaspen2_shortcut_store_is_empty() -> i32;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_screen_size(w: *mut i32, h: *mut i32) {
+    unsafe {
+        if !w.is_null() {
+            *w = sw_app_screen_w();
+        }
+        if !h.is_null() {
+            *h = sw_app_screen_h();
+        }
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_export_infinite_pdf_paged(w: i32, h: i32) -> i32 {
+    unsafe { glaspen2_export_infinite_pdf_paged(w, h) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_export_infinite_svg() -> i32 {
+    unsafe { glaspen2_export_infinite_svg() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_shutdown() {
+    unsafe { glaspen2_shutdown() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_sync_settings_panel() {
+    unsafe { glaspen2_notify_settings_changed() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_shortcut_reserved(chord: *const std::os::raw::c_char) -> i32 {
+    if chord.is_null() {
+        return 0;
+    }
+    unsafe { glaspen2_chord_reserved(chord) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_shortcuts_effective_json() -> *mut std::os::raw::c_char {
+    if unsafe { glaspen2_shortcut_store_is_empty() } != 0 {
+        let _ = glaspen2_shortcut_apply_json(b"{}\0".as_ptr() as *const std::os::raw::c_char);
+    }
+    unsafe { glaspen2_shortcut_store_values_json() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_action_for_chord(
+    chord: *const std::os::raw::c_char,
+) -> *mut std::os::raw::c_char {
+    if chord.is_null() {
+        return std::ptr::null_mut();
+    }
+    unsafe { glaspen2_shortcut_store_action_for_chord(chord) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_shortcut_chord(
+    action: *const std::os::raw::c_char,
+) -> *mut std::os::raw::c_char {
+    if action.is_null() {
+        return std::ptr::null_mut();
+    }
+    unsafe { glaspen2_shortcut_store_chord(action) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_will_open_bridge() {
+    unsafe {
+        glaspen2_router_update_status_icon_state();
+        glaspen2_router_update_checkmarks();
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_did_close_bridge() {
+    unsafe {
+        glaspen2_router_update_status_icon_state();
+        glaspen2_router_event_tap_enable();
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_pan_mods() -> usize {
+    let action = b"canvas_pan_up\0";
+    let chord =
+        unsafe { glaspen2_shortcut_store_chord(action.as_ptr() as *const std::os::raw::c_char) };
+    if chord.is_null() {
+        return 0;
+    }
+    let mask = unsafe { glaspen2_chord_modifier_mask(chord) };
+    unsafe { glaspen2_free_c_string(chord) };
+    mask as usize
 }
