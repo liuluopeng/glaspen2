@@ -715,3 +715,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R112 | 修复隧道整帧 parity 探针自比较(补 FRAME 回退 env); diff=0/120000 重新有效; smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R113 | 清理 SurfaceStore/PageViewOps/SurfaceReplay Swift 回退; 仅保留 Rust 调用; smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R114 | 删除 chord Swift 回退与 keycodeName 桥; Rust 唯一路径; 真机翻页正常; smoke/tests/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R115 | 清理 CanvasCamera Swift 回退, 仅留 ObjC 入口; 文件 150→50 行; smoke/tests/parity 绿 | 本提交 |

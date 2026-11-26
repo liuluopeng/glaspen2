@@ -606,3 +606,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - `handleChordKeyEvent` 只保留 Rust 调用, 删除旧 chord 拼接/状态门控/actionForHotkey 回退;
 - 删除 MenuRuntime.keycodeName(仅旧回退使用);
 - 真机 ⌘⌃` 翻页日志正常; 默认 smoke/tests/parity 全绿。
+
+
+## R115 清理 CanvasCamera Swift 回退
+
+- 删除 pan/apply/zoom/persist/load/home/reset 的 Swift 旧实现与节流状态;
+- 仅保留 ObjC 选择器入口调 Rust, 文件 150→50 行;
+- 默认 smoke、tests/build/parity 全绿。
