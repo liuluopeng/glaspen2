@@ -6,7 +6,7 @@ import AppKit
     @objc public static func clearScreen() {
         if glaspen2_router_infinite() != 0 {
             if let text = Optional(MenuRuntime.l10n("canvas.infinite_kept")) {
-                NotificationPresenter.show(text:text)
+                notificationShowText(text:text)
             }
             return
         }
@@ -16,9 +16,9 @@ import AppKit
             PageViewOps.paperOx, PageViewOps.paperOy, PageViewOps.paperScale,
             PageViewOps.isFit ? 1 : 0)
         if created != 0 {
-            NotificationPresenter.showPageInfo(screenId: Int64(glaspen2_get_current_screen_id()))
+            notificationShowPageInfo(screenId: Int64(glaspen2_get_current_screen_id()))
         } else if let text = Optional(MenuRuntime.l10n("canvas.blank_guard")) {
-            NotificationPresenter.show(text:text)
+            notificationShowText(text:text)
         }
     }
 
@@ -27,7 +27,7 @@ import AppKit
         guard let surface = SurfaceStore.current else { return }
         _ = glaspen2_rust_save_drawing(UnsafeMutableRawPointer(surface))
         if let text = Optional(MenuRuntime.l10n("export.screenshot_saved")) {
-            NotificationPresenter.show(text:text)
+            notificationShowText(text:text)
         }
     }
 

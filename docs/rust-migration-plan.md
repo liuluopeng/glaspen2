@@ -1111,3 +1111,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 面板显示/窗口创建/激活/透明设置由 Rust 编排; FlutterEngine/VC 创建桥保留 Swift;
 - 删除 settings_panel.swift / flutter_host.swift; Swift 41→39;
 - GLASPEN2_OPEN_SETTINGS=1 实测面板窗口创建成功; 冷启动正常。
+
+
+## R199 通知 presenter 迁 Rust
+
+- show/pageInfo/1s 自动清除线程迁 Rust; 调用点改 notificationShowText/PageInfo;
+- 删除 Surface/notification.swift; selftest 桥留 run_glue; Swift 39→38;
+- notification probe OK, 冷启动正常。

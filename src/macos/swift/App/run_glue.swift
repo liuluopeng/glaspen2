@@ -433,7 +433,7 @@ public func runApplyDisplayFrames(_ width: Int32, _ height: Int32) {
 
 @_cdecl("glaspen2_swift_notify_ax_warning")
 public func runNotifyAxWarning() {
-    NotificationPresenter.show(text: MenuRuntime.pair(
+    notificationShowText(text: MenuRuntime.pair(
         "辅助功能权限已失效, 涂鸦/热键暂停 — 请到系统设置重新勾选",
         "Accessibility permission lost — re-enable it in System Settings"))
 }
@@ -610,4 +610,35 @@ public func bootstrapShowSettingsWindow(_ p: UnsafeMutableRawPointer?) {
     NSApp.activate(ignoringOtherApps: true)
     window.center()
     window.makeKeyAndOrderFront(nil)
+}
+
+
+func notificationShowText(text: String) {
+    text.withCString { glaspen2_rust_notification_show($0) }
+}
+func notificationShowPageInfo(screenId: Int64) {
+    glaspen2_rust_notification_show_page_info(screenId)
+}
+
+@_cdecl("glaspen2_macos_swift_notification_selftest")
+public func notificationSelftest() -> Int32 {
+    _ = NSApplication.shared
+    let w = 400.0, h = 200.0
+    let image = NSImage(size: NSSize(width: w, height: h))
+    image.lockFocus()
+    let ok = "TEST NOTIFICATION".withCString {
+        glaspen2_rust_draw_notification($0, w, h) != 0
+    }
+    image.unlockFocus()
+    guard ok, let tiff = image.tiffRepresentation,
+          let rep = NSBitmapImageRep(data: tiff),
+          let data = rep.bitmapData else {
+        print("SWIFT_NOTIFICATION_FAIL rust_draw_or_bitmap")
+        return 1
+    }
+    var nonEmpty = 0
+    let count = rep.bytesPerRow * rep.pixelsHigh
+    for i in stride(from: 0, to: count, by: 4) where data[i] != 0 || data[i + 1] != 0 || data[i + 2] != 0 { nonEmpty += 1 }
+    print("SWIFT_NOTIFICATION_RUST_OK pixels=\(nonEmpty)")
+    return nonEmpty > 0 ? 0 : 1
 }

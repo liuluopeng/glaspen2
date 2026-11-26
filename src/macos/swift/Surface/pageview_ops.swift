@@ -30,9 +30,9 @@ import AppKit
         }, commit: {
             glaspen2_router_replay_strokes()
         })
-        NotificationPresenter.showPageInfo(screenId: Int64(page))
+        notificationShowPageInfo(screenId: Int64(page))
         if let text = Optional(MenuRuntime.l10n("page.auto_created")) {
-            NotificationPresenter.show(text:text)
+            notificationShowText(text:text)
         }
         return true
     }

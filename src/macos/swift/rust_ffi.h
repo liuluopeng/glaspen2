@@ -790,3 +790,7 @@ extern int glaspen2_rust_app_bootstrap_start(void);
 // R198: 设置面板/Flutter VC
 extern void *glaspen2_rust_flutter_vc(void);
 extern void glaspen2_rust_show_settings_panel(void);
+
+// R199: 通知 presenter
+extern void glaspen2_rust_notification_show(const char *text);
+extern void glaspen2_rust_notification_show_page_info(long long screen_id);

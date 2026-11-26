@@ -123,11 +123,11 @@ import Darwin
             settingsRunOnMain {
                 if ok != 0 {
                     copyNewestGifToPasteboard()
-                    NotificationPresenter.show(text:
+                    notificationShowText(text:
                         MenuRuntime.pair("动画 GIF 已保存并复制到剪贴板",
                                                 "Animated GIF saved & copied"))
                 } else if let text = Optional(MenuRuntime.l10n("recording.gif_no_strokes_or_export_failed")) {
-                    NotificationPresenter.show(text:text)
+                    notificationShowText(text:text)
                 }
             }
         }

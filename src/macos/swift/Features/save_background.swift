@@ -35,7 +35,7 @@ import Darwin
             free(drawingCopy)
             DispatchQueue.main.async {
                 if !message.isEmpty {
-                    NotificationPresenter.show(text:MenuRuntime.pair(message, message))
+                    notificationShowText(text:MenuRuntime.pair(message, message))
                 }
                 SurfaceOps.saveDrawingOnly()
             }
@@ -160,7 +160,7 @@ import Darwin
         free(drawingCopy)
         if let message = Optional(MenuRuntime.l10n("export.screenshot_with_bg_saved")) {
             DispatchQueue.main.async {
-                NotificationPresenter.show(text:message)
+                notificationShowText(text:message)
             }
         }
     }

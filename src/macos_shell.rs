@@ -9489,3 +9489,51 @@ pub extern "C" fn glaspen2_rust_show_settings_panel() {
         }
     }
 }
+
+// ── R199: 通知 presenter ──
+
+unsafe extern "C" {
+    fn glaspen2_page_info_text(
+        screen_id: i64,
+        lang: *const std::os::raw::c_char,
+    ) -> *mut std::os::raw::c_char;
+    fn glaspen2_router_lang_code() -> *const std::os::raw::c_char;
+}
+
+fn notification_show_owned(text: &str) {
+    let Ok(c) = std::ffi::CString::new(text) else {
+        return;
+    };
+    let generation = unsafe { glaspen2_rust_notification_set(c.as_ptr()) };
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        unsafe { glaspen2_rust_notification_clear_if(generation) };
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_notification_show(text: *const std::os::raw::c_char) {
+    if text.is_null() {
+        return;
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(text) }
+        .to_string_lossy()
+        .into_owned();
+    notification_show_owned(&s);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_notification_show_page_info(screen_id: i64) {
+    let lang = unsafe { glaspen2_router_lang_code() };
+    let p = unsafe { glaspen2_page_info_text(screen_id, lang) };
+    if p.is_null() {
+        return;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(p) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { glaspen2_free_c_string(p) };
+    if !text.is_empty() {
+        notification_show_owned(&text);
+    }
+}

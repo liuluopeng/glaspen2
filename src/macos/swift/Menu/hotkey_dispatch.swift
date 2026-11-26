@@ -32,7 +32,7 @@ import AppKit
                     PageViewOps.update()
                 }, commit: { glaspen2_router_replay_strokes() })
                 EtherealMode.peek(seconds: 1.0)
-                NotificationPresenter.showPageInfo(screenId: Int64(target))
+                notificationShowPageInfo(screenId: Int64(target))
             } else {
                 notify("page.no_previous")
             }
@@ -51,7 +51,7 @@ import AppKit
                     PageViewOps.update()
                 }, commit: { glaspen2_router_replay_strokes() })
                 EtherealMode.peek(seconds: 1.0)
-                NotificationPresenter.showPageInfo(screenId: Int64(target))
+                notificationShowPageInfo(screenId: Int64(target))
                 return true
             }
             let now = ProcessInfo.processInfo.systemUptime
@@ -70,7 +70,7 @@ import AppKit
                     PageViewOps.update()
                 }, commit: { glaspen2_router_replay_strokes() })
                 EtherealMode.peek(seconds: 1.0)
-                NotificationPresenter.showPageInfo(screenId: Int64(pageId))
+                notificationShowPageInfo(screenId: Int64(pageId))
                 notify("page.created")
             } else if pageId == before {
                 notify("page.already_latest")
@@ -140,7 +140,7 @@ import AppKit
 
     private static func notify(_ key: String) {
         if let text = Optional(MenuRuntime.l10n(key)) {
-            NotificationPresenter.show(text:text)
+            notificationShowText(text:text)
         }
     }
 

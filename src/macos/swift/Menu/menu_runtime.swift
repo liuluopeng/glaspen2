@@ -8,7 +8,7 @@ import AppKit
         return String(cString: p)
     }
     static func pair(_ zh: String, _ en: String) -> String { glaspen2_router_lang() == 0 ? zh : en }
-    static func notify(_ text: String) { NotificationPresenter.show(text: text) }
+    static func notify(_ text: String) { notificationShowText(text: text) }
     static func colorItemTitle(_ idx: Int32) -> NSAttributedString {
         colorItemTitle(index: idx)
     }
@@ -176,6 +176,6 @@ public func menuPeekLensChange() { EtherealMode.peekLensChange() }
 public func menuNotify(_ text: UnsafeMutableRawPointer?) {
     guard let text else { return }
     let ns = Unmanaged<NSString>.fromOpaque(text).takeUnretainedValue()
-    NotificationPresenter.show(text: ns as String)
+    notificationShowText(text: ns as String)
 }
 
