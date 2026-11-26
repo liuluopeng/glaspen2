@@ -46,7 +46,8 @@ import Darwin
         for i in 0..<count {
             let depth = curIdx - i
             if Double(depth) > glaspen2_tunnel_front() { continue }
-            if TunnelState.now() - tb0 > 0.30 { break }
+            // 建卡预算应从预载完成后开始算; 预载慢时按 tb0 会直接 0 卡(空隧道)。
+            if TunnelState.now() - tc1 > 0.30 { break }
             TunnelState.depths[i] = Int32(depth)
             guard let made = TunnelCardFactory.make(isCurrent: depth == 0,
                                                     depth: Int32(depth),

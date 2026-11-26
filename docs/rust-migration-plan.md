@@ -347,3 +347,12 @@ modeler Up error 需真机笔/翻页连击复验。
 - `glaspen2_router_apply_glass_view` 从 Swift 迁 Rust: 通过 `sw_glass_view` C 桥拿 NSVisualEffectView, 设置 alphaValue/isHidden;
 - 删除 MenuRuntime 旧包装; Rust apply_glass / MenuHandler 调用点不变;
 - smoke/tests/parity 全绿。
+
+
+## R81 时光隧道预载后建卡预算修复 + 卡片 opt-in 真机验证
+
+- 发现预载 537ms 时旧代码用 `tb0` 计 0.30s 建卡预算, 预载后直接 0 卡(空隧道);
+- 改为从预载完成 `tc1` 起算建卡预算; 临时 DB 复制 2 页内容后真机翻页:
+  `[flip] 时光隧道接管: 5 张卡片 ... 预载537ms 建卡144ms`;
+- `GLASPEN2_RUST_TUNNEL_CARD=1` 下 5 卡隧道运行无崩溃; 卡片像素探针 16904 已并入 smoke;
+- 默认隧道卡片仍 Swift, 待视觉对比后再切。
