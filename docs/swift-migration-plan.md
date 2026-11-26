@@ -739,3 +739,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R136 | 清理 MenuBuilder 建项回退; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R137 | 清理 MenuHandler 13 个 toggle/action 回退; debug build 通过 | 本提交 |
 | 2026-11-26 | Rust-R138 | 清理涂鸦启停/录制热键回退; debug build 通过 | 本提交 |
+| 2026-11-26 | Rust-R139 | 清理录制热键/快捷键录制/相机平移 Swift 状态; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |

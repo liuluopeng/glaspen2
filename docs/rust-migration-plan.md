@@ -764,3 +764,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - DrawMode.toggleEnabled 删除 Swift 显隐旧实现, 仅调 Rust toggle_draw;
 - RecordingHotkeys.handle 删除 Swift 键码/状态机旧实现, 仅调 Rust;
 - debug build 通过。
+
+
+## R139 录制热键/快捷键录制/相机平移 Swift 状态清理
+
+- RecordingHotkeys 删除未用常量/feed 辅助, 仅调 Rust;
+- HotkeyRecorder 删除 Swift recording/generation 状态, 仅保留 60s 定时器壳;
+- CameraMousePan 删除 Swift pending/scheduled 状态, 仅保留 16ms 定时器壳;
+- 第3片后全量 tests/smoke/parity(不跑 release)全绿。
