@@ -7770,3 +7770,248 @@ pub extern "C" fn glaspen2_rust_minimap_draw(
         )
     }
 }
+
+// ── R169: 反色捕获状态/像素处理/consume/ink source ──
+
+struct InvertState {
+    bufs: [*mut u8; 2],
+    surfs: [*mut c_void; 2],
+    w: i32,
+    h: i32,
+    write: usize,
+    present: usize,
+    sums: [u64; 2],
+    diffs: [u64; 2],
+    dboxes: [[i32; 4]; 2],
+    present_sum: u64,
+    pending: i32,
+}
+
+unsafe impl Send for InvertState {}
+
+static INVERT: std::sync::Mutex<InvertState> = std::sync::Mutex::new(InvertState {
+    bufs: [std::ptr::null_mut(); 2],
+    surfs: [std::ptr::null_mut(); 2],
+    w: 0,
+    h: 0,
+    write: 0,
+    present: 0,
+    sums: [0; 2],
+    diffs: [0; 2],
+    dboxes: [[0; 4]; 2],
+    present_sum: 0,
+    pending: -1,
+});
+
+unsafe extern "C" {
+    fn cairo_image_surface_create_for_data(
+        data: *mut u8,
+        format: i32,
+        w: i32,
+        h: i32,
+        stride: i32,
+    ) -> *mut c_void;
+    fn cairo_surface_mark_dirty(surface: *mut c_void);
+    fn cairo_pattern_create_for_surface(surface: *mut c_void) -> *mut c_void;
+    fn cairo_pattern_set_matrix(pattern: *mut c_void, matrix: *const [f64; 6]);
+    fn glaspen2_set_invert_background(surface: *mut c_void);
+    fn glaspen2_set_invert_dirty(x: i32, y: i32, w: i32, h: i32);
+    fn glaspen2_router_dirty_include_surface_rect(x: f64, y: f64, w: f64, h: f64);
+    fn glaspen2_swift_pageview_rebuild();
+    fn glaspen2_set_stroke_invert(on: i32);
+}
+
+fn invert_teardown_locked(st: &mut InvertState) {
+    unsafe { glaspen2_set_invert_background(std::ptr::null_mut()) };
+    for i in 0..2 {
+        if !st.surfs[i].is_null() {
+            unsafe { cairo_surface_destroy(st.surfs[i]) };
+            st.surfs[i] = std::ptr::null_mut();
+        }
+        if !st.bufs[i].is_null() {
+            unsafe { libc::free(st.bufs[i] as *mut c_void) };
+            st.bufs[i] = std::ptr::null_mut();
+        }
+    }
+    st.w = 0;
+    st.h = 0;
+    st.pending = -1;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_invert_teardown() {
+    let mut st = INVERT.lock().unwrap_or_else(|e| e.into_inner());
+    invert_teardown_locked(&mut st);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_invert_ensure_cache(w: i32, h: i32) -> i32 {
+    if w <= 0 || h <= 0 {
+        return 0;
+    }
+    let mut st = INVERT.lock().unwrap_or_else(|e| e.into_inner());
+    if !st.bufs[0].is_null() && st.w == w && st.h == h {
+        return 1;
+    }
+    invert_teardown_locked(&mut st);
+    let bytes = (w as usize) * (h as usize) * 4;
+    for i in 0..2 {
+        let buf = unsafe { libc::malloc(bytes) } as *mut u8;
+        if buf.is_null() {
+            invert_teardown_locked(&mut st);
+            return 0;
+        }
+        unsafe { std::ptr::write_bytes(buf, 0, bytes) };
+        st.bufs[i] = buf;
+        let surf = unsafe { cairo_image_surface_create_for_data(buf, 0, w, h, w * 4) };
+        if surf.is_null() {
+            invert_teardown_locked(&mut st);
+            return 0;
+        }
+        st.surfs[i] = surf;
+    }
+    st.w = w;
+    st.h = h;
+    st.write = 0;
+    st.present = 0;
+    st.pending = -1;
+    unsafe {
+        glaspen2_set_invert_background(st.surfs[0]);
+        glaspen2_set_stroke_invert(1);
+    }
+    1
+}
+
+/// 返回 1 已处理; 0 尺寸/格式不匹配。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_invert_process(
+    src: *const u8,
+    format: i32,
+    w: i32,
+    h: i32,
+    stride: i32,
+) -> i32 {
+    if src.is_null() || format != 0x4247_5241 || w <= 0 || h <= 0 || stride <= 0 {
+        return 0;
+    }
+    let mut st = INVERT.lock().unwrap_or_else(|e| e.into_inner());
+    if st.w != w || st.h != h || st.bufs[0].is_null() {
+        return 0;
+    }
+    let slot = st.write;
+    let row = (w * 4) as usize;
+    let dst = st.bufs[slot];
+    if dst.is_null() {
+        return 0;
+    }
+    let present_buf = st.bufs[st.present];
+    let mut sum = 0u64;
+    let mut diff = 0u64;
+    let (mut bx0, mut by0, mut bx1, mut by1) = (i32::MAX, i32::MAX, -1i32, -1i32);
+    for y in 0..h as usize {
+        let srow = unsafe { std::slice::from_raw_parts(src.add(y * stride as usize), row) };
+        let drow = unsafe { std::slice::from_raw_parts_mut(dst.add(y * row), row) };
+        let prow = if present_buf.is_null() {
+            None
+        } else {
+            Some(unsafe { std::slice::from_raw_parts(present_buf.add(y * row), row) })
+        };
+        for x in 0..w as usize {
+            let si = x * 4;
+            let v = u32::from_le_bytes([srow[si], srow[si + 1], srow[si + 2], 0xFF]) ^ 0x00FF_FFFF
+                | 0xFF00_0000;
+            let b = v.to_le_bytes();
+            drow[si..si + 4].copy_from_slice(&b);
+            sum = sum.wrapping_add(v as u64);
+            if let Some(p) = prow {
+                let pv = u32::from_le_bytes([p[si], p[si + 1], p[si + 2], p[si + 3]]);
+                if (v ^ pv) & 0x00FF_FFFF != 0 {
+                    diff = diff.wrapping_add(1);
+                    bx0 = bx0.min(x as i32);
+                    bx1 = bx1.max(x as i32);
+                    by0 = by0.min(y as i32);
+                    by1 = by1.max(y as i32);
+                }
+            }
+        }
+    }
+    st.sums[slot] = sum;
+    st.diffs[slot] = diff;
+    st.dboxes[slot] = if bx1 < 0 {
+        [0, 0, 0, 0]
+    } else {
+        let x0 = (bx0 - 2).max(0);
+        let y0 = (by0 - 2).max(0);
+        let x1 = (bx1 + 2).min(w - 1);
+        let y1 = (by1 + 2).min(h - 1);
+        [x0, y0, x1 - x0 + 1, y1 - y0 + 1]
+    };
+    st.pending = slot as i32;
+    1
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_invert_consume() {
+    let mut st = INVERT.lock().unwrap_or_else(|e| e.into_inner());
+    let slot = st.pending;
+    if slot < 0 || slot >= 2 {
+        return;
+    }
+    let slot = slot as usize;
+    if st.surfs[slot].is_null() {
+        return;
+    }
+    st.write = slot ^ 1;
+    let changed = st.sums[slot] != st.present_sum;
+    let diff_min = (st.w as u64) * (st.h as u64) / 500 + 1;
+    let significant = changed && st.diffs[slot] > diff_min;
+    if changed {
+        st.present = slot;
+        st.present_sum = st.sums[slot];
+        st.pending = -1;
+        unsafe {
+            glaspen2_set_invert_background(st.surfs[slot]);
+            cairo_surface_mark_dirty(st.surfs[slot]);
+        }
+    } else {
+        st.pending = -1;
+    }
+    let stroke_active = unsafe { glaspen2_rust_pen_stroke_active() } != 0;
+    if significant && !stroke_active {
+        let b = st.dboxes[slot];
+        unsafe {
+            glaspen2_set_invert_dirty(b[0], b[1], b[2], b[3]);
+        }
+        unsafe { glaspen2_swift_pageview_rebuild() };
+        unsafe {
+            glaspen2_router_dirty_include_surface_rect(
+                b[0] as f64,
+                b[1] as f64,
+                b[2] as f64,
+                b[3] as f64,
+            )
+        };
+        glaspen2_rust_overlay_flush_dirty();
+    } else {
+        unsafe { glaspen2_set_invert_dirty(-1, -1, -1, -1) };
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_invert_ink_source(cr: *mut c_void) -> *mut c_void {
+    let st = INVERT.lock().unwrap_or_else(|e| e.into_inner());
+    if st.w <= 0 || st.surfs[st.present].is_null() {
+        return std::ptr::null_mut();
+    }
+    let pat = unsafe { cairo_pattern_create_for_surface(st.surfs[st.present]) };
+    if pat.is_null() {
+        return pat;
+    }
+    let scale = glaspen2_rust_surface_scale().max(0.0001);
+    let m = [1.0 / scale, 0.0, 0.0, 1.0 / scale, 0.0, 0.0];
+    unsafe {
+        cairo_pattern_set_matrix(pat, &m);
+        cairo_set_source(cr, pat);
+    }
+    pat
+}

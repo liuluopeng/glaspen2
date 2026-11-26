@@ -466,3 +466,6 @@ public func runTunnelSurface() -> UnsafeMutableRawPointer? {
     guard let s = TunnelState.surface else { return nil }
     return UnsafeMutableRawPointer(s)
 }
+
+@_cdecl("glaspen2_swift_pageview_rebuild")
+public func runPageviewRebuild() { PageViewOps.rebuildSurface() }

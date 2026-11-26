@@ -733,3 +733,10 @@ typedef struct {
 } GlaspenEventC;
 
 extern int glaspen2_rust_route_event(const GlaspenEventC *ev);
+
+// R169: 反色捕获状态/像素处理
+extern void glaspen2_rust_invert_teardown(void);
+extern int glaspen2_rust_invert_ensure_cache(int w, int h);
+extern int glaspen2_rust_invert_process(const unsigned char *src, int format, int w, int h, int stride);
+extern void glaspen2_rust_invert_consume(void);
+extern void *glaspen2_rust_invert_ink_source(void *cr);

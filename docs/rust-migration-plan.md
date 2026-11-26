@@ -945,3 +945,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - 布局解析/缩略图缓存/异步渲染(线程+dispatch_main)/strip 绘制全部迁 Rust;
 - overlay_draw 直接调 Rust minimap; 删除 Swift MinimapRenderer 与 overlay minimap stage; Swift 66→65;
 - 批次 tests/smoke/parity(不跑 release)全绿。
+
+
+## R169 反色捕获状态/像素处理迁 Rust
+
+- 双缓冲/表面/尺寸/slot/sums/diffs/dboxes/present/pending 状态迁 Rust;
+- 像素反色/差异统计/脏框/consume/ink source 迁 Rust;
+- Swift 仅保留 SCK stream/filter/config/tick 生命周期与像素 buffer 读取;
+- 批次 tests/smoke/parity(不跑 release)全绿; 真机反色路径待人工验收。
