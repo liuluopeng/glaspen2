@@ -538,3 +538,9 @@ extern void glaspen2_rust_draw_tunnel_card(void *cr, void *surf, int nw, int nh,
                                            double cx, double cy, double w, double h,
                                            double alpha, double zc, int surf_w, int surf_h,
                                            double thick, double pane_a);
+
+// R83: 时光隧道逐帧编排
+extern int glaspen2_rust_tunnel_render(double p, void *surface, void *blur, int cards,
+                                       const int *depths, void *const *card_surf, void *const *mip_surf,
+                                       int back, double travel, double k, double thick, double pane_a,
+                                       int surf_w, int surf_h);

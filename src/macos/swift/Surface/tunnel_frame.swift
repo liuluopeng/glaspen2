@@ -6,6 +6,27 @@ import Darwin
     @objc(renderWithP:)
     public static func render(p: Double) {
         guard let surface = TunnelState.surface, TunnelState.cards > 0 else { return }
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_TUNNEL_FRAME"] == "1" {
+            TunnelState.frames += 1
+            let landed = TunnelState.depths.withUnsafeBufferPointer { depths in
+                TunnelState.cardSurf.withUnsafeBufferPointer { cards in
+                    TunnelState.mipSurf.withUnsafeBufferPointer { mips in
+                        cards.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { cardPtr in
+                            mips.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { mipPtr in
+                                glaspen2_rust_tunnel_render(
+                                    p, UnsafeMutableRawPointer(surface), TunnelState.blur.map(UnsafeMutableRawPointer.init),
+                                    Int32(TunnelState.cards), depths.baseAddress, cardPtr, mipPtr,
+                                    TunnelState.back ? 1 : 0, TunnelState.travel, TunnelState.k,
+                                    TunnelState.thick, TunnelState.paneA,
+                                    Int32(TunnelState.surfW), Int32(TunnelState.surfH))
+                            }
+                        }
+                    }
+                }
+            }
+            _ = landed
+            return
+        }
         TunnelState.frames += 1
         let e = p < 0.5 ? 4.0 * p * p * p : 1.0 - pow(-2.0 * p + 2.0, 3.0) / 2.0
         let cam = e * TunnelState.travel * (TunnelState.back ? 1.0 : -1.0)

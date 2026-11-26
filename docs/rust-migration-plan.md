@@ -364,3 +364,13 @@ modeler Up error 需真机笔/翻页连击复验。
 - 结果 `SWIFT_TUNNEL_CARD_PARITY diff=0/43200`(240x180, RGBA);
 - `TunnelFrameRenderer.drawCard` 默认 Rust, `GLASPEN2_SWIFT_TUNNEL_CARD=1` 回退 Swift;
 - parity 探针并入 smoke; 默认/回退 smoke、全量 tests/build/parity 全绿。
+
+
+## R83 时光隧道逐帧编排迁 Rust(opt-in)
+
+- `TunnelFrameRenderer.render` 的 ease/相机/按深度排序/落定帧检测/focus/模糊缓冲/近层绘制迁 Rust,
+  复用 R79 卡片绘制;
+- `glaspen2_rust_tunnel_render` 接收 TunnelState 的 surface/blur/cards/depths/cardSurf/mipSurf/参数;
+- `GLASPEN2_RUST_TUNNEL_FRAME=1` opt-in, 默认仍 Swift;
+- 真机 2 页内容 DB 翻页: `5 张卡片 ... 预载640ms 建卡151ms`, Rust frame 路径运行无崩溃;
+- 默认/opt-in smoke、全量 tests/build/parity 绿。

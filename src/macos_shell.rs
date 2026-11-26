@@ -4762,3 +4762,190 @@ pub extern "C" fn glaspen2_router_apply_glass_view(alpha: f64, hidden: i32) {
     view.setAlphaValue(alpha);
     view.setHidden(hidden != 0);
 }
+
+// ── R83: 时光隧道逐帧编排(排序/相机/落定帧/模糊缓冲/近层) ──
+
+unsafe extern "C" {
+    fn glaspen2_tunnel_place(
+        zc: f64,
+        k: f64,
+        travel: f64,
+        surf_w: f64,
+        surf_h: f64,
+        out: *mut f64,
+    ) -> i32;
+    fn cairo_create(surface: *mut c_void) -> *mut c_void;
+    fn cairo_get_source(cr: *mut c_void) -> *mut c_void;
+    fn cairo_pattern_set_filter(pattern: *mut c_void, filter: i32);
+    fn glaspen2_swift_tunnel_flush();
+}
+
+fn tunnel_place(zc: f64, k: f64, travel: f64, surf_w: i32, surf_h: i32) -> Option<[f64; 5]> {
+    let mut out = [0.0f64; 5];
+    let ok = unsafe {
+        glaspen2_tunnel_place(
+            zc,
+            k,
+            travel,
+            surf_w as f64,
+            surf_h as f64,
+            out.as_mut_ptr(),
+        )
+    };
+    if ok != 0 { Some(out) } else { None }
+}
+
+fn tunnel_draw_card(
+    cr: *mut c_void,
+    placed: [f64; 5],
+    main: *mut c_void,
+    mip: *mut c_void,
+    thick: f64,
+    pane_a: f64,
+    surf_w: i32,
+    surf_h: i32,
+    zc: f64,
+) {
+    if main.is_null() {
+        return;
+    }
+    let main_w = unsafe { cairo_image_surface_get_width(main) } as f64;
+    let surf = if !mip.is_null() && placed[2] < main_w * 0.70 {
+        mip
+    } else {
+        main
+    };
+    let nw = unsafe { cairo_image_surface_get_width(surf) };
+    let nh = unsafe { cairo_image_surface_get_height(surf) };
+    glaspen2_rust_draw_tunnel_card(
+        cr, surf, nw, nh, placed[0], placed[1], placed[2], placed[3], placed[4], zc, surf_w,
+        surf_h, thick, pane_a,
+    );
+}
+
+/// R83: 逐帧渲染; 返回 1 有落定帧(提前结束), 0 正常帧/失败。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_tunnel_render(
+    p: f64,
+    surface: *mut c_void,
+    blur: *mut c_void,
+    cards: i32,
+    depths: *const i32,
+    card_surf: *const *mut c_void,
+    mip_surf: *const *mut c_void,
+    back: i32,
+    travel: f64,
+    k: f64,
+    thick: f64,
+    pane_a: f64,
+    surf_w: i32,
+    surf_h: i32,
+) -> i32 {
+    if surface.is_null()
+        || cards <= 0
+        || depths.is_null()
+        || card_surf.is_null()
+        || mip_surf.is_null()
+    {
+        return 0;
+    }
+    let cr = unsafe { cairo_create(surface) };
+    if cr.is_null() {
+        return 0;
+    }
+    unsafe {
+        cairo_set_operator(cr, 1);
+        cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
+        cairo_paint(cr);
+        cairo_set_operator(cr, 2);
+    }
+    let p = p.clamp(0.0, 1.0);
+    let e = if p < 0.5 {
+        4.0 * p * p * p
+    } else {
+        1.0 - (-2.0 * p + 2.0).powi(3) / 2.0
+    };
+    let cam = e * travel * if back != 0 { 1.0 } else { -1.0 };
+    let mut slots: Vec<i32> = (0..cards).collect();
+    slots.sort_by(|a, b| {
+        let da = unsafe { *depths.add(*a as usize) };
+        let db = unsafe { *depths.add(*b as usize) };
+        db.cmp(&da)
+    });
+    for slot in &slots {
+        let zc = unsafe { *depths.add(*slot as usize) } as f64 - cam;
+        if zc.abs() < 0.005 {
+            if let Some(placed) = tunnel_place(zc, k, travel, surf_w, surf_h) {
+                let main = unsafe { *card_surf.add(*slot as usize) };
+                let mip = unsafe { *mip_surf.add(*slot as usize) };
+                tunnel_draw_card(cr, placed, main, mip, thick, pane_a, surf_w, surf_h, zc);
+                unsafe { cairo_destroy(cr) };
+                unsafe { glaspen2_swift_tunnel_flush() };
+                return 1;
+            }
+        }
+    }
+    let mut focus_zc = 1e9f64;
+    for slot in &slots {
+        let zc = unsafe { *depths.add(*slot as usize) } as f64 - cam;
+        if let Some(placed) = tunnel_place(zc, k, travel, surf_w, surf_h) {
+            if placed[4] >= 0.30 && zc < focus_zc {
+                focus_zc = zc;
+            }
+        }
+    }
+    if focus_zc > 1e8 {
+        focus_zc = 0.0;
+    }
+    if !blur.is_null() {
+        let bw = unsafe { cairo_image_surface_get_width(blur) };
+        let bh = unsafe { cairo_image_surface_get_height(blur) };
+        let bcr = unsafe { cairo_create(blur) };
+        if !bcr.is_null() {
+            unsafe {
+                cairo_set_operator(bcr, 1);
+                cairo_set_source_rgba(bcr, 0.0, 0.0, 0.0, 0.0);
+                cairo_paint(bcr);
+                cairo_set_operator(bcr, 2);
+                cairo_scale(bcr, bw as f64 / surf_w as f64, bh as f64 / surf_h as f64);
+            }
+            for slot in &slots {
+                let zc = unsafe { *depths.add(*slot as usize) } as f64 - cam;
+                if zc <= focus_zc + 1e-6 {
+                    continue;
+                }
+                if let Some(placed) = tunnel_place(zc, k, travel, surf_w, surf_h) {
+                    let main = unsafe { *card_surf.add(*slot as usize) };
+                    let mip = unsafe { *mip_surf.add(*slot as usize) };
+                    tunnel_draw_card(bcr, placed, main, mip, thick, pane_a, surf_w, surf_h, zc);
+                }
+            }
+            unsafe { cairo_destroy(bcr) };
+            unsafe {
+                cairo_save(cr);
+                cairo_scale(cr, surf_w as f64 / bw as f64, surf_h as f64 / bh as f64);
+                cairo_set_source_surface(cr, blur, 0.0, 0.0);
+                let src = cairo_get_source(cr);
+                if !src.is_null() {
+                    cairo_pattern_set_filter(src, 2);
+                }
+                cairo_paint(cr);
+                cairo_restore(cr);
+            }
+        }
+    }
+    for slot in &slots {
+        let zc = unsafe { *depths.add(*slot as usize) } as f64 - cam;
+        if !blur.is_null() && zc > focus_zc + 1e-6 {
+            continue;
+        }
+        if let Some(placed) = tunnel_place(zc, k, travel, surf_w, surf_h) {
+            let main = unsafe { *card_surf.add(*slot as usize) };
+            let mip = unsafe { *mip_surf.add(*slot as usize) };
+            tunnel_draw_card(cr, placed, main, mip, thick, pane_a, surf_w, surf_h, zc);
+        }
+    }
+    unsafe { cairo_destroy(cr) };
+    unsafe { glaspen2_swift_tunnel_flush() };
+    0
+}

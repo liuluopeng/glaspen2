@@ -238,6 +238,9 @@ public func runGlassView() -> UnsafeMutableRawPointer? {
     return Unmanaged.passUnretained(g).toOpaque()
 }
 
+@_cdecl("glaspen2_swift_tunnel_flush")
+public func runTunnelFlush() { UIAnchors.drawView?.needsDisplay = true }
+
 @_cdecl("glaspen2_router_flush_dirty")
 public func runFlushDirty() { OverlayLayerFlush.flushDirty() }
 
