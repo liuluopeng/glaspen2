@@ -139,7 +139,7 @@ public func menuClearScreen() { SurfaceOps.clearScreen() }
 @_cdecl("glaspen2_menu_toggle_enabled")
 public func menuToggleEnabled() { DrawMode.toggleEnabled() }
 @_cdecl("glaspen2_menu_show_settings")
-public func menuShowSettings() { SettingsPanel.show() }
+public func menuShowSettings() { glaspen2_rust_show_settings_panel() }
 @_cdecl("glaspen2_menu_toggle_canvas_mode")
 public func menuToggleCanvasMode() { DrawMode.toggleCanvasMode() }
 @_cdecl("glaspen2_menu_select_color")

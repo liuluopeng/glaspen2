@@ -131,7 +131,7 @@ import AppKit
             DrawMode.toggleCanvasMode()
             return true
         case 0x02: // D — settings
-            SettingsPanel.show()
+            glaspen2_rust_show_settings_panel()
             return true
         default:
             return false

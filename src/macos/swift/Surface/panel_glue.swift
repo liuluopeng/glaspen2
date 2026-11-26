@@ -1,9 +1,10 @@
 // S7: 面板/显示/反色/窗口共享薄桥(Swift 化, 取代 parts/panel.m)。
 import AppKit
+import FlutterMacOS
 import CoreGraphics
 
 @_cdecl("show_settings_panel")
-public func panelShowSettings() { SettingsPanel.show() }
+public func panelShowSettings() { glaspen2_rust_show_settings_panel() }
 
 @_cdecl("surface_image_cache_invalidate")
 public func panelSurfaceImageCacheInvalidate() { /* R131: Surface 绘制直接读 cairo 数据, 无 Swift 图像缓存 */ }
@@ -35,8 +36,11 @@ public func panelDisplayApply(_ w: Int32, _ h: Int32) {
 @_cdecl("gl_panel_transparent_apply_full")
 public func panelTransparentFull(_ on: Int32) {
     MenuRuntime.applyPanelTransparent(on: on != 0)
-    let vc = FlutterHost.ensureViewController()
-    vc.view.layer?.isOpaque = on == 0
+    let vcPtr = glaspen2_rust_flutter_vc()
+    if let vcPtr {
+            let vc = Unmanaged<FlutterViewController>.fromOpaque(vcPtr).takeUnretainedValue()
+            vc.view.layer?.isOpaque = on == 0
+        }
 }
 
 @_cdecl("glaspen2_router_set_window_sharing_none")

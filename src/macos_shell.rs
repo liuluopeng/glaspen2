@@ -9419,5 +9419,73 @@ pub extern "C" fn glaspen2_rust_app_bootstrap_start() -> i32 {
         glaspen2_rust_accessibility_alert_present();
         glaspen2_swift_startup_run_loop();
     }
+    if std::env::var("GLASPEN2_OPEN_SETTINGS").as_deref() == Ok("1") {
+        glaspen2_rust_show_settings_panel();
+    }
     1
+}
+
+// ── R198: 设置面板宿主/Flutter VC 缓存 ──
+
+static SETTINGS_VC: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+unsafe extern "C" {
+    fn glaspen2_swift_make_flutter_vc() -> *mut c_void;
+    fn glaspen2_swift_activate_settings_existing();
+    fn glaspen2_swift_show_settings_window(window: *mut c_void);
+    fn sw_settings_window() -> *mut c_void;
+    fn sw_set_settings_window(p: *mut c_void);
+    fn glaspen2_router_settings_apply_transparent();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_flutter_vc() -> *mut c_void {
+    let ptr = SETTINGS_VC.load(std::sync::atomic::Ordering::SeqCst);
+    if ptr != 0 {
+        return ptr as *mut c_void;
+    }
+    let p = unsafe { glaspen2_swift_make_flutter_vc() };
+    if !p.is_null() {
+        SETTINGS_VC.store(p as usize, std::sync::atomic::Ordering::SeqCst);
+    }
+    p
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_show_settings_panel() {
+    unsafe {
+        if !sw_settings_window().is_null() {
+            glaspen2_swift_activate_settings_existing();
+            return;
+        }
+    }
+    let vc = glaspen2_rust_flutter_vc();
+    if vc.is_null() {
+        return;
+    }
+    let title = if unsafe { glaspen2_router_lang() } == 0 {
+        "玻璃涂鸦"
+    } else {
+        "glaspen2"
+    };
+    let Ok(title_c) = std::ffi::CString::new(title) else {
+        return;
+    };
+    let window = glaspen2_rust_settings_window_create(title_c.as_ptr(), vc, 900.0, 1200.0);
+    if window.is_null() {
+        return;
+    }
+    unsafe {
+        tracing::info!(
+            "[settings] panel window created vc={:?} window={:?}",
+            vc,
+            window
+        );
+        sw_set_settings_window(window);
+        glaspen2_swift_show_settings_window(window);
+        let key = std::ffi::CString::new("panel_transparent").unwrap();
+        if glaspen2_load_bool_setting(key.as_ptr()) != 0 {
+            glaspen2_router_settings_apply_transparent();
+        }
+    }
 }

@@ -1104,3 +1104,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 单实例守卫/NSApp 准备/状态栏项/菜单 delegate/屏幕尺寸/DB/设置恢复/主窗/信号/显示器观察/tap/告警/运行期钩子全部由 Rust 编排;
 - 删除 App/app_bootstrap.swift; run_glue 直调 Rust;
 - 冷启动 window ready/CGEventTap OK; Swift 42→41。
+
+
+## R198 设置面板宿主/Flutter VC 迁 Rust
+
+- 面板显示/窗口创建/激活/透明设置由 Rust 编排; FlutterEngine/VC 创建桥保留 Swift;
+- 删除 settings_panel.swift / flutter_host.swift; Swift 41→39;
+- GLASPEN2_OPEN_SETTINGS=1 实测面板窗口创建成功; 冷启动正常。

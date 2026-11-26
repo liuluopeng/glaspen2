@@ -576,3 +576,38 @@ public func bootstrapScreenSize(_ w: UnsafeMutablePointer<Int32>?,
     w?.pointee = Int32(frame.size.width)
     h?.pointee = Int32(frame.size.height)
 }
+
+import FlutterMacOS
+
+private var bootstrapFlutterEngine: FlutterEngine?
+private var bootstrapFlutterVC: FlutterViewController?
+
+@_cdecl("glaspen2_swift_make_flutter_vc")
+public func bootstrapMakeFlutterVC() -> UnsafeMutableRawPointer? {
+    if let vc = bootstrapFlutterVC {
+        return Unmanaged.passUnretained(vc).toOpaque()
+    }
+    let engine = FlutterEngine(name: "glaspen_settings", project: nil)
+    engine.run(withEntrypoint: nil)
+    bootstrapFlutterEngine = engine
+    let vc = FlutterViewController(engine: engine, nibName: nil, bundle: nil)
+    bootstrapFlutterVC = vc
+    return Unmanaged.passUnretained(vc).toOpaque()
+}
+
+@_cdecl("glaspen2_swift_activate_settings_existing")
+public func bootstrapActivateSettingsExisting() {
+    NSApp.setActivationPolicy(.regular)
+    NSApp.activate(ignoringOtherApps: true)
+    UIAnchors.settingsWindow?.makeKeyAndOrderFront(nil)
+}
+
+@_cdecl("glaspen2_swift_show_settings_window")
+public func bootstrapShowSettingsWindow(_ p: UnsafeMutableRawPointer?) {
+    guard let p else { return }
+    let window = Unmanaged<NSWindow>.fromOpaque(p).takeUnretainedValue()
+    NSApp.setActivationPolicy(.regular)
+    NSApp.activate(ignoringOtherApps: true)
+    window.center()
+    window.makeKeyAndOrderFront(nil)
+}

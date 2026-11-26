@@ -786,3 +786,7 @@ extern void glaspen2_rust_display_changed(void);
 
 // R197: 应用启动编排
 extern int glaspen2_rust_app_bootstrap_start(void);
+
+// R198: 设置面板/Flutter VC
+extern void *glaspen2_rust_flutter_vc(void);
+extern void glaspen2_rust_show_settings_panel(void);
