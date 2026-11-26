@@ -1602,30 +1602,6 @@ pub extern "C" fn glaspen2_rust_set_glass_enabled(enabled: i32) {
 // ── R38: 覆盖层绘制编排(opt-in: GLASPEN2_RUST_OVERLAY_DRAW=1) ──
 
 unsafe extern "C" {
-    fn glaspen2_swift_overlay_prepare() -> i32;
-    fn glaspen2_swift_overlay_tunnel(ctx: *mut c_void, bx: f64, by: f64, bw: f64, bh: f64) -> i32;
-    fn glaspen2_swift_overlay_grid(
-        ctx: *mut c_void,
-        bx: f64,
-        by: f64,
-        bw: f64,
-        bh: f64,
-        rx: f64,
-        ry: f64,
-        rw: f64,
-        rh: f64,
-    );
-    fn glaspen2_swift_overlay_surface(
-        ctx: *mut c_void,
-        bx: f64,
-        by: f64,
-        bw: f64,
-        bh: f64,
-        rx: f64,
-        ry: f64,
-        rw: f64,
-        rh: f64,
-    );
     fn glaspen2_swift_overlay_minimap(ctx: *mut c_void, bx: f64, by: f64, bw: f64, bh: f64);
     fn glaspen2_swift_overlay_perf(
         t0: u64,
@@ -1683,17 +1659,102 @@ pub extern "C" fn glaspen2_rust_overlay_draw(
         Some(&cg),
         CGRect::new(CGPoint::new(rx, ry), CGSize::new(rw, rh)),
     );
-    if unsafe { glaspen2_swift_overlay_prepare() } == 0 {
-        CGContext::restore_g_state(Some(&cg));
-        return 1;
+    // R162: prepare/tunnel 直接调 Rust。
+    unsafe {
+        let surf = glaspen2_rust_surface_current();
+        if surf.is_null() {
+            CGContext::restore_g_state(Some(&cg));
+            return 1;
+        }
+        cairo_surface_flush(surf);
+        let tun = glaspen2_swift_tunnel_surface();
+        if !tun.is_null() {
+            cairo_surface_flush(tun);
+        }
+        if glaspen2_rust_tunnel_get_active() != 0 && !tun.is_null() {
+            let data = cairo_image_surface_get_data(tun);
+            let w = cairo_image_surface_get_width(tun);
+            let h = cairo_image_surface_get_height(tun);
+            let stride = cairo_image_surface_get_stride(tun);
+            if !data.is_null() {
+                let _ =
+                    glaspen2_rust_draw_tunnel(ctx_ptr, data as *mut c_void, w, h, stride, bw, bh);
+                CGContext::restore_g_state(Some(&cg));
+                return 1;
+            }
+        }
     }
-    if unsafe { glaspen2_swift_overlay_tunnel(ctx_ptr, bx, by, bw, bh) } != 0 {
-        CGContext::restore_g_state(Some(&cg));
-        return 1;
+    // R161: grid 直接调 Rust(门控/pan/zoom/clip 与原 stage 一致)。
+    unsafe {
+        let show_grid = glaspen2_router_show_grid() != 0;
+        let divider = glaspen2_router_grid_divider();
+        let strokes_visible = glaspen2_router_strokes_visible() != 0;
+        let follow = glaspen2_router_grid_follow() != 0;
+        let tun_active = glaspen2_rust_tunnel_get_active() != 0;
+        if (show_grid || divider > 0)
+            && !tun_active
+            && (strokes_visible || !follow)
+            && bw > 0.0
+            && bh > 0.0
+        {
+            let (mut pan_x, mut pan_y, mut zoom) = (0.0f64, 0.0f64, 1.0f64);
+            if glaspen2_router_infinite() != 0 {
+                pan_x = glaspen2_router_pan_x();
+                pan_y = glaspen2_router_pan_y();
+                let z = glaspen2_router_zoom();
+                zoom = if z > 0.05 { z } else { 0.05 };
+            } else {
+                pan_x = -glaspen2_router_page_off_x();
+                pan_y = -glaspen2_router_page_off_y();
+            }
+            let _ = glaspen2_rust_draw_grid(
+                ctx_ptr,
+                bw,
+                bh,
+                pan_x,
+                pan_y,
+                zoom,
+                glaspen2_router_grid_size(),
+                divider,
+                i32::from(show_grid),
+                glaspen2_router_screen_w(),
+                glaspen2_router_screen_h(),
+                rx,
+                bh - (ry + rh),
+                rx + rw,
+                bh - ry,
+            );
+        }
+    }
+    // R161: surface 直接调 Rust。
+    unsafe {
+        let surf = glaspen2_rust_surface_current();
+        if !surf.is_null() && glaspen2_router_strokes_visible() != 0 {
+            let data = cairo_image_surface_get_data(surf);
+            let w = cairo_image_surface_get_width(surf);
+            let h = cairo_image_surface_get_height(surf);
+            let stride = cairo_image_surface_get_stride(surf);
+            if !data.is_null() && w > 0 && h > 0 {
+                let _ = glaspen2_rust_draw_surface_data(
+                    ctx_ptr,
+                    data as *mut c_void,
+                    w,
+                    h,
+                    stride,
+                    rx,
+                    ry,
+                    rw,
+                    rh,
+                    bx,
+                    by,
+                    bw,
+                    bh,
+                    glaspen2_rust_surface_scale(),
+                );
+            }
+        }
     }
     unsafe {
-        glaspen2_swift_overlay_grid(ctx_ptr, bx, by, bw, bh, rx, ry, rw, rh);
-        glaspen2_swift_overlay_surface(ctx_ptr, bx, by, bw, bh, rx, ry, rw, rh);
         glaspen2_swift_overlay_minimap(ctx_ptr, bx, by, bw, bh);
         let _ = glaspen2_rust_notification_draw(bw, bh);
         let _ = glaspen2_rust_draw_cursor(
@@ -1707,6 +1768,14 @@ pub extern "C" fn glaspen2_rust_overlay_draw(
     CGContext::restore_g_state(Some(&cg));
     unsafe { glaspen2_swift_overlay_perf(t0, bx, by, bw, bh, rx, ry, rw, rh) };
     1
+}
+
+unsafe extern "C" {
+    fn glaspen2_swift_tunnel_surface() -> *mut c_void;
+    fn glaspen2_router_show_grid() -> i32;
+    fn glaspen2_router_grid_divider() -> i32;
+    fn glaspen2_router_grid_follow() -> i32;
+    fn glaspen2_router_grid_size() -> f64;
 }
 
 // ── R40: Minimap strip 合成/绘制(缩略图生成仍 Swift) ──

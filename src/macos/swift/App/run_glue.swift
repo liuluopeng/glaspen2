@@ -460,3 +460,9 @@ public func runTunnelSetSurfaces(_ surface: UnsafeMutableRawPointer?, _ blur: Un
     TunnelState.surface = surface.map { OpaquePointer($0) }
     TunnelState.blur = blur.map { OpaquePointer($0) }
 }
+
+@_cdecl("glaspen2_swift_tunnel_surface")
+public func runTunnelSurface() -> UnsafeMutableRawPointer? {
+    guard let s = TunnelState.surface else { return nil }
+    return UnsafeMutableRawPointer(s)
+}

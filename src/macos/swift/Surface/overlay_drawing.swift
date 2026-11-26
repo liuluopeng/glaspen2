@@ -10,44 +10,9 @@ import Darwin
             rect.origin.x, rect.origin.y, rect.size.width, rect.size.height)
     }
 
-    static func prepareContext() -> CGContext? {
-        if let surf = SurfaceStore.current { cairo_surface_flush(surf) }
-        if let tun = TunnelState.surface { cairo_surface_flush(tun) }
-        guard SurfaceStore.current != nil, let gctx = NSGraphicsContext.current else { return nil }
-        return gctx.cgContext
-    }
 
-    @discardableResult
-    static func drawTunnel(_ ctx: CGContext, bounds: NSRect) -> Bool {
-        guard TunnelState.active, let tun = TunnelState.surface else { return false }
-        if let data = cairo_image_surface_get_data(tun) {
-            OverlayTunnelRenderer.drawTunnel(ctx, data: data,
-                width: cairo_image_surface_get_width(tun),
-                height: cairo_image_surface_get_height(tun),
-                stride: cairo_image_surface_get_stride(tun),
-                bounds: bounds)
-        }
-        return true
-    }
 
-    static func drawGrid(_ ctx: CGContext, bounds: NSRect, clipRect: NSRect) {
-        OverlayGridRenderer.drawGrid(ctx, bounds: bounds, clipRect: clipRect)
-    }
 
-    static func drawSurface(_ ctx: CGContext, rect: NSRect, bounds: NSRect) {
-        guard let surf = SurfaceStore.current,
-              let sp = cairo_image_surface_get_data(surf) else { return }
-        let w = cairo_image_surface_get_width(surf)
-        let h = cairo_image_surface_get_height(surf)
-        let stride = cairo_image_surface_get_stride(surf)
-        if w > 0 && h > 0 && glaspen2_router_strokes_visible() != 0 {
-            _ = glaspen2_rust_draw_surface_data(
-                Unmanaged.passUnretained(ctx).toOpaque(), sp, w, h, stride,
-                rect.origin.x, rect.origin.y, rect.size.width, rect.size.height,
-                bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height,
-                SurfaceStore.scaleFactor)
-        }
-    }
 
     static func drawMinimap(_ ctx: CGContext, bounds: NSRect) {
         let infinite = glaspen2_router_infinite() != 0
@@ -71,39 +36,9 @@ import Darwin
 }
 
 // R38: Rust 编排覆盖层绘制时调用这些 stage 桥(各 stage 仍是原 Swift 实现)。
-@_cdecl("glaspen2_swift_overlay_prepare")
-public func glaspen2SwiftOverlayPrepare() -> Int32 {
-    OverlayDrawing.prepareContext() != nil ? 1 : 0
-}
 
-@_cdecl("glaspen2_swift_overlay_tunnel")
-public func glaspen2SwiftOverlayTunnel(_ ctx: UnsafeMutableRawPointer?,
-                                       _ bx: Double, _ by: Double,
-                                       _ bw: Double, _ bh: Double) -> Int32 {
-    guard let ctx else { return 0 }
-    let c = Unmanaged<CGContext>.fromOpaque(ctx).takeUnretainedValue()
-    return OverlayDrawing.drawTunnel(c, bounds: NSRect(x: bx, y: by, width: bw, height: bh)) ? 1 : 0
-}
 
-@_cdecl("glaspen2_swift_overlay_grid")
-public func glaspen2SwiftOverlayGrid(_ ctx: UnsafeMutableRawPointer?,
-                                     _ bx: Double, _ by: Double, _ bw: Double, _ bh: Double,
-                                     _ rx: Double, _ ry: Double, _ rw: Double, _ rh: Double) {
-    guard let ctx else { return }
-    let c = Unmanaged<CGContext>.fromOpaque(ctx).takeUnretainedValue()
-    OverlayDrawing.drawGrid(c, bounds: NSRect(x: bx, y: by, width: bw, height: bh),
-                            clipRect: NSRect(x: rx, y: ry, width: rw, height: rh))
-}
 
-@_cdecl("glaspen2_swift_overlay_surface")
-public func glaspen2SwiftOverlaySurface(_ ctx: UnsafeMutableRawPointer?,
-                                        _ bx: Double, _ by: Double, _ bw: Double, _ bh: Double,
-                                        _ rx: Double, _ ry: Double, _ rw: Double, _ rh: Double) {
-    guard let ctx else { return }
-    let c = Unmanaged<CGContext>.fromOpaque(ctx).takeUnretainedValue()
-    OverlayDrawing.drawSurface(c, rect: NSRect(x: rx, y: ry, width: rw, height: rh),
-                               bounds: NSRect(x: bx, y: by, width: bw, height: bh))
-}
 
 @_cdecl("glaspen2_swift_overlay_minimap")
 public func glaspen2SwiftOverlayMinimap(_ ctx: UnsafeMutableRawPointer?,

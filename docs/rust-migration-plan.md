@@ -898,3 +898,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - glaspen2_rust_overlay_draw 直接调 Rust cursor/notification, 删除两个 Swift stage 桥与 OverlayCursorRenderer;
 - 批次 tests/smoke/parity(不跑 release)全绿。
+
+
+## R161/162 覆盖层 grid/surface/tunnel/prepare stage 直连 Rust
+
+- overlay_draw 直接调 Rust grid/surface/tunnel/prepare(门控/pan/zoom/clip 与原 stage 一致);
+- 删除 4 个 Swift stage 桥与 OverlayDrawing 对应 helper; 仅保留 minimap/perf stage;
+- 批次 tests/smoke/parity(不跑 release)全绿。
