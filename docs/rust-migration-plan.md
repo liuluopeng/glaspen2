@@ -739,3 +739,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - MenuUpdater.updateCheckmarks/updateTexts 删除 env 回退与旧索引写回; 仅调 Rust;
 - debug build 通过(加速批次)。
+
+
+## R135 覆盖层窗口/玻璃/内容组装回退清理
+
+- makeWindow/makeGlassView/makeContentView 去掉 env 开关(保留 Rust 失败时 Swift 原语回退);
+- assembleContent 统一走 Rust; debug build 通过。

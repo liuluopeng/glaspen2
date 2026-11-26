@@ -5,9 +5,8 @@ import AppKit
 @objc public final class OverlayWindowFactory: NSObject {
     @objc(makeWindowWithFrame:)
     public static func makeWindow(frame: NSRect) -> NSWindow {
-        // R21: 默认 Rust/objc2 创建主覆盖窗; GLASPEN2_SWIFT_OVERLAY=1 回退 Swift, 失败自动回退。
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_OVERLAY"] != "1",
-           let p = glaspen2_rust_overlay_window_create(frame.origin.x, frame.origin.y,
+        // R21/R135: 主覆盖窗创建走 Rust/objc2; 失败才回退 Swift 原语。
+        if let p = glaspen2_rust_overlay_window_create(frame.origin.x, frame.origin.y,
                                                        frame.size.width, frame.size.height) {
             return Unmanaged<NSWindow>.fromOpaque(p).takeUnretainedValue()
         }
@@ -29,8 +28,7 @@ import AppKit
     /// alpha/hidden 与原 ObjC 公式一致(enabled ? opacity*2 : 0)。
     @objc(makeGlassViewWithFrame:enabled:opacity:)
     public static func makeGlassView(frame: NSRect, enabled: Bool, opacity: Double) -> NSVisualEffectView {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_OVERLAY"] != "1",
-           let p = glaspen2_rust_overlay_glass_view_create(frame.origin.x, frame.origin.y,
+        if let p = glaspen2_rust_overlay_glass_view_create(frame.origin.x, frame.origin.y,
                                                            frame.size.width, frame.size.height,
                                                            enabled ? 1 : 0, opacity) {
             return Unmanaged<NSVisualEffectView>.fromOpaque(p).takeUnretainedValue()
@@ -66,8 +64,7 @@ import AppKit
     /// S5-4: 内容容器视图(layer-backed), 由 ObjC 继续往里加玻璃/绘制视图。
     @objc(makeContentViewWithFrame:)
     public static func makeContentView(frame: NSRect) -> NSView {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_OVERLAY"] != "1",
-           let p = glaspen2_rust_overlay_content_view_create(frame.origin.x, frame.origin.y,
+        if let p = glaspen2_rust_overlay_content_view_create(frame.origin.x, frame.origin.y,
                                                             frame.size.width, frame.size.height) {
             return Unmanaged<NSView>.fromOpaque(p).takeUnretainedValue()
         }
@@ -80,19 +77,11 @@ import AppKit
     @objc(assembleContent:glass:drawView:inWindow:)
     public static func assembleContent(_ content: NSView, glass: NSView,
                                        drawView: NSView, in window: NSWindow) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_OVERLAY"] != "1" {
-            glaspen2_rust_overlay_assemble_content(
-                Unmanaged.passUnretained(content).toOpaque(),
-                Unmanaged.passUnretained(glass).toOpaque(),
-                Unmanaged.passUnretained(drawView).toOpaque(),
-                Unmanaged.passUnretained(window).toOpaque())
-            return
-        }
-        content.addSubview(glass)
-        drawView.wantsLayer = true
-        if let layer = drawView.layer { configureClearLayer(layer) }
-        content.addSubview(drawView)
-        attachContent(content, to: window)
+        glaspen2_rust_overlay_assemble_content(
+            Unmanaged.passUnretained(content).toOpaque(),
+            Unmanaged.passUnretained(glass).toOpaque(),
+            Unmanaged.passUnretained(drawView).toOpaque(),
+            Unmanaged.passUnretained(window).toOpaque())
     }
 
     /// S5-4: 挂载内容视图并 orderFront(与原 setContentView/orderFront 顺序一致)。
