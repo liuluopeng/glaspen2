@@ -782,3 +782,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R184 | 渲染诊断探针迁 Rust; 删 render_probe.swift; Swift 55→54 | 本提交 |
 | 2026-11-26 | Rust-R185 | 虚拟笔诊断迁 Rust; 删 virtual_pen.swift; 实测 batch/抬笔正常; Swift 54→53 | 本提交 |
 | 2026-11-26 | Rust-R186 | 删除 EventRouter 5 个死包装; debug build 通过 | 本提交 |
+| 2026-11-26 | Rust-R187 | 辅助功能告警迁 Rust; 删 startup_window.swift; Swift 53→52; 事件 tap 尝试已回退 | 本提交 |

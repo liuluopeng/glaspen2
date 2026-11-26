@@ -3507,7 +3507,6 @@ unsafe extern "C" {
     fn glaspen2_load_infinite_strokes();
     fn glaspen2_load_strokes_for_screen(id: i64);
     fn glaspen2_clear_strokes(w: i32, h: i32) -> i32;
-    fn glaspen2_router_event_tap_reinstall();
     fn glaspen2_notify_settings_changed();
 }
 
@@ -9087,4 +9086,102 @@ pub extern "C" fn glaspen2_rust_virtual_pen_maybe_start() {
     }
     tracing::info!("[glaspen2] virtual pen enabled (GLASPEN2_VIRTUAL_PEN): 每 12 秒画 3 笔");
     std::thread::spawn(virtual_pen_run);
+}
+
+// ── R187: 辅助功能权限告警 ──
+
+fn accessibility_alert_text(
+    zh: bool,
+) -> (
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+) {
+    if zh {
+        (
+            "需要辅助功能权限",
+            "请在系统设置 → 隐私与安全性 → 辅助功能中添加并勾选 glaspen2。\n\n添加后请点击下方按钮重启应用。",
+            "打开系统设置并重启",
+            "取消",
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+        )
+    } else {
+        (
+            "Accessibility Permission Required",
+            "Please add and enable glaspen2 in System Settings → Privacy & Security → Accessibility.\n\nAfter enabling, click below to restart.",
+            "Open Settings & Restart",
+            "Cancel",
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+        )
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_accessibility_alert_present() {
+    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2_foundation::NSString;
+    unsafe {
+        if glaspen2_router_event_tap_ok() != 0 {
+            tracing::info!("[glaspen2] CGEventTap created OK");
+            return;
+        }
+        tracing::warn!("[glaspen2] CGEventTap FAILED - need Accessibility permission");
+        let (title, info, ok, cancel, _url) = accessibility_alert_text(glaspen2_router_lang() != 1);
+        let Some(cls) = AnyClass::get(c"NSAlert") else {
+            return;
+        };
+        let alert: *mut AnyObject = objc2::msg_send![cls, new];
+        if alert.is_null() {
+            return;
+        }
+        let t = NSString::from_str(title);
+        let i = NSString::from_str(info);
+        let b1 = NSString::from_str(ok);
+        let b2 = NSString::from_str(cancel);
+        let _: () = objc2::msg_send![alert, setMessageText: &*t];
+        let _: () = objc2::msg_send![alert, setInformativeText: &*i];
+        let _: *mut AnyObject = objc2::msg_send![alert, addButtonWithTitle: &*b1];
+        let _: *mut AnyObject = objc2::msg_send![alert, addButtonWithTitle: &*b2];
+        let resp: i64 = objc2::msg_send![alert, runModal];
+        if resp != 1000 {
+            return;
+        }
+        let Some(url_cls) = AnyClass::get(c"NSURL") else {
+            return;
+        };
+        let url_str = NSString::from_str(
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+        );
+        let url: *mut AnyObject = objc2::msg_send![url_cls, URLWithString: &*url_str];
+        let Some(ws_cls) = AnyClass::get(c"NSWorkspace") else {
+            return;
+        };
+        let ws: *mut AnyObject = objc2::msg_send![ws_cls, sharedWorkspace];
+        if !ws.is_null() && !url.is_null() {
+            let _: bool = objc2::msg_send![ws, openURL: url];
+        }
+        if let Some(bundle_cls) = AnyClass::get(c"NSBundle") {
+            let bundle: *mut AnyObject = objc2::msg_send![bundle_cls, mainBundle];
+            let path: *mut NSString = if bundle.is_null() {
+                std::ptr::null_mut()
+            } else {
+                objc2::msg_send![bundle, bundlePath]
+            };
+            if !ws.is_null() && !path.is_null() {
+                let _: bool = objc2::msg_send![ws, launchApplication: path];
+            }
+        }
+        if let Some(app_cls) = AnyClass::get(c"NSApplication") {
+            let app: *mut AnyObject = objc2::msg_send![app_cls, sharedApplication];
+            if !app.is_null() {
+                let _: () = objc2::msg_send![app, terminate: std::ptr::null_mut::<AnyObject>()];
+            }
+        }
+    }
+}
+
+unsafe extern "C" {
+    fn glaspen2_router_event_tap_reinstall();
 }

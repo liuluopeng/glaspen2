@@ -771,3 +771,6 @@ extern int glaspen2_rust_render_probe(void);
 
 // R185: 虚拟笔诊断
 extern void glaspen2_rust_virtual_pen_maybe_start(void);
+
+// R187: 辅助功能权限告警
+extern void glaspen2_rust_accessibility_alert_present(void);

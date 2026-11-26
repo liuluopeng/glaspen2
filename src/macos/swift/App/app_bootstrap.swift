@@ -57,7 +57,7 @@ import ApplicationServices
 
         glaspen2_rust_restore_settings_a()
         glaspen2_rust_restore_settings_b()
-        _ = StartupWindow.create()
+        _ = glaspen2_rust_create_main_window()
 
         glaspen2_router_install_signals()
         displayObserver = NotificationCenter.default.addObserver(
@@ -66,7 +66,7 @@ import ApplicationServices
             DisplayChangeMonitor.onDisplayChanged()
         }
         glaspen2_router_event_tap_reinstall()
-        AccessibilityAlert.presentIfNeeded()
+        glaspen2_rust_accessibility_alert_present()
         StartupRunLoop.begin()
         return true
     }

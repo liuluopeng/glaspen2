@@ -1049,3 +1049,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - 删除已无调用的 penDown/penUp/penMove/updateEraserState/state 包装;
 - debug build 通过。
+
+
+## R187 辅助功能权限告警迁 Rust
+
+- NSAlert/NSWorkspace 打开设置/重启/退出路径迁 Rust raw msg_send; 删除 startup_window.swift; app_bootstrap 直调 Rust;
+- 冷启动 CGEventTap created OK; Swift 53→52;
+- 注: 同轮事件 tap 创建迁 Rust 尝试因回调未收到事件已完全回退, 保留 Swift tap.
