@@ -764,3 +764,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R163 | 覆盖层 perf stage 直连 Rust; debug build 通过 | 本提交 |
 | 2026-11-26 | Rust-R164 | 状态栏图标应用迁 Rust; statusbar probe OK; 批次验证绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R165 | windowDisplayID 迁 Rust; 删未用窗口 helper; 批次验证绿(不跑 release) | 本提交 |
+| 2026-11-26 | Rust-R166 | pen_state.swift 整文件 C 符号迁 Rust; 删文件; 虚拟笔/DB 正常; 批次验证绿(不跑 release) | 本提交 |

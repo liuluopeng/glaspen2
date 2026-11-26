@@ -15,11 +15,11 @@ import Darwin
         }
         EventRouter.penUp(x: 360.0, y: 300.0, pressure: 0.5, timestamp: t0 + 0.45)
         // proximity 设备枚举: pen=1 不是橡皮, eraser=3 才是。
-        PenState.proxDevice = 1
+        glaspen2_rust_pen_set_prox_device(1)
         let penAsEraser = glaspen2_router_prox_is_eraser()
-        PenState.proxDevice = 3
+        glaspen2_rust_pen_set_prox_device(3)
         let eraserAsEraser = glaspen2_router_prox_is_eraser()
-        PenState.proxDevice = 0
+        glaspen2_rust_pen_set_prox_device(0)
         print("PROX_PROBE pen1_eraser=\(penAsEraser) eraser3_eraser=\(eraserAsEraser)")
         // 等后台 flush_pending 完成。
         Thread.sleep(forTimeInterval: 1.0)

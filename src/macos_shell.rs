@@ -1421,7 +1421,6 @@ fn install_settings_delegate(window: &objc2_app_kit::NSWindow, mtm: MainThreadMa
 // ── R36: 颜色/粗细选择状态机(书写中暂存, 否则应用+刷新) ──
 
 unsafe extern "C" {
-    fn glaspen2_router_stroke_active() -> i32;
     fn glaspen2_router_set_pending_color(idx: i32);
     fn glaspen2_router_selected_color() -> i32;
     fn glaspen2_router_set_prev_color(idx: i32);
@@ -2864,9 +2863,7 @@ pub extern "C" fn glaspen2_router_cursor_flush_due() -> i32 {
     }
 }
 
-unsafe extern "C" {
-    fn sw_stroke_active() -> i32;
-}
+unsafe extern "C" {}
 
 // ── R54: 录制 HUD 语义 -> 本地化文案映射 ──
 
@@ -3293,7 +3290,6 @@ unsafe extern "C" {
     fn glaspen2_router_soft_shadow() -> i32;
     fn glaspen2_router_outline_pad() -> f64;
     fn glaspen2_router_outline_dash() -> f64;
-    fn glaspen2_router_eraser_mode() -> i32;
 }
 
 fn raw_dot_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
@@ -3639,15 +3635,6 @@ pub extern "C" fn glaspen2_rust_toggle_draw(
 
 unsafe extern "C" {
     fn glaspen2_router_bubble_auto_page_flip();
-    fn glaspen2_router_modeler_begin(x: f64, y: f64, pressure: f64, timestamp: f64);
-    fn glaspen2_router_modeler_move(x: f64, y: f64, pressure: f64, timestamp: f64);
-    fn glaspen2_router_modeler_end(x: f64, y: f64, pressure: f64, timestamp: f64);
-    fn glaspen2_router_modeler_erase_finish();
-    fn glaspen2_router_commit_to_strokes();
-    fn glaspen2_router_pen_down_state(x: f64, y: f64, raw_width: f64);
-    fn glaspen2_router_pen_up_state();
-    fn glaspen2_router_set_stroke_active(on: i32);
-    fn glaspen2_router_set_eraser_mode(on: i32);
 }
 
 #[unsafe(no_mangle)]
@@ -4002,11 +3989,7 @@ pub extern "C" fn glaspen2_rust_update_pressure_label(
 
 // ── R64: 收尾在写笔画/恢复系统光标 ──
 
-unsafe extern "C" {
-    fn glaspen2_router_last_raw_x() -> f64;
-    fn glaspen2_router_last_raw_y() -> f64;
-    fn glaspen2_router_clear_raw_state();
-}
+unsafe extern "C" {}
 
 #[repr(C)]
 struct Timespec {
@@ -5822,9 +5805,7 @@ pub extern "C" fn glaspen2_rust_surface_ensure(view: *mut c_void) -> i32 {
 
 // ── R97: 整笔共享 cairo context 的 begin/end ──
 
-unsafe extern "C" {
-    fn glaspen2_router_reset_raw_stroke();
-}
+unsafe extern "C" {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_stroke_begin() {
@@ -7318,4 +7299,203 @@ pub extern "C" fn glaspen2_rust_window_display_id() -> u32 {
         }
     }
     unsafe { CGMainDisplayID() }
+}
+
+// ── R166: pen_state.swift C 符号迁 Rust(笔状态/模型器/raw) ──
+
+unsafe extern "C" {
+    fn glaspen2_router_width_scale() -> f64;
+    fn glaspen2_modeler_begin(
+        r: f64,
+        g: f64,
+        b: f64,
+        x: f64,
+        y: f64,
+        pressure: f64,
+        timestamp: f64,
+        width_scale: f64,
+    );
+    fn glaspen2_modeler_move(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f64);
+    fn glaspen2_modeler_end(x: f64, y: f64, pressure: f64, timestamp: f64, width_scale: f64);
+    fn glaspen2_modeler_erase_finish();
+    fn glaspen2_modeler_commit_to_strokes(r: f64, g: f64, b: f64);
+    fn glaspen2_canvas_input(
+        view_x: f64,
+        view_y: f64,
+        infinite: i32,
+        zoom: f64,
+        pan_x: f64,
+        pan_y: f64,
+        page_off_x: f64,
+        page_off_y: f64,
+        is_fit: i32,
+        paper_ox: f64,
+        paper_oy: f64,
+        paper_scale: f64,
+        out_x: *mut f64,
+        out_y: *mut f64,
+    ) -> i32;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_stroke_active() -> i32 {
+    glaspen2_rust_pen_stroke_active()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_tablet_proximity() -> i32 {
+    glaspen2_rust_pen_tablet_proximity()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_eraser_mode() -> i32 {
+    glaspen2_rust_pen_eraser_mode()
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_reset_raw_stroke() {
+    glaspen2_rust_pen_clear_raw();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_clear_raw_state() {
+    glaspen2_rust_pen_clear_raw();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_stroke_active() -> i32 {
+    glaspen2_rust_pen_stroke_active()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_set_stroke_active(on: i32) {
+    glaspen2_rust_pen_set_stroke_active(on);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_eraser_mode() -> i32 {
+    glaspen2_rust_pen_eraser_mode()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_set_eraser_mode(on: i32) {
+    glaspen2_rust_pen_set_eraser_mode(on);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_raw_draw_dot(x: f64, y: f64, w: f64) {
+    if glaspen2_rust_surface_current().is_null() {
+        return;
+    }
+    glaspen2_rust_raw_draw_dot2(x, y, w, glaspen2_rust_surface_scale());
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_raw_draw_segment(x: f64, y: f64, w: f64) {
+    if glaspen2_rust_surface_current().is_null() {
+        return;
+    }
+    glaspen2_rust_raw_draw_segment2(x, y, w, glaspen2_rust_surface_scale());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_pen_down_state(x: f64, y: f64, raw_width: f64) {
+    glaspen2_rust_pen_set_stroke_active(1);
+    glaspen2_rust_pen_set_raw_last_x(x);
+    glaspen2_rust_pen_set_raw_last_y(y);
+    glaspen2_rust_pen_set_raw_last_w(raw_width);
+    glaspen2_rust_pen_set_raw_has_last(1);
+    glaspen2_rust_pen_set_raw_path_len(0.0);
+    sw_cursor_set(x, y, 1);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_pen_up_state() {
+    glaspen2_rust_pen_clear_raw();
+    sw_cursor_show();
+    glaspen2_rust_dirty_include_point(glaspen2_router_cursor_x(), glaspen2_router_cursor_y(), 14.0);
+    glaspen2_rust_overlay_flush_dirty();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_mark_tablet_proximity() {
+    glaspen2_rust_pen_set_tablet_proximity(1);
+    glaspen2_rust_pen_set_has_seen_proximity(1);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_set_prox_device(device: i32) {
+    glaspen2_rust_pen_set_prox_device(device);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_prox_is_eraser() -> i32 {
+    i32::from(glaspen2_rust_pen_prox_device() == 3)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_last_raw_x() -> f64 {
+    glaspen2_rust_pen_raw_last_x()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_last_raw_y() -> f64 {
+    glaspen2_rust_pen_raw_last_y()
+}
+
+fn canvas_input(x: f64, y: f64) -> (f64, f64) {
+    let mut cx = 0.0f64;
+    let mut cy = 0.0f64;
+    unsafe {
+        glaspen2_canvas_input(
+            x,
+            y,
+            glaspen2_router_infinite(),
+            glaspen2_router_zoom(),
+            glaspen2_router_pan_x(),
+            glaspen2_router_pan_y(),
+            glaspen2_router_page_off_x(),
+            glaspen2_router_page_off_y(),
+            glaspen2_rust_pageview_is_fit(),
+            glaspen2_rust_pageview_paper_ox(),
+            glaspen2_rust_pageview_paper_oy(),
+            glaspen2_rust_pageview_paper_scale(),
+            &mut cx,
+            &mut cy,
+        );
+    }
+    (cx, cy)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_modeler_begin(x: f64, y: f64, pressure: f64, timestamp: f64) {
+    let (cx, cy) = canvas_input(x, y);
+    unsafe {
+        glaspen2_modeler_begin(
+            glaspen2_router_pen_r(),
+            glaspen2_router_pen_g(),
+            glaspen2_router_pen_b(),
+            cx,
+            cy,
+            pressure,
+            timestamp,
+            glaspen2_router_width_scale(),
+        );
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_modeler_move(x: f64, y: f64, pressure: f64, timestamp: f64) {
+    let (cx, cy) = canvas_input(x, y);
+    unsafe {
+        glaspen2_modeler_move(cx, cy, pressure, timestamp, glaspen2_router_width_scale());
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_modeler_end(x: f64, y: f64, pressure: f64, timestamp: f64) {
+    let (cx, cy) = canvas_input(x, y);
+    unsafe {
+        glaspen2_modeler_end(cx, cy, pressure, timestamp, glaspen2_router_width_scale());
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_modeler_erase_finish() {
+    unsafe { glaspen2_modeler_erase_finish() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_commit_to_strokes() {
+    unsafe {
+        glaspen2_modeler_commit_to_strokes(
+            glaspen2_router_pen_r(),
+            glaspen2_router_pen_g(),
+            glaspen2_router_pen_b(),
+        );
+    }
 }

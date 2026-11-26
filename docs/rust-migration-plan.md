@@ -924,3 +924,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - windowDisplayID 迁 Rust(NSWindow.screen deviceDescription → NSScreenNumber, 失败 CGMainDisplayID);
 - save_background 改调 Rust; 删除 Swift 方法与未用 configureClearLayer/attachContent;
 - 批次 tests/smoke/parity(不跑 release)全绿。
+
+
+## R166 pen_state.swift C 符号整文件迁 Rust
+
+- 笔状态/raw/模型器 begin/move/end/commit/erase/penDown-UP state/proximity/prox device 全部 C 符号迁 Rust;
+- Swift 调用点改 Rust 状态 getter; 删除 `Input/pen_state.swift`; Swift 68?→66;
+- 虚拟笔运行、DB 新增 1 笔; 批次 tests/smoke/parity(不跑 release)全绿。

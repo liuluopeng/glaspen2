@@ -15,7 +15,7 @@ public func runCameraMods() -> UInt { MenuRuntime.maskFor(action: "canvas_zoom_i
 @_cdecl("glaspen2_router_state")
 public func runState() -> Int32 {
     glaspen2_router_enabled()
-        | ((PenState.strokeActive ? 1 : 0) << 1)
+        | (((glaspen2_rust_pen_stroke_active() != 0) ? 1 : 0) << 1)
         | ((glaspen2_router_infinite()) << 2)
 }
 
@@ -30,9 +30,9 @@ public func runZoomAt(_ factor: Double, _ x: Double, _ y: Double) {
 @_cdecl("glaspen2_router_cursor_flags")
 public func runCursorFlags() -> Int32 {
     (glaspen2_router_pen_cursor_visible() != 0 ? 1 : 0)
-        | ((PenState.strokeActive ? 1 : 0) << 1)
+        | (((glaspen2_rust_pen_stroke_active() != 0) ? 1 : 0) << 1)
         | ((glaspen2_router_ethereal()) << 2)
-        | ((PenState.hasSeenProximity ? 1 : 0) << 3)
+        | (((glaspen2_rust_pen_has_seen_proximity() != 0) ? 1 : 0) << 3)
 }
 
 @_cdecl("glaspen2_router_auto_hide")
@@ -50,7 +50,7 @@ public func runVirtualPenUserData() -> Int64 { 0x5650_4E31 }
 @_cdecl("glaspen2_router_pen_state")
 public func runPenState() -> Int32 {
     (glaspen2_router_strokes_visible())
-        | ((PenState.strokeActive ? 1 : 0) << 1)
+        | (((glaspen2_rust_pen_stroke_active() != 0) ? 1 : 0) << 1)
         | ((glaspen2_router_pen_cursor_visible() != 0 ? 1 : 0) << 2)
 }
 
@@ -107,7 +107,7 @@ public func runTapMenuBar() {
 @_cdecl("glaspen2_router_update_status_icon_state")
 public func runUpdateStatusIcon() {
     guard let item = UIAnchors.statusItem else { return }
-    StatusIconUpdater.apply(item: item, eraser: PenState.eraserMode,
+    StatusIconUpdater.apply(item: item, eraser: (glaspen2_rust_pen_eraser_mode() != 0),
                             enabled: glaspen2_router_enabled() != 0,
                             ethereal: glaspen2_router_ethereal() != 0,
                             infinite: glaspen2_router_infinite() != 0,
