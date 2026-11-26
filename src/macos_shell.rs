@@ -5761,3 +5761,48 @@ pub extern "C" fn glaspen2_router_stroke_end() {
         unsafe { cairo_destroy(ctx) };
     }
 }
+
+// ── R98: 相机鼠标平移 16ms 合帧状态/flush ──
+
+static PAN_PENDING_DX: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static PAN_PENDING_DY: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static PAN_SCHEDULED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PAN_GENERATION: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_camera_pan_queue(dx: f64, dy: f64) -> i32 {
+    use std::sync::atomic::Ordering;
+    let old_dx = f64::from_bits(PAN_PENDING_DX.load(Ordering::Relaxed));
+    let old_dy = f64::from_bits(PAN_PENDING_DY.load(Ordering::Relaxed));
+    PAN_PENDING_DX.store((old_dx + dx).to_bits(), Ordering::Relaxed);
+    PAN_PENDING_DY.store((old_dy + dy).to_bits(), Ordering::Relaxed);
+    if PAN_SCHEDULED.swap(true, Ordering::Relaxed) {
+        return 0;
+    }
+    PAN_GENERATION.fetch_add(1, Ordering::Relaxed);
+    1
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_camera_pan_flush() {
+    use std::sync::atomic::Ordering;
+    PAN_SCHEDULED.store(false, Ordering::Relaxed);
+    PAN_GENERATION.fetch_add(1, Ordering::Relaxed);
+    let dx = f64::from_bits(PAN_PENDING_DX.swap(0.0f64.to_bits(), Ordering::Relaxed));
+    let dy = f64::from_bits(PAN_PENDING_DY.swap(0.0f64.to_bits(), Ordering::Relaxed));
+    let st = unsafe { glaspen2_router_state() };
+    if (dx != 0.0 || dy != 0.0) && (st & 4) != 0 && (st & 1) != 0 && (st & 2) == 0 {
+        glaspen2_rust_camera_pan(dx, dy);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_camera_pan_cancel() {
+    use std::sync::atomic::Ordering;
+    PAN_PENDING_DX.store(0.0f64.to_bits(), Ordering::Relaxed);
+    PAN_PENDING_DY.store(0.0f64.to_bits(), Ordering::Relaxed);
+    PAN_SCHEDULED.store(false, Ordering::Relaxed);
+    PAN_GENERATION.fetch_add(1, Ordering::Relaxed);
+}

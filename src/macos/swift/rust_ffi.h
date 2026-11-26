@@ -588,3 +588,8 @@ extern void glaspen2_rust_surface_set_scale(double scale);
 
 // R96: 笔迹表面 ensure(默认; GLASPEN2_SWIFT_SURFACE_ENSURE=1 回退)
 extern int glaspen2_rust_surface_ensure(void *view);
+
+// R98: 相机平移合帧(默认; GLASPEN2_SWIFT_CAMERA_PAN=1 回退)
+extern int glaspen2_rust_camera_pan_queue(double dx, double dy);
+extern void glaspen2_rust_camera_pan_flush(void);
+extern void glaspen2_rust_camera_pan_cancel(void);
