@@ -6,8 +6,7 @@ import AppKit
     public static func build(handler: AnyObject, statusItem: NSStatusItem,
                              launchAtLoginOn: Bool, glassOn: Bool) -> NSMenu {
         let menu: NSMenu
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU"] != "1",
-           let p = glaspen2_rust_menu_create() {
+        if let p = glaspen2_rust_menu_create() {
             menu = Unmanaged<NSMenu>.fromOpaque(p).takeRetainedValue()
         } else {
             menu = NSMenu()
@@ -60,13 +59,9 @@ import AppKit
                                            titles: titles,
                                            launchAtLoginOn: launchAtLoginOn,
                                            glassOn: glassOn)
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU"] != "1" {
-            glaspen2_rust_status_item_set_menu(
-                Unmanaged.passUnretained(statusItem).toOpaque(),
-                Unmanaged.passUnretained(menu).toOpaque())
-        } else {
-            statusItem.menu = menu
-        }
+        glaspen2_rust_status_item_set_menu(
+            Unmanaged.passUnretained(statusItem).toOpaque(),
+            Unmanaged.passUnretained(menu).toOpaque())
         return menu
     }
 }

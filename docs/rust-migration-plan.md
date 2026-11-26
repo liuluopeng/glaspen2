@@ -772,3 +772,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - HotkeyRecorder 删除 Swift recording/generation 状态, 仅保留 60s 定时器壳;
 - CameraMousePan 删除 Swift pending/scheduled 状态, 仅保留 16ms 定时器壳;
 - 第3片后全量 tests/smoke/parity(不跑 release)全绿。
+
+
+## R140 设置面板/启动绘制视图/主菜单 env 回退清理
+
+- settings window/draw view/main menu 创建去掉 env 开关, Rust 失败才用 Swift 原语;
+- status item menu 统一 Rust attach; debug build 通过。

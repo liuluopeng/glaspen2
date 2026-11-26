@@ -13,8 +13,7 @@ import AppKit
         let vc = FlutterHost.ensureViewController()
         let title = MenuRuntime.pair("玻璃涂鸦", "glaspen2")
         var window: NSWindow
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_SETTINGS_PANEL"] != "1",
-           let p = title.withCString({ glaspen2_rust_settings_window_create(
+        if let p = title.withCString({ glaspen2_rust_settings_window_create(
                $0, Unmanaged.passUnretained(vc).toOpaque(), 900, 1200) }) {
             window = Unmanaged<NSWindow>.fromOpaque(p).takeRetainedValue()
         } else {
@@ -29,12 +28,6 @@ import AppKit
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         window.center()
-        }
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_SETTINGS_PANEL"] == "1" {
-            if SettingsWindowDelegate.shared == nil {
-                SettingsWindowDelegate.shared = SettingsWindowDelegate()
-            }
-            window.delegate = SettingsWindowDelegate.shared
         }
         window.makeKeyAndOrderFront(nil)
         UIAnchors.settingsWindow = window

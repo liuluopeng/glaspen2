@@ -11,8 +11,7 @@ import AppKit
             enabled: glaspen2_router_glass_enabled() != 0,
             opacity: glaspen2_router_glass_opacity())
         var drawView: NSView
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_DRAW_VIEW"] != "1",
-           let p = glaspen2_rust_draw_view_create(frame.origin.x, frame.origin.y,
+        if let p = glaspen2_rust_draw_view_create(frame.origin.x, frame.origin.y,
                                                   frame.size.width, frame.size.height) {
             drawView = Unmanaged<NSView>.fromOpaque(p).takeRetainedValue()
         } else {
