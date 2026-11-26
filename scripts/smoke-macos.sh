@@ -32,6 +32,7 @@ GLASPEN2_DB_PATH="$PROBE_DB" GLASPEN2_LOG_DIR="$PROBE_LOG" "$BIN" --swift-settin
 GLASPEN2_DB_PATH="$PROBE_DB2" GLASPEN2_LOG_DIR="$PROBE_LOG" "$BIN" --swift-pages-probe
 GLASPEN2_DB_PATH="$PROBE_DB3" GLASPEN2_LOG_DIR="$PROBE_LOG" "$BIN" --swift-render-probe
 GLASPEN2_DB_PATH="$PROBE_DB4" GLASPEN2_LOG_DIR="$PROBE_LOG" "$BIN" --swift-hotkeys-probe
+"$BIN" --swift-macos-api-probe
 
 echo "=== 冷启动冒烟 ==="
 TMPBASE="$TMPDIR"

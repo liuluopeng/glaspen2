@@ -9934,3 +9934,292 @@ pub extern "C" fn glaspen2_rust_menu_quit_app() {
 pub extern "C" fn glaspen2_rust_menu_application_should_terminate() {
     unsafe { glaspen2_menu_shutdown() };
 }
+
+// ── R229: macOS 设置 API C ABI ──
+
+unsafe extern "C" {
+    fn glaspen2_camera_centered_values(
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+        w: f64,
+        h: f64,
+        zoom: f64,
+        px: *mut f64,
+        py: *mut f64,
+        pz: *mut f64,
+    ) -> i32;
+    fn glaspen2_next_screen_id() -> i64;
+    fn glaspen2_prev_screen_id() -> i64;
+    fn glaspen2_export_pdf() -> i32;
+    fn glaspen2_save_animated_gif(fps: i32, resolution: f64, speed: f64, end_mode: i32) -> i32;
+    fn glaspen2_swift_copy_newest_gif();
+}
+
+extern "C" fn macos_api_refresh_page(ctx: *mut c_void) {
+    if ctx.is_null() {
+        return;
+    }
+    let id = unsafe { *Box::from_raw(ctx as *mut i64) };
+    if unsafe { glaspen2_router_infinite() } != 0 {
+        return;
+    }
+    if id != unsafe { glaspen2_get_current_screen_id() } {
+        return;
+    }
+    unsafe {
+        glaspen2_load_strokes_for_screen(id);
+        glaspen2_rust_pageview_rebuild();
+        glaspen2_rust_overlay_flush();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_macos_settings_json() -> *mut std::os::raw::c_char {
+    unsafe {
+        let overrides = glaspen2_menu_snapshot_overrides_json();
+        if overrides.is_null() {
+            return std::ptr::null_mut();
+        }
+        let json = glaspen2_settings_snapshot_json(overrides);
+        libc::free(overrides as *mut c_void);
+        if json.is_null() {
+            return std::ptr::null_mut();
+        }
+        let text = std::ffi::CStr::from_ptr(json)
+            .to_string_lossy()
+            .into_owned();
+        glaspen2_free_c_string(json);
+        let c = std::ffi::CString::new(text).unwrap_or_default();
+        libc::strdup(c.as_ptr())
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_macos_free_c_string(p: *mut std::os::raw::c_char) {
+    unsafe { libc::free(p as *mut c_void) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_macos_free_bytes(p: *mut u8) {
+    unsafe { libc::free(p as *mut c_void) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_macos_set_setting(
+    key: *const std::os::raw::c_char,
+    value: *const std::os::raw::c_char,
+) {
+    if key.is_null() || value.is_null() {
+        return;
+    }
+    let _ = unsafe { glaspen2_rust_apply_setting(key, value) };
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_macos_refresh_page(id: i64) {
+    if id <= 0 {
+        return;
+    }
+    let ctx = Box::into_raw(Box::new(id)) as *mut c_void;
+    unsafe { glaspen2_swift_run_on_main_sync(ctx, macos_api_refresh_page) };
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_macos_refresh_infinite() {
+    if unsafe { glaspen2_router_infinite() } == 0 {
+        return;
+    }
+    unsafe {
+        glaspen2_load_infinite_strokes();
+        glaspen2_rust_pageview_rebuild();
+        glaspen2_rust_overlay_flush();
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_macos_navigate_to_page(id: i64) {
+    if id <= 0 {
+        return;
+    }
+    if unsafe { glaspen2_router_infinite() } != 0 {
+        let empty = std::ffi::CString::new("").unwrap();
+        let _ = glaspen2_rust_apply_infinite(0, empty.as_ptr());
+    }
+    unsafe {
+        glaspen2_load_strokes_for_screen(id);
+        glaspen2_rust_pageview_update();
+        glaspen2_rust_pageview_rebuild();
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_macos_delete_page(id: i64) -> i32 {
+    let was_current = id == unsafe { glaspen2_get_current_screen_id() };
+    let next = if was_current {
+        unsafe { glaspen2_next_screen_id() }
+    } else {
+        0
+    };
+    let prev = if was_current {
+        unsafe { glaspen2_prev_screen_id() }
+    } else {
+        0
+    };
+    let ok = unsafe { glaspen2_delete_screen(id) };
+    if unsafe { glaspen2_router_infinite() } != 0 {
+        glaspen2_rust_pageview_rebuild();
+        return ok;
+    }
+    if ok != 0 && was_current && unsafe { glaspen2_router_stroke_active() } == 0 {
+        let target = if next != 0 { next } else { prev };
+        if target != 0 {
+            unsafe {
+                glaspen2_load_strokes_for_screen(target);
+                glaspen2_rust_pageview_update();
+                glaspen2_rust_pageview_rebuild();
+            }
+        } else {
+            glaspen2_rust_surface_clear_screen();
+        }
+    }
+    ok
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_macos_hotkey(key: *const std::os::raw::c_char) {
+    if key.is_null() {
+        return;
+    }
+    let k = unsafe { std::ffi::CStr::from_ptr(key) }.to_string_lossy();
+    if k == "Q" {
+        glaspen2_rust_menu_quit_app();
+        return;
+    }
+    let code: u16 = match k.as_ref() {
+        "G" => 0x05,
+        "`" => 0x32,
+        "1" => 0x12,
+        "Z" => 0x06,
+        "X" => 0x07,
+        "C" => 0x08,
+        "V" => 0x09,
+        "B" => 0x0B,
+        _ => return,
+    };
+    unsafe { glaspen2_router_perform_hotkey(code) };
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_macos_export_pdf() -> i32 {
+    unsafe { glaspen2_export_pdf() }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_macos_export_gif() -> i32 {
+    let ok = unsafe {
+        glaspen2_save_animated_gif(
+            glaspen2_router_gif_fps(),
+            glaspen2_router_gif_resolution(),
+            glaspen2_router_gif_speed(),
+            glaspen2_router_gif_end_mode(),
+        )
+    };
+    if ok != 0 {
+        unsafe { glaspen2_swift_copy_newest_gif() };
+        notification_show_owned(&format!(
+            "{} 已保存并复制到剪贴板",
+            i18n_text_lossy("export.gif_saved")
+        ));
+    } else {
+        notification_show_owned(&i18n_text_lossy(
+            "recording.gif_no_strokes_or_export_failed",
+        ));
+    }
+    ok
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_macos_canvas_payload(
+    w: i32,
+    h: i32,
+    action: i32,
+    rect_out: *mut f64,
+    len_out: *mut i32,
+) -> *mut u8 {
+    let mut ow = w;
+    let mut oh = h;
+    if ow < 400 {
+        ow = 1024;
+    }
+    if oh < 400 {
+        oh = 768;
+    }
+    unsafe {
+        if action == 1 {
+            glaspen2_rust_camera_home();
+        } else if action == 2 {
+            let (mut bx, mut by, mut bx2, mut by2) = (0.0, 0.0, 0.0, 0.0);
+            if glaspen2_stroke_bbox(&mut bx, &mut by, &mut bx2, &mut by2) != 0 {
+                let (mut px, mut py, mut pz) = (0.0, 0.0, 0.0);
+                if glaspen2_camera_centered_values(
+                    bx,
+                    by,
+                    bx2,
+                    by2,
+                    glaspen2_router_screen_w(),
+                    glaspen2_router_screen_h(),
+                    glaspen2_router_zoom(),
+                    &mut px,
+                    &mut py,
+                    &mut pz,
+                ) != 0
+                {
+                    glaspen2_router_set_camera(px, py, pz, 0);
+                    glaspen2_rust_camera_apply_transform();
+                }
+            }
+        } else if action == 3 {
+            glaspen2_rust_finish_active_stroke();
+            glaspen2_clear_strokes(
+                glaspen2_router_screen_w() as i32,
+                glaspen2_router_screen_h() as i32,
+            );
+            glaspen2_rust_camera_home();
+            ow = 1024;
+            oh = 768;
+        }
+        let (mut rect, mut bounds, mut len) = ([0.0f64; 4], [0.0f64; 4], 0i32);
+        let png = glaspen2_rust_canvas_overview(
+            ow as f64,
+            oh as f64,
+            rect.as_mut_ptr(),
+            bounds.as_mut_ptr(),
+            &mut len,
+        );
+        if png.is_null() || len <= 0 {
+            return std::ptr::null_mut();
+        }
+        let out = libc::malloc(len as usize) as *mut u8;
+        if out.is_null() {
+            glaspen2_free_rust_bytes(png, len);
+            return std::ptr::null_mut();
+        }
+        std::ptr::copy_nonoverlapping(png, out, len as usize);
+        glaspen2_free_rust_bytes(png, len);
+        if !len_out.is_null() {
+            *len_out = len;
+        }
+        if !rect_out.is_null() {
+            for i in 0..4 {
+                *rect_out.add(i) = rect[i];
+            }
+            for i in 0..4 {
+                *rect_out.add(4 + i) = bounds[i];
+            }
+        }
+        out
+    }
+}
+
+fn i18n_text_lossy(key: &str) -> String {
+    let p = i18n_text_owned(key);
+    if p.is_null() {
+        return key.to_string();
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(p) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { libc::free(p as *mut c_void) };
+    s
+}

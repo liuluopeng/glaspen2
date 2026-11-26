@@ -1214,3 +1214,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - save_background 合入 macos_api; overlay_window/tunnel_card 合入 tunnel_animation; event_router 合入 run_glue;
 - 删4文件; Swift 8→4; 所有 parity/menu/statusbar 探针保持 0/OK, 冷启动正常。
+
+
+## R229 macOS 设置 API C ABI 迁 Rust
+
+- settings_json/free/set_setting/refresh/navigate/delete/hotkey/export/pdf/gif/canvas_payload 全部迁 Rust;
+- GIF 粘贴板桥保留 Swift; 删 macos_api.swift; 新增 --swift-macos-api-probe 并入 smoke;
+- probe: len=705 grid=true; 设置面板打开正常; Swift 4→3.

@@ -188,6 +188,31 @@ fn main() {
     }
 
     // S8 自检: 设置应用分派/状态存储/设置快照(隐藏调试入口, 不启动 GUI)。
+    if args.get(1).map(String::as_str) == Some("--swift-macos-api-probe") {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            unsafe extern "C" {
+                fn glaspen2_macos_settings_json() -> *mut std::os::raw::c_char;
+                fn glaspen2_macos_free_c_string(p: *mut std::os::raw::c_char);
+            }
+            let p = glaspen2_macos_settings_json();
+            if p.is_null() {
+                println!("MACOS_API_PROBE json=null");
+                std::process::exit(1);
+            }
+            let text = std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned();
+            glaspen2_macos_free_c_string(p);
+            println!(
+                "MACOS_API_PROBE len={} grid={}",
+                text.len(),
+                text.contains("\"gridSize\"")
+            );
+            std::process::exit(if text.contains("\"gridSize\"") { 0 } else { 1 });
+        }
+        #[cfg(not(target_os = "macos"))]
+        std::process::exit(2);
+    }
+
     if args.get(1).map(String::as_str) == Some("--swift-settings-probe") {
         #[cfg(target_os = "macos")]
         unsafe {
