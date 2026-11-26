@@ -116,7 +116,7 @@ public func runUpdateStatusIcon() {
 }
 
 @_cdecl("glaspen2_router_bubble_auto_page_flip")
-public func runBubbleAutoPageFlip() { _ = PageViewOps.bubbleAutoPageFlip() }
+public func runBubbleAutoPageFlip() { _ = bubbleAutoPageFlip() }
 
 @_cdecl("glaspen2_router_apply_pending_color_width")
 public func runApplyPendingColorWidth() { MenuHandler.applyPendingColorWidth() }
@@ -161,7 +161,7 @@ public func runRecChatChanged(_ on: Int32) {
 }
 
 @_cdecl("glaspen2_router_rebuild_surface")
-public func runRebuildSurface() { PageViewOps.rebuildSurface() }
+public func runRebuildSurface() { glaspen2_rust_pageview_rebuild() }
 
 @_cdecl("glaspen2_router_canvas_apply_transform")
 public func runApplyTransform() { glaspen2_rust_camera_apply_transform() }
@@ -452,7 +452,7 @@ public func runTunnelSurface() -> UnsafeMutableRawPointer? {
 }
 
 @_cdecl("glaspen2_swift_pageview_rebuild")
-public func runPageviewRebuild() { PageViewOps.rebuildSurface() }
+public func runPageviewRebuild() { glaspen2_rust_pageview_rebuild() }
 
 @_cdecl("glaspen2_swift_update_menu_texts")
 public func runUpdateMenuTexts() { MenuTextUpdater.update() }
@@ -469,7 +469,7 @@ public func runDelayedRebuild() {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
         if glaspen2_router_stroke_active() != 0 { return }
         glaspen2_router_ensure_surface()
-        PageViewOps.rebuildSurface()
+        glaspen2_rust_pageview_rebuild()
     }
 }
 
@@ -648,4 +648,34 @@ public func runDispatchMainAfter(_ delay: Double, _ ctx: UnsafeMutableRawPointer
                                  _ cb: (@convention(c) (UnsafeMutableRawPointer?) -> Void)?) {
     guard let cb else { return }
     DispatchQueue.main.asyncAfter(deadline: .now() + delay) { cb(ctx) }
+}
+
+
+func surfaceCurrent() -> OpaquePointer? {
+    glaspen2_rust_surface_current().map { OpaquePointer($0) }
+}
+func surfaceScale() -> Double { glaspen2_rust_surface_scale() }
+func surfaceSet(_ ptr: OpaquePointer?) {
+    glaspen2_rust_surface_set(ptr.map(UnsafeMutableRawPointer.init))
+}
+func surfaceEnsure(view: NSView) {
+    _ = glaspen2_rust_surface_ensure(Unmanaged.passUnretained(view).toOpaque())
+}
+
+
+func bubbleAutoPageFlip() -> Bool {
+    let page = glaspen2_bubble_auto_page_if_due()
+    if page <= 0 { return false }
+    Flipper.swap(goingNext: true, prepare: {
+        glaspen2_load_strokes_for_screen(page)
+        glaspen2_smooth_loaded_strokes()
+        glaspen2_rust_pageview_update()
+    }, commit: {
+        glaspen2_router_replay_strokes()
+    })
+    notificationShowPageInfo(screenId: Int64(page))
+    if let text = Optional(MenuRuntime.l10n("page.auto_created")) {
+        notificationShowText(text: text)
+    }
+    return true
 }

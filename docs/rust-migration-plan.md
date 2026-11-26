@@ -1139,3 +1139,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - startup_run_loop 迁 Rust(perf/virtual pen/flip probe/2s tap 看门狗); 删 startup_run_loop.swift;
 - overlay_drawing 删除, draw 桥直调 Rust; canvas_camera 删除, 调用点直调 Rust C;
 - Swift 34→32; 冷启动正常; 批次验证后提交。
+
+
+## R206/207 SurfaceStore/PageViewOps 壳删除
+
+- surface_store 删除, 调用点改 surfaceCurrent()/surfaceScale()/surfaceEnsure() helper(底层 Rust);
+- pageview_ops 删除, rebuild 迁 Rust, update/getters 直调 Rust C; bubbleAutoPageFlip 移 run_glue;
+- Swift 32→30; 冷启动正常; 批次验证后提交。

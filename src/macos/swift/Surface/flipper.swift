@@ -15,7 +15,7 @@ import AppKit
             return
         }
         if glaspen2_router_flip_effect() == 1 && glaspen2_router_infinite() == 0
-            && SurfaceStore.current != nil
+            && surfaceCurrent() != nil
             && glaspen2_router_stroke_active() == 0 {
             let curBefore: Int64 = fromPage > 0 ? fromPage : glaspen2_get_current_screen_id()
             let tp0 = Date().timeIntervalSinceReferenceDate

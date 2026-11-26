@@ -12,7 +12,7 @@ import Darwin
         TunnelLifecycle.freeCards()
         var preloadMs = 0.0
         let n = glaspen2_rust_tunnel_prepare(Int64(cur), goingNext ? 1 : 0,
-                                              SurfaceStore.scaleFactor, &preloadMs)
+                                              surfaceScale(), &preloadMs)
         if n <= 0 { return false }
         let target = goingNext ? glaspen2_page_neighbor(Int64(cur), 1)
                                : glaspen2_page_neighbor(Int64(cur), -1)

@@ -10,11 +10,11 @@ import AppKit
             }
             return
         }
-        guard let surface = SurfaceStore.current else { return }
+        guard let surface = surfaceCurrent() else { return }
         let created = glaspen2_rust_clear_screen(
-            UnsafeMutableRawPointer(surface), SurfaceStore.scaleFactor,
-            PageViewOps.paperOx, PageViewOps.paperOy, PageViewOps.paperScale,
-            PageViewOps.isFit ? 1 : 0)
+            UnsafeMutableRawPointer(surface), surfaceScale(),
+            glaspen2_rust_pageview_paper_ox(), glaspen2_rust_pageview_paper_oy(), glaspen2_rust_pageview_paper_scale(),
+            (glaspen2_rust_pageview_is_fit() != 0) ? 1 : 0)
         if created != 0 {
             notificationShowPageInfo(screenId: Int64(glaspen2_get_current_screen_id()))
         } else if let text = Optional(MenuRuntime.l10n("canvas.blank_guard")) {
@@ -24,7 +24,7 @@ import AppKit
 
     /// 保存纯涂鸦 PNG(不含背景)。
     @objc public static func saveDrawingOnly() {
-        guard let surface = SurfaceStore.current else { return }
+        guard let surface = surfaceCurrent() else { return }
         _ = glaspen2_rust_save_drawing(UnsafeMutableRawPointer(surface))
         if let text = Optional(MenuRuntime.l10n("export.screenshot_saved")) {
             notificationShowText(text:text)
@@ -34,12 +34,12 @@ import AppKit
     /// 与 ObjC cairo_create_scaled 等价: 创建 context 并应用 scale + 页视图变换。
     private static func makeScaledContext(_ surface: OpaquePointer) -> OpaquePointer? {
         guard let cr = cairo_create(surface) else { return nil }
-        let scale = SurfaceStore.scaleFactor
+        let scale = surfaceScale()
         cairo_scale(cr, scale, scale)
-        if PageViewOps.isFit {
-            cairo_translate(cr, PageViewOps.paperOx * scale,
-                            PageViewOps.paperOy * scale)
-            let ps = PageViewOps.paperScale
+        if (glaspen2_rust_pageview_is_fit() != 0) {
+            cairo_translate(cr, glaspen2_rust_pageview_paper_ox() * scale,
+                            glaspen2_rust_pageview_paper_oy() * scale)
+            let ps = glaspen2_rust_pageview_paper_scale()
             cairo_scale(cr, ps, ps)
         }
         return cr

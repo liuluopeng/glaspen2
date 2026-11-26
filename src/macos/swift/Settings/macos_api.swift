@@ -23,7 +23,7 @@ import Darwin
             if glaspen2_router_infinite() != 0 { return }
             if screenId != Int64(glaspen2_get_current_screen_id()) { return }
             glaspen2_load_strokes_for_screen(screenId)
-            PageViewOps.rebuildSurface()
+            glaspen2_rust_pageview_rebuild()
             glaspen2_rust_overlay_flush()
         }
     }
@@ -32,7 +32,7 @@ import Darwin
         settingsRunOnMain {
             if glaspen2_router_infinite() == 0 { return }
             glaspen2_load_infinite_strokes()
-            PageViewOps.rebuildSurface()
+            glaspen2_rust_pageview_rebuild()
             glaspen2_rust_overlay_flush()
         }
     }
@@ -47,9 +47,9 @@ import Darwin
         }
         DispatchQueue.global(qos: .userInitiated).sync {
             glaspen2_load_strokes_for_screen(screenId)
-            PageViewOps.update()
+            glaspen2_rust_pageview_update()
             settingsRunOnMain {
-                PageViewOps.rebuildSurface()
+                glaspen2_rust_pageview_rebuild()
             }
         }
     }
@@ -64,15 +64,15 @@ import Darwin
             ok = glaspen2_delete_screen(screenId)
             settingsRunOnMain {
                 if glaspen2_router_infinite() != 0 {
-                    PageViewOps.rebuildSurface()
+                    glaspen2_rust_pageview_rebuild()
                     return
                 }
                 if ok != 0 && wasCurrent {
                     let target = nextId != 0 ? nextId : prevId
                     if target != 0 {
                         glaspen2_load_strokes_for_screen(target)
-                        PageViewOps.update()
-                        PageViewOps.rebuildSurface()
+                        glaspen2_rust_pageview_update()
+                        glaspen2_rust_pageview_rebuild()
                     } else {
                         SurfaceOps.clearScreen()
                     }

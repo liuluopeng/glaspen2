@@ -9762,3 +9762,21 @@ pub extern "C" fn glaspen2_rust_startup_run_loop() {
         glaspen2_swift_dispatch_main_after(2.0, std::ptr::null_mut(), startup_tap_check);
     }
 }
+
+// ── R207: 页视图重建 ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pageview_rebuild() {
+    let surface = glaspen2_rust_surface_current();
+    if surface.is_null() {
+        return;
+    }
+    let _ = glaspen2_rust_rebuild_surface(
+        surface,
+        glaspen2_rust_surface_scale(),
+        glaspen2_rust_pageview_paper_ox(),
+        glaspen2_rust_pageview_paper_oy(),
+        glaspen2_rust_pageview_paper_scale(),
+        1,
+    );
+}

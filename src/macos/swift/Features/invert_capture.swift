@@ -21,7 +21,7 @@ import ScreenCaptureKit
             teardown()
             glaspen2_set_stroke_invert(0)
             glaspen2_router_set_window_sharing_readonly()
-            PageViewOps.rebuildSurface()
+            glaspen2_rust_pageview_rebuild()
             glaspen2_rust_overlay_flush()
         }
     }
@@ -118,7 +118,7 @@ import ScreenCaptureKit
 
     private static func tick() {
         if glaspen2_router_invert_enabled() == 0 { return }
-        guard let surface = SurfaceStore.current else {
+        guard let surface = surfaceCurrent() else {
             schedule(0.5)
             return
         }

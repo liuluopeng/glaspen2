@@ -3,21 +3,21 @@ import AppKit
 
 @objc public final class SurfaceReplay: NSObject {
     @objc public static func replay() {
-        guard let surface = SurfaceStore.current else { return }
+        guard let surface = surfaceCurrent() else { return }
         _ = glaspen2_rust_rebuild_surface(UnsafeMutableRawPointer(surface),
-                                         SurfaceStore.scaleFactor,
-                                         PageViewOps.paperOx, PageViewOps.paperOy, PageViewOps.paperScale,
+                                         surfaceScale(),
+                                         glaspen2_rust_pageview_paper_ox(), glaspen2_rust_pageview_paper_oy(), glaspen2_rust_pageview_paper_scale(),
                                          1)
     }
 
     /// 快照观看页框(供 ObjC 侧重建/删除页后调用)。
     @objc public static func drawPageFrame() {
-        guard let surface = SurfaceStore.current else { return }
+        guard let surface = surfaceCurrent() else { return }
         _ = glaspen2_rust_draw_page_frame(
-            UnsafeMutableRawPointer(surface), SurfaceStore.scaleFactor,
-            PageViewOps.paperOx, PageViewOps.paperOy, PageViewOps.paperScale,
-            Int32(PageViewOps.pageW), Int32(PageViewOps.pageH),
-            PageViewOps.isFit ? 1 : 0)
+            UnsafeMutableRawPointer(surface), surfaceScale(),
+            glaspen2_rust_pageview_paper_ox(), glaspen2_rust_pageview_paper_oy(), glaspen2_rust_pageview_paper_scale(),
+            Int32(Int(glaspen2_rust_pageview_page_w())), Int32(Int(glaspen2_rust_pageview_page_h())),
+            (glaspen2_rust_pageview_is_fit() != 0) ? 1 : 0)
     }
 
     // R90: Rust/Swift 页框像素对比探针。

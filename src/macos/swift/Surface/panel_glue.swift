@@ -13,7 +13,7 @@ public func panelSurfaceImageCacheInvalidate() { /* R131: Surface 绘制直接�
 public func panelEnsureSurface(_ viewRaw: UnsafeMutableRawPointer?) {
     guard let viewRaw else { return }
     let view = Unmanaged<NSView>.fromOpaque(viewRaw).takeUnretainedValue()
-    SurfaceStore.ensure(view: view)
+    surfaceEnsure(view: view)
 }
 
 @_cdecl("flush_to_layer")

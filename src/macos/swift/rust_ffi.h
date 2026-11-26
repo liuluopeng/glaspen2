@@ -809,3 +809,6 @@ extern void glaspen2_router_camera_cancel(void);
 
 // R203: 运行期初始化/看门狗
 extern void glaspen2_rust_startup_run_loop(void);
+
+// R207: 页视图重建
+extern void glaspen2_rust_pageview_rebuild(void);

@@ -29,7 +29,7 @@ import AppKit
                 Flipper.swap(goingNext: false, prepare: {
                     glaspen2_load_strokes_for_screen(target)
                     glaspen2_smooth_loaded_strokes()
-                    PageViewOps.update()
+                    glaspen2_rust_pageview_update()
                 }, commit: { glaspen2_router_replay_strokes() })
                 glaspen2_rust_ethereal_peek(1.0)
                 notificationShowPageInfo(screenId: Int64(target))
@@ -48,7 +48,7 @@ import AppKit
                 Flipper.swap(goingNext: true, prepare: {
                     glaspen2_load_strokes_for_screen(target)
                     glaspen2_smooth_loaded_strokes()
-                    PageViewOps.update()
+                    glaspen2_rust_pageview_update()
                 }, commit: { glaspen2_router_replay_strokes() })
                 glaspen2_rust_ethereal_peek(1.0)
                 notificationShowPageInfo(screenId: Int64(target))
@@ -67,7 +67,7 @@ import AppKit
                 Flipper.swapFrom(goingNext: true, fromPage: Int64(before), prepare: {
                     glaspen2_load_strokes_for_screen(pageId)
                     glaspen2_smooth_loaded_strokes()
-                    PageViewOps.update()
+                    glaspen2_rust_pageview_update()
                 }, commit: { glaspen2_router_replay_strokes() })
                 glaspen2_rust_ethereal_peek(1.0)
                 notificationShowPageInfo(screenId: Int64(pageId))
@@ -80,7 +80,7 @@ import AppKit
             return true
         case 0x05: // G — export SVG/GIF
             glaspen2_save_svg()
-            if let surface = SurfaceStore.current {
+            if let surface = surfaceCurrent() {
                 cairo_surface_flush(surface)
                 let w = Int(cairo_image_surface_get_width(surface))
                 let h = Int(cairo_image_surface_get_height(surface))
@@ -88,7 +88,7 @@ import AppKit
                 let data = cairo_image_surface_get_data(surface)
                 let ok = glaspen2_save_gif_cropped(data, Int32(w), Int32(h),
                                                    Int32(stride),
-                                                   SurfaceStore.scaleFactor)
+                                                   surfaceScale())
                 if ok != 0 {
                     copyNewestGifToPasteboard()
                     notify("export.svg_gif_saved")
