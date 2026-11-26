@@ -137,11 +137,11 @@ public func menuSaveOnly() { SurfaceOps.saveDrawingOnly() }
 @_cdecl("glaspen2_menu_clear_screen")
 public func menuClearScreen() { SurfaceOps.clearScreen() }
 @_cdecl("glaspen2_menu_toggle_enabled")
-public func menuToggleEnabled() { DrawMode.toggleEnabled() }
+public func menuToggleEnabled() { glaspen2_rust_toggle_draw_enabled() }
 @_cdecl("glaspen2_menu_show_settings")
 public func menuShowSettings() { glaspen2_rust_show_settings_panel() }
 @_cdecl("glaspen2_menu_toggle_canvas_mode")
-public func menuToggleCanvasMode() { DrawMode.toggleCanvasMode() }
+public func menuToggleCanvasMode() { glaspen2_rust_toggle_canvas_mode() }
 @_cdecl("glaspen2_menu_select_color")
 public func menuSelectColor(_ idx: Int32) { MenuHandler.setColor(index: idx) }
 @_cdecl("glaspen2_menu_select_width")

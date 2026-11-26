@@ -16,7 +16,7 @@ import AppKit
             glaspen2_router_clear_screen()
             return true
         case 0x09: // V
-            DrawMode.toggleEnabled()
+            glaspen2_rust_toggle_draw_enabled()
             return true
         case 0x32: // backtick — prev page
             if glaspen2_router_infinite() != 0 {
@@ -128,7 +128,7 @@ import AppKit
             MenuHandler.setGlassEnabled(enabled: glaspen2_router_glass_enabled() == 0)
             return true
         case 0x07: // X — canvas mode
-            DrawMode.toggleCanvasMode()
+            glaspen2_rust_toggle_canvas_mode()
             return true
         case 0x02: // D — settings
             glaspen2_rust_show_settings_panel()

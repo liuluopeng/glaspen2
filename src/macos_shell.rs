@@ -9422,6 +9422,13 @@ pub extern "C" fn glaspen2_rust_app_bootstrap_start() -> i32 {
     if std::env::var("GLASPEN2_OPEN_SETTINGS").as_deref() == Ok("1") {
         glaspen2_rust_show_settings_panel();
     }
+    if std::env::var("GLASPEN2_DRAW_PROBE").as_deref() == Ok("1") {
+        glaspen2_rust_toggle_draw_enabled();
+        glaspen2_rust_toggle_draw_enabled();
+        glaspen2_rust_toggle_canvas_mode();
+        glaspen2_rust_toggle_canvas_mode();
+        tracing::info!("[draw-probe] toggles done");
+    }
     1
 }
 
@@ -9535,5 +9542,100 @@ pub extern "C" fn glaspen2_rust_notification_show_page_info(screen_id: i64) {
     unsafe { glaspen2_free_c_string(p) };
     if !text.is_empty() {
         notification_show_owned(&text);
+    }
+}
+
+// ── R200: 涂鸦启停/画布模式切换 ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_toggle_draw_enabled() {
+    let on = unsafe { glaspen2_router_enabled() } == 0;
+    let (title_zh, title_en) = if on {
+        ("关闭涂鸦", "Disable Drawing")
+    } else {
+        ("开启涂鸦", "Enable Drawing")
+    };
+    let title = if unsafe { glaspen2_router_lang() } == 1 {
+        title_en
+    } else {
+        title_zh
+    };
+    let hud_key = if on { "draw.enabled" } else { "draw.disabled" };
+    let hud = i18n_text_owned(hud_key);
+    let Ok(t) = std::ffi::CString::new(title) else {
+        return;
+    };
+    if hud.is_null() {
+        return;
+    }
+    unsafe {
+        let _ = glaspen2_rust_toggle_draw(t.as_ptr(), hud);
+        libc::free(hud as *mut c_void);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_toggle_canvas_mode() {
+    unsafe { glaspen2_router_peek_cancel() };
+    if unsafe { glaspen2_router_ethereal() } == 0 {
+        unsafe {
+            glaspen2_router_set_ethereal(1);
+            glaspen2_rust_finish_active_stroke();
+            glaspen2_router_set_strokes_visible(0);
+        }
+        if unsafe { glaspen2_router_glass_follow() } != 0 {
+            let glass = unsafe { sw_glass_view() };
+            if !glass.is_null() {
+                unsafe {
+                    let _: () =
+                        objc2::msg_send![glass as *mut objc2::runtime::AnyObject, setHidden: true];
+                }
+            }
+        }
+        if unsafe { glaspen2_router_pressure_monitor() } != 0 {
+            unsafe { glaspen2_router_pm_hide() }
+        }
+        unsafe { glaspen2_router_redraw_draw_view() };
+        let text = i18n_text_owned("canvas.ethereal_mode");
+        if !text.is_null() {
+            unsafe {
+                glaspen2_rust_notification_show(text);
+                libc::free(text as *mut c_void);
+            }
+        }
+    } else {
+        unsafe {
+            glaspen2_router_set_ethereal(0);
+            glaspen2_router_set_strokes_visible(1);
+        }
+        glaspen2_rust_apply_glass();
+        if unsafe { glaspen2_router_pressure_monitor() } != 0 {
+            unsafe { glaspen2_router_pm_show() }
+        }
+        unsafe { glaspen2_router_redraw_draw_view() };
+        let text = i18n_text_owned("canvas.fixed_mode");
+        if !text.is_null() {
+            unsafe {
+                glaspen2_rust_notification_show(text);
+                libc::free(text as *mut c_void);
+            }
+        }
+    }
+    let ethereal = unsafe { glaspen2_router_ethereal() } != 0;
+    unsafe {
+        glaspen2_router_update_menu_state(778, i32::from(ethereal));
+        let key = if ethereal {
+            "canvas.fixed_mode"
+        } else {
+            "canvas.ethereal_mode"
+        };
+        let title = i18n_text_owned(key);
+        if !title.is_null() {
+            glaspen2_menu_set_title(778, title);
+            libc::free(title as *mut c_void);
+        }
+        let k = std::ffi::CString::new("ethereal").unwrap();
+        glaspen2_save_bool_setting(k.as_ptr(), i32::from(ethereal));
+        glaspen2_router_update_status_icon_state();
     }
 }

@@ -1118,3 +1118,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - show/pageInfo/1s 自动清除线程迁 Rust; 调用点改 notificationShowText/PageInfo;
 - 删除 Surface/notification.swift; selftest 桥留 run_glue; Swift 39→38;
 - notification probe OK, 冷启动正常。
+
+
+## R200 涂鸦启停/画布模式切换迁 Rust
+
+- toggleDraw/toggleCanvasMode 全逻辑迁 Rust(玻璃隐藏/压感窗/通知/菜单标题/落库/图标);
+- 删除 Features/draw_mode.swift; 调用点改 C; GLASPEN2_DRAW_PROBE 实测切换不崩; Swift 38→37;
+- 冷启动正常; 批次验证后提交。
