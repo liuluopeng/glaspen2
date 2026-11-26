@@ -599,3 +599,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 已默认 Rust 后删除三个文件的旧实现回退(ensure 创建/重建三步/页框旧绘制);
 - `ensure`/`rebuildSurface`/`replay`/`drawPageFrame` 仅保留 Rust C 调用, 代码显著缩短;
 - 默认 smoke、tests/build/parity 全绿; Swift 文件数不变(69)。
+
+
+## R114 删除快捷键 chord Swift 回退与键名桥
+
+- `handleChordKeyEvent` 只保留 Rust 调用, 删除旧 chord 拼接/状态门控/actionForHotkey 回退;
+- 删除 MenuRuntime.keycodeName(仅旧回退使用);
+- 真机 ⌘⌃` 翻页日志正常; 默认 smoke/tests/parity 全绿。

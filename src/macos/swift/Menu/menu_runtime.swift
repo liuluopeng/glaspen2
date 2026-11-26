@@ -19,11 +19,6 @@ import AppKit
         gv.alphaValue = alpha
         gv.isHidden = hidden
     }
-    static func keycodeName(_ kc: UInt16) -> String? {
-        guard let p = glaspen2_rust_keycode_name(kc) else { return nil }
-        defer { free(p) }
-        return String(cString: p)
-    }
     static func actionForChord(_ chord: String) -> String? {
         ShortcutStore.action(forChord: chord)
     }

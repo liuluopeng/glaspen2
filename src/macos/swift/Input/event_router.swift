@@ -358,55 +358,14 @@ import AppKit
     public static func handleChordKeyEvent(_ event: CGEvent) -> Int32 {
         guard let ev = NSEvent(cgEvent: event) else { return 1 }
         guard ev.type == .keyDown else { return 1 }
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_CHORD"] != "1" {
-            let m = ev.modifierFlags
-            return glaspen2_rust_handle_chord(
-                ev.keyCode,
-                m.contains(.command) ? 1 : 0,
-                m.contains(.control) ? 1 : 0,
-                m.contains(.option) ? 1 : 0,
-                m.contains(.shift) ? 1 : 0,
-                event.getIntegerValueField(.keyboardEventAutorepeat) != 0 ? 1 : 0)
-        }
-        guard let action = actionForHotkey(keyCode: ev.keyCode,
-                                           modifiers: ev.modifierFlags.rawValue) else {
-            return 1
-        }
-        let st = state()
-        if (st & 1) == 0
-            && action != "toggle_draw" && action != "toggle_free_canvas"
-            && action != "quit" {
-            return 1
-        }
-        if action.hasPrefix("canvas_") && ((st & 4) == 0 || (st & 2) != 0) {
-            return 1
-        }
-        let repeatable = action.hasPrefix("canvas_pan_")
-            || action == "canvas_zoom_in" || action == "canvas_zoom_out"
-        let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-        if !isRepeat || repeatable {
-            if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_ACTION_DISPATCH"] != "1" {
-                _ = action.withCString { glaspen2_rust_perform_action($0) }
-            } else {
-                _ = ActionDispatch.perform(action: action)
-            }
-        }
-        return 2
-    }
-
-    /// S6-3-4b: 键盘事件 → 已绑定 action(键名/查找分别走薄桥)。
-    @objc(actionForHotkeyWithKeyCode:modifiers:)
-    public static func actionForHotkey(keyCode: UInt16, modifiers: UInt) -> String? {
-        guard let key = MenuRuntime.keycodeName(keyCode) else { return nil }
-        let mods = NSEvent.ModifierFlags(rawValue: modifiers)
-        var parts: [String] = []
-        if mods.contains(.command) { parts.append("cmd") }
-        if mods.contains(.control) { parts.append("ctrl") }
-        if mods.contains(.option) { parts.append("alt") }
-        if mods.contains(.shift) { parts.append("shift") }
-        if !parts.contains("ctrl") && !parts.contains("alt") { return nil }
-        parts.append(key)
-        return MenuRuntime.actionForChord(parts.joined(separator: "+"))
+        let m = ev.modifierFlags
+        return glaspen2_rust_handle_chord(
+            ev.keyCode,
+            m.contains(.command) ? 1 : 0,
+            m.contains(.control) ? 1 : 0,
+            m.contains(.option) ? 1 : 0,
+            m.contains(.shift) ? 1 : 0,
+            event.getIntegerValueField(.keyboardEventAutorepeat) != 0 ? 1 : 0)
     }
 
     /// ObjC 侧复用同一笔事件判定(避免两处公式各自维护)。
