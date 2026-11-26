@@ -1306,3 +1306,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - 120Hz 定时器/tick/render/finish 调度由 Rust dispatch_main_after 链实现;
 - Swift 仅保留 render/finish 桥; 删除 DispatchSource timer;
 - flip probe 实测时光隧道 5/6 卡接管多次, 应用存活.
+
+
+## R245 OverlayWindowFactory 删除/显示帧应用迁 Rust
+
+- applyDisplayChange 迁 Rust raw NSWindow/NSView setFrame; 删除 OverlayWindowFactory 类与 C 桥;
+- 补 FlutterMacOS import; probes OK, 虚拟笔两笔正常.

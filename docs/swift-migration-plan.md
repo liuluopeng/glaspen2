@@ -820,3 +820,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R241/242 | 压感监视窗迁 Rust; 删 PressureMonitorWindow 类; probes/冷启动正常 | 本提交 |
 | 2026-11-26 | Rust-R243 | UI 锚点状态迁 Rust; Swift UIAnchors 改 computed; 虚拟笔两笔正常 | 本提交 |
 | 2026-11-26 | Rust-R244 | 隧道定时器迁 Rust; 时光隧道多次接管正常 | 本提交 |
+| 2026-11-26 | Rust-R245 | 删除 OverlayWindowFactory; 显示帧应用迁 Rust; 虚拟笔正常 | 本提交 |

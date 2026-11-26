@@ -5871,9 +5871,7 @@ pub extern "C" fn glaspen2_rust_recording_timeout(generation: u32) -> i32 {
 
 static DISPLAY_GEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
-unsafe extern "C" {
-    fn glaspen2_display_apply(w: i32, h: i32);
-}
+unsafe extern "C" {}
 
 /// R100: 变更入口; 返回 1 需要调度防抖计时, 0 忽略。
 #[unsafe(no_mangle)]
@@ -11263,4 +11261,40 @@ pub extern "C" fn glaspen2_rust_tunnel_timer_start() {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_tunnel_timer_cancel() {
     TUNNEL_TIMER_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+// ── R245: 显示变更帧应用迁 Rust ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_display_apply(w: i32, h: i32) {
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+    let frame = NSRect {
+        origin: NSPoint { x: 0.0, y: 0.0 },
+        size: NSSize {
+            width: w as f64,
+            height: h as f64,
+        },
+    };
+    unsafe {
+        let main = sw_main_window();
+        if !main.is_null() {
+            let win = main as *mut AnyObject;
+            let _: () = objc2::msg_send![win, setFrame: frame, display: true];
+            let content: *mut AnyObject = objc2::msg_send![win, contentView];
+            if !content.is_null() {
+                let _: () = objc2::msg_send![content, setFrame: frame];
+            }
+        }
+        let glass = sw_glass_view();
+        if !glass.is_null() {
+            let _: () = objc2::msg_send![glass as *mut AnyObject, setFrame: frame];
+        }
+        let draw = sw_draw_view();
+        if !draw.is_null() {
+            let view = draw as *mut AnyObject;
+            let _: () = objc2::msg_send![view, setFrame: frame];
+            let _: () = objc2::msg_send![view, setNeedsDisplay: true];
+        }
+    }
 }
