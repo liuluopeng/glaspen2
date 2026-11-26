@@ -1273,3 +1273,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - show_cursor/pageview_rebuild/tunnel_flush/notification_redraw/main_window/draw_view/restore_canvas_flags/restore_pressure/notify_ax_warning/delayed_rebuild 迁 Rust;
 - 删除 Swift 包装; probes OK, 虚拟笔两笔正常.
+
+
+## R239 录制/异步/绘制桥迁 Rust
+
+- recording_feed/apply_infinite_async/quit_async/rec_init/startup_apply_pen/overlay_flush/swift_notify/draw_view 迁 Rust;
+- 删除 Swift 包装; probes OK, 虚拟笔两笔正常.

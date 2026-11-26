@@ -69,26 +69,8 @@ public func runPressureLabel(_ text: UnsafePointer<CChar>?) {
     PressureMonitorWindow.updateLabel(String(cString: text))
 }
 
-@_cdecl("glaspen2_router_recording_feed")
-public func runRecordingFeed(_ slot: Int32, _ json: UnsafePointer<CChar>?) -> Int32 {
-    guard let json else { return 0 }
-    return glaspen2_rust_recording_feed(slot, json)
-}
 
-@_cdecl("glaspen2_router_apply_infinite_async")
-public func runApplyInfiniteAsync(_ on: Int32) {
-    DispatchQueue.main.async { glaspen2_router_apply_infinite_canvas(on) }
-}
-@_cdecl("glaspen2_router_quit_async")
-public func runQuitAsync() {
-    DispatchQueue.main.async { glaspen2_rust_menu_quit_app() }
-}
 
-@_cdecl("glaspen2_swift_draw_view")
-public func runDrawView() -> UnsafeMutableRawPointer? {
-    guard let v = UIAnchors.drawView else { return nil }
-    return Unmanaged.passUnretained(v).toOpaque()
-}
 
 @_cdecl("glaspen2_swift_pressure_destroy")
 public func runPressureDestroy() { PressureMonitorWindow.destroy() }
@@ -145,17 +127,7 @@ public func runInvertApply(_ on: Int32) { panelInvertApply(on) }
 
 
 
-@_cdecl("glaspen2_router_rec_init")
-public func runRecInit() {
-    glaspen2_recording_init(0, 0)
-    glaspen2_recording_init(1, glaspen2_router_chat_integration())
-}
 
-@_cdecl("glaspen2_router_startup_apply_pen")
-public func runStartupApplyPen(_ r: Double, _ g: Double, _ b: Double, _ width: Double,
-                               _ colorIdx: Int32, _ widthIdx: Int32) {
-    sw_set_pen_settings(r, g, b, width, colorIdx, widthIdx)
-}
 
 @_cdecl("glaspen2_router_invert_restart")
 public func runInvertRestart() { panelInvertRestart() }
@@ -179,15 +151,8 @@ public func runWindowSharingType() -> Int32 {
 public func runInvertInvalidate() { panelInvertInvalidate() }
 
 
-@_cdecl("glaspen2_swift_overlay_flush")
-public func runOverlayFlush() { glaspen2_rust_overlay_flush() }
 
 // R119: 录制效果 Rust 侧 UI 桥。
-@_cdecl("glaspen2_swift_notify")
-public func runRecordingNotify(_ text: UnsafePointer<CChar>?) {
-    guard let text else { return }
-    MenuRuntime.notify(String(cString: text))
-}
 
 @_cdecl("glaspen2_swift_copy_gif")
 public func runRecordingCopyGif(_ data: UnsafePointer<UInt8>?, _ len: Int32) {

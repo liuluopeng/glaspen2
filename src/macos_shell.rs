@@ -4208,7 +4208,6 @@ pub extern "C" fn glaspen2_rust_raw_draw_segment2(x: f64, y: f64, width: f64, sc
 
 unsafe extern "C" {
     fn glaspen2_router_chat_integration() -> i32;
-    fn glaspen2_router_recording_feed(slot: i32, json: *const std::os::raw::c_char) -> i32;
 }
 
 fn recording_feed(slot: i32, kind: &str, mode: &str) {
@@ -4365,8 +4364,6 @@ unsafe extern "C" {
     fn glaspen2_router_selected_width_index() -> i32;
     fn glaspen2_width_preset_count() -> i32;
     fn glaspen2_camera_keyboard_pan_step(zoom: f64) -> f64;
-    fn glaspen2_router_apply_infinite_async(on: i32);
-    fn glaspen2_router_quit_async();
 }
 
 fn action_hud_msg(msg: glaspen_core::i18n::Msg, name_key: &str, name: &str) -> String {
@@ -5438,7 +5435,6 @@ pub extern "C" fn glaspen2_rust_draw_page_frame(
 unsafe extern "C" {
     fn glaspen2_draw_rebuild_view(surface: *mut c_void, scale: f64, ox: f64, oy: f64, pscale: f64);
     fn cairo_surface_flush(surface: *mut c_void);
-    fn glaspen2_swift_overlay_flush();
 }
 
 #[unsafe(no_mangle)]
@@ -6110,9 +6106,7 @@ pub extern "C" fn glaspen2_rust_shortcut_actions_json() -> *const std::os::raw::
 
 // ── R111: 图层面刷新(全量/脏矩形) ──
 
-unsafe extern "C" {
-    fn glaspen2_swift_draw_view() -> *mut c_void;
-}
+unsafe extern "C" {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_overlay_flush() {
@@ -6174,7 +6168,6 @@ unsafe extern "C" {
         slot: i32,
         json: *const std::os::raw::c_char,
     ) -> *mut std::os::raw::c_char;
-    fn glaspen2_swift_notify(text: *const std::os::raw::c_char);
     fn glaspen2_swift_copy_gif(data: *const u8, len: i32);
     fn glaspen2_swift_dispatch_main(ctx: *mut c_void, cb: extern "C" fn(*mut c_void));
     fn glaspen2_gif_record_end(
@@ -7958,14 +7951,6 @@ unsafe extern "C" {
     fn glaspen2_nearest_color_index(r: f64, g: f64, b: f64) -> i32;
     fn glaspen2_nearest_width_index(w: f64) -> i32;
     fn glaspen2_color_preset_rgb(index: i32, r: *mut f64, g: *mut f64, b: *mut f64);
-    fn glaspen2_router_startup_apply_pen(
-        r: f64,
-        g: f64,
-        b: f64,
-        w: f64,
-        color_idx: i32,
-        width_idx: i32,
-    );
     fn glaspen2_router_startup_glass(opacity: f64, on: i32);
     fn glaspen2_router_startup_grid(on: i32, size: f64, follow: i32, divider: i32);
     fn glaspen2_router_startup_shadow(on: i32);
@@ -7976,7 +7961,6 @@ unsafe extern "C" {
     fn glaspen2_clamp_setting_double(key: *const std::os::raw::c_char, v: f64) -> f64;
     fn glaspen2_router_restore_gif_settings(fps: i32, resolution: f64, speed: f64, end_mode: i32);
     fn glaspen2_router_restore_chat_integration(on: i32);
-    fn glaspen2_router_rec_init();
     fn glaspen2_i18n(
         key: *const std::os::raw::c_char,
         lang: *const std::os::raw::c_char,
@@ -10605,7 +10589,6 @@ static LANG_CODE_EN: std::sync::OnceLock<std::ffi::CString> = std::sync::OnceLoc
 static LANG_CODE_ZH: std::sync::OnceLock<std::ffi::CString> = std::sync::OnceLock::new();
 
 unsafe extern "C" {
-    fn sw_draw_view() -> *mut c_void;
     fn sw_status_item() -> *mut c_void;
 }
 
@@ -10924,4 +10907,75 @@ extern "C" fn delayed_rebuild_cb(_ctx: *mut c_void) {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_swift_delayed_rebuild() {
     unsafe { glaspen2_swift_dispatch_main_after(0.3, std::ptr::null_mut(), delayed_rebuild_cb) }
+}
+
+// ── R239: 录制/异步/绘制桥迁 Rust ──
+
+unsafe extern "C" {
+    fn sw_draw_view() -> *mut c_void;
+    fn glaspen2_recording_init(slot: i32, chat: i32);
+    fn sw_set_pen_settings(r: f64, g: f64, b: f64, width: f64, color_idx: i32, width_idx: i32);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_recording_feed(
+    slot: i32,
+    json: *const std::os::raw::c_char,
+) -> i32 {
+    glaspen2_rust_recording_feed(slot, json)
+}
+extern "C" fn apply_infinite_async_cb(ctx: *mut c_void) {
+    if ctx.is_null() {
+        return;
+    }
+    let on = unsafe { *Box::from_raw(ctx as *mut i32) };
+    glaspen2_router_apply_infinite_canvas(on);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_apply_infinite_async(on: i32) {
+    let ctx = Box::into_raw(Box::new(on)) as *mut c_void;
+    unsafe { glaspen2_swift_dispatch_main_after(0.0, ctx, apply_infinite_async_cb) }
+}
+extern "C" fn quit_async_cb(_ctx: *mut c_void) {
+    glaspen2_rust_menu_quit_app();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_quit_async() {
+    unsafe { glaspen2_swift_dispatch_main_after(0.0, std::ptr::null_mut(), quit_async_cb) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_rec_init() {
+    unsafe {
+        glaspen2_recording_init(0, 0);
+        glaspen2_recording_init(1, glaspen2_router_chat_integration());
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_startup_apply_pen(
+    r: f64,
+    g: f64,
+    b: f64,
+    width: f64,
+    color_idx: i32,
+    width_idx: i32,
+) {
+    unsafe { sw_set_pen_settings(r, g, b, width, color_idx, width_idx) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_overlay_flush() {
+    glaspen2_rust_overlay_flush();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_notify(text: *const std::os::raw::c_char) {
+    if text.is_null() {
+        return;
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(text) }
+        .to_string_lossy()
+        .into_owned();
+    notification_show_owned(&s);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_draw_view() -> *mut c_void {
+    unsafe { sw_draw_view() }
 }
