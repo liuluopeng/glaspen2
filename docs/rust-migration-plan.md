@@ -784,3 +784,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - NotificationPresenter.draw 仅调 Rust; CanvasMode.applyInfinite 仅调 Rust; minimap 去掉 env 包裹;
 - debug build 通过。
+
+
+## R142 画布模式/清屏/保存涂鸦旧实现清理
+
+- CanvasMode.applyInfinite 删除旧状态机实现, 仅调 Rust;
+- SurfaceOps.clearScreen/saveDrawingOnly 删除旧 cairo/save 分支, 仅调 Rust + 通知;
+- 第3片后全量 tests/smoke/parity(不跑 release)全绿。
