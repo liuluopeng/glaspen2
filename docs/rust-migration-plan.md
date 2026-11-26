@@ -721,3 +721,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - 删除 OverlaySurfaceRenderer/OverlaySurfaceImageCache; drawSurface 直接调 Rust draw_surface_data;
 - panel 缓存失效变 no-op; debug build 通过(加速批次)。
+
+
+## R132 清理 Minimap strip Swift 回退
+
+- 删除 minimap 旧 NSImage strip 合成/缓存路径; 缩略图异步生成保留, 绘制只走 Rust;
+- debug build 通过(加速批次)。

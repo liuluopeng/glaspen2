@@ -10,9 +10,6 @@ import AppKit
     private static var thumbs: [Int64: NSImage] = [:]
     private static var inflight: Set<Int64> = []
     private static var queue: DispatchQueue?
-    private static var fetchVersion = 0
-    private static var strip: NSImage?
-    private static var stripKey = -1
 
     @objc(drawWithContext:bounds:)
     public static func draw(_ ctx: CGContext, bounds: NSRect) {
@@ -32,7 +29,6 @@ import AppKit
             layoutW = viewW
             layoutH = viewH
             layoutGeomW = geomW
-            stripKey = -1
         }
         guard let layout, let items = layout["items"] as? [NSDictionary],
               !items.isEmpty else { return }
@@ -66,7 +62,6 @@ import AppKit
                 DispatchQueue.main.async {
                     if let image {
                         thumbs[pid] = image
-                        fetchVersion += 1
                     }
                     inflight.remove(pid)
                     glaspen2_router_redraw_draw_view()
@@ -97,61 +92,15 @@ import AppKit
                                                   y: itemY, h: itemH,
                                                   label: labelPtr, thumb: thumbPtr))
             }
-            let ok = cItems.withUnsafeBufferPointer { buf in
+            _ = cItems.withUnsafeBufferPointer { buf in
                 glaspen2_rust_draw_minimap(
                     Unmanaged.passUnretained(ctx).toOpaque(), buf.baseAddress,
                     Int32(buf.count), stripW, stripH, stripX, stripY, viewH)
             }
             for p in labels { free(p) }
-            if ok != 0 { return }
+            return
         }
 
-        // 3) 旧 Swift strip 合成(回退)。
-        let key = fetchVersion * 100000 + Int(cur)
-        if strip == nil || key != stripKey {
-            stripKey = key
-            let s = NSImage(size: NSSize(width: stripW, height: stripH))
-            s.lockFocus()
-            for item in items {
-                guard let pidNum = item["screen_id"] as? NSNumber else { continue }
-                let pid = pidNum.int64Value
-                let isCur = (item["current"] as? NSNumber)?.boolValue ?? false
-                let itemY = (item["y"] as? NSNumber)?.doubleValue ?? 0
-                let itemH = (item["h"] as? NSNumber)?.doubleValue ?? 0
-                let ly = CGFloat(stripH - ((itemY - stripY) + itemH))
-                let rect = NSRect(x: 0, y: ly, width: CGFloat(stripW),
-                                  height: CGFloat(itemH))
-                if let im = thumbs[pid] {
-                    im.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
-                } else {
-                    NSColor(calibratedWhite: 0.94, alpha: 0.9).setFill()
-                    NSBezierPath.fill(rect)
-                }
-                let border = NSBezierPath(rect: rect)
-                border.lineWidth = isCur ? 2.0 : 1.0
-                let strokeColor = isCur ? NSColor.systemRed : NSColor.systemGray
-                strokeColor.setStroke()
-                border.stroke()
-                if let num = item["label"] as? String, !num.isEmpty {
-                    let attrs: [NSAttributedString.Key: Any] = [
-                        .font: NSFont.monospacedSystemFont(ofSize: 9, weight: .regular),
-                        .foregroundColor: NSColor(calibratedWhite: 0.25, alpha: 0.9),
-                    ]
-                    (num as NSString).draw(at: NSPoint(x: rect.origin.x + 3,
-                                                      y: rect.origin.y + 3),
-                                           withAttributes: attrs)
-                }
-            }
-            s.unlockFocus()
-            strip = s
-        }
-
-        // 3) 一次贴图(右缘, 顶端 8pt; Cocoa y 向上翻转)。
-        guard let strip else { return }
-        let dst = NSRect(x: CGFloat(stripX),
-                         y: CGFloat(viewH - stripY - stripH),
-                         width: CGFloat(stripW), height: CGFloat(stripH))
-        strip.draw(in: dst, from: .zero, operation: .sourceOver, fraction: 1)
     }
 
     private static func layoutFromJSON(_ json: UnsafeMutablePointer<CChar>?) -> NSDictionary? {
