@@ -829,3 +829,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - R147 飘渺模式旧显隐删除;
 - R148 删除 MenuRuntime 未用的 applyGlassView/presentHud;
 - 第3片后全量 tests/smoke/parity(不跑 release)全绿。
+
+
+## R149 ShortcutStore 薄桥并入 MenuRuntime
+
+- 快捷键生效表 JSON/查表桥移入 MenuRuntime, 删除 ShortcutStore.swift; Swift 68→67;
+- hotkeys probe 同步; debug build 通过。

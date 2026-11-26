@@ -749,3 +749,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R146 | 清理顶层菜单/子菜单 Swift 构建回退; menu-full probe OK | 本提交 |
 | 2026-11-26 | Rust-R147 | 清理飘渺模式 Swift 回退; debug build 通过 | 本提交 |
 | 2026-11-26 | Rust-R148 | 菜单构建/飘渺/未用薄桥清理; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |
+| 2026-11-26 | Rust-R149 | ShortcutStore 并入 MenuRuntime; 删文件; Swift 68→67; debug build 通过 | 本提交 |

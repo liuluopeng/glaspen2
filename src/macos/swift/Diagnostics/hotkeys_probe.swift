@@ -16,24 +16,24 @@ import AppKit
         for case let action as String in actions {
             guard let chord = defaults[action] as? String, !chord.isEmpty else { continue }
             checked += 1
-            let mapped = ShortcutStore.action(forChord: chord)
+            let mapped = MenuRuntime.shortcutAction(forChord: chord)
             if mapped != action {
                 NSLog("[hotkeys-probe] FAIL %@=%@ -> %@", action, chord, mapped ?? "nil")
                 failures += 1
             }
         }
-        if ShortcutStore.action(forChord: "cmd+ctrl+D") != "settings" {
+        if MenuRuntime.shortcutAction(forChord: "cmd+ctrl+D") != "settings" {
             NSLog("[hotkeys-probe] FAIL cmd+ctrl+D -> settings")
             failures += 1
         }
         // 显式空串 = 用户解绑, 不能在下次启动被默认值覆盖。
         SettingsGlue.applyShortcuts(saved: ["undo": ""])
-        if ShortcutStore.action(forChord: "cmd+ctrl+Z") != nil {
+        if MenuRuntime.shortcutAction(forChord: "cmd+ctrl+Z") != nil {
             NSLog("[hotkeys-probe] FAIL explicit unbind fell back to default (undo -> cmd+ctrl+Z)")
             failures += 1
         }
-        if ShortcutStore.chord(forAction: "undo") != "" {
-            NSLog("[hotkeys-probe] FAIL explicit unbind not stored as empty (got %@)", ShortcutStore.chord(forAction: "undo") ?? "nil")
+        if MenuRuntime.shortcutChord(forAction: "undo") != "" {
+            NSLog("[hotkeys-probe] FAIL explicit unbind not stored as empty (got %@)", MenuRuntime.shortcutChord(forAction: "undo") ?? "nil")
             failures += 1
         }
         // 换色/换粗细的“上一项”初值必须与旧 ObjC 一致(9 黑 / 2 细), 否则重启后首次交换落到别处。

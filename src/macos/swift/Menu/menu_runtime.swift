@@ -11,14 +11,47 @@ import AppKit
     static func widthItemTitle(_ idx: Int32) -> NSAttributedString {
         widthItemTitle(index: idx)
     }
+    static func shortcutInstall(values: NSDictionary, lookup: NSDictionary) {
+        guard let vd = try? JSONSerialization.data(withJSONObject: values),
+              let v = String(data: vd, encoding: .utf8),
+              let ld = try? JSONSerialization.data(withJSONObject: lookup),
+              let l = String(data: ld, encoding: .utf8) else { return }
+        v.withCString { vp in l.withCString { lp in
+            glaspen2_shortcut_store_install(vp, lp)
+        } }
+    }
+
+    static func shortcutValuesSnapshot() -> NSDictionary {
+        guard let p = glaspen2_shortcut_store_values_json() else { return [:] }
+        let data = Data(bytes: p, count: strlen(p))
+        glaspen2_free_c_string(p)
+        guard let obj = try? JSONSerialization.jsonObject(with: data),
+              let dict = obj as? NSDictionary else { return [:] }
+        return dict
+    }
+
+    static func shortcutChord(forAction action: String) -> String? {
+        guard let p = action.withCString({ glaspen2_shortcut_store_chord($0) }) else { return nil }
+        defer { glaspen2_free_c_string(p) }
+        return String(cString: p)
+    }
+
+    static func shortcutAction(forChord chord: String) -> String? {
+        guard let p = chord.withCString({ glaspen2_shortcut_store_action_for_chord($0) }) else { return nil }
+        defer { glaspen2_free_c_string(p) }
+        return String(cString: p)
+    }
+
+    static var shortcutStoreEmpty: Bool { glaspen2_shortcut_store_is_empty() != 0 }
+
     static func ensureSurface() {
         if let dv = UIAnchors.drawView { SurfaceStore.ensure(view: dv) }
     }
     static func actionForChord(_ chord: String) -> String? {
-        ShortcutStore.action(forChord: chord)
+        MenuRuntime.shortcutAction(forChord: chord)
     }
     static func shortcutChord(_ action: String) -> String? {
-        ShortcutStore.chord(forAction: action)
+        MenuRuntime.shortcutChord(forAction: action)
     }
     /// R7: 动作 → NSEvent.ModifierFlags.rawValue(解析在 core::chord)。
     static func applyPanelTransparent(on: Bool) {
@@ -63,7 +96,7 @@ import AppKit
     }
 
     static func maskFor(action: String) -> UInt {
-        guard let chord = ShortcutStore.chord(forAction: action), !chord.isEmpty else { return 0 }
+        guard let chord = MenuRuntime.shortcutChord(forAction: action), !chord.isEmpty else { return 0 }
         return UInt(chord.withCString { glaspen2_chord_modifier_mask($0) })
     }
 
@@ -71,15 +104,15 @@ import AppKit
         chord.withCString { glaspen2_chord_reserved($0) != 0 }
     }
     static func shortcutValues() -> NSDictionary {
-        ShortcutStore.valuesSnapshot()
+        MenuRuntime.shortcutValuesSnapshot()
     }
     static func shortcutsEffectiveJSON() -> String {
         // 旧实现: 尚未 apply 过时先补默认表, 避免快照返回空对象。
-        if ShortcutStore.isEmpty { SettingsGlue.applyShortcuts(saved: NSDictionary()) }
+        if MenuRuntime.shortcutStoreEmpty { SettingsGlue.applyShortcuts(saved: NSDictionary()) }
         return SettingsGlue.effectiveShortcutJSON() as String
     }
     static func setShortcutTables(values: NSDictionary, lookup: NSDictionary) {
-        ShortcutStore.install(values: values, lookup: lookup)
+        MenuRuntime.shortcutInstall(values: values, lookup: lookup)
     }
 }
 
