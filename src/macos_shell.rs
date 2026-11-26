@@ -4542,3 +4542,206 @@ pub extern "C" fn glaspen2_rust_keycode_name(key_code: u16) -> *mut std::os::raw
         None => std::ptr::null_mut(),
     }
 }
+
+// ── R79: 时光隧道卡片绘制(opt-in) ──
+
+unsafe extern "C" {
+    fn cairo_rectangle(cr: *mut c_void, x: f64, y: f64, w: f64, h: f64);
+    fn cairo_clip(cr: *mut c_void);
+    fn cairo_translate(cr: *mut c_void, x: f64, y: f64);
+    fn cairo_scale(cr: *mut c_void, sx: f64, sy: f64);
+    fn cairo_set_source_surface(cr: *mut c_void, surface: *mut c_void, x: f64, y: f64);
+    fn cairo_paint_with_alpha(cr: *mut c_void, alpha: f64);
+    fn cairo_paint(cr: *mut c_void);
+    fn cairo_pattern_create_linear(x0: f64, y0: f64, x1: f64, y1: f64) -> *mut c_void;
+    fn cairo_pattern_add_color_stop_rgba(
+        pattern: *mut c_void,
+        offset: f64,
+        r: f64,
+        g: f64,
+        b: f64,
+        a: f64,
+    );
+    fn cairo_close_path(cr: *mut c_void);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_draw_tunnel_card(
+    cr: *mut c_void,
+    surf: *mut c_void,
+    nw: i32,
+    nh: i32,
+    cx: f64,
+    cy: f64,
+    w: f64,
+    h: f64,
+    alpha: f64,
+    zc: f64,
+    surf_w: i32,
+    surf_h: i32,
+    thick: f64,
+    pane_a: f64,
+) {
+    if alpha <= 0.02 || w < 1.0 || h < 1.0 || nw <= 0 || nh <= 0 || cr.is_null() || surf.is_null() {
+        return;
+    }
+    let card_x = cx - w / 2.0;
+    let card_y = cy - h / 2.0;
+    unsafe {
+        if zc.abs() < 0.005 {
+            cairo_save(cr);
+            cairo_rectangle(cr, 0.0, 0.0, surf_w as f64, surf_h as f64);
+            cairo_clip(cr);
+            cairo_translate(cr, card_x, card_y);
+            cairo_scale(cr, w / nw as f64, h / nh as f64);
+            cairo_set_source_surface(cr, surf, 0.0, 0.0);
+            cairo_paint_with_alpha(cr, 1.0);
+            cairo_restore(cr);
+            return;
+        }
+        let mut glass = zc.abs() / 0.10;
+        if glass > 1.0 {
+            glass = 1.0;
+        }
+        let t = (w * thick).max(4.0);
+        let soff = (w * 0.008).max(3.0);
+        let mut zpos = if zc > 0.0 { zc } else { 0.0 };
+        if zpos > 4.0 {
+            zpos = 4.0;
+        }
+        let mut pane = (pane_a + 0.02 * zpos) * glass;
+        if zc < 0.0 {
+            pane *= alpha;
+        }
+        if pane > 0.94 {
+            pane = 0.94;
+        }
+        if zc.abs() < 1.6 {
+            for i in (1..=2).rev() {
+                let off = i as f64 * soff * 1.6;
+                cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.028 * alpha * glass);
+                cairo_rectangle(cr, card_x + off, card_y + off, w, h);
+                cairo_fill(cr);
+            }
+        }
+        // 上侧面
+        let top = cairo_pattern_create_linear(card_x, card_y, card_x + t, card_y - t);
+        if !top.is_null() {
+            cairo_pattern_add_color_stop_rgba(top, 0.0, 1.0, 1.0, 1.0, 0.74 * alpha * glass);
+            cairo_pattern_add_color_stop_rgba(top, 1.0, 0.90, 0.91, 0.92, 0.52 * alpha * glass);
+            cairo_set_source(cr, top);
+            cairo_move_to(cr, card_x, card_y);
+            cairo_line_to(cr, card_x + t, card_y - t);
+            cairo_line_to(cr, card_x + w + t, card_y - t);
+            cairo_line_to(cr, card_x + w, card_y);
+            cairo_close_path(cr);
+            cairo_fill(cr);
+            cairo_pattern_destroy(top);
+        }
+        // 右侧面
+        let right = cairo_pattern_create_linear(card_x + w, card_y, card_x + w + t, card_y - t);
+        if !right.is_null() {
+            cairo_pattern_add_color_stop_rgba(right, 0.0, 0.70, 0.72, 0.74, 0.62 * alpha * glass);
+            cairo_pattern_add_color_stop_rgba(right, 1.0, 0.28, 0.30, 0.33, 0.74 * alpha * glass);
+            cairo_set_source(cr, right);
+            cairo_move_to(cr, card_x + w, card_y);
+            cairo_line_to(cr, card_x + w + t, card_y - t);
+            cairo_line_to(cr, card_x + w + t, card_y + h - t);
+            cairo_line_to(cr, card_x + w, card_y + h);
+            cairo_close_path(cr);
+            cairo_fill(cr);
+            cairo_pattern_destroy(right);
+        }
+        // 前脸
+        cairo_save(cr);
+        cairo_rectangle(cr, card_x, card_y, w, h);
+        cairo_clip(cr);
+        let fg = cairo_pattern_create_linear(card_x, card_y, card_x, card_y + h);
+        if !fg.is_null() {
+            cairo_pattern_add_color_stop_rgba(fg, 0.0, 0.985, 0.99, 1.0, pane * 0.99);
+            cairo_pattern_add_color_stop_rgba(fg, 0.55, 0.86, 0.875, 0.89, pane * 0.94);
+            cairo_pattern_add_color_stop_rgba(fg, 1.0, 0.66, 0.675, 0.69, pane * 0.98);
+            cairo_set_source(cr, fg);
+            cairo_paint(cr);
+            cairo_pattern_destroy(fg);
+        }
+        cairo_save(cr);
+        cairo_translate(cr, card_x, card_y);
+        cairo_scale(cr, w / nw as f64, h / nh as f64);
+        cairo_set_source_surface(cr, surf, 0.0, 0.0);
+        cairo_paint_with_alpha(cr, alpha);
+        cairo_restore(cr);
+        if zc.abs() < 1.2 {
+            let sheen = cairo_pattern_create_linear(card_x, card_y, card_x + w, card_y + h * 0.75);
+            if !sheen.is_null() {
+                cairo_pattern_add_color_stop_rgba(sheen, 0.0, 1.0, 1.0, 1.0, 0.10 * alpha * glass);
+                cairo_pattern_add_color_stop_rgba(
+                    sheen,
+                    0.35,
+                    1.0,
+                    1.0,
+                    1.0,
+                    0.012 * alpha * glass,
+                );
+                cairo_pattern_add_color_stop_rgba(sheen, 1.0, 1.0, 1.0, 1.0, 0.0);
+                cairo_set_source(cr, sheen);
+                cairo_paint(cr);
+                cairo_pattern_destroy(sheen);
+            }
+        }
+        cairo_restore(cr);
+        // 棱线
+        cairo_save(cr);
+        cairo_set_line_width(cr, (t * 0.08).max(1.0));
+        let edges = [
+            (
+                1.0,
+                1.0,
+                1.0,
+                0.42,
+                (card_x + t, card_y - t),
+                (card_x + w + t, card_y - t),
+            ),
+            (
+                0.03,
+                0.03,
+                0.035,
+                0.48,
+                (card_x + w + t, card_y - t),
+                (card_x + w + t, card_y + h - t),
+            ),
+            (1.0, 1.0, 1.0, 0.50, (card_x, card_y), (card_x + w, card_y)),
+            (
+                0.04,
+                0.04,
+                0.045,
+                0.38,
+                (card_x + w, card_y),
+                (card_x + w, card_y + h),
+            ),
+            (
+                0.9,
+                0.92,
+                0.94,
+                0.18,
+                (card_x, card_y),
+                (card_x, card_y + h),
+            ),
+            (
+                0.05,
+                0.05,
+                0.055,
+                0.20,
+                (card_x, card_y + h),
+                (card_x + w, card_y + h),
+            ),
+        ];
+        for (r, g, b, a, from, to) in edges {
+            cairo_set_source_rgba(cr, r, g, b, a * alpha * glass);
+            cairo_move_to(cr, from.0, from.1);
+            cairo_line_to(cr, to.0, to.1);
+            cairo_stroke(cr);
+        }
+        cairo_restore(cr);
+    }
+}

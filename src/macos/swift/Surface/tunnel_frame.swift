@@ -99,6 +99,15 @@ import Darwin
             let mainW = Double(cairo_image_surface_get_width(mainPtr))
             if placed.2 < mainW * 0.70 { surf = mipPtr }
         }
+        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_TUNNEL_CARD"] == "1" {
+            glaspen2_rust_draw_tunnel_card(
+                UnsafeMutableRawPointer(cr), UnsafeMutableRawPointer(surf),
+                cairo_image_surface_get_width(surf), cairo_image_surface_get_height(surf),
+                placed.0, placed.1, placed.2, placed.3, placed.4, zc,
+                Int32(TunnelState.surfW), Int32(TunnelState.surfH),
+                TunnelState.thick, TunnelState.paneA)
+            return
+        }
         TunnelCardRenderer.draw(crRaw: UnsafeMutableRawPointer(cr),
                                 surfRaw: UnsafeMutableRawPointer(surf),
                                 nw: cairo_image_surface_get_width(surf),
@@ -111,4 +120,52 @@ import Darwin
                                 thick: TunnelState.thick,
                                 paneA: TunnelState.paneA)
     }
+}
+
+// R79: Rust 卡片绘制探针(创建 cairo 目标/卡片表面, 调用 Rust, 检查非空像素)。
+@_cdecl("glaspen2_macos_swift_tunnel_card_selftest")
+public func glaspen2TunnelCardSelftest() -> Int32 {
+    let sw = 240, sh = 180
+    guard let target = cairo_image_surface_create(cairo_format_t(0), Int32(sw), Int32(sh)),
+          cairo_surface_status(target).rawValue == 0,
+          let cr = cairo_create(target) else {
+        print("SWIFT_TUNNEL_CARD_FAIL surface")
+        return 1
+    }
+    guard let card = cairo_image_surface_create(cairo_format_t(0), 80, 60),
+          cairo_surface_status(card).rawValue == 0,
+          let ccr = cairo_create(card) else {
+        print("SWIFT_TUNNEL_CARD_FAIL card")
+        cairo_destroy(cr)
+        cairo_surface_destroy(target)
+        return 1
+    }
+    cairo_set_source_rgba(ccr, 0.2, 0.5, 0.8, 1.0)
+    cairo_paint(ccr)
+    cairo_destroy(ccr)
+    cairo_surface_flush(card)
+    glaspen2_rust_draw_tunnel_card(
+        UnsafeMutableRawPointer(cr), UnsafeMutableRawPointer(card),
+        80, 60, 120.0, 90.0, 140.0, 110.0, 1.0, 0.05,
+        Int32(sw), Int32(sh), 0.018, 0.84)
+    cairo_destroy(cr)
+    cairo_surface_flush(target)
+    guard let data = cairo_image_surface_get_data(target) else {
+        print("SWIFT_TUNNEL_CARD_FAIL data")
+        cairo_surface_destroy(card)
+        cairo_surface_destroy(target)
+        return 1
+    }
+    var nonEmpty = 0
+    let stride = Int(cairo_image_surface_get_stride(target))
+    for y in 0..<sh {
+        for x in 0..<sw {
+            let i = y * stride + x * 4
+            if data[i] != 0 || data[i + 1] != 0 || data[i + 2] != 0 { nonEmpty += 1 }
+        }
+    }
+    cairo_surface_destroy(card)
+    cairo_surface_destroy(target)
+    print("SWIFT_TUNNEL_CARD_RUST_OK pixels=\(nonEmpty)")
+    return nonEmpty > 0 ? 0 : 1
 }

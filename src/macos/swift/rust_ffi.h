@@ -532,3 +532,9 @@ extern int glaspen2_rust_perform_action(const char *action);
 
 // R77: 虚拟键码 -> chord 键名(调用方 free)
 extern char *glaspen2_rust_keycode_name(unsigned short key_code);
+
+// R79: 时光隧道卡片绘制(opt-in: GLASPEN2_RUST_TUNNEL_CARD=1)
+extern void glaspen2_rust_draw_tunnel_card(void *cr, void *surf, int nw, int nh,
+                                           double cx, double cy, double w, double h,
+                                           double alpha, double zc, int surf_w, int surf_h,
+                                           double thick, double pane_a);

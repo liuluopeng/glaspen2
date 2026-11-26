@@ -41,6 +41,19 @@ fn main() {
     // MenuBuilder 按真实建菜单顺序(颜色→分隔符→粗细→顶层其余项+子菜单)
     // 建出整份菜单, 校验项数/分隔符位置/顶层 action·tag·state·target/两个子
     // 菜单后退出。普通启动/用户路径不经过这里。验证命令:
+    //     target/debug/glaspen2 --swift-tunnel-card-probe
+    if args.get(1).map(String::as_str) == Some("--swift-tunnel-card-probe") {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            unsafe extern "C" {
+                fn glaspen2_macos_swift_tunnel_card_selftest() -> i32;
+            }
+            std::process::exit(glaspen2_macos_swift_tunnel_card_selftest());
+        }
+        #[cfg(not(target_os = "macos"))]
+        std::process::exit(2);
+    }
+
     //     target/debug/glaspen2 --swift-notification-probe
     if args.get(1).map(String::as_str) == Some("--swift-notification-probe") {
         #[cfg(target_os = "macos")]

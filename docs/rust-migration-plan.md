@@ -332,3 +332,11 @@ modeler Up error 需真机笔/翻页连击复验。
 
 结论: 按“纯逻辑/状态优先 + 必要 AppKit 壳保留”的既定方法, 已完成 77 批迁移并通过全部自动化验证;
 “整个应用层 Rust”仍未完成, 目标保持 active, 待后续轮次/人工验收继续。
+
+
+## R79 时光隧道卡片绘制迁 Rust(opt-in)
+
+- `TunnelCardRenderer.draw` 的玻璃厚度/阴影/顶面/右面/前脸贴图/扫光/棱线 cairo 绘制迁 Rust;
+- `TunnelFrameRenderer.drawCard` 在 `GLASPEN2_RUST_TUNNEL_CARD=1` 时调 Rust, 默认仍 Swift;
+- 新增 `--swift-tunnel-card-probe`: 离屏 240x180 目标表面 + 80x60 卡片表面, 调用 Rust 后像素非空 16904, 已加入 smoke;
+- 翻页时机/帧编排仍在 Swift; 默认切换前需真机隧道有卡片场景复验。
