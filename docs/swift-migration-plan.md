@@ -747,3 +747,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R144 | ensure surface C 符号迁 Rust; 删 Swift 包装; debug build 通过 | 本提交 |
 | 2026-11-26 | Rust-R145 | tap 健康看门狗迁 Rust; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R146 | 清理顶层菜单/子菜单 Swift 构建回退; menu-full probe OK | 本提交 |
+| 2026-11-26 | Rust-R147 | 清理飘渺模式 Swift 回退; debug build 通过 | 本提交 |

@@ -815,3 +815,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - MenuBuilder.addTopLevelAndSubmenus 删除旧 Swift 建项/子菜单/helper, 统一走 Rust;
 - menu-full probe 仍 OK; debug build 通过。
+
+
+## R147 飘渺模式 Swift 回退清理
+
+- EtherealMode.hide/restore/autoShow/peek 删除 Swift 旧显隐实现, 仅保留 Rust 调用 + peek 定时器;
+- debug build 通过。

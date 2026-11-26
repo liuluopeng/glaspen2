@@ -6,52 +6,21 @@ import AppKit
 
     /// 立即隐藏笔迹(含玻璃/压感窗), 前置: 非隧道动画 + 飘渺 + 当前可见。
     @objc public static func hideNow() -> Bool {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_ETHEREAL"] != "1" {
-            return glaspen2_rust_ethereal_hide_now() != 0
-        }
-        if TunnelState.active { return false }
-        if glaspen2_router_ethereal() == 0 { return false }
-        if glaspen2_router_strokes_visible() == 0 { return false }
-        hideStrokes()
-        return true
+        glaspen2_rust_ethereal_hide_now() != 0
     }
 
     private static func hideStrokes() {
-        EventRouter.finishActiveStroke()
-        glaspen2_router_set_strokes_visible(0)
-        if glaspen2_router_glass_follow() != 0,
-           let glass = UIAnchors.glassView as? NSView {
-            glass.isHidden = true
-        }
-        if glaspen2_router_pressure_monitor() != 0 { PressureMonitorWindow.hide() }
-        glaspen2_router_redraw_draw_view()
+        glaspen2_rust_ethereal_restore_now()
     }
 
     /// 启动恢复飘渺: 先归位可见再走同一隐藏路径。
     @objc public static func restoreNow() {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_ETHEREAL"] != "1" {
-            glaspen2_rust_ethereal_restore_now()
-            return
-        }
-        if glaspen2_router_ethereal() == 0 { return }
-        glaspen2_router_set_strokes_visible(1)
-        hideStrokes()
+        glaspen2_rust_ethereal_restore_now()
     }
 
     /// 笔回来: 笔迹重现(玻璃按自身开关恢复)。
     @objc public static func autoShow() {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_ETHEREAL"] != "1" {
-            glaspen2_rust_ethereal_auto_show()
-            return
-        }
-        if glaspen2_router_ethereal() == 0 { return }
-        if glaspen2_router_strokes_visible() == 0 {
-            glaspen2_router_set_strokes_visible(1)
-            MenuHandler.applyGlass()
-            if glaspen2_router_pressure_monitor() != 0 { PressureMonitorWindow.show() }
-            glaspen2_router_redraw_draw_view()
-            NSLog("[ethereal] 笔迹重现")
-        }
+        glaspen2_rust_ethereal_auto_show()
     }
 
     @objc public static func cancelTimer() {
@@ -61,32 +30,14 @@ import AppKit
 
     @objc(peekForSeconds:)
     public static func peek(seconds: Double) {
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_ETHEREAL"] != "1" {
-            if glaspen2_router_ethereal() == 0 { return }
-            cancelTimer()
-            _ = glaspen2_rust_ethereal_preview_show()
-            peekTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { _ in
-                peekTimer = nil
-                if glaspen2_router_ethereal() != 0
-                    && glaspen2_router_stroke_active() == 0 {
-                    _ = glaspen2_rust_ethereal_hide_now()
-                }
-            }
-            return
-        }
         if glaspen2_router_ethereal() == 0 { return }
         cancelTimer()
-        if glaspen2_router_strokes_visible() == 0 {
-            glaspen2_router_set_strokes_visible(1)
-            MenuHandler.applyGlass()
-            if glaspen2_router_pressure_monitor() != 0 { PressureMonitorWindow.show() }
-            glaspen2_router_redraw_draw_view()
-        }
+        _ = glaspen2_rust_ethereal_preview_show()
         peekTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { _ in
             peekTimer = nil
             if glaspen2_router_ethereal() != 0
                 && glaspen2_router_stroke_active() == 0 {
-                _ = hideNow()
+                _ = glaspen2_rust_ethereal_hide_now()
             }
         }
     }
