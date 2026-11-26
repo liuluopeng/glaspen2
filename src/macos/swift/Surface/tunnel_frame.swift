@@ -6,27 +6,29 @@ import Darwin
     @objc(renderWithP:)
     public static func render(p: Double) {
         guard let surface = TunnelState.surface, TunnelState.cards > 0 else { return }
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TUNNEL_FRAME"] != "1" {
-            TunnelState.frames += 1
-            let landed = TunnelState.depths.withUnsafeBufferPointer { depths in
-                TunnelState.cardSurf.withUnsafeBufferPointer { cards in
-                    TunnelState.mipSurf.withUnsafeBufferPointer { mips in
-                        cards.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { cardPtr in
-                            mips.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { mipPtr in
-                                glaspen2_rust_tunnel_render(
-                                    p, UnsafeMutableRawPointer(surface), TunnelState.blur.map(UnsafeMutableRawPointer.init),
-                                    Int32(TunnelState.cards), depths.baseAddress, cardPtr, mipPtr,
-                                    TunnelState.back ? 1 : 0, TunnelState.travel, TunnelState.k,
-                                    TunnelState.thick, TunnelState.paneA,
-                                    Int32(TunnelState.surfW), Int32(TunnelState.surfH))
-                            }
+        TunnelState.frames += 1
+        let landed = TunnelState.depths.withUnsafeBufferPointer { depths in
+            TunnelState.cardSurf.withUnsafeBufferPointer { cards in
+                TunnelState.mipSurf.withUnsafeBufferPointer { mips in
+                    cards.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { cardPtr in
+                        mips.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { mipPtr in
+                            glaspen2_rust_tunnel_render(
+                                p, UnsafeMutableRawPointer(surface), TunnelState.blur.map(UnsafeMutableRawPointer.init),
+                                Int32(TunnelState.cards), depths.baseAddress, cardPtr, mipPtr,
+                                TunnelState.back ? 1 : 0, TunnelState.travel, TunnelState.k,
+                                TunnelState.thick, TunnelState.paneA,
+                                Int32(TunnelState.surfW), Int32(TunnelState.surfH))
                         }
                     }
                 }
             }
-            _ = landed
-            return
         }
+        _ = landed
+    }
+
+    /// 仅 parity 探针使用: 旧 Swift 帧渲染实现。
+    static func renderSwiftForProbe(p: Double) {
+        guard let surface = TunnelState.surface, TunnelState.cards > 0 else { return }
         TunnelState.frames += 1
         let e = p < 0.5 ? 4.0 * p * p * p : 1.0 - pow(-2.0 * p + 2.0, 3.0) / 2.0
         let cam = e * TunnelState.travel * (TunnelState.back ? 1.0 : -1.0)
@@ -42,7 +44,7 @@ import Darwin
         for slot in order {
             let zc = Double(TunnelState.depths[slot]) - cam
             if abs(zc) < 0.005, let placed = place(zc) {
-                drawCard(cr, slot, placed, zc)
+                drawCardSwift(cr, slot, placed, zc)
                 cairo_destroy(cr)
                 flush()
                 return
@@ -71,7 +73,7 @@ import Darwin
                 for slot in order {
                     let zc = Double(TunnelState.depths[slot]) - cam
                     if zc <= focusZc + 1e-6 { continue }
-                    if let placed = place(zc) { drawCard(bcr, slot, placed, zc) }
+                    if let placed = place(zc) { drawCardSwift(bcr, slot, placed, zc) }
                 }
                 cairo_destroy(bcr)
                 cairo_save(cr)
@@ -88,7 +90,7 @@ import Darwin
         for slot in order {
             let zc = Double(TunnelState.depths[slot]) - cam
             if TunnelState.blur != nil && zc > focusZc + 1e-6 { continue }
-            if let placed = place(zc) { drawCard(cr, slot, placed, zc) }
+            if let placed = place(zc) { drawCardSwift(cr, slot, placed, zc) }
         }
         cairo_destroy(cr)
         flush()
@@ -111,7 +113,7 @@ import Darwin
         return (out[0], out[1], out[2], out[3], out[4])
     }
 
-    private static func drawCard(_ cr: OpaquePointer, _ slot: Int,
+    private static func drawCardSwift(_ cr: OpaquePointer, _ slot: Int,
                                  _ placed: (Double, Double, Double, Double, Double),
                                  _ zc: Double) {
         guard let mainPtr = TunnelState.cardSurf[slot] else { return }
@@ -119,15 +121,6 @@ import Darwin
         if let mipPtr = TunnelState.mipSurf[slot] {
             let mainW = Double(cairo_image_surface_get_width(mainPtr))
             if placed.2 < mainW * 0.70 { surf = mipPtr }
-        }
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TUNNEL_CARD"] != "1" {
-            glaspen2_rust_draw_tunnel_card(
-                UnsafeMutableRawPointer(cr), UnsafeMutableRawPointer(surf),
-                cairo_image_surface_get_width(surf), cairo_image_surface_get_height(surf),
-                placed.0, placed.1, placed.2, placed.3, placed.4, zc,
-                Int32(TunnelState.surfW), Int32(TunnelState.surfH),
-                TunnelState.thick, TunnelState.paneA)
-            return
         }
         TunnelCardRenderer.draw(crRaw: UnsafeMutableRawPointer(cr),
                                 surfRaw: UnsafeMutableRawPointer(surf),
@@ -310,13 +303,8 @@ public func glaspen2TunnelFrameParitySelftest() -> Int32 {
             }
         }
     }
-    // 保证 Swift 路径: 帧/卡片都强制走 Swift 回退, 否则默认 Rust 会自我比较。
-    setenv("GLASPEN2_SWIFT_TUNNEL_FRAME", "1", 1)
-    setenv("GLASPEN2_SWIFT_TUNNEL_CARD", "1", 1)
     TunnelState.surface = b
-    TunnelFrameRenderer.render(p: 0.37)
-    unsetenv("GLASPEN2_SWIFT_TUNNEL_FRAME")
-    unsetenv("GLASPEN2_SWIFT_TUNNEL_CARD")
+    TunnelFrameRenderer.renderSwiftForProbe(p: 0.37)
     cairo_surface_flush(a)
     cairo_surface_flush(b)
     guard let da = cairo_image_surface_get_data(a), let db = cairo_image_surface_get_data(b) else {

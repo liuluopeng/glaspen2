@@ -880,3 +880,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - 邻页判定/半分辨率表面/blur/预载页数/预载耗时迁 Rust; Swift 仅调 prepare + 建卡 + 定时器;
 - 真机 5 卡隧道正常; 批次 tests/smoke/parity(不跑 release)全绿。
+
+
+## R158 隧道帧探针分离 + minimap 布局缓存迁 Rust
+
+- TunnelFrameRenderer.render 只走 Rust; 旧 Swift 帧实现改为 renderSwiftForProbe 仅供 parity 探针;
+- minimap 布局 JSON 缓存(页/视图/几何 key)迁 Rust, Swift 删除 layout 状态/解析;
+- 批次 tests/smoke/parity(不跑 release)全绿。

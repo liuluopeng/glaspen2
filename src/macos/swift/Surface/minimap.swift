@@ -2,11 +2,6 @@
 import AppKit
 
 @objc public final class MinimapRenderer: NSObject {
-    private static var layout: NSDictionary?
-    private static var layoutFor: Int64 = -1
-    private static var layoutW = -1.0
-    private static var layoutH = -1.0
-    private static var layoutGeomW: Int32 = -1
     private static var thumbs: [Int64: NSImage] = [:]
     private static var inflight: Set<Int64> = []
     private static var queue: DispatchQueue?
@@ -21,16 +16,12 @@ import AppKit
         let viewW = Double(bounds.size.width)
         let viewH = Double(bounds.size.height)
         let geomW = PageViewOps.geometryWidth
-        if layout == nil || layoutFor != cur || layoutW != viewW
-            || layoutH != viewH || layoutGeomW != geomW {
-            layout = layoutFromJSON(glaspen2_minimap_layout_json(cur, viewW, viewH,
-                                                                   Int32(geomW)))
-            layoutFor = cur
-            layoutW = viewW
-            layoutH = viewH
-            layoutGeomW = geomW
-        }
-        guard let layout, let items = layout["items"] as? [NSDictionary],
+        guard let p = glaspen2_rust_minimap_layout(cur, viewW, viewH, Int32(geomW)) else { return }
+        let data = Data(bytes: p, count: strlen(p))
+        guard let obj = try? JSONSerialization.jsonObject(with: data),
+              let layout = obj as? NSDictionary,
+              layout["error"] == nil,
+              let items = layout["items"] as? [NSDictionary],
               !items.isEmpty else { return }
         let stripW = (layout["strip_w"] as? NSNumber)?.doubleValue ?? 0
         let stripH = (layout["strip_h"] as? NSNumber)?.doubleValue ?? 0
@@ -100,22 +91,5 @@ import AppKit
 
     }
 
-    private static func layoutFromJSON(_ json: UnsafeMutablePointer<CChar>?) -> NSDictionary? {
-        guard let json else {
-            NSLog("[minimap] core 布局 FFI 返回 NULL")
-            return nil
-        }
-        let data = Data(bytes: json, count: strlen(json))
-        glaspen2_free_c_string(json)
-        guard let obj = try? JSONSerialization.jsonObject(with: data),
-              let dict = obj as? NSDictionary else {
-            NSLog("[minimap] core 布局 JSON 无法解析")
-            return nil
-        }
-        if dict["error"] != nil {
-            NSLog("[minimap] core 布局 FFI 错误: \(String(describing: dict["error"]!))")
-            return nil
-        }
-        return dict
-    }
+
 }

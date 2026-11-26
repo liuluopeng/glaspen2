@@ -7067,3 +7067,46 @@ pub extern "C" fn glaspen2_rust_tunnel_prepare(
     }
     n
 }
+
+// ── R159: minimap 布局 JSON 缓存(页/视图/几何变化才重算) ──
+
+unsafe extern "C" {
+    fn glaspen2_minimap_layout_json(
+        cur: i64,
+        view_w: f64,
+        view_h: f64,
+        geom_w: i32,
+    ) -> *mut std::os::raw::c_char;
+}
+
+static MINIMAP_LAYOUT: std::sync::Mutex<Option<(i64, u64, u64, i32, std::ffi::CString)>> =
+    std::sync::Mutex::new(None);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_minimap_layout(
+    cur: i64,
+    view_w: f64,
+    view_h: f64,
+    geom_w: i32,
+) -> *const std::os::raw::c_char {
+    let mut guard = MINIMAP_LAYOUT.lock().unwrap_or_else(|e| e.into_inner());
+    let key = (cur, view_w.to_bits(), view_h.to_bits(), geom_w);
+    if guard
+        .as_ref()
+        .is_none_or(|(c, w, h, g, _)| (*c, *w, *h, *g) != key)
+    {
+        let raw = unsafe { glaspen2_minimap_layout_json(cur, view_w, view_h, geom_w) };
+        if raw.is_null() {
+            return std::ptr::null();
+        }
+        let text = unsafe { std::ffi::CStr::from_ptr(raw) }.to_owned();
+        unsafe { glaspen2_free_c_string(raw) };
+        if text.to_bytes().first().is_none() {
+            return std::ptr::null();
+        }
+        *guard = Some((cur, view_w.to_bits(), view_h.to_bits(), geom_w, text));
+    }
+    guard
+        .as_ref()
+        .map_or(std::ptr::null(), |(_, _, _, _, s)| s.as_ptr())
+}

@@ -758,3 +758,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R155 | 隧道每帧时间/进度迁 Rust; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R156 | 隧道建卡循环迁 Rust; 真机5卡正常; debug build 通过 | 本提交 |
 | 2026-11-26 | Rust-R157 | 隧道启动准备(邻页/表面/blur/预载)迁 Rust; 真机5卡正常; 批次验证绿(不跑 release) | 本提交 |
+| 2026-11-26 | Rust-R158 | 隧道帧探针分离(生产纯 Rust); minimap 布局缓存迁 Rust; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |
