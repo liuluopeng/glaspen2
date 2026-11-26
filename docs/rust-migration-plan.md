@@ -1077,3 +1077,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - runOnMainSync 移到 macos_api 文件级 helper; canvasOverview 直接从 Rust 取 PNG/rect/bounds;
 - 删除 Settings/settings_glue.swift; Swift 47→46; debug build 通过。
+
+
+## R194 显示器变更防抖线程迁 Rust
+
+- display_changed 入口改为 Rust: 读主屏尺寸/begin/2.5s 线程防抖/finish; display_finish 改读主屏尺寸;
+- 删除 App/display_monitor.swift; app_bootstrap 观察者直调 Rust; Swift 46→45;
+- 冷启动正常; 批次验证后提交。

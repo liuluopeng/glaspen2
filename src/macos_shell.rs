@@ -5912,7 +5912,6 @@ static DISPLAY_GEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32:
 unsafe extern "C" {
     fn glaspen2_display_size(w: *mut i32, h: *mut i32);
     fn glaspen2_display_apply(w: i32, h: i32);
-    fn glaspen2_swift_display_size(w: *mut i32, h: *mut i32) -> i32;
 }
 
 /// R100: 变更入口; 返回 1 需要调度防抖计时, 0 忽略。
@@ -5933,8 +5932,8 @@ pub extern "C" fn glaspen2_rust_display_begin(new_w: i32, new_h: i32) -> i32 {
 /// R100: 防抖到期; 重读真实几何, 变化才 apply; 返回 1 已应用。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_display_finish() -> i32 {
-    let (mut real_w, mut real_h) = (0i32, 0i32);
-    if unsafe { glaspen2_swift_display_size(&mut real_w, &mut real_h) } == 0 {
+    let (real_w, real_h) = unsafe { (sw_app_screen_w(), sw_app_screen_h()) };
+    if real_w <= 0 || real_h <= 0 {
         return 0;
     }
     let (mut cur_w, mut cur_h) = (0i32, 0i32);
@@ -9336,4 +9335,31 @@ pub extern "C" fn glaspen2_macos_open_url(url_c: *const std::os::raw::c_char) {
         let ctx = Box::into_raw(Box::new(url as usize)) as *mut c_void;
         glaspen2_swift_run_on_main_sync(ctx, open_url_on_main);
     }
+}
+
+// ── R194: 显示器变更防抖线程 ──
+
+static DISPLAY_DEBOUNCE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_display_changed() {
+    let new_w = unsafe { sw_app_screen_w() };
+    let new_h = unsafe { sw_app_screen_h() };
+    if new_w <= 0 || new_h <= 0 {
+        return;
+    }
+    if glaspen2_rust_display_begin(new_w, new_h) == 0 {
+        return;
+    }
+    tracing::info!("[glaspen2] display reconfig: Rust 防抖 2.5s -> {new_w}x{new_h}");
+    let generation = DISPLAY_DEBOUNCE.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+        if DISPLAY_DEBOUNCE.load(std::sync::atomic::Ordering::SeqCst) != generation {
+            return;
+        }
+        if glaspen2_rust_display_finish() != 0 {
+            tracing::info!("[glaspen2] display apply by Rust");
+        }
+    });
 }

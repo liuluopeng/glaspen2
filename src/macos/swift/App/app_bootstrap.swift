@@ -63,7 +63,7 @@ import ApplicationServices
         displayObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main) { _ in
-            DisplayChangeMonitor.onDisplayChanged()
+            glaspen2_rust_display_changed()
         }
         glaspen2_router_event_tap_reinstall()
         glaspen2_rust_accessibility_alert_present()
