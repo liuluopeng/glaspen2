@@ -31,6 +31,14 @@ import AppKit
         ShortcutStore.chord(forAction: action)
     }
     /// R7: 动作 → NSEvent.ModifierFlags.rawValue(解析在 core::chord)。
+    static func applyPanelTransparent(on: Bool) {
+        guard let window = UIAnchors.settingsWindow else { return }
+        SettingsGlue.runOnMainSync {
+            window.isOpaque = !on
+            window.backgroundColor = on ? .clear : .windowBackgroundColor
+        }
+    }
+
     static func presentHud(hud: String, strokes: Int32, detail: String?) {
         let text: String? = hud.withCString { h in
             if let detail {
@@ -143,7 +151,7 @@ public func menuShutdown() { glaspen2_shutdown() }
 @_cdecl("glaspen2_menu_will_open_bridge")
 public func menuWillOpenBridge() {
     glaspen2_router_update_status_icon_state()
-    MenuGlue.updateCheckmarks()
+    glaspen2_router_update_checkmarks()
 }
 @_cdecl("glaspen2_menu_did_close_bridge")
 public func menuDidCloseBridge() {
@@ -183,7 +191,7 @@ public func menuShortcutChord(_ action: UnsafePointer<CChar>?) -> UnsafeMutableP
 }
 @_cdecl("gl_panel_transparent_apply")
 public func menuPanelTransparent(_ on: Int32) {
-    SettingsPanelExtras.applyPanelTransparent(on: on != 0)
+    MenuRuntime.applyPanelTransparent(on: on != 0)
 }
 @_cdecl("gl_ethereal_restore_now")
 public func menuEtherealRestoreNow() { EtherealMode.restoreNow() }

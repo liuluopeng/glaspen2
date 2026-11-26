@@ -34,7 +34,7 @@ public func panelDisplayApply(_ w: Int32, _ h: Int32) {
 
 @_cdecl("gl_panel_transparent_apply_full")
 public func panelTransparentFull(_ on: Int32) {
-    SettingsPanelExtras.applyPanelTransparent(on: on != 0)
+    MenuRuntime.applyPanelTransparent(on: on != 0)
     let vc = FlutterHost.ensureViewController()
     vc.view.layer?.isOpaque = on == 0
 }

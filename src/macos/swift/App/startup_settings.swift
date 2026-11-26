@@ -19,7 +19,7 @@ import Darwin
             glaspen2_router_startup_apply_pen(r, g, b, sw, colorIdx, widthIdx)
         }
         glaspen2_router_update_status_icon_state()
-        MenuGlue.updateCheckmarks()
+        glaspen2_router_update_checkmarks()
         SettingsGlue.loadShortcuts()
 
         let glassMilli = glaspen2_load_bool_setting("glass_alpha")

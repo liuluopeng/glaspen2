@@ -25,6 +25,23 @@ import AppKit
         return true
     }
 
+    private static func copyGifData(_ data: UnsafePointer<UInt8>?, length: Int32) {
+        guard let data, length > 0 else { return }
+        let bytes = Data(bytes: data, count: Int(length))
+        let name = String(format: "glaspen2_record_%.0f.gif",
+                          Date.timeIntervalSinceReferenceDate * 1000)
+        let path = (NSTemporaryDirectory() as NSString).appendingPathComponent(name)
+        do {
+            try bytes.write(to: URL(fileURLWithPath: path), options: .atomic)
+        } catch {
+            NSLog("[glaspen2] failed to write GIF temp file: \(path)")
+            return
+        }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([URL(fileURLWithPath: path) as NSURL])
+    }
+
     private static func execEffect(_ slot: Int32, _ effect: NSDictionary) {
         guard let kind = effect["kind"] as? String else { return }
         if kind == "ShowHud" {
@@ -64,8 +81,8 @@ import AppKit
             pendingGif = nil
             if let gif, !gif.isEmpty {
                 gif.withUnsafeBytes {
-                    GifClipboard.copy(data: $0.bindMemory(to: UInt8.self).baseAddress,
-                                      length: Int32(gif.count))
+                    RecordingEffects.copyGifData($0.bindMemory(to: UInt8.self).baseAddress,
+                                                 length: Int32(gif.count))
                 }
             } else {
                 NSLog("[recording] Clipboard effect 没有待写字节")

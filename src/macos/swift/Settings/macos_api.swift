@@ -6,7 +6,7 @@ import Darwin
     @objc public static func settingsJSON() -> UnsafeMutablePointer<CChar>? {
         var out: UnsafeMutablePointer<CChar>?
         SettingsGlue.runOnMainSync {
-            guard let overrides = MenuGlue.snapshotOverridesJSON() else { return }
+            guard let overrides = glaspen2_menu_snapshot_overrides_json() else { return }
             defer { free(overrides) }
             guard let json = glaspen2_settings_snapshot_json(overrides) else { return }
             let text = String(cString: json)

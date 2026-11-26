@@ -534,3 +534,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - `RecHudPresenter` 文案桥移入 `MenuRuntime.presentHud`;
 - 删除 `Input/raw_drawing.swift`、`Features/recording_hud.swift`; Swift 81→79;
 - 默认 smoke、tests/build/parity 全绿。
+
+
+## R105 删除 MenuGlue/SettingsPanelExtras/GifClipboard 薄桥
+
+- MenuGlue 调用点改直调 C; SettingsPanelExtras 面板透明移入 MenuRuntime; GifClipboard 写临时文件/剪贴板移入 RecordingEffects;
+- 删除三个文件; Swift 79→76;
+- 默认 smoke、tests/build/parity 全绿。
