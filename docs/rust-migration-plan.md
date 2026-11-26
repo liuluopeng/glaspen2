@@ -549,3 +549,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - `save_and_exit` 的 shutdown/压感窗销毁/显示光标/exit 迁 Rust(Rust 导出 C 符号);
 - 删除 `Surface/canvas_helpers.swift`; Swift 76→75;
 - 默认 smoke、tests/build/parity 全绿。
+
+
+## R107 快捷键默认/动作 JSON 缓存迁 Rust
+
+- 缓存从 Swift `ShortcutTable` 静态 NSDictionary/NSArray 迁 Rust(OnceLock+Mutex+CString, borrowed 指针);
+- hotkeys probe 直接解析 Rust 缓存; 删除 `Input/shortcut_table.swift`; Swift 75→74;
+- HOTKEYS_PROBE 14/14、默认 smoke/tests/build/parity 全绿。

@@ -4,8 +4,13 @@ import AppKit
 @objc public final class HotkeysProbe: NSObject {
     @objc public static func run() -> Int32 {
         SettingsGlue.loadShortcuts()
-        let defaults = ShortcutTable.defaults()
-        let actions = ShortcutTable.actions()
+        func parseJSON(_ p: UnsafePointer<CChar>?) -> Any? {
+            guard let p else { return nil }
+            let data = Data(bytes: p, count: strlen(p))
+            return try? JSONSerialization.jsonObject(with: data)
+        }
+        let defaults = (parseJSON(glaspen2_rust_shortcut_defaults_json()) as? NSDictionary) ?? [:]
+        let actions = (parseJSON(glaspen2_rust_shortcut_actions_json()) as? NSArray) ?? []
         var checked = 0
         var failures = 0
         for case let action as String in actions {

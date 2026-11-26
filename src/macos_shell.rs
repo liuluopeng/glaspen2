@@ -6023,3 +6023,42 @@ pub extern "C" fn save_and_exit(_sig: i32) {
     }
     std::process::exit(0);
 }
+
+// ── R107: 快捷键默认/动作 JSON 缓存 ──
+
+unsafe extern "C" {
+    fn glaspen2_chord_defaults_json() -> *mut std::os::raw::c_char;
+    fn glaspen2_chord_actions_json() -> *mut std::os::raw::c_char;
+}
+
+static CHORD_DEFAULTS_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<std::ffi::CString>>> =
+    std::sync::OnceLock::new();
+static CHORD_ACTIONS_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<std::ffi::CString>>> =
+    std::sync::OnceLock::new();
+
+unsafe fn cache_chord_json(
+    slot: &'static std::sync::OnceLock<std::sync::Mutex<Option<std::ffi::CString>>>,
+    producer: unsafe extern "C" fn() -> *mut std::os::raw::c_char,
+) -> *const std::os::raw::c_char {
+    let cache = slot.get_or_init(|| std::sync::Mutex::new(None));
+    let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+    if guard.is_none() {
+        let raw = unsafe { producer() };
+        if !raw.is_null() {
+            let text = unsafe { std::ffi::CStr::from_ptr(raw) }.to_owned();
+            unsafe { glaspen2_free_c_string(raw) };
+            *guard = Some(text);
+        }
+    }
+    guard.as_ref().map_or(std::ptr::null(), |s| s.as_ptr())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_shortcut_defaults_json() -> *const std::os::raw::c_char {
+    unsafe { cache_chord_json(&CHORD_DEFAULTS_CACHE, glaspen2_chord_defaults_json) }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_shortcut_actions_json() -> *const std::os::raw::c_char {
+    unsafe { cache_chord_json(&CHORD_ACTIONS_CACHE, glaspen2_chord_actions_json) }
+}

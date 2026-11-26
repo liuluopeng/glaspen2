@@ -608,3 +608,7 @@ extern int glaspen2_rust_ethereal_hide_now(void);
 extern void glaspen2_rust_ethereal_restore_now(void);
 extern void glaspen2_rust_ethereal_auto_show(void);
 extern int glaspen2_rust_ethereal_preview_show(void);
+
+// R107: 快捷键默认/动作 JSON 缓存(borrowed, 不要 free)
+extern const char *glaspen2_rust_shortcut_defaults_json(void);
+extern const char *glaspen2_rust_shortcut_actions_json(void);
