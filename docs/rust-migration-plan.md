@@ -1201,3 +1201,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 删3文件; Swift 15→12;
 - menu-full/statusbar probe OK, 冷启动正常。
 - 同轮尝试 save background P3 合成迁 Rust, 因未测试输出风险已回退.
+
+
+## R223/224/225 菜单/事件文件合并
+
+- menu_texts/hotkey_dispatch/menu_builder 合入 menu_runtime; pressure_monitor 合入 event_router;
+- 删4文件; Swift 12→8;
+- menu probes OK, 冷启动正常。
