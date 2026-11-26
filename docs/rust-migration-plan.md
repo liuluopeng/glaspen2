@@ -938,3 +938,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - Swift route 只构造 GlaspenEventC 描述符(键/指针/滚动字段), Rust 做 tap 恢复/停用清理/键盘/相机/菜单栏/滚轮/光标/笔分派;
 - 删除 Swift routeKeyboardEvent/routeCameraMouse/routeScrollZoom/penCursorUpdate/penSystemCursor;
 - 真机: 虚拟笔 pen DOWN、⌘⌃` 翻页正常; 批次 tests/smoke/parity(不跑 release)全绿。
+
+
+## R168 minimap 渲染整文件迁 Rust
+
+- 布局解析/缩略图缓存/异步渲染(线程+dispatch_main)/strip 绘制全部迁 Rust;
+- overlay_draw 直接调 Rust minimap; 删除 Swift MinimapRenderer 与 overlay minimap stage; Swift 66→65;
+- 批次 tests/smoke/parity(不跑 release)全绿。

@@ -14,13 +14,6 @@ import Darwin
 
 
 
-    static func drawMinimap(_ ctx: CGContext, bounds: NSRect) {
-        let infinite = glaspen2_router_infinite() != 0
-        let minimap = glaspen2_router_minimap_enabled() != 0
-        if minimap && !infinite && bounds.maxX >= bounds.size.width - 96.0 {
-            MinimapRenderer.draw(ctx, bounds: bounds)
-        }
-    }
 
 }
 
@@ -29,13 +22,6 @@ import Darwin
 
 
 
-@_cdecl("glaspen2_swift_overlay_minimap")
-public func glaspen2SwiftOverlayMinimap(_ ctx: UnsafeMutableRawPointer?,
-                                        _ bx: Double, _ by: Double, _ bw: Double, _ bh: Double) {
-    guard let ctx else { return }
-    let c = Unmanaged<CGContext>.fromOpaque(ctx).takeUnretainedValue()
-    OverlayDrawing.drawMinimap(c, bounds: NSRect(x: bx, y: by, width: bw, height: bh))
-}
 
 
 

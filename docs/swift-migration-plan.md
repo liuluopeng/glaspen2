@@ -766,3 +766,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R165 | windowDisplayID 迁 Rust; 删未用窗口 helper; 批次验证绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R166 | pen_state.swift 整文件 C 符号迁 Rust; 删文件; 虚拟笔/DB 正常; 批次验证绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R167 | 主路由事件编排迁 Rust(描述符); 删5个Swift helper; 真机笔/翻页正常; 批次验证绿(不跑 release) | 本提交 |
+| 2026-11-26 | Rust-R168 | minimap 渲染整文件迁 Rust; 删 minimap.swift + overlay stage; Swift 66→65; 批次验证绿(不跑 release) | 本提交 |

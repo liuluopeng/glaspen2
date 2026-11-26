@@ -1743,7 +1743,7 @@ pub extern "C" fn glaspen2_rust_overlay_draw(
         }
     }
     unsafe {
-        glaspen2_swift_overlay_minimap(ctx_ptr, bx, by, bw, bh);
+        let _ = glaspen2_rust_minimap_draw(ctx_ptr, bx, by, bw, bh);
         let _ = glaspen2_rust_notification_draw(bw, bh);
         let _ = glaspen2_rust_draw_cursor(
             ctx_ptr,
@@ -7597,4 +7597,176 @@ pub extern "C" fn glaspen2_rust_route_event(ev: *const GlaspenEventC) -> i32 {
         );
     }
     1
+}
+
+// ── R168: minimap 渲染(布局/缩略图缓存/异步生成/绘制) ──
+
+unsafe extern "C" {
+    fn glaspen2_render_thumbnail(
+        screen_id: i64,
+        w: i32,
+        h: i32,
+        max_size: i32,
+        out_len: *mut i32,
+    ) -> *mut u8;
+}
+
+static MINIMAP_THUMBS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<i64, usize>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+static MINIMAP_INFLIGHT: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<i64>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+
+extern "C" fn minimap_thumb_ready(ctx: *mut c_void) {
+    if ctx.is_null() {
+        return;
+    }
+    let payload = unsafe { Box::from_raw(ctx as *mut (i64, Vec<u8>)) };
+    use objc2_app_kit::NSImage;
+    use objc2_foundation::NSData;
+    let data = NSData::with_bytes(&payload.1);
+    if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+        let raw = objc2::rc::Retained::into_raw(image) as usize;
+        MINIMAP_THUMBS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(payload.0, raw);
+    }
+    MINIMAP_INFLIGHT
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&payload.0);
+    unsafe { glaspen2_router_redraw_draw_view() };
+}
+
+fn minimap_request_thumbnail(screen_id: i64) {
+    let mut inflight = MINIMAP_INFLIGHT.lock().unwrap_or_else(|e| e.into_inner());
+    if inflight.contains(&screen_id)
+        || MINIMAP_THUMBS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(&screen_id)
+    {
+        return;
+    }
+    inflight.insert(screen_id);
+    drop(inflight);
+    let w = unsafe { glaspen2_router_screen_w() } as i32;
+    let h = unsafe { glaspen2_router_screen_h() } as i32;
+    std::thread::spawn(move || {
+        let mut len = 0i32;
+        let png = unsafe { glaspen2_render_thumbnail(screen_id, w, h, 128, &mut len) };
+        if png.is_null() || len <= 0 {
+            MINIMAP_INFLIGHT
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&screen_id);
+            return;
+        }
+        let bytes = unsafe { std::slice::from_raw_parts(png, len as usize) }.to_vec();
+        unsafe { glaspen2_free_rust_bytes(png, len) };
+        let payload = Box::new((screen_id, bytes));
+        unsafe {
+            glaspen2_swift_dispatch_main(Box::into_raw(payload) as *mut c_void, minimap_thumb_ready)
+        };
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_minimap_draw(
+    ctx: *mut c_void,
+    bx: f64,
+    by: f64,
+    bw: f64,
+    bh: f64,
+) -> i32 {
+    if ctx.is_null() || bw <= 0.0 || bh <= 0.0 {
+        return 0;
+    }
+    if unsafe { glaspen2_router_infinite() } != 0 {
+        return 0;
+    }
+    let cur = unsafe { glaspen2_get_current_screen_id() };
+    if cur <= 0 {
+        return 0;
+    }
+    let p = unsafe {
+        glaspen2_rust_minimap_layout(cur, bw, bh, glaspen2_rust_pageview_geometry_width())
+    };
+    if p.is_null() {
+        return 0;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(p) }
+        .to_string_lossy()
+        .into_owned();
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return 0;
+    };
+    if v.get("error").is_some() {
+        return 0;
+    }
+    let Some(items_json) = v.get("items").and_then(|i| i.as_array()) else {
+        return 0;
+    };
+    if items_json.is_empty() {
+        return 0;
+    }
+    let strip_w = v.get("strip_w").and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let strip_h = v.get("strip_h").and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let strip_x = v.get("strip_x").and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let strip_y = v.get("strip_y").and_then(|x| x.as_f64()).unwrap_or(0.0);
+    if strip_w <= 0.0 || strip_h <= 0.0 {
+        return 0;
+    }
+    let mut items = Vec::with_capacity(items_json.len());
+    let mut labels: Vec<std::ffi::CString> = Vec::new();
+    for item in items_json {
+        let Some(pid) = item.get("screen_id").and_then(|x| x.as_i64()) else {
+            continue;
+        };
+        minimap_request_thumbnail(pid);
+        let is_cur = item
+            .get("current")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(false);
+        let y = item.get("y").and_then(|x| x.as_f64()).unwrap_or(0.0);
+        let h = item.get("h").and_then(|x| x.as_f64()).unwrap_or(0.0);
+        let label = item.get("label").and_then(|x| x.as_str()).unwrap_or("");
+        let label_ptr = if label.is_empty() {
+            std::ptr::null()
+        } else {
+            let c = std::ffi::CString::new(label).unwrap_or_default();
+            labels.push(c);
+            labels.last().map_or(std::ptr::null(), |c| c.as_ptr())
+        };
+        let thumb = MINIMAP_THUMBS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&pid)
+            .copied()
+            .unwrap_or(0) as *mut c_void;
+        items.push(MinimapItemC {
+            screen_id: pid,
+            current: i32::from(is_cur),
+            y,
+            h,
+            label: label_ptr,
+            thumb,
+        });
+    }
+    if items.is_empty() {
+        return 0;
+    }
+    unsafe {
+        glaspen2_rust_draw_minimap(
+            ctx,
+            items.as_ptr(),
+            items.len() as i32,
+            strip_w,
+            strip_h,
+            strip_x,
+            strip_y,
+            bh,
+        )
+    }
 }
