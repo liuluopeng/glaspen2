@@ -1179,3 +1179,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - MenuIconFactory 合入 menu_texts; FlipProbe 合入 run_glue; 删2文件;
 - Swift 23→21; 冷启动正常。
+
+
+## R214/215/216 事件/菜单/隧道成对文件合并
+
+- event_tap 合入 event_router; menu_builder_full 合入 menu_builder; tunnel_frame 合入 tunnel_card;
+- 删3文件; Swift 21→18;
+- menu-full/tunnel-card/tunnel-frame parity 0, 冷启动正常。

@@ -106,3 +106,46 @@ import AppKit
 
 
 }
+
+
+@objc public final class EventTapInstaller: NSObject {
+    @objc(eventMaskWithScroll:)
+    public static func eventMask(includeScroll: Bool) -> UInt64 {
+        let types: [CGEventType] = [
+            .mouseMoved, .leftMouseDown, .leftMouseDragged, .leftMouseUp,
+            .rightMouseDown, .rightMouseDragged, .rightMouseUp,
+            .otherMouseDown, .otherMouseDragged, .otherMouseUp,
+            .tabletProximity, .tabletPointer, .keyDown, .keyUp,
+        ]
+        var mask: UInt64 = 0
+        for t in types { mask |= CGEventMask(1) << UInt64(t.rawValue) }
+        if includeScroll { mask |= CGEventMask(1) << UInt64(CGEventType.scrollWheel.rawValue) }
+        return mask
+    }
+
+    @objc(installWithScroll:)
+    public static func install(includeScroll: Bool) {
+        let mask = eventMask(includeScroll: includeScroll)
+        let callback: CGEventTapCallBack = { _, type, event, _ in
+            let route = EventRouter.route(type: type, event: event)
+            if route == 2 { return nil }
+            if EventRouter.isVirtualPenEvent(event) { return nil }
+            return Unmanaged.passUnretained(event)
+        }
+        guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap,
+                                          place: .headInsertEventTap,
+                                          options: .defaultTap,
+                                          eventsOfInterest: CGEventMask(mask),
+                                          callback: callback,
+                                          userInfo: nil) else {
+            glaspen2_event_tap_store(nil)
+            return
+        }
+        CGEvent.tapEnable(tap: tap, enable: true)
+        if let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) {
+            CFRunLoopAddSource(CFRunLoopGetMain(), source, CFRunLoopMode.commonModes)
+        }
+        glaspen2_event_tap_store(tap)
+        glaspen2_event_tap_note_scroll(includeScroll ? 1 : 0)
+    }
+}
