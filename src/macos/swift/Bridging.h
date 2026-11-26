@@ -360,3 +360,6 @@ void glaspen2_macos_swift_probe_selftest(void);
 #endif
 
 #endif // GLASPEN2_SWIFT_BRIDGING_H
+
+// R106: 退出收尾(Rust)
+void save_and_exit(int sig);

@@ -238,6 +238,11 @@ public func runGlassView() -> UnsafeMutableRawPointer? {
     return Unmanaged.passUnretained(g).toOpaque()
 }
 
+@_cdecl("glaspen2_swift_pressure_destroy")
+public func runPressureDestroy() { PressureMonitorWindow.destroy() }
+@_cdecl("glaspen2_swift_show_cursor")
+public func runShowCursor() { CGDisplayShowCursor(CGMainDisplayID()) }
+
 @_cdecl("glaspen2_swift_tunnel_active")
 public func runTunnelActive() -> Int32 { TunnelState.active ? 1 : 0 }
 
@@ -350,8 +355,8 @@ public func runPanelTransparentFull(_ on: Int32) { panelTransparentFull(on) }
 
 @_cdecl("glaspen2_router_install_signals")
 public func runInstallSignals() {
-    signal(SIGINT) { _ in saveAndExit(0) }
-    signal(SIGTERM) { _ in saveAndExit(0) }
+    signal(SIGINT) { _ in save_and_exit(0) }
+    signal(SIGTERM) { _ in save_and_exit(0) }
 }
 
 @_cdecl("glaspen2_router_window_sharing_type")

@@ -541,3 +541,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - MenuGlue 调用点改直调 C; SettingsPanelExtras 面板透明移入 MenuRuntime; GifClipboard 写临时文件/剪贴板移入 RecordingEffects;
 - 删除三个文件; Swift 79→76;
 - 默认 smoke、tests/build/parity 全绿。
+
+
+## R106 cairo 缩放上下文/退出收尾迁 Rust
+
+- `cairo_create_scaled` 的 surface/scale/page-fit 变换迁 Rust;
+- `save_and_exit` 的 shutdown/压感窗销毁/显示光标/exit 迁 Rust(Rust 导出 C 符号);
+- 删除 `Surface/canvas_helpers.swift`; Swift 76→75;
+- 默认 smoke、tests/build/parity 全绿。

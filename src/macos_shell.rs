@@ -2708,7 +2708,6 @@ fn stroke_ctx_slot() -> &'static std::sync::Mutex<Option<CairoCtxPtr>> {
 }
 
 unsafe extern "C" {
-    fn cairo_create_scaled() -> *mut c_void;
     fn glaspen2_perf_elapsed_us(since: u64) -> u64;
 }
 
@@ -5979,4 +5978,48 @@ pub extern "C" fn glaspen2_rust_ethereal_preview_show() -> i32 {
         }
     }
     1
+}
+
+// ── R106: cairo 缩放上下文 / 退出收尾 ──
+
+unsafe extern "C" {
+    fn glaspen2_shutdown();
+    fn glaspen2_swift_pressure_destroy();
+    fn glaspen2_swift_show_cursor();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn cairo_create_scaled() -> *mut c_void {
+    let surface = glaspen2_rust_surface_current();
+    if surface.is_null() {
+        return std::ptr::null_mut();
+    }
+    let cr = unsafe { cairo_create(surface) };
+    if cr.is_null() {
+        return cr;
+    }
+    let scale = glaspen2_rust_surface_scale();
+    unsafe {
+        cairo_scale(cr, scale, scale);
+        if glaspen2_rust_pageview_is_fit() != 0 {
+            cairo_translate(
+                cr,
+                glaspen2_rust_pageview_paper_ox() * scale,
+                glaspen2_rust_pageview_paper_oy() * scale,
+            );
+            let ps = glaspen2_rust_pageview_paper_scale();
+            cairo_scale(cr, ps, ps);
+        }
+    }
+    cr
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn save_and_exit(_sig: i32) {
+    unsafe {
+        glaspen2_shutdown();
+        glaspen2_swift_pressure_destroy();
+        glaspen2_swift_show_cursor();
+    }
+    std::process::exit(0);
 }
