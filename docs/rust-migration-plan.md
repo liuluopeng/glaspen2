@@ -862,3 +862,9 @@ modeler Up error 需真机笔/翻页连击复验。
 ## R154 隧道参数环境变量迁 Rust
 
 - GLASPEN2_FLIP_DUR/K/THICK/GLASS 解析与范围校验迁 Rust, Swift start 仅调 apply_env; debug build 通过。
+
+
+## R155 隧道每帧时间/进度迁 Rust
+
+- t0/frames 复位与 tick 进度计算迁 Rust; Swift 定时器只负责 finish/render 分派;
+- 第3片后全量 tests/smoke/parity(不跑 release)全绿。
