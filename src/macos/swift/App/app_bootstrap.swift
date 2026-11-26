@@ -7,8 +7,8 @@ import ApplicationServices
 
     @objc public static func start() -> Bool {
 
-        let lockFd = InstanceLock.acquire()
-        if lockFd == -1 || AppInstanceGuard.anotherInstanceRunning() {
+        let lockFd = glaspen2_rust_instance_lock_acquire()
+        if lockFd == -1 || glaspen2_rust_another_instance_running() != 0 {
             NSApplication.shared
             NSApp.setActivationPolicy(.accessory)
             let alert = NSAlert()

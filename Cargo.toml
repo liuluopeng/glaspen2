@@ -53,7 +53,7 @@ libc = "0.2.189"
 objc2 = "0.6.5"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = [
   "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSMenu", "NSMenuItem", "NSCell", "NSWindow", "NSViewController", "NSRunningApplication", "NSShadow", "NSFont", "NSFontDescriptor", "NSStringDrawing", "NSAttributedString", "NSColor", "NSGraphics", "NSVisualEffectView", "NSBitmapImageRep", "NSImage", "NSImageRep", "NSBezierPath", "NSGraphicsContext", "NSCursor", "objc2-quartz-core", "objc2-core-graphics",
-  "NSResponder", "NSView", "NSApplication", "objc2-core-foundation",
+  "NSResponder", "NSView", "NSApplication", "NSWorkspace", "objc2-core-foundation",
 ] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSObject", "NSString", "NSAttributedString", "NSDictionary", "NSAffineTransform", "objc2-core-foundation"] }
 objc2-core-graphics = "0.3.2"

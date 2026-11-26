@@ -744,3 +744,9 @@ extern void *glaspen2_rust_invert_ink_source(void *cr);
 // R171: 启动设置恢复
 extern void glaspen2_rust_restore_settings_a(void);
 extern void glaspen2_rust_restore_settings_b(void);
+
+// R173: 单实例 flock
+extern int glaspen2_rust_instance_lock_acquire(void);
+
+// R174: 重复实例检测
+extern int glaspen2_rust_another_instance_running(void);

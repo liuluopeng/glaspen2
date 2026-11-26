@@ -972,3 +972,11 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - 删除 MenuRuntime 未用 shortcutValues/setShortcutTables/snapshot; 删 StatusBarFactory, app_bootstrap/selftest 直调 Rust 状态栏项;
 - statusbar probe OK; debug build 通过。
+
+
+## R173/174 单实例锁/重复实例检测迁 Rust
+
+- flock 文件锁迁 Rust(libc open/flock, ALLOW_MULTI 旁路);
+- 重复实例检测迁 Rust(NSWorkspace runningApplications raw msg_send); 开启 NSWorkspace feature;
+- 删除 instance_lock.swift / app_instance.swift; Swift 65→63;
+- 冷启动正常; 批次 tests/smoke/parity(不跑 release)全绿。

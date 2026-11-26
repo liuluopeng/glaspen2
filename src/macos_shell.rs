@@ -8259,3 +8259,48 @@ pub extern "C" fn glaspen2_rust_restore_settings_b() {
         glaspen2_swift_delayed_rebuild();
     }
 }
+
+// ── R173: 单实例 flock ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_instance_lock_acquire() -> i32 {
+    if std::env::var_os("GLASPEN2_ALLOW_MULTI").is_some() {
+        return -2;
+    }
+    let path = std::env::temp_dir().join("glaspen2.instance.lock");
+    let Ok(cpath) = std::ffi::CString::new(path.to_string_lossy().as_bytes()) else {
+        return -1;
+    };
+    let fd = unsafe { libc::open(cpath.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o666) };
+    if fd < 0 {
+        return -1;
+    }
+    if unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+        return fd;
+    }
+    unsafe { libc::close(fd) };
+    -1
+}
+
+// ── R174: 重复实例检测 ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_another_instance_running() -> i32 {
+    use objc2_app_kit::NSWorkspace;
+    use objc2_foundation::NSString;
+    let me = std::process::id() as i32;
+    let workspace = unsafe { NSWorkspace::sharedWorkspace() };
+    let apps = unsafe { workspace.runningApplications() };
+    for idx in 0..apps.count() {
+        let app = apps.objectAtIndex(idx);
+        let pid: i32 = unsafe { objc2::msg_send![&*app, processIdentifier] };
+        if pid == me {
+            continue;
+        }
+        let name: *mut NSString = unsafe { objc2::msg_send![&*app, localizedName] };
+        if !name.is_null() && unsafe { &*name }.to_string() == "glaspen2" {
+            return 1;
+        }
+    }
+    0
+}
