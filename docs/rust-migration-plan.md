@@ -1432,3 +1432,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - FlipProbe 类删除; dispatch_main_after 链实现建页/往返翻;
 - FLIP_EVERY=1 实测 tick/建页/翻页连续 5 次, 应用存活.
+
+
+## R261 最终状态核对
+
+- HEAD ; v0.7.0 (commit)  未移动; 领先 origin/main ; 未 push;
+- Swift  文件 / ObjC ; 工作区仅  未跟踪(不提交);
+- 自动化: cargo test exit 0 / smoke debug 通过 / parity 通过 / FLIP_EVERY 探针连续翻页通过.
