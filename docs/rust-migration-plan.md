@@ -851,3 +851,9 @@ modeler Up error 需真机笔/翻页连击复验。
 ## R152 SettingsGlue 剩余桥清理
 
 - effectiveShortcutJSON/applyShortcuts/loadString 删除, 调用点直调 C 或内联; debug build 通过。
+
+
+## R153 时光隧道标量状态迁 Rust
+
+- active/尺寸/卡片数/back/travel/k/thick/paneA/dur/t0/frames 迁 Rust; Swift 计算属性;
+- 表面/数组/定时器/回调仍 Swift; debug build 通过。

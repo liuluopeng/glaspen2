@@ -655,3 +655,29 @@ extern void glaspen2_rust_check_tap(void);
 
 // R151: 启动读取快捷键覆盖并应用
 extern void glaspen2_rust_load_shortcuts(void);
+
+// R153: 隧道标量状态
+extern int glaspen2_rust_tunnel_get_active(void);
+extern void glaspen2_rust_tunnel_set_active(int v);
+extern int glaspen2_rust_tunnel_get_back(void);
+extern void glaspen2_rust_tunnel_set_back(int v);
+extern int glaspen2_rust_tunnel_get_surf_w(void);
+extern void glaspen2_rust_tunnel_set_surf_w(int v);
+extern int glaspen2_rust_tunnel_get_surf_h(void);
+extern void glaspen2_rust_tunnel_set_surf_h(int v);
+extern int glaspen2_rust_tunnel_get_cards(void);
+extern void glaspen2_rust_tunnel_set_cards(int v);
+extern double glaspen2_rust_tunnel_get_travel(void);
+extern void glaspen2_rust_tunnel_set_travel(double v);
+extern double glaspen2_rust_tunnel_get_k(void);
+extern void glaspen2_rust_tunnel_set_k(double v);
+extern double glaspen2_rust_tunnel_get_thick(void);
+extern void glaspen2_rust_tunnel_set_thick(double v);
+extern double glaspen2_rust_tunnel_get_pane(void);
+extern void glaspen2_rust_tunnel_set_pane(double v);
+extern double glaspen2_rust_tunnel_get_dur(void);
+extern void glaspen2_rust_tunnel_set_dur(double v);
+extern double glaspen2_rust_tunnel_get_t0(void);
+extern void glaspen2_rust_tunnel_set_t0(double v);
+extern unsigned long long glaspen2_rust_tunnel_get_frames(void);
+extern void glaspen2_rust_tunnel_set_frames(unsigned long long v);

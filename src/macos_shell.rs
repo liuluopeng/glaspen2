@@ -6765,3 +6765,120 @@ pub extern "C" fn glaspen2_rust_load_shortcuts() {
         let _ = glaspen2_shortcut_apply_json(c.as_ptr());
     }
 }
+
+// ── R153: 时光隧道标量状态(active/尺寸/卡片数/参数/时间) ──
+
+static TS_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static TS_SURF_W: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+static TS_SURF_H: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+static TS_CARDS: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+static TS_BACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static TS_TRAVEL: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1.0f64.to_bits());
+static TS_K: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0.45f64.to_bits());
+static TS_THICK: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.018f64.to_bits());
+static TS_PANE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0.84f64.to_bits());
+static TS_DUR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0.38f64.to_bits());
+static TS_T0: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static TS_FRAMES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+macro_rules! tunnel_bool_accesors {
+    ($get:ident, $set:ident, $cell:ident) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $get() -> i32 {
+            i32::from($cell.load(std::sync::atomic::Ordering::Relaxed))
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $set(v: i32) {
+            $cell.store(v != 0, std::sync::atomic::Ordering::Relaxed);
+        }
+    };
+}
+
+macro_rules! tunnel_i32_accesors {
+    ($get:ident, $set:ident, $cell:ident) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $get() -> i32 {
+            $cell.load(std::sync::atomic::Ordering::Relaxed)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $set(v: i32) {
+            $cell.store(v, std::sync::atomic::Ordering::Relaxed);
+        }
+    };
+}
+
+macro_rules! tunnel_f64_accesors {
+    ($get:ident, $set:ident, $cell:ident) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $get() -> f64 {
+            f64::from_bits($cell.load(std::sync::atomic::Ordering::Relaxed))
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $set(v: f64) {
+            $cell.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+        }
+    };
+}
+
+tunnel_bool_accesors!(
+    glaspen2_rust_tunnel_get_active,
+    glaspen2_rust_tunnel_set_active,
+    TS_ACTIVE
+);
+tunnel_bool_accesors!(
+    glaspen2_rust_tunnel_get_back,
+    glaspen2_rust_tunnel_set_back,
+    TS_BACK
+);
+tunnel_i32_accesors!(
+    glaspen2_rust_tunnel_get_surf_w,
+    glaspen2_rust_tunnel_set_surf_w,
+    TS_SURF_W
+);
+tunnel_i32_accesors!(
+    glaspen2_rust_tunnel_get_surf_h,
+    glaspen2_rust_tunnel_set_surf_h,
+    TS_SURF_H
+);
+tunnel_i32_accesors!(
+    glaspen2_rust_tunnel_get_cards,
+    glaspen2_rust_tunnel_set_cards,
+    TS_CARDS
+);
+tunnel_f64_accesors!(
+    glaspen2_rust_tunnel_get_travel,
+    glaspen2_rust_tunnel_set_travel,
+    TS_TRAVEL
+);
+tunnel_f64_accesors!(glaspen2_rust_tunnel_get_k, glaspen2_rust_tunnel_set_k, TS_K);
+tunnel_f64_accesors!(
+    glaspen2_rust_tunnel_get_thick,
+    glaspen2_rust_tunnel_set_thick,
+    TS_THICK
+);
+tunnel_f64_accesors!(
+    glaspen2_rust_tunnel_get_pane,
+    glaspen2_rust_tunnel_set_pane,
+    TS_PANE
+);
+tunnel_f64_accesors!(
+    glaspen2_rust_tunnel_get_dur,
+    glaspen2_rust_tunnel_set_dur,
+    TS_DUR
+);
+tunnel_f64_accesors!(
+    glaspen2_rust_tunnel_get_t0,
+    glaspen2_rust_tunnel_set_t0,
+    TS_T0
+);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_tunnel_get_frames() -> u64 {
+    TS_FRAMES.load(std::sync::atomic::Ordering::Relaxed)
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_tunnel_set_frames(v: u64) {
+    TS_FRAMES.store(v, std::sync::atomic::Ordering::Relaxed);
+}
