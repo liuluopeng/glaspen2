@@ -14,11 +14,6 @@ import AppKit
     static func ensureSurface() {
         if let dv = UIAnchors.drawView { SurfaceStore.ensure(view: dv) }
     }
-    static func applyGlassView(alpha: Double, hidden: Bool) {
-        guard let gv = UIAnchors.glassView else { return }
-        gv.alphaValue = alpha
-        gv.isHidden = hidden
-    }
     static func actionForChord(_ chord: String) -> String? {
         ShortcutStore.action(forChord: chord)
     }
@@ -32,26 +27,6 @@ import AppKit
             window.isOpaque = !on
             window.backgroundColor = on ? .clear : .windowBackgroundColor
         }
-    }
-
-    static func presentHud(hud: String, strokes: Int32, detail: String?) {
-        let text: String? = hud.withCString { h in
-            if let detail {
-                return detail.withCString { d in
-                    guard let p = glaspen2_rust_rec_hud_text(h, strokes, d) else { return nil }
-                    defer { free(p) }
-                    return String(cString: p)
-                }
-            }
-            guard let p = glaspen2_rust_rec_hud_text(h, strokes, nil) else { return nil }
-            defer { free(p) }
-            return String(cString: p)
-        }
-        guard let text else {
-            NSLog("[recording] 未实现的 HUD 文案: %@", hud)
-            return
-        }
-        notify(text)
     }
 
     static func menuItem(tag: Int, inMenu menu: NSMenu?) -> NSMenuItem? {

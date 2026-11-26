@@ -821,3 +821,11 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - EtherealMode.hide/restore/autoShow/peek 删除 Swift 旧显隐实现, 仅保留 Rust 调用 + peek 定时器;
 - debug build 通过。
+
+
+## R148 顶层菜单构建/飘渺/未用薄桥收尾
+
+- R146 顶层菜单/子菜单旧 Swift 构建删除, menu-full probe OK;
+- R147 飘渺模式旧显隐删除;
+- R148 删除 MenuRuntime 未用的 applyGlassView/presentHud;
+- 第3片后全量 tests/smoke/parity(不跑 release)全绿。
