@@ -67,6 +67,58 @@ fn main() {
         std::process::exit(2);
     }
 
+    //     target/debug/glaspen2 --swift-card-factory-probe
+    if args.get(1).map(String::as_str) == Some("--swift-card-factory-probe") {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            unsafe extern "C" {
+                fn cairo_image_surface_create(format: i32, w: i32, h: i32)
+                -> *mut std::ffi::c_void;
+                fn cairo_surface_destroy(s: *mut std::ffi::c_void);
+                fn cairo_surface_status(s: *mut std::ffi::c_void) -> i32;
+                fn glaspen2_rust_surface_set(s: *mut std::ffi::c_void);
+                fn glaspen2_rust_surface_set_scale(v: f64);
+                fn glaspen2_rust_tunnel_set_surf_w(v: i32);
+                fn glaspen2_rust_tunnel_set_surf_h(v: i32);
+                fn glaspen2_rust_make_card(
+                    is_current: i32,
+                    depth: i32,
+                    cache_slot: i32,
+                    screen_id: i64,
+                    main_out: *mut *mut std::ffi::c_void,
+                    mip_out: *mut *mut std::ffi::c_void,
+                ) -> i32;
+            }
+            let surf = cairo_image_surface_create(0, 800, 600);
+            if surf.is_null() || cairo_surface_status(surf) != 0 {
+                println!("CARD_FACTORY_PROBE_FAIL surface");
+                std::process::exit(1);
+            }
+            glaspen2_rust_surface_set(surf);
+            glaspen2_rust_surface_set_scale(2.0);
+            glaspen2_rust_tunnel_set_surf_w(800);
+            glaspen2_rust_tunnel_set_surf_h(600);
+            let (mut main, mut mip): (*mut std::ffi::c_void, *mut std::ffi::c_void) =
+                (std::ptr::null_mut(), std::ptr::null_mut());
+            let ok = glaspen2_rust_make_card(1, 0, 0, 0, &mut main, &mut mip);
+            println!(
+                "CARD_FACTORY_PROBE ok={ok} main={} mip={}",
+                !main.is_null(),
+                !mip.is_null()
+            );
+            if !main.is_null() {
+                cairo_surface_destroy(main);
+            }
+            if !mip.is_null() {
+                cairo_surface_destroy(mip);
+            }
+            cairo_surface_destroy(surf);
+            std::process::exit(if ok != 0 && !main.is_null() { 0 } else { 1 });
+        }
+        #[cfg(not(target_os = "macos"))]
+        std::process::exit(2);
+    }
+
     //     target/debug/glaspen2 --swift-tunnel-card-parity
     if args.get(1).map(String::as_str) == Some("--swift-tunnel-card-parity") {
         #[cfg(target_os = "macos")]

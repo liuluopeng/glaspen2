@@ -439,21 +439,6 @@ public func runNotifyAxWarning() {
         "Accessibility permission lost — re-enable it in System Settings"))
 }
 
-@_cdecl("glaspen2_swift_tunnel_make_card")
-public func runTunnelMakeCard(_ isCurrent: Int32, _ depth: Int32, _ slot: Int32,
-                              _ screenId: Int64,
-                              _ mainOut: UnsafeMutablePointer<UnsafeMutableRawPointer?>?,
-                              _ mipOut: UnsafeMutablePointer<UnsafeMutableRawPointer?>?) -> Int32 {
-    guard let made = TunnelCardFactory.make(isCurrent: isCurrent != 0, depth: depth,
-                                            cacheSlot: slot, screenId: screenId),
-          let mainValue = made["main"] as? NSValue,
-          let mainPtr = mainValue.pointerValue else { return 0 }
-    mainOut?.pointee = mainPtr
-    if let mipValue = made["mip"] as? NSValue, let mipPtr = mipValue.pointerValue {
-        mipOut?.pointee = mipPtr
-    }
-    return 1
-}
 
 @_cdecl("glaspen2_swift_tunnel_set_surfaces")
 public func runTunnelSetSurfaces(_ surface: UnsafeMutableRawPointer?, _ blur: UnsafeMutableRawPointer?) {

@@ -986,3 +986,11 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - 新增 glaspen2_rust_make_card: 邻页尺寸/半分辨率快照/预缩/mip 生成; 暂未替换 Swift factory;
 - debug build 通过。
+
+
+## R176 隧道卡片工厂接线并删除 Swift factory
+
+- tunnel_build_cards 直接调 Rust glaspen2_rust_make_card; 删除 TunnelCardFactory.swift 与 C 桥;
+- 新增 --swift-card-factory-probe(当前表面→half/mip, ok=1 main=true mip=true)并入 smoke;
+- 备注: smoke 验证统一用 `sh scripts/smoke-macos.sh debug`(不重建 release, 避免旧 binary);
+- 批次 cargo test/parity + debug smoke(含 card factory probe)全绿。

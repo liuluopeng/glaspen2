@@ -24,6 +24,7 @@ PROBE_LOG="$PROBE_ROOT/logs"
 "$BIN" --swift-notification-probe
 "$BIN" --swift-tunnel-card-probe
 "$BIN" --swift-tunnel-card-parity
+"$BIN" --swift-card-factory-probe
 "$BIN" --swift-tunnel-frame-parity
 "$BIN" --swift-pageframe-parity
 "$BIN" --swift-statusbar-probe

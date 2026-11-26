@@ -7018,17 +7018,6 @@ pub extern "C" fn glaspen2_rust_tunnel_tick(out_p: *mut f64) -> i32 {
 
 // ── R156: 隧道建卡循环(半分辨率快照由 Swift factory 提供) ──
 
-unsafe extern "C" {
-    fn glaspen2_swift_tunnel_make_card(
-        is_current: i32,
-        depth: i32,
-        cache_slot: i32,
-        screen_id: i64,
-        main_out: *mut *mut c_void,
-        mip_out: *mut *mut c_void,
-    ) -> i32;
-}
-
 /// 返回建卡数; -1 表示 factory 失败。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_tunnel_build_cards(
@@ -7056,7 +7045,7 @@ pub extern "C" fn glaspen2_rust_tunnel_build_cards(
         let mut main: *mut c_void = std::ptr::null_mut();
         let mut mip: *mut c_void = std::ptr::null_mut();
         let ok = unsafe {
-            glaspen2_swift_tunnel_make_card(
+            glaspen2_rust_make_card(
                 i32::from(depth == 0),
                 depth,
                 i,
