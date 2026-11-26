@@ -905,3 +905,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - overlay_draw 直接调 Rust grid/surface/tunnel/prepare(门控/pan/zoom/clip 与原 stage 一致);
 - 删除 4 个 Swift stage 桥与 OverlayDrawing 对应 helper; 仅保留 minimap/perf stage;
 - 批次 tests/smoke/parity(不跑 release)全绿。
+
+
+## R163 覆盖层 perf stage 直连 Rust
+
+- glaspen2_rust_overlay_draw 直接构造 notes 并调 C perf_notes; 删 Swift perf stage/writePerf;
+- debug build 通过。

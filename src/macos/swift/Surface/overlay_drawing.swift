@@ -22,17 +22,6 @@ import Darwin
         }
     }
 
-    static func writePerf(rect: NSRect, bounds: NSRect, t0: UInt64) {
-        if glaspen2_router_perf_enabled() != 0 {
-            let infinite = glaspen2_router_infinite() != 0
-            let minimap = glaspen2_router_minimap_enabled() != 0
-            var notes = String(format: "rect=%.0fx%.0f", rect.size.width, rect.size.height)
-            if rect == bounds { notes += " FULL" }
-            if glaspen2_router_show_grid() != 0 { notes += " grid" }
-            if minimap && !infinite { notes += " minimap" }
-            notes.withCString { glaspen2_router_perf_notes("drawrect", $0, t0) }
-        }
-    }
 }
 
 // R38: Rust 编排覆盖层绘制时调用这些 stage 桥(各 stage 仍是原 Swift 实现)。
@@ -52,10 +41,3 @@ public func glaspen2SwiftOverlayMinimap(_ ctx: UnsafeMutableRawPointer?,
 
 
 
-@_cdecl("glaspen2_swift_overlay_perf")
-public func glaspen2SwiftOverlayPerf(_ t0: UInt64,
-                                     _ bx: Double, _ by: Double, _ bw: Double, _ bh: Double,
-                                     _ rx: Double, _ ry: Double, _ rw: Double, _ rh: Double) {
-    OverlayDrawing.writePerf(rect: NSRect(x: rx, y: ry, width: rw, height: rh),
-                             bounds: NSRect(x: bx, y: by, width: bw, height: bh), t0: t0)
-}

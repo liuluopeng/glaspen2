@@ -761,3 +761,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R158 | 隧道帧探针分离(生产纯 Rust); minimap 布局缓存迁 Rust; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R159/160 | 通知状态迁 Rust; overlay cursor/notification stage 直连 Rust; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R161/162 | 覆盖层 grid/surface/tunnel/prepare stage 直连 Rust; 删4桥+helper; 批次验证绿(不跑 release) | 本提交 |
+| 2026-11-26 | Rust-R163 | 覆盖层 perf stage 直连 Rust; debug build 通过 | 本提交 |

@@ -1603,17 +1603,6 @@ pub extern "C" fn glaspen2_rust_set_glass_enabled(enabled: i32) {
 
 unsafe extern "C" {
     fn glaspen2_swift_overlay_minimap(ctx: *mut c_void, bx: f64, by: f64, bw: f64, bh: f64);
-    fn glaspen2_swift_overlay_perf(
-        t0: u64,
-        bx: f64,
-        by: f64,
-        bw: f64,
-        bh: f64,
-        rx: f64,
-        ry: f64,
-        rw: f64,
-        rh: f64,
-    );
 }
 
 unsafe extern "C" {
@@ -1766,12 +1755,45 @@ pub extern "C" fn glaspen2_rust_overlay_draw(
         );
     }
     CGContext::restore_g_state(Some(&cg));
-    unsafe { glaspen2_swift_overlay_perf(t0, bx, by, bw, bh, rx, ry, rw, rh) };
+    // R163: perf notes 直接写 C。
+    unsafe {
+        if glaspen2_router_perf_enabled() != 0 {
+            let mut notes = format!("rect={:.0}x{:.0}", rw, rh);
+            if (rx - bx).abs() < 0.5
+                && (ry - by).abs() < 0.5
+                && (rw - bw).abs() < 0.5
+                && (rh - bh).abs() < 0.5
+            {
+                notes.push_str(" FULL");
+            }
+            if glaspen2_router_show_grid() != 0 {
+                notes.push_str(" grid");
+            }
+            let infinite = glaspen2_router_infinite() != 0;
+            let minimap = glaspen2_router_minimap_enabled() != 0;
+            if minimap && !infinite {
+                notes.push_str(" minimap");
+            }
+            if let (Ok(name), Ok(notes)) = (
+                std::ffi::CString::new("drawrect"),
+                std::ffi::CString::new(notes),
+            ) {
+                glaspen2_router_perf_notes(name.as_ptr(), notes.as_ptr(), t0);
+            }
+        }
+    }
     1
 }
 
 unsafe extern "C" {
     fn glaspen2_swift_tunnel_surface() -> *mut c_void;
+    fn glaspen2_router_perf_enabled() -> i32;
+    fn glaspen2_router_perf_notes(
+        name: *const std::os::raw::c_char,
+        notes: *const std::os::raw::c_char,
+        t0: u64,
+    );
+    fn glaspen2_router_minimap_enabled() -> i32;
     fn glaspen2_router_show_grid() -> i32;
     fn glaspen2_router_grid_divider() -> i32;
     fn glaspen2_router_grid_follow() -> i32;
