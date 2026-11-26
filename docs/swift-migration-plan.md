@@ -835,3 +835,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R258 | 迁移收尾总结: Swift 103+→3, ObjC 0, C ABI 保留; 自动化验证全绿; 真机清单待验 | 本提交 |
 | 2026-11-26 | Rust-R260 | FlipProbe 迁 Rust; FLIP_EVERY 连续翻页正常 | 本提交 |
 | 2026-11-26 | Rust-R261 | 最终状态核对: HEAD/标签/领先/文件数/自动化验证 | 本提交 |
+| 2026-11-26 | Rust-R262 | 最终自动化验证 exit0/smoke/parity; 边界与真机清单确认 | 本提交 |

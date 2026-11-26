@@ -1439,3 +1439,16 @@ modeler Up error 需真机笔/翻页连击复验。
 - HEAD `e3bbc64`(本记录时); v0.7.0 (commit) `ce525db` 未移动; 领先 origin/main 561; 未 push;
 - Swift 3 文件 / ObjC 0; 工作区仅 `.zcode/` 未跟踪(不提交);
 - 自动化: cargo test exit 0 / smoke debug 通过 / parity 通过 / FLIP_EVERY 探针连续翻页通过.
+
+
+## R262 最终自动化验证
+
+- `cargo test --workspace --exclude glaspen2_installer`: exit 0;
+- `sh scripts/smoke-macos.sh debug`: 通过;
+- `sh scripts/check-platform-parity.sh`: 通过;
+- HEAD 73ebaf7; v0.7.0^{commit}=ce525db 未移动; ahead 563; 未 push; 工作区仅 .zcode/.
+
+### 完成边界
+
+- 可移植业务逻辑/状态/C ABI 已全部 Rust; 剩余 3 个 Swift 文件仅原生对象构造与系统框架适配(AppKit/SCK/Flutter/NSMenu/视觉参考与探针);
+- 真机硬件清单(真笔/多屏/睡眠/反色/P3/GIF/聊天)仍需人工按 `docs/s8-acceptance-checklist.md` 验收, 不阻塞代码迁移完成.
