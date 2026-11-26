@@ -6570,3 +6570,57 @@ pub extern "C" fn glaspen2_rust_pen_cursor_update(kind: i32, is_up: i32, x: f64,
     }
     let _ = kind;
 }
+
+// ── R123: 主路由的鼠标移动/抬起/菜单栏/停用清理分支 ──
+
+unsafe extern "C" {
+    fn glaspen2_router_disable_cleanup();
+    fn glaspen2_router_tap_menu_bar_interaction();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_route_disable_cleanup() {
+    unsafe { glaspen2_router_disable_cleanup() }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_route_menu_bar_click(y: f64) -> i32 {
+    if y < 30.0 {
+        unsafe { glaspen2_router_tap_menu_bar_interaction() };
+        1
+    } else {
+        0
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_route_mouse_moved() {
+    let flags = unsafe { glaspen2_router_cursor_flags() };
+    if (flags & 1) != 0 && (flags & 2) == 0 {
+        unsafe {
+            glaspen2_router_cursor_invalidate();
+            glaspen2_router_cursor_hide();
+            if (flags & 4) != 0 {
+                glaspen2_router_auto_hide();
+            }
+            if (flags & 8) == 0 {
+                glaspen2_router_bubble_pen_gone();
+            }
+            glaspen2_router_flush();
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_route_mouse_up() {
+    glaspen2_rust_restore_system_cursor();
+    unsafe {
+        glaspen2_router_cursor_hide();
+        glaspen2_rust_dirty_include_point(
+            glaspen2_router_cursor_x(),
+            glaspen2_router_cursor_y(),
+            14.0,
+        );
+    }
+    glaspen2_rust_overlay_flush_dirty();
+}

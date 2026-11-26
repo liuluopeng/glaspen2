@@ -19,7 +19,7 @@ import AppKit
         // 停用涂鸦时: 非键盘/非滚轮事件先清理相机/光标再放行(与原 ObjC 同序)。
         if (state() & 1) == 0 && type != .keyDown && type != .keyUp
             && type != .scrollWheel {
-            glaspen2_router_disable_cleanup()
+            glaspen2_rust_route_disable_cleanup()
             return 1
         }
         if type == .keyDown || type == .keyUp {
@@ -33,8 +33,7 @@ import AppKit
         }
         // 点菜单栏(非笔): 临时停 tap, 让菜单能收到点击; 5s 兜底恢复。
         if type == .leftMouseDown, let ev = NSEvent(cgEvent: event), !isPen(ev) {
-            if event.location.y < 30 {
-                glaspen2_router_tap_menu_bar_interaction()
+            if glaspen2_rust_route_menu_bar_click(event.location.y) != 0 {
                 return 1
             }
         }
@@ -42,14 +41,7 @@ import AppKit
             return routeScrollZoom(event)
         }
         if type == .mouseMoved, let ev = NSEvent(cgEvent: event), !isPen(ev) {
-            let flags = glaspen2_router_cursor_flags()
-            if (flags & 1) != 0 && (flags & 2) == 0 {
-                glaspen2_router_cursor_invalidate()
-                glaspen2_router_cursor_hide()
-                if (flags & 4) != 0 { glaspen2_router_auto_hide() }
-                if (flags & 8) == 0 { glaspen2_router_bubble_pen_gone() }
-                glaspen2_router_flush()
-            }
+            glaspen2_rust_route_mouse_moved()
         }
         if type != .tabletProximity, isPenEvent(event) {
             penCursorUpdate(type: type, event: event)
@@ -57,10 +49,7 @@ import AppKit
         }
         // 旧实现: 任意鼠标/笔抬起都恢复系统光标并清掉十字(不只笔事件)。
         if type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp {
-            EventRouter.restoreSystemCursor()
-            glaspen2_router_cursor_hide()
-            glaspen2_rust_dirty_include_point(glaspen2_router_cursor_x(), glaspen2_router_cursor_y(), 14.0)
-            glaspen2_rust_overlay_flush_dirty()
+            glaspen2_rust_route_mouse_up()
         }
         // 笔事件: 坐标/压力/raw_w 在本层计算, 再交 pen 分派(原 inner 逻辑)。
         if let ev = NSEvent(cgEvent: event), isPen(ev) {

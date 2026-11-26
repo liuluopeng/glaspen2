@@ -632,3 +632,9 @@ extern int glaspen2_rust_route_proximity(int device, int enter);
 // R122: 笔光标更新/系统光标隐藏
 extern void glaspen2_rust_pen_cursor_update(int kind, int is_up, double x, double y);
 extern void glaspen2_rust_pen_system_cursor(int kind);
+
+// R123: 主路由鼠标/菜单栏/停用清理分支
+extern void glaspen2_rust_route_disable_cleanup(void);
+extern int glaspen2_rust_route_menu_bar_click(double y);
+extern void glaspen2_rust_route_mouse_moved(void);
+extern void glaspen2_rust_route_mouse_up(void);

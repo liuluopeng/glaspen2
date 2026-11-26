@@ -666,3 +666,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - `penCursorUpdate` 的 bubble/笔迹自动显示/peek cancel/光标 invalidate+set+show/节流 flush 迁 Rust;
 - `penSystemCursor` 的 down/drag 隐藏系统光标迁 Rust;
 - EventRouter 两方法变薄 C 调用; debug build 通过(按加速策略暂不跑 release/全量)。
+
+
+## R123 主路由鼠标/菜单栏/停用清理分支迁 Rust
+
+- route 内 disable_cleanup / 菜单栏点击判定 / mouseMoved 光标隐藏 / mouseUp 恢复光标+脏矩形刷新迁 Rust helper;
+- Swift route 保留事件类型/笔判定编排; debug build 通过(加速批次)。
