@@ -592,3 +592,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - R84 默认切 Rust 后, 探针只设 CARD 回退, FRAME 仍走 Rust, 实际变成 Rust vs Rust;
 - 探针渲染 Swift 侧前同时设 `GLASPEN2_SWIFT_TUNNEL_FRAME=1` 与 CARD; 结果仍 `diff=0/120000`;
 - 默认 smoke、tests/build/parity 全绿。
+
+
+## R113 清理 SurfaceStore/PageViewOps/SurfaceReplay Swift 回退
+
+- 已默认 Rust 后删除三个文件的旧实现回退(ensure 创建/重建三步/页框旧绘制);
+- `ensure`/`rebuildSurface`/`replay`/`drawPageFrame` 仅保留 Rust C 调用, 代码显著缩短;
+- 默认 smoke、tests/build/parity 全绿; Swift 文件数不变(69)。

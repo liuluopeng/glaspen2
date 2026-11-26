@@ -13,22 +13,10 @@ import AppKit
     /// 由 STROKES 内存整页重建表面(core 光栅 + 页框 + 全屏刷新)。
     @objc public static func rebuildSurface() {
         guard let surface = SurfaceStore.current else { return }
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_SURFACE_REBUILD"] != "1",
-           glaspen2_rust_rebuild_surface(UnsafeMutableRawPointer(surface),
+        _ = glaspen2_rust_rebuild_surface(UnsafeMutableRawPointer(surface),
                                          SurfaceStore.scaleFactor,
                                          PageViewOps.paperOx, PageViewOps.paperOy, PageViewOps.paperScale,
-                                         1) != 0 {
-            return
-        }
-        glaspen2_draw_rebuild_view(UnsafeMutableRawPointer(surface),
-                                   SurfaceStore.scaleFactor,
-                                   PageViewOps.paperOx,
-                                   PageViewOps.paperOy,
-                                   PageViewOps.paperScale)
-        SurfaceReplay.drawPageFrame()
-        cairo_surface_flush(surface)
-        glaspen2_router_dirty_reset()
-        glaspen2_rust_overlay_flush()
+                                         1)
     }
 
     /// 气泡「写完自动新建一页」: 到点则建页并翻过去, 返回是否翻页。
