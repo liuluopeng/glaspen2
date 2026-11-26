@@ -4,7 +4,7 @@ import Darwin
 
 @objc public final class TunnelLifecycle: NSObject {
     @objc public static func freeCards() {
-        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_TUNNEL_LIFECYCLE"] == "1" {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TUNNEL_LIFECYCLE"] != "1" {
             TunnelState.cardSurf.withUnsafeBufferPointer { cp in
                 TunnelState.mipSurf.withUnsafeBufferPointer { mp in
                     cp.baseAddress!.withMemoryRebound(to: UnsafeMutableRawPointer?.self, capacity: TunnelState.maxCards) { cardPtr in

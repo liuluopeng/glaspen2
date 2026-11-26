@@ -399,3 +399,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - `GLASPEN2_RUST_TUNNEL_LIFECYCLE=1` opt-in, 默认仍 Swift;
 - 真机 5 卡隧道: 启动前/结束后各 `tunnel cards freed count=512` 日志, 无崩溃;
 - 默认/opt-in smoke、全量 tests/build/parity 绿。
+
+
+## R87 隧道释放默认切 Rust
+
+- `TunnelLifecycle.freeCards` 默认走 Rust, `GLASPEN2_SWIFT_TUNNEL_LIFECYCLE=1` 回退;
+- 真机 5 卡隧道(默认路径): 启动前/结束后 `tunnel cards freed count=512`, 无崩溃;
+- 默认/回退 smoke、tests/build/parity 全绿。

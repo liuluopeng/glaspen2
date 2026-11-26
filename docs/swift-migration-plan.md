@@ -687,3 +687,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R84 | 隧道逐帧编排默认切 Rust; 整帧 parity diff=0/120000; GLASPEN2_SWIFT_TUNNEL_FRAME=1 回退; 默认/回退 smoke 绿 | 本提交 |
 | 2026-11-26 | Rust-R85 | 默认 Rust 隧道 5 卡真机运行无崩溃; 截图未稳定捕获动画帧, 视觉待人工复验 | 全量验证绿 | 本提交 |
 | 2026-11-26 | Rust-R86 | TunnelLifecycle.freeCards 销毁迁 Rust, Swift 清状态桥; opt-in GLASPEN2_RUST_TUNNEL_LIFECYCLE=1; 真机5卡隧道无崩溃 | 默认/opt-in smoke、tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R87 | 隧道卡片释放默认切 Rust; GLASPEN2_SWIFT_TUNNEL_LIFECYCLE=1 回退; 真机5卡隧道无崩溃; 默认/回退 smoke 绿 | 本提交 |
