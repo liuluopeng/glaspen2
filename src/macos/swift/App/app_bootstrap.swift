@@ -55,8 +55,8 @@ import ApplicationServices
         glaspen2_router_set_screen_size(Int32(frame.size.width), Int32(frame.size.height))
         glaspen2_init_db(Int32(frame.size.width), Int32(frame.size.height))
 
-        StartupSettings.restorePartA()
-        StartupSettingsB.restorePartB()
+        glaspen2_rust_restore_settings_a()
+        glaspen2_rust_restore_settings_b()
         _ = StartupWindow.create()
 
         glaspen2_router_install_signals()

@@ -8015,3 +8015,247 @@ pub extern "C" fn glaspen2_rust_invert_ink_source(cr: *mut c_void) -> *mut c_voi
     }
     pat
 }
+
+// ── R171: 启动设置恢复 PartA/PartB ──
+
+unsafe extern "C" {
+    fn glaspen2_swift_update_menu_texts();
+    fn glaspen2_router_startup_set_glass_follow(on: i32);
+    fn glaspen2_load_settings_parts(sr: *mut f64, sg: *mut f64, sb: *mut f64, sw: *mut f64) -> i32;
+    fn glaspen2_nearest_color_index(r: f64, g: f64, b: f64) -> i32;
+    fn glaspen2_nearest_width_index(w: f64) -> i32;
+    fn glaspen2_color_preset_rgb(index: i32, r: *mut f64, g: *mut f64, b: *mut f64);
+    fn glaspen2_router_startup_apply_pen(
+        r: f64,
+        g: f64,
+        b: f64,
+        w: f64,
+        color_idx: i32,
+        width_idx: i32,
+    );
+    fn glaspen2_router_startup_glass(opacity: f64, on: i32);
+    fn glaspen2_router_startup_grid(on: i32, size: f64, follow: i32, divider: i32);
+    fn glaspen2_router_startup_shadow(on: i32);
+    fn glaspen2_router_startup_outline(on: i32);
+    fn glaspen2_router_startup_invert(fps: i32, ink: i32);
+    fn glaspen2_router_startup_flip(v: i32);
+    fn glaspen2_router_restore_canvas_flags(inf: i32, mini: i32, eth: i32);
+    fn glaspen2_router_restore_pressure(on: i32);
+    fn glaspen2_clamp_setting_int(key: *const std::os::raw::c_char, v: i32) -> i32;
+    fn glaspen2_clamp_setting_double(key: *const std::os::raw::c_char, v: f64) -> f64;
+    fn glaspen2_router_restore_gif_settings(fps: i32, resolution: f64, speed: f64, end_mode: i32);
+    fn glaspen2_router_restore_chat_integration(on: i32);
+    fn glaspen2_router_rec_init();
+    fn glaspen2_i18n(
+        key: *const std::os::raw::c_char,
+        lang: *const std::os::raw::c_char,
+    ) -> *mut std::os::raw::c_char;
+    fn glaspen2_swift_restore_pressure_window();
+    fn glaspen2_swift_delayed_rebuild();
+}
+
+fn load_str_setting(key: &str) -> Option<String> {
+    let c = std::ffi::CString::new(key).ok()?;
+    let p = unsafe { glaspen2_load_string_setting(c.as_ptr()) };
+    if p.is_null() {
+        return None;
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(p) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { glaspen2_free_c_string(p) };
+    Some(s)
+}
+
+fn load_bool_setting(key: &str) -> bool {
+    let Ok(c) = std::ffi::CString::new(key) else {
+        return false;
+    };
+    unsafe { glaspen2_load_bool_setting(c.as_ptr()) != 0 }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_restore_settings_a() {
+    if let Some(v) = load_str_setting("language") {
+        unsafe { glaspen2_router_startup_set_lang(i32::from(v == "en")) };
+        unsafe { glaspen2_swift_update_menu_texts() };
+    }
+    glaspen2_rust_pageview_update();
+
+    let (mut sr, mut sg, mut sb, mut sw) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
+    if unsafe { glaspen2_load_settings_parts(&mut sr, &mut sg, &mut sb, &mut sw) } != 0 {
+        let color_idx = unsafe { glaspen2_nearest_color_index(sr, sg, sb) };
+        let width_idx = unsafe { glaspen2_nearest_width_index(sw) };
+        let (mut r, mut g, mut b) = (sr, sg, sb);
+        unsafe { glaspen2_color_preset_rgb(color_idx, &mut r, &mut g, &mut b) };
+        unsafe { glaspen2_router_startup_apply_pen(r, g, b, sw, color_idx, width_idx) };
+    }
+    unsafe {
+        glaspen2_router_update_status_icon_state();
+        glaspen2_router_update_checkmarks();
+    }
+    glaspen2_rust_load_shortcuts();
+
+    let glass_milli = unsafe {
+        let c = std::ffi::CString::new("glass_alpha").unwrap();
+        glaspen2_load_bool_setting(c.as_ptr())
+    };
+    let opacity = if glass_milli > 0 {
+        glass_milli as f64 / 1000.0
+    } else {
+        0.0
+    };
+    let glass_on = load_bool_setting("glass_enabled");
+    unsafe { glaspen2_router_startup_glass(opacity, i32::from(glass_on)) };
+    glaspen2_rust_apply_glass();
+
+    let grid_on = load_bool_setting("grid");
+    let grid_size = load_str_setting("grid_size")
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|d| *d >= 10.0 && *d <= 200.0)
+        .unwrap_or(0.0);
+    let grid_follow = load_bool_setting("grid_follow_strokes");
+    if let Some(v) = load_str_setting("glass_follow_strokes") {
+        unsafe { glaspen2_router_startup_set_glass_follow(i32::from(v != "0")) };
+    }
+    let divider = load_str_setting("grid_divider")
+        .and_then(|v| v.parse::<i32>().ok())
+        .filter(|d| *d >= 0 && *d <= 4)
+        .unwrap_or(-1);
+    unsafe {
+        glaspen2_router_startup_grid(
+            i32::from(grid_on),
+            grid_size,
+            i32::from(grid_follow),
+            divider,
+        )
+    };
+
+    let shadow = load_bool_setting("soft_shadow");
+    unsafe {
+        glaspen2_router_startup_shadow(i32::from(shadow));
+        glaspen2_set_soft_shadow(i32::from(shadow));
+    }
+    let outline = load_bool_setting("outline");
+    unsafe {
+        glaspen2_router_startup_outline(i32::from(outline));
+        glaspen2_set_stroke_outline(i32::from(outline));
+        glaspen2_router_update_menu_state(667, i32::from(outline));
+    }
+
+    let fps = load_str_setting("invert_fps")
+        .and_then(|v| v.parse::<i32>().ok())
+        .filter(|f| matches!(f, 10 | 30 | 60 | 100))
+        .unwrap_or(-1);
+    let invert_ink = load_bool_setting("invert_ink");
+    unsafe {
+        glaspen2_router_startup_invert(fps, i32::from(invert_ink));
+        if invert_ink {
+            glaspen2_router_invert_apply(1);
+        }
+    }
+
+    let mut flip = load_str_setting("flip_effect")
+        .and_then(|v| v.parse::<i32>().ok())
+        .filter(|f| *f >= 0 && *f <= 1)
+        .unwrap_or(-1);
+    if let Ok(env) = std::env::var("GLASPEN2_FLIP_EFFECT") {
+        flip = i32::from(env == "1");
+    }
+    if flip >= 0 {
+        unsafe { glaspen2_router_startup_flip(flip) }
+    }
+    unsafe { glaspen2_bubble_set_capture(i32::from(load_bool_setting("show_bubble_tab"))) };
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_restore_settings_b() {
+    let infinite = load_bool_setting("infinite_canvas");
+    let minimap = load_bool_setting("minimap");
+    let ethereal = load_bool_setting("ethereal");
+    unsafe {
+        glaspen2_router_restore_canvas_flags(
+            i32::from(infinite),
+            i32::from(minimap),
+            i32::from(ethereal),
+        )
+    };
+    unsafe {
+        glaspen2_router_update_menu_state(778, i32::from(ethereal));
+        let key = std::ffi::CString::new(if ethereal {
+            "canvas.fixed_mode"
+        } else {
+            "canvas.ethereal_mode"
+        })
+        .unwrap();
+        let lang = std::ffi::CString::new(if unsafe { glaspen2_router_lang() } == 1 {
+            "en"
+        } else {
+            "zh"
+        })
+        .unwrap();
+        let p = glaspen2_i18n(key.as_ptr(), lang.as_ptr());
+        if !p.is_null() {
+            glaspen2_menu_set_title(778, p);
+            glaspen2_free_c_string(p);
+        }
+        glaspen2_router_update_menu_state(668, i32::from(infinite));
+        glaspen2_set_canvas_kind(i32::from(infinite));
+        if infinite {
+            glaspen2_load_infinite_strokes();
+        }
+    }
+    if infinite {
+        glaspen2_rust_camera_load_infinite();
+    } else {
+        glaspen2_rust_camera_reset_lens();
+    }
+
+    let pressure = load_bool_setting("pressure_monitor");
+    unsafe { glaspen2_router_restore_pressure(i32::from(pressure)) };
+    if pressure {
+        unsafe { glaspen2_swift_restore_pressure_window() }
+    }
+
+    let mut gif_fps = unsafe { glaspen2_router_gif_fps() };
+    let mut gif_res = unsafe { glaspen2_router_gif_resolution() };
+    let mut gif_speed = unsafe { glaspen2_router_gif_speed() };
+    let mut gif_end = unsafe { glaspen2_router_gif_end_mode() };
+    if let Some(v) = load_str_setting("gif_fps").and_then(|v| v.parse::<i32>().ok()) {
+        gif_fps = v;
+    }
+    if let Some(v) = load_str_setting("gif_resolution").and_then(|v| v.parse::<f64>().ok()) {
+        gif_res = v;
+    }
+    if let Some(v) = load_str_setting("gif_speed").and_then(|v| v.parse::<f64>().ok()) {
+        gif_speed = v;
+    }
+    if let Some(v) = load_str_setting("gif_end_mode").and_then(|v| v.parse::<i32>().ok()) {
+        gif_end = v;
+    }
+    let (k1, k2, k3, k4) = (
+        std::ffi::CString::new("gifFps").unwrap(),
+        std::ffi::CString::new("gifResolution").unwrap(),
+        std::ffi::CString::new("gifSpeed").unwrap(),
+        std::ffi::CString::new("gifEndMode").unwrap(),
+    );
+    gif_fps = unsafe { glaspen2_clamp_setting_int(k1.as_ptr(), gif_fps) };
+    gif_res = unsafe { glaspen2_clamp_setting_double(k2.as_ptr(), gif_res) };
+    gif_speed = unsafe { glaspen2_clamp_setting_double(k3.as_ptr(), gif_speed) };
+    gif_end = unsafe { glaspen2_clamp_setting_int(k4.as_ptr(), gif_end) };
+    unsafe { glaspen2_router_restore_gif_settings(gif_fps, gif_res, gif_speed, gif_end) };
+
+    unsafe {
+        glaspen2_router_update_status_icon_state();
+        glaspen2_chat_auth_reload();
+    }
+    let chat = load_bool_setting("chat_integration");
+    unsafe {
+        glaspen2_router_restore_chat_integration(i32::from(chat));
+        glaspen2_router_rec_init();
+        if chat && load_bool_setting("share_ink") {
+            glaspen2_share_ink_set_active(1);
+        }
+        glaspen2_swift_delayed_rebuild();
+    }
+}

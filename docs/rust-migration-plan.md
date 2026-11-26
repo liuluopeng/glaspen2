@@ -959,3 +959,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - 删除 route 已迁 Rust 后不再使用的 updatePressureMonitor/handlePenEvent/handleChordKeyEvent/isPenForEvent/isPenEvent;
 - debug build 通过。
+
+
+## R171 启动设置恢复 PartA/B 迁 Rust
+
+- 语言/笔色宽/玻璃/网格/阴影/描边/反色/翻转/气泡 + 画布模式/压感窗/GIF/聊天/延迟重建全部迁 Rust;
+- 删除 startup_settings.swift / startup_settings_b.swift; Swift 65→63;
+- 批次 tests/smoke/parity(不跑 release)全绿, 冷启动正常。

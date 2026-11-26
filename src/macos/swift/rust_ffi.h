@@ -740,3 +740,7 @@ extern int glaspen2_rust_invert_ensure_cache(int w, int h);
 extern int glaspen2_rust_invert_process(const unsigned char *src, int format, int w, int h, int stride);
 extern void glaspen2_rust_invert_consume(void);
 extern void *glaspen2_rust_invert_ink_source(void *cr);
+
+// R171: 启动设置恢复
+extern void glaspen2_rust_restore_settings_a(void);
+extern void glaspen2_rust_restore_settings_b(void);

@@ -469,3 +469,22 @@ public func runTunnelSurface() -> UnsafeMutableRawPointer? {
 
 @_cdecl("glaspen2_swift_pageview_rebuild")
 public func runPageviewRebuild() { PageViewOps.rebuildSurface() }
+
+@_cdecl("glaspen2_swift_update_menu_texts")
+public func runUpdateMenuTexts() { MenuTextUpdater.update() }
+@_cdecl("glaspen2_swift_restore_pressure_window")
+public func runRestorePressureWindow() {
+    DispatchQueue.main.async {
+        PressureMonitorWindow.ensureWindow()
+        PressureMonitorWindow.show()
+        glaspen2_router_pm_refresh()
+    }
+}
+@_cdecl("glaspen2_swift_delayed_rebuild")
+public func runDelayedRebuild() {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        if glaspen2_router_stroke_active() != 0 { return }
+        glaspen2_router_ensure_surface()
+        PageViewOps.rebuildSurface()
+    }
+}
