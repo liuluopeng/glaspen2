@@ -8914,3 +8914,89 @@ pub extern "C" fn glaspen2_rust_hotkeys_probe() -> i32 {
     println!("HOTKEYS_PROBE checked={checked} failures={failures}");
     i32::from(failures == 0) - 1
 }
+
+// ── R184: 渲染诊断探针 ──
+
+unsafe extern "C" {
+    fn glaspen2_get_stroke_point_count(index: i32) -> i32;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_render_probe() -> i32 {
+    let mut failures = 0i32;
+    let mut check = |name: &str, ok: bool| {
+        if ok {
+            println!("RENDER_PROBE {name} ok");
+        } else {
+            tracing::warn!("[render-probe] FAIL {name}");
+            failures += 1;
+        }
+    };
+    unsafe { glaspen2_init_db(1920, 1080) };
+    unsafe { glaspen2_modeler_clear_buffer() };
+    let t0 = glaspen2_rust_reference_now();
+    unsafe { glaspen2_modeler_begin(1.0, 0.0, 0.0, 200.0, 300.0, 0.5, t0, 1.0) };
+    for i in 1..=60 {
+        let x = 200.0 + i as f64 * 4.0;
+        let y = 300.0 + (i as f64 / 9.0).sin() * 80.0;
+        unsafe { glaspen2_modeler_move(x, y, 0.5, t0 + i as f64 * 0.008, 1.0) };
+    }
+    unsafe { glaspen2_modeler_end(440.0, 300.0, 0.5, t0 + 0.5, 1.0) };
+    unsafe { glaspen2_modeler_commit_to_strokes(1.0, 0.0, 0.0) };
+    check("stroke_count", unsafe { glaspen2_stroke_count() } == 1);
+    check(
+        "stroke_points",
+        unsafe { glaspen2_get_stroke_point_count(0) } > 10,
+    );
+    let (mut rect, mut bounds, mut len) = ([0.0f64; 4], [0.0f64; 4], 0i32);
+    let png = unsafe {
+        glaspen2_rust_canvas_overview(
+            800.0,
+            600.0,
+            rect.as_mut_ptr(),
+            bounds.as_mut_ptr(),
+            &mut len,
+        )
+    };
+    check("overview_non_nil", !png.is_null());
+    check("overview_png", !png.is_null() && len > 0);
+    check("overview_rect", rect.iter().any(|v| *v != 0.0));
+    check("overview_bounds", bounds.iter().any(|v| *v != 0.0));
+    if !png.is_null() {
+        unsafe { glaspen2_free_rust_bytes(png, len) }
+    }
+    let (mut rect2, mut bounds2, mut len2) = ([0.0f64; 4], [0.0f64; 4], 0i32);
+    let payload = unsafe {
+        glaspen2_rust_canvas_overview(
+            800.0,
+            600.0,
+            rect2.as_mut_ptr(),
+            bounds2.as_mut_ptr(),
+            &mut len2,
+        )
+    };
+    check("canvas_payload_non_nil", !payload.is_null());
+    check("canvas_payload_len", len2 > 0);
+    if !payload.is_null() {
+        unsafe { glaspen2_free_rust_bytes(payload, len2) }
+    }
+    check("canvas_payload_rect", rect2[2] > 0.0 && rect2[3] > 0.0);
+    glaspen2_rust_finish_active_stroke();
+    unsafe {
+        glaspen2_clear_strokes(
+            glaspen2_router_screen_w() as i32,
+            glaspen2_router_screen_h() as i32,
+        )
+    };
+    glaspen2_rust_camera_home();
+    let (mut r3, mut b3, mut l3) = ([0.0f64; 4], [0.0f64; 4], 0i32);
+    let p3 = unsafe {
+        glaspen2_rust_canvas_overview(800.0, 600.0, r3.as_mut_ptr(), b3.as_mut_ptr(), &mut l3)
+    };
+    if !p3.is_null() {
+        unsafe { glaspen2_free_rust_bytes(p3, l3) }
+    }
+    check("clear_action", unsafe { glaspen2_stroke_count() } == 0);
+    println!("SWIFT_RENDER_PROBE_OK failures={failures}");
+    i32::from(failures == 0) - 1
+}

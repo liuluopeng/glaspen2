@@ -765,3 +765,6 @@ extern int glaspen2_rust_settings_probe(void);
 
 // R183: 快捷键诊断探针
 extern int glaspen2_rust_hotkeys_probe(void);
+
+// R184: 渲染诊断探针
+extern int glaspen2_rust_render_probe(void);

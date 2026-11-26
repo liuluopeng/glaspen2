@@ -1029,3 +1029,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - settings probe(设置应用/状态/快照 JSON/涂鸦描边)迁 Rust, 删 settings_probe.swift;
 - hotkeys probe(默认表反查/显式解绑/换色初值/飘渺隐藏/玻璃默认)迁 Rust, 删 hotkeys_probe.swift;
 - Swift 57→55; 两探针输出与旧一致; 批次验证后提交。
+
+
+## R184 渲染诊断探针迁 Rust
+
+- 模型器一笔/提交/笔画点数/总览 PNG/画布载荷/清空动作迁 Rust;
+- 删除 Diagnostics/render_probe.swift; Swift 55→54;
+- SWIFT_RENDER_PROBE_OK failures=0。

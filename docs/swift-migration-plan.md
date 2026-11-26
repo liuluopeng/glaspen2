@@ -779,3 +779,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R179 | 删除 status_bar.swift; 状态栏图标/更新/自检全 Rust; Swift 60→59; probe OK | 本提交 |
 | 2026-11-26 | Rust-R180/181 | 持久化/页面诊断探针迁 Rust; 删2文件; Swift 59→57; 批次验证绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R182/183 | 设置/快捷键诊断探针迁 Rust; 删2文件; Swift 57→55 | 本提交 |
+| 2026-11-26 | Rust-R184 | 渲染诊断探针迁 Rust; 删 render_probe.swift; Swift 55→54 | 本提交 |
