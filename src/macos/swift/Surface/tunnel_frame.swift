@@ -99,7 +99,7 @@ import Darwin
             let mainW = Double(cairo_image_surface_get_width(mainPtr))
             if placed.2 < mainW * 0.70 { surf = mipPtr }
         }
-        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_TUNNEL_CARD"] == "1" {
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_TUNNEL_CARD"] != "1" {
             glaspen2_rust_draw_tunnel_card(
                 UnsafeMutableRawPointer(cr), UnsafeMutableRawPointer(surf),
                 cairo_image_surface_get_width(surf), cairo_image_surface_get_height(surf),
@@ -168,4 +168,64 @@ public func glaspen2TunnelCardSelftest() -> Int32 {
     cairo_surface_destroy(target)
     print("SWIFT_TUNNEL_CARD_RUST_OK pixels=\(nonEmpty)")
     return nonEmpty > 0 ? 0 : 1
+}
+
+// R82: Rust / Swift 隧道卡片绘制像素对比探针。
+@_cdecl("glaspen2_macos_swift_tunnel_card_parity_selftest")
+public func glaspen2TunnelCardParitySelftest() -> Int32 {
+    let sw = 240, sh = 180
+    func makeCard() -> OpaquePointer? {
+        guard let card = cairo_image_surface_create(cairo_format_t(0), 80, 60),
+              cairo_surface_status(card).rawValue == 0,
+              let ccr = cairo_create(card) else { return nil }
+        cairo_set_source_rgba(ccr, 0.2, 0.5, 0.8, 1.0)
+        cairo_paint(ccr)
+        cairo_destroy(ccr)
+        cairo_surface_flush(card)
+        return card
+    }
+    func render(useRust: Bool, card: OpaquePointer) -> OpaquePointer? {
+        guard let target = cairo_image_surface_create(cairo_format_t(0), Int32(sw), Int32(sh)),
+              cairo_surface_status(target).rawValue == 0,
+              let cr = cairo_create(target) else { return nil }
+        if useRust {
+            glaspen2_rust_draw_tunnel_card(
+                UnsafeMutableRawPointer(cr), UnsafeMutableRawPointer(card),
+                80, 60, 120.0, 90.0, 140.0, 110.0, 1.0, 0.05,
+                Int32(sw), Int32(sh), 0.018, 0.84)
+        } else {
+            TunnelCardRenderer.draw(
+                crRaw: UnsafeMutableRawPointer(cr), surfRaw: UnsafeMutableRawPointer(card),
+                nw: 80, nh: 60, cx: 120.0, cy: 90.0, w: 140.0, h: 110.0,
+                alpha: 1.0, zc: 0.05, surfW: Int32(sw), surfH: Int32(sh),
+                thick: 0.018, paneA: 0.84)
+        }
+        cairo_destroy(cr)
+        cairo_surface_flush(target)
+        return target
+    }
+    guard let card = makeCard(),
+          let a = render(useRust: true, card: card),
+          let b = render(useRust: false, card: card),
+          let da = cairo_image_surface_get_data(a),
+          let db = cairo_image_surface_get_data(b) else {
+        print("SWIFT_TUNNEL_CARD_PARITY_FAIL surface")
+        return 1
+    }
+    let stride = Int(cairo_image_surface_get_stride(a))
+    var diff = 0
+    let total = sw * sh
+    for y in 0..<sh {
+        for x in 0..<sw {
+            let i = y * stride + x * 4
+            if da[i] != db[i] || da[i + 1] != db[i + 1] || da[i + 2] != db[i + 2] || da[i + 3] != db[i + 3] {
+                diff += 1
+            }
+        }
+    }
+    cairo_surface_destroy(card)
+    cairo_surface_destroy(a)
+    cairo_surface_destroy(b)
+    print("SWIFT_TUNNEL_CARD_PARITY diff=\(diff)/\(total)")
+    return diff == 0 ? 0 : 1
 }

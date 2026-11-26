@@ -356,3 +356,11 @@ modeler Up error 需真机笔/翻页连击复验。
   `[flip] 时光隧道接管: 5 张卡片 ... 预载537ms 建卡144ms`;
 - `GLASPEN2_RUST_TUNNEL_CARD=1` 下 5 卡隧道运行无崩溃; 卡片像素探针 16904 已并入 smoke;
 - 默认隧道卡片仍 Swift, 待视觉对比后再切。
+
+
+## R82 隧道卡片绘制默认切 Rust(像素 parity 0)
+
+- 新增 `--swift-tunnel-card-parity`: 同一卡片表面分别用 Rust/Swift 绘制, 逐像素比较;
+- 结果 `SWIFT_TUNNEL_CARD_PARITY diff=0/43200`(240x180, RGBA);
+- `TunnelFrameRenderer.drawCard` 默认 Rust, `GLASPEN2_SWIFT_TUNNEL_CARD=1` 回退 Swift;
+- parity 探针并入 smoke; 默认/回退 smoke、全量 tests/build/parity 全绿。

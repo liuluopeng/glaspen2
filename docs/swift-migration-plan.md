@@ -682,3 +682,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R79 | TunnelCardRenderer 卡片 cairo 绘制迁 Rust(opt-in GLASPEN2_RUST_TUNNEL_CARD=1); 新增卡片像素探针并入 smoke; 默认仍 Swift; 真机隧道场景待验 | 默认/opt-in smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R80 | glass view alpha/hidden 应用迁 Rust(sw_glass_view 桥); 删 MenuRuntime 旧包装; smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R81 | 修复隧道建卡预算从 tb0→tc1(预载慢时 0 卡); 真机 2 页内容翻页得到 5 卡隧道; Rust card opt-in 无崩溃 | 默认 smoke/tests/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R82 | 隧道卡片绘制默认切 Rust; Rust/Swift 像素 parity diff=0/43200; GLASPEN2_SWIFT_TUNNEL_CARD=1 回退; 默认/回退 smoke 绿 | 本提交 |
