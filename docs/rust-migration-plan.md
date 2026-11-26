@@ -659,3 +659,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - `routeProximity` 的设备判定/enter-exit 状态/bubble/peek/ethereal/光标清理迁 Rust;
 - 同时删除 `restoreSystemCursor`/`finishActiveStroke` 的 Swift 回退, 仅保留 Rust 调用;
 - 虚拟笔运行存活; 默认 smoke/tests/parity 全绿。
+
+
+## R122 笔光标更新/系统光标隐藏迁 Rust
+
+- `penCursorUpdate` 的 bubble/笔迹自动显示/peek cancel/光标 invalidate+set+show/节流 flush 迁 Rust;
+- `penSystemCursor` 的 down/drag 隐藏系统光标迁 Rust;
+- EventRouter 两方法变薄 C 调用; debug build 通过(按加速策略暂不跑 release/全量)。

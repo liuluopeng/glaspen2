@@ -95,14 +95,7 @@ import AppKit
 
     /// 笔按下/拖动期间隐藏系统光标; 任意 up 恢复光标并清十字/刷新(S6-3-3c)。
     private static func penSystemCursor(type: CGEventType) {
-        let downOrDrag = type == .leftMouseDown || type == .rightMouseDown ||
-            type == .otherMouseDown || type == .leftMouseDragged ||
-            type == .rightMouseDragged || type == .otherMouseDragged
-        if downOrDrag && glaspen2_router_pen_drawing() == 0 {
-            glaspen2_router_hide_system_cursor()
-            glaspen2_router_set_pen_drawing(1)
-        }
-
+        glaspen2_rust_pen_system_cursor(Int32(type.rawValue))
     }
 
     /// 恢复系统光标(S6-3-3d): 只有确实隐藏过(pen_drawing)才 show + 清标记。
@@ -292,31 +285,9 @@ import AppKit
     private static func penCursorUpdate(type: CGEventType, event: CGEvent) {
         guard let ev = NSEvent(cgEvent: event) else { return }
         let isUp = type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp
-        glaspen2_router_pen_bubble(isUp ? 0 : 1)
-        let state = glaspen2_router_pen_state()
-        let strokesVisible = (state & 1) != 0
-        let strokeActive = (state & 2) != 0
-        let cursorVisible = (state & 4) != 0
-        // 只有笔确实在感应范围内才自动显示; 离开后的尾随 pen 事件不能把刚隐藏的笔迹又拉回来。
-        // 无 proximity 的平板: 悬停移动也要能自动显示(旧实现无条件 auto-show);
-        // 有 proximity 的平板: 离开后的尾随 pen 事件不得把刚隐藏的笔迹拉回来。
-        if !strokesVisible && (PenState.tabletProximity || !PenState.hasSeenProximity) {
-            glaspen2_router_pen_auto_show()
-        }
-        glaspen2_router_peek_cancel()
         let loc = ev.locationInWindow
-        let oldX = glaspen2_router_cursor_x()
-        let oldY = glaspen2_router_cursor_y()
-        let moved = oldX != loc.x || oldY != loc.y
-        if moved && cursorVisible { glaspen2_router_cursor_invalidate() }
-        glaspen2_router_cursor_set(Double(loc.x), Double(loc.y))
-        if !strokeActive { glaspen2_router_cursor_show(1) }
-        if moved && glaspen2_router_pen_cursor_visible() != 0 {
-            glaspen2_router_cursor_invalidate()
-            if !strokeActive && glaspen2_router_cursor_flush_due() == 1 {
-                glaspen2_router_flush()
-            }
-        }
+        glaspen2_rust_pen_cursor_update(Int32(type.rawValue), isUp ? 1 : 0,
+                                        Double(loc.x), Double(loc.y))
     }
 
     /// 虚拟笔(GLASPEN2_VIRTUAL_PEN)合成事件判定。

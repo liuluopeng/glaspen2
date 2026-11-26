@@ -6517,3 +6517,56 @@ pub extern "C" fn glaspen2_rust_route_proximity(device: i32, enter: i32) -> i32 
     }
     1
 }
+
+// ── R122: 笔光标更新/系统光标隐藏恢复 ──
+
+unsafe extern "C" {
+    fn glaspen2_router_pen_bubble(on: i32);
+    fn glaspen2_router_pen_state() -> i32;
+    fn glaspen2_router_cursor_set(x: f64, y: f64);
+    fn glaspen2_router_cursor_show(on: i32);
+    fn glaspen2_router_hide_system_cursor();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_system_cursor(kind: i32) {
+    let down_or_drag = matches!(kind, 1 | 3 | 4 | 6 | 7 | 9);
+    if down_or_drag && unsafe { glaspen2_router_pen_drawing() } == 0 {
+        unsafe {
+            glaspen2_router_hide_system_cursor();
+            glaspen2_router_set_pen_drawing(1);
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pen_cursor_update(kind: i32, is_up: i32, x: f64, y: f64) {
+    unsafe { glaspen2_router_pen_bubble(if is_up != 0 { 0 } else { 1 }) };
+    let state = unsafe { glaspen2_router_pen_state() };
+    let strokes_visible = (state & 1) != 0;
+    let stroke_active = (state & 2) != 0;
+    let cursor_visible = (state & 4) != 0;
+    let proximity = glaspen2_rust_pen_tablet_proximity() != 0;
+    let seen = glaspen2_rust_pen_has_seen_proximity() != 0;
+    if !strokes_visible && (proximity || !seen) {
+        unsafe { glaspen2_router_pen_auto_show() };
+    }
+    unsafe { glaspen2_router_peek_cancel() };
+    let old_x = unsafe { glaspen2_router_cursor_x() };
+    let old_y = unsafe { glaspen2_router_cursor_y() };
+    let moved = old_x != x || old_y != y;
+    if moved && cursor_visible {
+        unsafe { glaspen2_router_cursor_invalidate() };
+    }
+    unsafe { glaspen2_router_cursor_set(x, y) };
+    if !stroke_active {
+        unsafe { glaspen2_router_cursor_show(1) };
+    }
+    if moved && unsafe { glaspen2_router_pen_cursor_visible() } != 0 {
+        unsafe { glaspen2_router_cursor_invalidate() };
+        if !stroke_active && unsafe { glaspen2_router_cursor_flush_due() } == 1 {
+            unsafe { glaspen2_router_flush() };
+        }
+    }
+    let _ = kind;
+}

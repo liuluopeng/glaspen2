@@ -628,3 +628,7 @@ extern int glaspen2_rust_update_pressure_monitor(int kind, long long raw_field,
 
 // R121: 笔 proximity 进入/离开
 extern int glaspen2_rust_route_proximity(int device, int enter);
+
+// R122: 笔光标更新/系统光标隐藏
+extern void glaspen2_rust_pen_cursor_update(int kind, int is_up, double x, double y);
+extern void glaspen2_rust_pen_system_cursor(int kind);
