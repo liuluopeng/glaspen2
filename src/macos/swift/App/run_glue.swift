@@ -111,8 +111,6 @@ public func runInvertApply(_ on: Int32) { panelInvertApply(on) }
 @_cdecl("glaspen2_router_invert_restart")
 public func runInvertRestart() { panelInvertRestart() }
 
-@_cdecl("glaspen2_router_panel_transparent_full")
-public func runPanelTransparentFull(_ on: Int32) { gl_panel_transparent_apply(on) }
 
 
 
@@ -132,19 +130,6 @@ public func runRecordingDispatchMain(_ ctx: UnsafeMutableRawPointer?, _ cb: Reco
     DispatchQueue.main.async { cb?(ctx) }
 }
 
-@_cdecl("glaspen2_swift_apply_display_frames")
-public func runApplyDisplayFrames(_ width: Int32, _ height: Int32) {
-    let frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height))
-    if let window = UIAnchors.mainWindow {
-        window.setFrame(frame, display: true)
-        window.contentView?.frame = frame
-    }
-    (UIAnchors.glassView as? NSView)?.frame = frame
-    if let drawView = UIAnchors.drawView {
-        drawView.frame = frame
-        drawView.needsDisplay = true
-    }
-}
 
 
 
@@ -163,13 +148,6 @@ public func runTunnelSurface() -> UnsafeMutableRawPointer? {
 
 @_cdecl("glaspen2_swift_update_menu_texts")
 public func runUpdateMenuTexts() { MenuTextUpdater.update() }
-@_cdecl("glaspen2_swift_restore_pressure_window")
-public func runRestorePressureWindow() {
-    DispatchQueue.main.async {
-        glaspen2_router_pm_show()
-        glaspen2_router_pm_refresh()
-    }
-}
 
 @_cdecl("glaspen2_swift_set_main_anchors")
 public func runSetMainAnchors(_ window: UnsafeMutableRawPointer?,

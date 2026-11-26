@@ -1339,3 +1339,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - copy_gif/copy_newest_gif/copy_svg_html 迁 Rust(NSPasteboard/NSURL/NSArray raw, 手写 base64);
 - 删除 Swift 包装; menu probe/冷启动正常.
+
+
+## R251 显示帧/面板透明/压感窗恢复桥迁 Rust
+
+- apply_display_frames/panel_transparent_full/restore_pressure_window 迁 Rust;
+- 删除 Swift 包装; menu probes OK, 冷启动正常.

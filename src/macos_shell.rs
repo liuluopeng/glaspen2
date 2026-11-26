@@ -5104,7 +5104,6 @@ unsafe extern "C" {
     fn glaspen2_router_invert_restart();
     fn glaspen2_router_set_grid_follow(on: i32);
     fn glaspen2_router_set_glass_follow(on: i32);
-    fn glaspen2_router_panel_transparent_full(on: i32);
     fn glaspen2_bubble_set_capture(on: i32);
     fn glaspen2_router_startup_set_lang(v: i32);
     fn glaspen2_save_string_setting(
@@ -6674,7 +6673,6 @@ unsafe extern "C" {
     fn glaspen2_router_set_screen_size(w: i32, h: i32);
     fn glaspen2_on_display_change(w: i32, h: i32);
     fn glaspen2_smooth_loaded_strokes();
-    fn glaspen2_swift_apply_display_frames(w: i32, h: i32);
 }
 
 #[unsafe(no_mangle)]
@@ -7940,7 +7938,6 @@ unsafe extern "C" {
         key: *const std::os::raw::c_char,
         lang: *const std::os::raw::c_char,
     ) -> *mut std::os::raw::c_char;
-    fn glaspen2_swift_restore_pressure_window();
 }
 
 fn load_str_setting(key: &str) -> Option<String> {
@@ -11606,4 +11603,24 @@ pub extern "C" fn glaspen2_swift_copy_svg_html(svg: *const std::os::raw::c_char)
         let t = NSString::from_str("public.utf8-plain-text");
         let _: bool = objc2::msg_send![pb, setString: &*s, forType: &*t];
     }
+}
+
+// ── R251: 显示帧/面板透明/压感窗恢复桥迁 Rust ──
+
+extern "C" fn restore_pressure_cb(_ctx: *mut c_void) {
+    pm_show();
+    pm_refresh_label();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_apply_display_frames(w: i32, h: i32) {
+    glaspen2_display_apply(w, h);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_panel_transparent_full(on: i32) {
+    gl_panel_transparent_apply(on);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_restore_pressure_window() {
+    unsafe { glaspen2_swift_dispatch_main_after(0.0, std::ptr::null_mut(), restore_pressure_cb) }
 }
