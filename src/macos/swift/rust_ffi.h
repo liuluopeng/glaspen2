@@ -798,3 +798,11 @@ extern void glaspen2_rust_notification_show_page_info(long long screen_id);
 // R200: 涂鸦/画布模式切换
 extern void glaspen2_rust_toggle_draw_enabled(void);
 extern void glaspen2_rust_toggle_canvas_mode(void);
+
+// R201: 飘渺 peek
+extern void glaspen2_rust_ethereal_peek(double seconds);
+extern void glaspen2_rust_ethereal_cancel_peek(void);
+extern void glaspen2_rust_ethereal_peek_lens_change(void);
+
+// R202: 相机鼠标平移合帧
+extern void glaspen2_router_camera_cancel(void);

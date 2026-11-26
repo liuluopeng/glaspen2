@@ -1125,3 +1125,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - toggleDraw/toggleCanvasMode 全逻辑迁 Rust(玻璃隐藏/压感窗/通知/菜单标题/落库/图标);
 - 删除 Features/draw_mode.swift; 调用点改 C; GLASPEN2_DRAW_PROBE 实测切换不崩; Swift 38→37;
 - 冷启动正常; 批次验证后提交。
+
+
+## R201/202 飘渺 peek/相机平移合帧迁 Rust
+
+- ethereal preview/hide 计时由 Rust + dispatch_main_after 调度; 删除 ethereal_mode.swift;
+- 相机鼠标平移 16ms 合帧由 Rust 调度; 删除 camera_mouse_pan.swift; Swift 37→35;
+- 冷启动正常; draw probe 切换不崩; 批次验证后提交。

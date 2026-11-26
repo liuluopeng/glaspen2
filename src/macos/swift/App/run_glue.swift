@@ -36,7 +36,7 @@ public func runCursorFlags() -> Int32 {
 }
 
 @_cdecl("glaspen2_router_auto_hide")
-public func runAutoHide() { _ = EtherealMode.hideNow() }
+public func runAutoHide() { _ = glaspen2_rust_ethereal_hide_now() }
 
 @_cdecl("glaspen2_router_bubble_pen_gone")
 public func runBubblePenGone() { glaspen2_bubble_pen_gone() }
@@ -60,10 +60,10 @@ public func runPenBubble(_ back: Int32) {
 }
 
 @_cdecl("glaspen2_router_pen_auto_show")
-public func runPenAutoShow() { EtherealMode.autoShow() }
+public func runPenAutoShow() { glaspen2_rust_ethereal_auto_show() }
 
 @_cdecl("glaspen2_router_peek_cancel")
-public func runPeekCancel() { EtherealMode.cancelTimer() }
+public func runPeekCancel() { glaspen2_rust_ethereal_cancel_peek() }
 
 @_cdecl("glaspen2_router_cursor_set")
 public func runCursorSet(_ x: Double, _ y: Double) { sw_cursor_set(x, y, 0) }
@@ -80,7 +80,7 @@ public func runShowSystemCursor() { CGDisplayShowCursor(CGMainDisplayID()) }
 @_cdecl("glaspen2_router_disable_cleanup")
 public func runDisableCleanup() {
     glaspen2_router_camera_clear_dragging()
-    CameraMousePan.cancel()
+    glaspen2_router_camera_cancel()
     EventRouter.restoreSystemCursor()
 }
 
@@ -167,7 +167,7 @@ public func runRebuildSurface() { PageViewOps.rebuildSurface() }
 public func runApplyTransform() { CanvasCamera.applyTransform() }
 
 @_cdecl("glaspen2_router_peek_lens_change")
-public func runPeekLensChange() { EtherealMode.peekLensChange() }
+public func runPeekLensChange() { glaspen2_rust_ethereal_peek_lens_change() }
 
 @_cdecl("glaspen2_router_event_tap_reinstall")
 public func runEventTapReinstall() {
@@ -187,7 +187,7 @@ public func runDirtyRect() -> CGRect {
 }
 
 @_cdecl("glaspen2_router_camera_pan_cancel")
-public func runCameraPanCancel() { CameraMousePan.cancel() }
+public func runCameraPanCancel() { glaspen2_router_camera_cancel() }
 @_cdecl("glaspen2_router_camera_persist_infinite")
 public func runCameraPersistInfinite() { CanvasCamera.persistInfinite() }
 @_cdecl("glaspen2_router_camera_load_infinite")
@@ -641,4 +641,11 @@ public func notificationSelftest() -> Int32 {
     for i in stride(from: 0, to: count, by: 4) where data[i] != 0 || data[i + 1] != 0 || data[i + 2] != 0 { nonEmpty += 1 }
     print("SWIFT_NOTIFICATION_RUST_OK pixels=\(nonEmpty)")
     return nonEmpty > 0 ? 0 : 1
+}
+
+@_cdecl("glaspen2_swift_dispatch_main_after")
+public func runDispatchMainAfter(_ delay: Double, _ ctx: UnsafeMutableRawPointer?,
+                                 _ cb: (@convention(c) (UnsafeMutableRawPointer?) -> Void)?) {
+    guard let cb else { return }
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { cb(ctx) }
 }

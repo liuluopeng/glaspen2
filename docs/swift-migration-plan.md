@@ -793,3 +793,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R198 | 设置面板宿主/Flutter VC 迁 Rust; 删2文件; Swift 41→39; 面板创建验证 OK | 本提交 |
 | 2026-11-26 | Rust-R199 | 通知 presenter 迁 Rust; 删 notification.swift; Swift 39→38 | 本提交 |
 | 2026-11-26 | Rust-R200 | 涂鸦启停/画布模式切换迁 Rust; 删 draw_mode.swift; Swift 38→37; 切换 probe 不崩 | 本提交 |
+| 2026-11-26 | Rust-R201/202 | 飘渺 peek/相机平移合帧迁 Rust; 删2文件; Swift 37→35; 批次验证绿(不跑 release) | 本提交 |

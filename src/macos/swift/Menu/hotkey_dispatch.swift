@@ -31,7 +31,7 @@ import AppKit
                     glaspen2_smooth_loaded_strokes()
                     PageViewOps.update()
                 }, commit: { glaspen2_router_replay_strokes() })
-                EtherealMode.peek(seconds: 1.0)
+                glaspen2_rust_ethereal_peek(1.0)
                 notificationShowPageInfo(screenId: Int64(target))
             } else {
                 notify("page.no_previous")
@@ -50,7 +50,7 @@ import AppKit
                     glaspen2_smooth_loaded_strokes()
                     PageViewOps.update()
                 }, commit: { glaspen2_router_replay_strokes() })
-                EtherealMode.peek(seconds: 1.0)
+                glaspen2_rust_ethereal_peek(1.0)
                 notificationShowPageInfo(screenId: Int64(target))
                 return true
             }
@@ -69,7 +69,7 @@ import AppKit
                     glaspen2_smooth_loaded_strokes()
                     PageViewOps.update()
                 }, commit: { glaspen2_router_replay_strokes() })
-                EtherealMode.peek(seconds: 1.0)
+                glaspen2_rust_ethereal_peek(1.0)
                 notificationShowPageInfo(screenId: Int64(pageId))
                 notify("page.created")
             } else if pageId == before {

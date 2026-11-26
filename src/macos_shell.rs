@@ -5571,8 +5571,6 @@ pub extern "C" fn glaspen2_rust_handle_chord(
 
 unsafe extern "C" {
     fn glaspen2_router_camera_mods() -> usize;
-    fn glaspen2_router_camera_queue_pan(dx: f64, dy: f64);
-    fn glaspen2_router_camera_flush();
     fn glaspen2_router_draw_height() -> f64;
 }
 
@@ -9426,6 +9424,7 @@ pub extern "C" fn glaspen2_rust_app_bootstrap_start() -> i32 {
         glaspen2_rust_toggle_draw_enabled();
         glaspen2_rust_toggle_draw_enabled();
         glaspen2_rust_toggle_canvas_mode();
+        glaspen2_rust_ethereal_peek(0.1);
         glaspen2_rust_toggle_canvas_mode();
         tracing::info!("[draw-probe] toggles done");
     }
@@ -9638,4 +9637,101 @@ pub extern "C" fn glaspen2_rust_toggle_canvas_mode() {
         glaspen2_save_bool_setting(k.as_ptr(), i32::from(ethereal));
         glaspen2_router_update_status_icon_state();
     }
+}
+
+// ── R201: 飘渺 peek 计时 ──
+
+static ETHEREAL_PEEK_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static ETHEREAL_PEEK_ACTIVE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+unsafe extern "C" {
+    fn glaspen2_swift_dispatch_main_after(
+        delay: f64,
+        ctx: *mut c_void,
+        cb: extern "C" fn(*mut c_void),
+    );
+}
+
+extern "C" fn ethereal_peek_timeout(ctx: *mut c_void) {
+    if ctx.is_null() {
+        return;
+    }
+    let generation = unsafe { *Box::from_raw(ctx as *mut u64) };
+    if ETHEREAL_PEEK_GEN.load(std::sync::atomic::Ordering::SeqCst) != generation {
+        return;
+    }
+    ETHEREAL_PEEK_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+    let ethereal = unsafe { glaspen2_router_ethereal() } != 0;
+    let stroke = unsafe { glaspen2_router_stroke_active() } != 0;
+    if ethereal && !stroke {
+        let _ = glaspen2_rust_ethereal_hide_now();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_ethereal_peek(seconds: f64) {
+    if unsafe { glaspen2_router_ethereal() } == 0 {
+        return;
+    }
+    glaspen2_rust_ethereal_cancel_peek();
+    let _ = glaspen2_rust_ethereal_preview_show();
+    ETHEREAL_PEEK_ACTIVE.store(true, std::sync::atomic::Ordering::SeqCst);
+    let generation = ETHEREAL_PEEK_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    let ctx = Box::into_raw(Box::new(generation)) as *mut c_void;
+    unsafe { glaspen2_swift_dispatch_main_after(seconds, ctx, ethereal_peek_timeout) };
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_ethereal_cancel_peek() {
+    ETHEREAL_PEEK_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    ETHEREAL_PEEK_ACTIVE.store(false, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_ethereal_peek_lens_change() {
+    if unsafe { glaspen2_router_ethereal() } == 0 || unsafe { glaspen2_router_infinite() } == 0 {
+        return;
+    }
+    if unsafe { glaspen2_router_strokes_visible() } != 0
+        && !ETHEREAL_PEEK_ACTIVE.load(std::sync::atomic::Ordering::SeqCst)
+    {
+        return;
+    }
+    glaspen2_rust_ethereal_peek(1.0);
+}
+
+// ── R202: 相机鼠标平移合帧调度 ──
+
+static CAMERA_PAN_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+extern "C" fn camera_pan_timeout(ctx: *mut c_void) {
+    if ctx.is_null() {
+        return;
+    }
+    let generation = unsafe { *Box::from_raw(ctx as *mut u64) };
+    if CAMERA_PAN_GEN.load(std::sync::atomic::Ordering::SeqCst) == generation {
+        glaspen2_rust_camera_pan_flush();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_queue_pan(dx: f64, dy: f64) {
+    if glaspen2_rust_camera_pan_queue(dx, dy) == 0 {
+        return;
+    }
+    let generation = CAMERA_PAN_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    let ctx = Box::into_raw(Box::new(generation)) as *mut c_void;
+    unsafe { glaspen2_swift_dispatch_main_after(0.016, ctx, camera_pan_timeout) };
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_flush() {
+    glaspen2_rust_camera_pan_flush();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_camera_cancel() {
+    glaspen2_rust_camera_pan_cancel();
+    CAMERA_PAN_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 }
