@@ -501,3 +501,12 @@ public func runOnMainSyncBridge(_ ctx: UnsafeMutableRawPointer?,
         DispatchQueue.main.sync { cb(ctx) }
     }
 }
+
+@_cdecl("glaspen2_swift_draw_overlay_bridge")
+public func glaspen2SwiftDrawOverlayBridge(_ view: UnsafeMutableRawPointer?,
+                                           _ x: Double, _ y: Double,
+                                           _ w: Double, _ h: Double) {
+    guard let view else { return }
+    let nsView = Unmanaged<NSView>.fromOpaque(view).takeUnretainedValue()
+    OverlayDrawing.draw(in: nsView, rect: NSRect(x: x, y: y, width: w, height: h))
+}

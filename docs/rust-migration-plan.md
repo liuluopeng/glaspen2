@@ -1091,3 +1091,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - ActionDispatch 无调用者, 删除 action_dispatch.swift;
 - OverlayGridRenderer/OverlayTunnelRenderer.drawTunnel 无调用者, 仅 clear 改直调 Rust C; 删除 overlay_grid.swift;
 - Swift 45→43; debug build 通过。
+
+
+## R196 删除 window_classes.swift
+
+- GlaspenDrawView/SettingsWindowDelegate 均无调用者; draw overlay C 桥移入 run_glue;
+- 删除 App/window_classes.swift; Swift 43→42; 冷启动正常。

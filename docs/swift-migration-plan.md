@@ -788,3 +788,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R192 | 删除 settings_glue.swift; runOnMain/canvasOverview 内联; Swift 47→46 | 本提交 |
 | 2026-11-26 | Rust-R194 | 显示器变更防抖迁 Rust; 删 display_monitor.swift; Swift 46→45; 批次验证绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R195 | 删除 ActionDispatch/OverlayGrid 死代码; Swift 45→43 | 本提交 |
+| 2026-11-26 | Rust-R196 | 删除 window_classes.swift; draw overlay 桥移入 run_glue; Swift 43→42 | 本提交 |
