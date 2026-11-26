@@ -1526,9 +1526,6 @@ unsafe extern "C" {
     fn glaspen2_share_ink_set_active(on: i32);
     fn glaspen2_load_bool_setting(key: *const std::os::raw::c_char) -> i32;
     fn glaspen2_router_set_pressure_monitor(on: i32);
-    fn glaspen2_router_pm_show();
-    fn glaspen2_router_pm_refresh();
-    fn glaspen2_router_pm_hide();
     fn glaspen2_router_set_grid_state(on: i32);
     fn glaspen2_set_launch_at_login(on: i32);
     fn glaspen2_router_set_glass_state(on: i32);
@@ -3934,9 +3931,7 @@ pub extern "C" fn glaspen2_rust_camera_reset_lens() {
 
 // ── R63: 退出流程与压感标签格式化 ──
 
-unsafe extern "C" {
-    fn glaspen2_router_pressure_label(text: *const std::os::raw::c_char);
-}
+unsafe extern "C" {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_quit_app() {
@@ -6023,7 +6018,6 @@ pub extern "C" fn glaspen2_rust_ethereal_preview_show() -> i32 {
 
 unsafe extern "C" {
     fn glaspen2_shutdown();
-    fn glaspen2_swift_pressure_destroy();
 }
 
 #[unsafe(no_mangle)]
@@ -6408,14 +6402,6 @@ pub extern "C" fn glaspen2_rust_recording_feed(
 
 unsafe extern "C" {
     fn glaspen2_router_pm_enabled() -> i32;
-    fn sw_pm_update(
-        in_range: i32,
-        pressure: i32,
-        x: f64,
-        y: f64,
-        tip_down: i32,
-        evtype: *const std::os::raw::c_char,
-    );
 }
 
 /// kind: CGEventType raw; 返回 2 消费, 0 未处理。
@@ -9348,6 +9334,9 @@ pub extern "C" fn glaspen2_rust_app_bootstrap_start() -> i32 {
     if std::env::var("GLASPEN2_OPEN_SETTINGS").as_deref() == Ok("1") {
         glaspen2_rust_show_settings_panel();
     }
+    if std::env::var("GLASPEN2_PM_PROBE").as_deref() == Ok("1") {
+        glaspen2_rust_pm_probe();
+    }
     if std::env::var("GLASPEN2_DRAW_PROBE").as_deref() == Ok("1") {
         glaspen2_rust_toggle_draw_enabled();
         glaspen2_rust_toggle_draw_enabled();
@@ -11030,4 +11019,194 @@ pub extern "C" fn glaspen2_display_size(w: *mut i32, h: *mut i32) {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_outline_dash() -> f64 {
     1.0
+}
+
+// ── R241: 压感监视窗(暂用独立探测入口) ──
+
+static PM_WINDOW: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static PM_LABEL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+unsafe extern "C" {
+    fn CGWindowLevelForKey(key: i32) -> i32;
+}
+
+fn pm_ensure_window() {
+    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+    if PM_WINDOW.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+        return;
+    }
+    unsafe {
+        let (Some(window_cls), Some(field_cls)) =
+            (AnyClass::get(c"NSWindow"), AnyClass::get(c"NSTextField"))
+        else {
+            return;
+        };
+        let screen_h = glaspen2_router_screen_h();
+        let frame = NSRect {
+            origin: NSPoint {
+                x: 10.0,
+                y: screen_h - 40.0,
+            },
+            size: NSSize {
+                width: 220.0,
+                height: 30.0,
+            },
+        };
+        let window: *mut AnyObject = objc2::msg_send![window_cls, alloc];
+        let window: *mut AnyObject = objc2::msg_send![window, initWithContentRect: frame, styleMask: 0u64, backing: 2u64, defer: false];
+        if window.is_null() {
+            return;
+        }
+        let level = CGWindowLevelForKey(14);
+        let _: () = objc2::msg_send![window, setLevel: level as i64];
+        let _: () = objc2::msg_send![window, setOpaque: true];
+        let bg = objc2_app_kit::NSColor::colorWithCalibratedWhite_alpha(0.12, 1.0);
+        let _: () = objc2::msg_send![window, setBackgroundColor: &*bg];
+        let _: () = objc2::msg_send![window, setIgnoresMouseEvents: true];
+        let title = NSString::from_str("Pressure");
+        let _: () = objc2::msg_send![window, setTitle: &*title];
+        let _: () = objc2::msg_send![window, setReleasedWhenClosed: false];
+        let label_frame = NSRect {
+            origin: NSPoint { x: 4.0, y: 2.0 },
+            size: NSSize {
+                width: 212.0,
+                height: 26.0,
+            },
+        };
+        let label: *mut AnyObject = objc2::msg_send![field_cls, alloc];
+        let label: *mut AnyObject = objc2::msg_send![label, initWithFrame: label_frame];
+        if label.is_null() {
+            return;
+        }
+        let text = NSString::from_str("P=-----  ---  (---,---)");
+        let _: () = objc2::msg_send![label, setStringValue: &*text];
+        let white = objc2_app_kit::NSColor::whiteColor();
+        let _: () = objc2::msg_send![label, setTextColor: &*white];
+        let font_cls = AnyClass::get(c"NSFont");
+        if let Some(font_cls) = font_cls {
+            let name = NSString::from_str("Menlo");
+            let font: *mut AnyObject =
+                objc2::msg_send![font_cls, fontWithName: &*name, size: 12.0f64];
+            if !font.is_null() {
+                let _: () = objc2::msg_send![label, setFont: font];
+            }
+        }
+        let _: () = objc2::msg_send![label, setBezeled: false];
+        let _: () = objc2::msg_send![label, setDrawsBackground: false];
+        let _: () = objc2::msg_send![label, setEditable: false];
+        let _: () = objc2::msg_send![label, setSelectable: false];
+        let content: *mut AnyObject = objc2::msg_send![window, contentView];
+        if !content.is_null() {
+            let _: () = objc2::msg_send![content, addSubview: label];
+        }
+        PM_WINDOW.store(window as usize, std::sync::atomic::Ordering::SeqCst);
+        PM_LABEL.store(label as usize, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+fn pm_show() {
+    use objc2::runtime::AnyObject;
+    pm_ensure_window();
+    let w = PM_WINDOW.load(std::sync::atomic::Ordering::SeqCst) as *mut AnyObject;
+    if w.is_null() {
+        return;
+    }
+    unsafe {
+        let _: () = objc2::msg_send![w, orderFront: std::ptr::null_mut::<AnyObject>()];
+    }
+}
+fn pm_hide() {
+    use objc2::runtime::AnyObject;
+    let w = PM_WINDOW.load(std::sync::atomic::Ordering::SeqCst) as *mut AnyObject;
+    if w.is_null() {
+        return;
+    }
+    unsafe {
+        let _: () = objc2::msg_send![w, orderOut: std::ptr::null_mut::<AnyObject>()];
+    }
+}
+fn pm_destroy() {
+    use objc2::runtime::AnyObject;
+    let w = PM_WINDOW.swap(0, std::sync::atomic::Ordering::SeqCst) as *mut AnyObject;
+    PM_LABEL.store(0, std::sync::atomic::Ordering::SeqCst);
+    if w.is_null() {
+        return;
+    }
+    unsafe {
+        let _: () = objc2::msg_send![w, close];
+    }
+}
+fn pm_update_label(text: &str) {
+    use objc2::runtime::AnyObject;
+    use objc2_foundation::NSString;
+    let label = PM_LABEL.load(std::sync::atomic::Ordering::SeqCst) as *mut AnyObject;
+    if label.is_null() {
+        return;
+    }
+    let s = NSString::from_str(text);
+    unsafe {
+        let _: () = objc2::msg_send![label, setStringValue: &*s];
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_pm_probe() {
+    pm_ensure_window();
+    pm_update_label("P=1234  tablet  (10,20)");
+    pm_show();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    pm_hide();
+    pm_destroy();
+    tracing::info!("[pm-probe] ensure/show/update/hide/destroy ok");
+}
+
+// ── R242: 压感窗 C 符号接线 ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_pm_show() {
+    pm_show();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_pm_hide() {
+    pm_hide();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_pressure_destroy() {
+    pm_destroy();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_pressure_label(text: *const std::os::raw::c_char) {
+    if text.is_null() {
+        return;
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(text) }.to_string_lossy();
+    pm_update_label(&s);
+}
+fn pm_refresh_label() {
+    let pressure = glaspen2_rust_pm_pressure();
+    let ev_type = glaspen2_rust_pm_ev_type();
+    let x = glaspen2_rust_pm_x();
+    let y = glaspen2_rust_pm_y();
+    glaspen2_rust_update_pressure_label(pressure, ev_type, x, y);
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_pm_update(
+    in_range: i32,
+    pressure: i32,
+    x: f64,
+    y: f64,
+    tip_down: i32,
+    ev_type: *const std::os::raw::c_char,
+) {
+    glaspen2_rust_pm_update(in_range, pressure, x, y, tip_down, ev_type);
+    pm_refresh_label();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_pm_refresh() {
+    pm_refresh_label();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_pm_refresh() {
+    pm_refresh_label();
 }

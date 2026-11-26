@@ -1285,3 +1285,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - apply_pending/redraw/window_sharing_type/show_settings/ensure_surface/flush/flush_dirty/display_size/outline_dash 迁 Rust;
 - 删除 Swift 包装; probes OK, 虚拟笔两笔正常.
+
+
+## R241/242 压感监视窗迁 Rust
+
+- NSWindow/NSTextField raw objc 创建/显示/隐藏/销毁/更新标签迁 Rust;
+- pm_show/hide/destroy/pressure_label/sw_pm_update/refresh 接线; 删除 PressureMonitorWindow Swift 类;
+- pm probe OK; pressure_monitor=1 冷启动正常; 虚拟笔正常.

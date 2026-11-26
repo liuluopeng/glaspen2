@@ -817,3 +817,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R238 | 视图/标志/延迟重建 10 桥迁 Rust; 虚拟笔两笔正常 | 本提交 |
 | 2026-11-26 | Rust-R239 | 录制/异步/绘制 8 桥迁 Rust; 虚拟笔两笔正常 | 本提交 |
 | 2026-11-26 | Rust-R240 | 面板/视图 10 桥迁 Rust; 虚拟笔两笔正常 | 本提交 |
+| 2026-11-26 | Rust-R241/242 | 压感监视窗迁 Rust; 删 PressureMonitorWindow 类; probes/冷启动正常 | 本提交 |
