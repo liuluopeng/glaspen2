@@ -1221,3 +1221,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - settings_json/free/set_setting/refresh/navigate/delete/hotkey/export/pdf/gif/canvas_payload 全部迁 Rust;
 - GIF 粘贴板桥保留 Swift; 删 macos_api.swift; 新增 --swift-macos-api-probe 并入 smoke;
 - probe: len=705 grid=true; 设置面板打开正常; Swift 4→3.
+
+
+## R230 热键分派迁 Rust
+
+- HotkeyDispatch.perform 全部分派迁 Rust(翻页/新建页/导出/撤销/复制/玻璃/画布/设置); 翻页与剪贴板保留 Swift 桥;
+- 删除 HotkeyDispatch 类; 新增 --swift-hotkey-perform-probe 并入 smoke;
+- probe draw1=1 draw2=1 undo=1; menu probe OK; 冷启动正常.

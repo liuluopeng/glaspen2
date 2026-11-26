@@ -825,3 +825,6 @@ extern void glaspen2_rust_menu_export_svg_async(void);
 extern void glaspen2_rust_menu_set_outline_enabled(int on);
 extern void glaspen2_rust_menu_quit_app(void);
 extern void glaspen2_rust_menu_application_should_terminate(void);
+
+// R230: 热键分派
+extern int glaspen2_router_hotkey_perform(unsigned short key);

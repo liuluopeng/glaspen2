@@ -188,6 +188,22 @@ fn main() {
     }
 
     // S8 自检: 设置应用分派/状态存储/设置快照(隐藏调试入口, 不启动 GUI)。
+    if args.get(1).map(String::as_str) == Some("--swift-hotkey-perform-probe") {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            unsafe extern "C" {
+                fn glaspen2_router_hotkey_perform(key: u16) -> i32;
+            }
+            let a = glaspen2_router_hotkey_perform(0x09);
+            let b = glaspen2_router_hotkey_perform(0x09);
+            let c = glaspen2_router_hotkey_perform(0x06);
+            println!("HOTKEY_PERFORM_PROBE draw1={a} draw2={b} undo={c}");
+            std::process::exit(if a == 1 && b == 1 { 0 } else { 1 });
+        }
+        #[cfg(not(target_os = "macos"))]
+        std::process::exit(2);
+    }
+
     if args.get(1).map(String::as_str) == Some("--swift-macos-api-probe") {
         #[cfg(target_os = "macos")]
         unsafe {

@@ -304,7 +304,7 @@ public func runSettingsTransparent() {
 
 @_cdecl("glaspen2_router_perform_hotkey")
 public func runPerformHotkey(_ keyCode: UInt16) -> Int32 {
-    HotkeyDispatch.perform(keyCode: keyCode) ? 1 : 0
+    glaspen2_router_hotkey_perform(keyCode)
 }
 
 @_cdecl("glaspen2_router_apply_infinite_canvas")
@@ -1400,4 +1400,26 @@ func settingsRunOnMain(_ block: @escaping () -> Void) {
     } else {
         DispatchQueue.main.sync(execute: block)
     }
+}
+
+@_cdecl("glaspen2_swift_flip_page")
+public func runFlipPage(_ target: Int64, _ goingNext: Int32, _ fromPage: Int64) {
+    Flipper.swapFrom(goingNext: goingNext != 0, fromPage: fromPage, prepare: {
+        glaspen2_load_strokes_for_screen(target)
+        glaspen2_smooth_loaded_strokes()
+        glaspen2_rust_pageview_update()
+    }, commit: {
+        glaspen2_rust_pageview_rebuild()
+    })
+}
+
+@_cdecl("glaspen2_swift_copy_svg_html")
+public func runCopySvgHtml(_ svg: UnsafePointer<CChar>?) {
+    guard let svg else { return }
+    let svgStr = String(cString: svg)
+    let base64 = Data(svgStr.utf8).base64EncodedString()
+    let html = "<img src=\"data:image/svg+xml;base64,\(base64)\" />"
+    let pb = NSPasteboard.general
+    pb.clearContents()
+    pb.setString(html, forType: .string)
 }

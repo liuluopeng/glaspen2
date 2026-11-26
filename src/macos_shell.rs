@@ -10223,3 +10223,177 @@ fn i18n_text_lossy(key: &str) -> String {
     unsafe { libc::free(p as *mut c_void) };
     s
 }
+
+// ── R230: 热键分派迁 Rust ──
+
+static LAST_NO_NEXT_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+unsafe extern "C" {
+    fn glaspen2_save_svg();
+    fn glaspen2_get_cropped_svg() -> *mut std::os::raw::c_char;
+    fn glaspen2_save_gif_cropped(data: *mut u8, w: i32, h: i32, stride: i32, scale: f64) -> i32;
+    fn glaspen2_undo_last_stroke() -> i32;
+    fn glaspen2_swift_flip_page(target: i64, going_next: i32, from_page: i64);
+    fn glaspen2_swift_copy_svg_html(svg: *const std::os::raw::c_char);
+}
+
+fn notify_key(key: &str) {
+    let text = i18n_text_owned(key);
+    if !text.is_null() {
+        unsafe {
+            glaspen2_rust_notification_show(text);
+            libc::free(text as *mut c_void);
+        }
+    }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn flip_page(target: i64, going_next: bool, from_page: i64) {
+    unsafe { glaspen2_swift_flip_page(target, i32::from(going_next), from_page) }
+    glaspen2_rust_ethereal_peek(1.0);
+    unsafe { glaspen2_rust_notification_show_page_info(target) };
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_hotkey_perform(key: u16) -> i32 {
+    match key {
+        0x08 => {
+            glaspen2_rust_finish_active_stroke();
+            if unsafe { glaspen2_router_infinite() } != 0 {
+                notify_key("canvas.infinite_kept");
+            } else {
+                glaspen2_rust_surface_clear_screen();
+            }
+            1
+        }
+        0x09 => {
+            glaspen2_rust_toggle_draw_enabled();
+            1
+        }
+        0x32 => {
+            if unsafe { glaspen2_router_infinite() } != 0 {
+                notify_key("canvas.single_canvas_warning");
+                return 1;
+            }
+            glaspen2_rust_finish_active_stroke();
+            let target = unsafe { glaspen2_prev_screen_id() };
+            if target > 0 {
+                flip_page(target, false, 0);
+            } else {
+                notify_key("page.no_previous");
+            }
+            1
+        }
+        0x12 => {
+            if unsafe { glaspen2_router_infinite() } != 0 {
+                notify_key("canvas.single_canvas_warning");
+                return 1;
+            }
+            glaspen2_rust_finish_active_stroke();
+            let target = unsafe { glaspen2_next_screen_id() };
+            if target > 0 {
+                flip_page(target, true, 0);
+                return 1;
+            }
+            let now = now_ms();
+            let second = now
+                .saturating_sub(LAST_NO_NEXT_MS.load(std::sync::atomic::Ordering::SeqCst))
+                < 5000;
+            LAST_NO_NEXT_MS.store(now, std::sync::atomic::Ordering::SeqCst);
+            if !second {
+                notify_key("page.no_next");
+                return 1;
+            }
+            let before = unsafe { glaspen2_get_current_screen_id() };
+            let page = unsafe { glaspen2_create_next_page(before) };
+            if page > 0 && page != before {
+                flip_page(page, true, before);
+                notify_key("page.created");
+            } else if page == before {
+                notify_key("page.already_latest");
+            } else {
+                notify_key("page.create_failed");
+            }
+            1
+        }
+        0x05 => {
+            unsafe { glaspen2_save_svg() };
+            let surface = glaspen2_rust_surface_current();
+            if !surface.is_null() {
+                unsafe {
+                    cairo_surface_flush(surface);
+                    let w = cairo_image_surface_get_width(surface);
+                    let h = cairo_image_surface_get_height(surface);
+                    let stride = cairo_image_surface_get_stride(surface);
+                    let data = cairo_image_surface_get_data(surface);
+                    let ok = glaspen2_save_gif_cropped(
+                        data,
+                        w,
+                        h,
+                        stride,
+                        glaspen2_rust_surface_scale(),
+                    );
+                    if ok != 0 {
+                        glaspen2_swift_copy_newest_gif();
+                        notify_key("export.svg_gif_saved");
+                    } else {
+                        notify_key("export.failed");
+                    }
+                }
+            }
+            1
+        }
+        0x06 => {
+            if unsafe { glaspen2_router_stroke_active() } != 0 {
+                notify_key("draw.stroke_in_progress");
+            } else {
+                let remaining = unsafe { glaspen2_undo_last_stroke() };
+                if remaining < 0 {
+                    notify_key("draw.nothing_to_undo");
+                } else {
+                    glaspen2_rust_pageview_rebuild();
+                    notify_key("draw.undone");
+                }
+            }
+            1
+        }
+        0x01 => {
+            let svg = unsafe { glaspen2_get_cropped_svg() };
+            if svg.is_null() {
+                notify_key("export.no_strokes_to_copy");
+            } else {
+                unsafe {
+                    glaspen2_swift_copy_svg_html(svg);
+                    glaspen2_free_c_string(svg);
+                }
+                notify_key("export.svg_copied");
+            }
+            1
+        }
+        0x0B => {
+            unsafe {
+                glaspen2_rust_set_glass_enabled(if glaspen2_router_glass_enabled() == 0 {
+                    1
+                } else {
+                    0
+                })
+            };
+            1
+        }
+        0x07 => {
+            glaspen2_rust_toggle_canvas_mode();
+            1
+        }
+        0x02 => {
+            glaspen2_rust_show_settings_panel();
+            1
+        }
+        _ => 0,
+    }
+}
