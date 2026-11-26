@@ -725,3 +725,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R122 | 笔光标更新/系统光标隐藏迁 Rust; debug build 通过(加速批次) | 本提交 |
 | 2026-11-26 | Rust-R123 | 主路由鼠标移动/抬起/菜单栏/停用清理迁 Rust; debug build 通过(加速批次) | 本提交 |
 | 2026-11-26 | Rust-R124 | 键盘事件顶层路由(录制热键+chord)迁 Rust; debug 批次后全量 tests/smoke/parity 绿(不跑 release) | 本提交 |
+| 2026-11-26 | Rust-R125 | 相机鼠标/滚轮默认切 Rust, 删 Swift 旧实现; debug build 通过 | 本提交 |

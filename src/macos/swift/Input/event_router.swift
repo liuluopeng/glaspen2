@@ -131,46 +131,15 @@ import AppKit
 
     /// S6-3-3d: 相机临时抓手(⌃⌥+左键拖动)开始/拖动/结束; 返回 true = 消费事件。
     private static func routeCameraMouse(type: CGEventType, ev: NSEvent) -> Bool {
-        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_CAMERA_MOUSE"] == "1" {
-            let kind: Int32
-            if type == .leftMouseDown { kind = 0 }
-            else if type == .leftMouseDragged { kind = 1 }
-            else if type == .leftMouseUp { kind = 2 }
-            else { return false }
-            let loc = ev.locationInWindow
-            let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
-            let mods = ev.modifierFlags.intersection(relevant).rawValue
-            return glaspen2_rust_camera_mouse(kind, Double(loc.x), Double(loc.y), UInt64(mods)) != 0
-        }
-        let st = state()
-        if glaspen2_router_camera_dragging() != 0
-            && (type == .leftMouseDragged || type == .leftMouseUp) {
-            if type == .leftMouseDragged {
-                if (st & 4) != 0 && (st & 1) != 0 && (st & 2) == 0 {
-                    let loc = ev.locationInWindow
-                    let z = glaspen2_router_camera_step_zoom()
-                    glaspen2_router_camera_queue_pan(
-                        (Double(loc.x) - glaspen2_router_camera_last_x()) / z,
-                        (glaspen2_router_camera_last_y() - Double(loc.y)) / z)
-                    glaspen2_router_camera_set_last(Double(loc.x), Double(loc.y))
-                }
-            } else {
-                glaspen2_router_camera_flush()
-                glaspen2_router_camera_clear_dragging()
-            }
-            return true
-        }
-        if (st & 4) != 0 && (st & 1) != 0 && (st & 2) == 0 && type == .leftMouseDown {
-            let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
-            let mods = ev.modifierFlags.intersection(relevant)
-            let cameraMods = UInt(glaspen2_router_camera_pan_mods())
-            if cameraMods != 0 && mods.rawValue == cameraMods {
-                let loc = ev.locationInWindow
-                glaspen2_router_camera_start(Double(loc.x), Double(loc.y))
-                return true
-            }
-        }
-        return false
+        let kind: Int32
+        if type == .leftMouseDown { kind = 0 }
+        else if type == .leftMouseDragged { kind = 1 }
+        else if type == .leftMouseUp { kind = 2 }
+        else { return false }
+        let loc = ev.locationInWindow
+        let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
+        let mods = ev.modifierFlags.intersection(relevant).rawValue
+        return glaspen2_rust_camera_mouse(kind, Double(loc.x), Double(loc.y), UInt64(mods)) != 0
     }
 
     /// S6-3-3d: 笔 proximity 进入/离开: 悬停显示/离开隐藏, 飘渺模式联动。
@@ -288,28 +257,12 @@ import AppKit
 
     private static func routeScrollZoom(_ cgEvent: CGEvent) -> Int32 {
         guard let ev = NSEvent(cgEvent: cgEvent) else { return 1 }
-        if ProcessInfo.processInfo.environment["GLASPEN2_RUST_CAMERA_MOUSE"] == "1" {
-            let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
-            let mods = ev.modifierFlags.intersection(relevant).rawValue
-            let loc = ev.locationInWindow
-            return glaspen2_rust_scroll_zoom(
-                ev.scrollingDeltaY, ev.hasPreciseScrollingDeltas ? 1 : 0,
-                Double(loc.x), Double(loc.y), UInt64(mods))
-        }
         let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
-        let mods = ev.modifierFlags.intersection(relevant)
-        let cameraMods = UInt(glaspen2_router_camera_mods())
-        let hasCameraMods = cameraMods != 0 && mods.rawValue == cameraMods
-        let state = state()
-        if hasCameraMods && (state & 1) != 0 && (state & 2) == 0 {
-            let dy = ev.scrollingDeltaY
-            let factor: Double = ev.hasPreciseScrollingDeltas ? exp(-dy * 0.0015)
-                : (dy > 0 ? 1.1 : (dy < 0 ? 1.0 / 1.1 : 1.0))
-            let loc = ev.locationInWindow
-            let h = glaspen2_router_draw_height()
-            glaspen2_router_zoom_at(factor, Double(loc.x), Double(h) - Double(loc.y))
-            return 2
-        }
-        return 1
+        let mods = ev.modifierFlags.intersection(relevant).rawValue
+        let loc = ev.locationInWindow
+        return glaspen2_rust_scroll_zoom(
+            ev.scrollingDeltaY, ev.hasPreciseScrollingDeltas ? 1 : 0,
+            Double(loc.x), Double(loc.y), UInt64(mods))
     }
+
 }

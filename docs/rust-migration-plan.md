@@ -679,3 +679,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - `routeKeyboardEvent` 的录制态放行/录制热键/chord 分派迁 Rust `glaspen2_rust_route_keyboard`;
 - Swift 仅计算 NSEvent 修饰键/autorepeat 并调 C;
 - 加速策略: R122-R124 三个切片仅 debug build; 本切片后跑一次全量 tests/smoke/parity(debug, 不跑 release)全绿。
+
+
+## R125 相机鼠标/滚轮默认切 Rust
+
+- routeCameraMouse/routeScrollZoom 删除 Swift 旧实现与 env 回退, 默认只调 Rust;
+- EventRouter 相机鼠标分支收口; debug build 通过(加速批次, 待第3片全量)。
