@@ -159,27 +159,8 @@ import AppKit
     @objc(updatePressureMonitorWithEvent:type:x:y:pressure:)
     public static func updatePressureMonitor(event: CGEvent, type: CGEventType,
                                              x: Double, y: Double, pressure: Double) {
-        guard glaspen2_router_pm_enabled() != 0 else { return }
         let rawField = event.getIntegerValueField(.tabletEventPointPressure)
-        let pmPressure = rawField > 0 ? Int(rawField * 65535 / 65536)
-                                      : Int(pressure * 65535)
-        let tipDown = type == .leftMouseDown || type == .rightMouseDown
-            || type == .otherMouseDown || type == .leftMouseDragged
-            || type == .rightMouseDragged || type == .otherMouseDragged
-        let name: String
-        switch type {
-        case .leftMouseDown: name = "DOWN"
-        case .leftMouseUp: name = "UP"
-        case .leftMouseDragged: name = "DRAG"
-        case .rightMouseDown: name = "R_DOWN"
-        case .rightMouseUp: name = "R_UP"
-        case .rightMouseDragged: name = "R_DRAG"
-        case .otherMouseDown: name = "O_DOWN"
-        case .otherMouseUp: name = "O_UP"
-        case .otherMouseDragged: name = "O_DRAG"
-        default: name = tipDown ? "DOWN" : "MOVE"
-        }
-        name.withCString { sw_pm_update(1, Int32(pmPressure), x, y, tipDown ? 1 : 0, $0) }
+        _ = glaspen2_rust_update_pressure_monitor(Int32(type.rawValue), rawField, x, y, pressure)
     }
 
     /// S6-3-3d: 笔事件分派(落笔/拖动/抬笔); 返回 2 = 消费事件。
@@ -187,32 +168,8 @@ import AppKit
     public static func handlePenEvent(type: CGEventType, x: Double, y: Double,
                                       pressure: Double, timestamp: Double,
                                       rawWidth: Double, isEraser: Bool) -> Int32 {
-        let downTypes: [CGEventType] = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
-        let dragTypes: [CGEventType] = [.leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
-        let upTypes: [CGEventType] = [.leftMouseUp, .rightMouseUp, .otherMouseUp]
-        if downTypes.contains(type) {
-            // 旧实现: 漏抬笔时先收尾上一笔, 避免新笔覆盖掉未 commit 的实时笔迹。
-            finishActiveStroke()
-            updateEraserState(isEraser: isEraser)
-            NSLog("[glaspen2] pen DOWN p=%.2f ts=%.3f", pressure, timestamp)
-            penDown(x: x, y: y, pressure: pressure, timestamp: timestamp, rawWidth: rawWidth)
-            return 2
-        }
-        if dragTypes.contains(type) {
-            if glaspen2_router_stroke_active() == 0 {
-                updateEraserState(isEraser: isEraser)
-                penDown(x: x, y: y, pressure: pressure, timestamp: timestamp, rawWidth: rawWidth)
-            } else {
-                penMove(x: x, y: y, pressure: pressure, timestamp: timestamp, rawWidth: rawWidth)
-            }
-            return 2
-        }
-        if upTypes.contains(type) {
-            NSLog("[pen] 抬笔 (pen up)")
-            penUp(x: x, y: y, pressure: pressure, timestamp: timestamp)
-            return 2
-        }
-        return 0
+        glaspen2_rust_handle_pen_event(Int32(type.rawValue), x, y, pressure, timestamp,
+                                       rawWidth, isEraser ? 1 : 0)
     }
 
     /// S6-3-3d: 相机临时抓手(⌃⌥+左键拖动)开始/拖动/结束; 返回 true = 消费事件。

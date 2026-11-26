@@ -644,3 +644,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - GIF 编码在 Rust 线程执行, 结果经 Swift `dispatch_main` 桥回主线程回喂; pending GIF 字节存 Rust;
 - Swift 仅保留 notify/剪贴板/dispatch_main 三个桥; 删除 `Features/recording_effects.swift`; Swift 69→68;
 - 默认 smoke/tests/build/parity 全绿; 真机录制 GIF/HUD 仍需人工验收。
+
+
+## R120 笔事件分派/压感监视器分类迁 Rust
+
+- `handlePenEvent` 的 down/drag/up 分类、漏抬笔收尾、橡皮状态、penDown/Move/Up 调用迁 Rust;
+- `updatePressureMonitor` 的 raw pressure/tipDown/事件名分类迁 Rust, 调 sw_pm_update;
+- EventRouter 两个方法变薄 C 调用; 虚拟笔运行进程存活、日志改为 Rust tracing;
+- 默认 smoke/tests/build/parity 全绿。

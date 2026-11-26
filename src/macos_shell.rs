@@ -6368,3 +6368,97 @@ pub extern "C" fn glaspen2_rust_recording_feed(
         .into_owned();
     recording_feed_internal(slot, &text)
 }
+
+// ── R120: 笔事件分派/压感监视器分类 ──
+
+unsafe extern "C" {
+    fn glaspen2_router_pm_enabled() -> i32;
+    fn sw_pm_update(
+        in_range: i32,
+        pressure: i32,
+        x: f64,
+        y: f64,
+        tip_down: i32,
+        evtype: *const std::os::raw::c_char,
+    );
+}
+
+/// kind: CGEventType raw; 返回 2 消费, 0 未处理。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_handle_pen_event(
+    kind: i32,
+    x: f64,
+    y: f64,
+    pressure: f64,
+    timestamp: f64,
+    raw_width: f64,
+    is_eraser: i32,
+) -> i32 {
+    let scale = glaspen2_rust_surface_scale();
+    match kind {
+        1 | 4 | 7 => {
+            glaspen2_rust_finish_active_stroke();
+            glaspen2_rust_update_eraser(is_eraser);
+            tracing::info!("[glaspen2] pen DOWN p={pressure:.2} ts={timestamp:.3}");
+            glaspen2_rust_pen_down(x, y, pressure, timestamp, raw_width, scale);
+            2
+        }
+        3 | 6 | 9 => {
+            if glaspen2_rust_pen_stroke_active() == 0 {
+                glaspen2_rust_update_eraser(is_eraser);
+                glaspen2_rust_pen_down(x, y, pressure, timestamp, raw_width, scale);
+            } else {
+                glaspen2_rust_pen_move(x, y, pressure, timestamp, raw_width, scale);
+            }
+            2
+        }
+        2 | 5 | 8 => {
+            tracing::info!("[pen] 抬笔 (pen up)");
+            glaspen2_rust_pen_up(x, y, pressure, timestamp);
+            2
+        }
+        _ => 0,
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_update_pressure_monitor(
+    kind: i32,
+    raw_field: i64,
+    x: f64,
+    y: f64,
+    pressure: f64,
+) -> i32 {
+    if unsafe { glaspen2_router_pm_enabled() } == 0 {
+        return 0;
+    }
+    let pm_pressure = if raw_field > 0 {
+        (raw_field * 65535 / 65536) as i32
+    } else {
+        (pressure * 65535.0) as i32
+    };
+    let tip_down = matches!(kind, 1 | 3 | 4 | 6 | 7 | 9);
+    let name = match kind {
+        1 => "DOWN",
+        2 => "UP",
+        3 => "DRAG",
+        4 => "R_DOWN",
+        5 => "R_UP",
+        6 => "R_DRAG",
+        7 => "O_DOWN",
+        8 => "O_UP",
+        9 => "O_DRAG",
+        _ => {
+            if tip_down {
+                "DOWN"
+            } else {
+                "MOVE"
+            }
+        }
+    };
+    let Ok(cname) = std::ffi::CString::new(name) else {
+        return 0;
+    };
+    unsafe { sw_pm_update(1, pm_pressure, x, y, i32::from(tip_down), cname.as_ptr()) };
+    1
+}
