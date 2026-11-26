@@ -115,24 +115,8 @@ public func menuPMRefresh() { PressureMonitorWindow.refreshLabel() }
 public func menuPanelTransparent(_ on: Int32) {
     MenuRuntime.applyPanelTransparent(on: on != 0)
 }
-@_cdecl("gl_ethereal_restore_now")
-public func menuEtherealRestoreNow() { glaspen2_rust_ethereal_restore_now() }
-@_cdecl("auto_hide_now")
-public func menuAutoHideNow() -> Int32 { glaspen2_rust_ethereal_hide_now() }
-@_cdecl("auto_show_canvas")
-public func menuAutoShowCanvas() { glaspen2_rust_ethereal_auto_show() }
-@_cdecl("peek_cancel_timer")
-public func menuPeekCancelTimer() { glaspen2_rust_ethereal_cancel_peek() }
-@_cdecl("peek_lens_change")
-public func menuPeekLensChange() { glaspen2_rust_ethereal_peek_lens_change() }
 
 // R43: Rust 侧菜单通知桥(NSString* -> NotificationPresenter)。
-@_cdecl("glaspen2_menu_notify")
-public func menuNotify(_ text: UnsafeMutableRawPointer?) {
-    guard let text else { return }
-    let ns = Unmanaged<NSString>.fromOpaque(text).takeUnretainedValue()
-    notificationShowText(text: ns as String)
-}
 
 
 

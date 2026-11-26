@@ -1235,3 +1235,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - lang/launch/glass/outline/infinite/apply/save/clear/toggle/settings/select/xoj/quit 等 19 个 C 符号迁 Rust;
 - 删除 Swift 对应包装与重复 ensure_surface/pm_show/hide 导出; menu probes/hotkey/api probe OK, 冷启动正常;
 - 一次启动出现 NSFont NULL panic, 复测未复现(疑似探针/字体缓存瞬态), 已记录.
+
+
+## R232 飘渺/菜单通知 C 桥迁 Rust
+
+- gl_ethereal_restore_now/auto_hide_now/auto_show_canvas/peek_cancel_timer/peek_lens_change/menu_notify 迁 Rust;
+- 删除 Swift 包装; menu probes OK, 冷启动正常.

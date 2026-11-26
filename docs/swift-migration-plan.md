@@ -809,3 +809,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R229 | macOS 设置 API C ABI 迁 Rust; 删 macos_api.swift; Swift 4→3; api probe OK | 本提交 |
 | 2026-11-26 | Rust-R230 | 热键分派迁 Rust; 删 HotkeyDispatch 类; hotkey-perform probe OK | 本提交 |
 | 2026-11-26 | Rust-R231 | 菜单 C 薄桥 19 符号迁 Rust; 删 Swift 包装/重复导出; probes OK | 本提交 |
+| 2026-11-26 | Rust-R232 | 飘渺/菜单通知 C 桥迁 Rust; 删 Swift 包装 | 本提交 |

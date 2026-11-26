@@ -2045,7 +2045,6 @@ unsafe extern "C" {
     fn glaspen2_set_stroke_outline(on: i32);
     fn glaspen2_router_rebuild_surface();
     fn glaspen2_router_finish_active_stroke();
-    fn glaspen2_menu_notify(text: *const c_void);
     fn sw_menu() -> *mut c_void;
 }
 
@@ -10488,4 +10487,36 @@ pub extern "C" fn glaspen2_menu_save_xoj_raw() {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_menu_quit_bridge() {
     glaspen2_rust_menu_quit_app();
+}
+
+// ── R232: 菜单通知/飘渺 C 桥迁 Rust ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn gl_ethereal_restore_now() {
+    glaspen2_rust_ethereal_restore_now();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn auto_hide_now() -> i32 {
+    glaspen2_rust_ethereal_hide_now()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn auto_show_canvas() {
+    glaspen2_rust_ethereal_auto_show();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn peek_cancel_timer() {
+    glaspen2_rust_ethereal_cancel_peek();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn peek_lens_change() {
+    glaspen2_rust_ethereal_peek_lens_change();
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_menu_notify(text: *const c_void) {
+    if text.is_null() {
+        return;
+    }
+    use objc2_foundation::NSString;
+    let s = unsafe { &*(text as *const NSString) }.to_string();
+    notification_show_owned(&s);
 }
