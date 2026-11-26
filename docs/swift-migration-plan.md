@@ -828,3 +828,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R251 | 显示帧/面板透明/压感恢复 3 桥迁 Rust; probes OK | 本提交 |
 | 2026-11-26 | Rust-R252 | 启动状态项/屏幕尺寸桥迁 Rust; 冷启动正常 | 本提交 |
 | 2026-11-26 | Rust-R253 | 阶段性验收: 冷启动/笔迹 DB/隧道/翻页/panel/压感/SIGTERM 全过; 剩余 3 shell 文件 | 本提交 |
+| 2026-11-26 | Rust-R254 | 已在运行告警迁 Rust; 冷启动正常 | 本提交 |

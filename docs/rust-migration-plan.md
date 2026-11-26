@@ -1368,3 +1368,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - `Surface/tunnel_animation.swift`: 隧道卡片/帧渲染 Swift 参考实现 + 卡片/表面缓存/探针.
 
 纯逻辑/状态/C ABI 已全部 Rust; 剩余 Swift 仅负责 AppKit 对象构造、SC 流生命周期与视觉渲染参考/探针.
+
+
+## R254 已在运行告警迁 Rust
+
+- bootstrap_running_alert raw NSAlert/NSApplication 迁 Rust(中英文);
+- 删除 Swift 包装; 冷启动正常.

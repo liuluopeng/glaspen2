@@ -9270,7 +9270,6 @@ pub extern "C" fn glaspen2_rust_display_changed() {
 
 unsafe extern "C" {
     fn glaspen2_swift_bootstrap_prepare();
-    fn glaspen2_swift_bootstrap_running_alert();
     fn glaspen2_swift_bootstrap_delegate_menu(item: *mut c_void) -> i32;
     fn glaspen2_swift_bootstrap_display_observer();
 }
@@ -11648,5 +11647,48 @@ pub extern "C" fn glaspen2_swift_bootstrap_screen_size(w: *mut i32, h: *mut i32)
         if !h.is_null() {
             *h = rect.size.height as i32;
         }
+    }
+}
+
+// ── R254: 已在运行告警迁 Rust ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_bootstrap_running_alert() {
+    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2_foundation::NSString;
+    let zh = unsafe { glaspen2_router_lang() } == 0;
+    let title = if zh {
+        "glaspen2 已在运行"
+    } else {
+        "glaspen2 is already running"
+    };
+    let info = if zh {
+        "检测到另一个 glaspen2 实例(菜单栏图标)。两个实例的笔迹窗口会叠加显示, 全局热键会同时翻两套页 —— 看起来像“笔迹重复/只翻了一部分”。本次启动退出; 开发时如需并行调试, 设 GLASPEN2_ALLOW_MULTI=1。"
+    } else {
+        "Another glaspen2 instance is running (menu bar icon). Two overlays stack and global hotkeys flip both — it looks like duplicated strokes or a partial page flip. This launch exits; set GLASPEN2_ALLOW_MULTI=1 to debug in parallel."
+    };
+    let ok = if zh { "好" } else { "OK" };
+    unsafe {
+        let Some(app_cls) = AnyClass::get(c"NSApplication") else {
+            return;
+        };
+        let app: *mut AnyObject = objc2::msg_send![app_cls, sharedApplication];
+        if !app.is_null() {
+            let _: () = objc2::msg_send![app, setActivationPolicy: 0i64];
+        }
+        let Some(alert_cls) = AnyClass::get(c"NSAlert") else {
+            return;
+        };
+        let alert: *mut AnyObject = objc2::msg_send![alert_cls, new];
+        if alert.is_null() {
+            return;
+        }
+        let t = NSString::from_str(title);
+        let i = NSString::from_str(info);
+        let b = NSString::from_str(ok);
+        let _: () = objc2::msg_send![alert, setMessageText: &*t];
+        let _: () = objc2::msg_send![alert, setInformativeText: &*i];
+        let _: *mut AnyObject = objc2::msg_send![alert, addButtonWithTitle: &*b];
+        let _: i64 = objc2::msg_send![alert, runModal];
     }
 }
