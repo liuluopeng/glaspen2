@@ -9641,7 +9641,6 @@ static STARTUP_RUN_LOOP_STARTED: std::sync::atomic::AtomicBool =
 
 unsafe extern "C" {
     fn glaspen2_perf_init_from_env();
-    fn glaspen2_swift_flip_probe_maybe_start();
 }
 
 extern "C" fn startup_tap_check(_ctx: *mut c_void) {
@@ -9657,7 +9656,7 @@ pub extern "C" fn glaspen2_rust_startup_run_loop() {
     unsafe {
         glaspen2_perf_init_from_env();
         glaspen2_rust_virtual_pen_maybe_start();
-        glaspen2_swift_flip_probe_maybe_start();
+        glaspen2_rust_flip_probe_maybe_start();
         glaspen2_swift_dispatch_main_after(2.0, std::ptr::null_mut(), startup_tap_check);
     }
 }
@@ -11691,4 +11690,54 @@ pub extern "C" fn glaspen2_swift_bootstrap_running_alert() {
         let _: *mut AnyObject = objc2::msg_send![alert, addButtonWithTitle: &*b];
         let _: i64 = objc2::msg_send![alert, runModal];
     }
+}
+
+// ── R260: 翻页诊断探针(dispatch 链) ──
+
+static FLIP_FIRST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+static FLIP_BACK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static FLIP_EVERY: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+extern "C" fn flip_probe_rust_tick(_ctx: *mut c_void) {
+    use std::sync::atomic::Ordering;
+    tracing::info!("[flip-probe] tick");
+    if FLIP_FIRST.swap(false, Ordering::SeqCst) {
+        let want = std::env::var("GLASPEN2_PROBE_PAGES")
+            .ok()
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
+        unsafe {
+            glaspen2_debug_insert_pages(
+                want,
+                glaspen2_router_screen_w() as i32,
+                glaspen2_router_screen_h() as i32,
+            );
+        }
+        tracing::info!("[glaspen2] probe 建页 {want} 页(空白, 直插)");
+    } else {
+        let back = FLIP_BACK.load(Ordering::SeqCst);
+        tracing::info!("[glaspen2] probe 翻页 back={}", i32::from(back));
+        unsafe { glaspen2_router_perform_hotkey(if back { 0x32u16 } else { 0x12u16 }) };
+        FLIP_BACK.store(!back, Ordering::SeqCst);
+    }
+    let every = FLIP_EVERY.load(Ordering::SeqCst);
+    unsafe {
+        glaspen2_swift_dispatch_main_after(every as f64, std::ptr::null_mut(), flip_probe_rust_tick)
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_flip_probe_maybe_start() {
+    let Ok(raw) = std::env::var("GLASPEN2_FLIP_EVERY") else {
+        return;
+    };
+    let Ok(every) = raw.parse::<u64>() else {
+        return;
+    };
+    if every == 0 {
+        return;
+    }
+    FLIP_EVERY.store(every, std::sync::atomic::Ordering::SeqCst);
+    tracing::info!("[glaspen2] flip probe: 每 {every} 秒一跳(第1跳建页, 之后往返翻)");
+    unsafe { glaspen2_swift_dispatch_main_after(0.5, std::ptr::null_mut(), flip_probe_rust_tick) }
 }

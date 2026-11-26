@@ -837,3 +837,6 @@ extern void glaspen2_rust_tunnel_timer_cancel(void);
 
 // R246: 翻页编排
 extern int glaspen2_rust_flip_page(int going_next, long long from_page);
+
+// R260: 翻页诊断探针
+extern void glaspen2_rust_flip_probe_maybe_start(void);

@@ -1426,3 +1426,9 @@ modeler Up error 需真机笔/翻页连击复验。
 ### 仍待人工真机验收
 
 - 真笔压感/橡皮/描边/软阴影; 多显示器与睡眠唤醒; 反色突出真实屏幕; 带背景保存 Display P3; GIF/聊天录制; 这些无法在无真实输入设备的会话内自动证明, 清单见 `docs/s8-acceptance-checklist.md`.
+
+
+## R260 翻页诊断探针迁 Rust
+
+- FlipProbe 类删除; dispatch_main_after 链实现建页/往返翻;
+- FLIP_EVERY=1 实测 tick/建页/翻页连续 5 次, 应用存活.

@@ -833,3 +833,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R256 | 全量 cargo test 恢复全绿; smoke/parity 通过 | 本提交 |
 | 2026-11-26 | Rust-R257 | 最终验收: cargo test exit 0 + smoke + parity + 冷启动/笔迹/SIGTERM 全过 | 本提交 |
 | 2026-11-26 | Rust-R258 | 迁移收尾总结: Swift 103+→3, ObjC 0, C ABI 保留; 自动化验证全绿; 真机清单待验 | 本提交 |
+| 2026-11-26 | Rust-R260 | FlipProbe 迁 Rust; FLIP_EVERY 连续翻页正常 | 本提交 |
