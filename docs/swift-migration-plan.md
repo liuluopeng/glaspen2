@@ -702,3 +702,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R99 | HotkeyRecorder recording/generation/60s 超时迁 Rust; Swift 仅定时器壳; 默认 Rust, GLASPEN2_SWIFT_HOTKEY_RECORDER=1 回退; smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R100 | 显示器变更 2.5s 防抖/重读/apply 迁 Rust(opt-in); Swift 仅定时器/NSScreen 桥; 默认/opt-in smoke 绿 | 真机多屏待验 | 本提交 |
 | 2026-11-26 | Rust-R101 | 删除 MenuNames 薄桥, 颜色/粗细名改 MenuRuntime 直调 core; Swift 83→82; smoke/tests/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R102 | EtherealMode 隐藏/恢复/预览显示迁 Rust; peek 定时器留 Swift; 默认 Rust, GLASPEN2_SWIFT_ETHEREAL=1 回退 | 默认/回退 smoke、tests/build/parity 绿 | 本提交 |

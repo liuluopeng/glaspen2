@@ -602,3 +602,9 @@ extern int glaspen2_rust_recording_timeout(unsigned int gen);
 // R100: 显示器变更防抖(opt-in: GLASPEN2_RUST_DISPLAY_MONITOR=1)
 extern int glaspen2_rust_display_begin(int new_w, int new_h);
 extern int glaspen2_rust_display_finish(void);
+
+// R102: 飘渺模式隐藏/恢复/预览(默认; GLASPEN2_SWIFT_ETHEREAL=1 回退)
+extern int glaspen2_rust_ethereal_hide_now(void);
+extern void glaspen2_rust_ethereal_restore_now(void);
+extern void glaspen2_rust_ethereal_auto_show(void);
+extern int glaspen2_rust_ethereal_preview_show(void);

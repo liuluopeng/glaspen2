@@ -512,3 +512,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 颜色/粗细显示名桥移入 `MenuRuntime.colorDisplayName/widthDisplayName`(直接调 core C + free);
 - 删除 `Menu/menu_names.swift`, 更新 ActionDispatch/MenuPresetTitles 调用; Swift 83→82;
 - 默认 smoke、tests/build/parity 全绿。
+
+
+## R102 飘渺模式隐藏/恢复/预览显示迁 Rust
+
+- `EtherealMode.hideNow/restoreNow/autoShow/peek 显示部分` 的状态判断/结束笔画/笔迹显隐/玻璃/压感窗/重绘迁 Rust;
+- 默认 Rust, `GLASPEN2_SWIFT_ETHEREAL=1` 回退; peek 定时器仍 Swift;
+- 默认/回退 smoke、tests/build/parity 全绿。

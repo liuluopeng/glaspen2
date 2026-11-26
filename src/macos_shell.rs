@@ -5875,3 +5875,108 @@ pub extern "C" fn glaspen2_rust_display_finish() -> i32 {
     unsafe { glaspen2_display_apply(real_w, real_h) };
     1
 }
+
+// ── R102: 飘渺模式隐藏/恢复/预览显示 ──
+
+unsafe extern "C" {
+    fn glaspen2_router_set_strokes_visible(on: i32);
+    fn glaspen2_swift_tunnel_active() -> i32;
+}
+
+fn ethereal_glass_hidden(hidden: bool) {
+    use objc2_app_kit::NSVisualEffectView;
+    let p = unsafe { sw_glass_view() };
+    if p.is_null() {
+        return;
+    }
+    let view = unsafe { &*(p as *const NSVisualEffectView) };
+    view.setHidden(hidden);
+}
+
+fn ethereal_hide_strokes() {
+    unsafe {
+        glaspen2_router_finish_active_stroke();
+        glaspen2_router_set_strokes_visible(0);
+        if glaspen2_router_glass_follow() != 0 {
+            ethereal_glass_hidden(true);
+        }
+        if glaspen2_router_pressure_monitor() != 0 {
+            glaspen2_router_pm_hide();
+        }
+        glaspen2_router_redraw_draw_view();
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_ethereal_hide_now() -> i32 {
+    if unsafe { glaspen2_swift_tunnel_active() != 0 } {
+        return 0;
+    }
+    if unsafe { glaspen2_router_ethereal() } == 0 {
+        return 0;
+    }
+    if unsafe { glaspen2_router_strokes_visible() } == 0 {
+        return 0;
+    }
+    ethereal_hide_strokes();
+    1
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_ethereal_restore_now() {
+    if unsafe { glaspen2_router_ethereal() } == 0 {
+        return;
+    }
+    unsafe { glaspen2_router_set_strokes_visible(1) };
+    ethereal_hide_strokes();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_ethereal_auto_show() {
+    if unsafe { glaspen2_router_ethereal() } == 0 {
+        return;
+    }
+    if unsafe { glaspen2_router_strokes_visible() } == 0 {
+        unsafe {
+            glaspen2_router_set_strokes_visible(1);
+            glaspen2_router_apply_glass_view(
+                if glaspen2_router_glass_enabled() != 0 {
+                    glaspen2_router_glass_opacity() * 2.0
+                } else {
+                    0.0
+                },
+                0,
+            );
+            if glaspen2_router_pressure_monitor() != 0 {
+                glaspen2_router_pm_show();
+            }
+            glaspen2_router_redraw_draw_view();
+        }
+        tracing::info!("[ethereal] 笔迹重现");
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_ethereal_preview_show() -> i32 {
+    if unsafe { glaspen2_router_ethereal() } == 0 {
+        return 0;
+    }
+    if unsafe { glaspen2_router_strokes_visible() } == 0 {
+        unsafe {
+            glaspen2_router_set_strokes_visible(1);
+            glaspen2_router_apply_glass_view(
+                if glaspen2_router_glass_enabled() != 0 {
+                    glaspen2_router_glass_opacity() * 2.0
+                } else {
+                    0.0
+                },
+                0,
+            );
+            if glaspen2_router_pressure_monitor() != 0 {
+                glaspen2_router_pm_show();
+            }
+            glaspen2_router_redraw_draw_view();
+        }
+    }
+    1
+}
