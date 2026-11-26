@@ -340,3 +340,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - `TunnelFrameRenderer.drawCard` 在 `GLASPEN2_RUST_TUNNEL_CARD=1` 时调 Rust, 默认仍 Swift;
 - 新增 `--swift-tunnel-card-probe`: 离屏 240x180 目标表面 + 80x60 卡片表面, 调用 Rust 后像素非空 16904, 已加入 smoke;
 - 翻页时机/帧编排仍在 Swift; 默认切换前需真机隧道有卡片场景复验。
+
+
+## R80 玻璃视图 alpha/hidden 应用迁 Rust
+
+- `glaspen2_router_apply_glass_view` 从 Swift 迁 Rust: 通过 `sw_glass_view` C 桥拿 NSVisualEffectView, 设置 alphaValue/isHidden;
+- 删除 MenuRuntime 旧包装; Rust apply_glass / MenuHandler 调用点不变;
+- smoke/tests/parity 全绿。

@@ -232,6 +232,12 @@ public func runQuitAsync() {
     DispatchQueue.main.async { MenuHandler.quitAppNow() }
 }
 
+@_cdecl("sw_glass_view")
+public func runGlassView() -> UnsafeMutableRawPointer? {
+    guard let g = UIAnchors.glassView else { return nil }
+    return Unmanaged.passUnretained(g).toOpaque()
+}
+
 @_cdecl("glaspen2_router_flush_dirty")
 public func runFlushDirty() { OverlayLayerFlush.flushDirty() }
 

@@ -680,3 +680,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R77 | 虚拟键码名表迁 Rust; 删 shortcut_names.swift 与旧包装; 真机翻页日志验证; Swift 85→84 | 默认 smoke、全量 tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R78 | 第80轮收尾快照: tag ce525db 未动/未 push/ObjC 0/Swift 84; tests/build/smoke/parity + 干净 DB 四探针全绿; 汇总77批与剩余项; 目标保持 active | 待后续/真机验收 | 本提交 |
 | 2026-11-26 | Rust-R79 | TunnelCardRenderer 卡片 cairo 绘制迁 Rust(opt-in GLASPEN2_RUST_TUNNEL_CARD=1); 新增卡片像素探针并入 smoke; 默认仍 Swift; 真机隧道场景待验 | 默认/opt-in smoke、全量 tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R80 | glass view alpha/hidden 应用迁 Rust(sw_glass_view 桥); 删 MenuRuntime 旧包装; smoke/tests/parity 绿 | 本提交 |

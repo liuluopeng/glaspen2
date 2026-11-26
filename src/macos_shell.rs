@@ -1923,7 +1923,6 @@ unsafe extern "C" {
     fn glaspen2_router_glass_follow() -> i32;
     fn glaspen2_router_ethereal() -> i32;
     fn glaspen2_router_strokes_visible() -> i32;
-    fn glaspen2_router_apply_glass_view(alpha: f64, hidden: i32);
 }
 
 #[unsafe(no_mangle)]
@@ -4744,4 +4743,22 @@ pub extern "C" fn glaspen2_rust_draw_tunnel_card(
         }
         cairo_restore(cr);
     }
+}
+
+// ── R80: 玻璃视图 alpha/hidden 应用 ──
+
+unsafe extern "C" {
+    fn sw_glass_view() -> *mut c_void;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_apply_glass_view(alpha: f64, hidden: i32) {
+    use objc2_app_kit::NSVisualEffectView;
+    let p = unsafe { sw_glass_view() };
+    if p.is_null() {
+        return;
+    }
+    let view = unsafe { &*(p as *const NSVisualEffectView) };
+    view.setAlphaValue(alpha);
+    view.setHidden(hidden != 0);
 }
