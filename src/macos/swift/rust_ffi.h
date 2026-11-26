@@ -692,3 +692,6 @@ extern int glaspen2_rust_tunnel_tick(double *out_p);
 // R156: 隧道建卡循环
 extern int glaspen2_rust_tunnel_build_cards(long long cur, int count, int cur_idx, double front,
                                              int *depths, void **card_surf, void **mip_surf);
+
+// R157: 隧道启动准备
+extern int glaspen2_rust_tunnel_prepare(long long cur, int going_next, double scale, double *preload_ms_out);

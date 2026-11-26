@@ -874,3 +874,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - 深度/front/0.30s 预算/逐卡 factory 调用/数组写入迁 Rust, Swift 仅提供卡片 factory C 桥;
 - 真机 5 卡隧道正常运行; debug build 通过。
+
+
+## R157 隧道启动准备(邻页/表面/blur/预载计时)迁 Rust
+
+- 邻页判定/半分辨率表面/blur/预载页数/预载耗时迁 Rust; Swift 仅调 prepare + 建卡 + 定时器;
+- 真机 5 卡隧道正常; 批次 tests/smoke/parity(不跑 release)全绿。

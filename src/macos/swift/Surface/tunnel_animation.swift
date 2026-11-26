@@ -8,38 +8,15 @@ import Darwin
                              prepare: @escaping () -> Void,
                              commit: @escaping () -> Void) -> Bool {
         if TunnelState.active { return false }
-        let screenW = glaspen2_router_screen_w()
-        let screenH = glaspen2_router_screen_h()
-        guard SurfaceStore.current != nil, screenW > 0, screenH > 0 else { return false }
         let cur = Int(curPage)
+        TunnelLifecycle.freeCards()
+        var preloadMs = 0.0
+        let n = glaspen2_rust_tunnel_prepare(Int64(cur), goingNext ? 1 : 0,
+                                              SurfaceStore.scaleFactor, &preloadMs)
+        if n <= 0 { return false }
         let target = goingNext ? glaspen2_page_neighbor(Int64(cur), 1)
                                : glaspen2_page_neighbor(Int64(cur), -1)
-        if target <= 0 { return false }
-        TunnelLifecycle.freeCards()
-        let scale = SurfaceStore.scaleFactor
-        let sW = Int(Double(screenW) * scale * 0.5)
-        let sH = Int(Double(screenH) * scale * 0.5)
-        if sW <= 0 || sH <= 0 { return false }
-        TunnelState.surfW = sW
-        TunnelState.surfH = sH
-        guard let surface = cairo_image_surface_create(cairo_format_t(0),
-                                                       Int32(sW), Int32(sH)),
-              cairo_surface_status(surface).rawValue == 0 else {
-            return false
-        }
-        TunnelState.surface = surface
-        let tb0 = TunnelState.now()
-        var n = glaspen2_preload_flip_pages(Int64(cur), goingNext ? 1 : 0, 4, 1)
-        let tc1 = TunnelState.now()
-        if n <= 0 { return false }
-        if Int(n) > TunnelState.maxCards { n = Int32(TunnelState.maxCards) }
-        if let blur = cairo_image_surface_create(cairo_format_t(0),
-                                                 Int32(sW / 3), Int32(sH / 3)),
-           cairo_surface_status(blur).rawValue == 0 {
-            TunnelState.blur = blur
-        } else {
-            TunnelState.blur = nil
-        }
+        let buildStart = TunnelState.now()
         let count = Int(n)
         let curIdx = count - 2
         let built = TunnelState.depths.withUnsafeMutableBufferPointer { dp in
@@ -65,7 +42,7 @@ import Darwin
         let tc2 = TunnelState.now()
         NSLog("[flip] 时光隧道接管: %d 张卡片(cur=%ld → %ld, 方向=%@) 预载%.0fms 建卡%.0fms",
               built, cur, target, goingNext ? "后" : "前",
-              (tc1 - tb0) * 1000.0, (tc2 - tc1) * 1000.0)
+              preloadMs, (tc2 - buildStart) * 1000.0)
         TunnelState.back = !goingNext
         TunnelState.travel = 1.0
         TunnelState.prepare = prepare

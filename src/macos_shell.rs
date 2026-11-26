@@ -7001,3 +7001,69 @@ pub extern "C" fn glaspen2_rust_tunnel_build_cards(
     }
     built
 }
+
+// ── R157: 隧道启动准备(邻页/表面/blur/预载) ──
+
+unsafe extern "C" {
+    fn glaspen2_page_neighbor(id: i64, dir: i32) -> i64;
+    fn glaspen2_preload_flip_pages(center: i64, going_next: i32, before: i32, after: i32) -> i32;
+    fn glaspen2_swift_tunnel_set_surfaces(surface: *mut c_void, blur: *mut c_void);
+}
+
+/// 返回卡片数; -1 失败。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_tunnel_prepare(
+    cur: i64,
+    going_next: i32,
+    scale: f64,
+    preload_ms_out: *mut f64,
+) -> i32 {
+    let screen_w = unsafe { glaspen2_router_screen_w() };
+    let screen_h = unsafe { glaspen2_router_screen_h() };
+    if glaspen2_rust_surface_current().is_null() || screen_w <= 0.0 || screen_h <= 0.0 {
+        return -1;
+    }
+    let target = unsafe { glaspen2_page_neighbor(cur, if going_next != 0 { 1 } else { -1 }) };
+    if target <= 0 {
+        return -1;
+    }
+    let sw = (screen_w * scale * 0.5) as i32;
+    let sh = (screen_h * scale * 0.5) as i32;
+    if sw <= 0 || sh <= 0 {
+        return -1;
+    }
+    let surface = unsafe { cairo_image_surface_create(0, sw, sh) };
+    if surface.is_null() || unsafe { cairo_surface_status(surface) } != 0 {
+        if !surface.is_null() {
+            unsafe { cairo_surface_destroy(surface) }
+        }
+        return -1;
+    }
+    let preload_start = std::time::Instant::now();
+    let mut n = unsafe { glaspen2_preload_flip_pages(cur, going_next, 4, 1) };
+    if !preload_ms_out.is_null() {
+        unsafe { *preload_ms_out = preload_start.elapsed().as_secs_f64() * 1000.0 };
+    }
+    if n <= 0 {
+        unsafe { cairo_surface_destroy(surface) };
+        return -1;
+    }
+    if n > 512 {
+        n = 512;
+    }
+    let blur = unsafe { cairo_image_surface_create(0, sw / 3, sh / 3) };
+    let blur = if !blur.is_null() && unsafe { cairo_surface_status(blur) } == 0 {
+        blur
+    } else {
+        if !blur.is_null() {
+            unsafe { cairo_surface_destroy(blur) }
+        }
+        std::ptr::null_mut()
+    };
+    unsafe {
+        glaspen2_rust_tunnel_set_surf_w(sw);
+        glaspen2_rust_tunnel_set_surf_h(sh);
+        glaspen2_swift_tunnel_set_surfaces(surface, blur);
+    }
+    n
+}

@@ -454,3 +454,9 @@ public func runTunnelMakeCard(_ isCurrent: Int32, _ depth: Int32, _ slot: Int32,
     }
     return 1
 }
+
+@_cdecl("glaspen2_swift_tunnel_set_surfaces")
+public func runTunnelSetSurfaces(_ surface: UnsafeMutableRawPointer?, _ blur: UnsafeMutableRawPointer?) {
+    TunnelState.surface = surface.map { OpaquePointer($0) }
+    TunnelState.blur = blur.map { OpaquePointer($0) }
+}
