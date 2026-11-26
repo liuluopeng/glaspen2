@@ -857,3 +857,8 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - active/尺寸/卡片数/back/travel/k/thick/paneA/dur/t0/frames 迁 Rust; Swift 计算属性;
 - 表面/数组/定时器/回调仍 Swift; debug build 通过。
+
+
+## R154 隧道参数环境变量迁 Rust
+
+- GLASPEN2_FLIP_DUR/K/THICK/GLASS 解析与范围校验迁 Rust, Swift start 仅调 apply_env; debug build 通过。

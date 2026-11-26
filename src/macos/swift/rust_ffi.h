@@ -681,3 +681,10 @@ extern double glaspen2_rust_tunnel_get_t0(void);
 extern void glaspen2_rust_tunnel_set_t0(double v);
 extern unsigned long long glaspen2_rust_tunnel_get_frames(void);
 extern void glaspen2_rust_tunnel_set_frames(unsigned long long v);
+
+// R154: 隧道参数环境变量
+extern void glaspen2_rust_tunnel_apply_env(void);
+
+// R155: 隧道每帧时间/进度
+extern void glaspen2_rust_tunnel_reset_start(void);
+extern int glaspen2_rust_tunnel_tick(double *out_p);

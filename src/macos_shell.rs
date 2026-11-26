@@ -6882,3 +6882,60 @@ pub extern "C" fn glaspen2_rust_tunnel_get_frames() -> u64 {
 pub extern "C" fn glaspen2_rust_tunnel_set_frames(v: u64) {
     TS_FRAMES.store(v, std::sync::atomic::Ordering::Relaxed);
 }
+
+// ── R154: 隧道参数环境变量(FLIP_DUR/K/THICK/GLASS) ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_tunnel_apply_env() {
+    let read = |name: &str| std::env::var(name).ok().and_then(|s| s.parse::<f64>().ok());
+    if let Some(v) = read("GLASPEN2_FLIP_DUR") {
+        if v > 0.05 {
+            TS_DUR.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    if let Some(v) = read("GLASPEN2_FLIP_K") {
+        if v > 0.05 && v < 3.0 {
+            TS_K.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    if let Some(v) = read("GLASPEN2_FLIP_THICK") {
+        if (0.002..=0.10).contains(&v) {
+            TS_THICK.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    if let Some(v) = read("GLASPEN2_FLIP_GLASS") {
+        if (0.0..=0.98).contains(&v) {
+            TS_PANE.store(v.to_bits(), std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+}
+
+// ── R155: 隧道每帧时间/进度与启动计时复位 ──
+
+fn reference_now() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64() - 978_307_200.0)
+        .unwrap_or(0.0)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_tunnel_reset_start() {
+    TS_T0.store(
+        reference_now().to_bits(),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    TS_FRAMES.store(0, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// 返回 2 结束, 1 继续(dur 内, out_p 写进度)。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_tunnel_tick(out_p: *mut f64) -> i32 {
+    let t0 = f64::from_bits(TS_T0.load(std::sync::atomic::Ordering::Relaxed));
+    let dur = f64::from_bits(TS_DUR.load(std::sync::atomic::Ordering::Relaxed)).max(0.001);
+    let p = (reference_now() - t0) / dur;
+    if !out_p.is_null() {
+        unsafe { *out_p = p.clamp(0.0, 1.0) };
+    }
+    i32::from(p < 1.0)
+}

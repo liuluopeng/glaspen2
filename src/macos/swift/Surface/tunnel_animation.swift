@@ -75,24 +75,8 @@ import Darwin
         TunnelState.commit = commit
         TunnelState.active = true
 
-        var dur = 0.38
-        if let vd = getenv("GLASPEN2_FLIP_DUR"), let s = String(validatingUTF8: vd),
-           let v = Double(s), v > 0.05 { dur = v }
-        TunnelState.dur = dur
-        if let vk = getenv("GLASPEN2_FLIP_K"), let s = String(validatingUTF8: vk),
-           let v = Double(s), v > 0.05, v < 3.0 {
-            TunnelState.k = v
-        }
-        if let vt = getenv("GLASPEN2_FLIP_THICK"), let s = String(validatingUTF8: vt),
-           let v = Double(s), v >= 0.002, v <= 0.10 {
-            TunnelState.thick = v
-        }
-        if let vga = getenv("GLASPEN2_FLIP_GLASS"), let s = String(validatingUTF8: vga),
-           let v = Double(s), v >= 0.0, v <= 0.98 {
-            TunnelState.paneA = v
-        }
-        TunnelState.t0 = TunnelState.now()
-        TunnelState.frames = 0
+        glaspen2_rust_tunnel_apply_env()
+        glaspen2_rust_tunnel_reset_start()
         TunnelFrameRenderer.render(p: 0.0)
         if let view = UIAnchors.drawView {
             view.displayIfNeeded()
@@ -101,9 +85,8 @@ import Darwin
         timer.schedule(deadline: .now(), repeating: .microseconds(8333),
                        leeway: .microseconds(1000))
         timer.setEventHandler {
-            let t = TunnelState.now() - TunnelState.t0
-            let p = t / max(TunnelState.dur, 0.001)
-            if p >= 1.0 {
+            var p = 0.0
+            if glaspen2_rust_tunnel_tick(&p) == 0 {
                 TunnelLifecycle.finish()
                 return
             }
