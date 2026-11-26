@@ -834,3 +834,6 @@ extern int glaspen2_router_hotkey_perform(unsigned short key);
 // R244: 隧道定时器
 extern void glaspen2_rust_tunnel_timer_start(void);
 extern void glaspen2_rust_tunnel_timer_cancel(void);
+
+// R246: 翻页编排
+extern int glaspen2_rust_flip_page(int going_next, long long from_page);

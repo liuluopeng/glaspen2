@@ -3620,9 +3620,7 @@ pub extern "C" fn glaspen2_rust_toggle_draw(
 
 // ── R61: 笔事件编排(落笔/抬笔/拖动/橡皮态) ──
 
-unsafe extern "C" {
-    fn glaspen2_router_bubble_auto_page_flip();
-}
+unsafe extern "C" {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_pen_down(
@@ -10164,7 +10162,8 @@ fn now_ms() -> u64 {
 }
 
 fn flip_page(target: i64, going_next: bool, from_page: i64) {
-    unsafe { glaspen2_swift_flip_page(target, i32::from(going_next), from_page) }
+    let _ = target;
+    glaspen2_rust_flip_page(i32::from(going_next), from_page);
     glaspen2_rust_ethereal_peek(1.0);
     unsafe { glaspen2_rust_notification_show_page_info(target) };
 }
@@ -11297,4 +11296,97 @@ pub extern "C" fn glaspen2_display_apply(w: i32, h: i32) {
             let _: () = objc2::msg_send![view, setNeedsDisplay: true];
         }
     }
+}
+
+// ── R246: 翻页编排迁 Rust ──
+
+unsafe extern "C" {
+    fn glaspen2_bubble_auto_page_if_due() -> i64;
+    fn glaspen2_swift_tunnel_start(going_next: i32, cur_page: i64) -> i32;
+}
+
+fn flip_prepare(target: i64) {
+    if target <= 0 {
+        return;
+    }
+    unsafe {
+        glaspen2_load_strokes_for_screen(target);
+        glaspen2_smooth_loaded_strokes();
+        glaspen2_rust_pageview_update();
+    }
+}
+extern "C" fn flip_commit_show(ctx: *mut c_void) {
+    glaspen2_rust_pageview_rebuild();
+    let win = unsafe { sw_main_window() };
+    if !win.is_null() {
+        unsafe {
+            let _: () = objc2::msg_send![win as *mut objc2::runtime::AnyObject, setIsVisible: true];
+        }
+    }
+    if !ctx.is_null() {
+        let t0 = unsafe { *Box::from_raw(ctx as *mut f64) };
+        let gap = (glaspen2_rust_reference_now() - t0) * 1000.0;
+        tracing::info!("[flip] 隐藏间隙 {gap:.0}ms");
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_flip_page(going_next: i32, from_page: i64) -> i32 {
+    if unsafe { glaspen2_swift_tunnel_active() } != 0 {
+        unsafe { glaspen2_swift_tunnel_finish() };
+    }
+    let win = unsafe { sw_main_window() };
+    let cur_before = if from_page > 0 {
+        from_page
+    } else {
+        unsafe { glaspen2_get_current_screen_id() }
+    };
+    let target =
+        unsafe { glaspen2_page_neighbor(cur_before, if going_next != 0 { 1 } else { -1 }) };
+    if unsafe { glaspen2_router_flip_effect() } == 1
+        && unsafe { glaspen2_router_infinite() } == 0
+        && !glaspen2_rust_surface_current().is_null()
+        && unsafe { glaspen2_router_stroke_active() } == 0
+    {
+        let t0 = glaspen2_rust_reference_now();
+        flip_prepare(target);
+        let tp1 = glaspen2_rust_reference_now();
+        if unsafe { glaspen2_swift_tunnel_start(going_next, cur_before) } != 0 {
+            tracing::info!("[flip] 卡顿账: prepare {:.0}ms", (tp1 - t0) * 1000.0);
+            return 1;
+        }
+    }
+    let t0 = glaspen2_rust_reference_now();
+    if !win.is_null() {
+        unsafe {
+            let _: () =
+                objc2::msg_send![win as *mut objc2::runtime::AnyObject, setIsVisible: false];
+        }
+    }
+    flip_prepare(target);
+    if win.is_null() {
+        glaspen2_rust_pageview_rebuild();
+        return 1;
+    }
+    let ctx = Box::into_raw(Box::new(t0)) as *mut c_void;
+    unsafe { glaspen2_swift_dispatch_main_after(0.0, ctx, flip_commit_show) }
+    1
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_bubble_auto_page_flip() -> i32 {
+    let page = unsafe { glaspen2_bubble_auto_page_if_due() };
+    if page <= 0 {
+        return 0;
+    }
+    glaspen2_rust_flip_page(1, 0);
+    unsafe { glaspen2_rust_notification_show_page_info(page) };
+    let text = i18n_text_owned("page.auto_created");
+    if !text.is_null() {
+        unsafe {
+            glaspen2_rust_notification_show(text);
+            libc::free(text as *mut c_void);
+        }
+    }
+    1
 }

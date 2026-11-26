@@ -1312,3 +1312,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - applyDisplayChange 迁 Rust raw NSWindow/NSView setFrame; 删除 OverlayWindowFactory 类与 C 桥;
 - 补 FlutterMacOS import; probes OK, 虚拟笔两笔正常.
+
+
+## R246 翻页编排(Flipper)迁 Rust
+
+- Flipper 删除; Rust 翻页路径: tunnel 准备/触发/隐藏间隙/commit 回写;
+- BubbleAutoPageFlip 迁 Rust; 删除 Swift helper 与 C 桥;
+- flip probe: 时光隧道 5/6 卡多次接管 + 非隧道隐藏间隙 12-85ms, 应用存活.

@@ -30,8 +30,6 @@ public func appRun() {
 
 
 
-@_cdecl("glaspen2_router_bubble_auto_page_flip")
-public func runBubbleAutoPageFlip() { _ = bubbleAutoPageFlip() }
 
 
 
@@ -389,22 +387,6 @@ func surfaceEnsure(view: NSView) {
 }
 
 
-func bubbleAutoPageFlip() -> Bool {
-    let page = glaspen2_bubble_auto_page_if_due()
-    if page <= 0 { return false }
-    Flipper.swap(goingNext: true, prepare: {
-        glaspen2_load_strokes_for_screen(page)
-        glaspen2_smooth_loaded_strokes()
-        glaspen2_rust_pageview_update()
-    }, commit: {
-        glaspen2_router_replay_strokes()
-    })
-    notificationShowPageInfo(screenId: Int64(page))
-    if let text = Optional(MenuRuntime.l10n("page.auto_created")) {
-        notificationShowText(text: text)
-    }
-    return true
-}
 
 
 @_cdecl("glaspen2_macos_swift_pageframe_parity_selftest")
@@ -1042,16 +1024,6 @@ func settingsRunOnMain(_ block: @escaping () -> Void) {
     }
 }
 
-@_cdecl("glaspen2_swift_flip_page")
-public func runFlipPage(_ target: Int64, _ goingNext: Int32, _ fromPage: Int64) {
-    Flipper.swapFrom(goingNext: goingNext != 0, fromPage: fromPage, prepare: {
-        glaspen2_load_strokes_for_screen(target)
-        glaspen2_smooth_loaded_strokes()
-        glaspen2_rust_pageview_update()
-    }, commit: {
-        glaspen2_rust_pageview_rebuild()
-    })
-}
 
 @_cdecl("glaspen2_swift_copy_svg_html")
 public func runCopySvgHtml(_ svg: UnsafePointer<CChar>?) {
@@ -1062,4 +1034,11 @@ public func runCopySvgHtml(_ svg: UnsafePointer<CChar>?) {
     let pb = NSPasteboard.general
     pb.clearContents()
     pb.setString(html, forType: .string)
+}
+
+@_cdecl("glaspen2_swift_tunnel_start")
+public func runTunnelStart(_ goingNext: Int32, _ curPage: Int64) -> Int32 {
+    TunnelAnimation.start(goingNext: goingNext != 0, curPage: Int(curPage), prepare: {}, commit: {
+        glaspen2_rust_pageview_rebuild()
+    }) ? 1 : 0
 }
