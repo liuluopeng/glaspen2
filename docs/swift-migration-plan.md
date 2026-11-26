@@ -803,3 +803,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R213 | 合并 MenuIconFactory/FlipProbe; 删2文件; Swift 23→21 | 本提交 |
 | 2026-11-26 | Rust-R214-216 | 合并 event_tap/menu_builder_full/tunnel_frame; 删3文件; Swift 21→18; parity 全 0 | 本提交 |
 | 2026-11-26 | Rust-R217-219 | 合并 main_menu/ui_anchors/flipper; 删3文件; Swift 18→15 | 本提交 |
+| 2026-11-26 | Rust-R220-222 | 合并settings_api/invert/panel_glue; 删3文件; Swift 15→12 | 本提交 |

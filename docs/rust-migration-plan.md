@@ -1193,3 +1193,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - main_menu 合入 menu_builder; ui_anchors 合入 run_glue; flipper 合入 tunnel_animation;
 - 删3文件; 修 sw_glass_view 重定义; Swift 18→15;
 - menu probes OK, 冷启动正常。
+
+
+## R220/221/222 设置/保存/表面文件合并
+
+- settings_api_glue 合入 macos_api; invert_capture 合入 save_background; panel_glue 合入 overlay_window;
+- 删3文件; Swift 15→12;
+- menu-full/statusbar probe OK, 冷启动正常。
+- 同轮尝试 save background P3 合成迁 Rust, 因未测试输出风险已回退.
