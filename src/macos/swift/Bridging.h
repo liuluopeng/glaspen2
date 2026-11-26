@@ -366,3 +366,17 @@ void save_and_exit(int sig);
 
 // R188: i18n 文本(Rust)
 char *sw_text(const char *key);
+
+// R243: UI 锚点状态(Rust)
+void *sw_main_window(void);
+void sw_set_main_window(void *p);
+void *sw_draw_view(void);
+void sw_set_draw_view(void *p);
+void *sw_glass_view(void);
+void sw_set_glass_view(void *p);
+void *sw_status_item(void);
+void sw_set_status_item(void *p);
+void *sw_menu(void);
+void sw_set_menu(void *p);
+void *sw_settings_window(void);
+void sw_set_settings_window(void *p);

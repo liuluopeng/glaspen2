@@ -2045,7 +2045,6 @@ unsafe extern "C" {
     fn glaspen2_router_outline_enabled() -> i32;
     fn glaspen2_router_set_outline_state(on: i32);
     fn glaspen2_set_stroke_outline(on: i32);
-    fn sw_menu() -> *mut c_void;
 }
 
 fn menu_title(tag: i32, text: &str) {
@@ -4794,9 +4793,7 @@ pub extern "C" fn glaspen2_rust_draw_tunnel_card(
 
 // ── R80: 玻璃视图 alpha/hidden 应用 ──
 
-unsafe extern "C" {
-    fn sw_glass_view() -> *mut c_void;
-}
+unsafe extern "C" {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_apply_glass_view(alpha: f64, hidden: i32) {
@@ -9356,8 +9353,6 @@ unsafe extern "C" {
     fn glaspen2_swift_make_flutter_vc() -> *mut c_void;
     fn glaspen2_swift_activate_settings_existing();
     fn glaspen2_swift_show_settings_window(window: *mut c_void);
-    fn sw_settings_window() -> *mut c_void;
-    fn sw_set_settings_window(p: *mut c_void);
     fn glaspen2_router_settings_apply_transparent();
 }
 
@@ -10574,9 +10569,7 @@ pub extern "C" fn glaspen2_router_rec_finish_and_count() -> i32 {
 static LANG_CODE_EN: std::sync::OnceLock<std::ffi::CString> = std::sync::OnceLock::new();
 static LANG_CODE_ZH: std::sync::OnceLock<std::ffi::CString> = std::sync::OnceLock::new();
 
-unsafe extern "C" {
-    fn sw_status_item() -> *mut c_void;
-}
+unsafe extern "C" {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_camera_mods() -> usize {
@@ -10823,7 +10816,6 @@ pub extern "C" fn glaspen2_router_replay_strokes() {
 // ── R238: run_glue 视图/标志/延迟重建桥 ──
 
 unsafe extern "C" {
-    fn sw_main_window() -> *mut c_void;
     fn sw_set_infinite(on: i32);
     fn sw_set_minimap(on: i32);
 }
@@ -10898,7 +10890,6 @@ pub extern "C" fn glaspen2_swift_delayed_rebuild() {
 // ── R239: 录制/异步/绘制桥迁 Rust ──
 
 unsafe extern "C" {
-    fn sw_draw_view() -> *mut c_void;
     fn glaspen2_recording_init(slot: i32, chat: i32);
     fn sw_set_pen_settings(r: f64, g: f64, b: f64, width: f64, color_idx: i32, width_idx: i32);
 }
@@ -11210,3 +11201,31 @@ pub extern "C" fn sw_pm_refresh() {
 pub extern "C" fn glaspen2_router_pm_refresh() {
     pm_refresh_label();
 }
+
+// ── R243: UI 锚点状态迁 Rust ──
+
+static ANCHOR_MAIN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static ANCHOR_DRAW: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static ANCHOR_GLASS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static ANCHOR_STATUS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static ANCHOR_MENU: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static ANCHOR_SETTINGS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+macro_rules! anchor_accessors {
+    ($get:ident, $set:ident, $slot:ident) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $get() -> *mut c_void {
+            $slot.load(std::sync::atomic::Ordering::SeqCst) as *mut c_void
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn $set(p: *mut c_void) {
+            $slot.store(p as usize, std::sync::atomic::Ordering::SeqCst);
+        }
+    };
+}
+anchor_accessors!(sw_main_window, sw_set_main_window, ANCHOR_MAIN);
+anchor_accessors!(sw_draw_view, sw_set_draw_view, ANCHOR_DRAW);
+anchor_accessors!(sw_glass_view, sw_set_glass_view, ANCHOR_GLASS);
+anchor_accessors!(sw_status_item, sw_set_status_item, ANCHOR_STATUS);
+anchor_accessors!(sw_menu, sw_set_menu, ANCHOR_MENU);
+anchor_accessors!(sw_settings_window, sw_set_settings_window, ANCHOR_SETTINGS);
