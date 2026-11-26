@@ -566,3 +566,7 @@ extern int glaspen2_rust_draw_page_frame(void *surface, double scale, double ox,
 // R91: 整页重建/重放编排(默认; GLASPEN2_SWIFT_SURFACE_REBUILD=1 回退)
 extern int glaspen2_rust_rebuild_surface(void *surface, double scale, double ox, double oy,
                                           double pscale, int draw_page_frame);
+
+// R92: 普通 chord 门控(默认; GLASPEN2_SWIFT_CHORD=1 回退)
+extern int glaspen2_rust_handle_chord(unsigned short key_code, int has_cmd, int has_ctrl,
+                                       int has_alt, int has_shift, int is_repeat);

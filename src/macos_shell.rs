@@ -5420,3 +5420,78 @@ pub extern "C" fn glaspen2_rust_rebuild_surface(
     glaspen2_rust_dirty_reset();
     1
 }
+
+// ── R92: 普通 chord 门控(动作查找/状态/重复键/执行) ──
+
+unsafe extern "C" {
+    fn glaspen2_shortcut_store_action_for_chord(
+        chord: *const std::os::raw::c_char,
+    ) -> *mut std::os::raw::c_char;
+}
+
+/// R92: 返回 1 放行 / 2 消费。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_handle_chord(
+    key_code: u16,
+    has_cmd: i32,
+    has_ctrl: i32,
+    has_alt: i32,
+    has_shift: i32,
+    is_repeat: i32,
+) -> i32 {
+    let Some(key) = keycode_name(key_code) else {
+        return 1;
+    };
+    let ctrl = has_ctrl != 0;
+    let alt = has_alt != 0;
+    if !ctrl && !alt {
+        return 1;
+    }
+    let mut parts: Vec<&str> = Vec::new();
+    if has_cmd != 0 {
+        parts.push("cmd");
+    }
+    if ctrl {
+        parts.push("ctrl");
+    }
+    if alt {
+        parts.push("alt");
+    }
+    if has_shift != 0 {
+        parts.push("shift");
+    }
+    parts.push(key);
+    let chord = parts.join("+");
+    let Ok(cchord) = std::ffi::CString::new(chord) else {
+        return 1;
+    };
+    let action_raw = unsafe { glaspen2_shortcut_store_action_for_chord(cchord.as_ptr()) };
+    if action_raw.is_null() {
+        return 1;
+    }
+    let action = unsafe { std::ffi::CStr::from_ptr(action_raw) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { glaspen2_free_c_string(action_raw) };
+    let st = unsafe { glaspen2_router_state() };
+    if (st & 1) == 0
+        && action != "toggle_draw"
+        && action != "toggle_free_canvas"
+        && action != "quit"
+    {
+        return 1;
+    }
+    if action.starts_with("canvas_") && ((st & 4) == 0 || (st & 2) != 0) {
+        return 1;
+    }
+    let repeatable = action.starts_with("canvas_pan_")
+        || action == "canvas_zoom_in"
+        || action == "canvas_zoom_out";
+    if is_repeat == 0 || repeatable {
+        let Ok(caction) = std::ffi::CString::new(action) else {
+            return 2;
+        };
+        let _ = glaspen2_rust_perform_action(caction.as_ptr());
+    }
+    2
+}

@@ -692,3 +692,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R89 | 常用设置 effect 分派迁 Rust; Swift 仅回退; settings probe 默认/回退 failures=0; 全量验证绿 | 本提交 |
 | 2026-11-26 | Rust-R90 | 快照页框绘制迁 Rust; 像素 parity diff=0/60000; GLASPEN2_SWIFT_PAGEFRAME=1 回退; parity 并入 smoke | 默认/回退 smoke、tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R91 | 整页重建/重放编排迁 Rust; 默认 Rust, GLASPEN2_SWIFT_SURFACE_REBUILD=1 回退; smoke/tests/build/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R92 | 快捷键 chord 门控/动作执行迁 Rust; 默认 Rust, GLASPEN2_SWIFT_CHORD=1 回退; 真机翻页验证; smoke/tests/parity 绿 | 本提交 |

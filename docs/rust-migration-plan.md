@@ -439,3 +439,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - `PageViewOps.rebuildSurface` / `SurfaceReplay.replay` 的 draw_rebuild_view + 页框 + flush + dirty reset + overlay flush 编排迁 Rust;
 - 默认 Rust, `GLASPEN2_SWIFT_SURFACE_REBUILD=1` 回退;
 - 虚拟笔/启动截图正常; 默认/回退 smoke、tests/build/parity 全绿。
+
+
+## R92 普通快捷键 chord 门控迁 Rust
+
+- `EventRouter.handleChordKeyEvent` 的 键名/chord 拼接、状态门控(涂鸦开关/画布模式)、repeatable 判定、动作执行迁 Rust;
+- 默认 Rust, `GLASPEN2_SWIFT_CHORD=1` 回退 Swift;
+- 真机 ⌘⌃1/⌘⌃` 翻页日志 `[flip] 隐藏间隙 307ms`;
+- 默认/回退 smoke、tests/build/parity 全绿。

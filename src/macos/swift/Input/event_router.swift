@@ -347,6 +347,16 @@ import AppKit
     public static func handleChordKeyEvent(_ event: CGEvent) -> Int32 {
         guard let ev = NSEvent(cgEvent: event) else { return 1 }
         guard ev.type == .keyDown else { return 1 }
+        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_CHORD"] != "1" {
+            let m = ev.modifierFlags
+            return glaspen2_rust_handle_chord(
+                ev.keyCode,
+                m.contains(.command) ? 1 : 0,
+                m.contains(.control) ? 1 : 0,
+                m.contains(.option) ? 1 : 0,
+                m.contains(.shift) ? 1 : 0,
+                event.getIntegerValueField(.keyboardEventAutorepeat) != 0 ? 1 : 0)
+        }
         guard let action = actionForHotkey(keyCode: ev.keyCode,
                                            modifiers: ev.modifierFlags.rawValue) else {
             return 1
