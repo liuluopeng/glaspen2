@@ -220,12 +220,8 @@ public func glaspen2_macos_swift_statusbar_selftest() -> Int32 {
     public static func apply(item: NSStatusItem, eraser: Bool, enabled: Bool,
                              ethereal: Bool, infinite: Bool, widthScale: Double,
                              penRed: Double, penGreen: Double, penBlue: Double) {
-        let icon = StatusIconRenderer.renderIcon(eraser: eraser, enabled: enabled,
-                                                 ethereal: ethereal, infinite: infinite,
-                                                 widthScale: widthScale,
-                                                 penRed: penRed, penGreen: penGreen,
-                                                 penBlue: penBlue)
-        item.button?.image = icon
-        item.button?.title = ""
+        _ = glaspen2_rust_status_icon_apply(
+            Unmanaged.passUnretained(item).toOpaque(), eraser ? 1 : 0, enabled ? 1 : 0,
+            ethereal ? 1 : 0, infinite ? 1 : 0, widthScale, penRed, penGreen, penBlue)
     }
 }

@@ -704,3 +704,7 @@ extern unsigned int glaspen2_rust_notification_set(const char *text);
 extern int glaspen2_rust_notification_clear_if(unsigned int generation);
 extern const char *glaspen2_rust_notification_text(void);
 extern int glaspen2_rust_notification_draw(double width, double height);
+
+// R164: 状态栏图标应用
+extern int glaspen2_rust_status_icon_apply(void *item, int eraser, int enabled, int ethereal, int infinite,
+                                             double width_scale, double r, double g, double b);

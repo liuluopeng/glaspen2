@@ -7249,3 +7249,41 @@ pub extern "C" fn glaspen2_rust_notification_draw(width: f64, height: f64) -> i3
     let Some(text) = guard.as_ref() else { return 0 };
     glaspen2_rust_draw_notification(text.as_ptr(), width, height)
 }
+
+// ── R164: 状态栏图标应用(item.button.image/title) ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_status_icon_apply(
+    item: *mut c_void,
+    eraser: i32,
+    enabled: i32,
+    ethereal: i32,
+    infinite: i32,
+    width_scale: f64,
+    r: f64,
+    g: f64,
+    b: f64,
+) -> i32 {
+    use objc2_app_kit::NSImage;
+    use objc2_foundation::NSString;
+    if item.is_null() {
+        return 0;
+    }
+    let image =
+        glaspen2_rust_status_icon_render(eraser, enabled, ethereal, infinite, width_scale, r, g, b);
+    if image.is_null() {
+        return 0;
+    }
+    let button: *mut objc2::runtime::AnyObject =
+        unsafe { objc2::msg_send![item as *mut objc2::runtime::AnyObject, button] };
+    if !button.is_null() {
+        let image = unsafe { &*(image as *const NSImage) };
+        let title = NSString::from_str("");
+        let button = unsafe { &*button };
+        unsafe {
+            let _: () = objc2::msg_send![button, setImage: image];
+            let _: () = objc2::msg_send![button, setTitle: &*title];
+        }
+    }
+    1
+}

@@ -911,3 +911,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - glaspen2_rust_overlay_draw 直接构造 notes 并调 C perf_notes; 删 Swift perf stage/writePerf;
 - debug build 通过。
+
+
+## R164 状态栏图标应用迁 Rust
+
+- item.button.image/title 设置迁 Rust(render + setImage/setTitle); statusbar probe OK;
+- 批次 tests/smoke/parity(不跑 release)全绿。
