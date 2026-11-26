@@ -649,3 +649,6 @@ extern int glaspen2_rust_route_pen(int kind, double x, double y, double pressure
 
 // R143: 显示器几何变更应用
 extern void glaspen2_rust_apply_display_change(int width, int height);
+
+// R145: 事件 tap 健康看门狗
+extern void glaspen2_rust_check_tap(void);

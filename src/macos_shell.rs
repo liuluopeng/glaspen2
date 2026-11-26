@@ -6709,3 +6709,31 @@ pub extern "C" fn glaspen2_router_ensure_surface() {
         let _ = glaspen2_rust_surface_ensure(view);
     }
 }
+
+// ── R145: 事件 tap 健康看门狗(辅助功能权限/重装/enable) ──
+
+static AX_WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+unsafe extern "C" {
+    fn AXIsProcessTrusted() -> u8;
+    fn glaspen2_swift_notify_ax_warning();
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_check_tap() {
+    use std::sync::atomic::Ordering;
+    if unsafe { AXIsProcessTrusted() } == 0 {
+        if !AX_WARNED.swap(true, Ordering::Relaxed) {
+            unsafe { glaspen2_swift_notify_ax_warning() };
+        }
+        return;
+    }
+    AX_WARNED.store(false, Ordering::Relaxed);
+    unsafe {
+        if glaspen2_router_event_tap_ok() == 0 {
+            glaspen2_router_event_tap_reinstall();
+        } else if glaspen2_router_event_tap_enabled() == 0 {
+            glaspen2_router_event_tap_enable();
+        }
+    }
+}

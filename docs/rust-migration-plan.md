@@ -803,3 +803,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - glaspen2_router_ensure_surface 从 Swift 迁 Rust(sw_draw_view → surface_ensure), 删 Swift C 包装;
 - debug build 通过。
+
+
+## R145 事件 tap 健康看门狗迁 Rust
+
+- AX 权限检查/警告一次性状态/tap 重装与 enable 判定迁 Rust; Swift 仅保留 AX 警告文案桥;
+- 第3片后全量 tests/smoke/parity(不跑 release)全绿。

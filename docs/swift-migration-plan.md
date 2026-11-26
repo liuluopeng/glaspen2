@@ -745,3 +745,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R142 | 清理画布模式/清屏/保存涂鸦旧实现; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R143 | 显示器几何变更应用迁 Rust; Swift 仅 frames 桥; debug build 通过 | 本提交 |
 | 2026-11-26 | Rust-R144 | ensure surface C 符号迁 Rust; 删 Swift 包装; debug build 通过 | 本提交 |
+| 2026-11-26 | Rust-R145 | tap 健康看门狗迁 Rust; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |

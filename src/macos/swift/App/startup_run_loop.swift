@@ -3,8 +3,6 @@ import AppKit
 import ApplicationServices
 
 @objc public final class StartupRunLoop: NSObject {
-    private static var axWarned = false
-
     @objc public static func begin() {
         Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
             checkTap()
@@ -15,21 +13,7 @@ import ApplicationServices
     }
 
     private static func checkTap() {
-        if !AXIsProcessTrusted() {
-            if !axWarned {
-                axWarned = true
-                let text = MenuRuntime.pair(
-                    "辅助功能权限已失效, 涂鸦/热键暂停 — 请到系统设置重新勾选",
-                    "Accessibility permission lost — re-enable it in System Settings")
-                NotificationPresenter.show(text:text)
-            }
-            return
-        }
-        axWarned = false
-        if glaspen2_router_event_tap_ok() == 0 {
-            glaspen2_router_event_tap_reinstall()
-        } else if glaspen2_router_event_tap_enabled() == 0 {
-            glaspen2_router_event_tap_enable()
-        }
+        glaspen2_rust_check_tap()
     }
+
 }
