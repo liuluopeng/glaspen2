@@ -727,3 +727,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - 删除 minimap 旧 NSImage strip 合成/缓存路径; 缩略图异步生成保留, 绘制只走 Rust;
 - debug build 通过(加速批次)。
+
+
+## R133 状态栏项/图标 Swift 回退清理
+
+- createSquareItem/renderIcon 删除 env 回退, 统一走 Rust/objc2; Swift 图标实现仅留 parity 探针;
+- debug build 通过; 第3片后全量 tests/smoke/parity(不跑 release)全绿。

@@ -733,3 +733,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R130 | 清理 OverlayDrawing 旧 draw 回退; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R131 | 删除 Surface CGImage 缓存/合成回退; debug build 通过 | 本提交 |
 | 2026-11-26 | Rust-R132 | 清理 minimap 旧 strip 合成回退; debug build 通过 | 本提交 |
+| 2026-11-26 | Rust-R133 | 状态栏项/图标 Swift 回退清理; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |

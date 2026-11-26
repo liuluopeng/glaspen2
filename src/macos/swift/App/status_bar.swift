@@ -12,14 +12,9 @@ import AppKit
 
     @objc(createSquareItem)
     public static func createSquareItem() -> NSStatusItem? {
-        // R20: 默认走 Rust/objc2 创建状态栏项; GLASPEN2_SWIFT_STATUS_ITEM=1 回退 Swift。
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_STATUS_ITEM"] != "1",
-           let p = glaspen2_rust_status_item_create() {
-            return Unmanaged<NSStatusItem>.fromOpaque(p).takeRetainedValue()
-        }
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.title = ""
-        return item
+        // R20/R133: 状态栏项创建统一走 Rust/objc2。
+        guard let p = glaspen2_rust_status_item_create() else { return nil }
+        return Unmanaged<NSStatusItem>.fromOpaque(p).takeRetainedValue()
     }
 }
 
@@ -35,16 +30,11 @@ import AppKit
                                   penRed: Double,
                                   penGreen: Double,
                                   penBlue: Double) -> NSImage? {
-        // R20: 默认走 Rust/objc2 渲染状态栏图标; GLASPEN2_SWIFT_STATUS_ICON=1 回退 Swift。
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_STATUS_ICON"] != "1",
-           let p = glaspen2_rust_status_icon_render(
-               eraser ? 1 : 0, enabled ? 1 : 0, ethereal ? 1 : 0, infinite ? 1 : 0,
-               widthScale, penRed, penGreen, penBlue) {
-            return Unmanaged<NSImage>.fromOpaque(p).takeRetainedValue()
-        }
-        return renderSwiftIcon(eraser: eraser, enabled: enabled, ethereal: ethereal,
-                               infinite: infinite, widthScale: widthScale,
-                               penRed: penRed, penGreen: penGreen, penBlue: penBlue)
+        // R20/R133: 图标渲染统一走 Rust/objc2; Swift 版本只留给像素 parity 探针。
+        guard let p = glaspen2_rust_status_icon_render(
+            eraser ? 1 : 0, enabled ? 1 : 0, ethereal ? 1 : 0, infinite ? 1 : 0,
+            widthScale, penRed, penGreen, penBlue) else { return nil }
+        return Unmanaged<NSImage>.fromOpaque(p).takeRetainedValue()
     }
 
     static func renderSwiftIcon(eraser: Bool,
