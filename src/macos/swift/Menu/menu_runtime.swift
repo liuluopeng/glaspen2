@@ -2,7 +2,11 @@
 import AppKit
 
 @objc public final class MenuRuntime: NSObject {
-    static func l10n(_ key: String) -> String { I18nText.text(key) }
+    static func l10n(_ key: String) -> String {
+        guard let p = key.withCString({ sw_text($0) }) else { return key }
+        defer { glaspen2_free_c_string(p) }
+        return String(cString: p)
+    }
     static func pair(_ zh: String, _ en: String) -> String { glaspen2_router_lang() == 0 ? zh : en }
     static func notify(_ text: String) { NotificationPresenter.show(text: text) }
     static func colorItemTitle(_ idx: Int32) -> NSAttributedString {

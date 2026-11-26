@@ -774,3 +774,9 @@ extern void glaspen2_rust_virtual_pen_maybe_start(void);
 
 // R187: 辅助功能权限告警
 extern void glaspen2_rust_accessibility_alert_present(void);
+
+// R188: i18n textf
+extern char *glaspen2_rust_i18n_textf(const char *key, const char *placeholder, const char *value);
+
+// R189: 快捷键录制定时器
+extern void glaspen2_rust_hotkey_recording_set(int on);

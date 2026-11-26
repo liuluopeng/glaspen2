@@ -783,3 +783,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R185 | 虚拟笔诊断迁 Rust; 删 virtual_pen.swift; 实测 batch/抬笔正常; Swift 54→53 | 本提交 |
 | 2026-11-26 | Rust-R186 | 删除 EventRouter 5 个死包装; debug build 通过 | 本提交 |
 | 2026-11-26 | Rust-R187 | 辅助功能告警迁 Rust; 删 startup_window.swift; Swift 53→52; 事件 tap 尝试已回退 | 本提交 |
+| 2026-11-26 | Rust-R188/189 | i18n/光标/录制定时器迁 Rust; 删2文件; Swift 52→50; 批次验证绿(不跑 release) | 本提交 |

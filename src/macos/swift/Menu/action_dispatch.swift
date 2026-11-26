@@ -72,7 +72,7 @@ import AppKit
             MenuHandler.setColor(index: Int32(prev))
             let name = MenuRuntime.colorDisplayName(index: Int(prev))
             NotificationPresenter.show(text:
-                I18nText.textf("hud.color_changed", ["color": name]))
+                i18nTextf("hud.color_changed", "color", name))
             return true
         }
         if kind == "WidthSwap" {
@@ -84,7 +84,7 @@ import AppKit
             MenuHandler.setWidth(index: Int32(prev))
             let name = MenuRuntime.widthDisplayName(index: Int(prev))
             NotificationPresenter.show(text:
-                I18nText.textf("hud.width_changed", ["width": name]))
+                i18nTextf("hud.width_changed", "width", name))
             return true
         }
         NSLog("[action] %@ 的 effect kind %@ 未在 macOS 适配器实现", action, kind)

@@ -1056,3 +1056,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - NSAlert/NSWorkspace 打开设置/重启/退出路径迁 Rust raw msg_send; 删除 startup_window.swift; app_bootstrap 直调 Rust;
 - 冷启动 CGEventTap created OK; Swift 53→52;
 - 注: 同轮事件 tap 创建迁 Rust 尝试因回调未收到事件已完全回退, 保留 Swift tap.
+
+
+## R188/189 i18n/光标/录制定时器迁 Rust
+
+- sw_text / i18n textf / outline_pad / cursor_invalidate 迁 Rust, 删 misc_state.swift; MenuRuntime/action_dispatch 改 C 调用;
+- 快捷键录制 60s 超时线程迁 Rust, 删 hotkey_recorder.swift; Swift 52→50;
+- 冷启动正常; 批次验证后提交。

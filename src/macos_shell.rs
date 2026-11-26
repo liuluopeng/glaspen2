@@ -3287,7 +3287,6 @@ unsafe extern "C" {
     fn cairo_destroy(cr: *mut c_void);
     fn glaspen2_router_flush_dirty();
     fn glaspen2_router_soft_shadow() -> i32;
-    fn glaspen2_router_outline_pad() -> f64;
     fn glaspen2_router_outline_dash() -> f64;
 }
 
@@ -6542,7 +6541,6 @@ unsafe extern "C" {
     fn glaspen2_router_bubble_pen_gone();
     fn glaspen2_router_peek_cancel();
     fn glaspen2_router_cursor_flags() -> i32;
-    fn glaspen2_router_cursor_invalidate();
     fn glaspen2_router_flush();
     fn glaspen2_router_auto_hide();
     fn glaspen2_router_pen_auto_show();
@@ -9184,4 +9182,110 @@ pub extern "C" fn glaspen2_rust_accessibility_alert_present() {
 
 unsafe extern "C" {
     fn glaspen2_router_event_tap_reinstall();
+}
+
+// ── R188: i18n 文本/描边 pad/光标失效 ──
+
+fn i18n_text_owned(key: &str) -> *mut std::os::raw::c_char {
+    let Ok(k) = std::ffi::CString::new(key) else {
+        return std::ptr::null_mut();
+    };
+    let lang = if unsafe { glaspen2_router_lang() } == 1 {
+        "en"
+    } else {
+        "zh"
+    };
+    let Ok(l) = std::ffi::CString::new(lang) else {
+        return std::ptr::null_mut();
+    };
+    let p = unsafe { glaspen2_i18n(k.as_ptr(), l.as_ptr()) };
+    let text = if p.is_null() {
+        key.to_string()
+    } else {
+        let s = unsafe { std::ffi::CStr::from_ptr(p) }
+            .to_string_lossy()
+            .into_owned();
+        unsafe { glaspen2_free_c_string(p) };
+        if s.is_empty() { key.to_string() } else { s }
+    };
+    let Ok(c) = std::ffi::CString::new(text) else {
+        return std::ptr::null_mut();
+    };
+    unsafe { libc::strdup(c.as_ptr()) }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn sw_text(key: *const std::os::raw::c_char) -> *mut std::os::raw::c_char {
+    if key.is_null() {
+        return std::ptr::null_mut();
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(key) }
+        .to_string_lossy()
+        .into_owned();
+    i18n_text_owned(&s)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_i18n_textf(
+    key: *const std::os::raw::c_char,
+    placeholder: *const std::os::raw::c_char,
+    value: *const std::os::raw::c_char,
+) -> *mut std::os::raw::c_char {
+    if key.is_null() || placeholder.is_null() || value.is_null() {
+        return std::ptr::null_mut();
+    }
+    let key_s = unsafe { std::ffi::CStr::from_ptr(key) }
+        .to_string_lossy()
+        .into_owned();
+    let ph = unsafe { std::ffi::CStr::from_ptr(placeholder) }
+        .to_string_lossy()
+        .into_owned();
+    let val = unsafe { std::ffi::CStr::from_ptr(value) }
+        .to_string_lossy()
+        .into_owned();
+    let p = i18n_text_owned(&key_s);
+    if p.is_null() {
+        return p;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(p) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { libc::free(p as *mut c_void) };
+    let replaced = text.replace(&format!("{{{ph}}}"), &val);
+    let Ok(c) = std::ffi::CString::new(replaced) else {
+        return std::ptr::null_mut();
+    };
+    unsafe { libc::strdup(c.as_ptr()) }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_outline_pad() -> f64 {
+    1.0
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_router_cursor_invalidate() {
+    unsafe {
+        glaspen2_rust_dirty_include_point(
+            glaspen2_router_cursor_x(),
+            glaspen2_router_cursor_y(),
+            14.0,
+        );
+    }
+}
+
+// ── R189: 快捷键录制定时器 ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_hotkey_recording_set(on: i32) {
+    let generation = glaspen2_rust_recording_set(on);
+    if on == 0 {
+        return;
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(60));
+        if glaspen2_rust_recording_timeout(generation) != 0 {
+            tracing::warn!("[hotkey] 录制超时, 恢复全局快捷键");
+        }
+    });
 }

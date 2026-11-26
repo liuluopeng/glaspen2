@@ -363,3 +363,6 @@ void glaspen2_macos_swift_probe_selftest(void);
 
 // R106: 退出收尾(Rust)
 void save_and_exit(int sig);
+
+// R188: i18n 文本(Rust)
+char *sw_text(const char *key);

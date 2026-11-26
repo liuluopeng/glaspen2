@@ -277,7 +277,7 @@ public func runTunnelFlush() { UIAnchors.drawView?.needsDisplay = true }
 @_cdecl("glaspen2_router_refresh_menu_texts")
 public func runRefreshMenuTexts() { MenuTextUpdater.update() }
 @_cdecl("glaspen2_router_hotkey_recording")
-public func runHotkeyRecording(_ on: Int32) { HotkeyRecorder.setRecording(on != 0) }
+public func runHotkeyRecording(_ on: Int32) { glaspen2_rust_hotkey_recording_set(on) }
 
 @_cdecl("glaspen2_router_flush_dirty")
 public func runFlushDirty() { glaspen2_rust_overlay_flush_dirty() }
@@ -479,4 +479,12 @@ public func runSetMainAnchors(_ window: UnsafeMutableRawPointer?,
     if let window { UIAnchors.mainWindow = Unmanaged<NSWindow>.fromOpaque(window).takeUnretainedValue() }
     if let draw { UIAnchors.drawView = Unmanaged<NSView>.fromOpaque(draw).takeUnretainedValue() }
     if let glass { UIAnchors.glassView = Unmanaged<NSVisualEffectView>.fromOpaque(glass).takeUnretainedValue() }
+}
+
+func i18nTextf(_ key: String, _ placeholder: String, _ value: String) -> String {
+    guard let p = key.withCString({ k in placeholder.withCString { ph in value.withCString { v in
+        glaspen2_rust_i18n_textf(k, ph, v)
+    } } }) else { return key }
+    defer { glaspen2_free_c_string(p) }
+    return String(cString: p)
 }
