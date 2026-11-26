@@ -6152,7 +6152,6 @@ unsafe extern "C" {
         slot: i32,
         json: *const std::os::raw::c_char,
     ) -> *mut std::os::raw::c_char;
-    fn glaspen2_swift_copy_gif(data: *const u8, len: i32);
     fn glaspen2_swift_dispatch_main(ctx: *mut c_void, cb: extern "C" fn(*mut c_void));
     fn glaspen2_gif_record_end(
         start: i32,
@@ -9859,7 +9858,6 @@ unsafe extern "C" {
     fn glaspen2_prev_screen_id() -> i64;
     fn glaspen2_export_pdf() -> i32;
     fn glaspen2_save_animated_gif(fps: i32, resolution: f64, speed: f64, end_mode: i32) -> i32;
-    fn glaspen2_swift_copy_newest_gif();
 }
 
 extern "C" fn macos_api_refresh_page(ctx: *mut c_void) {
@@ -10139,7 +10137,6 @@ unsafe extern "C" {
     fn glaspen2_save_gif_cropped(data: *mut u8, w: i32, h: i32, stride: i32, scale: f64) -> i32;
     fn glaspen2_undo_last_stroke() -> i32;
     fn glaspen2_swift_flip_page(target: i64, going_next: i32, from_page: i64);
-    fn glaspen2_swift_copy_svg_html(svg: *const std::os::raw::c_char);
 }
 
 fn notify_key(key: &str) {
@@ -11466,5 +11463,147 @@ pub extern "C" fn glaspen2_router_install_signals() {
     unsafe {
         libc::signal(libc::SIGINT, signal_exit_handler as libc::sighandler_t);
         libc::signal(libc::SIGTERM, signal_exit_handler as libc::sighandler_t);
+    }
+}
+
+// ── R250: GIF/SVG 剪贴板桥迁 Rust ──
+
+fn pasteboard_write_url(path: &str) {
+    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2_foundation::NSString;
+    unsafe {
+        let (Some(pb_cls), Some(url_cls), Some(array_cls)) = (
+            AnyClass::get(c"NSPasteboard"),
+            AnyClass::get(c"NSURL"),
+            AnyClass::get(c"NSArray"),
+        ) else {
+            return;
+        };
+        let pb: *mut AnyObject = objc2::msg_send![pb_cls, generalPasteboard];
+        if pb.is_null() {
+            return;
+        }
+        let _: i64 = objc2::msg_send![pb, clearContents];
+        let ns_path = NSString::from_str(path);
+        let url: *mut AnyObject = objc2::msg_send![url_cls, fileURLWithPath: &*ns_path];
+        if url.is_null() {
+            return;
+        }
+        let arr: *mut AnyObject = objc2::msg_send![array_cls, arrayWithObject: url];
+        if !arr.is_null() {
+            let _: bool = objc2::msg_send![pb, writeObjects: arr];
+        }
+    }
+}
+
+fn newest_gif_path() -> Option<String> {
+    let home = std::env::var("HOME").ok()?;
+    let dir = std::path::Path::new(&home).join("Desktop");
+    let mut newest: Option<(std::time::SystemTime, String)> = None;
+    for entry in std::fs::read_dir(dir).ok()? {
+        let Ok(entry) = entry else { continue };
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.starts_with("glaspen2_") || path.extension().map(|e| e != "gif").unwrap_or(true) {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else { continue };
+        let Ok(modified) = meta.modified() else {
+            continue;
+        };
+        let p = path.to_string_lossy().into_owned();
+        if newest.as_ref().map(|(t, _)| modified > *t).unwrap_or(true) {
+            newest = Some((modified, p));
+        }
+    }
+    newest.map(|(_, p)| p)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_copy_gif(data: *const u8, len: i32) {
+    if data.is_null() || len <= 0 {
+        return;
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(data, len as usize) };
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let name = format!("glaspen2_record_{}ms.gif", ms);
+    let path = std::env::temp_dir().join(name);
+    if std::fs::write(&path, bytes).is_err() {
+        return;
+    }
+    pasteboard_write_url(&path.to_string_lossy());
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_copy_newest_gif() {
+    if let Some(p) = newest_gif_path() {
+        pasteboard_write_url(&p);
+    }
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    let mut i = 0;
+    while i < data.len() {
+        let b0 = data[i] as u32;
+        let b1 = if i + 1 < data.len() {
+            data[i + 1] as u32
+        } else {
+            0
+        };
+        let b2 = if i + 2 < data.len() {
+            data[i + 2] as u32
+        } else {
+            0
+        };
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(T[((n >> 18) & 63) as usize] as char);
+        out.push(T[((n >> 12) & 63) as usize] as char);
+        out.push(if i + 1 < data.len() {
+            T[((n >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if i + 2 < data.len() {
+            T[(n & 63) as usize] as char
+        } else {
+            '='
+        });
+        i += 3;
+    }
+    out
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_swift_copy_svg_html(svg: *const std::os::raw::c_char) {
+    if svg.is_null() {
+        return;
+    }
+    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2_foundation::NSString;
+    let svg = unsafe { std::ffi::CStr::from_ptr(svg) }.to_bytes();
+    let html = format!(
+        "<img src=\"data:image/svg+xml;base64,{}\" />",
+        base64_encode(svg)
+    );
+    unsafe {
+        let Some(pb_cls) = AnyClass::get(c"NSPasteboard") else {
+            return;
+        };
+        let Some(str_cls) = AnyClass::get(c"NSString") else {
+            return;
+        };
+        let pb: *mut AnyObject = objc2::msg_send![pb_cls, generalPasteboard];
+        if pb.is_null() {
+            return;
+        }
+        let _: i64 = objc2::msg_send![pb, clearContents];
+        let s = NSString::from_str(&html);
+        let t = NSString::from_str("public.utf8-plain-text");
+        let _: bool = objc2::msg_send![pb, setString: &*s, forType: &*t];
     }
 }

@@ -124,23 +124,6 @@ public func runInvertInvalidate() { panelInvertInvalidate() }
 
 // R119: 录制效果 Rust 侧 UI 桥。
 
-@_cdecl("glaspen2_swift_copy_gif")
-public func runRecordingCopyGif(_ data: UnsafePointer<UInt8>?, _ len: Int32) {
-    guard let data, len > 0 else { return }
-    let bytes = Data(bytes: data, count: Int(len))
-    let name = String(format: "glaspen2_record_%.0f.gif",
-                      Date.timeIntervalSinceReferenceDate * 1000)
-    let path = (NSTemporaryDirectory() as NSString).appendingPathComponent(name)
-    do {
-        try bytes.write(to: URL(fileURLWithPath: path), options: .atomic)
-    } catch {
-        NSLog("[glaspen2] failed to write GIF temp file: \(path)")
-        return
-    }
-    let pb = NSPasteboard.general
-    pb.clearContents()
-    pb.writeObjects([URL(fileURLWithPath: path) as NSURL])
-}
 
 public typealias RecordingMainCallback = @convention(c) (UnsafeMutableRawPointer?) -> Void
 
@@ -649,22 +632,6 @@ import AppKit
 
 
 
-@_cdecl("glaspen2_swift_copy_newest_gif")
-public func runCopyNewestGif() {
-    guard let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first else { return }
-    let files = (try? FileManager.default.contentsOfDirectory(
-        at: desktop, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-    var newest: URL?
-    var newestDate: Date?
-    for f in files where f.lastPathComponent.hasPrefix("glaspen2_") && f.pathExtension == "gif" {
-        let d = (try? f.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        if newestDate == nil || (d != nil && d! > newestDate!) { newestDate = d; newest = f }
-    }
-    guard let newest else { return }
-    let pb = NSPasteboard.general
-    pb.clearContents()
-    pb.writeObjects([newest as NSURL])
-}
 // S7: 带背景保存(桌面截图 + 笔迹合成 Display P3; 14+ 用 SCScreenshotManager, 12/13 走 CGWindowList)。
 import AppKit
 import CoreGraphics
@@ -1016,16 +983,6 @@ func settingsRunOnMain(_ block: @escaping () -> Void) {
 }
 
 
-@_cdecl("glaspen2_swift_copy_svg_html")
-public func runCopySvgHtml(_ svg: UnsafePointer<CChar>?) {
-    guard let svg else { return }
-    let svgStr = String(cString: svg)
-    let base64 = Data(svgStr.utf8).base64EncodedString()
-    let html = "<img src=\"data:image/svg+xml;base64,\(base64)\" />"
-    let pb = NSPasteboard.general
-    pb.clearContents()
-    pb.setString(html, forType: .string)
-}
 
 @_cdecl("glaspen2_swift_tunnel_start")
 public func runTunnelStart(_ goingNext: Int32, _ curPage: Int64) -> Int32 {

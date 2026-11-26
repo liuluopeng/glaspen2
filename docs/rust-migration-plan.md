@@ -1333,3 +1333,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - 窗口 sharingType none/readOnly raw objc 迁 Rust; 删除 Swift 包装;
 - SIGINT/SIGTERM 安装迁 Rust(libc signal -> save_and_exit); 删除 Swift 包装;
 - SIGTERM 实测优雅退出; menu probe OK.
+
+
+## R250 GIF/SVG 剪贴板桥迁 Rust
+
+- copy_gif/copy_newest_gif/copy_svg_html 迁 Rust(NSPasteboard/NSURL/NSArray raw, 手写 base64);
+- 删除 Swift 包装; menu probe/冷启动正常.

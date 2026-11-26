@@ -824,3 +824,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R246 | Flipper 迁 Rust; 删除 Flipper/Bubble helper; flip 两路径正常 | 本提交 |
 | 2026-11-26 | Rust-R247 | 设置面板透明应用迁 Rust; 面板打开正常 | 本提交 |
 | 2026-11-26 | Rust-R248/249 | 窗口共享/信号安装迁 Rust; SIGTERM 优雅退出 | 本提交 |
+| 2026-11-26 | Rust-R250 | GIF/SVG 剪贴板桥迁 Rust; 冷启动正常 | 本提交 |
