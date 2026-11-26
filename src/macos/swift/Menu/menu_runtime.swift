@@ -44,9 +44,6 @@ import AppKit
 
     static var shortcutStoreEmpty: Bool { glaspen2_shortcut_store_is_empty() != 0 }
 
-    static func ensureSurface() {
-        if let dv = UIAnchors.drawView { SurfaceStore.ensure(view: dv) }
-    }
     static func actionForChord(_ chord: String) -> String? {
         MenuRuntime.shortcutAction(forChord: chord)
     }

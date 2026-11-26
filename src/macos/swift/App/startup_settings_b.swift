@@ -62,7 +62,7 @@ import Darwin
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             if glaspen2_router_stroke_active() != 0 { return }
-            MenuRuntime.ensureSurface()
+            glaspen2_router_ensure_surface()
             PageViewOps.rebuildSurface()
         }
     }

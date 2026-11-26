@@ -205,7 +205,7 @@ public func runMainWindow() -> UnsafeMutableRawPointer? {
     return Unmanaged.passUnretained(w).toOpaque()
 }
 @_cdecl("glaspen2_router_ensure_surface")
-public func runEnsureSurface() { MenuRuntime.ensureSurface() }
+public func runEnsureSurface() { glaspen2_router_ensure_surface() }
 @_cdecl("glaspen2_router_pm_show")
 public func runPmShow() { PressureMonitorWindow.show() }
 @_cdecl("glaspen2_router_pm_hide")

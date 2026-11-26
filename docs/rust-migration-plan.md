@@ -835,3 +835,8 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - 快捷键生效表 JSON/查表桥移入 MenuRuntime, 删除 ShortcutStore.swift; Swift 68→67;
 - hotkeys probe 同步; debug build 通过。
+
+
+## R150 ensureSurface Swift 包装清理
+
+- 调用点直调 C glaspen2_router_ensure_surface; 删除 MenuRuntime.ensureSurface; debug build 通过。
