@@ -74,7 +74,7 @@ import Darwin
                 return
             }
             guard let content else { completion(nil); return }
-            let want = OverlayWindowFactory.windowDisplayID()
+            let want = glaspen2_rust_window_display_id()
             let display = content.displays.first { $0.displayID == want }
                 ?? content.displays.first!
             let filter = SCContentFilter(display: display, excludingWindows: [])

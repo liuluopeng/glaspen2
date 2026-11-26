@@ -917,3 +917,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - item.button.image/title 设置迁 Rust(render + setImage/setTitle); statusbar probe OK;
 - 批次 tests/smoke/parity(不跑 release)全绿。
+
+
+## R165 覆盖窗 displayID/未用窗口 helper 清理
+
+- windowDisplayID 迁 Rust(NSWindow.screen deviceDescription → NSScreenNumber, 失败 CGMainDisplayID);
+- save_background 改调 Rust; 删除 Swift 方法与未用 configureClearLayer/attachContent;
+- 批次 tests/smoke/parity(不跑 release)全绿。

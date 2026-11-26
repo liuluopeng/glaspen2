@@ -708,3 +708,6 @@ extern int glaspen2_rust_notification_draw(double width, double height);
 // R164: 状态栏图标应用
 extern int glaspen2_rust_status_icon_apply(void *item, int eraser, int enabled, int ethereal, int infinite,
                                              double width_scale, double r, double g, double b);
+
+// R165: 覆盖窗所在屏 displayID
+extern unsigned int glaspen2_rust_window_display_id(void);

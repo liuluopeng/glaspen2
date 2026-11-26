@@ -43,24 +43,6 @@ import AppKit
     }
 
     /// 绘制视图的透明 layer 配置(S5-2): 非不透明 + clear 背景。
-    @objc(configureClearLayer:)
-    public static func configureClearLayer(_ layer: CALayer) {
-        layer.isOpaque = false
-        layer.backgroundColor = NSColor.clear.cgColor
-    }
-
-    /// 截图目标屏: 取覆盖层窗口所在屏, 退回主屏(多屏时勿用 displays.first)。
-    @objc(windowDisplayId)
-    public static func windowDisplayID() -> UInt32 {
-        let window = UIAnchors.mainWindow
-        let screen = window?.screen ?? NSScreen.main
-        let key = NSDeviceDescriptionKey("NSScreenNumber")
-        if let n = screen?.deviceDescription[key] as? NSNumber {
-            return n.uint32Value
-        }
-        return CGMainDisplayID()
-    }
-
     /// S5-4: 内容容器视图(layer-backed), 由 ObjC 继续往里加玻璃/绘制视图。
     @objc(makeContentViewWithFrame:)
     public static func makeContentView(frame: NSRect) -> NSView {
@@ -85,12 +67,6 @@ import AppKit
     }
 
     /// S5-4: 挂载内容视图并 orderFront(与原 setContentView/orderFront 顺序一致)。
-    @objc(attachContent:toWindow:)
-    public static func attachContent(_ view: NSView, to window: NSWindow) {
-        window.contentView = view
-        window.orderFront(nil)
-    }
-
     /// 显示器几何变更: 反色流失效 → 屏幕尺寸 → core 建页/重载 → 窗口/视图改尺寸 → 重建。
     @objc(applyDisplayChangeWidth:height:)
     public static func applyDisplayChange(width: Int32, height: Int32) {

@@ -7287,3 +7287,35 @@ pub extern "C" fn glaspen2_rust_status_icon_apply(
     }
     1
 }
+
+// ── R165: 覆盖窗所在屏 displayID(多屏勿用 displays.first) ──
+
+unsafe extern "C" {
+    fn CGMainDisplayID() -> u32;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_window_display_id() -> u32 {
+    use objc2_app_kit::NSWindow;
+    use objc2_foundation::{NSNumber, NSString};
+    let window = unsafe { glaspen2_router_main_window() };
+    if window.is_null() {
+        return unsafe { CGMainDisplayID() };
+    }
+    let win = unsafe { &*(window as *const NSWindow) };
+    let screen: *mut objc2::runtime::AnyObject = unsafe { objc2::msg_send![win, screen] };
+    if !screen.is_null() {
+        let desc: *mut objc2::runtime::AnyObject =
+            unsafe { objc2::msg_send![screen, deviceDescription] };
+        if !desc.is_null() {
+            let key = NSString::from_str("NSScreenNumber");
+            let value: *mut objc2::runtime::AnyObject =
+                unsafe { objc2::msg_send![desc, objectForKey: &*key] };
+            if !value.is_null() {
+                let num = unsafe { &*(value as *const NSNumber) };
+                return num.intValue() as u32;
+            }
+        }
+    }
+    unsafe { CGMainDisplayID() }
+}
