@@ -745,3 +745,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - makeWindow/makeGlassView/makeContentView 去掉 env 开关(保留 Rust 失败时 Swift 原语回退);
 - assembleContent 统一走 Rust; debug build 通过。
+
+
+## R136 菜单颜色/粗细建项回退清理
+
+- MenuBuilder.addItems 删除 env 回退与 Swift 建项循环, 统一走 Rust;
+- 第3片后全量 tests/smoke/parity(不跑 release)全绿。

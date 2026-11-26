@@ -40,23 +40,14 @@ import AppKit
                                  action: Selector) {
         guard let menu = menu else { return }
         let n = min(max(count, 0), titles.count)
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_MENU_ITEMS"] != "1",
-           n > 0 {
-            var ptrs: [UnsafeMutableRawPointer?] = titles.prefix(n).map { Unmanaged.passUnretained($0).toOpaque() }
-            let handlerPtr = handler.map { Unmanaged.passUnretained($0).toOpaque() }
-            let actionName = NSStringFromSelector(action)
-            let added = ptrs.withUnsafeMutableBufferPointer { buf in
-                glaspen2_rust_menu_add_items(
-                    Unmanaged.passUnretained(menu).toOpaque(), handlerPtr,
-                    Int32(n), buf.baseAddress, Int32(n), actionName)
-            }
-            if added != 0 { return }
-        }
-        for i in 0..<n {
-            let item = menu.addItem(withTitle: "", action: action, keyEquivalent: "")
-            item.attributedTitle = titles[i]
-            item.target = handler
-            item.tag = i
+        guard n > 0 else { return }
+        var ptrs: [UnsafeMutableRawPointer?] = titles.prefix(n).map { Unmanaged.passUnretained($0).toOpaque() }
+        let handlerPtr = handler.map { Unmanaged.passUnretained($0).toOpaque() }
+        let actionName = NSStringFromSelector(action)
+        _ = ptrs.withUnsafeMutableBufferPointer { buf in
+            glaspen2_rust_menu_add_items(
+                Unmanaged.passUnretained(menu).toOpaque(), handlerPtr,
+                Int32(n), buf.baseAddress, Int32(n), actionName)
         }
     }
 }
