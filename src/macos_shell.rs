@@ -6119,3 +6119,252 @@ pub extern "C" fn glaspen2_rust_overlay_flush_dirty() {
         objc2_foundation::NSSize::new(w, h),
     ));
 }
+
+// ── R119: 录制事件回喂与 effect 执行(ShowHud/GIF/剪贴板/聊天) ──
+
+static PENDING_GIF: std::sync::Mutex<Option<Vec<u8>>> = std::sync::Mutex::new(None);
+
+unsafe extern "C" {
+    fn glaspen2_recording_event_json(
+        slot: i32,
+        json: *const std::os::raw::c_char,
+    ) -> *mut std::os::raw::c_char;
+    fn glaspen2_swift_notify(text: *const std::os::raw::c_char);
+    fn glaspen2_swift_copy_gif(data: *const u8, len: i32);
+    fn glaspen2_swift_dispatch_main(ctx: *mut c_void, cb: extern "C" fn(*mut c_void));
+    fn glaspen2_gif_record_end(
+        start: i32,
+        end: i32,
+        fps: i32,
+        resolution: f64,
+        speed: f64,
+        end_mode: i32,
+        out_len: *mut i32,
+    ) -> *mut u8;
+    fn glaspen2_chat_send_strokes(start: i32, end: i32) -> i32;
+    fn glaspen2_ink_draft_start(w: i32, h: i32) -> i32;
+    fn glaspen2_ink_draft_stop() -> i32;
+    fn glaspen2_ink_draft_last_error() -> *const std::os::raw::c_char;
+}
+
+fn recording_simple_event(kind: &str) -> String {
+    serde_json::json!({ "type": kind }).to_string()
+}
+
+fn recording_feed_internal(slot: i32, json: &str) -> i32 {
+    let Ok(cjson) = std::ffi::CString::new(json) else {
+        return 0;
+    };
+    let out = unsafe { glaspen2_recording_event_json(slot, cjson.as_ptr()) };
+    if out.is_null() {
+        tracing::warn!("[recording] 槽 {slot}: FFI 返回 NULL");
+        return 0;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(out) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { glaspen2_free_c_string(out) };
+    let Ok(effects) = serde_json::from_str::<serde_json::Value>(&text) else {
+        tracing::warn!("[recording] 槽 {slot} 事件执行失败");
+        return 0;
+    };
+    let Some(array) = effects.as_array() else {
+        return 0;
+    };
+    if array.is_empty() {
+        return 0;
+    }
+    for effect in array {
+        recording_exec_effect(slot, effect);
+    }
+    1
+}
+
+fn recording_exec_effect(slot: i32, effect: &serde_json::Value) {
+    let Some(kind) = effect.get("kind").and_then(|k| k.as_str()) else {
+        return;
+    };
+    match kind {
+        "ShowHud" => {
+            let Some(hud) = effect.get("hud").and_then(|v| v.as_str()) else {
+                return;
+            };
+            let strokes = effect.get("strokes").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let detail = effect.get("detail").and_then(|v| v.as_str());
+            let Ok(chud) = std::ffi::CString::new(hud) else {
+                return;
+            };
+            let cdetail = detail.and_then(|d| std::ffi::CString::new(d).ok());
+            let text = unsafe {
+                glaspen2_rust_rec_hud_text(
+                    chud.as_ptr(),
+                    strokes,
+                    cdetail.as_ref().map_or(std::ptr::null(), |d| d.as_ptr()),
+                )
+            };
+            if text.is_null() {
+                tracing::warn!("[recording] 未实现的 HUD 文案: {hud}");
+                return;
+            }
+            unsafe {
+                glaspen2_swift_notify(text);
+                libc::free(text as *mut c_void);
+            }
+        }
+        "EncodeGif" => {
+            let start = effect
+                .get("start_stroke")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+            let end = effect
+                .get("end_stroke")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+            let fps = unsafe { glaspen2_router_gif_fps() };
+            let resolution = unsafe { glaspen2_router_gif_resolution() };
+            let speed = unsafe { glaspen2_router_gif_speed() };
+            let end_mode = unsafe { glaspen2_router_gif_end_mode() };
+            std::thread::spawn(move || {
+                let mut out_len = 0i32;
+                let gif = unsafe {
+                    glaspen2_gif_record_end(
+                        start,
+                        end,
+                        fps,
+                        resolution,
+                        speed,
+                        end_mode,
+                        &mut out_len,
+                    )
+                };
+                if !gif.is_null() && out_len > 0 {
+                    let bytes =
+                        unsafe { std::slice::from_raw_parts(gif, out_len as usize) }.to_vec();
+                    unsafe { glaspen2_free_rust_bytes(gif, out_len) };
+                    *PENDING_GIF.lock().unwrap_or_else(|e| e.into_inner()) = Some(bytes);
+                    unsafe { glaspen2_swift_dispatch_main(std::ptr::null_mut(), recording_gif_ok) };
+                } else {
+                    if !gif.is_null() {
+                        unsafe { glaspen2_free_rust_bytes(gif, out_len) }
+                    }
+                    unsafe {
+                        glaspen2_swift_dispatch_main(std::ptr::null_mut(), recording_gif_fail)
+                    };
+                }
+            });
+        }
+        "Clipboard" => {
+            let gif = PENDING_GIF.lock().unwrap_or_else(|e| e.into_inner()).take();
+            if let Some(bytes) = gif.filter(|b| !b.is_empty()) {
+                unsafe { glaspen2_swift_copy_gif(bytes.as_ptr(), bytes.len() as i32) };
+            } else {
+                tracing::warn!("[recording] Clipboard effect 没有待写字节");
+            }
+            let _ = recording_feed_internal(0, &recording_simple_event("GifClipboardSucceeded"));
+        }
+        "StartChatDraft" => {
+            let ok = unsafe {
+                glaspen2_ink_draft_start(
+                    glaspen_core::shell_state::screen_w(),
+                    glaspen_core::shell_state::screen_h(),
+                )
+            } != 0;
+            let event = recording_simple_event(if ok {
+                "ChatDraftStarted"
+            } else {
+                "ChatDraftStartFailed"
+            });
+            let _ = recording_feed_internal(1, &event);
+        }
+        "StopChatDraft" => {
+            unsafe { glaspen2_router_finish_active_stroke() };
+            std::thread::spawn(move || {
+                let r = unsafe { glaspen2_ink_draft_stop() };
+                let detail = unsafe {
+                    let err = glaspen2_ink_draft_last_error();
+                    if !err.is_null() && *err != 0 {
+                        std::ffi::CStr::from_ptr(err).to_string_lossy().into_owned()
+                    } else {
+                        String::new()
+                    }
+                };
+                let payload = Box::new((r, detail));
+                unsafe {
+                    glaspen2_swift_dispatch_main(
+                        Box::into_raw(payload) as *mut c_void,
+                        recording_chat_stop_done,
+                    )
+                };
+            });
+        }
+        "SendChatStrokes" => {
+            let start = effect
+                .get("start_stroke")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+            let end = effect
+                .get("end_stroke")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+            std::thread::spawn(move || {
+                let sent = unsafe { glaspen2_chat_send_strokes(start, end) };
+                let payload = Box::new(sent);
+                unsafe {
+                    glaspen2_swift_dispatch_main(
+                        Box::into_raw(payload) as *mut c_void,
+                        recording_chat_send_done,
+                    )
+                };
+            });
+        }
+        "Discard" => tracing::info!("[recording] 丢弃进行中的录制窗口(取消)"),
+        _ => tracing::warn!("[recording] 未实现的录制 effect: {kind}"),
+    }
+    let _ = slot;
+}
+
+extern "C" fn recording_gif_ok(_ctx: *mut c_void) {
+    let _ = recording_feed_internal(0, &recording_simple_event("GifEncodeSucceeded"));
+}
+
+extern "C" fn recording_gif_fail(_ctx: *mut c_void) {
+    let _ = recording_feed_internal(0, &recording_simple_event("GifEncodeFailed"));
+}
+
+extern "C" fn recording_chat_stop_done(ctx: *mut c_void) {
+    if ctx.is_null() {
+        return;
+    }
+    let payload = unsafe { Box::from_raw(ctx as *mut (i32, String)) };
+    let event =
+        serde_json::json!({"type": "ChatDraftFinished", "code": payload.0, "detail": payload.1})
+            .to_string();
+    let _ = recording_feed_internal(1, &event);
+}
+
+extern "C" fn recording_chat_send_done(ctx: *mut c_void) {
+    if ctx.is_null() {
+        return;
+    }
+    let payload = unsafe { Box::from_raw(ctx as *mut i32) };
+    let event = if *payload >= 0 {
+        serde_json::json!({"type": "ChatSendSucceeded", "strokes": *payload}).to_string()
+    } else {
+        recording_simple_event("ChatSendFailed")
+    };
+    let _ = recording_feed_internal(1, &event);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_recording_feed(
+    slot: i32,
+    json: *const std::os::raw::c_char,
+) -> i32 {
+    if json.is_null() {
+        return 0;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(json) }
+        .to_string_lossy()
+        .into_owned();
+    recording_feed_internal(slot, &text)
+}

@@ -636,3 +636,11 @@ modeler Up error 需真机笔/翻页连击复验。
 - Fresh DB 四探针: settings failures=0 / menu-full OK / hotkeys 14/14 / render failures=0;
 - 像素 parity: tunnel-frame diff=0/120000; pageframe diff=0/60000;
 - 结论: 纯逻辑/状态与主要绘制/交互路径已默认 Rust; EventRouter 主分派壳、录制效果、Flutter host、菜单/状态栏构建、启动编排仍为 Swift/AppKit; 真机多屏/录制/隧道视觉未验收。目标未整体完成, 保持 active(轮数已达 40 上限)。
+
+
+## R119 录制事件回喂/effect 执行迁 Rust
+
+- `RecordingEffects.feed/execEffect` 迁 Rust: ShowHud/EncodeGif/Clipboard/StartChatDraft/StopChatDraft/SendChatStrokes/Discard/未实现日志;
+- GIF 编码在 Rust 线程执行, 结果经 Swift `dispatch_main` 桥回主线程回喂; pending GIF 字节存 Rust;
+- Swift 仅保留 notify/剪贴板/dispatch_main 三个桥; 删除 `Features/recording_effects.swift`; Swift 69→68;
+- 默认 smoke/tests/build/parity 全绿; 真机录制 GIF/HUD 仍需人工验收。

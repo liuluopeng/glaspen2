@@ -46,6 +46,6 @@ import AppKit
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else { return }
-        _ = RecordingEffects.feed(slot: Int32(slot), json: json)
+        _ = json.withCString { glaspen2_rust_recording_feed(Int32(slot), $0) }
     }
 }

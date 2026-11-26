@@ -159,7 +159,7 @@ public func runRedraw() { UIAnchors.drawView?.needsDisplay = true }
 @_cdecl("glaspen2_router_rec_chat_integration_changed")
 public func runRecChatChanged(_ on: Int32) {
     let json = "{\"type\":\"ChatIntegrationChanged\",\"enabled\":\(on != 0 ? "true" : "false")}"
-    _ = RecordingEffects.feed(slot: 1, json: json)
+    _ = json.withCString { glaspen2_rust_recording_feed(1, $0) }
 }
 
 @_cdecl("glaspen2_router_rebuild_surface")
@@ -220,7 +220,7 @@ public func runPressureLabel(_ text: UnsafePointer<CChar>?) {
 @_cdecl("glaspen2_router_recording_feed")
 public func runRecordingFeed(_ slot: Int32, _ json: UnsafePointer<CChar>?) -> Int32 {
     guard let json else { return 0 }
-    return RecordingEffects.feed(slot: slot, json: String(cString: json)) ? 1 : 0
+    return glaspen2_rust_recording_feed(slot, json)
 }
 
 @_cdecl("glaspen2_router_apply_infinite_async")
@@ -385,3 +385,35 @@ public func runNotificationRedraw() {
 
 @_cdecl("glaspen2_swift_overlay_flush")
 public func runOverlayFlush() { glaspen2_rust_overlay_flush() }
+
+// R119: 录制效果 Rust 侧 UI 桥。
+@_cdecl("glaspen2_swift_notify")
+public func runRecordingNotify(_ text: UnsafePointer<CChar>?) {
+    guard let text else { return }
+    MenuRuntime.notify(String(cString: text))
+}
+
+@_cdecl("glaspen2_swift_copy_gif")
+public func runRecordingCopyGif(_ data: UnsafePointer<UInt8>?, _ len: Int32) {
+    guard let data, len > 0 else { return }
+    let bytes = Data(bytes: data, count: Int(len))
+    let name = String(format: "glaspen2_record_%.0f.gif",
+                      Date.timeIntervalSinceReferenceDate * 1000)
+    let path = (NSTemporaryDirectory() as NSString).appendingPathComponent(name)
+    do {
+        try bytes.write(to: URL(fileURLWithPath: path), options: .atomic)
+    } catch {
+        NSLog("[glaspen2] failed to write GIF temp file: \(path)")
+        return
+    }
+    let pb = NSPasteboard.general
+    pb.clearContents()
+    pb.writeObjects([URL(fileURLWithPath: path) as NSURL])
+}
+
+public typealias RecordingMainCallback = @convention(c) (UnsafeMutableRawPointer?) -> Void
+
+@_cdecl("glaspen2_swift_dispatch_main")
+public func runRecordingDispatchMain(_ ctx: UnsafeMutableRawPointer?, _ cb: RecordingMainCallback?) {
+    DispatchQueue.main.async { cb?(ctx) }
+}

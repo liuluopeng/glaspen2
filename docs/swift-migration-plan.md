@@ -719,3 +719,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R116 | 第38轮快照: 四探针/全量验证绿; tag ce525db; Swift 69; ObjC 0; 未 push | 本提交 |
 | 2026-11-26 | Rust-R117 | 清理 TunnelLifecycle Swift 回退; 仅留 Rust+闭包; 真机5卡/freed5 正常; smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R118 | 第40轮最终快照: 全量+四探针+像素 parity 绿; tag ce525db; Swift69/ObjC0; 目标未整体完成, 保持 active | 本提交 |
+| 2026-11-26 | Rust-R119 | 录制 feed/effect 执行迁 Rust(ShowHud/GIF/剪贴板/聊天); Swift 仅 3 桥; 删 recording_effects.swift; Swift 69→68; smoke/tests/parity 绿 | 真机录制待验 | 本提交 |
