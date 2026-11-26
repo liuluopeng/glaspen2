@@ -1436,6 +1436,6 @@ modeler Up error 需真机笔/翻页连击复验。
 
 ## R261 最终状态核对
 
-- HEAD ; v0.7.0 (commit)  未移动; 领先 origin/main ; 未 push;
-- Swift  文件 / ObjC ; 工作区仅  未跟踪(不提交);
+- HEAD `e3bbc64`(本记录时); v0.7.0 (commit) `ce525db` 未移动; 领先 origin/main 561; 未 push;
+- Swift 3 文件 / ObjC 0; 工作区仅 `.zcode/` 未跟踪(不提交);
 - 自动化: cargo test exit 0 / smoke debug 通过 / parity 通过 / FLIP_EVERY 探针连续翻页通过.
