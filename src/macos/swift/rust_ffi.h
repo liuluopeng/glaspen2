@@ -593,3 +593,8 @@ extern int glaspen2_rust_surface_ensure(void *view);
 extern int glaspen2_rust_camera_pan_queue(double dx, double dy);
 extern void glaspen2_rust_camera_pan_flush(void);
 extern void glaspen2_rust_camera_pan_cancel(void);
+
+// R99: 快捷键录制状态(默认; GLASPEN2_SWIFT_HOTKEY_RECORDER=1 回退)
+extern unsigned int glaspen2_rust_recording_set(int on);
+extern int glaspen2_rust_recording_is_active(void);
+extern int glaspen2_rust_recording_timeout(unsigned int gen);

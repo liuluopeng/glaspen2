@@ -699,3 +699,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R96 | SurfaceStore.ensure 创建/尺寸缓存/销毁/透明填充迁 Rust; 默认 Rust, GLASPEN2_SWIFT_SURFACE_ENSURE=1 回退; 虚拟笔截图正常 | 默认/回退 smoke、tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R97 | StrokeSurface.begin/end 迁 Rust; Rust 直接导出 C 符号; 删 stroke_surface.swift; Swift 84→83; 虚拟笔截图正常 | 默认 smoke、tests/build/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R98 | CameraMousePan 合帧状态/flush 迁 Rust; Swift 仅定时器壳; 默认 Rust, GLASPEN2_SWIFT_CAMERA_PAN=1 回退; 默认/回退 smoke 绿 | 本提交 |
+| 2026-11-26 | Rust-R99 | HotkeyRecorder recording/generation/60s 超时迁 Rust; Swift 仅定时器壳; 默认 Rust, GLASPEN2_SWIFT_HOTKEY_RECORDER=1 回退; smoke/tests/parity 绿 | 本提交 |

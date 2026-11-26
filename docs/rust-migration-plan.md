@@ -490,3 +490,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - `CameraMousePan` 的 pending dx/dy、scheduled、generation、16ms flush 门控/状态判断迁 Rust;
 - 默认 Rust, `GLASPEN2_SWIFT_CAMERA_PAN=1` 回退;
 - Swift 仅保留 DispatchQueue 定时器壳; 默认/回退 smoke、tests/build/parity 全绿。
+
+
+## R99 快捷键录制状态/60s 超时迁 Rust
+
+- `HotkeyRecorder` 的 recording/generation/60s 超时判定迁 Rust;
+- Swift 仅保留 DispatchQueue 定时器壳; 默认 Rust, `GLASPEN2_SWIFT_HOTKEY_RECORDER=1` 回退;
+- 默认/回退 smoke、tests/build/parity 全绿。

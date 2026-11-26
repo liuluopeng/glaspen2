@@ -5806,3 +5806,31 @@ pub extern "C" fn glaspen2_rust_camera_pan_cancel() {
     PAN_SCHEDULED.store(false, Ordering::Relaxed);
     PAN_GENERATION.fetch_add(1, Ordering::Relaxed);
 }
+
+// ── R99: 快捷键录制状态/60s 超时 generation ──
+
+static RECORDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static RECORDING_GEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_recording_set(on: i32) -> u32 {
+    use std::sync::atomic::Ordering;
+    RECORDING.store(on != 0, Ordering::Relaxed);
+    let generation = RECORDING_GEN.fetch_add(1, Ordering::Relaxed) + 1;
+    if on != 0 { generation } else { 0 }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_recording_is_active() -> i32 {
+    i32::from(RECORDING.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_recording_timeout(generation: u32) -> i32 {
+    use std::sync::atomic::Ordering;
+    if RECORDING_GEN.load(Ordering::Relaxed) != generation || !RECORDING.load(Ordering::Relaxed) {
+        return 0;
+    }
+    RECORDING.store(false, Ordering::Relaxed);
+    1
+}
