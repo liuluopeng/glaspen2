@@ -310,9 +310,12 @@ public func glaspen2TunnelFrameParitySelftest() -> Int32 {
             }
         }
     }
+    // 保证 Swift 路径: 帧/卡片都强制走 Swift 回退, 否则默认 Rust 会自我比较。
+    setenv("GLASPEN2_SWIFT_TUNNEL_FRAME", "1", 1)
     setenv("GLASPEN2_SWIFT_TUNNEL_CARD", "1", 1)
     TunnelState.surface = b
     TunnelFrameRenderer.render(p: 0.37)
+    unsetenv("GLASPEN2_SWIFT_TUNNEL_FRAME")
     unsetenv("GLASPEN2_SWIFT_TUNNEL_CARD")
     cairo_surface_flush(a)
     cairo_surface_flush(b)

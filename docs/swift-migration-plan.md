@@ -712,3 +712,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R109 | 删除 MenuLookup, tag 查找移入 MenuRuntime; Swift 72→71; smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R110 | 合并 CanvasOverview 到 SettingsGlue; 删除 canvas_overview.swift; Swift 71→70; smoke/tests/parity 绿 | 本提交 |
 | 2026-11-26 | Rust-R111 | 图层面全量/脏矩形刷新迁 Rust; 删 overlay_layer_flush.swift; Swift 70→69; smoke/render probe/tests/parity 绿 | 本提交 |
+| 2026-11-26 | Rust-R112 | 修复隧道整帧 parity 探针自比较(补 FRAME 回退 env); diff=0/120000 重新有效; smoke/tests/parity 绿 | 本提交 |

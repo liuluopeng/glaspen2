@@ -585,3 +585,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - `OverlayLayerFlush.flush/flushDirty` 的表面门控/dirty rect/bounds 交集/setNeedsDisplay 迁 Rust;
 - Rust 导出 `glaspen2_rust_overlay_flush(_dirty)`, 14 处调用点直调 C; 删除 overlay_layer_flush.swift; Swift 70→69;
 - 默认 smoke、render probe、tests/build/parity 全绿。
+
+
+## R112 修复隧道整帧 parity 探针自比较
+
+- R84 默认切 Rust 后, 探针只设 CARD 回退, FRAME 仍走 Rust, 实际变成 Rust vs Rust;
+- 探针渲染 Swift 侧前同时设 `GLASPEN2_SWIFT_TUNNEL_FRAME=1` 与 CARD; 结果仍 `diff=0/120000`;
+- 默认 smoke、tests/build/parity 全绿。
