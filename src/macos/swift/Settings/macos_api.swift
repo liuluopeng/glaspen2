@@ -74,7 +74,7 @@ import Darwin
                         glaspen2_rust_pageview_update()
                         glaspen2_rust_pageview_rebuild()
                     } else {
-                        SurfaceOps.clearScreen()
+                        glaspen2_rust_surface_clear_screen()
                     }
                 }
             }

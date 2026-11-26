@@ -9780,3 +9780,60 @@ pub extern "C" fn glaspen2_rust_pageview_rebuild() {
         1,
     );
 }
+
+// ── R208: 清屏/仅保存涂鸦 ──
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_surface_clear_screen() {
+    if unsafe { glaspen2_router_infinite() } != 0 {
+        let text = i18n_text_owned("canvas.infinite_kept");
+        if !text.is_null() {
+            unsafe {
+                glaspen2_rust_notification_show(text);
+                libc::free(text as *mut c_void);
+            }
+        }
+        return;
+    }
+    let surface = glaspen2_rust_surface_current();
+    if surface.is_null() {
+        return;
+    }
+    let created = unsafe {
+        glaspen2_rust_clear_screen(
+            surface,
+            glaspen2_rust_surface_scale(),
+            glaspen2_rust_pageview_paper_ox(),
+            glaspen2_rust_pageview_paper_oy(),
+            glaspen2_rust_pageview_paper_scale(),
+            i32::from(glaspen2_rust_pageview_is_fit() != 0),
+        )
+    };
+    if created != 0 {
+        unsafe { glaspen2_rust_notification_show_page_info(glaspen2_get_current_screen_id()) };
+    } else {
+        let text = i18n_text_owned("canvas.blank_guard");
+        if !text.is_null() {
+            unsafe {
+                glaspen2_rust_notification_show(text);
+                libc::free(text as *mut c_void);
+            }
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_surface_save_drawing_only() {
+    let surface = glaspen2_rust_surface_current();
+    if surface.is_null() {
+        return;
+    }
+    unsafe { glaspen2_rust_save_drawing(surface) };
+    let text = i18n_text_owned("export.screenshot_saved");
+    if !text.is_null() {
+        unsafe {
+            glaspen2_rust_notification_show(text);
+            libc::free(text as *mut c_void);
+        }
+    }
+}

@@ -133,9 +133,9 @@ public func menuApplyInfinite(_ on: Int32) {
 @_cdecl("glaspen2_menu_save_with_bg")
 public func menuSaveWithBg() { SaveBackground.save() }
 @_cdecl("glaspen2_menu_save_only")
-public func menuSaveOnly() { SurfaceOps.saveDrawingOnly() }
+public func menuSaveOnly() { glaspen2_rust_surface_save_drawing_only() }
 @_cdecl("glaspen2_menu_clear_screen")
-public func menuClearScreen() { SurfaceOps.clearScreen() }
+public func menuClearScreen() { glaspen2_rust_surface_clear_screen() }
 @_cdecl("glaspen2_menu_toggle_enabled")
 public func menuToggleEnabled() { glaspen2_rust_toggle_draw_enabled() }
 @_cdecl("glaspen2_menu_show_settings")

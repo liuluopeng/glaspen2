@@ -13,12 +13,12 @@ import Darwin
         let dstride = Int(cairo_image_surface_get_stride(surface))
         guard let dptr = cairo_image_surface_get_data(surface),
               dw > 0, dh > 0, dstride > 0 else {
-            SurfaceOps.saveDrawingOnly()
+            glaspen2_rust_surface_save_drawing_only()
             return
         }
         let size = dstride * dh
         guard let drawingCopy = malloc(size) else {
-            SurfaceOps.saveDrawingOnly()
+            glaspen2_rust_surface_save_drawing_only()
             return
         }
         memcpy(drawingCopy, dptr, size)
@@ -37,7 +37,7 @@ import Darwin
                 if !message.isEmpty {
                     notificationShowText(text:MenuRuntime.pair(message, message))
                 }
-                SurfaceOps.saveDrawingOnly()
+                glaspen2_rust_surface_save_drawing_only()
             }
         }
 

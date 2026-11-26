@@ -1146,3 +1146,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - surface_store 删除, 调用点改 surfaceCurrent()/surfaceScale()/surfaceEnsure() helper(底层 Rust);
 - pageview_ops 删除, rebuild 迁 Rust, update/getters 直调 Rust C; bubbleAutoPageFlip 移 run_glue;
 - Swift 32→30; 冷启动正常; 批次验证后提交。
+
+
+## R208/209 surface_ops/surface_replay 删除
+
+- 清屏/仅保存涂鸦迁 Rust 并接通知; 删除 surface_ops.swift;
+- replay 直调 Rust pageview rebuild; pageframe parity selftest 移 run_glue; 删除 surface_replay.swift;
+- Swift 30→28; pageframe parity diff=0; 冷启动正常。

@@ -812,3 +812,7 @@ extern void glaspen2_rust_startup_run_loop(void);
 
 // R207: 页视图重建
 extern void glaspen2_rust_pageview_rebuild(void);
+
+// R208: 清屏/仅保存涂鸦
+extern void glaspen2_rust_surface_clear_screen(void);
+extern void glaspen2_rust_surface_save_drawing_only(void);
