@@ -1,23 +1,6 @@
 // S1-S3b: 状态栏项/图标与状态栏图标绘制的 Swift 实现。
 import AppKit
 
-@objc public final class StatusBarFactory: NSObject {
-    @objc public static func createItem(icon: NSImage?) -> NSStatusItem? {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        guard let button = item.button else { return nil }
-        button.title = ""
-        if let icon = icon { button.image = icon }
-        return item
-    }
-
-    @objc(createSquareItem)
-    public static func createSquareItem() -> NSStatusItem? {
-        // R20/R133: 状态栏项创建统一走 Rust/objc2。
-        guard let p = glaspen2_rust_status_item_create() else { return nil }
-        return Unmanaged<NSStatusItem>.fromOpaque(p).takeRetainedValue()
-    }
-}
-
 @objc public final class StatusIconRenderer: NSObject {
     /// 18pt(72px @4x)状态栏图标: 马克笔/橡皮 + 停用斜杠 + 画布模式徽标。
     /// 参数全部显式传入(原 ObjC 读全局),便于像素 parity 与测试。
@@ -201,16 +184,16 @@ import AppKit
 public func glaspen2_macos_swift_statusbar_selftest() -> Int32 {
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
-    let image = NSImage(size: NSSize(width: 1, height: 1))
-    image.lockFocus()
-    NSColor.labelColor.setFill()
-    NSBezierPath(rect: NSRect(x: 0, y: 0, width: 1, height: 1)).fill()
-    image.unlockFocus()
-    guard let item = StatusBarFactory.createItem(icon: image), item.button != nil else {
+    guard let p = glaspen2_rust_status_item_create() else {
         print("SWIFT_STATUSBAR_FAIL")
         return 1
     }
-    print("SWIFT_STATUSBAR_OK items=1 button=1 image=1")
+    let item = Unmanaged<NSStatusItem>.fromOpaque(p).takeRetainedValue()
+    guard item.button != nil else {
+        print("SWIFT_STATUSBAR_FAIL")
+        return 1
+    }
+    print("SWIFT_STATUSBAR_OK items=1 button=1")
     return 0
 }
 

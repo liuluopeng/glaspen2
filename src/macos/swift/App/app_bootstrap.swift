@@ -30,7 +30,10 @@ import ApplicationServices
             NSLog("[glaspen2] Accessibility permission not granted")
         }
 
-        var statusItem = StatusBarFactory.createSquareItem()
+        var statusItem: NSStatusItem?
+        if let p = glaspen2_rust_status_item_create() {
+            statusItem = Unmanaged<NSStatusItem>.fromOpaque(p).takeRetainedValue()
+        }
         if statusItem == nil {
             statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
             statusItem?.button?.title = ""

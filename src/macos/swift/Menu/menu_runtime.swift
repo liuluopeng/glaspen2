@@ -21,15 +21,6 @@ import AppKit
         } }
     }
 
-    static func shortcutValuesSnapshot() -> NSDictionary {
-        guard let p = glaspen2_shortcut_store_values_json() else { return [:] }
-        let data = Data(bytes: p, count: strlen(p))
-        glaspen2_free_c_string(p)
-        guard let obj = try? JSONSerialization.jsonObject(with: data),
-              let dict = obj as? NSDictionary else { return [:] }
-        return dict
-    }
-
     static func shortcutChord(forAction action: String) -> String? {
         guard let p = action.withCString({ glaspen2_shortcut_store_chord($0) }) else { return nil }
         defer { glaspen2_free_c_string(p) }
@@ -100,18 +91,12 @@ import AppKit
     static func shortcutReserved(_ chord: String) -> Bool {
         chord.withCString { glaspen2_chord_reserved($0) != 0 }
     }
-    static func shortcutValues() -> NSDictionary {
-        MenuRuntime.shortcutValuesSnapshot()
-    }
     static func shortcutsEffectiveJSON() -> String {
         // 旧实现: 尚未 apply 过时先补默认表, 避免快照返回空对象。
         if MenuRuntime.shortcutStoreEmpty { _ = "{}".withCString { glaspen2_shortcut_apply_json($0) } }
         guard let p = glaspen2_shortcut_store_values_json() else { return "{}" }
         defer { glaspen2_free_c_string(p) }
         return String(cString: p)
-    }
-    static func setShortcutTables(values: NSDictionary, lookup: NSDictionary) {
-        MenuRuntime.shortcutInstall(values: values, lookup: lookup)
     }
 }
 

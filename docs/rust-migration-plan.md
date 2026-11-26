@@ -966,3 +966,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - 语言/笔色宽/玻璃/网格/阴影/描边/反色/翻转/气泡 + 画布模式/压感窗/GIF/聊天/延迟重建全部迁 Rust;
 - 删除 startup_settings.swift / startup_settings_b.swift; Swift 65→63;
 - 批次 tests/smoke/parity(不跑 release)全绿, 冷启动正常。
+
+
+## R172 菜单/状态栏工厂清理
+
+- 删除 MenuRuntime 未用 shortcutValues/setShortcutTables/snapshot; 删 StatusBarFactory, app_bootstrap/selftest 直调 Rust 状态栏项;
+- statusbar probe OK; debug build 通过。
