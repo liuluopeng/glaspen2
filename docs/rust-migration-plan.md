@@ -1166,3 +1166,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - toggleLanguage/saveXoj/导出/描边/退出等逻辑迁 Rust; AppDelegate 移入 main_menu 直调 C/Rust;
 - MenuRuntime C 桥改直调 Rust; 删除 menu_handler.swift; Swift 27→26;
 - menu/menu-full probe OK, 冷启动正常。
+
+
+## R212 菜单/隧道小文件合并
+
+- MenuUpdater 合入 menu_texts; TunnelLifecycle/TunnelState 合入 tunnel_animation; 删3文件;
+- Swift 26→23; 冷启动正常。
+- 同轮尝试批量迁 run_glue 纯 C 桥, 因 extern/定义重复冲突已回退.
