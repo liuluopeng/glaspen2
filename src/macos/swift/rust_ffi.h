@@ -759,3 +759,9 @@ extern int glaspen2_rust_persist_probe(void);
 
 // R181: 页面导航诊断探针
 extern int glaspen2_rust_pages_probe(void);
+
+// R182: 设置诊断探针
+extern int glaspen2_rust_settings_probe(void);
+
+// R183: 快捷键诊断探针
+extern int glaspen2_rust_hotkeys_probe(void);

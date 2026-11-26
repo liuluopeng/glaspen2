@@ -1022,3 +1022,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - persist probe(模型器一笔/prox device/DB 检查)迁 Rust, 删除 persist_probe.swift;
 - pages probe(建页/邻页/尺寸/总览空载荷/删除)迁 Rust, 删除 pages_probe.swift;
 - Swift 59→57; 两探针输出与旧一致; 批次 tests/smoke debug/parity 全绿。
+
+
+## R182/183 设置/快捷键诊断探针迁 Rust
+
+- settings probe(设置应用/状态/快照 JSON/涂鸦描边)迁 Rust, 删 settings_probe.swift;
+- hotkeys probe(默认表反查/显式解绑/换色初值/飘渺隐藏/玻璃默认)迁 Rust, 删 hotkeys_probe.swift;
+- Swift 57→55; 两探针输出与旧一致; 批次验证后提交。

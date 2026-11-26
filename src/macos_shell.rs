@@ -8705,3 +8705,212 @@ pub extern "C" fn glaspen2_rust_pages_probe() -> i32 {
     println!("SWIFT_PAGES_PROBE_OK failures={failures}");
     i32::from(failures == 0) - 1
 }
+
+// ── R182: 设置诊断探针 ──
+
+unsafe extern "C" {
+    fn glaspen2_settings_snapshot_json(
+        overrides: *const std::os::raw::c_char,
+    ) -> *mut std::os::raw::c_char;
+    fn glaspen2_router_invert_fps() -> i32;
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_settings_probe() -> i32 {
+    let mut failures = 0i32;
+    let mut check = |name: &str, ok: bool| {
+        if ok {
+            println!("SETTINGS_PROBE {name} ok");
+        } else {
+            tracing::warn!("[settings-probe] FAIL {name}");
+            failures += 1;
+        }
+    };
+    let apply = |key: &str, value: &str| {
+        let k = std::ffi::CString::new(key).unwrap();
+        let v = std::ffi::CString::new(value).unwrap();
+        let _ = glaspen2_rust_apply_setting(k.as_ptr(), v.as_ptr());
+    };
+    apply("gridSize", "55");
+    check("gridSize", unsafe { glaspen2_router_grid_size() } == 55.0);
+    apply("gridDivider", "2");
+    check(
+        "gridDivider",
+        unsafe { glaspen2_router_grid_divider() } == 2,
+    );
+    apply("language", "\"en\"");
+    check("language", unsafe { glaspen2_router_lang() } == 1);
+    apply("minimap", "true");
+    check("minimap", unsafe { glaspen2_router_minimap_enabled() } != 0);
+    apply("flipEffect", "1");
+    check("flipEffect", unsafe { glaspen2_router_flip_effect() } == 1);
+    apply("gifFps", "30");
+    check("gifFps", unsafe { glaspen2_router_gif_fps() } == 30);
+    apply("softShadow", "true");
+    check("softShadow", unsafe { glaspen2_router_soft_shadow() } != 0);
+    apply("outline", "true");
+    check("outline", unsafe { glaspen2_router_outline_enabled() } != 0);
+    apply("frostedGlass", "true");
+    check(
+        "frostedGlass",
+        unsafe { glaspen2_router_glass_enabled() } != 0,
+    );
+    apply("invertFps", "60");
+    check("invertFps", unsafe { glaspen2_router_invert_fps() } == 60);
+    apply("color", "2");
+    check("color", unsafe { glaspen2_router_selected_color() } == 2);
+    apply("width", "5");
+    check("width", unsafe { glaspen2_router_selected_width() } == 5);
+    apply("gridFollowStrokes", "true");
+    check(
+        "gridFollowStrokes",
+        unsafe { glaspen2_router_grid_follow() } != 0,
+    );
+    unsafe {
+        glaspen2_router_set_enabled_state(0);
+        check("drawDisabled", glaspen2_router_enabled() == 0);
+        glaspen2_router_set_enabled_state(1);
+        check("drawEnabled", glaspen2_router_enabled() != 0);
+        glaspen2_router_set_outline_state(0);
+        check("outlineDisabled", glaspen2_router_outline_enabled() == 0);
+    }
+    let overrides = unsafe { glaspen2_menu_snapshot_overrides_json() };
+    if overrides.is_null() {
+        tracing::warn!("[settings-probe] FAIL settings_json nil");
+        return 1;
+    }
+    let snapshot = unsafe { glaspen2_settings_snapshot_json(overrides) };
+    unsafe { libc::free(overrides as *mut c_void) };
+    if snapshot.is_null() {
+        tracing::warn!("[settings-probe] FAIL settings_json nil");
+        return 1;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(snapshot) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { glaspen2_free_c_string(snapshot) };
+    check("settings_json.gridSize", text.contains("\"gridSize\""));
+    check("settings_json.language", text.contains("\"language\""));
+    println!("SWIFT_SETTINGS_PROBE_OK failures={failures}");
+    i32::from(failures == 0) - 1
+}
+
+// ── R183: 快捷键诊断探针 ──
+
+unsafe extern "C" {
+    fn glaspen2_router_set_ethereal(on: i32);
+}
+
+fn hotkey_action(chord: &str) -> Option<String> {
+    let c = std::ffi::CString::new(chord).ok()?;
+    let p = unsafe { glaspen2_shortcut_store_action_for_chord(c.as_ptr()) };
+    if p.is_null() {
+        return None;
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(p) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { glaspen2_free_c_string(p) };
+    Some(s)
+}
+
+fn hotkey_chord(action: &str) -> Option<String> {
+    let c = std::ffi::CString::new(action).ok()?;
+    let p = unsafe { glaspen2_shortcut_store_chord(c.as_ptr()) };
+    if p.is_null() {
+        return None;
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(p) }
+        .to_string_lossy()
+        .into_owned();
+    unsafe { glaspen2_free_c_string(p) };
+    Some(s)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_hotkeys_probe() -> i32 {
+    glaspen2_rust_load_shortcuts();
+    let mut failures = 0i32;
+    let defaults_text = {
+        let p = glaspen2_rust_shortcut_defaults_json();
+        if p.is_null() {
+            String::new()
+        } else {
+            unsafe { std::ffi::CStr::from_ptr(p) }
+                .to_string_lossy()
+                .into_owned()
+        }
+    };
+    let actions_text = {
+        let p = glaspen2_rust_shortcut_actions_json();
+        if p.is_null() {
+            String::new()
+        } else {
+            unsafe { std::ffi::CStr::from_ptr(p) }
+                .to_string_lossy()
+                .into_owned()
+        }
+    };
+    let defaults: serde_json::Value =
+        serde_json::from_str(&defaults_text).unwrap_or(serde_json::json!({}));
+    let actions: Vec<String> =
+        serde_json::from_str::<Vec<String>>(&actions_text).unwrap_or_default();
+    let mut checked = 0i32;
+    for action in actions {
+        let Some(chord) = defaults.get(&action).and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if chord.is_empty() {
+            continue;
+        }
+        checked += 1;
+        if hotkey_action(chord).as_deref() != Some(action.as_str()) {
+            tracing::warn!(
+                "[hotkeys-probe] FAIL {action}={chord} -> {:?}",
+                hotkey_action(chord)
+            );
+            failures += 1;
+        }
+    }
+    if hotkey_action("cmd+ctrl+D").as_deref() != Some("settings") {
+        tracing::warn!("[hotkeys-probe] FAIL cmd+ctrl+D -> settings");
+        failures += 1;
+    }
+    let _ = unsafe {
+        glaspen2_shortcut_apply_json(b"{\"undo\":\"\"}\0".as_ptr() as *const std::os::raw::c_char)
+    };
+    if hotkey_action("cmd+ctrl+Z").is_some() {
+        tracing::warn!("[hotkeys-probe] FAIL explicit unbind fell back");
+        failures += 1;
+    }
+    if hotkey_chord("undo").as_deref() != Some("") {
+        tracing::warn!("[hotkeys-probe] FAIL explicit unbind not empty");
+        failures += 1;
+    }
+    if unsafe { glaspen2_router_prev_color_index() } != 9
+        || unsafe { glaspen2_router_prev_width_index() } != 2
+    {
+        tracing::warn!("[hotkeys-probe] FAIL swap defaults");
+        failures += 1;
+    }
+    unsafe {
+        glaspen2_router_set_ethereal(1);
+        glaspen2_router_set_strokes_visible(1);
+    }
+    let hidden = glaspen2_rust_ethereal_hide_now() != 0;
+    if !hidden || unsafe { glaspen2_router_strokes_visible() } != 0 {
+        tracing::warn!("[hotkeys-probe] FAIL ethereal hide");
+        failures += 1;
+    }
+    unsafe {
+        glaspen2_router_set_ethereal(0);
+        glaspen2_router_set_strokes_visible(1);
+        glaspen2_router_startup_glass(0.0, 1);
+    }
+    if unsafe { glaspen2_router_glass_opacity() } <= 0.0 {
+        tracing::warn!("[hotkeys-probe] FAIL glass default opacity overwritten");
+        failures += 1;
+    }
+    println!("HOTKEYS_PROBE checked={checked} failures={failures}");
+    i32::from(failures == 0) - 1
+}
