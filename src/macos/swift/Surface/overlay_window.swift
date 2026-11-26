@@ -94,24 +94,7 @@ import AppKit
     /// 显示器几何变更: 反色流失效 → 屏幕尺寸 → core 建页/重载 → 窗口/视图改尺寸 → 重建。
     @objc(applyDisplayChangeWidth:height:)
     public static func applyDisplayChange(width: Int32, height: Int32) {
-        NSLog("[glaspen2] display changed to %dx%d", width, height)
-        glaspen2_router_invert_invalidate()
-        glaspen2_router_set_screen_size(width, height)
-        glaspen2_on_display_change(width, height)
-        glaspen2_load_strokes_for_screen(glaspen2_get_current_screen_id())
-        glaspen2_smooth_loaded_strokes()
-        PageViewOps.update()
-        let frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height))
-        if let window = UIAnchors.mainWindow {
-            window.setFrame(frame, display: true)
-            window.contentView?.frame = frame
-        }
-        (UIAnchors.glassView as? NSView)?.frame = frame
-        if let drawView = UIAnchors.drawView {
-            drawView.frame = frame
-            MenuRuntime.ensureSurface()
-            glaspen2_router_rebuild_surface()
-            drawView.needsDisplay = true
-        }
+        glaspen2_rust_apply_display_change(width, height)
     }
+
 }

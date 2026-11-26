@@ -417,3 +417,17 @@ public typealias RecordingMainCallback = @convention(c) (UnsafeMutableRawPointer
 public func runRecordingDispatchMain(_ ctx: UnsafeMutableRawPointer?, _ cb: RecordingMainCallback?) {
     DispatchQueue.main.async { cb?(ctx) }
 }
+
+@_cdecl("glaspen2_swift_apply_display_frames")
+public func runApplyDisplayFrames(_ width: Int32, _ height: Int32) {
+    let frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height))
+    if let window = UIAnchors.mainWindow {
+        window.setFrame(frame, display: true)
+        window.contentView?.frame = frame
+    }
+    (UIAnchors.glassView as? NSView)?.frame = frame
+    if let drawView = UIAnchors.drawView {
+        drawView.frame = frame
+        drawView.needsDisplay = true
+    }
+}

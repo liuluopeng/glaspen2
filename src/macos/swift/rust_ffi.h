@@ -646,3 +646,6 @@ extern int glaspen2_rust_route_keyboard(int kind, unsigned short key_code, int h
 // R127: 主路由笔事件块
 extern int glaspen2_rust_route_pen(int kind, double x, double y, double pressure,
                                     double timestamp, long long raw_field, int is_eraser);
+
+// R143: 显示器几何变更应用
+extern void glaspen2_rust_apply_display_change(int width, int height);

@@ -6672,3 +6672,31 @@ pub extern "C" fn glaspen2_rust_route_pen(
     let raw_width = unsafe { glaspen2_router_raw_width(pressure) };
     glaspen2_rust_handle_pen_event(kind, x, y, pressure, timestamp, raw_width, is_eraser)
 }
+
+// ── R143: 显示器几何变更应用(反色失效/建页/重载/窗口尺寸/重建) ──
+
+unsafe extern "C" {
+    fn glaspen2_router_invert_invalidate();
+    fn glaspen2_router_set_screen_size(w: i32, h: i32);
+    fn glaspen2_on_display_change(w: i32, h: i32);
+    fn glaspen2_smooth_loaded_strokes();
+    fn glaspen2_swift_apply_display_frames(w: i32, h: i32);
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_rust_apply_display_change(width: i32, height: i32) {
+    tracing::info!("[glaspen2] display changed to {width}x{height}");
+    unsafe {
+        glaspen2_router_invert_invalidate();
+        glaspen2_router_set_screen_size(width, height);
+        glaspen2_on_display_change(width, height);
+        glaspen2_load_strokes_for_screen(glaspen2_get_current_screen_id());
+        glaspen2_smooth_loaded_strokes();
+    }
+    glaspen2_rust_pageview_update();
+    unsafe {
+        glaspen2_swift_apply_display_frames(width, height);
+        glaspen2_router_ensure_surface();
+        glaspen2_router_rebuild_surface();
+    }
+}

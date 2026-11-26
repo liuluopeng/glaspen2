@@ -791,3 +791,9 @@ modeler Up error 需真机笔/翻页连击复验。
 - CanvasMode.applyInfinite 删除旧状态机实现, 仅调 Rust;
 - SurfaceOps.clearScreen/saveDrawingOnly 删除旧 cairo/save 分支, 仅调 Rust + 通知;
 - 第3片后全量 tests/smoke/parity(不跑 release)全绿。
+
+
+## R143 显示器几何变更应用迁 Rust
+
+- applyDisplayChange 的反色失效/屏幕尺寸/建页重载/smooth/pageview update/窗口尺寸/ensure/rebuild 迁 Rust;
+- Swift 仅保留 NSWindow/NSView frame 设置桥; debug build 通过。
