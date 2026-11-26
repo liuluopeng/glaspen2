@@ -709,3 +709,9 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - OverlayTunnelRenderer.drawTunnel 仅调 Rust; clear 仅调 Rust 缓存清理; 删除 CGImage 缓存;
 - debug build 通过(加速批次)。
+
+
+## R130 清理 OverlayDrawing 旧 draw 回退
+
+- draw(in:rect:) 删除 Swift 编排旧路径, 仅调 Rust; stage 桥保留给 Rust 编排调用;
+- debug build 通过; 第3片后全量 tests/smoke/parity(不跑 release)全绿。

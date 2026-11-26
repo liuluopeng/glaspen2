@@ -730,3 +730,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-26 | Rust-R127 | 主路由笔事件块迁 Rust; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |
 | 2026-11-26 | Rust-R128 | 清理网格/光标/surface Swift 回退; debug build 通过 | 本提交 |
 | 2026-11-26 | Rust-R129 | 清理 OverlayTunnelRenderer 回退/CG 缓存; debug build 通过 | 本提交 |
+| 2026-11-26 | Rust-R130 | 清理 OverlayDrawing 旧 draw 回退; 批次 tests/smoke/parity 绿(不跑 release) | 本提交 |

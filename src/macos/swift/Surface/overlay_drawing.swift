@@ -5,29 +5,9 @@ import Darwin
 @objc public final class OverlayDrawing: NSObject {
     @objc(drawInView:rect:)
     public static func draw(in view: NSView, rect: NSRect) {
-        // R39: 默认 Rust 编排; GLASPEN2_SWIFT_OVERLAY_DRAW=1 回退 Swift。
-        if ProcessInfo.processInfo.environment["GLASPEN2_SWIFT_OVERLAY_DRAW"] != "1",
-           glaspen2_rust_overlay_draw(
-               Unmanaged.passUnretained(view).toOpaque(),
-               rect.origin.x, rect.origin.y, rect.size.width, rect.size.height) != 0 {
-            return
-        }
-        let t0 = mach_absolute_time()
-        guard let ctx = prepareContext() else { return }
-        ctx.saveGState()
-        ctx.clip(to: rect)
-        let bounds = view.bounds
-        if drawTunnel(ctx, bounds: bounds) {
-            ctx.restoreGState()
-            return
-        }
-        drawGrid(ctx, bounds: bounds, clipRect: rect)
-        drawSurface(ctx, rect: rect, bounds: bounds)
-        drawMinimap(ctx, bounds: bounds)
-        drawNotification(bounds: bounds)
-        drawCursor(ctx)
-        ctx.restoreGState()
-        writePerf(rect: rect, bounds: bounds, t0: t0)
+        _ = glaspen2_rust_overlay_draw(
+            Unmanaged.passUnretained(view).toOpaque(),
+            rect.origin.x, rect.origin.y, rect.size.width, rect.size.height)
     }
 
     static func prepareContext() -> CGContext? {
