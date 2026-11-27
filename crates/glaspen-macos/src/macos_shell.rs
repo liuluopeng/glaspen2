@@ -6767,6 +6767,13 @@ pub extern "C" fn glaspen2_rust_route_pen(
     // tabletEventPointPressure(raw_field) 里; 监视器一直用 raw_field, 但
     // 笔迹宽度之前只用 pressure, 导致真笔没有粗细变化。
     let effective_pressure = normalized_tablet_pressure(pressure, raw_field);
+    // 少数笔的 pen-up NSEvent.timestamp 可能是 0; 直接传入模型器会以
+    // “负时间差/非法输入”拒绝收尾, 或在 DB 尾部留下 t<0 伪点。
+    let timestamp = if timestamp.is_finite() && timestamp > 0.0 {
+        timestamp
+    } else {
+        monotonic_secs()
+    };
     let _ = glaspen2_rust_update_pressure_monitor(kind, raw_field, x, y, effective_pressure);
     let raw_width = unsafe { glaspen2_router_raw_width(effective_pressure) };
     glaspen2_rust_handle_pen_event(

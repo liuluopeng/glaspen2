@@ -847,3 +847,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-27 | Rust-R271 | 方向单源: core drag/keyboard pan delta; mac 鼠标改内容跟随; 加契约单测+跨端闸门 | 本提交 |
 | 2026-11-27 | Rust-R272 | 新建画布强制建页 + 固定画布 displayIfNeeded; 测试/冒烟/parity 绿 | 本提交 |
 | 2026-11-27 | Rust-R273 | 修 cairo CLEAR=0(清屏染黑) + 固定画布 rebuild surface; tests/smoke/parity 绿 | 本提交 |
+| 2026-11-27 | Rust-R274 | 修录制 GIF 断触: 负时间伪点过滤 + pen-up 时间戳兜底; GIF 末帧完整; tests/smoke/parity 绿 | 本提交 |

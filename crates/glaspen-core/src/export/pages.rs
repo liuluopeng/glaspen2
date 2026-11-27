@@ -123,12 +123,16 @@ pub extern "C" fn glaspen2_load_strokes_for_screen(screen_id: i64) -> c_int {
         let mut strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
         strokes.clear();
         for s in data {
+            let points = crate::sanitize_loaded_points(s.points);
+            if points.is_empty() {
+                continue;
+            }
             strokes.push(Stroke {
                 id: s.id,
                 r: s.r,
                 g: s.g,
                 b: s.b,
-                points: s.points,
+                points,
             });
         }
         // Update current screen in DB

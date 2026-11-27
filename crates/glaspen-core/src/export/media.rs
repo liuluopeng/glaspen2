@@ -908,11 +908,30 @@ pub(crate) struct GifStroke {
 pub(crate) fn gif_strokes_from(strokes: &[Stroke]) -> Vec<GifStroke> {
     strokes
         .iter()
-        .map(|s| GifStroke {
-            r: s.r,
-            g: s.g,
-            b: s.b,
-            points: s.points.clone(),
+        .filter_map(|s| {
+            let points = sanitize_gif_points(&s.points);
+            if points.len() < 2 {
+                return None;
+            }
+            Some(GifStroke {
+                r: s.r,
+                g: s.g,
+                b: s.b,
+                points,
+            })
+        })
+        .collect()
+}
+
+/// 录制/GIF 只接受有效点序列。模型器/旧库偶发会在笔尾追加
+/// `(x,y,width=1,t<0)` 的伪点; 负时间会让整笔 dur<=0 被静默丢弃,
+/// 表现为 GIF/动画“断触”。这里剔除坏点, 而不是丢整笔。
+fn sanitize_gif_points(points: &[(f64, f64, f64, f64)]) -> Vec<(f64, f64, f64, f64)> {
+    points
+        .iter()
+        .copied()
+        .filter(|&(x, y, w, t)| {
+            x.is_finite() && y.is_finite() && w.is_finite() && w > 0.0 && t.is_finite() && t >= 0.0
         })
         .collect()
 }
@@ -1421,6 +1440,19 @@ pub extern "C" fn glaspen2_export_pdf() -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gif_filter_keeps_stroke_with_bogus_end_point() {
+        let pts = vec![
+            (0.0, 0.0, 2.0, 0.0),
+            (3.0, 4.0, 5.0, 0.01),
+            (3.0, 4.0, 1.0, -4.79),
+        ];
+        let clean = sanitize_gif_points(&pts);
+        assert_eq!(clean.len(), 2);
+        assert_eq!(clean[1].2, 5.0);
+        assert!(clean.iter().all(|p| p.3 >= 0.0));
+    }
 
     fn red_stroke() -> GifStroke {
         GifStroke {

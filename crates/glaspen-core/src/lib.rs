@@ -95,6 +95,19 @@ pub struct Stroke {
     pub points: Vec<(f64, f64, f64, f64)>, // (x, y, width, relative_time)
 }
 
+/// 载入历史笔迹时剔除模型器遗留的坏点(负相对时间/非正宽度/NaN)。
+/// 这些点会让 GIF 的整笔 dur<=0 被丢弃, 表现为录制动画“断触”。
+pub(crate) fn sanitize_loaded_points(
+    points: Vec<(f64, f64, f64, f64)>,
+) -> Vec<(f64, f64, f64, f64)> {
+    points
+        .into_iter()
+        .filter(|&(x, y, w, t)| {
+            x.is_finite() && y.is_finite() && w.is_finite() && w > 0.0 && t.is_finite() && t >= 0.0
+        })
+        .collect()
+}
+
 impl Stroke {
     pub fn avg_width(&self) -> f64 {
         if self.points.is_empty() {
@@ -150,6 +163,19 @@ pub fn timestamped_name(ext: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sanitize_loaded_points_drops_bogus_tail() {
+        let pts = vec![
+            (0.0, 0.0, 2.0, 0.0),
+            (1.0, 1.0, 2.0, 0.01),
+            (1.0, 1.0, 1.0, -4.79),
+        ];
+        let clean = super::sanitize_loaded_points(pts);
+        assert_eq!(clean.len(), 2);
+        assert!(clean.iter().all(|p| p.3 >= 0.0));
+        assert_eq!(clean[1].2, 2.0);
+    }
+
     use super::*;
 
     /// 串行锁:STROKES/模型器是进程级全局,改它们的测试共用一把锁。

@@ -1564,3 +1564,17 @@ modeler Up error 需真机笔/翻页连击复验。
 2. 固定画布仍空白:
    - 固定分支增加 `glaspen2_rust_pageview_rebuild()` 从 STROKES 全量重建 surface, 再 redraw + display;
    - 解决飘渺期间 surface 跳过/启动未绘制时只 setNeedsDisplay 仍显示空 surface.
+
+
+## R274 修复: 录制 GIF/动画“断触”
+
+- 现象: 录制的 GIF 里连续笔迹被切成多段, 部分笔画整段消失。
+- 数据证据: 现场库中多笔的末点出现 `(x,y,width=1.0,t=-4.79)` 伪点; 负相对时间会让
+  GIF 编码按 `dur=last-first` 算出 <=0 而**静默丢弃整笔**。
+- 根因: 少数 pen-up 事件的 `NSEvent.timestamp` 为 0, 直接送模型器/DB 缓冲产生负 t 尾点。
+- 修复:
+  1. `glaspen2_rust_route_pen`: 非有限/<=0 的事件时间戳兜底为 `monotonic_secs()`;
+  2. `glaspen2_modeler_end`: `rel_t<=0` 不再写 DB 伪点;
+  3. `gif_strokes_from`: 剔除 NaN/负 t/非正宽度的坏点而不是丢整笔;
+  4. 载入历史笔迹时同样过滤坏点(页面/无限画布), 旧库坏数据自动恢复。
+- 验证: 复制现场库启动后导出 GIF, 末帧 “abc” 完整连续; 新增 sanitize 单测; tests/smoke/parity 全绿。

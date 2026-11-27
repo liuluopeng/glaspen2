@@ -309,12 +309,16 @@ pub extern "C" fn glaspen2_load_infinite_strokes() -> c_int {
     let mut strokes = STROKES.lock().unwrap_or_else(|e| e.into_inner());
     strokes.clear();
     for s in data {
+        let points = crate::sanitize_loaded_points(s.points);
+        if points.is_empty() {
+            continue;
+        }
         strokes.push(Stroke {
             id: s.id,
             r: s.r,
             g: s.g,
             b: s.b,
-            points: s.points,
+            points,
         });
     }
     count
@@ -1274,12 +1278,10 @@ pub extern "C" fn glaspen2_modeler_end(
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .unwrap_or(timestamp);
-        state::buffer_point(
-            x,
-            y,
-            pressure_to_width(pressure, width_scale),
-            timestamp - start,
-        ); // sync
+        let rel_t = timestamp - start;
+        if rel_t.is_finite() && rel_t > 0.0 {
+            state::buffer_point(x, y, pressure_to_width(pressure, width_scale), rel_t); // sync
+        }
         db::end_stroke_spawned();
     });
 }
