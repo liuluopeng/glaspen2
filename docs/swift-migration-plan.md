@@ -853,3 +853,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-27 | Rust-R277 | 录制热键 autorepeat 改消费(return 2)而非放行, 修按住 ⌘⌃R 系统 beep; 加判定单测 | 本提交 |
 | 2026-11-27 | Rust-R278 | 修 seam 重画浮点色与 fill 量化色不一致导致的前几段染色; pagerender 统一 to_rgb8 截断 | 本提交 |
 | 2026-11-27 | Rust-R279 | 落笔冻结笔色: live/seam/fallback/commit 统一用 stroke_rgb, 加中途变色 warn; 修一段一段变色 | 本提交 |
+| 2026-11-27 | Rust-R280 | minimap 绘制入口补 enabled 门; 修开关关闭仍显示; tests/smoke/parity 绿 | 本提交 |

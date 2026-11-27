@@ -1637,3 +1637,13 @@ modeler Up error 需真机笔/翻页连击复验。
   commit_to_strokes 全部使用冻结色。加一次性的 mid-stroke 颜色变化 warn 日志,
   便于现场确认是否真的发生了状态变化。
 - 验证: 紫色虚拟笔迹核心色唯一 (170,0,255); tests/smoke/parity 全绿。
+
+
+## R280 修复: minimap 开关关闭仍显示
+
+- 现象: 面板“显示最近 10 页”关闭, 屏幕上仍有 minimap。
+- 根因: `glaspen2_rust_overlay_draw` 每帧无条件调用 `glaspen2_rust_minimap_draw`;
+  该函数只检查 infinite/当前页, **没有检查 `minimap_enabled()`**。开关 setter 只改状态 + redraw,
+  重绘时又被无条件画回来。
+- 修复: `glaspen2_rust_minimap_draw` 入口先检查 `glaspen2_router_minimap_enabled()==0` 直接返回。
+- 验证: DB `minimap=0` 时不再绘制; tests/smoke/parity 全绿。

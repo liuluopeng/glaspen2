@@ -7790,6 +7790,11 @@ pub extern "C" fn glaspen2_rust_minimap_draw(
     if ctx.is_null() || bw <= 0.0 || bh <= 0.0 {
         return 0;
     }
+    // 开关只改状态并 redraw; 绘制入口必须自己再检查, 否则 off 也会被
+    // overlay_draw 的无条件调用画出来(设置面板显示关, 屏幕却有 minimap)。
+    if unsafe { glaspen2_router_minimap_enabled() } == 0 {
+        return 0;
+    }
     if unsafe { glaspen2_router_infinite() } != 0 {
         return 0;
     }
