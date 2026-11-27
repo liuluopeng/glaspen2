@@ -6621,6 +6621,12 @@ pub extern "C" fn glaspen2_rust_route_mouse_up() {
 
 // ── R124: 键盘事件顶层路由(录制热键 + chord) ──
 
+/// 普通 chord 只在 keyDown 分派; keyUp 不能再执行一次。
+#[inline]
+fn chord_dispatch_is_keydown(kind: i32) -> bool {
+    kind == 10
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_route_keyboard(
     kind: i32,
@@ -6638,6 +6644,11 @@ pub extern "C" fn glaspen2_rust_route_keyboard(
     if glaspen2_rust_recording_hotkey(down, key_code, i32::from(has_cmd != 0 && has_ctrl != 0)) != 0
     {
         return 2;
+    }
+    // 普通 chord 只在 keyDown 触发一次; keyUp 若也分派会把每个热键执行两遍
+    // (撤销两笔/飘渺切两次)。录制热键已在上方按 down/up 处理。
+    if !chord_dispatch_is_keydown(kind) {
+        return 1;
     }
     glaspen2_rust_handle_chord(key_code, has_cmd, has_ctrl, has_alt, has_shift, is_repeat)
 }
@@ -11812,5 +11823,14 @@ mod pressure_regression_tests {
         assert!(zero > 0.0, "raw width 必须为正: {zero}");
         assert!(mid > zero, "raw width 应随压力增大: {x}", x = mid);
         assert!(full > mid, "raw width 应随压力增大: {x}", x = full);
+    }
+}
+
+#[cfg(test)]
+mod hotkey_regression_tests {
+    #[test]
+    fn chord_only_dispatches_on_keydown() {
+        assert!(super::chord_dispatch_is_keydown(10));
+        assert!(!super::chord_dispatch_is_keydown(11));
     }
 }

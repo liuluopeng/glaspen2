@@ -1471,3 +1471,11 @@ modeler Up error 需真机笔/翻页连击复验。
 ## R265 压感宽度回归测试
 
 - 新增 root 单元测试 `raw_width_grows_with_pressure`: 0/0.5/1.0 压力下 raw width 严格递增, 防止再次丢失压力参数.
+
+
+## R266 修复: 快捷键连击(keyDown+keyUp 各执行一次)
+
+- 根因: `glaspen2_rust_route_keyboard` 对普通 chord 未区分 keyDown/keyUp, 两个事件都调用 perform_action;
+- 效果: 撤销一笔实际撤两笔, 飘渺按一次切两次(固定→飘渺→…);
+- 修复: 普通 chord 仅在 kind==10(keyDown) 分派; 录制热键仍按 down/up 处理; 新增 keyUp 不分派回归测试;
+- 验证: root 单测 + cargo test workspace + smoke/parity 全绿.

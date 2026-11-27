@@ -839,3 +839,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-27 | Rust-R263 | 修复 raw_width 丢压力参数导致笔迹无粗细变化; DB 点宽 1..8 | 本提交 |
 | 2026-11-27 | Rust-R264 | 修复 Ctrl-C 不退出: 信号自管道+主线程 shutdown; pty/cargo run 实测正常 | 本提交 |
 | 2026-11-27 | Rust-R265 | 新增压感 raw width 递增回归测试 | 本提交 |
+| 2026-11-27 | Rust-R266 | 修复 keyUp 也执行 chord 导致撤销/飘渺连击; 仅 keyDown 分派 | 本提交 |
