@@ -2671,23 +2671,25 @@ pub extern "C" fn glaspen2_perf_summary() {
 // ── 快捷键生效表状态(R8: Swift ShortcutStore → Rust) ──
 
 #[cfg(target_os = "macos")]
-fn parse_shortcut_map(ptr: *const c_char) -> std::collections::BTreeMap<String, String> {
-    if ptr.is_null() {
+fn parse_shortcut_map_pb(ptr: *const u8, len: usize) -> std::collections::BTreeMap<String, String> {
+    if ptr.is_null() || len == 0 {
         return std::collections::BTreeMap::new();
     }
-    let text = unsafe { CStr::from_ptr(ptr) }.to_string_lossy();
-    serde_json::from_str(&text).unwrap_or_default()
+    let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+    glaspen_ipc::decode_string_map(bytes).unwrap_or_default()
 }
 
 #[cfg(target_os = "macos")]
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_shortcut_store_install(
-    values_json: *const c_char,
-    lookup_json: *const c_char,
+    values_ptr: *const u8,
+    values_len: usize,
+    lookup_ptr: *const u8,
+    lookup_len: usize,
 ) {
     crate::shortcut_state::install(
-        parse_shortcut_map(values_json),
-        parse_shortcut_map(lookup_json),
+        parse_shortcut_map_pb(values_ptr, values_len),
+        parse_shortcut_map_pb(lookup_ptr, lookup_len),
     );
 }
 
@@ -2719,8 +2721,21 @@ pub extern "C" fn glaspen2_shortcut_store_action_for_chord(chord: *const c_char)
 
 #[cfg(target_os = "macos")]
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_shortcut_store_values_json() -> *mut c_char {
-    return_c_string(crate::shortcut_state::values_json())
+pub extern "C" fn glaspen2_shortcut_store_values_pb(out_len: *mut usize) -> *mut u8 {
+    let values = crate::shortcut_state::values();
+    let bytes = glaspen_ipc::encode_string_map(&values);
+    if !out_len.is_null() {
+        unsafe { *out_len = bytes.len() };
+    }
+    if bytes.is_empty() {
+        return std::ptr::null_mut();
+    }
+    let ptr = unsafe { libc::malloc(bytes.len()) as *mut u8 };
+    if ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len()) };
+    ptr
 }
 
 #[cfg(target_os = "macos")]

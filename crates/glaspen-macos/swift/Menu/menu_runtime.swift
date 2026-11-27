@@ -16,12 +16,10 @@ import AppKit
         widthItemTitle(index: idx)
     }
     static func shortcutInstall(values: NSDictionary, lookup: NSDictionary) {
-        guard let vd = try? JSONSerialization.data(withJSONObject: values),
-              let v = String(data: vd, encoding: .utf8),
-              let ld = try? JSONSerialization.data(withJSONObject: lookup),
-              let l = String(data: ld, encoding: .utf8) else { return }
-        v.withCString { vp in l.withCString { lp in
-            glaspen2_shortcut_store_install(vp, lp)
+        let v = ProtoWire.encodeStringMap(values as? [String: String] ?? [:])
+        let l = ProtoWire.encodeStringMap(lookup as? [String: String] ?? [:])
+        v.withUnsafeBufferPointer { vp in l.withUnsafeBufferPointer { lp in
+            glaspen2_shortcut_store_install(vp.baseAddress, vp.count, lp.baseAddress, lp.count)
         } }
     }
 
@@ -96,11 +94,18 @@ import AppKit
         chord.withCString { glaspen2_chord_reserved($0) != 0 }
     }
     static func shortcutsEffectiveJSON() -> String {
-        // 旧实现: 尚未 apply 过时先补默认表, 避免快照返回空对象。
-        if MenuRuntime.shortcutStoreEmpty { _ = "{}".withCString { glaspen2_shortcut_apply_json($0) } }
-        guard let p = glaspen2_shortcut_store_values_json() else { return "{}" }
-        defer { glaspen2_free_c_string(p) }
-        return String(cString: p)
+        if MenuRuntime.shortcutStoreEmpty {
+            let empty = ProtoWire.encodeStringMap([:])
+            _ = empty.withUnsafeBufferPointer { glaspen2_shortcut_apply_pb($0.baseAddress, $0.count) }
+        }
+        var len = 0
+        guard let p = glaspen2_shortcut_store_values_pb(&len) else { return "{}" }
+        defer { glaspen2_macos_free_bytes(p) }
+        let bytes = Array(UnsafeBufferPointer(start: p, count: len))
+        let map = ProtoWire.decodeStringMap(bytes)
+        guard let data = try? JSONSerialization.data(withJSONObject: map),
+              let json = String(data: data, encoding: .utf8) else { return "{}" }
+        return json
     }
 }
 
@@ -193,29 +198,33 @@ import AppKit
                                    moreTitles: [String],
                                    modeTitle: String,
                                    toggleTitle: String) {
-        if let topData = try? JSONSerialization.data(withJSONObject: topTitles),
-           let topJSON = String(data: topData, encoding: .utf8),
-           let exportData = try? JSONSerialization.data(withJSONObject: exportTitles),
-           let exportJSON = String(data: exportData, encoding: .utf8),
-           let moreData = try? JSONSerialization.data(withJSONObject: moreTitles),
-           let moreJSON = String(data: moreData, encoding: .utf8) {
-            var colorPtrs: [UnsafeMutableRawPointer?] = colorTitles.map { Unmanaged.passUnretained($0).toOpaque() }
-            var widthPtrs: [UnsafeMutableRawPointer?] = widthTitles.map { Unmanaged.passUnretained($0).toOpaque() }
-            let modeItem = MenuRuntime.menuItem(tag: 778, inMenu: menu)
-            let toggleItem = MenuRuntime.menuItem(tag: 888, inMenu: menu)
-            let ok = colorPtrs.withUnsafeMutableBufferPointer { cb in
-                widthPtrs.withUnsafeMutableBufferPointer { wb in
-                    glaspen2_rust_menu_update_texts(
-                        Unmanaged.passUnretained(menu).toOpaque(), cb.baseAddress,
-                        Int32(colorTitles.count), wb.baseAddress,
-                        Int32(widthTitles.count), topJSON, exportJSON, moreJSON,
-                        modeTitle, toggleTitle,
-                        modeItem.map { Unmanaged.passUnretained($0).toOpaque() },
-                        toggleItem.map { Unmanaged.passUnretained($0).toOpaque() })
+        let top = ProtoWire.encodeStringList(topTitles)
+        let export = ProtoWire.encodeStringList(exportTitles)
+        let more = ProtoWire.encodeStringList(moreTitles)
+        var colorPtrs: [UnsafeMutableRawPointer?] = colorTitles.map { Unmanaged.passUnretained($0).toOpaque() }
+        var widthPtrs: [UnsafeMutableRawPointer?] = widthTitles.map { Unmanaged.passUnretained($0).toOpaque() }
+        let modeItem = MenuRuntime.menuItem(tag: 778, inMenu: menu)
+        let toggleItem = MenuRuntime.menuItem(tag: 888, inMenu: menu)
+        let ok = colorPtrs.withUnsafeMutableBufferPointer { cb in
+            widthPtrs.withUnsafeMutableBufferPointer { wb in
+                top.withUnsafeBufferPointer { tb in
+                    export.withUnsafeBufferPointer { eb in
+                        more.withUnsafeBufferPointer { mb in
+                            glaspen2_rust_menu_update_texts(
+                                Unmanaged.passUnretained(menu).toOpaque(), cb.baseAddress,
+                                Int32(colorTitles.count), wb.baseAddress,
+                                Int32(widthTitles.count),
+                                tb.baseAddress, tb.count, eb.baseAddress, eb.count,
+                                mb.baseAddress, mb.count,
+                                modeTitle, toggleTitle,
+                                modeItem.map { Unmanaged.passUnretained($0).toOpaque() },
+                                toggleItem.map { Unmanaged.passUnretained($0).toOpaque() })
+                        }
+                    }
                 }
             }
-            _ = ok
         }
+        _ = ok
     }
 }
 
@@ -423,12 +432,11 @@ extension MenuBuilder {
                                               launchAtLoginOn: Bool,
                                               glassOn: Bool) {
         guard let menu = menu else { return }
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: titles),
-              let json = String(data: jsonData, encoding: .utf8) else { return }
-        _ = json.withCString { glaspen2_rust_menu_add_top_level(
+        let encoded = ProtoWire.encodeStringMap(titles)
+        _ = encoded.withUnsafeBufferPointer { glaspen2_rust_menu_add_top_level(
             Unmanaged.passUnretained(menu).toOpaque(),
             handler.map { Unmanaged.passUnretained($0).toOpaque() },
-            $0, launchAtLoginOn ? 1 : 0, glassOn ? 1 : 0) }
+            $0.baseAddress, $0.count, launchAtLoginOn ? 1 : 0, glassOn ? 1 : 0) }
     }
 }
 

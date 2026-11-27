@@ -233,6 +233,35 @@ pub fn json_to_setting_value(value: &serde_json::Value) -> crate::proto::Setting
     crate::proto::SettingValue { value }
 }
 
+pub fn encode_string_list(values: &[String]) -> Vec<u8> {
+    use prost::Message;
+    crate::proto::StringList {
+        values: values.to_vec(),
+    }
+    .encode_to_vec()
+}
+
+pub fn decode_string_list(bytes: &[u8]) -> Result<Vec<String>, prost::DecodeError> {
+    use prost::Message;
+    Ok(crate::proto::StringList::decode(bytes)?.values)
+}
+
+pub fn encode_string_map(values: &std::collections::BTreeMap<String, String>) -> Vec<u8> {
+    use prost::Message;
+    crate::proto::StringMap {
+        values: values.clone().into_iter().collect(),
+    }
+    .encode_to_vec()
+}
+
+pub fn decode_string_map(
+    bytes: &[u8],
+) -> Result<std::collections::BTreeMap<String, String>, prost::DecodeError> {
+    use prost::Message;
+    let msg = crate::proto::StringMap::decode(bytes)?;
+    Ok(msg.values.into_iter().collect())
+}
+
 /// FRB 等进程内通道用: 单帧 Panel protobuf(带长度前缀), 不再传 JSON 文本。
 pub fn encode_panel(kind: &str, data: &serde_json::Value) -> Vec<u8> {
     encode_frame(&panel_frame(0, kind, data))

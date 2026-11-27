@@ -1332,6 +1332,7 @@ dependencies = [
  "flate2",
  "gif 0.13.3",
  "glaspen-chat",
+ "glaspen-ipc",
  "image",
  "ink-stroke-modeler-rs",
  "libc",

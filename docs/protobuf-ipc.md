@@ -55,7 +55,12 @@
 - ✅ settings 快照 C ABI 已改为 **Rust 直调**: `settings_snapshot_pb()` 返回 Panel
   protobuf; `set_setting_pb(key, bytes)` 解码 `SettingValue`; `glaspen2_macos_settings_json`
   和 `glaspen2_macos_set_setting` C 符号删除; probe 改为解码 protobuf;
-- ⏳ Swift 直接调用的 shortcut/menu titles JSON 仍需迁;
+- ✅ Swift 直接调用的 JSON 已迁:
+  - `shortcut_store_install` / `shortcut_apply` / `shortcut_store_values` 改 `StringMap`;
+  - `menu_add_top_level` 的 titles 改 `StringMap`;
+  - `menu_update_texts` 的 top/export/more 改 `StringList`;
+  - Swift 侧新增 `ProtoWire.swift` 手写最小 protobuf map/list 编解码, 不引入 SwiftProtobuf;
+- ⏳ 其它未接线的 `*_json` C ABI 头声明待清理;
 - Swift 侧引入 SwiftProtobuf(或提交生成 `.pb.swift` + runtime);
 - 先把 settings/menu/shortcut 三组迁完, 再迁 recording/grid/camera/minimap。
 

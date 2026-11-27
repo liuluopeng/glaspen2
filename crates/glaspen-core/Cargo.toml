@@ -21,6 +21,7 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
 ink-stroke-modeler-rs = "0.1"
 glaspen-chat = { path = "../../chat" }
 serde_json = "1.0.150"
+glaspen-ipc = { path = "../glaspen-ipc" }
 printpdf = "0.10.0"
 lopdf = "0.39"
 base64 = "0.22"

@@ -78,3 +78,12 @@ message Panel {
   google.protobuf.Value data = 2;
   bool ok = 3;
 }
+
+// Swift <-> Rust 的 map<string,string>(快捷键表/菜单标题)。
+message StringMap {
+  map<string, string> values = 1;
+}
+
+message StringList {
+  repeated string values = 1;
+}

@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 // Auto-extracted Rust FFI declarations (from former glaspen2.m).
 extern void glaspen2_save_drawing(const unsigned char *data, int width, int height, int stride);
 extern void glaspen2_save_with_background(
@@ -256,10 +257,12 @@ extern int sw_app_screen_h(void);
 extern unsigned long long glaspen2_chord_modifier_mask(const char *chord);
 
 // R8: 快捷键生效表状态(values/lookup JSON; 调用方 free 返回的字符串)
-extern void glaspen2_shortcut_store_install(const char *values_json, const char *lookup_json);
+extern void glaspen2_shortcut_store_install(const unsigned char *values, size_t values_len,
+                                            const unsigned char *lookup, size_t lookup_len);
 extern char *glaspen2_shortcut_store_chord(const char *action);
 extern char *glaspen2_shortcut_store_action_for_chord(const char *chord);
-extern char *glaspen2_shortcut_store_values_json(void);
+extern unsigned char *glaspen2_shortcut_store_values_pb(size_t *out_len);
+extern void glaspen2_macos_free_bytes(unsigned char *p);
 extern int glaspen2_shortcut_store_is_empty(void);
 
 // R9: 网格/绘制状态 getter(状态在 glaspen-core::view_state)
@@ -306,7 +309,8 @@ extern int glaspen2_rust_menu_add_items(void *menu, void *handler, int count,
                                         void **titles, int title_count, const char *action);
 
 // R24: 顶层其余项/导出▸/更多▸ 子菜单(默认; GLASPEN2_SWIFT_MENU_FULL=1 回退)
-extern int glaspen2_rust_menu_add_top_level(void *menu, void *handler, const char *titles_json,
+extern int glaspen2_rust_menu_add_top_level(void *menu, void *handler,
+                                            const unsigned char *titles, size_t titles_len,
                                             int launch_at_login_on, int glass_on);
 
 // R25: 颜色/粗细菜单勾选更新(默认; GLASPEN2_SWIFT_MENU_STATE=1 回退)
@@ -316,9 +320,11 @@ extern int glaspen2_rust_menu_update_checkmarks(void *menu, int color_count, int
 // R26: 菜单动态文案刷新(默认; GLASPEN2_SWIFT_MENU_TEXTS=1 回退)
 extern int glaspen2_rust_menu_update_texts(void *menu, void **color_titles, int color_count,
                                            void **width_titles, int width_count,
-                                           const char *top_titles_json, const char *export_titles_json,
-                                           const char *more_titles_json, const char *mode_title,
-                                           const char *toggle_title, void *mode_item, void *toggle_item);
+                                           const unsigned char *top_titles, size_t top_titles_len,
+                                           const unsigned char *export_titles, size_t export_titles_len,
+                                           const unsigned char *more_titles, size_t more_titles_len,
+                                           const char *mode_title, const char *toggle_title,
+                                           void *mode_item, void *toggle_item);
 
 // R27: 菜单项递归查找/标题/state(默认; GLASPEN2_SWIFT_MENU_LOOKUP=1 回退)
 extern void *glaspen2_rust_menu_item_with_tag(void *menu, long tag);
@@ -456,7 +462,7 @@ extern double glaspen2_rust_pm_y(void);
 extern const char *glaspen2_rust_pm_ev_type(void);
 
 // R50: 快捷键生效表计算/安装
-extern int glaspen2_shortcut_apply_json(const char *saved_json);
+extern int glaspen2_shortcut_apply_pb(const unsigned char *saved, size_t saved_len);
 
 // R52: 设置快照 overrides JSON(调用方 free)
 extern char *glaspen2_menu_snapshot_overrides_json(void);

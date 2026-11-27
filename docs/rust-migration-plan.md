@@ -1767,3 +1767,13 @@ modeler Up error 需真机笔/翻页连击复验。
 - `--swift-macos-api-probe` 改为解码 protobuf; core settings_snapshot 审计同步;
 - 验证: cargo build, cargo test 相关, smoke(macOS API probe len=825 kind=settings grid=true),
   parity 待跑。
+
+
+## R291 protobuf: Swift 快捷键/菜单 JSON 去文本
+
+- proto 增加 `StringMap` / `StringList`;
+- Rust: `shortcut_store_install`、`shortcut_apply_pb`、`shortcut_store_values_pb`、
+  `menu_add_top_level`、`menu_update_texts` 全部改 `(ptr,len)` protobuf;
+- Swift: 新增 `Menu/ProtoWire.swift` 最小 wire 编解码; 菜单/快捷键调用点改 encode/decode;
+  删除 Swift 侧 `JSONSerialization` 两处边界;
+- 验证: cargo build(含 Swift)、smoke(menu full probe/hotkeys/settings)、parity 全过。

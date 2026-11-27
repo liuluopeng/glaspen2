@@ -53,6 +53,14 @@ pub fn is_empty() -> bool {
 }
 
 /// 生效表 JSON(与旧 Swift `valuesSnapshot` 的 JSONSerialization 语义等价)。
+pub fn values() -> BTreeMap<String, String> {
+    store()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .values
+        .clone()
+}
+
 pub fn values_json() -> String {
     let st = store().lock().unwrap_or_else(|e| e.into_inner());
     serde_json::to_string(&st.values).unwrap_or_else(|_| "{}".to_string())

@@ -2,6 +2,7 @@
 //! 在真实 app 内可工作; 默认仍走 Swift, 由 `GLASPEN2_RUST_STATUS_ITEM=1` 切换。
 #![cfg(target_os = "macos")]
 
+use std::collections::BTreeMap;
 use std::ffi::c_void;
 
 // cairo_operator_t: CLEAR=0, SOURCE=1, OVER=2, IN=3。
@@ -487,7 +488,8 @@ pub extern "C" fn glaspen2_rust_menu_add_items(
 pub extern "C" fn glaspen2_rust_menu_add_top_level(
     menu: *mut c_void,
     handler: *mut c_void,
-    titles_json: *const std::os::raw::c_char,
+    titles_ptr: *const u8,
+    titles_len: usize,
     launch_at_login_on: i32,
     glass_on: i32,
 ) -> i32 {
@@ -495,25 +497,17 @@ pub extern "C" fn glaspen2_rust_menu_add_top_level(
     use objc2_app_kit::{NSControlStateValueOn, NSMenu, NSMenuItem};
     use objc2_foundation::NSString;
 
-    if menu.is_null() || titles_json.is_null() {
+    if menu.is_null() || titles_ptr.is_null() || titles_len == 0 {
         return 0;
     }
     let Some(mtm) = MainThreadMarker::new() else {
         return 0;
     };
-    let titles_json = unsafe { std::ffi::CStr::from_ptr(titles_json) }.to_string_lossy();
-    let Ok(titles) = serde_json::from_str::<serde_json::Value>(&titles_json) else {
+    let bytes = unsafe { std::slice::from_raw_parts(titles_ptr, titles_len) };
+    let Ok(titles) = glaspen_ipc::decode_string_map(bytes) else {
         return 0;
     };
-    let Some(obj) = titles.as_object() else {
-        return 0;
-    };
-    let text = |key: &str| -> String {
-        obj.get(key)
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string()
-    };
+    let text = |key: &str| -> String { titles.get(key).cloned().unwrap_or_default() };
     let menu = unsafe { &*(menu as *const NSMenu) };
     let handler = if handler.is_null() {
         None
@@ -648,9 +642,12 @@ pub extern "C" fn glaspen2_rust_menu_update_texts(
     color_count: i32,
     width_titles: *const *mut c_void,
     width_count: i32,
-    top_titles_json: *const std::os::raw::c_char,
-    export_titles_json: *const std::os::raw::c_char,
-    more_titles_json: *const std::os::raw::c_char,
+    top_titles_ptr: *const u8,
+    top_titles_len: usize,
+    export_titles_ptr: *const u8,
+    export_titles_len: usize,
+    more_titles_ptr: *const u8,
+    more_titles_len: usize,
     mode_title: *const std::os::raw::c_char,
     toggle_title: *const std::os::raw::c_char,
     mode_item: *mut c_void,
@@ -673,10 +670,12 @@ pub extern "C" fn glaspen2_rust_menu_update_texts(
             )
         }
     };
-    let parse_list = |p: *const std::os::raw::c_char| -> Vec<String> {
-        cstr(p)
-            .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
-            .unwrap_or_default()
+    let parse_list = |p: *const u8, len: usize| -> Vec<String> {
+        if p.is_null() || len == 0 {
+            return Vec::new();
+        }
+        let bytes = unsafe { std::slice::from_raw_parts(p, len) };
+        glaspen_ipc::decode_string_list(bytes).unwrap_or_default()
     };
     let menu = unsafe { &*(menu as *const NSMenu) };
     let color_count = color_count.max(0);
@@ -710,7 +709,7 @@ pub extern "C" fn glaspen2_rust_menu_update_texts(
         }
     }
     let base = width_base + width_count + 1;
-    let top = parse_list(top_titles_json);
+    let top = parse_list(top_titles_ptr, top_titles_len);
     for (offset, title) in top.iter().enumerate() {
         if title.is_empty() {
             continue;
@@ -723,7 +722,10 @@ pub extern "C" fn glaspen2_rust_menu_update_texts(
         .itemAtIndex((base + 3) as isize)
         .and_then(|i| i.submenu())
     {
-        for (i, title) in parse_list(export_titles_json).iter().enumerate() {
+        for (i, title) in parse_list(export_titles_ptr, export_titles_len)
+            .iter()
+            .enumerate()
+        {
             if let Some(item) = export.itemAtIndex(i as isize) {
                 item.setTitle(&NSString::from_str(title));
             }
@@ -733,7 +735,10 @@ pub extern "C" fn glaspen2_rust_menu_update_texts(
         .itemAtIndex((base + 7) as isize)
         .and_then(|i| i.submenu())
     {
-        for (i, title) in parse_list(more_titles_json).iter().enumerate() {
+        for (i, title) in parse_list(more_titles_ptr, more_titles_len)
+            .iter()
+            .enumerate()
+        {
             if let Some(item) = more.itemAtIndex(i as isize) {
                 item.setTitle(&NSString::from_str(title));
             }
@@ -2669,15 +2674,15 @@ pub extern "C" fn glaspen2_rust_pm_ev_type() -> *const std::os::raw::c_char {
 
 // ── R50: 快捷键生效表(默认/迁移/保留/冲突解绑) ──
 
-/// R50: 由已保存 JSON(可为空)计算并安装生效表; 返回 1 成功。
+/// R50: 由已保存的 StringMap protobuf 计算并安装生效表; 返回 1 成功。
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_shortcut_apply_json(saved_json: *const std::os::raw::c_char) -> i32 {
-    use std::collections::BTreeMap;
-    let saved: BTreeMap<String, serde_json::Value> = if saved_json.is_null() {
-        BTreeMap::new()
+pub extern "C" fn glaspen2_shortcut_apply_pb(saved_ptr: *const u8, saved_len: usize) -> i32 {
+    let saved: std::collections::BTreeMap<String, String> = if saved_ptr.is_null() || saved_len == 0
+    {
+        std::collections::BTreeMap::new()
     } else {
-        let raw = unsafe { std::ffi::CStr::from_ptr(saved_json) }.to_string_lossy();
-        serde_json::from_str(&raw).unwrap_or_default()
+        let bytes = unsafe { std::slice::from_raw_parts(saved_ptr, saved_len) };
+        glaspen_ipc::decode_string_map(bytes).unwrap_or_default()
     };
     let defaults: BTreeMap<&str, &str> =
         glaspen_core::ui::defaults(glaspen_core::ui::Platform::Macos)
@@ -2688,18 +2693,13 @@ pub extern "C" fn glaspen2_shortcut_apply_json(saved_json: *const std::os::raw::
     for action in glaspen_core::ui::actions() {
         let action_id = action.id;
         let mut chord: Option<String> = None;
-        if let Some(raw) = saved.get(action_id) {
-            if let Some(s) = raw.as_str() {
-                let migrated = glaspen_core::chord::migrate_value(
-                    glaspen_core::ui::Platform::Macos,
-                    action_id,
-                    s,
-                )
-                .unwrap_or_else(|| s.to_string());
-                chord = glaspen_core::chord::normalize(&migrated);
-                if chord.is_none() && !s.trim().is_empty() {
-                    tracing::warn!("hotkey: 非法组合 {action_id}={s}, 回退默认");
-                }
+        if let Some(s) = saved.get(action_id) {
+            let migrated =
+                glaspen_core::chord::migrate_value(glaspen_core::ui::Platform::Macos, action_id, s)
+                    .unwrap_or_else(|| s.to_string());
+            chord = glaspen_core::chord::normalize(&migrated);
+            if chord.is_none() && !s.trim().is_empty() {
+                tracing::warn!("hotkey: 非法组合 {action_id}={s}, 回退默认");
             }
         }
         if chord.is_none() {
@@ -2818,7 +2818,7 @@ pub extern "C" fn sw_event_tap_disable() {
 
 unsafe extern "C" {
     fn glaspen2_is_launch_at_login() -> i32;
-    fn glaspen2_shortcut_store_values_json() -> *mut std::os::raw::c_char;
+    fn glaspen2_shortcut_store_values_pb(out_len: *mut usize) -> *mut u8;
     fn glaspen2_router_flip_effect() -> i32;
     fn glaspen2_router_lang() -> i32;
 }
@@ -2828,17 +2828,15 @@ unsafe extern "C" {
 pub extern "C" fn glaspen2_menu_snapshot_overrides_json() -> *mut std::os::raw::c_char {
     let launch = unsafe { glaspen2_is_launch_at_login() != 0 };
     let shortcuts = unsafe {
-        let p = glaspen2_shortcut_store_values_json();
-        if p.is_null() {
+        let mut len: usize = 0;
+        let p = glaspen2_shortcut_store_values_pb(&mut len);
+        if p.is_null() || len == 0 {
             "{}".to_string()
         } else {
-            let s = std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned();
-            // Rust core 的 into_raw 字符串由 glaspen2_free_c_string 释放。
-            unsafe extern "C" {
-                fn glaspen2_free_c_string(p: *mut std::os::raw::c_char);
-            }
-            unsafe { glaspen2_free_c_string(p) };
-            s
+            let bytes = std::slice::from_raw_parts(p, len);
+            let map = glaspen_ipc::decode_string_map(bytes).unwrap_or_default();
+            libc::free(p as *mut c_void);
+            serde_json::to_string(&map).unwrap_or_else(|_| "{}".to_string())
         }
     };
     let flip = unsafe { glaspen2_router_flip_effect() };
@@ -5646,23 +5644,12 @@ pub extern "C" fn glaspen2_rust_apply_setting(
                 .cloned()
                 .unwrap_or_else(|| serde_json::json!({}));
             let text = saved.to_string();
-            let Ok(cs) = std::ffi::CString::new(text) else {
-                return 1;
-            };
+            shortcut_apply_from_json(&text);
+            let payload = shortcut_values_json_from_pb();
+            let k = cstr_setting("shortcuts");
+            let v = cstr_setting(&payload);
             unsafe {
-                glaspen2_shortcut_apply_json(cs.as_ptr());
-            }
-            let values = unsafe { glaspen2_shortcut_store_values_json() };
-            if !values.is_null() {
-                let payload = unsafe { std::ffi::CStr::from_ptr(values) }
-                    .to_string_lossy()
-                    .into_owned();
-                unsafe { glaspen2_free_c_string(values) };
-                let k = cstr_setting("shortcuts");
-                let v = cstr_setting(&payload);
-                unsafe {
-                    glaspen2_save_string_setting(k.as_ptr(), v.as_ptr());
-                }
+                glaspen2_save_string_setting(k.as_ptr(), v.as_ptr());
             }
             unsafe {
                 glaspen2_notify_settings_changed();
@@ -7144,6 +7131,36 @@ pub extern "C" fn glaspen2_rust_check_tap() {
 
 // ── R151: 启动读取快捷键覆盖并应用 ──
 
+fn shortcut_map_from_json(text: &str) -> BTreeMap<String, String> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
+        return BTreeMap::new();
+    };
+    let Some(obj) = value.as_object() else {
+        return BTreeMap::new();
+    };
+    obj.iter()
+        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+        .collect()
+}
+
+fn shortcut_apply_from_json(text: &str) {
+    let map = shortcut_map_from_json(text);
+    let bytes = glaspen_ipc::encode_string_map(&map);
+    let _ = glaspen2_shortcut_apply_pb(bytes.as_ptr(), bytes.len());
+}
+
+fn shortcut_values_json_from_pb() -> String {
+    let mut len: usize = 0;
+    let ptr = unsafe { glaspen2_shortcut_store_values_pb(&mut len) };
+    if ptr.is_null() || len == 0 {
+        return "{}".to_string();
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+    let map = glaspen_ipc::decode_string_map(bytes).unwrap_or_default();
+    unsafe { libc::free(ptr as *mut c_void) };
+    serde_json::to_string(&map).unwrap_or_else(|_| "{}".to_string())
+}
+
 unsafe extern "C" {
     fn glaspen2_load_string_setting(key: *const std::os::raw::c_char) -> *mut std::os::raw::c_char;
 }
@@ -7153,7 +7170,7 @@ pub extern "C" fn glaspen2_rust_load_shortcuts() {
     let key = b"shortcuts\0";
     let raw = unsafe { glaspen2_load_string_setting(key.as_ptr() as *const std::os::raw::c_char) };
     if raw.is_null() {
-        let _ = glaspen2_shortcut_apply_json(b"{}\0".as_ptr() as *const std::os::raw::c_char);
+        shortcut_apply_from_json("{}");
         return;
     }
     let text = unsafe { std::ffi::CStr::from_ptr(raw) }
@@ -7165,9 +7182,7 @@ pub extern "C" fn glaspen2_rust_load_shortcuts() {
     } else {
         text
     };
-    if let Ok(c) = std::ffi::CString::new(json) {
-        let _ = glaspen2_shortcut_apply_json(c.as_ptr());
-    }
+    shortcut_apply_from_json(&json);
 }
 
 // ── R153: 时光隧道标量状态(active/尺寸/卡片数/参数/时间) ──
@@ -8854,9 +8869,10 @@ pub extern "C" fn glaspen2_router_shortcut_reserved(chord: *const std::os::raw::
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_shortcuts_effective_json() -> *mut std::os::raw::c_char {
     if unsafe { glaspen2_shortcut_store_is_empty() } != 0 {
-        let _ = glaspen2_shortcut_apply_json(b"{}\0".as_ptr() as *const std::os::raw::c_char);
+        shortcut_apply_from_json("{}");
     }
-    unsafe { glaspen2_shortcut_store_values_json() }
+    let c = std::ffi::CString::new(shortcut_values_json_from_pb()).unwrap_or_default();
+    c.into_raw()
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_action_for_chord(
@@ -9193,7 +9209,7 @@ pub extern "C" fn glaspen2_rust_hotkeys_probe() -> i32 {
         failures += 1;
     }
     let _ = unsafe {
-        glaspen2_shortcut_apply_json(b"{\"undo\":\"\"}\0".as_ptr() as *const std::os::raw::c_char)
+        shortcut_apply_from_json("{\"undo\":\"\"}");
     };
     if hotkey_action("cmd+ctrl+Z").is_some() {
         tracing::warn!("[hotkeys-probe] FAIL explicit unbind fell back");
