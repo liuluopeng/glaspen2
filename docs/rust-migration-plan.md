@@ -1603,3 +1603,13 @@ modeler Up error 需真机笔/翻页连击复验。
 - 修复: 实时路径统一 `quantize_raw_rgb`: 与 `Color::to_rgb8` 同样的钳制 + ×255 截断 + /255;
   live plan、raw dot/segment fallback、接缝重画全部使用; 新增一致性单测。
 - 验证: cargo test(全量)、smoke debug、parity 全绿。
+
+
+## R277 修复: 按住 ⌘⌃R 录制时的系统“嘟嘟”声
+
+- 现象: 按住 ⌘⌃R 录制时 macOS 持续发出无效按键提示音。
+- 根因: R275 让 autorepeat 直接 return 1(放行); NSApplication 收到未匹配的 ⌘⌃R
+  重复 keyDown, 按无效菜单快捷键处理 → 系统 beep。
+- 修复: 录制键(R; 聊天集成开时还有 2/3)的 autorepeat 只消费、不重复 feed: 返回 2
+  给 CGEventTap, 系统不再看到未处理按键; 首次 keyDown/keyUp 语义不变。
+- 新增 `recording_hotkey_key` 判定与单测; tests/smoke/parity 全绿。

@@ -4249,6 +4249,18 @@ fn recording_feed(slot: i32, kind: &str, mode: &str) {
     }
 }
 
+/// 录制热键的按键身份(与 autorepeat 消费共用; R 常开, 2/3 需聊天集成)。
+fn recording_hotkey_key(key_code: u16, has_cmd: bool, has_ctrl: bool, chat: bool) -> bool {
+    if !has_cmd || !has_ctrl {
+        return false;
+    }
+    match key_code {
+        15 => true,
+        19 | 20 => chat,
+        _ => false,
+    }
+}
+
 /// R70: 录制热键; 返回 1 已处理, 0 未处理。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_recording_hotkey(
@@ -6747,7 +6759,13 @@ pub extern "C" fn glaspen2_rust_route_keyboard(
     // hotkey, 每次 StartPressed 都会 `recording_feed` → finish_active_stroke,
     // 把正在写的一笔按键盘重复率(~80ms)切成碎段, 录出的 GIF 就会断触。
     // 自动重复不产生新的按键语义, 录制只在首次 keyDown 启动、keyUp 停止。
+    // 但必须**消费**这些 repeat: 直接 return 1 会把 ⌘⌃R 放给 NSApplication,
+    // 系统按无匹配菜单快捷键处理, 持续发出“嘟嘟”无效按键声。
     if is_repeat != 0 {
+        let chat = unsafe { glaspen2_router_chat_integration() } != 0;
+        if recording_hotkey_key(key_code, has_cmd != 0, has_ctrl != 0, chat) {
+            return 2;
+        }
         return 1;
     }
     let down = i32::from(kind == 10);
@@ -12085,5 +12103,20 @@ mod color_quantize_tests {
             let (r, g, b) = c.to_rgb8();
             (r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0)
         });
+    }
+}
+
+#[cfg(test)]
+mod recording_repeat_tests {
+    use super::recording_hotkey_key;
+
+    #[test]
+    fn recording_keys_consume_autorepeat() {
+        assert!(recording_hotkey_key(15, true, true, false));
+        assert!(recording_hotkey_key(19, true, true, true));
+        assert!(recording_hotkey_key(20, true, true, true));
+        assert!(!recording_hotkey_key(19, true, true, false));
+        assert!(!recording_hotkey_key(15, true, false, true));
+        assert!(!recording_hotkey_key(0, true, true, true));
     }
 }
