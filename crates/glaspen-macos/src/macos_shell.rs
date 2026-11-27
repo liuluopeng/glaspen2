@@ -5941,7 +5941,7 @@ fn ethereal_hide_strokes() {
         if glaspen2_router_pressure_monitor() != 0 {
             glaspen2_router_pm_hide();
         }
-        glaspen2_router_redraw_draw_view();
+        force_redraw_draw_view_now();
     }
 }
 
@@ -5988,7 +5988,7 @@ pub extern "C" fn glaspen2_rust_ethereal_auto_show() {
             if glaspen2_router_pressure_monitor() != 0 {
                 glaspen2_router_pm_show();
             }
-            glaspen2_router_redraw_draw_view();
+            force_redraw_draw_view_now();
         }
         tracing::info!("[ethereal] 笔迹重现");
     }
@@ -6013,7 +6013,7 @@ pub extern "C" fn glaspen2_rust_ethereal_preview_show() -> i32 {
             if glaspen2_router_pressure_monitor() != 0 {
                 glaspen2_router_pm_show();
             }
-            glaspen2_router_redraw_draw_view();
+            force_redraw_draw_view_now();
         }
     }
     1
@@ -9572,6 +9572,13 @@ pub extern "C" fn glaspen2_rust_toggle_draw_enabled() {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_toggle_canvas_mode() {
     unsafe { glaspen2_router_peek_cancel() };
+    tracing::debug!(
+        "[canvas-mode] before ethereal={} visible={} glass_follow={} strokes={}",
+        unsafe { glaspen2_router_ethereal() },
+        unsafe { glaspen2_router_strokes_visible() },
+        unsafe { glaspen2_router_glass_follow() },
+        unsafe { glaspen2_stroke_count() }
+    );
     if unsafe { glaspen2_router_ethereal() } == 0 {
         unsafe {
             glaspen2_router_set_ethereal(1);
@@ -9590,7 +9597,7 @@ pub extern "C" fn glaspen2_rust_toggle_canvas_mode() {
         if unsafe { glaspen2_router_pressure_monitor() } != 0 {
             unsafe { glaspen2_router_pm_hide() }
         }
-        unsafe { glaspen2_router_redraw_draw_view() };
+        force_redraw_draw_view_now();
         let text = i18n_text_owned("canvas.ethereal_mode");
         if !text.is_null() {
             unsafe {
@@ -9607,7 +9614,7 @@ pub extern "C" fn glaspen2_rust_toggle_canvas_mode() {
         if unsafe { glaspen2_router_pressure_monitor() } != 0 {
             unsafe { glaspen2_router_pm_show() }
         }
-        unsafe { glaspen2_router_redraw_draw_view() };
+        force_redraw_draw_view_now();
         let text = i18n_text_owned("canvas.fixed_mode");
         if !text.is_null() {
             unsafe {
@@ -9617,6 +9624,12 @@ pub extern "C" fn glaspen2_rust_toggle_canvas_mode() {
         }
     }
     let ethereal = unsafe { glaspen2_router_ethereal() } != 0;
+    tracing::debug!(
+        "[canvas-mode] after ethereal={} visible={} stroke_active={}",
+        ethereal,
+        unsafe { glaspen2_router_strokes_visible() },
+        unsafe { glaspen2_router_stroke_active() }
+    );
     unsafe {
         glaspen2_router_update_menu_state(778, i32::from(ethereal));
         let key = if ethereal {
@@ -9746,7 +9759,6 @@ extern "C" fn startup_tap_check(_ctx: *mut c_void) {
     unsafe { glaspen2_swift_dispatch_main_after(2.0, std::ptr::null_mut(), startup_tap_check) };
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_startup_run_loop() {
     if STARTUP_RUN_LOOP_STARTED.swap(true, std::sync::atomic::Ordering::SeqCst) {
         return;
@@ -9779,6 +9791,10 @@ pub extern "C" fn glaspen2_rust_pageview_rebuild() {
 
 // ── R208: 清屏/仅保存涂鸦 ──
 
+unsafe extern "C" {
+    fn glaspen2_force_new_page(w: i32, h: i32) -> i64;
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_surface_clear_screen() {
     if unsafe { glaspen2_router_infinite() } != 0 {
@@ -9795,7 +9811,7 @@ pub extern "C" fn glaspen2_rust_surface_clear_screen() {
     if surface.is_null() {
         return;
     }
-    let created = unsafe {
+    let mut created = unsafe {
         glaspen2_rust_clear_screen(
             surface,
             glaspen2_rust_surface_scale(),
@@ -9805,6 +9821,24 @@ pub extern "C" fn glaspen2_rust_surface_clear_screen() {
             i32::from(glaspen2_rust_pageview_is_fit() != 0),
         )
     };
+    if created == 0 {
+        // 用户显式按"新建画布"时, 即使当前页是空白也要真的建一页; 旧
+        // blank-guard 只提示不建页, 会让人以为快捷键没生效。
+        let id = unsafe {
+            glaspen2_force_new_page(
+                glaspen_core::shell_state::screen_w(),
+                glaspen_core::shell_state::screen_h(),
+            )
+        };
+        if id > 0 {
+            unsafe {
+                glaspen2_load_strokes_for_screen(id);
+                glaspen2_rust_pageview_update();
+                glaspen2_rust_overlay_flush();
+            }
+            created = 1;
+        }
+    }
     if created != 0 {
         unsafe { glaspen2_rust_notification_show_page_info(glaspen2_get_current_screen_id()) };
     } else {
@@ -10914,6 +10948,23 @@ fn redraw_draw_view_now() {
     FULL_REDRAW_PENDING.store(true, std::sync::atomic::Ordering::SeqCst);
     unsafe {
         let _: () = objc2::msg_send![view as *mut objc2::runtime::AnyObject, setNeedsDisplay: true];
+    }
+}
+
+/// 可见性/模式切换是低频操作: 设置 needsDisplay 后立即 displayIfNeeded。
+/// AppKit 在后台/非激活窗口上可能拖到下个 runloop 周期才画, 用户按快捷键
+/// 后看到“固定画布模式”通知却没有笔迹, 就是这里没同步 flush。
+fn force_redraw_draw_view_now() {
+    redraw_draw_view_now();
+    unsafe {
+        let draw = sw_draw_view();
+        if !draw.is_null() {
+            let _: () = objc2::msg_send![draw as *mut objc2::runtime::AnyObject, displayIfNeeded];
+        }
+        let window = sw_main_window();
+        if !window.is_null() {
+            let _: () = objc2::msg_send![window as *mut objc2::runtime::AnyObject, displayIfNeeded];
+        }
     }
 }
 

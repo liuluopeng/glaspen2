@@ -432,6 +432,21 @@ pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
 /// 1. 书写活动锁 —— 笔仍在墨水中 / 距最近抬笔 <1.5s 时拒绝新建(写字时
 ///    翻页几乎必是误触; 正常"写完一页翻新页"只需再按一次);
 /// 2. 频率闸 —— 任意 2s 内至多新建一页, 兜住一切重复信号(按键重复等)。
+/// 强制新建一页(快捷键"新建画布"): 不受空白末页复用守卫影响, 总是插入新页
+/// 并切到该页。用于用户显式要求新画布的场景; 自动翻页仍走
+/// [`glaspen2_create_next_page`] 的守卫/冷却逻辑。
+#[unsafe(no_mangle)]
+pub extern "C" fn glaspen2_force_new_page(screen_w: c_int, screen_h: c_int) -> i64 {
+    ffi_guard(0, || {
+        runtime().block_on(db::end_stroke());
+        if state::canvas_kind() == state::CanvasKind::Infinite {
+            return 0;
+        }
+        runtime().block_on(db::new_screen(screen_w, screen_h));
+        state::current_screen_id()
+    })
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_create_next_page(current_id: i64) -> i64 {
     create_next_page_inner(current_id, true)

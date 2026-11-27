@@ -1540,3 +1540,15 @@ modeler Up error 需真机笔/翻页连击复验。
   `crates/glaspen-core/tests/pan_direction_single_source.rs`: 两端必须调用 core 函数,
   且 adapter 不得再出现本地方向符号;
 - 已知历史差异文档删除, 后续改方向只改 core 一处并跑闸门.
+
+
+## R272 修复: 新建画布快捷键 + 固定画布立即显示
+
+1. `CMD+CTRL+C` 只有通知不新建页:
+   - `glaspen2_clear_strokes` 的 blank-guard 在末页空白时只复用、不建页, 外壳随后只提示 `canvas.blank_guard`;
+   - 新增 core `glaspen2_force_new_page`: 显式“新建画布”不再受空白末页复用守卫影响, 总是插入新页并切换;
+   - 外壳 created==0 时强制建页 + load/rebuild/flush; 空白页场景实测 screens 533→534.
+2. 固定画布模式不实际固定:
+   - 模式切换只 `setNeedsDisplay`, 后台/非激活窗口的 AppKit 可能延后到 runloop 才画; 通知出现但笔迹未显示;
+   - 可见性/模式切换统一走 `force_redraw_draw_view_now`: 设置 needsDisplay 后立即 `displayIfNeeded` (draw view + window);
+   - ethereal hide/show/preview 与固定/飘渺切换都使用它; probe 截图确认固定模式笔迹立即出现.
