@@ -20,6 +20,10 @@
   - `Frame { protocol_version, request_id, oneof body }`
   - `SettingsSnapshot` / `SetSetting` / `SettingValue`(覆盖 bool/int/double/string/Struct/List/bytes/null)
   - `Ack` / `Error`
+  - `Panel` 过渡信封(`kind` + `google.protobuf.Struct data` + `ok`), 供 Windows
+    面板管道逐消息迁移;
+  - Rust 侧 `json_to_prost_value` / `prost_value_to_json` / `json_to_prost_struct` /
+    `prost_struct_to_json` 兼容转换, 以及 `panel_frame` helper。
 - 新增 `crates/glaspen-ipc`:
   - `prost-build` 生成 Rust 类型;
   - `encode_frame` / `decode_frame` / `take_frame`;

@@ -22,6 +22,7 @@ message Frame {
     SetSetting set_setting = 11;
     SettingsSnapshotResponse settings_snapshot_response = 12;
     Ack ack = 13;
+    Panel panel = 20;
     Error error = 99;
   }
 }
@@ -68,3 +69,12 @@ message Error {
   string message = 2;
 }
 
+
+// Windows 面板管道的过渡信封: kind = 原 JSON 的 type 字符串,
+// data = 原 data 对象(Struct 二进制, 不再是 JSON 文本)。
+// 后续按消息逐步改成 typed 子消息, 这个 message 作为兼容入口保留。
+message Panel {
+  string kind = 1;
+  google.protobuf.Struct data = 2;
+  bool ok = 3;
+}

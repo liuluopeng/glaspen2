@@ -107,6 +107,85 @@ pub fn compatible_version(version: u32) -> bool {
     version == PROTOCOL_VERSION
 }
 
+/// 原 JSON 值 → protobuf Struct/Value(过渡 pipe 用; 线上不再出现 JSON 文本)。
+pub fn json_to_prost_value(value: &serde_json::Value) -> prost_types::Value {
+    use prost_types::value::Kind;
+    let kind = match value {
+        serde_json::Value::Null => Some(Kind::NullValue(0)),
+        serde_json::Value::Bool(v) => Some(Kind::BoolValue(*v)),
+        serde_json::Value::Number(n) => Some(Kind::NumberValue(n.as_f64().unwrap_or(0.0))),
+        serde_json::Value::String(v) => Some(Kind::StringValue(v.clone())),
+        serde_json::Value::Array(items) => Some(Kind::ListValue(prost_types::ListValue {
+            values: items.iter().map(json_to_prost_value).collect(),
+        })),
+        serde_json::Value::Object(map) => Some(Kind::StructValue(prost_types::Struct {
+            fields: map
+                .iter()
+                .map(|(k, v)| (k.clone(), json_to_prost_value(v)))
+                .collect(),
+        })),
+    };
+    prost_types::Value { kind }
+}
+
+/// protobuf Value → 原 JSON 值(过渡期 adapter 内部仍可复用现有 map 逻辑)。
+pub fn prost_value_to_json(value: &prost_types::Value) -> serde_json::Value {
+    use prost_types::value::Kind;
+    match &value.kind {
+        None | Some(Kind::NullValue(_)) => serde_json::Value::Null,
+        Some(Kind::BoolValue(v)) => serde_json::Value::Bool(*v),
+        Some(Kind::NumberValue(v)) => serde_json::Number::from_f64(*v)
+            .map_or(serde_json::Value::Null, serde_json::Value::Number),
+        Some(Kind::StringValue(v)) => serde_json::Value::String(v.clone()),
+        Some(Kind::ListValue(list)) => {
+            serde_json::Value::Array(list.values.iter().map(prost_value_to_json).collect())
+        }
+        Some(Kind::StructValue(s)) => serde_json::Value::Object(
+            s.fields
+                .iter()
+                .map(|(k, v)| (k.clone(), prost_value_to_json(v)))
+                .collect(),
+        ),
+    }
+}
+
+/// JSON 对象 → protobuf Struct(非对象返回空 Struct)。
+pub fn json_to_prost_struct(value: &serde_json::Value) -> prost_types::Struct {
+    let Some(map) = value.as_object() else {
+        return prost_types::Struct::default();
+    };
+    prost_types::Struct {
+        fields: map
+            .iter()
+            .map(|(k, v)| (k.clone(), json_to_prost_value(v)))
+            .collect(),
+    }
+}
+
+/// protobuf Struct → JSON 对象。
+pub fn prost_struct_to_json(value: &prost_types::Struct) -> serde_json::Value {
+    serde_json::Value::Object(
+        value
+            .fields
+            .iter()
+            .map(|(k, v)| (k.clone(), prost_value_to_json(v)))
+            .collect(),
+    )
+}
+
+/// 过渡 panel 消息: kind + 原 data 对象 + request_id。
+pub fn panel_frame(request_id: u64, kind: &str, data: &serde_json::Value) -> Frame {
+    Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::Panel(Panel {
+            kind: kind.to_string(),
+            data: Some(json_to_prost_struct(data)),
+            ok: true,
+        })),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,6 +257,25 @@ mod tests {
             decode_frame(&huge),
             Err(FrameError::TooLarge { .. })
         ));
+    }
+
+    #[test]
+    fn panel_struct_roundtrip() {
+        let value = serde_json::json!({
+            "screenId": 7.0,
+            "ok": true,
+            "items": [1.0, 2.0, 3.0],
+            "nested": {"label": "页"}
+        });
+        let frame = panel_frame(9, "getPageThumbnails", &value);
+        let bytes = encode_frame(&frame);
+        let decoded = decode_frame(&bytes).unwrap();
+        let Some(proto::frame::Body::Panel(panel)) = decoded.body else {
+            panic!("expected panel frame");
+        };
+        assert_eq!(panel.kind, "getPageThumbnails");
+        let back = prost_struct_to_json(panel.data.as_ref().unwrap());
+        assert_eq!(back, value);
     }
 
     #[test]

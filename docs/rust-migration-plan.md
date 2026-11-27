@@ -1702,3 +1702,12 @@ modeler Up error 需真机笔/翻页连击复验。
 - 本阶段只落契约/编解码, 不切换任何客户端; 旧 JSON 通路保持可回滚。
 - 迁移顺序: Windows 管道 -> FRB settings/bubbles -> macOS Swift C ABI; 详见
   docs/protobuf-ipc.md。
+
+
+## R285 protobuf 第二阶段: Panel 过渡信封 + Struct 转换
+
+- `ipc.proto` 增加 `Panel { kind, google.protobuf.Struct data, ok }` 与 `Frame.panel=20`;
+  Windows 管道可先把原有 `{"type","reqId","data"}` 消息无痛映射到二进制 protobuf。
+- `glaspen-ipc` 增加 JSON Value <-> protobuf Value/Struct 转换与 `panel_frame`;
+  5 个单测全过(帧 roundtrip/partial/超大/ack/panel struct)。
+- 下一步: pipe.rs/Dart bridge 改用 `take_frame` + `panel_frame`; 旧 JSON 行协议保留回滚。
