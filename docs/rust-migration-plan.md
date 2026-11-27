@@ -1479,3 +1479,13 @@ modeler Up error 需真机笔/翻页连击复验。
 - 效果: 撤销一笔实际撤两笔, 飘渺按一次切两次(固定→飘渺→…);
 - 修复: 普通 chord 仅在 kind==10(keyDown) 分派; 录制热键仍按 down/up 处理; 新增 keyUp 不分派回归测试;
 - 验证: root 单测 + cargo test workspace + smoke/parity 全绿.
+
+
+## R267 修复: 笔离开时抬笔日志风暴/抬笔状态延迟
+
+- 根因: R120 把 Swift 的 CGEventType 枚举分派翻成裸整数时映射写错:
+  - down 写成 1|4|7, drag 写成 3|6|9, up 写成 2|5|8;
+  - 其中 `mouseMoved=5` 被当成抬笔, 笔悬浮/离开时的每个 mouseMoved 都执行 pen_up 并打日志, 直到 proximity exit 才停;
+- 修复: 按 CGEventType 正确映射 down=1/3/25, drag=6/7/27, up=2/4/26; mouseMoved=5 不再当抬笔;
+- 同步修正压感窗事件名/系统光标/自动显示/route_event 的 up 判断, 并让 Swift pointerKind 覆盖 otherMouse 25..27;
+- 虚拟笔实测: 2 down / 2 up(修复前每个悬浮 move 都会抬笔); 新增 CGEventType 映射回归测试.

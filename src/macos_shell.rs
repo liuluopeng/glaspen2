@@ -6396,6 +6396,27 @@ unsafe extern "C" {
 }
 
 /// kind: CGEventType raw; 返回 2 消费, 0 未处理。
+// CGEventType 原始值(不是 NSEvent 值):
+// 1 leftDown, 2 leftUp, 3 rightDown, 4 rightUp, 5 mouseMoved, 6 leftDrag,
+// 7 rightDrag, 10 keyDown, 11 keyUp, 22 scroll, 23 tabletPointer,
+// 24 tabletProximity, 25 otherDown, 26 otherUp, 27 otherDrag.
+#[inline]
+fn pen_kind_down(kind: i32) -> bool {
+    matches!(kind, 1 | 3 | 25)
+}
+#[inline]
+fn pen_kind_drag(kind: i32) -> bool {
+    matches!(kind, 6 | 7 | 27)
+}
+#[inline]
+fn pen_kind_up(kind: i32) -> bool {
+    matches!(kind, 2 | 4 | 26)
+}
+#[inline]
+fn pen_kind_down_or_drag(kind: i32) -> bool {
+    pen_kind_down(kind) || pen_kind_drag(kind)
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_handle_pen_event(
     kind: i32,
@@ -6408,14 +6429,14 @@ pub extern "C" fn glaspen2_rust_handle_pen_event(
 ) -> i32 {
     let scale = glaspen2_rust_surface_scale();
     match kind {
-        1 | 4 | 7 => {
+        k if pen_kind_down(k) => {
             glaspen2_rust_finish_active_stroke();
             glaspen2_rust_update_eraser(is_eraser);
             tracing::info!("[glaspen2] pen DOWN p={pressure:.2} ts={timestamp:.3}");
             glaspen2_rust_pen_down(x, y, pressure, timestamp, raw_width, scale);
             2
         }
-        3 | 6 | 9 => {
+        k if pen_kind_drag(k) => {
             if glaspen2_rust_pen_stroke_active() == 0 {
                 glaspen2_rust_update_eraser(is_eraser);
                 glaspen2_rust_pen_down(x, y, pressure, timestamp, raw_width, scale);
@@ -6424,7 +6445,7 @@ pub extern "C" fn glaspen2_rust_handle_pen_event(
             }
             2
         }
-        2 | 5 | 8 => {
+        k if pen_kind_up(k) => {
             tracing::info!("[pen] 抬笔 (pen up)");
             glaspen2_rust_pen_up(x, y, pressure, timestamp);
             2
@@ -6449,17 +6470,17 @@ pub extern "C" fn glaspen2_rust_update_pressure_monitor(
     } else {
         (pressure * 65535.0) as i32
     };
-    let tip_down = matches!(kind, 1 | 3 | 4 | 6 | 7 | 9);
+    let tip_down = pen_kind_down_or_drag(kind);
     let name = match kind {
         1 => "DOWN",
         2 => "UP",
-        3 => "DRAG",
-        4 => "R_DOWN",
-        5 => "R_UP",
-        6 => "R_DRAG",
-        7 => "O_DOWN",
-        8 => "O_UP",
-        9 => "O_DRAG",
+        6 => "DRAG",
+        3 => "R_DOWN",
+        4 => "R_UP",
+        7 => "R_DRAG",
+        25 => "O_DOWN",
+        26 => "O_UP",
+        27 => "O_DRAG",
         _ => {
             if tip_down {
                 "DOWN"
@@ -6527,7 +6548,7 @@ unsafe extern "C" {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_pen_system_cursor(kind: i32) {
-    let down_or_drag = matches!(kind, 1 | 3 | 4 | 6 | 7 | 9);
+    let down_or_drag = pen_kind_down_or_drag(kind);
     if down_or_drag && unsafe { glaspen2_router_pen_drawing() } == 0 {
         unsafe {
             glaspen2_router_hide_system_cursor();
@@ -6669,7 +6690,7 @@ pub extern "C" fn glaspen2_rust_route_pen(
     raw_field: i64,
     is_eraser: i32,
 ) -> i32 {
-    if unsafe { glaspen2_router_strokes_hidden() } != 0 && matches!(kind, 1 | 3 | 4 | 6 | 7 | 9) {
+    if unsafe { glaspen2_router_strokes_hidden() } != 0 && pen_kind_down_or_drag(kind) {
         unsafe { glaspen2_router_pen_auto_show() };
     }
     let _ = glaspen2_rust_update_pressure_monitor(kind, raw_field, x, y, pressure);
@@ -7490,11 +7511,11 @@ pub extern "C" fn glaspen2_rust_route_event(ev: *const GlaspenEventC) -> i32 {
         glaspen2_rust_route_mouse_moved();
     }
     if ev.is_pen != 0 {
-        let is_up = matches!(kind, 2 | 5 | 8);
+        let is_up = pen_kind_up(kind);
         glaspen2_rust_pen_cursor_update(kind, i32::from(is_up), ev.x, ev.y);
         glaspen2_rust_pen_system_cursor(kind);
     }
-    if matches!(kind, 2 | 5 | 8) {
+    if pen_kind_up(kind) {
         glaspen2_rust_route_mouse_up();
     }
     if ev.is_pen != 0 {
@@ -11832,5 +11853,24 @@ mod hotkey_regression_tests {
     fn chord_only_dispatches_on_keydown() {
         assert!(super::chord_dispatch_is_keydown(10));
         assert!(!super::chord_dispatch_is_keydown(11));
+    }
+}
+
+#[cfg(test)]
+mod pen_kind_regression_tests {
+    #[test]
+    fn pen_event_kinds_follow_cgeventtype() {
+        // CGEventType: mouseMoved=5 绝不能当成抬笔; 右/中键事件也不能错位。
+        for k in [1, 3, 25] {
+            assert!(super::pen_kind_down(k), "down kind {k}");
+        }
+        for k in [6, 7, 27] {
+            assert!(super::pen_kind_drag(k), "drag kind {k}");
+        }
+        for k in [2, 4, 26] {
+            assert!(super::pen_kind_up(k), "up kind {k}");
+        }
+        assert!(!super::pen_kind_up(5), "mouseMoved 不是抬笔");
+        assert!(!super::pen_kind_down(4), "rightMouseUp 不是落笔");
     }
 }

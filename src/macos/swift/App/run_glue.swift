@@ -411,7 +411,7 @@ import AppKit
             }
             return glaspen2_rust_route_event(&e)
         }
-        let pointerKind = (1...9).contains(kind) || kind == 23
+        let pointerKind = (1...9).contains(kind) || kind == 23 || (25...27).contains(kind)
         if let ev = NSEvent(cgEvent: event) {
             let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
             let raw = ev.modifierFlags.intersection(relevant).rawValue
