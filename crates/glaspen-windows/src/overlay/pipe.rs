@@ -5,6 +5,57 @@ fn pipe_wide_name() -> Vec<u16> {
         .collect()
 }
 
+use glaspen_ipc::panel_wire::{encode_response, PanelDecoder, WireProtocol};
+
+/// 一个连接的协议感知写端: JSON 客户端照旧写行; protobuf 客户端把业务层
+/// 产出的 JSON 响应行编码成 Panel 帧。
+struct PanelOut {
+    file: std::fs::File,
+    protocol: WireProtocol,
+    pending: Vec<u8>,
+}
+
+impl PanelOut {
+    fn new(file: std::fs::File, protocol: WireProtocol) -> Self {
+        Self {
+            file,
+            protocol,
+            pending: Vec::new(),
+        }
+    }
+}
+
+impl std::io::Write for PanelOut {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self.protocol {
+            WireProtocol::Json => self.file.write_all(buf).map(|()| buf.len()),
+            WireProtocol::Protobuf => {
+                self.pending.extend_from_slice(buf);
+                while let Some(pos) = self.pending.iter().position(|b| *b == b'
+') {
+                    let line = self.pending[..pos].to_vec();
+                    self.pending.drain(..=pos);
+                    let text = String::from_utf8_lossy(&line).trim().to_string();
+                    if text.is_empty() {
+                        continue;
+                    }
+                    let encoded = encode_response(WireProtocol::Protobuf, &text);
+                    self.file.write_all(&encoded)?;
+                }
+                if self.pending.len() > 8 * 1024 * 1024 {
+                    tracing::warn!("面板 protobuf 响应缓冲超限, 丢弃");
+                    self.pending.clear();
+                }
+                Ok(buf.len())
+            }
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.file.flush()
+    }
+}
+
 /// 「立即更新」已下载(校验通过)的安装包;applyUpdate 优先用它,
 /// 兜底 newest_installer(update_dir)。
 static DOWNLOADED_INSTALLER: std::sync::Mutex<Option<std::path::PathBuf>> =
@@ -64,27 +115,15 @@ fn close_pipe(pipe: isize) {
 }
 
 fn handle_pipe_client(pipe: isize, hwnd: isize) {
-    use std::io::Read;
+    use std::io::{Read, Write};
     use std::os::windows::io::{FromRawHandle, IntoRawHandle};
 
     // Wrap pipe HANDLE in a single File for both read and write
     let mut stream = unsafe { std::fs::File::from_raw_handle(pipe as *mut std::ffi::c_void) };
-    // 留一份写句柄克隆给"覆盖层 → 面板"的回推通道(热键改设置时同步面板)
+    let mut decoder = PanelDecoder::new();
+    let mut writer: Option<PanelOut> = None;
     let mut my_gen: Option<u64> = None;
-    match stream.try_clone() {
-        Ok(clone) => {
-            let conn_gen = PANEL_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-            my_gen = Some(conn_gen);
-            PANEL_WRITERS
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .push((conn_gen, clone));
-        }
-        Err(e) => tracing::warn!("面板回推通道创建失败: {e}"),
-    }
-
     let mut buf = [0u8; 4096];
-    let mut line_buf = Vec::new();
 
     // **不要在这个线程上挂一个阻塞的 ReadFile**: 同步(非 OVERLAPPED)命名管道在
     // 有挂起读的时候, 另一个线程(panel-push)的 WriteFile 会被一起卡住 ——
@@ -120,17 +159,52 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
             }
         };
 
-        for &byte in &buf[..n] {
-            if byte == b'\n' {
-                if !line_buf.is_empty() {
-                    let line = String::from_utf8_lossy(&line_buf).to_string();
-                    process_pipe_message(&line, hwnd, &mut stream);
-                    line_buf.clear();
+        let lines = match decoder.feed(&buf[..n]) {
+            Ok(lines) => lines,
+            Err(err) => {
+                tracing::warn!("面板管道帧错误: {err}");
+                break;
+            }
+        };
+
+        if writer.is_none()
+            && let Some(protocol) = decoder.protocol()
+        {
+            match (stream.try_clone(), stream.try_clone()) {
+                (Ok(reg), Ok(out)) => {
+                    let conn_gen =
+                        PANEL_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    my_gen = Some(conn_gen);
+                    PANEL_WRITERS
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push((conn_gen, reg, protocol));
+                    writer = Some(PanelOut::new(out, protocol));
+                    tracing::info!(
+                        "Flutter settings client 协议: {}",
+                        match protocol {
+                            WireProtocol::Json => "json",
+                            WireProtocol::Protobuf => "protobuf",
+                        }
+                    );
                 }
-            } else {
-                line_buf.push(byte);
+                _ => {
+                    tracing::warn!("面板回推通道创建失败");
+                    break;
+                }
             }
         }
+
+        if let Some(w) = writer.as_mut() {
+            for line in lines {
+                process_pipe_message(&line, hwnd, w);
+            }
+            let _ = w.flush();
+        }
+    }
+
+    if let Some(mut w) = writer {
+        let _ = w.flush();
     }
 
     // Prevent File from closing the handle; we close it ourselves
@@ -140,7 +214,7 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
         PANEL_WRITERS
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .retain(|(g, _)| *g != conn_gen);
+            .retain(|(g, _, _)| *g != conn_gen);
     }
     close_pipe(pipe);
     // 面板进程断开: 若当时正在录制快捷键, 立即恢复全局热键
@@ -161,8 +235,9 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
 /// 断开时按代号只移除自己那份。
 /// 以前只保留"最新连接"的句柄: 调试客户端/第二个面板断开时会把它清掉, 真正的
 /// 面板从此收不到 onSettingsChanged —— 表现就是面板 tab/圆点与玻璃不同步。
-static PANEL_WRITERS: std::sync::LazyLock<std::sync::Mutex<Vec<(u64, std::fs::File)>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
+static PANEL_WRITERS: std::sync::LazyLock<
+    std::sync::Mutex<Vec<(u64, std::fs::File, WireProtocol)>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
 static PANEL_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// 回推帧队列(有界): 窗口线程 try_send 永不阻塞; 面板不读时最多积压 64 帧,
@@ -177,17 +252,22 @@ static PANEL_TX: std::sync::LazyLock<std::sync::mpsc::SyncSender<String>> =
                 for frame in rx {
                     // 取所有连接句柄的克隆后**立即放锁**: 阻塞写不能占着锁
                     // (否则面板重连时管道线程会卡在 lock 上)
-                    let conns: Vec<(u64, std::fs::File)> = {
+                    let conns: Vec<(u64, std::fs::File, WireProtocol)> = {
                         let guard =
                             PANEL_WRITERS.lock().unwrap_or_else(|e| e.into_inner());
                         guard
                             .iter()
-                            .filter_map(|(g, f)| f.try_clone().ok().map(|c| (*g, c)))
+                            .filter_map(|(g, f, protocol)| {
+                                f.try_clone()
+                                    .ok()
+                                    .map(|c| (*g, c, *protocol))
+                            })
                             .collect()
                     };
                     let mut dead: Vec<u64> = Vec::new();
-                    for (conn_gen, mut f) in conns {
-                        if f.write_all(frame.as_bytes()).is_err() || f.flush().is_err() {
+                    for (conn_gen, mut f, protocol) in conns {
+                        let encoded = encode_response(protocol, &frame);
+                        if f.write_all(&encoded).is_err() || f.flush().is_err() {
                             dead.push(conn_gen); // 写失败 = 该连接已断开
                         }
                     }
@@ -195,7 +275,7 @@ static PANEL_TX: std::sync::LazyLock<std::sync::mpsc::SyncSender<String>> =
                         PANEL_WRITERS
                             .lock()
                             .unwrap_or_else(|e| e.into_inner())
-                            .retain(|(g, _)| !dead.contains(g));
+                            .retain(|(g, _, _)| !dead.contains(g));
                     }
                 }
             })
@@ -318,7 +398,7 @@ fn settings_snapshot_overrides() -> serde_json::Map<String, serde_json::Value> {
     overrides
 }
 
-fn process_pipe_message(line: &str, hwnd: isize, writer: &mut std::fs::File) {
+fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
     use std::io::Write;
 
     let msg_type = json_get_str(line, "type");

@@ -1711,3 +1711,16 @@ modeler Up error 需真机笔/翻页连击复验。
 - `glaspen-ipc` 增加 JSON Value <-> protobuf Value/Struct 转换与 `panel_frame`;
   5 个单测全过(帧 roundtrip/partial/超大/ack/panel struct)。
 - 下一步: pipe.rs/Dart bridge 改用 `take_frame` + `panel_frame`; 旧 JSON 行协议保留回滚。
+
+
+## R286 protobuf: Windows 管道服务端双协议
+
+- 新增 `glaspen-ipc::panel_wire`:
+  - `GPB1` 魔数 + length-delimited `Frame` 检测;
+  - 旧 JSON 行协议原样保留;
+  - PB 请求 → 现有 JSON handler; JSON 响应 → Panel PB 帧;
+  - 广播帧按每个连接的协议分别编码;
+  - 4 个 panel_wire 单测(JSON 兼容/魔数 partial/PB 响应 roundtrip/版本拒绝)。
+- `pipe.rs`: 连接建立后先探测协议再注册回推 writer; `PanelOut` 负责写端转换;
+  旧 JSON 面板行为不变。
+- 剩余: Dart 客户端生成 protobuf、发 `GPB1` 并解析 binary; 然后切缩略图 bytes。

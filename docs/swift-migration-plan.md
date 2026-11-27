@@ -859,3 +859,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-27 | Rust-R283 | macOS 实时绘制改 typed DrawPlan(去 JSON 往返); 旧 JSON FFI 保留兼容 | 本提交 |
 | 2026-11-27 | Rust-R284 | 新增 protobuf IPC 契约/帧编解码(第一阶段, 未切客户端); docs/protobuf-ipc.md | 本提交 |
 | 2026-11-27 | Rust-R285 | protobuf Panel 过渡信封 + Struct 转换; Windows 管道下一步接线 | 本提交 |
+| 2026-11-27 | Rust-R286 | Windows 管道双协议(JSON 兼容 + GPB1/Frame); panel_wire 4 单测; Dart 客户端待切 | 本提交 |

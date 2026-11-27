@@ -34,10 +34,13 @@
 
 ### P1 Windows 命名管道
 
-- 覆盖层与 Flutter 面板改为二进制帧;
-- 请求/响应消息按 `Frame.body` 分型(逐步从 settings 扩展到 page/thumbnail/bubble/export);
-- Dart 侧生成 protobuf 代码; 大图/缩略图直接放 `bytes`, 不再 base64;
-- 双栈期: 旧 JSON 行协议只保留一个版本用于回滚。
+- ✅ 服务端已支持双协议: 旧客户端继续 JSON 行, 新客户端先发 `GPB1` 魔数,
+  之后是 `u32 LE 长度 + Frame`; 响应按连接协议自动编码;
+- ✅ `PanelOut` 把现有业务 handler 的 JSON 响应行转成 Panel protobuf 帧;
+  广播 `onSettingsChanged` 也按每个连接的协议分别编码;
+- ⏳ Dart 侧: 生成 protobuf 代码并发送 `GPB1`/protobuf 请求, 大图/缩略图直接
+  放 `bytes`, 不再 base64;
+- 双栈期: 旧 JSON 行协议继续保留用于回滚。
 
 ### P2 Dart <-> Rust FRB
 

@@ -10,6 +10,8 @@
 
 use prost::Message;
 
+pub mod panel_wire;
+
 pub mod proto {
     include!(concat!(env!("OUT_DIR"), "/glaspen.ipc.v1.rs"));
 }
@@ -180,7 +182,7 @@ pub fn panel_frame(request_id: u64, kind: &str, data: &serde_json::Value) -> Fra
         request_id,
         body: Some(proto::frame::Body::Panel(Panel {
             kind: kind.to_string(),
-            data: Some(json_to_prost_struct(data)),
+            data: Some(json_to_prost_value(data)),
             ok: true,
         })),
     }
@@ -274,7 +276,7 @@ mod tests {
             panic!("expected panel frame");
         };
         assert_eq!(panel.kind, "getPageThumbnails");
-        let back = prost_struct_to_json(panel.data.as_ref().unwrap());
+        let back = prost_value_to_json(panel.data.as_ref().unwrap());
         assert_eq!(back, value);
     }
 

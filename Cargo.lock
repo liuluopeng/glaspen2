@@ -1383,6 +1383,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "glaspen-core",
+ "glaspen-ipc",
  "image",
  "libloading",
  "serde_json",
