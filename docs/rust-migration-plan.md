@@ -1647,3 +1647,16 @@ modeler Up error 需真机笔/翻页连击复验。
   重绘时又被无条件画回来。
 - 修复: `glaspen2_rust_minimap_draw` 入口先检查 `glaspen2_router_minimap_enabled()==0` 直接返回。
 - 验证: DB `minimap=0` 时不再绘制; tests/smoke/parity 全绿。
+
+
+## R281 修复: 点击菜单栏崩溃(SIGTRAP)
+
+- 现场: 点击菜单栏后 just run 被 signal 5 终止; crash report 的 faulting thread
+  在 Swift `EventRouter.route(type:event:) +868`, 指令是 `brk #0x1`。
+- 根因: 点击菜单栏/主线程繁忙会让系统向 event tap 发送
+  `.tapDisabledByTimeout` / `.tapDisabledByUserInput`(rawValue 0xFFFFFFFE/0xFFFFFFFF)。
+  `route` 先执行 `Int32(kind)`; UInt32 超过 Int32.max 时 Swift 溢出 trap。
+- 修复: `EventRouter.route` 首先识别两种 tap-disabled 事件: 调
+  `glaspen2_router_reenable_tap()` 重启用并放行, 不再做 Int32 转换;
+  另加 `kind <= UInt32(Int32.max)` 兜底。
+- 验证: cargo build; 启动后点击菜单栏状态区进程保持存活; tests/smoke/parity 全绿。

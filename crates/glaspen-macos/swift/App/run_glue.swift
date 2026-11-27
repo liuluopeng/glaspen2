@@ -394,12 +394,20 @@ import AppKit
     /// 0 = fallback(ObjC), 1 = pass(return event), 2 = consume(return NULL)
     @objc(routeEventOfType:event:)
     public static func route(type: CGEventType, event: CGEvent) -> Int32 {
+        // tapDisabledByTimeout/UserInput 的 rawValue 是 0xFFFFFFFE/0xFFFFFFFF;
+        // 下面 Int32(kind) 会因溢出触发 Swift trap。点击菜单栏等导致 tap
+        // 被系统停用时, 回调正是这种事件 —— 先重启用 tap 并放行, 不进入路由。
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            glaspen2_router_reenable_tap()
+            return 1
+        }
         if type == .tabletProximity {
             routeProximity(event)
             return 1
         }
         var e = GlaspenEventC()
         let kind = type.rawValue
+        guard kind <= UInt32(Int32.max) else { return 1 }
         e.kind = Int32(kind)
         if kind == 10 || kind == 11 {
             if let ev = NSEvent(cgEvent: event) {
