@@ -15,6 +15,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart' as frb;
 
+import 'src/proto/panel_wire.dart';
 import 'src/rust/api.dart' as rust;
 import 'src/rust/frb_generated.dart';
 

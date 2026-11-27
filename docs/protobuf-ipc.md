@@ -32,15 +32,14 @@
 
 ## 后续阶段
 
-### P1 Windows 命名管道
+### P1 Windows 命名管道(已完成, 无 JSON 兼容期)
 
-- ✅ 服务端已支持双协议: 旧客户端继续 JSON 行, 新客户端先发 `GPB1` 魔数,
-  之后是 `u32 LE 长度 + Frame`; 响应按连接协议自动编码;
-- ✅ `PanelOut` 把现有业务 handler 的 JSON 响应行转成 Panel protobuf 帧;
-  广播 `onSettingsChanged` 也按每个连接的协议分别编码;
-- ⏳ Dart 侧: 生成 protobuf 代码并发送 `GPB1`/protobuf 请求, 大图/缩略图直接
-  放 `bytes`, 不再 base64;
-- 双栈期: 旧 JSON 行协议继续保留用于回滚。
+- ✅ 服务端只接受 `GPB1` 魔数 + `u32 LE 长度 + Frame`; JSON 行协议已删除;
+- ✅ `PanelOut` 把现有业务 handler 的响应转成 Panel protobuf 帧;
+- ✅ Dart `_NamedPipeBridge` 已生成 protobuf 模型, 连接后先发 `GPB1`,
+  请求/响应/广播全部走 length-delimited Frame;
+- ✅ Flutter `protobuf`/`fixnum` 依赖和 `lib/src/proto/` 生成文件已入库;
+- 待真机验证: Windows 面板连接、getSettings/onSettingsChanged、缩略图搬运。
 
 ### P2 Dart <-> Rust FRB
 

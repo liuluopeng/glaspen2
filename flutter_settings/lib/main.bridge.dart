@@ -503,7 +503,7 @@ typedef _PeekNamedPipeDart = int Function(
 /// Uses ReadFile/WriteFile directly for I/O.
 class _NamedPipeBridge extends SettingsBridge {
   int _handle = -1; // Windows HANDLE
-  final _buffer = <int>[];
+  final _decoder = PanelStreamDecoder();
   void Function(Map<dynamic, dynamic>)? _onChanged;
   Completer<Map<dynamic, dynamic>>? _settingsCompleter;
   /// 并发请求表:reqId -> completer(缩略图等多请求并发)
@@ -560,6 +560,7 @@ class _NamedPipeBridge extends SettingsBridge {
       _handle = h;
       _connected = true;
       debugPrint('[Settings] Connected to pipe $_pipeName (handle=$_handle)');
+      _writeBytes(Uint8List.fromList(panelMagic));
       _startReading();
       // 连接成功后重新拉取设置(启动时 initState 的 getSettings 会因未连接返回空)
       onConnected?.call();
@@ -580,22 +581,18 @@ class _NamedPipeBridge extends SettingsBridge {
   void _tryRead() {
     if (!_connected || _handle == -1) return;
 
-    // Use PeekNamedPipe to check available bytes (non-blocking)
     final totalAvail = calloc<Uint32>();
     final ok = _peekNamedPipe(_handle, nullptr, 0, nullptr, totalAvail, nullptr);
     final avail = totalAvail.value;
     calloc.free(totalAvail);
 
     if (ok == 0) {
-      // Pipe broken
       _connected = false;
       _reconnectTimer = Timer(const Duration(seconds: 2), _connect);
       return;
     }
+    if (avail == 0) return;
 
-    if (avail == 0) return; // No data yet
-
-    // Read available data
     final toRead = avail > 65536 ? 65536 : avail;
     final buf = calloc<Uint8>(toRead);
     final bytesRead = calloc<Uint32>();
@@ -604,82 +601,55 @@ class _NamedPipeBridge extends SettingsBridge {
     calloc.free(bytesRead);
 
     if (success != 0 && count > 0) {
+      final chunk = Uint8List(count);
       for (int i = 0; i < count; i++) {
-        final byte = buf[i];
-        if (byte == 10) {
-          if (_buffer.isNotEmpty) {
-            final line = utf8.decode(_buffer);
-            _buffer.clear();
-            _handleMessage(line);
-          }
-        } else {
-          _buffer.add(byte);
+        chunk[i] = buf[i];
+      }
+      try {
+        for (final msg in _decoder.feed(chunk)) {
+          _handlePanelMessage(msg);
         }
+      } catch (e) {
+        debugPrint('[Settings] protobuf decode error: $e');
+        _connected = false;
+        _reconnectTimer = Timer(const Duration(seconds: 2), _connect);
       }
     }
-
     calloc.free(buf);
-
-    // 兜底: 服务端某帧若漏了换行符(历史 bug: 气泡/NAS 备份响应), 按行分帧
-    // 会永远等不到换行符, 请求 completer 只能超时 —— 表现是"一直转圈"。
-    // 这里在缓冲区恰好是一整个合法 JSON 对象时直接派发, 不再依赖换行。
-    if (_buffer.isNotEmpty) {
-      final line = utf8.decode(_buffer, allowMalformed: true);
-      if (line.startsWith('{') && line.endsWith('}')) {
-        try {
-          final decoded = jsonDecode(line);
-          if (decoded is Map) {
-            _buffer.clear();
-            _handleMessage(line);
-          }
-        } catch (_) {
-          // 半帧(还没收全)继续等下一个 chunk
-        }
-      }
-    }
   }
 
-
-  void _handleMessage(String line) {
-    try {
-      final msg = jsonDecode(line) as Map<String, dynamic>;
-      final type = msg['type'] as String?;
-      if (type == 'onSettingsChanged' && _onChanged != null) {
-        _onChanged!(msg['data'] as Map<dynamic, dynamic>);
-      } else if (type == 'downloadUpdate_frame') {
-        // 自动更新进度帧 → 下载流;done 帧后关流
-        final id = (msg['reqId'] as num?)?.toInt() ?? 0;
-        final ctl = _downloadCtl;
-        if (ctl != null && id == _downloadReqId && !ctl.isClosed) {
-          final d = msg['data'];
-          ctl.add(d is Map<dynamic, dynamic> ? d : const {});
-          if (d is Map<dynamic, dynamic> && d['done'] == true) {
-            ctl.close();
-            _downloadCtl = null;
-            _downloadReqId = null;
-          }
-        }
-      } else if (type == 'getSettings_response' && _settingsCompleter != null) {
-        _settingsCompleter!.complete(msg['data'] as Map<dynamic, dynamic>);
-        _settingsCompleter = null;
-      } else if (type != null && type.endsWith('_response')) {
-        // 并发请求按 reqId 匹配 completer
-        final id = (msg['reqId'] as num?)?.toInt() ?? 0;
-        final c = _pendingReqs.remove(id);
-        if (c != null) {
-          final d = msg['data'];
-          if (d is Map<dynamic, dynamic>) {
-            c.complete(d);
-          } else if (d is List<dynamic>) {
-            c.complete({'data': d});
-          } else {
-            c.complete({});
-          }
-        } else {
+  void _handlePanelMessage(PanelMessage msg) {
+    final kind = msg.kind;
+    final data = msg.data;
+    if (kind == 'onSettingsChanged' && _onChanged != null && data is Map) {
+      _onChanged!(Map<dynamic, dynamic>.from(data));
+    } else if (kind == 'downloadUpdate_frame') {
+      final id = msg.requestId;
+      final ctl = _downloadCtl;
+      if (ctl != null && id == _downloadReqId && !ctl.isClosed) {
+        ctl.add(data is Map<dynamic, dynamic> ? data : const {});
+        if (data is Map<dynamic, dynamic> && data['done'] == true) {
+          ctl.close();
+          _downloadCtl = null;
+          _downloadReqId = null;
         }
       }
-    } catch (e) {
-      debugPrint('[Settings] Parse error: $e');
+    } else if (kind == 'getSettings_response' && _settingsCompleter != null) {
+      _settingsCompleter!.complete(
+        data is Map ? Map<dynamic, dynamic>.from(data) : <dynamic, dynamic>{},
+      );
+      _settingsCompleter = null;
+    } else if (kind.endsWith('_response')) {
+      final c = _pendingReqs.remove(msg.requestId);
+      if (c != null) {
+        if (data is Map) {
+          c.complete(Map<dynamic, dynamic>.from(data));
+        } else if (data is List) {
+          c.complete({'data': data});
+        } else {
+          c.complete({'data': data});
+        }
+      }
     }
   }
 
@@ -691,8 +661,7 @@ class _NamedPipeBridge extends SettingsBridge {
     final id = ++_reqSeq;
     final c = Completer<Map<dynamic, dynamic>>();
     _pendingReqs[id] = c;
-    final msg = <String, dynamic>{'type': type, 'reqId': id, ...?params};
-    _writeData('${jsonEncode(msg)}\n');
+    _writeRequest(id, type, params);
     try {
       final r = await c.future.timeout(
         const Duration(seconds: 15),
@@ -886,7 +855,7 @@ class _NamedPipeBridge extends SettingsBridge {
   @override
   Future<void> openUrl(String url) async {
     if (!_connected) return;
-    _writeData('${jsonEncode({'type': 'openUrl', 'url': url})}\n');
+    _send('openUrl', {'url': url});
   }
 
   // 自动更新:进度帧经 downloadUpdate_frame 推送;取消订阅 = 发
@@ -897,14 +866,14 @@ class _NamedPipeBridge extends SettingsBridge {
   @override
   Stream<Map<dynamic, dynamic>> downloadUpdate() {
     final ctl = StreamController<Map<dynamic, dynamic>>(onCancel: () {
-      _writeData('${jsonEncode({'type': 'cancelDownload'})}\n');
+      _send('cancelDownload', null);
       _downloadCtl = null;
       _downloadReqId = null;
     });
     _downloadCtl = ctl;
     final id = ++_reqSeq;
     _downloadReqId = id;
-    _writeData('${jsonEncode({'type': 'downloadUpdate', 'reqId': id})}\n');
+    _send('downloadUpdate', null, requestId: id);
     return ctl.stream;
   }
 
@@ -924,13 +893,13 @@ class _NamedPipeBridge extends SettingsBridge {
   @override
   Future<void> navigateToPage(int screenId) async {
     if (!_connected) return;
-    _writeData('${jsonEncode({'type': 'navigateToPage', 'screenId': screenId})}\n');
+    _send('navigateToPage', {'screenId': screenId});
   }
 
   @override
   Future<void> triggerHotkey(String key) async {
     if (!_connected) return;
-    _writeData('${jsonEncode({'type': 'hotkey', 'key': key})}\n');
+    _send('hotkey', {'key': key});
   }
 
   @override
@@ -960,9 +929,8 @@ class _NamedPipeBridge extends SettingsBridge {
   @override
   Future<Map<dynamic, dynamic>> canvasNew() async => _request('canvasNew', null);
 
-  bool _writeData(String data) {
+  bool _writeBytes(List<int> bytes) {
     if (!_connected || _handle == -1) return false;
-    final bytes = utf8.encode(data);
     final buf = calloc<Uint8>(bytes.length);
     for (int i = 0; i < bytes.length; i++) {
       buf[i] = bytes[i];
@@ -974,12 +942,20 @@ class _NamedPipeBridge extends SettingsBridge {
     return success != 0;
   }
 
+  bool _writeRequest(int id, String type, Map<String, dynamic>? params) {
+    return _writeBytes(encodeRequest(id, type, params));
+  }
+
+  bool _send(String type, Map<String, dynamic>? params, {int? requestId}) {
+    return _writeRequest(requestId ?? ++_reqSeq, type, params);
+  }
+
   @override
   Future<Map<dynamic, dynamic>> getSettings() async {
     if (!_connected) return {};
     try {
       _settingsCompleter = Completer<Map<dynamic, dynamic>>();
-      _writeData('${jsonEncode({'type': 'getSettings'})}\n');
+      _send('getSettings', null);
       final r = await _settingsCompleter!.future.timeout(
         const Duration(seconds: 3),
         onTimeout: () {
@@ -1012,7 +988,7 @@ class _NamedPipeBridge extends SettingsBridge {
   Future<void> setSetting(String key, dynamic value) async {
     if (!_connected) return;
     try {
-      _writeData('${jsonEncode({'type': 'setSetting', 'key': key, 'value': value})}\n');
+      _send('setSetting', {'key': key, 'value': value});
     } catch (e) {
       debugPrint('[Settings] setSetting error: $e');
     }

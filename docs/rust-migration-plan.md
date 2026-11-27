@@ -1724,3 +1724,14 @@ modeler Up error 需真机笔/翻页连击复验。
 - `pipe.rs`: 连接建立后先探测协议再注册回推 writer; `PanelOut` 负责写端转换;
   旧 JSON 面板行为不变。
 - 剩余: Dart 客户端生成 protobuf、发 `GPB1` 并解析 binary; 然后切缩略图 bytes。
+
+
+## R287 protobuf: Windows 面板端到端切 PB(移除 JSON 兼容)
+
+- 按新目标去掉兼容期: 服务端 `PanelDecoder` 只接受 `GPB1` + Frame, 不再解析 JSON 行;
+  `PanelOut` 只写 Panel protobuf; `PANEL_WRITERS` 不再保存协议类型。
+- Dart: 新增 `protobuf`/`fixnum` 依赖与 `lib/src/proto/` 生成模型;
+  `lib/src/proto/panel_wire.dart` 负责 Struct 转换与 length-delimited 帧;
+  `_NamedPipeBridge` 连接后发 `GPB1`, 请求/响应/广播均走 PB; 删除 JSON 行缓冲/解析。
+- 验证: `cargo test -p glaspen-ipc` 9 passed; `fvm flutter analyze` 0 issues;
+  `cargo build` 通过; Windows 真机/面板连接待测。

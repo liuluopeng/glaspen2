@@ -75,6 +75,6 @@ message Error {
 // 后续按消息逐步改成 typed 子消息, 这个 message 作为兼容入口保留。
 message Panel {
   string kind = 1;
-  google.protobuf.Struct data = 2;
+  google.protobuf.Value data = 2;
   bool ok = 3;
 }
