@@ -1489,3 +1489,15 @@ modeler Up error 需真机笔/翻页连击复验。
 - 修复: 按 CGEventType 正确映射 down=1/3/25, drag=6/7/27, up=2/4/26; mouseMoved=5 不再当抬笔;
 - 同步修正压感窗事件名/系统光标/自动显示/route_event 的 up 判断, 并让 Swift pointerKind 覆盖 otherMouse 25..27;
 - 虚拟笔实测: 2 down / 2 up(修复前每个悬浮 move 都会抬笔); 新增 CGEventType 映射回归测试.
+
+
+## R268 修复: 飘渺悬浮闪烁/无限画布抓手/方向
+
+1. 飘渺模式笔迹闪烁:
+   - 笔在数位板感应范围内时, 驱动会发大量 mouseMoved; 这些事件被当成鼠标, 进入 ethereal 的 `auto_hide`, 与 pen 事件的 `auto_show` 交替, 旧笔迹反复消失/重现;
+   - 修复: 感应范围内/virtual pen 的 hover 事件按笔事件路由; 刚有笔事件 800ms 内 mouseMoved 不 auto_hide; 实测 ethereal+虚拟笔 auto_show 从约 70 次降为 1 次.
+2. 无限画布拖动方向:
+   - macOS 拖动/键盘方向改为与 Windows 2026-11 后一致的直觉语义(鼠标右拖 → 镜头右移/内容左移; 按左 → 内容左移);
+3. 无限画布抓手:
+   - R167 路由只转发 leftMouseDown/Up, 漏了 leftMouseDragged(6), 导致快捷键+左键拖动只有按下/抬起没有拖动;
+   - 修复 route_event 的 camera 分支, 只认 1/6/2, 并增加 camera_mouse_dir 回归测试.

@@ -4429,10 +4429,10 @@ pub extern "C" fn glaspen2_rust_perform_action(action: *const std::os::raw::c_ch
         let step = unsafe { glaspen2_camera_keyboard_pan_step(glaspen2_router_zoom()) };
         let (mut dx, mut dy) = (0.0, 0.0);
         match kind {
-            "CameraPanLeft" => dx = step,
-            "CameraPanRight" => dx = -step,
-            "CameraPanUp" => dy = step,
-            "CameraPanDown" => dy = -step,
+            "CameraPanLeft" => dx = -step,
+            "CameraPanRight" => dx = step,
+            "CameraPanUp" => dy = -step,
+            "CameraPanDown" => dy = step,
             _ => {}
         }
         glaspen2_rust_camera_pan(dx, dy);
@@ -5546,9 +5546,11 @@ pub extern "C" fn glaspen2_rust_camera_mouse(kind: i32, x: f64, y: f64, mods: u6
             if (st & 4) != 0 && (st & 1) != 0 && (st & 2) == 0 {
                 let z = unsafe { glaspen2_router_camera_step_zoom() };
                 unsafe {
+                    // 方向与 Windows 2026-11 后的直觉一致: 鼠标右拖 → 镜头右移,
+                    // 画面内容左移(canvas pan 内部 pan -= d)。
                     glaspen2_router_camera_queue_pan(
-                        (x - glaspen2_router_camera_last_x()) / z,
-                        (glaspen2_router_camera_last_y() - y) / z,
+                        (glaspen2_router_camera_last_x() - x) / z,
+                        (y - glaspen2_router_camera_last_y()) / z,
                     );
                     glaspen2_router_camera_set_last(x, y);
                 }
@@ -6608,8 +6610,20 @@ pub extern "C" fn glaspen2_rust_route_menu_bar_click(y: f64) -> i32 {
     }
 }
 
+static LAST_PEN_ROUTE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn pen_route_recent() -> bool {
+    let last = LAST_PEN_ROUTE_MS.load(std::sync::atomic::Ordering::Relaxed);
+    last != 0 && now_ms().saturating_sub(last) < 800
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_route_mouse_moved() {
+    // 笔悬浮时驱动会把部分移动报成 mouseMoved; 刚有笔事件的 800ms 内
+    // 不因鼠标移动隐藏笔迹, 避免 ethereal 下 auto_hide/auto_show 抖动。
+    if pen_route_recent() || unsafe { glaspen2_rust_pen_tablet_proximity() != 0 } {
+        return;
+    }
     let flags = unsafe { glaspen2_router_cursor_flags() };
     if (flags & 1) != 0 && (flags & 2) == 0 {
         unsafe {
@@ -6690,6 +6704,7 @@ pub extern "C" fn glaspen2_rust_route_pen(
     raw_field: i64,
     is_eraser: i32,
 ) -> i32 {
+    LAST_PEN_ROUTE_MS.store(now_ms(), std::sync::atomic::Ordering::Relaxed);
     if unsafe { glaspen2_router_strokes_hidden() } != 0 && pen_kind_down_or_drag(kind) {
         unsafe { glaspen2_router_pen_auto_show() };
     }
@@ -7459,6 +7474,17 @@ pub struct GlaspenEventC {
 
 unsafe extern "C" {}
 
+/// 镜头抓手只认左键 down/drag/up: CGEventType 1/6/2。
+#[inline]
+fn camera_mouse_dir(kind: i32) -> Option<i32> {
+    match kind {
+        1 => Some(0),
+        6 => Some(1),
+        2 => Some(2),
+        _ => None,
+    }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_route_event(ev: *const GlaspenEventC) -> i32 {
     if ev.is_null() {
@@ -7489,17 +7515,11 @@ pub extern "C" fn glaspen2_rust_route_event(ev: *const GlaspenEventC) -> i32 {
         );
     }
     // 相机临时抓手(非笔左键 down/drag/up)。
-    if ev.is_pen == 0 && matches!(kind, 1 | 2 | 3) {
-        let dir = if kind == 1 {
-            0
-        } else if kind == 3 {
-            1
-        } else {
-            2
-        };
-        if glaspen2_rust_camera_mouse(dir, ev.x, ev.y, ev.flags as u64) != 0 {
-            return 2;
-        }
+    if ev.is_pen == 0
+        && let Some(dir) = camera_mouse_dir(kind)
+        && glaspen2_rust_camera_mouse(dir, ev.x, ev.y, ev.flags as u64) != 0
+    {
+        return 2;
     }
     if kind == 1 && ev.is_pen == 0 && glaspen2_rust_route_menu_bar_click(ev.screen_y) != 0 {
         return 1;
@@ -11872,5 +11892,16 @@ mod pen_kind_regression_tests {
         }
         assert!(!super::pen_kind_up(5), "mouseMoved 不是抬笔");
         assert!(!super::pen_kind_down(4), "rightMouseUp 不是落笔");
+    }
+}
+
+#[cfg(test)]
+mod camera_route_regression_tests {
+    #[test]
+    fn camera_mouse_routes_left_down_drag_up() {
+        assert_eq!(super::camera_mouse_dir(1), Some(0));
+        assert_eq!(super::camera_mouse_dir(6), Some(1));
+        assert_eq!(super::camera_mouse_dir(2), Some(2));
+        assert_eq!(super::camera_mouse_dir(3), None); // 右键不是抓手
     }
 }

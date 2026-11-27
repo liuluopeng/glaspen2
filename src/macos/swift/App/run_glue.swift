@@ -412,6 +412,14 @@ import AppKit
             return glaspen2_rust_route_event(&e)
         }
         let pointerKind = (1...9).contains(kind) || kind == 23 || (25...27).contains(kind)
+        if pointerKind {
+            // 即使 NSEvent(cgEvent:) 取不到, 虚拟笔/感应范围内的悬浮移动也必须
+            // 按笔事件路由, 不能落到 mouseMoved 的 ethereal auto_hide 分支。
+            if EventRouter.isVirtualPenEvent(event)
+                || (kind == 5 && glaspen2_rust_pen_tablet_proximity() != 0) {
+                e.is_pen = 1
+            }
+        }
         if let ev = NSEvent(cgEvent: event) {
             let relevant: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
             let raw = ev.modifierFlags.intersection(relevant).rawValue
@@ -423,7 +431,14 @@ import AppKit
             e.pen_y = glaspen2_router_draw_height() - e.y
             e.screen_y = event.location.y
             if pointerKind {
-                e.is_pen = isPen(ev) ? 1 : 0
+                // 笔在数位板感应范围内时, 驱动会把悬浮移动报成 mouseMoved;
+                // 这类事件必须按笔处理, 否则 ethereal 的 mouseMoved 分支会
+                // auto_hide, 与 pen_auto_show 交替造成老笔迹闪烁。
+                if e.is_pen == 0 {
+                    let hoverWithPenInRange = kind == 5 && glaspen2_rust_pen_tablet_proximity() != 0
+                    let virtualPen = EventRouter.isVirtualPenEvent(event)
+                    e.is_pen = (isPen(ev) || hoverWithPenInRange || virtualPen) ? 1 : 0
+                }
                 e.raw_field = event.getIntegerValueField(.tabletEventPointPressure)
                 e.pressure = Double(ev.pressure)
                 e.timestamp = ev.timestamp
