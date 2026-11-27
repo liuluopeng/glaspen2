@@ -6093,6 +6093,9 @@ pub extern "C" fn glaspen2_rust_shortcut_actions_json() -> *const std::os::raw::
 
 unsafe extern "C" {}
 
+static FULL_REDRAW_PENDING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_overlay_flush() {
     use objc2_app_kit::NSView;
@@ -6104,6 +6107,7 @@ pub extern "C" fn glaspen2_rust_overlay_flush() {
         return;
     }
     let view = unsafe { &*(p as *const NSView) };
+    FULL_REDRAW_PENDING.store(false, std::sync::atomic::Ordering::SeqCst);
     glaspen2_rust_dirty_reset();
     view.setNeedsDisplay(true);
 }
@@ -6120,6 +6124,14 @@ pub extern "C" fn glaspen2_rust_overlay_flush_dirty() {
         return;
     }
     let view = unsafe { &*(p as *const NSView) };
+    // 可见性切换(ethereal auto_show / mode toggle)只标了 full redraw; 如果紧接着
+    // 的落笔 flush 只设 dirty rect, AppKit 会把旧笔迹所在区域留在已清空的
+    // backing store 里, 表现为已有笔迹逐渐从无到有。全量刷新优先。
+    if FULL_REDRAW_PENDING.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        glaspen2_rust_dirty_reset();
+        view.setNeedsDisplay(true);
+        return;
+    }
     if glaspen2_rust_dirty_has() == 0 {
         view.setNeedsDisplay(true);
         return;
@@ -6656,6 +6668,17 @@ pub extern "C" fn glaspen2_rust_route_mouse_up() {
 
 // ── R124: 键盘事件顶层路由(录制热键 + chord) ──
 
+/// 真笔的 NSEvent.pressure 常为 0, 压力在 CGEvent 的 16-bit
+/// tabletEventPointPressure(raw_field) 里; 监视器与笔迹宽度必须同源。
+#[inline]
+fn normalized_tablet_pressure(pressure: f64, raw_field: i64) -> f64 {
+    if raw_field > 0 {
+        (raw_field as f64 / 65535.0).clamp(0.0, 1.0)
+    } else {
+        pressure
+    }
+}
+
 /// 普通 chord 只在 keyDown 分派; keyUp 不能再执行一次。
 #[inline]
 fn chord_dispatch_is_keydown(kind: i32) -> bool {
@@ -6708,9 +6731,21 @@ pub extern "C" fn glaspen2_rust_route_pen(
     if unsafe { glaspen2_router_strokes_hidden() } != 0 && pen_kind_down_or_drag(kind) {
         unsafe { glaspen2_router_pen_auto_show() };
     }
-    let _ = glaspen2_rust_update_pressure_monitor(kind, raw_field, x, y, pressure);
-    let raw_width = unsafe { glaspen2_router_raw_width(pressure) };
-    glaspen2_rust_handle_pen_event(kind, x, y, pressure, timestamp, raw_width, is_eraser)
+    // 真实数位笔的 NSEvent.pressure 常为 0, 压力在 CGEvent 的 16-bit
+    // tabletEventPointPressure(raw_field) 里; 监视器一直用 raw_field, 但
+    // 笔迹宽度之前只用 pressure, 导致真笔没有粗细变化。
+    let effective_pressure = normalized_tablet_pressure(pressure, raw_field);
+    let _ = glaspen2_rust_update_pressure_monitor(kind, raw_field, x, y, effective_pressure);
+    let raw_width = unsafe { glaspen2_router_raw_width(effective_pressure) };
+    glaspen2_rust_handle_pen_event(
+        kind,
+        x,
+        y,
+        effective_pressure,
+        timestamp,
+        raw_width,
+        is_eraser,
+    )
 }
 
 // ── R143: 显示器几何变更应用(反色失效/建页/重载/窗口尺寸/重建) ──
@@ -10865,6 +10900,7 @@ fn redraw_draw_view_now() {
     if view.is_null() {
         return;
     }
+    FULL_REDRAW_PENDING.store(true, std::sync::atomic::Ordering::SeqCst);
     unsafe {
         let _: () = objc2::msg_send![view as *mut objc2::runtime::AnyObject, setNeedsDisplay: true];
     }
@@ -11903,5 +11939,15 @@ mod camera_route_regression_tests {
         assert_eq!(super::camera_mouse_dir(6), Some(1));
         assert_eq!(super::camera_mouse_dir(2), Some(2));
         assert_eq!(super::camera_mouse_dir(3), None); // 右键不是抓手
+    }
+}
+
+#[cfg(test)]
+mod pressure_source_tests {
+    #[test]
+    fn tablet_raw_field_wins_over_zero_nsevent_pressure() {
+        assert!((super::normalized_tablet_pressure(0.0, 65535) - 1.0).abs() < 1e-9);
+        assert!((super::normalized_tablet_pressure(0.0, 32768) - 0.50001).abs() < 1e-3);
+        assert!((super::normalized_tablet_pressure(0.25, 0) - 0.25).abs() < 1e-9);
     }
 }

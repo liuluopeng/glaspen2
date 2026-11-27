@@ -1513,3 +1513,13 @@ modeler Up error 需真机笔/翻页连击复验。
 - 根 build.rs 路径改到 `crates/glaspen-macos/swift`; core 契约测试 include_str/扫描路径同步;
 - macOS target 依赖从根移到 crate; 根保留 libc(FRB 用);
 - 验证: cargo build / cargo test --workspace --exclude glaspen2_installer / smoke debug / parity 全绿; menu probe/冷启动正常.
+
+
+## R270 修复: 飘渺旧笔迹闪烁 + 真笔压感来源
+
+1. 飘渺切换后旧笔迹闪烁(录屏复现):
+   - ethereal hide 时 draw view 已按空内容全量重绘, backing store 里旧笔迹被清空;
+   - 下一次 pen down 的 auto_show 标了 full redraw, 但紧接着 raw dot 的 dirty flush 又只设小脏矩形, AppKit 只重画该区域; 新笔迹可见而旧笔迹要等下一次 full redraw(约 2-4s 后)才回来;
+   - 修复: `FULL_REDRAW_PENDING` 标记, 可见性/模式切换后的第一次 dirty flush 强制全量 setNeedsDisplay, 不再被局部脏矩形覆盖.
+2. 真笔压感: 用户日志 `pen DOWN p=0.00`, 但 pressure monitor 有压力值;
+   - 修复: 笔事件统一用 `raw_field/65535` (CGEvent tabletEventPointPressure) 作为有效压力, raw_field=0 时回退 NSEvent.pressure; 模型器/raw width/监视器同源; 新增单测.
