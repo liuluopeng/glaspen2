@@ -1677,3 +1677,15 @@ modeler Up error 需真机笔/翻页连击复验。
 - 验证: core platform_menu 3 个单测; macOS cargo build/tests/smoke/parity 全绿;
   Windows 侧 tray.rs 用 windows-only 独立 target harness `cargo check --target
   x86_64-pc-windows-msvc` 编译验证(完整 glaspen-windows 交叉检查受 ring C 编译器限制)。
+
+
+## R283 优化: macOS 实时绘制计划去掉 JSON 往返
+
+- core 新增 typed `MacosLiveInput` / `MacosLivePlan` / `build_macos_live_plan`;
+  macOS shell 直接构造输入并消费 `DrawPlan`, 不再 `serde_json` 序列化输入、也不经
+  C ABI 把 JSON 计划解析回来(每段笔迹原先两次 JSON encode + 两次 decode)。
+- typed 光栅器覆盖 shadow/outline/fill/erase、反色 pattern、dash、接缝重画、脏区;
+  颜色仍走 `quantize_raw_rgb` 与重建层一致。
+- 旧 `glaspen2_live_plan_json` / `glaspen2_rust_draw_live_plan` 保留为 C ABI/测试
+  兼容壳, 运行路径不再使用。
+- 验证: cargo build; core live_plan 测试全过; workspace test、smoke、parity 绿。

@@ -4128,61 +4128,70 @@ unsafe extern "C" {
 
 fn live_plan_run(
     cr: *mut c_void,
-    input: &serde_json::Value,
+    input: glaspen_core::export::MacosLiveInput,
     inv: f64,
     dot: bool,
     fallback: &[(f64, f64, f64)],
 ) -> bool {
-    let text = serde_json::to_string(input).unwrap_or_default();
-    let Ok(cinput) = std::ffi::CString::new(text) else {
-        return false;
+    let live = match glaspen_core::export::build_macos_live_plan(input) {
+        Ok(live) => live,
+        Err(err) => {
+            tracing::debug!("[live-plan] typed plan rejected: {err}");
+            return false;
+        }
     };
-    let out = unsafe { glaspen2_live_plan_json(cinput.as_ptr()) };
-    if out.is_null() {
+    if let Err(err) = draw_typed_live_plan(cr, &live.plan, inv) {
+        tracing::debug!("[live-plan] typed raster failed: {err}");
         return false;
     }
-    let s = unsafe { std::ffi::CStr::from_ptr(out) }
-        .to_string_lossy()
-        .into_owned();
-    unsafe { glaspen2_free_c_string(out) };
-    let f1 = fallback.first().copied().unwrap_or((0.0, 0.0, 0.0));
-    let f2 = fallback.get(1).copied().unwrap_or(f1);
-    let Ok(cplan) = std::ffi::CString::new(s) else {
-        return false;
-    };
-    glaspen2_rust_draw_live_plan(
-        cr,
-        cplan.as_ptr(),
-        inv,
-        i32::from(dot),
-        f1.0,
-        f1.1,
-        f1.2,
-        f2.0,
-        f2.1,
-        f2.2,
-        fallback.len() as i32,
-    ) != 0
+    if !dot && let Some(seam) = live.seam {
+        draw_typed_seam(cr, seam, inv);
+    }
+    let dirty = live.plan.dirty;
+    if dirty.is_finite() && !dirty.is_empty() {
+        let dx = dirty.x * inv;
+        let dy = dirty.y * inv;
+        let dw = dirty.w * inv;
+        let dh = dirty.h * inv;
+        glaspen2_rust_dirty_include_surface_rect(dx, dy, dw, dh);
+    } else if !fallback.is_empty() {
+        let f1 = fallback[0];
+        glaspen2_rust_dirty_include_surface_point(f1.0, f1.1, f1.2);
+        if fallback.len() > 1 {
+            let f2 = fallback[1];
+            glaspen2_rust_dirty_include_surface_point(f2.0, f2.1, f2.2);
+        }
+    }
+    true
 }
 
-fn live_plan_params(surface_w: i32, surface_h: i32, scale: f64, arc_len: f64) -> serde_json::Value {
+fn live_plan_params(
+    surface_w: i32,
+    surface_h: i32,
+    scale: f64,
+    arc_len: f64,
+) -> glaspen_core::export::MacosLiveInput {
     let shadow = unsafe { glaspen2_router_soft_shadow() != 0 };
     let outline = unsafe { glaspen2_router_outline_enabled() != 0 };
     let eraser = unsafe { glaspen2_router_eraser_mode() != 0 };
     warn_if_pen_color_changed_midstroke();
     let (r, g, b) = stroke_rgb();
-    serde_json::json!({
-        "viewport": [surface_w, surface_h],
-        "scale": scale,
-        "zoom": 1.0,
-        "pan": [0.0, 0.0],
-        "shadow": shadow,
-        "outline": outline,
-        "eraser": eraser,
-        "alpha": 1.0,
-        "arc_len_start": arc_len,
-        "color": [r, g, b],
-    })
+    glaspen_core::export::MacosLiveInput {
+        points: Vec::new(),
+        seam: None,
+        view: glaspen_core::draw_spec::ViewTransform::new(
+            glaspen_core::draw_spec::Vec2::new(0.0, 0.0),
+            1.0,
+            scale,
+        ),
+        viewport: glaspen_core::draw_spec::Rect::new(0.0, 0.0, surface_w as f64, surface_h as f64),
+        shadow,
+        outline,
+        eraser,
+        alpha: 1.0,
+        arc_len_start: arc_len,
+        color: glaspen_core::draw_spec::Color::new(r, g, b),
+    }
 }
 
 fn live_plan_dot(cr: *mut c_void, x: f64, y: f64, width: f64, scale: f64) -> bool {
@@ -4195,13 +4204,11 @@ fn live_plan_dot(cr: *mut c_void, x: f64, y: f64, width: f64, scale: f64) -> boo
     if sw <= 0 || sh <= 0 {
         return false;
     }
-    let input = serde_json::json!({
-        "points": [[x, y, width]],
-        "params": live_plan_params(sw, sh, scale, 0.0),
-    });
+    let mut input = live_plan_params(sw, sh, scale, 0.0);
+    input.points.push((x, y, width, 0.0));
     let shadow = unsafe { glaspen2_router_soft_shadow() != 0 };
     let pad = width * 0.5 + 1.5 + if shadow { 5.0 } else { 0.0 };
-    live_plan_run(cr, &input, 1.0 / scale.max(0.0001), true, &[(x, y, pad)])
+    live_plan_run(cr, input, 1.0 / scale.max(0.0001), true, &[(x, y, pad)])
 }
 
 fn live_plan_segment(cr: *mut c_void, x: f64, y: f64, width: f64, scale: f64) -> bool {
@@ -4214,32 +4221,232 @@ fn live_plan_segment(cr: *mut c_void, x: f64, y: f64, width: f64, scale: f64) ->
     if sw <= 0 || sh <= 0 {
         return false;
     }
-    let has_last = glaspen2_rust_pen_raw_has_last() != 0;
     let last_x = glaspen2_rust_pen_raw_last_x();
     let last_y = glaspen2_rust_pen_raw_last_y();
     let last_w = glaspen2_rust_pen_raw_last_w();
     let path_len = glaspen2_rust_pen_raw_path_len();
-    let mut input = serde_json::json!({
-        "points": [[last_x, last_y, last_w], [x, y, width]],
-        "params": live_plan_params(sw, sh, scale, path_len),
-    });
+    let mut input = live_plan_params(sw, sh, scale, path_len);
+    input.points = vec![(last_x, last_y, last_w, 0.0), (x, y, width, 0.0)];
     if glaspen2_rust_pen_raw_has_prev() != 0 {
-        input["seam"] = serde_json::json!([
+        input.seam = Some((
             glaspen2_rust_pen_raw_prev_x(),
-            glaspen2_rust_pen_raw_prev_y()
-        ]);
+            glaspen2_rust_pen_raw_prev_y(),
+        ));
     }
     let shadow = unsafe { glaspen2_router_soft_shadow() != 0 };
     let pad = width * 0.5 + 1.5 + if shadow { 5.0 } else { 0.0 };
     let last_pad = last_w * 0.5 + 1.5 + if shadow { 5.0 } else { 0.0 };
-    let _ = has_last;
     live_plan_run(
         cr,
-        &input,
+        input,
         1.0 / scale.max(0.0001),
         false,
         &[(x, y, pad), (last_x, last_y, last_pad)],
     )
+}
+
+fn plan_quantized_color(color: glaspen_core::draw_spec::Color) -> (f64, f64, f64) {
+    quantize_raw_rgb(color.r, color.g, color.b)
+}
+
+fn draw_typed_live_plan(
+    cr: *mut c_void,
+    plan: &glaspen_core::draw_spec::DrawPlan,
+    inv: f64,
+) -> Result<(), String> {
+    if cr.is_null() {
+        return Err("null cairo context".to_string());
+    }
+    unsafe { cairo_save(cr) };
+    for layer in &plan.layers {
+        for cmd in layer {
+            draw_typed_live_command(cr, plan, cmd, inv);
+        }
+    }
+    unsafe { cairo_restore(cr) };
+    Ok(())
+}
+
+fn draw_typed_live_command(
+    cr: *mut c_void,
+    plan: &glaspen_core::draw_spec::DrawPlan,
+    cmd: &glaspen_core::draw_spec::DrawCommand,
+    inv: f64,
+) {
+    use glaspen_core::draw_spec::PaintPass;
+    let pts = &plan.points[cmd.points.clone()];
+    if pts.is_empty() {
+        return;
+    }
+    let alpha = cmd.alpha;
+    let width_delta = cmd.width_delta;
+    unsafe {
+        cairo_set_dash(cr, std::ptr::null(), 0, 0.0);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+        cairo_set_line_cap(cr, 1);
+        cairo_set_line_join(cr, 1);
+    }
+    match cmd.pass {
+        PaintPass::Shadow => {
+            let color = plan_quantized_color(cmd.color);
+            unsafe { cairo_set_source_rgba(cr, color.0, color.1, color.2, alpha) };
+            if pts.len() == 1 {
+                let p = &pts[0];
+                unsafe {
+                    cairo_arc(
+                        cr,
+                        p.pos.x * inv,
+                        p.pos.y * inv,
+                        (p.width + width_delta) * 0.5 * inv,
+                        0.0,
+                        std::f64::consts::TAU,
+                    );
+                    cairo_fill(cr);
+                }
+                return;
+            }
+            for i in 1..pts.len() {
+                let a = &pts[i - 1];
+                let b = &pts[i];
+                unsafe {
+                    cairo_set_line_width(cr, (b.width + width_delta) * inv);
+                    cairo_move_to(cr, a.pos.x * inv, a.pos.y * inv);
+                    cairo_line_to(cr, b.pos.x * inv, b.pos.y * inv);
+                    cairo_stroke(cr);
+                }
+            }
+        }
+        PaintPass::Outline => {
+            if pts.len() < 2 {
+                return;
+            }
+            let dash = cmd.dash.unwrap_or(glaspen_core::draw_spec::Dash {
+                len: 1.0,
+                phase: 0.0,
+            });
+            let dash_len = (dash.len * inv).max(0.0001);
+            let mut cum = dash.phase * inv;
+            let pattern = [dash_len, dash_len];
+            unsafe { cairo_set_line_cap(cr, 2) };
+            for i in 1..pts.len() {
+                let a = &pts[i - 1];
+                let b = &pts[i];
+                let (x0, y0) = (a.pos.x * inv, a.pos.y * inv);
+                let (x1, y1) = (b.pos.x * inv, b.pos.y * inv);
+                let seg_width = (b.width + width_delta) * inv;
+                let mut off = cum % (2.0 * dash_len);
+                if off < 0.0 {
+                    off += 2.0 * dash_len;
+                }
+                unsafe {
+                    cairo_set_line_width(cr, seg_width);
+                    cairo_set_dash(cr, pattern.as_ptr(), 2, off);
+                    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, alpha);
+                    cairo_move_to(cr, x0, y0);
+                    cairo_line_to(cr, x1, y1);
+                    cairo_stroke(cr);
+                    let nxt = (off + dash_len) % (2.0 * dash_len);
+                    cairo_set_dash(cr, pattern.as_ptr(), 2, nxt);
+                    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, alpha);
+                    cairo_move_to(cr, x0, y0);
+                    cairo_line_to(cr, x1, y1);
+                    cairo_stroke(cr);
+                }
+                let dx = x1 - x0;
+                let dy = y1 - y0;
+                cum += (dx * dx + dy * dy).sqrt();
+            }
+            unsafe {
+                cairo_set_dash(cr, std::ptr::null(), 0, 0.0);
+                cairo_set_line_cap(cr, 1);
+            }
+        }
+        PaintPass::Fill => {
+            let color = plan_quantized_color(cmd.color);
+            let invert = unsafe { glaspen2_router_invert_ink_source(cr) };
+            if invert.is_null() {
+                unsafe { cairo_set_source_rgba(cr, color.0, color.1, color.2, alpha) };
+            } else {
+                unsafe { cairo_set_source(cr, invert) };
+            }
+            for i in 0..pts.len() {
+                let p = &pts[i];
+                let width = (p.width + width_delta) * inv;
+                if i == 0 {
+                    unsafe {
+                        cairo_arc(
+                            cr,
+                            p.pos.x * inv,
+                            p.pos.y * inv,
+                            width * 0.5,
+                            0.0,
+                            std::f64::consts::TAU,
+                        );
+                        cairo_fill(cr);
+                    }
+                } else {
+                    let a = &pts[i - 1];
+                    unsafe {
+                        cairo_set_line_width(cr, width);
+                        cairo_move_to(cr, a.pos.x * inv, a.pos.y * inv);
+                        cairo_line_to(cr, p.pos.x * inv, p.pos.y * inv);
+                        cairo_stroke(cr);
+                    }
+                }
+            }
+            if !invert.is_null() {
+                unsafe { cairo_pattern_destroy(invert) };
+            }
+        }
+        PaintPass::Erase => {
+            unsafe {
+                cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+                cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
+            }
+            for i in 0..pts.len() {
+                let p = &pts[i];
+                let width = (p.width + width_delta) * inv;
+                if i == 0 {
+                    unsafe {
+                        cairo_arc(
+                            cr,
+                            p.pos.x * inv,
+                            p.pos.y * inv,
+                            width * 0.5,
+                            0.0,
+                            std::f64::consts::TAU,
+                        );
+                        cairo_fill(cr);
+                    }
+                } else {
+                    let a = &pts[i - 1];
+                    unsafe {
+                        cairo_set_line_width(cr, width);
+                        cairo_move_to(cr, a.pos.x * inv, a.pos.y * inv);
+                        cairo_line_to(cr, p.pos.x * inv, p.pos.y * inv);
+                        cairo_stroke(cr);
+                    }
+                }
+            }
+            unsafe { cairo_set_operator(cr, CAIRO_OPERATOR_OVER) };
+        }
+    }
+}
+
+fn draw_typed_seam(cr: *mut c_void, seam: glaspen_core::export::MacosLiveSeam, inv: f64) {
+    let (sr, sg, sb) = stroke_rgb();
+    let (r, g, b) = quantize_raw_rgb(sr, sg, sb);
+    unsafe {
+        cairo_set_dash(cr, std::ptr::null(), 0, 0.0);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+        cairo_set_line_cap(cr, 1);
+        cairo_set_line_join(cr, 1);
+        cairo_set_line_width(cr, seam.width * inv);
+        cairo_set_source_rgba(cr, r, g, b, 1.0);
+        cairo_move_to(cr, seam.from.x * inv, seam.from.y * inv);
+        cairo_line_to(cr, seam.to.x * inv, seam.to.y * inv);
+        cairo_stroke(cr);
+    }
 }
 
 #[unsafe(no_mangle)]

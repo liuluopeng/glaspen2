@@ -863,18 +863,33 @@ fn rasterize_macos_command(
 // }
 // ```
 
-/// 实时计划输入解析结果(JSON → core 类型;不把 serde 渗进 draw_spec)。
-struct MacosLiveInput {
-    points: Vec<(f64, f64, f64, f64)>,
-    seam: Option<(f64, f64)>,
-    view: ViewTransform,
-    viewport: Rect,
-    shadow: bool,
-    outline: bool,
-    eraser: bool,
-    alpha: f64,
-    arc_len_start: f64,
-    color: Color,
+/// 实时计划输入(平台 adapter 可绕过 JSON 直接构造;字段语义同 FFI schema)。
+pub struct MacosLiveInput {
+    pub points: Vec<(f64, f64, f64, f64)>,
+    pub seam: Option<(f64, f64)>,
+    pub view: ViewTransform,
+    pub viewport: Rect,
+    pub shadow: bool,
+    pub outline: bool,
+    pub eraser: bool,
+    pub alpha: f64,
+    pub arc_len_start: f64,
+    pub color: Color,
+}
+
+/// 接缝重绘几何(plan 不建模)。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MacosLiveSeam {
+    pub from: Vec2,
+    pub to: Vec2,
+    pub width: f64,
+}
+
+/// 实时计划 + 接缝的重绘载荷(同进程 adapter 可直接消费, 无需 JSON)。
+#[derive(Clone, Debug)]
+pub struct MacosLivePlan {
+    pub plan: DrawPlan,
+    pub seam: Option<MacosLiveSeam>,
 }
 
 fn live_plan_number(value: &serde_json::Value, what: &str) -> Result<f64, String> {
@@ -1027,9 +1042,9 @@ fn macos_live_pass_name(pass: PaintPass) -> &'static str {
 /// 恢复「描边垫底、墨迹在上」的层级。显式 seam(P_{i-2})时上一段 = seam→points[0]
 /// (本次点列至少 2 点,即画的是线段而不是落笔圆点);否则点列自身为完整笔迹时
 /// 取 points[n-3]→points[n-2]。输出表面像素。
-fn macos_live_seam_json(plan: &DrawPlan, parsed: &MacosLiveInput) -> serde_json::Value {
+fn macos_live_seam(plan: &DrawPlan, parsed: &MacosLiveInput) -> Option<MacosLiveSeam> {
     if parsed.eraser || !parsed.outline {
-        return serde_json::Value::Null;
+        return None;
     }
     let points = &plan.points;
     let pair = match parsed.seam {
@@ -1040,18 +1055,28 @@ fn macos_live_seam_json(plan: &DrawPlan, parsed: &MacosLiveInput) -> serde_json:
         None if points.len() >= 3 => Some((points[points.len() - 3].pos, points[points.len() - 2])),
         _ => None,
     };
-    let Some((from, to)) = pair else {
-        return serde_json::Value::Null;
-    };
-    serde_json::json!({
-        "from": [from.x, from.y],
-        "to": [to.pos.x, to.pos.y],
-        "width": to.width,
+    let (from, to) = pair?;
+    Some(MacosLiveSeam {
+        from,
+        to: to.pos,
+        width: to.width,
     })
 }
 
+fn macos_live_seam_json(seam: Option<MacosLiveSeam>) -> serde_json::Value {
+    match seam {
+        Some(seam) => serde_json::json!({
+            "from": [seam.from.x, seam.from.y],
+            "to": [seam.to.x, seam.to.y],
+            "width": seam.width,
+        }),
+        None => serde_json::Value::Null,
+    }
+}
+
 /// DrawPlan → 单行 JSON(命令流展开 / 脏区 / 接缝几何;schema 见 FFI 注释)。
-fn macos_live_plan_json(plan: &DrawPlan, parsed: &MacosLiveInput) -> String {
+fn macos_live_plan_json(live: &MacosLivePlan) -> String {
+    let plan = &live.plan;
     let mut commands = Vec::with_capacity(plan.command_count());
     for (layer, layer_commands) in plan.layers.iter().enumerate() {
         for command in layer_commands {
@@ -1086,14 +1111,14 @@ fn macos_live_plan_json(plan: &DrawPlan, parsed: &MacosLiveInput) -> String {
             "w": plan.dirty.w,
             "h": plan.dirty.h,
         },
-        "seam": macos_live_seam_json(plan, parsed),
+        "seam": macos_live_seam_json(live.seam),
     })
     .to_string()
 }
 
-/// 输入 JSON → MacosLive 计划单行 JSON;失败返回 error 文本描述。
-fn macos_live_plan_text(input: &str) -> Result<String, String> {
-    let parsed = parse_macos_live_input(input)?;
+/// 平台 adapter 直接构造输入(不经过 JSON), 返回计划 + 接缝。
+pub fn build_macos_live_plan(input: MacosLiveInput) -> Result<MacosLivePlan, String> {
+    let parsed = input;
     let mut params = PlanParams::new(parsed.view, parsed.viewport);
     params.order = PassOrder::MacosCommitted;
     params.scope = PlanScope::MacosLive;
@@ -1113,7 +1138,15 @@ fn macos_live_plan_text(input: &str) -> Result<String, String> {
         color: parsed.color,
     });
     let plan = draw_plan(&[], &params).map_err(|err| format!("计划生成失败: {err}"))?;
-    Ok(macos_live_plan_json(&plan, &parsed))
+    let seam = macos_live_seam(&plan, &parsed);
+    Ok(MacosLivePlan { plan, seam })
+}
+
+/// 输入 JSON → MacosLive 计划单行 JSON;失败返回 error 文本描述。
+fn macos_live_plan_text(input: &str) -> Result<String, String> {
+    let parsed = parse_macos_live_input(input)?;
+    let live = build_macos_live_plan(parsed)?;
+    Ok(macos_live_plan_json(&live))
 }
 
 /// 返回 JSON 字符串的 C 指针;serde_json 输出不含 NUL,真正失败时回静态 error。
