@@ -2,10 +2,10 @@
 //!
 //! 背景: 两端壳曾经各写一份同一套页窗/条带几何(`docs/duplication-backlog.md` D7):
 //!
-//! - macOS: `src/macos/swift/App/run_glue.swift` 的 `draw_minimap`(从
+//! - macOS: `crates/glaspen-macos/swift/App/run_glue.swift` 的 `draw_minimap`(从
 //!   `glaspen2_list_screens_json` 里按当前页 ±5 取窗口、按 `g_pageview_pw`
 //!   过滤几何组、条带贴右缘 8pt / 顶端 8pt、卡片 64×40、间距 4、页号 =
-//!   全列表 1 基序号),状态在 `src/macos/swift/App/run_glue.swift`。
+//!   全列表 1 基序号),状态在 `crates/glaspen-macos/swift/App/run_glue.swift`。
 //! - Windows: `crates/glaspen-windows/src/overlay/actions.rs` 的
 //!   `minimap_page_ids` / `minimap_pump` / `draw_minimap`(同一页窗 5/10,
 //!   但无几何过滤、条带垂直居中且顶边不小于 4px、不画页号文本)。

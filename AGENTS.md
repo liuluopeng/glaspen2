@@ -59,12 +59,12 @@
 
 ## 架构总览(当前状态)
 
-Cargo workspace 多 crate 结构(`crates/` 下为核心与 Windows 两个新 crate):
+Cargo workspace 多 crate 结构(`crates/` 下为核心、Windows、macOS 三个 crate):
 
 ```
 ┌─ macOS 主程序 glaspen2(根 crate = 壳)───────────────────────────────┐
 │                                                                      │
-│  原生层  src/macos/swift/*.swift(Swift; 应用层 ObjC 已清零)          │
+│  原生层  crates/glaspen-macos/swift/*.swift(Swift; 应用层 ObjC 已清零)          │
 │   build.rs: swiftc 编译/归档; Bridging.h+rust_ffi.h = C ABI 边界      │
 │   迁移状态见 docs/swift-migration-plan.md(应用层 ObjC 清零)        │
 │   ├ CGEventTap(挂主 runloop):笔/鼠标/键盘/滚轮事件统一入口           │
@@ -75,7 +75,7 @@ Cargo workspace 多 crate 结构(`crates/` 下为核心与 Windows 两个新 cra
 │   ├ 覆盖层窗口(笔迹 layer + 网格 + 磨砂玻璃)+ 菜单栏(NSStatusItem)  │
 │   │   └ 菜单图标: attributedTitle + NSTextAttachment(image 不渲染)   │
 │   ├ C ABI: glaspen2_macos_*(settings_json / set_setting / 导出…)    │
-│   └ main.rs / macos.rs(壳): 入口分发, 依赖 glaspen-core/windows     │
+│   └ main.rs(壳) / crates/glaspen-macos/src/entry.rs(入口分发)         │
 │                                                                      │
 │  crates/glaspen-core(共享核心, 平台无关)──────────────────────────── │
 │   ├ lib.rs      Stroke / STROKES / TEST_LOCK + tokio runtime()       │
@@ -155,7 +155,7 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
   新页上(表现为"相邻两页内容重复/翻页像只翻了一部分")。
 - **(历史)build.rs 必须监视 parts/*.m**:拆分时代子文件是 #include 文本包含,
   cargo 只认 rerun-if-changed——漏监视时改子文件不会重编,ObjC 改动
-  静默失效。现已无 parts/,build.rs 监视 `src/macos/swift/`。
+  静默失效。现已无 parts/,build.rs 监视 `crates/glaspen-macos/swift/`。
 - **FRB content hash 不一致**(面板初始化全挂):Dart 与 Rust 两侧生成
   代码不同步。codegen 后必须 `cargo build`;build.rs 已监视
   `flutter_settings/lib/src/rust/`,别删那几行 rerun-if-changed
@@ -194,7 +194,7 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
 
 | 层 | 位置 | 说明 |
 |---|---|---|
-| Swift 交互层 | `src/macos/swift/` | 事件/窗口/菜单/系统动效 |
+| Swift 交互层 | `crates/glaspen-macos/swift/` | 事件/窗口/菜单/系统动效 |
 | Rust 核心 | `crates/glaspen-core/src/`(lib/db/modeler/state) | 数据模型/SQLite/平滑 |
 | FFI 面 | `crates/glaspen-core/src/export/` | Swift ↔ Rust 的一切入口(mod.rs+pages/chat_glue/media/thumbs) |
 | 面板桥 | `src/api.rs`(+ FRB codegen) | 设置面板 ↔ Rust |
@@ -233,7 +233,7 @@ docs/axum-chat-store.md §4: 字段号永不复用, axum 侧为源头, 整文件
 
 | 路径 | 内容 |
 |---|---|
-| `src/macos/swift/` | macOS 全部原生层(Swift;应用层 ObjC 已清零);按 App/Menu/Input/Surface/Settings/Features/Diagnostics 分目录, 规则见目录内 README |
+| `crates/glaspen-macos/swift/` | macOS 全部原生层(Swift;应用层 ObjC 已清零);按 App/Menu/Input/Surface/Settings/Features/Diagnostics 分目录, 规则见目录内 README |
 | `src/*.rs` | 壳:FRB 面(api.rs)/入口/C ABI 链接 |
 | `crates/glaspen-core/` | 共享核心(存储/模型/导出/更新) |
 | `crates/glaspen-windows/` | Windows 覆盖层(Win32/笔输入/管道) |

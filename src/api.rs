@@ -17,7 +17,7 @@ use flutter_rust_bridge::frb;
 // ObjC C shim
 // ---------------------------------------------------------------------------
 
-/// macOS:真正的 ObjC 实现(见 src/macos/glaspen2.m)。
+/// macOS:真正的原生实现见 crates/glaspen-macos/swift。
 /// 内部实现细节,不镜像到 Dart(否则会绕过 run_blocking 的运行时保护)。
 #[frb(ignore)]
 #[cfg(target_os = "macos")]
@@ -102,7 +102,7 @@ pub(crate) mod shim {
         unsafe { glaspen2_macos_export_gif() != 0 }
     }
 
-    /// 用系统默认浏览器打开 URL(实现见 src/macos/swift/App/open_url.swift,Swift @_cdecl)。
+    /// 用系统默认浏览器打开 URL(实现见 crates/glaspen-macos/swift/App/open_url.swift,Swift @_cdecl)。
     pub fn open_url(url: &str) {
         if let Ok(u) = std::ffi::CString::new(url) {
             unsafe { glaspen2_macos_open_url(u.as_ptr()) };

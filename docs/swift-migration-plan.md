@@ -842,3 +842,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-27 | Rust-R266 | 修复 keyUp 也执行 chord 导致撤销/飘渺连击; 仅 keyDown 分派 | 本提交 |
 | 2026-11-27 | Rust-R267 | 修复 CGEventType 映射错误(mouseMoved 被当抬笔); 虚拟笔 2down/2up | 本提交 |
 | 2026-11-27 | Rust-R268 | 修飘渺 hover 闪烁/无限画布方向/抓手漏 drag(6) | 本提交 |
+| 2026-11-27 | Rust-R269 | 拆出 crates/glaspen-macos(Rust 壳+入口+Swift 原生层); 根 build.rs/契约测试路径同步; build/test/smoke/parity 绿 | 本提交 |

@@ -7,9 +7,9 @@ fn main() {
         // Watch sources for incremental rebuild (macOS 层已全 Swift)。
 
         // Swift 迁移层(S1):目录级监视,cargo 会递归扫目录,新增/改 .swift 都会重跑
-        println!("cargo:rerun-if-changed=src/macos/swift");
+        println!("cargo:rerun-if-changed=crates/glaspen-macos/swift");
         // 桥接头/Swift 头生成输入(S2):目录监视已覆盖,显式列一条防未来挪目录漏掉
-        println!("cargo:rerun-if-changed=src/macos/swift/Bridging.h");
+        println!("cargo:rerun-if-changed=crates/glaspen-macos/swift/Bridging.h");
         println!("cargo:rerun-if-changed=flutter_settings/lib/main.dart");
         // main.dart 的 part 文件(main.*.dart)也是 Dart 源: 只盯 main.dart
         // 会在改 part 时不重建 App.framework, 面板改动静默失效。
@@ -151,7 +151,7 @@ fn main() {
             .probe("cairo")
             .expect("cairo not found via pkg-config (brew install cairo)");
 
-        // ── Swift 原生层:src/macos/swift/**/*.swift → .o,与 ObjC 同一个归档 ──
+        // ── Swift 原生层:crates/glaspen-macos/swift/**/*.swift → .o,与 ObjC 同一个归档 ──
         // 部署目标取发布包 Info.plist 的 LSMinimumSystemVersion = 12.0
         // (scripts/build-dmg.sh;README 也写 macOS 12+)。S0 报告要求显式设置:
         // swiftc 默认 target 是宿主系统版本(这里 27.2),不设会让产物只能在
@@ -191,8 +191,8 @@ fn main() {
         );
 
         let swift_src_dir = std::path::Path::new(&manifest_dir)
-            .join("src")
-            .join("macos")
+            .join("crates")
+            .join("glaspen-macos")
             .join("swift");
         // 按子系统分目录(App/Menu/Input/Surface/Settings/Features/Diagnostics),
         // 递归收集; Swift 侧仍编译为同一个模块, 目录只影响工程组织。
@@ -237,8 +237,8 @@ fn main() {
 
         // bridging header: Swift 侧唯一的 C/FFI 声明入口(无 ObjC 实现侧)。
         let bridging_header = std::path::Path::new(&manifest_dir)
-            .join("src")
-            .join("macos")
+            .join("crates")
+            .join("glaspen-macos")
             .join("swift")
             .join("Bridging.h");
         assert!(
@@ -292,7 +292,7 @@ fn main() {
         let status = swiftc_cmd.status().expect("Failed to run swiftc");
         assert!(
             status.success(),
-            "swiftc failed to compile src/macos/swift/**/*.swift"
+            "swiftc failed to compile crates/glaspen-macos/swift/**/*.swift"
         );
 
         let swift_objects: Vec<std::path::PathBuf> = swift_sources

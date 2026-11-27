@@ -952,12 +952,12 @@ mod tests {
         /// 闸门豁免: 只放过"非用户文案"的内部字符串, 必须写清原因。
         const ALLOWLIST: &[(&str, &str, &str)] = &[
             (
-                "src/macos/swift/App/run_glue.swift",
+                "crates/glaspen-macos/swift/App/run_glue.swift",
                 "Undo",
                 "action_effect 的 wire kind 名(内部协议, 不是用户文案)",
             ),
             (
-                "src/macos/swift/Menu/action_dispatch.swift",
+                "crates/glaspen-macos/swift/Menu/action_dispatch.swift",
                 "Undo",
                 "action_effect 的 wire kind 名(内部协议, 迁 Swift 后同义)",
             ),
@@ -1000,7 +1000,7 @@ mod tests {
         let mut mac_files: Vec<(String, String)> = Vec::new();
         collect_sources(
             &workspace,
-            &workspace.join("src/macos"),
+            &workspace.join("crates/glaspen-macos/swift"),
             "m",
             &mut mac_files,
         );
@@ -1008,7 +1008,7 @@ mod tests {
         // 否则 key 表迁到 Swift 后会被误判为"macOS 未引用"。
         collect_sources(
             &workspace,
-            &workspace.join("src/macos"),
+            &workspace.join("crates/glaspen-macos/swift"),
             "swift",
             &mut mac_files,
         );
@@ -1105,8 +1105,9 @@ mod tests {
             mac_lits.iter().map(|(_, _, lit)| lit.as_str()).collect();
         // Rust 壳(macos_shell.rs)承载了大部分 key 字面量; 只把其中的字符串
         // 字面量并入 key 检查, 不参与上面的硬编码文案正向闸门。
-        let shell_src = std::fs::read_to_string(workspace.join("src/macos_shell.rs"))
-            .expect("i18n 闸门: 读 src/macos_shell.rs 失败");
+        let shell_src =
+            std::fs::read_to_string(workspace.join("crates/glaspen-macos/src/macos_shell.rs"))
+                .expect("i18n 闸门: 读 crates/glaspen-macos/src/macos_shell.rs 失败");
         let rust_literals: BTreeSet<String> = string_literals(&shell_src)
             .into_iter()
             .map(|(_, lit)| lit)

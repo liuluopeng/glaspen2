@@ -33,8 +33,8 @@ fn walk_files(dir: &Path, out: &mut Vec<PathBuf>) {
 #[test]
 fn swift_sources_are_grouped_by_subsystem() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("src")
-        .join("macos")
+        .join("crates")
+        .join("glaspen-macos")
         .join("swift");
 
     assert!(root.join("Bridging.h").is_file(), "缺少 Bridging.h");
@@ -81,7 +81,7 @@ fn swift_sources_are_grouped_by_subsystem() {
             ),
             "h" => assert!(
                 path.parent() == Some(root.as_path()),
-                "C ABI 头文件只允许放在 src/macos/swift/ 根目录: {}",
+                "C ABI 头文件只允许放在 crates/glaspen-macos/swift/ 根目录: {}",
                 path.display()
             ),
             _ => {}

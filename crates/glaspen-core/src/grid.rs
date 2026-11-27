@@ -2,9 +2,9 @@
 //!
 //! 背景: 两端壳曾经各写一份同一套画线公式(`docs/duplication-backlog.md» D6):
 //!
-//! - macOS: `src/macos/swift/App/run_glue.swift:105-230»(`GlaspenDrawView drawRect» 内联的
+//! - macOS: `crates/glaspen-macos/swift/App/run_glue.swift:105-230»(`GlaspenDrawView drawRect» 内联的
 //!   细网格/屏幕分界线/分栏参考线三段几何), 状态与设置键在
-//!   `src/macos/swift/App/run_glue.swift:410-417,495-500»(`g_grid_size» / `g_grid_divider» /
+//!   `crates/glaspen-macos/swift/App/run_glue.swift:410-417,495-500»(`g_grid_size» / `g_grid_divider» /
 //!   `g_show_grid» / `g_grid_follow_strokes»),启动恢复在 `run.m:3069-3082,3128-3136»。
 //! - Windows: `crates/glaspen-windows/src/overlay/canvas.rs:319-506»
 //!   `OverlayCanvas::draw_grid»(同一套公式 + 像素直写), 状态在

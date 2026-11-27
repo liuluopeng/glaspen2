@@ -1,7 +1,7 @@
 #include "rust_ffi.h"
 // glaspen2 macOS 原生层 —— Swift → ObjC/C 桥接头(Swift migration S2)
 //
-// build.rs 用 `swiftc -import-objc-header src/macos/swift/Bridging.h` 把它导入
+// build.rs 用 `swiftc -import-objc-header crates/glaspen-macos/swift/Bridging.h` 把它导入
 // Swift 模块。这里只允许**C 兼容声明**:
 //   - C 基础类型(char/int/double/指针)/ NSObject 子类 / @objc 协议;
 //   - 不得出现 Swift 调用方无法理解的东西(Block 返回值、ObjC 泛型容器等
@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-// S2 反向互调探针: ObjC 侧实现(src/macos/swift/InteropProbe.m), 无副作用
+// S2 反向互调探针: ObjC 侧实现(crates/glaspen-macos/swift/InteropProbe.m), 无副作用
 // (只打日志 + 返回常量 0x5A2)。SwiftInteropProbe.ping() 经本声明调用它,
 // 验证 Swift→ObjC 方向。
 int glaspen2_macos_objc_probe(const char *tag);

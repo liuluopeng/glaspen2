@@ -14,7 +14,7 @@
 //!
 //! # 两端现状证据(D8a 读码时行号;D8b 接线后旧代码已删除,行号仅作历史)
 //!
-//! - macOS `src/macos/swift/App/run_glue.swift`:
+//! - macOS `crates/glaspen-macos/swift/App/run_glue.swift`:
 //!   - GIF 开始/结束 `:1924-1932` / `:1938-1963`(异步编码 `:1948-1962`,
 //!     剪贴板 helper `:1905-1920`);
 //!   - ⌘⌃3 直发开始/结束 `:1967-1974` / `:1979-2001`;
@@ -22,8 +22,8 @@
 //!   - 事件 tap 键位 `:2198-2254`(R 抬起 `:2214-2219`、R 按下 `:2220-2225`、
 //!     `3` 抬起 `:2226-2232`、`3` 按下 `:2233-2239`、`2` 抬起 `:2245-2248`、
 //!     `2` 按下 `:2249-2254`);
-//!   - 会话标志位 `src/macos/swift/App/run_glue.swift:311-332`;手写消息总开关关闭的收尾
-//!     `src/macos/swift/Menu/menu_runtime.swift:958-972`。
+//!   - 会话标志位 `crates/glaspen-macos/swift/App/run_glue.swift:311-332`;手写消息总开关关闭的收尾
+//!     `crates/glaspen-macos/swift/Menu/menu_runtime.swift:958-972`。
 //! - Windows `crates/glaspen-windows/src/overlay/actions.rs`:
 //!   - GIF 开始/结束 `:811-820` / `:823-859`(结果码经 `WM_RECORD_DONE`
 //!     回主线程,`wndproc.rs:183-191`);剪贴板 `:944-1032`;

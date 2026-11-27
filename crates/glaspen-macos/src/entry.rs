@@ -3,7 +3,7 @@
 pub fn macos_run() {
     // 上一次自动更新的收尾(.old / dmg 清理)在进 GUI 之前做完;
     // 内部全是 best-effort,失败只记 updater.log,不影响启动。
-    crate::updater::finish_pending();
+    glaspen_core::updater::finish_pending();
 
     // 页面详情(面板圈选/移动/复制粘贴/删除)改到当前页时, core 经此回调
     // 在主线程重建玻璃(load_strokes + rebuild, 定义在 parts/menu.m)。

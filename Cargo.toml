@@ -1,5 +1,5 @@
 [workspace]
-members = ["installer", "chat", "crates/glaspen-core", "crates/glaspen-windows"]
+members = ["installer", "chat", "crates/glaspen-core", "crates/glaspen-windows", "crates/glaspen-macos"]
 # installer 是 Windows-only 的 exe 桩(macOS 上链接不到 user32), 默认成员
 # 排除它。chat 也排除: 它的 mock-send 是第二个 bin, 留在默认成员里会让
 # 裸 `cargo run` 无法判断该跑哪个 bin(报 "could not determine which
@@ -47,19 +47,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc = "0.2"
 libc = "0.2.189"
-# R14: AppKit 壳 Rust 预研(状态栏项创建)
-objc2 = "0.6.5"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = [
-  "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSMenu", "NSMenuItem", "NSCell", "NSWindow", "NSViewController", "NSRunningApplication", "NSShadow", "NSFont", "NSFontDescriptor", "NSStringDrawing", "NSAttributedString", "NSColor", "NSGraphics", "NSVisualEffectView", "NSBitmapImageRep", "NSImage", "NSImageRep", "NSBezierPath", "NSGraphicsContext", "NSCursor", "objc2-quartz-core", "objc2-core-graphics",
-  "NSResponder", "NSView", "NSApplication", "NSWorkspace", "objc2-core-foundation",
-] }
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSObject", "NSString", "NSAttributedString", "NSDictionary", "NSAffineTransform", "objc2-core-foundation"] }
-objc2-core-graphics = "0.3.2"
-objc2-core-foundation = "0.3.2"
-objc2-quartz-core = { version = "0.3.2", default-features = false, features = ["objc2-core-graphics"] }
-
+glaspen-macos = { path = "crates/glaspen-macos" }
 [target.'cfg(windows)'.dependencies]
 # Versions match C:\Users\liulu\Downloads\wAPItry (verified Windows pen-input prototype)
 windows = { version = "0.62.2", features = [

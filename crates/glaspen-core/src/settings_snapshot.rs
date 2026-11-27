@@ -1,7 +1,7 @@
 //! 设置面板快照构建单源(D12)。
 //!
 //! 背景: 面板启动/热重载要拿一份"当前设置"JSON。快照曾是两份手工拼装:
-//! macOS src/macos/swift/Menu/menu_runtime.swift 的 glaspen2_macos_settings_json(37 个
+//! macOS crates/glaspen-macos/swift/Menu/menu_runtime.swift 的 glaspen2_macos_settings_json(37 个
 //! @"key": @(值) 的 NSDictionary)与 Windows
 //! crates/glaspen-windows/src/overlay/pipe.rs 的 getSettings 巨型 format!
 //! (同 37 项, 但字段顺序/类型/缺省值各写一遍)。任何一端漏改就会让 Flutter
@@ -903,7 +903,8 @@ mod tests {
     // 文档化可选覆盖(flipEffect/language), 不许夹带持久化设置。
     // 负向验证见 docs/duplication-backlog.md D12 进度记录。
 
-    const MAC_MENU_SRC: &str = include_str!("../../../src/macos/swift/Menu/menu_runtime.swift");
+    const MAC_MENU_SRC: &str =
+        include_str!("../../../crates/glaspen-macos/swift/Menu/menu_runtime.swift");
     const WIN_PIPE_SRC: &str = include_str!("../../../crates/glaspen-windows/src/overlay/pipe.rs");
 
     /// 去注释(保留字符串字面量; 支持 // 与 /* */; 处理 Rust 字符字面量与
@@ -1011,9 +1012,10 @@ mod tests {
     fn adapters_build_panel_snapshot_only_in_core() {
         let mac_code = strip_comments(MAC_MENU_SRC);
         // overrides 组装已迁 Swift(menu_glue.swift), 闸门同时扫描两边。
-        let mac_glue_swift = include_str!("../../../src/macos/swift/Menu/menu_runtime.swift");
+        let mac_glue_swift =
+            include_str!("../../../crates/glaspen-macos/swift/Menu/menu_runtime.swift");
         let win_code = strip_comments(WIN_PIPE_SRC);
-        let mac_snapshot_glue = include_str!("../../../src/macos_shell.rs");
+        let mac_snapshot_glue = include_str!("../../../crates/glaspen-macos/src/macos_shell.rs");
         let fn_at = mac_snapshot_glue
             .find("fn glaspen2_macos_settings_json")
             .expect("macos_shell.rs 缺 glaspen2_macos_settings_json");
@@ -1024,7 +1026,7 @@ mod tests {
         let win_snapshot = pipe_branch(&win_code, "msg_type == \"getSettings\"")
             .expect("Windows 管道缺 getSettings 分支");
 
-        let mac_api_swift = include_str!("../../../src/macos_shell.rs");
+        let mac_api_swift = include_str!("../../../crates/glaspen-macos/src/macos_shell.rs");
         assert!(
             mac_snapshot.contains("glaspen2_settings_snapshot_json")
                 || mac_api_swift.contains("glaspen2_settings_snapshot_json"),

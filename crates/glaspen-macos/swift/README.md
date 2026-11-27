@@ -29,7 +29,7 @@
    新子系统目录需要同时更新本 README 和 `tests/swift_layout.rs` 的允许列表。
 3. **C ABI 边界不变**: `@_cdecl("glaspen2_...")` 符号名/签名保持; 头文件只在根目录,
    子目录不新增头文件。
-4. Rust 契约测试用 `include_str!(".../src/macos/swift/<Dir>/<file>.swift")` 直接读源码;
-   移动文件时同步更新这些路径(`grep -rn 'src/macos/swift/' crates src tests`)。
+4. Rust 契约测试用 `include_str!(".../crates/glaspen-macos/swift/<Dir>/<file>.swift")` 直接读源码;
+   移动文件时同步更新这些路径(`grep -rn 'crates/glaspen-macos/swift/' crates src tests`)。
 5. 应用层不得新增 `.m`/`.mm`; 新增原生代码一律 Swift。
 6. 目录布局由 `tests/swift_layout.rs` 守护(无平铺文件、无未知目录、basename 唯一)。

@@ -1501,3 +1501,15 @@ modeler Up error 需真机笔/翻页连击复验。
 3. 无限画布抓手:
    - R167 路由只转发 leftMouseDown/Up, 漏了 leftMouseDragged(6), 导致快捷键+左键拖动只有按下/抬起没有拖动;
    - 修复 route_event 的 camera 分支, 只认 1/6/2, 并增加 camera_mouse_dir 回归测试.
+
+
+## R269 工程化: 拆出 crates/glaspen-macos
+
+- 新建 `crates/glaspen-macos`(lib `glaspen_macos`), 承载 macOS 专属内容:
+  - `src/macos_shell.rs`(原根 `src/macos_shell.rs`);
+  - `src/entry.rs`(原根 `src/macos.rs`, `macos_run`);
+  - `swift/`(原 `src/macos/swift`, Swift 壳 + Bridging.h/rust_ffi.h);
+- 根 crate 只保留 `pub use glaspen_macos as macos`、FRB API、日志/入口; `src/macos_shell.rs`/`src/macos.rs`/`src/macos/` 删除;
+- 根 build.rs 路径改到 `crates/glaspen-macos/swift`; core 契约测试 include_str/扫描路径同步;
+- macOS target 依赖从根移到 crate; 根保留 libc(FRB 用);
+- 验证: cargo build / cargo test --workspace --exclude glaspen2_installer / smoke debug / parity 全绿; menu probe/冷启动正常.

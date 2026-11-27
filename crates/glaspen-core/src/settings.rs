@@ -516,7 +516,7 @@ mod tests {
     /// macOS setSetting 函数体(menu.m 里的定义, 不是 glaspen2.m 的 extern 声明)。
     fn mac_apply_body(_src: &str) -> &'static str {
         // setSetting 分派已迁 Swift(SettingsDispatcher), 闸门扫 Swift 源。
-        include_str!("../../../src/macos_shell.rs")
+        include_str!("../../../crates/glaspen-macos/src/macos_shell.rs")
     }
 
     /// Windows 管道 setSetting 分支体。
@@ -528,9 +528,9 @@ mod tests {
 
     #[test]
     fn apply_dispatch_covers_every_effect_variant() {
-        let mac_src = include_str!("../../../src/macos_shell.rs");
+        let mac_src = include_str!("../../../crates/glaspen-macos/src/macos_shell.rs");
         let win_src = include_str!("../../../crates/glaspen-windows/src/overlay/pipe.rs");
-        let mac_dispatcher_swift = include_str!("../../../src/macos_shell.rs");
+        let mac_dispatcher_swift = include_str!("../../../crates/glaspen-macos/src/macos_shell.rs");
         let mac_body = format!(
             "{}
 {mac_dispatcher_swift}",
