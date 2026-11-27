@@ -1660,3 +1660,20 @@ modeler Up error 需真机笔/翻页连击复验。
   `glaspen2_router_reenable_tap()` 重启用并放行, 不再做 Int32 转换;
   另加 `kind <= UInt32(Int32.max)` 兜底。
 - 验证: cargo build; 启动后点击菜单栏状态区进程保持存活; tests/smoke/parity 全绿。
+
+
+## R282 新功能: Windows 托盘菜单 + core 共享菜单模型
+
+- 新增 `core/platform_menu.rs`: 平台无关菜单模型(顺序/分组/中英文文案/动作/勾选状态)。
+  macOS NSStatusItem 菜单与 Windows 托盘都应由它提供同一套“菜单栏/托盘设置”。
+- Windows:
+  - `Shell_NotifyIconW` 托盘图标(优先 exe 内嵌图标, 取不到用系统默认);
+  - 左键/右键弹出 Win32 POPUP, 菜单项由 core platform_menu 渲染;
+  - 选中命令复用既有 `WM_TRAY_COMMAND` 命令总线(颜色/粗细/撤销/清空/保存/导出/
+    设置/退出/网格/磨砂/描边/飘渺/自由画布/minimap/压感/手写集成);
+  - 新增 `CMD_OPEN_SETTINGS`, 托盘可重新打开设置面板; WM_DESTROY 删除托盘图标。
+- macOS: 现有 Swift NSMenu 保留 AppKit 富文本图标/快捷键渲染; 菜单动作/顺序/文案
+  与 core 模型对齐, 后续可把 Swift 建菜单改为消费该模型(当前不改变 macOS 外观)。
+- 验证: core platform_menu 3 个单测; macOS cargo build/tests/smoke/parity 全绿;
+  Windows 侧 tray.rs 用 windows-only 独立 target harness `cargo check --target
+  x86_64-pc-windows-msvc` 编译验证(完整 glaspen-windows 交叉检查受 ring C 编译器限制)。

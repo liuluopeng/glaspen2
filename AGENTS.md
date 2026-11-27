@@ -93,8 +93,8 @@ Cargo workspace 多 crate 结构(`crates/` 下为核心、Windows、macOS 三个
 │   │   yaml/生成代码/链接参数零改动; 通过根的再导出用 crate::db 等旧路径│
 │   └ update.rs / updater.rs  GitHub 检查更新 / 自更新帮手              │
 │                                                                      │
-│  crates/glaspen-windows  Windows 覆盖层(Win32 窗口/笔输入/管道服务)  │
-│   └ 非 Windows 平台编译为空壳; 经 core 的 FFI 共享存储与逻辑          │
+│  crates/glaspen-windows  Windows 覆盖层(Win32 窗口/笔输入/托盘/管道服务)│
+│   └ 非 Windows 平台编译为空壳; 菜单项与 macOS 共用 core platform_menu │
 └──────────┬──────────────────────────────┬────────────────────────────┘
            │ FRB(DynamicLibrary.process,  │ │ tonic gRPC(客户端)
            │  同进程直调, api.rs 在根)     │ │ 127.0.0.1:50051

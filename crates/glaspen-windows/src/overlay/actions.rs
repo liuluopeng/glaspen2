@@ -312,6 +312,7 @@ fn handle_command(state: &mut OverlayState, cmd: usize, param: usize) {
                     clear_screen(state);
                 }
             }
+            x if x == CMD_OPEN_SETTINGS => crate::show_settings_window(),
             x if x == CMD_QUIT => unsafe {
                 let _ = DestroyWindow(state.canvas.hwnd);
             },

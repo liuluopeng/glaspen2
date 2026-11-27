@@ -8,10 +8,11 @@ pub fn run() {
         }
 
         let hwnd = create_overlay_window();
+        install_tray_icon(hwnd);
 
-        // 首启引导: macOS 启动不弹面板(只在菜单/热键里打开), Windows 没有
-        // 菜单栏, 所以仅在**第一次**启动时拉起一次设置面板, 之后靠
-        // Ctrl+Alt+D(可配置 settings 动作)。用 settings_opened 键记住。
+        // 首启引导: macOS 启动不弹面板(只在菜单/热键里打开), Windows 的
+        // 托盘菜单/设置热键是后续入口; 仅在**第一次**启动时拉起一次面板。
+        // 用 settings_opened 键记住。
         {
             let opened = glaspen_core::runtime()
                 .block_on(glaspen_core::db::load_setting("settings_opened"))

@@ -1,6 +1,8 @@
 // ── 自定义消息与命令 ID(Flutter 设置管道用) ──
 
 pub const WM_TRAY_COMMAND: u32 = WM_USER + 1;
+/// 托盘图标回调消息(Shell_NotifyIconW 的 uCallbackMessage)。
+pub const WM_TRAY_ICON: u32 = WM_USER + 9;
 // ── D8b 录制状态机的后台结果 → 窗口线程 ──
 // 后台只做"编码/发送/关通道"这类阻塞工作, 结果统一 PostMessage 回消息循环
 // 线程再喂回 core 状态机(状态机不是 Sync);旧的 WM_RECORD_DONE 结果码分派
@@ -52,6 +54,7 @@ pub const CMD_REFRESH_PAGE: usize = 811;
 pub const CMD_PAGE_PREV: usize = 720;
 pub const CMD_PAGE_NEXT: usize = 721;
 pub const CMD_EXPORT_SVG_GIF: usize = 722;
+pub const CMD_OPEN_SETTINGS: usize = 724; // 托盘/菜单打开设置面板
 pub const CMD_CANVAS_HOME: usize = 730; // 无限画布:镜头回原点 + 100%
 pub const CMD_CANVAS_CENTER: usize = 731; // 无限画布:镜头居中内容包围盒
 pub const CMD_CANVAS_NEW: usize = 732; // 无限画布:清空内容 + 镜头回原点

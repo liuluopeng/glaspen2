@@ -224,6 +224,18 @@ unsafe extern "system" fn wnd_proc(
             handle_command(state, wparam.0, lparam.0 as usize);
             LRESULT(0)
         }
+        WM_TRAY_ICON => {
+            let event = lparam.0 as u32;
+            match event {
+                WM_LBUTTONUP | WM_RBUTTONUP | WM_CONTEXTMENU => {
+                    let state = &mut *STATE.load(Ordering::SeqCst);
+                    show_tray_menu(hwnd, state);
+                }
+                WM_LBUTTONDBLCLK => crate::show_settings_window(),
+                _ => {}
+            }
+            LRESULT(0)
+        }
         WM_HUD_NOTIFY => {
             // 后台线程投递的通知: 在窗口线程弹(避免跨线程碰 HUD 状态)
             let texts: Vec<String> = HUD_QUEUE
@@ -260,6 +272,7 @@ unsafe extern "system" fn wnd_proc(
         }
         WM_ERASEBKGND => LRESULT(1),
         WM_DESTROY => {
+            remove_tray_icon(hwnd);
             // 无限画布退出前存镜头(节流持久化可能丢最后一次拖动)
             if infinite_on() {
                 persist_camera();
