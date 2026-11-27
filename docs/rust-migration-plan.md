@@ -1613,3 +1613,15 @@ modeler Up error 需真机笔/翻页连击复验。
 - 修复: 录制键(R; 聊天集成开时还有 2/3)的 autorepeat 只消费、不重复 feed: 返回 2
   给 CGEventTap, 系统不再看到未处理按键; 首次 keyDown/keyUp 语义不变。
 - 新增 `recording_hotkey_key` 判定与单测; tests/smoke/parity 全绿。
+
+
+## R278 修复: 连续笔迹“前几段被重新染色”
+
+- 现象: 一笔书写过程中, 较早的几段会周期性变成另一种近似色; 图像里表现为一圈笔迹中一段颜色略深。
+- 根因: 实时绘制每个新段会重画上一段(plan seam)修接缝; R276 把主 fill 颜色改成
+  `quantize_raw_rgb`(与 `Color::to_rgb8` 一致的 8 位截断), 但 `plan_seam` 仍用浮点 pen_rgb。
+  于是“新画段”是量化色, “被 seam 重画的旧段”是浮点色, 正好是用户描述的前几段被染色。
+- 修复: `plan_seam` 也走 `quantize_raw_rgb`; `pagerender`(软合成/隧道/快照/Windows)
+  的通道量化从 round 改为 core `Color::to_rgb8` 截断, 全链路同一规则。
+- 验证: 虚拟笔青色截图, 笔迹核心唯一颜色为 (0,162,255)(162=0.639×255 截断);
+  tests/smoke/parity 全绿。

@@ -3220,13 +3220,12 @@ fn plan_seam(cr: *mut c_void, seam: &serde_json::Value, inv: f64) {
         cairo_set_line_cap(cr, 1);
         cairo_set_line_join(cr, 1);
         cairo_set_line_width(cr, width);
-        cairo_set_source_rgba(
-            cr,
+        let (pr, pg, pb) = quantize_raw_rgb(
             glaspen2_router_pen_r(),
             glaspen2_router_pen_g(),
             glaspen2_router_pen_b(),
-            1.0,
         );
+        cairo_set_source_rgba(cr, pr, pg, pb, 1.0);
         cairo_move_to(
             cr,
             from.first().and_then(|x| x.as_f64()).unwrap_or(0.0) * inv,

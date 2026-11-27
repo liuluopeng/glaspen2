@@ -369,11 +369,9 @@ pub fn render_strokes(
         if pts.len() < 2 {
             continue;
         }
-        let rgb = (
-            (s.r.clamp(0.0, 1.0) * 255.0).round() as u8,
-            (s.g.clamp(0.0, 1.0) * 255.0).round() as u8,
-            (s.b.clamp(0.0, 1.0) * 255.0).round() as u8,
-        );
+        // 与 macOS 主路径 `Color::to_rgb8` 同一量化规则(×255 截断), 避免
+        // 同一笔色在整页重建/快照/隧道路径与实时路径之间差 1/255。
+        let rgb = crate::draw_spec::Color::new(s.r, s.g, s.b).to_rgb8();
         for (i, &(x, y, w, _t)) in pts.iter().enumerate() {
             let (sx, sy) = map(x, y);
             let sw = w * zoom * lay.scale;
