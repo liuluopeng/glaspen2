@@ -1452,3 +1452,10 @@ modeler Up error 需真机笔/翻页连击复验。
 
 - 可移植业务逻辑/状态/C ABI 已全部 Rust; 剩余 3 个 Swift 文件仅原生对象构造与系统框架适配(AppKit/SCK/Flutter/NSMenu/视觉参考与探针);
 - 真机硬件清单(真笔/多屏/睡眠/反色/P3/GIF/聊天)仍需人工按 `docs/s8-acceptance-checklist.md` 验收, 不阻塞代码迁移完成.
+
+
+## R263 修复: 压感笔迹宽度不随压力变化
+
+- 根因: R234 迁移 `glaspen2_router_raw_width` 时误把压力参数丢掉, 只剩 width_scale*zoom;
+- 现恢复 `glaspen2_pressure_raw_width(pressure, width_scale) * zoom`;
+- 虚拟笔压感 0.4–0.9 实测 DB 点宽 min=1.0 max=8.0(修复前恒为 8.0).

@@ -10529,7 +10529,10 @@ pub extern "C" fn glaspen2_router_bubble_pen_gone() {
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_raw_width(pressure: f64) -> f64 {
-    (unsafe { glaspen2_width_scale_for_raw() }) * unsafe { glaspen2_router_zoom() }
+    unsafe {
+        glaspen2_pressure_raw_width(pressure, glaspen2_router_width_scale())
+            * glaspen2_router_zoom()
+    }
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_rec_slot_gif() -> i32 {
@@ -11447,16 +11450,67 @@ pub extern "C" fn glaspen2_router_set_window_sharing_readonly() {
 
 // ── R249: 信号安装迁 Rust ──
 
+// 信号处理器只做 async-signal-safe 的自管道写入; 真正的保存/退出由专职线程
+// 投递回主线程执行。原因: Ctrl-C 可能落在主线程上, 若在 handler 里直接碰
+// AppKit/DB/日志锁, 会与主线程已持有的锁死锁, 表现就是 Ctrl-C 无法结束。
+static SIG_WRITE_FD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+
+#[inline]
+fn write_signal_byte(sig: i32) {
+    let fd = SIG_WRITE_FD.load(std::sync::atomic::Ordering::Relaxed);
+    if fd >= 0 {
+        let byte = [sig as u8];
+        unsafe { libc::write(fd, byte.as_ptr() as *const c_void, 1) };
+    }
+}
+
 extern "C" fn signal_exit_handler(sig: i32) {
+    // 仅 write(2): POSIX 列为 async-signal-safe。
+    write_signal_byte(sig);
+}
+
+extern "C" fn exit_on_main(ctx: *mut c_void) {
+    if ctx.is_null() {
+        save_and_exit(0);
+        return;
+    }
+    let sig = unsafe { *Box::from_raw(ctx as *mut i32) };
     save_and_exit(sig);
+}
+
+fn signal_dispatch_thread(read_fd: i32) {
+    loop {
+        let mut byte = [0u8; 1];
+        let n = unsafe { libc::read(read_fd, byte.as_mut_ptr() as *mut c_void, 1) };
+        if n == 1 {
+            let ctx = Box::into_raw(Box::new(byte[0] as i32)) as *mut c_void;
+            unsafe { glaspen2_swift_dispatch_main_after(0.0, ctx, exit_on_main) };
+        } else if n < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.kind() != std::io::ErrorKind::Interrupted {
+                return;
+            }
+        }
+    }
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_install_signals() {
-    unsafe {
-        libc::signal(libc::SIGINT, signal_exit_handler as libc::sighandler_t);
-        libc::signal(libc::SIGTERM, signal_exit_handler as libc::sighandler_t);
-    }
+    use std::sync::Once;
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        let mut fds = [0i32; 2];
+        if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+            tracing::warn!("[signal] pipe() 失败, 信号处理保持默认");
+            return;
+        }
+        SIG_WRITE_FD.store(fds[1], std::sync::atomic::Ordering::SeqCst);
+        std::thread::spawn(move || signal_dispatch_thread(fds[0]));
+        unsafe {
+            libc::signal(libc::SIGINT, signal_exit_handler as libc::sighandler_t);
+            libc::signal(libc::SIGTERM, signal_exit_handler as libc::sighandler_t);
+        }
+    });
 }
 
 // ── R250: GIF/SVG 剪贴板桥迁 Rust ──
