@@ -1552,3 +1552,15 @@ modeler Up error 需真机笔/翻页连击复验。
    - 模式切换只 `setNeedsDisplay`, 后台/非激活窗口的 AppKit 可能延后到 runloop 才画; 通知出现但笔迹未显示;
    - 可见性/模式切换统一走 `force_redraw_draw_view_now`: 设置 needsDisplay 后立即 `displayIfNeeded` (draw view + window);
    - ethereal hide/show/preview 与固定/飘渺切换都使用它; probe 截图确认固定模式笔迹立即出现.
+
+
+## R273 修复: 清屏染黑/固定画布空白
+
+1. `CMD+CTRL+C` 把其他颜色笔迹显示成黑色:
+   - 根因是 cairo operator 数值用错: 代码把 `3` 当 CLEAR, 实际 `CAIRO_OPERATOR_CLEAR=0, 1=SOURCE, 2=OVER, 3=IN`;
+   - 清屏 `cairo_set_operator(cr, 3); cairo_paint()` 实际执行 IN + 默认黑色源, 把已有内容染黑而不是清除; 橡皮 raw fallback 同错;
+   - 改为命名常量 CLEAR/SOURCE/OVER, 清屏/橡皮/表面初始化使用 CLEAR;
+   - 合成新画布后再强制建页; 实测空白页清屏 screens 533→534 且画面无旧笔迹.
+2. 固定画布仍空白:
+   - 固定分支增加 `glaspen2_rust_pageview_rebuild()` 从 STROKES 全量重建 surface, 再 redraw + display;
+   - 解决飘渺期间 surface 跳过/启动未绘制时只 setNeedsDisplay 仍显示空 surface.

@@ -4,6 +4,13 @@
 
 use std::ffi::c_void;
 
+// cairo_operator_t: CLEAR=0, SOURCE=1, OVER=2, IN=3。
+// 旧代码把 3 当 CLEAR 用, 结果清屏/橡皮变成 IN+黑色源: 已有彩色笔迹
+// 被整体染黑而不是清除。
+const CAIRO_OPERATOR_CLEAR: i32 = 0;
+const CAIRO_OPERATOR_SOURCE: i32 = 1;
+const CAIRO_OPERATOR_OVER: i32 = 2;
+
 use glaspen_core::action_effect::CameraDir;
 use glaspen_core::camera::Camera;
 
@@ -2975,7 +2982,7 @@ fn plan_command(cr: *mut c_void, cmd: &serde_json::Value, inv: f64) {
     let width_delta = plan_num(cmd, "width_delta");
     unsafe {
         cairo_set_dash(cr, std::ptr::null(), 0, 0.0);
-        cairo_set_operator(cr, 2);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
         cairo_set_line_cap(cr, 1);
         cairo_set_line_join(cr, 1);
     }
@@ -3095,7 +3102,7 @@ fn plan_command(cr: *mut c_void, cmd: &serde_json::Value, inv: f64) {
         }
         "erase" => {
             unsafe {
-                cairo_set_operator(cr, 3);
+                cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
                 cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
             }
             if points.len() == 1 {
@@ -3130,7 +3137,7 @@ fn plan_command(cr: *mut c_void, cmd: &serde_json::Value, inv: f64) {
                     }
                 }
             }
-            unsafe { cairo_set_operator(cr, 2) };
+            unsafe { cairo_set_operator(cr, CAIRO_OPERATOR_OVER) };
         }
         _ => {
             // fill
@@ -3193,7 +3200,7 @@ fn plan_seam(cr: *mut c_void, seam: &serde_json::Value, inv: f64) {
     }
     unsafe {
         cairo_set_dash(cr, std::ptr::null(), 0, 0.0);
-        cairo_set_operator(cr, 2);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
         cairo_set_line_cap(cr, 1);
         cairo_set_line_join(cr, 1);
         cairo_set_line_width(cr, width);
@@ -3292,7 +3299,14 @@ fn raw_dot_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
     let eraser = unsafe { glaspen2_router_eraser_mode() != 0 };
     let shadow = unsafe { glaspen2_router_soft_shadow() != 0 };
     unsafe {
-        cairo_set_operator(cr, if eraser { 3 } else { 2 });
+        cairo_set_operator(
+            cr,
+            if eraser {
+                CAIRO_OPERATOR_CLEAR
+            } else {
+                CAIRO_OPERATOR_OVER
+            },
+        );
         if shadow && !eraser {
             for (pad, alpha) in [(1.5, 0.20), (3.0, 0.13), (5.0, 0.07)] {
                 cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, alpha);
@@ -3345,7 +3359,14 @@ fn raw_segment_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
     let pad_const = unsafe { glaspen2_router_outline_pad() };
     let dash = unsafe { glaspen2_router_outline_dash() };
     unsafe {
-        cairo_set_operator(cr, if eraser { 3 } else { 2 });
+        cairo_set_operator(
+            cr,
+            if eraser {
+                CAIRO_OPERATOR_CLEAR
+            } else {
+                CAIRO_OPERATOR_OVER
+            },
+        );
         cairo_set_line_cap(cr, 1);
         cairo_set_line_join(cr, 1);
         if shadow && !eraser {
@@ -4904,10 +4925,10 @@ pub extern "C" fn glaspen2_rust_tunnel_render(
         return 0;
     }
     unsafe {
-        cairo_set_operator(cr, 1);
+        cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
         cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
         cairo_paint(cr);
-        cairo_set_operator(cr, 2);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
     }
     let p = p.clamp(0.0, 1.0);
     let e = if p < 0.5 {
@@ -4953,10 +4974,10 @@ pub extern "C" fn glaspen2_rust_tunnel_render(
         let bcr = unsafe { cairo_create(blur) };
         if !bcr.is_null() {
             unsafe {
-                cairo_set_operator(bcr, 1);
+                cairo_set_operator(bcr, CAIRO_OPERATOR_SOURCE);
                 cairo_set_source_rgba(bcr, 0.0, 0.0, 0.0, 0.0);
                 cairo_paint(bcr);
-                cairo_set_operator(bcr, 2);
+                cairo_set_operator(bcr, CAIRO_OPERATOR_OVER);
                 cairo_scale(bcr, bw as f64 / surf_w as f64, bh as f64 / surf_h as f64);
             }
             for slot in &slots {
@@ -5640,7 +5661,7 @@ pub extern "C" fn glaspen2_rust_clear_screen(
                 cairo_translate(cr, ox * scale, oy * scale);
                 cairo_scale(cr, pscale, pscale);
             }
-            cairo_set_operator(cr, 3);
+            cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
             cairo_paint(cr);
             cairo_destroy(cr);
         }
@@ -5762,9 +5783,9 @@ pub extern "C" fn glaspen2_rust_surface_ensure(view: *mut c_void) -> i32 {
     unsafe {
         let cr = cairo_create(surface);
         if !cr.is_null() {
-            cairo_set_operator(cr, 3);
+            cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
             cairo_paint(cr);
-            cairo_set_operator(cr, 2);
+            cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
             cairo_destroy(cr);
         }
     }
@@ -8363,7 +8384,7 @@ pub extern "C" fn glaspen2_rust_make_card(
             if !cr.is_null() {
                 let f = card_scale / g_scale.max(0.0001);
                 cairo_scale(cr, f, f);
-                cairo_set_operator(cr, 1);
+                cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
                 cairo_set_source_surface(cr, current, 0.0, 0.0);
                 cairo_paint(cr);
                 cairo_destroy(cr);
@@ -9614,7 +9635,13 @@ pub extern "C" fn glaspen2_rust_toggle_canvas_mode() {
         if unsafe { glaspen2_router_pressure_monitor() } != 0 {
             unsafe { glaspen2_router_pm_show() }
         }
-        force_redraw_draw_view_now();
+        // 固定模式必须从 STROKES 全量重建 surface: 飘渺期间 draw view 可能跳过
+        // surface 合成/或启动时尚未绘制, 只 setNeedsDisplay 会继续显示空 surface。
+        glaspen2_rust_pageview_rebuild();
+        redraw_draw_view_now();
+        unsafe {
+            glaspen2_swift_dispatch_main_after(0.0, std::ptr::null_mut(), deferred_draw_display)
+        };
         let text = i18n_text_owned("canvas.fixed_mode");
         if !text.is_null() {
             unsafe {
@@ -10954,16 +10981,21 @@ fn redraw_draw_view_now() {
 /// 可见性/模式切换是低频操作: 设置 needsDisplay 后立即 displayIfNeeded。
 /// AppKit 在后台/非激活窗口上可能拖到下个 runloop 周期才画, 用户按快捷键
 /// 后看到“固定画布模式”通知却没有笔迹, 就是这里没同步 flush。
+extern "C" fn deferred_draw_display(_ctx: *mut c_void) {
+    unsafe {
+        let draw = sw_draw_view();
+        if !draw.is_null() {
+            let _: () = objc2::msg_send![draw as *mut objc2::runtime::AnyObject, displayIfNeeded];
+        }
+    }
+}
+
 fn force_redraw_draw_view_now() {
     redraw_draw_view_now();
     unsafe {
         let draw = sw_draw_view();
         if !draw.is_null() {
             let _: () = objc2::msg_send![draw as *mut objc2::runtime::AnyObject, displayIfNeeded];
-        }
-        let window = sw_main_window();
-        if !window.is_null() {
-            let _: () = objc2::msg_send![window as *mut objc2::runtime::AnyObject, displayIfNeeded];
         }
     }
 }
