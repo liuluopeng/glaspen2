@@ -233,6 +233,24 @@ pub fn json_to_setting_value(value: &serde_json::Value) -> crate::proto::Setting
     crate::proto::SettingValue { value }
 }
 
+/// FRB 等进程内通道用: 单帧 Panel protobuf(带长度前缀), 不再传 JSON 文本。
+pub fn encode_panel(kind: &str, data: &serde_json::Value) -> Vec<u8> {
+    encode_frame(&panel_frame(0, kind, data))
+}
+
+pub fn decode_panel(bytes: &[u8]) -> Result<(String, serde_json::Value), FrameError> {
+    let frame = decode_frame(bytes)?;
+    let Some(crate::proto::frame::Body::Panel(panel)) = frame.body else {
+        return Err(FrameError::Decode("期望 Frame.panel".to_string()));
+    };
+    let data = panel
+        .data
+        .as_ref()
+        .map(prost_value_to_json)
+        .unwrap_or(serde_json::Value::Null);
+    Ok((panel.kind, data))
+}
+
 /// 过渡 panel 消息: kind + 原 data 对象 + request_id。/// 过渡 panel 消息: kind + 原 data 对象 + request_id。
 pub fn panel_frame(request_id: u64, kind: &str, data: &serde_json::Value) -> Frame {
     Frame {
@@ -336,6 +354,15 @@ mod tests {
         assert_eq!(panel.kind, "getPageThumbnails");
         let back = prost_value_to_json(panel.data.as_ref().unwrap());
         assert_eq!(back, value);
+    }
+
+    #[test]
+    fn panel_encode_decode_roundtrip() {
+        let value = serde_json::json!({"ok": true, "score": 1.5});
+        let bytes = encode_panel("test", &value);
+        let (kind, decoded) = decode_panel(&bytes).unwrap();
+        assert_eq!(kind, "test");
+        assert_eq!(decoded, value);
     }
 
     #[test]

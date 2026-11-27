@@ -184,15 +184,19 @@ class _FrbBridge extends SettingsBridge {
   @override
   Future<Map<String, dynamic>> uiConfig() async {
     await _init();
-    final decoded = jsonDecode(await rust.uiConfigJson());
-    if (decoded is Map<String, dynamic>) return decoded;
-    throw FormatException('uiConfigJson 不是 JSON 对象: $decoded');
+    final msg = decodePanelMessage(await rust.uiConfigPb());
+    final data = msg.data;
+    if (data is Map) {
+      return {for (final e in data.entries) e.key.toString(): e.value};
+    }
+    throw FormatException('uiConfig protobuf 不是对象: $data');
   }
 
   @override
   Future<String> getBubbles() async {
     await _init();
-    return rust.bubbleMessages();
+    final msg = decodePanelMessage(await rust.bubbleMessages());
+    return jsonEncode(msg.data);
   }
 
   @override
@@ -395,12 +399,13 @@ class _FrbBridge extends SettingsBridge {
   @override
   Future<(bool, String)> nasBackupNow() async {
     await _init();
-    final v = jsonDecode(await rust.nasBackupNow()) as Map<String, dynamic>;
+    final msg = decodePanelMessage(await rust.nasBackupNow());
+    final v = (msg.data as Map).cast<String, dynamic>();
     final ok = v['ok'] == true;
-    final msg = ok
+    final text = ok
         ? '${(v['size_bytes'] as num? ?? 0) ~/ 1024} KB · ${(v['stroke_count'] as num? ?? 0)} 笔'
         : '${v['error'] ?? ''}${(v['hint'] as String?)?.isNotEmpty == true ? '(${v['hint']})' : ''}';
-    return (ok, msg);
+    return (ok, text);
   }
 
   @override
@@ -821,10 +826,10 @@ class _NamedPipeBridge extends SettingsBridge {
     final r = await _request('nasBackup', null);
     final v = (r.containsKey('data') ? r['data'] : r) as Map<dynamic, dynamic>;
     final ok = v['ok'] == true;
-    final msg = ok
+    final text = ok
         ? '${((v['size_bytes'] as num? ?? 0) ~/ 1024)} KB · ${(v['stroke_count'] as num? ?? 0)} 笔'
         : '${v['error'] ?? ''}${(v['hint'] as String?)?.isNotEmpty == true ? '(${v['hint']})' : ''}';
-    return (ok, msg);
+    return (ok, text);
   }
 
   @override

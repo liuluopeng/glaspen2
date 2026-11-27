@@ -64,7 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => 3568406;
+  int get rustContentHash => 684981169;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -84,7 +84,7 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiBubbleFlush();
 
-  Future<String> crateApiBubbleMessages();
+  Future<Uint8List> crateApiBubbleMessages();
 
   Future<CanvasPayload?> crateApiCanvasOverview({
     required int w,
@@ -146,7 +146,7 @@ abstract class RustLibApi extends BaseApi {
     required double dy,
   });
 
-  Future<String> crateApiNasBackupNow();
+  Future<Uint8List> crateApiNasBackupNow();
 
   Future<void> crateApiNavigateToPage({required PlatformInt64 screenId});
 
@@ -193,7 +193,7 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiTriggerHotkey({required String key});
 
-  Future<String> crateApiUiConfigJson();
+  Future<Uint8List> crateApiUiConfigPb();
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -313,7 +313,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "bubble_flush", argNames: []);
 
   @override
-  Future<String> crateApiBubbleMessages() {
+  Future<Uint8List> crateApiBubbleMessages() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -326,7 +326,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
           decodeErrorData: null,
         ),
         constMeta: kCrateApiBubbleMessagesConstMeta,
@@ -889,7 +889,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
-  Future<String> crateApiNasBackupNow() {
+  Future<Uint8List> crateApiNasBackupNow() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -902,7 +902,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
           decodeErrorData: null,
         ),
         constMeta: kCrateApiNasBackupNowConstMeta,
@@ -1320,7 +1320,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "trigger_hotkey", argNames: ["key"]);
 
   @override
-  Future<String> crateApiUiConfigJson() {
+  Future<Uint8List> crateApiUiConfigPb() {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -1333,18 +1333,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_list_prim_u_8_strict,
           decodeErrorData: null,
         ),
-        constMeta: kCrateApiUiConfigJsonConstMeta,
+        constMeta: kCrateApiUiConfigPbConstMeta,
         argValues: [],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiUiConfigJsonConstMeta =>
-      const TaskConstMeta(debugName: "ui_config_json", argNames: []);
+  TaskConstMeta get kCrateApiUiConfigPbConstMeta =>
+      const TaskConstMeta(debugName: "ui_config_pb", argNames: []);
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {

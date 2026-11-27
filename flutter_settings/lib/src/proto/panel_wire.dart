@@ -151,6 +151,14 @@ List<int> encodeRequest(int requestId, String kind, Map<String, dynamic>? data) 
   return encodeFrame(frame);
 }
 
+PanelMessage decodePanelMessage(List<int> bytes) {
+  final messages = PanelStreamDecoder().feed(bytes);
+  if (messages.isEmpty) {
+    throw FormatException('空 Panel protobuf');
+  }
+  return messages.first;
+}
+
 class PanelStreamDecoder {
   final List<int> _buffer = [];
 

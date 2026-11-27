@@ -339,8 +339,13 @@ pub async fn get_settings() -> Option<Settings> {
 
 /// 「气泡消息」tab: 全部已完结消息的 JSON(自适应节奏/空间跳变/翻页分段,
 /// 结构对齐 ShareStroke, 见 export/bubbles.rs)。
-pub async fn bubble_messages() -> String {
-    run_blocking(glaspen_core::export::bubbles::messages_json)
+pub async fn bubble_messages() -> Vec<u8> {
+    run_blocking(|| {
+        panel_bytes(
+            "bubbleMessages",
+            &glaspen_core::export::bubbles::messages_json(),
+        )
+    })
 }
 
 /// 打开气泡 tab 时调用: 把进行中的段强制结为一条消息。
@@ -351,8 +356,8 @@ pub async fn bubble_flush() {
 /// NAS 备份(设置 → 数据 → 立即备份): 整库一致性快照 → POST 到 NAS 的
 /// axum 服务(文件落盘 + Postgres 登记)。返回结果 JSON, 见
 /// export/nas_backup.rs 与 docs/nas-backup.md。
-pub async fn nas_backup_now() -> String {
-    run_blocking(glaspen_core::export::nas_backup::backup_now)
+pub async fn nas_backup_now() -> Vec<u8> {
+    run_blocking(|| panel_bytes("nasBackup", &glaspen_core::export::nas_backup::backup_now()))
 }
 
 /// 写入一项设置。`value` 是 `glaspen.ipc.v1.SettingValue` 的 protobuf bytes;
@@ -414,6 +419,12 @@ fn current_settings() -> Option<Settings> {
     shim::settings_json()
         .as_deref()
         .and_then(Settings::from_json)
+}
+
+/// 进程内 FRB 的通用 Panel protobuf 编码(数据只在本进程内, 不落 JSON 文本)。
+fn panel_bytes(kind: &str, json: &str) -> Vec<u8> {
+    let value = serde_json::from_str(json).unwrap_or(serde_json::Value::Null);
+    glaspen_ipc::encode_panel(kind, &value)
 }
 
 // ---------------------------------------------------------------------------
@@ -1223,6 +1234,11 @@ mod tests {
 /// 数据单源在 core/ui.rs; Windows 面板经命名管道指令 `uiConfig` 取同一份 JSON,
 /// Flutter 侧因此不再按平台分叉。
 #[frb]
-pub async fn ui_config_json() -> String {
-    crate::ui::ui_config_json(crate::ui::Platform::Macos)
+pub async fn ui_config_pb() -> Vec<u8> {
+    run_blocking(|| {
+        panel_bytes(
+            "uiConfig",
+            &crate::ui::ui_config_json(crate::ui::Platform::Macos),
+        )
+    })
 }

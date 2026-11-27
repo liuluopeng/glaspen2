@@ -45,7 +45,9 @@
 
 - ✅ `set_setting` 已改为 `Vec<u8>`(`glaspen.ipc.v1.SettingValue`); Dart 侧
   `encodeSettingValue` 编码; Rust 解码后再喂 macOS C ABI(该 C ABI 的 JSON 属 P3);
-- ⏳ `settings_snapshot` / bubbles / copy-paste payload 仍待迁移;
+- ✅ `uiConfig` / `bubbleMessages` / `nasBackup` 改为 `Vec<u8>` Panel protobuf;
+  Dart 端 `decodePanelMessage` 解包(UI 边界仍是 dynamic map, 但线上不再传 JSON 文本);
+- ⏳ `copyStrokes` / `pasteStrokes` 的自定义 line payload 不是 JSON; typed 化留待后;
 - 其余 FRB 函数本来已经 typed, 保持不动。
 
 ### P3 macOS Swift C ABI

@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 3568406;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 684981169;
 
 // Section: executor
 
@@ -1436,7 +1436,7 @@ fn wire__crate__api__trigger_hotkey_impl(
         },
     )
 }
-fn wire__crate__api__ui_config_json_impl(
+fn wire__crate__api__ui_config_pb_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -1444,7 +1444,7 @@ fn wire__crate__api__ui_config_json_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "ui_config_json",
+            debug_name: "ui_config_pb",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -1462,7 +1462,7 @@ fn wire__crate__api__ui_config_json_impl(
             move |context| async move {
                 transform_result_sse::<_, ()>(
                     (move || async move {
-                        let output_ok = Result::<_, ()>::Ok(crate::api::ui_config_json().await)?;
+                        let output_ok = Result::<_, ()>::Ok(crate::api::ui_config_pb().await)?;
                         Ok(output_ok)
                     })()
                     .await,
@@ -1961,7 +1961,7 @@ fn pde_ffi_dispatcher_primary_impl(
         35 => wire__crate__api__stage_update_impl(port, ptr, rust_vec_len, data_len),
         36 => wire__crate__api__test_chat_login_impl(port, ptr, rust_vec_len, data_len),
         37 => wire__crate__api__trigger_hotkey_impl(port, ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__ui_config_json_impl(port, ptr, rust_vec_len, data_len),
+        38 => wire__crate__api__ui_config_pb_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }

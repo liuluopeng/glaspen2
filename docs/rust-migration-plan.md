@@ -1747,3 +1747,12 @@ modeler Up error 需真机笔/翻页连击复验。
   验证 SettingValue/Frame 编解码; 旧 FRB wire 测试的 JSON 标量用例改为纯 protobuf 测试。
 - 验证: cargo build; `cargo test -p glaspen-ipc` 10 passed; `flutter analyze` 0;
   `flutter test test/panel_wire_test.dart` 2 passed; `frb_wire_test.dart` 通过。
+
+
+## R289 protobuf: FRB uiConfig/bubbles/NAS 结果改 Panel protobuf
+
+- `ui_config_json` → `ui_config_pb() -> Vec<u8>`(Panel kind=uiConfig);
+- `bubble_messages` / `nas_backup_now` → `Vec<u8>`(Panel kind=bubbleMessages/nasBackup);
+- Dart `_FrbBridge` 用 `decodePanelMessage` 解包; `uiConfig`/`getBubbles`/`nasBackupNow`
+  界面层仍拿 map/字符串, 但 FRB 线上是 protobuf; 删除旧 JSON API;
+- FRB codegen 重生成; 构建通过, Dart analyze 0, `panel_wire_test`+`frb_wire_test` 全过。

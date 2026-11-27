@@ -6,7 +6,7 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `current_settings`, `decode_thumb_blob`, `download_to_cache`, `from_json`, `open_url_checked`, `run_blocking`
+// These functions are ignored because they are not marked as `pub`: `current_settings`, `decode_thumb_blob`, `download_to_cache`, `from_json`, `open_url_checked`, `panel_bytes`, `run_blocking`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `glaspen2_notify_settings_changed`
 
@@ -15,7 +15,7 @@ Future<Settings?> getSettings() => RustLib.instance.api.crateApiGetSettings();
 
 /// 「气泡消息」tab: 全部已完结消息的 JSON(自适应节奏/空间跳变/翻页分段,
 /// 结构对齐 ShareStroke, 见 export/bubbles.rs)。
-Future<String> bubbleMessages() =>
+Future<Uint8List> bubbleMessages() =>
     RustLib.instance.api.crateApiBubbleMessages();
 
 /// 打开气泡 tab 时调用: 把进行中的段强制结为一条消息。
@@ -24,7 +24,7 @@ Future<void> bubbleFlush() => RustLib.instance.api.crateApiBubbleFlush();
 /// NAS 备份(设置 → 数据 → 立即备份): 整库一致性快照 → POST 到 NAS 的
 /// axum 服务(文件落盘 + Postgres 登记)。返回结果 JSON, 见
 /// export/nas_backup.rs 与 docs/nas-backup.md。
-Future<String> nasBackupNow() => RustLib.instance.api.crateApiNasBackupNow();
+Future<Uint8List> nasBackupNow() => RustLib.instance.api.crateApiNasBackupNow();
 
 /// 写入一项设置。`value` 是 `glaspen.ipc.v1.SettingValue` 的 protobuf bytes;
 /// ObjC 侧仍按 key + JSON 标量分派(P3 再迁 Swift C ABI)。
@@ -230,7 +230,7 @@ Future<bool> exportAnimatedGif() =>
 /// 设置面板的平台无关 UI 数据(默认键位/保留组合/提示文案/键盘布局/功能开关)。
 /// 数据单源在 core/ui.rs; Windows 面板经命名管道指令 `uiConfig` 取同一份 JSON,
 /// Flutter 侧因此不再按平台分叉。
-Future<String> uiConfigJson() => RustLib.instance.api.crateApiUiConfigJson();
+Future<Uint8List> uiConfigPb() => RustLib.instance.api.crateApiUiConfigPb();
 
 /// 备份/回导结果:成败 + 给用户看的一句话(成功时是文件路径)。
 class BackupOutcome {
