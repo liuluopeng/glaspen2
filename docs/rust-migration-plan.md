@@ -1578,3 +1578,17 @@ modeler Up error 需真机笔/翻页连击复验。
   3. `gif_strokes_from`: 剔除 NaN/负 t/非正宽度的坏点而不是丢整笔;
   4. 载入历史笔迹时同样过滤坏点(页面/无限画布), 旧库坏数据自动恢复。
 - 验证: 复制现场库启动后导出 GIF, 末帧 “abc” 完整连续; 新增 sanitize 单测; tests/smoke/parity 全绿。
+
+
+## R275 修复: 按住录制热键时笔画被切碎(GIF 断触的真正触发器)
+
+- 现场日志: 一笔书写期间 `Up error: 模型器拒绝输入` 每 ~84ms 出现一次, 正好是 macOS 键盘
+  autorepeat 频率; 同时 `recording_feed` 每次按键都会调用 `rec_finish_and_count`
+  → `finish_active_stroke`。
+- 根因: 用户按住 ⌘⌃R 录制时, 系统持续发 keyDown autorepeat; `route_keyboard` 没过滤
+  `is_repeat`, 每次 repeat 都重新走 `StartPressed → finish_active_stroke`, 把正在写的
+  一笔按 80ms 切成多段; 录制 GIF 因此断触。
+- 修复: `glaspen2_rust_route_keyboard` 在 autorepeat 时直接返回, 录制只在首次 keyDown
+  启动、keyUp 停止; 普通 chord 也不再被重复触发。
+- 加上 R274 的坏点过滤/时间戳兜底, 旧库数据和新录制都覆盖。
+- 验证: 全量 tests / smoke debug / parity 全绿。

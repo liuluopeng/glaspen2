@@ -6730,6 +6730,13 @@ pub extern "C" fn glaspen2_rust_route_keyboard(
     if glaspen2_rust_recording_is_active() != 0 {
         return 1;
     }
+    // 按住 ⌘⌃R 录制时, 系统会持续发 keyDown autorepeat。若重复进入录制
+    // hotkey, 每次 StartPressed 都会 `recording_feed` → finish_active_stroke,
+    // 把正在写的一笔按键盘重复率(~80ms)切成碎段, 录出的 GIF 就会断触。
+    // 自动重复不产生新的按键语义, 录制只在首次 keyDown 启动、keyUp 停止。
+    if is_repeat != 0 {
+        return 1;
+    }
     let down = i32::from(kind == 10);
     if glaspen2_rust_recording_hotkey(down, key_code, i32::from(has_cmd != 0 && has_ctrl != 0)) != 0
     {
