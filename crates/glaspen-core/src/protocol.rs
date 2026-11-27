@@ -309,6 +309,20 @@ mod tests {
                 rest = tail;
             }
         }
+        // P1 protobuf: one-way 请求走 _send('type', ...)。
+        let mut rest = seg;
+        while let Some(i) = rest.find("_send(") {
+            let tail = &rest[i + "_send(".len()..];
+            let tail = tail.trim_start();
+            if let Some(q) = tail.strip_prefix('\'') {
+                let end = q.find('\'').expect("_send 参数未闭合");
+                actual.push(q[..end].to_string());
+                rest = &q[end..];
+            } else {
+                rest = tail;
+            }
+        }
+
         // 面板还有若干直接 jsonEncode({'type': ...}) 的请求。
         let mut rest = seg;
         while let Some(i) = rest.find("'type': '") {

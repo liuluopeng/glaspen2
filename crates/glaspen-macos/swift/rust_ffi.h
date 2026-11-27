@@ -22,16 +22,13 @@ extern char* glaspen2_load_string_setting(const char *key);
 // D1 设置 effect 桥(core/settings_apply.rs): 解析 + 钳制 + 落库一次完成,
 // 返回 effect JSON({"kind":..., "bool"/"int"/"float"/"str"/"json":...} 或 {"error":...});
 // 调用方用 glaspen2_free_c_string 释放。ObjC 只按 kind 做平台运行时副作用。
-extern char* glaspen2_settings_apply(const char *key, const char *value_json);
 // D12 面板设置快照桥(core/settings_snapshot.rs): 入参 = 运行时专属值 JSON 对象
 // (launchAtLogin/shortcuts/flipEffect/language), 返回完整快照单行 JSON
 // (字段集合/顺序/类型/缺省值/DB 回退全在 core);失败回 {"error":...}, 永不 NULL;
 // 调用方用 glaspen2_free_c_string 释放。
-extern char* glaspen2_settings_snapshot_json(const char *overrides_json);
 // D3b 动作 effect 桥(core/action_effect.rs): action id → 平台无关 effect JSON
 // ({"kind":"<ActionEffect 变体名>"} 或 {"error":"..."}); 调用方用
 // glaspen2_free_c_string 释放。ObjC 只按 kind 做本平台运行时副作用。
-extern char* glaspen2_action_effect_json(const char *action);
 // D5b 镜头数学桥(core/camera.rs): 输入 ObjC 持有的镜头三值 + 本次操作参数,
 // 返回 core 算好的新三值 JSON({"pan_x","pan_y","zoom"}[,"hit_max","hit_min",
 // "changed"] 或 {"error":"..."}), 永不 NULL;调用方用 glaspen2_free_c_string 释放。
@@ -48,11 +45,7 @@ extern void glaspen2_camera_home(double *pan_x, double *pan_y, double *zoom);
 // D6 网格/分栏几何桥(core/grid.rs): 输入视图尺寸/镜头/网格设置, 返回 core 算好的
 // 线段表 JSON({"minor":[...],"screen":[...],"divider":[...],"follow":bool} 或
 // {"error":"..."}), 线段是视图坐标(原点左上, y 向下), ObjC 只按既有 CGContext
-// 样式描边。glaspen2_grid_json = 全视口规范入口(屏幕单位=视口尺寸, macOS 两种画布
-// 模式都画屏幕分界线); glaspen2_grid_json_clipped = 笔迹脏矩形热路径(只算与 clip
 // 相交的线, 额外带 show_grid 开关)。永不 NULL;调用方用 glaspen2_free_c_string 释放。
-extern char* glaspen2_grid_json(double view_w, double view_h, double pan_x, double pan_y, double zoom, double grid_size, int divider, int follow);
-extern char* glaspen2_grid_json_clipped(double view_w, double view_h, double pan_x, double pan_y, double zoom, double grid_size, int divider, int show_grid, double clip_x0, double clip_y0, double clip_x1, double clip_y1);
 extern void glaspen2_chat_auth_reload(void); // 设置/启动时把 DB 账号配置推给 Rust auth
 extern void glaspen2_share_ink_set_active(int active); // 共享画布上行开关(export.rs)
 // S2 双向互调探针(env 门控, 默认 no-op; 定义在 crates/glaspen-macos/swift/InteropProbe.m)
@@ -87,7 +80,6 @@ extern void glaspen2_free_c_string(char *ptr);
 // (commands / dirty / seam; 或 {"error":...}), 永不 NULL;
 // 返回值用 glaspen2_free_c_string 释放。ObjC 侧光栅化见 parts/panel.m 的
 // gl_live_plan_draw_segment(失败回退旧逐段自绘)。
-extern char* glaspen2_live_plan_json(const char *input);
 // D10b 文案桥(core/i18n.rs): 按稳定 key 取当前语言文案, 未知 key 回显 key
 // 本身(便于发现拼错), 返回缓冲用 glaspen2_free_c_string 释放; 每次调用现查
 // 语言, 因此切换语言后新提示/菜单立即生效(见 gl_text/gl_textf)。
@@ -110,7 +102,6 @@ extern void glaspen2_on_display_change(int screen_w, int screen_h);
 // {"error":"..."}), 坐标是视图坐标(原点左上, y 向下; 合成条带时翻转 y)。
 // geometry_width > 0 = page-view-fit 模式, 只保留当前几何组(按页宽过滤)。
 // 永不 NULL; 调用方用 glaspen2_free_c_string 释放。
-extern char* glaspen2_minimap_layout_json(long long current_screen_id, double view_w, double view_h, int geometry_width);
 extern unsigned char* glaspen2_render_thumbnail(long long screen_id, int w, int h, int max_size, int *out_len);
 /// 批量缩略图:一次调用返回多页的 PNG(自描述二进制块,见 export.rs)。
 extern unsigned char* glaspen2_page_thumbnails(const long long *ids, int count, int max_size, int *out_len);
@@ -121,8 +112,6 @@ extern void glaspen2_notify_settings_changed(void);
 extern int glaspen2_delete_screen(long long screen_id);
 extern char* glaspen2_page_info_text(long long screen_id, const char *lang);
 // chord 单源(core/chord.rs, D2): 动作表/默认值/规范化/保留/旧默认迁移
-extern char* glaspen2_chord_actions_json(void);
-extern char* glaspen2_chord_defaults_json(void);
 extern char* glaspen2_chord_normalize(const char *raw);
 extern char* glaspen2_chord_migrate_value(const char *action, const char *raw);
 extern int glaspen2_chord_reserved(const char *chord);
@@ -134,13 +123,6 @@ extern const char *glaspen2_ink_draft_last_error(void);
 // D8b 录制会话状态机桥(core/recording.rs): ObjC 不能持 Rust 结构体, 状态机
 // 活在 core 的两个槽位里(adapter 只在主 runloop 线程调用, 后台结果回主线程再喂回):
 //   槽 0 = GIF(⌘⌃R);槽 1 = 手写消息(⌘⌃2 草稿 / ⌘⌃3 直发, 同一机器内互斥)。
-// glaspen2_recording_event_json 喂单行事件 JSON, 回 must-execute-in-order 的
-// effects JSON 数组(单行, 永不 NULL, 非法输入回 {"error":...})。
-// glaspen2_recording_mode 回 0=空闲/1=GIF/2=草稿/3=直发(-1=非法槽位),
-// 供 key-up 分支判断"这次抬起是否属于本槽位"。
-// 字符串一律用 glaspen2_free_c_string 释放。
-extern int glaspen2_recording_init(int slot, int chat_integration);
-extern char* glaspen2_recording_event_json(int slot, const char *event_json);
 extern int glaspen2_recording_reset(int slot);
 extern int glaspen2_recording_mode(int slot);
 extern void glaspen2_set_stroke_outline(int enabled);
@@ -465,15 +447,11 @@ extern const char *glaspen2_rust_pm_ev_type(void);
 extern int glaspen2_shortcut_apply_pb(const unsigned char *saved, size_t saved_len);
 
 // R52: 设置快照 overrides JSON(调用方 free)
-extern char *glaspen2_menu_snapshot_overrides_json(void);
 
 // R54: 录制 HUD 语义 -> 本地化文案(调用方 free)
 extern char *glaspen2_rust_rec_hud_text(const char *hud, int strokes, const char *detail);
 
 // R55: 实时绘制计划光栅化
-extern int glaspen2_rust_draw_live_plan(void *cr, const char *plan_json, double inv_scale, int dot,
-                                        double f1x, double f1y, double f1p,
-                                        double f2x, double f2y, double f2p, int fallback_count);
 
 // R56: 实时笔迹首点/拖动(计划优先 + 回退光栅化)
 extern void glaspen2_rust_raw_draw_dot(double x, double y, double width);
@@ -616,8 +594,6 @@ extern void glaspen2_rust_ethereal_auto_show(void);
 extern int glaspen2_rust_ethereal_preview_show(void);
 
 // R107: 快捷键默认/动作 JSON 缓存(borrowed, 不要 free)
-extern const char *glaspen2_rust_shortcut_defaults_json(void);
-extern const char *glaspen2_rust_shortcut_actions_json(void);
 
 // R111: 图层面刷新(默认)
 extern void glaspen2_rust_overlay_flush(void);

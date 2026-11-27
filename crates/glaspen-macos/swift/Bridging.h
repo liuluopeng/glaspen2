@@ -166,7 +166,6 @@ int glaspen2_router_color_preset_count(void);
 int glaspen2_router_width_preset_count(void);
 int glaspen2_router_selected_color_index(void);
 int glaspen2_router_selected_width_index(void);
-char *glaspen2_router_shortcuts_effective_json(void);
 int glaspen2_router_flip_effect(void);
 int glaspen2_router_lang(void);
 int glaspen2_router_perf_enabled(void);

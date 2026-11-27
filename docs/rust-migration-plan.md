@@ -1777,3 +1777,14 @@ modeler Up error 需真机笔/翻页连击复验。
 - Swift: 新增 `Menu/ProtoWire.swift` 最小 wire 编解码; 菜单/快捷键调用点改 encode/decode;
   删除 Swift 侧 `JSONSerialization` 两处边界;
 - 验证: cargo build(含 Swift)、smoke(menu full probe/hotkeys/settings)、parity 全过。
+
+
+## R292 protobuf 迁移收尾 + 全量回归
+
+- Swift 头文件删除所有 JSON C ABI 声明; Swift 源码不再出现 JSON FFI 调用;
+- 修正 core protocol 扫描测试: Flutter 面板一次性请求已从 jsonEncode 改 `_send()`;
+- 全量 `cargo test --workspace --exclude glaspen2_installer` → 0 failed;
+- `cargo build`, macOS smoke, parity, Dart analyze/panel_wire/frb_wire 全绿。
+- 机器边界现状: Windows 管道 = Frame protobuf; Dart<->Rust FRB = Vec<u8> Panel/
+  SettingValue; macOS Swift<->Rust settings/shortcut/menu = protobuf `(ptr,len)`。
+  数据库 JSON 与同进程 Rust JSON 不在迁移范围。

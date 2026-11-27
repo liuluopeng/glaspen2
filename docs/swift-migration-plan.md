@@ -865,3 +865,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-27 | Rust-R289 | FRB uiConfig/bubbles/NAS 改 Panel protobuf; Dart decodePanelMessage | 本提交 |
 | 2026-11-27 | Rust-R290 | macOS settings C ABI 去 JSON: settings_snapshot_pb/set_setting_pb; 删除 C JSON 符号 | 本提交 |
 | 2026-11-27 | Rust-R291 | Swift shortcut/menu titles/menu texts JSON 改 protobuf StringMap/StringList; 新增 ProtoWire.swift | 本提交 |
+| 2026-11-27 | Rust-R292 | protobuf 机器边界迁移收尾: 删除 Swift JSON 头声明; 全量测试回归 | 本提交 |

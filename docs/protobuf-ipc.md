@@ -60,7 +60,7 @@
   - `menu_add_top_level` 的 titles 改 `StringMap`;
   - `menu_update_texts` 的 top/export/more 改 `StringList`;
   - Swift 侧新增 `ProtoWire.swift` 手写最小 protobuf map/list 编解码, 不引入 SwiftProtobuf;
-- ⏳ 其它未接线的 `*_json` C ABI 头声明待清理;
+- ✅ Swift 头文件中不再声明 JSON C ABI; 剩余 `*_json` Rust 导出仅被同进程 Rust 内部调用或测试使用, 不属于机器边界;
 - Swift 侧引入 SwiftProtobuf(或提交生成 `.pb.swift` + runtime);
 - 先把 settings/menu/shortcut 三组迁完, 再迁 recording/grid/camera/minimap。
 

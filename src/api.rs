@@ -25,7 +25,6 @@ pub(crate) mod shim {
     use std::os::raw::{c_char, c_int};
 
     unsafe extern "C" {
-        fn glaspen2_macos_free_c_string(p: *mut c_char);
         fn glaspen2_macos_delete_page(screen_id: i64) -> c_int;
         fn glaspen2_macos_navigate_to_page(screen_id: i64);
         fn glaspen2_macos_hotkey(key: *const c_char);
