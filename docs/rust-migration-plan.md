@@ -1459,3 +1459,10 @@ modeler Up error 需真机笔/翻页连击复验。
 - 根因: R234 迁移 `glaspen2_router_raw_width` 时误把压力参数丢掉, 只剩 width_scale*zoom;
 - 现恢复 `glaspen2_pressure_raw_width(pressure, width_scale) * zoom`;
 - 虚拟笔压感 0.4–0.9 实测 DB 点宽 min=1.0 max=8.0(修复前恒为 8.0).
+
+
+## R264 修复: Ctrl-C 无法退出
+
+- 根因: R249 的 SIGINT/SIGTERM handler 在信号上下文直接调 AppKit/DB/日志, 与主线程锁死锁;
+- 现 handler 只做 async-signal-safe 自管道 write, 专职线程读出后 dispatch 到主线程执行保存/退出;
+- 验证: 直接 kill -INT、pty 模拟 Ctrl-C、`cargo run` pty Ctrl-C(含虚拟笔绘制后)均立即退出, 无残留进程.
