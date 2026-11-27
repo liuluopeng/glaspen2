@@ -11507,8 +11507,14 @@ pub extern "C" fn glaspen2_router_install_signals() {
         SIG_WRITE_FD.store(fds[1], std::sync::atomic::Ordering::SeqCst);
         std::thread::spawn(move || signal_dispatch_thread(fds[0]));
         unsafe {
-            libc::signal(libc::SIGINT, signal_exit_handler as libc::sighandler_t);
-            libc::signal(libc::SIGTERM, signal_exit_handler as libc::sighandler_t);
+            libc::signal(
+                libc::SIGINT,
+                signal_exit_handler as *const () as libc::sighandler_t,
+            );
+            libc::signal(
+                libc::SIGTERM,
+                signal_exit_handler as *const () as libc::sighandler_t,
+            );
         }
     });
 }
