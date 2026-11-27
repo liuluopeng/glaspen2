@@ -1592,3 +1592,14 @@ modeler Up error 需真机笔/翻页连击复验。
   启动、keyUp 停止; 普通 chord 也不再被重复触发。
 - 加上 R274 的坏点过滤/时间戳兜底, 旧库数据和新录制都覆盖。
 - 验证: 全量 tests / smoke debug / parity 全绿。
+
+
+## R276 修复: 实时笔迹与重建笔迹的“两套颜色”
+
+- 现象: 新写笔迹一段时间后出现微小色差, 之后保持该颜色; 同一笔在实时层与重建层颜色不同。
+- 根因: 实时绘制路径(plan_color / raw fallback)用**浮点笔色**直接 `cairo_set_source_rgba`;
+  抬笔/重绘/落库后的整页重建走 core `Color::to_rgb8`(×255 截断)。两者最多差 1/255,
+  例如 0.639 → 浮点 0.639 vs 8 位 162/255=0.635, 肉眼可见轻微变色且之后固定为量化色。
+- 修复: 实时路径统一 `quantize_raw_rgb`: 与 `Color::to_rgb8` 同样的钳制 + ×255 截断 + /255;
+  live plan、raw dot/segment fallback、接缝重画全部使用; 新增一致性单测。
+- 验证: cargo test(全量)、smoke debug、parity 全绿。

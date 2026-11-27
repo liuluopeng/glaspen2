@@ -849,3 +849,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-27 | Rust-R273 | 修 cairo CLEAR=0(清屏染黑) + 固定画布 rebuild surface; tests/smoke/parity 绿 | 本提交 |
 | 2026-11-27 | Rust-R274 | 修录制 GIF 断触: 负时间伪点过滤 + pen-up 时间戳兜底; GIF 末帧完整; tests/smoke/parity 绿 | 本提交 |
 | 2026-11-27 | Rust-R275 | 修 GIF 断触触发器: 录制热键 key autorepeat 被当成重复 StartPressed, 每 84ms 切一笔; route_keyboard 忽略 repeat | 本提交 |
+| 2026-11-27 | Rust-R276 | 统一实时/重建颜色量化(实时浮点 vs to_rgb8 截断导致 1/255 色差); raw 路径改用 quantize_raw_rgb + 一致性测试 | 本提交 |

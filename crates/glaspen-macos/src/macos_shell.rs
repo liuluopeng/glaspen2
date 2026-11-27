@@ -2958,6 +2958,21 @@ fn plan_num(v: &serde_json::Value, key: &str) -> f64 {
 fn plan_point(v: &serde_json::Value, i: usize) -> f64 {
     v.get(i).and_then(|x| x.as_f64()).unwrap_or(0.0)
 }
+/// 实时笔迹的源色必须与整页重建的 `Color::to_rgb8`(×255 截断)一致。
+/// 否则刚写的笔迹是浮点色, 抬笔/重绘后变成 8 位量化色: 同一笔在
+/// “实时层”和“重建层”出现两套几乎一样的颜色, 用户会看到微小变色。
+fn quantize_raw_rgb(r: f64, g: f64, b: f64) -> (f64, f64, f64) {
+    let ch = |v: f64| {
+        let clipped = if v.is_finite() {
+            v.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        ((clipped * 255.0) as u8) as f64 / 255.0
+    };
+    (ch(r), ch(g), ch(b))
+}
+
 fn plan_color(cr: *mut c_void, cmd: &serde_json::Value, alpha: f64) {
     let (mut r, mut g, mut b) = (0.0, 0.0, 0.0);
     if let Some(arr) = cmd.get("color").and_then(|x| x.as_array()) {
@@ -2965,6 +2980,7 @@ fn plan_color(cr: *mut c_void, cmd: &serde_json::Value, alpha: f64) {
         g = arr.get(1).and_then(|x| x.as_f64()).unwrap_or(0.0);
         b = arr.get(2).and_then(|x| x.as_f64()).unwrap_or(0.0);
     }
+    let (r, g, b) = quantize_raw_rgb(r, g, b);
     unsafe { cairo_set_source_rgba(cr, r, g, b, alpha) };
 }
 
@@ -3328,13 +3344,12 @@ fn raw_dot_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
         }
         let ipat = glaspen2_router_invert_ink_source(cr);
         if ipat.is_null() {
-            cairo_set_source_rgba(
-                cr,
+            let (pr, pg, pb) = quantize_raw_rgb(
                 glaspen2_router_pen_r(),
                 glaspen2_router_pen_g(),
                 glaspen2_router_pen_b(),
-                1.0,
             );
+            cairo_set_source_rgba(cr, pr, pg, pb, 1.0);
         }
         cairo_arc(cr, x, y, width * 0.5, 0.0, std::f64::consts::TAU);
         cairo_fill(cr);
@@ -3418,13 +3433,12 @@ fn raw_segment_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
         }
         let ipat = glaspen2_router_invert_ink_source(cr);
         if ipat.is_null() {
-            cairo_set_source_rgba(
-                cr,
+            let (pr, pg, pb) = quantize_raw_rgb(
                 glaspen2_router_pen_r(),
                 glaspen2_router_pen_g(),
                 glaspen2_router_pen_b(),
-                1.0,
             );
+            cairo_set_source_rgba(cr, pr, pg, pb, 1.0);
         }
         cairo_set_line_width(cr, width);
         if has_last {
@@ -3439,13 +3453,12 @@ fn raw_segment_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
             cairo_pattern_destroy(ipat);
         }
         if outline && !eraser && has_prev {
-            cairo_set_source_rgba(
-                cr,
+            let (pr, pg, pb) = quantize_raw_rgb(
                 glaspen2_router_pen_r(),
                 glaspen2_router_pen_g(),
                 glaspen2_router_pen_b(),
-                1.0,
             );
+            cairo_set_source_rgba(cr, pr, pg, pb, 1.0);
             cairo_set_line_width(cr, last_w);
             cairo_move_to(
                 cr,
@@ -12057,5 +12070,20 @@ mod pressure_source_tests {
         assert!((super::normalized_tablet_pressure(0.0, 65535) - 1.0).abs() < 1e-9);
         assert!((super::normalized_tablet_pressure(0.0, 32768) - 0.50001).abs() < 1e-3);
         assert!((super::normalized_tablet_pressure(0.25, 0) - 0.25).abs() < 1e-9);
+    }
+}
+
+#[cfg(test)]
+mod color_quantize_tests {
+    use super::quantize_raw_rgb;
+
+    #[test]
+    fn raw_matches_committed_rgb8_truncation() {
+        let c = glaspen_core::draw_spec::Color::new(0.0, 0.639, 1.0);
+        let (r, g, b) = quantize_raw_rgb(0.0, 0.639, 1.0);
+        assert_eq!((r, g, b), {
+            let (r, g, b) = c.to_rgb8();
+            (r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0)
+        });
     }
 }
