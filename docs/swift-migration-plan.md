@@ -844,3 +844,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-27 | Rust-R268 | 修飘渺 hover 闪烁/无限画布方向/抓手漏 drag(6) | 本提交 |
 | 2026-11-27 | Rust-R269 | 拆出 crates/glaspen-macos(Rust 壳+入口+Swift 原生层); 根 build.rs/契约测试路径同步; build/test/smoke/parity 绿 | 本提交 |
 | 2026-11-27 | Rust-R270 | 修飘渺旧笔迹闪烁(full redraw 被 dirty 覆盖) + 真笔压感改用 raw_field | 本提交 |
+| 2026-11-27 | Rust-R271 | 方向单源: core drag/keyboard pan delta; mac 鼠标改内容跟随; 加契约单测+跨端闸门 | 本提交 |

@@ -4,6 +4,9 @@
 
 use std::ffi::c_void;
 
+use glaspen_core::action_effect::CameraDir;
+use glaspen_core::camera::Camera;
+
 use objc2::rc::Retained;
 use objc2::{AnyThread, MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::NSStatusBar;
@@ -1038,7 +1041,6 @@ pub extern "C" fn glaspen2_rust_draw_grid(
     clip_x1: f64,
     clip_y1: f64,
 ) -> i32 {
-    use glaspen_core::camera::Camera;
     use glaspen_core::grid::{self, GridParams, ViewRect};
     use objc2_core_graphics::CGContext;
     if ctx.is_null() {
@@ -4368,6 +4370,16 @@ fn action_hud_msg(msg: glaspen_core::i18n::Msg, name_key: &str, name: &str) -> S
 
 /// R74: 动作 effect 分派; 返回 1 已处理, 0 失败/未实现。
 #[unsafe(no_mangle)]
+fn camera_dir_for_kind(kind: &str) -> Option<CameraDir> {
+    match kind {
+        "CameraPanLeft" => Some(CameraDir::Left),
+        "CameraPanRight" => Some(CameraDir::Right),
+        "CameraPanUp" => Some(CameraDir::Up),
+        "CameraPanDown" => Some(CameraDir::Down),
+        _ => None,
+    }
+}
+
 pub extern "C" fn glaspen2_rust_perform_action(action: *const std::os::raw::c_char) -> i32 {
     if action.is_null() {
         return 0;
@@ -4427,14 +4439,11 @@ pub extern "C" fn glaspen2_rust_perform_action(action: *const std::os::raw::c_ch
             return 1;
         }
         let step = unsafe { glaspen2_camera_keyboard_pan_step(glaspen2_router_zoom()) };
-        let (mut dx, mut dy) = (0.0, 0.0);
-        match kind {
-            "CameraPanLeft" => dx = -step,
-            "CameraPanRight" => dx = step,
-            "CameraPanUp" => dy = -step,
-            "CameraPanDown" => dy = step,
-            _ => {}
-        }
+        let Some(dir) = camera_dir_for_kind(kind) else {
+            return 1;
+        };
+        // 方向约定单源在 core: 按键方向 = 内容移动方向。
+        let (dx, dy) = Camera::keyboard_pan_delta(dir, step);
         glaspen2_rust_camera_pan(dx, dy);
         return 1;
     }
@@ -5545,13 +5554,15 @@ pub extern "C" fn glaspen2_rust_camera_mouse(kind: i32, x: f64, y: f64, mods: u6
         if kind == 1 {
             if (st & 4) != 0 && (st & 1) != 0 && (st & 2) == 0 {
                 let z = unsafe { glaspen2_router_camera_step_zoom() };
+                // AppKit locationInWindow 是左下原点; 先换成屏幕"右/下为正"
+                // 再交 core 的统一方向函数(内容跟随鼠标)。
+                let (dx, dy) = Camera::drag_pan_from_screen_delta(
+                    x - unsafe { glaspen2_router_camera_last_x() },
+                    unsafe { glaspen2_router_camera_last_y() } - y,
+                    z,
+                );
                 unsafe {
-                    // 方向与 Windows 2026-11 后的直觉一致: 鼠标右拖 → 镜头右移,
-                    // 画面内容左移(canvas pan 内部 pan -= d)。
-                    glaspen2_router_camera_queue_pan(
-                        (glaspen2_router_camera_last_x() - x) / z,
-                        (y - glaspen2_router_camera_last_y()) / z,
-                    );
+                    glaspen2_router_camera_queue_pan(dx, dy);
                     glaspen2_router_camera_set_last(x, y);
                 }
             }

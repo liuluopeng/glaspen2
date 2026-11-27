@@ -31,11 +31,11 @@
 //! 节流、提示文案与节流、模式门控(仅无限画布 / 书写中忽略)都留在 adapter。
 //! 两端**真实差异**只记录、不静默统一:
 //!
-//! 1. **键盘平移方向符号相反**: macOS 按"视野移动"(`Left` → `dx = +step`,
-//!    `run.m:1786-1800`), Windows 按"内容跟随按键"(`Left` → `dx = -step`,
-//!    `hotkeys.rs:788-795`, 2026-11 依用户反馈取反)。[Camera::pan_by] 与两壳
-//!    的 `canvas_pan_by` 同款(`pan -= d`), 方向符号仍留在 adapter(见
-//!    `crate::action_effect::CameraPan` 的文档)。
+//! 1. **平移方向是单一约定**: 鼠标抓手与键盘平移统一为"内容跟随输入"
+//!    ([Camera::drag_pan_from_screen_delta] / [Camera::keyboard_pan_delta]);
+//!    adapter 只负责把屏幕坐标统一成"右/下为正"后调用, 不再各自写符号。
+//!    跨端闸门 `crates/glaspen-core/tests/pan_direction_single_source.rs` 会检查
+//!    两端确实只调用这两个函数。
 //! 2. **最小缩放提示只有 Windows 有**: 到 100% 上限两端都会提示("已达最大
 //!    缩放 100%"), 但 5% 下限提示("已达最小缩放 5%")只有 Windows
 //!    (`actions.rs:691-706`);macOS 到下限静默(`run.m:513-527` 只有 max 分支)。
@@ -62,6 +62,8 @@
 //! D5b: 两端已接线 —— Windows 同进程直接调 [Camera](`overlay/state.rs::camera()`),
 //! macOS 经 `export::glaspen2_camera_*` FFI 拿 JSON(与 D1b/D3b 同形),
 //! 镜头状态/门控/提示节流/持久化节流仍留在 adapter。
+
+use crate::action_effect::CameraDir;
 
 /// 镜头缩放下限 5%(两壳 `ZOOM_MIN = 0.05`: macOS `run.m:525-526`,
 /// Windows `state.rs:57`)。
@@ -185,10 +187,32 @@ impl Camera {
     }
 
     /// 键盘镜头平移每步的画布增量 = [KEY_PAN_STEP_PX] / [Camera::step_zoom]
-    /// (两壳 `step = 80.0 / z` 同款, macOS `run.m:1790-1791` / Windows
-    /// `hotkeys.rs:814-818`)。方向符号(哪边是正)留在 adapter。
+    /// (两壳 `step = 80.0 / z` 同款)。方向符号由
+    /// [Camera::keyboard_pan_delta] 单源给出, adapter 不再自己写。
     pub fn keyboard_pan_step(&self) -> f64 {
         KEY_PAN_STEP_PX / self.step_zoom()
+    }
+
+    /// 手型抓手的**唯一方向约定**(macOS/Windows 共用):
+    /// 屏幕增量(右/下为正)→ 传给 [`Camera::pan_by`] 的 pan 增量。
+    ///
+    /// 语义 = 内容跟随鼠标:鼠标右拖/下拖 → 画面内容右移/下移。
+    /// `pan_by` 内部 `pan -= d`, 所以这里直接返回正的屏幕位移/zoom。
+    pub fn drag_pan_from_screen_delta(dx: f64, dy: f64, zoom: f64) -> (f64, f64) {
+        let z = if zoom > 0.05 { zoom } else { 1.0 };
+        (dx / z, dy / z)
+    }
+
+    /// 键盘镜头平移的**唯一方向约定**(两端共用):
+    /// 按键方向 = 内容移动方向(按左 → 内容左移), 返回给 [`Camera::pan_by`]
+    /// 的 pan 增量。
+    pub fn keyboard_pan_delta(dir: CameraDir, step: f64) -> (f64, f64) {
+        match dir {
+            CameraDir::Left => (-step, 0.0),
+            CameraDir::Right => (step, 0.0),
+            CameraDir::Up => (0.0, -step),
+            CameraDir::Down => (0.0, step),
+        }
     }
 
     /// 画布坐标 → 视口坐标: `(canvas − pan) × zoom`。
@@ -580,4 +604,30 @@ mod tests {
     //
     // 模式选择: 不用 "g_pan_x"/"zoom" 这类宽泛子串(会命中状态赋值/绘制),
     // 只用旧公式的独特写法, 误报为零; 命中输出 文件:行号 + 匹配文本。
+}
+
+#[cfg(test)]
+mod direction_contract_tests {
+    use super::*;
+
+    #[test]
+    fn drag_direction_is_content_following() {
+        let (dx, dy) = Camera::drag_pan_from_screen_delta(10.0, 20.0, 1.0);
+        let mut cam = Camera::new(0.0, 0.0, 1.0);
+        cam.pan_by(dx, dy);
+        // 画布原点在视口中的位置 = (0 - pan) * zoom
+        assert_eq!((cam.pan_x, cam.pan_y), (-10.0, -20.0));
+        assert_eq!((0.0 - cam.pan_x, 0.0 - cam.pan_y), (10.0, 20.0));
+    }
+
+    #[test]
+    fn keyboard_direction_is_content_following() {
+        let mut cam = Camera::new(0.0, 0.0, 1.0);
+        let (dx, dy) = Camera::keyboard_pan_delta(CameraDir::Left, 80.0);
+        cam.pan_by(dx, dy);
+        assert_eq!((cam.pan_x, cam.pan_y), (80.0, 0.0)); // 内容原点在屏幕 -80(左移)
+        let (dx, dy) = Camera::keyboard_pan_delta(CameraDir::Down, 80.0);
+        cam.pan_by(dx, dy);
+        assert_eq!((cam.pan_x, cam.pan_y), (80.0, -80.0));
+    }
 }

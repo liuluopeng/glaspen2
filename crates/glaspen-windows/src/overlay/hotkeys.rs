@@ -18,6 +18,7 @@
 // 面板保存的是 action → chord 的完整表。
 
 use glaspen_core::action_effect::{effect_for_action, ActionEffect, CameraDir, ZoomDir};
+use glaspen_core::camera::Camera;
 use glaspen_core::ui;
 
 /// 本壳只跑 Windows; core 的 UI schema 按平台分列。
@@ -780,13 +781,12 @@ fn perform_action(state: &mut OverlayState, action: &str) {
             apply_infinite_canvas(state, !infinite_on(), true);
         }
         // 方向按用户直觉: 按左 = 画面内容向左移动(内容跟着键走), 上下同理。
-        // (2026-11: 用户反馈旧方向反直觉, WASD / 鼠标抓手 / 滚轮缩放统一取反。
-        //  macOS 用"视野移动"方向, 与本平台符号相反是既有行为, 见 ActionEffect
-        //  的 CameraPan 文档。)
-        ActionEffect::CameraPan(CameraDir::Left) => pan_step(state, -1.0, 0.0),
-        ActionEffect::CameraPan(CameraDir::Right) => pan_step(state, 1.0, 0.0),
-        ActionEffect::CameraPan(CameraDir::Up) => pan_step(state, 0.0, -1.0),
-        ActionEffect::CameraPan(CameraDir::Down) => pan_step(state, 0.0, 1.0),
+        // 方向单源在 core Camera::keyboard_pan_delta(内容跟随按键);
+        // WASD / 鼠标抓手共用同一约定。
+        ActionEffect::CameraPan(CameraDir::Left) => pan_step(state, CameraDir::Left),
+        ActionEffect::CameraPan(CameraDir::Right) => pan_step(state, CameraDir::Right),
+        ActionEffect::CameraPan(CameraDir::Up) => pan_step(state, CameraDir::Up),
+        ActionEffect::CameraPan(CameraDir::Down) => pan_step(state, CameraDir::Down),
         ActionEffect::CameraZoom(ZoomDir::In) => zoom_step(state, 1.15),
         ActionEffect::CameraZoom(ZoomDir::Out) => zoom_step(state, 1.0 / 1.15),
         ActionEffect::Clear => handle_command(state, CMD_CLEAR_SCREEN, usize::MAX),
@@ -805,11 +805,11 @@ fn perform_action(state: &mut OverlayState, action: &str) {
 }
 
 
-fn pan_step(state: &mut OverlayState, dir_x: f64, dir_y: f64) {
-    // 步长 80 / step_zoom 单源在 core;方向符号仍由调用方给(本平台是"内容
-    // 跟随按键",与 macOS 相反,见 ActionEffect::CameraPan 文档)。
+fn pan_step(state: &mut OverlayState, dir: CameraDir) {
+    // 步长与方向符号都单源在 core: 按键方向 = 内容移动方向。
     let step = camera().keyboard_pan_step();
-    canvas_pan_by(state, dir_x * step, dir_y * step);
+    let (dx, dy) = Camera::keyboard_pan_delta(dir, step);
+    canvas_pan_by(state, dx, dy);
 }
 
 fn zoom_step(state: &mut OverlayState, factor: f64) {

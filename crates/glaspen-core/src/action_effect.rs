@@ -29,9 +29,10 @@
 //! - **不判平台可用性与前置状态**: "仅无限画布生效""书写中忽略""停用涂鸦
 //!   时的按键放行/注销"等门控保留在两端现有位置(两端门控点不同, 见各变体
 //!   文档), 本切片不改行为。
-//! - **不统一已存在的两端行为差异**: 镜头平移方向符号、设置面板宿主形式
-//!   (macOS 进程内嵌 Flutter 视图 / Windows 独立面板进程)等差异只记录在
-//!   变体文档里, 两端 adapter(D3b 已接线)按平台保留现状。
+//! - **已统一镜头平移方向**: 方向符号单源在
+//!   [`crate::camera::Camera::drag_pan_from_screen_delta`] /
+//!   [`crate::camera::Camera::keyboard_pan_delta`], 两端 adapter 不再各自写;
+//!   其余平台差异(如设置面板宿主形式)只记录、不静默统一。
 //!
 //! 当前 20 个 action 全部可共享语义, 没有"仅单端"条目(所以没有 ⛔ 保留变体);
 //! [`ActionEffect::variant_name`] 给每个 action 一个稳定名字, adapter 覆盖闸门
@@ -40,14 +41,9 @@
 /// 自由画布镜头平移方向: 语义方向 = 用户按下的动作方向
 /// (`canvas_pan_left` → `Left`)。
 ///
-/// **屏幕位移符号两端当前相反**(本切片不改, 接线时各保留现有符号):
-/// - macOS `perform_action`(`crates/glaspen-macos/swift/App/run_glue.swift:1763-1777`)把 `Left` 翻成
-///   `dx = +step`, 而 `canvas_pan_by`(`run.m:461-468`)内部是 `pan -= d`,
-///   即按左 → 镜头左移 / 内容右移("视野跟随按键", 与普通看图软件一致);
-/// - Windows `perform_action`(`hotkeys.rs:774-777`)把 `Left` 翻成
-///   `dx = -step`, 而 `canvas_pan_by`(`actions.rs:659-668`)内部是
-///   `set_cam(px - dx)`, 即按左 → pan 增加 / 内容左移("内容跟随按键";
-///   2026-11 依用户反馈统一取反)。
+/// **屏幕位移符号单源在 core**:
+/// [`crate::camera::Camera::keyboard_pan_delta`] 定义"按键方向 = 内容移动方向"
+/// (按左 → 内容左移), 两端 adapter 只传方向, 不再各自写符号。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CameraDir {
     Left,
@@ -173,22 +169,10 @@ pub enum ActionEffect {
     /// - 仅无限画布模式生效、书写中忽略: macOS 在事件 tap 层把组合放行给系统
     ///   (`run.m:2194-2198`), Windows 的 WM_HOTKEY 已被消费, 由
     ///   `perform_action` 顶部 early-return(`hotkeys.rs:743-748`);
-    /// - **方向符号两端当前相反**(不改行为, 接线时各保留现有符号): macOS 按
-    ///   "视野移动"(`Left` → `dx = +step`, `canvas_pan_by` 内 `pan -= d` → 内容
-    ///   右移, `run.m:1763-1777`); Windows 按"内容跟随按键"(`Left` →
-    ///   `dx = -step`, `canvas_pan_by` 内 `set_cam(px - dx)` → 内容左移,
-    ///   `hotkeys.rs:774-777`; 2026-11 依用户反馈统一取反)。
+    /// - **方向单源在 core**: [`crate::camera::Camera::keyboard_pan_delta`] 定义
+    ///   "按键方向 = 内容移动方向"(按左 → 内容左移), 两端 adapter 只传
+    ///   [`CameraDir`], 不再各自写符号。
     CameraPan(CameraDir),
-    /// 动作 `canvas_zoom_in/out`: 自由画布镜头缩放一步(仅无限画布; 书写中忽略)。
-    ///
-    /// - 两端倍率都是 1.15 / (1/1.15), 锚点 = 视口中心, 范围 0.05..=1.0:
-    ///   macOS `run.m:1778-1784` + `canvas_zoom_at`(`run.m:507-535`, 锚点
-    ///   `g_screen_w/h * 0.5`); Windows `hotkeys.rs:778-779` `zoom_step`
-    ///   (`hotkeys.rs:804-807`)+ `actions.rs:672-713` `canvas_zoom_at`
-    ///   (锚点 `canvas.w/h` 中点);
-    /// - 到缩放边界只提示(1.5s 节流)不重绘, 两端同款。
-    ///
-    /// 两端语义一致(倍率/锚点数值属 adapter, 本层不携带)。
     CameraZoom(ZoomDir),
     /// 动作 `clear`: 清空当前画布/新建一页(活页本); 无限画布不清空。
     ///

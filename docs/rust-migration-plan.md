@@ -1523,3 +1523,20 @@ modeler Up error 需真机笔/翻页连击复验。
    - 修复: `FULL_REDRAW_PENDING` 标记, 可见性/模式切换后的第一次 dirty flush 强制全量 setNeedsDisplay, 不再被局部脏矩形覆盖.
 2. 真笔压感: 用户日志 `pen DOWN p=0.00`, 但 pressure monitor 有压力值;
    - 修复: 笔事件统一用 `raw_field/65535` (CGEvent tabletEventPointPressure) 作为有效压力, raw_field=0 时回退 NSEvent.pressure; 模型器/raw width/监视器同源; 新增单测.
+
+
+## R271 方向单源: 鼠标拖动/键盘平移统一到 core
+
+用户反馈鼠标拖动方向仍不符合直觉, 且过去 4-5 次反复回归。根因不是某一个符号,
+而是方向符号分散在 macOS/Windows 的 mouse/hotkeys 四处, 且 core 文档明确"两端符号
+不同、只记录不统一", 每次迁移都重新写一遍。
+
+- core `Camera::drag_pan_from_screen_delta(dx_screen, dy_screen, zoom)`:
+  "内容跟随鼠标"(右拖内容右移 / 下拖内容下移), 两端鼠标共用;
+- core `Camera::keyboard_pan_delta(CameraDir, step)`:
+  "按键方向 = 内容移动方向"(按左内容左移), 两端键盘共用;
+- macOS mouse 恢复为内容跟随(此前被改成镜头跟随), 键盘/Windows 保持内容跟随;
+- 新增 core 方向契约单测 `direction_contract_tests` + 跨端闸门
+  `crates/glaspen-core/tests/pan_direction_single_source.rs`: 两端必须调用 core 函数,
+  且 adapter 不得再出现本地方向符号;
+- 已知历史差异文档删除, 后续改方向只改 core 一处并跑闸门.

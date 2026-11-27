@@ -1,9 +1,10 @@
+use glaspen_core::camera::Camera;
 // ── 鼠标 Raw Input: 无限画布镜头(拖动平移 + 滚轮缩放) ──
 // 行为对齐 macOS run.m 的事件 tap:
 //   - 修饰键 = 对应动作的 chord 修饰键(平移用 canvas_pan_up, 缩放用
 //     canvas_zoom_in; 默认 Ctrl+Alt), 且要求**恰好**是这套修饰键
 //     (macOS 用 (smods & relevant) == cameraMods 的相等比较);
-//   - Ctrl+Alt + 左键拖动 = 临时抓手, 内容跟随鼠标(自然滚动);
+//   - Ctrl+Alt + 左键拖动 = 临时抓手, 内容跟随鼠标(手型拖动);
 //   - 滚轮缩放以鼠标位置为锚, 缩放上下限与提示同 macOS;
 //   - 书写中 / 非无限画布 / 涂鸦停用 → 全部忽略, 事件透传。
 //
@@ -174,11 +175,10 @@ unsafe fn handle_mouse_raw(buf: &[u64], state: &mut OverlayState) -> bool {
         state.camera_last_cursor = (pt.x, pt.y);
         if dx != 0.0 || dy != 0.0 {
             let z = camera().step_zoom();
-            // 抓手拖动方向 = 常规直觉: 鼠标向右拖 → 画面内容跟着向右(像抓住纸拖),
-            // 上下同理。canvas_pan_by 内部 pan -= d, 所以这里直接传正的屏幕位移。
-            // (键盘 WASD / 滚轮缩放的方向仍在 perform_action / 滚轮分支里单独取反。)
-            state.camera_pending_dx += dx / z;
-            state.camera_pending_dy += dy / z;
+            // 方向单源在 core: 内容跟随鼠标; Windows 的 dx/dy 已是"右/下为正"。
+            let (pdx, pdy) = Camera::drag_pan_from_screen_delta(dx, dy, z);
+            state.camera_pending_dx += pdx;
+            state.camera_pending_dy += pdy;
             if !state.camera_pan_timer {
                 state.camera_pan_timer = true;
                 let _ = SetTimer(
