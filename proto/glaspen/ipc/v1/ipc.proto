@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package glaspen.ipc.v1;
+
+import "google/protobuf/struct.proto";
+
+// 跨进程/跨语言边界的第一版 protobuf 契约。
+//
+// 目标: Dart(Flutter 设置面板) <-> Rust(覆盖层) 的命名管道、以及后续
+// macOS/Flutter 的设置快照都走这一份 schema；不再把 JSON 文本放在线上。
+//
+// 约定:
+// - 所有帧 = u32 little-endian 长度 + Frame protobuf bytes(长度不含前缀)；
+// - protocol_version 用于拒绝不兼容的旧客户端；
+// - request_id 由请求方生成, 响应原样带回;
+// - 新增消息只加新的 oneof 分支/字段号, 字段号永不复用。
+message Frame {
+  uint32 protocol_version = 1;
+  uint64 request_id = 2;
+  oneof body {
+    SettingsSnapshot settings_snapshot = 10;
+    SetSetting set_setting = 11;
+    SettingsSnapshotResponse settings_snapshot_response = 12;
+    Ack ack = 13;
+    Error error = 99;
+  }
+}
+
+// 设置值: 面板会传 bool/int/double/string/嵌套对象/数组。
+// Struct 覆盖动态 JSON 兼容值; 后续稳定字段可以逐步改成 typed 子消息。
+message SettingValue {
+  oneof value {
+    bool bool_value = 1;
+    int64 int_value = 2;
+    double double_value = 3;
+    string string_value = 4;
+    google.protobuf.Struct struct_value = 5;
+    ListValue list_value = 6;
+    bytes bytes_value = 7;
+    bool null_value = 8;
+  }
+}
+
+message ListValue {
+  repeated SettingValue values = 1;
+}
+
+message SettingsSnapshot {
+  map<string, SettingValue> values = 1;
+  map<string, string> metadata = 2;
+}
+
+message SettingsSnapshotResponse {
+  SettingsSnapshot snapshot = 1;
+}
+
+message SetSetting {
+  string key = 1;
+  SettingValue value = 2;
+}
+
+message Ack {
+  bool ok = 1;
+}
+
+message Error {
+  string code = 1;
+  string message = 2;
+}
+

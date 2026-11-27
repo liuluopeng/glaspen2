@@ -1689,3 +1689,16 @@ modeler Up error 需真机笔/翻页连击复验。
 - 旧 `glaspen2_live_plan_json` / `glaspen2_rust_draw_live_plan` 保留为 C ABI/测试
   兼容壳, 运行路径不再使用。
 - 验证: cargo build; core live_plan 测试全过; workspace test、smoke、parity 绿。
+
+
+## R284 protobuf 通信基础(第一阶段)
+
+- 方向变更: 所有**跨语言/跨进程** JSON 文本迁移到 protobuf; 数据库 JSON 与 Rust<->Rust
+  同进程调用不在迁移范围(后者已改 typed API)。
+- 新增 `proto/glaspen/ipc/v1/ipc.proto` 与 `crates/glaspen-ipc`:
+  `Frame`(版本/request_id/oneof body)、`SettingsSnapshot`/`SetSetting`/`SettingValue`
+  (bool/int/double/string/Struct/List/bytes/null)、`Ack`/`Error`;
+  4 字节 LE 长度帧 + 8MiB 上限 + 版本握手; 4 个单测全过。
+- 本阶段只落契约/编解码, 不切换任何客户端; 旧 JSON 通路保持可回滚。
+- 迁移顺序: Windows 管道 -> FRB settings/bubbles -> macOS Swift C ABI; 详见
+  docs/protobuf-ipc.md。

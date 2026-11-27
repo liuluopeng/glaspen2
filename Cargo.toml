@@ -1,5 +1,5 @@
 [workspace]
-members = ["installer", "chat", "crates/glaspen-core", "crates/glaspen-windows", "crates/glaspen-macos"]
+members = ["installer", "chat", "crates/glaspen-core", "crates/glaspen-windows", "crates/glaspen-macos", "crates/glaspen-ipc"]
 # installer 是 Windows-only 的 exe 桩(macOS 上链接不到 user32), 默认成员
 # 排除它。chat 也排除: 它的 mock-send 是第二个 bin, 留在默认成员里会让
 # 裸 `cargo run` 无法判断该跑哪个 bin(报 "could not determine which

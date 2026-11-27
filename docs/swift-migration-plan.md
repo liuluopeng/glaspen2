@@ -857,3 +857,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-27 | Rust-R281 | 修菜单栏点击 SIGTRAP: tapDisabled 事件 rawValue 0xFFFFFFFE 被 Int32 转换溢出; route 先重启用 tap 并放行 | 本提交 |
 | 2026-11-27 | Rust-R282 | 新增 core platform_menu 共享菜单模型 + Windows 托盘菜单(Shell_NotifyIconW/命令总线/设置入口); macOS 菜单渲染暂不变 | 本提交 |
 | 2026-11-27 | Rust-R283 | macOS 实时绘制改 typed DrawPlan(去 JSON 往返); 旧 JSON FFI 保留兼容 | 本提交 |
+| 2026-11-27 | Rust-R284 | 新增 protobuf IPC 契约/帧编解码(第一阶段, 未切客户端); docs/protobuf-ipc.md | 本提交 |
