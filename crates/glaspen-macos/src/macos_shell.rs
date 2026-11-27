@@ -2438,6 +2438,70 @@ static RAW_LAST_Y: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
 static RAW_LAST_W: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+// 一笔的笔色在落笔时冻结: 实时段、seam、fallback、落库/重建必须用同一组
+// RGB。否则中途任何颜色状态变化(面板/启动恢复/未来功能)都会让同一笔
+// 前半段与后半段变成两套颜色。
+static STROKE_RGB_R: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1.0f64.to_bits());
+static STROKE_RGB_G: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+static STROKE_RGB_B: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
+
+fn capture_stroke_rgb() {
+    MIDSTROKE_COLOR_WARNED.store(false, std::sync::atomic::Ordering::Relaxed);
+    unsafe {
+        STROKE_RGB_R.store(
+            glaspen2_router_pen_r().to_bits(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        STROKE_RGB_G.store(
+            glaspen2_router_pen_g().to_bits(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        STROKE_RGB_B.store(
+            glaspen2_router_pen_b().to_bits(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+}
+
+static MIDSTROKE_COLOR_WARNED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn warn_if_pen_color_changed_midstroke() {
+    if MIDSTROKE_COLOR_WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let (cr, cg, cb) = stroke_rgb();
+    let (pr, pg, pb) = unsafe {
+        (
+            glaspen2_router_pen_r(),
+            glaspen2_router_pen_g(),
+            glaspen2_router_pen_b(),
+        )
+    };
+    if (cr - pr).abs() > 1e-9 || (cg - pg).abs() > 1e-9 || (cb - pb).abs() > 1e-9 {
+        tracing::warn!(
+            "[stroke-color] 一笔中途颜色状态变化 {:.4},{:.4},{:.4} -> {:.4},{:.4},{:.4}; 已用落笔冻结色",
+            cr,
+            cg,
+            cb,
+            pr,
+            pg,
+            pb
+        );
+    }
+}
+
+fn stroke_rgb() -> (f64, f64, f64) {
+    (
+        f64::from_bits(STROKE_RGB_R.load(std::sync::atomic::Ordering::Relaxed)),
+        f64::from_bits(STROKE_RGB_G.load(std::sync::atomic::Ordering::Relaxed)),
+        f64::from_bits(STROKE_RGB_B.load(std::sync::atomic::Ordering::Relaxed)),
+    )
+}
+
 static RAW_PATH_LEN: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0.0f64.to_bits());
 static RAW_PREV_X: std::sync::atomic::AtomicU64 =
@@ -3220,11 +3284,8 @@ fn plan_seam(cr: *mut c_void, seam: &serde_json::Value, inv: f64) {
         cairo_set_line_cap(cr, 1);
         cairo_set_line_join(cr, 1);
         cairo_set_line_width(cr, width);
-        let (pr, pg, pb) = quantize_raw_rgb(
-            glaspen2_router_pen_r(),
-            glaspen2_router_pen_g(),
-            glaspen2_router_pen_b(),
-        );
+        let (sr, sg, sb) = stroke_rgb();
+        let (pr, pg, pb) = quantize_raw_rgb(sr, sg, sb);
         cairo_set_source_rgba(cr, pr, pg, pb, 1.0);
         cairo_move_to(
             cr,
@@ -3343,11 +3404,8 @@ fn raw_dot_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
         }
         let ipat = glaspen2_router_invert_ink_source(cr);
         if ipat.is_null() {
-            let (pr, pg, pb) = quantize_raw_rgb(
-                glaspen2_router_pen_r(),
-                glaspen2_router_pen_g(),
-                glaspen2_router_pen_b(),
-            );
+            let (sr, sg, sb) = stroke_rgb();
+            let (pr, pg, pb) = quantize_raw_rgb(sr, sg, sb);
             cairo_set_source_rgba(cr, pr, pg, pb, 1.0);
         }
         cairo_arc(cr, x, y, width * 0.5, 0.0, std::f64::consts::TAU);
@@ -3432,11 +3490,8 @@ fn raw_segment_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
         }
         let ipat = glaspen2_router_invert_ink_source(cr);
         if ipat.is_null() {
-            let (pr, pg, pb) = quantize_raw_rgb(
-                glaspen2_router_pen_r(),
-                glaspen2_router_pen_g(),
-                glaspen2_router_pen_b(),
-            );
+            let (sr, sg, sb) = stroke_rgb();
+            let (pr, pg, pb) = quantize_raw_rgb(sr, sg, sb);
             cairo_set_source_rgba(cr, pr, pg, pb, 1.0);
         }
         cairo_set_line_width(cr, width);
@@ -3452,11 +3507,8 @@ fn raw_segment_fallback(cr: *mut c_void, x: f64, y: f64, width: f64) {
             cairo_pattern_destroy(ipat);
         }
         if outline && !eraser && has_prev {
-            let (pr, pg, pb) = quantize_raw_rgb(
-                glaspen2_router_pen_r(),
-                glaspen2_router_pen_g(),
-                glaspen2_router_pen_b(),
-            );
+            let (sr, sg, sb) = stroke_rgb();
+            let (pr, pg, pb) = quantize_raw_rgb(sr, sg, sb);
             cairo_set_source_rgba(cr, pr, pg, pb, 1.0);
             cairo_set_line_width(cr, last_w);
             cairo_move_to(
@@ -4117,13 +4169,8 @@ fn live_plan_params(surface_w: i32, surface_h: i32, scale: f64, arc_len: f64) ->
     let shadow = unsafe { glaspen2_router_soft_shadow() != 0 };
     let outline = unsafe { glaspen2_router_outline_enabled() != 0 };
     let eraser = unsafe { glaspen2_router_eraser_mode() != 0 };
-    let (r, g, b) = unsafe {
-        (
-            glaspen2_router_pen_r(),
-            glaspen2_router_pen_g(),
-            glaspen2_router_pen_b(),
-        )
-    };
+    warn_if_pen_color_changed_midstroke();
+    let (r, g, b) = stroke_rgb();
     serde_json::json!({
         "viewport": [surface_w, surface_h],
         "scale": scale,
@@ -7518,6 +7565,7 @@ fn canvas_input(x: f64, y: f64) -> (f64, f64) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_modeler_begin(x: f64, y: f64, pressure: f64, timestamp: f64) {
+    capture_stroke_rgb();
     let (cx, cy) = canvas_input(x, y);
     unsafe {
         glaspen2_modeler_begin(
@@ -7552,13 +7600,8 @@ pub extern "C" fn glaspen2_router_modeler_erase_finish() {
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_commit_to_strokes() {
-    unsafe {
-        glaspen2_modeler_commit_to_strokes(
-            glaspen2_router_pen_r(),
-            glaspen2_router_pen_g(),
-            glaspen2_router_pen_b(),
-        );
-    }
+    let (r, g, b) = stroke_rgb();
+    unsafe { glaspen2_modeler_commit_to_strokes(r, g, b) };
 }
 
 // ── R167: 主路由事件描述符/编排迁 Rust ──

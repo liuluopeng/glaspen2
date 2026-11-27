@@ -1625,3 +1625,15 @@ modeler Up error 需真机笔/翻页连击复验。
   的通道量化从 round 改为 core `Color::to_rgb8` 截断, 全链路同一规则。
 - 验证: 虚拟笔青色截图, 笔迹核心唯一颜色为 (0,162,255)(162=0.639×255 截断);
   tests/smoke/parity 全绿。
+
+
+## R279 修复: 一笔中途变色(落笔冻结笔色)
+
+- 现象: 紫色等笔迹书写中“一段一段”变色, 像是前几段被重新染色。
+- 根因方向: 实时段、seam/fallback、commit 都各自现读 `pen_rgb`; 只要书写期间颜色
+  状态发生任何变化(菜单/面板/启动恢复/未来功能), 同一笔前后段就会落到两套 RGB,
+  且 commit 用收尾时的颜色落库。R276/R278 只统一了量化规则, 没有锁住“一笔一色”。
+- 修复: 落笔 `modeler_begin` 时 `capture_stroke_rgb`; live plan / seam / fallback /
+  commit_to_strokes 全部使用冻结色。加一次性的 mid-stroke 颜色变化 warn 日志,
+  便于现场确认是否真的发生了状态变化。
+- 验证: 紫色虚拟笔迹核心色唯一 (170,0,255); tests/smoke/parity 全绿。
