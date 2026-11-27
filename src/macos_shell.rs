@@ -11795,3 +11795,16 @@ pub extern "C" fn glaspen2_rust_flip_probe_maybe_start() {
     tracing::info!("[glaspen2] flip probe: 每 {every} 秒一跳(第1跳建页, 之后往返翻)");
     unsafe { glaspen2_swift_dispatch_main_after(0.5, std::ptr::null_mut(), flip_probe_rust_tick) }
 }
+
+#[cfg(test)]
+mod pressure_regression_tests {
+    #[test]
+    fn raw_width_grows_with_pressure() {
+        let zero = super::glaspen2_router_raw_width(0.0);
+        let mid = super::glaspen2_router_raw_width(0.5);
+        let full = super::glaspen2_router_raw_width(1.0);
+        assert!(zero > 0.0, "raw width 必须为正: {zero}");
+        assert!(mid > zero, "raw width 应随压力增大: {x}", x = mid);
+        assert!(full > mid, "raw width 应随压力增大: {x}", x = full);
+    }
+}

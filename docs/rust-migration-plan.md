@@ -1466,3 +1466,8 @@ modeler Up error 需真机笔/翻页连击复验。
 - 根因: R249 的 SIGINT/SIGTERM handler 在信号上下文直接调 AppKit/DB/日志, 与主线程锁死锁;
 - 现 handler 只做 async-signal-safe 自管道 write, 专职线程读出后 dispatch 到主线程执行保存/退出;
 - 验证: 直接 kill -INT、pty 模拟 Ctrl-C、`cargo run` pty Ctrl-C(含虚拟笔绘制后)均立即退出, 无残留进程.
+
+
+## R265 压感宽度回归测试
+
+- 新增 root 单元测试 `raw_width_grows_with_pressure`: 0/0.5/1.0 压力下 raw width 严格递增, 防止再次丢失压力参数.
