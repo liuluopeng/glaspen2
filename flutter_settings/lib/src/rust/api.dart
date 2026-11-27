@@ -26,10 +26,10 @@ Future<void> bubbleFlush() => RustLib.instance.api.crateApiBubbleFlush();
 /// export/nas_backup.rs 与 docs/nas-backup.md。
 Future<String> nasBackupNow() => RustLib.instance.api.crateApiNasBackupNow();
 
-/// 写入一项设置。`value_json` 是 JSON 标量(`true` / `3` / `2.5`),
-/// ObjC 侧按 key 解析,布尔/整数/小数共用一条通道。
-Future<void> setSetting({required String key, required String valueJson}) =>
-    RustLib.instance.api.crateApiSetSetting(key: key, valueJson: valueJson);
+/// 写入一项设置。`value` 是 `glaspen.ipc.v1.SettingValue` 的 protobuf bytes;
+/// ObjC 侧仍按 key + JSON 标量分派(P3 再迁 Swift C ABI)。
+Future<void> setSetting({required String key, required List<int> value}) =>
+    RustLib.instance.api.crateApiSetSetting(key: key, value: value);
 
 /// 设置面板「测试登录」:用当前已保存的涂鸦身份配置强制登录一次
 /// (成功则缓存 token,后续 DraftInk/AppendMessages 立即携带身份)。

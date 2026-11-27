@@ -70,6 +70,49 @@ dynamic prostValueToJson(wkt.Value value) {
   }
 }
 
+List<int> encodeSettingValue(dynamic value) {
+  final setting = settingValueFromDart(value);
+  return setting.writeToBuffer();
+}
+
+pb.SettingValue settingValueFromDart(dynamic value) {
+  if (value == null) {
+    return pb.SettingValue(nullValue: true);
+  }
+  if (value is bool) {
+    return pb.SettingValue(boolValue: value);
+  }
+  if (value is int) {
+    return pb.SettingValue(intValue: Int64(value));
+  }
+  if (value is double) {
+    return pb.SettingValue(doubleValue: value);
+  }
+  if (value is String) {
+    return pb.SettingValue(stringValue: value);
+  }
+  if (value is Uint8List) {
+    return pb.SettingValue(bytesValue: value);
+  }
+  if (value is Iterable) {
+    return pb.SettingValue(
+      listValue: pb.ListValue(
+        values: value.map(settingValueFromDart).toList(),
+      ),
+    );
+  }
+  if (value is Map) {
+    return pb.SettingValue(
+      structValue: wkt.Struct(
+        fields: value.entries.map(
+          (e) => MapEntry(e.key.toString(), jsonToProstValue(e.value)),
+        ),
+      ),
+    );
+  }
+  return pb.SettingValue(stringValue: value.toString());
+}
+
 List<int> encodeFrame(pb.Frame frame) {
   final payload = frame.writeToBuffer();
   final out = Uint8List(4 + payload.length);
@@ -80,6 +123,19 @@ List<int> encodeFrame(pb.Frame frame) {
   out[3] = (len >> 24) & 0xff;
   out.setRange(4, out.length, payload);
   return out;
+}
+
+List<int> encodeResponseForTest(int requestId, String kind, dynamic data) {
+  final frame = pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    panel: pb.Panel(
+      kind: kind,
+      data: jsonToProstValue(data),
+      ok: true,
+    ),
+  );
+  return encodeFrame(frame);
 }
 
 List<int> encodeRequest(int requestId, String kind, Map<String, dynamic>? data) {

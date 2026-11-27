@@ -861,3 +861,4 @@ revert S2 的两个 commit 即可(S2 没有运行时 feature flag;`--swift-probe
 | 2026-11-27 | Rust-R285 | protobuf Panel 过渡信封 + Struct 转换; Windows 管道下一步接线 | 本提交 |
 | 2026-11-27 | Rust-R286 | Windows 管道双协议(JSON 兼容 + GPB1/Frame); panel_wire 4 单测; Dart 客户端待切 | 本提交 |
 | 2026-11-27 | Rust-R287 | Windows 面板端到端 protobuf(服务端+Dart, 无 JSON 兼容); protobuf/fixnum 依赖与生成模型 | 本提交 |
+| 2026-11-27 | Rust-R288 | FRB setSetting 改 protobuf SettingValue; FRB codegen 重生成; 纯 proto 单测 | 本提交 |

@@ -204,7 +204,7 @@ class _FrbBridge extends SettingsBridge {
   @override
   Future<void> setSetting(String key, dynamic value) async {
     await _init();
-    await rust.setSetting(key: key, valueJson: jsonEncode(value));
+    await rust.setSetting(key: key, value: encodeSettingValue(value));
   }
 
   @override

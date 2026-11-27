@@ -43,9 +43,10 @@
 
 ### P2 Dart <-> Rust FRB
 
-- `settings_snapshot` / `set_setting` / bubbles / copy-paste payload 改为 `Vec<u8>`;
-- 其余 FRB 函数本来已经 typed, 保持不动;
-- 用生成的 Dart 模型替代 map/JSON 解析。
+- ✅ `set_setting` 已改为 `Vec<u8>`(`glaspen.ipc.v1.SettingValue`); Dart 侧
+  `encodeSettingValue` 编码; Rust 解码后再喂 macOS C ABI(该 C ABI 的 JSON 属 P3);
+- ⏳ `settings_snapshot` / bubbles / copy-paste payload 仍待迁移;
+- 其余 FRB 函数本来已经 typed, 保持不动。
 
 ### P3 macOS Swift C ABI
 

@@ -175,7 +175,65 @@ pub fn prost_struct_to_json(value: &prost_types::Struct) -> serde_json::Value {
     )
 }
 
-/// 过渡 panel 消息: kind + 原 data 对象 + request_id。
+/// SettingValue ↔ JSON(FRB setSetting 的 protobuf 载荷)。
+pub fn decode_setting_value(
+    bytes: &[u8],
+) -> Result<crate::proto::SettingValue, prost::DecodeError> {
+    use prost::Message;
+    crate::proto::SettingValue::decode(bytes)
+}
+
+pub fn encode_setting_value(value: &crate::proto::SettingValue) -> Vec<u8> {
+    use prost::Message;
+    value.encode_to_vec()
+}
+
+pub fn setting_value_to_json(value: &crate::proto::SettingValue) -> serde_json::Value {
+    use crate::proto::setting_value::Value;
+    match &value.value {
+        None => serde_json::Value::Null,
+        Some(Value::BoolValue(v)) => serde_json::Value::Bool(*v),
+        Some(Value::IntValue(v)) => serde_json::Value::Number((*v).into()),
+        Some(Value::DoubleValue(v)) => serde_json::Number::from_f64(*v)
+            .map_or(serde_json::Value::Null, serde_json::Value::Number),
+        Some(Value::StringValue(v)) => serde_json::Value::String(v.clone()),
+        Some(Value::StructValue(v)) => prost_struct_to_json(v),
+        Some(Value::ListValue(v)) => {
+            serde_json::Value::Array(v.values.iter().map(setting_value_to_json).collect())
+        }
+        Some(Value::BytesValue(v)) => serde_json::Value::Array(
+            v.iter()
+                .map(|b| serde_json::Value::Number((*b as u64).into()))
+                .collect(),
+        ),
+        Some(Value::NullValue(_)) => serde_json::Value::Null,
+    }
+}
+
+pub fn json_to_setting_value(value: &serde_json::Value) -> crate::proto::SettingValue {
+    use crate::proto::setting_value::Value;
+    let value = match value {
+        serde_json::Value::Null => Some(Value::NullValue(true)),
+        serde_json::Value::Bool(v) => Some(Value::BoolValue(*v)),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Some(Value::IntValue(i))
+            } else {
+                Some(Value::DoubleValue(n.as_f64().unwrap_or(0.0)))
+            }
+        }
+        serde_json::Value::String(v) => Some(Value::StringValue(v.clone())),
+        serde_json::Value::Array(items) => Some(Value::ListValue(crate::proto::ListValue {
+            values: items.iter().map(json_to_setting_value).collect(),
+        })),
+        serde_json::Value::Object(map) => Some(Value::StructValue(json_to_prost_struct(
+            &serde_json::Value::Object(map.clone()),
+        ))),
+    };
+    crate::proto::SettingValue { value }
+}
+
+/// 过渡 panel 消息: kind + 原 data 对象 + request_id。/// 过渡 panel 消息: kind + 原 data 对象 + request_id。
 pub fn panel_frame(request_id: u64, kind: &str, data: &serde_json::Value) -> Frame {
     Frame {
         protocol_version: PROTOCOL_VERSION,
@@ -278,6 +336,22 @@ mod tests {
         assert_eq!(panel.kind, "getPageThumbnails");
         let back = prost_value_to_json(panel.data.as_ref().unwrap());
         assert_eq!(back, value);
+    }
+
+    #[test]
+    fn setting_value_json_roundtrip() {
+        for value in [
+            serde_json::json!(true),
+            serde_json::json!(false),
+            serde_json::json!(25),
+            serde_json::json!(3.5),
+            serde_json::json!("zh"),
+            serde_json::json!([1, 2, 3]),
+            serde_json::json!({"theme": "light", "scale": 2.0}),
+        ] {
+            let setting = json_to_setting_value(&value);
+            assert_eq!(setting_value_to_json(&setting), value);
+        }
     }
 
     #[test]

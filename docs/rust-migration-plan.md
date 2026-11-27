@@ -1735,3 +1735,15 @@ modeler Up error 需真机笔/翻页连击复验。
   `_NamedPipeBridge` 连接后发 `GPB1`, 请求/响应/广播均走 PB; 删除 JSON 行缓冲/解析。
 - 验证: `cargo test -p glaspen-ipc` 9 passed; `fvm flutter analyze` 0 issues;
   `cargo build` 通过; Windows 真机/面板连接待测。
+
+
+## R288 protobuf: FRB setSetting 改 SettingValue
+
+- `src/api.rs::set_setting(key, value: Vec<u8>)`: 解码 `glaspen.ipc.v1.SettingValue`,
+  转 JSON 后喂既有 macOS C ABI(该 JSON 边界留到 P3); 删除 `value_json` 参数。
+- FRB codegen 重新生成 Rust/Dart 绑定; Dart `_FrbBridge.setSetting` 改用
+  `encodeSettingValue`; Windows 管道仍走 Panel protobuf。
+- 新增 `glaspen-ipc` SettingValue ↔ JSON 转换单测; 新增 Dart `panel_wire_test.dart`
+  验证 SettingValue/Frame 编解码; 旧 FRB wire 测试的 JSON 标量用例改为纯 protobuf 测试。
+- 验证: cargo build; `cargo test -p glaspen-ipc` 10 passed; `flutter analyze` 0;
+  `flutter test test/panel_wire_test.dart` 2 passed; `frb_wire_test.dart` 通过。

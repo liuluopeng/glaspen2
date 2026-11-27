@@ -355,11 +355,20 @@ pub async fn nas_backup_now() -> String {
     run_blocking(glaspen_core::export::nas_backup::backup_now)
 }
 
-/// 写入一项设置。`value_json` 是 JSON 标量(`true` / `3` / `2.5`),
-/// ObjC 侧按 key 解析,布尔/整数/小数共用一条通道。
+/// 写入一项设置。`value` 是 `glaspen.ipc.v1.SettingValue` 的 protobuf bytes;
+/// ObjC 侧仍按 key + JSON 标量分派(P3 再迁 Swift C ABI)。
 #[frb]
-pub async fn set_setting(key: String, value_json: String) {
-    run_blocking(move || shim::set_setting(&key, &value_json));
+pub async fn set_setting(key: String, value: Vec<u8>) {
+    run_blocking(move || {
+        let Ok(value) = glaspen_ipc::decode_setting_value(&value) else {
+            tracing::warn!("setSetting 收到非法 SettingValue protobuf");
+            return;
+        };
+        let json = glaspen_ipc::setting_value_to_json(&value);
+        if let Ok(text) = serde_json::to_string(&json) {
+            shim::set_setting(&key, &text);
+        }
+    });
 }
 
 /// 设置面板「测试登录」:用当前已保存的涂鸦身份配置强制登录一次

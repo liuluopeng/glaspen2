@@ -182,7 +182,7 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiSetSetting({
     required String key,
-    required String valueJson,
+    required List<int> value,
   });
 
   Stream<Settings> crateApiSettingsChanged();
@@ -1175,14 +1175,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @override
   Future<void> crateApiSetSetting({
     required String key,
-    required String valueJson,
+    required List<int> value,
   }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(key, serializer);
-          sse_encode_String(valueJson, serializer);
+          sse_encode_list_prim_u_8_loose(value, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -1195,16 +1195,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: null,
         ),
         constMeta: kCrateApiSetSettingConstMeta,
-        argValues: [key, valueJson],
+        argValues: [key, value],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kCrateApiSetSettingConstMeta => const TaskConstMeta(
-    debugName: "set_setting",
-    argNames: ["key", "valueJson"],
-  );
+  TaskConstMeta get kCrateApiSetSettingConstMeta =>
+      const TaskConstMeta(debugName: "set_setting", argNames: ["key", "value"]);
 
   @override
   Stream<Settings> crateApiSettingsChanged() {
@@ -1476,6 +1474,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Int64List dco_decode_list_prim_i_64_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dcoDecodeInt64List(raw);
+  }
+
+  @protected
+  List<int> dco_decode_list_prim_u_8_loose(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as List<int>;
   }
 
   @protected
@@ -1816,6 +1820,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
     return deserializer.buffer.getInt64List(len_);
+  }
+
+  @protected
+  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint8List(len_);
   }
 
   @protected
@@ -2240,6 +2251,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putInt64List(self);
+  }
+
+  @protected
+  void sse_encode_list_prim_u_8_loose(
+    List<int> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint8List(
+      self is Uint8List ? self : Uint8List.fromList(self),
+    );
   }
 
   @protected

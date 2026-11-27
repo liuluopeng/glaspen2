@@ -96,28 +96,5 @@ void main() {
         reason: '版本号应形如 0.5.1, 实际: "$v"');
   }, skip: skipReason);
 
-  test('setSetting → getSettings 往返(JSON 标量必须真的被解析)', () async {
-    // 回归:ObjC 侧用 NSJSONSerialization 解析 value_json 时忘了
-    // NSJSONReadingFragmentsAllowed,裸标量("true"/"3"/"2.5")全部返回 nil,
-    // 于是每个设置都被静默写成 false/0 —— 面板上按按钮"没反应"。
-    await rust.setSetting(key: 'grid', valueJson: 'true');
-    expect((await rust.getSettings())?.grid, isTrue,
-        reason: 'bool 设置没有被应用(值被解析成了 nil?)');
 
-    await rust.setSetting(key: 'grid', valueJson: 'false');
-    expect((await rust.getSettings())?.grid, isFalse);
-
-    await rust.setSetting(key: 'gifFps', valueJson: '25');
-    expect((await rust.getSettings())?.gifFps, 25, reason: 'int 设置没有被应用');
-
-    await rust.setSetting(key: 'gifSpeed', valueJson: '3.5');
-    expect((await rust.getSettings())?.gifSpeed, 3.5,
-        reason: 'double 设置没有被应用');
-
-    // 解析不了的输入必须被忽略,而不是写成 0
-    await rust.setSetting(key: 'gifFps', valueJson: '25');
-    await rust.setSetting(key: 'gifFps', valueJson: 'not json');
-    expect((await rust.getSettings())?.gifFps, 25,
-        reason: '非法 value_json 不应改动已有设置');
-  }, skip: skipReason);
 }

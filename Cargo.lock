@@ -1398,6 +1398,7 @@ dependencies = [
  "cc",
  "flutter_rust_bridge",
  "glaspen-core",
+ "glaspen-ipc",
  "glaspen-macos",
  "glaspen-windows",
  "libc",
