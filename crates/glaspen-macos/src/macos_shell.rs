@@ -10329,26 +10329,42 @@ extern "C" fn macos_api_refresh_page(ctx: *mut c_void) {
     }
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_macos_settings_json() -> *mut std::os::raw::c_char {
+/// 设置快照 → Panel protobuf(kind=settings); 供根 crate 的 FRB 解码。
+pub fn settings_snapshot_pb() -> Vec<u8> {
     unsafe {
         let overrides = glaspen2_menu_snapshot_overrides_json();
         if overrides.is_null() {
-            return std::ptr::null_mut();
+            return Vec::new();
         }
         let json = glaspen2_settings_snapshot_json(overrides);
         libc::free(overrides as *mut c_void);
         if json.is_null() {
-            return std::ptr::null_mut();
+            return Vec::new();
         }
         let text = std::ffi::CStr::from_ptr(json)
             .to_string_lossy()
             .into_owned();
         glaspen2_free_c_string(json);
-        let c = std::ffi::CString::new(text).unwrap_or_default();
-        libc::strdup(c.as_ptr())
+        let value = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
+        glaspen_ipc::encode_panel("settings", &value)
     }
 }
+
+/// 应用一项设置; value 是 `glaspen.ipc.v1.SettingValue` protobuf。
+pub fn set_setting_pb(key: &str, value: &[u8]) -> bool {
+    let Ok(value) = glaspen_ipc::decode_setting_value(value) else {
+        return false;
+    };
+    let json = glaspen_ipc::setting_value_to_json(&value);
+    let Ok(text) = serde_json::to_string(&json) else {
+        return false;
+    };
+    let (Ok(k), Ok(v)) = (std::ffi::CString::new(key), std::ffi::CString::new(text)) else {
+        return false;
+    };
+    unsafe { glaspen2_rust_apply_setting(k.as_ptr(), v.as_ptr()) != 0 }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_macos_free_c_string(p: *mut std::os::raw::c_char) {
     unsafe { libc::free(p as *mut c_void) }
@@ -10356,16 +10372,6 @@ pub extern "C" fn glaspen2_macos_free_c_string(p: *mut std::os::raw::c_char) {
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_macos_free_bytes(p: *mut u8) {
     unsafe { libc::free(p as *mut c_void) }
-}
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_macos_set_setting(
-    key: *const std::os::raw::c_char,
-    value: *const std::os::raw::c_char,
-) {
-    if key.is_null() || value.is_null() {
-        return;
-    }
-    let _ = unsafe { glaspen2_rust_apply_setting(key, value) };
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_macos_refresh_page(id: i64) {

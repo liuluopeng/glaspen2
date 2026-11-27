@@ -1365,6 +1365,7 @@ name = "glaspen-macos"
 version = "0.7.0"
 dependencies = [
  "glaspen-core",
+ "glaspen-ipc",
  "libc",
  "objc2",
  "objc2-app-kit",

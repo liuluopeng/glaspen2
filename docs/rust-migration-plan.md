@@ -1756,3 +1756,14 @@ modeler Up error 需真机笔/翻页连击复验。
 - Dart `_FrbBridge` 用 `decodePanelMessage` 解包; `uiConfig`/`getBubbles`/`nasBackupNow`
   界面层仍拿 map/字符串, 但 FRB 线上是 protobuf; 删除旧 JSON API;
 - FRB codegen 重生成; 构建通过, Dart analyze 0, `panel_wire_test`+`frb_wire_test` 全过。
+
+
+## R290 protobuf: macOS settings C ABI 去 JSON
+
+- `macos_shell::settings_snapshot_pb()`: 复用 core 快照 JSON, 立即编码为 Panel
+  protobuf(kind=settings); `set_setting_pb(key, bytes)` 解码 `SettingValue` 后应用;
+- 删除 `glaspen2_macos_settings_json` / `glaspen2_macos_set_setting` C 符号;
+  根 crate FRB 改为直接调用 `glaspen_macos::macos_shell` typed API, 不再经 C ABI JSON;
+- `--swift-macos-api-probe` 改为解码 protobuf; core settings_snapshot 审计同步;
+- 验证: cargo build, cargo test 相关, smoke(macOS API probe len=825 kind=settings grid=true),
+  parity 待跑。

@@ -1017,8 +1017,8 @@ mod tests {
         let win_code = strip_comments(WIN_PIPE_SRC);
         let mac_snapshot_glue = include_str!("../../../crates/glaspen-macos/src/macos_shell.rs");
         let fn_at = mac_snapshot_glue
-            .find("fn glaspen2_macos_settings_json")
-            .expect("macos_shell.rs 缺 glaspen2_macos_settings_json");
+            .find("fn settings_snapshot_pb")
+            .expect("macos_shell.rs 缺 settings_snapshot_pb");
         let rel_end = mac_snapshot_glue[fn_at..]
             .find('}')
             .expect("settingsApiJSON 不完整");

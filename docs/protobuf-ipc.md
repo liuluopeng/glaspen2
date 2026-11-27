@@ -52,7 +52,10 @@
 
 ### P3 macOS Swift C ABI
 
-- 新符号 `*_pb` 接收/返回 `(ptr,len)`, 旧 `*_json` 保留兼容壳;
+- ✅ settings 快照 C ABI 已改为 **Rust 直调**: `settings_snapshot_pb()` 返回 Panel
+  protobuf; `set_setting_pb(key, bytes)` 解码 `SettingValue`; `glaspen2_macos_settings_json`
+  和 `glaspen2_macos_set_setting` C 符号删除; probe 改为解码 protobuf;
+- ⏳ Swift 直接调用的 shortcut/menu titles JSON 仍需迁;
 - Swift 侧引入 SwiftProtobuf(或提交生成 `.pb.swift` + runtime);
 - 先把 settings/menu/shortcut 三组迁完, 再迁 recording/grid/camera/minimap。
 

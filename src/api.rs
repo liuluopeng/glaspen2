@@ -25,9 +25,7 @@ pub(crate) mod shim {
     use std::os::raw::{c_char, c_int};
 
     unsafe extern "C" {
-        fn glaspen2_macos_settings_json() -> *mut c_char;
         fn glaspen2_macos_free_c_string(p: *mut c_char);
-        fn glaspen2_macos_set_setting(key: *const c_char, value_json: *const c_char);
         fn glaspen2_macos_delete_page(screen_id: i64) -> c_int;
         fn glaspen2_macos_navigate_to_page(screen_id: i64);
         fn glaspen2_macos_hotkey(key: *const c_char);
@@ -45,24 +43,13 @@ pub(crate) mod shim {
     }
 
     pub fn settings_json() -> Option<String> {
-        unsafe {
-            let p = glaspen2_macos_settings_json();
-            if p.is_null() {
-                return None;
-            }
-            let s = std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned();
-            glaspen2_macos_free_c_string(p);
-            Some(s)
-        }
+        let bytes = glaspen_macos::macos_shell::settings_snapshot_pb();
+        let (_kind, data) = glaspen_ipc::decode_panel(&bytes).ok()?;
+        serde_json::to_string(&data).ok()
     }
 
-    pub fn set_setting(key: &str, value_json: &str) {
-        if let (Ok(k), Ok(v)) = (
-            std::ffi::CString::new(key),
-            std::ffi::CString::new(value_json),
-        ) {
-            unsafe { glaspen2_macos_set_setting(k.as_ptr(), v.as_ptr()) };
-        }
+    pub fn set_setting(key: &str, value: &[u8]) {
+        glaspen_macos::macos_shell::set_setting_pb(key, value);
     }
 
     pub fn delete_page(screen_id: i64) -> bool {
@@ -117,7 +104,7 @@ pub(crate) mod shim {
     pub fn settings_json() -> Option<String> {
         None
     }
-    pub fn set_setting(_key: &str, _value_json: &str) {}
+    pub fn set_setting(_key: &str, _value: &[u8]) {}
     pub fn delete_page(_screen_id: i64) -> bool {
         false
     }
@@ -364,16 +351,7 @@ pub async fn nas_backup_now() -> Vec<u8> {
 /// ObjC 侧仍按 key + JSON 标量分派(P3 再迁 Swift C ABI)。
 #[frb]
 pub async fn set_setting(key: String, value: Vec<u8>) {
-    run_blocking(move || {
-        let Ok(value) = glaspen_ipc::decode_setting_value(&value) else {
-            tracing::warn!("setSetting 收到非法 SettingValue protobuf");
-            return;
-        };
-        let json = glaspen_ipc::setting_value_to_json(&value);
-        if let Ok(text) = serde_json::to_string(&json) {
-            shim::set_setting(&key, &text);
-        }
-    });
+    run_blocking(move || shim::set_setting(&key, &value));
 }
 
 /// 设置面板「测试登录」:用当前已保存的涂鸦身份配置强制登录一次
