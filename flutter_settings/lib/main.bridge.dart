@@ -1029,7 +1029,7 @@ class _NamedPipeBridge extends SettingsBridge {
   Future<void> setSetting(String key, dynamic value) async {
     if (!_connected) return;
     try {
-      _send('setSetting', {'key': key, 'value': value});
+      _writeBytes(encodeSetSettingRequest(0, key, value));
     } catch (e) {
       debugPrint('[Settings] setSetting error: $e');
     }

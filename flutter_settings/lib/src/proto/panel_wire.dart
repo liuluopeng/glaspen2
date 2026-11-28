@@ -205,6 +205,17 @@ List<int> encodeResponseForTest(int requestId, String kind, dynamic data) {
   return encodeFrame(frame);
 }
 
+List<int> encodeSetSettingRequest(int requestId, String key, dynamic value) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    setSetting: pb.SetSetting(
+      key: key,
+      value: settingValueFromDart(value),
+    ),
+  ));
+}
+
 List<int> encodeGetSettingsRequest(int requestId) {
   return encodeFrame(pb.Frame(
     protocolVersion: 1,

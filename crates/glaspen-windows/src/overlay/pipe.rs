@@ -183,6 +183,13 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
                 PanelInput::Json(line) => {
                     process_pipe_message(&line, hwnd, &mut writer);
                 }
+                PanelInput::SetSetting {
+                    request_id,
+                    key,
+                    value,
+                } => {
+                    process_set_setting(&key, value, request_id as i64, hwnd, &mut writer);
+                }
                 PanelInput::GetSettings { request_id } => {
                     let overrides = settings_snapshot_overrides();
                     if let Ok(data) = glaspen_core::settings_snapshot::snapshot_json(
@@ -398,6 +405,259 @@ fn settings_snapshot_overrides() -> serde_json::Map<String, serde_json::Value> {
         serde_json::Value::String(effective_json()),
     );
     overrides
+}
+
+fn process_set_setting(
+    key: &str,
+    mut value: serde_json::Value,
+    req_id: i64,
+    hwnd: isize,
+    writer: &mut PanelOut,
+) {
+    // ① 命令型 key(不是设置项, 但仍走 setSetting 通道): 保持旧实现。
+    if key == "save_drawing" {
+        let _ = unsafe {
+            PostMessageW(
+                Some(HWND(hwnd as *mut _)),
+                WM_TRAY_COMMAND,
+                WPARAM(CMD_SAVE_DRAWING),
+                LPARAM(0),
+            )
+        };
+    } else if key == "save_with_bg" {
+        let _ = unsafe {
+            PostMessageW(
+                Some(HWND(hwnd as *mut _)),
+                WM_TRAY_COMMAND,
+                WPARAM(CMD_SAVE_WITH_BG),
+                LPARAM(0),
+            )
+        };
+    } else if key == "save_xoj" {
+        let _ = unsafe {
+            PostMessageW(
+                Some(HWND(hwnd as *mut _)),
+                WM_TRAY_COMMAND,
+                WPARAM(CMD_SAVE_XOJ),
+                LPARAM(0),
+            )
+        };
+    } else if key == "undo" {
+        let _ = unsafe {
+            PostMessageW(
+                Some(HWND(hwnd as *mut _)),
+                WM_TRAY_COMMAND,
+                WPARAM(CMD_UNDO),
+                LPARAM(0),
+            )
+        };
+    } else if key == "export_animated_gif" {
+        // 用面板的 GIF 设置(macOS 同键), 不再硬编码默认值
+        let (fps, resolution, speed, end_mode) = gif_settings();
+        let result = glaspen_core::export::glaspen2_save_animated_gif(
+            fps,
+            resolution,
+            speed,
+            end_mode,
+        );
+        tracing::info!(
+            "animated GIF export: {}",
+            if result != 0 { "OK" } else { "FAILED" }
+        );
+        hud_notify_async(if result != 0 {
+            "动画 GIF 已保存到桌面".to_string()
+        } else {
+            "动画 GIF 导出失败".to_string()
+        });
+    } else if key == "export_pdf" {
+        let result = glaspen_core::export::glaspen2_export_pdf();
+        tracing::info!(
+            "PDF export: {}",
+            if result != 0 { "OK" } else { "FAILED" }
+        );
+        hud_notify_async(if result != 0 {
+            "PDF 已保存到桌面".to_string()
+        } else {
+            "PDF 导出失败".to_string()
+        });
+    } else {
+        // ② 设置项 + 控制键: core effect 单源。
+        // 旧行为(保留): invertFps 缺 value 时按 30 处理
+        // (旧代码 json_get_int(line, "value").unwrap_or(30))。
+        if value.is_null() && key == "invertFps" {
+            value = serde_json::json!(30);
+        }
+        let effect = match glaspen_core::settings_apply::apply_setting(&key, &value) {
+            Ok(effect) => effect,
+            Err(e) => {
+                // 未知/只读键、非法值: 明确回错误帧, 不再静默吞掉。
+                tracing::warn!("setSetting 未应用: {key}={value}: {e}");
+                let _ = writer.write_all(
+                    glaspen_core::protocol::error_line(req_id, "setSetting", &e).as_bytes(),
+                );
+                let _ = writer.flush();
+                return;
+            }
+        };
+        use glaspen_core::settings_apply::SettingEffect;
+        match effect {
+            // 纯落库项: core 已写 user_settings, Windows 运行时无副作用。
+            // (invertInk/invertFps/notebookStyle/panelTransparent 旧实现也只落库;
+            //  flipEffect 是 macOS 专属键, 面板不会发给 Windows。)
+            SettingEffect::BubbleAutoNewPage(_)
+            | SettingEffect::BubbleReplayAuto(_)
+            | SettingEffect::BubbleReplayHoldLast(_)
+            | SettingEffect::BubbleReplaySpeed(_)
+            | SettingEffect::NasUrl(_)
+            | SettingEffect::NotebookStyle(_)
+            | SettingEffect::ShowFreeCanvas(_)
+            | SettingEffect::InvertInk(_)
+            | SettingEffect::InvertFps(_)
+            | SettingEffect::PanelTransparent(_)
+            | SettingEffect::FlipEffect(_) => {}
+            SettingEffect::Color(idx) => {
+                // 越界按预设表忽略(与 macOS gl_settings_set_color 一致;
+                // 旧实现把 idx 直接当命令号, 越界值可能撞到别的命令)。
+                if idx >= 0 && (idx as usize) < glaspen_core::presets::COLOR_PRESETS.len() {
+                    post_tray_command(hwnd, CMD_SELECT_COLOR + idx as usize, 0);
+                }
+            }
+            SettingEffect::Width(idx) => {
+                if idx >= 0 && (idx as usize) < glaspen_core::presets::WIDTH_PRESETS.len() {
+                    post_tray_command(hwnd, CMD_SELECT_WIDTH + idx as usize, 0);
+                }
+            }
+            SettingEffect::Grid(on) => {
+                post_tray_command(hwnd, CMD_TOGGLE_GRID, on as usize);
+            }
+            SettingEffect::GridDivider(v) => {
+                post_tray_command(hwnd, CMD_SET_GRID_DIVIDER, v as usize);
+            }
+            SettingEffect::GridSize(v) => {
+                post_tray_command(hwnd, CMD_SET_GRID_SIZE, v as usize);
+            }
+            SettingEffect::GridFollowStrokes(on) => {
+                post_tray_command(hwnd, CMD_SET_GRID_FOLLOW, on as usize);
+            }
+            SettingEffect::GlassFollowStrokes(on) => {
+                post_tray_command(hwnd, CMD_SET_GLASS_FOLLOW, on as usize);
+            }
+            SettingEffect::SoftShadow(on) => {
+                post_tray_command(hwnd, CMD_SET_SOFT_SHADOW, on as usize);
+            }
+            SettingEffect::Minimap(on) => {
+                post_tray_command(hwnd, CMD_TOGGLE_MINIMAP, on as usize);
+            }
+            SettingEffect::FrostedGlass(on) => {
+                post_tray_command(hwnd, CMD_TOGGLE_FROSTED, on as usize);
+            }
+            SettingEffect::PressureMonitor(on) => {
+                post_tray_command(hwnd, CMD_TOGGLE_PRESSURE_MONITOR, on as usize);
+            }
+            SettingEffect::ChatIntegration(on) => {
+                post_tray_command(hwnd, CMD_TOGGLE_CHAT_INTEGRATION, on as usize);
+            }
+            SettingEffect::Outline(on) => {
+                post_tray_command(hwnd, CMD_TOGGLE_OUTLINE, on as usize);
+            }
+            SettingEffect::LaunchAtLogin(on) => {
+                // HKCU Run 注册表即平台存储, 不落 DB(macOS 是 LaunchAgent plist)
+                glaspen_core::export::glaspen2_set_launch_at_login(if on { 1 } else { 0 });
+            }
+            SettingEffect::ShowBubbleTab(on) => {
+                glaspen_core::export::glaspen2_bubble_set_capture(if on { 1 } else { 0 });
+            }
+            SettingEffect::InfiniteCanvas(on) => {
+                tracing::info!(
+                    "面板请求切换画布模式: {}",
+                    if on { "无限画布" } else { "活页本" }
+                );
+                post_tray_command(hwnd, CMD_TOGGLE_INFINITE_CANVAS, on as usize);
+            }
+            SettingEffect::ShareCanvas(on) => {
+                // core 已写 share_ink; 仅集成开启时真正启停上行(旧 Windows 语义)
+                let integration_on = glaspen_core::runtime()
+                    .block_on(glaspen_core::db::load_setting("chat_integration"))
+                    .and_then(|v| v.parse::<i32>().ok())
+                    .unwrap_or(0)
+                    != 0;
+                if integration_on {
+                    glaspen_core::export::glaspen2_share_ink_set_active(if on { 1 } else { 0 });
+                }
+            }
+            SettingEffect::ChatApiBase(_) | SettingEffect::ChatUser(_) => {
+                // core 已写 chat_api_base / chat_user; 这里只重载 auth 缓存
+                glaspen_core::export::glaspen2_chat_auth_reload();
+            }
+            SettingEffect::ChatPassword(password) => {
+                // 密码本体不进 settings 快照, core 不落库; Windows 旧语义 = 空串也写
+                glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
+                    "chat_password",
+                    &password,
+                ));
+                glaspen_core::export::glaspen2_chat_auth_reload();
+            }
+            SettingEffect::Language(_) => {
+                // core 已把语言归一落库; Windows 面板是独立进程, 自己重读
+            }
+            SettingEffect::GifFps(v) => {
+                let (_, res, spd, em) = gif_settings();
+                persist_gif_settings(v as i32, res, spd, em);
+            }
+            SettingEffect::GifResolution(v) => {
+                let (fps, _, spd, em) = gif_settings();
+                persist_gif_settings(fps, v, spd, em);
+            }
+            SettingEffect::GifSpeed(v) => {
+                let (fps, res, _, em) = gif_settings();
+                persist_gif_settings(fps, res, v, em);
+            }
+            SettingEffect::GifEndMode(v) => {
+                let (fps, res, spd, _) = gif_settings();
+                persist_gif_settings(fps, res, spd, v as i32);
+            }
+            SettingEffect::Shortcuts(table) => {
+                let saved: HashMap<String, String> = table
+                    .as_object()
+                    .map(|obj| {
+                        obj.iter()
+                            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if saved.is_empty() {
+                    // 旧 Windows 语义: 空表 = 忽略(不回默认、不落库);
+                    // core 也不会为空表落库(见 settings_apply::apply_to_db)。
+                    tracing::warn!("[hotkey] shortcuts 保存消息里没有可解析的 value");
+                } else {
+                    // 应用(补默认/挡保留/去冲突) → 落库生效表 → 回推面板
+                    apply_saved_map(HWND(hwnd as *mut std::ffi::c_void), &saved);
+                    let frame = format!(
+                        "{{\"type\":\"onSettingsChanged\",\"data\":{{\"shortcuts\":\"{}\"}}}}\n",
+                        json_escape(&effective_json())
+                    );
+                    let _ = writer.write_all(frame.as_bytes());
+                    let _ = writer.flush();
+                }
+            }
+            SettingEffect::HotkeyRecording(on) => {
+                // 录制期间注销全部全局热键: RegisterHotKey 注册即吞键, 不注销
+                // 面板根本收不到组合键。60s 兜底与面板断开恢复见 hotkeys.rs。
+                set_recording(HWND(hwnd as *mut std::ffi::c_void), on);
+            }
+        }
+    }
+    // 写入成功后把落库后的完整快照回推给发起连接: 面板本地值和后端
+    // 设置流可能有竞态, 以 core 快照为准再同步一次(局部推送仍保留)。
+    let overrides = settings_snapshot_overrides();
+    if let Ok(data) = glaspen_core::settings_snapshot::snapshot_json(
+        glaspen_core::ui::Platform::Windows,
+        None,
+        &overrides,
+    ) {
+        let frame = glaspen_ipc::encode_settings_changed_frame(&data);
+        let _ = writer.write_frame(&frame);
+    }
 }
 
 fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
@@ -837,9 +1097,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
             }
         }
     } else if msg_type == "setSetting" {
-        // D1:设置 apply 单源。core settings_apply::apply_setting 负责宽容解析 +
-        // 区间钳制 + 落库(规范 DB 键);本分支只做 Windows 运行时副作用
-        // (PostMessage 到消息循环 / 状态原子量 / 热键注册 / auth 重载)。
+        // 兼容旧 Panel 请求: 解析后走与 typed SetSetting 相同的处理器。
         let req: serde_json::Value = match serde_json::from_str(line) {
             Ok(v) => v,
             Err(e) => {
@@ -856,253 +1114,9 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        let value = req.get("value").cloned().unwrap_or(serde_json::Value::Null);
         let req_id = req.get("reqId").and_then(|v| v.as_i64()).unwrap_or(0);
-
-        // ① 命令型 key(不是设置项, 但仍走 setSetting 通道): 保持旧实现。
-        if key == "save_drawing" {
-            let _ = unsafe {
-                PostMessageW(
-                    Some(HWND(hwnd as *mut _)),
-                    WM_TRAY_COMMAND,
-                    WPARAM(CMD_SAVE_DRAWING),
-                    LPARAM(0),
-                )
-            };
-        } else if key == "save_with_bg" {
-            let _ = unsafe {
-                PostMessageW(
-                    Some(HWND(hwnd as *mut _)),
-                    WM_TRAY_COMMAND,
-                    WPARAM(CMD_SAVE_WITH_BG),
-                    LPARAM(0),
-                )
-            };
-        } else if key == "save_xoj" {
-            let _ = unsafe {
-                PostMessageW(
-                    Some(HWND(hwnd as *mut _)),
-                    WM_TRAY_COMMAND,
-                    WPARAM(CMD_SAVE_XOJ),
-                    LPARAM(0),
-                )
-            };
-        } else if key == "undo" {
-            let _ = unsafe {
-                PostMessageW(
-                    Some(HWND(hwnd as *mut _)),
-                    WM_TRAY_COMMAND,
-                    WPARAM(CMD_UNDO),
-                    LPARAM(0),
-                )
-            };
-        } else if key == "export_animated_gif" {
-            // 用面板的 GIF 设置(macOS 同键), 不再硬编码默认值
-            let (fps, resolution, speed, end_mode) = gif_settings();
-            let result = glaspen_core::export::glaspen2_save_animated_gif(
-                fps,
-                resolution,
-                speed,
-                end_mode,
-            );
-            tracing::info!(
-                "animated GIF export: {}",
-                if result != 0 { "OK" } else { "FAILED" }
-            );
-            hud_notify_async(if result != 0 {
-                "动画 GIF 已保存到桌面".to_string()
-            } else {
-                "动画 GIF 导出失败".to_string()
-            });
-        } else if key == "export_pdf" {
-            let result = glaspen_core::export::glaspen2_export_pdf();
-            tracing::info!(
-                "PDF export: {}",
-                if result != 0 { "OK" } else { "FAILED" }
-            );
-            hud_notify_async(if result != 0 {
-                "PDF 已保存到桌面".to_string()
-            } else {
-                "PDF 导出失败".to_string()
-            });
-        } else {
-            // ② 设置项 + 控制键: core effect 单源。
-            let mut value = req.get("value").cloned().unwrap_or(serde_json::Value::Null);
-            // 旧行为(保留): invertFps 缺 value 时按 30 处理
-            // (旧代码 json_get_int(line, "value").unwrap_or(30))。
-            if value.is_null() && key == "invertFps" {
-                value = serde_json::json!(30);
-            }
-            let effect = match glaspen_core::settings_apply::apply_setting(&key, &value) {
-                Ok(effect) => effect,
-                Err(e) => {
-                    // 未知/只读键、非法值: 明确回错误帧, 不再静默吞掉。
-                    tracing::warn!("setSetting 未应用: {key}={value}: {e}");
-                    let _ = writer.write_all(
-                        glaspen_core::protocol::error_line(req_id, "setSetting", &e).as_bytes(),
-                    );
-                    let _ = writer.flush();
-                    return;
-                }
-            };
-            use glaspen_core::settings_apply::SettingEffect;
-            match effect {
-                // 纯落库项: core 已写 user_settings, Windows 运行时无副作用。
-                // (invertInk/invertFps/notebookStyle/panelTransparent 旧实现也只落库;
-                //  flipEffect 是 macOS 专属键, 面板不会发给 Windows。)
-                SettingEffect::BubbleAutoNewPage(_)
-                | SettingEffect::BubbleReplayAuto(_)
-                | SettingEffect::BubbleReplayHoldLast(_)
-                | SettingEffect::BubbleReplaySpeed(_)
-                | SettingEffect::NasUrl(_)
-                | SettingEffect::NotebookStyle(_)
-                | SettingEffect::ShowFreeCanvas(_)
-                | SettingEffect::InvertInk(_)
-                | SettingEffect::InvertFps(_)
-                | SettingEffect::PanelTransparent(_)
-                | SettingEffect::FlipEffect(_) => {}
-                SettingEffect::Color(idx) => {
-                    // 越界按预设表忽略(与 macOS gl_settings_set_color 一致;
-                    // 旧实现把 idx 直接当命令号, 越界值可能撞到别的命令)。
-                    if idx >= 0 && (idx as usize) < glaspen_core::presets::COLOR_PRESETS.len() {
-                        post_tray_command(hwnd, CMD_SELECT_COLOR + idx as usize, 0);
-                    }
-                }
-                SettingEffect::Width(idx) => {
-                    if idx >= 0 && (idx as usize) < glaspen_core::presets::WIDTH_PRESETS.len() {
-                        post_tray_command(hwnd, CMD_SELECT_WIDTH + idx as usize, 0);
-                    }
-                }
-                SettingEffect::Grid(on) => {
-                    post_tray_command(hwnd, CMD_TOGGLE_GRID, on as usize);
-                }
-                SettingEffect::GridDivider(v) => {
-                    post_tray_command(hwnd, CMD_SET_GRID_DIVIDER, v as usize);
-                }
-                SettingEffect::GridSize(v) => {
-                    post_tray_command(hwnd, CMD_SET_GRID_SIZE, v as usize);
-                }
-                SettingEffect::GridFollowStrokes(on) => {
-                    post_tray_command(hwnd, CMD_SET_GRID_FOLLOW, on as usize);
-                }
-                SettingEffect::GlassFollowStrokes(on) => {
-                    post_tray_command(hwnd, CMD_SET_GLASS_FOLLOW, on as usize);
-                }
-                SettingEffect::SoftShadow(on) => {
-                    post_tray_command(hwnd, CMD_SET_SOFT_SHADOW, on as usize);
-                }
-                SettingEffect::Minimap(on) => {
-                    post_tray_command(hwnd, CMD_TOGGLE_MINIMAP, on as usize);
-                }
-                SettingEffect::FrostedGlass(on) => {
-                    post_tray_command(hwnd, CMD_TOGGLE_FROSTED, on as usize);
-                }
-                SettingEffect::PressureMonitor(on) => {
-                    post_tray_command(hwnd, CMD_TOGGLE_PRESSURE_MONITOR, on as usize);
-                }
-                SettingEffect::ChatIntegration(on) => {
-                    post_tray_command(hwnd, CMD_TOGGLE_CHAT_INTEGRATION, on as usize);
-                }
-                SettingEffect::Outline(on) => {
-                    post_tray_command(hwnd, CMD_TOGGLE_OUTLINE, on as usize);
-                }
-                SettingEffect::LaunchAtLogin(on) => {
-                    // HKCU Run 注册表即平台存储, 不落 DB(macOS 是 LaunchAgent plist)
-                    glaspen_core::export::glaspen2_set_launch_at_login(if on { 1 } else { 0 });
-                }
-                SettingEffect::ShowBubbleTab(on) => {
-                    glaspen_core::export::glaspen2_bubble_set_capture(if on { 1 } else { 0 });
-                }
-                SettingEffect::InfiniteCanvas(on) => {
-                    tracing::info!(
-                        "面板请求切换画布模式: {}",
-                        if on { "无限画布" } else { "活页本" }
-                    );
-                    post_tray_command(hwnd, CMD_TOGGLE_INFINITE_CANVAS, on as usize);
-                }
-                SettingEffect::ShareCanvas(on) => {
-                    // core 已写 share_ink; 仅集成开启时真正启停上行(旧 Windows 语义)
-                    let integration_on = glaspen_core::runtime()
-                        .block_on(glaspen_core::db::load_setting("chat_integration"))
-                        .and_then(|v| v.parse::<i32>().ok())
-                        .unwrap_or(0)
-                        != 0;
-                    if integration_on {
-                        glaspen_core::export::glaspen2_share_ink_set_active(if on { 1 } else { 0 });
-                    }
-                }
-                SettingEffect::ChatApiBase(_) | SettingEffect::ChatUser(_) => {
-                    // core 已写 chat_api_base / chat_user; 这里只重载 auth 缓存
-                    glaspen_core::export::glaspen2_chat_auth_reload();
-                }
-                SettingEffect::ChatPassword(password) => {
-                    // 密码本体不进 settings 快照, core 不落库; Windows 旧语义 = 空串也写
-                    glaspen_core::runtime().block_on(glaspen_core::db::save_setting(
-                        "chat_password",
-                        &password,
-                    ));
-                    glaspen_core::export::glaspen2_chat_auth_reload();
-                }
-                SettingEffect::Language(_) => {
-                    // core 已把语言归一落库; Windows 面板是独立进程, 自己重读
-                }
-                SettingEffect::GifFps(v) => {
-                    let (_, res, spd, em) = gif_settings();
-                    persist_gif_settings(v as i32, res, spd, em);
-                }
-                SettingEffect::GifResolution(v) => {
-                    let (fps, _, spd, em) = gif_settings();
-                    persist_gif_settings(fps, v, spd, em);
-                }
-                SettingEffect::GifSpeed(v) => {
-                    let (fps, res, _, em) = gif_settings();
-                    persist_gif_settings(fps, res, v, em);
-                }
-                SettingEffect::GifEndMode(v) => {
-                    let (fps, res, spd, _) = gif_settings();
-                    persist_gif_settings(fps, res, spd, v as i32);
-                }
-                SettingEffect::Shortcuts(table) => {
-                    let saved: HashMap<String, String> = table
-                        .as_object()
-                        .map(|obj| {
-                            obj.iter()
-                                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    if saved.is_empty() {
-                        // 旧 Windows 语义: 空表 = 忽略(不回默认、不落库);
-                        // core 也不会为空表落库(见 settings_apply::apply_to_db)。
-                        tracing::warn!("[hotkey] shortcuts 保存消息里没有可解析的 value");
-                    } else {
-                        // 应用(补默认/挡保留/去冲突) → 落库生效表 → 回推面板
-                        apply_saved_map(HWND(hwnd as *mut std::ffi::c_void), &saved);
-                        let frame = format!(
-                            "{{\"type\":\"onSettingsChanged\",\"data\":{{\"shortcuts\":\"{}\"}}}}\n",
-                            json_escape(&effective_json())
-                        );
-                        let _ = writer.write_all(frame.as_bytes());
-                        let _ = writer.flush();
-                    }
-                }
-                SettingEffect::HotkeyRecording(on) => {
-                    // 录制期间注销全部全局热键: RegisterHotKey 注册即吞键, 不注销
-                    // 面板根本收不到组合键。60s 兜底与面板断开恢复见 hotkeys.rs。
-                    set_recording(HWND(hwnd as *mut std::ffi::c_void), on);
-                }
-            }
-        }
-        // 写入成功后把落库后的完整快照回推给发起连接: 面板本地值和后端
-        // 设置流可能有竞态, 以 core 快照为准再同步一次(局部推送仍保留)。
-        let overrides = settings_snapshot_overrides();
-        if let Ok(data) = glaspen_core::settings_snapshot::snapshot_json(
-            glaspen_core::ui::Platform::Windows,
-            None,
-            &overrides,
-        ) {
-            let frame = glaspen_ipc::encode_settings_changed_frame(&data);
-            let _ = writer.write_frame(&frame);
-        }
+        process_set_setting(&key, value, req_id, hwnd, writer);
     } else if msg_type == "appVersion" {
         // 「关于」区显示的当前版本(与发布物一致,取自 Cargo.toml)
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);

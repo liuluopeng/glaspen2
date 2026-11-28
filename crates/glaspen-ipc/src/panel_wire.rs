@@ -57,6 +57,11 @@ pub enum PanelInput {
     GetSettings {
         request_id: u64,
     },
+    SetSetting {
+        request_id: u64,
+        key: String,
+        value: serde_json::Value,
+    },
     ListPages {
         request_id: u64,
     },
@@ -96,6 +101,15 @@ fn panel_input_from_frame(frame: Frame) -> Result<PanelInput, FrameError> {
         }
         Some(crate::proto::frame::Body::GetSettingsRequest(_)) => Ok(PanelInput::GetSettings {
             request_id: frame.request_id,
+        }),
+        Some(crate::proto::frame::Body::SetSetting(req)) => Ok(PanelInput::SetSetting {
+            request_id: frame.request_id,
+            key: req.key,
+            value: req
+                .value
+                .as_ref()
+                .map(crate::setting_value_to_json)
+                .unwrap_or(serde_json::Value::Null),
         }),
         Some(crate::proto::frame::Body::ListPagesRequest(_)) => Ok(PanelInput::ListPages {
             request_id: frame.request_id,
@@ -173,6 +187,31 @@ mod tests {
         };
         assert!(line.contains("\"type\":\"getSettings\""));
         assert!(line.contains("\"screenId\":3.0"));
+    }
+
+    #[test]
+    fn typed_set_setting_decodes() {
+        let mut frame = crate::frame(9);
+        frame.body = Some(crate::proto::frame::Body::SetSetting(
+            crate::proto::SetSetting {
+                key: "grid".to_string(),
+                value: Some(crate::json_to_setting_value(&serde_json::json!(true))),
+            },
+        ));
+        let mut bytes = PB_MAGIC.to_vec();
+        bytes.extend_from_slice(&crate::encode_frame(&frame));
+        let inputs = PanelDecoder::new().feed(&bytes).unwrap();
+        let PanelInput::SetSetting {
+            request_id,
+            key,
+            value,
+        } = &inputs[0]
+        else {
+            panic!("expected SetSetting");
+        };
+        assert_eq!(*request_id, 9);
+        assert_eq!(key, "grid");
+        assert_eq!(value, &serde_json::json!(true));
     }
 
     #[test]
