@@ -611,8 +611,26 @@ const AppSettings$json = {
     {'1': 'nas_url', '3': 34, '4': 1, '5': 9, '10': 'nasUrl'},
     {'1': 'share_canvas', '3': 35, '4': 1, '5': 8, '10': 'shareCanvas'},
     {'1': 'language', '3': 36, '4': 1, '5': 9, '10': 'language'},
-    {'1': 'shortcuts', '3': 37, '4': 1, '5': 9, '10': 'shortcuts'},
+    {
+      '1': 'shortcuts',
+      '3': 37,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.AppSettings.ShortcutsEntry',
+      '10': 'shortcuts'
+    },
   ],
+  '3': [AppSettings_ShortcutsEntry$json],
+};
+
+@$core.Deprecated('Use appSettingsDescriptor instead')
+const AppSettings_ShortcutsEntry$json = {
+  '1': 'ShortcutsEntry',
+  '2': [
+    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
+    {'1': 'value', '3': 2, '4': 1, '5': 9, '10': 'value'},
+  ],
+  '7': {'7': true},
 };
 
 /// Descriptor for `AppSettings`. Decode as a `google.protobuf.DescriptorProto`.
@@ -640,8 +658,10 @@ final $typed_data.Uint8List appSettingsDescriptor = $convert.base64Decode(
     'YmJsZVJlcGxheUhvbGRMYXN0EiwKEmJ1YmJsZV9yZXBsYXlfYXV0bxggIAEoCFIQYnViYmxlUm'
     'VwbGF5QXV0bxIvChRidWJibGVfYXV0b19uZXdfcGFnZRghIAEoCFIRYnViYmxlQXV0b05ld1Bh'
     'Z2USFwoHbmFzX3VybBgiIAEoCVIGbmFzVXJsEiEKDHNoYXJlX2NhbnZhcxgjIAEoCFILc2hhcm'
-    'VDYW52YXMSGgoIbGFuZ3VhZ2UYJCABKAlSCGxhbmd1YWdlEhwKCXNob3J0Y3V0cxglIAEoCVIJ'
-    'c2hvcnRjdXRz');
+    'VDYW52YXMSGgoIbGFuZ3VhZ2UYJCABKAlSCGxhbmd1YWdlEkgKCXNob3J0Y3V0cxglIAMoCzIq'
+    'LmdsYXNwZW4uaXBjLnYxLkFwcFNldHRpbmdzLlNob3J0Y3V0c0VudHJ5UglzaG9ydGN1dHMaPA'
+    'oOU2hvcnRjdXRzRW50cnkSEAoDa2V5GAEgASgJUgNrZXkSFAoFdmFsdWUYAiABKAlSBXZhbHVl'
+    'OgI4AQ==');
 
 @$core.Deprecated('Use settingsSnapshotDescriptor instead')
 const SettingsSnapshot$json = {

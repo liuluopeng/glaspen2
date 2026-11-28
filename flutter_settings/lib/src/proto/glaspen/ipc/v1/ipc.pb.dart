@@ -1190,7 +1190,7 @@ class AppSettings extends $pb.GeneratedMessage {
     $core.String? nasUrl,
     $core.bool? shareCanvas,
     $core.String? language,
-    $core.String? shortcuts,
+    $core.Iterable<$core.MapEntry<$core.String, $core.String>>? shortcuts,
   }) {
     final result = AppSettings._();
     if (color != null) result.color = color;
@@ -1231,7 +1231,7 @@ class AppSettings extends $pb.GeneratedMessage {
     if (nasUrl != null) result.nasUrl = nasUrl;
     if (shareCanvas != null) result.shareCanvas = shareCanvas;
     if (language != null) result.language = language;
-    if (shortcuts != null) result.shortcuts = shortcuts;
+    if (shortcuts != null) result.shortcuts.addEntries(shortcuts);
     return result;
   }
 
@@ -1284,7 +1284,11 @@ class AppSettings extends $pb.GeneratedMessage {
     ..aOS(34, _omitFieldNames ? '' : 'nasUrl')
     ..aOB(35, _omitFieldNames ? '' : 'shareCanvas')
     ..aOS(36, _omitFieldNames ? '' : 'language')
-    ..aOS(37, _omitFieldNames ? '' : 'shortcuts')
+    ..m<$core.String, $core.String>(37, _omitFieldNames ? '' : 'shortcuts',
+        entryClassName: 'AppSettings.ShortcutsEntry',
+        keyFieldType: $pb.PbFieldType.OS,
+        valueFieldType: $pb.PbFieldType.OS,
+        packageName: const $pb.PackageName('glaspen.ipc.v1'))
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1634,13 +1638,7 @@ class AppSettings extends $pb.GeneratedMessage {
   void clearLanguage() => $_clearField(36);
 
   @$pb.TagNumber(37)
-  $core.String get shortcuts => $_getSZ(36);
-  @$pb.TagNumber(37)
-  set shortcuts($core.String value) => $_setString(36, value);
-  @$pb.TagNumber(37)
-  $core.bool hasShortcuts() => $_has(36);
-  @$pb.TagNumber(37)
-  void clearShortcuts() => $_clearField(37);
+  $pb.PbMap<$core.String, $core.String> get shortcuts => $_getMap(36);
 }
 
 class SettingsSnapshot extends $pb.GeneratedMessage {

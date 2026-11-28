@@ -117,7 +117,7 @@ message AppSettings {
   string nas_url = 34;
   bool share_canvas = 35;
   string language = 36;
-  string shortcuts = 37;
+  map<string, string> shortcuts = 37;
 }
 
 message SettingsSnapshot {

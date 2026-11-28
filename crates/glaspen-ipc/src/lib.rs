@@ -284,6 +284,23 @@ fn settings_string(v: &serde_json::Value, key: &str) -> String {
         .to_string()
 }
 
+fn settings_shortcuts(
+    v: &serde_json::Value,
+    key: &str,
+) -> std::collections::HashMap<String, String> {
+    match v.get(key) {
+        Some(serde_json::Value::String(text)) => {
+            serde_json::from_str::<std::collections::HashMap<String, String>>(text)
+                .unwrap_or_default()
+        }
+        Some(serde_json::Value::Object(map)) => map
+            .iter()
+            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+            .collect(),
+        _ => Default::default(),
+    }
+}
+
 pub fn app_settings_from_json(v: &serde_json::Value) -> crate::proto::AppSettings {
     crate::proto::AppSettings {
         color: settings_i32(v, "color"),
@@ -322,7 +339,7 @@ pub fn app_settings_from_json(v: &serde_json::Value) -> crate::proto::AppSetting
         nas_url: settings_string(v, "nasUrl"),
         share_canvas: settings_bool(v, "shareCanvas"),
         language: settings_string(v, "language"),
-        shortcuts: settings_string(v, "shortcuts"),
+        shortcuts: settings_shortcuts(v, "shortcuts"),
     }
 }
 
@@ -364,7 +381,7 @@ pub fn app_settings_to_json(s: &crate::proto::AppSettings) -> serde_json::Value 
         "nasUrl": s.nas_url,
         "shareCanvas": s.share_canvas,
         "language": s.language,
-        "shortcuts": s.shortcuts,
+        "shortcuts": serde_json::to_string(&s.shortcuts).unwrap_or_else(|_| "{}".to_string()),
     })
 }
 

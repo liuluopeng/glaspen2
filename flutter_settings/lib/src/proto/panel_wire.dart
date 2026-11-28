@@ -1,5 +1,6 @@
 // Windows 面板命名管道的 protobuf 分帧/Struct 转换。
 // 线格式: 连接开头发送 magic, 之后每帧 = u32 little-endian 长度 + Frame bytes。
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:fixnum/fixnum.dart';
@@ -72,7 +73,7 @@ Map<String, dynamic> appSettingsToMap(pb.AppSettings s) {
     'nasUrl': s.nasUrl,
     'shareCanvas': s.shareCanvas,
     'language': s.language,
-    'shortcuts': s.shortcuts,
+    'shortcuts': jsonEncode(s.shortcuts),
   };
 }
 
