@@ -4104,7 +4104,6 @@ pub extern "C" fn glaspen2_rust_restore_system_cursor() {
 // ── R67: 实时绘制计划入参/调用/光栅化整体迁 Rust ──
 
 unsafe extern "C" {
-    fn glaspen2_live_plan_json(input: *const std::os::raw::c_char) -> *mut std::os::raw::c_char;
     fn glaspen2_free_c_string(p: *mut std::os::raw::c_char);
     fn cairo_get_target(cr: *mut c_void) -> *mut c_void;
     fn cairo_image_surface_get_width(surface: *mut c_void) -> i32;

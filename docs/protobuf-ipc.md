@@ -101,3 +101,5 @@
 - `GridLines` / `MinimapLayout` proto 仅在需要跨进程时再定义（当前 Windows 同进程 direct）；
 - `Panel` 其余命令 oneof；
 - macOS 内部 `*_json` FFI 改 typed Rust 调用。
+
+- ✅ 删除最后的 `glaspen2_live_plan_json` 与输入/输出 JSON 编解码；实时计划只保留 typed `build_macos_live_plan`。
