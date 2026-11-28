@@ -6486,10 +6486,6 @@ pub extern "C" fn glaspen2_rust_overlay_flush_dirty() {
 static PENDING_GIF: std::sync::Mutex<Option<Vec<u8>>> = std::sync::Mutex::new(None);
 
 unsafe extern "C" {
-    fn glaspen2_recording_event_json(
-        slot: i32,
-        json: *const std::os::raw::c_char,
-    ) -> *mut std::os::raw::c_char;
     fn glaspen2_swift_dispatch_main(ctx: *mut c_void, cb: extern "C" fn(*mut c_void));
     fn glaspen2_gif_record_end(
         start: i32,
