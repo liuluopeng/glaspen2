@@ -93,7 +93,8 @@
   ✅ `PageThumbnail/PageThumbnailsResponse` typed，Windows 缩略图不再 base64/JSON；
   页面操作仍待迁；
 - ✅ `BubbleMessages/BubbleMessage/BubbleStroke/BubblePoint` typed，FRB `bubbleMessages` 已切 typed（DB 仍存 JSON）；
-- `RecordingEvent/Effect`；
+- ✅ macOS 录制改 direct typed `RecordingEvent/RecordingEffect`（`recording_handle_typed`），
+  删除 macOS 内部 `recording_event_json` 路径；
 - ✅ macOS `ActionEffect` 已直接 typed 匹配，删除 `glaspen2_action_effect_json` FFI；
 - ✅ macOS minimap 改 direct typed `minimap::layout`，删除 minimap layout JSON FFI；
 - ✅ 删除无调用方的 grid JSON FFI 与测试（core grid 已 typed）；

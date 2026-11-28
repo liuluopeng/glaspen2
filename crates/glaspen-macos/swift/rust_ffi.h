@@ -600,7 +600,6 @@ extern void glaspen2_rust_overlay_flush(void);
 extern void glaspen2_rust_overlay_flush_dirty(void);
 
 // R119: 录制事件回喂/effect 执行(默认)
-extern int glaspen2_rust_recording_feed(int slot, const char *json);
 
 // R120: 笔事件分派/压感监视器分类
 extern int glaspen2_rust_handle_pen_event(int kind, double x, double y, double pressure,

@@ -2164,6 +2164,31 @@ static RECORDING_MACHINES: std::sync::LazyLock<
     std::sync::Mutex<[Option<crate::recording::RecordingMachine>; 2]>,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new([None, None]));
 
+/// adapter 直接喂 typed 事件(macOS Rust shell 用; 不经过事件 JSON)。
+pub fn recording_handle_typed(
+    slot: c_int,
+    event: crate::recording::RecordingEvent,
+) -> Vec<crate::recording::RecordingEffect> {
+    let Some(idx) = recording_slot(slot) else {
+        return Vec::new();
+    };
+    let mut machines = RECORDING_MACHINES.lock().unwrap_or_else(|e| e.into_inner());
+    let machine = machines[idx].get_or_insert_with(Default::default);
+    machine.handle(event)
+}
+
+/// typed 复位(保留总开关镜像)。
+pub fn recording_reset_typed(slot: c_int) {
+    let Some(idx) = recording_slot(slot) else {
+        return;
+    };
+    let mut machines = RECORDING_MACHINES.lock().unwrap_or_else(|e| e.into_inner());
+    let chat_integration = machines[idx]
+        .as_ref()
+        .is_some_and(crate::recording::RecordingMachine::chat_integration);
+    machines[idx] = Some(crate::recording::RecordingMachine::new(chat_integration));
+}
+
 fn recording_slot(slot: c_int) -> Option<usize> {
     match slot {
         0 => Some(0),

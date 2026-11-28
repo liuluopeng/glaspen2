@@ -4489,15 +4489,25 @@ unsafe extern "C" {
 }
 
 fn recording_feed(slot: i32, kind: &str, mode: &str) {
-    let strokes = unsafe { glaspen2_router_rec_finish_and_count() };
-    let payload = serde_json::json!({
-        "type": kind,
-        "mode": mode,
-        "stroke_count": strokes,
-    });
-    if let Ok(c) = std::ffi::CString::new(payload.to_string()) {
-        unsafe { glaspen2_router_recording_feed(slot, c.as_ptr()) };
-    }
+    use glaspen_core::recording::{RecordingEvent, RecordingMode};
+    let strokes = unsafe { glaspen2_router_rec_finish_and_count() }.max(0) as u32;
+    let mode = match mode {
+        "Gif" => RecordingMode::Gif,
+        "Draft" => RecordingMode::Draft,
+        _ => RecordingMode::Send,
+    };
+    let event = if kind == "StartPressed" {
+        RecordingEvent::StartPressed {
+            mode,
+            stroke_count: strokes,
+        }
+    } else {
+        RecordingEvent::ReleasePressed {
+            mode,
+            stroke_count: strokes,
+        }
+    };
+    let _ = recording_feed_internal(slot, event);
 }
 
 /// 录制热键的按键身份(与 autorepeat 消费共用; R 常开, 2/3 需聊天集成)。
@@ -6496,51 +6506,31 @@ unsafe extern "C" {
     fn glaspen2_ink_draft_last_error() -> *const std::os::raw::c_char;
 }
 
-fn recording_simple_event(kind: &str) -> String {
-    serde_json::json!({ "type": kind }).to_string()
-}
-
-fn recording_feed_internal(slot: i32, json: &str) -> i32 {
-    let Ok(cjson) = std::ffi::CString::new(json) else {
-        return 0;
-    };
-    let out = unsafe { glaspen2_recording_event_json(slot, cjson.as_ptr()) };
-    if out.is_null() {
-        tracing::warn!("[recording] 槽 {slot}: FFI 返回 NULL");
+fn recording_feed_internal(slot: i32, event: glaspen_core::recording::RecordingEvent) -> i32 {
+    let effects = glaspen_core::export::recording_handle_typed(slot, event);
+    if effects.is_empty() {
         return 0;
     }
-    let text = unsafe { std::ffi::CStr::from_ptr(out) }
-        .to_string_lossy()
-        .into_owned();
-    unsafe { glaspen2_free_c_string(out) };
-    let Ok(effects) = serde_json::from_str::<serde_json::Value>(&text) else {
-        tracing::warn!("[recording] 槽 {slot} 事件执行失败");
-        return 0;
-    };
-    let Some(array) = effects.as_array() else {
-        return 0;
-    };
-    if array.is_empty() {
-        return 0;
-    }
-    for effect in array {
+    for effect in &effects {
         recording_exec_effect(slot, effect);
     }
     1
 }
 
-fn recording_exec_effect(slot: i32, effect: &serde_json::Value) {
-    let Some(kind) = effect.get("kind").and_then(|k| k.as_str()) else {
-        return;
-    };
-    match kind {
-        "ShowHud" => {
-            let Some(hud) = effect.get("hud").and_then(|v| v.as_str()) else {
-                return;
+fn recording_exec_effect(slot: i32, effect: &glaspen_core::recording::RecordingEffect) {
+    use glaspen_core::recording::RecordingEffect;
+    let _ = slot;
+    match effect {
+        RecordingEffect::ShowHud(hud) => {
+            use glaspen_core::recording::RecordingHud;
+            let (strokes, detail) = match hud {
+                RecordingHud::SendSucceeded { strokes }
+                | RecordingHud::DraftAccepted { strokes } => (*strokes as i32, None),
+                RecordingHud::DraftFailed { detail } => (0, detail.as_deref()),
+                _ => (0, None),
             };
-            let strokes = effect.get("strokes").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            let detail = effect.get("detail").and_then(|v| v.as_str());
-            let Ok(chud) = std::ffi::CString::new(hud) else {
+            let name = hud.variant_name();
+            let Ok(chud) = std::ffi::CString::new(name) else {
                 return;
             };
             let cdetail = detail.and_then(|d| std::ffi::CString::new(d).ok());
@@ -6552,7 +6542,7 @@ fn recording_exec_effect(slot: i32, effect: &serde_json::Value) {
                 )
             };
             if text.is_null() {
-                tracing::warn!("[recording] 未实现的 HUD 文案: {hud}");
+                tracing::warn!("[recording] 未实现的 HUD 文案: {name}");
                 return;
             }
             unsafe {
@@ -6560,15 +6550,11 @@ fn recording_exec_effect(slot: i32, effect: &serde_json::Value) {
                 libc::free(text as *mut c_void);
             }
         }
-        "EncodeGif" => {
-            let start = effect
-                .get("start_stroke")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0) as i32;
-            let end = effect
-                .get("end_stroke")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0) as i32;
+        RecordingEffect::EncodeGif {
+            start_stroke,
+            end_stroke,
+        } => {
+            let (start, end) = (*start_stroke as i32, *end_stroke as i32);
             let fps = unsafe { glaspen2_router_gif_fps() };
             let resolution = unsafe { glaspen2_router_gif_resolution() };
             let speed = unsafe { glaspen2_router_gif_speed() };
@@ -6586,46 +6572,45 @@ fn recording_exec_effect(slot: i32, effect: &serde_json::Value) {
                         &mut out_len,
                     )
                 };
-                if !gif.is_null() && out_len > 0 {
-                    let bytes =
-                        unsafe { std::slice::from_raw_parts(gif, out_len as usize) }.to_vec();
-                    unsafe { glaspen2_free_rust_bytes(gif, out_len) };
-                    *PENDING_GIF.lock().unwrap_or_else(|e| e.into_inner()) = Some(bytes);
-                    unsafe { glaspen2_swift_dispatch_main(std::ptr::null_mut(), recording_gif_ok) };
-                } else {
-                    if !gif.is_null() {
-                        unsafe { glaspen2_free_rust_bytes(gif, out_len) }
-                    }
+                if gif.is_null() || out_len <= 0 {
                     unsafe {
                         glaspen2_swift_dispatch_main(std::ptr::null_mut(), recording_gif_fail)
                     };
+                    return;
                 }
+                let bytes = unsafe { std::slice::from_raw_parts(gif, out_len as usize) }.to_vec();
+                unsafe { glaspen2_free_rust_bytes(gif, out_len) };
+                *PENDING_GIF.lock().unwrap_or_else(|e| e.into_inner()) = Some(bytes);
+                unsafe { glaspen2_swift_dispatch_main(std::ptr::null_mut(), recording_gif_ok) };
             });
         }
-        "Clipboard" => {
+        RecordingEffect::Clipboard => {
             let gif = PENDING_GIF.lock().unwrap_or_else(|e| e.into_inner()).take();
             if let Some(bytes) = gif.filter(|b| !b.is_empty()) {
                 unsafe { glaspen2_swift_copy_gif(bytes.as_ptr(), bytes.len() as i32) };
             } else {
                 tracing::warn!("[recording] Clipboard effect 没有待写字节");
             }
-            let _ = recording_feed_internal(0, &recording_simple_event("GifClipboardSucceeded"));
+            let _ = recording_feed_internal(
+                0,
+                glaspen_core::recording::RecordingEvent::GifClipboardSucceeded,
+            );
         }
-        "StartChatDraft" => {
+        RecordingEffect::StartChatDraft => {
             let ok = unsafe {
                 glaspen2_ink_draft_start(
                     glaspen_core::shell_state::screen_w(),
                     glaspen_core::shell_state::screen_h(),
                 )
             } != 0;
-            let event = recording_simple_event(if ok {
-                "ChatDraftStarted"
+            let event = if ok {
+                glaspen_core::recording::RecordingEvent::ChatDraftStarted
             } else {
-                "ChatDraftStartFailed"
-            });
-            let _ = recording_feed_internal(1, &event);
+                glaspen_core::recording::RecordingEvent::ChatDraftStartFailed
+            };
+            let _ = recording_feed_internal(1, event);
         }
-        "StopChatDraft" => {
+        RecordingEffect::StopChatDraft => {
             unsafe { glaspen2_router_finish_active_stroke() };
             std::thread::spawn(move || {
                 let r = unsafe { glaspen2_ink_draft_stop() };
@@ -6646,15 +6631,11 @@ fn recording_exec_effect(slot: i32, effect: &serde_json::Value) {
                 };
             });
         }
-        "SendChatStrokes" => {
-            let start = effect
-                .get("start_stroke")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0) as i32;
-            let end = effect
-                .get("end_stroke")
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0) as i32;
+        RecordingEffect::SendChatStrokes {
+            start_stroke,
+            end_stroke,
+        } => {
+            let (start, end) = (*start_stroke as i32, *end_stroke as i32);
             std::thread::spawn(move || {
                 let sent = unsafe { glaspen2_chat_send_strokes(start, end) };
                 let payload = Box::new(sent);
@@ -6666,18 +6647,21 @@ fn recording_exec_effect(slot: i32, effect: &serde_json::Value) {
                 };
             });
         }
-        "Discard" => tracing::info!("[recording] 丢弃进行中的录制窗口(取消)"),
-        _ => tracing::warn!("[recording] 未实现的录制 effect: {kind}"),
+        RecordingEffect::Discard => {
+            tracing::info!("[recording] 丢弃进行中的录制窗口(取消)")
+        }
     }
-    let _ = slot;
 }
 
 extern "C" fn recording_gif_ok(_ctx: *mut c_void) {
-    let _ = recording_feed_internal(0, &recording_simple_event("GifEncodeSucceeded"));
+    let _ = recording_feed_internal(
+        0,
+        glaspen_core::recording::RecordingEvent::GifEncodeSucceeded,
+    );
 }
 
 extern "C" fn recording_gif_fail(_ctx: *mut c_void) {
-    let _ = recording_feed_internal(0, &recording_simple_event("GifEncodeFailed"));
+    let _ = recording_feed_internal(0, glaspen_core::recording::RecordingEvent::GifEncodeFailed);
 }
 
 extern "C" fn recording_chat_stop_done(ctx: *mut c_void) {
@@ -6685,10 +6669,13 @@ extern "C" fn recording_chat_stop_done(ctx: *mut c_void) {
         return;
     }
     let payload = unsafe { Box::from_raw(ctx as *mut (i32, String)) };
-    let event =
-        serde_json::json!({"type": "ChatDraftFinished", "code": payload.0, "detail": payload.1})
-            .to_string();
-    let _ = recording_feed_internal(1, &event);
+    let event = glaspen_core::recording::RecordingEvent::ChatDraftFinished(
+        glaspen_core::recording::DraftOutcome::from_ffi_code(
+            payload.0,
+            (!payload.1.is_empty()).then(|| payload.1.clone()),
+        ),
+    );
+    let _ = recording_feed_internal(1, event);
 }
 
 extern "C" fn recording_chat_send_done(ctx: *mut c_void) {
@@ -6697,25 +6684,13 @@ extern "C" fn recording_chat_send_done(ctx: *mut c_void) {
     }
     let payload = unsafe { Box::from_raw(ctx as *mut i32) };
     let event = if *payload >= 0 {
-        serde_json::json!({"type": "ChatSendSucceeded", "strokes": *payload}).to_string()
+        glaspen_core::recording::RecordingEvent::ChatSendSucceeded {
+            strokes: *payload as u32,
+        }
     } else {
-        recording_simple_event("ChatSendFailed")
+        glaspen_core::recording::RecordingEvent::ChatSendFailed
     };
-    let _ = recording_feed_internal(1, &event);
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_rust_recording_feed(
-    slot: i32,
-    json: *const std::os::raw::c_char,
-) -> i32 {
-    if json.is_null() {
-        return 0;
-    }
-    let text = unsafe { std::ffi::CStr::from_ptr(json) }
-        .to_string_lossy()
-        .into_owned();
-    recording_feed_internal(slot, &text)
+    let _ = recording_feed_internal(1, event);
 }
 
 // ── R120: 笔事件分派/压感监视器分类 ──
@@ -11140,14 +11115,10 @@ pub extern "C" fn glaspen2_router_perf_notes(
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_rec_chat_integration_changed(on: i32) {
-    let json = format!(
-        "{{\"type\":\"ChatIntegrationChanged\",\"enabled\":{}}}",
-        on != 0
+    let _ = recording_feed_internal(
+        1,
+        glaspen_core::recording::RecordingEvent::ChatIntegrationChanged { enabled: on != 0 },
     );
-    let Ok(c) = std::ffi::CString::new(json) else {
-        return;
-    };
-    let _ = glaspen2_rust_recording_feed(1, c.as_ptr());
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_rebuild_surface() {
@@ -11366,13 +11337,6 @@ unsafe extern "C" {
     fn sw_set_pen_settings(r: f64, g: f64, b: f64, width: f64, color_idx: i32, width_idx: i32);
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_router_recording_feed(
-    slot: i32,
-    json: *const std::os::raw::c_char,
-) -> i32 {
-    glaspen2_rust_recording_feed(slot, json)
-}
 extern "C" fn apply_infinite_async_cb(ctx: *mut c_void) {
     if ctx.is_null() {
         return;
