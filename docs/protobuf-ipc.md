@@ -103,3 +103,5 @@
 - macOS 内部 `*_json` FFI 改 typed Rust 调用。
 
 - ✅ 删除最后的 `glaspen2_live_plan_json` 与输入/输出 JSON 编解码；实时计划只保留 typed `build_macos_live_plan`。
+
+- ✅ 删除 `process_pipe_message` 中已被 typed 路径替代的死 Panel 分支；函数现在只剩 `uiConfig` 与 `downloadUpdate` 两条 JSON 命令。
