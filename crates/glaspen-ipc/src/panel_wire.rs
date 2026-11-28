@@ -70,6 +70,10 @@ pub enum PanelInput {
         ids: Vec<i64>,
         max_size: i32,
     },
+    PageOp {
+        request_id: u64,
+        request: crate::proto::PageOpRequest,
+    },
 }
 
 fn panel_input_from_frame(frame: Frame) -> Result<PanelInput, FrameError> {

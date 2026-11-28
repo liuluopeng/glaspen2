@@ -130,6 +130,15 @@ const Frame$json = {
       '10': 'pageThumbnailsRequest'
     },
     {
+      '1': 'page_op_request',
+      '3': 33,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.PageOpRequest',
+      '9': 0,
+      '10': 'pageOpRequest'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -173,9 +182,11 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'V0U2V0dGluZ3NSZXF1ZXN0SABSEmdldFNldHRpbmdzUmVxdWVzdBJQChJsaXN0X3BhZ2VzX3Jl'
     'cXVlc3QYHyABKAsyIC5nbGFzcGVuLmlwYy52MS5MaXN0UGFnZXNSZXF1ZXN0SABSEGxpc3RQYW'
     'dlc1JlcXVlc3QSXwoXcGFnZV90aHVtYm5haWxzX3JlcXVlc3QYICABKAsyJS5nbGFzcGVuLmlw'
-    'Yy52MS5QYWdlVGh1bWJuYWlsc1JlcXVlc3RIAFIVcGFnZVRodW1ibmFpbHNSZXF1ZXN0Ei0KBX'
-    'BhbmVsGBQgASgLMhUuZ2xhc3Blbi5pcGMudjEuUGFuZWxIAFIFcGFuZWwSLQoFZXJyb3IYYyAB'
-    'KAsyFS5nbGFzcGVuLmlwYy52MS5FcnJvckgAUgVlcnJvckIGCgRib2R5');
+    'Yy52MS5QYWdlVGh1bWJuYWlsc1JlcXVlc3RIAFIVcGFnZVRodW1ibmFpbHNSZXF1ZXN0EkcKD3'
+    'BhZ2Vfb3BfcmVxdWVzdBghIAEoCzIdLmdsYXNwZW4uaXBjLnYxLlBhZ2VPcFJlcXVlc3RIAFIN'
+    'cGFnZU9wUmVxdWVzdBItCgVwYW5lbBgUIAEoCzIVLmdsYXNwZW4uaXBjLnYxLlBhbmVsSABSBX'
+    'BhbmVsEi0KBWVycm9yGGMgASgLMhUuZ2xhc3Blbi5pcGMudjEuRXJyb3JIAFIFZXJyb3JCBgoE'
+    'Ym9keQ==');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -781,3 +792,31 @@ const PageThumbnailsRequest$json = {
 final $typed_data.Uint8List pageThumbnailsRequestDescriptor = $convert.base64Decode(
     'ChVQYWdlVGh1bWJuYWlsc1JlcXVlc3QSEAoDaWRzGAEgAygDUgNpZHMSGQoIbWF4X3NpemUYAi'
     'ABKAVSB21heFNpemU=');
+
+@$core.Deprecated('Use pageOpRequestDescriptor instead')
+const PageOpRequest$json = {
+  '1': 'PageOpRequest',
+  '2': [
+    {'1': 'kind', '3': 1, '4': 1, '5': 9, '10': 'kind'},
+    {'1': 'screen_id', '3': 2, '4': 1, '5': 3, '10': 'screenId'},
+    {'1': 'anchor_id', '3': 3, '4': 1, '5': 3, '10': 'anchorId'},
+    {'1': 'before', '3': 4, '4': 1, '5': 8, '10': 'before'},
+    {'1': 'ids', '3': 5, '4': 3, '5': 3, '10': 'ids'},
+    {'1': 'lasso', '3': 6, '4': 3, '5': 1, '10': 'lasso'},
+    {'1': 'target_screen_id', '3': 7, '4': 1, '5': 3, '10': 'targetScreenId'},
+    {'1': 'dx', '3': 8, '4': 1, '5': 1, '10': 'dx'},
+    {'1': 'dy', '3': 9, '4': 1, '5': 1, '10': 'dy'},
+    {'1': 'payload', '3': 10, '4': 1, '5': 9, '10': 'payload'},
+    {'1': 'cx', '3': 11, '4': 1, '5': 1, '10': 'cx'},
+    {'1': 'cy', '3': 12, '4': 1, '5': 1, '10': 'cy'},
+  ],
+};
+
+/// Descriptor for `PageOpRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List pageOpRequestDescriptor = $convert.base64Decode(
+    'Cg1QYWdlT3BSZXF1ZXN0EhIKBGtpbmQYASABKAlSBGtpbmQSGwoJc2NyZWVuX2lkGAIgASgDUg'
+    'hzY3JlZW5JZBIbCglhbmNob3JfaWQYAyABKANSCGFuY2hvcklkEhYKBmJlZm9yZRgEIAEoCFIG'
+    'YmVmb3JlEhAKA2lkcxgFIAMoA1IDaWRzEhQKBWxhc3NvGAYgAygBUgVsYXNzbxIoChB0YXJnZX'
+    'Rfc2NyZWVuX2lkGAcgASgDUg50YXJnZXRTY3JlZW5JZBIOCgJkeBgIIAEoAVICZHgSDgoCZHkY'
+    'CSABKAFSAmR5EhgKB3BheWxvYWQYCiABKAlSB3BheWxvYWQSDgoCY3gYCyABKAFSAmN4Eg4KAm'
+    'N5GAwgASgBUgJjeQ==');

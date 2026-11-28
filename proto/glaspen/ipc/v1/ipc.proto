@@ -30,6 +30,7 @@ message Frame {
     GetSettingsRequest get_settings_request = 30;
     ListPagesRequest list_pages_request = 31;
     PageThumbnailsRequest page_thumbnails_request = 32;
+    PageOpRequest page_op_request = 33;
     Panel panel = 20;
     Error error = 99;
   }
@@ -208,4 +209,22 @@ message ListPagesRequest {}
 message PageThumbnailsRequest {
   repeated int64 ids = 1;
   int32 max_size = 2;
+}
+
+// 页面操作请求: kind 区分 reorder/delete/lasso/move/...; 全 scalar/typed 字段,
+// 不再用 Panel + Struct 承载参数。
+message PageOpRequest {
+  string kind = 1;
+  int64 screen_id = 2;
+  int64 anchor_id = 3;
+  bool before = 4;
+  repeated int64 ids = 5;
+  // lasso 多边形 x,y 平铺。
+  repeated double lasso = 6;
+  int64 target_screen_id = 7;
+  double dx = 8;
+  double dy = 9;
+  string payload = 10;
+  double cx = 11;
+  double cy = 12;
 }

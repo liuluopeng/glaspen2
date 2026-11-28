@@ -722,54 +722,76 @@ class _NamedPipeBridge extends SettingsBridge {
 
   @override
   Future<List<int>> lassoSelect(int screenId, List<(double, double)> poly) async {
-    final r = await _request('lassoSelect', {
-      'screenId': screenId,
-      'value': poly.map((p) => [p.$1, p.$2]).toList(),
-    });
+    final r = await _requestTyped((id) => encodePageOpRequest(
+          id,
+          kind: 'lassoSelect',
+          screenId: screenId,
+          lasso: [for (final p in poly) ...[p.$1, p.$2]],
+        ));
     return (r['ids'] as List?)?.map((e) => (e as num).toInt()).toList() ?? const [];
   }
 
   @override
   Future<bool> moveStrokes(int screenId, List<int> ids, double dx, double dy) async {
-    final r = await _request('moveStrokes', {
-      'screenId': screenId, 'value': {'ids': ids, 'dx': dx, 'dy': dy},
-    });
+    final r = await _requestTyped((id) => encodePageOpRequest(
+          id,
+          kind: 'moveStrokes',
+          screenId: screenId,
+          ids: ids,
+          dx: dx,
+          dy: dy,
+        ));
     return r['ok'] == 1 || r['ok'] == true;
   }
 
   @override
   Future<bool> moveStrokesToPage(
       int screenId, List<int> ids, int targetScreenId, double dx, double dy) async {
-    final r = await _request('moveStrokesToPage', {
-      'screenId': screenId,
-      'value': {'ids': ids, 'targetScreenId': targetScreenId, 'dx': dx, 'dy': dy},
-    });
+    final r = await _requestTyped((id) => encodePageOpRequest(
+          id,
+          kind: 'moveStrokesToPage',
+          screenId: screenId,
+          ids: ids,
+          targetScreenId: targetScreenId,
+          dx: dx,
+          dy: dy,
+        ));
     return r['ok'] == 1 || r['ok'] == true;
   }
 
   @override
   Future<bool> deleteStrokes(int screenId, List<int> ids) async {
-    final r = await _request('deleteStrokes', {
-      'screenId': screenId, 'value': {'ids': ids},
-    });
+    final r = await _requestTyped((id) => encodePageOpRequest(
+          id,
+          kind: 'deleteStrokes',
+          screenId: screenId,
+          ids: ids,
+        ));
     return r['ok'] == 1 || r['ok'] == true;
   }
 
   @override
   Future<String> copyStrokes(int screenId, List<int> ids) async {
-    final r = await _request('copyStrokes', {
-      'screenId': screenId, 'value': {'ids': ids},
-    });
+    final r = await _requestTyped((id) => encodePageOpRequest(
+          id,
+          kind: 'copyStrokes',
+          screenId: screenId,
+          ids: ids,
+        ));
     return r['payload'] as String? ?? '';
   }
 
   @override
   Future<int> pasteStrokes(int screenId, String payload, double cx, double cy) async {
     // 管道版: 平移在 Dart 侧做完再发(payload 已含 cx/cy 时由调用方保证)
-    final r = await _request('pasteStrokes', {
-      'screenId': screenId,
-      'value': {'payload': payload, 'cx': cx, 'cy': cy},
-    });
+    final r = await _requestTyped((id) => encodePageOpRequest(
+          id,
+          kind: 'pasteStrokes',
+          screenId: screenId,
+          payload: payload,
+          cx: cx,
+          cy: cy,
+        ));
     return (r['count'] as num?)?.toInt() ?? 0;
   }
 

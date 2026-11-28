@@ -205,6 +205,41 @@ List<int> encodeResponseForTest(int requestId, String kind, dynamic data) {
   return encodeFrame(frame);
 }
 
+List<int> encodePageOpRequest(
+  int requestId, {
+  required String kind,
+  int screenId = 0,
+  int anchorId = 0,
+  bool before = false,
+  List<int> ids = const [],
+  List<double> lasso = const [],
+  int targetScreenId = 0,
+  double dx = 0,
+  double dy = 0,
+  String payload = '',
+  double cx = 0,
+  double cy = 0,
+}) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    pageOpRequest: pb.PageOpRequest(
+      kind: kind,
+      screenId: Int64(screenId),
+      anchorId: Int64(anchorId),
+      before: before,
+      ids: ids.map(Int64.new).toList(),
+      lasso: lasso,
+      targetScreenId: Int64(targetScreenId),
+      dx: dx,
+      dy: dy,
+      payload: payload,
+      cx: cx,
+      cy: cy,
+    ),
+  ));
+}
+
 List<int> encodeSetSettingRequest(int requestId, String key, dynamic value) {
   return encodeFrame(pb.Frame(
     protocolVersion: 1,

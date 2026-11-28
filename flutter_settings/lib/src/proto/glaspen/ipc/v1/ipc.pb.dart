@@ -32,6 +32,7 @@ enum Frame_Body {
   getSettingsRequest,
   listPagesRequest,
   pageThumbnailsRequest,
+  pageOpRequest,
   error,
   notSet
 }
@@ -63,6 +64,7 @@ class Frame extends $pb.GeneratedMessage {
     GetSettingsRequest? getSettingsRequest,
     ListPagesRequest? listPagesRequest,
     PageThumbnailsRequest? pageThumbnailsRequest,
+    PageOpRequest? pageOpRequest,
     Error? error,
   }) {
     final result = Frame._();
@@ -85,6 +87,7 @@ class Frame extends $pb.GeneratedMessage {
     if (listPagesRequest != null) result.listPagesRequest = listPagesRequest;
     if (pageThumbnailsRequest != null)
       result.pageThumbnailsRequest = pageThumbnailsRequest;
+    if (pageOpRequest != null) result.pageOpRequest = pageOpRequest;
     if (error != null) result.error = error;
     return result;
   }
@@ -112,6 +115,7 @@ class Frame extends $pb.GeneratedMessage {
     30: Frame_Body.getSettingsRequest,
     31: Frame_Body.listPagesRequest,
     32: Frame_Body.pageThumbnailsRequest,
+    33: Frame_Body.pageOpRequest,
     99: Frame_Body.error,
     0: Frame_Body.notSet
   };
@@ -119,7 +123,7 @@ class Frame extends $pb.GeneratedMessage {
       _omitMessageNames ? '' : 'Frame',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
       createEmptyInstance: Frame.$_createMessage)
-    ..oo(0, [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 30, 31, 32, 99])
+    ..oo(0, [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 30, 31, 32, 33, 99])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
         fieldType: $pb.PbFieldType.OU3)
     ..a<$fixnum.Int64>(
@@ -154,6 +158,8 @@ class Frame extends $pb.GeneratedMessage {
     ..aOM<PageThumbnailsRequest>(
         32, _omitFieldNames ? '' : 'pageThumbnailsRequest',
         subBuilder: PageThumbnailsRequest.$_createMessage)
+    ..aOM<PageOpRequest>(33, _omitFieldNames ? '' : 'pageOpRequest',
+        subBuilder: PageOpRequest.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
         subBuilder: Error.$_createMessage)
     ..hasRequiredFields = false;
@@ -191,6 +197,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(30)
   @$pb.TagNumber(31)
   @$pb.TagNumber(32)
+  @$pb.TagNumber(33)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(10)
@@ -206,6 +213,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(30)
   @$pb.TagNumber(31)
   @$pb.TagNumber(32)
+  @$pb.TagNumber(33)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
 
@@ -373,16 +381,27 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(32)
   PageThumbnailsRequest ensurePageThumbnailsRequest() => $_ensure(14);
 
+  @$pb.TagNumber(33)
+  PageOpRequest get pageOpRequest => $_getN(15);
+  @$pb.TagNumber(33)
+  set pageOpRequest(PageOpRequest value) => $_setField(33, value);
+  @$pb.TagNumber(33)
+  $core.bool hasPageOpRequest() => $_has(15);
+  @$pb.TagNumber(33)
+  void clearPageOpRequest() => $_clearField(33);
+  @$pb.TagNumber(33)
+  PageOpRequest ensurePageOpRequest() => $_ensure(15);
+
   @$pb.TagNumber(99)
-  Error get error => $_getN(15);
+  Error get error => $_getN(16);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(15);
+  $core.bool hasError() => $_has(16);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(15);
+  Error ensureError() => $_ensure(16);
 }
 
 enum SettingValue_Value {
@@ -2613,6 +2632,186 @@ class PageThumbnailsRequest extends $pb.GeneratedMessage {
   $core.bool hasMaxSize() => $_has(1);
   @$pb.TagNumber(2)
   void clearMaxSize() => $_clearField(2);
+}
+
+/// 页面操作请求: kind 区分 reorder/delete/lasso/move/...; 全 scalar/typed 字段,
+/// 不再用 Panel + Struct 承载参数。
+class PageOpRequest extends $pb.GeneratedMessage {
+  factory PageOpRequest({
+    $core.String? kind,
+    $fixnum.Int64? screenId,
+    $fixnum.Int64? anchorId,
+    $core.bool? before,
+    $core.Iterable<$fixnum.Int64>? ids,
+    $core.Iterable<$core.double>? lasso,
+    $fixnum.Int64? targetScreenId,
+    $core.double? dx,
+    $core.double? dy,
+    $core.String? payload,
+    $core.double? cx,
+    $core.double? cy,
+  }) {
+    final result = PageOpRequest._();
+    if (kind != null) result.kind = kind;
+    if (screenId != null) result.screenId = screenId;
+    if (anchorId != null) result.anchorId = anchorId;
+    if (before != null) result.before = before;
+    if (ids != null) result.ids.addAll(ids);
+    if (lasso != null) result.lasso.addAll(lasso);
+    if (targetScreenId != null) result.targetScreenId = targetScreenId;
+    if (dx != null) result.dx = dx;
+    if (dy != null) result.dy = dy;
+    if (payload != null) result.payload = payload;
+    if (cx != null) result.cx = cx;
+    if (cy != null) result.cy = cy;
+    return result;
+  }
+
+  PageOpRequest._();
+
+  factory PageOpRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PageOpRequest()..mergeFromBuffer(data, registry);
+  factory PageOpRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PageOpRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'PageOpRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: PageOpRequest.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'kind')
+    ..aInt64(2, _omitFieldNames ? '' : 'screenId')
+    ..aInt64(3, _omitFieldNames ? '' : 'anchorId')
+    ..aOB(4, _omitFieldNames ? '' : 'before')
+    ..p<$fixnum.Int64>(5, _omitFieldNames ? '' : 'ids', $pb.PbFieldType.K6)
+    ..p<$core.double>(6, _omitFieldNames ? '' : 'lasso', $pb.PbFieldType.KD)
+    ..aInt64(7, _omitFieldNames ? '' : 'targetScreenId')
+    ..aD(8, _omitFieldNames ? '' : 'dx')
+    ..aD(9, _omitFieldNames ? '' : 'dy')
+    ..aOS(10, _omitFieldNames ? '' : 'payload')
+    ..aD(11, _omitFieldNames ? '' : 'cx')
+    ..aD(12, _omitFieldNames ? '' : 'cy')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PageOpRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PageOpRequest copyWith(void Function(PageOpRequest) updates) =>
+      super.copyWith((message) => updates(message as PageOpRequest))
+          as PageOpRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use PageOpRequest() / PageOpRequest.new instead')
+  static PageOpRequest create() => PageOpRequest._();
+  static $pb.GeneratedMessage $_createMessage() => PageOpRequest._();
+  @$core.override
+  PageOpRequest createEmptyInstance() => PageOpRequest._();
+  @$core.pragma('dart2js:noInline')
+  static PageOpRequest getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<PageOpRequest>(
+          PageOpRequest.$_createMessage);
+  static PageOpRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get kind => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set kind($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasKind() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearKind() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $fixnum.Int64 get screenId => $_getI64(1);
+  @$pb.TagNumber(2)
+  set screenId($fixnum.Int64 value) => $_setInt64(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasScreenId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearScreenId() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $fixnum.Int64 get anchorId => $_getI64(2);
+  @$pb.TagNumber(3)
+  set anchorId($fixnum.Int64 value) => $_setInt64(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasAnchorId() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearAnchorId() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.bool get before => $_getBF(3);
+  @$pb.TagNumber(4)
+  set before($core.bool value) => $_setBool(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasBefore() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearBefore() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $pb.PbList<$fixnum.Int64> get ids => $_getList(4);
+
+  /// lasso 多边形 x,y 平铺。
+  @$pb.TagNumber(6)
+  $pb.PbList<$core.double> get lasso => $_getList(5);
+
+  @$pb.TagNumber(7)
+  $fixnum.Int64 get targetScreenId => $_getI64(6);
+  @$pb.TagNumber(7)
+  set targetScreenId($fixnum.Int64 value) => $_setInt64(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasTargetScreenId() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearTargetScreenId() => $_clearField(7);
+
+  @$pb.TagNumber(8)
+  $core.double get dx => $_getN(7);
+  @$pb.TagNumber(8)
+  set dx($core.double value) => $_setDouble(7, value);
+  @$pb.TagNumber(8)
+  $core.bool hasDx() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearDx() => $_clearField(8);
+
+  @$pb.TagNumber(9)
+  $core.double get dy => $_getN(8);
+  @$pb.TagNumber(9)
+  set dy($core.double value) => $_setDouble(8, value);
+  @$pb.TagNumber(9)
+  $core.bool hasDy() => $_has(8);
+  @$pb.TagNumber(9)
+  void clearDy() => $_clearField(9);
+
+  @$pb.TagNumber(10)
+  $core.String get payload => $_getSZ(9);
+  @$pb.TagNumber(10)
+  set payload($core.String value) => $_setString(9, value);
+  @$pb.TagNumber(10)
+  $core.bool hasPayload() => $_has(9);
+  @$pb.TagNumber(10)
+  void clearPayload() => $_clearField(10);
+
+  @$pb.TagNumber(11)
+  $core.double get cx => $_getN(10);
+  @$pb.TagNumber(11)
+  set cx($core.double value) => $_setDouble(10, value);
+  @$pb.TagNumber(11)
+  $core.bool hasCx() => $_has(10);
+  @$pb.TagNumber(11)
+  void clearCx() => $_clearField(11);
+
+  @$pb.TagNumber(12)
+  $core.double get cy => $_getN(11);
+  @$pb.TagNumber(12)
+  set cy($core.double value) => $_setDouble(11, value);
+  @$pb.TagNumber(12)
+  $core.bool hasCy() => $_has(11);
+  @$pb.TagNumber(12)
+  void clearCy() => $_clearField(12);
 }
 
 const $core.bool _omitFieldNames =

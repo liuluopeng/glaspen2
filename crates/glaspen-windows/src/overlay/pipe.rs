@@ -215,6 +215,12 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
                     let frame = glaspen_ipc::encode_page_thumbnails_frame(request_id, &entries);
                     let _ = writer.write_frame(&frame);
                 }
+                PanelInput::PageOp {
+                    request_id,
+                    request,
+                } => {
+                    process_page_op(request_id, &request, hwnd, &mut writer);
+                }
             }
         }
         let _ = writer.flush();
@@ -657,6 +663,132 @@ fn process_set_setting(
     ) {
         let frame = glaspen_ipc::encode_settings_changed_frame(&data);
         let _ = writer.write_frame(&frame);
+    }
+}
+
+fn process_page_op(
+    request_id: u64,
+    req: &glaspen_ipc::proto::PageOpRequest,
+    hwnd: isize,
+    writer: &mut PanelOut,
+) {
+    let kind = req.kind.as_str();
+    let screen_id = req.screen_id;
+    let result = match kind {
+        "lassoSelect" => {
+            let poly: Vec<(f64, f64)> = req
+                .lasso
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|p| (p[0], p[1]))
+                .collect();
+            let payload = poly
+                .iter()
+                .map(|(x, y)| format!("{x},{y}"))
+                .collect::<Vec<_>>()
+                .join(",");
+            let c = std::ffi::CString::new(payload).unwrap_or_default();
+            let ptr = glaspen_core::export::glaspen2_lasso_select(screen_id, c.as_ptr());
+            let s = if ptr.is_null() {
+                String::new()
+            } else {
+                unsafe { std::ffi::CStr::from_ptr(ptr) }
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            if !ptr.is_null() {
+                glaspen_core::export::glaspen2_free_c_string(ptr);
+            }
+            let ids: Vec<i64> = s.split(',').filter_map(|t| t.trim().parse().ok()).collect();
+            glaspen_ipc::PageOpValue::Ids(ids)
+        }
+        "moveStrokes" => {
+            let csv = std::ffi::CString::new(
+                req.ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+            )
+            .unwrap_or_default();
+            let ok = glaspen_core::export::glaspen2_move_strokes(
+                screen_id,
+                csv.as_ptr(),
+                req.dx,
+                req.dy,
+            ) != 0;
+            glaspen_ipc::PageOpValue::Ok(ok)
+        }
+        "moveStrokesToPage" => {
+            let csv = std::ffi::CString::new(
+                req.ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+            )
+            .unwrap_or_default();
+            let ok = glaspen_core::export::glaspen2_move_strokes_to_page(
+                screen_id,
+                csv.as_ptr(),
+                req.target_screen_id,
+                req.dx,
+                req.dy,
+            ) != 0;
+            glaspen_ipc::PageOpValue::Ok(ok)
+        }
+        "deleteStrokes" => {
+            let csv = std::ffi::CString::new(
+                req.ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+            )
+            .unwrap_or_default();
+            let ok = glaspen_core::export::glaspen2_delete_strokes(screen_id, csv.as_ptr()) != 0;
+            glaspen_ipc::PageOpValue::Ok(ok)
+        }
+        "copyStrokes" => {
+            let csv = std::ffi::CString::new(
+                req.ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(","),
+            )
+            .unwrap_or_default();
+            let ptr = glaspen_core::export::glaspen2_copy_strokes_payload(
+                screen_id,
+                csv.as_ptr(),
+            );
+            let s = if ptr.is_null() {
+                String::new()
+            } else {
+                unsafe { std::ffi::CStr::from_ptr(ptr) }
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            if !ptr.is_null() {
+                glaspen_core::export::glaspen2_free_c_string(ptr);
+            }
+            glaspen_ipc::PageOpValue::Payload(s)
+        }
+        "pasteStrokes" => {
+            let shifted = glaspen_core::export::shift_stroke_payload(
+                &req.payload,
+                req.cx,
+                req.cy,
+            );
+            let c = std::ffi::CString::new(shifted).unwrap_or_default();
+            let n = glaspen_core::export::glaspen2_paste_strokes(screen_id, c.as_ptr());
+            glaspen_ipc::PageOpValue::Count(n)
+        }
+        other => {
+            tracing::warn!("未知 typed 页面操作: {other}");
+            glaspen_ipc::PageOpValue::Ok(false)
+        }
+    };
+    let response_kind = format!("{kind}_response");
+    let frame = glaspen_ipc::encode_page_op_frame(request_id, &response_kind, result);
+    let _ = writer.write_frame(&frame);
+    if matches!(
+        kind,
+        "moveStrokes" | "moveStrokesToPage" | "deleteStrokes" | "pasteStrokes"
+    ) {
+        let _ = unsafe {
+            PostMessageW(
+                Some(HWND(hwnd as *mut _)),
+                WM_TRAY_COMMAND,
+                WPARAM(CMD_REFRESH_PAGE),
+                LPARAM(screen_id as isize),
+            )
+        };
     }
 }
 
