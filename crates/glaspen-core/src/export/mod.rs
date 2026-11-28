@@ -1959,18 +1959,6 @@ pub extern "C" fn glaspen2_chord_reserved(chord: *const c_char) -> c_int {
     crate::chord::is_reserved(crate::ui::Platform::Macos, chord) as c_int
 }
 
-/// 默认 chord 表(JSON 对象, action -> chord)。
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_chord_defaults_json() -> *mut c_char {
-    return_c_string(crate::chord::defaults_json(crate::ui::Platform::Macos))
-}
-
-/// 动作 id 列表(JSON 数组, 顺序 = 面板显示顺序)。
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_chord_actions_json() -> *mut c_char {
-    return_c_string(crate::ui::action_ids_json())
-}
-
 // ── 镜头数学单源 FFI(D5b): macOS 壳经此使用 core::camera ──
 //
 // 与 D1b/D3b 同形: 输入是 ObjC 侧持有的镜头三值(pan_x/pan_y/zoom)与本次操作
@@ -2240,13 +2228,6 @@ pub extern "C" fn glaspen2_i18n(msg_key: *const c_char, lang: *const c_char) -> 
         None => "?".to_string(),
     };
     return_c_string(text)
-}
-
-/// 全表审计 JSON(D10a): `{"<key>":{"zh":"...","en":"..."}}`, 单行, key 字典序。
-/// 供审计/测试用; 永不 NULL。返回值用 glaspen2_free_c_string 释放。
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_i18n_catalog_json() -> *mut c_char {
-    return_c_string(crate::i18n::catalog_json())
 }
 
 // ── 时光隧道几何(Swift shell → Rust, R1 首个迁移切片) ──
@@ -3924,24 +3905,5 @@ mod tests {
         assert_eq!(take(glaspen2_i18n(std::ptr::null(), std::ptr::null())), "?");
         let bad = CString::new(vec![0xFF_u8]).expect("非 UTF-8 但无 NUL, 仍是合法 CString");
         assert_eq!(take(glaspen2_i18n(bad.as_ptr(), std::ptr::null())), "?");
-    }
-
-    /// D10a 审计 JSON FFI: 单行、合法、覆盖全表。
-    #[test]
-    fn i18n_catalog_json_ffi() {
-        let ptr = glaspen2_i18n_catalog_json();
-        assert!(!ptr.is_null(), "审计 JSON 不能 NULL");
-        let text = unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned();
-        glaspen2_free_c_string(ptr);
-        assert!(!text.contains('\n'), "审计 JSON 必须单行");
-        let value: serde_json::Value = serde_json::from_str(&text).expect("审计 JSON 合法");
-        assert_eq!(
-            value.as_object().expect("对象").len(),
-            crate::i18n::Msg::ALL.len()
-        );
-        // 与纯函数输出同一份(FFI 只是转发, 不另拼一份)。
-        assert_eq!(text, crate::i18n::catalog_json());
     }
 }

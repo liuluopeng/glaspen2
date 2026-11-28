@@ -6362,45 +6362,6 @@ pub extern "C" fn save_and_exit(_sig: i32) {
     std::process::exit(0);
 }
 
-// ── R107: 快捷键默认/动作 JSON 缓存 ──
-
-unsafe extern "C" {
-    fn glaspen2_chord_defaults_json() -> *mut std::os::raw::c_char;
-    fn glaspen2_chord_actions_json() -> *mut std::os::raw::c_char;
-}
-
-static CHORD_DEFAULTS_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<std::ffi::CString>>> =
-    std::sync::OnceLock::new();
-static CHORD_ACTIONS_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<std::ffi::CString>>> =
-    std::sync::OnceLock::new();
-
-unsafe fn cache_chord_json(
-    slot: &'static std::sync::OnceLock<std::sync::Mutex<Option<std::ffi::CString>>>,
-    producer: unsafe extern "C" fn() -> *mut std::os::raw::c_char,
-) -> *const std::os::raw::c_char {
-    let cache = slot.get_or_init(|| std::sync::Mutex::new(None));
-    let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
-    if guard.is_none() {
-        let raw = unsafe { producer() };
-        if !raw.is_null() {
-            let text = unsafe { std::ffi::CStr::from_ptr(raw) }.to_owned();
-            unsafe { glaspen2_free_c_string(raw) };
-            *guard = Some(text);
-        }
-    }
-    guard.as_ref().map_or(std::ptr::null(), |s| s.as_ptr())
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_rust_shortcut_defaults_json() -> *const std::os::raw::c_char {
-    unsafe { cache_chord_json(&CHORD_DEFAULTS_CACHE, glaspen2_chord_defaults_json) }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_rust_shortcut_actions_json() -> *const std::os::raw::c_char {
-    unsafe { cache_chord_json(&CHORD_ACTIONS_CACHE, glaspen2_chord_actions_json) }
-}
-
 // ── R111: 图层面刷新(全量/脏矩形) ──
 
 unsafe extern "C" {}
@@ -9081,40 +9042,18 @@ fn hotkey_chord(action: &str) -> Option<String> {
 pub extern "C" fn glaspen2_rust_hotkeys_probe() -> i32 {
     glaspen2_rust_load_shortcuts();
     let mut failures = 0i32;
-    let defaults_text = {
-        let p = glaspen2_rust_shortcut_defaults_json();
-        if p.is_null() {
-            String::new()
-        } else {
-            unsafe { std::ffi::CStr::from_ptr(p) }
-                .to_string_lossy()
-                .into_owned()
-        }
-    };
-    let actions_text = {
-        let p = glaspen2_rust_shortcut_actions_json();
-        if p.is_null() {
-            String::new()
-        } else {
-            unsafe { std::ffi::CStr::from_ptr(p) }
-                .to_string_lossy()
-                .into_owned()
-        }
-    };
-    let defaults: serde_json::Value =
-        serde_json::from_str(&defaults_text).unwrap_or(serde_json::json!({}));
-    let actions: Vec<String> =
-        serde_json::from_str::<Vec<String>>(&actions_text).unwrap_or_default();
+    let defaults: Vec<(&str, &str)> = glaspen_core::ui::defaults(glaspen_core::ui::Platform::Macos);
+    let actions: Vec<&str> = glaspen_core::ui::actions().iter().map(|a| a.id).collect();
     let mut checked = 0i32;
     for action in actions {
-        let Some(chord) = defaults.get(&action).and_then(|v| v.as_str()) else {
+        let Some((_, chord)) = defaults.iter().find(|(id, _)| *id == action) else {
             continue;
         };
         if chord.is_empty() {
             continue;
         }
         checked += 1;
-        if hotkey_action(chord).as_deref() != Some(action.as_str()) {
+        if hotkey_action(chord).as_deref() != Some(action) {
             tracing::warn!(
                 "[hotkeys-probe] FAIL {action}={chord} -> {:?}",
                 hotkey_action(chord)

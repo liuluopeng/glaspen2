@@ -420,17 +420,6 @@ pub fn list_screens_summary() -> Vec<(i64, i32, i32)> {
     runtime().block_on(db::list_screens())
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
-    let rows = list_screens_summary();
-    let list: Vec<serde_json::Value> = rows
-        .into_iter()
-        .map(|(id, w, h)| serde_json::json!({ "id": id, "w": w, "h": h }))
-        .collect();
-    let json = serde_json::to_string(&list).unwrap_or_else(|_| "[]".to_string());
-    CString::new(json).unwrap_or_default().into_raw()
-}
-
 /// 活页本: 在当前页之后新建一页(同几何), 返回页 id。
 /// 守卫与新建画布同款 —— 当前(组)末页为空白时不新建, 返回当前页 id
 /// (调用方以"返回 id == 当前页"识别复用)。
