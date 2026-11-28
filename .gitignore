@@ -29,4 +29,10 @@ installer/target/
 # 本地 OCR 模型 / 临时测试输出 / installer 独立构建产生的 lock
 /models/
 /python_test/
-installer/Cargo.lock
+Cargo.lock
+
+# 本机 Cargo/MSYS 路径（不要提交）
+.cargo/config.toml
+.mimocode/
+.zcode/
+.zcodeignore

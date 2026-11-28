@@ -1,9 +1,0 @@
-[env]
-PKG_CONFIG_PATH = "C:/msys64/mingw64/lib/pkgconfig"
-
-# Run with: PATH=C:\msys64\mingw64\bin;%PATH% cargo run
-# GTK4 DLLs are in C:\msys64\mingw64\bin
-
-# NOTE: crt-static was removed — it conflicts with ort's prebuilt MSVC CRT
-# (LNK2019 unresolved __imp_tolower etc.). VC++ runtime DLLs (vcruntime140.dll,
-# msvcp140.dll) are bundled by scripts/package.ps1 for distribution.

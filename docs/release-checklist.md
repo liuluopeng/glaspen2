@@ -8,7 +8,7 @@
 - [ ] `Cargo.toml` 的 `[workspace.package] version` 是唯一版本源；
       所有 crate 用 `version.workspace = true`
 - [ ] `flutter_settings/pubspec.yaml` 的 `version` 与上面一致
-- [ ] `Cargo.lock`、`flutter_settings/pubspec.lock` 已提交（应用项目必须锁）
+- [ ] `Cargo.lock` 按当前项目约定不提交（已加入 `.gitignore`）；`flutter_settings/pubspec.lock` 仍提交
 - [ ] `CHANGELOG.md` 有对应版本段落，日期与 tag 一致
 - [ ] 每次 bump 的版本都要有对应 tag 与 CHANGELOG 段落（0.5.2 曾只 bump 未发，勿重演）
 
