@@ -294,6 +294,24 @@ const Frame$json = {
       '10': 'exportPdfRequest'
     },
     {
+      '1': 'check_update_request',
+      '3': 60,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.CheckUpdateRequest',
+      '9': 0,
+      '10': 'checkUpdateRequest'
+    },
+    {
+      '1': 'update_info',
+      '3': 61,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UpdateInfo',
+      '9': 0,
+      '10': 'updateInfo'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -360,9 +378,12 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'MiAuZ2xhc3Blbi5pcGMudjEuQ2hhdExvZ2luUmVxdWVzdEgAUhBjaGF0TG9naW5SZXF1ZXN0El'
     'AKEmNoYXRfbG9naW5fb3V0Y29tZRg1IAEoCzIgLmdsYXNwZW4uaXBjLnYxLkNoYXRMb2dpbk91'
     'dGNvbWVIAFIQY2hhdExvZ2luT3V0Y29tZRJQChJleHBvcnRfcGRmX3JlcXVlc3QYNiABKAsyIC'
-    '5nbGFzcGVuLmlwYy52MS5FeHBvcnRQZGZSZXF1ZXN0SABSEGV4cG9ydFBkZlJlcXVlc3QSLQoF'
-    'cGFuZWwYFCABKAsyFS5nbGFzcGVuLmlwYy52MS5QYW5lbEgAUgVwYW5lbBItCgVlcnJvchhjIA'
-    'EoCzIVLmdsYXNwZW4uaXBjLnYxLkVycm9ySABSBWVycm9yQgYKBGJvZHk=');
+    '5nbGFzcGVuLmlwYy52MS5FeHBvcnRQZGZSZXF1ZXN0SABSEGV4cG9ydFBkZlJlcXVlc3QSVgoU'
+    'Y2hlY2tfdXBkYXRlX3JlcXVlc3QYPCABKAsyIi5nbGFzcGVuLmlwYy52MS5DaGVja1VwZGF0ZV'
+    'JlcXVlc3RIAFISY2hlY2tVcGRhdGVSZXF1ZXN0Ej0KC3VwZGF0ZV9pbmZvGD0gASgLMhouZ2xh'
+    'c3Blbi5pcGMudjEuVXBkYXRlSW5mb0gAUgp1cGRhdGVJbmZvEi0KBXBhbmVsGBQgASgLMhUuZ2'
+    'xhc3Blbi5pcGMudjEuUGFuZWxIAFIFcGFuZWwSLQoFZXJyb3IYYyABKAsyFS5nbGFzcGVuLmlw'
+    'Yy52MS5FcnJvckgAUgVlcnJvckIGCgRib2R5');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -1177,3 +1198,33 @@ const ExportPdfRequest$json = {
 /// Descriptor for `ExportPdfRequest`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List exportPdfRequestDescriptor =
     $convert.base64Decode('ChBFeHBvcnRQZGZSZXF1ZXN0');
+
+@$core.Deprecated('Use checkUpdateRequestDescriptor instead')
+const CheckUpdateRequest$json = {
+  '1': 'CheckUpdateRequest',
+};
+
+/// Descriptor for `CheckUpdateRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List checkUpdateRequestDescriptor =
+    $convert.base64Decode('ChJDaGVja1VwZGF0ZVJlcXVlc3Q=');
+
+@$core.Deprecated('Use updateInfoDescriptor instead')
+const UpdateInfo$json = {
+  '1': 'UpdateInfo',
+  '2': [
+    {'1': 'ok', '3': 1, '4': 1, '5': 8, '10': 'ok'},
+    {'1': 'current', '3': 2, '4': 1, '5': 9, '10': 'current'},
+    {'1': 'latest', '3': 3, '4': 1, '5': 9, '10': 'latest'},
+    {'1': 'has_update', '3': 4, '4': 1, '5': 8, '10': 'hasUpdate'},
+    {'1': 'url', '3': 5, '4': 1, '5': 9, '10': 'url'},
+    {'1': 'notes', '3': 6, '4': 1, '5': 9, '10': 'notes'},
+    {'1': 'error', '3': 7, '4': 1, '5': 9, '10': 'error'},
+  ],
+};
+
+/// Descriptor for `UpdateInfo`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List updateInfoDescriptor = $convert.base64Decode(
+    'CgpVcGRhdGVJbmZvEg4KAm9rGAEgASgIUgJvaxIYCgdjdXJyZW50GAIgASgJUgdjdXJyZW50Eh'
+    'YKBmxhdGVzdBgDIAEoCVIGbGF0ZXN0Eh0KCmhhc191cGRhdGUYBCABKAhSCWhhc1VwZGF0ZRIQ'
+    'CgN1cmwYBSABKAlSA3VybBIUCgVub3RlcxgGIAEoCVIFbm90ZXMSFAoFZXJyb3IYByABKAlSBW'
+    'Vycm9y');

@@ -280,6 +280,14 @@ List<int> encodeAppVersionRequest(int requestId) {
   ));
 }
 
+List<int> encodeCheckUpdateRequest(int requestId) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    checkUpdateRequest: pb.CheckUpdateRequest(),
+  ));
+}
+
 List<int> encodeBackupCommandRequest(int requestId, pb.BackupCommand command) {
   return encodeFrame(pb.Frame(
     protocolVersion: 1,
@@ -418,6 +426,23 @@ class PanelStreamDecoder {
           settings == null
               ? const <String, dynamic>{}
               : appSettingsToMap(settings),
+        ));
+        continue;
+      }
+      if (frame.hasUpdateInfo()) {
+        final r = frame.updateInfo;
+        out.add(PanelMessage(
+          'checkUpdate_response',
+          frame.requestId.toInt(),
+          {
+            'ok': r.ok,
+            'current': r.current,
+            'latest': r.latest,
+            'hasUpdate': r.hasUpdate,
+            'url': r.url,
+            'notes': r.notes,
+            'error': r.error,
+          },
         ));
         continue;
       }

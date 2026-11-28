@@ -332,6 +332,36 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
                     );
                     let _ = writer.write_frame(&frame);
                 }
+                PanelInput::CheckUpdate { request_id } => {
+                    let current = glaspen_core::update::current_version().to_string();
+                    let (ok, latest, has_update, url, notes, error) =
+                        match glaspen_core::update::fetch_latest() {
+                            Ok(r) => {
+                                let has =
+                                    glaspen_core::update::is_newer(&r.tag, &current);
+                                (true, r.tag, has, r.url, r.notes, String::new())
+                            }
+                            Err(e) => (
+                                false,
+                                String::new(),
+                                false,
+                                String::new(),
+                                String::new(),
+                                e,
+                            ),
+                        };
+                    let frame = glaspen_ipc::encode_update_info_frame(
+                        request_id,
+                        ok,
+                        &current,
+                        &latest,
+                        has_update,
+                        &url,
+                        &notes,
+                        &error,
+                    );
+                    let _ = writer.write_frame(&frame);
+                }
                 PanelInput::ExportPdf { request_id } => {
                     let ok = glaspen_core::export::glaspen2_export_pdf() != 0;
                     let frame = glaspen_ipc::encode_page_op_frame(

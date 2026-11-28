@@ -102,6 +102,9 @@ pub enum PanelInput {
     ExportPdf {
         request_id: u64,
     },
+    CheckUpdate {
+        request_id: u64,
+    },
     CanvasOverview {
         request_id: u64,
         w: i32,

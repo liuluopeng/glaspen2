@@ -51,6 +51,8 @@ enum Frame_Body {
   chatLoginRequest,
   chatLoginOutcome,
   exportPdfRequest,
+  checkUpdateRequest,
+  updateInfo,
   error,
   notSet
 }
@@ -97,6 +99,8 @@ class Frame extends $pb.GeneratedMessage {
     ChatLoginRequest? chatLoginRequest,
     ChatLoginOutcome? chatLoginOutcome,
     ExportPdfRequest? exportPdfRequest,
+    CheckUpdateRequest? checkUpdateRequest,
+    UpdateInfo? updateInfo,
     Error? error,
   }) {
     final result = Frame._();
@@ -140,6 +144,9 @@ class Frame extends $pb.GeneratedMessage {
     if (chatLoginRequest != null) result.chatLoginRequest = chatLoginRequest;
     if (chatLoginOutcome != null) result.chatLoginOutcome = chatLoginOutcome;
     if (exportPdfRequest != null) result.exportPdfRequest = exportPdfRequest;
+    if (checkUpdateRequest != null)
+      result.checkUpdateRequest = checkUpdateRequest;
+    if (updateInfo != null) result.updateInfo = updateInfo;
     if (error != null) result.error = error;
     return result;
   }
@@ -182,6 +189,8 @@ class Frame extends $pb.GeneratedMessage {
     52: Frame_Body.chatLoginRequest,
     53: Frame_Body.chatLoginOutcome,
     54: Frame_Body.exportPdfRequest,
+    60: Frame_Body.checkUpdateRequest,
+    61: Frame_Body.updateInfo,
     99: Frame_Body.error,
     0: Frame_Body.notSet
   };
@@ -218,6 +227,8 @@ class Frame extends $pb.GeneratedMessage {
       52,
       53,
       54,
+      60,
+      61,
       99
     ])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
@@ -288,6 +299,10 @@ class Frame extends $pb.GeneratedMessage {
         subBuilder: ChatLoginOutcome.$_createMessage)
     ..aOM<ExportPdfRequest>(54, _omitFieldNames ? '' : 'exportPdfRequest',
         subBuilder: ExportPdfRequest.$_createMessage)
+    ..aOM<CheckUpdateRequest>(60, _omitFieldNames ? '' : 'checkUpdateRequest',
+        subBuilder: CheckUpdateRequest.$_createMessage)
+    ..aOM<UpdateInfo>(61, _omitFieldNames ? '' : 'updateInfo',
+        subBuilder: UpdateInfo.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
         subBuilder: Error.$_createMessage)
     ..hasRequiredFields = false;
@@ -340,6 +355,8 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(52)
   @$pb.TagNumber(53)
   @$pb.TagNumber(54)
+  @$pb.TagNumber(60)
+  @$pb.TagNumber(61)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(10)
@@ -370,6 +387,8 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(52)
   @$pb.TagNumber(53)
   @$pb.TagNumber(54)
+  @$pb.TagNumber(60)
+  @$pb.TagNumber(61)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
 
@@ -705,16 +724,38 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(54)
   ExportPdfRequest ensureExportPdfRequest() => $_ensure(29);
 
+  @$pb.TagNumber(60)
+  CheckUpdateRequest get checkUpdateRequest => $_getN(30);
+  @$pb.TagNumber(60)
+  set checkUpdateRequest(CheckUpdateRequest value) => $_setField(60, value);
+  @$pb.TagNumber(60)
+  $core.bool hasCheckUpdateRequest() => $_has(30);
+  @$pb.TagNumber(60)
+  void clearCheckUpdateRequest() => $_clearField(60);
+  @$pb.TagNumber(60)
+  CheckUpdateRequest ensureCheckUpdateRequest() => $_ensure(30);
+
+  @$pb.TagNumber(61)
+  UpdateInfo get updateInfo => $_getN(31);
+  @$pb.TagNumber(61)
+  set updateInfo(UpdateInfo value) => $_setField(61, value);
+  @$pb.TagNumber(61)
+  $core.bool hasUpdateInfo() => $_has(31);
+  @$pb.TagNumber(61)
+  void clearUpdateInfo() => $_clearField(61);
+  @$pb.TagNumber(61)
+  UpdateInfo ensureUpdateInfo() => $_ensure(31);
+
   @$pb.TagNumber(99)
-  Error get error => $_getN(30);
+  Error get error => $_getN(32);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(30);
+  $core.bool hasError() => $_has(32);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(30);
+  Error ensureError() => $_ensure(32);
 }
 
 enum SettingValue_Value {
@@ -3932,6 +3973,174 @@ class ExportPdfRequest extends $pb.GeneratedMessage {
       _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<ExportPdfRequest>(
           ExportPdfRequest.$_createMessage);
   static ExportPdfRequest? _defaultInstance;
+}
+
+class CheckUpdateRequest extends $pb.GeneratedMessage {
+  factory CheckUpdateRequest() => CheckUpdateRequest._();
+
+  CheckUpdateRequest._();
+
+  factory CheckUpdateRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CheckUpdateRequest()..mergeFromBuffer(data, registry);
+  factory CheckUpdateRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CheckUpdateRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'CheckUpdateRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: CheckUpdateRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CheckUpdateRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CheckUpdateRequest copyWith(void Function(CheckUpdateRequest) updates) =>
+      super.copyWith((message) => updates(message as CheckUpdateRequest))
+          as CheckUpdateRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use CheckUpdateRequest() / CheckUpdateRequest.new instead')
+  static CheckUpdateRequest create() => CheckUpdateRequest._();
+  static $pb.GeneratedMessage $_createMessage() => CheckUpdateRequest._();
+  @$core.override
+  CheckUpdateRequest createEmptyInstance() => CheckUpdateRequest._();
+  @$core.pragma('dart2js:noInline')
+  static CheckUpdateRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<CheckUpdateRequest>(
+          CheckUpdateRequest.$_createMessage);
+  static CheckUpdateRequest? _defaultInstance;
+}
+
+class UpdateInfo extends $pb.GeneratedMessage {
+  factory UpdateInfo({
+    $core.bool? ok,
+    $core.String? current,
+    $core.String? latest,
+    $core.bool? hasUpdate,
+    $core.String? url,
+    $core.String? notes,
+    $core.String? error,
+  }) {
+    final result = UpdateInfo._();
+    if (ok != null) result.ok = ok;
+    if (current != null) result.current = current;
+    if (latest != null) result.latest = latest;
+    if (hasUpdate != null) result.hasUpdate = hasUpdate;
+    if (url != null) result.url = url;
+    if (notes != null) result.notes = notes;
+    if (error != null) result.error = error;
+    return result;
+  }
+
+  UpdateInfo._();
+
+  factory UpdateInfo.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UpdateInfo()..mergeFromBuffer(data, registry);
+  factory UpdateInfo.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UpdateInfo()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UpdateInfo',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: UpdateInfo.$_createMessage)
+    ..aOB(1, _omitFieldNames ? '' : 'ok')
+    ..aOS(2, _omitFieldNames ? '' : 'current')
+    ..aOS(3, _omitFieldNames ? '' : 'latest')
+    ..aOB(4, _omitFieldNames ? '' : 'hasUpdate')
+    ..aOS(5, _omitFieldNames ? '' : 'url')
+    ..aOS(6, _omitFieldNames ? '' : 'notes')
+    ..aOS(7, _omitFieldNames ? '' : 'error')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UpdateInfo clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UpdateInfo copyWith(void Function(UpdateInfo) updates) =>
+      super.copyWith((message) => updates(message as UpdateInfo)) as UpdateInfo;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use UpdateInfo() / UpdateInfo.new instead')
+  static UpdateInfo create() => UpdateInfo._();
+  static $pb.GeneratedMessage $_createMessage() => UpdateInfo._();
+  @$core.override
+  UpdateInfo createEmptyInstance() => UpdateInfo._();
+  @$core.pragma('dart2js:noInline')
+  static UpdateInfo getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<UpdateInfo>(UpdateInfo.$_createMessage);
+  static UpdateInfo? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get ok => $_getBF(0);
+  @$pb.TagNumber(1)
+  set ok($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasOk() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearOk() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get current => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set current($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasCurrent() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearCurrent() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get latest => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set latest($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasLatest() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearLatest() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.bool get hasUpdate => $_getBF(3);
+  @$pb.TagNumber(4)
+  set hasUpdate($core.bool value) => $_setBool(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasHasUpdate() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearHasUpdate() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.String get url => $_getSZ(4);
+  @$pb.TagNumber(5)
+  set url($core.String value) => $_setString(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasUrl() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearUrl() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $core.String get notes => $_getSZ(5);
+  @$pb.TagNumber(6)
+  set notes($core.String value) => $_setString(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasNotes() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearNotes() => $_clearField(6);
+
+  @$pb.TagNumber(7)
+  $core.String get error => $_getSZ(6);
+  @$pb.TagNumber(7)
+  set error($core.String value) => $_setString(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasError() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearError() => $_clearField(7);
 }
 
 const $core.bool _omitFieldNames =

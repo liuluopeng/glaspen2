@@ -460,6 +460,32 @@ pub enum PageOpValue {
     Count(i32),
 }
 
+pub fn encode_update_info_frame(
+    request_id: u64,
+    ok: bool,
+    current: &str,
+    latest: &str,
+    has_update: bool,
+    url: &str,
+    notes: &str,
+    error: &str,
+) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::UpdateInfo(proto::UpdateInfo {
+            ok,
+            current: current.to_string(),
+            latest: latest.to_string(),
+            has_update,
+            url: url.to_string(),
+            notes: notes.to_string(),
+            error: error.to_string(),
+        })),
+    };
+    encode_frame(&frame)
+}
+
 pub fn encode_backup_outcome_frame(
     request_id: u64,
     kind: &str,

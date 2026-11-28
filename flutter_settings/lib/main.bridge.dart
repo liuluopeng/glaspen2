@@ -921,7 +921,7 @@ class _NamedPipeBridge extends SettingsBridge {
 
   @override
   Future<Map<dynamic, dynamic>> checkUpdate() async =>
-      _request('checkUpdate', null);
+      _requestTyped(encodeCheckUpdateRequest);
 
   @override
   Future<void> openUrl(String url) async {

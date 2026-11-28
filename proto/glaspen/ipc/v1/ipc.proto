@@ -45,6 +45,8 @@ message Frame {
     ChatLoginRequest chat_login_request = 52;
     ChatLoginOutcome chat_login_outcome = 53;
     ExportPdfRequest export_pdf_request = 54;
+    CheckUpdateRequest check_update_request = 60;
+    UpdateInfo update_info = 61;
     Panel panel = 20;
     Error error = 99;
   }
@@ -307,3 +309,15 @@ message ChatLoginOutcome {
 }
 
 message ExportPdfRequest {}
+
+message CheckUpdateRequest {}
+
+message UpdateInfo {
+  bool ok = 1;
+  string current = 2;
+  string latest = 3;
+  bool has_update = 4;
+  string url = 5;
+  string notes = 6;
+  string error = 7;
+}
