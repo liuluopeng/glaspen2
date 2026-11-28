@@ -3,7 +3,7 @@
 // 线格式: 连接开头必须发 PB_MAGIC, 之后每帧 = u32 LE 长度 + Frame protobuf。
 // 不再支持 JSON 行协议。
 
-use crate::{Frame, FrameError, PROTOCOL_VERSION, encode_frame, take_frame};
+use crate::{Frame, FrameError, PROTOCOL_VERSION, take_frame};
 
 /// protobuf 客户端在连接开头发的魔数。
 pub const PB_MAGIC: &[u8; 4] = b"GPB1";
@@ -172,7 +172,7 @@ mod tests {
             )),
         };
         let mut out = PB_MAGIC.to_vec();
-        out.extend_from_slice(&encode_frame(&frame));
+        out.extend_from_slice(&crate::encode_frame(&frame));
         out
     }
 
@@ -232,7 +232,7 @@ mod tests {
         };
         frame.protocol_version = 99;
         let mut bytes = PB_MAGIC.to_vec();
-        bytes.extend_from_slice(&encode_frame(&frame));
+        bytes.extend_from_slice(&crate::encode_frame(&frame));
         let mut decoder = PanelDecoder::new();
         assert!(decoder.feed(&bytes).is_err());
     }
