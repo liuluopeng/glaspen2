@@ -9,13 +9,12 @@
 //! 本文件保留:绘图与模型器 FFI、描边/镜头状态、设置持久化 FFI、
 //! 开机自启、公共小工具(free_c_string / leak_png 等)。
 
-use crate::camera::{Camera, ZoomOutcome};
+use crate::camera::Camera;
 use crate::draw_spec::{
     Color, Dash, DrawCommand, DrawPlan, LiveStroke, OUTLINE_COLORS, OutlineParams, PaintPass,
     PassOrder, PlanError, PlanParams, PlanScope, Rect, ShadowParams, Vec2, ViewTransform,
     plan as draw_plan,
 };
-use crate::grid::{GridLines, GridParams, Segment};
 pub(crate) use crate::{
     RAW_STROKE_START, Stroke, desktop_path, modeler, pressure_to_width, runtime, state,
     timestamped_name, timestamped_path,
