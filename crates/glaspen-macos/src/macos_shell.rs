@@ -10345,7 +10345,7 @@ extern "C" fn macos_api_refresh_page(ctx: *mut c_void) {
     }
 }
 
-/// 设置快照 → Panel protobuf(kind=settings); 供根 crate 的 FRB 解码。
+/// 设置快照 → typed SettingsSnapshot protobuf; 供根 crate 的 FRB 解码。
 pub fn settings_snapshot_pb() -> Vec<u8> {
     unsafe {
         let overrides = glaspen2_menu_snapshot_overrides_json();
@@ -10361,8 +10361,7 @@ pub fn settings_snapshot_pb() -> Vec<u8> {
             .to_string_lossy()
             .into_owned();
         glaspen2_free_c_string(json);
-        let value = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
-        glaspen_ipc::encode_panel("settings", &value)
+        glaspen_ipc::encode_settings_frame(0, &text)
     }
 }
 

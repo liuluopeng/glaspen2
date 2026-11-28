@@ -22,6 +22,7 @@ message Frame {
     SetSetting set_setting = 11;
     SettingsSnapshotResponse settings_snapshot_response = 12;
     Ack ack = 13;
+    SettingsChanged settings_changed = 14;
     Panel panel = 20;
     Error error = 99;
   }
@@ -46,8 +47,50 @@ message ListValue {
   repeated SettingValue values = 1;
 }
 
+// 设置快照的 typed 模型。字段与 core settings_snapshot 的稳定键一一对应;
+// 不再用动态 map 承载整份设置。
+message AppSettings {
+  int32 color = 1;
+  int32 width = 2;
+  bool launch_at_login = 3;
+  bool frosted_glass = 4;
+  bool grid = 5;
+  bool grid_follow_strokes = 6;
+  bool glass_follow_strokes = 7;
+  bool soft_shadow = 8;
+  bool invert_ink = 9;
+  bool notebook_style = 10;
+  bool panel_transparent = 11;
+  int32 invert_fps = 12;
+  bool pressure_monitor = 13;
+  bool outline = 14;
+  bool infinite_canvas = 15;
+  bool minimap = 16;
+  double grid_size = 17;
+  int32 grid_divider = 18;
+  int32 flip_effect = 19;
+  int32 gif_fps = 20;
+  double gif_resolution = 21;
+  double gif_speed = 22;
+  int32 gif_end_mode = 23;
+  string chat_api_base = 24;
+  string chat_user = 25;
+  bool chat_has_password = 26;
+  bool chat_integration = 27;
+  bool show_free_canvas = 28;
+  bool show_bubble_tab = 29;
+  int32 bubble_replay_speed = 30;
+  bool bubble_replay_hold_last = 31;
+  bool bubble_replay_auto = 32;
+  bool bubble_auto_new_page = 33;
+  string nas_url = 34;
+  bool share_canvas = 35;
+  string language = 36;
+  string shortcuts = 37;
+}
+
 message SettingsSnapshot {
-  map<string, SettingValue> values = 1;
+  AppSettings settings = 1;
   map<string, string> metadata = 2;
 }
 
@@ -79,11 +122,15 @@ message Panel {
   bool ok = 3;
 }
 
-// Swift <-> Rust 的 map<string,string>(快捷键表/菜单标题)。
+// Swift 与 Rust 之间的字符串表(快捷键表/菜单标题)。
 message StringMap {
   map<string, string> values = 1;
 }
 
 message StringList {
   repeated string values = 1;
+}
+
+message SettingsChanged {
+  SettingsSnapshot snapshot = 1;
 }

@@ -58,6 +58,15 @@ const Frame$json = {
       '10': 'ack'
     },
     {
+      '1': 'settings_changed',
+      '3': 14,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.SettingsChanged',
+      '9': 0,
+      '10': 'settingsChanged'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -89,9 +98,10 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'NldF9zZXR0aW5nGAsgASgLMhouZ2xhc3Blbi5pcGMudjEuU2V0U2V0dGluZ0gAUgpzZXRTZXR0'
     'aW5nEmgKGnNldHRpbmdzX3NuYXBzaG90X3Jlc3BvbnNlGAwgASgLMiguZ2xhc3Blbi5pcGMudj'
     'EuU2V0dGluZ3NTbmFwc2hvdFJlc3BvbnNlSABSGHNldHRpbmdzU25hcHNob3RSZXNwb25zZRIn'
-    'CgNhY2sYDSABKAsyEy5nbGFzcGVuLmlwYy52MS5BY2tIAFIDYWNrEi0KBXBhbmVsGBQgASgLMh'
-    'UuZ2xhc3Blbi5pcGMudjEuUGFuZWxIAFIFcGFuZWwSLQoFZXJyb3IYYyABKAsyFS5nbGFzcGVu'
-    'LmlwYy52MS5FcnJvckgAUgVlcnJvckIGCgRib2R5');
+    'CgNhY2sYDSABKAsyEy5nbGFzcGVuLmlwYy52MS5BY2tIAFIDYWNrEkwKEHNldHRpbmdzX2NoYW'
+    '5nZWQYDiABKAsyHy5nbGFzcGVuLmlwYy52MS5TZXR0aW5nc0NoYW5nZWRIAFIPc2V0dGluZ3ND'
+    'aGFuZ2VkEi0KBXBhbmVsGBQgASgLMhUuZ2xhc3Blbi5pcGMudjEuUGFuZWxIAFIFcGFuZWwSLQ'
+    'oFZXJyb3IYYyABKAsyFS5nbGFzcGVuLmlwYy52MS5FcnJvckgAUgVlcnJvckIGCgRib2R5');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -157,17 +167,137 @@ final $typed_data.Uint8List listValueDescriptor = $convert.base64Decode(
     'CglMaXN0VmFsdWUSNAoGdmFsdWVzGAEgAygLMhwuZ2xhc3Blbi5pcGMudjEuU2V0dGluZ1ZhbH'
     'VlUgZ2YWx1ZXM=');
 
+@$core.Deprecated('Use appSettingsDescriptor instead')
+const AppSettings$json = {
+  '1': 'AppSettings',
+  '2': [
+    {'1': 'color', '3': 1, '4': 1, '5': 5, '10': 'color'},
+    {'1': 'width', '3': 2, '4': 1, '5': 5, '10': 'width'},
+    {'1': 'launch_at_login', '3': 3, '4': 1, '5': 8, '10': 'launchAtLogin'},
+    {'1': 'frosted_glass', '3': 4, '4': 1, '5': 8, '10': 'frostedGlass'},
+    {'1': 'grid', '3': 5, '4': 1, '5': 8, '10': 'grid'},
+    {
+      '1': 'grid_follow_strokes',
+      '3': 6,
+      '4': 1,
+      '5': 8,
+      '10': 'gridFollowStrokes'
+    },
+    {
+      '1': 'glass_follow_strokes',
+      '3': 7,
+      '4': 1,
+      '5': 8,
+      '10': 'glassFollowStrokes'
+    },
+    {'1': 'soft_shadow', '3': 8, '4': 1, '5': 8, '10': 'softShadow'},
+    {'1': 'invert_ink', '3': 9, '4': 1, '5': 8, '10': 'invertInk'},
+    {'1': 'notebook_style', '3': 10, '4': 1, '5': 8, '10': 'notebookStyle'},
+    {
+      '1': 'panel_transparent',
+      '3': 11,
+      '4': 1,
+      '5': 8,
+      '10': 'panelTransparent'
+    },
+    {'1': 'invert_fps', '3': 12, '4': 1, '5': 5, '10': 'invertFps'},
+    {'1': 'pressure_monitor', '3': 13, '4': 1, '5': 8, '10': 'pressureMonitor'},
+    {'1': 'outline', '3': 14, '4': 1, '5': 8, '10': 'outline'},
+    {'1': 'infinite_canvas', '3': 15, '4': 1, '5': 8, '10': 'infiniteCanvas'},
+    {'1': 'minimap', '3': 16, '4': 1, '5': 8, '10': 'minimap'},
+    {'1': 'grid_size', '3': 17, '4': 1, '5': 1, '10': 'gridSize'},
+    {'1': 'grid_divider', '3': 18, '4': 1, '5': 5, '10': 'gridDivider'},
+    {'1': 'flip_effect', '3': 19, '4': 1, '5': 5, '10': 'flipEffect'},
+    {'1': 'gif_fps', '3': 20, '4': 1, '5': 5, '10': 'gifFps'},
+    {'1': 'gif_resolution', '3': 21, '4': 1, '5': 1, '10': 'gifResolution'},
+    {'1': 'gif_speed', '3': 22, '4': 1, '5': 1, '10': 'gifSpeed'},
+    {'1': 'gif_end_mode', '3': 23, '4': 1, '5': 5, '10': 'gifEndMode'},
+    {'1': 'chat_api_base', '3': 24, '4': 1, '5': 9, '10': 'chatApiBase'},
+    {'1': 'chat_user', '3': 25, '4': 1, '5': 9, '10': 'chatUser'},
+    {
+      '1': 'chat_has_password',
+      '3': 26,
+      '4': 1,
+      '5': 8,
+      '10': 'chatHasPassword'
+    },
+    {'1': 'chat_integration', '3': 27, '4': 1, '5': 8, '10': 'chatIntegration'},
+    {'1': 'show_free_canvas', '3': 28, '4': 1, '5': 8, '10': 'showFreeCanvas'},
+    {'1': 'show_bubble_tab', '3': 29, '4': 1, '5': 8, '10': 'showBubbleTab'},
+    {
+      '1': 'bubble_replay_speed',
+      '3': 30,
+      '4': 1,
+      '5': 5,
+      '10': 'bubbleReplaySpeed'
+    },
+    {
+      '1': 'bubble_replay_hold_last',
+      '3': 31,
+      '4': 1,
+      '5': 8,
+      '10': 'bubbleReplayHoldLast'
+    },
+    {
+      '1': 'bubble_replay_auto',
+      '3': 32,
+      '4': 1,
+      '5': 8,
+      '10': 'bubbleReplayAuto'
+    },
+    {
+      '1': 'bubble_auto_new_page',
+      '3': 33,
+      '4': 1,
+      '5': 8,
+      '10': 'bubbleAutoNewPage'
+    },
+    {'1': 'nas_url', '3': 34, '4': 1, '5': 9, '10': 'nasUrl'},
+    {'1': 'share_canvas', '3': 35, '4': 1, '5': 8, '10': 'shareCanvas'},
+    {'1': 'language', '3': 36, '4': 1, '5': 9, '10': 'language'},
+    {'1': 'shortcuts', '3': 37, '4': 1, '5': 9, '10': 'shortcuts'},
+  ],
+};
+
+/// Descriptor for `AppSettings`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List appSettingsDescriptor = $convert.base64Decode(
+    'CgtBcHBTZXR0aW5ncxIUCgVjb2xvchgBIAEoBVIFY29sb3ISFAoFd2lkdGgYAiABKAVSBXdpZH'
+    'RoEiYKD2xhdW5jaF9hdF9sb2dpbhgDIAEoCFINbGF1bmNoQXRMb2dpbhIjCg1mcm9zdGVkX2ds'
+    'YXNzGAQgASgIUgxmcm9zdGVkR2xhc3MSEgoEZ3JpZBgFIAEoCFIEZ3JpZBIuChNncmlkX2ZvbG'
+    'xvd19zdHJva2VzGAYgASgIUhFncmlkRm9sbG93U3Ryb2tlcxIwChRnbGFzc19mb2xsb3dfc3Ry'
+    'b2tlcxgHIAEoCFISZ2xhc3NGb2xsb3dTdHJva2VzEh8KC3NvZnRfc2hhZG93GAggASgIUgpzb2'
+    'Z0U2hhZG93Eh0KCmludmVydF9pbmsYCSABKAhSCWludmVydEluaxIlCg5ub3RlYm9va19zdHls'
+    'ZRgKIAEoCFINbm90ZWJvb2tTdHlsZRIrChFwYW5lbF90cmFuc3BhcmVudBgLIAEoCFIQcGFuZW'
+    'xUcmFuc3BhcmVudBIdCgppbnZlcnRfZnBzGAwgASgFUglpbnZlcnRGcHMSKQoQcHJlc3N1cmVf'
+    'bW9uaXRvchgNIAEoCFIPcHJlc3N1cmVNb25pdG9yEhgKB291dGxpbmUYDiABKAhSB291dGxpbm'
+    'USJwoPaW5maW5pdGVfY2FudmFzGA8gASgIUg5pbmZpbml0ZUNhbnZhcxIYCgdtaW5pbWFwGBAg'
+    'ASgIUgdtaW5pbWFwEhsKCWdyaWRfc2l6ZRgRIAEoAVIIZ3JpZFNpemUSIQoMZ3JpZF9kaXZpZG'
+    'VyGBIgASgFUgtncmlkRGl2aWRlchIfCgtmbGlwX2VmZmVjdBgTIAEoBVIKZmxpcEVmZmVjdBIX'
+    'CgdnaWZfZnBzGBQgASgFUgZnaWZGcHMSJQoOZ2lmX3Jlc29sdXRpb24YFSABKAFSDWdpZlJlc2'
+    '9sdXRpb24SGwoJZ2lmX3NwZWVkGBYgASgBUghnaWZTcGVlZBIgCgxnaWZfZW5kX21vZGUYFyAB'
+    'KAVSCmdpZkVuZE1vZGUSIgoNY2hhdF9hcGlfYmFzZRgYIAEoCVILY2hhdEFwaUJhc2USGwoJY2'
+    'hhdF91c2VyGBkgASgJUghjaGF0VXNlchIqChFjaGF0X2hhc19wYXNzd29yZBgaIAEoCFIPY2hh'
+    'dEhhc1Bhc3N3b3JkEikKEGNoYXRfaW50ZWdyYXRpb24YGyABKAhSD2NoYXRJbnRlZ3JhdGlvbh'
+    'IoChBzaG93X2ZyZWVfY2FudmFzGBwgASgIUg5zaG93RnJlZUNhbnZhcxImCg9zaG93X2J1YmJs'
+    'ZV90YWIYHSABKAhSDXNob3dCdWJibGVUYWISLgoTYnViYmxlX3JlcGxheV9zcGVlZBgeIAEoBV'
+    'IRYnViYmxlUmVwbGF5U3BlZWQSNQoXYnViYmxlX3JlcGxheV9ob2xkX2xhc3QYHyABKAhSFGJ1'
+    'YmJsZVJlcGxheUhvbGRMYXN0EiwKEmJ1YmJsZV9yZXBsYXlfYXV0bxggIAEoCFIQYnViYmxlUm'
+    'VwbGF5QXV0bxIvChRidWJibGVfYXV0b19uZXdfcGFnZRghIAEoCFIRYnViYmxlQXV0b05ld1Bh'
+    'Z2USFwoHbmFzX3VybBgiIAEoCVIGbmFzVXJsEiEKDHNoYXJlX2NhbnZhcxgjIAEoCFILc2hhcm'
+    'VDYW52YXMSGgoIbGFuZ3VhZ2UYJCABKAlSCGxhbmd1YWdlEhwKCXNob3J0Y3V0cxglIAEoCVIJ'
+    'c2hvcnRjdXRz');
+
 @$core.Deprecated('Use settingsSnapshotDescriptor instead')
 const SettingsSnapshot$json = {
   '1': 'SettingsSnapshot',
   '2': [
     {
-      '1': 'values',
+      '1': 'settings',
       '3': 1,
-      '4': 3,
+      '4': 1,
       '5': 11,
-      '6': '.glaspen.ipc.v1.SettingsSnapshot.ValuesEntry',
-      '10': 'values'
+      '6': '.glaspen.ipc.v1.AppSettings',
+      '10': 'settings'
     },
     {
       '1': 'metadata',
@@ -178,24 +308,7 @@ const SettingsSnapshot$json = {
       '10': 'metadata'
     },
   ],
-  '3': [SettingsSnapshot_ValuesEntry$json, SettingsSnapshot_MetadataEntry$json],
-};
-
-@$core.Deprecated('Use settingsSnapshotDescriptor instead')
-const SettingsSnapshot_ValuesEntry$json = {
-  '1': 'ValuesEntry',
-  '2': [
-    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
-    {
-      '1': 'value',
-      '3': 2,
-      '4': 1,
-      '5': 11,
-      '6': '.glaspen.ipc.v1.SettingValue',
-      '10': 'value'
-    },
-  ],
-  '7': {'7': true},
+  '3': [SettingsSnapshot_MetadataEntry$json],
 };
 
 @$core.Deprecated('Use settingsSnapshotDescriptor instead')
@@ -210,12 +323,10 @@ const SettingsSnapshot_MetadataEntry$json = {
 
 /// Descriptor for `SettingsSnapshot`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List settingsSnapshotDescriptor = $convert.base64Decode(
-    'ChBTZXR0aW5nc1NuYXBzaG90EkQKBnZhbHVlcxgBIAMoCzIsLmdsYXNwZW4uaXBjLnYxLlNldH'
-    'RpbmdzU25hcHNob3QuVmFsdWVzRW50cnlSBnZhbHVlcxJKCghtZXRhZGF0YRgCIAMoCzIuLmds'
-    'YXNwZW4uaXBjLnYxLlNldHRpbmdzU25hcHNob3QuTWV0YWRhdGFFbnRyeVIIbWV0YWRhdGEaVw'
-    'oLVmFsdWVzRW50cnkSEAoDa2V5GAEgASgJUgNrZXkSMgoFdmFsdWUYAiABKAsyHC5nbGFzcGVu'
-    'LmlwYy52MS5TZXR0aW5nVmFsdWVSBXZhbHVlOgI4ARo7Cg1NZXRhZGF0YUVudHJ5EhAKA2tleR'
-    'gBIAEoCVIDa2V5EhQKBXZhbHVlGAIgASgJUgV2YWx1ZToCOAE=');
+    'ChBTZXR0aW5nc1NuYXBzaG90EjcKCHNldHRpbmdzGAEgASgLMhsuZ2xhc3Blbi5pcGMudjEuQX'
+    'BwU2V0dGluZ3NSCHNldHRpbmdzEkoKCG1ldGFkYXRhGAIgAygLMi4uZ2xhc3Blbi5pcGMudjEu'
+    'U2V0dGluZ3NTbmFwc2hvdC5NZXRhZGF0YUVudHJ5UghtZXRhZGF0YRo7Cg1NZXRhZGF0YUVudH'
+    'J5EhAKA2tleRgBIAEoCVIDa2V5EhQKBXZhbHVlGAIgASgJUgV2YWx1ZToCOAE=');
 
 @$core.Deprecated('Use settingsSnapshotResponseDescriptor instead')
 const SettingsSnapshotResponse$json = {
@@ -305,3 +416,67 @@ const Panel$json = {
 final $typed_data.Uint8List panelDescriptor = $convert.base64Decode(
     'CgVQYW5lbBISCgRraW5kGAEgASgJUgRraW5kEioKBGRhdGEYAiABKAsyFi5nb29nbGUucHJvdG'
     '9idWYuVmFsdWVSBGRhdGESDgoCb2sYAyABKAhSAm9r');
+
+@$core.Deprecated('Use stringMapDescriptor instead')
+const StringMap$json = {
+  '1': 'StringMap',
+  '2': [
+    {
+      '1': 'values',
+      '3': 1,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.StringMap.ValuesEntry',
+      '10': 'values'
+    },
+  ],
+  '3': [StringMap_ValuesEntry$json],
+};
+
+@$core.Deprecated('Use stringMapDescriptor instead')
+const StringMap_ValuesEntry$json = {
+  '1': 'ValuesEntry',
+  '2': [
+    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
+    {'1': 'value', '3': 2, '4': 1, '5': 9, '10': 'value'},
+  ],
+  '7': {'7': true},
+};
+
+/// Descriptor for `StringMap`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List stringMapDescriptor = $convert.base64Decode(
+    'CglTdHJpbmdNYXASPQoGdmFsdWVzGAEgAygLMiUuZ2xhc3Blbi5pcGMudjEuU3RyaW5nTWFwLl'
+    'ZhbHVlc0VudHJ5UgZ2YWx1ZXMaOQoLVmFsdWVzRW50cnkSEAoDa2V5GAEgASgJUgNrZXkSFAoF'
+    'dmFsdWUYAiABKAlSBXZhbHVlOgI4AQ==');
+
+@$core.Deprecated('Use stringListDescriptor instead')
+const StringList$json = {
+  '1': 'StringList',
+  '2': [
+    {'1': 'values', '3': 1, '4': 3, '5': 9, '10': 'values'},
+  ],
+};
+
+/// Descriptor for `StringList`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List stringListDescriptor =
+    $convert.base64Decode('CgpTdHJpbmdMaXN0EhYKBnZhbHVlcxgBIAMoCVIGdmFsdWVz');
+
+@$core.Deprecated('Use settingsChangedDescriptor instead')
+const SettingsChanged$json = {
+  '1': 'SettingsChanged',
+  '2': [
+    {
+      '1': 'snapshot',
+      '3': 1,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.SettingsSnapshot',
+      '10': 'snapshot'
+    },
+  ],
+};
+
+/// Descriptor for `SettingsChanged`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List settingsChangedDescriptor = $convert.base64Decode(
+    'Cg9TZXR0aW5nc0NoYW5nZWQSPAoIc25hcHNob3QYASABKAsyIC5nbGFzcGVuLmlwYy52MS5TZX'
+    'R0aW5nc1NuYXBzaG90UghzbmFwc2hvdA==');

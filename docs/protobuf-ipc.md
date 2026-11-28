@@ -77,3 +77,21 @@
 2. 每个边界迁移必须有: 帧 roundtrip 单测、非法/超大帧测试、旧客户端拒绝路径。
 3. 全部切换后再删旧 JSON codegen/字符串 API。
 4. 不做 big-bang: protobuf 字段号永不复用, 新字段只追加。
+
+
+## typed payload 迁移(进行中)
+
+已有：
+
+- `AppSettings` / `SettingsSnapshot` / `SettingsChanged` typed 消息；
+- macOS settings snapshot、Windows `getSettings`/`onSettingsChanged`、Dart 解码已切 typed；
+- `Frame.settings_snapshot_response` / `Frame.settings_changed` 不再是 `Panel` 动态 Value。
+
+待迁移：
+
+- `PageSummary` / 缩略图 / 页面操作；
+- `Bubble*`；
+- `RecordingEvent/Effect`；
+- `GridLines` / `MinimapLayout` / `ActionEffect`；
+- `Panel` 其余命令 oneof；
+- macOS 内部 `*_json` FFI 改 typed Rust 调用。

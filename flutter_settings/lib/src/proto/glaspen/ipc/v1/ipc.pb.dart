@@ -23,6 +23,7 @@ enum Frame_Body {
   setSetting,
   settingsSnapshotResponse,
   ack,
+  settingsChanged,
   panel,
   error,
   notSet
@@ -46,6 +47,7 @@ class Frame extends $pb.GeneratedMessage {
     SetSetting? setSetting,
     SettingsSnapshotResponse? settingsSnapshotResponse,
     Ack? ack,
+    SettingsChanged? settingsChanged,
     Panel? panel,
     Error? error,
   }) {
@@ -57,6 +59,7 @@ class Frame extends $pb.GeneratedMessage {
     if (settingsSnapshotResponse != null)
       result.settingsSnapshotResponse = settingsSnapshotResponse;
     if (ack != null) result.ack = ack;
+    if (settingsChanged != null) result.settingsChanged = settingsChanged;
     if (panel != null) result.panel = panel;
     if (error != null) result.error = error;
     return result;
@@ -76,6 +79,7 @@ class Frame extends $pb.GeneratedMessage {
     11: Frame_Body.setSetting,
     12: Frame_Body.settingsSnapshotResponse,
     13: Frame_Body.ack,
+    14: Frame_Body.settingsChanged,
     20: Frame_Body.panel,
     99: Frame_Body.error,
     0: Frame_Body.notSet
@@ -84,7 +88,7 @@ class Frame extends $pb.GeneratedMessage {
       _omitMessageNames ? '' : 'Frame',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
       createEmptyInstance: Frame.$_createMessage)
-    ..oo(0, [10, 11, 12, 13, 20, 99])
+    ..oo(0, [10, 11, 12, 13, 14, 20, 99])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
         fieldType: $pb.PbFieldType.OU3)
     ..a<$fixnum.Int64>(
@@ -99,6 +103,8 @@ class Frame extends $pb.GeneratedMessage {
         subBuilder: SettingsSnapshotResponse.$_createMessage)
     ..aOM<Ack>(13, _omitFieldNames ? '' : 'ack',
         subBuilder: Ack.$_createMessage)
+    ..aOM<SettingsChanged>(14, _omitFieldNames ? '' : 'settingsChanged',
+        subBuilder: SettingsChanged.$_createMessage)
     ..aOM<Panel>(20, _omitFieldNames ? '' : 'panel',
         subBuilder: Panel.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
@@ -129,6 +135,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(11)
   @$pb.TagNumber(12)
   @$pb.TagNumber(13)
+  @$pb.TagNumber(14)
   @$pb.TagNumber(20)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
@@ -136,6 +143,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(11)
   @$pb.TagNumber(12)
   @$pb.TagNumber(13)
+  @$pb.TagNumber(14)
   @$pb.TagNumber(20)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
@@ -203,27 +211,38 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(13)
   Ack ensureAck() => $_ensure(5);
 
+  @$pb.TagNumber(14)
+  SettingsChanged get settingsChanged => $_getN(6);
+  @$pb.TagNumber(14)
+  set settingsChanged(SettingsChanged value) => $_setField(14, value);
+  @$pb.TagNumber(14)
+  $core.bool hasSettingsChanged() => $_has(6);
+  @$pb.TagNumber(14)
+  void clearSettingsChanged() => $_clearField(14);
+  @$pb.TagNumber(14)
+  SettingsChanged ensureSettingsChanged() => $_ensure(6);
+
   @$pb.TagNumber(20)
-  Panel get panel => $_getN(6);
+  Panel get panel => $_getN(7);
   @$pb.TagNumber(20)
   set panel(Panel value) => $_setField(20, value);
   @$pb.TagNumber(20)
-  $core.bool hasPanel() => $_has(6);
+  $core.bool hasPanel() => $_has(7);
   @$pb.TagNumber(20)
   void clearPanel() => $_clearField(20);
   @$pb.TagNumber(20)
-  Panel ensurePanel() => $_ensure(6);
+  Panel ensurePanel() => $_ensure(7);
 
   @$pb.TagNumber(99)
-  Error get error => $_getN(7);
+  Error get error => $_getN(8);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(7);
+  $core.bool hasError() => $_has(8);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(7);
+  Error ensureError() => $_ensure(8);
 }
 
 enum SettingValue_Value {
@@ -470,13 +489,506 @@ class ListValue extends $pb.GeneratedMessage {
   $pb.PbList<SettingValue> get values => $_getList(0);
 }
 
+/// 设置快照的 typed 模型。字段与 core settings_snapshot 的稳定键一一对应;
+/// 不再用动态 map 承载整份设置。
+class AppSettings extends $pb.GeneratedMessage {
+  factory AppSettings({
+    $core.int? color,
+    $core.int? width,
+    $core.bool? launchAtLogin,
+    $core.bool? frostedGlass,
+    $core.bool? grid,
+    $core.bool? gridFollowStrokes,
+    $core.bool? glassFollowStrokes,
+    $core.bool? softShadow,
+    $core.bool? invertInk,
+    $core.bool? notebookStyle,
+    $core.bool? panelTransparent,
+    $core.int? invertFps,
+    $core.bool? pressureMonitor,
+    $core.bool? outline,
+    $core.bool? infiniteCanvas,
+    $core.bool? minimap,
+    $core.double? gridSize,
+    $core.int? gridDivider,
+    $core.int? flipEffect,
+    $core.int? gifFps,
+    $core.double? gifResolution,
+    $core.double? gifSpeed,
+    $core.int? gifEndMode,
+    $core.String? chatApiBase,
+    $core.String? chatUser,
+    $core.bool? chatHasPassword,
+    $core.bool? chatIntegration,
+    $core.bool? showFreeCanvas,
+    $core.bool? showBubbleTab,
+    $core.int? bubbleReplaySpeed,
+    $core.bool? bubbleReplayHoldLast,
+    $core.bool? bubbleReplayAuto,
+    $core.bool? bubbleAutoNewPage,
+    $core.String? nasUrl,
+    $core.bool? shareCanvas,
+    $core.String? language,
+    $core.String? shortcuts,
+  }) {
+    final result = AppSettings._();
+    if (color != null) result.color = color;
+    if (width != null) result.width = width;
+    if (launchAtLogin != null) result.launchAtLogin = launchAtLogin;
+    if (frostedGlass != null) result.frostedGlass = frostedGlass;
+    if (grid != null) result.grid = grid;
+    if (gridFollowStrokes != null) result.gridFollowStrokes = gridFollowStrokes;
+    if (glassFollowStrokes != null)
+      result.glassFollowStrokes = glassFollowStrokes;
+    if (softShadow != null) result.softShadow = softShadow;
+    if (invertInk != null) result.invertInk = invertInk;
+    if (notebookStyle != null) result.notebookStyle = notebookStyle;
+    if (panelTransparent != null) result.panelTransparent = panelTransparent;
+    if (invertFps != null) result.invertFps = invertFps;
+    if (pressureMonitor != null) result.pressureMonitor = pressureMonitor;
+    if (outline != null) result.outline = outline;
+    if (infiniteCanvas != null) result.infiniteCanvas = infiniteCanvas;
+    if (minimap != null) result.minimap = minimap;
+    if (gridSize != null) result.gridSize = gridSize;
+    if (gridDivider != null) result.gridDivider = gridDivider;
+    if (flipEffect != null) result.flipEffect = flipEffect;
+    if (gifFps != null) result.gifFps = gifFps;
+    if (gifResolution != null) result.gifResolution = gifResolution;
+    if (gifSpeed != null) result.gifSpeed = gifSpeed;
+    if (gifEndMode != null) result.gifEndMode = gifEndMode;
+    if (chatApiBase != null) result.chatApiBase = chatApiBase;
+    if (chatUser != null) result.chatUser = chatUser;
+    if (chatHasPassword != null) result.chatHasPassword = chatHasPassword;
+    if (chatIntegration != null) result.chatIntegration = chatIntegration;
+    if (showFreeCanvas != null) result.showFreeCanvas = showFreeCanvas;
+    if (showBubbleTab != null) result.showBubbleTab = showBubbleTab;
+    if (bubbleReplaySpeed != null) result.bubbleReplaySpeed = bubbleReplaySpeed;
+    if (bubbleReplayHoldLast != null)
+      result.bubbleReplayHoldLast = bubbleReplayHoldLast;
+    if (bubbleReplayAuto != null) result.bubbleReplayAuto = bubbleReplayAuto;
+    if (bubbleAutoNewPage != null) result.bubbleAutoNewPage = bubbleAutoNewPage;
+    if (nasUrl != null) result.nasUrl = nasUrl;
+    if (shareCanvas != null) result.shareCanvas = shareCanvas;
+    if (language != null) result.language = language;
+    if (shortcuts != null) result.shortcuts = shortcuts;
+    return result;
+  }
+
+  AppSettings._();
+
+  factory AppSettings.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      AppSettings()..mergeFromBuffer(data, registry);
+  factory AppSettings.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      AppSettings()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'AppSettings',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: AppSettings.$_createMessage)
+    ..aI(1, _omitFieldNames ? '' : 'color')
+    ..aI(2, _omitFieldNames ? '' : 'width')
+    ..aOB(3, _omitFieldNames ? '' : 'launchAtLogin')
+    ..aOB(4, _omitFieldNames ? '' : 'frostedGlass')
+    ..aOB(5, _omitFieldNames ? '' : 'grid')
+    ..aOB(6, _omitFieldNames ? '' : 'gridFollowStrokes')
+    ..aOB(7, _omitFieldNames ? '' : 'glassFollowStrokes')
+    ..aOB(8, _omitFieldNames ? '' : 'softShadow')
+    ..aOB(9, _omitFieldNames ? '' : 'invertInk')
+    ..aOB(10, _omitFieldNames ? '' : 'notebookStyle')
+    ..aOB(11, _omitFieldNames ? '' : 'panelTransparent')
+    ..aI(12, _omitFieldNames ? '' : 'invertFps')
+    ..aOB(13, _omitFieldNames ? '' : 'pressureMonitor')
+    ..aOB(14, _omitFieldNames ? '' : 'outline')
+    ..aOB(15, _omitFieldNames ? '' : 'infiniteCanvas')
+    ..aOB(16, _omitFieldNames ? '' : 'minimap')
+    ..aD(17, _omitFieldNames ? '' : 'gridSize')
+    ..aI(18, _omitFieldNames ? '' : 'gridDivider')
+    ..aI(19, _omitFieldNames ? '' : 'flipEffect')
+    ..aI(20, _omitFieldNames ? '' : 'gifFps')
+    ..aD(21, _omitFieldNames ? '' : 'gifResolution')
+    ..aD(22, _omitFieldNames ? '' : 'gifSpeed')
+    ..aI(23, _omitFieldNames ? '' : 'gifEndMode')
+    ..aOS(24, _omitFieldNames ? '' : 'chatApiBase')
+    ..aOS(25, _omitFieldNames ? '' : 'chatUser')
+    ..aOB(26, _omitFieldNames ? '' : 'chatHasPassword')
+    ..aOB(27, _omitFieldNames ? '' : 'chatIntegration')
+    ..aOB(28, _omitFieldNames ? '' : 'showFreeCanvas')
+    ..aOB(29, _omitFieldNames ? '' : 'showBubbleTab')
+    ..aI(30, _omitFieldNames ? '' : 'bubbleReplaySpeed')
+    ..aOB(31, _omitFieldNames ? '' : 'bubbleReplayHoldLast')
+    ..aOB(32, _omitFieldNames ? '' : 'bubbleReplayAuto')
+    ..aOB(33, _omitFieldNames ? '' : 'bubbleAutoNewPage')
+    ..aOS(34, _omitFieldNames ? '' : 'nasUrl')
+    ..aOB(35, _omitFieldNames ? '' : 'shareCanvas')
+    ..aOS(36, _omitFieldNames ? '' : 'language')
+    ..aOS(37, _omitFieldNames ? '' : 'shortcuts')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  AppSettings clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  AppSettings copyWith(void Function(AppSettings) updates) =>
+      super.copyWith((message) => updates(message as AppSettings))
+          as AppSettings;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use AppSettings() / AppSettings.new instead')
+  static AppSettings create() => AppSettings._();
+  static $pb.GeneratedMessage $_createMessage() => AppSettings._();
+  @$core.override
+  AppSettings createEmptyInstance() => AppSettings._();
+  @$core.pragma('dart2js:noInline')
+  static AppSettings getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<AppSettings>(
+          AppSettings.$_createMessage);
+  static AppSettings? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.int get color => $_getIZ(0);
+  @$pb.TagNumber(1)
+  set color($core.int value) => $_setSignedInt32(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasColor() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearColor() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.int get width => $_getIZ(1);
+  @$pb.TagNumber(2)
+  set width($core.int value) => $_setSignedInt32(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasWidth() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearWidth() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.bool get launchAtLogin => $_getBF(2);
+  @$pb.TagNumber(3)
+  set launchAtLogin($core.bool value) => $_setBool(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasLaunchAtLogin() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearLaunchAtLogin() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.bool get frostedGlass => $_getBF(3);
+  @$pb.TagNumber(4)
+  set frostedGlass($core.bool value) => $_setBool(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasFrostedGlass() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearFrostedGlass() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.bool get grid => $_getBF(4);
+  @$pb.TagNumber(5)
+  set grid($core.bool value) => $_setBool(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasGrid() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearGrid() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $core.bool get gridFollowStrokes => $_getBF(5);
+  @$pb.TagNumber(6)
+  set gridFollowStrokes($core.bool value) => $_setBool(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasGridFollowStrokes() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearGridFollowStrokes() => $_clearField(6);
+
+  @$pb.TagNumber(7)
+  $core.bool get glassFollowStrokes => $_getBF(6);
+  @$pb.TagNumber(7)
+  set glassFollowStrokes($core.bool value) => $_setBool(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasGlassFollowStrokes() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearGlassFollowStrokes() => $_clearField(7);
+
+  @$pb.TagNumber(8)
+  $core.bool get softShadow => $_getBF(7);
+  @$pb.TagNumber(8)
+  set softShadow($core.bool value) => $_setBool(7, value);
+  @$pb.TagNumber(8)
+  $core.bool hasSoftShadow() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearSoftShadow() => $_clearField(8);
+
+  @$pb.TagNumber(9)
+  $core.bool get invertInk => $_getBF(8);
+  @$pb.TagNumber(9)
+  set invertInk($core.bool value) => $_setBool(8, value);
+  @$pb.TagNumber(9)
+  $core.bool hasInvertInk() => $_has(8);
+  @$pb.TagNumber(9)
+  void clearInvertInk() => $_clearField(9);
+
+  @$pb.TagNumber(10)
+  $core.bool get notebookStyle => $_getBF(9);
+  @$pb.TagNumber(10)
+  set notebookStyle($core.bool value) => $_setBool(9, value);
+  @$pb.TagNumber(10)
+  $core.bool hasNotebookStyle() => $_has(9);
+  @$pb.TagNumber(10)
+  void clearNotebookStyle() => $_clearField(10);
+
+  @$pb.TagNumber(11)
+  $core.bool get panelTransparent => $_getBF(10);
+  @$pb.TagNumber(11)
+  set panelTransparent($core.bool value) => $_setBool(10, value);
+  @$pb.TagNumber(11)
+  $core.bool hasPanelTransparent() => $_has(10);
+  @$pb.TagNumber(11)
+  void clearPanelTransparent() => $_clearField(11);
+
+  @$pb.TagNumber(12)
+  $core.int get invertFps => $_getIZ(11);
+  @$pb.TagNumber(12)
+  set invertFps($core.int value) => $_setSignedInt32(11, value);
+  @$pb.TagNumber(12)
+  $core.bool hasInvertFps() => $_has(11);
+  @$pb.TagNumber(12)
+  void clearInvertFps() => $_clearField(12);
+
+  @$pb.TagNumber(13)
+  $core.bool get pressureMonitor => $_getBF(12);
+  @$pb.TagNumber(13)
+  set pressureMonitor($core.bool value) => $_setBool(12, value);
+  @$pb.TagNumber(13)
+  $core.bool hasPressureMonitor() => $_has(12);
+  @$pb.TagNumber(13)
+  void clearPressureMonitor() => $_clearField(13);
+
+  @$pb.TagNumber(14)
+  $core.bool get outline => $_getBF(13);
+  @$pb.TagNumber(14)
+  set outline($core.bool value) => $_setBool(13, value);
+  @$pb.TagNumber(14)
+  $core.bool hasOutline() => $_has(13);
+  @$pb.TagNumber(14)
+  void clearOutline() => $_clearField(14);
+
+  @$pb.TagNumber(15)
+  $core.bool get infiniteCanvas => $_getBF(14);
+  @$pb.TagNumber(15)
+  set infiniteCanvas($core.bool value) => $_setBool(14, value);
+  @$pb.TagNumber(15)
+  $core.bool hasInfiniteCanvas() => $_has(14);
+  @$pb.TagNumber(15)
+  void clearInfiniteCanvas() => $_clearField(15);
+
+  @$pb.TagNumber(16)
+  $core.bool get minimap => $_getBF(15);
+  @$pb.TagNumber(16)
+  set minimap($core.bool value) => $_setBool(15, value);
+  @$pb.TagNumber(16)
+  $core.bool hasMinimap() => $_has(15);
+  @$pb.TagNumber(16)
+  void clearMinimap() => $_clearField(16);
+
+  @$pb.TagNumber(17)
+  $core.double get gridSize => $_getN(16);
+  @$pb.TagNumber(17)
+  set gridSize($core.double value) => $_setDouble(16, value);
+  @$pb.TagNumber(17)
+  $core.bool hasGridSize() => $_has(16);
+  @$pb.TagNumber(17)
+  void clearGridSize() => $_clearField(17);
+
+  @$pb.TagNumber(18)
+  $core.int get gridDivider => $_getIZ(17);
+  @$pb.TagNumber(18)
+  set gridDivider($core.int value) => $_setSignedInt32(17, value);
+  @$pb.TagNumber(18)
+  $core.bool hasGridDivider() => $_has(17);
+  @$pb.TagNumber(18)
+  void clearGridDivider() => $_clearField(18);
+
+  @$pb.TagNumber(19)
+  $core.int get flipEffect => $_getIZ(18);
+  @$pb.TagNumber(19)
+  set flipEffect($core.int value) => $_setSignedInt32(18, value);
+  @$pb.TagNumber(19)
+  $core.bool hasFlipEffect() => $_has(18);
+  @$pb.TagNumber(19)
+  void clearFlipEffect() => $_clearField(19);
+
+  @$pb.TagNumber(20)
+  $core.int get gifFps => $_getIZ(19);
+  @$pb.TagNumber(20)
+  set gifFps($core.int value) => $_setSignedInt32(19, value);
+  @$pb.TagNumber(20)
+  $core.bool hasGifFps() => $_has(19);
+  @$pb.TagNumber(20)
+  void clearGifFps() => $_clearField(20);
+
+  @$pb.TagNumber(21)
+  $core.double get gifResolution => $_getN(20);
+  @$pb.TagNumber(21)
+  set gifResolution($core.double value) => $_setDouble(20, value);
+  @$pb.TagNumber(21)
+  $core.bool hasGifResolution() => $_has(20);
+  @$pb.TagNumber(21)
+  void clearGifResolution() => $_clearField(21);
+
+  @$pb.TagNumber(22)
+  $core.double get gifSpeed => $_getN(21);
+  @$pb.TagNumber(22)
+  set gifSpeed($core.double value) => $_setDouble(21, value);
+  @$pb.TagNumber(22)
+  $core.bool hasGifSpeed() => $_has(21);
+  @$pb.TagNumber(22)
+  void clearGifSpeed() => $_clearField(22);
+
+  @$pb.TagNumber(23)
+  $core.int get gifEndMode => $_getIZ(22);
+  @$pb.TagNumber(23)
+  set gifEndMode($core.int value) => $_setSignedInt32(22, value);
+  @$pb.TagNumber(23)
+  $core.bool hasGifEndMode() => $_has(22);
+  @$pb.TagNumber(23)
+  void clearGifEndMode() => $_clearField(23);
+
+  @$pb.TagNumber(24)
+  $core.String get chatApiBase => $_getSZ(23);
+  @$pb.TagNumber(24)
+  set chatApiBase($core.String value) => $_setString(23, value);
+  @$pb.TagNumber(24)
+  $core.bool hasChatApiBase() => $_has(23);
+  @$pb.TagNumber(24)
+  void clearChatApiBase() => $_clearField(24);
+
+  @$pb.TagNumber(25)
+  $core.String get chatUser => $_getSZ(24);
+  @$pb.TagNumber(25)
+  set chatUser($core.String value) => $_setString(24, value);
+  @$pb.TagNumber(25)
+  $core.bool hasChatUser() => $_has(24);
+  @$pb.TagNumber(25)
+  void clearChatUser() => $_clearField(25);
+
+  @$pb.TagNumber(26)
+  $core.bool get chatHasPassword => $_getBF(25);
+  @$pb.TagNumber(26)
+  set chatHasPassword($core.bool value) => $_setBool(25, value);
+  @$pb.TagNumber(26)
+  $core.bool hasChatHasPassword() => $_has(25);
+  @$pb.TagNumber(26)
+  void clearChatHasPassword() => $_clearField(26);
+
+  @$pb.TagNumber(27)
+  $core.bool get chatIntegration => $_getBF(26);
+  @$pb.TagNumber(27)
+  set chatIntegration($core.bool value) => $_setBool(26, value);
+  @$pb.TagNumber(27)
+  $core.bool hasChatIntegration() => $_has(26);
+  @$pb.TagNumber(27)
+  void clearChatIntegration() => $_clearField(27);
+
+  @$pb.TagNumber(28)
+  $core.bool get showFreeCanvas => $_getBF(27);
+  @$pb.TagNumber(28)
+  set showFreeCanvas($core.bool value) => $_setBool(27, value);
+  @$pb.TagNumber(28)
+  $core.bool hasShowFreeCanvas() => $_has(27);
+  @$pb.TagNumber(28)
+  void clearShowFreeCanvas() => $_clearField(28);
+
+  @$pb.TagNumber(29)
+  $core.bool get showBubbleTab => $_getBF(28);
+  @$pb.TagNumber(29)
+  set showBubbleTab($core.bool value) => $_setBool(28, value);
+  @$pb.TagNumber(29)
+  $core.bool hasShowBubbleTab() => $_has(28);
+  @$pb.TagNumber(29)
+  void clearShowBubbleTab() => $_clearField(29);
+
+  @$pb.TagNumber(30)
+  $core.int get bubbleReplaySpeed => $_getIZ(29);
+  @$pb.TagNumber(30)
+  set bubbleReplaySpeed($core.int value) => $_setSignedInt32(29, value);
+  @$pb.TagNumber(30)
+  $core.bool hasBubbleReplaySpeed() => $_has(29);
+  @$pb.TagNumber(30)
+  void clearBubbleReplaySpeed() => $_clearField(30);
+
+  @$pb.TagNumber(31)
+  $core.bool get bubbleReplayHoldLast => $_getBF(30);
+  @$pb.TagNumber(31)
+  set bubbleReplayHoldLast($core.bool value) => $_setBool(30, value);
+  @$pb.TagNumber(31)
+  $core.bool hasBubbleReplayHoldLast() => $_has(30);
+  @$pb.TagNumber(31)
+  void clearBubbleReplayHoldLast() => $_clearField(31);
+
+  @$pb.TagNumber(32)
+  $core.bool get bubbleReplayAuto => $_getBF(31);
+  @$pb.TagNumber(32)
+  set bubbleReplayAuto($core.bool value) => $_setBool(31, value);
+  @$pb.TagNumber(32)
+  $core.bool hasBubbleReplayAuto() => $_has(31);
+  @$pb.TagNumber(32)
+  void clearBubbleReplayAuto() => $_clearField(32);
+
+  @$pb.TagNumber(33)
+  $core.bool get bubbleAutoNewPage => $_getBF(32);
+  @$pb.TagNumber(33)
+  set bubbleAutoNewPage($core.bool value) => $_setBool(32, value);
+  @$pb.TagNumber(33)
+  $core.bool hasBubbleAutoNewPage() => $_has(32);
+  @$pb.TagNumber(33)
+  void clearBubbleAutoNewPage() => $_clearField(33);
+
+  @$pb.TagNumber(34)
+  $core.String get nasUrl => $_getSZ(33);
+  @$pb.TagNumber(34)
+  set nasUrl($core.String value) => $_setString(33, value);
+  @$pb.TagNumber(34)
+  $core.bool hasNasUrl() => $_has(33);
+  @$pb.TagNumber(34)
+  void clearNasUrl() => $_clearField(34);
+
+  @$pb.TagNumber(35)
+  $core.bool get shareCanvas => $_getBF(34);
+  @$pb.TagNumber(35)
+  set shareCanvas($core.bool value) => $_setBool(34, value);
+  @$pb.TagNumber(35)
+  $core.bool hasShareCanvas() => $_has(34);
+  @$pb.TagNumber(35)
+  void clearShareCanvas() => $_clearField(35);
+
+  @$pb.TagNumber(36)
+  $core.String get language => $_getSZ(35);
+  @$pb.TagNumber(36)
+  set language($core.String value) => $_setString(35, value);
+  @$pb.TagNumber(36)
+  $core.bool hasLanguage() => $_has(35);
+  @$pb.TagNumber(36)
+  void clearLanguage() => $_clearField(36);
+
+  @$pb.TagNumber(37)
+  $core.String get shortcuts => $_getSZ(36);
+  @$pb.TagNumber(37)
+  set shortcuts($core.String value) => $_setString(36, value);
+  @$pb.TagNumber(37)
+  $core.bool hasShortcuts() => $_has(36);
+  @$pb.TagNumber(37)
+  void clearShortcuts() => $_clearField(37);
+}
+
 class SettingsSnapshot extends $pb.GeneratedMessage {
   factory SettingsSnapshot({
-    $core.Iterable<$core.MapEntry<$core.String, SettingValue>>? values,
+    AppSettings? settings,
     $core.Iterable<$core.MapEntry<$core.String, $core.String>>? metadata,
   }) {
     final result = SettingsSnapshot._();
-    if (values != null) result.values.addEntries(values);
+    if (settings != null) result.settings = settings;
     if (metadata != null) result.metadata.addEntries(metadata);
     return result;
   }
@@ -494,13 +1006,8 @@ class SettingsSnapshot extends $pb.GeneratedMessage {
       _omitMessageNames ? '' : 'SettingsSnapshot',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
       createEmptyInstance: SettingsSnapshot.$_createMessage)
-    ..m<$core.String, SettingValue>(1, _omitFieldNames ? '' : 'values',
-        entryClassName: 'SettingsSnapshot.ValuesEntry',
-        keyFieldType: $pb.PbFieldType.OS,
-        valueFieldType: $pb.PbFieldType.OM,
-        valueCreator: SettingValue.$_createMessage,
-        valueDefaultOrMaker: SettingValue.getDefault,
-        packageName: const $pb.PackageName('glaspen.ipc.v1'))
+    ..aOM<AppSettings>(1, _omitFieldNames ? '' : 'settings',
+        subBuilder: AppSettings.$_createMessage)
     ..m<$core.String, $core.String>(2, _omitFieldNames ? '' : 'metadata',
         entryClassName: 'SettingsSnapshot.MetadataEntry',
         keyFieldType: $pb.PbFieldType.OS,
@@ -531,7 +1038,15 @@ class SettingsSnapshot extends $pb.GeneratedMessage {
   static SettingsSnapshot? _defaultInstance;
 
   @$pb.TagNumber(1)
-  $pb.PbMap<$core.String, SettingValue> get values => $_getMap(0);
+  AppSettings get settings => $_getN(0);
+  @$pb.TagNumber(1)
+  set settings(AppSettings value) => $_setField(1, value);
+  @$pb.TagNumber(1)
+  $core.bool hasSettings() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearSettings() => $_clearField(1);
+  @$pb.TagNumber(1)
+  AppSettings ensureSettings() => $_ensure(0);
 
   @$pb.TagNumber(2)
   $pb.PbMap<$core.String, $core.String> get metadata => $_getMap(1);
@@ -875,6 +1390,169 @@ class Panel extends $pb.GeneratedMessage {
   $core.bool hasOk() => $_has(2);
   @$pb.TagNumber(3)
   void clearOk() => $_clearField(3);
+}
+
+/// Swift 与 Rust 之间的字符串表(快捷键表/菜单标题)。
+class StringMap extends $pb.GeneratedMessage {
+  factory StringMap({
+    $core.Iterable<$core.MapEntry<$core.String, $core.String>>? values,
+  }) {
+    final result = StringMap._();
+    if (values != null) result.values.addEntries(values);
+    return result;
+  }
+
+  StringMap._();
+
+  factory StringMap.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      StringMap()..mergeFromBuffer(data, registry);
+  factory StringMap.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      StringMap()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'StringMap',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: StringMap.$_createMessage)
+    ..m<$core.String, $core.String>(1, _omitFieldNames ? '' : 'values',
+        entryClassName: 'StringMap.ValuesEntry',
+        keyFieldType: $pb.PbFieldType.OS,
+        valueFieldType: $pb.PbFieldType.OS,
+        packageName: const $pb.PackageName('glaspen.ipc.v1'))
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StringMap clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StringMap copyWith(void Function(StringMap) updates) =>
+      super.copyWith((message) => updates(message as StringMap)) as StringMap;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use StringMap() / StringMap.new instead')
+  static StringMap create() => StringMap._();
+  static $pb.GeneratedMessage $_createMessage() => StringMap._();
+  @$core.override
+  StringMap createEmptyInstance() => StringMap._();
+  @$core.pragma('dart2js:noInline')
+  static StringMap getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<StringMap>(StringMap.$_createMessage);
+  static StringMap? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $pb.PbMap<$core.String, $core.String> get values => $_getMap(0);
+}
+
+class StringList extends $pb.GeneratedMessage {
+  factory StringList({
+    $core.Iterable<$core.String>? values,
+  }) {
+    final result = StringList._();
+    if (values != null) result.values.addAll(values);
+    return result;
+  }
+
+  StringList._();
+
+  factory StringList.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      StringList()..mergeFromBuffer(data, registry);
+  factory StringList.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      StringList()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'StringList',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: StringList.$_createMessage)
+    ..pPS(1, _omitFieldNames ? '' : 'values')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StringList clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  StringList copyWith(void Function(StringList) updates) =>
+      super.copyWith((message) => updates(message as StringList)) as StringList;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use StringList() / StringList.new instead')
+  static StringList create() => StringList._();
+  static $pb.GeneratedMessage $_createMessage() => StringList._();
+  @$core.override
+  StringList createEmptyInstance() => StringList._();
+  @$core.pragma('dart2js:noInline')
+  static StringList getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<StringList>(StringList.$_createMessage);
+  static StringList? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $pb.PbList<$core.String> get values => $_getList(0);
+}
+
+class SettingsChanged extends $pb.GeneratedMessage {
+  factory SettingsChanged({
+    SettingsSnapshot? snapshot,
+  }) {
+    final result = SettingsChanged._();
+    if (snapshot != null) result.snapshot = snapshot;
+    return result;
+  }
+
+  SettingsChanged._();
+
+  factory SettingsChanged.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      SettingsChanged()..mergeFromBuffer(data, registry);
+  factory SettingsChanged.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      SettingsChanged()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'SettingsChanged',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: SettingsChanged.$_createMessage)
+    ..aOM<SettingsSnapshot>(1, _omitFieldNames ? '' : 'snapshot',
+        subBuilder: SettingsSnapshot.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  SettingsChanged clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  SettingsChanged copyWith(void Function(SettingsChanged) updates) =>
+      super.copyWith((message) => updates(message as SettingsChanged))
+          as SettingsChanged;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use SettingsChanged() / SettingsChanged.new instead')
+  static SettingsChanged create() => SettingsChanged._();
+  static $pb.GeneratedMessage $_createMessage() => SettingsChanged._();
+  @$core.override
+  SettingsChanged createEmptyInstance() => SettingsChanged._();
+  @$core.pragma('dart2js:noInline')
+  static SettingsChanged getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<SettingsChanged>(
+          SettingsChanged.$_createMessage);
+  static SettingsChanged? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  SettingsSnapshot get snapshot => $_getN(0);
+  @$pb.TagNumber(1)
+  set snapshot(SettingsSnapshot value) => $_setField(1, value);
+  @$pb.TagNumber(1)
+  $core.bool hasSnapshot() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearSnapshot() => $_clearField(1);
+  @$pb.TagNumber(1)
+  SettingsSnapshot ensureSnapshot() => $_ensure(0);
 }
 
 const $core.bool _omitFieldNames =

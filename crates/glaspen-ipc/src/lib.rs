@@ -262,6 +262,168 @@ pub fn decode_string_map(
     Ok(msg.values.into_iter().collect())
 }
 
+fn settings_bool(v: &serde_json::Value, key: &str) -> bool {
+    v.get(key)
+        .map(|x| {
+            x.as_bool()
+                .or_else(|| x.as_i64().map(|n| n != 0))
+                .unwrap_or(false)
+        })
+        .unwrap_or(false)
+}
+fn settings_i32(v: &serde_json::Value, key: &str) -> i32 {
+    v.get(key).and_then(|x| x.as_i64()).unwrap_or(0) as i32
+}
+fn settings_f64(v: &serde_json::Value, key: &str) -> f64 {
+    v.get(key).and_then(|x| x.as_f64()).unwrap_or(0.0)
+}
+fn settings_string(v: &serde_json::Value, key: &str) -> String {
+    v.get(key)
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+pub fn app_settings_from_json(v: &serde_json::Value) -> crate::proto::AppSettings {
+    crate::proto::AppSettings {
+        color: settings_i32(v, "color"),
+        width: settings_i32(v, "width"),
+        launch_at_login: settings_bool(v, "launchAtLogin"),
+        frosted_glass: settings_bool(v, "frostedGlass"),
+        grid: settings_bool(v, "grid"),
+        grid_follow_strokes: settings_bool(v, "gridFollowStrokes"),
+        glass_follow_strokes: settings_bool(v, "glassFollowStrokes"),
+        soft_shadow: settings_bool(v, "softShadow"),
+        invert_ink: settings_bool(v, "invertInk"),
+        notebook_style: settings_bool(v, "notebookStyle"),
+        panel_transparent: settings_bool(v, "panelTransparent"),
+        invert_fps: settings_i32(v, "invertFps"),
+        pressure_monitor: settings_bool(v, "pressureMonitor"),
+        outline: settings_bool(v, "outline"),
+        infinite_canvas: settings_bool(v, "infiniteCanvas"),
+        minimap: settings_bool(v, "minimap"),
+        grid_size: settings_f64(v, "gridSize"),
+        grid_divider: settings_i32(v, "gridDivider"),
+        flip_effect: settings_i32(v, "flipEffect"),
+        gif_fps: settings_i32(v, "gifFps"),
+        gif_resolution: settings_f64(v, "gifResolution"),
+        gif_speed: settings_f64(v, "gifSpeed"),
+        gif_end_mode: settings_i32(v, "gifEndMode"),
+        chat_api_base: settings_string(v, "chatApiBase"),
+        chat_user: settings_string(v, "chatUser"),
+        chat_has_password: settings_bool(v, "chatHasPassword"),
+        chat_integration: settings_bool(v, "chatIntegration"),
+        show_free_canvas: settings_bool(v, "showFreeCanvas"),
+        show_bubble_tab: settings_bool(v, "showBubbleTab"),
+        bubble_replay_speed: settings_i32(v, "bubbleReplaySpeed"),
+        bubble_replay_hold_last: settings_bool(v, "bubbleReplayHoldLast"),
+        bubble_replay_auto: settings_bool(v, "bubbleReplayAuto"),
+        bubble_auto_new_page: settings_bool(v, "bubbleAutoNewPage"),
+        nas_url: settings_string(v, "nasUrl"),
+        share_canvas: settings_bool(v, "shareCanvas"),
+        language: settings_string(v, "language"),
+        shortcuts: settings_string(v, "shortcuts"),
+    }
+}
+
+pub fn app_settings_to_json(s: &crate::proto::AppSettings) -> serde_json::Value {
+    serde_json::json!({
+        "color": s.color,
+        "width": s.width,
+        "launchAtLogin": s.launch_at_login,
+        "frostedGlass": s.frosted_glass,
+        "grid": s.grid,
+        "gridFollowStrokes": s.grid_follow_strokes,
+        "glassFollowStrokes": s.glass_follow_strokes,
+        "softShadow": s.soft_shadow,
+        "invertInk": s.invert_ink,
+        "notebookStyle": s.notebook_style,
+        "panelTransparent": s.panel_transparent,
+        "invertFps": s.invert_fps,
+        "pressureMonitor": s.pressure_monitor,
+        "outline": s.outline,
+        "infiniteCanvas": s.infinite_canvas,
+        "minimap": s.minimap,
+        "gridSize": s.grid_size,
+        "gridDivider": s.grid_divider,
+        "flipEffect": s.flip_effect,
+        "gifFps": s.gif_fps,
+        "gifResolution": s.gif_resolution,
+        "gifSpeed": s.gif_speed,
+        "gifEndMode": s.gif_end_mode,
+        "chatApiBase": s.chat_api_base,
+        "chatUser": s.chat_user,
+        "chatHasPassword": s.chat_has_password,
+        "chatIntegration": s.chat_integration,
+        "showFreeCanvas": s.show_free_canvas,
+        "showBubbleTab": s.show_bubble_tab,
+        "bubbleReplaySpeed": s.bubble_replay_speed,
+        "bubbleReplayHoldLast": s.bubble_replay_hold_last,
+        "bubbleReplayAuto": s.bubble_replay_auto,
+        "bubbleAutoNewPage": s.bubble_auto_new_page,
+        "nasUrl": s.nas_url,
+        "shareCanvas": s.share_canvas,
+        "language": s.language,
+        "shortcuts": s.shortcuts,
+    })
+}
+
+pub fn encode_settings_frame(request_id: u64, json: &str) -> Vec<u8> {
+    let value: serde_json::Value = serde_json::from_str(json).unwrap_or(serde_json::Value::Null);
+    let settings = app_settings_from_json(&value);
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::SettingsSnapshotResponse(
+            proto::SettingsSnapshotResponse {
+                snapshot: Some(proto::SettingsSnapshot {
+                    settings: Some(settings),
+                    metadata: Default::default(),
+                }),
+            },
+        )),
+    };
+    encode_frame(&frame)
+}
+
+pub fn encode_settings_changed_frame(json: &str) -> Vec<u8> {
+    let value: serde_json::Value = serde_json::from_str(json).unwrap_or(serde_json::Value::Null);
+    let settings = app_settings_from_json(&value);
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: 0,
+        body: Some(proto::frame::Body::SettingsChanged(
+            proto::SettingsChanged {
+                snapshot: Some(proto::SettingsSnapshot {
+                    settings: Some(settings),
+                    metadata: Default::default(),
+                }),
+            },
+        )),
+    };
+    encode_frame(&frame)
+}
+
+pub fn decode_settings_frame(bytes: &[u8]) -> Result<serde_json::Value, FrameError> {
+    let frame = decode_frame(bytes)?;
+    let snapshot = match frame.body {
+        Some(proto::frame::Body::SettingsSnapshotResponse(resp)) => resp.snapshot,
+        Some(proto::frame::Body::SettingsSnapshot(snapshot)) => Some(snapshot),
+        _ => None,
+    };
+    let Some(snapshot) = snapshot else {
+        return Err(FrameError::Decode(
+            "期望 SettingsSnapshotResponse".to_string(),
+        ));
+    };
+    let Some(settings) = snapshot.settings else {
+        return Err(FrameError::Decode(
+            "SettingsSnapshot 缺少 settings".to_string(),
+        ));
+    };
+    Ok(app_settings_to_json(&settings))
+}
+
 /// FRB 等进程内通道用: 单帧 Panel protobuf(带长度前缀), 不再传 JSON 文本。
 pub fn encode_panel(kind: &str, data: &serde_json::Value) -> Vec<u8> {
     encode_frame(&panel_frame(0, kind, data))
@@ -296,37 +458,14 @@ pub fn panel_frame(request_id: u64, kind: &str, data: &serde_json::Value) -> Fra
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proto::{Ack, SettingValue, setting_value};
-    use prost_types::{Struct, Value};
+    use crate::proto::Ack;
 
     fn sample() -> Frame {
-        let mut values = std::collections::HashMap::new();
-        values.insert(
-            "language".to_string(),
-            SettingValue {
-                value: Some(setting_value::Value::StringValue("zh".to_string())),
-            },
-        );
-        values.insert(
-            "ui".to_string(),
-            SettingValue {
-                value: Some(setting_value::Value::StructValue(Struct {
-                    fields: [(
-                        "theme".to_string(),
-                        Value {
-                            kind: Some(prost_types::value::Kind::StringValue("light".to_string())),
-                        },
-                    )]
-                    .into_iter()
-                    .collect(),
-                })),
-            },
-        );
         Frame {
             protocol_version: PROTOCOL_VERSION,
             request_id: 42,
             body: Some(proto::frame::Body::SettingsSnapshot(SettingsSnapshot {
-                values,
+                settings: Some(crate::proto::AppSettings::default()),
                 metadata: Default::default(),
             })),
         }
@@ -383,6 +522,15 @@ mod tests {
         assert_eq!(panel.kind, "getPageThumbnails");
         let back = prost_value_to_json(panel.data.as_ref().unwrap());
         assert_eq!(back, value);
+    }
+
+    #[test]
+    fn typed_settings_frame_roundtrip() {
+        let bytes = encode_settings_frame(7, r#"{"grid":true,"gridSize":80,"language":"zh"}"#);
+        let value = decode_settings_frame(&bytes).unwrap();
+        assert_eq!(value["grid"], true);
+        assert_eq!(value["gridSize"], 80.0);
+        assert_eq!(value["language"], "zh");
     }
 
     #[test]

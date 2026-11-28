@@ -207,15 +207,12 @@ fn main() {
     if args.get(1).map(String::as_str) == Some("--swift-macos-api-probe") {
         #[cfg(target_os = "macos")]
         let bytes = glaspen_macos::macos_shell::settings_snapshot_pb();
-        let Ok((kind, data)) = glaspen_ipc::decode_panel(&bytes) else {
+        let Ok(data) = glaspen_ipc::decode_settings_frame(&bytes) else {
             println!("MACOS_API_PROBE pb=invalid");
             std::process::exit(1);
         };
         let grid = data.get("gridSize").is_some();
-        println!(
-            "MACOS_API_PROBE len={} kind={kind} grid={grid}",
-            bytes.len()
-        );
+        println!("MACOS_API_PROBE len={} kind=settings grid={grid}", bytes.len());
         std::process::exit(if grid { 0 } else { 1 });
         #[cfg(not(target_os = "macos"))]
         std::process::exit(2);

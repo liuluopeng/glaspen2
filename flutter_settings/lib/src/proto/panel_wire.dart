@@ -9,6 +9,48 @@ import 'glaspen/ipc/v1/ipc.pb.dart' as pb;
 
 const List<int> panelMagic = [0x47, 0x50, 0x42, 0x31]; // "GPB1"
 
+Map<String, dynamic> appSettingsToMap(pb.AppSettings s) {
+  return <String, dynamic>{
+    'color': s.color,
+    'width': s.width,
+    'launchAtLogin': s.launchAtLogin,
+    'frostedGlass': s.frostedGlass,
+    'grid': s.grid,
+    'gridFollowStrokes': s.gridFollowStrokes,
+    'glassFollowStrokes': s.glassFollowStrokes,
+    'softShadow': s.softShadow,
+    'invertInk': s.invertInk,
+    'notebookStyle': s.notebookStyle,
+    'panelTransparent': s.panelTransparent,
+    'invertFps': s.invertFps,
+    'pressureMonitor': s.pressureMonitor,
+    'outline': s.outline,
+    'infiniteCanvas': s.infiniteCanvas,
+    'minimap': s.minimap,
+    'gridSize': s.gridSize,
+    'gridDivider': s.gridDivider,
+    'flipEffect': s.flipEffect,
+    'gifFps': s.gifFps,
+    'gifResolution': s.gifResolution,
+    'gifSpeed': s.gifSpeed,
+    'gifEndMode': s.gifEndMode,
+    'chatApiBase': s.chatApiBase,
+    'chatUser': s.chatUser,
+    'chatHasPassword': s.chatHasPassword,
+    'chatIntegration': s.chatIntegration,
+    'showFreeCanvas': s.showFreeCanvas,
+    'showBubbleTab': s.showBubbleTab,
+    'bubbleReplaySpeed': s.bubbleReplaySpeed,
+    'bubbleReplayHoldLast': s.bubbleReplayHoldLast,
+    'bubbleReplayAuto': s.bubbleReplayAuto,
+    'bubbleAutoNewPage': s.bubbleAutoNewPage,
+    'nasUrl': s.nasUrl,
+    'shareCanvas': s.shareCanvas,
+    'language': s.language,
+    'shortcuts': s.shortcuts,
+  };
+}
+
 class PanelMessage {
   const PanelMessage(this.kind, this.requestId, this.data);
   final String kind;
@@ -183,6 +225,30 @@ class PanelStreamDecoder {
         throw StateError(
           '不兼容的面板协议版本: ${frame.protocolVersion}',
         );
+      }
+      if (frame.hasSettingsChanged()) {
+        final snapshot = frame.settingsChanged.snapshot;
+        final settings = snapshot.hasSettings() ? snapshot.settings : null;
+        out.add(PanelMessage(
+          'onSettingsChanged',
+          0,
+          settings == null
+              ? const <String, dynamic>{}
+              : appSettingsToMap(settings),
+        ));
+        continue;
+      }
+      if (frame.hasSettingsSnapshotResponse()) {
+        final snapshot = frame.settingsSnapshotResponse.snapshot;
+        final settings = snapshot.hasSettings() ? snapshot.settings : null;
+        out.add(PanelMessage(
+          'getSettings_response',
+          frame.requestId.toInt(),
+          settings == null
+              ? const <String, dynamic>{}
+              : appSettingsToMap(settings),
+        ));
+        continue;
       }
       if (!frame.hasPanel()) {
         continue;

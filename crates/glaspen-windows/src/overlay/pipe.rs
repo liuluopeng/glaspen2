@@ -824,10 +824,9 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
             &overrides,
         ) {
             Ok(data) => {
-                let resp =
-                    format!("{{\"type\":\"getSettings_response\",\"data\":{data}}}\n");
-                let _ = writer.write_all(resp.as_bytes());
-                let _ = writer.flush();
+                let req_id = json_get_i64(line, "reqId").unwrap_or(0) as u64;
+                let frame = glaspen_ipc::encode_settings_frame(req_id, &data);
+                let _ = writer.write_frame(&frame);
             }
             Err(e) => {
                 // 旧实现永远能拼出 JSON; core 报错只可能是 adapter 的 overrides
@@ -1103,9 +1102,8 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
             None,
             &overrides,
         ) {
-            let resp = format!("{{\"type\":\"onSettingsChanged\",\"data\":{data}}}\n");
-            let _ = writer.write_all(resp.as_bytes());
-            let _ = writer.flush();
+            let frame = glaspen_ipc::encode_settings_changed_frame(&data);
+            let _ = writer.write_frame(&frame);
         }
     } else if msg_type == "appVersion" {
         // 「关于」区显示的当前版本(与发布物一致,取自 Cargo.toml)

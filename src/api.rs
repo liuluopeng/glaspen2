@@ -43,7 +43,7 @@ pub(crate) mod shim {
 
     pub fn settings_json() -> Option<String> {
         let bytes = glaspen_macos::macos_shell::settings_snapshot_pb();
-        let (_kind, data) = glaspen_ipc::decode_panel(&bytes).ok()?;
+        let data = glaspen_ipc::decode_settings_frame(&bytes).ok()?;
         serde_json::to_string(&data).ok()
     }
 
