@@ -1699,12 +1699,9 @@ pub extern "C" fn glaspen2_rust_overlay_draw(
         let strokes_visible = glaspen2_router_strokes_visible() != 0;
         let follow = glaspen2_router_grid_follow() != 0;
         let tun_active = glaspen2_rust_tunnel_get_active() != 0;
-        if (show_grid || divider > 0)
-            && !tun_active
-            && (strokes_visible || !follow)
-            && bw > 0.0
-            && bh > 0.0
-        {
+        // 网格开关是总开关: 关闭时连分栏参考线也一起隐藏。否则 divider>0
+        // 会让用户觉得「网格关了但线还在」, 看起来开关无效。
+        if show_grid && !tun_active && (strokes_visible || !follow) && bw > 0.0 && bh > 0.0 {
             let (mut pan_x, mut pan_y, mut zoom) = (0.0f64, 0.0f64, 1.0f64);
             if glaspen2_router_infinite() != 0 {
                 pan_x = glaspen2_router_pan_x();
