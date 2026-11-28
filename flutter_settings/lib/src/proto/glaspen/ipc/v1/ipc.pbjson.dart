@@ -393,13 +393,13 @@ const Frame$json = {
       '10': 'uiConfigResponse'
     },
     {
-      '1': 'panel',
-      '3': 20,
+      '1': 'settings_patch',
+      '3': 90,
       '4': 1,
       '5': 11,
-      '6': '.glaspen.ipc.v1.Panel',
+      '6': '.glaspen.ipc.v1.SettingsPatch',
       '9': 0,
-      '10': 'panel'
+      '10': 'settingsPatch'
     },
     {
       '1': 'error',
@@ -476,9 +476,9 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'xEb3dubG9hZFJlcXVlc3RIAFIVY2FuY2VsRG93bmxvYWRSZXF1ZXN0Ek0KEXVpX2NvbmZpZ19y'
     'ZXF1ZXN0GFAgASgLMh8uZ2xhc3Blbi5pcGMudjEuVWlDb25maWdSZXF1ZXN0SABSD3VpQ29uZm'
     'lnUmVxdWVzdBJQChJ1aV9jb25maWdfcmVzcG9uc2UYUSABKAsyIC5nbGFzcGVuLmlwYy52MS5V'
-    'aUNvbmZpZ1Jlc3BvbnNlSABSEHVpQ29uZmlnUmVzcG9uc2USLQoFcGFuZWwYFCABKAsyFS5nbG'
-    'FzcGVuLmlwYy52MS5QYW5lbEgAUgVwYW5lbBItCgVlcnJvchhjIAEoCzIVLmdsYXNwZW4uaXBj'
-    'LnYxLkVycm9ySABSBWVycm9yQgYKBGJvZHk=');
+    'aUNvbmZpZ1Jlc3BvbnNlSABSEHVpQ29uZmlnUmVzcG9uc2USRgoOc2V0dGluZ3NfcGF0Y2gYWi'
+    'ABKAsyHS5nbGFzcGVuLmlwYy52MS5TZXR0aW5nc1BhdGNoSABSDXNldHRpbmdzUGF0Y2gSLQoF'
+    'ZXJyb3IYYyABKAsyFS5nbGFzcGVuLmlwYy52MS5FcnJvckgAUgVlcnJvckIGCgRib2R5');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -791,28 +791,6 @@ const Error$json = {
 /// Descriptor for `Error`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List errorDescriptor = $convert.base64Decode(
     'CgVFcnJvchISCgRjb2RlGAEgASgJUgRjb2RlEhgKB21lc3NhZ2UYAiABKAlSB21lc3NhZ2U=');
-
-@$core.Deprecated('Use panelDescriptor instead')
-const Panel$json = {
-  '1': 'Panel',
-  '2': [
-    {'1': 'kind', '3': 1, '4': 1, '5': 9, '10': 'kind'},
-    {
-      '1': 'data',
-      '3': 2,
-      '4': 1,
-      '5': 11,
-      '6': '.google.protobuf.Value',
-      '10': 'data'
-    },
-    {'1': 'ok', '3': 3, '4': 1, '5': 8, '10': 'ok'},
-  ],
-};
-
-/// Descriptor for `Panel`. Decode as a `google.protobuf.DescriptorProto`.
-final $typed_data.Uint8List panelDescriptor = $convert.base64Decode(
-    'CgVQYW5lbBISCgRraW5kGAEgASgJUgRraW5kEioKBGRhdGEYAiABKAsyFi5nb29nbGUucHJvdG'
-    '9idWYuVmFsdWVSBGRhdGESDgoCb2sYAyABKAhSAm9r');
 
 @$core.Deprecated('Use stringMapDescriptor instead')
 const StringMap$json = {
@@ -1927,3 +1905,43 @@ final $typed_data.Uint8List uiCustomBlockDescriptor = $convert.base64Decode(
     'Cg1VaUN1c3RvbUJsb2NrEg4KAmlkGAEgASgJUgJpZBIYCgdzZWN0aW9uGAIgASgJUgdzZWN0aW'
     '9uEhQKBW9yZGVyGAMgASgFUgVvcmRlchJUChR2aXNpYmxlX3doZW5fc2V0dGluZxgEIAEoCzIi'
     'LmdsYXNwZW4uaXBjLnYxLlVpU2V0dGluZ0NvbmRpdGlvblISdmlzaWJsZVdoZW5TZXR0aW5n');
+
+@$core.Deprecated('Use settingsPatchDescriptor instead')
+const SettingsPatch$json = {
+  '1': 'SettingsPatch',
+  '2': [
+    {
+      '1': 'values',
+      '3': 1,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.SettingsPatch.ValuesEntry',
+      '10': 'values'
+    },
+  ],
+  '3': [SettingsPatch_ValuesEntry$json],
+};
+
+@$core.Deprecated('Use settingsPatchDescriptor instead')
+const SettingsPatch_ValuesEntry$json = {
+  '1': 'ValuesEntry',
+  '2': [
+    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
+    {
+      '1': 'value',
+      '3': 2,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.SettingValue',
+      '10': 'value'
+    },
+  ],
+  '7': {'7': true},
+};
+
+/// Descriptor for `SettingsPatch`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List settingsPatchDescriptor = $convert.base64Decode(
+    'Cg1TZXR0aW5nc1BhdGNoEkEKBnZhbHVlcxgBIAMoCzIpLmdsYXNwZW4uaXBjLnYxLlNldHRpbm'
+    'dzUGF0Y2guVmFsdWVzRW50cnlSBnZhbHVlcxpXCgtWYWx1ZXNFbnRyeRIQCgNrZXkYASABKAlS'
+    'A2tleRIyCgV2YWx1ZRgCIAEoCzIcLmdsYXNwZW4uaXBjLnYxLlNldHRpbmdWYWx1ZVIFdmFsdW'
+    'U6AjgB');

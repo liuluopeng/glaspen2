@@ -525,7 +525,9 @@ mod tests {
         let at = src
             .find(needle)
             .expect("Windows 管道缺 process_set_setting");
-        brace_body(src, at + needle.len() - 1).expect("process_set_setting 体不完整")
+        let tail = &src[at..];
+        let end = tail.find("\nfn ").unwrap_or(tail.len());
+        &tail[..end]
     }
 
     #[test]

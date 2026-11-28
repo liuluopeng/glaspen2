@@ -56,7 +56,7 @@ message Frame {
     CancelDownloadRequest cancel_download_request = 72;
     UiConfigRequest ui_config_request = 80;
     UiConfigResponse ui_config_response = 81;
-    Panel panel = 20;
+    SettingsPatch settings_patch = 90;
     Error error = 99;
   }
 }
@@ -149,11 +149,6 @@ message Error {
 // Windows 面板管道的过渡信封: kind = 原 JSON 的 type 字符串,
 // data = 原 data 对象(Struct 二进制, 不再是 JSON 文本)。
 // 后续按消息逐步改成 typed 子消息, 这个 message 作为兼容入口保留。
-message Panel {
-  string kind = 1;
-  google.protobuf.Value data = 2;
-  bool ok = 3;
-}
 
 // Swift 与 Rust 之间的字符串表(快捷键表/菜单标题)。
 message StringMap {
@@ -466,4 +461,8 @@ message UiCustomBlock {
   string section = 2;
   int32 order = 3;
   UiSettingCondition visible_when_setting = 4;
+}
+
+message SettingsPatch {
+  map<string, SettingValue> values = 1;
 }

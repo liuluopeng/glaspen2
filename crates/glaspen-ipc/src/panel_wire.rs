@@ -3,7 +3,7 @@
 // 线格式: 连接开头必须发 PB_MAGIC, 之后每帧 = u32 LE 长度 + Frame protobuf。
 // 不再支持 JSON 行协议。
 
-use crate::{Frame, FrameError, PROTOCOL_VERSION, encode_frame, panel_frame, take_frame};
+use crate::{Frame, FrameError, PROTOCOL_VERSION, encode_frame, take_frame};
 
 /// protobuf 客户端在连接开头发的魔数。
 pub const PB_MAGIC: &[u8; 4] = b"GPB1";
@@ -53,7 +53,6 @@ impl PanelDecoder {
 }
 
 pub enum PanelInput {
-    Json(String),
     GetSettings {
         request_id: u64,
     },
@@ -134,25 +133,6 @@ fn panel_input_from_frame(frame: Frame) -> Result<PanelInput, FrameError> {
         )));
     }
     match frame.body {
-        Some(crate::proto::frame::Body::Panel(panel)) => {
-            let data = panel
-                .data
-                .as_ref()
-                .map(crate::prost_value_to_json)
-                .unwrap_or_else(|| serde_json::json!({}));
-            let mut object = data.as_object().cloned().unwrap_or_default();
-            object.insert(
-                "type".to_string(),
-                serde_json::Value::String(panel.kind.clone()),
-            );
-            object.insert(
-                "reqId".to_string(),
-                serde_json::Value::Number(serde_json::Number::from(frame.request_id)),
-            );
-            Ok(PanelInput::Json(
-                serde_json::Value::Object(object).to_string(),
-            ))
-        }
         Some(crate::proto::frame::Body::GetSettingsRequest(_)) => Ok(PanelInput::GetSettings {
             request_id: frame.request_id,
         }),
@@ -179,44 +159,18 @@ fn panel_input_from_frame(frame: Frame) -> Result<PanelInput, FrameError> {
     }
 }
 
-/// 把业务层的 JSON 响应行编码成 Panel protobuf 帧。
-pub fn encode_response(json_line: &str) -> Vec<u8> {
-    let value: serde_json::Value = match serde_json::from_str(json_line) {
-        Ok(value) => value,
-        Err(err) => {
-            let frame = panel_frame(
-                0,
-                "error",
-                &serde_json::json!({"message": format!("服务端响应 JSON 非法: {err}")}),
-            );
-            return encode_frame(&frame);
-        }
-    };
-    let kind = value
-        .get("type")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("response");
-    let req_id = value
-        .get("reqId")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
-    let data = value
-        .get("data")
-        .cloned()
-        .unwrap_or_else(|| serde_json::json!({}));
-    encode_frame(&panel_frame(req_id, kind, &data))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn pb_bytes(request_id: u64) -> Vec<u8> {
-        let frame = panel_frame(
+        let frame = Frame {
+            protocol_version: PROTOCOL_VERSION,
             request_id,
-            "getSettings",
-            &serde_json::json!({"screenId": 3.0, "ok": true}),
-        );
+            body: Some(crate::proto::frame::Body::GetSettingsRequest(
+                crate::proto::GetSettingsRequest {},
+            )),
+        };
         let mut out = PB_MAGIC.to_vec();
         out.extend_from_slice(&encode_frame(&frame));
         out
@@ -236,11 +190,10 @@ mod tests {
         assert!(decoder.feed(&bytes[..split]).unwrap().is_empty());
         let lines = decoder.feed(&bytes[split..]).unwrap();
         assert_eq!(lines.len(), 1);
-        let PanelInput::Json(line) = &lines[0] else {
-            panic!("expected json input");
+        let PanelInput::GetSettings { request_id } = &lines[0] else {
+            panic!("expected GetSettings");
         };
-        assert!(line.contains("\"type\":\"getSettings\""));
-        assert!(line.contains("\"screenId\":3.0"));
+        assert_eq!(*request_id, 7);
     }
 
     #[test]
@@ -269,22 +222,14 @@ mod tests {
     }
 
     #[test]
-    fn protobuf_response_roundtrip() {
-        let bytes = encode_response(
-            r#"{"type":"getSettings_response","reqId":9,"data":{"language":"zh"}}"#,
-        );
-        let frame = crate::decode_frame(&bytes).unwrap();
-        let Some(crate::proto::frame::Body::Panel(panel)) = frame.body else {
-            panic!("expected panel");
-        };
-        assert_eq!(panel.kind, "getSettings_response");
-        let data = crate::prost_value_to_json(panel.data.as_ref().unwrap());
-        assert_eq!(data["language"], "zh");
-    }
-
-    #[test]
     fn bad_version_rejected() {
-        let mut frame = panel_frame(1, "x", &serde_json::json!({}));
+        let mut frame = Frame {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: 1,
+            body: Some(crate::proto::frame::Body::GetSettingsRequest(
+                crate::proto::GetSettingsRequest {},
+            )),
+        };
         frame.protocol_version = 99;
         let mut bytes = PB_MAGIC.to_vec();
         bytes.extend_from_slice(&encode_frame(&frame));

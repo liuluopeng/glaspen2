@@ -339,18 +339,6 @@ List<int> encodeFrame(pb.Frame frame) {
   return out;
 }
 
-List<int> encodeResponseForTest(int requestId, String kind, dynamic data) {
-  final frame = pb.Frame(
-    protocolVersion: 1,
-    requestId: Int64(requestId),
-    panel: pb.Panel(
-      kind: kind,
-      data: jsonToProstValue(data),
-      ok: true,
-    ),
-  );
-  return encodeFrame(frame);
-}
 
 List<int> encodePageOpRequest(
   int requestId, {
@@ -560,18 +548,6 @@ List<int> encodePageThumbnailsRequest(int requestId, List<int> ids, int maxSize)
   ));
 }
 
-List<int> encodeRequest(int requestId, String kind, Map<String, dynamic>? data) {
-  final frame = pb.Frame(
-    protocolVersion: 1,
-    requestId: Int64(requestId),
-    panel: pb.Panel(
-      kind: kind,
-      data: jsonToProstValue(data ?? const <String, dynamic>{}),
-      ok: true,
-    ),
-  );
-  return encodeFrame(frame);
-}
 
 PanelMessage decodePanelMessage(List<int> bytes) {
   final messages = PanelStreamDecoder().feed(bytes);
@@ -787,15 +763,22 @@ class PanelStreamDecoder {
         ));
         continue;
       }
-      if (!frame.hasPanel()) {
+      if (frame.hasSettingsPatch()) {
+        final values = <String, dynamic>{};
+        frame.settingsPatch.values.forEach((k, v) {
+          values[k] = _uiSettingValue(v);
+        });
+        out.add(PanelMessage('onSettingsChanged', frame.requestId.toInt(), values));
         continue;
       }
-      final panel = frame.panel;
-      out.add(PanelMessage(
-        panel.kind,
-        frame.requestId.toInt(),
-        panel.hasData() ? prostValueToJson(panel.data) : const <String, dynamic>{},
-      ));
+      if (frame.hasError()) {
+        out.add(PanelMessage(
+          'error',
+          frame.requestId.toInt(),
+          {'code': frame.error.code, 'message': frame.error.message},
+        ));
+        continue;
+      }
     }
     return out;
   }

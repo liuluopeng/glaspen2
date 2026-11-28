@@ -20,6 +20,28 @@ void main() {
     }
   });
 
+  test('typed settings patch and error decode', () {
+    final patch = pb.Frame(
+      protocolVersion: 1,
+      requestId: Int64(0),
+      settingsPatch: pb.SettingsPatch(
+        values: [MapEntry('grid', pb.SettingValue(boolValue: true))],
+      ),
+    );
+    final msgs = PanelStreamDecoder().feed(encodeFrame(patch));
+    expect(msgs.single.kind, 'onSettingsChanged');
+    expect(msgs.single.data['grid'], true);
+
+    final err = pb.Frame(
+      protocolVersion: 1,
+      requestId: Int64(9),
+      error: pb.Error(code: 'setSetting', message: 'bad'),
+    );
+    final em = PanelStreamDecoder().feed(encodeFrame(err)).single;
+    expect(em.kind, 'error');
+    expect(em.data['message'], 'bad');
+  });
+
   test('typed uiConfig decodes', () {
     final frame = pb.Frame(
       protocolVersion: 1,
@@ -149,16 +171,4 @@ void main() {
     expect(msg.data['language'], 'zh');
   });
 
-  test('panel frame response decodes data', () {
-    final bytes = encodeResponseForTest(
-      7,
-      'onSettingsChanged',
-      {'grid': true, 'scale': 2.0},
-    );
-    final decoded = PanelStreamDecoder().feed(bytes);
-    expect(decoded.length, 1);
-    expect(decoded.first.kind, 'onSettingsChanged');
-    expect(decoded.first.requestId, 7);
-    expect(decoded.first.data['grid'], true);
-  });
 }

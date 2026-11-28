@@ -32,7 +32,6 @@ enum Frame_Body {
   pageThumbnailsResponse,
   bubbleMessages,
   pageOpResponse,
-  panel,
   getSettingsRequest,
   listPagesRequest,
   pageThumbnailsRequest,
@@ -62,6 +61,7 @@ enum Frame_Body {
   cancelDownloadRequest,
   uiConfigRequest,
   uiConfigResponse,
+  settingsPatch,
   error,
   notSet
 }
@@ -89,7 +89,6 @@ class Frame extends $pb.GeneratedMessage {
     PageThumbnailsResponse? pageThumbnailsResponse,
     BubbleMessages? bubbleMessages,
     PageOpResponse? pageOpResponse,
-    Panel? panel,
     GetSettingsRequest? getSettingsRequest,
     ListPagesRequest? listPagesRequest,
     PageThumbnailsRequest? pageThumbnailsRequest,
@@ -119,6 +118,7 @@ class Frame extends $pb.GeneratedMessage {
     CancelDownloadRequest? cancelDownloadRequest,
     UiConfigRequest? uiConfigRequest,
     UiConfigResponse? uiConfigResponse,
+    SettingsPatch? settingsPatch,
     Error? error,
   }) {
     final result = Frame._();
@@ -135,7 +135,6 @@ class Frame extends $pb.GeneratedMessage {
       result.pageThumbnailsResponse = pageThumbnailsResponse;
     if (bubbleMessages != null) result.bubbleMessages = bubbleMessages;
     if (pageOpResponse != null) result.pageOpResponse = pageOpResponse;
-    if (panel != null) result.panel = panel;
     if (getSettingsRequest != null)
       result.getSettingsRequest = getSettingsRequest;
     if (listPagesRequest != null) result.listPagesRequest = listPagesRequest;
@@ -178,6 +177,7 @@ class Frame extends $pb.GeneratedMessage {
       result.cancelDownloadRequest = cancelDownloadRequest;
     if (uiConfigRequest != null) result.uiConfigRequest = uiConfigRequest;
     if (uiConfigResponse != null) result.uiConfigResponse = uiConfigResponse;
+    if (settingsPatch != null) result.settingsPatch = settingsPatch;
     if (error != null) result.error = error;
     return result;
   }
@@ -201,7 +201,6 @@ class Frame extends $pb.GeneratedMessage {
     16: Frame_Body.pageThumbnailsResponse,
     17: Frame_Body.bubbleMessages,
     18: Frame_Body.pageOpResponse,
-    20: Frame_Body.panel,
     30: Frame_Body.getSettingsRequest,
     31: Frame_Body.listPagesRequest,
     32: Frame_Body.pageThumbnailsRequest,
@@ -231,6 +230,7 @@ class Frame extends $pb.GeneratedMessage {
     72: Frame_Body.cancelDownloadRequest,
     80: Frame_Body.uiConfigRequest,
     81: Frame_Body.uiConfigResponse,
+    90: Frame_Body.settingsPatch,
     99: Frame_Body.error,
     0: Frame_Body.notSet
   };
@@ -248,7 +248,6 @@ class Frame extends $pb.GeneratedMessage {
       16,
       17,
       18,
-      20,
       30,
       31,
       32,
@@ -278,6 +277,7 @@ class Frame extends $pb.GeneratedMessage {
       72,
       80,
       81,
+      90,
       99
     ])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
@@ -305,8 +305,6 @@ class Frame extends $pb.GeneratedMessage {
         subBuilder: BubbleMessages.$_createMessage)
     ..aOM<PageOpResponse>(18, _omitFieldNames ? '' : 'pageOpResponse',
         subBuilder: PageOpResponse.$_createMessage)
-    ..aOM<Panel>(20, _omitFieldNames ? '' : 'panel',
-        subBuilder: Panel.$_createMessage)
     ..aOM<GetSettingsRequest>(30, _omitFieldNames ? '' : 'getSettingsRequest',
         subBuilder: GetSettingsRequest.$_createMessage)
     ..aOM<ListPagesRequest>(31, _omitFieldNames ? '' : 'listPagesRequest',
@@ -372,6 +370,8 @@ class Frame extends $pb.GeneratedMessage {
         subBuilder: UiConfigRequest.$_createMessage)
     ..aOM<UiConfigResponse>(81, _omitFieldNames ? '' : 'uiConfigResponse',
         subBuilder: UiConfigResponse.$_createMessage)
+    ..aOM<SettingsPatch>(90, _omitFieldNames ? '' : 'settingsPatch',
+        subBuilder: SettingsPatch.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
         subBuilder: Error.$_createMessage)
     ..hasRequiredFields = false;
@@ -405,7 +405,6 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(16)
   @$pb.TagNumber(17)
   @$pb.TagNumber(18)
-  @$pb.TagNumber(20)
   @$pb.TagNumber(30)
   @$pb.TagNumber(31)
   @$pb.TagNumber(32)
@@ -435,6 +434,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(72)
   @$pb.TagNumber(80)
   @$pb.TagNumber(81)
+  @$pb.TagNumber(90)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(10)
@@ -446,7 +446,6 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(16)
   @$pb.TagNumber(17)
   @$pb.TagNumber(18)
-  @$pb.TagNumber(20)
   @$pb.TagNumber(30)
   @$pb.TagNumber(31)
   @$pb.TagNumber(32)
@@ -476,6 +475,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(72)
   @$pb.TagNumber(80)
   @$pb.TagNumber(81)
+  @$pb.TagNumber(90)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
 
@@ -598,341 +598,341 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(18)
   PageOpResponse ensurePageOpResponse() => $_ensure(10);
 
-  @$pb.TagNumber(20)
-  Panel get panel => $_getN(11);
-  @$pb.TagNumber(20)
-  set panel(Panel value) => $_setField(20, value);
-  @$pb.TagNumber(20)
-  $core.bool hasPanel() => $_has(11);
-  @$pb.TagNumber(20)
-  void clearPanel() => $_clearField(20);
-  @$pb.TagNumber(20)
-  Panel ensurePanel() => $_ensure(11);
-
   @$pb.TagNumber(30)
-  GetSettingsRequest get getSettingsRequest => $_getN(12);
+  GetSettingsRequest get getSettingsRequest => $_getN(11);
   @$pb.TagNumber(30)
   set getSettingsRequest(GetSettingsRequest value) => $_setField(30, value);
   @$pb.TagNumber(30)
-  $core.bool hasGetSettingsRequest() => $_has(12);
+  $core.bool hasGetSettingsRequest() => $_has(11);
   @$pb.TagNumber(30)
   void clearGetSettingsRequest() => $_clearField(30);
   @$pb.TagNumber(30)
-  GetSettingsRequest ensureGetSettingsRequest() => $_ensure(12);
+  GetSettingsRequest ensureGetSettingsRequest() => $_ensure(11);
 
   @$pb.TagNumber(31)
-  ListPagesRequest get listPagesRequest => $_getN(13);
+  ListPagesRequest get listPagesRequest => $_getN(12);
   @$pb.TagNumber(31)
   set listPagesRequest(ListPagesRequest value) => $_setField(31, value);
   @$pb.TagNumber(31)
-  $core.bool hasListPagesRequest() => $_has(13);
+  $core.bool hasListPagesRequest() => $_has(12);
   @$pb.TagNumber(31)
   void clearListPagesRequest() => $_clearField(31);
   @$pb.TagNumber(31)
-  ListPagesRequest ensureListPagesRequest() => $_ensure(13);
+  ListPagesRequest ensureListPagesRequest() => $_ensure(12);
 
   @$pb.TagNumber(32)
-  PageThumbnailsRequest get pageThumbnailsRequest => $_getN(14);
+  PageThumbnailsRequest get pageThumbnailsRequest => $_getN(13);
   @$pb.TagNumber(32)
   set pageThumbnailsRequest(PageThumbnailsRequest value) =>
       $_setField(32, value);
   @$pb.TagNumber(32)
-  $core.bool hasPageThumbnailsRequest() => $_has(14);
+  $core.bool hasPageThumbnailsRequest() => $_has(13);
   @$pb.TagNumber(32)
   void clearPageThumbnailsRequest() => $_clearField(32);
   @$pb.TagNumber(32)
-  PageThumbnailsRequest ensurePageThumbnailsRequest() => $_ensure(14);
+  PageThumbnailsRequest ensurePageThumbnailsRequest() => $_ensure(13);
 
   @$pb.TagNumber(33)
-  PageOpRequest get pageOpRequest => $_getN(15);
+  PageOpRequest get pageOpRequest => $_getN(14);
   @$pb.TagNumber(33)
   set pageOpRequest(PageOpRequest value) => $_setField(33, value);
   @$pb.TagNumber(33)
-  $core.bool hasPageOpRequest() => $_has(15);
+  $core.bool hasPageOpRequest() => $_has(14);
   @$pb.TagNumber(33)
   void clearPageOpRequest() => $_clearField(33);
   @$pb.TagNumber(33)
-  PageOpRequest ensurePageOpRequest() => $_ensure(15);
+  PageOpRequest ensurePageOpRequest() => $_ensure(14);
 
   @$pb.TagNumber(34)
-  GetBubblesRequest get getBubblesRequest => $_getN(16);
+  GetBubblesRequest get getBubblesRequest => $_getN(15);
   @$pb.TagNumber(34)
   set getBubblesRequest(GetBubblesRequest value) => $_setField(34, value);
   @$pb.TagNumber(34)
-  $core.bool hasGetBubblesRequest() => $_has(16);
+  $core.bool hasGetBubblesRequest() => $_has(15);
   @$pb.TagNumber(34)
   void clearGetBubblesRequest() => $_clearField(34);
   @$pb.TagNumber(34)
-  GetBubblesRequest ensureGetBubblesRequest() => $_ensure(16);
+  GetBubblesRequest ensureGetBubblesRequest() => $_ensure(15);
 
   @$pb.TagNumber(40)
-  NavigateToPageRequest get navigateToPageRequest => $_getN(17);
+  NavigateToPageRequest get navigateToPageRequest => $_getN(16);
   @$pb.TagNumber(40)
   set navigateToPageRequest(NavigateToPageRequest value) =>
       $_setField(40, value);
   @$pb.TagNumber(40)
-  $core.bool hasNavigateToPageRequest() => $_has(17);
+  $core.bool hasNavigateToPageRequest() => $_has(16);
   @$pb.TagNumber(40)
   void clearNavigateToPageRequest() => $_clearField(40);
   @$pb.TagNumber(40)
-  NavigateToPageRequest ensureNavigateToPageRequest() => $_ensure(17);
+  NavigateToPageRequest ensureNavigateToPageRequest() => $_ensure(16);
 
   @$pb.TagNumber(41)
-  HotkeyCommand get hotkeyCommand => $_getN(18);
+  HotkeyCommand get hotkeyCommand => $_getN(17);
   @$pb.TagNumber(41)
   set hotkeyCommand(HotkeyCommand value) => $_setField(41, value);
   @$pb.TagNumber(41)
-  $core.bool hasHotkeyCommand() => $_has(18);
+  $core.bool hasHotkeyCommand() => $_has(17);
   @$pb.TagNumber(41)
   void clearHotkeyCommand() => $_clearField(41);
   @$pb.TagNumber(41)
-  HotkeyCommand ensureHotkeyCommand() => $_ensure(18);
+  HotkeyCommand ensureHotkeyCommand() => $_ensure(17);
 
   @$pb.TagNumber(42)
-  OpenUrlCommand get openUrlCommand => $_getN(19);
+  OpenUrlCommand get openUrlCommand => $_getN(18);
   @$pb.TagNumber(42)
   set openUrlCommand(OpenUrlCommand value) => $_setField(42, value);
   @$pb.TagNumber(42)
-  $core.bool hasOpenUrlCommand() => $_has(19);
+  $core.bool hasOpenUrlCommand() => $_has(18);
   @$pb.TagNumber(42)
   void clearOpenUrlCommand() => $_clearField(42);
   @$pb.TagNumber(42)
-  OpenUrlCommand ensureOpenUrlCommand() => $_ensure(19);
+  OpenUrlCommand ensureOpenUrlCommand() => $_ensure(18);
 
   @$pb.TagNumber(43)
-  FlushBubblesRequest get flushBubblesRequest => $_getN(20);
+  FlushBubblesRequest get flushBubblesRequest => $_getN(19);
   @$pb.TagNumber(43)
   set flushBubblesRequest(FlushBubblesRequest value) => $_setField(43, value);
   @$pb.TagNumber(43)
-  $core.bool hasFlushBubblesRequest() => $_has(20);
+  $core.bool hasFlushBubblesRequest() => $_has(19);
   @$pb.TagNumber(43)
   void clearFlushBubblesRequest() => $_clearField(43);
   @$pb.TagNumber(43)
-  FlushBubblesRequest ensureFlushBubblesRequest() => $_ensure(20);
+  FlushBubblesRequest ensureFlushBubblesRequest() => $_ensure(19);
 
   @$pb.TagNumber(44)
-  AppVersionRequest get appVersionRequest => $_getN(21);
+  AppVersionRequest get appVersionRequest => $_getN(20);
   @$pb.TagNumber(44)
   set appVersionRequest(AppVersionRequest value) => $_setField(44, value);
   @$pb.TagNumber(44)
-  $core.bool hasAppVersionRequest() => $_has(21);
+  $core.bool hasAppVersionRequest() => $_has(20);
   @$pb.TagNumber(44)
   void clearAppVersionRequest() => $_clearField(44);
   @$pb.TagNumber(44)
-  AppVersionRequest ensureAppVersionRequest() => $_ensure(21);
+  AppVersionRequest ensureAppVersionRequest() => $_ensure(20);
 
   @$pb.TagNumber(45)
-  AppVersionResponse get appVersionResponse => $_getN(22);
+  AppVersionResponse get appVersionResponse => $_getN(21);
   @$pb.TagNumber(45)
   set appVersionResponse(AppVersionResponse value) => $_setField(45, value);
   @$pb.TagNumber(45)
-  $core.bool hasAppVersionResponse() => $_has(22);
+  $core.bool hasAppVersionResponse() => $_has(21);
   @$pb.TagNumber(45)
   void clearAppVersionResponse() => $_clearField(45);
   @$pb.TagNumber(45)
-  AppVersionResponse ensureAppVersionResponse() => $_ensure(22);
+  AppVersionResponse ensureAppVersionResponse() => $_ensure(21);
 
   @$pb.TagNumber(46)
-  CanvasOverviewRequest get canvasOverviewRequest => $_getN(23);
+  CanvasOverviewRequest get canvasOverviewRequest => $_getN(22);
   @$pb.TagNumber(46)
   set canvasOverviewRequest(CanvasOverviewRequest value) =>
       $_setField(46, value);
   @$pb.TagNumber(46)
-  $core.bool hasCanvasOverviewRequest() => $_has(23);
+  $core.bool hasCanvasOverviewRequest() => $_has(22);
   @$pb.TagNumber(46)
   void clearCanvasOverviewRequest() => $_clearField(46);
   @$pb.TagNumber(46)
-  CanvasOverviewRequest ensureCanvasOverviewRequest() => $_ensure(23);
+  CanvasOverviewRequest ensureCanvasOverviewRequest() => $_ensure(22);
 
   @$pb.TagNumber(47)
-  CanvasOverviewResponse get canvasOverviewResponse => $_getN(24);
+  CanvasOverviewResponse get canvasOverviewResponse => $_getN(23);
   @$pb.TagNumber(47)
   set canvasOverviewResponse(CanvasOverviewResponse value) =>
       $_setField(47, value);
   @$pb.TagNumber(47)
-  $core.bool hasCanvasOverviewResponse() => $_has(24);
+  $core.bool hasCanvasOverviewResponse() => $_has(23);
   @$pb.TagNumber(47)
   void clearCanvasOverviewResponse() => $_clearField(47);
   @$pb.TagNumber(47)
-  CanvasOverviewResponse ensureCanvasOverviewResponse() => $_ensure(24);
+  CanvasOverviewResponse ensureCanvasOverviewResponse() => $_ensure(23);
 
   @$pb.TagNumber(50)
-  BackupCommandRequest get backupCommandRequest => $_getN(25);
+  BackupCommandRequest get backupCommandRequest => $_getN(24);
   @$pb.TagNumber(50)
   set backupCommandRequest(BackupCommandRequest value) => $_setField(50, value);
   @$pb.TagNumber(50)
-  $core.bool hasBackupCommandRequest() => $_has(25);
+  $core.bool hasBackupCommandRequest() => $_has(24);
   @$pb.TagNumber(50)
   void clearBackupCommandRequest() => $_clearField(50);
   @$pb.TagNumber(50)
-  BackupCommandRequest ensureBackupCommandRequest() => $_ensure(25);
+  BackupCommandRequest ensureBackupCommandRequest() => $_ensure(24);
 
   @$pb.TagNumber(51)
-  BackupOutcome get backupOutcome => $_getN(26);
+  BackupOutcome get backupOutcome => $_getN(25);
   @$pb.TagNumber(51)
   set backupOutcome(BackupOutcome value) => $_setField(51, value);
   @$pb.TagNumber(51)
-  $core.bool hasBackupOutcome() => $_has(26);
+  $core.bool hasBackupOutcome() => $_has(25);
   @$pb.TagNumber(51)
   void clearBackupOutcome() => $_clearField(51);
   @$pb.TagNumber(51)
-  BackupOutcome ensureBackupOutcome() => $_ensure(26);
+  BackupOutcome ensureBackupOutcome() => $_ensure(25);
 
   @$pb.TagNumber(52)
-  ChatLoginRequest get chatLoginRequest => $_getN(27);
+  ChatLoginRequest get chatLoginRequest => $_getN(26);
   @$pb.TagNumber(52)
   set chatLoginRequest(ChatLoginRequest value) => $_setField(52, value);
   @$pb.TagNumber(52)
-  $core.bool hasChatLoginRequest() => $_has(27);
+  $core.bool hasChatLoginRequest() => $_has(26);
   @$pb.TagNumber(52)
   void clearChatLoginRequest() => $_clearField(52);
   @$pb.TagNumber(52)
-  ChatLoginRequest ensureChatLoginRequest() => $_ensure(27);
+  ChatLoginRequest ensureChatLoginRequest() => $_ensure(26);
 
   @$pb.TagNumber(53)
-  ChatLoginOutcome get chatLoginOutcome => $_getN(28);
+  ChatLoginOutcome get chatLoginOutcome => $_getN(27);
   @$pb.TagNumber(53)
   set chatLoginOutcome(ChatLoginOutcome value) => $_setField(53, value);
   @$pb.TagNumber(53)
-  $core.bool hasChatLoginOutcome() => $_has(28);
+  $core.bool hasChatLoginOutcome() => $_has(27);
   @$pb.TagNumber(53)
   void clearChatLoginOutcome() => $_clearField(53);
   @$pb.TagNumber(53)
-  ChatLoginOutcome ensureChatLoginOutcome() => $_ensure(28);
+  ChatLoginOutcome ensureChatLoginOutcome() => $_ensure(27);
 
   @$pb.TagNumber(54)
-  ExportPdfRequest get exportPdfRequest => $_getN(29);
+  ExportPdfRequest get exportPdfRequest => $_getN(28);
   @$pb.TagNumber(54)
   set exportPdfRequest(ExportPdfRequest value) => $_setField(54, value);
   @$pb.TagNumber(54)
-  $core.bool hasExportPdfRequest() => $_has(29);
+  $core.bool hasExportPdfRequest() => $_has(28);
   @$pb.TagNumber(54)
   void clearExportPdfRequest() => $_clearField(54);
   @$pb.TagNumber(54)
-  ExportPdfRequest ensureExportPdfRequest() => $_ensure(29);
+  ExportPdfRequest ensureExportPdfRequest() => $_ensure(28);
 
   @$pb.TagNumber(60)
-  CheckUpdateRequest get checkUpdateRequest => $_getN(30);
+  CheckUpdateRequest get checkUpdateRequest => $_getN(29);
   @$pb.TagNumber(60)
   set checkUpdateRequest(CheckUpdateRequest value) => $_setField(60, value);
   @$pb.TagNumber(60)
-  $core.bool hasCheckUpdateRequest() => $_has(30);
+  $core.bool hasCheckUpdateRequest() => $_has(29);
   @$pb.TagNumber(60)
   void clearCheckUpdateRequest() => $_clearField(60);
   @$pb.TagNumber(60)
-  CheckUpdateRequest ensureCheckUpdateRequest() => $_ensure(30);
+  CheckUpdateRequest ensureCheckUpdateRequest() => $_ensure(29);
 
   @$pb.TagNumber(61)
-  UpdateInfo get updateInfo => $_getN(31);
+  UpdateInfo get updateInfo => $_getN(30);
   @$pb.TagNumber(61)
   set updateInfo(UpdateInfo value) => $_setField(61, value);
   @$pb.TagNumber(61)
-  $core.bool hasUpdateInfo() => $_has(31);
+  $core.bool hasUpdateInfo() => $_has(30);
   @$pb.TagNumber(61)
   void clearUpdateInfo() => $_clearField(61);
   @$pb.TagNumber(61)
-  UpdateInfo ensureUpdateInfo() => $_ensure(31);
+  UpdateInfo ensureUpdateInfo() => $_ensure(30);
 
   @$pb.TagNumber(62)
-  NasBackupRequest get nasBackupRequest => $_getN(32);
+  NasBackupRequest get nasBackupRequest => $_getN(31);
   @$pb.TagNumber(62)
   set nasBackupRequest(NasBackupRequest value) => $_setField(62, value);
   @$pb.TagNumber(62)
-  $core.bool hasNasBackupRequest() => $_has(32);
+  $core.bool hasNasBackupRequest() => $_has(31);
   @$pb.TagNumber(62)
   void clearNasBackupRequest() => $_clearField(62);
   @$pb.TagNumber(62)
-  NasBackupRequest ensureNasBackupRequest() => $_ensure(32);
+  NasBackupRequest ensureNasBackupRequest() => $_ensure(31);
 
   @$pb.TagNumber(63)
-  NasBackupOutcome get nasBackupOutcome => $_getN(33);
+  NasBackupOutcome get nasBackupOutcome => $_getN(32);
   @$pb.TagNumber(63)
   set nasBackupOutcome(NasBackupOutcome value) => $_setField(63, value);
   @$pb.TagNumber(63)
-  $core.bool hasNasBackupOutcome() => $_has(33);
+  $core.bool hasNasBackupOutcome() => $_has(32);
   @$pb.TagNumber(63)
   void clearNasBackupOutcome() => $_clearField(63);
   @$pb.TagNumber(63)
-  NasBackupOutcome ensureNasBackupOutcome() => $_ensure(33);
+  NasBackupOutcome ensureNasBackupOutcome() => $_ensure(32);
 
   @$pb.TagNumber(64)
-  ApplyUpdateRequest get applyUpdateRequest => $_getN(34);
+  ApplyUpdateRequest get applyUpdateRequest => $_getN(33);
   @$pb.TagNumber(64)
   set applyUpdateRequest(ApplyUpdateRequest value) => $_setField(64, value);
   @$pb.TagNumber(64)
-  $core.bool hasApplyUpdateRequest() => $_has(34);
+  $core.bool hasApplyUpdateRequest() => $_has(33);
   @$pb.TagNumber(64)
   void clearApplyUpdateRequest() => $_clearField(64);
   @$pb.TagNumber(64)
-  ApplyUpdateRequest ensureApplyUpdateRequest() => $_ensure(34);
+  ApplyUpdateRequest ensureApplyUpdateRequest() => $_ensure(33);
 
   @$pb.TagNumber(65)
-  ApplyUpdateOutcome get applyUpdateOutcome => $_getN(35);
+  ApplyUpdateOutcome get applyUpdateOutcome => $_getN(34);
   @$pb.TagNumber(65)
   set applyUpdateOutcome(ApplyUpdateOutcome value) => $_setField(65, value);
   @$pb.TagNumber(65)
-  $core.bool hasApplyUpdateOutcome() => $_has(35);
+  $core.bool hasApplyUpdateOutcome() => $_has(34);
   @$pb.TagNumber(65)
   void clearApplyUpdateOutcome() => $_clearField(65);
   @$pb.TagNumber(65)
-  ApplyUpdateOutcome ensureApplyUpdateOutcome() => $_ensure(35);
+  ApplyUpdateOutcome ensureApplyUpdateOutcome() => $_ensure(34);
 
   @$pb.TagNumber(70)
-  DownloadUpdateRequest get downloadUpdateRequest => $_getN(36);
+  DownloadUpdateRequest get downloadUpdateRequest => $_getN(35);
   @$pb.TagNumber(70)
   set downloadUpdateRequest(DownloadUpdateRequest value) =>
       $_setField(70, value);
   @$pb.TagNumber(70)
-  $core.bool hasDownloadUpdateRequest() => $_has(36);
+  $core.bool hasDownloadUpdateRequest() => $_has(35);
   @$pb.TagNumber(70)
   void clearDownloadUpdateRequest() => $_clearField(70);
   @$pb.TagNumber(70)
-  DownloadUpdateRequest ensureDownloadUpdateRequest() => $_ensure(36);
+  DownloadUpdateRequest ensureDownloadUpdateRequest() => $_ensure(35);
 
   @$pb.TagNumber(71)
-  DownloadProgress get downloadProgress => $_getN(37);
+  DownloadProgress get downloadProgress => $_getN(36);
   @$pb.TagNumber(71)
   set downloadProgress(DownloadProgress value) => $_setField(71, value);
   @$pb.TagNumber(71)
-  $core.bool hasDownloadProgress() => $_has(37);
+  $core.bool hasDownloadProgress() => $_has(36);
   @$pb.TagNumber(71)
   void clearDownloadProgress() => $_clearField(71);
   @$pb.TagNumber(71)
-  DownloadProgress ensureDownloadProgress() => $_ensure(37);
+  DownloadProgress ensureDownloadProgress() => $_ensure(36);
 
   @$pb.TagNumber(72)
-  CancelDownloadRequest get cancelDownloadRequest => $_getN(38);
+  CancelDownloadRequest get cancelDownloadRequest => $_getN(37);
   @$pb.TagNumber(72)
   set cancelDownloadRequest(CancelDownloadRequest value) =>
       $_setField(72, value);
   @$pb.TagNumber(72)
-  $core.bool hasCancelDownloadRequest() => $_has(38);
+  $core.bool hasCancelDownloadRequest() => $_has(37);
   @$pb.TagNumber(72)
   void clearCancelDownloadRequest() => $_clearField(72);
   @$pb.TagNumber(72)
-  CancelDownloadRequest ensureCancelDownloadRequest() => $_ensure(38);
+  CancelDownloadRequest ensureCancelDownloadRequest() => $_ensure(37);
 
   @$pb.TagNumber(80)
-  UiConfigRequest get uiConfigRequest => $_getN(39);
+  UiConfigRequest get uiConfigRequest => $_getN(38);
   @$pb.TagNumber(80)
   set uiConfigRequest(UiConfigRequest value) => $_setField(80, value);
   @$pb.TagNumber(80)
-  $core.bool hasUiConfigRequest() => $_has(39);
+  $core.bool hasUiConfigRequest() => $_has(38);
   @$pb.TagNumber(80)
   void clearUiConfigRequest() => $_clearField(80);
   @$pb.TagNumber(80)
-  UiConfigRequest ensureUiConfigRequest() => $_ensure(39);
+  UiConfigRequest ensureUiConfigRequest() => $_ensure(38);
 
   @$pb.TagNumber(81)
-  UiConfigResponse get uiConfigResponse => $_getN(40);
+  UiConfigResponse get uiConfigResponse => $_getN(39);
   @$pb.TagNumber(81)
   set uiConfigResponse(UiConfigResponse value) => $_setField(81, value);
   @$pb.TagNumber(81)
-  $core.bool hasUiConfigResponse() => $_has(40);
+  $core.bool hasUiConfigResponse() => $_has(39);
   @$pb.TagNumber(81)
   void clearUiConfigResponse() => $_clearField(81);
   @$pb.TagNumber(81)
-  UiConfigResponse ensureUiConfigResponse() => $_ensure(40);
+  UiConfigResponse ensureUiConfigResponse() => $_ensure(39);
+
+  @$pb.TagNumber(90)
+  SettingsPatch get settingsPatch => $_getN(40);
+  @$pb.TagNumber(90)
+  set settingsPatch(SettingsPatch value) => $_setField(90, value);
+  @$pb.TagNumber(90)
+  $core.bool hasSettingsPatch() => $_has(40);
+  @$pb.TagNumber(90)
+  void clearSettingsPatch() => $_clearField(90);
+  @$pb.TagNumber(90)
+  SettingsPatch ensureSettingsPatch() => $_ensure(40);
 
   @$pb.TagNumber(99)
   Error get error => $_getN(41);
@@ -2004,91 +2004,6 @@ class Error extends $pb.GeneratedMessage {
   $core.bool hasMessage() => $_has(1);
   @$pb.TagNumber(2)
   void clearMessage() => $_clearField(2);
-}
-
-/// Windows 面板管道的过渡信封: kind = 原 JSON 的 type 字符串,
-/// data = 原 data 对象(Struct 二进制, 不再是 JSON 文本)。
-/// 后续按消息逐步改成 typed 子消息, 这个 message 作为兼容入口保留。
-class Panel extends $pb.GeneratedMessage {
-  factory Panel({
-    $core.String? kind,
-    $0.Value? data,
-    $core.bool? ok,
-  }) {
-    final result = Panel._();
-    if (kind != null) result.kind = kind;
-    if (data != null) result.data = data;
-    if (ok != null) result.ok = ok;
-    return result;
-  }
-
-  Panel._();
-
-  factory Panel.fromBuffer($core.List<$core.int> data,
-          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
-      Panel()..mergeFromBuffer(data, registry);
-  factory Panel.fromJson($core.String json,
-          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
-      Panel()..mergeFromJson(json, registry);
-
-  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
-      _omitMessageNames ? '' : 'Panel',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
-      createEmptyInstance: Panel.$_createMessage)
-    ..aOS(1, _omitFieldNames ? '' : 'kind')
-    ..aOM<$0.Value>(2, _omitFieldNames ? '' : 'data',
-        subBuilder: $0.Value.$_createMessage)
-    ..aOB(3, _omitFieldNames ? '' : 'ok')
-    ..hasRequiredFields = false;
-
-  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
-  Panel clone() => deepCopy();
-  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
-  Panel copyWith(void Function(Panel) updates) =>
-      super.copyWith((message) => updates(message as Panel)) as Panel;
-
-  @$core.override
-  $pb.BuilderInfo get info_ => _i;
-
-  @$core.pragma('dart2js:noInline')
-  @$core.Deprecated('Use Panel() / Panel.new instead')
-  static Panel create() => Panel._();
-  static $pb.GeneratedMessage $_createMessage() => Panel._();
-  @$core.override
-  Panel createEmptyInstance() => Panel._();
-  @$core.pragma('dart2js:noInline')
-  static Panel getDefault() => _defaultInstance ??=
-      $pb.GeneratedMessage.$_defaultFor<Panel>(Panel.$_createMessage);
-  static Panel? _defaultInstance;
-
-  @$pb.TagNumber(1)
-  $core.String get kind => $_getSZ(0);
-  @$pb.TagNumber(1)
-  set kind($core.String value) => $_setString(0, value);
-  @$pb.TagNumber(1)
-  $core.bool hasKind() => $_has(0);
-  @$pb.TagNumber(1)
-  void clearKind() => $_clearField(1);
-
-  @$pb.TagNumber(2)
-  $0.Value get data => $_getN(1);
-  @$pb.TagNumber(2)
-  set data($0.Value value) => $_setField(2, value);
-  @$pb.TagNumber(2)
-  $core.bool hasData() => $_has(1);
-  @$pb.TagNumber(2)
-  void clearData() => $_clearField(2);
-  @$pb.TagNumber(2)
-  $0.Value ensureData() => $_ensure(1);
-
-  @$pb.TagNumber(3)
-  $core.bool get ok => $_getBF(2);
-  @$pb.TagNumber(3)
-  set ok($core.bool value) => $_setBool(2, value);
-  @$pb.TagNumber(3)
-  $core.bool hasOk() => $_has(2);
-  @$pb.TagNumber(3)
-  void clearOk() => $_clearField(3);
 }
 
 /// Swift 与 Rust 之间的字符串表(快捷键表/菜单标题)。
@@ -6166,6 +6081,63 @@ class UiCustomBlock extends $pb.GeneratedMessage {
   void clearVisibleWhenSetting() => $_clearField(4);
   @$pb.TagNumber(4)
   UiSettingCondition ensureVisibleWhenSetting() => $_ensure(3);
+}
+
+class SettingsPatch extends $pb.GeneratedMessage {
+  factory SettingsPatch({
+    $core.Iterable<$core.MapEntry<$core.String, SettingValue>>? values,
+  }) {
+    final result = SettingsPatch._();
+    if (values != null) result.values.addEntries(values);
+    return result;
+  }
+
+  SettingsPatch._();
+
+  factory SettingsPatch.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      SettingsPatch()..mergeFromBuffer(data, registry);
+  factory SettingsPatch.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      SettingsPatch()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'SettingsPatch',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: SettingsPatch.$_createMessage)
+    ..m<$core.String, SettingValue>(1, _omitFieldNames ? '' : 'values',
+        entryClassName: 'SettingsPatch.ValuesEntry',
+        keyFieldType: $pb.PbFieldType.OS,
+        valueFieldType: $pb.PbFieldType.OM,
+        valueCreator: SettingValue.$_createMessage,
+        valueDefaultOrMaker: SettingValue.getDefault,
+        packageName: const $pb.PackageName('glaspen.ipc.v1'))
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  SettingsPatch clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  SettingsPatch copyWith(void Function(SettingsPatch) updates) =>
+      super.copyWith((message) => updates(message as SettingsPatch))
+          as SettingsPatch;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use SettingsPatch() / SettingsPatch.new instead')
+  static SettingsPatch create() => SettingsPatch._();
+  static $pb.GeneratedMessage $_createMessage() => SettingsPatch._();
+  @$core.override
+  SettingsPatch createEmptyInstance() => SettingsPatch._();
+  @$core.pragma('dart2js:noInline')
+  static SettingsPatch getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<SettingsPatch>(
+          SettingsPatch.$_createMessage);
+  static SettingsPatch? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $pb.PbMap<$core.String, SettingValue> get values => $_getMap(0);
 }
 
 const $core.bool _omitFieldNames =

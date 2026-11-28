@@ -532,6 +532,31 @@ pub fn ui_config_from_json(text: &str) -> Option<proto::UiConfig> {
     })
 }
 
+pub fn encode_settings_patch_frame(
+    values: &std::collections::HashMap<String, proto::SettingValue>,
+) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: 0,
+        body: Some(proto::frame::Body::SettingsPatch(proto::SettingsPatch {
+            values: values.clone(),
+        })),
+    };
+    encode_frame(&frame)
+}
+
+pub fn encode_error_frame(request_id: u64, code: &str, message: &str) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::Error(proto::Error {
+            code: code.to_string(),
+            message: message.to_string(),
+        })),
+    };
+    encode_frame(&frame)
+}
+
 pub fn encode_ui_config_frame(request_id: u64, text: &str) -> Vec<u8> {
     let config = ui_config_from_json(text).unwrap_or_default();
     let frame = Frame {
@@ -955,37 +980,6 @@ pub fn decode_settings_frame(bytes: &[u8]) -> Result<serde_json::Value, FrameErr
     Ok(app_settings_to_json(&settings))
 }
 
-/// FRB 等进程内通道用: 单帧 Panel protobuf(带长度前缀), 不再传 JSON 文本。
-pub fn encode_panel(kind: &str, data: &serde_json::Value) -> Vec<u8> {
-    encode_frame(&panel_frame(0, kind, data))
-}
-
-pub fn decode_panel(bytes: &[u8]) -> Result<(String, serde_json::Value), FrameError> {
-    let frame = decode_frame(bytes)?;
-    let Some(crate::proto::frame::Body::Panel(panel)) = frame.body else {
-        return Err(FrameError::Decode("期望 Frame.panel".to_string()));
-    };
-    let data = panel
-        .data
-        .as_ref()
-        .map(prost_value_to_json)
-        .unwrap_or(serde_json::Value::Null);
-    Ok((panel.kind, data))
-}
-
-/// 过渡 panel 消息: kind + 原 data 对象 + request_id。/// 过渡 panel 消息: kind + 原 data 对象 + request_id。
-pub fn panel_frame(request_id: u64, kind: &str, data: &serde_json::Value) -> Frame {
-    Frame {
-        protocol_version: PROTOCOL_VERSION,
-        request_id,
-        body: Some(proto::frame::Body::Panel(Panel {
-            kind: kind.to_string(),
-            data: Some(json_to_prost_value(data)),
-            ok: true,
-        })),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1034,25 +1028,6 @@ mod tests {
             decode_frame(&huge),
             Err(FrameError::TooLarge { .. })
         ));
-    }
-
-    #[test]
-    fn panel_struct_roundtrip() {
-        let value = serde_json::json!({
-            "screenId": 7.0,
-            "ok": true,
-            "items": [1.0, 2.0, 3.0],
-            "nested": {"label": "页"}
-        });
-        let frame = panel_frame(9, "getPageThumbnails", &value);
-        let bytes = encode_frame(&frame);
-        let decoded = decode_frame(&bytes).unwrap();
-        let Some(proto::frame::Body::Panel(panel)) = decoded.body else {
-            panic!("expected panel frame");
-        };
-        assert_eq!(panel.kind, "getPageThumbnails");
-        let back = prost_value_to_json(panel.data.as_ref().unwrap());
-        assert_eq!(back, value);
     }
 
     #[test]
@@ -1108,15 +1083,6 @@ mod tests {
         assert_eq!(value["grid"], true);
         assert_eq!(value["gridSize"], 80.0);
         assert_eq!(value["language"], "zh");
-    }
-
-    #[test]
-    fn panel_encode_decode_roundtrip() {
-        let value = serde_json::json!({"ok": true, "score": 1.5});
-        let bytes = encode_panel("test", &value);
-        let (kind, decoded) = decode_panel(&bytes).unwrap();
-        assert_eq!(kind, "test");
-        assert_eq!(decoded, value);
     }
 
     #[test]

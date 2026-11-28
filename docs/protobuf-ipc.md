@@ -119,3 +119,5 @@
 - ✅ `UiConfig` 全量 typed protobuf（platform/maps/settings schema/sections/blocks/features），Dart 从 typed 转回旧 `UiConfig.fromJson` 所需 Map；Windows `process_pipe_message` 已删除。
 
 - ✅ macOS FRB `uiConfigPb` / `nasBackupNow` 改 typed Frame；Dart `decodeUiConfigFrame` / `decodeNasBackupFrame` 直接解 typed。
+
+- ✅ 删除 `Panel` protobuf、`PanelInput::Json`、`encode_response/encode_panel/decode_panel/panel_frame`；Windows 错误/快捷键/设置增量推送改 typed Error/SettingsPatch/SettingsChanged。

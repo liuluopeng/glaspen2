@@ -5,43 +5,21 @@ fn pipe_wide_name() -> Vec<u16> {
         .collect()
 }
 
-use glaspen_ipc::panel_wire::{encode_response, PanelDecoder, PanelInput};
+use glaspen_ipc::panel_wire::{PanelDecoder, PanelInput};
 use std::io::Write as _;
 
-/// 一个连接的协议感知写端: JSON 客户端照旧写行; protobuf 客户端把业务层
-/// 产出的 JSON 响应行编码成 Panel 帧。
+/// 一个连接的 typed Frame 写端。
 struct PanelOut {
     file: std::fs::File,
-    pending: Vec<u8>,
 }
 
 impl PanelOut {
     fn new(file: std::fs::File) -> Self {
-        Self {
-            file,
-            pending: Vec::new(),
-        }
+        Self { file }
     }
-}
 
-impl std::io::Write for PanelOut {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.pending.extend_from_slice(buf);
-        while let Some(pos) = self.pending.iter().position(|b| *b == b'\n') {
-            let line = self.pending[..pos].to_vec();
-            self.pending.drain(..=pos);
-            let text = String::from_utf8_lossy(&line).trim().to_string();
-            if text.is_empty() {
-                continue;
-            }
-            let encoded = encode_response(&text);
-            self.file.write_all(&encoded)?;
-        }
-        if self.pending.len() > 8 * 1024 * 1024 {
-            tracing::warn!("面板 protobuf 响应缓冲超限, 丢弃");
-            self.pending.clear();
-        }
-        Ok(buf.len())
+    fn write_frame(&mut self, frame: &[u8]) -> std::io::Result<()> {
+        self.file.write_all(frame)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
@@ -180,7 +158,6 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
 
         for input in inputs {
             match input {
-                PanelInput::Json(_) => {}
                 PanelInput::SetSetting {
                     request_id,
                     key,
@@ -473,9 +450,9 @@ static PANEL_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::n
 
 /// 回推帧队列(有界): 窗口线程 try_send 永不阻塞; 面板不读时最多积压 64 帧,
 /// 再多的直接丢弃(局部字段帧丢一帧无妨, 下次改设置会重新推)。
-static PANEL_TX: std::sync::LazyLock<std::sync::mpsc::SyncSender<String>> =
+static PANEL_TX: std::sync::LazyLock<std::sync::mpsc::SyncSender<Vec<u8>>> =
     std::sync::LazyLock::new(|| {
-        let (tx, rx) = std::sync::mpsc::sync_channel::<String>(64);
+        let (tx, rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(64);
         std::thread::Builder::new()
             .name("panel-push".into())
             .spawn(move || {
@@ -493,8 +470,7 @@ static PANEL_TX: std::sync::LazyLock<std::sync::mpsc::SyncSender<String>> =
                     };
                     let mut dead: Vec<u64> = Vec::new();
                     for (conn_gen, mut f) in conns {
-                        let encoded = encode_response(&frame);
-                        if f.write_all(&encoded).is_err() || f.flush().is_err() {
+                        if f.write_all(&frame).is_err() || f.flush().is_err() {
                             dead.push(conn_gen); // 写失败 = 该连接已断开
                         }
                     }
@@ -513,7 +489,24 @@ static PANEL_TX: std::sync::LazyLock<std::sync::mpsc::SyncSender<String>> =
 /// 向设置面板推一帧 onSettingsChanged;未连接时静默丢弃。
 /// **可从任意线程调用**(含窗口线程): 只入队, 绝不阻塞。
 fn push_settings_changed(data_json: &str) {
-    let frame = format!("{{\"type\":\"onSettingsChanged\",\"data\":{data_json}}}\n");
+    let trimmed = data_json.trim();
+    let text = if trimmed.starts_with('{') {
+        trimmed.to_string()
+    } else {
+        format!("{{{trimmed}}}")
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return;
+    };
+    let values: std::collections::HashMap<String, glaspen_ipc::proto::SettingValue> = value
+        .as_object()
+        .map(|m| {
+            m.iter()
+                .map(|(k, v)| (k.clone(), glaspen_ipc::setting_value_from_json(v)))
+                .collect()
+        })
+        .unwrap_or_default();
+    let frame = glaspen_ipc::encode_settings_patch_frame(&values);
     match PANEL_TX.try_send(frame) {
         Ok(()) => {}
         Err(std::sync::mpsc::TrySendError::Full(_)) => {
@@ -706,12 +699,13 @@ fn process_set_setting(
             Err(e) => {
                 // 未知/只读键、非法值: 明确回错误帧, 不再静默吞掉。
                 tracing::warn!("setSetting 未应用: {key}={value}: {e}");
-                let _ = writer.write_all(
-                    glaspen_core::protocol::error_line(req_id, "setSetting", &e).as_bytes(),
+                let frame = glaspen_ipc::encode_error_frame(
+                    req_id as u64,
+                    "setSetting",
+                    &e,
                 );
-                let _ = writer.flush();
+                let _ = writer.write_frame(&frame);
                 return;
-            }
         };
         use glaspen_core::settings_apply::SettingEffect;
         match effect {
@@ -846,12 +840,15 @@ fn process_set_setting(
                 } else {
                     // 应用(补默认/挡保留/去冲突) → 落库生效表 → 回推面板
                     apply_saved_map(HWND(hwnd as *mut std::ffi::c_void), &saved);
-                    let frame = format!(
-                        "{{\"type\":\"onSettingsChanged\",\"data\":{{\"shortcuts\":\"{}\"}}}}\n",
-                        json_escape(&effective_json())
-                    );
-                    let _ = writer.write_all(frame.as_bytes());
-                    let _ = writer.flush();
+                    let overrides = settings_snapshot_overrides();
+                    if let Ok(data) = glaspen_core::settings_snapshot::snapshot_json(
+                        glaspen_core::ui::Platform::Windows,
+                        None,
+                        &overrides,
+                    ) {
+                        let frame = glaspen_ipc::encode_settings_changed_frame(&data);
+                        let _ = writer.write_frame(&frame);
+                    }
                 }
             }
             SettingEffect::HotkeyRecording(on) => {
