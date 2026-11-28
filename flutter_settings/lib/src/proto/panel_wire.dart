@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:fixnum/fixnum.dart';
-import 'package:protobuf/well_known_types/google/protobuf/struct.pb.dart' as wkt;
 
 import 'glaspen/ipc/v1/ipc.pb.dart' as pb;
 
@@ -21,8 +20,8 @@ dynamic _uiSettingValue(pb.SettingValue? v) {
       return v.doubleValue;
     case pb.SettingValue_Value.stringValue:
       return v.stringValue;
-    case pb.SettingValue_Value.nullValue:
-      return null;
+    case pb.SettingValue_Value.mapValue:
+      return Map<String, String>.from(v.mapValue.values);
     default:
       return null;
   }
@@ -230,60 +229,6 @@ class PanelMessage {
   final dynamic data;
 }
 
-wkt.Value jsonToProstValue(dynamic value) {
-  if (value == null) {
-    return wkt.Value(nullValue: wkt.NullValue.NULL_VALUE);
-  }
-  if (value is bool) {
-    return wkt.Value(boolValue: value);
-  }
-  if (value is num) {
-    return wkt.Value(numberValue: value.toDouble());
-  }
-  if (value is String) {
-    return wkt.Value(stringValue: value);
-  }
-  if (value is Iterable) {
-    return wkt.Value(
-      listValue: wkt.ListValue(
-        values: value.map(jsonToProstValue).toList(),
-      ),
-    );
-  }
-  if (value is Map) {
-    return wkt.Value(
-      structValue: wkt.Struct(
-        fields: value.entries.map(
-          (e) => MapEntry(e.key.toString(), jsonToProstValue(e.value)),
-        ),
-      ),
-    );
-  }
-  return wkt.Value(stringValue: value.toString());
-}
-
-dynamic prostValueToJson(wkt.Value value) {
-  switch (value.whichKind()) {
-    case wkt.Value_Kind.nullValue:
-      return null;
-    case wkt.Value_Kind.numberValue:
-      return value.numberValue;
-    case wkt.Value_Kind.stringValue:
-      return value.stringValue;
-    case wkt.Value_Kind.boolValue:
-      return value.boolValue;
-    case wkt.Value_Kind.structValue:
-      return {
-        for (final e in value.structValue.fields.entries)
-          e.key: prostValueToJson(e.value),
-      };
-    case wkt.Value_Kind.listValue:
-      return value.listValue.values.map(prostValueToJson).toList();
-    case wkt.Value_Kind.notSet:
-      return null;
-  }
-}
-
 List<int> encodeSettingValue(dynamic value) {
   final setting = settingValueFromDart(value);
   return setting.writeToBuffer();
@@ -291,7 +236,7 @@ List<int> encodeSettingValue(dynamic value) {
 
 pb.SettingValue settingValueFromDart(dynamic value) {
   if (value == null) {
-    return pb.SettingValue(nullValue: true);
+    return pb.SettingValue();
   }
   if (value is bool) {
     return pb.SettingValue(boolValue: value);
@@ -305,22 +250,13 @@ pb.SettingValue settingValueFromDart(dynamic value) {
   if (value is String) {
     return pb.SettingValue(stringValue: value);
   }
-  if (value is Uint8List) {
-    return pb.SettingValue(bytesValue: value);
-  }
-  if (value is Iterable) {
-    return pb.SettingValue(
-      listValue: pb.ListValue(
-        values: value.map(settingValueFromDart).toList(),
-      ),
-    );
-  }
   if (value is Map) {
     return pb.SettingValue(
-      structValue: wkt.Struct(
-        fields: value.entries.map(
-          (e) => MapEntry(e.key.toString(), jsonToProstValue(e.value)),
-        ),
+      mapValue: pb.StringMap(
+        values: [
+          for (final e in value.entries)
+            MapEntry(e.key.toString(), e.value.toString()),
+        ],
       ),
     );
   }

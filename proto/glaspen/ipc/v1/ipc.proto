@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package glaspen.ipc.v1;
 
-import "google/protobuf/struct.proto";
-
 // 跨进程/跨语言边界的第一版 protobuf 契约。
 //
 // 目标: Dart(Flutter 设置面板) <-> Rust(覆盖层) 的命名管道、以及后续
@@ -69,16 +67,10 @@ message SettingValue {
     int64 int_value = 2;
     double double_value = 3;
     string string_value = 4;
-    google.protobuf.Struct struct_value = 5;
-    ListValue list_value = 6;
-    bytes bytes_value = 7;
-    bool null_value = 8;
+    StringMap map_value = 9;
   }
 }
 
-message ListValue {
-  repeated SettingValue values = 1;
-}
 
 // 设置快照的 typed 模型。字段与 core settings_snapshot 的稳定键一一对应;
 // 不再用动态 map 承载整份设置。

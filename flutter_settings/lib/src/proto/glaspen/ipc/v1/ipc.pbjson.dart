@@ -489,25 +489,14 @@ const SettingValue$json = {
     {'1': 'double_value', '3': 3, '4': 1, '5': 1, '9': 0, '10': 'doubleValue'},
     {'1': 'string_value', '3': 4, '4': 1, '5': 9, '9': 0, '10': 'stringValue'},
     {
-      '1': 'struct_value',
-      '3': 5,
+      '1': 'map_value',
+      '3': 9,
       '4': 1,
       '5': 11,
-      '6': '.google.protobuf.Struct',
+      '6': '.glaspen.ipc.v1.StringMap',
       '9': 0,
-      '10': 'structValue'
+      '10': 'mapValue'
     },
-    {
-      '1': 'list_value',
-      '3': 6,
-      '4': 1,
-      '5': 11,
-      '6': '.glaspen.ipc.v1.ListValue',
-      '9': 0,
-      '10': 'listValue'
-    },
-    {'1': 'bytes_value', '3': 7, '4': 1, '5': 12, '9': 0, '10': 'bytesValue'},
-    {'1': 'null_value', '3': 8, '4': 1, '5': 8, '9': 0, '10': 'nullValue'},
   ],
   '8': [
     {'1': 'value'},
@@ -518,31 +507,8 @@ const SettingValue$json = {
 final $typed_data.Uint8List settingValueDescriptor = $convert.base64Decode(
     'CgxTZXR0aW5nVmFsdWUSHwoKYm9vbF92YWx1ZRgBIAEoCEgAUglib29sVmFsdWUSHQoJaW50X3'
     'ZhbHVlGAIgASgDSABSCGludFZhbHVlEiMKDGRvdWJsZV92YWx1ZRgDIAEoAUgAUgtkb3VibGVW'
-    'YWx1ZRIjCgxzdHJpbmdfdmFsdWUYBCABKAlIAFILc3RyaW5nVmFsdWUSPAoMc3RydWN0X3ZhbH'
-    'VlGAUgASgLMhcuZ29vZ2xlLnByb3RvYnVmLlN0cnVjdEgAUgtzdHJ1Y3RWYWx1ZRI6CgpsaXN0'
-    'X3ZhbHVlGAYgASgLMhkuZ2xhc3Blbi5pcGMudjEuTGlzdFZhbHVlSABSCWxpc3RWYWx1ZRIhCg'
-    'tieXRlc192YWx1ZRgHIAEoDEgAUgpieXRlc1ZhbHVlEh8KCm51bGxfdmFsdWUYCCABKAhIAFIJ'
-    'bnVsbFZhbHVlQgcKBXZhbHVl');
-
-@$core.Deprecated('Use listValueDescriptor instead')
-const ListValue$json = {
-  '1': 'ListValue',
-  '2': [
-    {
-      '1': 'values',
-      '3': 1,
-      '4': 3,
-      '5': 11,
-      '6': '.glaspen.ipc.v1.SettingValue',
-      '10': 'values'
-    },
-  ],
-};
-
-/// Descriptor for `ListValue`. Decode as a `google.protobuf.DescriptorProto`.
-final $typed_data.Uint8List listValueDescriptor = $convert.base64Decode(
-    'CglMaXN0VmFsdWUSNAoGdmFsdWVzGAEgAygLMhwuZ2xhc3Blbi5pcGMudjEuU2V0dGluZ1ZhbH'
-    'VlUgZ2YWx1ZXM=');
+    'YWx1ZRIjCgxzdHJpbmdfdmFsdWUYBCABKAlIAFILc3RyaW5nVmFsdWUSOAoJbWFwX3ZhbHVlGA'
+    'kgASgLMhkuZ2xhc3Blbi5pcGMudjEuU3RyaW5nTWFwSABSCG1hcFZhbHVlQgcKBXZhbHVl');
 
 @$core.Deprecated('Use appSettingsDescriptor instead')
 const AppSettings$json = {

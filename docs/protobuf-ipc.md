@@ -131,3 +131,5 @@
 - ✅ Windows 快捷键全量回推改 `snapshot_settings` + `encode_settings_changed_frame_from`，adapter 不再解析 settings JSON。
 
 - ✅ 删除 `bubbles::messages_json` 内部 JSON 辅助，气泡只保留 typed `messages_snapshot()`。
+
+- ✅ `SettingValue` 删除 `google.protobuf.Struct`/`ListValue`/bytes/null，改为 typed `StringMap map_value`；新增 `machine_boundaries_are_typed` 回归闸门。

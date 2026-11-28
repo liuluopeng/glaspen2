@@ -354,6 +354,24 @@ mod tests {
     }
 
     /// Flutter 侧的协议版本常量必须与 core 同步。
+    /// 机器边界回归闸门: 不允许 Panel/Struct/JSON 命令分派重新混入。
+    #[test]
+    fn machine_boundaries_are_typed() {
+        let proto = include_str!("../../../proto/glaspen/ipc/v1/ipc.proto");
+        assert!(!proto.contains("message Panel {"), "Panel 消息回潮");
+        assert!(!proto.contains("Panel panel = "), "Frame.panel 回潮");
+        assert!(!proto.contains("google.protobuf.Struct"), "Struct 回潮");
+
+        let pipe = include_str!("../../../crates/glaspen-windows/src/overlay/pipe.rs");
+        assert!(!pipe.contains("msg_type =="), "Windows JSON 命令分派回潮");
+        assert!(!pipe.contains("PanelInput::Json"), "PanelInput::Json 回潮");
+        assert!(!pipe.contains("encode_response"), "encode_response 回潮");
+
+        let mac = include_str!("../../../crates/glaspen-macos/src/macos_shell.rs");
+        assert!(!mac.contains("draw_live_plan"), "live-plan JSON FFI 回潮");
+        assert!(!mac.contains("camera_result_json"), "camera JSON FFI 回潮");
+    }
+
     #[test]
     fn panel_protocol_version_matches_core() {
         let src = include_str!("../../../flutter_settings/lib/main.bridge.dart");

@@ -14,7 +14,6 @@ import 'dart:core' as $core;
 
 import 'package:fixnum/fixnum.dart' as $fixnum;
 import 'package:protobuf/protobuf.dart' as $pb;
-import 'package:protobuf/well_known_types/google/protobuf/struct.pb.dart' as $0;
 
 import 'ipc.pbenum.dart';
 
@@ -951,10 +950,7 @@ enum SettingValue_Value {
   intValue,
   doubleValue,
   stringValue,
-  structValue,
-  listValue,
-  bytesValue,
-  nullValue,
+  mapValue,
   notSet
 }
 
@@ -966,20 +962,14 @@ class SettingValue extends $pb.GeneratedMessage {
     $fixnum.Int64? intValue,
     $core.double? doubleValue,
     $core.String? stringValue,
-    $0.Struct? structValue,
-    ListValue? listValue,
-    $core.List<$core.int>? bytesValue,
-    $core.bool? nullValue,
+    StringMap? mapValue,
   }) {
     final result = SettingValue._();
     if (boolValue != null) result.boolValue = boolValue;
     if (intValue != null) result.intValue = intValue;
     if (doubleValue != null) result.doubleValue = doubleValue;
     if (stringValue != null) result.stringValue = stringValue;
-    if (structValue != null) result.structValue = structValue;
-    if (listValue != null) result.listValue = listValue;
-    if (bytesValue != null) result.bytesValue = bytesValue;
-    if (nullValue != null) result.nullValue = nullValue;
+    if (mapValue != null) result.mapValue = mapValue;
     return result;
   }
 
@@ -998,28 +988,20 @@ class SettingValue extends $pb.GeneratedMessage {
     2: SettingValue_Value.intValue,
     3: SettingValue_Value.doubleValue,
     4: SettingValue_Value.stringValue,
-    5: SettingValue_Value.structValue,
-    6: SettingValue_Value.listValue,
-    7: SettingValue_Value.bytesValue,
-    8: SettingValue_Value.nullValue,
+    9: SettingValue_Value.mapValue,
     0: SettingValue_Value.notSet
   };
   static final $pb.BuilderInfo _i = $pb.BuilderInfo(
       _omitMessageNames ? '' : 'SettingValue',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
       createEmptyInstance: SettingValue.$_createMessage)
-    ..oo(0, [1, 2, 3, 4, 5, 6, 7, 8])
+    ..oo(0, [1, 2, 3, 4, 9])
     ..aOB(1, _omitFieldNames ? '' : 'boolValue')
     ..aInt64(2, _omitFieldNames ? '' : 'intValue')
     ..aD(3, _omitFieldNames ? '' : 'doubleValue')
     ..aOS(4, _omitFieldNames ? '' : 'stringValue')
-    ..aOM<$0.Struct>(5, _omitFieldNames ? '' : 'structValue',
-        subBuilder: $0.Struct.$_createMessage)
-    ..aOM<ListValue>(6, _omitFieldNames ? '' : 'listValue',
-        subBuilder: ListValue.$_createMessage)
-    ..a<$core.List<$core.int>>(
-        7, _omitFieldNames ? '' : 'bytesValue', $pb.PbFieldType.OY)
-    ..aOB(8, _omitFieldNames ? '' : 'nullValue')
+    ..aOM<StringMap>(9, _omitFieldNames ? '' : 'mapValue',
+        subBuilder: StringMap.$_createMessage)
     ..hasRequiredFields = false;
 
   @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
@@ -1048,19 +1030,13 @@ class SettingValue extends $pb.GeneratedMessage {
   @$pb.TagNumber(2)
   @$pb.TagNumber(3)
   @$pb.TagNumber(4)
-  @$pb.TagNumber(5)
-  @$pb.TagNumber(6)
-  @$pb.TagNumber(7)
-  @$pb.TagNumber(8)
+  @$pb.TagNumber(9)
   SettingValue_Value whichValue() => _SettingValue_ValueByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(1)
   @$pb.TagNumber(2)
   @$pb.TagNumber(3)
   @$pb.TagNumber(4)
-  @$pb.TagNumber(5)
-  @$pb.TagNumber(6)
-  @$pb.TagNumber(7)
-  @$pb.TagNumber(8)
+  @$pb.TagNumber(9)
   void clearValue() => $_clearField($_whichOneof(0));
 
   @$pb.TagNumber(1)
@@ -1099,95 +1075,16 @@ class SettingValue extends $pb.GeneratedMessage {
   @$pb.TagNumber(4)
   void clearStringValue() => $_clearField(4);
 
-  @$pb.TagNumber(5)
-  $0.Struct get structValue => $_getN(4);
-  @$pb.TagNumber(5)
-  set structValue($0.Struct value) => $_setField(5, value);
-  @$pb.TagNumber(5)
-  $core.bool hasStructValue() => $_has(4);
-  @$pb.TagNumber(5)
-  void clearStructValue() => $_clearField(5);
-  @$pb.TagNumber(5)
-  $0.Struct ensureStructValue() => $_ensure(4);
-
-  @$pb.TagNumber(6)
-  ListValue get listValue => $_getN(5);
-  @$pb.TagNumber(6)
-  set listValue(ListValue value) => $_setField(6, value);
-  @$pb.TagNumber(6)
-  $core.bool hasListValue() => $_has(5);
-  @$pb.TagNumber(6)
-  void clearListValue() => $_clearField(6);
-  @$pb.TagNumber(6)
-  ListValue ensureListValue() => $_ensure(5);
-
-  @$pb.TagNumber(7)
-  $core.List<$core.int> get bytesValue => $_getN(6);
-  @$pb.TagNumber(7)
-  set bytesValue($core.List<$core.int> value) => $_setBytes(6, value);
-  @$pb.TagNumber(7)
-  $core.bool hasBytesValue() => $_has(6);
-  @$pb.TagNumber(7)
-  void clearBytesValue() => $_clearField(7);
-
-  @$pb.TagNumber(8)
-  $core.bool get nullValue => $_getBF(7);
-  @$pb.TagNumber(8)
-  set nullValue($core.bool value) => $_setBool(7, value);
-  @$pb.TagNumber(8)
-  $core.bool hasNullValue() => $_has(7);
-  @$pb.TagNumber(8)
-  void clearNullValue() => $_clearField(8);
-}
-
-class ListValue extends $pb.GeneratedMessage {
-  factory ListValue({
-    $core.Iterable<SettingValue>? values,
-  }) {
-    final result = ListValue._();
-    if (values != null) result.values.addAll(values);
-    return result;
-  }
-
-  ListValue._();
-
-  factory ListValue.fromBuffer($core.List<$core.int> data,
-          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
-      ListValue()..mergeFromBuffer(data, registry);
-  factory ListValue.fromJson($core.String json,
-          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
-      ListValue()..mergeFromJson(json, registry);
-
-  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
-      _omitMessageNames ? '' : 'ListValue',
-      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
-      createEmptyInstance: ListValue.$_createMessage)
-    ..pPM<SettingValue>(1, _omitFieldNames ? '' : 'values',
-        subBuilder: SettingValue.$_createMessage)
-    ..hasRequiredFields = false;
-
-  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
-  ListValue clone() => deepCopy();
-  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
-  ListValue copyWith(void Function(ListValue) updates) =>
-      super.copyWith((message) => updates(message as ListValue)) as ListValue;
-
-  @$core.override
-  $pb.BuilderInfo get info_ => _i;
-
-  @$core.pragma('dart2js:noInline')
-  @$core.Deprecated('Use ListValue() / ListValue.new instead')
-  static ListValue create() => ListValue._();
-  static $pb.GeneratedMessage $_createMessage() => ListValue._();
-  @$core.override
-  ListValue createEmptyInstance() => ListValue._();
-  @$core.pragma('dart2js:noInline')
-  static ListValue getDefault() => _defaultInstance ??=
-      $pb.GeneratedMessage.$_defaultFor<ListValue>(ListValue.$_createMessage);
-  static ListValue? _defaultInstance;
-
-  @$pb.TagNumber(1)
-  $pb.PbList<SettingValue> get values => $_getList(0);
+  @$pb.TagNumber(9)
+  StringMap get mapValue => $_getN(4);
+  @$pb.TagNumber(9)
+  set mapValue(StringMap value) => $_setField(9, value);
+  @$pb.TagNumber(9)
+  $core.bool hasMapValue() => $_has(4);
+  @$pb.TagNumber(9)
+  void clearMapValue() => $_clearField(9);
+  @$pb.TagNumber(9)
+  StringMap ensureMapValue() => $_ensure(4);
 }
 
 /// 设置快照的 typed 模型。字段与 core settings_snapshot 的稳定键一一对应;

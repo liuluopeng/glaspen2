@@ -197,23 +197,19 @@ pub fn setting_value_to_json(value: &crate::proto::SettingValue) -> serde_json::
         Some(Value::DoubleValue(v)) => serde_json::Number::from_f64(*v)
             .map_or(serde_json::Value::Null, serde_json::Value::Number),
         Some(Value::StringValue(v)) => serde_json::Value::String(v.clone()),
-        Some(Value::StructValue(v)) => prost_struct_to_json(v),
-        Some(Value::ListValue(v)) => {
-            serde_json::Value::Array(v.values.iter().map(setting_value_to_json).collect())
-        }
-        Some(Value::BytesValue(v)) => serde_json::Value::Array(
-            v.iter()
-                .map(|b| serde_json::Value::Number((*b as u64).into()))
+        Some(Value::MapValue(map)) => serde_json::Value::Object(
+            map.values
+                .iter()
+                .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
                 .collect(),
         ),
-        Some(Value::NullValue(_)) => serde_json::Value::Null,
     }
 }
 
 pub fn json_to_setting_value(value: &serde_json::Value) -> crate::proto::SettingValue {
     use crate::proto::setting_value::Value;
     let value = match value {
-        serde_json::Value::Null => Some(Value::NullValue(true)),
+        serde_json::Value::Null => None,
         serde_json::Value::Bool(v) => Some(Value::BoolValue(*v)),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
@@ -223,12 +219,20 @@ pub fn json_to_setting_value(value: &serde_json::Value) -> crate::proto::Setting
             }
         }
         serde_json::Value::String(v) => Some(Value::StringValue(v.clone())),
-        serde_json::Value::Array(items) => Some(Value::ListValue(crate::proto::ListValue {
-            values: items.iter().map(json_to_setting_value).collect(),
+        serde_json::Value::Array(_) => None,
+        serde_json::Value::Object(map) => Some(Value::MapValue(crate::proto::StringMap {
+            values: map
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        v.as_str()
+                            .map(str::to_string)
+                            .unwrap_or_else(|| v.to_string()),
+                    )
+                })
+                .collect(),
         })),
-        serde_json::Value::Object(map) => Some(Value::StructValue(json_to_prost_struct(
-            &serde_json::Value::Object(map.clone()),
-        ))),
     };
     crate::proto::SettingValue { value }
 }
@@ -1138,8 +1142,7 @@ mod tests {
             serde_json::json!(25),
             serde_json::json!(3.5),
             serde_json::json!("zh"),
-            serde_json::json!([1, 2, 3]),
-            serde_json::json!({"theme": "light", "scale": 2.0}),
+            serde_json::json!({"undo": "cmd+ctrl+Z"}),
         ] {
             let setting = json_to_setting_value(&value);
             assert_eq!(setting_value_to_json(&setting), value);
