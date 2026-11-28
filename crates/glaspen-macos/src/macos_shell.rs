@@ -2814,47 +2814,34 @@ pub extern "C" fn sw_event_tap_disable() {
     }
 }
 
-// ── R52: 设置快照 overrides JSON(启动自启/快捷键/翻页/语言) ──
+// ── R52: 设置快照 overrides(启动自启/快捷键/翻页/语言) ──
 
 unsafe extern "C" {
     fn glaspen2_is_launch_at_login() -> i32;
-    fn glaspen2_shortcut_store_values_pb(out_len: *mut usize) -> *mut u8;
     fn glaspen2_router_flip_effect() -> i32;
     fn glaspen2_router_lang() -> i32;
 }
 
-/// R52: 返回堆上 JSON(调用方 free), 失败返回 null。
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_menu_snapshot_overrides_json() -> *mut std::os::raw::c_char {
+/// 运行时专属设置 overrides(不再序列化为 JSON C 字符串)。
+fn menu_snapshot_overrides() -> serde_json::Map<String, serde_json::Value> {
     let launch = unsafe { glaspen2_is_launch_at_login() != 0 };
-    let shortcuts = unsafe {
-        let mut len: usize = 0;
-        let p = glaspen2_shortcut_store_values_pb(&mut len);
-        if p.is_null() || len == 0 {
-            "{}".to_string()
-        } else {
-            let bytes = std::slice::from_raw_parts(p, len);
-            let map = glaspen_ipc::decode_string_map(bytes).unwrap_or_default();
-            libc::free(p as *mut c_void);
-            serde_json::to_string(&map).unwrap_or_else(|_| "{}".to_string())
-        }
-    };
+    let shortcuts = glaspen_core::shortcut_state::values();
+    let shortcuts = serde_json::to_string(&shortcuts).unwrap_or_else(|_| "{}".to_string());
     let flip = unsafe { glaspen2_router_flip_effect() };
     let lang = if unsafe { glaspen2_router_lang() } == 1 {
         "en"
     } else {
         "zh"
     };
-    let value = serde_json::json!({
+    serde_json::json!({
         "launchAtLogin": launch,
         "shortcuts": shortcuts,
         "flipEffect": flip,
         "language": lang,
-    });
-    match std::ffi::CString::new(value.to_string()) {
-        Ok(s) => s.into_raw(),
-        Err(_) => std::ptr::null_mut(),
-    }
+    })
+    .as_object()
+    .cloned()
+    .unwrap_or_default()
 }
 
 // ── R53: 描边 cairo context 活动槽 + 光标刷新判定 ──
@@ -7139,14 +7126,7 @@ fn shortcut_apply_from_json(text: &str) {
 }
 
 fn shortcut_values_json_from_pb() -> String {
-    let mut len: usize = 0;
-    let ptr = unsafe { glaspen2_shortcut_store_values_pb(&mut len) };
-    if ptr.is_null() || len == 0 {
-        return "{}".to_string();
-    }
-    let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
-    let map = glaspen_ipc::decode_string_map(bytes).unwrap_or_default();
-    unsafe { libc::free(ptr as *mut c_void) };
+    let map = glaspen_core::shortcut_state::values();
     serde_json::to_string(&map).unwrap_or_else(|_| "{}".to_string())
 }
 
@@ -8988,9 +8968,6 @@ pub extern "C" fn glaspen2_rust_pages_probe() -> i32 {
 // ── R182: 设置诊断探针 ──
 
 unsafe extern "C" {
-    fn glaspen2_settings_snapshot_json(
-        overrides: *const std::os::raw::c_char,
-    ) -> *mut std::os::raw::c_char;
     fn glaspen2_router_invert_fps() -> i32;
 }
 
@@ -9053,21 +9030,15 @@ pub extern "C" fn glaspen2_rust_settings_probe() -> i32 {
         glaspen2_router_set_outline_state(0);
         check("outlineDisabled", glaspen2_router_outline_enabled() == 0);
     }
-    let overrides = unsafe { glaspen2_menu_snapshot_overrides_json() };
-    if overrides.is_null() {
-        tracing::warn!("[settings-probe] FAIL settings_json nil");
+    let overrides = menu_snapshot_overrides();
+    let Ok(text) = glaspen_core::settings_snapshot::snapshot_json(
+        glaspen_core::ui::Platform::Macos,
+        None,
+        &overrides,
+    ) else {
+        tracing::warn!("[settings-probe] FAIL settings snapshot");
         return 1;
-    }
-    let snapshot = unsafe { glaspen2_settings_snapshot_json(overrides) };
-    unsafe { libc::free(overrides as *mut c_void) };
-    if snapshot.is_null() {
-        tracing::warn!("[settings-probe] FAIL settings_json nil");
-        return 1;
-    }
-    let text = unsafe { std::ffi::CStr::from_ptr(snapshot) }
-        .to_string_lossy()
-        .into_owned();
-    unsafe { glaspen2_free_c_string(snapshot) };
+    };
     check("settings_json.gridSize", text.contains("\"gridSize\""));
     check("settings_json.language", text.contains("\"language\""));
     println!("SWIFT_SETTINGS_PROBE_OK failures={failures}");
@@ -10294,22 +10265,15 @@ extern "C" fn macos_api_refresh_page(ctx: *mut c_void) {
 
 /// 设置快照 → typed SettingsSnapshot protobuf; 供根 crate 的 FRB 解码。
 pub fn settings_snapshot_pb() -> Vec<u8> {
-    unsafe {
-        let overrides = glaspen2_menu_snapshot_overrides_json();
-        if overrides.is_null() {
-            return Vec::new();
-        }
-        let json = glaspen2_settings_snapshot_json(overrides);
-        libc::free(overrides as *mut c_void);
-        if json.is_null() {
-            return Vec::new();
-        }
-        let text = std::ffi::CStr::from_ptr(json)
-            .to_string_lossy()
-            .into_owned();
-        glaspen2_free_c_string(json);
-        glaspen_ipc::encode_settings_frame(0, &text)
-    }
+    let overrides = menu_snapshot_overrides();
+    let Ok(text) = glaspen_core::settings_snapshot::snapshot_json(
+        glaspen_core::ui::Platform::Macos,
+        None,
+        &overrides,
+    ) else {
+        return Vec::new();
+    };
+    glaspen_ipc::encode_settings_frame(0, &text)
 }
 
 /// 应用一项设置; value 是 `glaspen.ipc.v1.SettingValue` protobuf。
