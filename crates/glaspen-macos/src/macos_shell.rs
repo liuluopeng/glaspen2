@@ -3279,6 +3279,10 @@ pub extern "C" fn glaspen2_rust_apply_infinite(
             glaspen2_router_camera_reset_lens();
         }
         glaspen2_router_rebuild_surface();
+        // 画布模式切换后的第一次 AppKit 绘制可能发生在窗口/图层状态更新之前,
+        // 表现为切到固定画布后笔迹消失一帧, 直到下一次笔事件才恢复。下一
+        // runloop 再强制 display 一次, 把首帧补上。
+        glaspen2_swift_dispatch_main_after(0.0, std::ptr::null_mut(), deferred_draw_display);
         glaspen2_router_event_tap_reinstall();
         glaspen2_notify_settings_changed();
     }
@@ -7801,6 +7805,11 @@ pub extern "C" fn glaspen2_rust_invert_process(
     stride: i32,
 ) -> i32 {
     if src.is_null() || format != 0x4247_5241 || w <= 0 || h <= 0 || stride <= 0 {
+        return 0;
+    }
+    // 书写过程中不做全屏反色背景刷新: 30Hz 全屏逐像素处理会抢走绘制线程,
+    // 表现为反色模式下写字严重卡顿。抬笔后的下一帧再恢复背景。
+    if unsafe { glaspen2_rust_pen_stroke_active() } != 0 {
         return 0;
     }
     let mut st = INVERT.lock().unwrap_or_else(|e| e.into_inner());
