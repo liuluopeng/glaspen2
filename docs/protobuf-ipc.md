@@ -94,6 +94,7 @@
   页面操作仍待迁；
 - ✅ `BubbleMessages/BubbleMessage/BubbleStroke/BubblePoint` typed，FRB `bubbleMessages` 已切 typed（DB 仍存 JSON）；
 - `RecordingEvent/Effect`；
-- `GridLines` / `MinimapLayout` / `ActionEffect`；
+- ✅ macOS `ActionEffect` 已直接 typed 匹配，删除 `glaspen2_action_effect_json` FFI；
+- `GridLines` / `MinimapLayout`；
 - `Panel` 其余命令 oneof；
 - macOS 内部 `*_json` FFI 改 typed Rust 调用。

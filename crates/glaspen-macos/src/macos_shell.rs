@@ -4644,9 +4644,6 @@ pub extern "C" fn glaspen2_rust_canvas_overview(
 // ── R74: 动作 id -> effect 分派 ──
 
 unsafe extern "C" {
-    fn glaspen2_action_effect_json(
-        action: *const std::os::raw::c_char,
-    ) -> *mut std::os::raw::c_char;
     fn glaspen2_router_prev_color_index() -> i32;
     fn glaspen2_router_selected_color_index() -> i32;
     fn glaspen2_color_preset_count() -> i32;
@@ -4681,20 +4678,41 @@ pub extern "C" fn glaspen2_rust_perform_action(action: *const std::os::raw::c_ch
     if action.is_null() {
         return 0;
     }
-    let out = unsafe { glaspen2_action_effect_json(action) };
-    if out.is_null() {
-        return 0;
-    }
-    let text = unsafe { std::ffi::CStr::from_ptr(out) }
+    let action_text = unsafe { std::ffi::CStr::from_ptr(action) }
         .to_string_lossy()
         .into_owned();
-    unsafe { glaspen2_free_c_string(out) };
-    let Ok(effect) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return 0;
+    let effect = match glaspen_core::action_effect::effect_for_action(&action_text) {
+        Ok(effect) => effect,
+        Err(err) => {
+            tracing::warn!("action: {err}");
+            return 0;
+        }
     };
-    let Some(kind) = effect.get("kind").and_then(|k| k.as_str()) else {
-        tracing::warn!("action: effect 分发失败: {text}");
-        return 0;
+    let kind = match effect {
+        glaspen_core::action_effect::ActionEffect::Undo => "Undo",
+        glaspen_core::action_effect::ActionEffect::PagePrev => "PagePrev",
+        glaspen_core::action_effect::ActionEffect::PageNext => "PageNext",
+        glaspen_core::action_effect::ActionEffect::ColorSwap => "ColorSwap",
+        glaspen_core::action_effect::ActionEffect::WidthSwap => "WidthSwap",
+        glaspen_core::action_effect::ActionEffect::ToggleDraw => "ToggleDraw",
+        glaspen_core::action_effect::ActionEffect::ToggleFreeCanvas => "ToggleFreeCanvas",
+        glaspen_core::action_effect::ActionEffect::CameraPan(dir) => match dir {
+            glaspen_core::action_effect::CameraDir::Left => "CameraPanLeft",
+            glaspen_core::action_effect::CameraDir::Right => "CameraPanRight",
+            glaspen_core::action_effect::CameraDir::Up => "CameraPanUp",
+            glaspen_core::action_effect::CameraDir::Down => "CameraPanDown",
+        },
+        glaspen_core::action_effect::ActionEffect::CameraZoom(dir) => match dir {
+            glaspen_core::action_effect::ZoomDir::In => "CameraZoomIn",
+            glaspen_core::action_effect::ZoomDir::Out => "CameraZoomOut",
+        },
+        glaspen_core::action_effect::ActionEffect::Clear => "Clear",
+        glaspen_core::action_effect::ActionEffect::Export => "Export",
+        glaspen_core::action_effect::ActionEffect::CopySvg => "CopySvg",
+        glaspen_core::action_effect::ActionEffect::ToggleGlass => "ToggleGlass",
+        glaspen_core::action_effect::ActionEffect::ToggleEthereal => "ToggleEthereal",
+        glaspen_core::action_effect::ActionEffect::OpenSettings => "OpenSettings",
+        glaspen_core::action_effect::ActionEffect::Quit => "Quit",
     };
     let hotkey = |kc: u16| unsafe { glaspen2_router_perform_hotkey(kc) } != 0;
     match kind {

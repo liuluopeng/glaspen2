@@ -569,10 +569,10 @@ mod tests {
             missing.is_empty(),
             "macOS perform_action 没有执行这些 effect(另一平台/core 已定义): {missing:?}"
         );
-        // macOS 必须经过 core effect 桥, 不能退回 action 字符串链。
+        // macOS 必须直接使用 typed ActionEffect, 不能再经 JSON FFI。
         assert!(
-            mac_body.contains("glaspen2_action_effect_json"),
-            "macOS perform_action 未接 core 的 action effect FFI"
+            mac_body.contains("effect_for_action") && mac_body.contains("ActionEffect::"),
+            "macOS perform_action 未直接匹配 typed ActionEffect"
         );
 
         // Windows: 必须 match ActionEffect, 且 16 个枚举变体 token 全在。

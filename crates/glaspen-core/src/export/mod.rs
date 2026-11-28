@@ -2000,30 +2000,6 @@ pub extern "C" fn glaspen2_chord_actions_json() -> *mut c_char {
     return_c_string(crate::ui::action_ids_json())
 }
 
-// ── 动作 effect 单源 FFI(D3b): macOS 壳经此使用 core::action_effect ──
-
-/// 动作 id → 平台无关 effect JSON(只服务 macOS ObjC 适配器)。
-///
-/// 形状: `{"kind":"<variant_name>"}`。镜头平移/缩放的变体名已带方向
-/// (`CameraPanLeft` / `CameraZoomIn` 等), 因此没有额外载荷字段; 其余
-/// 无载荷变体直接是变体名(`Undo`、`OpenSettings`、`Quit`……)。
-/// 失败: `{"error":"未知动作 id: ..."}`(空/未登记 id), 不返回 NULL。
-/// Windows 同进程直接 `match ActionEffect`, 不经此 JSON。
-/// 返回值用 `glaspen2_free_c_string` 释放。
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_action_effect_json(action: *const c_char) -> *mut c_char {
-    let error = |msg: String| return_c_string(serde_json::json!({ "error": msg }).to_string());
-    let Some(action) = (unsafe { borrow_cstr(action) }) else {
-        return error("动作 effect 缺少 action id".to_string());
-    };
-    match crate::action_effect::effect_for_action(action) {
-        Ok(effect) => {
-            return_c_string(serde_json::json!({ "kind": effect.variant_name() }).to_string())
-        }
-        Err(e) => error(e),
-    }
-}
-
 // ── 镜头数学单源 FFI(D5b): macOS 壳经此使用 core::camera ──
 //
 // 与 D1b/D3b 同形: 输入是 ObjC 侧持有的镜头三值(pan_x/pan_y/zoom)与本次操作
@@ -4046,72 +4022,6 @@ mod tests {
             .into_owned();
         glaspen2_free_c_string(ptr);
         assert!(text.contains("error"));
-    }
-
-    /// D3b 动作 effect 桥 FFI: macOS ObjC 依赖的 JSON 形状。
-    ///
-    /// - `ui::ACTIONS` 的每个 action 都必须得到 `{"kind":"<variant_name>"}`
-    ///   (与 `effect_for_action` + `variant_name` 逐条一致);
-    /// - 镜头变体的 kind 已带方向(`CameraPanLeft` / `CameraZoomOut`), 无载荷字段;
-    /// - 未知/空 id → `{"error":"未知动作 id: ..."}`;
-    /// - 输出必须是单行合法 JSON(ObjC 用 NSJSONSerialization 解析)。
-    #[test]
-    fn action_effect_ffi_roundtrip() {
-        let call = |action: &str| {
-            let action_c = CString::new(action).unwrap();
-            let ptr = glaspen2_action_effect_json(action_c.as_ptr());
-            assert!(!ptr.is_null(), "FFI 应返回 JSON 字符串");
-            let text = unsafe { CStr::from_ptr(ptr) }
-                .to_string_lossy()
-                .into_owned();
-            glaspen2_free_c_string(ptr);
-            text
-        };
-        let parse = |text: &str| -> serde_json::Value {
-            assert!(!text.contains('\n'), "effect JSON 必须是单行: {text}");
-            serde_json::from_str(text).unwrap_or_else(|e| panic!("effect JSON 不合法: {e}: {text}"))
-        };
-
-        for def in crate::ui::ACTIONS {
-            let value = parse(&call(def.id));
-            let expected = crate::action_effect::effect_for_action(def.id)
-                .unwrap_or_else(|e| panic!("动作 {} 未映射: {e}", def.id))
-                .variant_name();
-            assert_eq!(value["kind"], expected, "动作 {} 的 kind 漂移", def.id);
-            assert_eq!(
-                value.as_object().map(|obj| obj.len()),
-                Some(1),
-                "动作 {} 的 effect 不应带载荷字段: {value}",
-                def.id
-            );
-        }
-        // 镜头载荷: kind 直接带方向(与 ActionEffect::variant_name 一致)。
-        assert_eq!(parse(&call("canvas_pan_left"))["kind"], "CameraPanLeft");
-        assert_eq!(parse(&call("canvas_pan_right"))["kind"], "CameraPanRight");
-        assert_eq!(parse(&call("canvas_pan_up"))["kind"], "CameraPanUp");
-        assert_eq!(parse(&call("canvas_pan_down"))["kind"], "CameraPanDown");
-        assert_eq!(parse(&call("canvas_zoom_in"))["kind"], "CameraZoomIn");
-        assert_eq!(parse(&call("canvas_zoom_out"))["kind"], "CameraZoomOut");
-
-        // 未知/空 id → error JSON, 错误信息说明是未知动作。
-        for bad in ["", "no_such_action", "Undo"] {
-            let value = parse(&call(bad));
-            assert!(
-                value["error"]
-                    .as_str()
-                    .unwrap_or("")
-                    .contains("未知动作 id"),
-                "{bad:?} 应返回未知动作错误: {value}"
-            );
-        }
-        // null 指针: 安全返回 error JSON, 不崩。
-        let ptr = glaspen2_action_effect_json(std::ptr::null());
-        assert!(!ptr.is_null());
-        let text = unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned();
-        glaspen2_free_c_string(ptr);
-        assert!(parse(&text)["error"].is_string(), "null 指针应返回 error");
     }
 
     /// D5b 镜头数学 FFI: macOS ObjC 依赖的 JSON 形状 + 数值语义。
