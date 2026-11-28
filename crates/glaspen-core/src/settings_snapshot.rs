@@ -157,6 +157,22 @@ pub fn field_names(platform: Platform) -> Vec<&'static str> {
 /// 返回的 JSON 是扁平对象, 字段按字典序, 值类型见登记表 kind
 /// (Bool → true/false, Int → 整数, Float → 数字, Str → 字符串;
 /// shortcuts 是字符串而不是对象, 与 UI 侧 _decodeShortcuts 兼容)。
+pub fn snapshot_settings(
+    platform: Platform,
+    lang: Option<Lang>,
+    overrides: &serde_json::Map<String, Value>,
+) -> Result<glaspen_ipc::proto::AppSettings, SnapshotError> {
+    let db = DbRows::load();
+    let fields = build_fields(platform, lang, overrides, &db)?;
+    let value = Value::Object(
+        fields
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+    );
+    Ok(glaspen_ipc::app_settings_from_json(&value))
+}
+
 pub fn snapshot_json(
     platform: Platform,
     lang: Option<Lang>,
@@ -1034,11 +1050,11 @@ mod tests {
         let win_snapshot = &tail[..end];
 
         assert!(
-            mac_snapshot.contains("settings_snapshot::snapshot_json"),
-            "macOS 快照函数未走 core settings_snapshot::snapshot_json"
+            mac_snapshot.contains("settings_snapshot::snapshot_settings"),
+            "macOS 快照函数未走 core settings_snapshot::snapshot_settings"
         );
         assert!(
-            win_snapshot.contains("settings_snapshot::snapshot_json"),
+            win_snapshot.contains("settings_snapshot::snapshot_settings"),
             "Windows getSettings 分支未走 core 入口(settings_snapshot::snapshot_json)"
         );
 

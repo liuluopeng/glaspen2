@@ -1209,7 +1209,7 @@ mod tests {
 #[frb]
 pub async fn ui_config_pb() -> Vec<u8> {
     run_blocking(|| {
-        let text = crate::ui::ui_config_json(crate::ui::Platform::Macos);
-        glaspen_ipc::encode_ui_config_frame(0, &text)
+        let config = crate::ui::ui_config_typed(crate::ui::Platform::Macos);
+        glaspen_ipc::encode_ui_config_typed_frame(0, config)
     })
 }

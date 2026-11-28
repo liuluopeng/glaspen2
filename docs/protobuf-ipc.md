@@ -123,3 +123,5 @@
 - ✅ 删除 `Panel` protobuf、`PanelInput::Json`、`encode_response/encode_panel/decode_panel/panel_frame`；Windows 错误/快捷键/设置增量推送改 typed Error/SettingsPatch/SettingsChanged。
 
 - ✅ 删除 macOS 剩余内部 JSON FFI：camera JSON 返回、live-plan JSON 光栅化、dead `recording_error_json`。
+
+- ✅ core 新增 `settings_snapshot::snapshot_settings` 与 `ui::ui_config_typed`；macOS/Windows adapter 不再解析 snapshot/uiConfig JSON，直接拿 typed 结构编码 Frame。

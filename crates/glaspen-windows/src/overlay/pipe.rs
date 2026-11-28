@@ -167,12 +167,13 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
                 }
                 PanelInput::GetSettings { request_id } => {
                     let overrides = settings_snapshot_overrides();
-                    if let Ok(data) = glaspen_core::settings_snapshot::snapshot_json(
+                    if let Ok(settings) = glaspen_core::settings_snapshot::snapshot_settings(
                         glaspen_core::ui::Platform::Windows,
                         None,
                         &overrides,
                     ) {
-                        let frame = glaspen_ipc::encode_settings_frame(request_id, &data);
+                        let frame =
+                            glaspen_ipc::encode_settings_frame_from(request_id, settings);
                         let _ = writer.write_frame(&frame);
                     }
                 }
@@ -312,10 +313,11 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
                 }
                 PanelInput::CancelDownload => {}
                 PanelInput::GetUiConfig { request_id } => {
-                    let text = glaspen_core::ui::ui_config_json(
+                    let config = glaspen_core::ui::ui_config_typed(
                         glaspen_core::ui::Platform::Windows,
                     );
-                    let frame = glaspen_ipc::encode_ui_config_frame(request_id, &text);
+                    let frame =
+                        glaspen_ipc::encode_ui_config_typed_frame(request_id, config);
                     let _ = writer.write_frame(&frame);
                 }
                 PanelInput::ApplyUpdate { request_id } => {

@@ -9879,14 +9879,14 @@ extern "C" fn macos_api_refresh_page(ctx: *mut c_void) {
 /// 设置快照 → typed SettingsSnapshot protobuf; 供根 crate 的 FRB 解码。
 pub fn settings_snapshot_pb() -> Vec<u8> {
     let overrides = menu_snapshot_overrides();
-    let Ok(text) = glaspen_core::settings_snapshot::snapshot_json(
+    let Ok(settings) = glaspen_core::settings_snapshot::snapshot_settings(
         glaspen_core::ui::Platform::Macos,
         None,
         &overrides,
     ) else {
         return Vec::new();
     };
-    glaspen_ipc::encode_settings_frame(0, &text)
+    glaspen_ipc::encode_settings_frame_from(0, settings)
 }
 
 /// 应用一项设置; value 是 `glaspen.ipc.v1.SettingValue` protobuf。

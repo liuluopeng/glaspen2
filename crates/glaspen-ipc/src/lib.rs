@@ -557,6 +557,19 @@ pub fn encode_error_frame(request_id: u64, code: &str, message: &str) -> Vec<u8>
     encode_frame(&frame)
 }
 
+pub fn encode_ui_config_typed_frame(request_id: u64, config: proto::UiConfig) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::UiConfigResponse(
+            proto::UiConfigResponse {
+                config: Some(config),
+            },
+        )),
+    };
+    encode_frame(&frame)
+}
+
 pub fn encode_ui_config_frame(request_id: u64, text: &str) -> Vec<u8> {
     let config = ui_config_from_json(text).unwrap_or_default();
     let frame = Frame {
@@ -653,6 +666,38 @@ pub fn app_settings_to_json(s: &crate::proto::AppSettings) -> serde_json::Value 
         "language": s.language,
         "shortcuts": serde_json::to_string(&s.shortcuts).unwrap_or_else(|_| "{}".to_string()),
     })
+}
+
+pub fn encode_settings_frame_from(request_id: u64, settings: proto::AppSettings) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::SettingsSnapshotResponse(
+            proto::SettingsSnapshotResponse {
+                snapshot: Some(proto::SettingsSnapshot {
+                    settings: Some(settings),
+                    metadata: Default::default(),
+                }),
+            },
+        )),
+    };
+    encode_frame(&frame)
+}
+
+pub fn encode_settings_changed_frame_from(settings: proto::AppSettings) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: 0,
+        body: Some(proto::frame::Body::SettingsChanged(
+            proto::SettingsChanged {
+                snapshot: Some(proto::SettingsSnapshot {
+                    settings: Some(settings),
+                    metadata: Default::default(),
+                }),
+            },
+        )),
+    };
+    encode_frame(&frame)
 }
 
 pub fn encode_settings_frame(request_id: u64, json: &str) -> Vec<u8> {

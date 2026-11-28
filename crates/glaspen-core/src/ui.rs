@@ -409,6 +409,11 @@ pub fn ui_config_json(platform: Platform) -> String {
 ///
 /// 放在 core 里(而不是 Windows-only 模块里)是为了能在 macOS 上用单测锁住
 /// 协议形状: type/reqId/data 字段、末尾换行、data 是 JSON 对象而非转义字符串。
+/// 面板 UI schema 的 typed 形式(adapter 不再解析 JSON)。
+pub fn ui_config_typed(platform: Platform) -> glaspen_ipc::proto::UiConfig {
+    glaspen_ipc::ui_config_from_json(&ui_config_json(platform)).unwrap_or_default()
+}
+
 pub fn pipe_ui_config_response_json(req_id: i64) -> String {
     format!(
         "{{\"type\":\"uiConfig_response\",\"reqId\":{req_id},\"data\":{}}}\n",
