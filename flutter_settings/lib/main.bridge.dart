@@ -184,12 +184,7 @@ class _FrbBridge extends SettingsBridge {
   @override
   Future<Map<String, dynamic>> uiConfig() async {
     await _init();
-    final msg = decodePanelMessage(await rust.uiConfigPb());
-    final data = msg.data;
-    if (data is Map) {
-      return {for (final e in data.entries) e.key.toString(): e.value};
-    }
-    throw FormatException('uiConfig protobuf 不是对象: $data');
+    return decodeUiConfigFrame(await rust.uiConfigPb());
   }
 
   @override
@@ -399,8 +394,7 @@ class _FrbBridge extends SettingsBridge {
   @override
   Future<(bool, String)> nasBackupNow() async {
     await _init();
-    final msg = decodePanelMessage(await rust.nasBackupNow());
-    final v = (msg.data as Map).cast<String, dynamic>();
+    final v = decodeNasBackupFrame(await rust.nasBackupNow());
     final ok = v['ok'] == true;
     final text = ok
         ? '${(v['size_bytes'] as num? ?? 0) ~/ 1024} KB · ${(v['stroke_count'] as num? ?? 0)} 笔'

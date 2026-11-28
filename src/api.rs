@@ -341,7 +341,19 @@ pub async fn bubble_flush() {
 /// axum 服务(文件落盘 + Postgres 登记)。返回结果 JSON, 见
 /// export/nas_backup.rs 与 docs/nas-backup.md。
 pub async fn nas_backup_now() -> Vec<u8> {
-    run_blocking(|| panel_bytes("nasBackup", &glaspen_core::export::nas_backup::backup_now()))
+    run_blocking(|| {
+        let text = glaspen_core::export::nas_backup::backup_now();
+        let value: serde_json::Value =
+            serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
+        glaspen_ipc::encode_nas_backup_frame(
+            0,
+            value["ok"].as_bool().unwrap_or(false),
+            value["size_bytes"].as_u64().unwrap_or(0),
+            value["stroke_count"].as_u64().unwrap_or(0),
+            value["error"].as_str().unwrap_or(""),
+            value["hint"].as_str().unwrap_or(""),
+        )
+    })
 }
 
 /// 写入一项设置。`value` 是 `glaspen.ipc.v1.SettingValue` 的 protobuf bytes;
@@ -394,12 +406,6 @@ fn current_settings() -> Option<Settings> {
     shim::settings_json()
         .as_deref()
         .and_then(Settings::from_json)
-}
-
-/// 进程内 FRB 的通用 Panel protobuf 编码(数据只在本进程内, 不落 JSON 文本)。
-fn panel_bytes(kind: &str, json: &str) -> Vec<u8> {
-    let value = serde_json::from_str(json).unwrap_or(serde_json::Value::Null);
-    glaspen_ipc::encode_panel(kind, &value)
 }
 
 // ---------------------------------------------------------------------------
@@ -1203,9 +1209,7 @@ mod tests {
 #[frb]
 pub async fn ui_config_pb() -> Vec<u8> {
     run_blocking(|| {
-        panel_bytes(
-            "uiConfig",
-            &crate::ui::ui_config_json(crate::ui::Platform::Macos),
-        )
+        let text = crate::ui::ui_config_json(crate::ui::Platform::Macos);
+        glaspen_ipc::encode_ui_config_frame(0, &text)
     })
 }

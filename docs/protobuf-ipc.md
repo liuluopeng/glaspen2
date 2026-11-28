@@ -117,3 +117,5 @@
 - ✅ `AppSettings.shortcuts` 从 JSON 字符串改为 typed `map<string,string>`；Dart 侧再序列化给旧 UI 解析。
 
 - ✅ `UiConfig` 全量 typed protobuf（platform/maps/settings schema/sections/blocks/features），Dart 从 typed 转回旧 `UiConfig.fromJson` 所需 Map；Windows `process_pipe_message` 已删除。
+
+- ✅ macOS FRB `uiConfigPb` / `nasBackupNow` 改 typed Frame；Dart `decodeUiConfigFrame` / `decodeNasBackupFrame` 直接解 typed。

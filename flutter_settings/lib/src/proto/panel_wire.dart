@@ -146,6 +146,16 @@ Map<String, dynamic> uiConfigToMap(pb.UiConfig c) {
   };
 }
 
+Map<String, dynamic> decodeUiConfigFrame(List<int> bytes) {
+  final data = decodePanelMessage(bytes).data;
+  return data is Map ? Map<String, dynamic>.from(data) : const {};
+}
+
+Map<String, dynamic> decodeNasBackupFrame(List<int> bytes) {
+  final data = decodePanelMessage(bytes).data;
+  return data is Map ? Map<String, dynamic>.from(data) : const {};
+}
+
 Map<String, dynamic> bubbleMessagesToMap(pb.BubbleMessages m) {
   return <String, dynamic>{
     'device': m.device,
