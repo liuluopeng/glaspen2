@@ -875,15 +875,15 @@ class _NamedPipeBridge extends SettingsBridge {
 
   @override
   Future<bool> exportPdf() async {
-    final r = await _request('exportPdf', null);
-    return r['ok'] == 1 || r['ok'] == true;
+    final r = await _requestTyped(encodeExportPdfRequest);
+    return r['ok'] == true;
   }
 
   @override
   Future<(bool, String)> backupNow() async {
-    // 库在覆盖层进程里,备份经管道在那边执行(与 macOS FRB 同一核心函数)
-    final r = await _request('backupNow', null);
-    return (r['ok'] == 1 || r['ok'] == true, (r['message'] as String?) ?? '');
+    final r = await _requestTyped((id) =>
+        encodeBackupCommandRequest(id, pb.BackupCommand.BACKUP_NOW));
+    return (r['ok'] == true, (r['message'] as String?) ?? '');
   }
 
   @override
@@ -900,8 +900,9 @@ class _NamedPipeBridge extends SettingsBridge {
 
   @override
   Future<(bool, String)> restoreLatestBackup() async {
-    final r = await _request('restoreLatestBackup', null);
-    return (r['ok'] == 1 || r['ok'] == true, (r['message'] as String?) ?? '');
+    final r = await _requestTyped((id) =>
+        encodeBackupCommandRequest(id, pb.BackupCommand.RESTORE_LATEST));
+    return (r['ok'] == true, (r['message'] as String?) ?? '');
   }
 
   @override
@@ -912,9 +913,8 @@ class _NamedPipeBridge extends SettingsBridge {
 
   @override
   Future<String> testChatLogin() async {
-    // 经管道在覆盖层进程里强制登录一次;配置已先经 setSetting 保存
-    final r = await _request('testChatLogin', null);
-    if (r['ok'] == 1 || r['ok'] == true) return '';
+    final r = await _requestTyped(encodeChatLoginRequest);
+    if (r['ok'] == true) return '';
     return (r['message'] as String?) ?? '登录失败';
   }
 

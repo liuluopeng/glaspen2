@@ -460,6 +460,39 @@ pub enum PageOpValue {
     Count(i32),
 }
 
+pub fn encode_backup_outcome_frame(
+    request_id: u64,
+    kind: &str,
+    ok: bool,
+    message: &str,
+) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::BackupOutcome(proto::BackupOutcome {
+            ok,
+            message: message.to_string(),
+            kind: kind.to_string(),
+        })),
+    };
+    encode_frame(&frame)
+}
+
+pub fn encode_chat_login_outcome_frame(request_id: u64, ok: bool, message: &str) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::ChatLoginOutcome(
+            proto::ChatLoginOutcome {
+                ok,
+                message: message.to_string(),
+                kind: "testChatLogin_response".to_string(),
+            },
+        )),
+    };
+    encode_frame(&frame)
+}
+
 pub fn encode_canvas_overview_frame(request_id: u64, png: &[u8], rect: &[f64]) -> Vec<u8> {
     let frame = Frame {
         protocol_version: PROTOCOL_VERSION,

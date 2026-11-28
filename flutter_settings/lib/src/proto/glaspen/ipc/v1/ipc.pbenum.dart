@@ -39,5 +39,24 @@ class CanvasAction extends $pb.ProtobufEnum {
   const CanvasAction._(super.value, super.name);
 }
 
+class BackupCommand extends $pb.ProtobufEnum {
+  static const BackupCommand BACKUP_NOW =
+      BackupCommand._(0, _omitEnumNames ? '' : 'BACKUP_NOW');
+  static const BackupCommand RESTORE_LATEST =
+      BackupCommand._(1, _omitEnumNames ? '' : 'RESTORE_LATEST');
+
+  static const $core.List<BackupCommand> values = <BackupCommand>[
+    BACKUP_NOW,
+    RESTORE_LATEST,
+  ];
+
+  static final $core.List<BackupCommand?> _byValue =
+      $pb.ProtobufEnum.$_initByValueList(values, 1);
+  static BackupCommand? valueOf($core.int value) =>
+      value < 0 || value >= _byValue.length ? null : _byValue[value];
+
+  const BackupCommand._(super.value, super.name);
+}
+
 const $core.bool _omitEnumNames =
     $core.bool.fromEnvironment('protobuf.omit_enum_names');

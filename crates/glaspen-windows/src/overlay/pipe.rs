@@ -287,6 +287,60 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
                 } => {
                     process_canvas_overview(request_id, w, h, action, hwnd, &mut writer);
                 }
+                PanelInput::BackupCommand {
+                    request_id,
+                    command,
+                } => {
+                    use glaspen_ipc::proto::BackupCommand;
+                    let (kind, ok, message) = match command {
+                        BackupCommand::BackupNow => {
+                            let (ok, message) = match glaspen_core::runtime()
+                                .block_on(glaspen_core::db::backup_now())
+                            {
+                                Ok(path) => (true, path),
+                                Err(e) => (false, e),
+                            };
+                            ("backupNow_response", ok, message)
+                        }
+                        BackupCommand::RestoreLatest => {
+                            let (ok, message) = match glaspen_core::runtime()
+                                .block_on(glaspen_core::db::restore_latest_backup())
+                            {
+                                Ok((path, pages)) => (true, format!("{path}(当前共 {pages} 页)")),
+                                Err(e) => (false, e),
+                            };
+                            ("restoreLatestBackup_response", ok, message)
+                        }
+                    };
+                    let frame = glaspen_ipc::encode_backup_outcome_frame(
+                        request_id,
+                        kind,
+                        ok,
+                        &message,
+                    );
+                    let _ = writer.write_frame(&frame);
+                }
+                PanelInput::ChatLogin { request_id } => {
+                    let (ok, message) = match glaspen_core::export::chat_auth_test_login_blocking() {
+                        Ok(()) => (true, String::new()),
+                        Err(e) => (false, e),
+                    };
+                    let frame = glaspen_ipc::encode_chat_login_outcome_frame(
+                        request_id,
+                        ok,
+                        &message,
+                    );
+                    let _ = writer.write_frame(&frame);
+                }
+                PanelInput::ExportPdf { request_id } => {
+                    let ok = glaspen_core::export::glaspen2_export_pdf() != 0;
+                    let frame = glaspen_ipc::encode_page_op_frame(
+                        request_id,
+                        "exportPdf_response",
+                        glaspen_ipc::PageOpValue::Ok(ok),
+                    );
+                    let _ = writer.write_frame(&frame);
+                }
             }
         }
         let _ = writer.flush();

@@ -92,6 +92,16 @@ pub enum PanelInput {
     AppVersion {
         request_id: u64,
     },
+    BackupCommand {
+        request_id: u64,
+        command: crate::proto::BackupCommand,
+    },
+    ChatLogin {
+        request_id: u64,
+    },
+    ExportPdf {
+        request_id: u64,
+    },
     CanvasOverview {
         request_id: u64,
         w: i32,

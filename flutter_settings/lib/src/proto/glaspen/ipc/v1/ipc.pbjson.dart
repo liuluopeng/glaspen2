@@ -31,6 +31,19 @@ final $typed_data.Uint8List canvasActionDescriptor = $convert.base64Decode(
     'CgxDYW52YXNBY3Rpb24SEgoOQ0FOVkFTX0NVUlJFTlQQABIPCgtDQU5WQVNfSE9NRRABEhEKDU'
     'NBTlZBU19DRU5URVIQAhIOCgpDQU5WQVNfTkVXEAM=');
 
+@$core.Deprecated('Use backupCommandDescriptor instead')
+const BackupCommand$json = {
+  '1': 'BackupCommand',
+  '2': [
+    {'1': 'BACKUP_NOW', '2': 0},
+    {'1': 'RESTORE_LATEST', '2': 1},
+  ],
+};
+
+/// Descriptor for `BackupCommand`. Decode as a `google.protobuf.EnumDescriptorProto`.
+final $typed_data.Uint8List backupCommandDescriptor = $convert.base64Decode(
+    'Cg1CYWNrdXBDb21tYW5kEg4KCkJBQ0tVUF9OT1cQABISCg5SRVNUT1JFX0xBVEVTVBAB');
+
 @$core.Deprecated('Use frameDescriptor instead')
 const Frame$json = {
   '1': 'Frame',
@@ -236,6 +249,51 @@ const Frame$json = {
       '10': 'canvasOverviewResponse'
     },
     {
+      '1': 'backup_command_request',
+      '3': 50,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.BackupCommandRequest',
+      '9': 0,
+      '10': 'backupCommandRequest'
+    },
+    {
+      '1': 'backup_outcome',
+      '3': 51,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.BackupOutcome',
+      '9': 0,
+      '10': 'backupOutcome'
+    },
+    {
+      '1': 'chat_login_request',
+      '3': 52,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.ChatLoginRequest',
+      '9': 0,
+      '10': 'chatLoginRequest'
+    },
+    {
+      '1': 'chat_login_outcome',
+      '3': 53,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.ChatLoginOutcome',
+      '9': 0,
+      '10': 'chatLoginOutcome'
+    },
+    {
+      '1': 'export_pdf_request',
+      '3': 54,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.ExportPdfRequest',
+      '9': 0,
+      '10': 'exportPdfRequest'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -295,9 +353,16 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'oXY2FudmFzX292ZXJ2aWV3X3JlcXVlc3QYLiABKAsyJS5nbGFzcGVuLmlwYy52MS5DYW52YXNP'
     'dmVydmlld1JlcXVlc3RIAFIVY2FudmFzT3ZlcnZpZXdSZXF1ZXN0EmIKGGNhbnZhc19vdmVydm'
     'lld19yZXNwb25zZRgvIAEoCzImLmdsYXNwZW4uaXBjLnYxLkNhbnZhc092ZXJ2aWV3UmVzcG9u'
-    'c2VIAFIWY2FudmFzT3ZlcnZpZXdSZXNwb25zZRItCgVwYW5lbBgUIAEoCzIVLmdsYXNwZW4uaX'
-    'BjLnYxLlBhbmVsSABSBXBhbmVsEi0KBWVycm9yGGMgASgLMhUuZ2xhc3Blbi5pcGMudjEuRXJy'
-    'b3JIAFIFZXJyb3JCBgoEYm9keQ==');
+    'c2VIAFIWY2FudmFzT3ZlcnZpZXdSZXNwb25zZRJcChZiYWNrdXBfY29tbWFuZF9yZXF1ZXN0GD'
+    'IgASgLMiQuZ2xhc3Blbi5pcGMudjEuQmFja3VwQ29tbWFuZFJlcXVlc3RIAFIUYmFja3VwQ29t'
+    'bWFuZFJlcXVlc3QSRgoOYmFja3VwX291dGNvbWUYMyABKAsyHS5nbGFzcGVuLmlwYy52MS5CYW'
+    'NrdXBPdXRjb21lSABSDWJhY2t1cE91dGNvbWUSUAoSY2hhdF9sb2dpbl9yZXF1ZXN0GDQgASgL'
+    'MiAuZ2xhc3Blbi5pcGMudjEuQ2hhdExvZ2luUmVxdWVzdEgAUhBjaGF0TG9naW5SZXF1ZXN0El'
+    'AKEmNoYXRfbG9naW5fb3V0Y29tZRg1IAEoCzIgLmdsYXNwZW4uaXBjLnYxLkNoYXRMb2dpbk91'
+    'dGNvbWVIAFIQY2hhdExvZ2luT3V0Y29tZRJQChJleHBvcnRfcGRmX3JlcXVlc3QYNiABKAsyIC'
+    '5nbGFzcGVuLmlwYy52MS5FeHBvcnRQZGZSZXF1ZXN0SABSEGV4cG9ydFBkZlJlcXVlc3QSLQoF'
+    'cGFuZWwYFCABKAsyFS5nbGFzcGVuLmlwYy52MS5QYW5lbEgAUgVwYW5lbBItCgVlcnJvchhjIA'
+    'EoCzIVLmdsYXNwZW4uaXBjLnYxLkVycm9ySABSBWVycm9yQgYKBGJvZHk=');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -1044,3 +1109,71 @@ final $typed_data.Uint8List canvasOverviewResponseDescriptor =
     $convert.base64Decode(
         'ChZDYW52YXNPdmVydmlld1Jlc3BvbnNlEhAKA3BuZxgBIAEoDFIDcG5nEhIKBHJlY3QYAiADKA'
         'FSBHJlY3Q=');
+
+@$core.Deprecated('Use backupCommandRequestDescriptor instead')
+const BackupCommandRequest$json = {
+  '1': 'BackupCommandRequest',
+  '2': [
+    {
+      '1': 'command',
+      '3': 1,
+      '4': 1,
+      '5': 14,
+      '6': '.glaspen.ipc.v1.BackupCommand',
+      '10': 'command'
+    },
+  ],
+};
+
+/// Descriptor for `BackupCommandRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List backupCommandRequestDescriptor = $convert.base64Decode(
+    'ChRCYWNrdXBDb21tYW5kUmVxdWVzdBI3Cgdjb21tYW5kGAEgASgOMh0uZ2xhc3Blbi5pcGMudj'
+    'EuQmFja3VwQ29tbWFuZFIHY29tbWFuZA==');
+
+@$core.Deprecated('Use backupOutcomeDescriptor instead')
+const BackupOutcome$json = {
+  '1': 'BackupOutcome',
+  '2': [
+    {'1': 'ok', '3': 1, '4': 1, '5': 8, '10': 'ok'},
+    {'1': 'message', '3': 2, '4': 1, '5': 9, '10': 'message'},
+    {'1': 'kind', '3': 3, '4': 1, '5': 9, '10': 'kind'},
+  ],
+};
+
+/// Descriptor for `BackupOutcome`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List backupOutcomeDescriptor = $convert.base64Decode(
+    'Cg1CYWNrdXBPdXRjb21lEg4KAm9rGAEgASgIUgJvaxIYCgdtZXNzYWdlGAIgASgJUgdtZXNzYW'
+    'dlEhIKBGtpbmQYAyABKAlSBGtpbmQ=');
+
+@$core.Deprecated('Use chatLoginRequestDescriptor instead')
+const ChatLoginRequest$json = {
+  '1': 'ChatLoginRequest',
+};
+
+/// Descriptor for `ChatLoginRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List chatLoginRequestDescriptor =
+    $convert.base64Decode('ChBDaGF0TG9naW5SZXF1ZXN0');
+
+@$core.Deprecated('Use chatLoginOutcomeDescriptor instead')
+const ChatLoginOutcome$json = {
+  '1': 'ChatLoginOutcome',
+  '2': [
+    {'1': 'ok', '3': 1, '4': 1, '5': 8, '10': 'ok'},
+    {'1': 'message', '3': 2, '4': 1, '5': 9, '10': 'message'},
+    {'1': 'kind', '3': 3, '4': 1, '5': 9, '10': 'kind'},
+  ],
+};
+
+/// Descriptor for `ChatLoginOutcome`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List chatLoginOutcomeDescriptor = $convert.base64Decode(
+    'ChBDaGF0TG9naW5PdXRjb21lEg4KAm9rGAEgASgIUgJvaxIYCgdtZXNzYWdlGAIgASgJUgdtZX'
+    'NzYWdlEhIKBGtpbmQYAyABKAlSBGtpbmQ=');
+
+@$core.Deprecated('Use exportPdfRequestDescriptor instead')
+const ExportPdfRequest$json = {
+  '1': 'ExportPdfRequest',
+};
+
+/// Descriptor for `ExportPdfRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List exportPdfRequestDescriptor =
+    $convert.base64Decode('ChBFeHBvcnRQZGZSZXF1ZXN0');

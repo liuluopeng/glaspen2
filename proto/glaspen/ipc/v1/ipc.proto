@@ -40,6 +40,11 @@ message Frame {
     AppVersionResponse app_version_response = 45;
     CanvasOverviewRequest canvas_overview_request = 46;
     CanvasOverviewResponse canvas_overview_response = 47;
+    BackupCommandRequest backup_command_request = 50;
+    BackupOutcome backup_outcome = 51;
+    ChatLoginRequest chat_login_request = 52;
+    ChatLoginOutcome chat_login_outcome = 53;
+    ExportPdfRequest export_pdf_request = 54;
     Panel panel = 20;
     Error error = 99;
   }
@@ -277,3 +282,28 @@ message CanvasOverviewResponse {
   bytes png = 1;
   repeated double rect = 2;
 }
+
+enum BackupCommand {
+  BACKUP_NOW = 0;
+  RESTORE_LATEST = 1;
+}
+
+message BackupCommandRequest {
+  BackupCommand command = 1;
+}
+
+message BackupOutcome {
+  bool ok = 1;
+  string message = 2;
+  string kind = 3;
+}
+
+message ChatLoginRequest {}
+
+message ChatLoginOutcome {
+  bool ok = 1;
+  string message = 2;
+  string kind = 3;
+}
+
+message ExportPdfRequest {}

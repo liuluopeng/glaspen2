@@ -280,6 +280,30 @@ List<int> encodeAppVersionRequest(int requestId) {
   ));
 }
 
+List<int> encodeBackupCommandRequest(int requestId, pb.BackupCommand command) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    backupCommandRequest: pb.BackupCommandRequest(command: command),
+  ));
+}
+
+List<int> encodeChatLoginRequest(int requestId) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    chatLoginRequest: pb.ChatLoginRequest(),
+  ));
+}
+
+List<int> encodeExportPdfRequest(int requestId) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    exportPdfRequest: pb.ExportPdfRequest(),
+  ));
+}
+
 List<int> encodeCanvasOverviewRequest(
     int requestId, int w, int h, pb.CanvasAction action) {
   return encodeFrame(pb.Frame(
@@ -395,6 +419,22 @@ class PanelStreamDecoder {
               ? const <String, dynamic>{}
               : appSettingsToMap(settings),
         ));
+        continue;
+      }
+      if (frame.hasBackupOutcome()) {
+        final r = frame.backupOutcome;
+        out.add(PanelMessage(r.kind, frame.requestId.toInt(), {
+          'ok': r.ok,
+          'message': r.message,
+        }));
+        continue;
+      }
+      if (frame.hasChatLoginOutcome()) {
+        final r = frame.chatLoginOutcome;
+        out.add(PanelMessage(r.kind, frame.requestId.toInt(), {
+          'ok': r.ok,
+          'message': r.message,
+        }));
         continue;
       }
       if (frame.hasCanvasOverviewResponse()) {

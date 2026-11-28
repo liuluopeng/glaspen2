@@ -46,6 +46,11 @@ enum Frame_Body {
   appVersionResponse,
   canvasOverviewRequest,
   canvasOverviewResponse,
+  backupCommandRequest,
+  backupOutcome,
+  chatLoginRequest,
+  chatLoginOutcome,
+  exportPdfRequest,
   error,
   notSet
 }
@@ -87,6 +92,11 @@ class Frame extends $pb.GeneratedMessage {
     AppVersionResponse? appVersionResponse,
     CanvasOverviewRequest? canvasOverviewRequest,
     CanvasOverviewResponse? canvasOverviewResponse,
+    BackupCommandRequest? backupCommandRequest,
+    BackupOutcome? backupOutcome,
+    ChatLoginRequest? chatLoginRequest,
+    ChatLoginOutcome? chatLoginOutcome,
+    ExportPdfRequest? exportPdfRequest,
     Error? error,
   }) {
     final result = Frame._();
@@ -124,6 +134,12 @@ class Frame extends $pb.GeneratedMessage {
       result.canvasOverviewRequest = canvasOverviewRequest;
     if (canvasOverviewResponse != null)
       result.canvasOverviewResponse = canvasOverviewResponse;
+    if (backupCommandRequest != null)
+      result.backupCommandRequest = backupCommandRequest;
+    if (backupOutcome != null) result.backupOutcome = backupOutcome;
+    if (chatLoginRequest != null) result.chatLoginRequest = chatLoginRequest;
+    if (chatLoginOutcome != null) result.chatLoginOutcome = chatLoginOutcome;
+    if (exportPdfRequest != null) result.exportPdfRequest = exportPdfRequest;
     if (error != null) result.error = error;
     return result;
   }
@@ -161,6 +177,11 @@ class Frame extends $pb.GeneratedMessage {
     45: Frame_Body.appVersionResponse,
     46: Frame_Body.canvasOverviewRequest,
     47: Frame_Body.canvasOverviewResponse,
+    50: Frame_Body.backupCommandRequest,
+    51: Frame_Body.backupOutcome,
+    52: Frame_Body.chatLoginRequest,
+    53: Frame_Body.chatLoginOutcome,
+    54: Frame_Body.exportPdfRequest,
     99: Frame_Body.error,
     0: Frame_Body.notSet
   };
@@ -192,6 +213,11 @@ class Frame extends $pb.GeneratedMessage {
       45,
       46,
       47,
+      50,
+      51,
+      52,
+      53,
+      54,
       99
     ])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
@@ -251,6 +277,17 @@ class Frame extends $pb.GeneratedMessage {
     ..aOM<CanvasOverviewResponse>(
         47, _omitFieldNames ? '' : 'canvasOverviewResponse',
         subBuilder: CanvasOverviewResponse.$_createMessage)
+    ..aOM<BackupCommandRequest>(
+        50, _omitFieldNames ? '' : 'backupCommandRequest',
+        subBuilder: BackupCommandRequest.$_createMessage)
+    ..aOM<BackupOutcome>(51, _omitFieldNames ? '' : 'backupOutcome',
+        subBuilder: BackupOutcome.$_createMessage)
+    ..aOM<ChatLoginRequest>(52, _omitFieldNames ? '' : 'chatLoginRequest',
+        subBuilder: ChatLoginRequest.$_createMessage)
+    ..aOM<ChatLoginOutcome>(53, _omitFieldNames ? '' : 'chatLoginOutcome',
+        subBuilder: ChatLoginOutcome.$_createMessage)
+    ..aOM<ExportPdfRequest>(54, _omitFieldNames ? '' : 'exportPdfRequest',
+        subBuilder: ExportPdfRequest.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
         subBuilder: Error.$_createMessage)
     ..hasRequiredFields = false;
@@ -298,6 +335,11 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(45)
   @$pb.TagNumber(46)
   @$pb.TagNumber(47)
+  @$pb.TagNumber(50)
+  @$pb.TagNumber(51)
+  @$pb.TagNumber(52)
+  @$pb.TagNumber(53)
+  @$pb.TagNumber(54)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(10)
@@ -323,6 +365,11 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(45)
   @$pb.TagNumber(46)
   @$pb.TagNumber(47)
+  @$pb.TagNumber(50)
+  @$pb.TagNumber(51)
+  @$pb.TagNumber(52)
+  @$pb.TagNumber(53)
+  @$pb.TagNumber(54)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
 
@@ -603,16 +650,71 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(47)
   CanvasOverviewResponse ensureCanvasOverviewResponse() => $_ensure(24);
 
+  @$pb.TagNumber(50)
+  BackupCommandRequest get backupCommandRequest => $_getN(25);
+  @$pb.TagNumber(50)
+  set backupCommandRequest(BackupCommandRequest value) => $_setField(50, value);
+  @$pb.TagNumber(50)
+  $core.bool hasBackupCommandRequest() => $_has(25);
+  @$pb.TagNumber(50)
+  void clearBackupCommandRequest() => $_clearField(50);
+  @$pb.TagNumber(50)
+  BackupCommandRequest ensureBackupCommandRequest() => $_ensure(25);
+
+  @$pb.TagNumber(51)
+  BackupOutcome get backupOutcome => $_getN(26);
+  @$pb.TagNumber(51)
+  set backupOutcome(BackupOutcome value) => $_setField(51, value);
+  @$pb.TagNumber(51)
+  $core.bool hasBackupOutcome() => $_has(26);
+  @$pb.TagNumber(51)
+  void clearBackupOutcome() => $_clearField(51);
+  @$pb.TagNumber(51)
+  BackupOutcome ensureBackupOutcome() => $_ensure(26);
+
+  @$pb.TagNumber(52)
+  ChatLoginRequest get chatLoginRequest => $_getN(27);
+  @$pb.TagNumber(52)
+  set chatLoginRequest(ChatLoginRequest value) => $_setField(52, value);
+  @$pb.TagNumber(52)
+  $core.bool hasChatLoginRequest() => $_has(27);
+  @$pb.TagNumber(52)
+  void clearChatLoginRequest() => $_clearField(52);
+  @$pb.TagNumber(52)
+  ChatLoginRequest ensureChatLoginRequest() => $_ensure(27);
+
+  @$pb.TagNumber(53)
+  ChatLoginOutcome get chatLoginOutcome => $_getN(28);
+  @$pb.TagNumber(53)
+  set chatLoginOutcome(ChatLoginOutcome value) => $_setField(53, value);
+  @$pb.TagNumber(53)
+  $core.bool hasChatLoginOutcome() => $_has(28);
+  @$pb.TagNumber(53)
+  void clearChatLoginOutcome() => $_clearField(53);
+  @$pb.TagNumber(53)
+  ChatLoginOutcome ensureChatLoginOutcome() => $_ensure(28);
+
+  @$pb.TagNumber(54)
+  ExportPdfRequest get exportPdfRequest => $_getN(29);
+  @$pb.TagNumber(54)
+  set exportPdfRequest(ExportPdfRequest value) => $_setField(54, value);
+  @$pb.TagNumber(54)
+  $core.bool hasExportPdfRequest() => $_has(29);
+  @$pb.TagNumber(54)
+  void clearExportPdfRequest() => $_clearField(54);
+  @$pb.TagNumber(54)
+  ExportPdfRequest ensureExportPdfRequest() => $_ensure(29);
+
   @$pb.TagNumber(99)
-  Error get error => $_getN(25);
+  Error get error => $_getN(30);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(25);
+  $core.bool hasError() => $_has(30);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(25);
+  Error ensureError() => $_ensure(30);
 }
 
 enum SettingValue_Value {
@@ -3527,6 +3629,309 @@ class CanvasOverviewResponse extends $pb.GeneratedMessage {
 
   @$pb.TagNumber(2)
   $pb.PbList<$core.double> get rect => $_getList(1);
+}
+
+class BackupCommandRequest extends $pb.GeneratedMessage {
+  factory BackupCommandRequest({
+    BackupCommand? command,
+  }) {
+    final result = BackupCommandRequest._();
+    if (command != null) result.command = command;
+    return result;
+  }
+
+  BackupCommandRequest._();
+
+  factory BackupCommandRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BackupCommandRequest()..mergeFromBuffer(data, registry);
+  factory BackupCommandRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BackupCommandRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'BackupCommandRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: BackupCommandRequest.$_createMessage)
+    ..aE<BackupCommand>(1, _omitFieldNames ? '' : 'command',
+        enumValues: BackupCommand.values)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BackupCommandRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BackupCommandRequest copyWith(void Function(BackupCommandRequest) updates) =>
+      super.copyWith((message) => updates(message as BackupCommandRequest))
+          as BackupCommandRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use BackupCommandRequest() / BackupCommandRequest.new instead')
+  static BackupCommandRequest create() => BackupCommandRequest._();
+  static $pb.GeneratedMessage $_createMessage() => BackupCommandRequest._();
+  @$core.override
+  BackupCommandRequest createEmptyInstance() => BackupCommandRequest._();
+  @$core.pragma('dart2js:noInline')
+  static BackupCommandRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<BackupCommandRequest>(
+          BackupCommandRequest.$_createMessage);
+  static BackupCommandRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  BackupCommand get command => $_getN(0);
+  @$pb.TagNumber(1)
+  set command(BackupCommand value) => $_setField(1, value);
+  @$pb.TagNumber(1)
+  $core.bool hasCommand() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearCommand() => $_clearField(1);
+}
+
+class BackupOutcome extends $pb.GeneratedMessage {
+  factory BackupOutcome({
+    $core.bool? ok,
+    $core.String? message,
+    $core.String? kind,
+  }) {
+    final result = BackupOutcome._();
+    if (ok != null) result.ok = ok;
+    if (message != null) result.message = message;
+    if (kind != null) result.kind = kind;
+    return result;
+  }
+
+  BackupOutcome._();
+
+  factory BackupOutcome.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BackupOutcome()..mergeFromBuffer(data, registry);
+  factory BackupOutcome.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BackupOutcome()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'BackupOutcome',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: BackupOutcome.$_createMessage)
+    ..aOB(1, _omitFieldNames ? '' : 'ok')
+    ..aOS(2, _omitFieldNames ? '' : 'message')
+    ..aOS(3, _omitFieldNames ? '' : 'kind')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BackupOutcome clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BackupOutcome copyWith(void Function(BackupOutcome) updates) =>
+      super.copyWith((message) => updates(message as BackupOutcome))
+          as BackupOutcome;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use BackupOutcome() / BackupOutcome.new instead')
+  static BackupOutcome create() => BackupOutcome._();
+  static $pb.GeneratedMessage $_createMessage() => BackupOutcome._();
+  @$core.override
+  BackupOutcome createEmptyInstance() => BackupOutcome._();
+  @$core.pragma('dart2js:noInline')
+  static BackupOutcome getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<BackupOutcome>(
+          BackupOutcome.$_createMessage);
+  static BackupOutcome? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get ok => $_getBF(0);
+  @$pb.TagNumber(1)
+  set ok($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasOk() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearOk() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get message => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set message($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasMessage() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearMessage() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get kind => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set kind($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasKind() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearKind() => $_clearField(3);
+}
+
+class ChatLoginRequest extends $pb.GeneratedMessage {
+  factory ChatLoginRequest() => ChatLoginRequest._();
+
+  ChatLoginRequest._();
+
+  factory ChatLoginRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ChatLoginRequest()..mergeFromBuffer(data, registry);
+  factory ChatLoginRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ChatLoginRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ChatLoginRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: ChatLoginRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ChatLoginRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ChatLoginRequest copyWith(void Function(ChatLoginRequest) updates) =>
+      super.copyWith((message) => updates(message as ChatLoginRequest))
+          as ChatLoginRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use ChatLoginRequest() / ChatLoginRequest.new instead')
+  static ChatLoginRequest create() => ChatLoginRequest._();
+  static $pb.GeneratedMessage $_createMessage() => ChatLoginRequest._();
+  @$core.override
+  ChatLoginRequest createEmptyInstance() => ChatLoginRequest._();
+  @$core.pragma('dart2js:noInline')
+  static ChatLoginRequest getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<ChatLoginRequest>(
+          ChatLoginRequest.$_createMessage);
+  static ChatLoginRequest? _defaultInstance;
+}
+
+class ChatLoginOutcome extends $pb.GeneratedMessage {
+  factory ChatLoginOutcome({
+    $core.bool? ok,
+    $core.String? message,
+    $core.String? kind,
+  }) {
+    final result = ChatLoginOutcome._();
+    if (ok != null) result.ok = ok;
+    if (message != null) result.message = message;
+    if (kind != null) result.kind = kind;
+    return result;
+  }
+
+  ChatLoginOutcome._();
+
+  factory ChatLoginOutcome.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ChatLoginOutcome()..mergeFromBuffer(data, registry);
+  factory ChatLoginOutcome.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ChatLoginOutcome()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ChatLoginOutcome',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: ChatLoginOutcome.$_createMessage)
+    ..aOB(1, _omitFieldNames ? '' : 'ok')
+    ..aOS(2, _omitFieldNames ? '' : 'message')
+    ..aOS(3, _omitFieldNames ? '' : 'kind')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ChatLoginOutcome clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ChatLoginOutcome copyWith(void Function(ChatLoginOutcome) updates) =>
+      super.copyWith((message) => updates(message as ChatLoginOutcome))
+          as ChatLoginOutcome;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use ChatLoginOutcome() / ChatLoginOutcome.new instead')
+  static ChatLoginOutcome create() => ChatLoginOutcome._();
+  static $pb.GeneratedMessage $_createMessage() => ChatLoginOutcome._();
+  @$core.override
+  ChatLoginOutcome createEmptyInstance() => ChatLoginOutcome._();
+  @$core.pragma('dart2js:noInline')
+  static ChatLoginOutcome getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<ChatLoginOutcome>(
+          ChatLoginOutcome.$_createMessage);
+  static ChatLoginOutcome? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get ok => $_getBF(0);
+  @$pb.TagNumber(1)
+  set ok($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasOk() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearOk() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get message => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set message($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasMessage() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearMessage() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get kind => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set kind($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasKind() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearKind() => $_clearField(3);
+}
+
+class ExportPdfRequest extends $pb.GeneratedMessage {
+  factory ExportPdfRequest() => ExportPdfRequest._();
+
+  ExportPdfRequest._();
+
+  factory ExportPdfRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ExportPdfRequest()..mergeFromBuffer(data, registry);
+  factory ExportPdfRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ExportPdfRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ExportPdfRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: ExportPdfRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ExportPdfRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ExportPdfRequest copyWith(void Function(ExportPdfRequest) updates) =>
+      super.copyWith((message) => updates(message as ExportPdfRequest))
+          as ExportPdfRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use ExportPdfRequest() / ExportPdfRequest.new instead')
+  static ExportPdfRequest create() => ExportPdfRequest._();
+  static $pb.GeneratedMessage $_createMessage() => ExportPdfRequest._();
+  @$core.override
+  ExportPdfRequest createEmptyInstance() => ExportPdfRequest._();
+  @$core.pragma('dart2js:noInline')
+  static ExportPdfRequest getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<ExportPdfRequest>(
+          ExportPdfRequest.$_createMessage);
+  static ExportPdfRequest? _defaultInstance;
 }
 
 const $core.bool _omitFieldNames =
