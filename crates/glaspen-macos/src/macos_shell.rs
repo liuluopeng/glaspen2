@@ -3265,6 +3265,8 @@ pub extern "C" fn glaspen2_rust_apply_infinite(
         if want {
             glaspen2_load_infinite_strokes();
             glaspen2_router_camera_load_infinite();
+            // 清掉活页本残留的 fit 变换, 无限画布不得继承页面缩放/偏移。
+            glaspen2_rust_pageview_update();
         } else {
             let cur = glaspen2_get_current_screen_id();
             if cur > 0 {
@@ -6021,7 +6023,7 @@ pub extern "C" fn cairo_create_scaled() -> *mut c_void {
     let scale = glaspen2_rust_surface_scale();
     unsafe {
         cairo_scale(cr, scale, scale);
-        if glaspen2_rust_pageview_is_fit() != 0 {
+        if glaspen2_router_infinite() == 0 && glaspen2_rust_pageview_is_fit() != 0 {
             cairo_translate(
                 cr,
                 glaspen2_rust_pageview_paper_ox() * scale,
@@ -9646,20 +9648,38 @@ pub extern "C" fn glaspen2_rust_startup_run_loop() {
 
 // ── R207: 页视图重建 ──
 
+/// 页面 fit 变换只属于活页本; 无限画布必须用恒等页变换, 否则切到无限画布后
+/// 残留的 PV_FIT/PV_OX/PV_OY 会把整张无限画布平移/缩放, 表现为「回到原点后
+/// 涂鸦消失, 笔悬浮后才局部显形」。
+fn pageview_paint_transform(
+    infinite: bool,
+    fit: bool,
+    ox: f64,
+    oy: f64,
+    scale: f64,
+) -> (f64, f64, f64) {
+    if infinite || !fit {
+        (0.0, 0.0, 1.0)
+    } else {
+        (ox, oy, scale)
+    }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_pageview_rebuild() {
     let surface = glaspen2_rust_surface_current();
     if surface.is_null() {
         return;
     }
-    let _ = glaspen2_rust_rebuild_surface(
-        surface,
-        glaspen2_rust_surface_scale(),
+    let (ox, oy, pscale) = pageview_paint_transform(
+        unsafe { glaspen2_router_infinite() } != 0,
+        glaspen2_rust_pageview_is_fit() != 0,
         glaspen2_rust_pageview_paper_ox(),
         glaspen2_rust_pageview_paper_oy(),
         glaspen2_rust_pageview_paper_scale(),
-        1,
     );
+    let _ =
+        glaspen2_rust_rebuild_surface(surface, glaspen2_rust_surface_scale(), ox, oy, pscale, 1);
 }
 
 // ── R208: 清屏/仅保存涂鸦 ──
@@ -11911,5 +11931,30 @@ mod recording_repeat_tests {
         assert!(!recording_hotkey_key(19, true, true, false));
         assert!(!recording_hotkey_key(15, true, false, true));
         assert!(!recording_hotkey_key(0, true, true, true));
+    }
+}
+
+#[cfg(test)]
+mod infinite_pageview_tests {
+    use super::pageview_paint_transform;
+
+    #[test]
+    fn infinite_canvas_never_uses_page_fit_transform() {
+        assert_eq!(
+            pageview_paint_transform(true, true, 40.0, 20.0, 0.75),
+            (0.0, 0.0, 1.0)
+        );
+        assert_eq!(
+            pageview_paint_transform(true, false, 40.0, 20.0, 0.75),
+            (0.0, 0.0, 1.0)
+        );
+        assert_eq!(
+            pageview_paint_transform(false, false, 40.0, 20.0, 0.75),
+            (0.0, 0.0, 1.0)
+        );
+        assert_eq!(
+            pageview_paint_transform(false, true, 40.0, 20.0, 0.75),
+            (40.0, 20.0, 0.75)
+        );
     }
 }
