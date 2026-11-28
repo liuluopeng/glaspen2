@@ -4026,6 +4026,12 @@ fn draw_typed_live_command(
                 let p = &pts[i];
                 let width = (p.width + width_delta) * inv;
                 if i == 0 {
+                    // 增量线段的首点已由上一段(或落笔点)画过; 再画一次实心圆会
+                    // 让圆边缘被反复 alpha 混合, 长笔画前半段比抬笔后的整页
+                    // 重建略深。只有单点(落笔/点按)才需要首点圆。
+                    if pts.len() > 1 {
+                        continue;
+                    }
                     unsafe {
                         cairo_arc(
                             cr,
