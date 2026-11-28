@@ -1023,8 +1023,15 @@ mod tests {
             .find('}')
             .expect("settingsApiJSON 不完整");
         let mac_snapshot = &mac_snapshot_glue[fn_at..fn_at + rel_end];
-        let win_snapshot = pipe_branch(&win_code, "msg_type == \"getSettings\"")
-            .expect("Windows 管道缺 getSettings 分支");
+        let at = win_code
+            .find("PanelInput::GetSettings")
+            .expect("Windows typed GetSettings 缺位");
+        let tail = &win_code[at..];
+        let end = tail[1..]
+            .find("PanelInput::")
+            .map(|i| i + 1)
+            .unwrap_or(tail.len());
+        let win_snapshot = &tail[..end];
 
         assert!(
             mac_snapshot.contains("settings_snapshot::snapshot_json"),

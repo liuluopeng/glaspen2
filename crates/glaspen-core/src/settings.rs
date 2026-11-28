@@ -521,9 +521,11 @@ mod tests {
 
     /// Windows 管道 setSetting 分支体。
     fn windows_apply_body(src: &str) -> &str {
-        let needle = "msg_type == \"setSetting\"";
-        let at = src.find(needle).expect("Windows 管道缺 setSetting 分支");
-        brace_body(src, at).expect("setSetting 分支体不完整")
+        let needle = "fn process_set_setting(";
+        let at = src
+            .find(needle)
+            .expect("Windows 管道缺 process_set_setting");
+        brace_body(src, at + needle.len() - 1).expect("process_set_setting 体不完整")
     }
 
     #[test]

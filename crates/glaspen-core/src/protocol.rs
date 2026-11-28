@@ -277,15 +277,22 @@ mod tests {
             actual.push(tail[..end].to_string());
             rest = &tail[end..];
         }
-        let mut expected: Vec<String> = COMMANDS
-            .iter()
-            .filter(|c| c.dispatch != Dispatch::Inline)
-            .map(|c| c.name.to_string())
-            .collect();
         actual.sort();
         actual.dedup();
-        expected.sort();
-        assert_eq!(actual, expected, "Windows 管道 dispatch 与命令表不一致");
+        assert_eq!(
+            actual,
+            vec!["downloadUpdate", "uiConfig"],
+            "Windows 管道仍有未迁移 JSON 命令"
+        );
+        for token in [
+            "PanelInput::GetSettings",
+            "PanelInput::SetSetting",
+            "PanelInput::ListPages",
+            "PanelInput::PageOp",
+            "PanelInput::GetBubbles",
+        ] {
+            assert!(src.contains(token), "Windows typed dispatch 缺 {token}");
+        }
     }
 
     /// Flutter 管道桥实际发出的请求类型 = 非 Legacy 命令。
@@ -333,14 +340,20 @@ mod tests {
         }
         actual.sort();
         actual.dedup();
-        let expected = sorted(
-            COMMANDS
-                .iter()
-                .filter(|c| c.dispatch != Dispatch::Legacy)
-                .map(|c| c.name.to_string())
-                .collect(),
-        );
-        assert_eq!(actual, expected, "Flutter 面板请求与命令表不一致");
+        let expected = vec![
+            "cancelDownload".to_string(),
+            "downloadUpdate".to_string(),
+            "uiConfig".to_string(),
+        ];
+        assert_eq!(actual, expected, "Flutter 面板仍有未迁移 JSON 请求");
+        for token in [
+            "encodeGetSettingsRequest",
+            "encodeSetSettingRequest",
+            "encodePageOpRequest",
+            "encodeGetBubblesRequest",
+        ] {
+            assert!(seg.contains(token), "Flutter typed bridge 缺 {token}");
+        }
     }
 
     /// Flutter 侧的协议版本常量必须与 core 同步。

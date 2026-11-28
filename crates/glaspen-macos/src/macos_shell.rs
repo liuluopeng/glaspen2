@@ -5401,10 +5401,6 @@ pub extern "C" fn glaspen2_rust_tunnel_finish(
 // ── R89: 设置 effect 分派(常用键; 未覆盖回退 Swift) ──
 
 unsafe extern "C" {
-    fn glaspen2_settings_apply(
-        key: *const std::os::raw::c_char,
-        value: *const std::os::raw::c_char,
-    ) -> *mut std::os::raw::c_char;
     fn glaspen2_router_refresh_menu_texts();
     fn glaspen2_router_set_grid_size(v: f64);
     fn glaspen2_router_set_grid_divider(v: i32);
@@ -5437,6 +5433,52 @@ fn cstr_setting(text: &str) -> std::ffi::CString {
     std::ffi::CString::new(text).unwrap_or_default()
 }
 
+fn setting_effect_fields(
+    effect: &glaspen_core::settings_apply::SettingEffect,
+) -> (&'static str, bool, i32, f64, String) {
+    use glaspen_core::settings_apply::SettingEffect as E;
+    match effect {
+        E::BubbleAutoNewPage(v) => ("BubbleAutoNewPage", *v, 0, 0.0, String::new()),
+        E::BubbleReplayAuto(v) => ("BubbleReplayAuto", *v, 0, 0.0, String::new()),
+        E::BubbleReplayHoldLast(v) => ("BubbleReplayHoldLast", *v, 0, 0.0, String::new()),
+        E::BubbleReplaySpeed(v) => ("BubbleReplaySpeed", false, *v as i32, 0.0, String::new()),
+        E::ChatApiBase(v) => ("ChatApiBase", false, 0, 0.0, v.clone()),
+        E::ChatIntegration(v) => ("ChatIntegration", *v, 0, 0.0, String::new()),
+        E::ChatUser(v) => ("ChatUser", false, 0, 0.0, v.clone()),
+        E::Color(v) => ("Color", false, *v as i32, 0.0, String::new()),
+        E::FlipEffect(v) => ("FlipEffect", false, *v as i32, 0.0, String::new()),
+        E::FrostedGlass(v) => ("FrostedGlass", *v, 0, 0.0, String::new()),
+        E::GifEndMode(v) => ("GifEndMode", false, *v as i32, 0.0, String::new()),
+        E::GifFps(v) => ("GifFps", false, *v as i32, 0.0, String::new()),
+        E::GifResolution(v) => ("GifResolution", false, 0, *v, String::new()),
+        E::GifSpeed(v) => ("GifSpeed", false, 0, *v, String::new()),
+        E::GlassFollowStrokes(v) => ("GlassFollowStrokes", *v, 0, 0.0, String::new()),
+        E::Grid(v) => ("Grid", *v, 0, 0.0, String::new()),
+        E::GridDivider(v) => ("GridDivider", false, *v as i32, 0.0, String::new()),
+        E::GridFollowStrokes(v) => ("GridFollowStrokes", *v, 0, 0.0, String::new()),
+        E::GridSize(v) => ("GridSize", false, 0, *v, String::new()),
+        E::InfiniteCanvas(v) => ("InfiniteCanvas", *v, 0, 0.0, String::new()),
+        E::InvertFps(v) => ("InvertFps", false, *v as i32, 0.0, String::new()),
+        E::InvertInk(v) => ("InvertInk", *v, 0, 0.0, String::new()),
+        E::Language(v) => ("Language", false, 0, 0.0, v.clone()),
+        E::LaunchAtLogin(v) => ("LaunchAtLogin", *v, 0, 0.0, String::new()),
+        E::Minimap(v) => ("Minimap", *v, 0, 0.0, String::new()),
+        E::NasUrl(v) => ("NasUrl", false, 0, 0.0, v.clone()),
+        E::NotebookStyle(v) => ("NotebookStyle", *v, 0, 0.0, String::new()),
+        E::Outline(v) => ("Outline", *v, 0, 0.0, String::new()),
+        E::PanelTransparent(v) => ("PanelTransparent", *v, 0, 0.0, String::new()),
+        E::PressureMonitor(v) => ("PressureMonitor", *v, 0, 0.0, String::new()),
+        E::ShareCanvas(v) => ("ShareCanvas", *v, 0, 0.0, String::new()),
+        E::Shortcuts(v) => ("Shortcuts", false, 0, 0.0, v.to_string()),
+        E::ShowBubbleTab(v) => ("ShowBubbleTab", *v, 0, 0.0, String::new()),
+        E::ShowFreeCanvas(v) => ("ShowFreeCanvas", *v, 0, 0.0, String::new()),
+        E::SoftShadow(v) => ("SoftShadow", *v, 0, 0.0, String::new()),
+        E::Width(v) => ("Width", false, *v as i32, 0.0, String::new()),
+        E::ChatPassword(v) => ("ChatPassword", false, 0, 0.0, v.clone()),
+        E::HotkeyRecording(v) => ("HotkeyRecording", *v, 0, 0.0, String::new()),
+    }
+}
+
 /// R89: 应用一个设置; 返回 1 已处理, 0 回退 Swift。
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_apply_setting(
@@ -5446,27 +5488,19 @@ pub extern "C" fn glaspen2_rust_apply_setting(
     if key.is_null() || value.is_null() {
         return 0;
     }
-    let effect_raw = unsafe { glaspen2_settings_apply(key, value) };
-    if effect_raw.is_null() {
-        return 0;
-    }
-    let text = unsafe { std::ffi::CStr::from_ptr(effect_raw) }
+    let key = unsafe { std::ffi::CStr::from_ptr(key) }
         .to_string_lossy()
         .into_owned();
-    unsafe { glaspen2_free_c_string(effect_raw) };
-    let Ok(effect) = serde_json::from_str::<serde_json::Value>(&text) else {
+    let value = unsafe { std::ffi::CStr::from_ptr(value) }
+        .to_string_lossy()
+        .into_owned();
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&value) else {
         return 0;
     };
-    let Some(kind) = effect.get("kind").and_then(|k| k.as_str()) else {
+    let Ok(effect) = glaspen_core::settings_apply::apply_setting(&key, &parsed) else {
         return 0;
     };
-    let b = effect
-        .get("bool")
-        .and_then(|x| x.as_bool())
-        .unwrap_or(false);
-    let iv = effect.get("int").and_then(|x| x.as_i64()).unwrap_or(0) as i32;
-    let fv = effect.get("float").and_then(|x| x.as_f64()).unwrap_or(0.0);
-    let sv = effect.get("str").and_then(|x| x.as_str()).unwrap_or("");
+    let (kind, b, iv, fv, sv) = setting_effect_fields(&effect);
     let ignored = [
         "BubbleAutoNewPage",
         "BubbleReplayAuto",
@@ -5610,7 +5644,7 @@ pub extern "C" fn glaspen2_rust_apply_setting(
         "ChatApiBase" | "ChatUser" | "ChatPassword" => {
             if kind == "ChatPassword" && !sv.is_empty() {
                 let k = cstr_setting("chat_password");
-                let v = cstr_setting(sv);
+                let v = cstr_setting(&sv);
                 unsafe {
                     glaspen2_save_string_setting(k.as_ptr(), v.as_ptr());
                 }
@@ -5653,10 +5687,8 @@ pub extern "C" fn glaspen2_rust_apply_setting(
             1
         }
         "Shortcuts" => {
-            let saved = effect
-                .get("json")
-                .cloned()
-                .unwrap_or_else(|| serde_json::json!({}));
+            let saved: serde_json::Value =
+                serde_json::from_str(&sv).unwrap_or_else(|_| serde_json::json!({}));
             let text = saved.to_string();
             shortcut_apply_from_json(&text);
             let payload = shortcut_values_json_from_pb();
