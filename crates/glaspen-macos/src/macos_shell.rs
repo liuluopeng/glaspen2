@@ -1594,6 +1594,7 @@ pub extern "C" fn glaspen2_rust_set_grid_enabled(enabled: i32) {
         bool_setting("grid", on);
         glaspen2_router_sync_settings_panel();
         glaspen2_router_save_pen_settings();
+        request_force_redraw();
     }
 }
 
@@ -5204,7 +5205,7 @@ fn apply_setting_value(key: &str, parsed: &serde_json::Value) -> i32 {
         "GridFollowStrokes" => {
             unsafe {
                 glaspen2_router_set_grid_follow(i32::from(b));
-                glaspen2_router_redraw_draw_view();
+                request_force_redraw();
             }
             1
         }
@@ -5265,14 +5266,14 @@ fn apply_setting_value(key: &str, parsed: &serde_json::Value) -> i32 {
         "GridSize" => {
             unsafe {
                 glaspen2_router_set_grid_size(fv);
-                glaspen2_router_redraw_draw_view();
+                request_force_redraw();
             }
             1
         }
         "GridDivider" => {
             unsafe {
                 glaspen2_router_set_grid_divider(iv);
-                glaspen2_router_redraw_draw_view();
+                request_force_redraw();
             }
             1
         }
@@ -10869,6 +10870,17 @@ fn force_redraw_draw_view_now() {
             let _: () = objc2::msg_send![draw as *mut objc2::runtime::AnyObject, displayIfNeeded];
         }
     }
+}
+
+extern "C" fn force_redraw_on_main(_ctx: *mut c_void) {
+    force_redraw_draw_view_now();
+}
+
+/// 设置面板的视觉开关可能在 FRB 工作线程上应用: 把整屏重绘投递到主线程,
+/// 并用 displayIfNeeded 立即画完整一帧。否则网格/视觉开关只会在下一次笔迹
+/// 脏区刷新时局部显现, 表现为「从落笔处逐渐画出来」。
+fn request_force_redraw() {
+    unsafe { glaspen2_swift_dispatch_main(std::ptr::null_mut(), force_redraw_on_main) };
 }
 
 #[unsafe(no_mangle)]
