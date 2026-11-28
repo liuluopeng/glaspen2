@@ -221,6 +221,11 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
                 } => {
                     process_page_op(request_id, &request, hwnd, &mut writer);
                 }
+                PanelInput::GetBubbles { request_id } => {
+                    let messages = glaspen_core::export::bubbles::messages_snapshot();
+                    let frame = glaspen_ipc::encode_bubble_messages_frame(request_id, messages);
+                    let _ = writer.write_frame(&frame);
+                }
             }
         }
         let _ = writer.flush();

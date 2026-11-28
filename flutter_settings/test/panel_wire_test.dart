@@ -58,7 +58,7 @@ void main() {
       ),
     );
     final msg = PanelStreamDecoder().feed(encodeFrame(frame)).single;
-    expect(msg.kind, 'bubbleMessages');
+    expect(msg.kind, 'bubbleMessages_response');
     expect(msg.data['device'], 'dev');
     expect(msg.data['messages'][0]['strokes'][0]['pts'], [1.0, 2.0, 3.0]);
   });

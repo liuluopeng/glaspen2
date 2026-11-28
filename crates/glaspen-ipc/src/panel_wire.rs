@@ -74,6 +74,9 @@ pub enum PanelInput {
         request_id: u64,
         request: crate::proto::PageOpRequest,
     },
+    GetBubbles {
+        request_id: u64,
+    },
 }
 
 fn panel_input_from_frame(frame: Frame) -> Result<PanelInput, FrameError> {

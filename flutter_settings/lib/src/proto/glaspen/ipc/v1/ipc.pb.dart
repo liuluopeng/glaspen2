@@ -33,6 +33,7 @@ enum Frame_Body {
   listPagesRequest,
   pageThumbnailsRequest,
   pageOpRequest,
+  getBubblesRequest,
   error,
   notSet
 }
@@ -65,6 +66,7 @@ class Frame extends $pb.GeneratedMessage {
     ListPagesRequest? listPagesRequest,
     PageThumbnailsRequest? pageThumbnailsRequest,
     PageOpRequest? pageOpRequest,
+    GetBubblesRequest? getBubblesRequest,
     Error? error,
   }) {
     final result = Frame._();
@@ -88,6 +90,7 @@ class Frame extends $pb.GeneratedMessage {
     if (pageThumbnailsRequest != null)
       result.pageThumbnailsRequest = pageThumbnailsRequest;
     if (pageOpRequest != null) result.pageOpRequest = pageOpRequest;
+    if (getBubblesRequest != null) result.getBubblesRequest = getBubblesRequest;
     if (error != null) result.error = error;
     return result;
   }
@@ -116,6 +119,7 @@ class Frame extends $pb.GeneratedMessage {
     31: Frame_Body.listPagesRequest,
     32: Frame_Body.pageThumbnailsRequest,
     33: Frame_Body.pageOpRequest,
+    34: Frame_Body.getBubblesRequest,
     99: Frame_Body.error,
     0: Frame_Body.notSet
   };
@@ -123,7 +127,7 @@ class Frame extends $pb.GeneratedMessage {
       _omitMessageNames ? '' : 'Frame',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
       createEmptyInstance: Frame.$_createMessage)
-    ..oo(0, [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 30, 31, 32, 33, 99])
+    ..oo(0, [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 30, 31, 32, 33, 34, 99])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
         fieldType: $pb.PbFieldType.OU3)
     ..a<$fixnum.Int64>(
@@ -160,6 +164,8 @@ class Frame extends $pb.GeneratedMessage {
         subBuilder: PageThumbnailsRequest.$_createMessage)
     ..aOM<PageOpRequest>(33, _omitFieldNames ? '' : 'pageOpRequest',
         subBuilder: PageOpRequest.$_createMessage)
+    ..aOM<GetBubblesRequest>(34, _omitFieldNames ? '' : 'getBubblesRequest',
+        subBuilder: GetBubblesRequest.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
         subBuilder: Error.$_createMessage)
     ..hasRequiredFields = false;
@@ -198,6 +204,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(31)
   @$pb.TagNumber(32)
   @$pb.TagNumber(33)
+  @$pb.TagNumber(34)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(10)
@@ -214,6 +221,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(31)
   @$pb.TagNumber(32)
   @$pb.TagNumber(33)
+  @$pb.TagNumber(34)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
 
@@ -392,16 +400,27 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(33)
   PageOpRequest ensurePageOpRequest() => $_ensure(15);
 
+  @$pb.TagNumber(34)
+  GetBubblesRequest get getBubblesRequest => $_getN(16);
+  @$pb.TagNumber(34)
+  set getBubblesRequest(GetBubblesRequest value) => $_setField(34, value);
+  @$pb.TagNumber(34)
+  $core.bool hasGetBubblesRequest() => $_has(16);
+  @$pb.TagNumber(34)
+  void clearGetBubblesRequest() => $_clearField(34);
+  @$pb.TagNumber(34)
+  GetBubblesRequest ensureGetBubblesRequest() => $_ensure(16);
+
   @$pb.TagNumber(99)
-  Error get error => $_getN(16);
+  Error get error => $_getN(17);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(16);
+  $core.bool hasError() => $_has(17);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(16);
+  Error ensureError() => $_ensure(17);
 }
 
 enum SettingValue_Value {
@@ -2812,6 +2831,47 @@ class PageOpRequest extends $pb.GeneratedMessage {
   $core.bool hasCy() => $_has(11);
   @$pb.TagNumber(12)
   void clearCy() => $_clearField(12);
+}
+
+class GetBubblesRequest extends $pb.GeneratedMessage {
+  factory GetBubblesRequest() => GetBubblesRequest._();
+
+  GetBubblesRequest._();
+
+  factory GetBubblesRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetBubblesRequest()..mergeFromBuffer(data, registry);
+  factory GetBubblesRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetBubblesRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetBubblesRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: GetBubblesRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetBubblesRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetBubblesRequest copyWith(void Function(GetBubblesRequest) updates) =>
+      super.copyWith((message) => updates(message as GetBubblesRequest))
+          as GetBubblesRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use GetBubblesRequest() / GetBubblesRequest.new instead')
+  static GetBubblesRequest create() => GetBubblesRequest._();
+  static $pb.GeneratedMessage $_createMessage() => GetBubblesRequest._();
+  @$core.override
+  GetBubblesRequest createEmptyInstance() => GetBubblesRequest._();
+  @$core.pragma('dart2js:noInline')
+  static GetBubblesRequest getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<GetBubblesRequest>(
+          GetBubblesRequest.$_createMessage);
+  static GetBubblesRequest? _defaultInstance;
 }
 
 const $core.bool _omitFieldNames =

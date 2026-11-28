@@ -31,6 +31,7 @@ message Frame {
     ListPagesRequest list_pages_request = 31;
     PageThumbnailsRequest page_thumbnails_request = 32;
     PageOpRequest page_op_request = 33;
+    GetBubblesRequest get_bubbles_request = 34;
     Panel panel = 20;
     Error error = 99;
   }
@@ -228,3 +229,5 @@ message PageOpRequest {
   double cx = 11;
   double cy = 12;
 }
+
+message GetBubblesRequest {}

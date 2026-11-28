@@ -139,6 +139,15 @@ const Frame$json = {
       '10': 'pageOpRequest'
     },
     {
+      '1': 'get_bubbles_request',
+      '3': 34,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.GetBubblesRequest',
+      '9': 0,
+      '10': 'getBubblesRequest'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -184,9 +193,10 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'dlc1JlcXVlc3QSXwoXcGFnZV90aHVtYm5haWxzX3JlcXVlc3QYICABKAsyJS5nbGFzcGVuLmlw'
     'Yy52MS5QYWdlVGh1bWJuYWlsc1JlcXVlc3RIAFIVcGFnZVRodW1ibmFpbHNSZXF1ZXN0EkcKD3'
     'BhZ2Vfb3BfcmVxdWVzdBghIAEoCzIdLmdsYXNwZW4uaXBjLnYxLlBhZ2VPcFJlcXVlc3RIAFIN'
-    'cGFnZU9wUmVxdWVzdBItCgVwYW5lbBgUIAEoCzIVLmdsYXNwZW4uaXBjLnYxLlBhbmVsSABSBX'
-    'BhbmVsEi0KBWVycm9yGGMgASgLMhUuZ2xhc3Blbi5pcGMudjEuRXJyb3JIAFIFZXJyb3JCBgoE'
-    'Ym9keQ==');
+    'cGFnZU9wUmVxdWVzdBJTChNnZXRfYnViYmxlc19yZXF1ZXN0GCIgASgLMiEuZ2xhc3Blbi5pcG'
+    'MudjEuR2V0QnViYmxlc1JlcXVlc3RIAFIRZ2V0QnViYmxlc1JlcXVlc3QSLQoFcGFuZWwYFCAB'
+    'KAsyFS5nbGFzcGVuLmlwYy52MS5QYW5lbEgAUgVwYW5lbBItCgVlcnJvchhjIAEoCzIVLmdsYX'
+    'NwZW4uaXBjLnYxLkVycm9ySABSBWVycm9yQgYKBGJvZHk=');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -820,3 +830,12 @@ final $typed_data.Uint8List pageOpRequestDescriptor = $convert.base64Decode(
     'Rfc2NyZWVuX2lkGAcgASgDUg50YXJnZXRTY3JlZW5JZBIOCgJkeBgIIAEoAVICZHgSDgoCZHkY'
     'CSABKAFSAmR5EhgKB3BheWxvYWQYCiABKAlSB3BheWxvYWQSDgoCY3gYCyABKAFSAmN4Eg4KAm'
     'N5GAwgASgBUgJjeQ==');
+
+@$core.Deprecated('Use getBubblesRequestDescriptor instead')
+const GetBubblesRequest$json = {
+  '1': 'GetBubblesRequest',
+};
+
+/// Descriptor for `GetBubblesRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List getBubblesRequestDescriptor =
+    $convert.base64Decode('ChFHZXRCdWJibGVzUmVxdWVzdA==');

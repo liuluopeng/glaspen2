@@ -240,6 +240,14 @@ List<int> encodePageOpRequest(
   ));
 }
 
+List<int> encodeGetBubblesRequest(int requestId) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    getBubblesRequest: pb.GetBubblesRequest(),
+  ));
+}
+
 List<int> encodeSetSettingRequest(int requestId, String key, dynamic value) {
   return encodeFrame(pb.Frame(
     protocolVersion: 1,
@@ -369,7 +377,7 @@ class PanelStreamDecoder {
       }
       if (frame.hasBubbleMessages()) {
         out.add(PanelMessage(
-          'bubbleMessages',
+          'bubbleMessages_response',
           frame.requestId.toInt(),
           bubbleMessagesToMap(frame.bubbleMessages),
         ));

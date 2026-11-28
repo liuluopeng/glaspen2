@@ -1045,8 +1045,8 @@ class _NamedPipeBridge extends SettingsBridge {
   @override
   Future<String> getBubbles() async {
     if (!_connected) return '{"messages":[]}';
-    final r = await _request('getBubbles', null);
-    return jsonEncode(r.containsKey('data') ? r['data'] : r);
+    final r = await _requestTyped(encodeGetBubblesRequest);
+    return jsonEncode(r);
   }
 
   @override
