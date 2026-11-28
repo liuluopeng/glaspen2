@@ -26,6 +26,7 @@ enum Frame_Body {
   settingsChanged,
   pageListResponse,
   pageThumbnailsResponse,
+  bubbleMessages,
   panel,
   error,
   notSet
@@ -52,6 +53,7 @@ class Frame extends $pb.GeneratedMessage {
     SettingsChanged? settingsChanged,
     PageListResponse? pageListResponse,
     PageThumbnailsResponse? pageThumbnailsResponse,
+    BubbleMessages? bubbleMessages,
     Panel? panel,
     Error? error,
   }) {
@@ -67,6 +69,7 @@ class Frame extends $pb.GeneratedMessage {
     if (pageListResponse != null) result.pageListResponse = pageListResponse;
     if (pageThumbnailsResponse != null)
       result.pageThumbnailsResponse = pageThumbnailsResponse;
+    if (bubbleMessages != null) result.bubbleMessages = bubbleMessages;
     if (panel != null) result.panel = panel;
     if (error != null) result.error = error;
     return result;
@@ -89,6 +92,7 @@ class Frame extends $pb.GeneratedMessage {
     14: Frame_Body.settingsChanged,
     15: Frame_Body.pageListResponse,
     16: Frame_Body.pageThumbnailsResponse,
+    17: Frame_Body.bubbleMessages,
     20: Frame_Body.panel,
     99: Frame_Body.error,
     0: Frame_Body.notSet
@@ -97,7 +101,7 @@ class Frame extends $pb.GeneratedMessage {
       _omitMessageNames ? '' : 'Frame',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
       createEmptyInstance: Frame.$_createMessage)
-    ..oo(0, [10, 11, 12, 13, 14, 15, 16, 20, 99])
+    ..oo(0, [10, 11, 12, 13, 14, 15, 16, 17, 20, 99])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
         fieldType: $pb.PbFieldType.OU3)
     ..a<$fixnum.Int64>(
@@ -119,6 +123,8 @@ class Frame extends $pb.GeneratedMessage {
     ..aOM<PageThumbnailsResponse>(
         16, _omitFieldNames ? '' : 'pageThumbnailsResponse',
         subBuilder: PageThumbnailsResponse.$_createMessage)
+    ..aOM<BubbleMessages>(17, _omitFieldNames ? '' : 'bubbleMessages',
+        subBuilder: BubbleMessages.$_createMessage)
     ..aOM<Panel>(20, _omitFieldNames ? '' : 'panel',
         subBuilder: Panel.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
@@ -152,6 +158,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(14)
   @$pb.TagNumber(15)
   @$pb.TagNumber(16)
+  @$pb.TagNumber(17)
   @$pb.TagNumber(20)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
@@ -162,6 +169,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(14)
   @$pb.TagNumber(15)
   @$pb.TagNumber(16)
+  @$pb.TagNumber(17)
   @$pb.TagNumber(20)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
@@ -263,27 +271,38 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(16)
   PageThumbnailsResponse ensurePageThumbnailsResponse() => $_ensure(8);
 
+  @$pb.TagNumber(17)
+  BubbleMessages get bubbleMessages => $_getN(9);
+  @$pb.TagNumber(17)
+  set bubbleMessages(BubbleMessages value) => $_setField(17, value);
+  @$pb.TagNumber(17)
+  $core.bool hasBubbleMessages() => $_has(9);
+  @$pb.TagNumber(17)
+  void clearBubbleMessages() => $_clearField(17);
+  @$pb.TagNumber(17)
+  BubbleMessages ensureBubbleMessages() => $_ensure(9);
+
   @$pb.TagNumber(20)
-  Panel get panel => $_getN(9);
+  Panel get panel => $_getN(10);
   @$pb.TagNumber(20)
   set panel(Panel value) => $_setField(20, value);
   @$pb.TagNumber(20)
-  $core.bool hasPanel() => $_has(9);
+  $core.bool hasPanel() => $_has(10);
   @$pb.TagNumber(20)
   void clearPanel() => $_clearField(20);
   @$pb.TagNumber(20)
-  Panel ensurePanel() => $_ensure(9);
+  Panel ensurePanel() => $_ensure(10);
 
   @$pb.TagNumber(99)
-  Error get error => $_getN(10);
+  Error get error => $_getN(11);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(10);
+  $core.bool hasError() => $_has(11);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(10);
+  Error ensureError() => $_ensure(11);
 }
 
 enum SettingValue_Value {
@@ -1863,6 +1882,330 @@ class PageThumbnailsResponse extends $pb.GeneratedMessage {
 
   @$pb.TagNumber(1)
   $pb.PbList<PageThumbnail> get thumbnails => $_getList(0);
+}
+
+class BubblePoint extends $pb.GeneratedMessage {
+  factory BubblePoint({
+    $core.double? x,
+    $core.double? y,
+    $core.double? width,
+  }) {
+    final result = BubblePoint._();
+    if (x != null) result.x = x;
+    if (y != null) result.y = y;
+    if (width != null) result.width = width;
+    return result;
+  }
+
+  BubblePoint._();
+
+  factory BubblePoint.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BubblePoint()..mergeFromBuffer(data, registry);
+  factory BubblePoint.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BubblePoint()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'BubblePoint',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: BubblePoint.$_createMessage)
+    ..aD(1, _omitFieldNames ? '' : 'x')
+    ..aD(2, _omitFieldNames ? '' : 'y')
+    ..aD(3, _omitFieldNames ? '' : 'width')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BubblePoint clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BubblePoint copyWith(void Function(BubblePoint) updates) =>
+      super.copyWith((message) => updates(message as BubblePoint))
+          as BubblePoint;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use BubblePoint() / BubblePoint.new instead')
+  static BubblePoint create() => BubblePoint._();
+  static $pb.GeneratedMessage $_createMessage() => BubblePoint._();
+  @$core.override
+  BubblePoint createEmptyInstance() => BubblePoint._();
+  @$core.pragma('dart2js:noInline')
+  static BubblePoint getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<BubblePoint>(
+          BubblePoint.$_createMessage);
+  static BubblePoint? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.double get x => $_getN(0);
+  @$pb.TagNumber(1)
+  set x($core.double value) => $_setDouble(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasX() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearX() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.double get y => $_getN(1);
+  @$pb.TagNumber(2)
+  set y($core.double value) => $_setDouble(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasY() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearY() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.double get width => $_getN(2);
+  @$pb.TagNumber(3)
+  set width($core.double value) => $_setDouble(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasWidth() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearWidth() => $_clearField(3);
+}
+
+class BubbleStroke extends $pb.GeneratedMessage {
+  factory BubbleStroke({
+    $core.int? rgb,
+    $core.double? widthScale,
+    $fixnum.Int64? gapMs,
+    $core.Iterable<BubblePoint>? points,
+  }) {
+    final result = BubbleStroke._();
+    if (rgb != null) result.rgb = rgb;
+    if (widthScale != null) result.widthScale = widthScale;
+    if (gapMs != null) result.gapMs = gapMs;
+    if (points != null) result.points.addAll(points);
+    return result;
+  }
+
+  BubbleStroke._();
+
+  factory BubbleStroke.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BubbleStroke()..mergeFromBuffer(data, registry);
+  factory BubbleStroke.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BubbleStroke()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'BubbleStroke',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: BubbleStroke.$_createMessage)
+    ..aI(1, _omitFieldNames ? '' : 'rgb', fieldType: $pb.PbFieldType.OU3)
+    ..aD(2, _omitFieldNames ? '' : 'widthScale')
+    ..a<$fixnum.Int64>(3, _omitFieldNames ? '' : 'gapMs', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..pPM<BubblePoint>(4, _omitFieldNames ? '' : 'points',
+        subBuilder: BubblePoint.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BubbleStroke clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BubbleStroke copyWith(void Function(BubbleStroke) updates) =>
+      super.copyWith((message) => updates(message as BubbleStroke))
+          as BubbleStroke;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use BubbleStroke() / BubbleStroke.new instead')
+  static BubbleStroke create() => BubbleStroke._();
+  static $pb.GeneratedMessage $_createMessage() => BubbleStroke._();
+  @$core.override
+  BubbleStroke createEmptyInstance() => BubbleStroke._();
+  @$core.pragma('dart2js:noInline')
+  static BubbleStroke getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<BubbleStroke>(
+          BubbleStroke.$_createMessage);
+  static BubbleStroke? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.int get rgb => $_getIZ(0);
+  @$pb.TagNumber(1)
+  set rgb($core.int value) => $_setUnsignedInt32(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasRgb() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearRgb() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.double get widthScale => $_getN(1);
+  @$pb.TagNumber(2)
+  set widthScale($core.double value) => $_setDouble(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasWidthScale() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearWidthScale() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $fixnum.Int64 get gapMs => $_getI64(2);
+  @$pb.TagNumber(3)
+  set gapMs($fixnum.Int64 value) => $_setInt64(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasGapMs() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearGapMs() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $pb.PbList<BubblePoint> get points => $_getList(3);
+}
+
+class BubbleMessage extends $pb.GeneratedMessage {
+  factory BubbleMessage({
+    $fixnum.Int64? id,
+    $fixnum.Int64? tsMs,
+    $core.String? device,
+    $core.Iterable<BubbleStroke>? strokes,
+  }) {
+    final result = BubbleMessage._();
+    if (id != null) result.id = id;
+    if (tsMs != null) result.tsMs = tsMs;
+    if (device != null) result.device = device;
+    if (strokes != null) result.strokes.addAll(strokes);
+    return result;
+  }
+
+  BubbleMessage._();
+
+  factory BubbleMessage.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BubbleMessage()..mergeFromBuffer(data, registry);
+  factory BubbleMessage.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BubbleMessage()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'BubbleMessage',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: BubbleMessage.$_createMessage)
+    ..a<$fixnum.Int64>(1, _omitFieldNames ? '' : 'id', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(2, _omitFieldNames ? '' : 'tsMs', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..aOS(3, _omitFieldNames ? '' : 'device')
+    ..pPM<BubbleStroke>(4, _omitFieldNames ? '' : 'strokes',
+        subBuilder: BubbleStroke.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BubbleMessage clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BubbleMessage copyWith(void Function(BubbleMessage) updates) =>
+      super.copyWith((message) => updates(message as BubbleMessage))
+          as BubbleMessage;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use BubbleMessage() / BubbleMessage.new instead')
+  static BubbleMessage create() => BubbleMessage._();
+  static $pb.GeneratedMessage $_createMessage() => BubbleMessage._();
+  @$core.override
+  BubbleMessage createEmptyInstance() => BubbleMessage._();
+  @$core.pragma('dart2js:noInline')
+  static BubbleMessage getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<BubbleMessage>(
+          BubbleMessage.$_createMessage);
+  static BubbleMessage? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $fixnum.Int64 get id => $_getI64(0);
+  @$pb.TagNumber(1)
+  set id($fixnum.Int64 value) => $_setInt64(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $fixnum.Int64 get tsMs => $_getI64(1);
+  @$pb.TagNumber(2)
+  set tsMs($fixnum.Int64 value) => $_setInt64(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasTsMs() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearTsMs() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get device => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set device($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasDevice() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearDevice() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $pb.PbList<BubbleStroke> get strokes => $_getList(3);
+}
+
+class BubbleMessages extends $pb.GeneratedMessage {
+  factory BubbleMessages({
+    $core.String? device,
+    $core.Iterable<BubbleMessage>? messages,
+  }) {
+    final result = BubbleMessages._();
+    if (device != null) result.device = device;
+    if (messages != null) result.messages.addAll(messages);
+    return result;
+  }
+
+  BubbleMessages._();
+
+  factory BubbleMessages.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BubbleMessages()..mergeFromBuffer(data, registry);
+  factory BubbleMessages.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      BubbleMessages()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'BubbleMessages',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: BubbleMessages.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'device')
+    ..pPM<BubbleMessage>(2, _omitFieldNames ? '' : 'messages',
+        subBuilder: BubbleMessage.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BubbleMessages clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  BubbleMessages copyWith(void Function(BubbleMessages) updates) =>
+      super.copyWith((message) => updates(message as BubbleMessages))
+          as BubbleMessages;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use BubbleMessages() / BubbleMessages.new instead')
+  static BubbleMessages create() => BubbleMessages._();
+  static $pb.GeneratedMessage $_createMessage() => BubbleMessages._();
+  @$core.override
+  BubbleMessages createEmptyInstance() => BubbleMessages._();
+  @$core.pragma('dart2js:noInline')
+  static BubbleMessages getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<BubbleMessages>(
+          BubbleMessages.$_createMessage);
+  static BubbleMessages? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get device => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set device($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasDevice() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearDevice() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $pb.PbList<BubbleMessage> get messages => $_getList(1);
 }
 
 const $core.bool _omitFieldNames =

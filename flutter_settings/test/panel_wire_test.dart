@@ -20,6 +20,35 @@ void main() {
     }
   });
 
+  test('typed bubble messages decodes', () {
+    final frame = pb.Frame(
+      protocolVersion: 1,
+      requestId: Int64(5),
+      bubbleMessages: pb.BubbleMessages(
+        device: 'dev',
+        messages: [
+          pb.BubbleMessage(
+            id: Int64(1),
+            tsMs: Int64(2),
+            device: 'dev',
+            strokes: [
+              pb.BubbleStroke(
+                rgb: 0xff0000,
+                widthScale: 2.0,
+                gapMs: Int64(0),
+                points: [pb.BubblePoint(x: 1.0, y: 2.0, width: 3.0)],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    final msg = PanelStreamDecoder().feed(encodeFrame(frame)).single;
+    expect(msg.kind, 'bubbleMessages');
+    expect(msg.data['device'], 'dev');
+    expect(msg.data['messages'][0]['strokes'][0]['pts'], [1.0, 2.0, 3.0]);
+  });
+
   test('typed page thumbnails decodes', () {
     final frame = pb.Frame(
       protocolVersion: 1,

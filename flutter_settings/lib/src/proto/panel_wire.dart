@@ -9,6 +9,31 @@ import 'glaspen/ipc/v1/ipc.pb.dart' as pb;
 
 const List<int> panelMagic = [0x47, 0x50, 0x42, 0x31]; // "GPB1"
 
+Map<String, dynamic> bubbleMessagesToMap(pb.BubbleMessages m) {
+  return <String, dynamic>{
+    'device': m.device,
+    'messages': [
+      for (final msg in m.messages)
+        {
+          'id': msg.id.toInt(),
+          'ts_ms': msg.tsMs.toInt(),
+          'device': msg.device,
+          'strokes': [
+            for (final s in msg.strokes)
+              {
+                'rgb': s.rgb,
+                'w': s.widthScale,
+                'g': s.gapMs.toInt(),
+                'pts': [
+                  for (final p in s.points) ...[p.x, p.y, p.width],
+                ],
+              },
+          ],
+        },
+    ],
+  };
+}
+
 Map<String, dynamic> appSettingsToMap(pb.AppSettings s) {
   return <String, dynamic>{
     'color': s.color,
@@ -248,6 +273,14 @@ class PanelStreamDecoder {
                 {'id': t.id.toInt(), 'png': Uint8List.fromList(t.png)},
             ],
           },
+        ));
+        continue;
+      }
+      if (frame.hasBubbleMessages()) {
+        out.add(PanelMessage(
+          'bubbleMessages',
+          frame.requestId.toInt(),
+          bubbleMessagesToMap(frame.bubbleMessages),
         ));
         continue;
       }

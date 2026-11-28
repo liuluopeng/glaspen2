@@ -85,6 +85,15 @@ const Frame$json = {
       '10': 'pageThumbnailsResponse'
     },
     {
+      '1': 'bubble_messages',
+      '3': 17,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.BubbleMessages',
+      '9': 0,
+      '10': 'bubbleMessages'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -121,9 +130,10 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'aGFuZ2VkElAKEnBhZ2VfbGlzdF9yZXNwb25zZRgPIAEoCzIgLmdsYXNwZW4uaXBjLnYxLlBhZ2'
     'VMaXN0UmVzcG9uc2VIAFIQcGFnZUxpc3RSZXNwb25zZRJiChhwYWdlX3RodW1ibmFpbHNfcmVz'
     'cG9uc2UYECABKAsyJi5nbGFzcGVuLmlwYy52MS5QYWdlVGh1bWJuYWlsc1Jlc3BvbnNlSABSFn'
-    'BhZ2VUaHVtYm5haWxzUmVzcG9uc2USLQoFcGFuZWwYFCABKAsyFS5nbGFzcGVuLmlwYy52MS5Q'
-    'YW5lbEgAUgVwYW5lbBItCgVlcnJvchhjIAEoCzIVLmdsYXNwZW4uaXBjLnYxLkVycm9ySABSBW'
-    'Vycm9yQgYKBGJvZHk=');
+    'BhZ2VUaHVtYm5haWxzUmVzcG9uc2USSQoPYnViYmxlX21lc3NhZ2VzGBEgASgLMh4uZ2xhc3Bl'
+    'bi5pcGMudjEuQnViYmxlTWVzc2FnZXNIAFIOYnViYmxlTWVzc2FnZXMSLQoFcGFuZWwYFCABKA'
+    'syFS5nbGFzcGVuLmlwYy52MS5QYW5lbEgAUgVwYW5lbBItCgVlcnJvchhjIAEoCzIVLmdsYXNw'
+    'ZW4uaXBjLnYxLkVycm9ySABSBWVycm9yQgYKBGJvZHk=');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -572,3 +582,87 @@ final $typed_data.Uint8List pageThumbnailsResponseDescriptor =
     $convert.base64Decode(
         'ChZQYWdlVGh1bWJuYWlsc1Jlc3BvbnNlEj0KCnRodW1ibmFpbHMYASADKAsyHS5nbGFzcGVuLm'
         'lwYy52MS5QYWdlVGh1bWJuYWlsUgp0aHVtYm5haWxz');
+
+@$core.Deprecated('Use bubblePointDescriptor instead')
+const BubblePoint$json = {
+  '1': 'BubblePoint',
+  '2': [
+    {'1': 'x', '3': 1, '4': 1, '5': 1, '10': 'x'},
+    {'1': 'y', '3': 2, '4': 1, '5': 1, '10': 'y'},
+    {'1': 'width', '3': 3, '4': 1, '5': 1, '10': 'width'},
+  ],
+};
+
+/// Descriptor for `BubblePoint`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List bubblePointDescriptor = $convert.base64Decode(
+    'CgtCdWJibGVQb2ludBIMCgF4GAEgASgBUgF4EgwKAXkYAiABKAFSAXkSFAoFd2lkdGgYAyABKA'
+    'FSBXdpZHRo');
+
+@$core.Deprecated('Use bubbleStrokeDescriptor instead')
+const BubbleStroke$json = {
+  '1': 'BubbleStroke',
+  '2': [
+    {'1': 'rgb', '3': 1, '4': 1, '5': 13, '10': 'rgb'},
+    {'1': 'width_scale', '3': 2, '4': 1, '5': 1, '10': 'widthScale'},
+    {'1': 'gap_ms', '3': 3, '4': 1, '5': 4, '10': 'gapMs'},
+    {
+      '1': 'points',
+      '3': 4,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.BubblePoint',
+      '10': 'points'
+    },
+  ],
+};
+
+/// Descriptor for `BubbleStroke`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List bubbleStrokeDescriptor = $convert.base64Decode(
+    'CgxCdWJibGVTdHJva2USEAoDcmdiGAEgASgNUgNyZ2ISHwoLd2lkdGhfc2NhbGUYAiABKAFSCn'
+    'dpZHRoU2NhbGUSFQoGZ2FwX21zGAMgASgEUgVnYXBNcxIzCgZwb2ludHMYBCADKAsyGy5nbGFz'
+    'cGVuLmlwYy52MS5CdWJibGVQb2ludFIGcG9pbnRz');
+
+@$core.Deprecated('Use bubbleMessageDescriptor instead')
+const BubbleMessage$json = {
+  '1': 'BubbleMessage',
+  '2': [
+    {'1': 'id', '3': 1, '4': 1, '5': 4, '10': 'id'},
+    {'1': 'ts_ms', '3': 2, '4': 1, '5': 4, '10': 'tsMs'},
+    {'1': 'device', '3': 3, '4': 1, '5': 9, '10': 'device'},
+    {
+      '1': 'strokes',
+      '3': 4,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.BubbleStroke',
+      '10': 'strokes'
+    },
+  ],
+};
+
+/// Descriptor for `BubbleMessage`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List bubbleMessageDescriptor = $convert.base64Decode(
+    'Cg1CdWJibGVNZXNzYWdlEg4KAmlkGAEgASgEUgJpZBITCgV0c19tcxgCIAEoBFIEdHNNcxIWCg'
+    'ZkZXZpY2UYAyABKAlSBmRldmljZRI2CgdzdHJva2VzGAQgAygLMhwuZ2xhc3Blbi5pcGMudjEu'
+    'QnViYmxlU3Ryb2tlUgdzdHJva2Vz');
+
+@$core.Deprecated('Use bubbleMessagesDescriptor instead')
+const BubbleMessages$json = {
+  '1': 'BubbleMessages',
+  '2': [
+    {'1': 'device', '3': 1, '4': 1, '5': 9, '10': 'device'},
+    {
+      '1': 'messages',
+      '3': 2,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.BubbleMessage',
+      '10': 'messages'
+    },
+  ],
+};
+
+/// Descriptor for `BubbleMessages`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List bubbleMessagesDescriptor = $convert.base64Decode(
+    'Cg5CdWJibGVNZXNzYWdlcxIWCgZkZXZpY2UYASABKAlSBmRldmljZRI5CghtZXNzYWdlcxgCIA'
+    'MoCzIdLmdsYXNwZW4uaXBjLnYxLkJ1YmJsZU1lc3NhZ2VSCG1lc3NhZ2Vz');

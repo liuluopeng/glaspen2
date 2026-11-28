@@ -327,10 +327,8 @@ pub async fn get_settings() -> Option<Settings> {
 /// 结构对齐 ShareStroke, 见 export/bubbles.rs)。
 pub async fn bubble_messages() -> Vec<u8> {
     run_blocking(|| {
-        panel_bytes(
-            "bubbleMessages",
-            &glaspen_core::export::bubbles::messages_json(),
-        )
+        let messages = glaspen_core::export::bubbles::messages_snapshot();
+        glaspen_ipc::encode_bubble_messages_frame(0, messages)
     })
 }
 

@@ -546,7 +546,41 @@ fn runtime_block_on_setting(key: &str) -> Option<String> {
     crate::runtime().block_on(crate::db::load_setting(key))
 }
 
-/// 全部消息的 JSON(先惰性过期)。形如:
+/// 全部消息的 typed protobuf 快照(面板/FRB 边界用; DB 仍存 JSON)。
+pub fn messages_snapshot() -> glaspen_ipc::proto::BubbleMessages {
+    load_from_db();
+    let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
+    flush_expired(&mut g);
+    let device = crate::device::device_uuid();
+    glaspen_ipc::proto::BubbleMessages {
+        device: device.clone(),
+        messages: g
+            .msgs
+            .iter()
+            .map(|m| glaspen_ipc::proto::BubbleMessage {
+                id: m.id,
+                ts_ms: m.ts_ms,
+                device: m.device.clone(),
+                strokes: m
+                    .strokes
+                    .iter()
+                    .map(|s| glaspen_ipc::proto::BubbleStroke {
+                        rgb: s.rgb,
+                        width_scale: s.width_scale,
+                        gap_ms: s.gap_ms,
+                        points: s
+                            .pts
+                            .iter()
+                            .map(|&(x, y, width)| glaspen_ipc::proto::BubblePoint { x, y, width })
+                            .collect(),
+                    })
+                    .collect(),
+            })
+            .collect(),
+    }
+}
+
+/// 全部消息的 JSON(先惰性过期)。形如:/// 全部消息的 JSON(先惰性过期)。形如:
 /// `{"device":"0192…","messages":[{"id":1,"ts_ms":...,"device":"0192…",
 ///   "strokes":[{"rgb":16711680,"w":2.0,"g":0,"pts":[x,y,w, ...]}]}]}`
 /// (g = 与上一笔的间隔 ms, 重播时间线用;device = 作者设备 UUIDv7,

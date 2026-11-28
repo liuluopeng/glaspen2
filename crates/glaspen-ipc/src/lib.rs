@@ -444,6 +444,23 @@ pub fn encode_page_thumbnails_frame(request_id: u64, entries: &[(i64, Vec<u8>)])
     encode_frame(&frame)
 }
 
+pub fn encode_bubble_messages_frame(request_id: u64, messages: proto::BubbleMessages) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::BubbleMessages(messages)),
+    };
+    encode_frame(&frame)
+}
+
+pub fn decode_bubble_messages_frame(bytes: &[u8]) -> Result<proto::BubbleMessages, FrameError> {
+    let frame = decode_frame(bytes)?;
+    let Some(proto::frame::Body::BubbleMessages(messages)) = frame.body else {
+        return Err(FrameError::Decode("期望 BubbleMessages".to_string()));
+    };
+    Ok(messages)
+}
+
 pub fn decode_page_thumbnails_frame(bytes: &[u8]) -> Result<Vec<(i64, Vec<u8>)>, FrameError> {
     let frame = decode_frame(bytes)?;
     let Some(proto::frame::Body::PageThumbnailsResponse(resp)) = frame.body else {
@@ -584,6 +601,30 @@ mod tests {
         assert_eq!(panel.kind, "getPageThumbnails");
         let back = prost_value_to_json(panel.data.as_ref().unwrap());
         assert_eq!(back, value);
+    }
+
+    #[test]
+    fn typed_bubble_messages_roundtrip() {
+        let messages = proto::BubbleMessages {
+            device: "dev".to_string(),
+            messages: vec![proto::BubbleMessage {
+                id: 1,
+                ts_ms: 2,
+                device: "dev".to_string(),
+                strokes: vec![proto::BubbleStroke {
+                    rgb: 0xff0000,
+                    width_scale: 2.0,
+                    gap_ms: 0,
+                    points: vec![proto::BubblePoint {
+                        x: 1.0,
+                        y: 2.0,
+                        width: 3.0,
+                    }],
+                }],
+            }],
+        };
+        let bytes = encode_bubble_messages_frame(5, messages.clone());
+        assert_eq!(decode_bubble_messages_frame(&bytes).unwrap(), messages);
     }
 
     #[test]

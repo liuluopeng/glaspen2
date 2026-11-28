@@ -25,6 +25,7 @@ message Frame {
     SettingsChanged settings_changed = 14;
     PageListResponse page_list_response = 15;
     PageThumbnailsResponse page_thumbnails_response = 16;
+    BubbleMessages bubble_messages = 17;
     Panel panel = 20;
     Error error = 99;
   }
@@ -155,4 +156,29 @@ message PageThumbnail {
 
 message PageThumbnailsResponse {
   repeated PageThumbnail thumbnails = 1;
+}
+
+message BubblePoint {
+  double x = 1;
+  double y = 2;
+  double width = 3;
+}
+
+message BubbleStroke {
+  uint32 rgb = 1;
+  double width_scale = 2;
+  uint64 gap_ms = 3;
+  repeated BubblePoint points = 4;
+}
+
+message BubbleMessage {
+  uint64 id = 1;
+  uint64 ts_ms = 2;
+  string device = 3;
+  repeated BubbleStroke strokes = 4;
+}
+
+message BubbleMessages {
+  string device = 1;
+  repeated BubbleMessage messages = 2;
 }
