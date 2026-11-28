@@ -937,14 +937,14 @@ class _NamedPipeBridge extends SettingsBridge {
   @override
   Stream<Map<dynamic, dynamic>> downloadUpdate() {
     final ctl = StreamController<Map<dynamic, dynamic>>(onCancel: () {
-      _send('cancelDownload', null);
+      _writeBytes(encodeCancelDownloadRequest());
       _downloadCtl = null;
       _downloadReqId = null;
     });
     _downloadCtl = ctl;
     final id = ++_reqSeq;
     _downloadReqId = id;
-    _send('downloadUpdate', null, requestId: id);
+    _writeBytes(encodeDownloadUpdateRequest(id));
     return ctl.stream;
   }
 
@@ -1020,10 +1020,6 @@ class _NamedPipeBridge extends SettingsBridge {
 
   bool _writeRequest(int id, String type, Map<String, dynamic>? params) {
     return _writeBytes(encodeRequest(id, type, params));
-  }
-
-  bool _send(String type, Map<String, dynamic>? params, {int? requestId}) {
-    return _writeRequest(requestId ?? ++_reqSeq, type, params);
   }
 
   @override

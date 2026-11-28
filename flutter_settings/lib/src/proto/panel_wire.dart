@@ -280,6 +280,22 @@ List<int> encodeAppVersionRequest(int requestId) {
   ));
 }
 
+List<int> encodeDownloadUpdateRequest(int requestId) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    downloadUpdateRequest: pb.DownloadUpdateRequest(),
+  ));
+}
+
+List<int> encodeCancelDownloadRequest() {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(0),
+    cancelDownloadRequest: pb.CancelDownloadRequest(),
+  ));
+}
+
 List<int> encodeApplyUpdateRequest(int requestId) {
   return encodeFrame(pb.Frame(
     protocolVersion: 1,
@@ -442,6 +458,21 @@ class PanelStreamDecoder {
           settings == null
               ? const <String, dynamic>{}
               : appSettingsToMap(settings),
+        ));
+        continue;
+      }
+      if (frame.hasDownloadProgress()) {
+        final r = frame.downloadProgress;
+        out.add(PanelMessage(
+          'downloadUpdate_frame',
+          frame.requestId.toInt(),
+          {
+            'received': r.received.toInt(),
+            'total': r.total.toInt(),
+            'done': r.done,
+            'error': r.error,
+            'path': r.path,
+          },
         ));
         continue;
       }

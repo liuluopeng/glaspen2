@@ -57,6 +57,9 @@ enum Frame_Body {
   nasBackupOutcome,
   applyUpdateRequest,
   applyUpdateOutcome,
+  downloadUpdateRequest,
+  downloadProgress,
+  cancelDownloadRequest,
   error,
   notSet
 }
@@ -109,6 +112,9 @@ class Frame extends $pb.GeneratedMessage {
     NasBackupOutcome? nasBackupOutcome,
     ApplyUpdateRequest? applyUpdateRequest,
     ApplyUpdateOutcome? applyUpdateOutcome,
+    DownloadUpdateRequest? downloadUpdateRequest,
+    DownloadProgress? downloadProgress,
+    CancelDownloadRequest? cancelDownloadRequest,
     Error? error,
   }) {
     final result = Frame._();
@@ -161,6 +167,11 @@ class Frame extends $pb.GeneratedMessage {
       result.applyUpdateRequest = applyUpdateRequest;
     if (applyUpdateOutcome != null)
       result.applyUpdateOutcome = applyUpdateOutcome;
+    if (downloadUpdateRequest != null)
+      result.downloadUpdateRequest = downloadUpdateRequest;
+    if (downloadProgress != null) result.downloadProgress = downloadProgress;
+    if (cancelDownloadRequest != null)
+      result.cancelDownloadRequest = cancelDownloadRequest;
     if (error != null) result.error = error;
     return result;
   }
@@ -209,6 +220,9 @@ class Frame extends $pb.GeneratedMessage {
     63: Frame_Body.nasBackupOutcome,
     64: Frame_Body.applyUpdateRequest,
     65: Frame_Body.applyUpdateOutcome,
+    70: Frame_Body.downloadUpdateRequest,
+    71: Frame_Body.downloadProgress,
+    72: Frame_Body.cancelDownloadRequest,
     99: Frame_Body.error,
     0: Frame_Body.notSet
   };
@@ -251,6 +265,9 @@ class Frame extends $pb.GeneratedMessage {
       63,
       64,
       65,
+      70,
+      71,
+      72,
       99
     ])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
@@ -333,6 +350,14 @@ class Frame extends $pb.GeneratedMessage {
         subBuilder: ApplyUpdateRequest.$_createMessage)
     ..aOM<ApplyUpdateOutcome>(65, _omitFieldNames ? '' : 'applyUpdateOutcome',
         subBuilder: ApplyUpdateOutcome.$_createMessage)
+    ..aOM<DownloadUpdateRequest>(
+        70, _omitFieldNames ? '' : 'downloadUpdateRequest',
+        subBuilder: DownloadUpdateRequest.$_createMessage)
+    ..aOM<DownloadProgress>(71, _omitFieldNames ? '' : 'downloadProgress',
+        subBuilder: DownloadProgress.$_createMessage)
+    ..aOM<CancelDownloadRequest>(
+        72, _omitFieldNames ? '' : 'cancelDownloadRequest',
+        subBuilder: CancelDownloadRequest.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
         subBuilder: Error.$_createMessage)
     ..hasRequiredFields = false;
@@ -391,6 +416,9 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(63)
   @$pb.TagNumber(64)
   @$pb.TagNumber(65)
+  @$pb.TagNumber(70)
+  @$pb.TagNumber(71)
+  @$pb.TagNumber(72)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(10)
@@ -427,6 +455,9 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(63)
   @$pb.TagNumber(64)
   @$pb.TagNumber(65)
+  @$pb.TagNumber(70)
+  @$pb.TagNumber(71)
+  @$pb.TagNumber(72)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
 
@@ -828,16 +859,51 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(65)
   ApplyUpdateOutcome ensureApplyUpdateOutcome() => $_ensure(35);
 
+  @$pb.TagNumber(70)
+  DownloadUpdateRequest get downloadUpdateRequest => $_getN(36);
+  @$pb.TagNumber(70)
+  set downloadUpdateRequest(DownloadUpdateRequest value) =>
+      $_setField(70, value);
+  @$pb.TagNumber(70)
+  $core.bool hasDownloadUpdateRequest() => $_has(36);
+  @$pb.TagNumber(70)
+  void clearDownloadUpdateRequest() => $_clearField(70);
+  @$pb.TagNumber(70)
+  DownloadUpdateRequest ensureDownloadUpdateRequest() => $_ensure(36);
+
+  @$pb.TagNumber(71)
+  DownloadProgress get downloadProgress => $_getN(37);
+  @$pb.TagNumber(71)
+  set downloadProgress(DownloadProgress value) => $_setField(71, value);
+  @$pb.TagNumber(71)
+  $core.bool hasDownloadProgress() => $_has(37);
+  @$pb.TagNumber(71)
+  void clearDownloadProgress() => $_clearField(71);
+  @$pb.TagNumber(71)
+  DownloadProgress ensureDownloadProgress() => $_ensure(37);
+
+  @$pb.TagNumber(72)
+  CancelDownloadRequest get cancelDownloadRequest => $_getN(38);
+  @$pb.TagNumber(72)
+  set cancelDownloadRequest(CancelDownloadRequest value) =>
+      $_setField(72, value);
+  @$pb.TagNumber(72)
+  $core.bool hasCancelDownloadRequest() => $_has(38);
+  @$pb.TagNumber(72)
+  void clearCancelDownloadRequest() => $_clearField(72);
+  @$pb.TagNumber(72)
+  CancelDownloadRequest ensureCancelDownloadRequest() => $_ensure(38);
+
   @$pb.TagNumber(99)
-  Error get error => $_getN(36);
+  Error get error => $_getN(39);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(36);
+  $core.bool hasError() => $_has(39);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(36);
+  Error ensureError() => $_ensure(39);
 }
 
 enum SettingValue_Value {
@@ -4483,6 +4549,200 @@ class ApplyUpdateOutcome extends $pb.GeneratedMessage {
   $core.bool hasMessage() => $_has(1);
   @$pb.TagNumber(2)
   void clearMessage() => $_clearField(2);
+}
+
+class DownloadUpdateRequest extends $pb.GeneratedMessage {
+  factory DownloadUpdateRequest() => DownloadUpdateRequest._();
+
+  DownloadUpdateRequest._();
+
+  factory DownloadUpdateRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      DownloadUpdateRequest()..mergeFromBuffer(data, registry);
+  factory DownloadUpdateRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      DownloadUpdateRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'DownloadUpdateRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: DownloadUpdateRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  DownloadUpdateRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  DownloadUpdateRequest copyWith(
+          void Function(DownloadUpdateRequest) updates) =>
+      super.copyWith((message) => updates(message as DownloadUpdateRequest))
+          as DownloadUpdateRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use DownloadUpdateRequest() / DownloadUpdateRequest.new instead')
+  static DownloadUpdateRequest create() => DownloadUpdateRequest._();
+  static $pb.GeneratedMessage $_createMessage() => DownloadUpdateRequest._();
+  @$core.override
+  DownloadUpdateRequest createEmptyInstance() => DownloadUpdateRequest._();
+  @$core.pragma('dart2js:noInline')
+  static DownloadUpdateRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<DownloadUpdateRequest>(
+          DownloadUpdateRequest.$_createMessage);
+  static DownloadUpdateRequest? _defaultInstance;
+}
+
+class DownloadProgress extends $pb.GeneratedMessage {
+  factory DownloadProgress({
+    $fixnum.Int64? received,
+    $fixnum.Int64? total,
+    $core.bool? done,
+    $core.String? error,
+    $core.String? path,
+  }) {
+    final result = DownloadProgress._();
+    if (received != null) result.received = received;
+    if (total != null) result.total = total;
+    if (done != null) result.done = done;
+    if (error != null) result.error = error;
+    if (path != null) result.path = path;
+    return result;
+  }
+
+  DownloadProgress._();
+
+  factory DownloadProgress.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      DownloadProgress()..mergeFromBuffer(data, registry);
+  factory DownloadProgress.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      DownloadProgress()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'DownloadProgress',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: DownloadProgress.$_createMessage)
+    ..a<$fixnum.Int64>(
+        1, _omitFieldNames ? '' : 'received', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(2, _omitFieldNames ? '' : 'total', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..aOB(3, _omitFieldNames ? '' : 'done')
+    ..aOS(4, _omitFieldNames ? '' : 'error')
+    ..aOS(5, _omitFieldNames ? '' : 'path')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  DownloadProgress clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  DownloadProgress copyWith(void Function(DownloadProgress) updates) =>
+      super.copyWith((message) => updates(message as DownloadProgress))
+          as DownloadProgress;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use DownloadProgress() / DownloadProgress.new instead')
+  static DownloadProgress create() => DownloadProgress._();
+  static $pb.GeneratedMessage $_createMessage() => DownloadProgress._();
+  @$core.override
+  DownloadProgress createEmptyInstance() => DownloadProgress._();
+  @$core.pragma('dart2js:noInline')
+  static DownloadProgress getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<DownloadProgress>(
+          DownloadProgress.$_createMessage);
+  static DownloadProgress? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $fixnum.Int64 get received => $_getI64(0);
+  @$pb.TagNumber(1)
+  set received($fixnum.Int64 value) => $_setInt64(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasReceived() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearReceived() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $fixnum.Int64 get total => $_getI64(1);
+  @$pb.TagNumber(2)
+  set total($fixnum.Int64 value) => $_setInt64(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasTotal() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearTotal() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.bool get done => $_getBF(2);
+  @$pb.TagNumber(3)
+  set done($core.bool value) => $_setBool(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasDone() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearDone() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get error => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set error($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasError() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearError() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.String get path => $_getSZ(4);
+  @$pb.TagNumber(5)
+  set path($core.String value) => $_setString(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasPath() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearPath() => $_clearField(5);
+}
+
+class CancelDownloadRequest extends $pb.GeneratedMessage {
+  factory CancelDownloadRequest() => CancelDownloadRequest._();
+
+  CancelDownloadRequest._();
+
+  factory CancelDownloadRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CancelDownloadRequest()..mergeFromBuffer(data, registry);
+  factory CancelDownloadRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CancelDownloadRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'CancelDownloadRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: CancelDownloadRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CancelDownloadRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CancelDownloadRequest copyWith(
+          void Function(CancelDownloadRequest) updates) =>
+      super.copyWith((message) => updates(message as CancelDownloadRequest))
+          as CancelDownloadRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use CancelDownloadRequest() / CancelDownloadRequest.new instead')
+  static CancelDownloadRequest create() => CancelDownloadRequest._();
+  static $pb.GeneratedMessage $_createMessage() => CancelDownloadRequest._();
+  @$core.override
+  CancelDownloadRequest createEmptyInstance() => CancelDownloadRequest._();
+  @$core.pragma('dart2js:noInline')
+  static CancelDownloadRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<CancelDownloadRequest>(
+          CancelDownloadRequest.$_createMessage);
+  static CancelDownloadRequest? _defaultInstance;
 }
 
 const $core.bool _omitFieldNames =

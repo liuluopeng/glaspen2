@@ -51,6 +51,9 @@ message Frame {
     NasBackupOutcome nas_backup_outcome = 63;
     ApplyUpdateRequest apply_update_request = 64;
     ApplyUpdateOutcome apply_update_outcome = 65;
+    DownloadUpdateRequest download_update_request = 70;
+    DownloadProgress download_progress = 71;
+    CancelDownloadRequest cancel_download_request = 72;
     Panel panel = 20;
     Error error = 99;
   }
@@ -342,3 +345,15 @@ message ApplyUpdateOutcome {
   bool ok = 1;
   string message = 2;
 }
+
+message DownloadUpdateRequest {}
+
+message DownloadProgress {
+  uint64 received = 1;
+  uint64 total = 2;
+  bool done = 3;
+  string error = 4;
+  string path = 5;
+}
+
+message CancelDownloadRequest {}

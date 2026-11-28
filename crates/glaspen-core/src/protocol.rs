@@ -279,11 +279,7 @@ mod tests {
         }
         actual.sort();
         actual.dedup();
-        assert_eq!(
-            actual,
-            vec!["downloadUpdate", "uiConfig"],
-            "Windows 管道仍有未迁移 JSON 命令"
-        );
+        assert_eq!(actual, vec!["uiConfig"], "Windows 管道仍有未迁移 JSON 命令");
         for token in [
             "PanelInput::GetSettings",
             "PanelInput::SetSetting",
@@ -340,11 +336,7 @@ mod tests {
         }
         actual.sort();
         actual.dedup();
-        let expected = vec![
-            "cancelDownload".to_string(),
-            "downloadUpdate".to_string(),
-            "uiConfig".to_string(),
-        ];
+        let expected = vec!["uiConfig".to_string()];
         assert_eq!(actual, expected, "Flutter 面板仍有未迁移 JSON 请求");
         for token in [
             "encodeGetSettingsRequest",

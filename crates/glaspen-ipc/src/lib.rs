@@ -460,6 +460,30 @@ pub enum PageOpValue {
     Count(i32),
 }
 
+pub fn encode_download_progress_frame(
+    request_id: u64,
+    received: u64,
+    total: u64,
+    done: bool,
+    error: &str,
+    path: &str,
+) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::DownloadProgress(
+            proto::DownloadProgress {
+                received,
+                total,
+                done,
+                error: error.to_string(),
+                path: path.to_string(),
+            },
+        )),
+    };
+    encode_frame(&frame)
+}
+
 pub fn encode_apply_update_frame(request_id: u64, ok: bool, message: &str) -> Vec<u8> {
     let frame = Frame {
         protocol_version: PROTOCOL_VERSION,

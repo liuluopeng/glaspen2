@@ -111,6 +111,10 @@ pub enum PanelInput {
     ApplyUpdate {
         request_id: u64,
     },
+    DownloadUpdate {
+        request_id: u64,
+    },
+    CancelDownload,
     CanvasOverview {
         request_id: u64,
         w: i32,

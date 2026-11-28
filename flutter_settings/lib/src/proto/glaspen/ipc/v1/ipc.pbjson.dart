@@ -348,6 +348,33 @@ const Frame$json = {
       '10': 'applyUpdateOutcome'
     },
     {
+      '1': 'download_update_request',
+      '3': 70,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.DownloadUpdateRequest',
+      '9': 0,
+      '10': 'downloadUpdateRequest'
+    },
+    {
+      '1': 'download_progress',
+      '3': 71,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.DownloadProgress',
+      '9': 0,
+      '10': 'downloadProgress'
+    },
+    {
+      '1': 'cancel_download_request',
+      '3': 72,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.CancelDownloadRequest',
+      '9': 0,
+      '10': 'cancelDownloadRequest'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -423,9 +450,14 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'NCYWNrdXBPdXRjb21lSABSEG5hc0JhY2t1cE91dGNvbWUSVgoUYXBwbHlfdXBkYXRlX3JlcXVl'
     'c3QYQCABKAsyIi5nbGFzcGVuLmlwYy52MS5BcHBseVVwZGF0ZVJlcXVlc3RIAFISYXBwbHlVcG'
     'RhdGVSZXF1ZXN0ElYKFGFwcGx5X3VwZGF0ZV9vdXRjb21lGEEgASgLMiIuZ2xhc3Blbi5pcGMu'
-    'djEuQXBwbHlVcGRhdGVPdXRjb21lSABSEmFwcGx5VXBkYXRlT3V0Y29tZRItCgVwYW5lbBgUIA'
-    'EoCzIVLmdsYXNwZW4uaXBjLnYxLlBhbmVsSABSBXBhbmVsEi0KBWVycm9yGGMgASgLMhUuZ2xh'
-    'c3Blbi5pcGMudjEuRXJyb3JIAFIFZXJyb3JCBgoEYm9keQ==');
+    'djEuQXBwbHlVcGRhdGVPdXRjb21lSABSEmFwcGx5VXBkYXRlT3V0Y29tZRJfChdkb3dubG9hZF'
+    '91cGRhdGVfcmVxdWVzdBhGIAEoCzIlLmdsYXNwZW4uaXBjLnYxLkRvd25sb2FkVXBkYXRlUmVx'
+    'dWVzdEgAUhVkb3dubG9hZFVwZGF0ZVJlcXVlc3QSTwoRZG93bmxvYWRfcHJvZ3Jlc3MYRyABKA'
+    'syIC5nbGFzcGVuLmlwYy52MS5Eb3dubG9hZFByb2dyZXNzSABSEGRvd25sb2FkUHJvZ3Jlc3MS'
+    'XwoXY2FuY2VsX2Rvd25sb2FkX3JlcXVlc3QYSCABKAsyJS5nbGFzcGVuLmlwYy52MS5DYW5jZW'
+    'xEb3dubG9hZFJlcXVlc3RIAFIVY2FuY2VsRG93bmxvYWRSZXF1ZXN0Ei0KBXBhbmVsGBQgASgL'
+    'MhUuZ2xhc3Blbi5pcGMudjEuUGFuZWxIAFIFcGFuZWwSLQoFZXJyb3IYYyABKAsyFS5nbGFzcG'
+    'VuLmlwYy52MS5FcnJvckgAUgVlcnJvckIGCgRib2R5');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -1320,3 +1352,39 @@ const ApplyUpdateOutcome$json = {
 final $typed_data.Uint8List applyUpdateOutcomeDescriptor = $convert.base64Decode(
     'ChJBcHBseVVwZGF0ZU91dGNvbWUSDgoCb2sYASABKAhSAm9rEhgKB21lc3NhZ2UYAiABKAlSB2'
     '1lc3NhZ2U=');
+
+@$core.Deprecated('Use downloadUpdateRequestDescriptor instead')
+const DownloadUpdateRequest$json = {
+  '1': 'DownloadUpdateRequest',
+};
+
+/// Descriptor for `DownloadUpdateRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List downloadUpdateRequestDescriptor =
+    $convert.base64Decode('ChVEb3dubG9hZFVwZGF0ZVJlcXVlc3Q=');
+
+@$core.Deprecated('Use downloadProgressDescriptor instead')
+const DownloadProgress$json = {
+  '1': 'DownloadProgress',
+  '2': [
+    {'1': 'received', '3': 1, '4': 1, '5': 4, '10': 'received'},
+    {'1': 'total', '3': 2, '4': 1, '5': 4, '10': 'total'},
+    {'1': 'done', '3': 3, '4': 1, '5': 8, '10': 'done'},
+    {'1': 'error', '3': 4, '4': 1, '5': 9, '10': 'error'},
+    {'1': 'path', '3': 5, '4': 1, '5': 9, '10': 'path'},
+  ],
+};
+
+/// Descriptor for `DownloadProgress`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List downloadProgressDescriptor = $convert.base64Decode(
+    'ChBEb3dubG9hZFByb2dyZXNzEhoKCHJlY2VpdmVkGAEgASgEUghyZWNlaXZlZBIUCgV0b3RhbB'
+    'gCIAEoBFIFdG90YWwSEgoEZG9uZRgDIAEoCFIEZG9uZRIUCgVlcnJvchgEIAEoCVIFZXJyb3IS'
+    'EgoEcGF0aBgFIAEoCVIEcGF0aA==');
+
+@$core.Deprecated('Use cancelDownloadRequestDescriptor instead')
+const CancelDownloadRequest$json = {
+  '1': 'CancelDownloadRequest',
+};
+
+/// Descriptor for `CancelDownloadRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List cancelDownloadRequestDescriptor =
+    $convert.base64Decode('ChVDYW5jZWxEb3dubG9hZFJlcXVlc3Q=');

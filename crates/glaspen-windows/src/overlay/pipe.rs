@@ -332,6 +332,10 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
                     );
                     let _ = writer.write_frame(&frame);
                 }
+                PanelInput::DownloadUpdate { request_id } => {
+                    process_download_update(request_id, &mut writer);
+                }
+                PanelInput::CancelDownload => {}
                 PanelInput::ApplyUpdate { request_id } => {
                     let installer = DOWNLOADED_INSTALLER
                         .lock()
@@ -1078,6 +1082,70 @@ fn process_canvas_overview(
     let _ = writer.write_frame(&frame);
 }
 
+fn process_download_update(request_id: u64, writer: &mut PanelOut) {
+    use std::io::{Read as _, Write as _};
+    use std::os::windows::io::AsRawHandle;
+    let handle = HANDLE(writer.as_raw_handle());
+    let mut frame_at = std::time::Instant::now() - std::time::Duration::from_millis(200);
+    let result = glaspen_core::update::download_to_cache(|received, total| {
+        if total == 0
+            || received == total
+            || frame_at.elapsed() >= std::time::Duration::from_millis(100)
+        {
+            frame_at = std::time::Instant::now();
+            let frame = glaspen_ipc::encode_download_progress_frame(
+                request_id,
+                received,
+                total,
+                false,
+                "",
+                "",
+            );
+            let _ = writer.write_frame(&frame);
+        }
+        let mut avail: u32 = 0;
+        if unsafe { PeekNamedPipe(handle, None, 0, None, Some(&mut avail), None) }.is_ok()
+            && avail > 0
+        {
+            let mut buf = vec![0u8; avail as usize];
+            if let Ok(n) = writer.read(&mut buf) {
+                if let Ok(inputs) = PanelDecoder::new().feed(&buf[..n]) {
+                    if inputs
+                        .iter()
+                        .any(|i| matches!(i, PanelInput::CancelDownload))
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    });
+    match result {
+        Ok((path, received, total)) => {
+            tracing::info!("更新包已下载: {}", path.display());
+            *DOWNLOADED_INSTALLER.lock().unwrap_or_else(|e| e.into_inner()) = Some(path.clone());
+            let p = path.to_string_lossy().replace('\', "/");
+            let frame = glaspen_ipc::encode_download_progress_frame(
+                request_id, received, total, true, "", &p,
+            );
+            let _ = writer.write_frame(&frame);
+        }
+        Err(e) => {
+            let frame = glaspen_ipc::encode_download_progress_frame(
+                request_id,
+                0,
+                0,
+                true,
+                &e.to_string(),
+                "",
+            );
+            let _ = writer.write_frame(&frame);
+        }
+    }
+    let _ = writer.flush();
+}
+
 fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
     use std::io::Write;
 
@@ -1115,67 +1183,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
             let _ = writer.write_all(resp.as_bytes());
         }
         let _ = writer.flush();
-    } else if msg_type == "downloadUpdate" {
-        // 「立即更新」下载:fetch → 挑当前平台安装包 → 流式下载。
-        // 进度帧(~100ms 一帧)直接写回管道;取消 = 面板发 cancelDownload,
-        // on_progress 里偷看管道输入(单写者:此期间没有其它帧会发出)。
-        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        use std::io::{Read as _, Write as _};
-        use std::os::windows::io::AsRawHandle;
-        let handle = HANDLE(writer.as_raw_handle());
-        let mut frame_at = std::time::Instant::now() - std::time::Duration::from_millis(200);
-        let result = glaspen_core::update::download_to_cache(|received, total| {
-            if total == 0 || received == total || frame_at.elapsed() >= std::time::Duration::from_millis(100) {
-                frame_at = std::time::Instant::now();
-                let _ = writer.write_all(
-                    format!(
-                        "{{\"type\":\"downloadUpdate_frame\",\"reqId\":{req_id},\"data\":{{\"received\":{received},\"total\":{total},\"done\":false,\"error\":\"\",\"path\":\"\"}}}}\n",
-                    )
-                    .as_bytes(),
-                );
-                let _ = writer.flush();
-            }
-            // 偷看取消请求:有 cancelDownload 就停(消费掉这行,core 会删 .part)
-            let mut avail: u32 = 0;
-            if unsafe { PeekNamedPipe(handle, None, 0, None, Some(&mut avail), None) }.is_ok()
-                && avail > 0
-            {
-                let mut buf = vec![0u8; avail as usize];
-                // PeekNamedPipe 已确认有数据,同步读立即返回
-                if let Ok(n) = writer.read(&mut buf) {
-                    let s = String::from_utf8_lossy(&buf[..n]);
-                    if s.contains("cancelDownload") {
-                        return false;
-                    }
-                }
-            }
-            true
-        });
-        match result {
-            Ok((path, received, total)) => {
-                tracing::info!("更新包已下载: {}", path.display());
-                *DOWNLOADED_INSTALLER.lock().unwrap_or_else(|e| e.into_inner()) = Some(path.clone());
-                let p = path.to_string_lossy().replace('\\', "/");
-                let _ = writer.write_all(
-                    format!(
-                        "{{\"type\":\"downloadUpdate_frame\",\"reqId\":{req_id},\"data\":{{\"received\":{received},\"total\":{total},\"done\":true,\"error\":\"\",\"path\":\"{p}\"}}}}\n",
-                    )
-                    .as_bytes(),
-                );
-            }
-            Err(e) => {
-                // Cancelled 的 Display 就是「已取消」,Failed 直接带原因
-                let _ = writer.write_all(
-                    format!(
-                        "{{\"type\":\"downloadUpdate_frame\",\"reqId\":{req_id},\"data\":{{\"received\":0,\"total\":0,\"done\":true,\"error\":\"{}\",\"path\":\"\"}}}}\n",
-                        json_escape(&e.to_string())
-                    )
-                    .as_bytes(),
-                );
-            }
-        }
-        let _ = writer.flush();
-    }
+
 }
 
 // ── Minimal JSON helpers ──
