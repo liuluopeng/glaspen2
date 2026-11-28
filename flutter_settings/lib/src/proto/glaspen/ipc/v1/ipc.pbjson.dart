@@ -330,6 +330,24 @@ const Frame$json = {
       '10': 'nasBackupOutcome'
     },
     {
+      '1': 'apply_update_request',
+      '3': 64,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.ApplyUpdateRequest',
+      '9': 0,
+      '10': 'applyUpdateRequest'
+    },
+    {
+      '1': 'apply_update_outcome',
+      '3': 65,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.ApplyUpdateOutcome',
+      '9': 0,
+      '10': 'applyUpdateOutcome'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -402,9 +420,12 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'c3Blbi5pcGMudjEuVXBkYXRlSW5mb0gAUgp1cGRhdGVJbmZvElAKEm5hc19iYWNrdXBfcmVxdW'
     'VzdBg+IAEoCzIgLmdsYXNwZW4uaXBjLnYxLk5hc0JhY2t1cFJlcXVlc3RIAFIQbmFzQmFja3Vw'
     'UmVxdWVzdBJQChJuYXNfYmFja3VwX291dGNvbWUYPyABKAsyIC5nbGFzcGVuLmlwYy52MS5OYX'
-    'NCYWNrdXBPdXRjb21lSABSEG5hc0JhY2t1cE91dGNvbWUSLQoFcGFuZWwYFCABKAsyFS5nbGFz'
-    'cGVuLmlwYy52MS5QYW5lbEgAUgVwYW5lbBItCgVlcnJvchhjIAEoCzIVLmdsYXNwZW4uaXBjLn'
-    'YxLkVycm9ySABSBWVycm9yQgYKBGJvZHk=');
+    'NCYWNrdXBPdXRjb21lSABSEG5hc0JhY2t1cE91dGNvbWUSVgoUYXBwbHlfdXBkYXRlX3JlcXVl'
+    'c3QYQCABKAsyIi5nbGFzcGVuLmlwYy52MS5BcHBseVVwZGF0ZVJlcXVlc3RIAFISYXBwbHlVcG'
+    'RhdGVSZXF1ZXN0ElYKFGFwcGx5X3VwZGF0ZV9vdXRjb21lGEEgASgLMiIuZ2xhc3Blbi5pcGMu'
+    'djEuQXBwbHlVcGRhdGVPdXRjb21lSABSEmFwcGx5VXBkYXRlT3V0Y29tZRItCgVwYW5lbBgUIA'
+    'EoCzIVLmdsYXNwZW4uaXBjLnYxLlBhbmVsSABSBXBhbmVsEi0KBWVycm9yGGMgASgLMhUuZ2xh'
+    'c3Blbi5pcGMudjEuRXJyb3JIAFIFZXJyb3JCBgoEYm9keQ==');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -1276,3 +1297,26 @@ final $typed_data.Uint8List nasBackupOutcomeDescriptor = $convert.base64Decode(
     'ChBOYXNCYWNrdXBPdXRjb21lEg4KAm9rGAEgASgIUgJvaxIdCgpzaXplX2J5dGVzGAIgASgEUg'
     'lzaXplQnl0ZXMSIQoMc3Ryb2tlX2NvdW50GAMgASgEUgtzdHJva2VDb3VudBIUCgVlcnJvchgE'
     'IAEoCVIFZXJyb3ISEgoEaGludBgFIAEoCVIEaGludA==');
+
+@$core.Deprecated('Use applyUpdateRequestDescriptor instead')
+const ApplyUpdateRequest$json = {
+  '1': 'ApplyUpdateRequest',
+};
+
+/// Descriptor for `ApplyUpdateRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List applyUpdateRequestDescriptor =
+    $convert.base64Decode('ChJBcHBseVVwZGF0ZVJlcXVlc3Q=');
+
+@$core.Deprecated('Use applyUpdateOutcomeDescriptor instead')
+const ApplyUpdateOutcome$json = {
+  '1': 'ApplyUpdateOutcome',
+  '2': [
+    {'1': 'ok', '3': 1, '4': 1, '5': 8, '10': 'ok'},
+    {'1': 'message', '3': 2, '4': 1, '5': 9, '10': 'message'},
+  ],
+};
+
+/// Descriptor for `ApplyUpdateOutcome`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List applyUpdateOutcomeDescriptor = $convert.base64Decode(
+    'ChJBcHBseVVwZGF0ZU91dGNvbWUSDgoCb2sYASABKAhSAm9rEhgKB21lc3NhZ2UYAiABKAlSB2'
+    '1lc3NhZ2U=');

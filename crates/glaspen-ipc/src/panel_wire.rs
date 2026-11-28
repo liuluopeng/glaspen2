@@ -108,6 +108,9 @@ pub enum PanelInput {
     NasBackup {
         request_id: u64,
     },
+    ApplyUpdate {
+        request_id: u64,
+    },
     CanvasOverview {
         request_id: u64,
         w: i32,

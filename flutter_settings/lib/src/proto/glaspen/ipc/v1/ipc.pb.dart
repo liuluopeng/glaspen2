@@ -55,6 +55,8 @@ enum Frame_Body {
   updateInfo,
   nasBackupRequest,
   nasBackupOutcome,
+  applyUpdateRequest,
+  applyUpdateOutcome,
   error,
   notSet
 }
@@ -105,6 +107,8 @@ class Frame extends $pb.GeneratedMessage {
     UpdateInfo? updateInfo,
     NasBackupRequest? nasBackupRequest,
     NasBackupOutcome? nasBackupOutcome,
+    ApplyUpdateRequest? applyUpdateRequest,
+    ApplyUpdateOutcome? applyUpdateOutcome,
     Error? error,
   }) {
     final result = Frame._();
@@ -153,6 +157,10 @@ class Frame extends $pb.GeneratedMessage {
     if (updateInfo != null) result.updateInfo = updateInfo;
     if (nasBackupRequest != null) result.nasBackupRequest = nasBackupRequest;
     if (nasBackupOutcome != null) result.nasBackupOutcome = nasBackupOutcome;
+    if (applyUpdateRequest != null)
+      result.applyUpdateRequest = applyUpdateRequest;
+    if (applyUpdateOutcome != null)
+      result.applyUpdateOutcome = applyUpdateOutcome;
     if (error != null) result.error = error;
     return result;
   }
@@ -199,6 +207,8 @@ class Frame extends $pb.GeneratedMessage {
     61: Frame_Body.updateInfo,
     62: Frame_Body.nasBackupRequest,
     63: Frame_Body.nasBackupOutcome,
+    64: Frame_Body.applyUpdateRequest,
+    65: Frame_Body.applyUpdateOutcome,
     99: Frame_Body.error,
     0: Frame_Body.notSet
   };
@@ -239,6 +249,8 @@ class Frame extends $pb.GeneratedMessage {
       61,
       62,
       63,
+      64,
+      65,
       99
     ])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
@@ -317,6 +329,10 @@ class Frame extends $pb.GeneratedMessage {
         subBuilder: NasBackupRequest.$_createMessage)
     ..aOM<NasBackupOutcome>(63, _omitFieldNames ? '' : 'nasBackupOutcome',
         subBuilder: NasBackupOutcome.$_createMessage)
+    ..aOM<ApplyUpdateRequest>(64, _omitFieldNames ? '' : 'applyUpdateRequest',
+        subBuilder: ApplyUpdateRequest.$_createMessage)
+    ..aOM<ApplyUpdateOutcome>(65, _omitFieldNames ? '' : 'applyUpdateOutcome',
+        subBuilder: ApplyUpdateOutcome.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
         subBuilder: Error.$_createMessage)
     ..hasRequiredFields = false;
@@ -373,6 +389,8 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(61)
   @$pb.TagNumber(62)
   @$pb.TagNumber(63)
+  @$pb.TagNumber(64)
+  @$pb.TagNumber(65)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(10)
@@ -407,6 +425,8 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(61)
   @$pb.TagNumber(62)
   @$pb.TagNumber(63)
+  @$pb.TagNumber(64)
+  @$pb.TagNumber(65)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
 
@@ -786,16 +806,38 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(63)
   NasBackupOutcome ensureNasBackupOutcome() => $_ensure(33);
 
+  @$pb.TagNumber(64)
+  ApplyUpdateRequest get applyUpdateRequest => $_getN(34);
+  @$pb.TagNumber(64)
+  set applyUpdateRequest(ApplyUpdateRequest value) => $_setField(64, value);
+  @$pb.TagNumber(64)
+  $core.bool hasApplyUpdateRequest() => $_has(34);
+  @$pb.TagNumber(64)
+  void clearApplyUpdateRequest() => $_clearField(64);
+  @$pb.TagNumber(64)
+  ApplyUpdateRequest ensureApplyUpdateRequest() => $_ensure(34);
+
+  @$pb.TagNumber(65)
+  ApplyUpdateOutcome get applyUpdateOutcome => $_getN(35);
+  @$pb.TagNumber(65)
+  set applyUpdateOutcome(ApplyUpdateOutcome value) => $_setField(65, value);
+  @$pb.TagNumber(65)
+  $core.bool hasApplyUpdateOutcome() => $_has(35);
+  @$pb.TagNumber(65)
+  void clearApplyUpdateOutcome() => $_clearField(65);
+  @$pb.TagNumber(65)
+  ApplyUpdateOutcome ensureApplyUpdateOutcome() => $_ensure(35);
+
   @$pb.TagNumber(99)
-  Error get error => $_getN(34);
+  Error get error => $_getN(36);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(34);
+  $core.bool hasError() => $_has(36);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(34);
+  Error ensureError() => $_ensure(36);
 }
 
 enum SettingValue_Value {
@@ -4331,6 +4373,116 @@ class NasBackupOutcome extends $pb.GeneratedMessage {
   $core.bool hasHint() => $_has(4);
   @$pb.TagNumber(5)
   void clearHint() => $_clearField(5);
+}
+
+class ApplyUpdateRequest extends $pb.GeneratedMessage {
+  factory ApplyUpdateRequest() => ApplyUpdateRequest._();
+
+  ApplyUpdateRequest._();
+
+  factory ApplyUpdateRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ApplyUpdateRequest()..mergeFromBuffer(data, registry);
+  factory ApplyUpdateRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ApplyUpdateRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ApplyUpdateRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: ApplyUpdateRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ApplyUpdateRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ApplyUpdateRequest copyWith(void Function(ApplyUpdateRequest) updates) =>
+      super.copyWith((message) => updates(message as ApplyUpdateRequest))
+          as ApplyUpdateRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use ApplyUpdateRequest() / ApplyUpdateRequest.new instead')
+  static ApplyUpdateRequest create() => ApplyUpdateRequest._();
+  static $pb.GeneratedMessage $_createMessage() => ApplyUpdateRequest._();
+  @$core.override
+  ApplyUpdateRequest createEmptyInstance() => ApplyUpdateRequest._();
+  @$core.pragma('dart2js:noInline')
+  static ApplyUpdateRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ApplyUpdateRequest>(
+          ApplyUpdateRequest.$_createMessage);
+  static ApplyUpdateRequest? _defaultInstance;
+}
+
+class ApplyUpdateOutcome extends $pb.GeneratedMessage {
+  factory ApplyUpdateOutcome({
+    $core.bool? ok,
+    $core.String? message,
+  }) {
+    final result = ApplyUpdateOutcome._();
+    if (ok != null) result.ok = ok;
+    if (message != null) result.message = message;
+    return result;
+  }
+
+  ApplyUpdateOutcome._();
+
+  factory ApplyUpdateOutcome.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ApplyUpdateOutcome()..mergeFromBuffer(data, registry);
+  factory ApplyUpdateOutcome.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ApplyUpdateOutcome()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ApplyUpdateOutcome',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: ApplyUpdateOutcome.$_createMessage)
+    ..aOB(1, _omitFieldNames ? '' : 'ok')
+    ..aOS(2, _omitFieldNames ? '' : 'message')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ApplyUpdateOutcome clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ApplyUpdateOutcome copyWith(void Function(ApplyUpdateOutcome) updates) =>
+      super.copyWith((message) => updates(message as ApplyUpdateOutcome))
+          as ApplyUpdateOutcome;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use ApplyUpdateOutcome() / ApplyUpdateOutcome.new instead')
+  static ApplyUpdateOutcome create() => ApplyUpdateOutcome._();
+  static $pb.GeneratedMessage $_createMessage() => ApplyUpdateOutcome._();
+  @$core.override
+  ApplyUpdateOutcome createEmptyInstance() => ApplyUpdateOutcome._();
+  @$core.pragma('dart2js:noInline')
+  static ApplyUpdateOutcome getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<ApplyUpdateOutcome>(
+          ApplyUpdateOutcome.$_createMessage);
+  static ApplyUpdateOutcome? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get ok => $_getBF(0);
+  @$pb.TagNumber(1)
+  set ok($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasOk() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearOk() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get message => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set message($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasMessage() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearMessage() => $_clearField(2);
 }
 
 const $core.bool _omitFieldNames =

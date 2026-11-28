@@ -460,6 +460,20 @@ pub enum PageOpValue {
     Count(i32),
 }
 
+pub fn encode_apply_update_frame(request_id: u64, ok: bool, message: &str) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::ApplyUpdateOutcome(
+            proto::ApplyUpdateOutcome {
+                ok,
+                message: message.to_string(),
+            },
+        )),
+    };
+    encode_frame(&frame)
+}
+
 pub fn encode_nas_backup_frame(
     request_id: u64,
     ok: bool,

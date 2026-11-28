@@ -49,6 +49,8 @@ message Frame {
     UpdateInfo update_info = 61;
     NasBackupRequest nas_backup_request = 62;
     NasBackupOutcome nas_backup_outcome = 63;
+    ApplyUpdateRequest apply_update_request = 64;
+    ApplyUpdateOutcome apply_update_outcome = 65;
     Panel panel = 20;
     Error error = 99;
   }
@@ -332,4 +334,11 @@ message NasBackupOutcome {
   uint64 stroke_count = 3;
   string error = 4;
   string hint = 5;
+}
+
+message ApplyUpdateRequest {}
+
+message ApplyUpdateOutcome {
+  bool ok = 1;
+  string message = 2;
 }

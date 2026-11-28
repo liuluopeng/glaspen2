@@ -958,7 +958,7 @@ class _NamedPipeBridge extends SettingsBridge {
   Future<Map<dynamic, dynamic>> applyUpdate() async {
     // 成功路径:覆盖层进程退出、安装器延迟启动 —— 面板随后被一起带走,
     // 这里的 Future 大概率因管道断开返回空 map(与 macOS「成功不返回」一致)
-    return _request('applyUpdate', null);
+    return _requestTyped(encodeApplyUpdateRequest);
   }
 
   @override

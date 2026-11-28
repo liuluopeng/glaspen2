@@ -280,6 +280,14 @@ List<int> encodeAppVersionRequest(int requestId) {
   ));
 }
 
+List<int> encodeApplyUpdateRequest(int requestId) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    applyUpdateRequest: pb.ApplyUpdateRequest(),
+  ));
+}
+
 List<int> encodeNasBackupRequest(int requestId) {
   return encodeFrame(pb.Frame(
     protocolVersion: 1,
@@ -434,6 +442,15 @@ class PanelStreamDecoder {
           settings == null
               ? const <String, dynamic>{}
               : appSettingsToMap(settings),
+        ));
+        continue;
+      }
+      if (frame.hasApplyUpdateOutcome()) {
+        final r = frame.applyUpdateOutcome;
+        out.add(PanelMessage(
+          'applyUpdate_response',
+          frame.requestId.toInt(),
+          {'ok': r.ok, 'message': r.message},
         ));
         continue;
       }

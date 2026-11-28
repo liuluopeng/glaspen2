@@ -332,6 +332,45 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
                     );
                     let _ = writer.write_frame(&frame);
                 }
+                PanelInput::ApplyUpdate { request_id } => {
+                    let installer = DOWNLOADED_INSTALLER
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone()
+                        .or_else(|| {
+                            glaspen_core::update::newest_installer(
+                                &glaspen_core::update::update_dir(),
+                            )
+                        });
+                    match installer {
+                        Some(installer) => {
+                            crate::set_pending_installer(installer);
+                            tracing::info!("退出并启动更新安装器");
+                            let frame = glaspen_ipc::encode_apply_update_frame(
+                                request_id,
+                                true,
+                                "",
+                            );
+                            let _ = writer.write_frame(&frame);
+                            let _ = unsafe {
+                                PostMessageW(
+                                    Some(HWND(hwnd as *mut _)),
+                                    WM_TRAY_COMMAND,
+                                    WPARAM(CMD_QUIT),
+                                    LPARAM(0),
+                                )
+                            };
+                        }
+                        None => {
+                            let frame = glaspen_ipc::encode_apply_update_frame(
+                                request_id,
+                                false,
+                                "找不到已下载的安装包,请重新下载",
+                            );
+                            let _ = writer.write_frame(&frame);
+                        }
+                    }
+                }
                 PanelInput::NasBackup { request_id } => {
                     let text = glaspen_core::export::nas_backup::backup_now();
                     let value: serde_json::Value =
