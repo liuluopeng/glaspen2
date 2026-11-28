@@ -1310,7 +1310,7 @@ checksum = "5ca63cb2488b847c12d1ca56034ba0f15613972c0dc0f8a957f525707567b23d"
 
 [[package]]
 name = "glaspen-chat"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "prost 0.13.5",
  "serde_json",
@@ -1324,7 +1324,7 @@ dependencies = [
 
 [[package]]
 name = "glaspen-core"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -1353,7 +1353,7 @@ dependencies = [
 
 [[package]]
 name = "glaspen-ipc"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "prost 0.14.6",
  "prost-build 0.14.6",
@@ -1363,7 +1363,7 @@ dependencies = [
 
 [[package]]
 name = "glaspen-macos"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "glaspen-core",
  "glaspen-ipc",
@@ -1380,7 +1380,7 @@ dependencies = [
 
 [[package]]
 name = "glaspen-windows"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -1395,7 +1395,7 @@ dependencies = [
 
 [[package]]
 name = "glaspen2"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cc",
  "flutter_rust_bridge",
@@ -1416,7 +1416,7 @@ dependencies = [
 
 [[package]]
 name = "glaspen2_installer"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "flate2",
  "winresource",

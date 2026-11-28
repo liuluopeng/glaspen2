@@ -1,189 +1,167 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1320" viewBox="0 0 1800 1320" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif">
-  <defs>
-    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#475569"/></marker>
-    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0369a1"/></marker>
-    <marker id="arrowRose" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#be123c"/></marker>
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.10"/></filter>
-    <style>
-      .title{font-size:32px;font-weight:750;fill:#0f172a;letter-spacing:.3px}
-      .subtitle{font-size:15px;fill:#475569}
-      .group-title{font-size:19px;font-weight:700;fill:#0f172a}
-      .group-sub{font-size:12.5px;fill:#64748b}
-      .box-title{font-size:16px;font-weight:700;fill:#0f172a}
-      .item{font-size:13px;fill:#334155}
-      .mono{font-family:'SF Mono', Menlo, Consolas, monospace;font-size:12.5px;fill:#0f172a}
-      .small{font-size:11.5px;fill:#64748b}
-      .label{font-size:12px;fill:#475569}
-      .legend{font-size:12.5px;fill:#475569}
-      .box{filter:url(#shadow)}
-    </style>
-  </defs>
-  <rect width="1800" height="1320" fill="#f8fafc"/>
-  <text x="48" y="54" class="title">glaspen2 当前架构</text>
-  <text x="48" y="82" class="subtitle">单源共享核心 + 平台专属壳；macOS = Rust 壳 + 3 个 Swift 原生文件；Windows = 纯 Rust 覆盖层</text>
-  <text x="48" y="104" class="small">HEAD 4e9b5e7 · 2026-11-27 · macOS app-layer: 3 Swift / 2,370 lines + Rust 12,006 lines · ObjC: 0</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1400" viewBox="0 0 1800 1400">
+<defs>
+  <marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#475569"/></marker>
+  <marker id="ab" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0369a1"/></marker>
+  <marker id="ag" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#15803d"/></marker>
+  <filter id="sh" x="-10%" y="-10%" width="120%" height="135%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.10"/></filter>
+</defs>
+<style>
+  text{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Segoe UI",sans-serif}
+  .bg{fill:#f8fafc}
+  .title{font-size:32px;font-weight:750;fill:#0f172a;letter-spacing:.2px}
+  .sub{font-size:15px;fill:#475569}
+  .meta{font-size:12px;fill:#64748b}
+  .h{font-size:18px;font-weight:700;fill:#0f172a}
+  .box-title{font-size:15px;font-weight:700;fill:#0f172a}
+  .mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12px;fill:#334155}
+  .item{font-size:12.5px;fill:#475569}
+  .small{font-size:11.5px;fill:#64748b}
+  .label{font-size:11px;fill:#64748b}
+  .chip{font-size:12px;font-weight:600;fill:#1e40af}
+  .red{font-size:12px;font-weight:700;fill:#be123c}
+  .green{font-size:12px;font-weight:700;fill:#15803d}
+  .mac{fill:#f5f3ff;stroke:#7c3aed;stroke-width:1.6}
+  .core{fill:#eff6ff;stroke:#2563eb;stroke-width:1.6}
+  .win{fill:#ecfdf5;stroke:#059669;stroke-width:1.6}
+  .bound{fill:#fff;stroke:#94a3b8;stroke-width:1.3}
+  .chipbox{fill:#fff;stroke:#93c5fd;stroke-width:1}
+  .line{stroke:#475569;stroke-width:1.6;fill:none;marker-end:url(#a)}
+  .lineb{stroke:#0369a1;stroke-width:1.6;fill:none;marker-end:url(#ab)}
+  .lineg{stroke:#15803d;stroke-width:1.6;fill:none;marker-end:url(#ag)}
+</style>
+<rect class="bg" width="1800" height="1400"/>
+<text x="48" y="58" class="title">glaspen2 当前架构</text>
+<text x="48" y="88" class="sub">typed protobuf 跨机器边界 · 单源共享核心 · 平台专属壳</text>
+<text x="48" y="112" class="meta">HEAD ad6aa2f · 2026-11-28 · release 0.8.0 · macOS Swift 3 files / Rust shell · Windows 纯 Rust 覆盖层 · ObjC 应用层 0</text>
+<rect x="1510" y="34" width="242" height="66" rx="10" fill="#0f172a"/>
+<text x="1528" y="59" fill="#e2e8f0" font-size="12">协议边界</text>
+<text x="1528" y="82" fill="#fff" font-size="15" font-weight="700">u32 LE + protobuf</text>
 
-  <g>
-    <rect x="40" y="126" width="1720" height="104" rx="14" fill="#ffffff" stroke="#cbd5e1" class="box"/>
-    <text x="62" y="153" class="group-title">构建与链接（macOS 最终二进制）</text>
-    <rect x="62" y="166" width="300" height="44" rx="8" fill="#f1f5f9" stroke="#cbd5e1"/>
-    <text x="76" y="183" class="mono">cargo build</text>
-    <text x="76" y="199" class="small">根 crate 入口；build.rs 先跑 Swift/Flutter</text>
-    <path d="M362 188 H402" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
-    <rect x="408" y="166" width="390" height="44" rx="8" fill="#e0f2fe" stroke="#7dd3fc"/>
-    <text x="422" y="183" class="mono">xcrun swiftc -c → libglaspen2_objc.a</text>
-    <text x="422" y="199" class="small">+ fvm flutter build macos-framework</text>
-    <path d="M798 188 H838" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
-    <rect x="844" y="166" width="430" height="44" rx="8" fill="#ede9fe" stroke="#c4b5fd"/>
-    <text x="858" y="183" class="mono">rustc: root rlib + glaspen-macos rlib</text>
-    <text x="858" y="199" class="small">+ Swift archive + Flutter frameworks + cairo</text>
-    <path d="M1274 188 H1314" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
-    <rect x="1320" y="166" width="420" height="44" rx="8" fill="#dcfce7" stroke="#86efac"/>
-    <text x="1334" y="183" class="mono">target/debug/glaspen2</text>
-    <text x="1334" y="199" class="small">macOS app binary；cdylib 供 FRB 面板</text>
-  </g>
+<!-- macOS column -->
+<rect x="40" y="150" width="540" height="430" rx="14" class="mac" filter="url(#sh)"/>
+<text x="64" y="181" class="h">macOS 主程序</text>
+<text x="64" y="201" class="small">crates/glaspen-macos + 根 crate + Flutter 面板</text>
+<rect x="62" y="220" width="496" height="104" rx="9" fill="#fff" stroke="#a78bfa"/>
+<text x="80" y="244" class="box-title">Swift 原生层 · swift/（3 文件）</text>
+<text x="80" y="267" class="mono">App/run_glue.swift · Menu/menu_runtime.swift</text>
+<text x="80" y="285" class="mono">Surface/tunnel_animation.swift</text>
+<text x="80" y="306" class="item">NSApplication / NSMenu / NSStatusItem / FlutterVC</text>
+<text x="80" y="322" class="item">CGEventTap · ScreenCaptureKit · 系统标准控件</text>
+<path d="M300 326 L300 350" class="line"/>
+<rect x="62" y="352" width="496" height="150" rx="9" fill="#fff" stroke="#8b5cf6"/>
+<text x="80" y="376" class="box-title">Rust macOS 壳 · macos_shell.rs</text>
+<text x="80" y="398" class="item">事件路由 / 菜单动作 / 热键 / 相机 / 隧道定时器</text>
+<text x="80" y="418" class="item">overlay 绘制编排 / minimap / 录制 / 信号 / 剪贴板</text>
+<text x="80" y="438" class="item">AppKit / NSWindow 通过 objc2 unsafe 桥接</text>
+<text x="80" y="463" class="mono">C ABI：Bridging.h + rust_ffi.h（typed，无 JSON）</text>
+<text x="80" y="484" class="small">Swift 只保留系统框架/原生对象边界；业务逻辑在 Rust</text>
+<path d="M300 502 L300 520" class="lineb"/>
+<text x="312" y="518" class="label">FRB 同进程调用</text>
 
-  <g>
-    <rect x="40" y="254" width="610" height="488" rx="16" fill="#f0f9ff" stroke="#7dd3fc" class="box"/>
-    <text x="62" y="285" class="group-title">macOS 原生层</text>
-    <text x="62" y="305" class="group-sub">crates/glaspen-macos · target_os = "macos"</text>
-    <rect x="62" y="322" width="566" height="160" rx="10" fill="#ffffff" stroke="#bae6fd"/>
-    <text x="78" y="346" class="box-title">Swift 原生壳 · swift/（3 files, 2,370 lines）</text>
-    <text x="78" y="367" class="mono">App/run_glue.swift（922） · Menu/menu_runtime.swift（771）</text>
-    <text x="78" y="384" class="mono">Surface/tunnel_animation.swift（677）</text>
-    <text x="78" y="407" class="item">NSApplication / NSMenu / NSStatusItem / FlutterViewController</text>
-    <text x="78" y="425" class="item">CGEventTap 安装 · ScreenCaptureKit 保存/反色 · 菜单图标与富文本</text>
-    <text x="78" y="443" class="item">Swift 参考实现 / parity 探针 / C ABI 薄桥</text>
-    <text x="78" y="466" class="small">剩余 Swift 是不可直接由 core 表达的原生对象与系统框架边界</text>
-    <rect x="62" y="500" width="566" height="42" rx="8" fill="#e2e8f0" stroke="#94a3b8"/>
-    <text x="78" y="517" class="mono">C ABI：Bridging.h + rust_ffi.h</text>
-    <text x="78" y="533" class="small">Swift @_cdecl ↔ Rust extern "C"；符号/签名保持稳定</text>
-    <path d="M345 482 V500" stroke="#0369a1" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
-    <path d="M345 542 V560" stroke="#0369a1" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
-    <rect x="62" y="560" width="566" height="160" rx="10" fill="#ffffff" stroke="#bae6fd"/>
-    <text x="78" y="584" class="box-title">Rust macOS 壳 · src/macos_shell.rs（~12,000 lines）</text>
-    <text x="78" y="605" class="item">AppKit/NSWindow/NSMenu/status icon、UI 锚点、压感窗</text>
-    <text x="78" y="623" class="item">事件路由/菜单动作/热键/相机/隧道定时器/信号/剪贴板</text>
-    <text x="78" y="641" class="item">overlay 绘制编排、C ABI 导出、启动编排</text>
-    <text x="78" y="661" class="mono">src/entry.rs → macos_run()</text>
-    <text x="78" y="681" class="mono">src/lib.rs → pub use glaspen_macos as macos</text>
-    <text x="78" y="704" class="small">大量 unsafe objc2 / raw msg_send；这是当前主要复杂度来源</text>
-  </g>
+<!-- core column -->
+<rect x="620" y="150" width="560" height="430" rx="14" class="core" filter="url(#sh)"/>
+<text x="644" y="181" class="h">共享核心与 IPC 契约</text>
+<text x="644" y="201" class="small">crates/glaspen-core · crates/glaspen-ipc · 根 crate</text>
+<rect x="644" y="220" width="512" height="82" rx="9" fill="#fff" stroke="#60a5fa"/>
+<text x="662" y="244" class="box-title">根 crate glaspen2</text>
+<text x="662" y="266" class="mono">src/main.rs · src/api.rs（FRB） · logging · updater</text>
+<text x="662" y="286" class="item">平台入口分发 / 设置面板 API / 日志与更新 / 自更新帮手</text>
+<path d="M900 302 L900 320" class="line"/>
+<rect x="644" y="322" width="512" height="122" rx="9" fill="#fff" stroke="#3b82f6"/>
+<text x="662" y="346" class="box-title">glaspen-core · 平台无关单源</text>
+<text x="662" y="368" class="item">modeler / db / camera / grid / minimap / draw_spec / pages</text>
+<text x="662" y="388" class="item">settings / settings_snapshot / settings_form / ui / i18n</text>
+<text x="662" y="408" class="item">recording / action_effect / export / bubbles / update</text>
+<text x="662" y="430" class="small">typed Rust API；平台差异只在 adapter 与显式参数</text>
+<path d="M900 444 L900 462" class="line"/>
+<rect x="644" y="464" width="512" height="94" rx="9" fill="#fff" stroke="#2563eb"/>
+<text x="662" y="488" class="box-title">glaspen-ipc · 唯一线协议</text>
+<text x="662" y="510" class="mono">Frame { protocolVersion, requestId, oneof body }</text>
+<text x="662" y="530" class="item">编码：u32 LE 长度 + protobuf；Windows 首包 GPB1 magic</text>
+<text x="662" y="549" class="small">AppSettings / Page / Bubble / UiConfig / PageOp / SettingsPatch / Error</text>
 
-  <g>
-    <rect x="690" y="254" width="470" height="270" rx="16" fill="#f5f3ff" stroke="#c4b5fd" class="box"/>
-    <text x="712" y="285" class="group-title">根 crate：glaspen2</text>
-    <text x="712" y="305" class="group-sub">平台入口 + FRB 面板 API + 日志/更新</text>
-    <rect x="712" y="322" width="426" height="180" rx="10" fill="#ffffff" stroke="#ddd6fe"/>
-    <text x="728" y="346" class="mono">src/main.rs</text>
-    <text x="728" y="364" class="small">统一日志 / panic hook / 平台入口分发 / updater 拦截</text>
-    <text x="728" y="388" class="mono">src/api.rs + src/frb_generated.rs</text>
-    <text x="728" y="406" class="small">Flutter Rust Bridge 面板 API（设置/快照/缩略图/页面…）</text>
-    <text x="728" y="430" class="mono">src/logging.rs · src/updater.rs</text>
-    <text x="728" y="448" class="small">按天滚动日志 / 崩溃记录 / 自更新帮手</text>
-    <text x="728" y="474" class="small">target: macOS 依赖 glaspen-macos；Windows 依赖 glaspen-windows</text>
-  </g>
+<!-- Windows column -->
+<rect x="1210" y="150" width="550" height="430" rx="14" class="win" filter="url(#sh)"/>
+<text x="1234" y="181" class="h">Windows 覆盖层</text>
+<text x="1234" y="201" class="small">crates/glaspen-windows · 独立设置面板进程</text>
+<rect x="1232" y="220" width="506" height="86" rx="9" fill="#fff" stroke="#34d399"/>
+<text x="1250" y="244" class="box-title">Flutter 设置面板（独立 exe）</text>
+<text x="1250" y="266" class="mono">flutter_settings/ · Win32 命名管道客户端</text>
+<text x="1250" y="286" class="item">typed Frame 请求/响应；按 reqId 匹配</text>
+<path d="M1485 306 L1485 328" class="lineg"/>
+<rect x="1232" y="330" width="506" height="108" rx="9" fill="#fff" stroke="#10b981"/>
+<text x="1250" y="354" class="box-title">命名管道服务 · pipe.rs</text>
+<text x="1250" y="376" class="mono">GPB1 + FrameDecoder → PanelInput（typed 分派）</text>
+<text x="1250" y="396" class="item">GetSettings · SetSetting · PageOp · Thumbnails · Bubbles</text>
+<text x="1250" y="416" class="item">GetUiConfig · Canvas · Backup/NAS · Update · Download</text>
+<path d="M1485 438 L1485 456" class="lineg"/>
+<rect x="1232" y="458" width="506" height="96" rx="9" fill="#fff" stroke="#059669"/>
+<text x="1250" y="482" class="box-title">Win32 覆盖层 · 同进程</text>
+<text x="1250" y="504" class="item">笔输入 / 绘制 / 托盘 / 热键 / 命名管道服务</text>
+<text x="1250" y="524" class="item">直接调 glaspen-core typed API，不序列化</text>
+<text x="1250" y="544" class="small">Windows 真机绘制/帧时间仍需单独验证</text>
 
-  <g>
-    <rect x="1200" y="254" width="560" height="488" rx="16" fill="#fffbeb" stroke="#fcd34d" class="box"/>
-    <text x="1222" y="285" class="group-title">Windows 原生层</text>
-    <text x="1222" y="305" class="group-sub">crates/glaspen-windows · 纯 Rust</text>
-    <rect x="1222" y="322" width="516" height="230" rx="10" fill="#ffffff" stroke="#fde68a"/>
-    <text x="1238" y="346" class="box-title">Win32 覆盖层（单 Rust 运行时）</text>
-    <text x="1238" y="370" class="item">窗口/overlay：分层窗口、穿透/绘制、DWM</text>
-    <text x="1238" y="390" class="item">输入：Raw Input / Pointer / 笔压 / 滚轮</text>
-    <text x="1238" y="410" class="item">热键：RegisterHotKey / WM_HOTKEY</text>
-    <text x="1238" y="430" class="item">设置面板：独立进程 + 命名管道</text>
-    <text x="1238" y="450" class="item">HUD / minimap / 录制 / 页面绘制</text>
-    <text x="1238" y="477" class="small">没有 Swift/ObjC/C ABI 第二运行时；unsafe 集中且契约由 windows crate 生成</text>
-    <rect x="1222" y="566" width="516" height="154" rx="10" fill="#ffffff" stroke="#fde68a"/>
-    <text x="1238" y="590" class="box-title">外部 Win32 系统 API</text>
-    <text x="1238" y="614" class="item">User32 / GDI / DWM / HID / Pointer / pipes</text>
-    <text x="1238" y="634" class="item">无 AppKit、ScreenCaptureKit、NSView backing store</text>
-    <text x="1238" y="658" class="small">行为更接近“直接调用系统 API”，但真机覆盖仍少于 macOS</text>
-  </g>
+<!-- boundary row -->
+<rect x="40" y="620" width="870" height="300" rx="14" class="bound" filter="url(#sh)"/>
+<text x="64" y="651" class="h">进程内边界</text>
+<text x="64" y="672" class="small">macOS：Dart 设置面板 ↔ Rust（flutter_rust_bridge）</text>
+<rect x="62" y="692" width="392" height="204" rx="9" fill="#f8fafc" stroke="#cbd5e1"/>
+<text x="80" y="716" class="box-title">Dart ↔ Rust FRB</text>
+<text x="80" y="740" class="item">Settings / UiConfig / PageInfo / PageThumbnail</text>
+<text x="80" y="760" class="item">BubbleMessage / CanvasPayload / LensState</text>
+<text x="80" y="780" class="item">PageOp / Backups / Update / ChatLogin</text>
+<text x="80" y="802" class="mono">settings 结构体字段 + typed 返回值</text>
+<text x="80" y="824" class="item">设置快照：snapshot_settings → encode_settings_frame_from</text>
+<text x="80" y="844" class="item">UI schema：ui_config_typed → encode_ui_config_typed_frame</text>
+<text x="80" y="870" class="green">生产路径不再解析整份 settings/uiConfig JSON</text>
+<rect x="478" y="692" width="412" height="204" rx="9" fill="#f8fafc" stroke="#cbd5e1"/>
+<text x="496" y="716" class="box-title">Swift ↔ Rust C ABI</text>
+<text x="496" y="740" class="item">camera / canvas / page / recording / tunnel</text>
+<text x="496" y="760" class="item">typed out 参数与 scalars；不经 JSON 文本</text>
+<text x="496" y="780" class="item">overlay 绘制、菜单、状态栏由 Rust 编排</text>
+<text x="496" y="802" class="mono">Bridging.h + rust_ffi.h</text>
+<text x="496" y="824" class="item">已删除：camera_result_json / live_plan_json</text>
+<text x="496" y="844" class="item">已删除：settings_apply / recording_event_json</text>
+<text x="496" y="870" class="green">C ABI 只保留原生对象/系统框架边界</text>
 
-  <path d="M690 389 H650" stroke="#475569" stroke-width="1.7" marker-end="url(#arrow)"/>
-  <text x="652" y="378" class="label">cfg(macos)</text>
-  <path d="M1160 389 H1200" stroke="#475569" stroke-width="1.7" marker-end="url(#arrow)"/>
-  <text x="1164" y="378" class="label">cfg(windows)</text>
+<rect x="950" y="620" width="810" height="300" rx="14" class="bound" filter="url(#sh)"/>
+<text x="974" y="651" class="h">跨进程边界</text>
+<text x="974" y="672" class="small">Windows：Dart 面板 ↔ Rust 覆盖层（命名管道）</text>
+<rect x="972" y="692" width="766" height="116" rx="9" fill="#f8fafc" stroke="#cbd5e1"/>
+<text x="990" y="716" class="box-title">GPB1 帧协议</text>
+<text x="990" y="740" class="mono">magic "GPB1" + [u32 LE len + protobuf Frame] ...</text>
+<text x="990" y="762" class="item">请求/响应统一 Frame；一帧一消息，流式解析，无 JSON 命令行分派</text>
+<text x="990" y="784" class="item">设置增量：SettingsPatch；错误：Error；页面操作：PageOpRequest/Response</text>
+<rect x="972" y="818" width="766" height="78" rx="9" fill="#f8fafc" stroke="#cbd5e1"/>
+<text x="990" y="842" class="box-title">已删除的旧边界</text>
+<text x="990" y="864" class="red">Panel / google.protobuf.Struct / process_pipe_message / encode_response</text>
+<text x="990" y="884" class="item">全部 Windows 命令与 macOS 内部 JSON FFI 已 typed 化</text>
 
-  <g>
-    <rect x="40" y="778" width="1110" height="470" rx="16" fill="#f0fdf4" stroke="#86efac" class="box"/>
-    <text x="62" y="809" class="group-title">crates/glaspen-core · 平台无关共享核心</text>
-    <text x="62" y="829" class="group-sub">唯一逻辑/状态/数学来源；macOS 与 Windows 都依赖它</text>
-    <rect x="62" y="846" width="330" height="116" rx="10" fill="#ffffff" stroke="#bbf7d0"/>
-    <text x="78" y="870" class="box-title">存储 / 数据</text>
-    <text x="78" y="892" class="mono">db.rs · SQLite</text>
-    <text x="78" y="910" class="item">screens / strokes / points / settings</text>
-    <text x="78" y="930" class="item">缩略图缓存 · 无限画布存储</text>
-    <rect x="408" y="846" width="330" height="116" rx="10" fill="#ffffff" stroke="#bbf7d0"/>
-    <text x="424" y="870" class="box-title">绘制 / 模型</text>
-    <text x="424" y="892" class="mono">modeler · draw_spec · cairo_dl</text>
-    <text x="424" y="910" class="item">笔迹平滑/预测/橡皮 · DrawPlan</text>
-    <text x="424" y="930" class="item">camera / grid / minimap</text>
-    <rect x="754" y="846" width="374" height="116" rx="10" fill="#ffffff" stroke="#bbf7d0"/>
-    <text x="770" y="870" class="box-title">导出 / 页面</text>
-    <text x="770" y="892" class="mono">export/ · pages · media · thumbs</text>
-    <text x="770" y="910" class="item">PNG / SVG / GIF / PDF / XOJ</text>
-    <text x="770" y="930" class="item">活页本 / 无限画布 / 圈选粘贴</text>
-    <rect x="62" y="978" width="330" height="116" rx="10" fill="#ffffff" stroke="#bbf7d0"/>
-    <text x="78" y="1002" class="box-title">录制 / i18n / 设置</text>
-    <text x="78" y="1024" class="mono">recording · i18n · settings_snapshot</text>
-    <text x="78" y="1042" class="item">录制状态机 · 文案表 · 快照 schema</text>
-    <text x="78" y="1062" class="item">动作表 ui::ACTIONS / ActionEffect</text>
-    <rect x="408" y="978" width="330" height="116" rx="10" fill="#ffffff" stroke="#bbf7d0"/>
-    <text x="424" y="1002" class="box-title">聊天 / 共享接入</text>
-    <text x="424" y="1024" class="mono">chat_glue · ink draft / share</text>
-    <text x="424" y="1042" class="item">gRPC 调用 · 静默降级</text>
-    <text x="424" y="1062" class="item">失败不阻断涂鸦</text>
-    <rect x="754" y="978" width="374" height="116" rx="10" fill="#ffffff" stroke="#bbf7d0"/>
-    <text x="770" y="1002" class="box-title">更新 / FFI</text>
-    <text x="770" y="1024" class="mono">update · updater · export/mod.rs</text>
-    <text x="770" y="1042" class="item">GitHub 检查更新 / 自更新</text>
-    <text x="770" y="1062" class="item">glaspen2_* C ABI 导出</text>
-    <rect x="62" y="1112" width="1066" height="112" rx="10" fill="#ecfdf5" stroke="#86efac"/>
-    <text x="78" y="1138" class="box-title">单源契约 / 回归闸门（当前重点）</text>
-    <text x="78" y="1160" class="item">Camera::drag_pan_from_screen_delta / keyboard_pan_delta（方向唯一） · ui::ACTIONS（动作/默认键唯一）</text>
-    <text x="78" y="1180" class="item">settings_snapshot / recording 状态机 / 页面与镜头数学 · core 单测 + 跨端源码闸门（pan_direction_single_source 等）</text>
-    <text x="78" y="1204" class="small">原则：系统无关逻辑只写 core；adapter 只做坐标/框架转换 —— 但 Windows 真机/UI 验收仍不可由单源自动保证</text>
-  </g>
+<!-- typed domains -->
+<rect x="40" y="960" width="1720" height="190" rx="14" fill="#fff" stroke="#cbd5e1" filter="url(#sh)"/>
+<text x="64" y="992" class="h">typed 领域消息（protobuf / Rust typed）</text>
+<text x="64" y="1014" class="small">AppSettings · Page · Bubble · UiConfig · Recording · Grid · Minimap · ActionEffect</text>
+<g>
+  <rect x="64" y="1032" width="252" height="34" rx="7" class="chipbox"/><text x="78" y="1054" class="chip">AppSettings / SettingsSnapshot</text>
+  <rect x="330" y="1032" width="224" height="34" rx="7" class="chipbox"/><text x="344" y="1054" class="chip">Page / PageOp / Thumbnail</text>
+  <rect x="568" y="1032" width="200" height="34" rx="7" class="chipbox"/><text x="582" y="1054" class="chip">BubbleMessages</text>
+  <rect x="782" y="1032" width="214" height="34" rx="7" class="chipbox"/><text x="796" y="1054" class="chip">UiConfig 全量 typed</text>
+  <rect x="1010" y="1032" width="204" height="34" rx="7" class="chipbox"/><text x="1024" y="1054" class="chip">PageOpRequest/Response</text>
+  <rect x="1228" y="1032" width="190" height="34" rx="7" class="chipbox"/><text x="1242" y="1054" class="chip">SettingsPatch/Error</text>
+  <rect x="1432" y="1032" width="300" height="34" rx="7" class="chipbox"/><text x="1446" y="1054" class="chip">CanvasOverviewRequest/Response</text>
+  <rect x="64" y="1076" width="236" height="34" rx="7" class="chipbox"/><text x="78" y="1098" class="chip">RecordingEvent/Effect</text>
+  <rect x="314" y="1076" width="206" height="34" rx="7" class="chipbox"/><text x="328" y="1098" class="chip">Grid / Minimap typed</text>
+  <rect x="534" y="1076" width="220" height="34" rx="7" class="chipbox"/><text x="548" y="1098" class="chip">ActionEffect typed</text>
+  <rect x="768" y="1076" width="244" height="34" rx="7" class="chipbox"/><text x="782" y="1098" class="chip">AppSettings.shortcuts map</text>
+  <rect x="1026" y="1076" width="290" height="34" rx="7" class="chipbox"/><text x="1040" y="1098" class="chip">Bubble / UiConfig / Page typed</text>
+</g>
+<text x="64" y="1138" class="small">同进程 Rust → Rust 仍直接使用 typed Rust API；protobuf 只用于跨语言/跨进程边界。</text>
 
-  <g>
-    <rect x="1180" y="778" width="580" height="470" rx="16" fill="#fff1f2" stroke="#fda4af" class="box"/>
-    <text x="1202" y="809" class="group-title">面板 / 后端（外部）</text>
-    <text x="1202" y="829" class="group-sub">Flutter 设置面板 · 聊天/共享服务</text>
-    <rect x="1202" y="846" width="536" height="170" rx="10" fill="#ffffff" stroke="#fecdd3"/>
-    <text x="1218" y="870" class="box-title">flutter_settings（Dart）</text>
-    <text x="1218" y="894" class="item">macOS：进程内 FlutterViewController</text>
-    <text x="1218" y="914" class="mono">FRB → root api.rs（DynamicLibrary.process）</text>
-    <text x="1218" y="938" class="item">Windows：独立面板进程 + 命名管道</text>
-    <text x="1218" y="958" class="mono">pipe ↔ glaspen-windows</text>
-    <text x="1218" y="982" class="small">面板 UI 是跨平台 Dart 单源；宿主方式按平台不同</text>
-    <rect x="1202" y="1036" width="536" height="110" rx="10" fill="#ffffff" stroke="#fecdd3"/>
-    <text x="1218" y="1060" class="box-title">chat/ = glaspen-chat（Rust gRPC 客户端）</text>
-    <text x="1218" y="1084" class="mono">proto/glaspen/chat/v1/chat.proto</text>
-    <text x="1218" y="1104" class="item">草稿 / 直发 / 共享画布 · mock 模式 · 静默降级</text>
-    <text x="1218" y="1124" class="item">依赖方向：core → glaspen-chat；主程序不阻塞涂鸦</text>
-    <rect x="1202" y="1160" width="536" height="64" rx="10" fill="#ffffff" stroke="#fecdd3"/>
-    <text x="1218" y="1184" class="box-title">axum ChatStore（独立服务）</text>
-    <text x="1218" y="1204" class="small">外部 gRPC/HTTP；不可用不影响本地涂鸦</text>
-  </g>
-
-  <path d="M345 720 V778" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
-  <text x="356" y="752" class="label">Rust shell → core</text>
-  <path d="M925 524 V778" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
-  <text x="936" y="640" class="label">依赖 core</text>
-  <path d="M1480 742 C1480 760, 1180 745, 1140 778" stroke="#475569" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
-  <text x="1210" y="748" class="label">Windows → core</text>
-
-  <path d="M1180 930 C1160 930, 1130 520, 1108 524" stroke="#be123c" stroke-width="1.5" fill="none" stroke-dasharray="6 5" marker-end="url(#arrowRose)"/>
-  <text x="1020" y="720" class="label" fill="#be123c">FRB / pipe（按平台）</text>
-  <path d="M1202 1090 C1160 1090, 1150 1100, 1110 1100" stroke="#be123c" stroke-width="1.5" fill="none" stroke-dasharray="6 5" marker-end="url(#arrowRose)"/>
-  <text x="1000" y="1080" class="label" fill="#be123c">core → chat</text>
-
-  <g>
-    <rect x="40" y="1268" width="1720" height="38" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
-    <text x="58" y="1292" class="legend">实线：编译期依赖 / 调用　·　虚线：运行时协议（FRB / 命名管道）　·　C ABI：Swift @_cdecl ↔ Rust extern "C"　·　Swift 未参与的地方（Windows）为单 Rust 运行时</text>
-  </g>
+<!-- persistence / release -->
+<rect x="40" y="1180" width="1720" height="160" rx="14" fill="#fff7ed" stroke="#fdba74"/>
+<text x="64" y="1214" class="h">持久化与发布</text>
+<text x="64" y="1240" class="item">SQLite 数据库仍保留 JSON 文本字段：strokes_json / bubbles / 缩略图等（有意不迁移，便于兼容与恢复）。</text>
+<text x="64" y="1264" class="item">跨机器边界：Dart ↔ Rust FRB typed 结构；Dart ↔ Windows GPB1 protobuf；Swift ↔ Rust C ABI typed out 参数。</text>
+<text x="64" y="1288" class="mono">release 0.8.0 · tag v0.8.0 · protobuf IPC 迁移 + 无限画布/网格/反色/描边/软阴影修复</text>
+<text x="64" y="1312" class="small">验证：cargo build · core/ipc/root tests · flutter analyze/test · smoke-macos · platform parity；Windows 真机仍待验证。</text>
 </svg>

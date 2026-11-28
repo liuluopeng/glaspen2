@@ -4,6 +4,33 @@
 
 ---
 
+## 0.8.0（2026-11-28）
+
+跨机器通信从 JSON/动态 Struct 升级为 typed protobuf，并修复无限画布/网格/反色等交互问题。
+
+### typed IPC
+
+- Windows 设置面板与覆盖层全部改为 typed Frame：设置快照/增量、页面列表/缩略图、页面操作、气泡、`uiConfig`、canvas、导航、备份、NAS、更新等命令不再走 `Panel + Struct` 或 JSON 命令行分派。
+- 删除 `Panel` protobuf、`google.protobuf.Struct`、`process_pipe_message`、`encode_response`；Windows 错误/设置推送改为 typed `Error` / `SettingsPatch` / `SettingsChanged`。
+- macOS 内部 JSON C FFI 全部删除：camera、live plan、录制事件、settings apply、settings snapshot、UI config 等改为 typed 结构或 typed out 参数。
+- `AppSettings.shortcuts` 改为 typed map；`SettingValue` 移除动态 Struct，仅保留 bool/int/double/string/map。
+- 新增 `machine_boundaries_are_typed` 回归闸门，防止 Panel/Struct/JSON 分派回潮。
+
+### 修复
+
+- 无限画布「回到原点」后涂鸦消失；
+- 网格开关不生效、网格从落笔处逐渐出现；网格开关改为总开关并整屏重绘；
+- 笔记描边/软阴影切换时固定画布消失一帧；反色突出因锁重入死锁卡死；
+- 反色书写时 30Hz 全屏背景处理抢占绘制线程导致卡顿；
+- 描边/软阴影/反色等设置 effect 改为主线程执行。
+
+### 已知限制
+
+- Windows 真机绘制/管道运行仍需验证；
+- 手机拍屏录制的色差可能混入相机自动白平衡/摩尔纹，系统录屏 framebuffer 中笔画颜色稳定。
+
+---
+
 ## 0.7.0（2026-11-23）
 
 跨平台单源重构版本:把设置/热键/页信息/镜头/网格/minimap/录制/i18n/设置快照/
