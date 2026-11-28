@@ -129,3 +129,5 @@
 - ✅ macOS `settings_snapshot_typed()` → root `Settings::from_app_settings`，删除 root 侧 settings JSON 解析；
 
 - ✅ Windows 快捷键全量回推改 `snapshot_settings` + `encode_settings_changed_frame_from`，adapter 不再解析 settings JSON。
+
+- ✅ 删除 `bubbles::messages_json` 内部 JSON 辅助，气泡只保留 typed `messages_snapshot()`。

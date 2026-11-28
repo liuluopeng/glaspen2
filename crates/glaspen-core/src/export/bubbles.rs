@@ -580,32 +580,6 @@ pub fn messages_snapshot() -> glaspen_ipc::proto::BubbleMessages {
     }
 }
 
-/// 全部消息的 JSON(先惰性过期)。形如:/// 全部消息的 JSON(先惰性过期)。形如:
-/// `{"device":"0192…","messages":[{"id":1,"ts_ms":...,"device":"0192…",
-///   "strokes":[{"rgb":16711680,"w":2.0,"g":0,"pts":[x,y,w, ...]}]}]}`
-/// (g = 与上一笔的间隔 ms, 重播时间线用;device = 作者设备 UUIDv7,
-/// 当前全为本机, 未来他人消息按它分左右栏)
-pub fn messages_json() -> String {
-    load_from_db();
-    let mut g = INNER.lock().unwrap_or_else(|e| e.into_inner());
-    flush_expired(&mut g);
-    let device = crate::device::device_uuid();
-    let msgs: Vec<Value> = g
-        .msgs
-        .iter()
-        .map(|m| {
-            json!({
-                "id": m.id,
-                "ts_ms": m.ts_ms,
-                // 逐条携带作者设备: 历史消息的 device 可能不是当前设备(未来他人消息)
-                "device": m.device,
-                "strokes": m.strokes.iter().map(stroke_value).collect::<Vec<_>>(),
-            })
-        })
-        .collect();
-    json!({ "device": device, "messages": msgs }).to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -751,39 +725,6 @@ mod tests {
     }
 
     /// JSON 出口形状: messages[] / id / ts_ms / strokes[].rgb / pts 平铺。
-    #[test]
-    fn messages_json_shape() {
-        let _g = crate::tests::TEST_LOCK.lock().unwrap();
-        reset_fixture();
-        {
-            let mut strokes = crate::STROKES.lock().unwrap();
-            strokes.push(crate::Stroke {
-                id: 9,
-                r: 0.0,
-                g: 1.0,
-                b: 0.0,
-                points: vec![(1.0, 2.0, 3.0, 0.0)],
-            });
-        }
-        on_stroke_committed();
-        crate::STROKES.lock().unwrap().clear();
-        on_stroke_committed();
-        let v: serde_json::Value = serde_json::from_str(&messages_json()).expect("应为合法 JSON");
-        let msgs = v["messages"].as_array().expect("messages 数组");
-        assert_eq!(msgs.len(), 1);
-        assert_eq!(msgs[0]["strokes"][0]["rgb"], 0x00FF00);
-        let pts = msgs[0]["strokes"][0]["pts"].as_array().unwrap();
-        assert_eq!(pts.len(), 3, "pts 平铺为 x,y,w 三元组");
-        assert_eq!(pts[0], 1.0);
-        assert!(msgs[0]["ts_ms"].as_u64().unwrap() > 0);
-        // g = 与上一笔的间隔(ms): 段内首笔为 0, 重播时间线用
-        assert_eq!(msgs[0]["strokes"][0]["g"], 0, "段内首笔间隔为 0");
-        // device = 作者设备 UUIDv7(根级 + 消息级, 未来他人气泡分左右栏)
-        let dev = v["device"].as_str().expect("根级 device");
-        assert_eq!(dev.len(), 36, "UUID 格式: {dev}");
-        assert_eq!(dev.as_bytes()[14], b'7', "v7 版本位: {dev}");
-        assert_eq!(msgs[0]["device"].as_str(), Some(dev), "消息级 = 根级");
-    }
 
     /// 设备 UUID: 同进程稳定(OnceLock 缓存; 持久化路径由 device.rs 生成时
     /// save_setting 保证 —— 测试间 DB 会被重建, 不在此断言 DB 内容)。
@@ -953,7 +894,7 @@ mod tests {
         on_pen_gone();
         INNER.lock().unwrap().pen_away_since =
             Some(Instant::now() - std::time::Duration::from_millis(800));
-        let _ = messages_json();
+        let _ = messages_snapshot();
         assert!(
             INNER.lock().unwrap().msgs.is_empty(),
             "短离开时面板刷新不结段"
@@ -966,7 +907,7 @@ mod tests {
         on_pen_gone();
         INNER.lock().unwrap().pen_away_since =
             Some(Instant::now() - std::time::Duration::from_millis(COLD_START_MIN_MS + 100));
-        let _ = messages_json();
+        let _ = messages_snapshot();
         {
             let g = INNER.lock().unwrap();
             assert_eq!(g.msgs.len(), 1, "离开满 3s 刷新应结段");
