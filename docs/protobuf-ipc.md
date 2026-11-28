@@ -111,3 +111,5 @@
 - ✅ macOS `set_setting_pb` 直接调用 typed `apply_setting_value`，删除 `glaspen2_rust_apply_setting` C ABI/JSON 输入。
 
 - ✅ `DownloadUpdateRequest/DownloadProgress/CancelDownloadRequest` typed；Windows `process_pipe_message` 只剩 `uiConfig` 一条 JSON 命令。
+
+- ✅ 删除最后两个 JSON C FFI：`glaspen2_export_pages_pdf_json`、`glaspen2_router_shortcuts_effective_json`；`export_selected_pdf` 直接调用 core typed API。

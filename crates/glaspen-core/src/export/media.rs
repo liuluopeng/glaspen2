@@ -657,33 +657,6 @@ pub extern "C" fn glaspen2_export_page_svg(screen_id: i64) -> c_int {
     }
 }
 
-/// 导出勾选的页为单个 PDF(ids_json = "[3,7,9]"; 空数组 = 全部页)。
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_export_pages_pdf_json(ids_json: *const c_char) -> c_int {
-    let ids: Vec<i64> = if ids_json.is_null() {
-        Vec::new()
-    } else {
-        let Ok(js) = unsafe { CStr::from_ptr(ids_json) }.to_str() else {
-            return 0;
-        };
-        serde_json::from_str::<Vec<i64>>(js).unwrap_or_default()
-    };
-    match crate::pdf::export_pages_by_ids(&ids) {
-        Some(p) => {
-            tracing::info!(
-                "{} 页 PDF → {p}",
-                if ids.is_empty() {
-                    "全部".to_string()
-                } else {
-                    ids.len().to_string()
-                }
-            );
-            1
-        }
-        None => 0,
-    }
-}
-
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_save_svg() {
     if let Some(svg) = build_cropped_svg() {

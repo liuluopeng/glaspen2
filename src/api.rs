@@ -612,15 +612,7 @@ pub async fn export_page_svg(screen_id: i64) -> bool {
 /// 勾选的页合成单个 PDF(空列表 = 全部页)到桌面。
 #[frb]
 pub async fn export_selected_pdf(ids: Vec<i64>) -> bool {
-    run_blocking(move || {
-        let Ok(js) = serde_json::to_string(&ids) else {
-            return false;
-        };
-        let Ok(c) = std::ffi::CString::new(js) else {
-            return false;
-        };
-        crate::export::glaspen2_export_pages_pdf_json(c.as_ptr()) != 0
-    })
+    run_blocking(move || crate::pdf::export_pages_by_ids(&ids).is_some())
 }
 
 /// OCR 全文搜索: 返回匹配的页 id(升序)。查不到/无 OCR 结果为空。

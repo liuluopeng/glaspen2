@@ -8770,14 +8770,6 @@ pub extern "C" fn glaspen2_router_shortcut_reserved(chord: *const std::os::raw::
     unsafe { glaspen2_chord_reserved(chord) }
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_router_shortcuts_effective_json() -> *mut std::os::raw::c_char {
-    if unsafe { glaspen2_shortcut_store_is_empty() } != 0 {
-        shortcut_apply_from_json("{}");
-    }
-    let c = std::ffi::CString::new(shortcut_values_json_from_pb()).unwrap_or_default();
-    c.into_raw()
-}
-#[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_router_action_for_chord(
     chord: *const std::os::raw::c_char,
 ) -> *mut std::os::raw::c_char {
