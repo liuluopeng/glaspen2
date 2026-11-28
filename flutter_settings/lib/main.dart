@@ -525,6 +525,11 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   // 读取/加载/推送全部按 registry 的类型走, 不再为每个设置项加一个字段。
   // 初值 = 旧字段初值(与 core settings_snapshot 的缺省一致), 快照到达前
   // 面板就能渲染合法的表单。
+  /// 最近一次用户本地写入的时间/旧值: 后端初始或迟到的全量推送可能仍带旧值,
+  /// 若直接合并会把刚点的开关“打回去”。只丢弃“值 == 写入前旧值”的迟到帧。
+  final Map<String, DateTime> _recentLocalWriteAt = {};
+  final Map<String, Object?> _recentLocalWriteBefore = {};
+
   final Map<String, dynamic> _settingValues = <String, dynamic>{
     'color': 0,
     'width': 2,
@@ -772,6 +777,8 @@ class _SettingsPageState extends State<SettingsPage> with TickerProviderStateMix
   /// 不再逐键 setState + setSetting。
   void _writeSetting(String key, dynamic value) {
     final previous = _settingValues[key];
+    _recentLocalWriteAt[key] = DateTime.now();
+    _recentLocalWriteBefore[key] = previous;
     setState(() => _settingValues[key] = value);
     _setSetting(key, value);
     _afterSettingChanged(key, previous, value);

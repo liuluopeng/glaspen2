@@ -10378,7 +10378,13 @@ pub fn set_setting_pb(key: &str, value: &[u8]) -> bool {
     let (Ok(k), Ok(v)) = (std::ffi::CString::new(key), std::ffi::CString::new(text)) else {
         return false;
     };
-    unsafe { glaspen2_rust_apply_setting(k.as_ptr(), v.as_ptr()) != 0 }
+    let ok = unsafe { glaspen2_rust_apply_setting(k.as_ptr(), v.as_ptr()) != 0 };
+    if ok {
+        // 写入后主动推一次完整 Settings 流: 面板若因本地/推送竞态没刷新,
+        // 以落库后的权威值再刷新一次。
+        unsafe { glaspen2_notify_settings_changed() };
+    }
+    ok
 }
 
 #[unsafe(no_mangle)]

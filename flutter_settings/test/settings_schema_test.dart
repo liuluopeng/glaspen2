@@ -287,4 +287,12 @@ void main() {
       expect(find.text('颜色'), findsNothing);
     });
   });
+
+  testWidgets('本地写入后 switch 视觉值立即变化', (tester) async {
+    await _pumpPanel(tester, _fixture('macos'));
+    final finder = _switchOf('显示网格');
+    expect(tester.widget<Switch>(finder).value, isFalse);
+    await _toggle(tester, '显示网格');
+    expect(tester.widget<Switch>(_switchOf('显示网格')).value, isTrue);
+  });
 }

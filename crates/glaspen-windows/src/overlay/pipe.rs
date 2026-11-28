@@ -1095,6 +1095,18 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
                 }
             }
         }
+        // 写入成功后把落库后的完整快照回推给发起连接: 面板本地值和后端
+        // 设置流可能有竞态, 以 core 快照为准再同步一次(局部推送仍保留)。
+        let overrides = settings_snapshot_overrides();
+        if let Ok(data) = glaspen_core::settings_snapshot::snapshot_json(
+            glaspen_core::ui::Platform::Windows,
+            None,
+            &overrides,
+        ) {
+            let resp = format!("{{\"type\":\"onSettingsChanged\",\"data\":{data}}}\n");
+            let _ = writer.write_all(resp.as_bytes());
+            let _ = writer.flush();
+        }
     } else if msg_type == "appVersion" {
         // 「关于」区显示的当前版本(与发布物一致,取自 Cargo.toml)
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);

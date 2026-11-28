@@ -23,7 +23,8 @@ extension _SettingsStateUi on _SettingsPageState {
     if (!mounted) return;
     final wasInfinite = _infiniteCanvas;
     final wasFreeTab = _showFreeCanvas;
-    setState(() => _mergeSettingsSnapshot(s, full: false));
+    final fresh = _withoutStaleLocalEcho(s);
+    setState(() => _mergeSettingsSnapshot(fresh, full: false));
     // 画布模式被外部改(快捷键切自由涂鸦/覆盖层推设置)时, TabBar 选中项必须
     // 跟着走 —— 否则"玻璃在自由涂鸦、面板停在活页本", 用户再点活页本就会
     // 把自由涂鸦关掉(用户报的严重错位)。
@@ -38,6 +39,31 @@ extension _SettingsStateUi on _SettingsPageState {
       _syncTabToCanvasMode(force: true);
     }
     _applyLanguage(_language);
+  }
+
+  /// 丢弃「刚本地写过、且值仍等于写入前旧值」的迟到帧字段。
+  ///
+  /// 后端设置流/窗口连上后的首帧可能早于本次写入落库; 全量合并会把它当成
+  /// 权威值, 用户就会看到开关点完又弹回。本地写入在短时间内优先。
+  Map<dynamic, dynamic> _withoutStaleLocalEcho(Map<dynamic, dynamic> s) {
+    if (_recentLocalWriteAt.isEmpty) return s;
+    final now = DateTime.now();
+    final out = <dynamic, dynamic>{};
+    s.forEach((key, value) {
+      final at = _recentLocalWriteAt[key];
+      if (at != null && now.difference(at).inMilliseconds < 2000) {
+        final previous = _recentLocalWriteBefore[key];
+        if (value == previous) return; // 迟到旧帧: 保持本地刚写入的值
+      }
+      out[key] = value;
+    });
+    _recentLocalWriteAt.removeWhere(
+      (_, at) => now.difference(at).inMilliseconds > 5000,
+    );
+    _recentLocalWriteBefore.removeWhere(
+      (key, _) => !_recentLocalWriteAt.containsKey(key),
+    );
+    return out;
   }
 
   /// 把一份设置快照合并进 [_settingValues]。
@@ -173,7 +199,8 @@ extension _SettingsStateUi on _SettingsPageState {
       _validateSettingsContract(settings);
       final wasInfinite = _infiniteCanvas;
       final wasFreeTab = _showFreeCanvas;
-      setState(() => _mergeSettingsSnapshot(settings, full: true));
+      final fresh = _withoutStaleLocalEcho(settings);
+      setState(() => _mergeSettingsSnapshot(fresh, full: true));
       // 首次拿到设置: 恢复上次停留的 tab(有记录且仍存在时); 没有记录则
       // 回落到当前画布模式对应的 tab(自由涂鸦/活页本)。不是首次则只在模式
       // 变化时跟随。初始恢复要等 panel_state 也读取完成, 见 _applyInitialTabIfReady。
