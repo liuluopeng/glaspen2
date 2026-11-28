@@ -843,12 +843,12 @@ fn process_set_setting(
                     // 应用(补默认/挡保留/去冲突) → 落库生效表 → 回推面板
                     apply_saved_map(HWND(hwnd as *mut std::ffi::c_void), &saved);
                     let overrides = settings_snapshot_overrides();
-                    if let Ok(data) = glaspen_core::settings_snapshot::snapshot_json(
+                    if let Ok(settings) = glaspen_core::settings_snapshot::snapshot_settings(
                         glaspen_core::ui::Platform::Windows,
                         None,
                         &overrides,
                     ) {
-                        let frame = glaspen_ipc::encode_settings_changed_frame(&data);
+                        let frame = glaspen_ipc::encode_settings_changed_frame_from(settings);
                         let _ = writer.write_frame(&frame);
                     }
                 }
@@ -863,12 +863,12 @@ fn process_set_setting(
     // 写入成功后把落库后的完整快照回推给发起连接: 面板本地值和后端
     // 设置流可能有竞态, 以 core 快照为准再同步一次(局部推送仍保留)。
     let overrides = settings_snapshot_overrides();
-    if let Ok(data) = glaspen_core::settings_snapshot::snapshot_json(
+    if let Ok(settings) = glaspen_core::settings_snapshot::snapshot_settings(
         glaspen_core::ui::Platform::Windows,
         None,
         &overrides,
     ) {
-        let frame = glaspen_ipc::encode_settings_changed_frame(&data);
+        let frame = glaspen_ipc::encode_settings_changed_frame_from(settings);
         let _ = writer.write_frame(&frame);
     }
 }

@@ -127,3 +127,5 @@
 - ✅ core 新增 `settings_snapshot::snapshot_settings` 与 `ui::ui_config_typed`；macOS/Windows adapter 不再解析 snapshot/uiConfig JSON，直接拿 typed 结构编码 Frame。
 
 - ✅ macOS `settings_snapshot_typed()` → root `Settings::from_app_settings`，删除 root 侧 settings JSON 解析；
+
+- ✅ Windows 快捷键全量回推改 `snapshot_settings` + `encode_settings_changed_frame_from`，adapter 不再解析 settings JSON。
