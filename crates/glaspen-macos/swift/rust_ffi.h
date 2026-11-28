@@ -679,7 +679,6 @@ extern int glaspen2_rust_tunnel_build_cards(long long cur, int count, int cur_id
 extern int glaspen2_rust_tunnel_prepare(long long cur, int going_next, double scale, double *preload_ms_out);
 
 // R159: minimap 布局缓存(borrowed, 不要 free)
-extern const char *glaspen2_rust_minimap_layout(long long cur, double view_w, double view_h, int geom_w);
 
 // R159: 通知文字/代际状态
 extern unsigned int glaspen2_rust_notification_set(const char *text);

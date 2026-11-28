@@ -95,6 +95,8 @@
 - ✅ `BubbleMessages/BubbleMessage/BubbleStroke/BubblePoint` typed，FRB `bubbleMessages` 已切 typed（DB 仍存 JSON）；
 - `RecordingEvent/Effect`；
 - ✅ macOS `ActionEffect` 已直接 typed 匹配，删除 `glaspen2_action_effect_json` FFI；
-- `GridLines` / `MinimapLayout`；
+- ✅ macOS minimap 改 direct typed `minimap::layout`，删除 minimap layout JSON FFI；
+- ✅ 删除无调用方的 grid JSON FFI 与测试（core grid 已 typed）；
+- `GridLines` / `MinimapLayout` proto 仅在需要跨进程时再定义（当前 Windows 同进程 direct）；
 - `Panel` 其余命令 oneof；
 - macOS 内部 `*_json` FFI 改 typed Rust 调用。

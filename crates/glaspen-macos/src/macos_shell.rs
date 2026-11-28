@@ -7494,49 +7494,6 @@ pub extern "C" fn glaspen2_rust_tunnel_prepare(
     n
 }
 
-// ── R159: minimap 布局 JSON 缓存(页/视图/几何变化才重算) ──
-
-unsafe extern "C" {
-    fn glaspen2_minimap_layout_json(
-        cur: i64,
-        view_w: f64,
-        view_h: f64,
-        geom_w: i32,
-    ) -> *mut std::os::raw::c_char;
-}
-
-static MINIMAP_LAYOUT: std::sync::Mutex<Option<(i64, u64, u64, i32, std::ffi::CString)>> =
-    std::sync::Mutex::new(None);
-
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_rust_minimap_layout(
-    cur: i64,
-    view_w: f64,
-    view_h: f64,
-    geom_w: i32,
-) -> *const std::os::raw::c_char {
-    let mut guard = MINIMAP_LAYOUT.lock().unwrap_or_else(|e| e.into_inner());
-    let key = (cur, view_w.to_bits(), view_h.to_bits(), geom_w);
-    if guard
-        .as_ref()
-        .is_none_or(|(c, w, h, g, _)| (*c, *w, *h, *g) != key)
-    {
-        let raw = unsafe { glaspen2_minimap_layout_json(cur, view_w, view_h, geom_w) };
-        if raw.is_null() {
-            return std::ptr::null();
-        }
-        let text = unsafe { std::ffi::CStr::from_ptr(raw) }.to_owned();
-        unsafe { glaspen2_free_c_string(raw) };
-        if text.to_bytes().first().is_none() {
-            return std::ptr::null();
-        }
-        *guard = Some((cur, view_w.to_bits(), view_h.to_bits(), geom_w, text));
-    }
-    guard
-        .as_ref()
-        .map_or(std::ptr::null(), |(_, _, _, _, s)| s.as_ptr())
-}
-
 // ── R159: 通知文字/代际状态(定时器仍 Swift) ──
 
 static NOTIF_TEXT: std::sync::Mutex<Option<std::ffi::CString>> = std::sync::Mutex::new(None);
@@ -8042,48 +7999,49 @@ pub extern "C" fn glaspen2_rust_minimap_draw(
     if cur <= 0 {
         return 0;
     }
-    let p = unsafe {
-        glaspen2_rust_minimap_layout(cur, bw, bh, glaspen2_rust_pageview_geometry_width())
+    use glaspen_core::minimap::{PageFilter, WINDOW_COUNT, WINDOW_HALF};
+    let rows = glaspen_core::runtime().block_on(glaspen_core::db::list_screens());
+    let geom_w = unsafe { glaspen2_rust_pageview_geometry_width() };
+    let filter = if geom_w > 0 {
+        PageFilter::Width(geom_w)
+    } else {
+        PageFilter::All
     };
-    if p.is_null() {
-        return 0;
-    }
-    let text = unsafe { std::ffi::CStr::from_ptr(p) }
-        .to_string_lossy()
-        .into_owned();
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return 0;
-    };
-    if v.get("error").is_some() {
-        return 0;
-    }
-    let Some(items_json) = v.get("items").and_then(|i| i.as_array()) else {
+    let Some(window) =
+        glaspen_core::minimap::page_window_from_rows(&rows, cur, filter, WINDOW_HALF, WINDOW_COUNT)
+    else {
         return 0;
     };
-    if items_json.is_empty() {
+    let Ok(layout) = glaspen_core::minimap::layout(
+        bw,
+        bh,
+        &window.ids,
+        window.start,
+        cur,
+        &glaspen_core::minimap::MACOS_METRICS,
+    ) else {
+        return 0;
+    };
+    if layout.items.is_empty() {
         return 0;
     }
-    let strip_w = v.get("strip_w").and_then(|x| x.as_f64()).unwrap_or(0.0);
-    let strip_h = v.get("strip_h").and_then(|x| x.as_f64()).unwrap_or(0.0);
-    let strip_x = v.get("strip_x").and_then(|x| x.as_f64()).unwrap_or(0.0);
-    let strip_y = v.get("strip_y").and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let (strip_w, strip_h, strip_x, strip_y) = (
+        layout.strip_w,
+        layout.strip_h,
+        layout.strip_x,
+        layout.strip_y,
+    );
     if strip_w <= 0.0 || strip_h <= 0.0 {
         return 0;
     }
-    let mut items = Vec::with_capacity(items_json.len());
+    let mut items = Vec::with_capacity(layout.items.len());
     let mut labels: Vec<std::ffi::CString> = Vec::new();
-    for item in items_json {
-        let Some(pid) = item.get("screen_id").and_then(|x| x.as_i64()) else {
-            continue;
-        };
-        minimap_request_thumbnail(pid);
-        let is_cur = item
-            .get("current")
-            .and_then(|x| x.as_bool())
-            .unwrap_or(false);
-        let y = item.get("y").and_then(|x| x.as_f64()).unwrap_or(0.0);
-        let h = item.get("h").and_then(|x| x.as_f64()).unwrap_or(0.0);
-        let label = item.get("label").and_then(|x| x.as_str()).unwrap_or("");
+    for item in layout.items {
+        minimap_request_thumbnail(item.screen_id);
+        let is_cur = item.current;
+        let y = item.y;
+        let h = item.h;
+        let label = item.label.as_str();
         let label_ptr = if label.is_empty() {
             std::ptr::null()
         } else {
@@ -8094,11 +8052,11 @@ pub extern "C" fn glaspen2_rust_minimap_draw(
         let thumb = MINIMAP_THUMBS
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .get(&pid)
+            .get(&item.screen_id)
             .copied()
             .unwrap_or(0) as *mut c_void;
         items.push(MinimapItemC {
-            screen_id: pid,
+            screen_id: item.screen_id,
             current: i32::from(is_cur),
             y,
             h,
