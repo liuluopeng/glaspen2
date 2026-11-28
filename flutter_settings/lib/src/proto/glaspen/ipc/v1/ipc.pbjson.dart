@@ -375,6 +375,24 @@ const Frame$json = {
       '10': 'cancelDownloadRequest'
     },
     {
+      '1': 'ui_config_request',
+      '3': 80,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiConfigRequest',
+      '9': 0,
+      '10': 'uiConfigRequest'
+    },
+    {
+      '1': 'ui_config_response',
+      '3': 81,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiConfigResponse',
+      '9': 0,
+      '10': 'uiConfigResponse'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -455,9 +473,12 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'dWVzdEgAUhVkb3dubG9hZFVwZGF0ZVJlcXVlc3QSTwoRZG93bmxvYWRfcHJvZ3Jlc3MYRyABKA'
     'syIC5nbGFzcGVuLmlwYy52MS5Eb3dubG9hZFByb2dyZXNzSABSEGRvd25sb2FkUHJvZ3Jlc3MS'
     'XwoXY2FuY2VsX2Rvd25sb2FkX3JlcXVlc3QYSCABKAsyJS5nbGFzcGVuLmlwYy52MS5DYW5jZW'
-    'xEb3dubG9hZFJlcXVlc3RIAFIVY2FuY2VsRG93bmxvYWRSZXF1ZXN0Ei0KBXBhbmVsGBQgASgL'
-    'MhUuZ2xhc3Blbi5pcGMudjEuUGFuZWxIAFIFcGFuZWwSLQoFZXJyb3IYYyABKAsyFS5nbGFzcG'
-    'VuLmlwYy52MS5FcnJvckgAUgVlcnJvckIGCgRib2R5');
+    'xEb3dubG9hZFJlcXVlc3RIAFIVY2FuY2VsRG93bmxvYWRSZXF1ZXN0Ek0KEXVpX2NvbmZpZ19y'
+    'ZXF1ZXN0GFAgASgLMh8uZ2xhc3Blbi5pcGMudjEuVWlDb25maWdSZXF1ZXN0SABSD3VpQ29uZm'
+    'lnUmVxdWVzdBJQChJ1aV9jb25maWdfcmVzcG9uc2UYUSABKAsyIC5nbGFzcGVuLmlwYy52MS5V'
+    'aUNvbmZpZ1Jlc3BvbnNlSABSEHVpQ29uZmlnUmVzcG9uc2USLQoFcGFuZWwYFCABKAsyFS5nbG'
+    'FzcGVuLmlwYy52MS5QYW5lbEgAUgVwYW5lbBItCgVlcnJvchhjIAEoCzIVLmdsYXNwZW4uaXBj'
+    'LnYxLkVycm9ySABSBWVycm9yQgYKBGJvZHk=');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -1408,3 +1429,501 @@ const CancelDownloadRequest$json = {
 /// Descriptor for `CancelDownloadRequest`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List cancelDownloadRequestDescriptor =
     $convert.base64Decode('ChVDYW5jZWxEb3dubG9hZFJlcXVlc3Q=');
+
+@$core.Deprecated('Use uiConfigRequestDescriptor instead')
+const UiConfigRequest$json = {
+  '1': 'UiConfigRequest',
+  '2': [
+    {
+      '1': 'panel_protocol_version',
+      '3': 1,
+      '4': 1,
+      '5': 13,
+      '10': 'panelProtocolVersion'
+    },
+  ],
+};
+
+/// Descriptor for `UiConfigRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List uiConfigRequestDescriptor = $convert.base64Decode(
+    'Cg9VaUNvbmZpZ1JlcXVlc3QSNAoWcGFuZWxfcHJvdG9jb2xfdmVyc2lvbhgBIAEoDVIUcGFuZW'
+    'xQcm90b2NvbFZlcnNpb24=');
+
+@$core.Deprecated('Use uiConfigResponseDescriptor instead')
+const UiConfigResponse$json = {
+  '1': 'UiConfigResponse',
+  '2': [
+    {
+      '1': 'config',
+      '3': 1,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiConfig',
+      '10': 'config'
+    },
+  ],
+};
+
+/// Descriptor for `UiConfigResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List uiConfigResponseDescriptor = $convert.base64Decode(
+    'ChBVaUNvbmZpZ1Jlc3BvbnNlEjAKBmNvbmZpZxgBIAEoCzIYLmdsYXNwZW4uaXBjLnYxLlVpQ2'
+    '9uZmlnUgZjb25maWc=');
+
+@$core.Deprecated('Use uiConfigDescriptor instead')
+const UiConfig$json = {
+  '1': 'UiConfig',
+  '2': [
+    {'1': 'platform', '3': 1, '4': 1, '5': 9, '10': 'platform'},
+    {'1': 'is_windows', '3': 2, '4': 1, '5': 8, '10': 'isWindows'},
+    {'1': 'font_scale', '3': 3, '4': 1, '5': 1, '10': 'fontScale'},
+    {'1': 'chord_separator', '3': 4, '4': 1, '5': 9, '10': 'chordSeparator'},
+    {
+      '1': 'chord_names',
+      '3': 5,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiConfig.ChordNamesEntry',
+      '10': 'chordNames'
+    },
+    {'1': 'modifier_word', '3': 6, '4': 1, '5': 9, '10': 'modifierWord'},
+    {
+      '1': 'messages',
+      '3': 7,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiConfig.MessagesEntry',
+      '10': 'messages'
+    },
+    {
+      '1': 'defaults',
+      '3': 8,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiConfig.DefaultsEntry',
+      '10': 'defaults'
+    },
+    {
+      '1': 'hold_hotkeys',
+      '3': 9,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiConfig.HoldHotkeysEntry',
+      '10': 'holdHotkeys'
+    },
+    {'1': 'reserved', '3': 10, '4': 3, '5': 9, '10': 'reserved'},
+    {'1': 'force_bound', '3': 11, '4': 3, '5': 9, '10': 'forceBound'},
+    {'1': 'action_order', '3': 12, '4': 3, '5': 9, '10': 'actionOrder'},
+    {
+      '1': 'modifier_row',
+      '3': 13,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiModifierRow',
+      '10': 'modifierRow'
+    },
+    {
+      '1': 'features',
+      '3': 14,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiConfig.FeaturesEntry',
+      '10': 'features'
+    },
+    {
+      '1': 'settings',
+      '3': 15,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiSettingSpec',
+      '10': 'settings'
+    },
+    {
+      '1': 'settings_sections',
+      '3': 16,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiFormSection',
+      '10': 'settingsSections'
+    },
+    {
+      '1': 'settings_blocks',
+      '3': 17,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiCustomBlock',
+      '10': 'settingsBlocks'
+    },
+    {
+      '1': 'protocol_version',
+      '3': 18,
+      '4': 1,
+      '5': 13,
+      '10': 'protocolVersion'
+    },
+  ],
+  '3': [
+    UiConfig_ChordNamesEntry$json,
+    UiConfig_MessagesEntry$json,
+    UiConfig_DefaultsEntry$json,
+    UiConfig_HoldHotkeysEntry$json,
+    UiConfig_FeaturesEntry$json
+  ],
+};
+
+@$core.Deprecated('Use uiConfigDescriptor instead')
+const UiConfig_ChordNamesEntry$json = {
+  '1': 'ChordNamesEntry',
+  '2': [
+    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
+    {'1': 'value', '3': 2, '4': 1, '5': 9, '10': 'value'},
+  ],
+  '7': {'7': true},
+};
+
+@$core.Deprecated('Use uiConfigDescriptor instead')
+const UiConfig_MessagesEntry$json = {
+  '1': 'MessagesEntry',
+  '2': [
+    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
+    {
+      '1': 'value',
+      '3': 2,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.LocalizedText',
+      '10': 'value'
+    },
+  ],
+  '7': {'7': true},
+};
+
+@$core.Deprecated('Use uiConfigDescriptor instead')
+const UiConfig_DefaultsEntry$json = {
+  '1': 'DefaultsEntry',
+  '2': [
+    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
+    {'1': 'value', '3': 2, '4': 1, '5': 9, '10': 'value'},
+  ],
+  '7': {'7': true},
+};
+
+@$core.Deprecated('Use uiConfigDescriptor instead')
+const UiConfig_HoldHotkeysEntry$json = {
+  '1': 'HoldHotkeysEntry',
+  '2': [
+    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
+    {'1': 'value', '3': 2, '4': 1, '5': 9, '10': 'value'},
+  ],
+  '7': {'7': true},
+};
+
+@$core.Deprecated('Use uiConfigDescriptor instead')
+const UiConfig_FeaturesEntry$json = {
+  '1': 'FeaturesEntry',
+  '2': [
+    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
+    {'1': 'value', '3': 2, '4': 1, '5': 8, '10': 'value'},
+  ],
+  '7': {'7': true},
+};
+
+/// Descriptor for `UiConfig`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List uiConfigDescriptor = $convert.base64Decode(
+    'CghVaUNvbmZpZxIaCghwbGF0Zm9ybRgBIAEoCVIIcGxhdGZvcm0SHQoKaXNfd2luZG93cxgCIA'
+    'EoCFIJaXNXaW5kb3dzEh0KCmZvbnRfc2NhbGUYAyABKAFSCWZvbnRTY2FsZRInCg9jaG9yZF9z'
+    'ZXBhcmF0b3IYBCABKAlSDmNob3JkU2VwYXJhdG9yEkkKC2Nob3JkX25hbWVzGAUgAygLMiguZ2'
+    'xhc3Blbi5pcGMudjEuVWlDb25maWcuQ2hvcmROYW1lc0VudHJ5UgpjaG9yZE5hbWVzEiMKDW1v'
+    'ZGlmaWVyX3dvcmQYBiABKAlSDG1vZGlmaWVyV29yZBJCCghtZXNzYWdlcxgHIAMoCzImLmdsYX'
+    'NwZW4uaXBjLnYxLlVpQ29uZmlnLk1lc3NhZ2VzRW50cnlSCG1lc3NhZ2VzEkIKCGRlZmF1bHRz'
+    'GAggAygLMiYuZ2xhc3Blbi5pcGMudjEuVWlDb25maWcuRGVmYXVsdHNFbnRyeVIIZGVmYXVsdH'
+    'MSTAoMaG9sZF9ob3RrZXlzGAkgAygLMikuZ2xhc3Blbi5pcGMudjEuVWlDb25maWcuSG9sZEhv'
+    'dGtleXNFbnRyeVILaG9sZEhvdGtleXMSGgoIcmVzZXJ2ZWQYCiADKAlSCHJlc2VydmVkEh8KC2'
+    'ZvcmNlX2JvdW5kGAsgAygJUgpmb3JjZUJvdW5kEiEKDGFjdGlvbl9vcmRlchgMIAMoCVILYWN0'
+    'aW9uT3JkZXISQAoMbW9kaWZpZXJfcm93GA0gASgLMh0uZ2xhc3Blbi5pcGMudjEuVWlNb2RpZm'
+    'llclJvd1ILbW9kaWZpZXJSb3cSQgoIZmVhdHVyZXMYDiADKAsyJi5nbGFzcGVuLmlwYy52MS5V'
+    'aUNvbmZpZy5GZWF0dXJlc0VudHJ5UghmZWF0dXJlcxI5CghzZXR0aW5ncxgPIAMoCzIdLmdsYX'
+    'NwZW4uaXBjLnYxLlVpU2V0dGluZ1NwZWNSCHNldHRpbmdzEkoKEXNldHRpbmdzX3NlY3Rpb25z'
+    'GBAgAygLMh0uZ2xhc3Blbi5pcGMudjEuVWlGb3JtU2VjdGlvblIQc2V0dGluZ3NTZWN0aW9ucx'
+    'JGCg9zZXR0aW5nc19ibG9ja3MYESADKAsyHS5nbGFzcGVuLmlwYy52MS5VaUN1c3RvbUJsb2Nr'
+    'Ug5zZXR0aW5nc0Jsb2NrcxIpChBwcm90b2NvbF92ZXJzaW9uGBIgASgNUg9wcm90b2NvbFZlcn'
+    'Npb24aPQoPQ2hvcmROYW1lc0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5EhQKBXZhbHVlGAIgASgJ'
+    'UgV2YWx1ZToCOAEaWgoNTWVzc2FnZXNFbnRyeRIQCgNrZXkYASABKAlSA2tleRIzCgV2YWx1ZR'
+    'gCIAEoCzIdLmdsYXNwZW4uaXBjLnYxLkxvY2FsaXplZFRleHRSBXZhbHVlOgI4ARo7Cg1EZWZh'
+    'dWx0c0VudHJ5EhAKA2tleRgBIAEoCVIDa2V5EhQKBXZhbHVlGAIgASgJUgV2YWx1ZToCOAEaPg'
+    'oQSG9sZEhvdGtleXNFbnRyeRIQCgNrZXkYASABKAlSA2tleRIUCgV2YWx1ZRgCIAEoCVIFdmFs'
+    'dWU6AjgBGjsKDUZlYXR1cmVzRW50cnkSEAoDa2V5GAEgASgJUgNrZXkSFAoFdmFsdWUYAiABKA'
+    'hSBXZhbHVlOgI4AQ==');
+
+@$core.Deprecated('Use localizedTextDescriptor instead')
+const LocalizedText$json = {
+  '1': 'LocalizedText',
+  '2': [
+    {'1': 'zh', '3': 1, '4': 1, '5': 9, '10': 'zh'},
+    {'1': 'en', '3': 2, '4': 1, '5': 9, '10': 'en'},
+  ],
+};
+
+/// Descriptor for `LocalizedText`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List localizedTextDescriptor = $convert.base64Decode(
+    'Cg1Mb2NhbGl6ZWRUZXh0Eg4KAnpoGAEgASgJUgJ6aBIOCgJlbhgCIAEoCVICZW4=');
+
+@$core.Deprecated('Use uiKeyCapDescriptor instead')
+const UiKeyCap$json = {
+  '1': 'UiKeyCap',
+  '2': [
+    {'1': 'name', '3': 1, '4': 1, '5': 9, '10': 'name'},
+    {'1': 'label', '3': 2, '4': 1, '5': 9, '10': 'label'},
+    {'1': 'width', '3': 3, '4': 1, '5': 1, '10': 'width'},
+    {'1': 'modifier', '3': 4, '4': 1, '5': 8, '10': 'modifier'},
+  ],
+};
+
+/// Descriptor for `UiKeyCap`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List uiKeyCapDescriptor = $convert.base64Decode(
+    'CghVaUtleUNhcBISCgRuYW1lGAEgASgJUgRuYW1lEhQKBWxhYmVsGAIgASgJUgVsYWJlbBIUCg'
+    'V3aWR0aBgDIAEoAVIFd2lkdGgSGgoIbW9kaWZpZXIYBCABKAhSCG1vZGlmaWVy');
+
+@$core.Deprecated('Use uiModifierRowDescriptor instead')
+const UiModifierRow$json = {
+  '1': 'UiModifierRow',
+  '2': [
+    {
+      '1': 'left',
+      '3': 1,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiKeyCap',
+      '10': 'left'
+    },
+    {
+      '1': 'space',
+      '3': 2,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiKeyCap',
+      '10': 'space'
+    },
+    {
+      '1': 'right',
+      '3': 3,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiKeyCap',
+      '10': 'right'
+    },
+  ],
+};
+
+/// Descriptor for `UiModifierRow`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List uiModifierRowDescriptor = $convert.base64Decode(
+    'Cg1VaU1vZGlmaWVyUm93EiwKBGxlZnQYASADKAsyGC5nbGFzcGVuLmlwYy52MS5VaUtleUNhcF'
+    'IEbGVmdBIuCgVzcGFjZRgCIAMoCzIYLmdsYXNwZW4uaXBjLnYxLlVpS2V5Q2FwUgVzcGFjZRIu'
+    'CgVyaWdodBgDIAMoCzIYLmdsYXNwZW4uaXBjLnYxLlVpS2V5Q2FwUgVyaWdodA==');
+
+@$core.Deprecated('Use uiSettingSpecDescriptor instead')
+const UiSettingSpec$json = {
+  '1': 'UiSettingSpec',
+  '2': [
+    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
+    {'1': 'db_key', '3': 2, '4': 1, '5': 9, '10': 'dbKey'},
+    {'1': 'kind', '3': 3, '4': 1, '5': 9, '10': 'kind'},
+    {'1': 'mac', '3': 4, '4': 1, '5': 8, '10': 'mac'},
+    {'1': 'win', '3': 5, '4': 1, '5': 8, '10': 'win'},
+    {
+      '1': 'form',
+      '3': 6,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiFormMeta',
+      '10': 'form'
+    },
+  ],
+};
+
+/// Descriptor for `UiSettingSpec`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List uiSettingSpecDescriptor = $convert.base64Decode(
+    'Cg1VaVNldHRpbmdTcGVjEhAKA2tleRgBIAEoCVIDa2V5EhUKBmRiX2tleRgCIAEoCVIFZGJLZX'
+    'kSEgoEa2luZBgDIAEoCVIEa2luZBIQCgNtYWMYBCABKAhSA21hYxIQCgN3aW4YBSABKAhSA3dp'
+    'bhIuCgRmb3JtGAYgASgLMhouZ2xhc3Blbi5pcGMudjEuVWlGb3JtTWV0YVIEZm9ybQ==');
+
+@$core.Deprecated('Use uiFormMetaDescriptor instead')
+const UiFormMeta$json = {
+  '1': 'UiFormMeta',
+  '2': [
+    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
+    {'1': 'section', '3': 2, '4': 1, '5': 9, '10': 'section'},
+    {'1': 'order', '3': 3, '4': 1, '5': 5, '10': 'order'},
+    {'1': 'label_id', '3': 4, '4': 1, '5': 9, '10': 'labelId'},
+    {'1': 'description_id', '3': 5, '4': 1, '5': 9, '10': 'descriptionId'},
+    {'1': 'hint_id', '3': 6, '4': 1, '5': 9, '10': 'hintId'},
+    {'1': 'control', '3': 7, '4': 1, '5': 9, '10': 'control'},
+    {'1': 'layout', '3': 8, '4': 1, '5': 9, '10': 'layout'},
+    {'1': 'show_label', '3': 9, '4': 1, '5': 8, '10': 'showLabel'},
+    {'1': 'indented', '3': 10, '4': 1, '5': 8, '10': 'indented'},
+    {'1': 'divider_before', '3': 11, '4': 1, '5': 8, '10': 'dividerBefore'},
+    {'1': 'unit', '3': 12, '4': 1, '5': 9, '10': 'unit'},
+    {
+      '1': 'range',
+      '3': 13,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiFormRange',
+      '10': 'range'
+    },
+    {
+      '1': 'options',
+      '3': 14,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiFormOption',
+      '10': 'options'
+    },
+    {
+      '1': 'visible_when_feature',
+      '3': 15,
+      '4': 1,
+      '5': 9,
+      '10': 'visibleWhenFeature'
+    },
+    {
+      '1': 'visible_when_setting',
+      '3': 16,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiSettingCondition',
+      '10': 'visibleWhenSetting'
+    },
+    {
+      '1': 'enabled_when_setting',
+      '3': 17,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiSettingCondition',
+      '10': 'enabledWhenSetting'
+    },
+    {'1': 'advanced', '3': 18, '4': 1, '5': 8, '10': 'advanced'},
+  ],
+};
+
+/// Descriptor for `UiFormMeta`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List uiFormMetaDescriptor = $convert.base64Decode(
+    'CgpVaUZvcm1NZXRhEhAKA2tleRgBIAEoCVIDa2V5EhgKB3NlY3Rpb24YAiABKAlSB3NlY3Rpb2'
+    '4SFAoFb3JkZXIYAyABKAVSBW9yZGVyEhkKCGxhYmVsX2lkGAQgASgJUgdsYWJlbElkEiUKDmRl'
+    'c2NyaXB0aW9uX2lkGAUgASgJUg1kZXNjcmlwdGlvbklkEhcKB2hpbnRfaWQYBiABKAlSBmhpbn'
+    'RJZBIYCgdjb250cm9sGAcgASgJUgdjb250cm9sEhYKBmxheW91dBgIIAEoCVIGbGF5b3V0Eh0K'
+    'CnNob3dfbGFiZWwYCSABKAhSCXNob3dMYWJlbBIaCghpbmRlbnRlZBgKIAEoCFIIaW5kZW50ZW'
+    'QSJQoOZGl2aWRlcl9iZWZvcmUYCyABKAhSDWRpdmlkZXJCZWZvcmUSEgoEdW5pdBgMIAEoCVIE'
+    'dW5pdBIxCgVyYW5nZRgNIAEoCzIbLmdsYXNwZW4uaXBjLnYxLlVpRm9ybVJhbmdlUgVyYW5nZR'
+    'I2CgdvcHRpb25zGA4gAygLMhwuZ2xhc3Blbi5pcGMudjEuVWlGb3JtT3B0aW9uUgdvcHRpb25z'
+    'EjAKFHZpc2libGVfd2hlbl9mZWF0dXJlGA8gASgJUhJ2aXNpYmxlV2hlbkZlYXR1cmUSVAoUdm'
+    'lzaWJsZV93aGVuX3NldHRpbmcYECABKAsyIi5nbGFzcGVuLmlwYy52MS5VaVNldHRpbmdDb25k'
+    'aXRpb25SEnZpc2libGVXaGVuU2V0dGluZxJUChRlbmFibGVkX3doZW5fc2V0dGluZxgRIAEoCz'
+    'IiLmdsYXNwZW4uaXBjLnYxLlVpU2V0dGluZ0NvbmRpdGlvblISZW5hYmxlZFdoZW5TZXR0aW5n'
+    'EhoKCGFkdmFuY2VkGBIgASgIUghhZHZhbmNlZA==');
+
+@$core.Deprecated('Use uiFormRangeDescriptor instead')
+const UiFormRange$json = {
+  '1': 'UiFormRange',
+  '2': [
+    {'1': 'min', '3': 1, '4': 1, '5': 1, '10': 'min'},
+    {'1': 'max', '3': 2, '4': 1, '5': 1, '10': 'max'},
+    {'1': 'step', '3': 3, '4': 1, '5': 1, '10': 'step'},
+  ],
+};
+
+/// Descriptor for `UiFormRange`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List uiFormRangeDescriptor = $convert.base64Decode(
+    'CgtVaUZvcm1SYW5nZRIQCgNtaW4YASABKAFSA21pbhIQCgNtYXgYAiABKAFSA21heBISCgRzdG'
+    'VwGAMgASgBUgRzdGVw');
+
+@$core.Deprecated('Use uiFormOptionDescriptor instead')
+const UiFormOption$json = {
+  '1': 'UiFormOption',
+  '2': [
+    {
+      '1': 'value',
+      '3': 1,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.SettingValue',
+      '10': 'value'
+    },
+    {'1': 'label_id', '3': 2, '4': 1, '5': 9, '10': 'labelId'},
+  ],
+};
+
+/// Descriptor for `UiFormOption`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List uiFormOptionDescriptor = $convert.base64Decode(
+    'CgxVaUZvcm1PcHRpb24SMgoFdmFsdWUYASABKAsyHC5nbGFzcGVuLmlwYy52MS5TZXR0aW5nVm'
+    'FsdWVSBXZhbHVlEhkKCGxhYmVsX2lkGAIgASgJUgdsYWJlbElk');
+
+@$core.Deprecated('Use uiSettingConditionDescriptor instead')
+const UiSettingCondition$json = {
+  '1': 'UiSettingCondition',
+  '2': [
+    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
+    {
+      '1': 'equals',
+      '3': 2,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.SettingValue',
+      '10': 'equals'
+    },
+  ],
+};
+
+/// Descriptor for `UiSettingCondition`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List uiSettingConditionDescriptor = $convert.base64Decode(
+    'ChJVaVNldHRpbmdDb25kaXRpb24SEAoDa2V5GAEgASgJUgNrZXkSNAoGZXF1YWxzGAIgASgLMh'
+    'wuZ2xhc3Blbi5pcGMudjEuU2V0dGluZ1ZhbHVlUgZlcXVhbHM=');
+
+@$core.Deprecated('Use uiFormSectionDescriptor instead')
+const UiFormSection$json = {
+  '1': 'UiFormSection',
+  '2': [
+    {'1': 'id', '3': 1, '4': 1, '5': 9, '10': 'id'},
+    {'1': 'label_id', '3': 2, '4': 1, '5': 9, '10': 'labelId'},
+    {'1': 'advanced', '3': 3, '4': 1, '5': 8, '10': 'advanced'},
+    {'1': 'order', '3': 4, '4': 1, '5': 5, '10': 'order'},
+    {
+      '1': 'visible_when_setting',
+      '3': 5,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiSettingCondition',
+      '10': 'visibleWhenSetting'
+    },
+  ],
+};
+
+/// Descriptor for `UiFormSection`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List uiFormSectionDescriptor = $convert.base64Decode(
+    'Cg1VaUZvcm1TZWN0aW9uEg4KAmlkGAEgASgJUgJpZBIZCghsYWJlbF9pZBgCIAEoCVIHbGFiZW'
+    'xJZBIaCghhZHZhbmNlZBgDIAEoCFIIYWR2YW5jZWQSFAoFb3JkZXIYBCABKAVSBW9yZGVyElQK'
+    'FHZpc2libGVfd2hlbl9zZXR0aW5nGAUgASgLMiIuZ2xhc3Blbi5pcGMudjEuVWlTZXR0aW5nQ2'
+    '9uZGl0aW9uUhJ2aXNpYmxlV2hlblNldHRpbmc=');
+
+@$core.Deprecated('Use uiCustomBlockDescriptor instead')
+const UiCustomBlock$json = {
+  '1': 'UiCustomBlock',
+  '2': [
+    {'1': 'id', '3': 1, '4': 1, '5': 9, '10': 'id'},
+    {'1': 'section', '3': 2, '4': 1, '5': 9, '10': 'section'},
+    {'1': 'order', '3': 3, '4': 1, '5': 5, '10': 'order'},
+    {
+      '1': 'visible_when_setting',
+      '3': 4,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.UiSettingCondition',
+      '10': 'visibleWhenSetting'
+    },
+  ],
+};
+
+/// Descriptor for `UiCustomBlock`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List uiCustomBlockDescriptor = $convert.base64Decode(
+    'Cg1VaUN1c3RvbUJsb2NrEg4KAmlkGAEgASgJUgJpZBIYCgdzZWN0aW9uGAIgASgJUgdzZWN0aW'
+    '9uEhQKBW9yZGVyGAMgASgFUgVvcmRlchJUChR2aXNpYmxlX3doZW5fc2V0dGluZxgEIAEoCzIi'
+    'LmdsYXNwZW4uaXBjLnYxLlVpU2V0dGluZ0NvbmRpdGlvblISdmlzaWJsZVdoZW5TZXR0aW5n');

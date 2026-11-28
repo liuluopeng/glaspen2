@@ -279,13 +279,17 @@ mod tests {
         }
         actual.sort();
         actual.dedup();
-        assert_eq!(actual, vec!["uiConfig"], "Windows 管道仍有未迁移 JSON 命令");
+        assert!(
+            actual.is_empty(),
+            "Windows 管道仍有未迁移 JSON 命令: {actual:?}"
+        );
         for token in [
             "PanelInput::GetSettings",
             "PanelInput::SetSetting",
             "PanelInput::ListPages",
             "PanelInput::PageOp",
             "PanelInput::GetBubbles",
+            "PanelInput::GetUiConfig",
         ] {
             assert!(src.contains(token), "Windows typed dispatch 缺 {token}");
         }
@@ -336,13 +340,14 @@ mod tests {
         }
         actual.sort();
         actual.dedup();
-        let expected = vec!["uiConfig".to_string()];
+        let expected: Vec<String> = vec![];
         assert_eq!(actual, expected, "Flutter 面板仍有未迁移 JSON 请求");
         for token in [
             "encodeGetSettingsRequest",
             "encodeSetSettingRequest",
             "encodePageOpRequest",
             "encodeGetBubblesRequest",
+            "encodeUiConfigRequest",
         ] {
             assert!(seg.contains(token), "Flutter typed bridge 缺 {token}");
         }

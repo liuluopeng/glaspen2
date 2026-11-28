@@ -60,6 +60,8 @@ enum Frame_Body {
   downloadUpdateRequest,
   downloadProgress,
   cancelDownloadRequest,
+  uiConfigRequest,
+  uiConfigResponse,
   error,
   notSet
 }
@@ -115,6 +117,8 @@ class Frame extends $pb.GeneratedMessage {
     DownloadUpdateRequest? downloadUpdateRequest,
     DownloadProgress? downloadProgress,
     CancelDownloadRequest? cancelDownloadRequest,
+    UiConfigRequest? uiConfigRequest,
+    UiConfigResponse? uiConfigResponse,
     Error? error,
   }) {
     final result = Frame._();
@@ -172,6 +176,8 @@ class Frame extends $pb.GeneratedMessage {
     if (downloadProgress != null) result.downloadProgress = downloadProgress;
     if (cancelDownloadRequest != null)
       result.cancelDownloadRequest = cancelDownloadRequest;
+    if (uiConfigRequest != null) result.uiConfigRequest = uiConfigRequest;
+    if (uiConfigResponse != null) result.uiConfigResponse = uiConfigResponse;
     if (error != null) result.error = error;
     return result;
   }
@@ -223,6 +229,8 @@ class Frame extends $pb.GeneratedMessage {
     70: Frame_Body.downloadUpdateRequest,
     71: Frame_Body.downloadProgress,
     72: Frame_Body.cancelDownloadRequest,
+    80: Frame_Body.uiConfigRequest,
+    81: Frame_Body.uiConfigResponse,
     99: Frame_Body.error,
     0: Frame_Body.notSet
   };
@@ -268,6 +276,8 @@ class Frame extends $pb.GeneratedMessage {
       70,
       71,
       72,
+      80,
+      81,
       99
     ])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
@@ -358,6 +368,10 @@ class Frame extends $pb.GeneratedMessage {
     ..aOM<CancelDownloadRequest>(
         72, _omitFieldNames ? '' : 'cancelDownloadRequest',
         subBuilder: CancelDownloadRequest.$_createMessage)
+    ..aOM<UiConfigRequest>(80, _omitFieldNames ? '' : 'uiConfigRequest',
+        subBuilder: UiConfigRequest.$_createMessage)
+    ..aOM<UiConfigResponse>(81, _omitFieldNames ? '' : 'uiConfigResponse',
+        subBuilder: UiConfigResponse.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
         subBuilder: Error.$_createMessage)
     ..hasRequiredFields = false;
@@ -419,6 +433,8 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(70)
   @$pb.TagNumber(71)
   @$pb.TagNumber(72)
+  @$pb.TagNumber(80)
+  @$pb.TagNumber(81)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(10)
@@ -458,6 +474,8 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(70)
   @$pb.TagNumber(71)
   @$pb.TagNumber(72)
+  @$pb.TagNumber(80)
+  @$pb.TagNumber(81)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
 
@@ -894,16 +912,38 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(72)
   CancelDownloadRequest ensureCancelDownloadRequest() => $_ensure(38);
 
+  @$pb.TagNumber(80)
+  UiConfigRequest get uiConfigRequest => $_getN(39);
+  @$pb.TagNumber(80)
+  set uiConfigRequest(UiConfigRequest value) => $_setField(80, value);
+  @$pb.TagNumber(80)
+  $core.bool hasUiConfigRequest() => $_has(39);
+  @$pb.TagNumber(80)
+  void clearUiConfigRequest() => $_clearField(80);
+  @$pb.TagNumber(80)
+  UiConfigRequest ensureUiConfigRequest() => $_ensure(39);
+
+  @$pb.TagNumber(81)
+  UiConfigResponse get uiConfigResponse => $_getN(40);
+  @$pb.TagNumber(81)
+  set uiConfigResponse(UiConfigResponse value) => $_setField(81, value);
+  @$pb.TagNumber(81)
+  $core.bool hasUiConfigResponse() => $_has(40);
+  @$pb.TagNumber(81)
+  void clearUiConfigResponse() => $_clearField(81);
+  @$pb.TagNumber(81)
+  UiConfigResponse ensureUiConfigResponse() => $_ensure(40);
+
   @$pb.TagNumber(99)
-  Error get error => $_getN(39);
+  Error get error => $_getN(41);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(39);
+  $core.bool hasError() => $_has(41);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(39);
+  Error ensureError() => $_ensure(41);
 }
 
 enum SettingValue_Value {
@@ -4741,6 +4781,1391 @@ class CancelDownloadRequest extends $pb.GeneratedMessage {
       $pb.GeneratedMessage.$_defaultFor<CancelDownloadRequest>(
           CancelDownloadRequest.$_createMessage);
   static CancelDownloadRequest? _defaultInstance;
+}
+
+class UiConfigRequest extends $pb.GeneratedMessage {
+  factory UiConfigRequest({
+    $core.int? panelProtocolVersion,
+  }) {
+    final result = UiConfigRequest._();
+    if (panelProtocolVersion != null)
+      result.panelProtocolVersion = panelProtocolVersion;
+    return result;
+  }
+
+  UiConfigRequest._();
+
+  factory UiConfigRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiConfigRequest()..mergeFromBuffer(data, registry);
+  factory UiConfigRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiConfigRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UiConfigRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: UiConfigRequest.$_createMessage)
+    ..aI(1, _omitFieldNames ? '' : 'panelProtocolVersion',
+        fieldType: $pb.PbFieldType.OU3)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiConfigRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiConfigRequest copyWith(void Function(UiConfigRequest) updates) =>
+      super.copyWith((message) => updates(message as UiConfigRequest))
+          as UiConfigRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use UiConfigRequest() / UiConfigRequest.new instead')
+  static UiConfigRequest create() => UiConfigRequest._();
+  static $pb.GeneratedMessage $_createMessage() => UiConfigRequest._();
+  @$core.override
+  UiConfigRequest createEmptyInstance() => UiConfigRequest._();
+  @$core.pragma('dart2js:noInline')
+  static UiConfigRequest getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<UiConfigRequest>(
+          UiConfigRequest.$_createMessage);
+  static UiConfigRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.int get panelProtocolVersion => $_getIZ(0);
+  @$pb.TagNumber(1)
+  set panelProtocolVersion($core.int value) => $_setUnsignedInt32(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasPanelProtocolVersion() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPanelProtocolVersion() => $_clearField(1);
+}
+
+class UiConfigResponse extends $pb.GeneratedMessage {
+  factory UiConfigResponse({
+    UiConfig? config,
+  }) {
+    final result = UiConfigResponse._();
+    if (config != null) result.config = config;
+    return result;
+  }
+
+  UiConfigResponse._();
+
+  factory UiConfigResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiConfigResponse()..mergeFromBuffer(data, registry);
+  factory UiConfigResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiConfigResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UiConfigResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: UiConfigResponse.$_createMessage)
+    ..aOM<UiConfig>(1, _omitFieldNames ? '' : 'config',
+        subBuilder: UiConfig.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiConfigResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiConfigResponse copyWith(void Function(UiConfigResponse) updates) =>
+      super.copyWith((message) => updates(message as UiConfigResponse))
+          as UiConfigResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use UiConfigResponse() / UiConfigResponse.new instead')
+  static UiConfigResponse create() => UiConfigResponse._();
+  static $pb.GeneratedMessage $_createMessage() => UiConfigResponse._();
+  @$core.override
+  UiConfigResponse createEmptyInstance() => UiConfigResponse._();
+  @$core.pragma('dart2js:noInline')
+  static UiConfigResponse getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<UiConfigResponse>(
+          UiConfigResponse.$_createMessage);
+  static UiConfigResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  UiConfig get config => $_getN(0);
+  @$pb.TagNumber(1)
+  set config(UiConfig value) => $_setField(1, value);
+  @$pb.TagNumber(1)
+  $core.bool hasConfig() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearConfig() => $_clearField(1);
+  @$pb.TagNumber(1)
+  UiConfig ensureConfig() => $_ensure(0);
+}
+
+class UiConfig extends $pb.GeneratedMessage {
+  factory UiConfig({
+    $core.String? platform,
+    $core.bool? isWindows,
+    $core.double? fontScale,
+    $core.String? chordSeparator,
+    $core.Iterable<$core.MapEntry<$core.String, $core.String>>? chordNames,
+    $core.String? modifierWord,
+    $core.Iterable<$core.MapEntry<$core.String, LocalizedText>>? messages,
+    $core.Iterable<$core.MapEntry<$core.String, $core.String>>? defaults,
+    $core.Iterable<$core.MapEntry<$core.String, $core.String>>? holdHotkeys,
+    $core.Iterable<$core.String>? reserved,
+    $core.Iterable<$core.String>? forceBound,
+    $core.Iterable<$core.String>? actionOrder,
+    UiModifierRow? modifierRow,
+    $core.Iterable<$core.MapEntry<$core.String, $core.bool>>? features,
+    $core.Iterable<UiSettingSpec>? settings,
+    $core.Iterable<UiFormSection>? settingsSections,
+    $core.Iterable<UiCustomBlock>? settingsBlocks,
+    $core.int? protocolVersion,
+  }) {
+    final result = UiConfig._();
+    if (platform != null) result.platform = platform;
+    if (isWindows != null) result.isWindows = isWindows;
+    if (fontScale != null) result.fontScale = fontScale;
+    if (chordSeparator != null) result.chordSeparator = chordSeparator;
+    if (chordNames != null) result.chordNames.addEntries(chordNames);
+    if (modifierWord != null) result.modifierWord = modifierWord;
+    if (messages != null) result.messages.addEntries(messages);
+    if (defaults != null) result.defaults.addEntries(defaults);
+    if (holdHotkeys != null) result.holdHotkeys.addEntries(holdHotkeys);
+    if (reserved != null) result.reserved.addAll(reserved);
+    if (forceBound != null) result.forceBound.addAll(forceBound);
+    if (actionOrder != null) result.actionOrder.addAll(actionOrder);
+    if (modifierRow != null) result.modifierRow = modifierRow;
+    if (features != null) result.features.addEntries(features);
+    if (settings != null) result.settings.addAll(settings);
+    if (settingsSections != null)
+      result.settingsSections.addAll(settingsSections);
+    if (settingsBlocks != null) result.settingsBlocks.addAll(settingsBlocks);
+    if (protocolVersion != null) result.protocolVersion = protocolVersion;
+    return result;
+  }
+
+  UiConfig._();
+
+  factory UiConfig.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiConfig()..mergeFromBuffer(data, registry);
+  factory UiConfig.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiConfig()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UiConfig',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: UiConfig.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'platform')
+    ..aOB(2, _omitFieldNames ? '' : 'isWindows')
+    ..aD(3, _omitFieldNames ? '' : 'fontScale')
+    ..aOS(4, _omitFieldNames ? '' : 'chordSeparator')
+    ..m<$core.String, $core.String>(5, _omitFieldNames ? '' : 'chordNames',
+        entryClassName: 'UiConfig.ChordNamesEntry',
+        keyFieldType: $pb.PbFieldType.OS,
+        valueFieldType: $pb.PbFieldType.OS,
+        packageName: const $pb.PackageName('glaspen.ipc.v1'))
+    ..aOS(6, _omitFieldNames ? '' : 'modifierWord')
+    ..m<$core.String, LocalizedText>(7, _omitFieldNames ? '' : 'messages',
+        entryClassName: 'UiConfig.MessagesEntry',
+        keyFieldType: $pb.PbFieldType.OS,
+        valueFieldType: $pb.PbFieldType.OM,
+        valueCreator: LocalizedText.$_createMessage,
+        valueDefaultOrMaker: LocalizedText.getDefault,
+        packageName: const $pb.PackageName('glaspen.ipc.v1'))
+    ..m<$core.String, $core.String>(8, _omitFieldNames ? '' : 'defaults',
+        entryClassName: 'UiConfig.DefaultsEntry',
+        keyFieldType: $pb.PbFieldType.OS,
+        valueFieldType: $pb.PbFieldType.OS,
+        packageName: const $pb.PackageName('glaspen.ipc.v1'))
+    ..m<$core.String, $core.String>(9, _omitFieldNames ? '' : 'holdHotkeys',
+        entryClassName: 'UiConfig.HoldHotkeysEntry',
+        keyFieldType: $pb.PbFieldType.OS,
+        valueFieldType: $pb.PbFieldType.OS,
+        packageName: const $pb.PackageName('glaspen.ipc.v1'))
+    ..pPS(10, _omitFieldNames ? '' : 'reserved')
+    ..pPS(11, _omitFieldNames ? '' : 'forceBound')
+    ..pPS(12, _omitFieldNames ? '' : 'actionOrder')
+    ..aOM<UiModifierRow>(13, _omitFieldNames ? '' : 'modifierRow',
+        subBuilder: UiModifierRow.$_createMessage)
+    ..m<$core.String, $core.bool>(14, _omitFieldNames ? '' : 'features',
+        entryClassName: 'UiConfig.FeaturesEntry',
+        keyFieldType: $pb.PbFieldType.OS,
+        valueFieldType: $pb.PbFieldType.OB,
+        packageName: const $pb.PackageName('glaspen.ipc.v1'))
+    ..pPM<UiSettingSpec>(15, _omitFieldNames ? '' : 'settings',
+        subBuilder: UiSettingSpec.$_createMessage)
+    ..pPM<UiFormSection>(16, _omitFieldNames ? '' : 'settingsSections',
+        subBuilder: UiFormSection.$_createMessage)
+    ..pPM<UiCustomBlock>(17, _omitFieldNames ? '' : 'settingsBlocks',
+        subBuilder: UiCustomBlock.$_createMessage)
+    ..aI(18, _omitFieldNames ? '' : 'protocolVersion',
+        fieldType: $pb.PbFieldType.OU3)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiConfig clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiConfig copyWith(void Function(UiConfig) updates) =>
+      super.copyWith((message) => updates(message as UiConfig)) as UiConfig;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use UiConfig() / UiConfig.new instead')
+  static UiConfig create() => UiConfig._();
+  static $pb.GeneratedMessage $_createMessage() => UiConfig._();
+  @$core.override
+  UiConfig createEmptyInstance() => UiConfig._();
+  @$core.pragma('dart2js:noInline')
+  static UiConfig getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<UiConfig>(UiConfig.$_createMessage);
+  static UiConfig? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get platform => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set platform($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasPlatform() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPlatform() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.bool get isWindows => $_getBF(1);
+  @$pb.TagNumber(2)
+  set isWindows($core.bool value) => $_setBool(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasIsWindows() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearIsWindows() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.double get fontScale => $_getN(2);
+  @$pb.TagNumber(3)
+  set fontScale($core.double value) => $_setDouble(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasFontScale() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearFontScale() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get chordSeparator => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set chordSeparator($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasChordSeparator() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearChordSeparator() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $pb.PbMap<$core.String, $core.String> get chordNames => $_getMap(4);
+
+  @$pb.TagNumber(6)
+  $core.String get modifierWord => $_getSZ(5);
+  @$pb.TagNumber(6)
+  set modifierWord($core.String value) => $_setString(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasModifierWord() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearModifierWord() => $_clearField(6);
+
+  @$pb.TagNumber(7)
+  $pb.PbMap<$core.String, LocalizedText> get messages => $_getMap(6);
+
+  @$pb.TagNumber(8)
+  $pb.PbMap<$core.String, $core.String> get defaults => $_getMap(7);
+
+  @$pb.TagNumber(9)
+  $pb.PbMap<$core.String, $core.String> get holdHotkeys => $_getMap(8);
+
+  @$pb.TagNumber(10)
+  $pb.PbList<$core.String> get reserved => $_getList(9);
+
+  @$pb.TagNumber(11)
+  $pb.PbList<$core.String> get forceBound => $_getList(10);
+
+  @$pb.TagNumber(12)
+  $pb.PbList<$core.String> get actionOrder => $_getList(11);
+
+  @$pb.TagNumber(13)
+  UiModifierRow get modifierRow => $_getN(12);
+  @$pb.TagNumber(13)
+  set modifierRow(UiModifierRow value) => $_setField(13, value);
+  @$pb.TagNumber(13)
+  $core.bool hasModifierRow() => $_has(12);
+  @$pb.TagNumber(13)
+  void clearModifierRow() => $_clearField(13);
+  @$pb.TagNumber(13)
+  UiModifierRow ensureModifierRow() => $_ensure(12);
+
+  @$pb.TagNumber(14)
+  $pb.PbMap<$core.String, $core.bool> get features => $_getMap(13);
+
+  @$pb.TagNumber(15)
+  $pb.PbList<UiSettingSpec> get settings => $_getList(14);
+
+  @$pb.TagNumber(16)
+  $pb.PbList<UiFormSection> get settingsSections => $_getList(15);
+
+  @$pb.TagNumber(17)
+  $pb.PbList<UiCustomBlock> get settingsBlocks => $_getList(16);
+
+  @$pb.TagNumber(18)
+  $core.int get protocolVersion => $_getIZ(17);
+  @$pb.TagNumber(18)
+  set protocolVersion($core.int value) => $_setUnsignedInt32(17, value);
+  @$pb.TagNumber(18)
+  $core.bool hasProtocolVersion() => $_has(17);
+  @$pb.TagNumber(18)
+  void clearProtocolVersion() => $_clearField(18);
+}
+
+class LocalizedText extends $pb.GeneratedMessage {
+  factory LocalizedText({
+    $core.String? zh,
+    $core.String? en,
+  }) {
+    final result = LocalizedText._();
+    if (zh != null) result.zh = zh;
+    if (en != null) result.en = en;
+    return result;
+  }
+
+  LocalizedText._();
+
+  factory LocalizedText.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      LocalizedText()..mergeFromBuffer(data, registry);
+  factory LocalizedText.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      LocalizedText()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'LocalizedText',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: LocalizedText.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'zh')
+    ..aOS(2, _omitFieldNames ? '' : 'en')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  LocalizedText clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  LocalizedText copyWith(void Function(LocalizedText) updates) =>
+      super.copyWith((message) => updates(message as LocalizedText))
+          as LocalizedText;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use LocalizedText() / LocalizedText.new instead')
+  static LocalizedText create() => LocalizedText._();
+  static $pb.GeneratedMessage $_createMessage() => LocalizedText._();
+  @$core.override
+  LocalizedText createEmptyInstance() => LocalizedText._();
+  @$core.pragma('dart2js:noInline')
+  static LocalizedText getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<LocalizedText>(
+          LocalizedText.$_createMessage);
+  static LocalizedText? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get zh => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set zh($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasZh() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearZh() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get en => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set en($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasEn() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearEn() => $_clearField(2);
+}
+
+class UiKeyCap extends $pb.GeneratedMessage {
+  factory UiKeyCap({
+    $core.String? name,
+    $core.String? label,
+    $core.double? width,
+    $core.bool? modifier,
+  }) {
+    final result = UiKeyCap._();
+    if (name != null) result.name = name;
+    if (label != null) result.label = label;
+    if (width != null) result.width = width;
+    if (modifier != null) result.modifier = modifier;
+    return result;
+  }
+
+  UiKeyCap._();
+
+  factory UiKeyCap.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiKeyCap()..mergeFromBuffer(data, registry);
+  factory UiKeyCap.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiKeyCap()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UiKeyCap',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: UiKeyCap.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'name')
+    ..aOS(2, _omitFieldNames ? '' : 'label')
+    ..aD(3, _omitFieldNames ? '' : 'width')
+    ..aOB(4, _omitFieldNames ? '' : 'modifier')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiKeyCap clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiKeyCap copyWith(void Function(UiKeyCap) updates) =>
+      super.copyWith((message) => updates(message as UiKeyCap)) as UiKeyCap;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use UiKeyCap() / UiKeyCap.new instead')
+  static UiKeyCap create() => UiKeyCap._();
+  static $pb.GeneratedMessage $_createMessage() => UiKeyCap._();
+  @$core.override
+  UiKeyCap createEmptyInstance() => UiKeyCap._();
+  @$core.pragma('dart2js:noInline')
+  static UiKeyCap getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<UiKeyCap>(UiKeyCap.$_createMessage);
+  static UiKeyCap? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get name => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set name($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasName() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearName() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get label => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set label($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasLabel() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearLabel() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.double get width => $_getN(2);
+  @$pb.TagNumber(3)
+  set width($core.double value) => $_setDouble(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasWidth() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearWidth() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.bool get modifier => $_getBF(3);
+  @$pb.TagNumber(4)
+  set modifier($core.bool value) => $_setBool(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasModifier() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearModifier() => $_clearField(4);
+}
+
+class UiModifierRow extends $pb.GeneratedMessage {
+  factory UiModifierRow({
+    $core.Iterable<UiKeyCap>? left,
+    $core.Iterable<UiKeyCap>? space,
+    $core.Iterable<UiKeyCap>? right,
+  }) {
+    final result = UiModifierRow._();
+    if (left != null) result.left.addAll(left);
+    if (space != null) result.space.addAll(space);
+    if (right != null) result.right.addAll(right);
+    return result;
+  }
+
+  UiModifierRow._();
+
+  factory UiModifierRow.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiModifierRow()..mergeFromBuffer(data, registry);
+  factory UiModifierRow.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiModifierRow()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UiModifierRow',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: UiModifierRow.$_createMessage)
+    ..pPM<UiKeyCap>(1, _omitFieldNames ? '' : 'left',
+        subBuilder: UiKeyCap.$_createMessage)
+    ..pPM<UiKeyCap>(2, _omitFieldNames ? '' : 'space',
+        subBuilder: UiKeyCap.$_createMessage)
+    ..pPM<UiKeyCap>(3, _omitFieldNames ? '' : 'right',
+        subBuilder: UiKeyCap.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiModifierRow clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiModifierRow copyWith(void Function(UiModifierRow) updates) =>
+      super.copyWith((message) => updates(message as UiModifierRow))
+          as UiModifierRow;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use UiModifierRow() / UiModifierRow.new instead')
+  static UiModifierRow create() => UiModifierRow._();
+  static $pb.GeneratedMessage $_createMessage() => UiModifierRow._();
+  @$core.override
+  UiModifierRow createEmptyInstance() => UiModifierRow._();
+  @$core.pragma('dart2js:noInline')
+  static UiModifierRow getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<UiModifierRow>(
+          UiModifierRow.$_createMessage);
+  static UiModifierRow? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $pb.PbList<UiKeyCap> get left => $_getList(0);
+
+  @$pb.TagNumber(2)
+  $pb.PbList<UiKeyCap> get space => $_getList(1);
+
+  @$pb.TagNumber(3)
+  $pb.PbList<UiKeyCap> get right => $_getList(2);
+}
+
+class UiSettingSpec extends $pb.GeneratedMessage {
+  factory UiSettingSpec({
+    $core.String? key,
+    $core.String? dbKey,
+    $core.String? kind,
+    $core.bool? mac,
+    $core.bool? win,
+    UiFormMeta? form,
+  }) {
+    final result = UiSettingSpec._();
+    if (key != null) result.key = key;
+    if (dbKey != null) result.dbKey = dbKey;
+    if (kind != null) result.kind = kind;
+    if (mac != null) result.mac = mac;
+    if (win != null) result.win = win;
+    if (form != null) result.form = form;
+    return result;
+  }
+
+  UiSettingSpec._();
+
+  factory UiSettingSpec.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiSettingSpec()..mergeFromBuffer(data, registry);
+  factory UiSettingSpec.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiSettingSpec()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UiSettingSpec',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: UiSettingSpec.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'key')
+    ..aOS(2, _omitFieldNames ? '' : 'dbKey')
+    ..aOS(3, _omitFieldNames ? '' : 'kind')
+    ..aOB(4, _omitFieldNames ? '' : 'mac')
+    ..aOB(5, _omitFieldNames ? '' : 'win')
+    ..aOM<UiFormMeta>(6, _omitFieldNames ? '' : 'form',
+        subBuilder: UiFormMeta.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiSettingSpec clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiSettingSpec copyWith(void Function(UiSettingSpec) updates) =>
+      super.copyWith((message) => updates(message as UiSettingSpec))
+          as UiSettingSpec;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use UiSettingSpec() / UiSettingSpec.new instead')
+  static UiSettingSpec create() => UiSettingSpec._();
+  static $pb.GeneratedMessage $_createMessage() => UiSettingSpec._();
+  @$core.override
+  UiSettingSpec createEmptyInstance() => UiSettingSpec._();
+  @$core.pragma('dart2js:noInline')
+  static UiSettingSpec getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<UiSettingSpec>(
+          UiSettingSpec.$_createMessage);
+  static UiSettingSpec? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get key => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set key($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasKey() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearKey() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get dbKey => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set dbKey($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasDbKey() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearDbKey() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.String get kind => $_getSZ(2);
+  @$pb.TagNumber(3)
+  set kind($core.String value) => $_setString(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasKind() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearKind() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.bool get mac => $_getBF(3);
+  @$pb.TagNumber(4)
+  set mac($core.bool value) => $_setBool(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasMac() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearMac() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.bool get win => $_getBF(4);
+  @$pb.TagNumber(5)
+  set win($core.bool value) => $_setBool(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasWin() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearWin() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  UiFormMeta get form => $_getN(5);
+  @$pb.TagNumber(6)
+  set form(UiFormMeta value) => $_setField(6, value);
+  @$pb.TagNumber(6)
+  $core.bool hasForm() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearForm() => $_clearField(6);
+  @$pb.TagNumber(6)
+  UiFormMeta ensureForm() => $_ensure(5);
+}
+
+class UiFormMeta extends $pb.GeneratedMessage {
+  factory UiFormMeta({
+    $core.String? key,
+    $core.String? section,
+    $core.int? order,
+    $core.String? labelId,
+    $core.String? descriptionId,
+    $core.String? hintId,
+    $core.String? control,
+    $core.String? layout,
+    $core.bool? showLabel,
+    $core.bool? indented,
+    $core.bool? dividerBefore,
+    $core.String? unit,
+    UiFormRange? range,
+    $core.Iterable<UiFormOption>? options,
+    $core.String? visibleWhenFeature,
+    UiSettingCondition? visibleWhenSetting,
+    UiSettingCondition? enabledWhenSetting,
+    $core.bool? advanced,
+  }) {
+    final result = UiFormMeta._();
+    if (key != null) result.key = key;
+    if (section != null) result.section = section;
+    if (order != null) result.order = order;
+    if (labelId != null) result.labelId = labelId;
+    if (descriptionId != null) result.descriptionId = descriptionId;
+    if (hintId != null) result.hintId = hintId;
+    if (control != null) result.control = control;
+    if (layout != null) result.layout = layout;
+    if (showLabel != null) result.showLabel = showLabel;
+    if (indented != null) result.indented = indented;
+    if (dividerBefore != null) result.dividerBefore = dividerBefore;
+    if (unit != null) result.unit = unit;
+    if (range != null) result.range = range;
+    if (options != null) result.options.addAll(options);
+    if (visibleWhenFeature != null)
+      result.visibleWhenFeature = visibleWhenFeature;
+    if (visibleWhenSetting != null)
+      result.visibleWhenSetting = visibleWhenSetting;
+    if (enabledWhenSetting != null)
+      result.enabledWhenSetting = enabledWhenSetting;
+    if (advanced != null) result.advanced = advanced;
+    return result;
+  }
+
+  UiFormMeta._();
+
+  factory UiFormMeta.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiFormMeta()..mergeFromBuffer(data, registry);
+  factory UiFormMeta.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiFormMeta()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UiFormMeta',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: UiFormMeta.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'key')
+    ..aOS(2, _omitFieldNames ? '' : 'section')
+    ..aI(3, _omitFieldNames ? '' : 'order')
+    ..aOS(4, _omitFieldNames ? '' : 'labelId')
+    ..aOS(5, _omitFieldNames ? '' : 'descriptionId')
+    ..aOS(6, _omitFieldNames ? '' : 'hintId')
+    ..aOS(7, _omitFieldNames ? '' : 'control')
+    ..aOS(8, _omitFieldNames ? '' : 'layout')
+    ..aOB(9, _omitFieldNames ? '' : 'showLabel')
+    ..aOB(10, _omitFieldNames ? '' : 'indented')
+    ..aOB(11, _omitFieldNames ? '' : 'dividerBefore')
+    ..aOS(12, _omitFieldNames ? '' : 'unit')
+    ..aOM<UiFormRange>(13, _omitFieldNames ? '' : 'range',
+        subBuilder: UiFormRange.$_createMessage)
+    ..pPM<UiFormOption>(14, _omitFieldNames ? '' : 'options',
+        subBuilder: UiFormOption.$_createMessage)
+    ..aOS(15, _omitFieldNames ? '' : 'visibleWhenFeature')
+    ..aOM<UiSettingCondition>(16, _omitFieldNames ? '' : 'visibleWhenSetting',
+        subBuilder: UiSettingCondition.$_createMessage)
+    ..aOM<UiSettingCondition>(17, _omitFieldNames ? '' : 'enabledWhenSetting',
+        subBuilder: UiSettingCondition.$_createMessage)
+    ..aOB(18, _omitFieldNames ? '' : 'advanced')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiFormMeta clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiFormMeta copyWith(void Function(UiFormMeta) updates) =>
+      super.copyWith((message) => updates(message as UiFormMeta)) as UiFormMeta;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use UiFormMeta() / UiFormMeta.new instead')
+  static UiFormMeta create() => UiFormMeta._();
+  static $pb.GeneratedMessage $_createMessage() => UiFormMeta._();
+  @$core.override
+  UiFormMeta createEmptyInstance() => UiFormMeta._();
+  @$core.pragma('dart2js:noInline')
+  static UiFormMeta getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<UiFormMeta>(UiFormMeta.$_createMessage);
+  static UiFormMeta? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get key => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set key($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasKey() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearKey() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get section => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set section($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasSection() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearSection() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.int get order => $_getIZ(2);
+  @$pb.TagNumber(3)
+  set order($core.int value) => $_setSignedInt32(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasOrder() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearOrder() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get labelId => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set labelId($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasLabelId() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearLabelId() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.String get descriptionId => $_getSZ(4);
+  @$pb.TagNumber(5)
+  set descriptionId($core.String value) => $_setString(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasDescriptionId() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearDescriptionId() => $_clearField(5);
+
+  @$pb.TagNumber(6)
+  $core.String get hintId => $_getSZ(5);
+  @$pb.TagNumber(6)
+  set hintId($core.String value) => $_setString(5, value);
+  @$pb.TagNumber(6)
+  $core.bool hasHintId() => $_has(5);
+  @$pb.TagNumber(6)
+  void clearHintId() => $_clearField(6);
+
+  @$pb.TagNumber(7)
+  $core.String get control => $_getSZ(6);
+  @$pb.TagNumber(7)
+  set control($core.String value) => $_setString(6, value);
+  @$pb.TagNumber(7)
+  $core.bool hasControl() => $_has(6);
+  @$pb.TagNumber(7)
+  void clearControl() => $_clearField(7);
+
+  @$pb.TagNumber(8)
+  $core.String get layout => $_getSZ(7);
+  @$pb.TagNumber(8)
+  set layout($core.String value) => $_setString(7, value);
+  @$pb.TagNumber(8)
+  $core.bool hasLayout() => $_has(7);
+  @$pb.TagNumber(8)
+  void clearLayout() => $_clearField(8);
+
+  @$pb.TagNumber(9)
+  $core.bool get showLabel => $_getBF(8);
+  @$pb.TagNumber(9)
+  set showLabel($core.bool value) => $_setBool(8, value);
+  @$pb.TagNumber(9)
+  $core.bool hasShowLabel() => $_has(8);
+  @$pb.TagNumber(9)
+  void clearShowLabel() => $_clearField(9);
+
+  @$pb.TagNumber(10)
+  $core.bool get indented => $_getBF(9);
+  @$pb.TagNumber(10)
+  set indented($core.bool value) => $_setBool(9, value);
+  @$pb.TagNumber(10)
+  $core.bool hasIndented() => $_has(9);
+  @$pb.TagNumber(10)
+  void clearIndented() => $_clearField(10);
+
+  @$pb.TagNumber(11)
+  $core.bool get dividerBefore => $_getBF(10);
+  @$pb.TagNumber(11)
+  set dividerBefore($core.bool value) => $_setBool(10, value);
+  @$pb.TagNumber(11)
+  $core.bool hasDividerBefore() => $_has(10);
+  @$pb.TagNumber(11)
+  void clearDividerBefore() => $_clearField(11);
+
+  @$pb.TagNumber(12)
+  $core.String get unit => $_getSZ(11);
+  @$pb.TagNumber(12)
+  set unit($core.String value) => $_setString(11, value);
+  @$pb.TagNumber(12)
+  $core.bool hasUnit() => $_has(11);
+  @$pb.TagNumber(12)
+  void clearUnit() => $_clearField(12);
+
+  @$pb.TagNumber(13)
+  UiFormRange get range => $_getN(12);
+  @$pb.TagNumber(13)
+  set range(UiFormRange value) => $_setField(13, value);
+  @$pb.TagNumber(13)
+  $core.bool hasRange() => $_has(12);
+  @$pb.TagNumber(13)
+  void clearRange() => $_clearField(13);
+  @$pb.TagNumber(13)
+  UiFormRange ensureRange() => $_ensure(12);
+
+  @$pb.TagNumber(14)
+  $pb.PbList<UiFormOption> get options => $_getList(13);
+
+  @$pb.TagNumber(15)
+  $core.String get visibleWhenFeature => $_getSZ(14);
+  @$pb.TagNumber(15)
+  set visibleWhenFeature($core.String value) => $_setString(14, value);
+  @$pb.TagNumber(15)
+  $core.bool hasVisibleWhenFeature() => $_has(14);
+  @$pb.TagNumber(15)
+  void clearVisibleWhenFeature() => $_clearField(15);
+
+  @$pb.TagNumber(16)
+  UiSettingCondition get visibleWhenSetting => $_getN(15);
+  @$pb.TagNumber(16)
+  set visibleWhenSetting(UiSettingCondition value) => $_setField(16, value);
+  @$pb.TagNumber(16)
+  $core.bool hasVisibleWhenSetting() => $_has(15);
+  @$pb.TagNumber(16)
+  void clearVisibleWhenSetting() => $_clearField(16);
+  @$pb.TagNumber(16)
+  UiSettingCondition ensureVisibleWhenSetting() => $_ensure(15);
+
+  @$pb.TagNumber(17)
+  UiSettingCondition get enabledWhenSetting => $_getN(16);
+  @$pb.TagNumber(17)
+  set enabledWhenSetting(UiSettingCondition value) => $_setField(17, value);
+  @$pb.TagNumber(17)
+  $core.bool hasEnabledWhenSetting() => $_has(16);
+  @$pb.TagNumber(17)
+  void clearEnabledWhenSetting() => $_clearField(17);
+  @$pb.TagNumber(17)
+  UiSettingCondition ensureEnabledWhenSetting() => $_ensure(16);
+
+  @$pb.TagNumber(18)
+  $core.bool get advanced => $_getBF(17);
+  @$pb.TagNumber(18)
+  set advanced($core.bool value) => $_setBool(17, value);
+  @$pb.TagNumber(18)
+  $core.bool hasAdvanced() => $_has(17);
+  @$pb.TagNumber(18)
+  void clearAdvanced() => $_clearField(18);
+}
+
+class UiFormRange extends $pb.GeneratedMessage {
+  factory UiFormRange({
+    $core.double? min,
+    $core.double? max,
+    $core.double? step,
+  }) {
+    final result = UiFormRange._();
+    if (min != null) result.min = min;
+    if (max != null) result.max = max;
+    if (step != null) result.step = step;
+    return result;
+  }
+
+  UiFormRange._();
+
+  factory UiFormRange.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiFormRange()..mergeFromBuffer(data, registry);
+  factory UiFormRange.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiFormRange()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UiFormRange',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: UiFormRange.$_createMessage)
+    ..aD(1, _omitFieldNames ? '' : 'min')
+    ..aD(2, _omitFieldNames ? '' : 'max')
+    ..aD(3, _omitFieldNames ? '' : 'step')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiFormRange clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiFormRange copyWith(void Function(UiFormRange) updates) =>
+      super.copyWith((message) => updates(message as UiFormRange))
+          as UiFormRange;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use UiFormRange() / UiFormRange.new instead')
+  static UiFormRange create() => UiFormRange._();
+  static $pb.GeneratedMessage $_createMessage() => UiFormRange._();
+  @$core.override
+  UiFormRange createEmptyInstance() => UiFormRange._();
+  @$core.pragma('dart2js:noInline')
+  static UiFormRange getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<UiFormRange>(
+          UiFormRange.$_createMessage);
+  static UiFormRange? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.double get min => $_getN(0);
+  @$pb.TagNumber(1)
+  set min($core.double value) => $_setDouble(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasMin() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearMin() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.double get max => $_getN(1);
+  @$pb.TagNumber(2)
+  set max($core.double value) => $_setDouble(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasMax() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearMax() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.double get step => $_getN(2);
+  @$pb.TagNumber(3)
+  set step($core.double value) => $_setDouble(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasStep() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearStep() => $_clearField(3);
+}
+
+class UiFormOption extends $pb.GeneratedMessage {
+  factory UiFormOption({
+    SettingValue? value,
+    $core.String? labelId,
+  }) {
+    final result = UiFormOption._();
+    if (value != null) result.value = value;
+    if (labelId != null) result.labelId = labelId;
+    return result;
+  }
+
+  UiFormOption._();
+
+  factory UiFormOption.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiFormOption()..mergeFromBuffer(data, registry);
+  factory UiFormOption.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiFormOption()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UiFormOption',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: UiFormOption.$_createMessage)
+    ..aOM<SettingValue>(1, _omitFieldNames ? '' : 'value',
+        subBuilder: SettingValue.$_createMessage)
+    ..aOS(2, _omitFieldNames ? '' : 'labelId')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiFormOption clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiFormOption copyWith(void Function(UiFormOption) updates) =>
+      super.copyWith((message) => updates(message as UiFormOption))
+          as UiFormOption;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use UiFormOption() / UiFormOption.new instead')
+  static UiFormOption create() => UiFormOption._();
+  static $pb.GeneratedMessage $_createMessage() => UiFormOption._();
+  @$core.override
+  UiFormOption createEmptyInstance() => UiFormOption._();
+  @$core.pragma('dart2js:noInline')
+  static UiFormOption getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<UiFormOption>(
+          UiFormOption.$_createMessage);
+  static UiFormOption? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  SettingValue get value => $_getN(0);
+  @$pb.TagNumber(1)
+  set value(SettingValue value) => $_setField(1, value);
+  @$pb.TagNumber(1)
+  $core.bool hasValue() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearValue() => $_clearField(1);
+  @$pb.TagNumber(1)
+  SettingValue ensureValue() => $_ensure(0);
+
+  @$pb.TagNumber(2)
+  $core.String get labelId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set labelId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasLabelId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearLabelId() => $_clearField(2);
+}
+
+class UiSettingCondition extends $pb.GeneratedMessage {
+  factory UiSettingCondition({
+    $core.String? key,
+    SettingValue? equals,
+  }) {
+    final result = UiSettingCondition._();
+    if (key != null) result.key = key;
+    if (equals != null) result.equals = equals;
+    return result;
+  }
+
+  UiSettingCondition._();
+
+  factory UiSettingCondition.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiSettingCondition()..mergeFromBuffer(data, registry);
+  factory UiSettingCondition.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiSettingCondition()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UiSettingCondition',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: UiSettingCondition.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'key')
+    ..aOM<SettingValue>(2, _omitFieldNames ? '' : 'equals',
+        subBuilder: SettingValue.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiSettingCondition clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiSettingCondition copyWith(void Function(UiSettingCondition) updates) =>
+      super.copyWith((message) => updates(message as UiSettingCondition))
+          as UiSettingCondition;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use UiSettingCondition() / UiSettingCondition.new instead')
+  static UiSettingCondition create() => UiSettingCondition._();
+  static $pb.GeneratedMessage $_createMessage() => UiSettingCondition._();
+  @$core.override
+  UiSettingCondition createEmptyInstance() => UiSettingCondition._();
+  @$core.pragma('dart2js:noInline')
+  static UiSettingCondition getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<UiSettingCondition>(
+          UiSettingCondition.$_createMessage);
+  static UiSettingCondition? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get key => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set key($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasKey() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearKey() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  SettingValue get equals => $_getN(1);
+  @$pb.TagNumber(2)
+  set equals(SettingValue value) => $_setField(2, value);
+  @$pb.TagNumber(2)
+  $core.bool hasEquals() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearEquals() => $_clearField(2);
+  @$pb.TagNumber(2)
+  SettingValue ensureEquals() => $_ensure(1);
+}
+
+class UiFormSection extends $pb.GeneratedMessage {
+  factory UiFormSection({
+    $core.String? id,
+    $core.String? labelId,
+    $core.bool? advanced,
+    $core.int? order,
+    UiSettingCondition? visibleWhenSetting,
+  }) {
+    final result = UiFormSection._();
+    if (id != null) result.id = id;
+    if (labelId != null) result.labelId = labelId;
+    if (advanced != null) result.advanced = advanced;
+    if (order != null) result.order = order;
+    if (visibleWhenSetting != null)
+      result.visibleWhenSetting = visibleWhenSetting;
+    return result;
+  }
+
+  UiFormSection._();
+
+  factory UiFormSection.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiFormSection()..mergeFromBuffer(data, registry);
+  factory UiFormSection.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiFormSection()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UiFormSection',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: UiFormSection.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'id')
+    ..aOS(2, _omitFieldNames ? '' : 'labelId')
+    ..aOB(3, _omitFieldNames ? '' : 'advanced')
+    ..aI(4, _omitFieldNames ? '' : 'order')
+    ..aOM<UiSettingCondition>(5, _omitFieldNames ? '' : 'visibleWhenSetting',
+        subBuilder: UiSettingCondition.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiFormSection clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiFormSection copyWith(void Function(UiFormSection) updates) =>
+      super.copyWith((message) => updates(message as UiFormSection))
+          as UiFormSection;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use UiFormSection() / UiFormSection.new instead')
+  static UiFormSection create() => UiFormSection._();
+  static $pb.GeneratedMessage $_createMessage() => UiFormSection._();
+  @$core.override
+  UiFormSection createEmptyInstance() => UiFormSection._();
+  @$core.pragma('dart2js:noInline')
+  static UiFormSection getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<UiFormSection>(
+          UiFormSection.$_createMessage);
+  static UiFormSection? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get id => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set id($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get labelId => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set labelId($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasLabelId() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearLabelId() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.bool get advanced => $_getBF(2);
+  @$pb.TagNumber(3)
+  set advanced($core.bool value) => $_setBool(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasAdvanced() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearAdvanced() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.int get order => $_getIZ(3);
+  @$pb.TagNumber(4)
+  set order($core.int value) => $_setSignedInt32(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasOrder() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearOrder() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  UiSettingCondition get visibleWhenSetting => $_getN(4);
+  @$pb.TagNumber(5)
+  set visibleWhenSetting(UiSettingCondition value) => $_setField(5, value);
+  @$pb.TagNumber(5)
+  $core.bool hasVisibleWhenSetting() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearVisibleWhenSetting() => $_clearField(5);
+  @$pb.TagNumber(5)
+  UiSettingCondition ensureVisibleWhenSetting() => $_ensure(4);
+}
+
+class UiCustomBlock extends $pb.GeneratedMessage {
+  factory UiCustomBlock({
+    $core.String? id,
+    $core.String? section,
+    $core.int? order,
+    UiSettingCondition? visibleWhenSetting,
+  }) {
+    final result = UiCustomBlock._();
+    if (id != null) result.id = id;
+    if (section != null) result.section = section;
+    if (order != null) result.order = order;
+    if (visibleWhenSetting != null)
+      result.visibleWhenSetting = visibleWhenSetting;
+    return result;
+  }
+
+  UiCustomBlock._();
+
+  factory UiCustomBlock.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiCustomBlock()..mergeFromBuffer(data, registry);
+  factory UiCustomBlock.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      UiCustomBlock()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'UiCustomBlock',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: UiCustomBlock.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'id')
+    ..aOS(2, _omitFieldNames ? '' : 'section')
+    ..aI(3, _omitFieldNames ? '' : 'order')
+    ..aOM<UiSettingCondition>(4, _omitFieldNames ? '' : 'visibleWhenSetting',
+        subBuilder: UiSettingCondition.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiCustomBlock clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  UiCustomBlock copyWith(void Function(UiCustomBlock) updates) =>
+      super.copyWith((message) => updates(message as UiCustomBlock))
+          as UiCustomBlock;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use UiCustomBlock() / UiCustomBlock.new instead')
+  static UiCustomBlock create() => UiCustomBlock._();
+  static $pb.GeneratedMessage $_createMessage() => UiCustomBlock._();
+  @$core.override
+  UiCustomBlock createEmptyInstance() => UiCustomBlock._();
+  @$core.pragma('dart2js:noInline')
+  static UiCustomBlock getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<UiCustomBlock>(
+          UiCustomBlock.$_createMessage);
+  static UiCustomBlock? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get id => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set id($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.String get section => $_getSZ(1);
+  @$pb.TagNumber(2)
+  set section($core.String value) => $_setString(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasSection() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearSection() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.int get order => $_getIZ(2);
+  @$pb.TagNumber(3)
+  set order($core.int value) => $_setSignedInt32(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasOrder() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearOrder() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  UiSettingCondition get visibleWhenSetting => $_getN(3);
+  @$pb.TagNumber(4)
+  set visibleWhenSetting(UiSettingCondition value) => $_setField(4, value);
+  @$pb.TagNumber(4)
+  $core.bool hasVisibleWhenSetting() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearVisibleWhenSetting() => $_clearField(4);
+  @$pb.TagNumber(4)
+  UiSettingCondition ensureVisibleWhenSetting() => $_ensure(3);
 }
 
 const $core.bool _omitFieldNames =

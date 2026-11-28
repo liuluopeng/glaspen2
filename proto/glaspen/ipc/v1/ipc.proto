@@ -54,6 +54,8 @@ message Frame {
     DownloadUpdateRequest download_update_request = 70;
     DownloadProgress download_progress = 71;
     CancelDownloadRequest cancel_download_request = 72;
+    UiConfigRequest ui_config_request = 80;
+    UiConfigResponse ui_config_response = 81;
     Panel panel = 20;
     Error error = 99;
   }
@@ -357,3 +359,111 @@ message DownloadProgress {
 }
 
 message CancelDownloadRequest {}
+
+message UiConfigRequest {
+  uint32 panel_protocol_version = 1;
+}
+
+message UiConfigResponse {
+  UiConfig config = 1;
+}
+
+message UiConfig {
+  string platform = 1;
+  bool is_windows = 2;
+  double font_scale = 3;
+  string chord_separator = 4;
+  map<string, string> chord_names = 5;
+  string modifier_word = 6;
+  map<string, LocalizedText> messages = 7;
+  map<string, string> defaults = 8;
+  map<string, string> hold_hotkeys = 9;
+  repeated string reserved = 10;
+  repeated string force_bound = 11;
+  repeated string action_order = 12;
+  UiModifierRow modifier_row = 13;
+  map<string, bool> features = 14;
+  repeated UiSettingSpec settings = 15;
+  repeated UiFormSection settings_sections = 16;
+  repeated UiCustomBlock settings_blocks = 17;
+  uint32 protocol_version = 18;
+}
+
+message LocalizedText {
+  string zh = 1;
+  string en = 2;
+}
+
+message UiKeyCap {
+  string name = 1;
+  string label = 2;
+  double width = 3;
+  bool modifier = 4;
+}
+
+message UiModifierRow {
+  repeated UiKeyCap left = 1;
+  repeated UiKeyCap space = 2;
+  repeated UiKeyCap right = 3;
+}
+
+message UiSettingSpec {
+  string key = 1;
+  string db_key = 2;
+  string kind = 3;
+  bool mac = 4;
+  bool win = 5;
+  UiFormMeta form = 6;
+}
+
+message UiFormMeta {
+  string key = 1;
+  string section = 2;
+  int32 order = 3;
+  string label_id = 4;
+  string description_id = 5;
+  string hint_id = 6;
+  string control = 7;
+  string layout = 8;
+  bool show_label = 9;
+  bool indented = 10;
+  bool divider_before = 11;
+  string unit = 12;
+  UiFormRange range = 13;
+  repeated UiFormOption options = 14;
+  string visible_when_feature = 15;
+  UiSettingCondition visible_when_setting = 16;
+  UiSettingCondition enabled_when_setting = 17;
+  bool advanced = 18;
+}
+
+message UiFormRange {
+  double min = 1;
+  double max = 2;
+  double step = 3;
+}
+
+message UiFormOption {
+  SettingValue value = 1;
+  string label_id = 2;
+}
+
+message UiSettingCondition {
+  string key = 1;
+  SettingValue equals = 2;
+}
+
+message UiFormSection {
+  string id = 1;
+  string label_id = 2;
+  bool advanced = 3;
+  int32 order = 4;
+  UiSettingCondition visible_when_setting = 5;
+}
+
+message UiCustomBlock {
+  string id = 1;
+  string section = 2;
+  int32 order = 3;
+  UiSettingCondition visible_when_setting = 4;
+}

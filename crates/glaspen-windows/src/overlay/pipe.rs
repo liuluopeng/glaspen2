@@ -180,9 +180,7 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
 
         for input in inputs {
             match input {
-                PanelInput::Json(line) => {
-                    process_pipe_message(&line, hwnd, &mut writer);
-                }
+                PanelInput::Json(_) => {}
                 PanelInput::SetSetting {
                     request_id,
                     key,
@@ -336,6 +334,13 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
                     process_download_update(request_id, &mut writer);
                 }
                 PanelInput::CancelDownload => {}
+                PanelInput::GetUiConfig { request_id } => {
+                    let text = glaspen_core::ui::ui_config_json(
+                        glaspen_core::ui::Platform::Windows,
+                    );
+                    let frame = glaspen_ipc::encode_ui_config_frame(request_id, &text);
+                    let _ = writer.write_frame(&frame);
+                }
                 PanelInput::ApplyUpdate { request_id } => {
                     let installer = DOWNLOADED_INSTALLER
                         .lock()
@@ -1146,45 +1151,6 @@ fn process_download_update(request_id: u64, writer: &mut PanelOut) {
     let _ = writer.flush();
 }
 
-fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
-    use std::io::Write;
-
-    let msg_type = json_get_str(line, "type");
-
-    // 协议契约(core/protocol.rs): 未登记的命令直接回错误。
-    // 新增面板命令必须先进 COMMANDS 表, 否则这里拒绝 —— 不再静默丢弃。
-    if !glaspen_core::protocol::known(&msg_type) {
-        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        let _ = writer.write_all(
-            glaspen_core::protocol::error_line(req_id, &msg_type, "未知面板命令").as_bytes(),
-        );
-        let _ = writer.flush();
-        return;
-    }
-
-    if msg_type == "uiConfig" {
-        // 面板启动时拉一次性平台配置: 与 macOS(FRB)是 core 同一份
-        // `glaspen_core::ui` schema, Windows 走命名管道取。
-        // 响应行由 core 的 `pipe_ui_config_response_json` 统一生成 —— 字段
-        // 形状/内嵌对象/末尾 '\n'(面板按行分帧)都在 core 单测里锁住,
-        // 这里不手拼 JSON。
-        // 没有 reqId 时沿用其它命令的约定(reqId = 0)。
-        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        // 独立 exe 面板可能与覆盖层版本错位: 版本不一致时明确报错, 让面板
-        // 走 fallback 日志, 而不是拿着不认识的协议继续跑。
-        let payload: serde_json::Value =
-            serde_json::from_str(line.trim_end()).unwrap_or(serde_json::Value::Null);
-        if let Err(msg) = glaspen_core::protocol::check_panel_version(&payload) {
-            let _ = writer.write_all(
-                glaspen_core::protocol::error_line(req_id, "uiConfig", &msg).as_bytes(),
-            );
-        } else {
-            let resp = glaspen_core::ui::pipe_ui_config_response_json(req_id);
-            let _ = writer.write_all(resp.as_bytes());
-        }
-        let _ = writer.flush();
-
-}
 
 // ── Minimal JSON helpers ──
 

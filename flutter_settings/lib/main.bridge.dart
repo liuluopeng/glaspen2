@@ -679,29 +679,6 @@ class _NamedPipeBridge extends SettingsBridge {
     }
   }
 
-  /// 通用管道请求:发送请求并等待对应 *_response 消息(支持并发,按 reqId 匹配)
-  Future<Map<dynamic, dynamic>> _request(String type, Map<String, dynamic>? params) async {
-    if (!_connected) {
-      return {};
-    }
-    final id = ++_reqSeq;
-    final c = Completer<Map<dynamic, dynamic>>();
-    _pendingReqs[id] = c;
-    _writeRequest(id, type, params);
-    try {
-      final r = await c.future.timeout(
-        const Duration(seconds: 15),
-        onTimeout: () {
-          _pendingReqs.remove(id);
-          return <dynamic, dynamic>{};
-        },
-      );
-      return r;
-    } catch (_) {
-      _pendingReqs.remove(id);
-      return {};
-    }
-  }
 
   @override
   Future<bool> reorderPage(int screenId, int anchorId, {required bool before}) async {
@@ -975,14 +952,9 @@ class _NamedPipeBridge extends SettingsBridge {
 
   @override
   Future<Map<String, dynamic>> uiConfig() async {
-    final r = await _request(
-        'uiConfig', {'panelProtocolVersion': kPanelProtocolVersion});
-    // 常规 *_response:data 即配置对象;个别后端会把对象再包一层 data,两种都认。
-    final data = r['data'] is Map ? r['data'] : r;
-    if (data is! Map) {
-      throw FormatException('uiConfig 响应不是 JSON 对象: $r');
-    }
-    return {for (final e in data.entries) e.key.toString(): e.value};
+    final r = await _requestTyped((id) =>
+        encodeUiConfigRequest(id, kPanelProtocolVersion));
+    return {for (final e in r.entries) e.key.toString(): e.value};
   }
 
   @override
@@ -1016,10 +988,6 @@ class _NamedPipeBridge extends SettingsBridge {
     calloc.free(buf);
     calloc.free(written);
     return success != 0;
-  }
-
-  bool _writeRequest(int id, String type, Map<String, dynamic>? params) {
-    return _writeBytes(encodeRequest(id, type, params));
   }
 
   @override

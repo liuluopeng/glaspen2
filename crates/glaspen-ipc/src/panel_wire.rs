@@ -115,6 +115,9 @@ pub enum PanelInput {
         request_id: u64,
     },
     CancelDownload,
+    GetUiConfig {
+        request_id: u64,
+    },
     CanvasOverview {
         request_id: u64,
         w: i32,

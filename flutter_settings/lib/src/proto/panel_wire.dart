@@ -10,6 +10,142 @@ import 'glaspen/ipc/v1/ipc.pb.dart' as pb;
 
 const List<int> panelMagic = [0x47, 0x50, 0x42, 0x31]; // "GPB1"
 
+dynamic _uiSettingValue(pb.SettingValue? v) {
+  if (v == null) return null;
+  switch (v.whichValue()) {
+    case pb.SettingValue_Value.boolValue:
+      return v.boolValue;
+    case pb.SettingValue_Value.intValue:
+      return v.intValue.toInt();
+    case pb.SettingValue_Value.doubleValue:
+      return v.doubleValue;
+    case pb.SettingValue_Value.stringValue:
+      return v.stringValue;
+    case pb.SettingValue_Value.nullValue:
+      return null;
+    default:
+      return null;
+  }
+}
+
+Map<String, dynamic>? _uiCondition(pb.UiSettingCondition? c) {
+  if (c == null) return null;
+  return {
+    'key': c.key,
+    'equals': _uiSettingValue(c.equals),
+  };
+}
+
+List<Map<String, dynamic>> _uiKeyCaps(List<pb.UiKeyCap> caps) => [
+      for (final c in caps)
+        {
+          'name': c.name,
+          'label': c.label,
+          'width': c.width,
+          'modifier': c.modifier,
+        }
+    ];
+
+Map<String, dynamic>? _uiForm(pb.UiFormMeta? f) {
+  if (f == null) return null;
+  final out = <String, dynamic>{
+    'key': f.key,
+    'section': f.section,
+    'order': f.order,
+    'labelId': f.labelId,
+    'control': f.control,
+    'layout': f.layout,
+    'showLabel': f.showLabel,
+    'indented': f.indented,
+    'dividerBefore': f.dividerBefore,
+    'advanced': f.advanced,
+  };
+  if (f.descriptionId.isNotEmpty) out['descriptionId'] = f.descriptionId;
+  if (f.hintId.isNotEmpty) out['hintId'] = f.hintId;
+  if (f.unit.isNotEmpty) out['unit'] = f.unit;
+  if (f.hasRange()) {
+    out['range'] = {
+      'min': f.range.min,
+      'max': f.range.max,
+      'step': f.range.step,
+    };
+  }
+  if (f.options.isNotEmpty) {
+    out['options'] = [
+      for (final o in f.options)
+        {
+          'value': _uiSettingValue(o.value),
+          'labelId': o.labelId,
+        }
+    ];
+  }
+  if (f.visibleWhenFeature.isNotEmpty) {
+    out['visibleWhenFeature'] = f.visibleWhenFeature;
+  }
+  final visible = _uiCondition(f.visibleWhenSetting);
+  if (visible != null) out['visibleWhenSetting'] = visible;
+  final enabled = _uiCondition(f.enabledWhenSetting);
+  if (enabled != null) out['enabledWhenSetting'] = enabled;
+  return out;
+}
+
+Map<String, dynamic> uiConfigToMap(pb.UiConfig c) {
+  return {
+    'platform': c.platform,
+    'isWindows': c.isWindows,
+    'fontScale': c.fontScale,
+    'chordSeparator': c.chordSeparator,
+    'chordNames': Map<String, String>.from(c.chordNames),
+    'modifierWord': c.modifierWord,
+    'messages': {
+      for (final e in c.messages.entries)
+        e.key: {'zh': e.value.zh, 'en': e.value.en}
+    },
+    'defaults': Map<String, String>.from(c.defaults),
+    'holdHotkeys': Map<String, String>.from(c.holdHotkeys),
+    'reserved': c.reserved.toList(),
+    'forceBound': c.forceBound.toList(),
+    'actionOrder': c.actionOrder.toList(),
+    'modifierRow': {
+      'left': _uiKeyCaps(c.modifierRow.left),
+      'space': _uiKeyCaps(c.modifierRow.space),
+      'right': _uiKeyCaps(c.modifierRow.right),
+    },
+    'features': Map<String, bool>.from(c.features),
+    'settings': [
+      for (final s in c.settings)
+        {
+          'key': s.key,
+          'dbKey': s.dbKey,
+          'kind': s.kind,
+          'mac': s.mac,
+          'win': s.win,
+          'form': _uiForm(s.form),
+        }
+    ],
+    'settingsSections': [
+      for (final s in c.settingsSections)
+        {
+          'id': s.id,
+          'labelId': s.labelId,
+          'advanced': s.advanced,
+          'order': s.order,
+          'visibleWhenSetting': _uiCondition(s.visibleWhenSetting),
+        }
+    ],
+    'settingsBlocks': [
+      for (final s in c.settingsBlocks)
+        {
+          'id': s.id,
+          'section': s.section,
+          'order': s.order,
+          'visibleWhenSetting': _uiCondition(s.visibleWhenSetting),
+        }
+    ],
+    'protocolVersion': c.protocolVersion,
+  };
+}
+
 Map<String, dynamic> bubbleMessagesToMap(pb.BubbleMessages m) {
   return <String, dynamic>{
     'device': m.device,
@@ -358,6 +494,16 @@ List<int> encodeCanvasOverviewRequest(
   ));
 }
 
+List<int> encodeUiConfigRequest(int requestId, int panelProtocolVersion) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    uiConfigRequest: pb.UiConfigRequest(
+      panelProtocolVersion: panelProtocolVersion,
+    ),
+  ));
+}
+
 List<int> encodeGetBubblesRequest(int requestId) {
   return encodeFrame(pb.Frame(
     protocolVersion: 1,
@@ -543,6 +689,14 @@ class PanelStreamDecoder {
             'png': Uint8List.fromList(r.png),
             'rect': r.rect,
           },
+        ));
+        continue;
+      }
+      if (frame.hasUiConfigResponse()) {
+        out.add(PanelMessage(
+          'uiConfig_response',
+          frame.requestId.toInt(),
+          uiConfigToMap(frame.uiConfigResponse.config),
         ));
         continue;
       }

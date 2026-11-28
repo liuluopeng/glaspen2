@@ -20,6 +20,24 @@ void main() {
     }
   });
 
+  test('typed uiConfig decodes', () {
+    final frame = pb.Frame(
+      protocolVersion: 1,
+      requestId: Int64(14),
+      uiConfigResponse: pb.UiConfigResponse(
+        config: pb.UiConfig(
+          platform: 'windows',
+          isWindows: true,
+          protocolVersion: 1,
+        ),
+      ),
+    );
+    final msg = PanelStreamDecoder().feed(encodeFrame(frame)).single;
+    expect(msg.kind, 'uiConfig_response');
+    expect(msg.data['platform'], 'windows');
+    expect(msg.data['isWindows'], true);
+  });
+
   test('typed canvas overview decodes', () {
     final frame = pb.Frame(
       protocolVersion: 1,

@@ -301,6 +301,251 @@ fn settings_shortcuts(
     }
 }
 
+pub fn setting_value_from_json(v: &serde_json::Value) -> proto::SettingValue {
+    use proto::setting_value::Value;
+    let value = match v {
+        serde_json::Value::Bool(b) => Some(Value::BoolValue(*b)),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Some(Value::IntValue(i))
+            } else {
+                n.as_f64().map(Value::DoubleValue)
+            }
+        }
+        serde_json::Value::String(s) => Some(Value::StringValue(s.clone())),
+        _ => None,
+    };
+    proto::SettingValue { value }
+}
+
+fn ui_str(v: &serde_json::Value, key: &str) -> String {
+    v.get(key)
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn ui_opt_str(v: &serde_json::Value, key: &str) -> String {
+    v.get(key)
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn ui_bool(v: &serde_json::Value, key: &str) -> bool {
+    v.get(key).and_then(|x| x.as_bool()).unwrap_or(false)
+}
+
+fn ui_i32(v: &serde_json::Value, key: &str) -> i32 {
+    v.get(key).and_then(|x| x.as_i64()).unwrap_or(0) as i32
+}
+
+fn ui_string_map(v: &serde_json::Value, key: &str) -> std::collections::HashMap<String, String> {
+    v.get(key)
+        .and_then(|x| x.as_object())
+        .map(|m| {
+            m.iter()
+                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn ui_string_list(v: &serde_json::Value, key: &str) -> Vec<String> {
+    v.get(key)
+        .and_then(|x| x.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn ui_condition(v: Option<&serde_json::Value>) -> Option<proto::UiSettingCondition> {
+    let v = v?;
+    let key = v.get("key")?.as_str()?.to_string();
+    let equals = v.get("equals").map(setting_value_from_json);
+    Some(proto::UiSettingCondition { key, equals })
+}
+
+fn ui_key_caps(v: &serde_json::Value, key: &str) -> Vec<proto::UiKeyCap> {
+    v.get(key)
+        .and_then(|x| x.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|x| proto::UiKeyCap {
+                    name: ui_str(x, "name"),
+                    label: ui_str(x, "label"),
+                    width: x.get("width").and_then(|n| n.as_f64()).unwrap_or(1.0),
+                    modifier: ui_bool(x, "modifier"),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn ui_form(v: &serde_json::Value) -> Option<proto::UiFormMeta> {
+    let form = v.get("form")?;
+    let options = form
+        .get("options")
+        .and_then(|x| x.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|x| proto::UiFormOption {
+                    value: x.get("value").map(setting_value_from_json),
+                    label_id: ui_str(x, "labelId"),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let range = form.get("range").map(|r| proto::UiFormRange {
+        min: r.get("min").and_then(|n| n.as_f64()).unwrap_or(0.0),
+        max: r.get("max").and_then(|n| n.as_f64()).unwrap_or(0.0),
+        step: r.get("step").and_then(|n| n.as_f64()).unwrap_or(0.0),
+    });
+    Some(proto::UiFormMeta {
+        key: ui_str(form, "key"),
+        section: ui_str(form, "section"),
+        order: ui_i32(form, "order"),
+        label_id: ui_str(form, "labelId"),
+        description_id: ui_opt_str(form, "descriptionId"),
+        hint_id: ui_opt_str(form, "hintId"),
+        control: ui_str(form, "control"),
+        layout: ui_str(form, "layout"),
+        show_label: form
+            .get("showLabel")
+            .and_then(|x| x.as_bool())
+            .unwrap_or(true),
+        indented: ui_bool(form, "indented"),
+        divider_before: ui_bool(form, "dividerBefore"),
+        unit: ui_opt_str(form, "unit"),
+        range,
+        options,
+        visible_when_feature: ui_opt_str(form, "visibleWhenFeature"),
+        visible_when_setting: ui_condition(form.get("visibleWhenSetting")),
+        enabled_when_setting: ui_condition(form.get("enabledWhenSetting")),
+        advanced: ui_bool(form, "advanced"),
+    })
+}
+
+pub fn ui_config_from_json(text: &str) -> Option<proto::UiConfig> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let messages = v
+        .get("messages")
+        .and_then(|x| x.as_object())
+        .map(|m| {
+            m.iter()
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        proto::LocalizedText {
+                            zh: ui_str(v, "zh"),
+                            en: ui_str(v, "en"),
+                        },
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let modifier_row = v.get("modifierRow").map(|r| proto::UiModifierRow {
+        left: ui_key_caps(r, "left"),
+        space: ui_key_caps(r, "space"),
+        right: ui_key_caps(r, "right"),
+    });
+    let settings = v
+        .get("settings")
+        .and_then(|x| x.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|x| proto::UiSettingSpec {
+                    key: ui_str(x, "key"),
+                    db_key: ui_str(x, "dbKey"),
+                    kind: ui_str(x, "kind"),
+                    mac: ui_bool(x, "mac"),
+                    win: ui_bool(x, "win"),
+                    form: ui_form(x),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let sections = v
+        .get("settingsSections")
+        .and_then(|x| x.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|x| proto::UiFormSection {
+                    id: ui_str(x, "id"),
+                    label_id: ui_str(x, "labelId"),
+                    advanced: ui_bool(x, "advanced"),
+                    order: ui_i32(x, "order"),
+                    visible_when_setting: ui_condition(x.get("visibleWhenSetting")),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let blocks = v
+        .get("settingsBlocks")
+        .and_then(|x| x.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|x| proto::UiCustomBlock {
+                    id: ui_str(x, "id"),
+                    section: ui_str(x, "section"),
+                    order: ui_i32(x, "order"),
+                    visible_when_setting: ui_condition(x.get("visibleWhenSetting")),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let features = v
+        .get("features")
+        .and_then(|x| x.as_object())
+        .map(|m| {
+            m.iter()
+                .filter_map(|(k, v)| v.as_bool().map(|b| (k.clone(), b)))
+                .collect()
+        })
+        .unwrap_or_default();
+    Some(proto::UiConfig {
+        platform: ui_str(&v, "platform"),
+        is_windows: ui_bool(&v, "isWindows"),
+        font_scale: v.get("fontScale").and_then(|x| x.as_f64()).unwrap_or(1.0),
+        chord_separator: ui_str(&v, "chordSeparator"),
+        chord_names: ui_string_map(&v, "chordNames"),
+        modifier_word: ui_str(&v, "modifierWord"),
+        messages,
+        defaults: ui_string_map(&v, "defaults"),
+        hold_hotkeys: ui_string_map(&v, "holdHotkeys"),
+        reserved: ui_string_list(&v, "reserved"),
+        force_bound: ui_string_list(&v, "forceBound"),
+        action_order: ui_string_list(&v, "actionOrder"),
+        modifier_row,
+        features,
+        settings,
+        settings_sections: sections,
+        settings_blocks: blocks,
+        protocol_version: v
+            .get("protocolVersion")
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0) as u32,
+    })
+}
+
+pub fn encode_ui_config_frame(request_id: u64, text: &str) -> Vec<u8> {
+    let config = ui_config_from_json(text).unwrap_or_default();
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::UiConfigResponse(
+            proto::UiConfigResponse {
+                config: Some(config),
+            },
+        )),
+    };
+    encode_frame(&frame)
+}
+
 pub fn app_settings_from_json(v: &serde_json::Value) -> crate::proto::AppSettings {
     crate::proto::AppSettings {
         color: settings_i32(v, "color"),
