@@ -226,6 +226,59 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
                     let frame = glaspen_ipc::encode_bubble_messages_frame(request_id, messages);
                     let _ = writer.write_frame(&frame);
                 }
+                PanelInput::NavigateToPage { screen_id } => {
+                    if screen_id > 0 {
+                        let _ = unsafe {
+                            PostMessageW(
+                                Some(HWND(hwnd as *mut _)),
+                                WM_TRAY_COMMAND,
+                                WPARAM(CMD_NAVIGATE_TO_PAGE),
+                                LPARAM(screen_id as isize),
+                            )
+                        };
+                    }
+                }
+                PanelInput::Hotkey { key } => {
+                    let cmd = match key.as_str() {
+                        "Q" => Some(CMD_QUIT),
+                        "G" => Some(CMD_EXPORT_SVG_GIF),
+                        "`" => Some(CMD_PAGE_PREV),
+                        "1" => Some(CMD_PAGE_NEXT),
+                        "Z" => Some(CMD_UNDO),
+                        "X" => Some(CMD_TOGGLE_ETHEREAL),
+                        "C" => Some(CMD_CLEAR_SCREEN),
+                        "V" => Some(CMD_TOGGLE_ENABLED),
+                        "B" => Some(CMD_TOGGLE_FROSTED),
+                        _ => None,
+                    };
+                    if let Some(cmd) = cmd {
+                        let _ = unsafe {
+                            PostMessageW(
+                                Some(HWND(hwnd as *mut _)),
+                                WM_TRAY_COMMAND,
+                                WPARAM(cmd),
+                                LPARAM(usize::MAX as isize),
+                            )
+                        };
+                    }
+                }
+                PanelInput::OpenUrl { url } => open_url_checked(url),
+                PanelInput::FlushBubbles { request_id } => {
+                    glaspen_core::export::bubbles::flush_now();
+                    let frame = glaspen_ipc::encode_page_op_frame(
+                        request_id,
+                        "flushBubbles_response",
+                        glaspen_ipc::PageOpValue::Ok(true),
+                    );
+                    let _ = writer.write_frame(&frame);
+                }
+                PanelInput::AppVersion { request_id } => {
+                    let frame = glaspen_ipc::encode_app_version_frame(
+                        request_id,
+                        glaspen_core::update::current_version(),
+                    );
+                    let _ = writer.write_frame(&frame);
+                }
             }
         }
         let _ = writer.flush();

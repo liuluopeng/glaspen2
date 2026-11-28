@@ -240,6 +240,46 @@ List<int> encodePageOpRequest(
   ));
 }
 
+List<int> encodeNavigateToPageRequest(int screenId) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(0),
+    navigateToPageRequest: pb.NavigateToPageRequest(screenId: Int64(screenId)),
+  ));
+}
+
+List<int> encodeHotkeyCommand(String key) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(0),
+    hotkeyCommand: pb.HotkeyCommand(key: key),
+  ));
+}
+
+List<int> encodeOpenUrlCommand(String url) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(0),
+    openUrlCommand: pb.OpenUrlCommand(url: url),
+  ));
+}
+
+List<int> encodeFlushBubblesRequest(int requestId) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    flushBubblesRequest: pb.FlushBubblesRequest(),
+  ));
+}
+
+List<int> encodeAppVersionRequest(int requestId) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    appVersionRequest: pb.AppVersionRequest(),
+  ));
+}
+
 List<int> encodeGetBubblesRequest(int requestId) {
   return encodeFrame(pb.Frame(
     protocolVersion: 1,
@@ -341,6 +381,14 @@ class PanelStreamDecoder {
           settings == null
               ? const <String, dynamic>{}
               : appSettingsToMap(settings),
+        ));
+        continue;
+      }
+      if (frame.hasAppVersionResponse()) {
+        out.add(PanelMessage(
+          'appVersion_response',
+          frame.requestId.toInt(),
+          {'version': frame.appVersionResponse.version},
         ));
         continue;
       }

@@ -77,6 +77,21 @@ pub enum PanelInput {
     GetBubbles {
         request_id: u64,
     },
+    NavigateToPage {
+        screen_id: i64,
+    },
+    Hotkey {
+        key: String,
+    },
+    OpenUrl {
+        url: String,
+    },
+    FlushBubbles {
+        request_id: u64,
+    },
+    AppVersion {
+        request_id: u64,
+    },
 }
 
 fn panel_input_from_frame(frame: Frame) -> Result<PanelInput, FrameError> {

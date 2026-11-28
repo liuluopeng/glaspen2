@@ -148,6 +148,60 @@ const Frame$json = {
       '10': 'getBubblesRequest'
     },
     {
+      '1': 'navigate_to_page_request',
+      '3': 40,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.NavigateToPageRequest',
+      '9': 0,
+      '10': 'navigateToPageRequest'
+    },
+    {
+      '1': 'hotkey_command',
+      '3': 41,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.HotkeyCommand',
+      '9': 0,
+      '10': 'hotkeyCommand'
+    },
+    {
+      '1': 'open_url_command',
+      '3': 42,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.OpenUrlCommand',
+      '9': 0,
+      '10': 'openUrlCommand'
+    },
+    {
+      '1': 'flush_bubbles_request',
+      '3': 43,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.FlushBubblesRequest',
+      '9': 0,
+      '10': 'flushBubblesRequest'
+    },
+    {
+      '1': 'app_version_request',
+      '3': 44,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.AppVersionRequest',
+      '9': 0,
+      '10': 'appVersionRequest'
+    },
+    {
+      '1': 'app_version_response',
+      '3': 45,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.AppVersionResponse',
+      '9': 0,
+      '10': 'appVersionResponse'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -194,9 +248,18 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'Yy52MS5QYWdlVGh1bWJuYWlsc1JlcXVlc3RIAFIVcGFnZVRodW1ibmFpbHNSZXF1ZXN0EkcKD3'
     'BhZ2Vfb3BfcmVxdWVzdBghIAEoCzIdLmdsYXNwZW4uaXBjLnYxLlBhZ2VPcFJlcXVlc3RIAFIN'
     'cGFnZU9wUmVxdWVzdBJTChNnZXRfYnViYmxlc19yZXF1ZXN0GCIgASgLMiEuZ2xhc3Blbi5pcG'
-    'MudjEuR2V0QnViYmxlc1JlcXVlc3RIAFIRZ2V0QnViYmxlc1JlcXVlc3QSLQoFcGFuZWwYFCAB'
-    'KAsyFS5nbGFzcGVuLmlwYy52MS5QYW5lbEgAUgVwYW5lbBItCgVlcnJvchhjIAEoCzIVLmdsYX'
-    'NwZW4uaXBjLnYxLkVycm9ySABSBWVycm9yQgYKBGJvZHk=');
+    'MudjEuR2V0QnViYmxlc1JlcXVlc3RIAFIRZ2V0QnViYmxlc1JlcXVlc3QSYAoYbmF2aWdhdGVf'
+    'dG9fcGFnZV9yZXF1ZXN0GCggASgLMiUuZ2xhc3Blbi5pcGMudjEuTmF2aWdhdGVUb1BhZ2VSZX'
+    'F1ZXN0SABSFW5hdmlnYXRlVG9QYWdlUmVxdWVzdBJGCg5ob3RrZXlfY29tbWFuZBgpIAEoCzId'
+    'LmdsYXNwZW4uaXBjLnYxLkhvdGtleUNvbW1hbmRIAFINaG90a2V5Q29tbWFuZBJKChBvcGVuX3'
+    'VybF9jb21tYW5kGCogASgLMh4uZ2xhc3Blbi5pcGMudjEuT3BlblVybENvbW1hbmRIAFIOb3Bl'
+    'blVybENvbW1hbmQSWQoVZmx1c2hfYnViYmxlc19yZXF1ZXN0GCsgASgLMiMuZ2xhc3Blbi5pcG'
+    'MudjEuRmx1c2hCdWJibGVzUmVxdWVzdEgAUhNmbHVzaEJ1YmJsZXNSZXF1ZXN0ElMKE2FwcF92'
+    'ZXJzaW9uX3JlcXVlc3QYLCABKAsyIS5nbGFzcGVuLmlwYy52MS5BcHBWZXJzaW9uUmVxdWVzdE'
+    'gAUhFhcHBWZXJzaW9uUmVxdWVzdBJWChRhcHBfdmVyc2lvbl9yZXNwb25zZRgtIAEoCzIiLmds'
+    'YXNwZW4uaXBjLnYxLkFwcFZlcnNpb25SZXNwb25zZUgAUhJhcHBWZXJzaW9uUmVzcG9uc2USLQ'
+    'oFcGFuZWwYFCABKAsyFS5nbGFzcGVuLmlwYy52MS5QYW5lbEgAUgVwYW5lbBItCgVlcnJvchhj'
+    'IAEoCzIVLmdsYXNwZW4uaXBjLnYxLkVycm9ySABSBWVycm9yQgYKBGJvZHk=');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -839,3 +902,70 @@ const GetBubblesRequest$json = {
 /// Descriptor for `GetBubblesRequest`. Decode as a `google.protobuf.DescriptorProto`.
 final $typed_data.Uint8List getBubblesRequestDescriptor =
     $convert.base64Decode('ChFHZXRCdWJibGVzUmVxdWVzdA==');
+
+@$core.Deprecated('Use navigateToPageRequestDescriptor instead')
+const NavigateToPageRequest$json = {
+  '1': 'NavigateToPageRequest',
+  '2': [
+    {'1': 'screen_id', '3': 1, '4': 1, '5': 3, '10': 'screenId'},
+  ],
+};
+
+/// Descriptor for `NavigateToPageRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List navigateToPageRequestDescriptor = $convert.base64Decode(
+    'ChVOYXZpZ2F0ZVRvUGFnZVJlcXVlc3QSGwoJc2NyZWVuX2lkGAEgASgDUghzY3JlZW5JZA==');
+
+@$core.Deprecated('Use hotkeyCommandDescriptor instead')
+const HotkeyCommand$json = {
+  '1': 'HotkeyCommand',
+  '2': [
+    {'1': 'key', '3': 1, '4': 1, '5': 9, '10': 'key'},
+  ],
+};
+
+/// Descriptor for `HotkeyCommand`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List hotkeyCommandDescriptor =
+    $convert.base64Decode('Cg1Ib3RrZXlDb21tYW5kEhAKA2tleRgBIAEoCVIDa2V5');
+
+@$core.Deprecated('Use openUrlCommandDescriptor instead')
+const OpenUrlCommand$json = {
+  '1': 'OpenUrlCommand',
+  '2': [
+    {'1': 'url', '3': 1, '4': 1, '5': 9, '10': 'url'},
+  ],
+};
+
+/// Descriptor for `OpenUrlCommand`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List openUrlCommandDescriptor =
+    $convert.base64Decode('Cg5PcGVuVXJsQ29tbWFuZBIQCgN1cmwYASABKAlSA3VybA==');
+
+@$core.Deprecated('Use flushBubblesRequestDescriptor instead')
+const FlushBubblesRequest$json = {
+  '1': 'FlushBubblesRequest',
+};
+
+/// Descriptor for `FlushBubblesRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List flushBubblesRequestDescriptor =
+    $convert.base64Decode('ChNGbHVzaEJ1YmJsZXNSZXF1ZXN0');
+
+@$core.Deprecated('Use appVersionRequestDescriptor instead')
+const AppVersionRequest$json = {
+  '1': 'AppVersionRequest',
+};
+
+/// Descriptor for `AppVersionRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List appVersionRequestDescriptor =
+    $convert.base64Decode('ChFBcHBWZXJzaW9uUmVxdWVzdA==');
+
+@$core.Deprecated('Use appVersionResponseDescriptor instead')
+const AppVersionResponse$json = {
+  '1': 'AppVersionResponse',
+  '2': [
+    {'1': 'version', '3': 1, '4': 1, '5': 9, '10': 'version'},
+  ],
+};
+
+/// Descriptor for `AppVersionResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List appVersionResponseDescriptor =
+    $convert.base64Decode(
+        'ChJBcHBWZXJzaW9uUmVzcG9uc2USGAoHdmVyc2lvbhgBIAEoCVIHdmVyc2lvbg==');

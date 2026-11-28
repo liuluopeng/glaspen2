@@ -34,6 +34,12 @@ enum Frame_Body {
   pageThumbnailsRequest,
   pageOpRequest,
   getBubblesRequest,
+  navigateToPageRequest,
+  hotkeyCommand,
+  openUrlCommand,
+  flushBubblesRequest,
+  appVersionRequest,
+  appVersionResponse,
   error,
   notSet
 }
@@ -67,6 +73,12 @@ class Frame extends $pb.GeneratedMessage {
     PageThumbnailsRequest? pageThumbnailsRequest,
     PageOpRequest? pageOpRequest,
     GetBubblesRequest? getBubblesRequest,
+    NavigateToPageRequest? navigateToPageRequest,
+    HotkeyCommand? hotkeyCommand,
+    OpenUrlCommand? openUrlCommand,
+    FlushBubblesRequest? flushBubblesRequest,
+    AppVersionRequest? appVersionRequest,
+    AppVersionResponse? appVersionResponse,
     Error? error,
   }) {
     final result = Frame._();
@@ -91,6 +103,15 @@ class Frame extends $pb.GeneratedMessage {
       result.pageThumbnailsRequest = pageThumbnailsRequest;
     if (pageOpRequest != null) result.pageOpRequest = pageOpRequest;
     if (getBubblesRequest != null) result.getBubblesRequest = getBubblesRequest;
+    if (navigateToPageRequest != null)
+      result.navigateToPageRequest = navigateToPageRequest;
+    if (hotkeyCommand != null) result.hotkeyCommand = hotkeyCommand;
+    if (openUrlCommand != null) result.openUrlCommand = openUrlCommand;
+    if (flushBubblesRequest != null)
+      result.flushBubblesRequest = flushBubblesRequest;
+    if (appVersionRequest != null) result.appVersionRequest = appVersionRequest;
+    if (appVersionResponse != null)
+      result.appVersionResponse = appVersionResponse;
     if (error != null) result.error = error;
     return result;
   }
@@ -120,6 +141,12 @@ class Frame extends $pb.GeneratedMessage {
     32: Frame_Body.pageThumbnailsRequest,
     33: Frame_Body.pageOpRequest,
     34: Frame_Body.getBubblesRequest,
+    40: Frame_Body.navigateToPageRequest,
+    41: Frame_Body.hotkeyCommand,
+    42: Frame_Body.openUrlCommand,
+    43: Frame_Body.flushBubblesRequest,
+    44: Frame_Body.appVersionRequest,
+    45: Frame_Body.appVersionResponse,
     99: Frame_Body.error,
     0: Frame_Body.notSet
   };
@@ -127,7 +154,30 @@ class Frame extends $pb.GeneratedMessage {
       _omitMessageNames ? '' : 'Frame',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
       createEmptyInstance: Frame.$_createMessage)
-    ..oo(0, [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 30, 31, 32, 33, 34, 99])
+    ..oo(0, [
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      20,
+      30,
+      31,
+      32,
+      33,
+      34,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      99
+    ])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
         fieldType: $pb.PbFieldType.OU3)
     ..a<$fixnum.Int64>(
@@ -166,6 +216,19 @@ class Frame extends $pb.GeneratedMessage {
         subBuilder: PageOpRequest.$_createMessage)
     ..aOM<GetBubblesRequest>(34, _omitFieldNames ? '' : 'getBubblesRequest',
         subBuilder: GetBubblesRequest.$_createMessage)
+    ..aOM<NavigateToPageRequest>(
+        40, _omitFieldNames ? '' : 'navigateToPageRequest',
+        subBuilder: NavigateToPageRequest.$_createMessage)
+    ..aOM<HotkeyCommand>(41, _omitFieldNames ? '' : 'hotkeyCommand',
+        subBuilder: HotkeyCommand.$_createMessage)
+    ..aOM<OpenUrlCommand>(42, _omitFieldNames ? '' : 'openUrlCommand',
+        subBuilder: OpenUrlCommand.$_createMessage)
+    ..aOM<FlushBubblesRequest>(43, _omitFieldNames ? '' : 'flushBubblesRequest',
+        subBuilder: FlushBubblesRequest.$_createMessage)
+    ..aOM<AppVersionRequest>(44, _omitFieldNames ? '' : 'appVersionRequest',
+        subBuilder: AppVersionRequest.$_createMessage)
+    ..aOM<AppVersionResponse>(45, _omitFieldNames ? '' : 'appVersionResponse',
+        subBuilder: AppVersionResponse.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
         subBuilder: Error.$_createMessage)
     ..hasRequiredFields = false;
@@ -205,6 +268,12 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(32)
   @$pb.TagNumber(33)
   @$pb.TagNumber(34)
+  @$pb.TagNumber(40)
+  @$pb.TagNumber(41)
+  @$pb.TagNumber(42)
+  @$pb.TagNumber(43)
+  @$pb.TagNumber(44)
+  @$pb.TagNumber(45)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(10)
@@ -222,6 +291,12 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(32)
   @$pb.TagNumber(33)
   @$pb.TagNumber(34)
+  @$pb.TagNumber(40)
+  @$pb.TagNumber(41)
+  @$pb.TagNumber(42)
+  @$pb.TagNumber(43)
+  @$pb.TagNumber(44)
+  @$pb.TagNumber(45)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
 
@@ -411,16 +486,83 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(34)
   GetBubblesRequest ensureGetBubblesRequest() => $_ensure(16);
 
+  @$pb.TagNumber(40)
+  NavigateToPageRequest get navigateToPageRequest => $_getN(17);
+  @$pb.TagNumber(40)
+  set navigateToPageRequest(NavigateToPageRequest value) =>
+      $_setField(40, value);
+  @$pb.TagNumber(40)
+  $core.bool hasNavigateToPageRequest() => $_has(17);
+  @$pb.TagNumber(40)
+  void clearNavigateToPageRequest() => $_clearField(40);
+  @$pb.TagNumber(40)
+  NavigateToPageRequest ensureNavigateToPageRequest() => $_ensure(17);
+
+  @$pb.TagNumber(41)
+  HotkeyCommand get hotkeyCommand => $_getN(18);
+  @$pb.TagNumber(41)
+  set hotkeyCommand(HotkeyCommand value) => $_setField(41, value);
+  @$pb.TagNumber(41)
+  $core.bool hasHotkeyCommand() => $_has(18);
+  @$pb.TagNumber(41)
+  void clearHotkeyCommand() => $_clearField(41);
+  @$pb.TagNumber(41)
+  HotkeyCommand ensureHotkeyCommand() => $_ensure(18);
+
+  @$pb.TagNumber(42)
+  OpenUrlCommand get openUrlCommand => $_getN(19);
+  @$pb.TagNumber(42)
+  set openUrlCommand(OpenUrlCommand value) => $_setField(42, value);
+  @$pb.TagNumber(42)
+  $core.bool hasOpenUrlCommand() => $_has(19);
+  @$pb.TagNumber(42)
+  void clearOpenUrlCommand() => $_clearField(42);
+  @$pb.TagNumber(42)
+  OpenUrlCommand ensureOpenUrlCommand() => $_ensure(19);
+
+  @$pb.TagNumber(43)
+  FlushBubblesRequest get flushBubblesRequest => $_getN(20);
+  @$pb.TagNumber(43)
+  set flushBubblesRequest(FlushBubblesRequest value) => $_setField(43, value);
+  @$pb.TagNumber(43)
+  $core.bool hasFlushBubblesRequest() => $_has(20);
+  @$pb.TagNumber(43)
+  void clearFlushBubblesRequest() => $_clearField(43);
+  @$pb.TagNumber(43)
+  FlushBubblesRequest ensureFlushBubblesRequest() => $_ensure(20);
+
+  @$pb.TagNumber(44)
+  AppVersionRequest get appVersionRequest => $_getN(21);
+  @$pb.TagNumber(44)
+  set appVersionRequest(AppVersionRequest value) => $_setField(44, value);
+  @$pb.TagNumber(44)
+  $core.bool hasAppVersionRequest() => $_has(21);
+  @$pb.TagNumber(44)
+  void clearAppVersionRequest() => $_clearField(44);
+  @$pb.TagNumber(44)
+  AppVersionRequest ensureAppVersionRequest() => $_ensure(21);
+
+  @$pb.TagNumber(45)
+  AppVersionResponse get appVersionResponse => $_getN(22);
+  @$pb.TagNumber(45)
+  set appVersionResponse(AppVersionResponse value) => $_setField(45, value);
+  @$pb.TagNumber(45)
+  $core.bool hasAppVersionResponse() => $_has(22);
+  @$pb.TagNumber(45)
+  void clearAppVersionResponse() => $_clearField(45);
+  @$pb.TagNumber(45)
+  AppVersionResponse ensureAppVersionResponse() => $_ensure(22);
+
   @$pb.TagNumber(99)
-  Error get error => $_getN(17);
+  Error get error => $_getN(23);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(17);
+  $core.bool hasError() => $_has(23);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(17);
+  Error ensureError() => $_ensure(23);
 }
 
 enum SettingValue_Value {
@@ -2872,6 +3014,319 @@ class GetBubblesRequest extends $pb.GeneratedMessage {
       _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<GetBubblesRequest>(
           GetBubblesRequest.$_createMessage);
   static GetBubblesRequest? _defaultInstance;
+}
+
+class NavigateToPageRequest extends $pb.GeneratedMessage {
+  factory NavigateToPageRequest({
+    $fixnum.Int64? screenId,
+  }) {
+    final result = NavigateToPageRequest._();
+    if (screenId != null) result.screenId = screenId;
+    return result;
+  }
+
+  NavigateToPageRequest._();
+
+  factory NavigateToPageRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      NavigateToPageRequest()..mergeFromBuffer(data, registry);
+  factory NavigateToPageRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      NavigateToPageRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'NavigateToPageRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: NavigateToPageRequest.$_createMessage)
+    ..aInt64(1, _omitFieldNames ? '' : 'screenId')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  NavigateToPageRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  NavigateToPageRequest copyWith(
+          void Function(NavigateToPageRequest) updates) =>
+      super.copyWith((message) => updates(message as NavigateToPageRequest))
+          as NavigateToPageRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use NavigateToPageRequest() / NavigateToPageRequest.new instead')
+  static NavigateToPageRequest create() => NavigateToPageRequest._();
+  static $pb.GeneratedMessage $_createMessage() => NavigateToPageRequest._();
+  @$core.override
+  NavigateToPageRequest createEmptyInstance() => NavigateToPageRequest._();
+  @$core.pragma('dart2js:noInline')
+  static NavigateToPageRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<NavigateToPageRequest>(
+          NavigateToPageRequest.$_createMessage);
+  static NavigateToPageRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $fixnum.Int64 get screenId => $_getI64(0);
+  @$pb.TagNumber(1)
+  set screenId($fixnum.Int64 value) => $_setInt64(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasScreenId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearScreenId() => $_clearField(1);
+}
+
+class HotkeyCommand extends $pb.GeneratedMessage {
+  factory HotkeyCommand({
+    $core.String? key,
+  }) {
+    final result = HotkeyCommand._();
+    if (key != null) result.key = key;
+    return result;
+  }
+
+  HotkeyCommand._();
+
+  factory HotkeyCommand.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      HotkeyCommand()..mergeFromBuffer(data, registry);
+  factory HotkeyCommand.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      HotkeyCommand()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'HotkeyCommand',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: HotkeyCommand.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'key')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  HotkeyCommand clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  HotkeyCommand copyWith(void Function(HotkeyCommand) updates) =>
+      super.copyWith((message) => updates(message as HotkeyCommand))
+          as HotkeyCommand;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use HotkeyCommand() / HotkeyCommand.new instead')
+  static HotkeyCommand create() => HotkeyCommand._();
+  static $pb.GeneratedMessage $_createMessage() => HotkeyCommand._();
+  @$core.override
+  HotkeyCommand createEmptyInstance() => HotkeyCommand._();
+  @$core.pragma('dart2js:noInline')
+  static HotkeyCommand getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<HotkeyCommand>(
+          HotkeyCommand.$_createMessage);
+  static HotkeyCommand? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get key => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set key($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasKey() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearKey() => $_clearField(1);
+}
+
+class OpenUrlCommand extends $pb.GeneratedMessage {
+  factory OpenUrlCommand({
+    $core.String? url,
+  }) {
+    final result = OpenUrlCommand._();
+    if (url != null) result.url = url;
+    return result;
+  }
+
+  OpenUrlCommand._();
+
+  factory OpenUrlCommand.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      OpenUrlCommand()..mergeFromBuffer(data, registry);
+  factory OpenUrlCommand.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      OpenUrlCommand()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'OpenUrlCommand',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: OpenUrlCommand.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'url')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  OpenUrlCommand clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  OpenUrlCommand copyWith(void Function(OpenUrlCommand) updates) =>
+      super.copyWith((message) => updates(message as OpenUrlCommand))
+          as OpenUrlCommand;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use OpenUrlCommand() / OpenUrlCommand.new instead')
+  static OpenUrlCommand create() => OpenUrlCommand._();
+  static $pb.GeneratedMessage $_createMessage() => OpenUrlCommand._();
+  @$core.override
+  OpenUrlCommand createEmptyInstance() => OpenUrlCommand._();
+  @$core.pragma('dart2js:noInline')
+  static OpenUrlCommand getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<OpenUrlCommand>(
+          OpenUrlCommand.$_createMessage);
+  static OpenUrlCommand? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get url => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set url($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasUrl() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearUrl() => $_clearField(1);
+}
+
+class FlushBubblesRequest extends $pb.GeneratedMessage {
+  factory FlushBubblesRequest() => FlushBubblesRequest._();
+
+  FlushBubblesRequest._();
+
+  factory FlushBubblesRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      FlushBubblesRequest()..mergeFromBuffer(data, registry);
+  factory FlushBubblesRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      FlushBubblesRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'FlushBubblesRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: FlushBubblesRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  FlushBubblesRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  FlushBubblesRequest copyWith(void Function(FlushBubblesRequest) updates) =>
+      super.copyWith((message) => updates(message as FlushBubblesRequest))
+          as FlushBubblesRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core
+      .Deprecated('Use FlushBubblesRequest() / FlushBubblesRequest.new instead')
+  static FlushBubblesRequest create() => FlushBubblesRequest._();
+  static $pb.GeneratedMessage $_createMessage() => FlushBubblesRequest._();
+  @$core.override
+  FlushBubblesRequest createEmptyInstance() => FlushBubblesRequest._();
+  @$core.pragma('dart2js:noInline')
+  static FlushBubblesRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<FlushBubblesRequest>(
+          FlushBubblesRequest.$_createMessage);
+  static FlushBubblesRequest? _defaultInstance;
+}
+
+class AppVersionRequest extends $pb.GeneratedMessage {
+  factory AppVersionRequest() => AppVersionRequest._();
+
+  AppVersionRequest._();
+
+  factory AppVersionRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      AppVersionRequest()..mergeFromBuffer(data, registry);
+  factory AppVersionRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      AppVersionRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'AppVersionRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: AppVersionRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  AppVersionRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  AppVersionRequest copyWith(void Function(AppVersionRequest) updates) =>
+      super.copyWith((message) => updates(message as AppVersionRequest))
+          as AppVersionRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use AppVersionRequest() / AppVersionRequest.new instead')
+  static AppVersionRequest create() => AppVersionRequest._();
+  static $pb.GeneratedMessage $_createMessage() => AppVersionRequest._();
+  @$core.override
+  AppVersionRequest createEmptyInstance() => AppVersionRequest._();
+  @$core.pragma('dart2js:noInline')
+  static AppVersionRequest getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<AppVersionRequest>(
+          AppVersionRequest.$_createMessage);
+  static AppVersionRequest? _defaultInstance;
+}
+
+class AppVersionResponse extends $pb.GeneratedMessage {
+  factory AppVersionResponse({
+    $core.String? version,
+  }) {
+    final result = AppVersionResponse._();
+    if (version != null) result.version = version;
+    return result;
+  }
+
+  AppVersionResponse._();
+
+  factory AppVersionResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      AppVersionResponse()..mergeFromBuffer(data, registry);
+  factory AppVersionResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      AppVersionResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'AppVersionResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: AppVersionResponse.$_createMessage)
+    ..aOS(1, _omitFieldNames ? '' : 'version')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  AppVersionResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  AppVersionResponse copyWith(void Function(AppVersionResponse) updates) =>
+      super.copyWith((message) => updates(message as AppVersionResponse))
+          as AppVersionResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use AppVersionResponse() / AppVersionResponse.new instead')
+  static AppVersionResponse create() => AppVersionResponse._();
+  static $pb.GeneratedMessage $_createMessage() => AppVersionResponse._();
+  @$core.override
+  AppVersionResponse createEmptyInstance() => AppVersionResponse._();
+  @$core.pragma('dart2js:noInline')
+  static AppVersionResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<AppVersionResponse>(
+          AppVersionResponse.$_createMessage);
+  static AppVersionResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.String get version => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set version($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasVersion() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearVersion() => $_clearField(1);
 }
 
 const $core.bool _omitFieldNames =

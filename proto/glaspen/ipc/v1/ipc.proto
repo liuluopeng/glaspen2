@@ -32,6 +32,12 @@ message Frame {
     PageThumbnailsRequest page_thumbnails_request = 32;
     PageOpRequest page_op_request = 33;
     GetBubblesRequest get_bubbles_request = 34;
+    NavigateToPageRequest navigate_to_page_request = 40;
+    HotkeyCommand hotkey_command = 41;
+    OpenUrlCommand open_url_command = 42;
+    FlushBubblesRequest flush_bubbles_request = 43;
+    AppVersionRequest app_version_request = 44;
+    AppVersionResponse app_version_response = 45;
     Panel panel = 20;
     Error error = 99;
   }
@@ -231,3 +237,23 @@ message PageOpRequest {
 }
 
 message GetBubblesRequest {}
+
+message NavigateToPageRequest {
+  int64 screen_id = 1;
+}
+
+message HotkeyCommand {
+  string key = 1;
+}
+
+message OpenUrlCommand {
+  string url = 1;
+}
+
+message FlushBubblesRequest {}
+
+message AppVersionRequest {}
+
+message AppVersionResponse {
+  string version = 1;
+}

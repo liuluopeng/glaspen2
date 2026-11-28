@@ -906,7 +906,7 @@ class _NamedPipeBridge extends SettingsBridge {
 
   @override
   Future<String> appVersion() async {
-    final r = await _request('appVersion', null);
+    final r = await _requestTyped(encodeAppVersionRequest);
     return (r['version'] as String?) ?? '';
   }
 
@@ -926,7 +926,7 @@ class _NamedPipeBridge extends SettingsBridge {
   @override
   Future<void> openUrl(String url) async {
     if (!_connected) return;
-    _send('openUrl', {'url': url});
+    _writeBytes(encodeOpenUrlCommand(url));
   }
 
   // 自动更新:进度帧经 downloadUpdate_frame 推送;取消订阅 = 发
@@ -964,13 +964,13 @@ class _NamedPipeBridge extends SettingsBridge {
   @override
   Future<void> navigateToPage(int screenId) async {
     if (!_connected) return;
-    _send('navigateToPage', {'screenId': screenId});
+    _writeBytes(encodeNavigateToPageRequest(screenId));
   }
 
   @override
   Future<void> triggerHotkey(String key) async {
     if (!_connected) return;
-    _send('hotkey', {'key': key});
+    _writeBytes(encodeHotkeyCommand(key));
   }
 
   @override
@@ -1052,7 +1052,7 @@ class _NamedPipeBridge extends SettingsBridge {
   @override
   Future<void> flushBubbles() async {
     if (!_connected) return;
-    await _request('flushBubbles', null);
+    await _requestTyped(encodeFlushBubblesRequest);
   }
 
   @override

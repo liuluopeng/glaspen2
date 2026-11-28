@@ -460,6 +460,19 @@ pub enum PageOpValue {
     Count(i32),
 }
 
+pub fn encode_app_version_frame(request_id: u64, version: &str) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::AppVersionResponse(
+            proto::AppVersionResponse {
+                version: version.to_string(),
+            },
+        )),
+    };
+    encode_frame(&frame)
+}
+
 pub fn decode_page_op_frame(bytes: &[u8]) -> Result<(String, PageOpValue), FrameError> {
     let frame = decode_frame(bytes)?;
     let Some(proto::frame::Body::PageOpResponse(r)) = frame.body else {
