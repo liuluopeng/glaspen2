@@ -103,6 +103,33 @@ const Frame$json = {
       '10': 'pageOpResponse'
     },
     {
+      '1': 'get_settings_request',
+      '3': 30,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.GetSettingsRequest',
+      '9': 0,
+      '10': 'getSettingsRequest'
+    },
+    {
+      '1': 'list_pages_request',
+      '3': 31,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.ListPagesRequest',
+      '9': 0,
+      '10': 'listPagesRequest'
+    },
+    {
+      '1': 'page_thumbnails_request',
+      '3': 32,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.PageThumbnailsRequest',
+      '9': 0,
+      '10': 'pageThumbnailsRequest'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -142,8 +169,13 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'BhZ2VUaHVtYm5haWxzUmVzcG9uc2USSQoPYnViYmxlX21lc3NhZ2VzGBEgASgLMh4uZ2xhc3Bl'
     'bi5pcGMudjEuQnViYmxlTWVzc2FnZXNIAFIOYnViYmxlTWVzc2FnZXMSSgoQcGFnZV9vcF9yZX'
     'Nwb25zZRgSIAEoCzIeLmdsYXNwZW4uaXBjLnYxLlBhZ2VPcFJlc3BvbnNlSABSDnBhZ2VPcFJl'
-    'c3BvbnNlEi0KBXBhbmVsGBQgASgLMhUuZ2xhc3Blbi5pcGMudjEuUGFuZWxIAFIFcGFuZWwSLQ'
-    'oFZXJyb3IYYyABKAsyFS5nbGFzcGVuLmlwYy52MS5FcnJvckgAUgVlcnJvckIGCgRib2R5');
+    'c3BvbnNlElYKFGdldF9zZXR0aW5nc19yZXF1ZXN0GB4gASgLMiIuZ2xhc3Blbi5pcGMudjEuR2'
+    'V0U2V0dGluZ3NSZXF1ZXN0SABSEmdldFNldHRpbmdzUmVxdWVzdBJQChJsaXN0X3BhZ2VzX3Jl'
+    'cXVlc3QYHyABKAsyIC5nbGFzcGVuLmlwYy52MS5MaXN0UGFnZXNSZXF1ZXN0SABSEGxpc3RQYW'
+    'dlc1JlcXVlc3QSXwoXcGFnZV90aHVtYm5haWxzX3JlcXVlc3QYICABKAsyJS5nbGFzcGVuLmlw'
+    'Yy52MS5QYWdlVGh1bWJuYWlsc1JlcXVlc3RIAFIVcGFnZVRodW1ibmFpbHNSZXF1ZXN0Ei0KBX'
+    'BhbmVsGBQgASgLMhUuZ2xhc3Blbi5pcGMudjEuUGFuZWxIAFIFcGFuZWwSLQoFZXJyb3IYYyAB'
+    'KAsyFS5nbGFzcGVuLmlwYy52MS5FcnJvckgAUgVlcnJvckIGCgRib2R5');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -717,3 +749,35 @@ final $typed_data.Uint8List pageOpResponseDescriptor = $convert.base64Decode(
     'Cg5QYWdlT3BSZXNwb25zZRISCgRraW5kGAEgASgJUgRraW5kEhAKAm9rGAIgASgISABSAm9rEi'
     '0KA2lkcxgDIAEoCzIZLmdsYXNwZW4uaXBjLnYxLkludDY0TGlzdEgAUgNpZHMSGgoHcGF5bG9h'
     'ZBgEIAEoCUgAUgdwYXlsb2FkEhYKBWNvdW50GAUgASgFSABSBWNvdW50QggKBnJlc3VsdA==');
+
+@$core.Deprecated('Use getSettingsRequestDescriptor instead')
+const GetSettingsRequest$json = {
+  '1': 'GetSettingsRequest',
+};
+
+/// Descriptor for `GetSettingsRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List getSettingsRequestDescriptor =
+    $convert.base64Decode('ChJHZXRTZXR0aW5nc1JlcXVlc3Q=');
+
+@$core.Deprecated('Use listPagesRequestDescriptor instead')
+const ListPagesRequest$json = {
+  '1': 'ListPagesRequest',
+};
+
+/// Descriptor for `ListPagesRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List listPagesRequestDescriptor =
+    $convert.base64Decode('ChBMaXN0UGFnZXNSZXF1ZXN0');
+
+@$core.Deprecated('Use pageThumbnailsRequestDescriptor instead')
+const PageThumbnailsRequest$json = {
+  '1': 'PageThumbnailsRequest',
+  '2': [
+    {'1': 'ids', '3': 1, '4': 3, '5': 3, '10': 'ids'},
+    {'1': 'max_size', '3': 2, '4': 1, '5': 5, '10': 'maxSize'},
+  ],
+};
+
+/// Descriptor for `PageThumbnailsRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List pageThumbnailsRequestDescriptor = $convert.base64Decode(
+    'ChVQYWdlVGh1bWJuYWlsc1JlcXVlc3QSEAoDaWRzGAEgAygDUgNpZHMSGQoIbWF4X3NpemUYAi'
+    'ABKAVSB21heFNpemU=');

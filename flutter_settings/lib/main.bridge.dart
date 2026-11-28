@@ -658,6 +658,27 @@ class _NamedPipeBridge extends SettingsBridge {
     }
   }
 
+  Future<Map<dynamic, dynamic>> _requestTyped(
+      List<int> Function(int id) encode) async {
+    if (!_connected) return {};
+    final id = ++_reqSeq;
+    final c = Completer<Map<dynamic, dynamic>>();
+    _pendingReqs[id] = c;
+    _writeBytes(encode(id));
+    try {
+      return await c.future.timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          _pendingReqs.remove(id);
+          return <dynamic, dynamic>{};
+        },
+      );
+    } catch (_) {
+      _pendingReqs.remove(id);
+      return {};
+    }
+  }
+
   /// 通用管道请求:发送请求并等待对应 *_response 消息(支持并发,按 reqId 匹配)
   Future<Map<dynamic, dynamic>> _request(String type, Map<String, dynamic>? params) async {
     if (!_connected) {
@@ -754,7 +775,7 @@ class _NamedPipeBridge extends SettingsBridge {
 
   @override
   Future<List<PageInfo>> listPages() async {
-    final r = await _request('listPages', null);
+    final r = await _requestTyped(encodeListPagesRequest);
     final data = r['data'];
     if (data is! List) return const [];
     return data
@@ -765,9 +786,7 @@ class _NamedPipeBridge extends SettingsBridge {
   @override
   Future<Map<int, Uint8List>> getPageThumbnails(List<int> ids, int maxSize) async {
     if (ids.isEmpty) return const {};
-    final r = await _request('getPageThumbnails', {
-      'ids': ids, 'maxSize': maxSize,
-    });
+    final r = await _requestTyped((id) => encodePageThumbnailsRequest(id, ids, maxSize));
     final entries = r['entries'];
     if (entries is List) {
       final out = <int, Uint8List>{};
@@ -977,7 +996,7 @@ class _NamedPipeBridge extends SettingsBridge {
     if (!_connected) return {};
     try {
       _settingsCompleter = Completer<Map<dynamic, dynamic>>();
-      _send('getSettings', null);
+      _writeBytes(encodeGetSettingsRequest(0));
       final r = await _settingsCompleter!.future.timeout(
         const Duration(seconds: 3),
         onTimeout: () {

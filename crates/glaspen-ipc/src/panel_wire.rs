@@ -27,8 +27,8 @@ impl PanelDecoder {
         }
     }
 
-    /// 喂入原始字节, 返回已经切出的 JSON request 行(仍由旧 handler 解析)。
-    pub fn feed(&mut self, bytes: &[u8]) -> Result<Vec<String>, FrameError> {
+    /// 喂入原始字节, 返回已切出的 typed/JSON 请求。
+    pub fn feed(&mut self, bytes: &[u8]) -> Result<Vec<PanelInput>, FrameError> {
         self.buf.extend_from_slice(bytes);
         if !self.started {
             if self.buf.starts_with(PB_MAGIC) {
@@ -46,37 +46,69 @@ impl PanelDecoder {
         let mut out = Vec::new();
         while let Some((frame, used)) = take_frame(&self.buf)? {
             self.buf.drain(..used);
-            out.push(panel_request_from_frame(frame)?);
+            out.push(panel_input_from_frame(frame)?);
         }
         Ok(out)
     }
 }
 
-fn panel_request_from_frame(frame: Frame) -> Result<String, FrameError> {
+pub enum PanelInput {
+    Json(String),
+    GetSettings {
+        request_id: u64,
+    },
+    ListPages {
+        request_id: u64,
+    },
+    PageThumbnails {
+        request_id: u64,
+        ids: Vec<i64>,
+        max_size: i32,
+    },
+}
+
+fn panel_input_from_frame(frame: Frame) -> Result<PanelInput, FrameError> {
     if frame.protocol_version != 0 && frame.protocol_version != PROTOCOL_VERSION {
         return Err(FrameError::Decode(format!(
             "不兼容的协议版本 {}",
             frame.protocol_version
         )));
     }
-    let Some(crate::proto::frame::Body::Panel(panel)) = frame.body else {
-        return Err(FrameError::Decode("面板管道只接受 Frame.panel".to_string()));
-    };
-    let data = panel
-        .data
-        .as_ref()
-        .map(crate::prost_value_to_json)
-        .unwrap_or_else(|| serde_json::json!({}));
-    let mut object = data.as_object().cloned().unwrap_or_default();
-    object.insert(
-        "type".to_string(),
-        serde_json::Value::String(panel.kind.clone()),
-    );
-    object.insert(
-        "reqId".to_string(),
-        serde_json::Value::Number(serde_json::Number::from(frame.request_id)),
-    );
-    Ok(serde_json::Value::Object(object).to_string())
+    match frame.body {
+        Some(crate::proto::frame::Body::Panel(panel)) => {
+            let data = panel
+                .data
+                .as_ref()
+                .map(crate::prost_value_to_json)
+                .unwrap_or_else(|| serde_json::json!({}));
+            let mut object = data.as_object().cloned().unwrap_or_default();
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String(panel.kind.clone()),
+            );
+            object.insert(
+                "reqId".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(frame.request_id)),
+            );
+            Ok(PanelInput::Json(
+                serde_json::Value::Object(object).to_string(),
+            ))
+        }
+        Some(crate::proto::frame::Body::GetSettingsRequest(_)) => Ok(PanelInput::GetSettings {
+            request_id: frame.request_id,
+        }),
+        Some(crate::proto::frame::Body::ListPagesRequest(_)) => Ok(PanelInput::ListPages {
+            request_id: frame.request_id,
+        }),
+        Some(crate::proto::frame::Body::PageThumbnailsRequest(req)) => {
+            Ok(PanelInput::PageThumbnails {
+                request_id: frame.request_id,
+                ids: req.ids,
+                max_size: req.max_size,
+            })
+        }
+        _ => Err(FrameError::Decode("面板管道不支持该 Frame".to_string())),
+    }
 }
 
 /// 把业务层的 JSON 响应行编码成 Panel protobuf 帧。
@@ -136,8 +168,11 @@ mod tests {
         assert!(decoder.feed(&bytes[..split]).unwrap().is_empty());
         let lines = decoder.feed(&bytes[split..]).unwrap();
         assert_eq!(lines.len(), 1);
-        assert!(lines[0].contains("\"type\":\"getSettings\""));
-        assert!(lines[0].contains("\"screenId\":3.0"));
+        let PanelInput::Json(line) = &lines[0] else {
+            panic!("expected json input");
+        };
+        assert!(line.contains("\"type\":\"getSettings\""));
+        assert!(line.contains("\"screenId\":3.0"));
     }
 
     #[test]

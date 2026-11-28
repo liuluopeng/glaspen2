@@ -5,7 +5,7 @@ fn pipe_wide_name() -> Vec<u16> {
         .collect()
 }
 
-use glaspen_ipc::panel_wire::{encode_response, PanelDecoder};
+use glaspen_ipc::panel_wire::{encode_response, PanelDecoder, PanelInput};
 use std::io::Write as _;
 
 /// 一个连接的协议感知写端: JSON 客户端照旧写行; protobuf 客户端把业务层
@@ -170,16 +170,45 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
             }
         };
 
-        let lines = match decoder.feed(&buf[..n]) {
-            Ok(lines) => lines,
+        let inputs = match decoder.feed(&buf[..n]) {
+            Ok(inputs) => inputs,
             Err(err) => {
                 tracing::warn!("面板管道帧错误: {err}");
                 break;
             }
         };
 
-        for line in lines {
-            process_pipe_message(&line, hwnd, &mut writer);
+        for input in inputs {
+            match input {
+                PanelInput::Json(line) => {
+                    process_pipe_message(&line, hwnd, &mut writer);
+                }
+                PanelInput::GetSettings { request_id } => {
+                    let overrides = settings_snapshot_overrides();
+                    if let Ok(data) = glaspen_core::settings_snapshot::snapshot_json(
+                        glaspen_core::ui::Platform::Windows,
+                        None,
+                        &overrides,
+                    ) {
+                        let frame = glaspen_ipc::encode_settings_frame(request_id, &data);
+                        let _ = writer.write_frame(&frame);
+                    }
+                }
+                PanelInput::ListPages { request_id } => {
+                    let pages = glaspen_core::export::list_screens_summary();
+                    let frame = glaspen_ipc::encode_page_list_frame(request_id, &pages);
+                    let _ = writer.write_frame(&frame);
+                }
+                PanelInput::PageThumbnails {
+                    request_id,
+                    ids,
+                    max_size,
+                } => {
+                    let entries = glaspen_core::export::page_thumbnails_entries(&ids, max_size);
+                    let frame = glaspen_ipc::encode_page_thumbnails_frame(request_id, &entries);
+                    let _ = writer.write_frame(&frame);
+                }
+            }
         }
         let _ = writer.flush();
     }

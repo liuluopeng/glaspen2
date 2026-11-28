@@ -27,6 +27,9 @@ message Frame {
     PageThumbnailsResponse page_thumbnails_response = 16;
     BubbleMessages bubble_messages = 17;
     PageOpResponse page_op_response = 18;
+    GetSettingsRequest get_settings_request = 30;
+    ListPagesRequest list_pages_request = 31;
+    PageThumbnailsRequest page_thumbnails_request = 32;
     Panel panel = 20;
     Error error = 99;
   }
@@ -196,4 +199,13 @@ message PageOpResponse {
     string payload = 4;
     int32 count = 5;
   }
+}
+
+message GetSettingsRequest {}
+
+message ListPagesRequest {}
+
+message PageThumbnailsRequest {
+  repeated int64 ids = 1;
+  int32 max_size = 2;
 }

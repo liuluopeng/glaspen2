@@ -29,6 +29,9 @@ enum Frame_Body {
   bubbleMessages,
   pageOpResponse,
   panel,
+  getSettingsRequest,
+  listPagesRequest,
+  pageThumbnailsRequest,
   error,
   notSet
 }
@@ -57,6 +60,9 @@ class Frame extends $pb.GeneratedMessage {
     BubbleMessages? bubbleMessages,
     PageOpResponse? pageOpResponse,
     Panel? panel,
+    GetSettingsRequest? getSettingsRequest,
+    ListPagesRequest? listPagesRequest,
+    PageThumbnailsRequest? pageThumbnailsRequest,
     Error? error,
   }) {
     final result = Frame._();
@@ -74,6 +80,11 @@ class Frame extends $pb.GeneratedMessage {
     if (bubbleMessages != null) result.bubbleMessages = bubbleMessages;
     if (pageOpResponse != null) result.pageOpResponse = pageOpResponse;
     if (panel != null) result.panel = panel;
+    if (getSettingsRequest != null)
+      result.getSettingsRequest = getSettingsRequest;
+    if (listPagesRequest != null) result.listPagesRequest = listPagesRequest;
+    if (pageThumbnailsRequest != null)
+      result.pageThumbnailsRequest = pageThumbnailsRequest;
     if (error != null) result.error = error;
     return result;
   }
@@ -98,6 +109,9 @@ class Frame extends $pb.GeneratedMessage {
     17: Frame_Body.bubbleMessages,
     18: Frame_Body.pageOpResponse,
     20: Frame_Body.panel,
+    30: Frame_Body.getSettingsRequest,
+    31: Frame_Body.listPagesRequest,
+    32: Frame_Body.pageThumbnailsRequest,
     99: Frame_Body.error,
     0: Frame_Body.notSet
   };
@@ -105,7 +119,7 @@ class Frame extends $pb.GeneratedMessage {
       _omitMessageNames ? '' : 'Frame',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
       createEmptyInstance: Frame.$_createMessage)
-    ..oo(0, [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 99])
+    ..oo(0, [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 30, 31, 32, 99])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
         fieldType: $pb.PbFieldType.OU3)
     ..a<$fixnum.Int64>(
@@ -133,6 +147,13 @@ class Frame extends $pb.GeneratedMessage {
         subBuilder: PageOpResponse.$_createMessage)
     ..aOM<Panel>(20, _omitFieldNames ? '' : 'panel',
         subBuilder: Panel.$_createMessage)
+    ..aOM<GetSettingsRequest>(30, _omitFieldNames ? '' : 'getSettingsRequest',
+        subBuilder: GetSettingsRequest.$_createMessage)
+    ..aOM<ListPagesRequest>(31, _omitFieldNames ? '' : 'listPagesRequest',
+        subBuilder: ListPagesRequest.$_createMessage)
+    ..aOM<PageThumbnailsRequest>(
+        32, _omitFieldNames ? '' : 'pageThumbnailsRequest',
+        subBuilder: PageThumbnailsRequest.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
         subBuilder: Error.$_createMessage)
     ..hasRequiredFields = false;
@@ -167,6 +188,9 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(17)
   @$pb.TagNumber(18)
   @$pb.TagNumber(20)
+  @$pb.TagNumber(30)
+  @$pb.TagNumber(31)
+  @$pb.TagNumber(32)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(10)
@@ -179,6 +203,9 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(17)
   @$pb.TagNumber(18)
   @$pb.TagNumber(20)
+  @$pb.TagNumber(30)
+  @$pb.TagNumber(31)
+  @$pb.TagNumber(32)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
 
@@ -312,16 +339,50 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(20)
   Panel ensurePanel() => $_ensure(11);
 
+  @$pb.TagNumber(30)
+  GetSettingsRequest get getSettingsRequest => $_getN(12);
+  @$pb.TagNumber(30)
+  set getSettingsRequest(GetSettingsRequest value) => $_setField(30, value);
+  @$pb.TagNumber(30)
+  $core.bool hasGetSettingsRequest() => $_has(12);
+  @$pb.TagNumber(30)
+  void clearGetSettingsRequest() => $_clearField(30);
+  @$pb.TagNumber(30)
+  GetSettingsRequest ensureGetSettingsRequest() => $_ensure(12);
+
+  @$pb.TagNumber(31)
+  ListPagesRequest get listPagesRequest => $_getN(13);
+  @$pb.TagNumber(31)
+  set listPagesRequest(ListPagesRequest value) => $_setField(31, value);
+  @$pb.TagNumber(31)
+  $core.bool hasListPagesRequest() => $_has(13);
+  @$pb.TagNumber(31)
+  void clearListPagesRequest() => $_clearField(31);
+  @$pb.TagNumber(31)
+  ListPagesRequest ensureListPagesRequest() => $_ensure(13);
+
+  @$pb.TagNumber(32)
+  PageThumbnailsRequest get pageThumbnailsRequest => $_getN(14);
+  @$pb.TagNumber(32)
+  set pageThumbnailsRequest(PageThumbnailsRequest value) =>
+      $_setField(32, value);
+  @$pb.TagNumber(32)
+  $core.bool hasPageThumbnailsRequest() => $_has(14);
+  @$pb.TagNumber(32)
+  void clearPageThumbnailsRequest() => $_clearField(32);
+  @$pb.TagNumber(32)
+  PageThumbnailsRequest ensurePageThumbnailsRequest() => $_ensure(14);
+
   @$pb.TagNumber(99)
-  Error get error => $_getN(12);
+  Error get error => $_getN(15);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(12);
+  $core.bool hasError() => $_has(15);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(12);
+  Error ensureError() => $_ensure(15);
 }
 
 enum SettingValue_Value {
@@ -2405,6 +2466,153 @@ class PageOpResponse extends $pb.GeneratedMessage {
   $core.bool hasCount() => $_has(4);
   @$pb.TagNumber(5)
   void clearCount() => $_clearField(5);
+}
+
+class GetSettingsRequest extends $pb.GeneratedMessage {
+  factory GetSettingsRequest() => GetSettingsRequest._();
+
+  GetSettingsRequest._();
+
+  factory GetSettingsRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetSettingsRequest()..mergeFromBuffer(data, registry);
+  factory GetSettingsRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      GetSettingsRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'GetSettingsRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: GetSettingsRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetSettingsRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  GetSettingsRequest copyWith(void Function(GetSettingsRequest) updates) =>
+      super.copyWith((message) => updates(message as GetSettingsRequest))
+          as GetSettingsRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use GetSettingsRequest() / GetSettingsRequest.new instead')
+  static GetSettingsRequest create() => GetSettingsRequest._();
+  static $pb.GeneratedMessage $_createMessage() => GetSettingsRequest._();
+  @$core.override
+  GetSettingsRequest createEmptyInstance() => GetSettingsRequest._();
+  @$core.pragma('dart2js:noInline')
+  static GetSettingsRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<GetSettingsRequest>(
+          GetSettingsRequest.$_createMessage);
+  static GetSettingsRequest? _defaultInstance;
+}
+
+class ListPagesRequest extends $pb.GeneratedMessage {
+  factory ListPagesRequest() => ListPagesRequest._();
+
+  ListPagesRequest._();
+
+  factory ListPagesRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ListPagesRequest()..mergeFromBuffer(data, registry);
+  factory ListPagesRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      ListPagesRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'ListPagesRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: ListPagesRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListPagesRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  ListPagesRequest copyWith(void Function(ListPagesRequest) updates) =>
+      super.copyWith((message) => updates(message as ListPagesRequest))
+          as ListPagesRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use ListPagesRequest() / ListPagesRequest.new instead')
+  static ListPagesRequest create() => ListPagesRequest._();
+  static $pb.GeneratedMessage $_createMessage() => ListPagesRequest._();
+  @$core.override
+  ListPagesRequest createEmptyInstance() => ListPagesRequest._();
+  @$core.pragma('dart2js:noInline')
+  static ListPagesRequest getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<ListPagesRequest>(
+          ListPagesRequest.$_createMessage);
+  static ListPagesRequest? _defaultInstance;
+}
+
+class PageThumbnailsRequest extends $pb.GeneratedMessage {
+  factory PageThumbnailsRequest({
+    $core.Iterable<$fixnum.Int64>? ids,
+    $core.int? maxSize,
+  }) {
+    final result = PageThumbnailsRequest._();
+    if (ids != null) result.ids.addAll(ids);
+    if (maxSize != null) result.maxSize = maxSize;
+    return result;
+  }
+
+  PageThumbnailsRequest._();
+
+  factory PageThumbnailsRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PageThumbnailsRequest()..mergeFromBuffer(data, registry);
+  factory PageThumbnailsRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PageThumbnailsRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'PageThumbnailsRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: PageThumbnailsRequest.$_createMessage)
+    ..p<$fixnum.Int64>(1, _omitFieldNames ? '' : 'ids', $pb.PbFieldType.K6)
+    ..aI(2, _omitFieldNames ? '' : 'maxSize')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PageThumbnailsRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PageThumbnailsRequest copyWith(
+          void Function(PageThumbnailsRequest) updates) =>
+      super.copyWith((message) => updates(message as PageThumbnailsRequest))
+          as PageThumbnailsRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use PageThumbnailsRequest() / PageThumbnailsRequest.new instead')
+  static PageThumbnailsRequest create() => PageThumbnailsRequest._();
+  static $pb.GeneratedMessage $_createMessage() => PageThumbnailsRequest._();
+  @$core.override
+  PageThumbnailsRequest createEmptyInstance() => PageThumbnailsRequest._();
+  @$core.pragma('dart2js:noInline')
+  static PageThumbnailsRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<PageThumbnailsRequest>(
+          PageThumbnailsRequest.$_createMessage);
+  static PageThumbnailsRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $pb.PbList<$fixnum.Int64> get ids => $_getList(0);
+
+  @$pb.TagNumber(2)
+  $core.int get maxSize => $_getIZ(1);
+  @$pb.TagNumber(2)
+  set maxSize($core.int value) => $_setSignedInt32(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasMaxSize() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearMaxSize() => $_clearField(2);
 }
 
 const $core.bool _omitFieldNames =

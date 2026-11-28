@@ -205,6 +205,33 @@ List<int> encodeResponseForTest(int requestId, String kind, dynamic data) {
   return encodeFrame(frame);
 }
 
+List<int> encodeGetSettingsRequest(int requestId) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    getSettingsRequest: pb.GetSettingsRequest(),
+  ));
+}
+
+List<int> encodeListPagesRequest(int requestId) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    listPagesRequest: pb.ListPagesRequest(),
+  ));
+}
+
+List<int> encodePageThumbnailsRequest(int requestId, List<int> ids, int maxSize) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    pageThumbnailsRequest: pb.PageThumbnailsRequest(
+      ids: ids.map(Int64.new).toList(),
+      maxSize: maxSize,
+    ),
+  ));
+}
+
 List<int> encodeRequest(int requestId, String kind, Map<String, dynamic>? data) {
   final frame = pb.Frame(
     protocolVersion: 1,
