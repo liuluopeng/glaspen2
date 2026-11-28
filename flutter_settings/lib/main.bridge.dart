@@ -705,9 +705,13 @@ class _NamedPipeBridge extends SettingsBridge {
 
   @override
   Future<bool> reorderPage(int screenId, int anchorId, {required bool before}) async {
-    final r = await _request('reorderPage', {
-      'screenId': screenId, 'anchorId': anchorId, 'before': before,
-    });
+    final r = await _requestTyped((id) => encodePageOpRequest(
+          id,
+          kind: 'reorderPage',
+          screenId: screenId,
+          anchorId: anchorId,
+          before: before,
+        ));
     return r['ok'] == 1 || r['ok'] == true;
   }
 
@@ -837,7 +841,11 @@ class _NamedPipeBridge extends SettingsBridge {
 
   @override
   Future<bool> deletePage(int screenId) async {
-    final r = await _request('deletePage', {'screenId': screenId});
+    final r = await _requestTyped((id) => encodePageOpRequest(
+          id,
+          kind: 'deletePage',
+          screenId: screenId,
+        ));
     return r['ok'] == 1 || r['ok'] == true;
   }
 

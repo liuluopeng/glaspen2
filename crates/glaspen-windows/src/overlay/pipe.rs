@@ -675,6 +675,58 @@ fn process_page_op(
     let kind = req.kind.as_str();
     let screen_id = req.screen_id;
     let result = match kind {
+        "reorderPage" => {
+            let ok = glaspen_core::runtime()
+                .block_on(glaspen_core::db::reorder_screen(
+                    req.screen_id,
+                    req.anchor_id,
+                    req.before,
+                ))
+                .is_ok();
+            glaspen_ipc::PageOpValue::Ok(ok)
+        }
+        "deletePage" => {
+            let was_current = req.screen_id == glaspen_core::export::glaspen2_get_current_screen_id();
+            let next_id = if was_current {
+                glaspen_core::export::glaspen2_next_screen_id()
+            } else {
+                0
+            };
+            let prev_id = if was_current {
+                glaspen_core::export::glaspen2_prev_screen_id()
+            } else {
+                0
+            };
+            let ok = glaspen_core::export::glaspen2_delete_screen(req.screen_id) != 0;
+            if ok {
+                if infinite_on() {
+                    let _ = unsafe {
+                        PostMessageW(
+                            Some(HWND(hwnd as *mut _)),
+                            WM_TRAY_COMMAND,
+                            WPARAM(CMD_REFRESH_PAGE),
+                            LPARAM(0),
+                        )
+                    };
+                } else if was_current {
+                    let target = if next_id != 0 { next_id } else { prev_id };
+                    let (cmd, param) = if target > 0 {
+                        (CMD_NAVIGATE_TO_PAGE, target as usize)
+                    } else {
+                        (CMD_CLEAR_SCREEN, usize::MAX)
+                    };
+                    let _ = unsafe {
+                        PostMessageW(
+                            Some(HWND(hwnd as *mut _)),
+                            WM_TRAY_COMMAND,
+                            WPARAM(cmd),
+                            LPARAM(param as isize),
+                        )
+                    };
+                }
+            }
+            glaspen_ipc::PageOpValue::Ok(ok)
+        }
         "lassoSelect" => {
             let poly: Vec<(f64, f64)> = req
                 .lasso
