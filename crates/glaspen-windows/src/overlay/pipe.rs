@@ -417,17 +417,10 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
         // 回传与 macOS 通道相同的自描述二进制块,这里按 base64 走 JSON。
         let ids = json_get_i64_array(line, "ids");
         let max_size = json_get_i64(line, "maxSize").unwrap_or(280) as i32;
-        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        let blob = glaspen_core::export::page_thumbnails_blob(&ids, max_size);
-        let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &blob);
-        let _ = writer.write_all(
-            format!(
-                "{{\"type\":\"getPageThumbnails_response\",\"reqId\":{},\"data\":{{\"blob\":\"{}\"}}}}\n",
-                req_id, b64
-            )
-            .as_bytes(),
-        );
-        let _ = writer.flush();
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0) as u64;
+        let entries = glaspen_core::export::page_thumbnails_entries(&ids, max_size);
+        let frame = glaspen_ipc::encode_page_thumbnails_frame(req_id, &entries);
+        let _ = writer.write_frame(&frame);
     } else if msg_type == "deletePage" {
         // 删除一页(内容 tab)。delete_screen 会把 current 置 0, 所以"相邻页"
         // 必须在**删除前**按当前页取好(macOS glaspen2_macos_delete_page 同款),

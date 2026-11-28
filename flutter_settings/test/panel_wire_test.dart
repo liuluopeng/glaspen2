@@ -20,6 +20,23 @@ void main() {
     }
   });
 
+  test('typed page thumbnails decodes', () {
+    final frame = pb.Frame(
+      protocolVersion: 1,
+      requestId: Int64(11),
+      pageThumbnailsResponse: pb.PageThumbnailsResponse(
+        thumbnails: [
+          pb.PageThumbnail(id: Int64(1), png: [1, 2, 3]),
+          pb.PageThumbnail(id: Int64(2), png: [9]),
+        ],
+      ),
+    );
+    final msg = PanelStreamDecoder().feed(encodeFrame(frame)).single;
+    expect(msg.kind, 'getPageThumbnails_response');
+    expect(msg.data['entries'][0]['id'], 1);
+    expect(msg.data['entries'][1]['png'], [9]);
+  });
+
   test('typed page list decodes', () {
     final frame = pb.Frame(
       protocolVersion: 1,

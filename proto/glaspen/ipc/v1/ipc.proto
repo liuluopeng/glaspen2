@@ -24,6 +24,7 @@ message Frame {
     Ack ack = 13;
     SettingsChanged settings_changed = 14;
     PageListResponse page_list_response = 15;
+    PageThumbnailsResponse page_thumbnails_response = 16;
     Panel panel = 20;
     Error error = 99;
   }
@@ -145,4 +146,13 @@ message PageSummary {
 
 message PageListResponse {
   repeated PageSummary pages = 1;
+}
+
+message PageThumbnail {
+  int64 id = 1;
+  bytes png = 2;
+}
+
+message PageThumbnailsResponse {
+  repeated PageThumbnail thumbnails = 1;
 }

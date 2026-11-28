@@ -90,7 +90,8 @@
 待迁移：
 
 - ✅ `PageSummary` / `PageListResponse` typed；Windows `listPages` 已切 typed，
-  缩略图/页面操作仍待迁；
+  ✅ `PageThumbnail/PageThumbnailsResponse` typed，Windows 缩略图不再 base64/JSON；
+  页面操作仍待迁；
 - `Bubble*`；
 - `RecordingEvent/Effect`；
 - `GridLines` / `MinimapLayout` / `ActionEffect`；

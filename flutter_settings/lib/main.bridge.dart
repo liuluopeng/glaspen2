@@ -768,6 +768,23 @@ class _NamedPipeBridge extends SettingsBridge {
     final r = await _request('getPageThumbnails', {
       'ids': ids, 'maxSize': maxSize,
     });
+    final entries = r['entries'];
+    if (entries is List) {
+      final out = <int, Uint8List>{};
+      for (final raw in entries) {
+        if (raw is! Map) continue;
+        final id = (raw['id'] as num?)?.toInt();
+        final png = raw['png'];
+        if (id == null) continue;
+        if (png is Uint8List) {
+          out[id] = png;
+        } else if (png is List) {
+          out[id] = Uint8List.fromList(png.cast<int>());
+        }
+      }
+      return out;
+    }
+    // 兼容旧字段(仅回滚期; 新后端不再发)。
     final blob = r['blob'] as String?;
     if (blob == null || blob.isEmpty) return const {};
     try {

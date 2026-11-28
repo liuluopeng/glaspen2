@@ -197,7 +197,7 @@ pub extern "C" fn glaspen2_page_thumbnails(
 /// Build the blob described by `glaspen2_page_thumbnails`: one batched version
 /// query, one batched cache read, and a render only for the pages whose cache
 /// entry is missing or stale.
-pub fn page_thumbnails_blob(ids: &[i64], max_size: i32) -> Vec<u8> {
+pub fn page_thumbnails_entries(ids: &[i64], max_size: i32) -> Vec<(i64, Vec<u8>)> {
     let mut seen = std::collections::HashSet::with_capacity(ids.len());
     let ids: Vec<i64> = ids.iter().copied().filter(|id| seen.insert(*id)).collect();
     if ids.is_empty() {
@@ -227,8 +227,11 @@ pub fn page_thumbnails_blob(ids: &[i64], max_size: i32) -> Vec<u8> {
             entries.push((id, png));
         }
     }
+    entries
+}
 
-    encode_thumb_blob(&entries)
+pub fn page_thumbnails_blob(ids: &[i64], max_size: i32) -> Vec<u8> {
+    encode_thumb_blob(&page_thumbnails_entries(ids, max_size))
 }
 
 /// Frame `(id, png)` entries into the blob the settings panel parses.

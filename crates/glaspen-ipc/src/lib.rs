@@ -425,6 +425,35 @@ pub fn encode_page_list_frame(request_id: u64, pages: &[(i64, i32, i32)]) -> Vec
     encode_frame(&frame)
 }
 
+pub fn encode_page_thumbnails_frame(request_id: u64, entries: &[(i64, Vec<u8>)]) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::PageThumbnailsResponse(
+            proto::PageThumbnailsResponse {
+                thumbnails: entries
+                    .iter()
+                    .map(|(id, png)| proto::PageThumbnail {
+                        id: *id,
+                        png: png.clone(),
+                    })
+                    .collect(),
+            },
+        )),
+    };
+    encode_frame(&frame)
+}
+
+pub fn decode_page_thumbnails_frame(bytes: &[u8]) -> Result<Vec<(i64, Vec<u8>)>, FrameError> {
+    let frame = decode_frame(bytes)?;
+    let Some(proto::frame::Body::PageThumbnailsResponse(resp)) = frame.body else {
+        return Err(FrameError::Decode(
+            "期望 PageThumbnailsResponse".to_string(),
+        ));
+    };
+    Ok(resp.thumbnails.into_iter().map(|t| (t.id, t.png)).collect())
+}
+
 pub fn decode_page_list_frame(bytes: &[u8]) -> Result<Vec<(i64, i32, i32)>, FrameError> {
     let frame = decode_frame(bytes)?;
     let Some(proto::frame::Body::PageListResponse(resp)) = frame.body else {
@@ -555,6 +584,13 @@ mod tests {
         assert_eq!(panel.kind, "getPageThumbnails");
         let back = prost_value_to_json(panel.data.as_ref().unwrap());
         assert_eq!(back, value);
+    }
+
+    #[test]
+    fn typed_page_thumbnails_roundtrip() {
+        let entries = vec![(1i64, vec![1u8, 2, 3]), (2i64, vec![9u8])];
+        let bytes = encode_page_thumbnails_frame(8, &entries);
+        assert_eq!(decode_page_thumbnails_frame(&bytes).unwrap(), entries);
     }
 
     #[test]

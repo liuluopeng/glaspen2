@@ -76,6 +76,15 @@ const Frame$json = {
       '10': 'pageListResponse'
     },
     {
+      '1': 'page_thumbnails_response',
+      '3': 16,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.PageThumbnailsResponse',
+      '9': 0,
+      '10': 'pageThumbnailsResponse'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -110,9 +119,11 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'CgNhY2sYDSABKAsyEy5nbGFzcGVuLmlwYy52MS5BY2tIAFIDYWNrEkwKEHNldHRpbmdzX2NoYW'
     '5nZWQYDiABKAsyHy5nbGFzcGVuLmlwYy52MS5TZXR0aW5nc0NoYW5nZWRIAFIPc2V0dGluZ3ND'
     'aGFuZ2VkElAKEnBhZ2VfbGlzdF9yZXNwb25zZRgPIAEoCzIgLmdsYXNwZW4uaXBjLnYxLlBhZ2'
-    'VMaXN0UmVzcG9uc2VIAFIQcGFnZUxpc3RSZXNwb25zZRItCgVwYW5lbBgUIAEoCzIVLmdsYXNw'
-    'ZW4uaXBjLnYxLlBhbmVsSABSBXBhbmVsEi0KBWVycm9yGGMgASgLMhUuZ2xhc3Blbi5pcGMudj'
-    'EuRXJyb3JIAFIFZXJyb3JCBgoEYm9keQ==');
+    'VMaXN0UmVzcG9uc2VIAFIQcGFnZUxpc3RSZXNwb25zZRJiChhwYWdlX3RodW1ibmFpbHNfcmVz'
+    'cG9uc2UYECABKAsyJi5nbGFzcGVuLmlwYy52MS5QYWdlVGh1bWJuYWlsc1Jlc3BvbnNlSABSFn'
+    'BhZ2VUaHVtYm5haWxzUmVzcG9uc2USLQoFcGFuZWwYFCABKAsyFS5nbGFzcGVuLmlwYy52MS5Q'
+    'YW5lbEgAUgVwYW5lbBItCgVlcnJvchhjIAEoCzIVLmdsYXNwZW4uaXBjLnYxLkVycm9ySABSBW'
+    'Vycm9yQgYKBGJvZHk=');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -527,3 +538,37 @@ const PageListResponse$json = {
 final $typed_data.Uint8List pageListResponseDescriptor = $convert.base64Decode(
     'ChBQYWdlTGlzdFJlc3BvbnNlEjEKBXBhZ2VzGAEgAygLMhsuZ2xhc3Blbi5pcGMudjEuUGFnZV'
     'N1bW1hcnlSBXBhZ2Vz');
+
+@$core.Deprecated('Use pageThumbnailDescriptor instead')
+const PageThumbnail$json = {
+  '1': 'PageThumbnail',
+  '2': [
+    {'1': 'id', '3': 1, '4': 1, '5': 3, '10': 'id'},
+    {'1': 'png', '3': 2, '4': 1, '5': 12, '10': 'png'},
+  ],
+};
+
+/// Descriptor for `PageThumbnail`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List pageThumbnailDescriptor = $convert.base64Decode(
+    'Cg1QYWdlVGh1bWJuYWlsEg4KAmlkGAEgASgDUgJpZBIQCgNwbmcYAiABKAxSA3BuZw==');
+
+@$core.Deprecated('Use pageThumbnailsResponseDescriptor instead')
+const PageThumbnailsResponse$json = {
+  '1': 'PageThumbnailsResponse',
+  '2': [
+    {
+      '1': 'thumbnails',
+      '3': 1,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.PageThumbnail',
+      '10': 'thumbnails'
+    },
+  ],
+};
+
+/// Descriptor for `PageThumbnailsResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List pageThumbnailsResponseDescriptor =
+    $convert.base64Decode(
+        'ChZQYWdlVGh1bWJuYWlsc1Jlc3BvbnNlEj0KCnRodW1ibmFpbHMYASADKAsyHS5nbGFzcGVuLm'
+        'lwYy52MS5QYWdlVGh1bWJuYWlsUgp0aHVtYm5haWxz');

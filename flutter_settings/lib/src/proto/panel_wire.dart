@@ -238,6 +238,19 @@ class PanelStreamDecoder {
         ));
         continue;
       }
+      if (frame.hasPageThumbnailsResponse()) {
+        out.add(PanelMessage(
+          'getPageThumbnails_response',
+          frame.requestId.toInt(),
+          {
+            'entries': [
+              for (final t in frame.pageThumbnailsResponse.thumbnails)
+                {'id': t.id.toInt(), 'png': Uint8List.fromList(t.png)},
+            ],
+          },
+        ));
+        continue;
+      }
       if (frame.hasPageListResponse()) {
         out.add(PanelMessage(
           'listPages_response',
