@@ -107,3 +107,5 @@
 - ✅ 删除 `process_pipe_message` 中已被 typed 路径替代的死 Panel 分支；函数现在只剩 `uiConfig` 与 `downloadUpdate` 两条 JSON 命令。
 
 - ✅ macOS settings apply 直接调用 core `settings_apply::apply_setting`，删除 `glaspen2_settings_apply` effect JSON FFI。
+
+- ✅ macOS `set_setting_pb` 直接调用 typed `apply_setting_value`，删除 `glaspen2_rust_apply_setting` C ABI/JSON 输入。

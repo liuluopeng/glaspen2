@@ -5479,25 +5479,9 @@ fn setting_effect_fields(
     }
 }
 
-/// R89: 应用一个设置; 返回 1 已处理, 0 回退 Swift。
-#[unsafe(no_mangle)]
-pub extern "C" fn glaspen2_rust_apply_setting(
-    key: *const std::os::raw::c_char,
-    value: *const std::os::raw::c_char,
-) -> i32 {
-    if key.is_null() || value.is_null() {
-        return 0;
-    }
-    let key = unsafe { std::ffi::CStr::from_ptr(key) }
-        .to_string_lossy()
-        .into_owned();
-    let value = unsafe { std::ffi::CStr::from_ptr(value) }
-        .to_string_lossy()
-        .into_owned();
-    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&value) else {
-        return 0;
-    };
-    let Ok(effect) = glaspen_core::settings_apply::apply_setting(&key, &parsed) else {
+/// 应用一个设置值(typed; C ABI 与 set_setting_pb 共用)。
+fn apply_setting_value(key: &str, parsed: &serde_json::Value) -> i32 {
+    let Ok(effect) = glaspen_core::settings_apply::apply_setting(key, parsed) else {
         return 0;
     };
     let (kind, b, iv, fv, sv) = setting_effect_fields(&effect);
@@ -8975,9 +8959,9 @@ pub extern "C" fn glaspen2_rust_settings_probe() -> i32 {
         }
     };
     let apply = |key: &str, value: &str| {
-        let k = std::ffi::CString::new(key).unwrap();
-        let v = std::ffi::CString::new(value).unwrap();
-        let _ = glaspen2_rust_apply_setting(k.as_ptr(), v.as_ptr());
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(value) {
+            let _ = apply_setting_value(key, &parsed);
+        }
     };
     apply("gridSize", "55");
     check("gridSize", unsafe { glaspen2_router_grid_size() } == 55.0);
@@ -10252,13 +10236,7 @@ pub fn set_setting_pb(key: &str, value: &[u8]) -> bool {
         return false;
     };
     let json = glaspen_ipc::setting_value_to_json(&value);
-    let Ok(text) = serde_json::to_string(&json) else {
-        return false;
-    };
-    let (Ok(k), Ok(v)) = (std::ffi::CString::new(key), std::ffi::CString::new(text)) else {
-        return false;
-    };
-    let ok = unsafe { glaspen2_rust_apply_setting(k.as_ptr(), v.as_ptr()) != 0 };
+    let ok = apply_setting_value(key, &json) != 0;
     if ok {
         // 写入后主动推一次完整 Settings 流: 面板若因本地/推送竞态没刷新,
         // 以落库后的权威值再刷新一次。

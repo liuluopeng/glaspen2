@@ -541,7 +541,6 @@ extern void glaspen2_rust_tunnel_finish(double t0, double now, unsigned long lon
                                         int surf_w, int surf_h);
 
 // R89: 常用设置 effect 分派(未覆盖回退 Swift)
-extern int glaspen2_rust_apply_setting(const char *key, const char *value);
 
 // R90: 快照观看页框(默认; GLASPEN2_SWIFT_PAGEFRAME=1 回退)
 extern int glaspen2_rust_draw_page_frame(void *surface, double scale, double ox, double oy,
