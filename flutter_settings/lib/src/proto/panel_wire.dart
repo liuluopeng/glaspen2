@@ -263,6 +263,24 @@ class PanelStreamDecoder {
         ));
         continue;
       }
+      if (frame.hasPageOpResponse()) {
+        final r = frame.pageOpResponse;
+        dynamic data = const <String, dynamic>{};
+        switch (r.whichResult()) {
+          case pb.PageOpResponse_Result.ok:
+            data = {'ok': r.ok};
+          case pb.PageOpResponse_Result.ids:
+            data = {'ids': r.ids.values.map((v) => v.toInt()).toList()};
+          case pb.PageOpResponse_Result.payload:
+            data = {'payload': r.payload};
+          case pb.PageOpResponse_Result.count:
+            data = {'count': r.count};
+          case pb.PageOpResponse_Result.notSet:
+            break;
+        }
+        out.add(PanelMessage(r.kind, frame.requestId.toInt(), data));
+        continue;
+      }
       if (frame.hasPageThumbnailsResponse()) {
         out.add(PanelMessage(
           'getPageThumbnails_response',

@@ -20,6 +20,20 @@ void main() {
     }
   });
 
+  test('typed page op response decodes', () {
+    final frame = pb.Frame(
+      protocolVersion: 1,
+      requestId: Int64(12),
+      pageOpResponse: pb.PageOpResponse(
+        kind: 'lassoSelect_response',
+        ids: pb.Int64List(values: [Int64(3), Int64(4)]),
+      ),
+    );
+    final msg = PanelStreamDecoder().feed(encodeFrame(frame)).single;
+    expect(msg.kind, 'lassoSelect_response');
+    expect(msg.data['ids'], [3, 4]);
+  });
+
   test('typed bubble messages decodes', () {
     final frame = pb.Frame(
       protocolVersion: 1,

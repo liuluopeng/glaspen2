@@ -405,13 +405,12 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
         // Dart 侧统一从 data 取结果(pending reqId 通道); 顶层 ok 保留给
         // 旧客户端。此前只有顶层 ok, 面板永远读不到、回滚并误报失败,
         // 而数据库其实已经改了。
-        let resp = format!(
-            "{{\"type\":\"reorderPage_response\",\"reqId\":{},\"ok\":{},\"data\":{{\"ok\":{}}}}}
-",
-            req_id, ok, ok
+        let frame = glaspen_ipc::encode_page_op_frame(
+            req_id as u64,
+            "reorderPage_response",
+            glaspen_ipc::PageOpValue::Ok(ok),
         );
-        let _ = writer.write_all(resp.as_bytes());
-        let _ = writer.flush();
+        let _ = writer.write_frame(&frame);
     } else if msg_type == "getPageThumbnails" {
         // 活页本整屏一次取图:避免每页一次管道往返 + 一次 setState。
         // 回传与 macOS 通道相同的自描述二进制块,这里按 base64 走 JSON。
@@ -475,14 +474,12 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
                 }
             }
         }
-        let _ = writer.write_all(
-            format!(
-                "{{\"type\":\"deletePage_response\",\"reqId\":{},\"data\":{{\"ok\":{}}}}}\n",
-                req_id, ok
-            )
-            .as_bytes(),
+        let frame = glaspen_ipc::encode_page_op_frame(
+            req_id as u64,
+            "deletePage_response",
+            glaspen_ipc::PageOpValue::Ok(ok != 0),
         );
-        let _ = writer.flush();
+        let _ = writer.write_frame(&frame);
     } else if msg_type == "lassoSelect"
         || msg_type == "moveStrokes"
         || msg_type == "moveStrokesToPage"
@@ -512,7 +509,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
         };
         let val = json_get_str(line, "value");
         let parsed: Option<serde_json::Value> = serde_json::from_str(val).ok();
-        let resp_val = match msg_type {
+        let result = match msg_type {
             "lassoSelect" => {
                 // Dart 发的是 value: [[x,y],...]; 早期实现读 poly, 永远为空。
                 let poly = parsed
@@ -535,7 +532,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
                     glaspen_core::export::glaspen2_free_c_string(ptr);
                 }
                 let ids: Vec<i64> = s.split(',').filter_map(|t| t.trim().parse().ok()).collect();
-                serde_json::json!({ "ids": ids })
+                glaspen_ipc::PageOpValue::Ids(ids)
             }
             "moveStrokes" => {
                 let ids = parsed.as_ref().map(|v| ids_json(&v["ids"])).unwrap_or_default();
@@ -550,7 +547,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
                 let ok = glaspen_core::export::glaspen2_move_strokes(
                     screen_id, csv.as_ptr(), dx, dy,
                 ) != 0;
-                serde_json::json!({ "ok": ok })
+                glaspen_ipc::PageOpValue::Ok(ok)
             }
             "moveStrokesToPage" => {
                 let ids = parsed.as_ref().map(|v| ids_json(&v["ids"])).unwrap_or_default();
@@ -569,7 +566,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
                 let ok = glaspen_core::export::glaspen2_move_strokes_to_page(
                     screen_id, csv.as_ptr(), target, dx, dy,
                 ) != 0;
-                serde_json::json!({ "ok": ok })
+                glaspen_ipc::PageOpValue::Ok(ok)
             }
             "deleteStrokes" => {
                 let ids = parsed.as_ref().map(|v| ids_json(&v["ids"])).unwrap_or_default();
@@ -579,7 +576,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
                 .unwrap_or_default();
                 let ok =
                     glaspen_core::export::glaspen2_delete_strokes(screen_id, csv.as_ptr()) != 0;
-                serde_json::json!({ "ok": ok })
+                glaspen_ipc::PageOpValue::Ok(ok)
             }
             "copyStrokes" => {
                 let ids = parsed.as_ref().map(|v| ids_json(&v["ids"])).unwrap_or_default();
@@ -597,7 +594,7 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
                 if !ptr.is_null() {
                     glaspen_core::export::glaspen2_free_c_string(ptr);
                 }
-                serde_json::json!({ "payload": s })
+                glaspen_ipc::PageOpValue::Payload(s)
             }
             _ => {
                 // pasteStrokes: 载荷坐标以包围盒中心为原点, 按 (cx, cy) 平移。
@@ -614,15 +611,12 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
                 let shifted = glaspen_core::export::shift_stroke_payload(&payload, cx, cy);
                 let c = std::ffi::CString::new(shifted).unwrap_or_default();
                 let n = glaspen_core::export::glaspen2_paste_strokes(screen_id, c.as_ptr());
-                serde_json::json!({ "count": n })
+                glaspen_ipc::PageOpValue::Count(n)
             }
         };
-        let resp = format!(
-            "{{\"type\":\"{}_response\",\"reqId\":{},\"data\":{}}}\n",
-            msg_type, req_id, resp_val
-        );
-        let _ = writer.write_all(resp.as_bytes());
-        let _ = writer.flush();
+        let kind = format!("{msg_type}_response");
+        let frame = glaspen_ipc::encode_page_op_frame(req_id as u64, &kind, result);
+        let _ = writer.write_frame(&frame);
         // 数据改动(移动/粘贴/删除所选)后让覆盖层重载当前页并重绘 ——
         // macOS 侧由 core 的 refresh hook 调 glaspen2_macos_refresh_page 完成,
         // Windows 走 PostMessage 回消息循环线程。

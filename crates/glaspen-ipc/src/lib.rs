@@ -453,6 +453,48 @@ pub fn encode_bubble_messages_frame(request_id: u64, messages: proto::BubbleMess
     encode_frame(&frame)
 }
 
+pub enum PageOpValue {
+    Ok(bool),
+    Ids(Vec<i64>),
+    Payload(String),
+    Count(i32),
+}
+
+pub fn decode_page_op_frame(bytes: &[u8]) -> Result<(String, PageOpValue), FrameError> {
+    let frame = decode_frame(bytes)?;
+    let Some(proto::frame::Body::PageOpResponse(r)) = frame.body else {
+        return Err(FrameError::Decode("期望 PageOpResponse".to_string()));
+    };
+    let value = match r.result {
+        Some(proto::page_op_response::Result::Ok(ok)) => PageOpValue::Ok(ok),
+        Some(proto::page_op_response::Result::Ids(ids)) => PageOpValue::Ids(ids.values),
+        Some(proto::page_op_response::Result::Payload(p)) => PageOpValue::Payload(p),
+        Some(proto::page_op_response::Result::Count(c)) => PageOpValue::Count(c),
+        None => PageOpValue::Ok(false),
+    };
+    Ok((r.kind, value))
+}
+
+pub fn encode_page_op_frame(request_id: u64, kind: &str, value: PageOpValue) -> Vec<u8> {
+    let result = match value {
+        PageOpValue::Ok(ok) => proto::page_op_response::Result::Ok(ok),
+        PageOpValue::Ids(ids) => {
+            proto::page_op_response::Result::Ids(proto::Int64List { values: ids })
+        }
+        PageOpValue::Payload(payload) => proto::page_op_response::Result::Payload(payload),
+        PageOpValue::Count(count) => proto::page_op_response::Result::Count(count),
+    };
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::PageOpResponse(proto::PageOpResponse {
+            kind: kind.to_string(),
+            result: Some(result),
+        })),
+    };
+    encode_frame(&frame)
+}
+
 pub fn decode_bubble_messages_frame(bytes: &[u8]) -> Result<proto::BubbleMessages, FrameError> {
     let frame = decode_frame(bytes)?;
     let Some(proto::frame::Body::BubbleMessages(messages)) = frame.body else {
@@ -601,6 +643,14 @@ mod tests {
         assert_eq!(panel.kind, "getPageThumbnails");
         let back = prost_value_to_json(panel.data.as_ref().unwrap());
         assert_eq!(back, value);
+    }
+
+    #[test]
+    fn typed_page_op_roundtrip() {
+        let bytes = encode_page_op_frame(1, "lassoSelect_response", PageOpValue::Ids(vec![3, 4]));
+        let (kind, value) = decode_page_op_frame(&bytes).unwrap();
+        assert_eq!(kind, "lassoSelect_response");
+        assert!(matches!(value, PageOpValue::Ids(ids) if ids == vec![3, 4]));
     }
 
     #[test]

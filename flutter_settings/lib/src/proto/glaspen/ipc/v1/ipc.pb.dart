@@ -27,6 +27,7 @@ enum Frame_Body {
   pageListResponse,
   pageThumbnailsResponse,
   bubbleMessages,
+  pageOpResponse,
   panel,
   error,
   notSet
@@ -54,6 +55,7 @@ class Frame extends $pb.GeneratedMessage {
     PageListResponse? pageListResponse,
     PageThumbnailsResponse? pageThumbnailsResponse,
     BubbleMessages? bubbleMessages,
+    PageOpResponse? pageOpResponse,
     Panel? panel,
     Error? error,
   }) {
@@ -70,6 +72,7 @@ class Frame extends $pb.GeneratedMessage {
     if (pageThumbnailsResponse != null)
       result.pageThumbnailsResponse = pageThumbnailsResponse;
     if (bubbleMessages != null) result.bubbleMessages = bubbleMessages;
+    if (pageOpResponse != null) result.pageOpResponse = pageOpResponse;
     if (panel != null) result.panel = panel;
     if (error != null) result.error = error;
     return result;
@@ -93,6 +96,7 @@ class Frame extends $pb.GeneratedMessage {
     15: Frame_Body.pageListResponse,
     16: Frame_Body.pageThumbnailsResponse,
     17: Frame_Body.bubbleMessages,
+    18: Frame_Body.pageOpResponse,
     20: Frame_Body.panel,
     99: Frame_Body.error,
     0: Frame_Body.notSet
@@ -101,7 +105,7 @@ class Frame extends $pb.GeneratedMessage {
       _omitMessageNames ? '' : 'Frame',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
       createEmptyInstance: Frame.$_createMessage)
-    ..oo(0, [10, 11, 12, 13, 14, 15, 16, 17, 20, 99])
+    ..oo(0, [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 99])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
         fieldType: $pb.PbFieldType.OU3)
     ..a<$fixnum.Int64>(
@@ -125,6 +129,8 @@ class Frame extends $pb.GeneratedMessage {
         subBuilder: PageThumbnailsResponse.$_createMessage)
     ..aOM<BubbleMessages>(17, _omitFieldNames ? '' : 'bubbleMessages',
         subBuilder: BubbleMessages.$_createMessage)
+    ..aOM<PageOpResponse>(18, _omitFieldNames ? '' : 'pageOpResponse',
+        subBuilder: PageOpResponse.$_createMessage)
     ..aOM<Panel>(20, _omitFieldNames ? '' : 'panel',
         subBuilder: Panel.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
@@ -159,6 +165,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(15)
   @$pb.TagNumber(16)
   @$pb.TagNumber(17)
+  @$pb.TagNumber(18)
   @$pb.TagNumber(20)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
@@ -170,6 +177,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(15)
   @$pb.TagNumber(16)
   @$pb.TagNumber(17)
+  @$pb.TagNumber(18)
   @$pb.TagNumber(20)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
@@ -282,27 +290,38 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(17)
   BubbleMessages ensureBubbleMessages() => $_ensure(9);
 
+  @$pb.TagNumber(18)
+  PageOpResponse get pageOpResponse => $_getN(10);
+  @$pb.TagNumber(18)
+  set pageOpResponse(PageOpResponse value) => $_setField(18, value);
+  @$pb.TagNumber(18)
+  $core.bool hasPageOpResponse() => $_has(10);
+  @$pb.TagNumber(18)
+  void clearPageOpResponse() => $_clearField(18);
+  @$pb.TagNumber(18)
+  PageOpResponse ensurePageOpResponse() => $_ensure(10);
+
   @$pb.TagNumber(20)
-  Panel get panel => $_getN(10);
+  Panel get panel => $_getN(11);
   @$pb.TagNumber(20)
   set panel(Panel value) => $_setField(20, value);
   @$pb.TagNumber(20)
-  $core.bool hasPanel() => $_has(10);
+  $core.bool hasPanel() => $_has(11);
   @$pb.TagNumber(20)
   void clearPanel() => $_clearField(20);
   @$pb.TagNumber(20)
-  Panel ensurePanel() => $_ensure(10);
+  Panel ensurePanel() => $_ensure(11);
 
   @$pb.TagNumber(99)
-  Error get error => $_getN(11);
+  Error get error => $_getN(12);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(11);
+  $core.bool hasError() => $_has(12);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(11);
+  Error ensureError() => $_ensure(12);
 }
 
 enum SettingValue_Value {
@@ -2206,6 +2225,186 @@ class BubbleMessages extends $pb.GeneratedMessage {
 
   @$pb.TagNumber(2)
   $pb.PbList<BubbleMessage> get messages => $_getList(1);
+}
+
+class Int64List extends $pb.GeneratedMessage {
+  factory Int64List({
+    $core.Iterable<$fixnum.Int64>? values,
+  }) {
+    final result = Int64List._();
+    if (values != null) result.values.addAll(values);
+    return result;
+  }
+
+  Int64List._();
+
+  factory Int64List.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      Int64List()..mergeFromBuffer(data, registry);
+  factory Int64List.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      Int64List()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'Int64List',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: Int64List.$_createMessage)
+    ..p<$fixnum.Int64>(1, _omitFieldNames ? '' : 'values', $pb.PbFieldType.K6)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  Int64List clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  Int64List copyWith(void Function(Int64List) updates) =>
+      super.copyWith((message) => updates(message as Int64List)) as Int64List;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use Int64List() / Int64List.new instead')
+  static Int64List create() => Int64List._();
+  static $pb.GeneratedMessage $_createMessage() => Int64List._();
+  @$core.override
+  Int64List createEmptyInstance() => Int64List._();
+  @$core.pragma('dart2js:noInline')
+  static Int64List getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<Int64List>(Int64List.$_createMessage);
+  static Int64List? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $pb.PbList<$fixnum.Int64> get values => $_getList(0);
+}
+
+enum PageOpResponse_Result { ok, ids, payload, count, notSet }
+
+class PageOpResponse extends $pb.GeneratedMessage {
+  factory PageOpResponse({
+    $core.String? kind,
+    $core.bool? ok,
+    Int64List? ids,
+    $core.String? payload,
+    $core.int? count,
+  }) {
+    final result = PageOpResponse._();
+    if (kind != null) result.kind = kind;
+    if (ok != null) result.ok = ok;
+    if (ids != null) result.ids = ids;
+    if (payload != null) result.payload = payload;
+    if (count != null) result.count = count;
+    return result;
+  }
+
+  PageOpResponse._();
+
+  factory PageOpResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PageOpResponse()..mergeFromBuffer(data, registry);
+  factory PageOpResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PageOpResponse()..mergeFromJson(json, registry);
+
+  static const $core.Map<$core.int, PageOpResponse_Result>
+      _PageOpResponse_ResultByTag = {
+    2: PageOpResponse_Result.ok,
+    3: PageOpResponse_Result.ids,
+    4: PageOpResponse_Result.payload,
+    5: PageOpResponse_Result.count,
+    0: PageOpResponse_Result.notSet
+  };
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'PageOpResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: PageOpResponse.$_createMessage)
+    ..oo(0, [2, 3, 4, 5])
+    ..aOS(1, _omitFieldNames ? '' : 'kind')
+    ..aOB(2, _omitFieldNames ? '' : 'ok')
+    ..aOM<Int64List>(3, _omitFieldNames ? '' : 'ids',
+        subBuilder: Int64List.$_createMessage)
+    ..aOS(4, _omitFieldNames ? '' : 'payload')
+    ..aI(5, _omitFieldNames ? '' : 'count')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PageOpResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PageOpResponse copyWith(void Function(PageOpResponse) updates) =>
+      super.copyWith((message) => updates(message as PageOpResponse))
+          as PageOpResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use PageOpResponse() / PageOpResponse.new instead')
+  static PageOpResponse create() => PageOpResponse._();
+  static $pb.GeneratedMessage $_createMessage() => PageOpResponse._();
+  @$core.override
+  PageOpResponse createEmptyInstance() => PageOpResponse._();
+  @$core.pragma('dart2js:noInline')
+  static PageOpResponse getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<PageOpResponse>(
+          PageOpResponse.$_createMessage);
+  static PageOpResponse? _defaultInstance;
+
+  @$pb.TagNumber(2)
+  @$pb.TagNumber(3)
+  @$pb.TagNumber(4)
+  @$pb.TagNumber(5)
+  PageOpResponse_Result whichResult() =>
+      _PageOpResponse_ResultByTag[$_whichOneof(0)]!;
+  @$pb.TagNumber(2)
+  @$pb.TagNumber(3)
+  @$pb.TagNumber(4)
+  @$pb.TagNumber(5)
+  void clearResult() => $_clearField($_whichOneof(0));
+
+  @$pb.TagNumber(1)
+  $core.String get kind => $_getSZ(0);
+  @$pb.TagNumber(1)
+  set kind($core.String value) => $_setString(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasKind() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearKind() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.bool get ok => $_getBF(1);
+  @$pb.TagNumber(2)
+  set ok($core.bool value) => $_setBool(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasOk() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearOk() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  Int64List get ids => $_getN(2);
+  @$pb.TagNumber(3)
+  set ids(Int64List value) => $_setField(3, value);
+  @$pb.TagNumber(3)
+  $core.bool hasIds() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearIds() => $_clearField(3);
+  @$pb.TagNumber(3)
+  Int64List ensureIds() => $_ensure(2);
+
+  @$pb.TagNumber(4)
+  $core.String get payload => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set payload($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasPayload() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearPayload() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.int get count => $_getIZ(4);
+  @$pb.TagNumber(5)
+  set count($core.int value) => $_setSignedInt32(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasCount() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearCount() => $_clearField(5);
 }
 
 const $core.bool _omitFieldNames =

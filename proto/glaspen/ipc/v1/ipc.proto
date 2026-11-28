@@ -26,6 +26,7 @@ message Frame {
     PageListResponse page_list_response = 15;
     PageThumbnailsResponse page_thumbnails_response = 16;
     BubbleMessages bubble_messages = 17;
+    PageOpResponse page_op_response = 18;
     Panel panel = 20;
     Error error = 99;
   }
@@ -181,4 +182,18 @@ message BubbleMessage {
 message BubbleMessages {
   string device = 1;
   repeated BubbleMessage messages = 2;
+}
+
+message Int64List {
+  repeated int64 values = 1;
+}
+
+message PageOpResponse {
+  string kind = 1;
+  oneof result {
+    bool ok = 2;
+    Int64List ids = 3;
+    string payload = 4;
+    int32 count = 5;
+  }
 }

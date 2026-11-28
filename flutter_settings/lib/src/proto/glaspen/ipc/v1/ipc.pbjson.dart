@@ -94,6 +94,15 @@ const Frame$json = {
       '10': 'bubbleMessages'
     },
     {
+      '1': 'page_op_response',
+      '3': 18,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.PageOpResponse',
+      '9': 0,
+      '10': 'pageOpResponse'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -131,9 +140,10 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'VMaXN0UmVzcG9uc2VIAFIQcGFnZUxpc3RSZXNwb25zZRJiChhwYWdlX3RodW1ibmFpbHNfcmVz'
     'cG9uc2UYECABKAsyJi5nbGFzcGVuLmlwYy52MS5QYWdlVGh1bWJuYWlsc1Jlc3BvbnNlSABSFn'
     'BhZ2VUaHVtYm5haWxzUmVzcG9uc2USSQoPYnViYmxlX21lc3NhZ2VzGBEgASgLMh4uZ2xhc3Bl'
-    'bi5pcGMudjEuQnViYmxlTWVzc2FnZXNIAFIOYnViYmxlTWVzc2FnZXMSLQoFcGFuZWwYFCABKA'
-    'syFS5nbGFzcGVuLmlwYy52MS5QYW5lbEgAUgVwYW5lbBItCgVlcnJvchhjIAEoCzIVLmdsYXNw'
-    'ZW4uaXBjLnYxLkVycm9ySABSBWVycm9yQgYKBGJvZHk=');
+    'bi5pcGMudjEuQnViYmxlTWVzc2FnZXNIAFIOYnViYmxlTWVzc2FnZXMSSgoQcGFnZV9vcF9yZX'
+    'Nwb25zZRgSIAEoCzIeLmdsYXNwZW4uaXBjLnYxLlBhZ2VPcFJlc3BvbnNlSABSDnBhZ2VPcFJl'
+    'c3BvbnNlEi0KBXBhbmVsGBQgASgLMhUuZ2xhc3Blbi5pcGMudjEuUGFuZWxIAFIFcGFuZWwSLQ'
+    'oFZXJyb3IYYyABKAsyFS5nbGFzcGVuLmlwYy52MS5FcnJvckgAUgVlcnJvckIGCgRib2R5');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -666,3 +676,44 @@ const BubbleMessages$json = {
 final $typed_data.Uint8List bubbleMessagesDescriptor = $convert.base64Decode(
     'Cg5CdWJibGVNZXNzYWdlcxIWCgZkZXZpY2UYASABKAlSBmRldmljZRI5CghtZXNzYWdlcxgCIA'
     'MoCzIdLmdsYXNwZW4uaXBjLnYxLkJ1YmJsZU1lc3NhZ2VSCG1lc3NhZ2Vz');
+
+@$core.Deprecated('Use int64ListDescriptor instead')
+const Int64List$json = {
+  '1': 'Int64List',
+  '2': [
+    {'1': 'values', '3': 1, '4': 3, '5': 3, '10': 'values'},
+  ],
+};
+
+/// Descriptor for `Int64List`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List int64ListDescriptor =
+    $convert.base64Decode('CglJbnQ2NExpc3QSFgoGdmFsdWVzGAEgAygDUgZ2YWx1ZXM=');
+
+@$core.Deprecated('Use pageOpResponseDescriptor instead')
+const PageOpResponse$json = {
+  '1': 'PageOpResponse',
+  '2': [
+    {'1': 'kind', '3': 1, '4': 1, '5': 9, '10': 'kind'},
+    {'1': 'ok', '3': 2, '4': 1, '5': 8, '9': 0, '10': 'ok'},
+    {
+      '1': 'ids',
+      '3': 3,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.Int64List',
+      '9': 0,
+      '10': 'ids'
+    },
+    {'1': 'payload', '3': 4, '4': 1, '5': 9, '9': 0, '10': 'payload'},
+    {'1': 'count', '3': 5, '4': 1, '5': 5, '9': 0, '10': 'count'},
+  ],
+  '8': [
+    {'1': 'result'},
+  ],
+};
+
+/// Descriptor for `PageOpResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List pageOpResponseDescriptor = $convert.base64Decode(
+    'Cg5QYWdlT3BSZXNwb25zZRISCgRraW5kGAEgASgJUgRraW5kEhAKAm9rGAIgASgISABSAm9rEi'
+    '0KA2lkcxgDIAEoCzIZLmdsYXNwZW4uaXBjLnYxLkludDY0TGlzdEgAUgNpZHMSGgoHcGF5bG9h'
+    'ZBgEIAEoCUgAUgdwYXlsb2FkEhYKBWNvdW50GAUgASgFSABSBWNvdW50QggKBnJlc3VsdA==');
