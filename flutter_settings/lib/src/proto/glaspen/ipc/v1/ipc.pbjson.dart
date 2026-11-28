@@ -15,6 +15,22 @@ import 'dart:convert' as $convert;
 import 'dart:core' as $core;
 import 'dart:typed_data' as $typed_data;
 
+@$core.Deprecated('Use canvasActionDescriptor instead')
+const CanvasAction$json = {
+  '1': 'CanvasAction',
+  '2': [
+    {'1': 'CANVAS_CURRENT', '2': 0},
+    {'1': 'CANVAS_HOME', '2': 1},
+    {'1': 'CANVAS_CENTER', '2': 2},
+    {'1': 'CANVAS_NEW', '2': 3},
+  ],
+};
+
+/// Descriptor for `CanvasAction`. Decode as a `google.protobuf.EnumDescriptorProto`.
+final $typed_data.Uint8List canvasActionDescriptor = $convert.base64Decode(
+    'CgxDYW52YXNBY3Rpb24SEgoOQ0FOVkFTX0NVUlJFTlQQABIPCgtDQU5WQVNfSE9NRRABEhEKDU'
+    'NBTlZBU19DRU5URVIQAhIOCgpDQU5WQVNfTkVXEAM=');
+
 @$core.Deprecated('Use frameDescriptor instead')
 const Frame$json = {
   '1': 'Frame',
@@ -202,6 +218,24 @@ const Frame$json = {
       '10': 'appVersionResponse'
     },
     {
+      '1': 'canvas_overview_request',
+      '3': 46,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.CanvasOverviewRequest',
+      '9': 0,
+      '10': 'canvasOverviewRequest'
+    },
+    {
+      '1': 'canvas_overview_response',
+      '3': 47,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.CanvasOverviewResponse',
+      '9': 0,
+      '10': 'canvasOverviewResponse'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -257,9 +291,13 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'MudjEuRmx1c2hCdWJibGVzUmVxdWVzdEgAUhNmbHVzaEJ1YmJsZXNSZXF1ZXN0ElMKE2FwcF92'
     'ZXJzaW9uX3JlcXVlc3QYLCABKAsyIS5nbGFzcGVuLmlwYy52MS5BcHBWZXJzaW9uUmVxdWVzdE'
     'gAUhFhcHBWZXJzaW9uUmVxdWVzdBJWChRhcHBfdmVyc2lvbl9yZXNwb25zZRgtIAEoCzIiLmds'
-    'YXNwZW4uaXBjLnYxLkFwcFZlcnNpb25SZXNwb25zZUgAUhJhcHBWZXJzaW9uUmVzcG9uc2USLQ'
-    'oFcGFuZWwYFCABKAsyFS5nbGFzcGVuLmlwYy52MS5QYW5lbEgAUgVwYW5lbBItCgVlcnJvchhj'
-    'IAEoCzIVLmdsYXNwZW4uaXBjLnYxLkVycm9ySABSBWVycm9yQgYKBGJvZHk=');
+    'YXNwZW4uaXBjLnYxLkFwcFZlcnNpb25SZXNwb25zZUgAUhJhcHBWZXJzaW9uUmVzcG9uc2USXw'
+    'oXY2FudmFzX292ZXJ2aWV3X3JlcXVlc3QYLiABKAsyJS5nbGFzcGVuLmlwYy52MS5DYW52YXNP'
+    'dmVydmlld1JlcXVlc3RIAFIVY2FudmFzT3ZlcnZpZXdSZXF1ZXN0EmIKGGNhbnZhc19vdmVydm'
+    'lld19yZXNwb25zZRgvIAEoCzImLmdsYXNwZW4uaXBjLnYxLkNhbnZhc092ZXJ2aWV3UmVzcG9u'
+    'c2VIAFIWY2FudmFzT3ZlcnZpZXdSZXNwb25zZRItCgVwYW5lbBgUIAEoCzIVLmdsYXNwZW4uaX'
+    'BjLnYxLlBhbmVsSABSBXBhbmVsEi0KBWVycm9yGGMgASgLMhUuZ2xhc3Blbi5pcGMudjEuRXJy'
+    'b3JIAFIFZXJyb3JCBgoEYm9keQ==');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -969,3 +1007,40 @@ const AppVersionResponse$json = {
 final $typed_data.Uint8List appVersionResponseDescriptor =
     $convert.base64Decode(
         'ChJBcHBWZXJzaW9uUmVzcG9uc2USGAoHdmVyc2lvbhgBIAEoCVIHdmVyc2lvbg==');
+
+@$core.Deprecated('Use canvasOverviewRequestDescriptor instead')
+const CanvasOverviewRequest$json = {
+  '1': 'CanvasOverviewRequest',
+  '2': [
+    {'1': 'w', '3': 1, '4': 1, '5': 5, '10': 'w'},
+    {'1': 'h', '3': 2, '4': 1, '5': 5, '10': 'h'},
+    {
+      '1': 'action',
+      '3': 3,
+      '4': 1,
+      '5': 14,
+      '6': '.glaspen.ipc.v1.CanvasAction',
+      '10': 'action'
+    },
+  ],
+};
+
+/// Descriptor for `CanvasOverviewRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List canvasOverviewRequestDescriptor = $convert.base64Decode(
+    'ChVDYW52YXNPdmVydmlld1JlcXVlc3QSDAoBdxgBIAEoBVIBdxIMCgFoGAIgASgFUgFoEjQKBm'
+    'FjdGlvbhgDIAEoDjIcLmdsYXNwZW4uaXBjLnYxLkNhbnZhc0FjdGlvblIGYWN0aW9u');
+
+@$core.Deprecated('Use canvasOverviewResponseDescriptor instead')
+const CanvasOverviewResponse$json = {
+  '1': 'CanvasOverviewResponse',
+  '2': [
+    {'1': 'png', '3': 1, '4': 1, '5': 12, '10': 'png'},
+    {'1': 'rect', '3': 2, '4': 3, '5': 1, '10': 'rect'},
+  ],
+};
+
+/// Descriptor for `CanvasOverviewResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List canvasOverviewResponseDescriptor =
+    $convert.base64Decode(
+        'ChZDYW52YXNPdmVydmlld1Jlc3BvbnNlEhAKA3BuZxgBIAEoDFIDcG5nEhIKBHJlY3QYAiADKA'
+        'FSBHJlY3Q=');

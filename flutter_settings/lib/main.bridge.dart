@@ -987,18 +987,23 @@ class _NamedPipeBridge extends SettingsBridge {
 
   @override
   Future<Map<dynamic, dynamic>> canvasOverview({int w = 1024, int h = 768}) async =>
-      _request('canvasOverview', {'w': w, 'h': h});
+      _requestTyped((id) =>
+          encodeCanvasOverviewRequest(id, w, h, pb.CanvasAction.CANVAS_CURRENT));
 
   @override
   Future<Map<dynamic, dynamic>> canvasHome() async =>
-      _request('canvasOverview', {'home': true});
+      _requestTyped((id) =>
+          encodeCanvasOverviewRequest(id, 1024, 768, pb.CanvasAction.CANVAS_HOME));
 
   @override
   Future<Map<dynamic, dynamic>> canvasCenter() async =>
-      _request('canvasOverview', {'center': true});
+      _requestTyped((id) =>
+          encodeCanvasOverviewRequest(id, 1024, 768, pb.CanvasAction.CANVAS_CENTER));
 
   @override
-  Future<Map<dynamic, dynamic>> canvasNew() async => _request('canvasNew', null);
+  Future<Map<dynamic, dynamic>> canvasNew() async =>
+      _requestTyped((id) =>
+          encodeCanvasOverviewRequest(id, 1024, 768, pb.CanvasAction.CANVAS_NEW));
 
   bool _writeBytes(List<int> bytes) {
     if (!_connected || _handle == -1) return false;

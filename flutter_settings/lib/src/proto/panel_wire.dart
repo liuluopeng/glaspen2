@@ -280,6 +280,19 @@ List<int> encodeAppVersionRequest(int requestId) {
   ));
 }
 
+List<int> encodeCanvasOverviewRequest(
+    int requestId, int w, int h, pb.CanvasAction action) {
+  return encodeFrame(pb.Frame(
+    protocolVersion: 1,
+    requestId: Int64(requestId),
+    canvasOverviewRequest: pb.CanvasOverviewRequest(
+      w: w,
+      h: h,
+      action: action,
+    ),
+  ));
+}
+
 List<int> encodeGetBubblesRequest(int requestId) {
   return encodeFrame(pb.Frame(
     protocolVersion: 1,
@@ -381,6 +394,18 @@ class PanelStreamDecoder {
           settings == null
               ? const <String, dynamic>{}
               : appSettingsToMap(settings),
+        ));
+        continue;
+      }
+      if (frame.hasCanvasOverviewResponse()) {
+        final r = frame.canvasOverviewResponse;
+        out.add(PanelMessage(
+          'canvasOverview_response',
+          frame.requestId.toInt(),
+          {
+            'png': Uint8List.fromList(r.png),
+            'rect': r.rect,
+          },
         ));
         continue;
       }

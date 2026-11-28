@@ -279,6 +279,14 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
                     );
                     let _ = writer.write_frame(&frame);
                 }
+                PanelInput::CanvasOverview {
+                    request_id,
+                    w,
+                    h,
+                    action,
+                } => {
+                    process_canvas_overview(request_id, w, h, action, hwnd, &mut writer);
+                }
             }
         }
         let _ = writer.flush();
@@ -385,13 +393,13 @@ fn post_tray_command(hwnd: isize, cmd: usize, param: usize) {
 /// 把当前画布内容按包围盒适配渲染成 PNG + 映射当前视口矩形,
 /// 返回 data JSON 内容("png":"<b64>","rect":[x,y,w,h]);空画布返回空串。
 /// 在管道线程调用:只读 STROKES / 镜头原子量,不动 UI 状态。
-fn render_overview_json(ow: i32, oh: i32) -> String {
+fn render_overview(ow: i32, oh: i32) -> Option<(Vec<u8>, [f64; 4])> {
     // **总览永远画数据库里的无限画布**: 面板点「自由涂鸦」tab 时"切画布模式"和
     // "拉总览"是两条异步管道消息, 覆盖层可能还停在活页本 —— 这时若用 STROKES
     // (页笔迹)渲染, 就会出现"库里明明有无限画布涂鸦, 面板总览却是空/画着活页本"。
     let mut bbox = [0.0f64; 4];
     if glaspen_core::export::glaspen2_infinite_canvas_bbox(bbox.as_mut_ptr()) == 0 {
-        return String::new();
+        return None;
     }
     let (mut bx, mut by, mut bx2, mut by2) = (bbox[0], bbox[1], bbox[2], bbox[3]);
     let (mut bw, mut bh) = (bx2 - bx, by2 - by);
@@ -420,10 +428,9 @@ fn render_overview_json(ow: i32, oh: i32) -> String {
         &mut out_len,
     );
     if ptr.is_null() || out_len <= 0 {
-        return String::new();
+        return None;
     }
-    let bytes = unsafe { std::slice::from_raw_parts(ptr, out_len as usize) };
-    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
+    let png = unsafe { std::slice::from_raw_parts(ptr, out_len as usize) }.to_vec();
     glaspen_core::export::glaspen2_free_rust_bytes(ptr, out_len);
 
     // 总览映射(scale/offset 必须与渲染一致),再映射当前视口矩形
@@ -448,10 +455,7 @@ fn render_overview_json(ow: i32, oh: i32) -> String {
     let vr_h = sh / z * ov_scale;
     let vx = ov_ox + (cam.pan_x - bx) * ov_scale;
     let vy = ov_oy + (cam.pan_y - by) * ov_scale;
-    format!(
-        "\"png\":\"{}\",\"rect\":[{},{},{},{}]",
-        b64, vx, vy, vr_w, vr_h
-    )
+    Some((png, [vx, vy, vr_w, vr_h]))
 }
 
 /// D12: 设置快照的运行时专属值(其余字段/顺序/类型/缺省值/DB 回退单源在
@@ -902,6 +906,41 @@ fn process_page_op(
     }
 }
 
+fn process_canvas_overview(
+    request_id: u64,
+    w: i32,
+    h: i32,
+    action: glaspen_ipc::proto::CanvasAction,
+    hwnd: isize,
+    writer: &mut PanelOut,
+) {
+    use glaspen_ipc::proto::CanvasAction;
+    if !infinite_on() {
+        post_tray_command(hwnd, CMD_TOGGLE_INFINITE_CANVAS, 1);
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    let cmd = match action {
+        CanvasAction::CanvasNew => Some((CMD_CANVAS_NEW, 0usize)),
+        CanvasAction::CanvasHome => Some((CMD_CANVAS_HOME, 0)),
+        CanvasAction::CanvasCenter => Some((CMD_CANVAS_CENTER, 0)),
+        CanvasAction::CanvasCurrent => None,
+    };
+    if let Some((cmd, param)) = cmd {
+        let _ = unsafe {
+            PostMessageW(
+                Some(HWND(hwnd as *mut _)),
+                WM_TRAY_COMMAND,
+                WPARAM(cmd),
+                LPARAM(param as isize),
+            )
+        };
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    let (png, rect) = render_overview(w, h).unwrap_or_default();
+    let frame = glaspen_ipc::encode_canvas_overview_frame(request_id, &png, &rect);
+    let _ = writer.write_frame(&frame);
+}
+
 fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
     use std::io::Write;
 
@@ -1248,48 +1287,6 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
             req_id, json
         );
         let _ = writer.write_all(resp.as_bytes());
-        let _ = writer.flush();
-    } else if msg_type == "canvasOverview" || msg_type == "canvasNew" {
-        // 无限画布总览 tab:镜头动作(home/center/new)+ 包围盒总览 PNG。
-        // 动作发给消息循环线程应用;总览渲染在管道线程(只读 STROKES/镜头)。
-        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        // 面板切 tab 与动作是异步消息: 动作必须在无限画布模式下执行。
-        // 否则「新建画布」会走到活页本分支把当前页清掉(数据事故)。
-        if !infinite_on() {
-            post_tray_command(hwnd, CMD_TOGGLE_INFINITE_CANVAS, 1);
-            std::thread::sleep(std::time::Duration::from_millis(250));
-        }
-        let cmd = if msg_type == "canvasNew" {
-            Some((CMD_CANVAS_NEW, 0usize))
-        } else if json_get_bool(line, "home") == Some(true) {
-            Some((CMD_CANVAS_HOME, 0))
-        } else if json_get_bool(line, "center") == Some(true) {
-            Some((CMD_CANVAS_CENTER, 0))
-        } else {
-            None
-        };
-        if let Some((cmd, param)) = cmd {
-            let _ = unsafe {
-                PostMessageW(
-                    Some(HWND(hwnd as *mut _)),
-                    WM_TRAY_COMMAND,
-                    WPARAM(cmd),
-                    LPARAM(param as isize),
-                )
-            };
-            // 等消息循环应用动作后再渲染总览
-            std::thread::sleep(std::time::Duration::from_millis(300));
-        }
-        let data = render_overview_json(1024, 768);
-        // data 内容是 ""png":"...","rect":[...]" (不带外层花括号) —— 这里必须
-        // 补上一对花括号, 否则面板 jsonDecode 直接失败, 总览永远空白。
-        let _ = writer.write_all(
-            format!(
-                "{{\"type\":\"canvasOverview_response\",\"reqId\":{},\"data\":{{{data}}}}}\n",
-                req_id
-            )
-            .as_bytes(),
-        );
         let _ = writer.flush();
     } else if msg_type == "uiConfig" {
         // 面板启动时拉一次性平台配置: 与 macOS(FRB)是 core 同一份

@@ -92,6 +92,12 @@ pub enum PanelInput {
     AppVersion {
         request_id: u64,
     },
+    CanvasOverview {
+        request_id: u64,
+        w: i32,
+        h: i32,
+        action: crate::proto::CanvasAction,
+    },
 }
 
 fn panel_input_from_frame(frame: Frame) -> Result<PanelInput, FrameError> {

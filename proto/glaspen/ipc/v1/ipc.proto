@@ -38,6 +38,8 @@ message Frame {
     FlushBubblesRequest flush_bubbles_request = 43;
     AppVersionRequest app_version_request = 44;
     AppVersionResponse app_version_response = 45;
+    CanvasOverviewRequest canvas_overview_request = 46;
+    CanvasOverviewResponse canvas_overview_response = 47;
     Panel panel = 20;
     Error error = 99;
   }
@@ -256,4 +258,22 @@ message AppVersionRequest {}
 
 message AppVersionResponse {
   string version = 1;
+}
+
+enum CanvasAction {
+  CANVAS_CURRENT = 0;
+  CANVAS_HOME = 1;
+  CANVAS_CENTER = 2;
+  CANVAS_NEW = 3;
+}
+
+message CanvasOverviewRequest {
+  int32 w = 1;
+  int32 h = 2;
+  CanvasAction action = 3;
+}
+
+message CanvasOverviewResponse {
+  bytes png = 1;
+  repeated double rect = 2;
 }

@@ -16,7 +16,11 @@ import 'package:fixnum/fixnum.dart' as $fixnum;
 import 'package:protobuf/protobuf.dart' as $pb;
 import 'package:protobuf/well_known_types/google/protobuf/struct.pb.dart' as $0;
 
+import 'ipc.pbenum.dart';
+
 export 'package:protobuf/protobuf.dart' show GeneratedMessageGenericExtensions;
+
+export 'ipc.pbenum.dart';
 
 enum Frame_Body {
   settingsSnapshot,
@@ -40,6 +44,8 @@ enum Frame_Body {
   flushBubblesRequest,
   appVersionRequest,
   appVersionResponse,
+  canvasOverviewRequest,
+  canvasOverviewResponse,
   error,
   notSet
 }
@@ -79,6 +85,8 @@ class Frame extends $pb.GeneratedMessage {
     FlushBubblesRequest? flushBubblesRequest,
     AppVersionRequest? appVersionRequest,
     AppVersionResponse? appVersionResponse,
+    CanvasOverviewRequest? canvasOverviewRequest,
+    CanvasOverviewResponse? canvasOverviewResponse,
     Error? error,
   }) {
     final result = Frame._();
@@ -112,6 +120,10 @@ class Frame extends $pb.GeneratedMessage {
     if (appVersionRequest != null) result.appVersionRequest = appVersionRequest;
     if (appVersionResponse != null)
       result.appVersionResponse = appVersionResponse;
+    if (canvasOverviewRequest != null)
+      result.canvasOverviewRequest = canvasOverviewRequest;
+    if (canvasOverviewResponse != null)
+      result.canvasOverviewResponse = canvasOverviewResponse;
     if (error != null) result.error = error;
     return result;
   }
@@ -147,6 +159,8 @@ class Frame extends $pb.GeneratedMessage {
     43: Frame_Body.flushBubblesRequest,
     44: Frame_Body.appVersionRequest,
     45: Frame_Body.appVersionResponse,
+    46: Frame_Body.canvasOverviewRequest,
+    47: Frame_Body.canvasOverviewResponse,
     99: Frame_Body.error,
     0: Frame_Body.notSet
   };
@@ -176,6 +190,8 @@ class Frame extends $pb.GeneratedMessage {
       43,
       44,
       45,
+      46,
+      47,
       99
     ])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
@@ -229,6 +245,12 @@ class Frame extends $pb.GeneratedMessage {
         subBuilder: AppVersionRequest.$_createMessage)
     ..aOM<AppVersionResponse>(45, _omitFieldNames ? '' : 'appVersionResponse',
         subBuilder: AppVersionResponse.$_createMessage)
+    ..aOM<CanvasOverviewRequest>(
+        46, _omitFieldNames ? '' : 'canvasOverviewRequest',
+        subBuilder: CanvasOverviewRequest.$_createMessage)
+    ..aOM<CanvasOverviewResponse>(
+        47, _omitFieldNames ? '' : 'canvasOverviewResponse',
+        subBuilder: CanvasOverviewResponse.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
         subBuilder: Error.$_createMessage)
     ..hasRequiredFields = false;
@@ -274,6 +296,8 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(43)
   @$pb.TagNumber(44)
   @$pb.TagNumber(45)
+  @$pb.TagNumber(46)
+  @$pb.TagNumber(47)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(10)
@@ -297,6 +321,8 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(43)
   @$pb.TagNumber(44)
   @$pb.TagNumber(45)
+  @$pb.TagNumber(46)
+  @$pb.TagNumber(47)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
 
@@ -553,16 +579,40 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(45)
   AppVersionResponse ensureAppVersionResponse() => $_ensure(22);
 
+  @$pb.TagNumber(46)
+  CanvasOverviewRequest get canvasOverviewRequest => $_getN(23);
+  @$pb.TagNumber(46)
+  set canvasOverviewRequest(CanvasOverviewRequest value) =>
+      $_setField(46, value);
+  @$pb.TagNumber(46)
+  $core.bool hasCanvasOverviewRequest() => $_has(23);
+  @$pb.TagNumber(46)
+  void clearCanvasOverviewRequest() => $_clearField(46);
+  @$pb.TagNumber(46)
+  CanvasOverviewRequest ensureCanvasOverviewRequest() => $_ensure(23);
+
+  @$pb.TagNumber(47)
+  CanvasOverviewResponse get canvasOverviewResponse => $_getN(24);
+  @$pb.TagNumber(47)
+  set canvasOverviewResponse(CanvasOverviewResponse value) =>
+      $_setField(47, value);
+  @$pb.TagNumber(47)
+  $core.bool hasCanvasOverviewResponse() => $_has(24);
+  @$pb.TagNumber(47)
+  void clearCanvasOverviewResponse() => $_clearField(47);
+  @$pb.TagNumber(47)
+  CanvasOverviewResponse ensureCanvasOverviewResponse() => $_ensure(24);
+
   @$pb.TagNumber(99)
-  Error get error => $_getN(23);
+  Error get error => $_getN(25);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(23);
+  $core.bool hasError() => $_has(25);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(23);
+  Error ensureError() => $_ensure(25);
 }
 
 enum SettingValue_Value {
@@ -3327,6 +3377,156 @@ class AppVersionResponse extends $pb.GeneratedMessage {
   $core.bool hasVersion() => $_has(0);
   @$pb.TagNumber(1)
   void clearVersion() => $_clearField(1);
+}
+
+class CanvasOverviewRequest extends $pb.GeneratedMessage {
+  factory CanvasOverviewRequest({
+    $core.int? w,
+    $core.int? h,
+    CanvasAction? action,
+  }) {
+    final result = CanvasOverviewRequest._();
+    if (w != null) result.w = w;
+    if (h != null) result.h = h;
+    if (action != null) result.action = action;
+    return result;
+  }
+
+  CanvasOverviewRequest._();
+
+  factory CanvasOverviewRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CanvasOverviewRequest()..mergeFromBuffer(data, registry);
+  factory CanvasOverviewRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CanvasOverviewRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'CanvasOverviewRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: CanvasOverviewRequest.$_createMessage)
+    ..aI(1, _omitFieldNames ? '' : 'w')
+    ..aI(2, _omitFieldNames ? '' : 'h')
+    ..aE<CanvasAction>(3, _omitFieldNames ? '' : 'action',
+        enumValues: CanvasAction.values)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CanvasOverviewRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CanvasOverviewRequest copyWith(
+          void Function(CanvasOverviewRequest) updates) =>
+      super.copyWith((message) => updates(message as CanvasOverviewRequest))
+          as CanvasOverviewRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use CanvasOverviewRequest() / CanvasOverviewRequest.new instead')
+  static CanvasOverviewRequest create() => CanvasOverviewRequest._();
+  static $pb.GeneratedMessage $_createMessage() => CanvasOverviewRequest._();
+  @$core.override
+  CanvasOverviewRequest createEmptyInstance() => CanvasOverviewRequest._();
+  @$core.pragma('dart2js:noInline')
+  static CanvasOverviewRequest getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<CanvasOverviewRequest>(
+          CanvasOverviewRequest.$_createMessage);
+  static CanvasOverviewRequest? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.int get w => $_getIZ(0);
+  @$pb.TagNumber(1)
+  set w($core.int value) => $_setSignedInt32(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasW() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearW() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.int get h => $_getIZ(1);
+  @$pb.TagNumber(2)
+  set h($core.int value) => $_setSignedInt32(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasH() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearH() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  CanvasAction get action => $_getN(2);
+  @$pb.TagNumber(3)
+  set action(CanvasAction value) => $_setField(3, value);
+  @$pb.TagNumber(3)
+  $core.bool hasAction() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearAction() => $_clearField(3);
+}
+
+class CanvasOverviewResponse extends $pb.GeneratedMessage {
+  factory CanvasOverviewResponse({
+    $core.List<$core.int>? png,
+    $core.Iterable<$core.double>? rect,
+  }) {
+    final result = CanvasOverviewResponse._();
+    if (png != null) result.png = png;
+    if (rect != null) result.rect.addAll(rect);
+    return result;
+  }
+
+  CanvasOverviewResponse._();
+
+  factory CanvasOverviewResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CanvasOverviewResponse()..mergeFromBuffer(data, registry);
+  factory CanvasOverviewResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      CanvasOverviewResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'CanvasOverviewResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: CanvasOverviewResponse.$_createMessage)
+    ..a<$core.List<$core.int>>(
+        1, _omitFieldNames ? '' : 'png', $pb.PbFieldType.OY)
+    ..p<$core.double>(2, _omitFieldNames ? '' : 'rect', $pb.PbFieldType.KD)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CanvasOverviewResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  CanvasOverviewResponse copyWith(
+          void Function(CanvasOverviewResponse) updates) =>
+      super.copyWith((message) => updates(message as CanvasOverviewResponse))
+          as CanvasOverviewResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated(
+      'Use CanvasOverviewResponse() / CanvasOverviewResponse.new instead')
+  static CanvasOverviewResponse create() => CanvasOverviewResponse._();
+  static $pb.GeneratedMessage $_createMessage() => CanvasOverviewResponse._();
+  @$core.override
+  CanvasOverviewResponse createEmptyInstance() => CanvasOverviewResponse._();
+  @$core.pragma('dart2js:noInline')
+  static CanvasOverviewResponse getDefault() => _defaultInstance ??=
+      $pb.GeneratedMessage.$_defaultFor<CanvasOverviewResponse>(
+          CanvasOverviewResponse.$_createMessage);
+  static CanvasOverviewResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.List<$core.int> get png => $_getN(0);
+  @$pb.TagNumber(1)
+  set png($core.List<$core.int> value) => $_setBytes(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasPng() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearPng() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $pb.PbList<$core.double> get rect => $_getList(1);
 }
 
 const $core.bool _omitFieldNames =

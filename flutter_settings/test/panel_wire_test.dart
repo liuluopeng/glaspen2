@@ -20,6 +20,21 @@ void main() {
     }
   });
 
+  test('typed canvas overview decodes', () {
+    final frame = pb.Frame(
+      protocolVersion: 1,
+      requestId: Int64(13),
+      canvasOverviewResponse: pb.CanvasOverviewResponse(
+        png: [1, 2, 3],
+        rect: [1.0, 2.0, 3.0, 4.0],
+      ),
+    );
+    final msg = PanelStreamDecoder().feed(encodeFrame(frame)).single;
+    expect(msg.kind, 'canvasOverview_response');
+    expect(msg.data['png'], [1, 2, 3]);
+    expect(msg.data['rect'], [1.0, 2.0, 3.0, 4.0]);
+  });
+
   test('typed page op response decodes', () {
     final frame = pb.Frame(
       protocolVersion: 1,
