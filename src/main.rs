@@ -212,7 +212,10 @@ fn main() {
             std::process::exit(1);
         };
         let grid = data.get("gridSize").is_some();
-        println!("MACOS_API_PROBE len={} kind=settings grid={grid}", bytes.len());
+        println!(
+            "MACOS_API_PROBE len={} kind=settings grid={grid}",
+            bytes.len()
+        );
         std::process::exit(if grid { 0 } else { 1 });
         #[cfg(not(target_os = "macos"))]
         std::process::exit(2);
