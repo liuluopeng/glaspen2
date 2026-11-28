@@ -33,10 +33,6 @@ extern char* glaspen2_load_string_setting(const char *key);
 // 返回 core 算好的新三值 JSON({"pan_x","pan_y","zoom"}[,"hit_max","hit_min",
 // "changed"] 或 {"error":"..."}), 永不 NULL;调用方用 glaspen2_free_c_string 释放。
 // ObjC 只负责写回 g_pan_x/g_pan_y/g_zoom 与本平台门控/提示/持久化/重绘。
-extern char* glaspen2_camera_pan(double pan_x, double pan_y, double zoom, double dx, double dy);
-extern char* glaspen2_camera_zoom_at(double pan_x, double pan_y, double zoom, double factor, double vx, double vy);
-extern char* glaspen2_camera_zoom_at_center(double pan_x, double pan_y, double zoom, double factor, double viewport_w, double viewport_h);
-extern char* glaspen2_camera_centered(double bx, double by, double bx2, double by2, double viewport_w, double viewport_h, double zoom);
 // 标量(高频拖动/键盘步长, 避免走 JSON/堆分配)。
 extern double glaspen2_camera_step_zoom(double zoom);
 extern double glaspen2_camera_keyboard_pan_step(double zoom);
