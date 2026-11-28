@@ -47,6 +47,8 @@ message Frame {
     ExportPdfRequest export_pdf_request = 54;
     CheckUpdateRequest check_update_request = 60;
     UpdateInfo update_info = 61;
+    NasBackupRequest nas_backup_request = 62;
+    NasBackupOutcome nas_backup_outcome = 63;
     Panel panel = 20;
     Error error = 99;
   }
@@ -320,4 +322,14 @@ message UpdateInfo {
   string url = 5;
   string notes = 6;
   string error = 7;
+}
+
+message NasBackupRequest {}
+
+message NasBackupOutcome {
+  bool ok = 1;
+  uint64 size_bytes = 2;
+  uint64 stroke_count = 3;
+  string error = 4;
+  string hint = 5;
 }

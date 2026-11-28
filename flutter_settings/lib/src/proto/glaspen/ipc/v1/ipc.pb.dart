@@ -53,6 +53,8 @@ enum Frame_Body {
   exportPdfRequest,
   checkUpdateRequest,
   updateInfo,
+  nasBackupRequest,
+  nasBackupOutcome,
   error,
   notSet
 }
@@ -101,6 +103,8 @@ class Frame extends $pb.GeneratedMessage {
     ExportPdfRequest? exportPdfRequest,
     CheckUpdateRequest? checkUpdateRequest,
     UpdateInfo? updateInfo,
+    NasBackupRequest? nasBackupRequest,
+    NasBackupOutcome? nasBackupOutcome,
     Error? error,
   }) {
     final result = Frame._();
@@ -147,6 +151,8 @@ class Frame extends $pb.GeneratedMessage {
     if (checkUpdateRequest != null)
       result.checkUpdateRequest = checkUpdateRequest;
     if (updateInfo != null) result.updateInfo = updateInfo;
+    if (nasBackupRequest != null) result.nasBackupRequest = nasBackupRequest;
+    if (nasBackupOutcome != null) result.nasBackupOutcome = nasBackupOutcome;
     if (error != null) result.error = error;
     return result;
   }
@@ -191,6 +197,8 @@ class Frame extends $pb.GeneratedMessage {
     54: Frame_Body.exportPdfRequest,
     60: Frame_Body.checkUpdateRequest,
     61: Frame_Body.updateInfo,
+    62: Frame_Body.nasBackupRequest,
+    63: Frame_Body.nasBackupOutcome,
     99: Frame_Body.error,
     0: Frame_Body.notSet
   };
@@ -229,6 +237,8 @@ class Frame extends $pb.GeneratedMessage {
       54,
       60,
       61,
+      62,
+      63,
       99
     ])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
@@ -303,6 +313,10 @@ class Frame extends $pb.GeneratedMessage {
         subBuilder: CheckUpdateRequest.$_createMessage)
     ..aOM<UpdateInfo>(61, _omitFieldNames ? '' : 'updateInfo',
         subBuilder: UpdateInfo.$_createMessage)
+    ..aOM<NasBackupRequest>(62, _omitFieldNames ? '' : 'nasBackupRequest',
+        subBuilder: NasBackupRequest.$_createMessage)
+    ..aOM<NasBackupOutcome>(63, _omitFieldNames ? '' : 'nasBackupOutcome',
+        subBuilder: NasBackupOutcome.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
         subBuilder: Error.$_createMessage)
     ..hasRequiredFields = false;
@@ -357,6 +371,8 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(54)
   @$pb.TagNumber(60)
   @$pb.TagNumber(61)
+  @$pb.TagNumber(62)
+  @$pb.TagNumber(63)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
   @$pb.TagNumber(10)
@@ -389,6 +405,8 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(54)
   @$pb.TagNumber(60)
   @$pb.TagNumber(61)
+  @$pb.TagNumber(62)
+  @$pb.TagNumber(63)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
 
@@ -746,16 +764,38 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(61)
   UpdateInfo ensureUpdateInfo() => $_ensure(31);
 
+  @$pb.TagNumber(62)
+  NasBackupRequest get nasBackupRequest => $_getN(32);
+  @$pb.TagNumber(62)
+  set nasBackupRequest(NasBackupRequest value) => $_setField(62, value);
+  @$pb.TagNumber(62)
+  $core.bool hasNasBackupRequest() => $_has(32);
+  @$pb.TagNumber(62)
+  void clearNasBackupRequest() => $_clearField(62);
+  @$pb.TagNumber(62)
+  NasBackupRequest ensureNasBackupRequest() => $_ensure(32);
+
+  @$pb.TagNumber(63)
+  NasBackupOutcome get nasBackupOutcome => $_getN(33);
+  @$pb.TagNumber(63)
+  set nasBackupOutcome(NasBackupOutcome value) => $_setField(63, value);
+  @$pb.TagNumber(63)
+  $core.bool hasNasBackupOutcome() => $_has(33);
+  @$pb.TagNumber(63)
+  void clearNasBackupOutcome() => $_clearField(63);
+  @$pb.TagNumber(63)
+  NasBackupOutcome ensureNasBackupOutcome() => $_ensure(33);
+
   @$pb.TagNumber(99)
-  Error get error => $_getN(32);
+  Error get error => $_getN(34);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(32);
+  $core.bool hasError() => $_has(34);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(32);
+  Error ensureError() => $_ensure(34);
 }
 
 enum SettingValue_Value {
@@ -4141,6 +4181,156 @@ class UpdateInfo extends $pb.GeneratedMessage {
   $core.bool hasError() => $_has(6);
   @$pb.TagNumber(7)
   void clearError() => $_clearField(7);
+}
+
+class NasBackupRequest extends $pb.GeneratedMessage {
+  factory NasBackupRequest() => NasBackupRequest._();
+
+  NasBackupRequest._();
+
+  factory NasBackupRequest.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      NasBackupRequest()..mergeFromBuffer(data, registry);
+  factory NasBackupRequest.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      NasBackupRequest()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'NasBackupRequest',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: NasBackupRequest.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  NasBackupRequest clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  NasBackupRequest copyWith(void Function(NasBackupRequest) updates) =>
+      super.copyWith((message) => updates(message as NasBackupRequest))
+          as NasBackupRequest;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use NasBackupRequest() / NasBackupRequest.new instead')
+  static NasBackupRequest create() => NasBackupRequest._();
+  static $pb.GeneratedMessage $_createMessage() => NasBackupRequest._();
+  @$core.override
+  NasBackupRequest createEmptyInstance() => NasBackupRequest._();
+  @$core.pragma('dart2js:noInline')
+  static NasBackupRequest getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<NasBackupRequest>(
+          NasBackupRequest.$_createMessage);
+  static NasBackupRequest? _defaultInstance;
+}
+
+class NasBackupOutcome extends $pb.GeneratedMessage {
+  factory NasBackupOutcome({
+    $core.bool? ok,
+    $fixnum.Int64? sizeBytes,
+    $fixnum.Int64? strokeCount,
+    $core.String? error,
+    $core.String? hint,
+  }) {
+    final result = NasBackupOutcome._();
+    if (ok != null) result.ok = ok;
+    if (sizeBytes != null) result.sizeBytes = sizeBytes;
+    if (strokeCount != null) result.strokeCount = strokeCount;
+    if (error != null) result.error = error;
+    if (hint != null) result.hint = hint;
+    return result;
+  }
+
+  NasBackupOutcome._();
+
+  factory NasBackupOutcome.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      NasBackupOutcome()..mergeFromBuffer(data, registry);
+  factory NasBackupOutcome.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      NasBackupOutcome()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'NasBackupOutcome',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: NasBackupOutcome.$_createMessage)
+    ..aOB(1, _omitFieldNames ? '' : 'ok')
+    ..a<$fixnum.Int64>(
+        2, _omitFieldNames ? '' : 'sizeBytes', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..a<$fixnum.Int64>(
+        3, _omitFieldNames ? '' : 'strokeCount', $pb.PbFieldType.OU6,
+        defaultOrMaker: $fixnum.Int64.ZERO)
+    ..aOS(4, _omitFieldNames ? '' : 'error')
+    ..aOS(5, _omitFieldNames ? '' : 'hint')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  NasBackupOutcome clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  NasBackupOutcome copyWith(void Function(NasBackupOutcome) updates) =>
+      super.copyWith((message) => updates(message as NasBackupOutcome))
+          as NasBackupOutcome;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use NasBackupOutcome() / NasBackupOutcome.new instead')
+  static NasBackupOutcome create() => NasBackupOutcome._();
+  static $pb.GeneratedMessage $_createMessage() => NasBackupOutcome._();
+  @$core.override
+  NasBackupOutcome createEmptyInstance() => NasBackupOutcome._();
+  @$core.pragma('dart2js:noInline')
+  static NasBackupOutcome getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<NasBackupOutcome>(
+          NasBackupOutcome.$_createMessage);
+  static NasBackupOutcome? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $core.bool get ok => $_getBF(0);
+  @$pb.TagNumber(1)
+  set ok($core.bool value) => $_setBool(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasOk() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearOk() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $fixnum.Int64 get sizeBytes => $_getI64(1);
+  @$pb.TagNumber(2)
+  set sizeBytes($fixnum.Int64 value) => $_setInt64(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasSizeBytes() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearSizeBytes() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $fixnum.Int64 get strokeCount => $_getI64(2);
+  @$pb.TagNumber(3)
+  set strokeCount($fixnum.Int64 value) => $_setInt64(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasStrokeCount() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearStrokeCount() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.String get error => $_getSZ(3);
+  @$pb.TagNumber(4)
+  set error($core.String value) => $_setString(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasError() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearError() => $_clearField(4);
+
+  @$pb.TagNumber(5)
+  $core.String get hint => $_getSZ(4);
+  @$pb.TagNumber(5)
+  set hint($core.String value) => $_setString(4, value);
+  @$pb.TagNumber(5)
+  $core.bool hasHint() => $_has(4);
+  @$pb.TagNumber(5)
+  void clearHint() => $_clearField(5);
 }
 
 const $core.bool _omitFieldNames =

@@ -332,6 +332,20 @@ fn handle_pipe_client(pipe: isize, hwnd: isize) {
                     );
                     let _ = writer.write_frame(&frame);
                 }
+                PanelInput::NasBackup { request_id } => {
+                    let text = glaspen_core::export::nas_backup::backup_now();
+                    let value: serde_json::Value =
+                        serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
+                    let frame = glaspen_ipc::encode_nas_backup_frame(
+                        request_id,
+                        value["ok"].as_bool().unwrap_or(false),
+                        value["size_bytes"].as_u64().unwrap_or(0),
+                        value["stroke_count"].as_u64().unwrap_or(0),
+                        value["error"].as_str().unwrap_or(""),
+                        value["hint"].as_str().unwrap_or(""),
+                    );
+                    let _ = writer.write_frame(&frame);
+                }
                 PanelInput::CheckUpdate { request_id } => {
                     let current = glaspen_core::update::current_version().to_string();
                     let (ok, latest, has_update, url, notes, error) =

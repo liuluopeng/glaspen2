@@ -889,8 +889,8 @@ class _NamedPipeBridge extends SettingsBridge {
   @override
   Future<(bool, String)> nasBackupNow() async {
     // 库在覆盖层进程里,NAS 备份经管道在那边执行(同一核心函数)
-    final r = await _request('nasBackup', null);
-    final v = (r.containsKey('data') ? r['data'] : r) as Map<dynamic, dynamic>;
+    final r = await _requestTyped(encodeNasBackupRequest);
+    final v = r;
     final ok = v['ok'] == true;
     final text = ok
         ? '${((v['size_bytes'] as num? ?? 0) ~/ 1024)} KB · ${(v['stroke_count'] as num? ?? 0)} 笔'

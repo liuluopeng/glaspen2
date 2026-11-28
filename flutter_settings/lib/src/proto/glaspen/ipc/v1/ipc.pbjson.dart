@@ -312,6 +312,24 @@ const Frame$json = {
       '10': 'updateInfo'
     },
     {
+      '1': 'nas_backup_request',
+      '3': 62,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.NasBackupRequest',
+      '9': 0,
+      '10': 'nasBackupRequest'
+    },
+    {
+      '1': 'nas_backup_outcome',
+      '3': 63,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.NasBackupOutcome',
+      '9': 0,
+      '10': 'nasBackupOutcome'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -381,9 +399,12 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     '5nbGFzcGVuLmlwYy52MS5FeHBvcnRQZGZSZXF1ZXN0SABSEGV4cG9ydFBkZlJlcXVlc3QSVgoU'
     'Y2hlY2tfdXBkYXRlX3JlcXVlc3QYPCABKAsyIi5nbGFzcGVuLmlwYy52MS5DaGVja1VwZGF0ZV'
     'JlcXVlc3RIAFISY2hlY2tVcGRhdGVSZXF1ZXN0Ej0KC3VwZGF0ZV9pbmZvGD0gASgLMhouZ2xh'
-    'c3Blbi5pcGMudjEuVXBkYXRlSW5mb0gAUgp1cGRhdGVJbmZvEi0KBXBhbmVsGBQgASgLMhUuZ2'
-    'xhc3Blbi5pcGMudjEuUGFuZWxIAFIFcGFuZWwSLQoFZXJyb3IYYyABKAsyFS5nbGFzcGVuLmlw'
-    'Yy52MS5FcnJvckgAUgVlcnJvckIGCgRib2R5');
+    'c3Blbi5pcGMudjEuVXBkYXRlSW5mb0gAUgp1cGRhdGVJbmZvElAKEm5hc19iYWNrdXBfcmVxdW'
+    'VzdBg+IAEoCzIgLmdsYXNwZW4uaXBjLnYxLk5hc0JhY2t1cFJlcXVlc3RIAFIQbmFzQmFja3Vw'
+    'UmVxdWVzdBJQChJuYXNfYmFja3VwX291dGNvbWUYPyABKAsyIC5nbGFzcGVuLmlwYy52MS5OYX'
+    'NCYWNrdXBPdXRjb21lSABSEG5hc0JhY2t1cE91dGNvbWUSLQoFcGFuZWwYFCABKAsyFS5nbGFz'
+    'cGVuLmlwYy52MS5QYW5lbEgAUgVwYW5lbBItCgVlcnJvchhjIAEoCzIVLmdsYXNwZW4uaXBjLn'
+    'YxLkVycm9ySABSBWVycm9yQgYKBGJvZHk=');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -1228,3 +1249,30 @@ final $typed_data.Uint8List updateInfoDescriptor = $convert.base64Decode(
     'YKBmxhdGVzdBgDIAEoCVIGbGF0ZXN0Eh0KCmhhc191cGRhdGUYBCABKAhSCWhhc1VwZGF0ZRIQ'
     'CgN1cmwYBSABKAlSA3VybBIUCgVub3RlcxgGIAEoCVIFbm90ZXMSFAoFZXJyb3IYByABKAlSBW'
     'Vycm9y');
+
+@$core.Deprecated('Use nasBackupRequestDescriptor instead')
+const NasBackupRequest$json = {
+  '1': 'NasBackupRequest',
+};
+
+/// Descriptor for `NasBackupRequest`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List nasBackupRequestDescriptor =
+    $convert.base64Decode('ChBOYXNCYWNrdXBSZXF1ZXN0');
+
+@$core.Deprecated('Use nasBackupOutcomeDescriptor instead')
+const NasBackupOutcome$json = {
+  '1': 'NasBackupOutcome',
+  '2': [
+    {'1': 'ok', '3': 1, '4': 1, '5': 8, '10': 'ok'},
+    {'1': 'size_bytes', '3': 2, '4': 1, '5': 4, '10': 'sizeBytes'},
+    {'1': 'stroke_count', '3': 3, '4': 1, '5': 4, '10': 'strokeCount'},
+    {'1': 'error', '3': 4, '4': 1, '5': 9, '10': 'error'},
+    {'1': 'hint', '3': 5, '4': 1, '5': 9, '10': 'hint'},
+  ],
+};
+
+/// Descriptor for `NasBackupOutcome`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List nasBackupOutcomeDescriptor = $convert.base64Decode(
+    'ChBOYXNCYWNrdXBPdXRjb21lEg4KAm9rGAEgASgIUgJvaxIdCgpzaXplX2J5dGVzGAIgASgEUg'
+    'lzaXplQnl0ZXMSIQoMc3Ryb2tlX2NvdW50GAMgASgEUgtzdHJva2VDb3VudBIUCgVlcnJvchgE'
+    'IAEoCVIFZXJyb3ISEgoEaGludBgFIAEoCVIEaGludA==');

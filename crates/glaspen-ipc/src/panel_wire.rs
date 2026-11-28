@@ -105,6 +105,9 @@ pub enum PanelInput {
     CheckUpdate {
         request_id: u64,
     },
+    NasBackup {
+        request_id: u64,
+    },
     CanvasOverview {
         request_id: u64,
         w: i32,
