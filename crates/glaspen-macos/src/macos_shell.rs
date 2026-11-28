@@ -5217,7 +5217,8 @@ fn apply_setting_value(key: &str, parsed: &serde_json::Value) -> i32 {
             unsafe {
                 glaspen2_router_set_soft_shadow_flag(i32::from(b));
                 glaspen2_set_soft_shadow(i32::from(b));
-                glaspen2_router_redraw_draw_view();
+                glaspen2_router_finish_active_stroke();
+                glaspen2_router_rebuild_surface();
             }
             1
         }
@@ -7858,50 +7859,62 @@ pub extern "C" fn glaspen2_rust_invert_process(
     1
 }
 
+extern "C" fn invert_rebuild_on_main(_ctx: *mut c_void) {
+    unsafe { glaspen2_swift_pageview_rebuild() };
+    glaspen2_rust_overlay_flush_dirty();
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_rust_invert_consume() {
-    let mut st = INVERT.lock().unwrap_or_else(|e| e.into_inner());
-    let slot = st.pending;
-    if slot < 0 || slot >= 2 {
-        return;
-    }
-    let slot = slot as usize;
-    if st.surfs[slot].is_null() {
-        return;
-    }
-    st.write = slot ^ 1;
-    let changed = st.sums[slot] != st.present_sum;
-    let diff_min = (st.w as u64) * (st.h as u64) / 500 + 1;
-    let significant = changed && st.diffs[slot] > diff_min;
-    if changed {
-        st.present = slot;
-        st.present_sum = st.sums[slot];
-        st.pending = -1;
-        unsafe {
-            glaspen2_set_invert_background(st.surfs[slot]);
-            cairo_surface_mark_dirty(st.surfs[slot]);
+    let mut rebuild_dirty: Option<[i32; 4]> = None;
+    {
+        let mut st = INVERT.lock().unwrap_or_else(|e| e.into_inner());
+        let slot = st.pending;
+        if slot < 0 || slot >= 2 {
+            return;
         }
-    } else {
-        st.pending = -1;
-    }
-    let stroke_active = unsafe { glaspen2_rust_pen_stroke_active() } != 0;
-    if significant && !stroke_active {
-        let b = st.dboxes[slot];
-        unsafe {
-            glaspen2_set_invert_dirty(b[0], b[1], b[2], b[3]);
+        let slot = slot as usize;
+        if st.surfs[slot].is_null() {
+            return;
         }
-        unsafe { glaspen2_swift_pageview_rebuild() };
+        st.write = slot ^ 1;
+        let changed = st.sums[slot] != st.present_sum;
+        let diff_min = (st.w as u64) * (st.h as u64) / 500 + 1;
+        let significant = changed && st.diffs[slot] > diff_min;
+        if changed {
+            st.present = slot;
+            st.present_sum = st.sums[slot];
+            st.pending = -1;
+            unsafe {
+                glaspen2_set_invert_background(st.surfs[slot]);
+                cairo_surface_mark_dirty(st.surfs[slot]);
+            }
+        } else {
+            st.pending = -1;
+        }
+        let stroke_active = unsafe { glaspen2_rust_pen_stroke_active() } != 0;
+        if significant && !stroke_active {
+            let b = st.dboxes[slot];
+            unsafe {
+                glaspen2_set_invert_dirty(b[0], b[1], b[2], b[3]);
+                glaspen2_router_dirty_include_surface_rect(
+                    b[0] as f64,
+                    b[1] as f64,
+                    b[2] as f64,
+                    b[3] as f64,
+                );
+            }
+            rebuild_dirty = Some(b);
+        } else {
+            unsafe { glaspen2_set_invert_dirty(-1, -1, -1, -1) };
+        }
+    }
+    // 必须放掉 INVERT 锁再重建: 重建光栅化会调 invert_ink_source() 重新拿锁,
+    // 持锁重建会自锁, 表现就是打开「反色突出」后卡死。
+    if rebuild_dirty.is_some() {
         unsafe {
-            glaspen2_router_dirty_include_surface_rect(
-                b[0] as f64,
-                b[1] as f64,
-                b[2] as f64,
-                b[3] as f64,
-            )
-        };
-        glaspen2_rust_overlay_flush_dirty();
-    } else {
-        unsafe { glaspen2_set_invert_dirty(-1, -1, -1, -1) };
+            glaspen2_swift_run_on_main_sync(std::ptr::null_mut(), invert_rebuild_on_main);
+        }
     }
 }
 
@@ -9919,12 +9932,40 @@ pub fn settings_snapshot_pb() -> Vec<u8> {
 }
 
 /// 应用一项设置; value 是 `glaspen.ipc.v1.SettingValue` protobuf。
+struct SettingApplyCtx {
+    key: String,
+    value: serde_json::Value,
+    result: i32,
+}
+
+extern "C" fn apply_setting_on_main(ctx: *mut c_void) {
+    if ctx.is_null() {
+        return;
+    }
+    let ctx = unsafe { &mut *(ctx as *mut SettingApplyCtx) };
+    ctx.result = apply_setting_value(&ctx.key, &ctx.value);
+}
+
 pub fn set_setting_pb(key: &str, value: &[u8]) -> bool {
     let Ok(value) = glaspen_ipc::decode_setting_value(value) else {
         return false;
     };
     let json = glaspen_ipc::setting_value_to_json(&value);
-    let ok = apply_setting_value(key, &json) != 0;
+    // 设置 effect 里有重建绘制表面/反色捕获(SCK)/菜单刷新等 AppKit 操作,
+    // 必须在主线程执行。FRB 的 set_setting 跑在工作线程, 直接调用会让
+    // 固定画布短暂消失甚至卡死(invert ink 的 SCK 捕获尤其明显)。
+    let mut ctx = SettingApplyCtx {
+        key: key.to_string(),
+        value: json,
+        result: 0,
+    };
+    unsafe {
+        glaspen2_swift_run_on_main_sync(
+            &mut ctx as *mut SettingApplyCtx as *mut c_void,
+            apply_setting_on_main,
+        );
+    }
+    let ok = ctx.result != 0;
     if ok {
         // 写入后主动推一次完整 Settings 流: 面板若因本地/推送竞态没刷新,
         // 以落库后的权威值再刷新一次。
