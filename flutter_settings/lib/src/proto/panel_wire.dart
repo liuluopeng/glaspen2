@@ -238,6 +238,24 @@ class PanelStreamDecoder {
         ));
         continue;
       }
+      if (frame.hasPageListResponse()) {
+        out.add(PanelMessage(
+          'listPages_response',
+          frame.requestId.toInt(),
+          {
+            'data': [
+              for (final p in frame.pageListResponse.pages)
+                {
+                  'id': p.id.toInt(),
+                  'w': p.width,
+                  'h': p.height,
+                  'strokes': p.strokeCount,
+                },
+            ],
+          },
+        ));
+        continue;
+      }
       if (frame.hasSettingsSnapshotResponse()) {
         final snapshot = frame.settingsSnapshotResponse.snapshot;
         final settings = snapshot.hasSettings() ? snapshot.settings : null;

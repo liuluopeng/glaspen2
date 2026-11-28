@@ -404,6 +404,39 @@ pub fn encode_settings_changed_frame(json: &str) -> Vec<u8> {
     encode_frame(&frame)
 }
 
+pub fn encode_page_list_frame(request_id: u64, pages: &[(i64, i32, i32)]) -> Vec<u8> {
+    let frame = Frame {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        body: Some(proto::frame::Body::PageListResponse(
+            proto::PageListResponse {
+                pages: pages
+                    .iter()
+                    .map(|&(id, width, height)| proto::PageSummary {
+                        id,
+                        width,
+                        height,
+                        stroke_count: 0,
+                    })
+                    .collect(),
+            },
+        )),
+    };
+    encode_frame(&frame)
+}
+
+pub fn decode_page_list_frame(bytes: &[u8]) -> Result<Vec<(i64, i32, i32)>, FrameError> {
+    let frame = decode_frame(bytes)?;
+    let Some(proto::frame::Body::PageListResponse(resp)) = frame.body else {
+        return Err(FrameError::Decode("期望 PageListResponse".to_string()));
+    };
+    Ok(resp
+        .pages
+        .into_iter()
+        .map(|p| (p.id, p.width, p.height))
+        .collect())
+}
+
 pub fn decode_settings_frame(bytes: &[u8]) -> Result<serde_json::Value, FrameError> {
     let frame = decode_frame(bytes)?;
     let snapshot = match frame.body {
@@ -522,6 +555,13 @@ mod tests {
         assert_eq!(panel.kind, "getPageThumbnails");
         let back = prost_value_to_json(panel.data.as_ref().unwrap());
         assert_eq!(back, value);
+    }
+
+    #[test]
+    fn typed_page_list_roundtrip() {
+        let bytes = encode_page_list_frame(7, &[(1, 1920, 1080), (2, 1280, 720)]);
+        let pages = decode_page_list_frame(&bytes).unwrap();
+        assert_eq!(pages, vec![(1, 1920, 1080), (2, 1280, 720)]);
     }
 
     #[test]

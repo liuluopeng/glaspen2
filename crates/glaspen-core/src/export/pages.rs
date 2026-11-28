@@ -416,9 +416,13 @@ pub extern "C" fn glaspen2_undo_last_stroke() -> c_int {
 /// List all screens as JSON.
 /// Returns a C string (caller must free via glaspen2_free_c_string).
 /// JSON: [{"id":1,"w":1920,"h":1080}, ...]
+pub fn list_screens_summary() -> Vec<(i64, i32, i32)> {
+    runtime().block_on(db::list_screens())
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn glaspen2_list_screens_json() -> *mut c_char {
-    let rows = runtime().block_on(db::list_screens());
+    let rows = list_screens_summary();
     let list: Vec<serde_json::Value> = rows
         .into_iter()
         .map(|(id, w, h)| serde_json::json!({ "id": id, "w": w, "h": h }))

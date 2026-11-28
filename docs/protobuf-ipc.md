@@ -89,7 +89,8 @@
 
 待迁移：
 
-- `PageSummary` / 缩略图 / 页面操作；
+- ✅ `PageSummary` / `PageListResponse` typed；Windows `listPages` 已切 typed，
+  缩略图/页面操作仍待迁；
 - `Bubble*`；
 - `RecordingEvent/Effect`；
 - `GridLines` / `MinimapLayout` / `ActionEffect`；

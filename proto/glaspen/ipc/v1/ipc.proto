@@ -23,6 +23,7 @@ message Frame {
     SettingsSnapshotResponse settings_snapshot_response = 12;
     Ack ack = 13;
     SettingsChanged settings_changed = 14;
+    PageListResponse page_list_response = 15;
     Panel panel = 20;
     Error error = 99;
   }
@@ -133,4 +134,15 @@ message StringList {
 
 message SettingsChanged {
   SettingsSnapshot snapshot = 1;
+}
+
+message PageSummary {
+  int64 id = 1;
+  int32 width = 2;
+  int32 height = 3;
+  int32 stroke_count = 4;
+}
+
+message PageListResponse {
+  repeated PageSummary pages = 1;
 }

@@ -67,6 +67,15 @@ const Frame$json = {
       '10': 'settingsChanged'
     },
     {
+      '1': 'page_list_response',
+      '3': 15,
+      '4': 1,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.PageListResponse',
+      '9': 0,
+      '10': 'pageListResponse'
+    },
+    {
       '1': 'panel',
       '3': 20,
       '4': 1,
@@ -100,8 +109,10 @@ final $typed_data.Uint8List frameDescriptor = $convert.base64Decode(
     'EuU2V0dGluZ3NTbmFwc2hvdFJlc3BvbnNlSABSGHNldHRpbmdzU25hcHNob3RSZXNwb25zZRIn'
     'CgNhY2sYDSABKAsyEy5nbGFzcGVuLmlwYy52MS5BY2tIAFIDYWNrEkwKEHNldHRpbmdzX2NoYW'
     '5nZWQYDiABKAsyHy5nbGFzcGVuLmlwYy52MS5TZXR0aW5nc0NoYW5nZWRIAFIPc2V0dGluZ3ND'
-    'aGFuZ2VkEi0KBXBhbmVsGBQgASgLMhUuZ2xhc3Blbi5pcGMudjEuUGFuZWxIAFIFcGFuZWwSLQ'
-    'oFZXJyb3IYYyABKAsyFS5nbGFzcGVuLmlwYy52MS5FcnJvckgAUgVlcnJvckIGCgRib2R5');
+    'aGFuZ2VkElAKEnBhZ2VfbGlzdF9yZXNwb25zZRgPIAEoCzIgLmdsYXNwZW4uaXBjLnYxLlBhZ2'
+    'VMaXN0UmVzcG9uc2VIAFIQcGFnZUxpc3RSZXNwb25zZRItCgVwYW5lbBgUIAEoCzIVLmdsYXNw'
+    'ZW4uaXBjLnYxLlBhbmVsSABSBXBhbmVsEi0KBWVycm9yGGMgASgLMhUuZ2xhc3Blbi5pcGMudj'
+    'EuRXJyb3JIAFIFZXJyb3JCBgoEYm9keQ==');
 
 @$core.Deprecated('Use settingValueDescriptor instead')
 const SettingValue$json = {
@@ -480,3 +491,39 @@ const SettingsChanged$json = {
 final $typed_data.Uint8List settingsChangedDescriptor = $convert.base64Decode(
     'Cg9TZXR0aW5nc0NoYW5nZWQSPAoIc25hcHNob3QYASABKAsyIC5nbGFzcGVuLmlwYy52MS5TZX'
     'R0aW5nc1NuYXBzaG90UghzbmFwc2hvdA==');
+
+@$core.Deprecated('Use pageSummaryDescriptor instead')
+const PageSummary$json = {
+  '1': 'PageSummary',
+  '2': [
+    {'1': 'id', '3': 1, '4': 1, '5': 3, '10': 'id'},
+    {'1': 'width', '3': 2, '4': 1, '5': 5, '10': 'width'},
+    {'1': 'height', '3': 3, '4': 1, '5': 5, '10': 'height'},
+    {'1': 'stroke_count', '3': 4, '4': 1, '5': 5, '10': 'strokeCount'},
+  ],
+};
+
+/// Descriptor for `PageSummary`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List pageSummaryDescriptor = $convert.base64Decode(
+    'CgtQYWdlU3VtbWFyeRIOCgJpZBgBIAEoA1ICaWQSFAoFd2lkdGgYAiABKAVSBXdpZHRoEhYKBm'
+    'hlaWdodBgDIAEoBVIGaGVpZ2h0EiEKDHN0cm9rZV9jb3VudBgEIAEoBVILc3Ryb2tlQ291bnQ=');
+
+@$core.Deprecated('Use pageListResponseDescriptor instead')
+const PageListResponse$json = {
+  '1': 'PageListResponse',
+  '2': [
+    {
+      '1': 'pages',
+      '3': 1,
+      '4': 3,
+      '5': 11,
+      '6': '.glaspen.ipc.v1.PageSummary',
+      '10': 'pages'
+    },
+  ],
+};
+
+/// Descriptor for `PageListResponse`. Decode as a `google.protobuf.DescriptorProto`.
+final $typed_data.Uint8List pageListResponseDescriptor = $convert.base64Decode(
+    'ChBQYWdlTGlzdFJlc3BvbnNlEjEKBXBhZ2VzGAEgAygLMhsuZ2xhc3Blbi5pcGMudjEuUGFnZV'
+    'N1bW1hcnlSBXBhZ2Vz');

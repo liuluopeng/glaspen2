@@ -20,6 +20,24 @@ void main() {
     }
   });
 
+  test('typed page list decodes', () {
+    final frame = pb.Frame(
+      protocolVersion: 1,
+      requestId: Int64(9),
+      pageListResponse: pb.PageListResponse(
+        pages: [
+          pb.PageSummary(id: Int64(1), width: 1920, height: 1080),
+          pb.PageSummary(id: Int64(2), width: 1280, height: 720),
+        ],
+      ),
+    );
+    final msg = PanelStreamDecoder().feed(encodeFrame(frame)).single;
+    expect(msg.kind, 'listPages_response');
+    expect(msg.requestId, 9);
+    expect(msg.data['data'][0]['id'], 1);
+    expect(msg.data['data'][1]['w'], 1280);
+  });
+
   test('typed settings snapshot decodes', () {
     final frame = pb.Frame(
       protocolVersion: 1,

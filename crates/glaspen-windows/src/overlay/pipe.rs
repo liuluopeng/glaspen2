@@ -389,28 +389,10 @@ fn process_pipe_message(line: &str, hwnd: isize, writer: &mut PanelOut) {
 
     if msg_type == "listPages" {
         // 页面列表(内容 tab)
-        let req_id = json_get_i64(line, "reqId").unwrap_or(0);
-        let ptr = glaspen_core::export::glaspen2_list_screens_json();
-        if ptr.is_null() {
-            let _ = writer.write_all(
-                format!(
-                    "{{\"type\":\"listPages_response\",\"reqId\":{},\"data\":[]}}\n",
-                    req_id
-                )
-                .as_bytes(),
-            );
-        } else {
-            let s = unsafe { std::ffi::CStr::from_ptr(ptr) }
-                .to_string_lossy()
-                .to_string();
-            glaspen_core::export::glaspen2_free_c_string(ptr);
-            let resp = format!(
-                "{{\"type\":\"listPages_response\",\"reqId\":{},\"data\":{}}}\n",
-                req_id, s
-            );
-            let _ = writer.write_all(resp.as_bytes());
-        }
-        let _ = writer.flush();
+        let req_id = json_get_i64(line, "reqId").unwrap_or(0) as u64;
+        let pages = glaspen_core::export::list_screens_summary();
+        let frame = glaspen_ipc::encode_page_list_frame(req_id, &pages);
+        let _ = writer.write_frame(&frame);
     } else if msg_type == "reorderPage" {
         // 活页本重排(面板前后移)
         let req_id = json_get_i64(line, "reqId").unwrap_or(0);

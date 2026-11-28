@@ -24,6 +24,7 @@ enum Frame_Body {
   settingsSnapshotResponse,
   ack,
   settingsChanged,
+  pageListResponse,
   panel,
   error,
   notSet
@@ -48,6 +49,7 @@ class Frame extends $pb.GeneratedMessage {
     SettingsSnapshotResponse? settingsSnapshotResponse,
     Ack? ack,
     SettingsChanged? settingsChanged,
+    PageListResponse? pageListResponse,
     Panel? panel,
     Error? error,
   }) {
@@ -60,6 +62,7 @@ class Frame extends $pb.GeneratedMessage {
       result.settingsSnapshotResponse = settingsSnapshotResponse;
     if (ack != null) result.ack = ack;
     if (settingsChanged != null) result.settingsChanged = settingsChanged;
+    if (pageListResponse != null) result.pageListResponse = pageListResponse;
     if (panel != null) result.panel = panel;
     if (error != null) result.error = error;
     return result;
@@ -80,6 +83,7 @@ class Frame extends $pb.GeneratedMessage {
     12: Frame_Body.settingsSnapshotResponse,
     13: Frame_Body.ack,
     14: Frame_Body.settingsChanged,
+    15: Frame_Body.pageListResponse,
     20: Frame_Body.panel,
     99: Frame_Body.error,
     0: Frame_Body.notSet
@@ -88,7 +92,7 @@ class Frame extends $pb.GeneratedMessage {
       _omitMessageNames ? '' : 'Frame',
       package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
       createEmptyInstance: Frame.$_createMessage)
-    ..oo(0, [10, 11, 12, 13, 14, 20, 99])
+    ..oo(0, [10, 11, 12, 13, 14, 15, 20, 99])
     ..aI(1, _omitFieldNames ? '' : 'protocolVersion',
         fieldType: $pb.PbFieldType.OU3)
     ..a<$fixnum.Int64>(
@@ -105,6 +109,8 @@ class Frame extends $pb.GeneratedMessage {
         subBuilder: Ack.$_createMessage)
     ..aOM<SettingsChanged>(14, _omitFieldNames ? '' : 'settingsChanged',
         subBuilder: SettingsChanged.$_createMessage)
+    ..aOM<PageListResponse>(15, _omitFieldNames ? '' : 'pageListResponse',
+        subBuilder: PageListResponse.$_createMessage)
     ..aOM<Panel>(20, _omitFieldNames ? '' : 'panel',
         subBuilder: Panel.$_createMessage)
     ..aOM<Error>(99, _omitFieldNames ? '' : 'error',
@@ -136,6 +142,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(12)
   @$pb.TagNumber(13)
   @$pb.TagNumber(14)
+  @$pb.TagNumber(15)
   @$pb.TagNumber(20)
   @$pb.TagNumber(99)
   Frame_Body whichBody() => _Frame_BodyByTag[$_whichOneof(0)]!;
@@ -144,6 +151,7 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(12)
   @$pb.TagNumber(13)
   @$pb.TagNumber(14)
+  @$pb.TagNumber(15)
   @$pb.TagNumber(20)
   @$pb.TagNumber(99)
   void clearBody() => $_clearField($_whichOneof(0));
@@ -222,27 +230,38 @@ class Frame extends $pb.GeneratedMessage {
   @$pb.TagNumber(14)
   SettingsChanged ensureSettingsChanged() => $_ensure(6);
 
+  @$pb.TagNumber(15)
+  PageListResponse get pageListResponse => $_getN(7);
+  @$pb.TagNumber(15)
+  set pageListResponse(PageListResponse value) => $_setField(15, value);
+  @$pb.TagNumber(15)
+  $core.bool hasPageListResponse() => $_has(7);
+  @$pb.TagNumber(15)
+  void clearPageListResponse() => $_clearField(15);
+  @$pb.TagNumber(15)
+  PageListResponse ensurePageListResponse() => $_ensure(7);
+
   @$pb.TagNumber(20)
-  Panel get panel => $_getN(7);
+  Panel get panel => $_getN(8);
   @$pb.TagNumber(20)
   set panel(Panel value) => $_setField(20, value);
   @$pb.TagNumber(20)
-  $core.bool hasPanel() => $_has(7);
+  $core.bool hasPanel() => $_has(8);
   @$pb.TagNumber(20)
   void clearPanel() => $_clearField(20);
   @$pb.TagNumber(20)
-  Panel ensurePanel() => $_ensure(7);
+  Panel ensurePanel() => $_ensure(8);
 
   @$pb.TagNumber(99)
-  Error get error => $_getN(8);
+  Error get error => $_getN(9);
   @$pb.TagNumber(99)
   set error(Error value) => $_setField(99, value);
   @$pb.TagNumber(99)
-  $core.bool hasError() => $_has(8);
+  $core.bool hasError() => $_has(9);
   @$pb.TagNumber(99)
   void clearError() => $_clearField(99);
   @$pb.TagNumber(99)
-  Error ensureError() => $_ensure(8);
+  Error ensureError() => $_ensure(9);
 }
 
 enum SettingValue_Value {
@@ -1553,6 +1572,151 @@ class SettingsChanged extends $pb.GeneratedMessage {
   void clearSnapshot() => $_clearField(1);
   @$pb.TagNumber(1)
   SettingsSnapshot ensureSnapshot() => $_ensure(0);
+}
+
+class PageSummary extends $pb.GeneratedMessage {
+  factory PageSummary({
+    $fixnum.Int64? id,
+    $core.int? width,
+    $core.int? height,
+    $core.int? strokeCount,
+  }) {
+    final result = PageSummary._();
+    if (id != null) result.id = id;
+    if (width != null) result.width = width;
+    if (height != null) result.height = height;
+    if (strokeCount != null) result.strokeCount = strokeCount;
+    return result;
+  }
+
+  PageSummary._();
+
+  factory PageSummary.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PageSummary()..mergeFromBuffer(data, registry);
+  factory PageSummary.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PageSummary()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'PageSummary',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: PageSummary.$_createMessage)
+    ..aInt64(1, _omitFieldNames ? '' : 'id')
+    ..aI(2, _omitFieldNames ? '' : 'width')
+    ..aI(3, _omitFieldNames ? '' : 'height')
+    ..aI(4, _omitFieldNames ? '' : 'strokeCount')
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PageSummary clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PageSummary copyWith(void Function(PageSummary) updates) =>
+      super.copyWith((message) => updates(message as PageSummary))
+          as PageSummary;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use PageSummary() / PageSummary.new instead')
+  static PageSummary create() => PageSummary._();
+  static $pb.GeneratedMessage $_createMessage() => PageSummary._();
+  @$core.override
+  PageSummary createEmptyInstance() => PageSummary._();
+  @$core.pragma('dart2js:noInline')
+  static PageSummary getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<PageSummary>(
+          PageSummary.$_createMessage);
+  static PageSummary? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $fixnum.Int64 get id => $_getI64(0);
+  @$pb.TagNumber(1)
+  set id($fixnum.Int64 value) => $_setInt64(0, value);
+  @$pb.TagNumber(1)
+  $core.bool hasId() => $_has(0);
+  @$pb.TagNumber(1)
+  void clearId() => $_clearField(1);
+
+  @$pb.TagNumber(2)
+  $core.int get width => $_getIZ(1);
+  @$pb.TagNumber(2)
+  set width($core.int value) => $_setSignedInt32(1, value);
+  @$pb.TagNumber(2)
+  $core.bool hasWidth() => $_has(1);
+  @$pb.TagNumber(2)
+  void clearWidth() => $_clearField(2);
+
+  @$pb.TagNumber(3)
+  $core.int get height => $_getIZ(2);
+  @$pb.TagNumber(3)
+  set height($core.int value) => $_setSignedInt32(2, value);
+  @$pb.TagNumber(3)
+  $core.bool hasHeight() => $_has(2);
+  @$pb.TagNumber(3)
+  void clearHeight() => $_clearField(3);
+
+  @$pb.TagNumber(4)
+  $core.int get strokeCount => $_getIZ(3);
+  @$pb.TagNumber(4)
+  set strokeCount($core.int value) => $_setSignedInt32(3, value);
+  @$pb.TagNumber(4)
+  $core.bool hasStrokeCount() => $_has(3);
+  @$pb.TagNumber(4)
+  void clearStrokeCount() => $_clearField(4);
+}
+
+class PageListResponse extends $pb.GeneratedMessage {
+  factory PageListResponse({
+    $core.Iterable<PageSummary>? pages,
+  }) {
+    final result = PageListResponse._();
+    if (pages != null) result.pages.addAll(pages);
+    return result;
+  }
+
+  PageListResponse._();
+
+  factory PageListResponse.fromBuffer($core.List<$core.int> data,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PageListResponse()..mergeFromBuffer(data, registry);
+  factory PageListResponse.fromJson($core.String json,
+          [$pb.ExtensionRegistry registry = $pb.ExtensionRegistry.EMPTY]) =>
+      PageListResponse()..mergeFromJson(json, registry);
+
+  static final $pb.BuilderInfo _i = $pb.BuilderInfo(
+      _omitMessageNames ? '' : 'PageListResponse',
+      package: const $pb.PackageName(_omitMessageNames ? '' : 'glaspen.ipc.v1'),
+      createEmptyInstance: PageListResponse.$_createMessage)
+    ..pPM<PageSummary>(1, _omitFieldNames ? '' : 'pages',
+        subBuilder: PageSummary.$_createMessage)
+    ..hasRequiredFields = false;
+
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PageListResponse clone() => deepCopy();
+  @$core.Deprecated('See https://github.com/google/protobuf.dart/issues/998.')
+  PageListResponse copyWith(void Function(PageListResponse) updates) =>
+      super.copyWith((message) => updates(message as PageListResponse))
+          as PageListResponse;
+
+  @$core.override
+  $pb.BuilderInfo get info_ => _i;
+
+  @$core.pragma('dart2js:noInline')
+  @$core.Deprecated('Use PageListResponse() / PageListResponse.new instead')
+  static PageListResponse create() => PageListResponse._();
+  static $pb.GeneratedMessage $_createMessage() => PageListResponse._();
+  @$core.override
+  PageListResponse createEmptyInstance() => PageListResponse._();
+  @$core.pragma('dart2js:noInline')
+  static PageListResponse getDefault() =>
+      _defaultInstance ??= $pb.GeneratedMessage.$_defaultFor<PageListResponse>(
+          PageListResponse.$_createMessage);
+  static PageListResponse? _defaultInstance;
+
+  @$pb.TagNumber(1)
+  $pb.PbList<PageSummary> get pages => $_getList(0);
 }
 
 const $core.bool _omitFieldNames =
