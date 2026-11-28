@@ -1050,7 +1050,8 @@ mod tests {
         let win_snapshot = &tail[..end];
 
         assert!(
-            mac_snapshot.contains("settings_snapshot::snapshot_settings"),
+            mac_snapshot.contains("settings_snapshot_typed")
+                && mac_snapshot_glue.contains("settings_snapshot::snapshot_settings"),
             "macOS 快照函数未走 core settings_snapshot::snapshot_settings"
         );
         assert!(

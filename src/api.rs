@@ -41,10 +41,8 @@ pub(crate) mod shim {
         fn glaspen2_macos_open_url(url: *const c_char);
     }
 
-    pub fn settings_json() -> Option<String> {
-        let bytes = glaspen_macos::macos_shell::settings_snapshot_pb();
-        let data = glaspen_ipc::decode_settings_frame(&bytes).ok()?;
-        serde_json::to_string(&data).ok()
+    pub fn settings_typed() -> Option<glaspen_ipc::proto::AppSettings> {
+        glaspen_macos::macos_shell::settings_snapshot_typed()
     }
 
     pub fn set_setting(key: &str, value: &[u8]) {
@@ -100,7 +98,7 @@ pub(crate) mod shim {
 #[frb(ignore)]
 #[cfg(not(target_os = "macos"))]
 pub(crate) mod shim {
-    pub fn settings_json() -> Option<String> {
+    pub fn settings_typed() -> Option<glaspen_ipc::proto::AppSettings> {
         None
     }
     pub fn set_setting(_key: &str, _value: &[u8]) {}
@@ -230,6 +228,53 @@ pub struct Settings {
 }
 
 impl Settings {
+    fn from_app_settings(s: &glaspen_ipc::proto::AppSettings) -> Settings {
+        Settings {
+            color: s.color,
+            width: s.width,
+            launch_at_login: s.launch_at_login,
+            frosted_glass: s.frosted_glass,
+            grid: s.grid,
+            grid_follow_strokes: s.grid_follow_strokes,
+            glass_follow_strokes: s.glass_follow_strokes,
+            soft_shadow: s.soft_shadow,
+            invert_ink: s.invert_ink,
+            notebook_style: s.notebook_style,
+            panel_transparent: s.panel_transparent,
+            invert_fps: s.invert_fps,
+            pressure_monitor: s.pressure_monitor,
+            outline: s.outline,
+            infinite_canvas: s.infinite_canvas,
+            minimap: s.minimap,
+            grid_size: s.grid_size,
+            grid_divider: s.grid_divider,
+            flip_effect: s.flip_effect,
+            gif_fps: s.gif_fps,
+            gif_resolution: s.gif_resolution,
+            gif_speed: s.gif_speed,
+            gif_end_mode: s.gif_end_mode,
+            chat_api_base: s.chat_api_base.clone(),
+            chat_user: s.chat_user.clone(),
+            chat_has_password: s.chat_has_password,
+            chat_integration: s.chat_integration,
+            show_free_canvas: s.show_free_canvas,
+            show_bubble_tab: s.show_bubble_tab,
+            bubble_replay_speed: s.bubble_replay_speed.clamp(1, 8),
+            bubble_replay_hold_last: s.bubble_replay_hold_last,
+            bubble_replay_auto: s.bubble_replay_auto,
+            bubble_auto_new_page: s.bubble_auto_new_page,
+            nas_url: s.nas_url.clone(),
+            share_canvas: s.share_canvas,
+            language: if s.language == "en" {
+                "en".to_string()
+            } else {
+                "zh".to_string()
+            },
+            shortcuts: serde_json::to_string(&s.shortcuts).unwrap_or_else(|_| "{}".to_string()),
+        }
+    }
+
+    #[cfg(test)]
     /// 宽松解析:推送方只发部分字段(旧 sync_settings_panel 只发 12 项)。
     ///
     /// D12: 快照由 core settings_snapshot 单源构建;构建失败时 FFI 返回
@@ -403,9 +448,7 @@ pub extern "C" fn glaspen2_notify_settings_changed() {
 }
 
 fn current_settings() -> Option<Settings> {
-    shim::settings_json()
-        .as_deref()
-        .and_then(Settings::from_json)
+    shim::settings_typed().map(|s| Settings::from_app_settings(&s))
 }
 
 // ---------------------------------------------------------------------------

@@ -125,3 +125,5 @@
 - ✅ 删除 macOS 剩余内部 JSON FFI：camera JSON 返回、live-plan JSON 光栅化、dead `recording_error_json`。
 
 - ✅ core 新增 `settings_snapshot::snapshot_settings` 与 `ui::ui_config_typed`；macOS/Windows adapter 不再解析 snapshot/uiConfig JSON，直接拿 typed 结构编码 Frame。
+
+- ✅ macOS `settings_snapshot_typed()` → root `Settings::from_app_settings`，删除 root 侧 settings JSON 解析；
